@@ -7,7 +7,7 @@ The X++ MCP Code Completion Server has been initialized with the following struc
 ### Core Files
 
 ```
-asl-mcp-code-completion/
+d365fo-mcp-server/
 ├── src/
 │   ├── index.ts                 # Main entry point (NEW)
 │   ├── database/
