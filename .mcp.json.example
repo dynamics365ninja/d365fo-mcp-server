@@ -1,0 +1,13 @@
+/**
+ * Example .mcp.json configuration for Visual Studio 2022
+ * Place this file in your solution root directory or in %USERPROFILE%\.mcp.json
+ */
+{
+  "servers": {
+    "xpp-completion": {
+      "type": "http",
+      "url": "https://your-app-name.azurewebsites.net/mcp/",
+      "description": "X++ Code Completion Server for D365 F&O"
+    }
+  }
+}

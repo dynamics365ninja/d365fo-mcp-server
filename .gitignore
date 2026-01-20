@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.log
+.env
+.DS_Store
+*.db
+*.db-shm
+*.db-wal
+extracted-metadata/
+metadata/
+tmp/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.azure/

@@ -1,0 +1,89 @@
+/**
+ * X++ Symbol Search Tool
+ * Search for classes, tables, methods, and fields by name or keyword
+ */
+
+import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import type { XppServerContext } from '../types/context.js';
+
+const SearchArgsSchema = z.object({
+  query: z.string().describe('Search query (class name, method name, etc.)'),
+  limit: z.number().optional().default(20).describe('Maximum results to return'),
+});
+
+export async function searchTool(request: CallToolRequest, context: XppServerContext) {
+  const args = SearchArgsSchema.parse(request.params.arguments);
+  const { symbolIndex, cache } = context;
+
+  try {
+    // Check cache first
+    const cacheKey = cache.generateSearchKey(args.query, args.limit);
+    const cachedResults = await cache.get<any[]>(cacheKey);
+    
+    if (cachedResults) {
+      const formatted = cachedResults
+        .map((s) => {
+          const parentPrefix = s.parentName ? `${s.parentName}.` : '';
+          const signature = s.signature ? ` - ${s.signature}` : '';
+          return `[${s.type.toUpperCase()}] ${parentPrefix}${s.name}${signature}`;
+        })
+        .join('\n');
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Found ${cachedResults.length} matches (cached):\n\n${formatted}`,
+          },
+        ],
+      };
+    }
+
+    // Query database
+    const results = symbolIndex.searchSymbols(args.query, args.limit);
+    
+    // Cache results
+    if (results.length > 0) {
+      await cache.set(cacheKey, results);
+    }
+
+    if (results.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `No X++ symbols found matching "${args.query}"`,
+          },
+        ],
+      };
+    }
+
+    const formatted = results
+      .map((s) => {
+        const parentPrefix = s.parentName ? `${s.parentName}.` : '';
+        const signature = s.signature ? ` - ${s.signature}` : '';
+        return `[${s.type.toUpperCase()}] ${parentPrefix}${s.name}${signature}`;
+      })
+      .join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Found ${results.length} matches:\n\n${formatted}`,
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Error searching symbols: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+}
