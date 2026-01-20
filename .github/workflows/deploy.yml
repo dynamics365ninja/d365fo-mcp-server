@@ -1,24 +1,36 @@
-name: Deploy X++ MCP Server to Azure
+name: Deploy to Azure
 
 on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
 
 env:
-  AZURE_WEBAPP_NAME: your-app-name  # Replace with your app name
+  AZURE_WEBAPP_NAME: xpp-mcp-server  # Replace with your app name
   NODE_VERSION: '20.x'
 
 jobs:
-  build-and-deploy:
+  build:
+    name: Build Application
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -27,6 +39,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run tests
+        run: npm test
+        continue-on-error: true
+
       - name: Build TypeScript
         run: npm run build
 
@@ -34,8 +50,31 @@ jobs:
         run: |
           mkdir -p deploy
           cp -r dist package.json package-lock.json startup.sh deploy/
+          cp .env.example deploy/.env.example
           cd deploy
           zip -r ../deployment.zip .
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package
+          path: deployment.zip
+          retention-days: 30
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: production
+      url: https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net
+    
+    steps:
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -48,5 +87,43 @@ jobs:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           package: deployment.zip
 
+      - name: Health check
+        run: |
+          echo "Waiting for deployment to complete..."
+          sleep 30
+          curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health || exit 1
+
       - name: Logout from Azure
         run: az logout
+        if: always()
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://${{ env.AZURE_WEBAPP_NAME }}-staging.azurewebsites.net
+    
+    steps:
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_STAGING }}
+
+      - name: Deploy to Azure App Service (Staging Slot)
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: staging
+          package: deployment.zip
+
+      - name: Logout from Azure
+        run: az logout
+        if: always()

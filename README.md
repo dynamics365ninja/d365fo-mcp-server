@@ -1,5 +1,12 @@
 # X++ MCP Code Completion Server
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
+[![Build Status](https://github.com/YOUR_ORG/d365fo-mcp-server/workflows/CI/badge.svg)](https://github.com/YOUR_ORG/d365fo-mcp-server/actions)
+[![Azure](https://img.shields.io/badge/Azure-Ready-0078D4.svg)](https://azure.microsoft.com/)
+[![MCP](https://img.shields.io/badge/MCP-1.0-orange.svg)](https://modelcontextprotocol.io/)
+
 A Model Context Protocol (MCP) server for X++ code completion in Microsoft Dynamics 365 Finance and Operations development.
 
 ## Features
