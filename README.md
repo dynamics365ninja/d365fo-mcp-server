@@ -111,15 +111,42 @@ npm run dev
 
 Server will be available at `http://localhost:8080/mcp`
 
-### 4. Deploy to Azure App Service
+### 4. Deploy to Azure (Optional)
 
+See [GITHUB_SETUP.md](GITHUB_SETUP.md) for detailed deployment instructions.
+
+**Quick Deploy:**
 ```bash
-# Build
-npm run build
+# Push to GitHub to trigger CI/CD
+git push origin main
 
-# Deploy using Azure CLI
+# Or deploy manually with Azure CLI
 az webapp up --name your-app-name --resource-group your-rg --runtime "NODE:20-lts"
 ```
+
+## CI/CD
+
+The project includes automated workflows:
+
+- **CI Workflow** ([.github/workflows/ci.yml](.github/workflows/ci.yml))
+  - Runs on every push/PR to `main` or `develop`
+  - Tests on Node.js 20.x and 22.x
+  - Runs linting, building, and security audits
+  - Status: [![Build Status](https://github.com/dynamics365ninja/d365fo-mcp-server/workflows/CI/badge.svg)](https://github.com/dynamics365ninja/d365fo-mcp-server/actions)
+
+- **Deploy Workflow** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml))
+  - Deploys to Azure App Service
+  - Supports production and staging environments
+  - Automatic on push to `main` or manual trigger
+
+- **Release Workflow** ([.github/workflows/release.yml](.github/workflows/release.yml))
+  - Creates GitHub releases on version tags
+  - Generates changelog automatically
+  - Builds release artifacts
+
+- **Dependabot** ([.github/dependabot.yml](.github/dependabot.yml))
+  - Weekly dependency updates
+  - Grouped updates for production and dev dependencies
 
 ## MCP Tools
 
@@ -364,8 +391,29 @@ REDIS_URL=redis://:your-key@your-cache-name.redis.cache.windows.net:6380?ssl=tru
 
 ## License
 
-MIT
+MIT - See [LICENSE](LICENSE) file for details.
 
-## Support
+## Contributing
 
-For issues and questions, please open a GitHub issue.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Support & Community
+
+- **GitHub Repository**: [dynamics365ninja/d365fo-mcp-server](https://github.com/dynamics365ninja/d365fo-mcp-server)
+- **Report Issues**: [GitHub Issues](https://github.com/dynamics365ninja/d365fo-mcp-server/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/dynamics365ninja/d365fo-mcp-server/discussions)
+- **CI/CD Status**: [GitHub Actions](https://github.com/dynamics365ninja/d365fo-mcp-server/actions)
+
+## Related Documentation
+
+- [GITHUB_SETUP.md](GITHUB_SETUP.md) - GitHub repository setup guide
+- [PERFORMANCE.md](PERFORMANCE.md) - Performance optimization guide
+- [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) - ISV extension configuration
+- [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - Project implementation status
+- [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - Feature summary
