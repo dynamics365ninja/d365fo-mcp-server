@@ -6,8 +6,7 @@
 import express from 'express';
 import { createXppMcpServer } from './server/mcpServer.js';
 import { createStreamableHttpTransport } from './server/transport.js';
-import { XppSymbolIndex } from './metadata/symbolIndex.js';
-import { XppMetadataParser } from './metadata/xmlParser.js';
+import { XppSymbolIndex, XppMetadataParser } from './metadata/index.js';
 import { RedisCacheService } from './cache/redisCache.js';
 
 const PORT = parseInt(process.env.PORT || '8080');

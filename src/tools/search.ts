@@ -60,7 +60,7 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
     }
 
     const formatted = results
-      .map((s) => {
+      .map((s: { parentName?: string; signature?: string; type: string; name: string }) => {
         const parentPrefix = s.parentName ? `${s.parentName}.` : '';
         const signature = s.signature ? ` - ${s.signature}` : '';
         return `[${s.type.toUpperCase()}] ${parentPrefix}${s.name}${signature}`;

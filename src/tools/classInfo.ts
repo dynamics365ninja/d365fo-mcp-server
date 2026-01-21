@@ -94,7 +94,7 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
     output += `## Methods (${cls.methods.length})\n\n`;
 
     for (const method of cls.methods) {
-      const params = method.parameters.map((p) => `${p.type} ${p.name}`).join(', ');
+      const params = method.parameters.map((p: { type: string; name: string }) => `${p.type} ${p.name}`).join(', ');
       output += `### ${method.name}\n\n`;
       output += `- **Visibility:** ${method.visibility}\n`;
       output += `- **Returns:** ${method.returnType}\n`;

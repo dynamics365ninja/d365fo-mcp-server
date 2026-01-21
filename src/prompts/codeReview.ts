@@ -93,7 +93,7 @@ ${args.code}
           if (classInfo.success && classInfo.data) {
             classSource = [
               classInfo.data.declaration,
-              ...classInfo.data.methods.map((m) => m.source),
+              ...classInfo.data.methods.map((m: { source: string }) => m.source),
             ].join('\n\n');
           }
         } catch (error) {

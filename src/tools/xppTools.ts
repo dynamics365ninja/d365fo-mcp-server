@@ -4,8 +4,7 @@
  */
 
 import { z } from 'zod';
-import type { XppSymbolIndex } from '../metadata/symbolIndex.js';
-import type { XppMetadataParser } from '../metadata/xmlParser.js';
+import type { XppSymbolIndex, XppMetadataParser } from '../metadata/index.js';
 
 // ============================================
 // Tool Input Schemas
@@ -78,7 +77,7 @@ export function createSearchTool(symbolIndex: XppSymbolIndex) {
       };
     }
 
-    const formatted = results.map(s => {
+    const formatted = results.map((s: { parentName?: string; name: string; type: string; signature?: string }) => {
       const qualified = s.parentName ? `${s.parentName}.${s.name}` : s.name;
       return `[${s.type.toUpperCase()}] ${qualified}${s.signature ? ` - ${s.signature}` : ''}`;
     }).join('\n');
@@ -127,7 +126,7 @@ export function createGetClassTool(symbolIndex: XppSymbolIndex, parser: XppMetad
     output += `\n## Methods (${cls.methods.length})\n`;
     
     for (const method of cls.methods) {
-      const params = method.parameters.map(p => `${p.type} ${p.name}`).join(', ');
+      const params = method.parameters.map((p: { type: string; name: string }) => `${p.type} ${p.name}`).join(', ');
       output += `\n### ${method.visibility} ${method.returnType} ${method.name}(${params})\n`;
       if (method.isStatic) output += `- Static method\n`;
       if (method.documentation) output += `\n${method.documentation}\n`;
@@ -190,7 +189,7 @@ export function createGetTableTool(symbolIndex: XppSymbolIndex, parser: XppMetad
     if (tbl.relations.length > 0) {
       output += `\n## Relations (${tbl.relations.length})\n\n`;
       for (const rel of tbl.relations) {
-        const constraints = rel.constraints.map(c => `${c.field} = ${c.relatedField}`).join(', ');
+        const constraints = rel.constraints.map((c: { field: string; relatedField: string }) => `${c.field} = ${c.relatedField}`).join(', ');
         output += `- **${rel.name}** → ${rel.relatedTable} (${constraints})\n`;
       }
     }
@@ -198,7 +197,7 @@ export function createGetTableTool(symbolIndex: XppSymbolIndex, parser: XppMetad
     if (tbl.methods.length > 0) {
       output += `\n## Methods (${tbl.methods.length})\n\n`;
       for (const method of tbl.methods) {
-        const params = method.parameters.map(p => `${p.type} ${p.name}`).join(', ');
+        const params = method.parameters.map((p: { type: string; name: string }) => `${p.type} ${p.name}`).join(', ');
         output += `- \`${method.returnType} ${method.name}(${params})\`\n`;
       }
     }
@@ -224,7 +223,7 @@ export function createCompleteMethodTool(symbolIndex: XppSymbolIndex) {
       };
     }
 
-    const formatted = completions.map(c => ({
+    const formatted = completions.map((c: { label: string; kind: string; detail?: string; documentation?: string }) => ({
       label: c.label,
       kind: c.kind,
       detail: c.detail,

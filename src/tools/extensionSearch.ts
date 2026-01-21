@@ -82,7 +82,7 @@ export async function extensionSearchTool(request: CallToolRequest, context: Xpp
     }
 
     // Group results by model for better readability
-    const byModel = results.reduce((acc, symbol) => {
+    const byModel = results.reduce((acc: Record<string, typeof results>, symbol: typeof results[0]) => {
       if (!acc[symbol.model]) {
         acc[symbol.model] = [];
       }
@@ -93,8 +93,8 @@ export async function extensionSearchTool(request: CallToolRequest, context: Xpp
     let output = `Found ${results.length} matches in custom extensions:\n\n`;
 
     for (const [model, symbols] of Object.entries(byModel)) {
-      output += `**${model}** (${symbols.length} symbols)\n`;
-      for (const s of symbols) {
+      output += `**${model}** (${(symbols as typeof results).length} symbols)\n`;
+      for (const s of (symbols as typeof results)) {
         const parentPrefix = s.parentName ? `${s.parentName}.` : '';
         const signature = s.signature ? ` - ${s.signature}` : '';
         output += `  [${s.type.toUpperCase()}] ${parentPrefix}${s.name}${signature}\n`;
@@ -105,7 +105,7 @@ export async function extensionSearchTool(request: CallToolRequest, context: Xpp
     // List available custom models
     const customModels = symbolIndex.getCustomModels();
     if (customModels.length > 0) {
-      output += `\n📦 Available Custom Models: ${customModels.map(m => m.name).join(', ')}`;
+      output += `\n📦 Available Custom Models: ${customModels.map((m: { name: string }) => m.name).join(', ')}`;
     }
 
     return {

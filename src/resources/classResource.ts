@@ -15,7 +15,7 @@ export function registerClassResource(server: Server, context: XppServerContext)
     const classes = symbolIndex.getAllClasses();
     
     return {
-      resources: classes.map((cls) => ({
+      resources: classes.map((cls: { name: string; signature?: string }) => ({
         uri: `xpp://class/${cls.name}`,
         name: `Class: ${cls.name}`,
         description: cls.signature || 'X++ class source code',
@@ -52,7 +52,7 @@ export function registerClassResource(server: Server, context: XppServerContext)
       // Combine declaration and methods into full source
       const fullSource = [
         classInfo.data.declaration,
-        ...classInfo.data.methods.map((m) => m.source),
+        ...classInfo.data.methods.map((m: { source: string }) => m.source),
       ].join('\n\n');
 
       return {
