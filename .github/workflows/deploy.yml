@@ -46,10 +46,15 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
+      - name: Prepare deployment files
+        run: |
+          # Remove dev dependencies to reduce package size
+          npm prune --production
+
       - name: Create deployment package
         run: |
           mkdir -p deploy
-          cp -r dist package.json package-lock.json startup.sh deploy/
+          cp -r dist node_modules package.json package-lock.json startup.sh deploy/
           cp .env.example deploy/.env.example
           cd deploy
           zip -r ../deployment.zip .
