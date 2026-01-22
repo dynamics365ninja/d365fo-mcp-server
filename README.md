@@ -1,7 +1,7 @@
 # X++ MCP Code Completion Server
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org/)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![Build Status](https://github.com/dynamics365ninja/d365fo-mcp-server/workflows/CI/badge.svg)](https://github.com/dynamics365ninja/d365fo-mcp-server/actions)
 [![Azure](https://img.shields.io/badge/Azure-Ready-0078D4.svg)](https://azure.microsoft.com/)
@@ -38,7 +38,7 @@ Azure Blob Storage
 
 ## Prerequisites
 
-- Node.js 20 LTS or later
+- Node.js 22 LTS or later
 - TypeScript 5.0+
 - Access to D365 F&O PackagesLocalDirectory (for metadata extraction)
 - Azure Storage account (for cloud deployment)
@@ -121,7 +121,7 @@ See [GITHUB_SETUP.md](GITHUB_SETUP.md) for detailed deployment instructions.
 git push origin main
 
 # Or deploy manually with Azure CLI
-az webapp up --name your-app-name --resource-group your-rg --runtime "NODE:20-lts"
+az webapp up --name your-app-name --resource-group your-rg --runtime "NODE:22-lts"
 ```
 
 ## CI/CD

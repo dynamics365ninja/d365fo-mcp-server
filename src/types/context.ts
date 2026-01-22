@@ -2,7 +2,8 @@
  * Shared type definitions
  */
 
-import type { XppSymbolIndex, XppMetadataParser } from '../metadata/index.js';
+import type { XppSymbolIndex } from '../metadata/symbolIndex.js';
+import type { XppMetadataParser } from '../metadata/xmlParser.js';
 import type { RedisCacheService } from '../cache/redisCache.js';
 
 export interface XppServerContext {

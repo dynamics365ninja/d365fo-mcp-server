@@ -4,7 +4,8 @@
  */
 
 import { z } from 'zod';
-import type { XppSymbolIndex, XppMetadataParser } from '../metadata/index.js';
+import type { XppSymbolIndex } from '../metadata/symbolIndex.js';
+import type { XppMetadataParser } from '../metadata/xmlParser.js';
 
 // ============================================
 // Tool Input Schemas

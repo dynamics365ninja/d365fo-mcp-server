@@ -16,7 +16,7 @@ param location string = resourceGroup().location
 param appServiceSku string = 'P0v3'
 
 @description('Node.js version')
-param nodeVersion string = '20-lts'
+param nodeVersion string = '22-lts'
 
 @description('Storage account SKU')
 @allowed([

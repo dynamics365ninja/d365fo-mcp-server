@@ -18,8 +18,8 @@ on:
           - staging
 
 env:
-  AZURE_WEBAPP_NAME: xpp-mcp-server  # Replace with your app name
-  NODE_VERSION: '20.x'
+  AZURE_WEBAPP_NAME: d365fo-mcp-server  # Replace with your app name
+  NODE_VERSION: '22.x'
 
 jobs:
   build:

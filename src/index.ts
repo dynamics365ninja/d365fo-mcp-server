@@ -6,7 +6,8 @@
 import express from 'express';
 import { createXppMcpServer } from './server/mcpServer.js';
 import { createStreamableHttpTransport } from './server/transport.js';
-import { XppSymbolIndex, XppMetadataParser } from './metadata/index.js';
+import { XppSymbolIndex } from './metadata/symbolIndex.js';
+import { XppMetadataParser } from './metadata/xmlParser.js';
 import { RedisCacheService } from './cache/redisCache.js';
 
 const PORT = parseInt(process.env.PORT || '8080');
@@ -43,10 +44,17 @@ async function main() {
     try {
       await fs.access(METADATA_PATH);
       console.log(`📖 Indexing metadata from: ${METADATA_PATH}`);
-      const modelName = process.env.MODEL_NAME || 'CustomModel';
-      console.log(`📦 Using model name: ${modelName}`);
-      await symbolIndex.indexMetadataDirectory(METADATA_PATH, modelName);
-      console.log(`✅ Indexed ${symbolIndex.getSymbolCount()} symbols`);
+      const modelNamesStr = process.env.MODEL_NAMES || process.env.MODEL_NAME || 'CustomModel';
+      const separator = process.env.MODEL_NAMES_SEPARATOR || ',';
+      const modelNames = modelNamesStr.split(separator).map(m => m.trim()).filter(Boolean);
+      console.log(`📦 Using model names: ${modelNames.join(', ')}`);
+      
+      for (const modelName of modelNames) {
+        console.log(`   Indexing ${modelName}...`);
+        await symbolIndex.indexMetadataDirectory(METADATA_PATH, modelName);
+      }
+      
+      console.log(`✅ Indexed ${symbolIndex.getSymbolCount()} symbols from ${modelNames.length} model(s)`);
     } catch (error) {
       console.warn('⚠️  Metadata path not accessible, starting with empty index');
     }
@@ -66,7 +74,7 @@ async function main() {
   app.get('/health', (_req, res) => {
     res.json({
       status: 'healthy',
-      service: 'xpp-mcp-server',
+      service: 'd365fo-mcp-server',
       version: '1.0.0',
       symbols: symbolIndex.getSymbolCount(),
     });
