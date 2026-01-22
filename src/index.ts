@@ -83,9 +83,10 @@ async function main() {
   // MCP endpoints
   createStreamableHttpTransport(mcpServer, app);
 
-  // Start server
-  app.listen(PORT, () => {
-    console.log(`✅ X++ MCP Server listening on port ${PORT}`);
+  // Start server on 0.0.0.0 for Azure App Service
+  const host = process.env.HOST || '0.0.0.0';
+  app.listen(PORT, host, () => {
+    console.log(`✅ D365 F&O MCP Server listening on ${host}:${PORT}`);
     console.log(`📡 MCP endpoint: http://localhost:${PORT}/mcp`);
     console.log(`🏥 Health check: http://localhost:${PORT}/health`);
     console.log('');
