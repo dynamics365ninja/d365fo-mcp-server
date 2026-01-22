@@ -18,7 +18,7 @@ export async function downloadDatabaseFromBlob(options?: DownloadOptions): Promi
   const connectionString = options?.connectionString || process.env.AZURE_STORAGE_CONNECTION_STRING;
   const containerName = options?.containerName || process.env.BLOB_CONTAINER_NAME || 'xpp-metadata';
   const blobName = options?.blobName || process.env.BLOB_DATABASE_NAME || 'databases/xpp-metadata-latest.db';
-  const localPath = options?.localPath || process.env.DB_PATH || '/tmp/xpp-metadata.db';
+  const localPath = options?.localPath || process.env.DB_PATH || './data/xpp-metadata.db';
 
   if (!connectionString) {
     throw new Error('Azure Storage connection string not configured');
@@ -114,7 +114,7 @@ export async function checkDatabaseVersion(localPath: string, options?: Download
  * Initialize database (download if needed)
  */
 export async function initializeDatabase(options?: DownloadOptions): Promise<string> {
-  const localPath = options?.localPath || process.env.DB_PATH || '/tmp/xpp-metadata.db';
+  const localPath = options?.localPath || process.env.DB_PATH || './data/xpp-metadata.db';
 
   // Check if we should use blob storage
   const useBlob = !!process.env.AZURE_STORAGE_CONNECTION_STRING;

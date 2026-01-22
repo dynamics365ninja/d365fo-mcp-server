@@ -9,7 +9,7 @@ import * as path from 'path';
 import { XppSymbolIndex } from '../src/metadata/symbolIndex.js';
 
 const INPUT_PATH = process.env.INPUT_PATH || './extracted-metadata';
-const OUTPUT_DB = process.env.OUTPUT_DB || './xpp-metadata.db';
+const OUTPUT_DB = process.env.OUTPUT_DB || './data/xpp-metadata.db';
 
 async function buildDatabase() {
   console.log('🔨 Building X++ Metadata Database');

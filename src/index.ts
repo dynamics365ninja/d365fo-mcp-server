@@ -12,7 +12,7 @@ import { XppMetadataParser } from './metadata/xmlParser.js';
 import { RedisCacheService } from './cache/redisCache.js';
 
 const PORT = parseInt(process.env.PORT || '8080');
-const DB_PATH = process.env.DB_PATH || '/tmp/xpp-metadata.db';
+const DB_PATH = process.env.DB_PATH || './data/xpp-metadata.db';
 const METADATA_PATH = process.env.METADATA_PATH || './metadata';
 
 async function main() {
