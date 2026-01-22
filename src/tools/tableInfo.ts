@@ -42,9 +42,9 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
     }
 
     // Query database and parse
-    const tableSymbol = symbolIndex.getSymbolByName(args.tableName);
+    const tableSymbol = symbolIndex.getSymbolByName(args.tableName, 'table');
 
-    if (!tableSymbol || tableSymbol.type !== 'table') {
+    if (!tableSymbol) {
       return {
         content: [
           {

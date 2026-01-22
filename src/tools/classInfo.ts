@@ -45,9 +45,9 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
     }
 
     // Query database and parse
-    const classSymbol = symbolIndex.getSymbolByName(args.className);
+    const classSymbol = symbolIndex.getSymbolByName(args.className, 'class');
 
-    if (!classSymbol || classSymbol.type !== 'class') {
+    if (!classSymbol) {
       return {
         content: [
           {

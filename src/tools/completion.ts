@@ -39,7 +39,6 @@ export async function completionTool(request: CallToolRequest, context: XppServe
       label: m.name,
       kind: m.type === 'method' ? 'Method' : 'Field',
       signature: m.signature || '',
-      documentation: m.documentation || '',
     }));
 
     return {

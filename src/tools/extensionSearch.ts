@@ -105,7 +105,7 @@ export async function extensionSearchTool(request: CallToolRequest, context: Xpp
     // List available custom models
     const customModels = symbolIndex.getCustomModels();
     if (customModels.length > 0) {
-      output += `\n📦 Available Custom Models: ${customModels.map((m: { name: string }) => m.name).join(', ')}`;
+      output += `\n📦 Available Custom Models: ${customModels.join(', ')}`;
     }
 
     return {
