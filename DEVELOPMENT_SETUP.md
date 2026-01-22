@@ -4,7 +4,7 @@ This guide helps you set up the X++ MCP Server for local development.
 
 ## Prerequisites
 
-- **Node.js 18+** installed
+- **Node.js 22+** installed
 - **D365 Finance & Operations** environment access
 - **Visual Studio with D365 development tools** (for metadata extraction)
 - **Git** installed
