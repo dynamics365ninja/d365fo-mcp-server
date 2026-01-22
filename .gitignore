@@ -27,7 +27,7 @@ lerna-debug.log*
 
 # Metadata extraction
 extracted-metadata/
-metadata/
+/metadata/
 tmp/
 
 # IDE
