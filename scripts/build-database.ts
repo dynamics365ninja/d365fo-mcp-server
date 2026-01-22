@@ -3,6 +3,7 @@
  * Builds SQLite database from extracted metadata
  */
 
+import 'dotenv/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { XppSymbolIndex } from '../src/metadata/symbolIndex.js';
@@ -21,10 +22,13 @@ async function buildDatabase() {
 
   // Index the extracted metadata
   console.log('📖 Indexing metadata...');
+  const startTime = Date.now();
   await symbolIndex.indexMetadataDirectory(INPUT_PATH);
+  const endTime = Date.now();
+  const duration = ((endTime - startTime) / 1000).toFixed(2);
 
   const count = symbolIndex.getSymbolCount();
-  console.log(`✅ Database built successfully!`);
+  console.log(`✅ Database built successfully in ${duration}s!`);
   console.log(`📊 Total symbols: ${count}`);
 
   // Show breakdown by type

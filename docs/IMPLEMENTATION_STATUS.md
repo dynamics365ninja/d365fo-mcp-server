@@ -9,43 +9,45 @@ The X++ MCP Code Completion Server has been initialized with the following struc
 ```
 d365fo-mcp-server/
 ├── src/
-│   ├── index.ts                 # Main entry point (NEW)
+│   ├── index.ts                 # Main entry point (loads dotenv)
 │   ├── database/
-│   │   └── download.ts          # Azure Blob download utility (NEW)
+│   │   └── download.ts          # Azure Blob download utility
 │   ├── server/
-│   │   ├── mcpServer.ts         # MCP server setup (EXISTS)
-│   │   └── transport.ts         # HTTP transport (EXISTS)
-│   ├── tools/                   # MCP tools (EXISTS)
+│   │   ├── mcpServer.ts         # MCP server setup
+│   │   └── transport.ts         # HTTP transport
+│   ├── tools/                   # MCP tools
 │   │   ├── search.ts
 │   │   ├── classInfo.ts
 │   │   ├── tableInfo.ts
 │   │   ├── completion.ts
 │   │   └── codeGen.ts
-│   ├── metadata/                # X++ parsing (EXISTS)
-│   │   ├── xmlParser.ts
-│   │   ├── symbolIndex.ts
-│   │   └── types.ts
-│   └── prompts/                 # MCP prompts (EXISTS)
+│   ├── metadata/                # X++ parsing
+│   │   ├── xmlParser.ts         # Parses D365 AOT XML (uses xml2js)
+│   │   ├── symbolIndex.ts       # SQLite FTS5 index (loads config)
+│   │   └── types.ts             # TypeScript interfaces
+│   └── prompts/                 # MCP prompts
 │       └── xppPrompts.ts
 ├── scripts/
-│   ├── extract-metadata.ts      # Extract from D365 (NEW)
-│   └── build-database.ts        # Build SQLite (NEW)
+│   ├── extract-metadata.ts      # Extract from D365 (loads dotenv & config)
+│   └── build-database.ts        # Build SQLite (loads dotenv)
+├── config/
+│   └── standard-models.json     # Microsoft standard models list
 ├── infrastructure/
-│   └── main.bicep               # Azure IaC (NEW)
+│   └── main.bicep               # Azure IaC
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci.yml               # CI workflow (NEW)
-│   │   ├── deploy.yml           # Azure deployment (NEW)
-│   │   └── release.yml          # Release automation (NEW)
-│   └── dependabot.yml           # Dependency updates (NEW)
-├── package.json                 # Updated scripts
-├── README.md                    # Full documentation (NEW)
-├── LICENSE                      # MIT License (NEW)
-├── GITHUB_SETUP.md              # GitHub setup guide (NEW)
-├── .env.example                 # Config template (NEW)
-├── .mcp.json.example            # VS2022 config (NEW)
-├── .gitignore                   # (NEW)
-└── startup.sh                   # Azure startup (NEW)
+│   │   ├── ci.yml               # CI workflow
+│   │   ├── deploy.yml           # Azure deployment
+│   │   └── release.yml          # Release automation
+│   └── dependabot.yml           # Dependency updates
+├── package.json                 # Dependencies (includes dotenv, xml2js)
+├── README.md                    # Full documentation
+├── LICENSE                      # MIT License
+├── GITHUB_SETUP.md              # GitHub setup guide
+├── .env.example                 # Config template
+├── .mcp.json.example            # VS2022 config
+├── .gitignore                   # Excludes /metadata/ not src/metadata/
+└── startup.sh                   # Azure startup
 ```
 
 ## ✅ Implementation Complete

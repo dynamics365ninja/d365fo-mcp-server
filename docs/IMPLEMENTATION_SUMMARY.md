@@ -25,10 +25,13 @@ The X++ MCP Code Completion Server is fully implemented and published to GitHub.
    - `xpp_generate_code` - X++ code template generation
 
 3. **Metadata Layer**
-   - XML parser for D365 AOT files (AxClass, AxTable, AxEnum, AxEdt)
+   - XML parser for D365 AOT files using xml2js (AxClass, AxTable, AxEnum, AxEdt)
+   - Parses methods with parameters extracted from source code
+   - Handles package/model directory structure (packages contain multiple models)
    - SQLite database with FTS5 full-text search
    - Symbol indexing system (~500MB metadata)
-   - Extraction scripts for PackagesLocalDirectory
+   - Extraction scripts for PackagesLocalDirectory with dotenv support
+   - Standard models filter from config/standard-models.json (36 Microsoft models)
 
 4. **Performance Features**
 

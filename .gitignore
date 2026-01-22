@@ -38,6 +38,9 @@ tmp/
 *~
 *.sublime-*
 
+# MCP Configuration
+.mcp.json
+
 # OS
 .DS_Store
 Thumbs.db

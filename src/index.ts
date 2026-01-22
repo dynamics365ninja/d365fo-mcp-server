@@ -3,6 +3,7 @@
  * Main entry point
  */
 
+import 'dotenv/config';
 import express from 'express';
 import { createXppMcpServer } from './server/mcpServer.js';
 import { createStreamableHttpTransport } from './server/transport.js';

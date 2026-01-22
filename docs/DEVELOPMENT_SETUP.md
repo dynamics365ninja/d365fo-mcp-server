@@ -28,6 +28,8 @@ npm run build
 
 ### 2. Configure Environment Variables
 
+**Note**: The server automatically loads environment variables from the `.env` file using the `dotenv` package.
+
 ```powershell
 # Copy example environment file
 Copy-Item .env.example .env
@@ -102,8 +104,10 @@ npm run extract-metadata
 ```
 
 This will:
-- Read XML files from `PackagesLocalDirectory`
-- Extract class definitions, methods, tables, enums
+- Scan PackagesLocalDirectory (packages contain multiple models)
+- Parse AxClass, AxTable, and AxEnum XML files using xml2js
+- Extract methods with parameters (parsed from source code), fields, and relationships
+- Filter out Microsoft standard models (list in config/standard-models.json)
 - Save to `./metadata` directory
 
 #### Option B: From Production/Sandbox Environment
@@ -293,7 +297,7 @@ Add to your workspace settings (`.vscode/settings.json`):
 - **D365 F&O Documentation**: https://learn.microsoft.com/dynamics365/fin-ops-core/
 - **Azure AD App Registration**: https://learn.microsoft.com/azure/active-directory/develop/quickstart-register-app
 - **MCP Protocol**: https://modelcontextprotocol.io/
-- **Project README**: [README.md](README.md)
+- **Project README**: [../README.md](../README.md)
 
 ## Getting Help
 

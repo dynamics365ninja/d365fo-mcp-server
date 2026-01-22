@@ -3,23 +3,41 @@
  * Extracts X++ metadata from D365 F&O PackagesLocalDirectory
  */
 
+import 'dotenv/config';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { XppMetadataParser } from '../src/metadata/xmlParser.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const PACKAGES_PATH = process.env.PACKAGES_PATH || 'C:\\AOSService\\PackagesLocalDirectory';
 const OUTPUT_PATH = process.env.OUTPUT_PATH || './extracted-metadata';
 const CUSTOM_MODELS_PATH = process.env.CUSTOM_MODELS_PATH; // Optional: separate path for custom extensions
-const EXTENSION_PREFIX = process.env.EXTENSION_PREFIX || ''; // e.g., 'ISV_', 'Custom_'
+const EXTENSION_PREFIX = process.env.EXTENSION_PREFIX || '';
 
-// Standard F&O models to extract
-const STANDARD_MODELS = [
-  'ApplicationFoundation',
-  'ApplicationPlatform',
-  'ApplicationSuite',
-  'Directory',
-  'Ledger',
-];
+// Load standard F&O models from config file
+function loadStandardModels(): string[] {
+  try {
+    const configPath = path.resolve(__dirname, '../config/standard-models.json');
+    const configContent = fsSync.readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(configContent);
+    return config.standardModels || [];
+  } catch (error) {
+    console.warn('⚠️  Could not load standard-models.json, using fallback list');
+    return [
+      'ApplicationFoundation',
+      'ApplicationPlatform',
+      'ApplicationSuite',
+      'Directory',
+      'Ledger',
+    ];
+  }
+}
+
+const STANDARD_MODELS = loadStandardModels();
 
 // Custom extension models to extract
 const CUSTOM_MODELS = process.env.CUSTOM_MODELS?.split(',').map(m => m.trim()).filter(Boolean) || [
@@ -63,27 +81,47 @@ async function extractMetadata() {
   // Create output directory
   await fs.mkdir(OUTPUT_PATH, { recursive: true });
 
-  // Process each model
-  for (const modelName of MODELS_TO_EXTRACT) {
-    console.log(`\n📦 Processing model: ${modelName}`);
+  // Process each package/model
+  for (const packageName of MODELS_TO_EXTRACT) {
+    console.log(`\n📦 Processing package: ${packageName}`);
 
-    const modelPath = path.join(PACKAGES_PATH, modelName, modelName);
+    const packagePath = path.join(PACKAGES_PATH, packageName);
     
     try {
-      await fs.access(modelPath);
+      await fs.access(packagePath);
     } catch {
-      console.warn(`⚠️  Model path not found: ${modelPath}`);
+      console.warn(`⚠️  Package path not found: ${packagePath}`);
       continue;
     }
 
-    // Extract classes
-    await extractClasses(parser, modelPath, modelName, stats);
+    // Find all models within this package
+    const entries = await fs.readdir(packagePath, { withFileTypes: true });
+    const modelDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
 
-    // Extract tables
-    await extractTables(parser, modelPath, modelName, stats);
+    for (const modelName of modelDirs) {
+      const modelPath = path.join(packagePath, modelName);
+      
+      // Check if this directory contains X++ metadata (has AxClass, AxTable, etc.)
+      const hasAxClass = await fs.access(path.join(modelPath, 'AxClass')).then(() => true).catch(() => false);
+      const hasAxTable = await fs.access(path.join(modelPath, 'AxTable')).then(() => true).catch(() => false);
+      const hasAxEnum = await fs.access(path.join(modelPath, 'AxEnum')).then(() => true).catch(() => false);
 
-    // Extract enums
-    await extractEnums(parser, modelPath, modelName, stats);
+      if (!hasAxClass && !hasAxTable && !hasAxEnum) {
+        // Skip directories that don't contain X++ metadata
+        continue;
+      }
+
+      console.log(`   📂 Model: ${modelName}`);
+
+      // Extract classes
+      await extractClasses(parser, modelPath, modelName, stats);
+
+      // Extract tables
+      await extractTables(parser, modelPath, modelName, stats);
+
+      // Extract enums
+      await extractEnums(parser, modelPath, modelName, stats);
+    }
   }
 
   console.log('\n✅ Extraction complete!');
@@ -119,7 +157,7 @@ async function extractClasses(
     stats.totalFiles++;
 
     try {
-      const classInfo = await parser.parseClassFile(filePath);
+      const classInfo = await parser.parseClassFile(filePath, modelName);
       
       if (!classInfo.success || !classInfo.data) {
         console.error(`   ⚠️  Failed to parse ${file}: ${classInfo.error || 'Unknown error'}`);
@@ -165,7 +203,7 @@ async function extractTables(
     stats.totalFiles++;
 
     try {
-      const tableInfo = await parser.parseTableFile(filePath);
+      const tableInfo = await parser.parseTableFile(filePath, modelName);
       
       if (!tableInfo.success || !tableInfo.data) {
         console.error(`   ⚠️  Failed to parse ${file}: ${tableInfo.error || 'Unknown error'}`);
@@ -248,20 +286,39 @@ async function extractCustomExtensionsOnly() {
 
   const basePath = CUSTOM_MODELS_PATH || PACKAGES_PATH;
 
-  for (const modelName of CUSTOM_MODELS) {
-    console.log(`\n📦 Processing custom model: ${modelName}`);
-    const modelPath = path.join(basePath, modelName, modelName);
+  for (const packageName of CUSTOM_MODELS) {
+    console.log(`\n📦 Processing custom package: ${packageName}`);
+    const packagePath = path.join(basePath, packageName);
     
     try {
-      await fs.access(modelPath);
+      await fs.access(packagePath);
     } catch {
-      console.warn(`⚠️  Model path not found: ${modelPath}`);
+      console.warn(`⚠️  Package path not found: ${packagePath}`);
       continue;
     }
 
-    await extractClasses(parser, modelPath, modelName, stats);
-    await extractTables(parser, modelPath, modelName, stats);
-    await extractEnums(parser, modelPath, modelName, stats);
+    // Find all models within this package
+    const entries = await fs.readdir(packagePath, { withFileTypes: true });
+    const modelDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+
+    for (const modelName of modelDirs) {
+      const modelPath = path.join(packagePath, modelName);
+      
+      // Check if this directory contains X++ metadata
+      const hasAxClass = await fs.access(path.join(modelPath, 'AxClass')).then(() => true).catch(() => false);
+      const hasAxTable = await fs.access(path.join(modelPath, 'AxTable')).then(() => true).catch(() => false);
+      const hasAxEnum = await fs.access(path.join(modelPath, 'AxEnum')).then(() => true).catch(() => false);
+
+      if (!hasAxClass && !hasAxTable && !hasAxEnum) {
+        continue;
+      }
+
+      console.log(`   📂 Model: ${modelName}`);
+
+      await extractClasses(parser, modelPath, modelName, stats);
+      await extractTables(parser, modelPath, modelName, stats);
+      await extractEnums(parser, modelPath, modelName, stats);
+    }
   }
 
   console.log('\n✅ Custom extensions extraction complete!');

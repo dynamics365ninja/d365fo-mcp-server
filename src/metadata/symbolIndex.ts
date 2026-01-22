@@ -264,27 +264,33 @@ export class XppSymbolIndex {
   async indexMetadataDirectory(metadataPath: string, modelName?: string): Promise<void> {
     const models = modelName ? [modelName] : await this.getModelDirectories(metadataPath);
 
-    for (const model of models) {
-      const modelPath = path.join(metadataPath, model);
-      
-      // Index classes
-      const classesPath = path.join(modelPath, 'classes');
-      if (fs.existsSync(classesPath)) {
-        await this.indexClasses(classesPath, model);
-      }
+    // Wrap everything in a single transaction for massive performance boost
+    const transaction = this.db.transaction(() => {
+      for (const model of models) {
+        const modelPath = path.join(metadataPath, model);
+        
+        // Index classes
+        const classesPath = path.join(modelPath, 'classes');
+        if (fs.existsSync(classesPath)) {
+          this.indexClasses(classesPath, model);
+        }
 
-      // Index tables
-      const tablesPath = path.join(modelPath, 'tables');
-      if (fs.existsSync(tablesPath)) {
-        await this.indexTables(tablesPath, model);
-      }
+        // Index tables
+        const tablesPath = path.join(modelPath, 'tables');
+        if (fs.existsSync(tablesPath)) {
+          this.indexTables(tablesPath, model);
+        }
 
-      // Index enums
-      const enumsPath = path.join(modelPath, 'enums');
-      if (fs.existsSync(enumsPath)) {
-        await this.indexEnums(enumsPath, model);
+        // Index enums
+        const enumsPath = path.join(modelPath, 'enums');
+        if (fs.existsSync(enumsPath)) {
+          this.indexEnums(enumsPath, model);
+        }
       }
-    }
+    });
+
+    // Execute the entire indexing in one transaction
+    transaction();
   }
 
   private async getModelDirectories(metadataPath: string): Promise<string[]> {
@@ -294,7 +300,7 @@ export class XppSymbolIndex {
       .map(entry => entry.name);
   }
 
-  private async indexClasses(classesPath: string, model: string): Promise<void> {
+  private indexClasses(classesPath: string, model: string): void {
     const files = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
 
     for (const file of files) {
@@ -328,7 +334,7 @@ export class XppSymbolIndex {
     }
   }
 
-  private async indexTables(tablesPath: string, model: string): Promise<void> {
+  private indexTables(tablesPath: string, model: string): void {
     const files = fs.readdirSync(tablesPath).filter(f => f.endsWith('.json'));
 
     for (const file of files) {
@@ -361,7 +367,7 @@ export class XppSymbolIndex {
     }
   }
 
-  private async indexEnums(enumsPath: string, model: string): Promise<void> {
+  private indexEnums(enumsPath: string, model: string): void {
     const files = fs.readdirSync(enumsPath).filter(f => f.endsWith('.json'));
 
     for (const file of files) {

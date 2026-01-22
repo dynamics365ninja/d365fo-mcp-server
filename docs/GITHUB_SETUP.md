@@ -10,7 +10,7 @@ This guide will help you publish your D365 F&O MCP Server to GitHub.
 
 ## Step 1: Update README Badges
 
-Before pushing, update the badge URLs in [README.md](README.md) by replacing `YOUR_ORG` with your actual GitHub username or organization name:
+Before pushing, update the badge URLs in [../README.md](../README.md) by replacing `YOUR_ORG` with your actual GitHub username or organization name:
 
 ```markdown
 [![Build Status](https://github.com/YOUR_ORG/d365fo-mcp-server/workflows/CI/badge.svg)](https://github.com/YOUR_ORG/d365fo-mcp-server/actions)

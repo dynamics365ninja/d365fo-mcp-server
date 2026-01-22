@@ -43,6 +43,14 @@ Azure Blob Storage
 - Access to D365 F&O PackagesLocalDirectory (for metadata extraction)
 - Azure Storage account (for cloud deployment)
 
+## Key Dependencies
+
+- **dotenv**: Loads environment variables from .env file
+- **xml2js**: Parses D365 AOT XML files
+- **better-sqlite3**: SQLite database with FTS5 full-text search
+- **@modelcontextprotocol/sdk**: MCP protocol implementation
+- **express**: HTTP server for streamable transport
+
 ## Installation
 
 ```bash
@@ -93,7 +101,11 @@ EXTRACT_MODE=all  # Options: 'all', 'standard', 'custom'
 npm run extract-metadata
 ```
 
-This extracts X++ metadata from your D365 F&O installation.
+This extracts X++ metadata from your D365 F&O installation:
+- Scans PackagesLocalDirectory (packages contain multiple models)
+- Parses AxClass, AxTable, AxEnum XML files using xml2js
+- Extracts methods with parameters (from source code), fields, relationships
+- Filters out Microsoft standard models (configured in config/standard-models.json)
 
 ### 2. Build SQLite Database
 
@@ -113,7 +125,7 @@ Server will be available at `http://localhost:8080/mcp`
 
 ### 4. Deploy to Azure (Optional)
 
-See [GITHUB_SETUP.md](GITHUB_SETUP.md) for detailed deployment instructions.
+See [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md) for detailed deployment instructions.
 
 **Quick Deploy:**
 ```bash
@@ -412,8 +424,9 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## Related Documentation
 
-- [GITHUB_SETUP.md](GITHUB_SETUP.md) - GitHub repository setup guide
-- [PERFORMANCE.md](PERFORMANCE.md) - Performance optimization guide
-- [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) - ISV extension configuration
-- [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - Project implementation status
-- [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - Feature summary
+- [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md) - GitHub repository setup guide
+- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) - Performance optimization guide
+- [docs/CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md) - ISV extension configuration
+- [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) - Development environment setup
+- [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) - Project implementation status
+- [docs/IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) - Feature summary

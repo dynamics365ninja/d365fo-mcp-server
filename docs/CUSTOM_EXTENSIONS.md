@@ -20,6 +20,8 @@ EXTENSION_PREFIX=ISV_
 EXTRACT_MODE=all
 ```
 
+**Note**: The extraction process filters out Microsoft standard models using the list in `config/standard-models.json` (36 standard models).
+
 ## Extract Custom Extensions Only
 
 To extract only your custom extension models:
