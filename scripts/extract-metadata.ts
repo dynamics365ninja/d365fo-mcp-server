@@ -14,7 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PACKAGES_PATH = process.env.PACKAGES_PATH || 'C:\\AOSService\\PackagesLocalDirectory';
-const OUTPUT_PATH = process.env.OUTPUT_PATH || './extracted-metadata';
+const OUTPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
 const CUSTOM_MODELS_PATH = process.env.CUSTOM_MODELS_PATH; // Optional: separate path for custom extensions
 const EXTENSION_PREFIX = process.env.EXTENSION_PREFIX || '';
 

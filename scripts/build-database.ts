@@ -8,8 +8,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { XppSymbolIndex } from '../src/metadata/symbolIndex.js';
 
-const INPUT_PATH = process.env.INPUT_PATH || './extracted-metadata';
-const OUTPUT_DB = process.env.OUTPUT_DB || './data/xpp-metadata.db';
+const INPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
+const OUTPUT_DB = process.env.DB_PATH || './data/xpp-metadata.db';
 
 async function buildDatabase() {
   console.log('🔨 Building X++ Metadata Database');
