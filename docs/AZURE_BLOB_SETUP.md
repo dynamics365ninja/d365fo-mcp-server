@@ -211,8 +211,8 @@ az webapp config appsettings set `
   --resource-group "d365fo-mcp-server" `
   --settings `
     AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=d365fomcpdata;AccountKey=YOUR_KEY;EndpointSuffix=core.windows.net" `
-    AZURE_STORAGE_CONTAINER="xpp-databases" `
-    AZURE_BLOB_NAME="xpp-metadata.db" `
+    BLOB_CONTAINER_NAME="xpp-databases" `
+    BLOB_DATABASE_NAME="xpp-metadata.db" `
     DB_PATH="/tmp/xpp-metadata.db"
 ```
 
@@ -369,7 +369,7 @@ az storage blob upload `
 az webapp config appsettings set `
   --name "d365fo-mcp-server" `
   --resource-group "d365fo-mcp-server" `
-  --settings AZURE_BLOB_NAME="xpp-metadata.db.zip"
+  --settings BLOB_DATABASE_NAME="xpp-metadata.db.zip"
 ```
 
 ## Cost Considerations
@@ -414,8 +414,8 @@ az webapp config appsettings set `
   --resource-group "d365fo-mcp-server" `
   --settings `
     AZURE_STORAGE_ACCOUNT_NAME="d365fomcpdata" `
-    AZURE_STORAGE_CONTAINER="xpp-databases" `
-    AZURE_BLOB_NAME="xpp-metadata.db" `
+    BLOB_CONTAINER_NAME="xpp-databases" `
+    BLOB_DATABASE_NAME="xpp-metadata.db" `
     USE_MANAGED_IDENTITY="true"
 ```
 

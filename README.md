@@ -281,8 +281,8 @@ Generate X++ code templates.
 {
   "servers": {
     "xpp-completion": {
-      "type": "http",
       "url": "https://your-app.azurewebsites.net/mcp/"
+      "description": "X++ Code Completion Server for D365 F&O"
     }
   }
 }
