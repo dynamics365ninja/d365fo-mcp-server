@@ -28,7 +28,7 @@ Create or edit `%USERPROFILE%\.mcp.json`:
 ### 2. Start the MCP Server
 
 ```powershell
-cd C:\Users\Admin7e00859cee\source\repos\d365fo-mcp-server
+cd C:\Users\your-user\source\repos\d365fo-mcp-server
 npm run dev
 ```
 
