@@ -660,7 +660,7 @@ graph TB
     end
 
     subgraph "MCP Protocol"
-        SDK[@modelcontextprotocol/sdk 1.0]
+        SDK[MCP SDK 1.0<br/>modelcontextprotocol/sdk]
         JSONRPC[JSON-RPC 2.0]
     end
 
@@ -679,8 +679,8 @@ graph TB
     end
 
     subgraph "Azure"
-        BLOB[@azure/storage-blob]
-        IDENTITY[@azure/identity]
+        BLOB[Azure Storage Blob<br/>azure/storage-blob]
+        IDENTITY[Azure Identity<br/>azure/identity]
     end
 
     subgraph "Testing"
