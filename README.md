@@ -136,6 +136,29 @@ git push origin main
 az webapp up --name your-app-name --resource-group your-rg --runtime "NODE:22-lts"
 ```
 
+## Testing
+
+The project has comprehensive test coverage using Vitest:
+
+```bash
+# Run tests in watch mode
+npm test
+
+# Run tests once (CI mode)
+npm test -- --run
+
+# Run tests with coverage
+npm test -- --coverage
+```
+
+### Test Suite
+
+- **Unit Tests**: Individual tool functions (search, classInfo, tableInfo)
+- **Integration Tests**: MCP protocol flow and HTTP transport
+- **Database Tests**: Symbol indexing and full-text search
+
+For detailed information, see [TESTING.md](TESTING.md).
+
 ## CI/CD
 
 The project includes automated workflows:

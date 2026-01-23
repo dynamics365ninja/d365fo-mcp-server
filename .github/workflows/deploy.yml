@@ -6,17 +6,7 @@ on:
       - main
     tags:
       - 'v*'
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-          - production
-          - staging
-
+      
 env:
   AZURE_WEBAPP_NAME: d365fo-mcp-server  # Replace with your app name
   NODE_VERSION: '22.x'
@@ -40,8 +30,7 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test
-        continue-on-error: true
+        run: npm test -- --run
 
       - name: Build TypeScript
         run: npm run build
@@ -94,34 +83,6 @@ jobs:
           echo "Waiting for deployment to complete..."
           sleep 30
           curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health || exit 1
-
-      - name: Logout from Azure
-        run: az logout
-        if: always()
-
-  deploy-staging:
-    name: Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event.inputs.environment == 'staging'
-    
-    steps:
-      - name: Download deployment artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: deployment-package
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS_STAGING }}
-
-      - name: Deploy to Azure App Service (Staging Slot)
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          slot-name: staging
-          package: deployment.zip
 
       - name: Logout from Azure
         run: az logout
