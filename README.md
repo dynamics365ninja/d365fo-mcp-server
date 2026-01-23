@@ -272,29 +272,59 @@ Generate X++ code templates.
 d365fo-mcp-server/
 ├── src/
 │   ├── index.ts                 # Main entry point
+│   ├── cache/
+│   │   └── redisCache.ts        # Redis caching service
+│   ├── database/
+│   │   └── download.ts          # Azure Blob integration
+│   ├── metadata/
+│   │   ├── symbolIndex.ts       # SQLite FTS5 indexing
+│   │   ├── types.ts             # Type definitions
+│   │   └── xmlParser.ts         # X++ XML parser
+│   ├── middleware/
+│   │   └── rateLimiter.ts       # API rate limiting
+│   ├── prompts/
+│   │   ├── codeReview.ts        # Code review prompt
+│   │   ├── index.ts             # Prompt exports
+│   │   └── xppPrompts.ts        # X++ prompts
+│   ├── resources/
+│   │   └── classResource.ts     # Class resource provider
 │   ├── server/
 │   │   ├── mcpServer.ts         # MCP server configuration
 │   │   └── transport.ts         # HTTP transport layer
-│   ├── tools/                   # MCP tools implementation
-│   │   ├── search.ts            # Standard symbol search
-│   │   ├── extensionSearch.ts   # Custom extension search
+│   ├── tools/
 │   │   ├── classInfo.ts         # Class information
+│   │   ├── codeGen.ts           # Code generation
+│   │   ├── completion.ts        # Method completion
+│   │   ├── extensionSearch.ts   # Custom extension search
+│   │   ├── index.ts             # Tool exports
+│   │   ├── search.ts            # Symbol search
 │   │   ├── tableInfo.ts         # Table information
-│   │   ├── completion.ts        # Code completion
-│   │   └── codeGen.ts           # Code generation
-│   ├── metadata/                # X++ parsing and indexing
-│   ├── cache/                   # Redis caching layer
-│   │   └── redisCache.ts        # Cache service
-│   ├── middleware/              # Express middleware
-│   │   └── rateLimiter.ts       # Rate limiting
-│   ├── prompts/                 # MCP prompts
-│   └── database/                # Azure Blob integration
+│   │   ├── toolHandler.ts       # Central tool handler
+│   │   └── xppTools.ts          # X++ tools
+│   └── types/
+│       └── context.ts           # Server context
 ├── scripts/
+│   ├── build-database.ts        # Database builder
 │   ├── extract-metadata.ts      # Metadata extraction
-│   └── build-database.ts        # Database builder
+│   └── test-mcp.ps1             # PowerShell test script
+├── config/
+│   └── standard-models.json     # Standard D365 models
+├── docs/
+│   ├── AZURE_TROUBLESHOOTING.md
+│   ├── CUSTOM_EXTENSIONS.md
+│   ├── DEVELOPMENT_SETUP.md
+│   ├── GITHUB_SETUP.md
+│   ├── IMPLEMENTATION_STATUS.md
+│   ├── IMPLEMENTATION_SUMMARY.md
+│   ├── PERFORMANCE.md
+│   └── VISUAL_STUDIO_MCP_SETUP.md
 ├── infrastructure/
 │   └── main.bicep               # Azure IaC
-└── package.json
+├── package.json
+├── tsconfig.json
+├── README.md
+├── LICENSE
+└── startup.sh
 ```
 
 ## Performance Features

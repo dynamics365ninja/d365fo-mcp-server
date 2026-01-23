@@ -10,28 +10,52 @@ The X++ MCP Code Completion Server has been initialized with the following struc
 d365fo-mcp-server/
 ├── src/
 │   ├── index.ts                 # Main entry point (loads dotenv)
+│   ├── cache/
+│   │   └── redisCache.ts        # Redis caching service
 │   ├── database/
 │   │   └── download.ts          # Azure Blob download utility
+│   ├── metadata/
+│   │   ├── symbolIndex.ts       # SQLite FTS5 index (loads config)
+│   │   ├── types.ts             # TypeScript interfaces
+│   │   └── xmlParser.ts         # Parses D365 AOT XML (uses xml2js)
+│   ├── middleware/
+│   │   └── rateLimiter.ts       # API rate limiting
+│   ├── prompts/
+│   │   ├── codeReview.ts        # Code review prompt
+│   │   ├── index.ts             # Prompt exports
+│   │   └── xppPrompts.ts        # X++ prompts
+│   ├── resources/
+│   │   └── classResource.ts     # Class resource provider
 │   ├── server/
 │   │   ├── mcpServer.ts         # MCP server setup
 │   │   └── transport.ts         # HTTP transport
-│   ├── tools/                   # MCP tools
-│   │   ├── search.ts
-│   │   ├── classInfo.ts
-│   │   ├── tableInfo.ts
-│   │   ├── completion.ts
-│   │   └── codeGen.ts
-│   ├── metadata/                # X++ parsing
-│   │   ├── xmlParser.ts         # Parses D365 AOT XML (uses xml2js)
-│   │   ├── symbolIndex.ts       # SQLite FTS5 index (loads config)
-│   │   └── types.ts             # TypeScript interfaces
-│   └── prompts/                 # MCP prompts
-│       └── xppPrompts.ts
+│   ├── tools/
+│   │   ├── classInfo.ts         # Class information tool
+│   │   ├── codeGen.ts           # Code generation tool
+│   │   ├── completion.ts        # Method completion tool
+│   │   ├── extensionSearch.ts   # Custom extension search tool
+│   │   ├── index.ts             # Tool exports
+│   │   ├── search.ts            # Symbol search tool
+│   │   ├── tableInfo.ts         # Table information tool
+│   │   ├── toolHandler.ts       # Central tool handler
+│   │   └── xppTools.ts          # X++ specific tools
+│   └── types/
+│       └── context.ts           # Server context types
 ├── scripts/
+│   ├── build-database.ts        # Build SQLite (loads dotenv)
 │   ├── extract-metadata.ts      # Extract from D365 (loads dotenv & config)
-│   └── build-database.ts        # Build SQLite (loads dotenv)
+│   └── test-mcp.ps1             # PowerShell test script
 ├── config/
 │   └── standard-models.json     # Microsoft standard models list
+├── docs/
+│   ├── AZURE_TROUBLESHOOTING.md # Azure deployment help
+│   ├── CUSTOM_EXTENSIONS.md     # Custom extension docs
+│   ├── DEVELOPMENT_SETUP.md     # Development guide
+│   ├── GITHUB_SETUP.md          # GitHub setup guide
+│   ├── IMPLEMENTATION_STATUS.md # Project status
+│   ├── IMPLEMENTATION_SUMMARY.md# Feature summary
+│   ├── PERFORMANCE.md           # Performance guide
+│   └── VISUAL_STUDIO_MCP_SETUP.md# VS2022 MCP setup
 ├── infrastructure/
 │   └── main.bicep               # Azure IaC
 ├── .github/
@@ -41,13 +65,13 @@ d365fo-mcp-server/
 │   │   └── release.yml          # Release automation
 │   └── dependabot.yml           # Dependency updates
 ├── package.json                 # Dependencies (includes dotenv, xml2js)
+├── tsconfig.json                # TypeScript configuration
 ├── README.md                    # Full documentation
 ├── LICENSE                      # MIT License
-├── GITHUB_SETUP.md              # GitHub setup guide
-├── .env.example                 # Config template
-├── .mcp.json.example            # VS2022 config
-├── .gitignore                   # Excludes /metadata/ not src/metadata/
-└── startup.sh                   # Azure startup
+├── .env                         # Config file (not committed)
+├── .mcp.json                    # VS2022 config (not committed)
+├── .gitignore                   # Git ignore rules
+└── startup.sh                   # Azure startup script
 ```
 
 ## ✅ Implementation Complete
@@ -127,7 +151,6 @@ Create `.mcp.json` in your D365 solution:
 {
   "servers": {
     "xpp-completion": {
-      "type": "http",
       "url": "https://your-app.azurewebsites.net/mcp/"
     }
   }
