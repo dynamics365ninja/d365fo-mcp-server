@@ -38,38 +38,34 @@ function Invoke-MCPTool {
     }
 }
 
-Write-Host "🚀 X++ MCP Server Test Tool" -ForegroundColor Cyan
+Write-Host "X++ MCP Server Test Tool" -ForegroundColor Cyan
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Test health first
 try {
     $health = Invoke-RestMethod -Uri "$ServerUrl/health"
-    Write-Host "✅ Server Status: $($health.status)" -ForegroundColor Green
-    Write-Host "📊 Symbols Loaded: $($health.symbols)" -ForegroundColor Green
+    Write-Host "[OK] Server Status: $($health.status)" -ForegroundColor Green
+    Write-Host "[OK] Symbols Loaded: $($health.symbols)" -ForegroundColor Green
     Write-Host ""
 } catch {
-    Write-Host "❌ Server is not running at $ServerUrl" -ForegroundColor Red
-    Write-Host "   Start with: npm run dev" -ForegroundColor Yellow
+    Write-Host "[ERROR] Server is not running at $ServerUrl" -ForegroundColor Red
+    Write-Host "        Start with: npm run dev" -ForegroundColor Yellow
     exit 1
 }
 
 # Execute requested action
 switch ($Action) {
     'search' {
-        Write-Host "🔍 Searching for: $Query" -ForegroundColor Yellow
+        Write-Host "[SEARCH] Searching for: $Query" -ForegroundColor Yellow
         $result = Invoke-MCPTool -ToolName "xpp_search" -Arguments @{ query = $Query; limit = 10 }
         if ($result.content) {
-            $data = $result.content[0].text | ConvertFrom-Json
-            Write-Host "Found $($data.results.Count) results:" -ForegroundColor Green
-            $data.results | ForEach-Object {
-                Write-Host "  - $($_.type): $($_.name) [$($_.model)]" -ForegroundColor White
-            }
+            Write-Host $result.content[0].text -ForegroundColor Green
         }
     }
     
     'class' {
-        Write-Host "📚 Getting class info: $Query" -ForegroundColor Yellow
+        Write-Host "[CLASS] Getting class info: $Query" -ForegroundColor Yellow
         $result = Invoke-MCPTool -ToolName "xpp_get_class" -Arguments @{ className = $Query }
         if ($result.content) {
             $data = $result.content[0].text | ConvertFrom-Json
@@ -77,13 +73,13 @@ switch ($Action) {
             if ($data.extends) { Write-Host "  Extends: $($data.extends)" }
             Write-Host "  Methods: $($data.methods.Count)"
             $data.methods | Select-Object -First 5 | ForEach-Object {
-                Write-Host "    - $($_.name)($($_.parameters.Count) params)" -ForegroundColor Gray
+                Write-Host "    - $($_.name) with $($_.parameters.Count) params" -ForegroundColor Gray
             }
         }
     }
     
     'table' {
-        Write-Host "📊 Getting table info: $Query" -ForegroundColor Yellow
+        Write-Host "[TABLE] Getting table info: $Query" -ForegroundColor Yellow
         $result = Invoke-MCPTool -ToolName "xpp_get_table" -Arguments @{ tableName = $Query }
         if ($result.content) {
             $data = $result.content[0].text | ConvertFrom-Json
@@ -96,7 +92,7 @@ switch ($Action) {
     }
     
     'extensions' {
-        Write-Host "🎯 Searching extensions: $Query" -ForegroundColor Yellow
+        Write-Host "[EXTENSIONS] Searching extensions: $Query" -ForegroundColor Yellow
         $result = Invoke-MCPTool -ToolName "xpp_search_extensions" -Arguments @{ query = $Query; limit = 10 }
         if ($result.content) {
             $data = $result.content[0].text | ConvertFrom-Json
@@ -105,7 +101,7 @@ switch ($Action) {
     }
     
     'complete' {
-        Write-Host "✨ Getting completions for: $Query" -ForegroundColor Yellow
+        Write-Host "[COMPLETE] Getting completions for: $Query" -ForegroundColor Yellow
         $result = Invoke-MCPTool -ToolName "xpp_complete_method" -Arguments @{ className = $Query; prefix = "" }
         if ($result.content) {
             $data = $result.content[0].text | ConvertFrom-Json
@@ -122,4 +118,4 @@ switch ($Action) {
 }
 
 Write-Host ""
-Write-Host "💡 Try other actions: search, class, table, extensions, complete" -ForegroundColor Cyan
+Write-Host "Try other actions: search, class, table, extensions, complete" -ForegroundColor Cyan

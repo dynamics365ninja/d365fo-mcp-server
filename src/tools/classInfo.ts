@@ -52,24 +52,45 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
         content: [
           {
             type: 'text',
-            text: `Class "${args.className}" not found`,
+            text: `Class "${args.className}" not found in symbol index`,
           },
         ],
         isError: true,
       };
     }
 
+    // Try to parse XML file if available, otherwise use database info
     const classInfo = await parser.parseClassFile(classSymbol.filePath);
 
     if (!classInfo.success || !classInfo.data) {
+      // Fallback to database information
+      const methods = symbolIndex.getClassMethods(args.className);
+      
+      let output = `# Class: ${args.className}\n\n`;
+      output += `**Model:** ${classSymbol.model}\n`;
+      output += `**File:** ${classSymbol.filePath}\n\n`;
+      output += `_Note: Detailed XML metadata not available. Showing symbol index data._\n\n`;
+      
+      if (methods.length > 0) {
+        output += `## Methods (${methods.length})\n\n`;
+        for (const method of methods) {
+          output += `- **${method.name}**`;
+          if (method.signature) {
+            output += `: ${method.signature}`;
+          }
+          output += `\n`;
+        }
+      } else {
+        output += `No methods found in symbol index.\n`;
+      }
+
       return {
         content: [
           {
             type: 'text',
-            text: `Error parsing class: ${classInfo.error || 'Unknown error'}`,
+            text: output,
           },
         ],
-        isError: true,
       };
     }
 

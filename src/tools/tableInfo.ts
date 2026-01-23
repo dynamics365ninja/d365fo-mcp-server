@@ -49,24 +49,48 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
         content: [
           {
             type: 'text',
-            text: `Table "${args.tableName}" not found`,
+            text: `Table "${args.tableName}" not found in symbol index`,
           },
         ],
         isError: true,
       };
     }
 
+    // Try to parse XML file if available, otherwise use database info
     const tableInfo = await parser.parseTableFile(tableSymbol.filePath);
 
     if (!tableInfo.success || !tableInfo.data) {
+      // Fallback to database information
+      const fields = symbolIndex.getTableFields(args.tableName);
+      
+      let output = `# Table: ${args.tableName}\n\n`;
+      output += `**Model:** ${tableSymbol.model}\n`;
+      if (tableSymbol.signature) {
+        output += `**Label:** ${tableSymbol.signature}\n`;
+      }
+      output += `**File:** ${tableSymbol.filePath}\n\n`;
+      output += `_Note: Detailed XML metadata not available. Showing symbol index data._\n\n`;
+      
+      if (fields.length > 0) {
+        output += `## Fields (${fields.length})\n\n`;
+        for (const field of fields) {
+          output += `- **${field.name}**`;
+          if (field.signature) {
+            output += `: ${field.signature}`;
+          }
+          output += `\n`;
+        }
+      } else {
+        output += `No fields found in symbol index.\n`;
+      }
+
       return {
         content: [
           {
             type: 'text',
-            text: `Error parsing table: ${tableInfo.error || 'Unknown error'}`,
+            text: output,
           },
         ],
-        isError: true,
       };
     }
 

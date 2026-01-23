@@ -82,7 +82,7 @@ async function main() {
   });
 
   // MCP endpoints
-  createStreamableHttpTransport(mcpServer, app);
+  createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache });
 
   // Start server on 0.0.0.0 for Azure App Service
   const host = process.env.HOST || '0.0.0.0';
