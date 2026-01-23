@@ -24,6 +24,8 @@ A Model Context Protocol (MCP) server for X++ code completion in Microsoft Dynam
 
 ## Architecture
 
+For a comprehensive visual overview of the system architecture, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ```
 Visual Studio 2022 (GitHub Copilot) 
     ↓ Streamable HTTP + OAuth
@@ -157,7 +159,7 @@ npm test -- --coverage
 - **Integration Tests**: MCP protocol flow and HTTP transport
 - **Database Tests**: Symbol indexing and full-text search
 
-For detailed information, see [TESTING.md](TESTING.md).
+For detailed information, see [docs/TESTING.md](docs/TESTING.md).
 
 ## CI/CD
 
@@ -477,6 +479,8 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## Related Documentation
 
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture diagrams and detailed explanations
+- [docs/TESTING.md](docs/TESTING.md) - Testing guide and coverage information
 - [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md) - GitHub repository setup guide
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md) - Performance optimization guide
 - [docs/CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md) - ISV extension configuration
