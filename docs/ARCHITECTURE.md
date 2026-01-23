@@ -204,7 +204,7 @@ graph TD
     CACHE_CHECK -->|No| FTS_QUERY[FTS5 Full-Text Search]
     
     FTS_QUERY --> RESULTS[Raw Symbol Results]
-    RESULTS --> FORMAT[Format Results<br/>[TYPE] Name - Signature]
+    RESULTS --> FORMAT[Format Results<br/>TYPE: Name - Signature]
     FORMAT --> CACHE_STORE[Store in Cache<br/>TTL: 1 hour]
     CACHE_STORE --> RETURN([Return Results])
     CACHE_RETURN --> RETURN
@@ -269,7 +269,7 @@ graph TB
 
     subgraph "Monitoring"
         LOGS[Application Insights<br/>Logs & Metrics]
-        HEALTH[/health endpoint<br/>Status Checks]
+        HEALTH[Health Endpoint<br/>/health Status Checks]
     end
 
     REPO -->|Push/PR| BUILD
