@@ -107,7 +107,7 @@ This extracts X++ metadata from your D365 F&O installation:
 - Scans PackagesLocalDirectory (packages contain multiple models)
 - Parses AxClass, AxTable, AxEnum XML files using xml2js
 - Extracts methods with parameters (from source code), fields, relationships
-- Filters out Microsoft standard models (configured in config/standard-models.json)
+- Can extract all models or filter to custom models only (see EXTRACT_MODE)
 
 ### 2. Build SQLite Database
 

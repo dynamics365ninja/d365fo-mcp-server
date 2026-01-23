@@ -37,20 +37,26 @@ function loadStandardModels(): string[] {
   }
 }
 
-const STANDARD_MODELS = loadStandardModels();
+const STANDARD_MODELS_TO_EXCLUDE = loadStandardModels();
 
-// Custom extension models to extract
-const CUSTOM_MODELS = process.env.CUSTOM_MODELS?.split(',').map(m => m.trim()).filter(Boolean) || [
-  // Add your custom models here or use CUSTOM_MODELS env var
-  // 'CustomModel1',
-  // 'CustomModel2',
-];
+// Custom extension models to extract (if specified, only extract these)
+const CUSTOM_MODELS = process.env.CUSTOM_MODELS?.split(',').map(m => m.trim()).filter(Boolean) || [];
 
-// Combined list
-const MODELS_TO_EXTRACT = [
-  ...STANDARD_MODELS,
-  ...CUSTOM_MODELS,
-];
+// Extract mode: 'all' = all models (standard + custom), 'custom' = only CUSTOM_MODELS, 'standard' = only standard models
+const EXTRACT_MODE = process.env.EXTRACT_MODE || 'all';
+
+let MODELS_TO_EXTRACT: string[] = [];
+
+if (EXTRACT_MODE === 'custom' && CUSTOM_MODELS.length > 0) {
+  // Extract only specified custom models
+  MODELS_TO_EXTRACT = CUSTOM_MODELS;
+} else if (EXTRACT_MODE === 'standard') {
+  // Extract only standard models (for testing)
+  MODELS_TO_EXTRACT = STANDARD_MODELS_TO_EXCLUDE;
+} else {
+  // Extract all models (will filter out standard models during processing)
+  MODELS_TO_EXTRACT = []; // Empty means scan all packages
+}
 
 interface ExtractionStats {
   totalFiles: number;
@@ -65,7 +71,15 @@ async function extractMetadata() {
   console.log('🔍 X++ Metadata Extraction');
   console.log(`📂 Source: ${PACKAGES_PATH}`);
   console.log(`📁 Output: ${OUTPUT_PATH}`);
-  console.log(`📋 Models: ${MODELS_TO_EXTRACT.join(', ')}`);
+  console.log(`� Extract Mode: ${EXTRACT_MODE}`);
+  
+  if (EXTRACT_MODE === 'custom') {
+    console.log(`📋 Custom Models: ${CUSTOM_MODELS.join(', ')}`);
+  } else if (EXTRACT_MODE === 'standard') {
+    console.log(`📋 Standard Models: ${STANDARD_MODELS_TO_EXCLUDE.join(', ')}`);
+  } else {
+    console.log(`📋 Mode: Extract all models (standard + custom)`);
+  }
   console.log('');
 
   const parser = new XppMetadataParser();
@@ -81,8 +95,24 @@ async function extractMetadata() {
   // Create output directory
   await fs.mkdir(OUTPUT_PATH, { recursive: true });
 
+  // Determine which packages to process
+  let packagesToProcess: string[] = [];
+  
+  if (MODELS_TO_EXTRACT.length > 0) {
+    // Explicit list provided
+    packagesToProcess = MODELS_TO_EXTRACT;
+  } else {
+    // Scan all packages (no filtering for 'all' mode)
+    const allPackages = await fs.readdir(PACKAGES_PATH, { withFileTypes: true });
+    packagesToProcess = allPackages
+      .filter(e => e.isDirectory())
+      .map(e => e.name);
+    
+    console.log(`📦 Found ${packagesToProcess.length} custom packages to process`);
+  }
+
   // Process each package/model
-  for (const packageName of MODELS_TO_EXTRACT) {
+  for (const packageName of packagesToProcess) {
     console.log(`\n📦 Processing package: ${packageName}`);
 
     const packagePath = path.join(PACKAGES_PATH, packageName);
