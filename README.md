@@ -299,25 +299,38 @@ Generate X++ code templates.
 
 ## GitHub Copilot Integration
 
+### Prerequisites
+
+⚠️ **Important**: To use custom MCP servers with GitHub Copilot, you must enable **"Editor preview features"** in your GitHub account settings:
+
+👉 https://github.com/settings/copilot/features
+
+Without this feature enabled, MCP tools will not be loaded in GitHub Copilot.
+
+For more information about GitHub Copilot policies and feature management, see:
+📖 [Managing Policies for GitHub Copilot](https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-organization/manage-policies#about-policies-for-github-copilot)
+
 ### Visual Studio 2022 Setup
 
 1. Install Visual Studio 2022 version 17.14+
 2. Install GitHub Copilot extension
-3. Create `.mcp.json` in your solution root:
+3. **Enable MCP integration**: Go to **Tools** → **Options** → **GitHub** → **Copilot** and enable **"Enable MCP server integration in agent mode"**
+4. Create `.mcp.json` in your solution root:
 
 ```json
 {
   "servers": {
     "xpp-completion": {
-      "url": "https://your-app.azurewebsites.net/mcp/"
+      "url": "https://your-app.azurewebsites.net/mcp/",
       "description": "X++ Code Completion Server for D365 F&O"
     }
   }
 }
 ```
 
-4. Open Copilot Chat in Agent Mode
-5. Enable the X++ completion tools
+5. Restart Visual Studio to apply changes
+6. Open Copilot Chat in Agent Mode
+7. Verify that X++ MCP tools are loaded and available
 
 ## Project Structure
 
