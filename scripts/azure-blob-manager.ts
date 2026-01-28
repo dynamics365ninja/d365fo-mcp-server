@@ -41,9 +41,7 @@ export class AzureBlobMetadataManager {
    */
   async initialize(): Promise<void> {
     console.log(`📦 Initializing container: ${BLOB_CONTAINER}`);
-    await this.containerClient.createIfNotExists({
-      access: 'private'
-    });
+    await this.containerClient.createIfNotExists();
     console.log('✅ Container ready');
   }
 
