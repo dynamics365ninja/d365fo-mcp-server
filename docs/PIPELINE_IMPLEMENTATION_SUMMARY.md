@@ -1,77 +1,77 @@
-# Přehled Implementace - Azure Pipeline Automatizace
+# Implementation Overview - Azure Pipeline Automation
 
-## Implementované Změny
+## Implemented Changes
 
-### 1. Nové Soubory
+### 1. New Files
 
 #### `scripts/azure-blob-manager.ts`
-Komplexní TypeScript skript pro správu metadat v Azure Blob Storage.
+Comprehensive TypeScript script for managing metadata in Azure Blob Storage.
 
-**Funkce:**
-- Upload/download standard a custom metadat
-- Smazání custom metadat (blob i lokálně)
-- Upload/download zkompilované databáze
-- Automatická detekce custom vs. standard modelů
-- Hierarchická struktura v blob storage
+**Features:**
+- Upload/download standard and custom metadata
+- Delete custom metadata (blob and local)
+- Upload/download compiled database
+- Automatic detection of custom vs. standard models
+- Hierarchical structure in blob storage
 
-**Klíčové metody:**
-- `uploadMetadata(type, models?)` - Upload metadat
-- `downloadMetadata(type, models?)` - Download metadat
-- `deleteCustomMetadata(models?)` - Smazání custom metadat
-- `uploadDatabase()` / `downloadDatabase()` - Správa databáze
+**Key Methods:**
+- `uploadMetadata(type, models?)` - Upload metadata
+- `downloadMetadata(type, models?)` - Download metadata
+- `deleteCustomMetadata(models?)` - Delete custom metadata
+- `uploadDatabase()` / `downloadDatabase()` - Database management
 
 #### `azure-pipelines.yml`
-Kompletní Azure DevOps pipeline s 5 stages:
-1. **Prepare** - Stažení standard metadat
-2. **ExtractCustom** - Extrakce custom modelů z Git
-3. **BuildDatabase** - Sestavení SQLite databáze
-4. **UploadToBlob** - Upload do Azure Blob
-5. **Deploy** - Deploy na Azure App Service
+Complete Azure DevOps pipeline with 5 stages:
+1. **Prepare** - Download standard metadata
+2. **ExtractCustom** - Extract custom models from Git
+3. **BuildDatabase** - Build SQLite database
+4. **UploadToBlob** - Upload to Azure Blob
+5. **Deploy** - Deploy to Azure App Service
 
 #### `azure-pipelines-quick.yml`
-Optimalizovaná pipeline pro denní aktualizace:
-- **QuickUpdate** - Rychlá aktualizace custom modelů (~5-15 min)
-- **FullRebuild** - Kompletní rebuild při potřebě
-- Scheduler: Denně v 2:00 UTC
-- Parametrizované spouštění
+Optimized pipeline for daily updates:
+- **QuickUpdate** - Fast custom models update (~5-15 min)
+- **FullRebuild** - Complete rebuild when needed
+- Scheduler: Daily at 2:00 AM UTC
+- Parameterized execution
 
 #### `scripts/test-pipeline.ps1`
-PowerShell test script pro lokální testování workflow:
-- Interaktivní menu s 8 operacemi
-- Simulace pipeline kroků
-- Validace konfigurace
+PowerShell test script for local workflow testing:
+- Interactive menu with 8 operations
+- Pipeline step simulation
+- Configuration validation
 
 #### `docs/AZURE_PIPELINE_AUTOMATION.md`
-Kompletní dokumentace v češtině:
-- Popis problému a řešení
-- Architektura systému
-- Workflow scénáře
-- Konfigurace a setup
-- Monitoring a troubleshooting
-- Optimalizace a náklady
+Complete documentation:
+- Problem description and solution
+- System architecture
+- Workflow scenarios
+- Configuration and setup
+- Monitoring and troubleshooting
+- Optimization and costs
 
-### 2. Upravené Soubory
+### 2. Modified Files
 
 #### `package.json`
-Přidán nový script:
+Added new script:
 ```json
 "blob-manager": "tsx scripts/azure-blob-manager.ts"
 ```
 
 #### `README.md`
-- Přidán odkaz na novou dokumentaci
-- Aktualizován seznam related documentation
+- Added link to new documentation
+- Updated related documentation list
 
-### 3. Struktura Azure Blob Storage
+### 3. Azure Blob Storage Structure
 
 ```
 xpp-metadata/
 ├── metadata/
-│   ├── standard/           # Standard D365 modely
+│   ├── standard/           # Standard D365 models
 │   │   ├── ApplicationFoundation/
 │   │   ├── ApplicationPlatform/
-│   │   └── ... (500+ modelů)
-│   └── custom/             # Custom/ISV modely
+│   │   └── ... (500+ models)
+│   └── custom/             # Custom/ISV models
 │       ├── ISV_Module1/
 │       ├── ISV_Module2/
 │       └── ...
@@ -81,31 +81,31 @@ xpp-metadata/
 
 ## Workflow
 
-### Denní Automatizace (Custom Modely)
+### Daily Automation (Custom Models)
 
 ```
-1. Azure Pipeline Trigger (2:00 UTC denně)
+1. Azure Pipeline Trigger (2:00 AM UTC daily)
    ↓
-2. Download Standard Metadata z Blobu (cached, rychlé)
+2. Download Standard Metadata from Blob (cached, fast)
    ↓
 3. Delete Old Custom Metadata (blob + local)
    ↓
-4. Extract Custom Modely z DevOps Git
+4. Extract Custom Models from DevOps Git
    ↓
 5. Build Database (standard + new custom)
    ↓
-6. Upload Custom Metadata + Database do Blobu
+6. Upload Custom Metadata + Database to Blob
    ↓
 7. Restart App Service
 ```
 
-**Čas:** 5-15 minut (místo 2-3 hodin)
-**Úspora:** ~95%
+**Time:** 5-15 minutes (instead of 2-3 hours)
+**Savings:** ~95%
 
-### Periodická Aktualizace (Standard Modely)
+### Periodic Update (Standard Models)
 
 ```
-1. Manuální Trigger (párkrát ročně)
+1. Manual Trigger (few times per year)
    ↓
 2. Clean All Metadata
    ↓
@@ -116,18 +116,18 @@ xpp-metadata/
 5. Upload ALL to Blob
 ```
 
-**Čas:** 1-3 hodiny
-**Frekvence:** Párkrát ročně (D365 upgrade, hotfix)
+**Time:** 1-3 hours
+**Frequency:** Few times per year (D365 upgrade, hotfix)
 
-## Použití
+## Usage
 
-### Lokální Testování
+### Local Testing
 
 ```powershell
-# Interaktivní menu
+# Interactive menu
 .\scripts\test-pipeline.ps1
 
-# Nebo přímo
+# Or directly
 npm run blob-manager download-standard
 npm run blob-manager upload-custom
 npm run blob-manager delete-custom Model1,Model2
@@ -136,20 +136,20 @@ npm run blob-manager delete-custom Model1,Model2
 ### Azure Pipeline
 
 ```bash
-# Denní custom update (automatický)
-# Běží podle scheduleru v 2:00 UTC
+# Daily custom update (automatic)
+# Runs by scheduler at 2:00 AM UTC
 
-# Manuální spuštění custom update
+# Manual custom update execution
 az pipelines run --name "Quick Custom Update"
 
-# Manuální full rebuild
+# Manual full rebuild
 az pipelines run --name "Full Metadata Rebuild" --parameters extractionMode=all
 
-# Specifické modely
+# Specific models
 az pipelines run --name "Quick Custom Update" --parameters customModels=ISV_Module1,ISV_Module2
 ```
 
-### Konfigurace
+### Configuration
 
 #### .env / Azure DevOps Variables
 
@@ -166,12 +166,12 @@ EXTRACT_MODE=custom
 # Paths
 METADATA_PATH=./extracted-metadata
 DB_PATH=./data/xpp-metadata.db
-PACKAGES_PATH=C:\AOSService\PackagesLocalDirectory  # nebo DevOps Git path
+PACKAGES_PATH=C:\AOSService\PackagesLocalDirectory  # or DevOps Git path
 ```
 
 #### Azure DevOps Variable Group
 
-Vytvořit `xpp-mcp-server-config`:
+Create `xpp-mcp-server-config`:
 - AZURE_STORAGE_CONNECTION_STRING (secret)
 - BLOB_CONTAINER_NAME
 - CUSTOM_MODELS
@@ -179,35 +179,35 @@ Vytvořit `xpp-mcp-server-config`:
 - AZURE_SUBSCRIPTION
 - AZURE_APP_SERVICE_NAME
 
-## Přínosy Řešení
+## Solution Benefits
 
-### Výkon
-- ✅ **95% úspora času** pro denní aktualizace
-- ✅ **5-15 minut** místo 2-3 hodin
-- ✅ **Caching** standard metadat
+### Performance
+- ✅ **95% time savings** for daily updates
+- ✅ **5-15 minutes** instead of 2-3 hours
+- ✅ **Caching** of standard metadata
 
-### Náklady
-- ✅ **Minimální** - Blob Storage ~$1-2/měsíc
-- ✅ **Zdarma Pipeline** - 2000 minut/měsíc included
-- ✅ **Efektivní** využití výpočetního času
+### Costs
+- ✅ **Minimal** - Blob Storage ~$1-2/month
+- ✅ **Free Pipeline** - 2000 minutes/month included
+- ✅ **Efficient** use of computation time
 
-### Flexibilita
-- ✅ **Oddělená** správa standard vs. custom
-- ✅ **Inkrementální** updates
-- ✅ **Parametrizované** spouštění
-- ✅ **Lokální testování**
+### Flexibility
+- ✅ **Separated** management of standard vs. custom
+- ✅ **Incremental** updates
+- ✅ **Parameterized** execution
+- ✅ **Local testing**
 
-### Automatizace
-- ✅ **Denní scheduler** pro custom modely
-- ✅ **Git integration** - automatická extrakce z DevOps
-- ✅ **Auto-restart** App Service po update
-- ✅ **Monitoring** přes Azure Pipeline logy
+### Automation
+- ✅ **Daily scheduler** for custom models
+- ✅ **Git integration** - automatic extraction from DevOps
+- ✅ **Auto-restart** App Service after update
+- ✅ **Monitoring** through Azure Pipeline logs
 
-## Migrace
+## Migration
 
-### První Setup
+### First Setup
 
-1. **Extrakce všech modelů poprvé:**
+1. **Extract all models for the first time:**
 ```bash
 EXTRACT_MODE=all npm run extract-metadata
 npm run blob-manager upload-all
@@ -215,47 +215,47 @@ npm run build-database
 npm run blob-manager upload-database
 ```
 
-2. **Nastavení Azure Pipeline:**
-- Vytvořit Variable Group v Azure DevOps
-- Importovat `azure-pipelines-quick.yml`
-- Konfigurovat scheduler
+2. **Setup Azure Pipeline:**
+- Create Variable Group in Azure DevOps
+- Import `azure-pipelines-quick.yml`
+- Configure scheduler
 - Test run
 
-3. **Ověření:**
+3. **Verification:**
 ```bash
 npm run blob-manager download-all
 npm run build-database
 npm run dev  # Test MCP server
 ```
 
-### Denní Provoz
+### Daily Operations
 
-- Pipeline běží automaticky každý den v 2:00 UTC
-- Zpracovává pouze custom modely
-- Automatický restart App Service
-- Monitoring přes Azure DevOps
+- Pipeline runs automatically every day at 2:00 AM UTC
+- Processes only custom models
+- Automatic App Service restart
+- Monitoring through Azure DevOps
 
-## Dokumentace
+## Documentation
 
-- **Hlavní README**: [README.md](../README.md)
-- **Použití MCP**: [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md)
-- **Pipeline Automatizace**: [AZURE_PIPELINE_AUTOMATION.md](AZURE_PIPELINE_AUTOMATION.md)
-- **Architektura**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Main README**: [README.md](../README.md)
+- **MCP Usage**: [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md)
+- **Pipeline Automation**: [AZURE_PIPELINE_AUTOMATION.md](AZURE_PIPELINE_AUTOMATION.md)
+- **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Custom Extensions**: [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md)
 
 ## Support
 
-Pro dotazy:
+For questions:
 - GitHub Issues: [dynamics365ninja/d365fo-mcp-server](https://github.com/dynamics365ninja/d365fo-mcp-server/issues)
-- Dokumentace: [docs/](../docs/)
+- Documentation: [docs/](../docs/)
 
 ## Status
 
-✅ **Implementováno a připraveno k nasazení**
+✅ **Implemented and ready for deployment**
 
 - ✅ Azure Blob Manager
 - ✅ Azure Pipeline YAML
-- ✅ Test skripty
-- ✅ Dokumentace
-- ✅ Integration do package.json
-- ✅ README aktualizováno
+- ✅ Test scripts
+- ✅ Documentation
+- ✅ Integration into package.json
+- ✅ README updated

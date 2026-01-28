@@ -1,23 +1,23 @@
-# Automatizace Extrakce Metadat s Azure Pipeline
+# Azure Pipeline Metadata Extraction Automation
 
-Tento dokument popisuje řešení pro automatizovanou extrakci X++ metadat s oddělením standard a custom modelů pro optimalizaci výpočetního času.
+This document describes a solution for automated X++ metadata extraction with separation of standard and custom models to optimize computation time.
 
-## Přehled Řešení
+## Solution Overview
 
-### Problém
-- **Standard metadata** se mění párkrát do roka
-- **Custom metadata** se mohou měnit na denní bázi
-- Plná extrakce všech modelů trvá dlouho a není efektivní pro denní aktualizace
+### Problem
+- **Standard metadata** changes a few times per year
+- **Custom metadata** can change on a daily basis
+- Full extraction of all models takes a long time and is inefficient for daily updates
 
-### Řešení
-Oddělená správa metadat v Azure Blob Storage:
+### Solution
+Separated metadata management in Azure Blob Storage:
 ```
-/metadata/standard/    # Standard D365 modely (aktualizace párkrát ročně)
-/metadata/custom/      # Custom/ISV modely (denní aktualizace)
-/databases/            # Zkompilovaná SQLite databáze
+/metadata/standard/    # Standard D365 models (updated few times per year)
+/metadata/custom/      # Custom/ISV models (daily updates)
+/databases/            # Compiled SQLite database
 ```
 
-## Architektura
+## Architecture
 
 ```
 DevOps Git Repository (D365FO Source Code)
@@ -25,32 +25,32 @@ DevOps Git Repository (D365FO Source Code)
 Azure Pipeline (Extract Custom Models Only)
     ↓
 Azure Blob Storage
-    ├── /metadata/standard/  [Cached, statické]
+    ├── /metadata/standard/  [Cached, static]
     ├── /metadata/custom/    [Daily updates]
     └── /databases/xpp-metadata-latest.db
     ↓
 Azure App Service (MCP Server)
 ```
 
-## Komponenty Řešení
+## Solution Components
 
 ### 1. Azure Blob Manager (`scripts/azure-blob-manager.ts`)
 
-Nový TypeScript skript pro správu metadat v Azure Blob Storage.
+New TypeScript script for managing metadata in Azure Blob Storage.
 
-**Funkce:**
-- `upload-standard` - Upload standard metadat
-- `upload-custom` - Upload custom metadat
-- `upload-all` - Upload všech metadat
-- `download-standard` - Download standard metadat (pro build)
-- `download-custom` - Download custom metadat
-- `download-all` - Download všech metadat
-- `delete-custom` - Smazání custom metadat z blobu
-- `delete-local-custom` - Smazání lokálních custom metadat
-- `upload-database` - Upload zkompilované databáze
-- `download-database` - Download databáze
+**Functions:**
+- `upload-standard` - Upload standard metadata
+- `upload-custom` - Upload custom metadata
+- `upload-all` - Upload all metadata
+- `download-standard` - Download standard metadata (for build)
+- `download-custom` - Download custom metadata
+- `download-all` - Download all metadata
+- `delete-custom` - Delete custom metadata from blob
+- `delete-local-custom` - Delete local custom metadata
+- `upload-database` - Upload compiled database
+- `download-database` - Download database
 
-**Použití:**
+**Usage:**
 ```bash
 npm run blob-manager upload-custom
 npm run blob-manager delete-custom Model1,Model2
@@ -58,37 +58,37 @@ npm run blob-manager download-standard
 npm run blob-manager upload-database ./data/xpp-metadata.db
 ```
 
-### 2. Azure Pipeline - Denní Aktualizace (`azure-pipelines-quick.yml`)
+### 2. Azure Pipeline - Daily Updates (`azure-pipelines-quick.yml`)
 
-Optimalizovaná pipeline pro rychlé denní aktualizace custom modelů.
+Optimized pipeline for fast daily updates of custom models.
 
-**Fáze:**
-1. **Download Standard Metadata** - Stažení cachovaných standard metadat
-2. **Delete Old Custom** - Smazání starých custom metadat
-3. **Extract Custom** - Extrakce pouze custom modelů z Git
-4. **Build Database** - Sestavení databáze (standard + nové custom)
-5. **Upload** - Upload custom metadat a databáze do blobu
-6. **Restart App Service** - Restart MCP serveru
+**Stages:**
+1. **Download Standard Metadata** - Download cached standard metadata
+2. **Delete Old Custom** - Delete old custom metadata
+3. **Extract Custom** - Extract only custom models from Git
+4. **Build Database** - Build database (standard + new custom)
+5. **Upload** - Upload custom metadata and database to blob
+6. **Restart App Service** - Restart MCP server
 
 **Scheduler:**
-- Běží každý den v 2:00 UTC
-- Zpracovává pouze custom modely
-- Trvá ~5-15 minut místo hodin
+- Runs daily at 2:00 AM UTC
+- Processes only custom models
+- Takes ~5-15 minutes instead of hours
 
-### 3. Azure Pipeline - Plná Extrakce (`azure-pipelines.yml`)
+### 3. Azure Pipeline - Full Extraction (`azure-pipelines.yml`)
 
-Kompletní pipeline pro periodickou aktualizaci všech modelů.
+Complete pipeline for periodic update of all models.
 
-**Použití:**
-- Při změně standard D365 modelů (upgrade, hotfix)
-- Manuální spuštění podle potřeby
-- ~Párkrát ročně
+**Usage:**
+- When standard D365 models change (upgrade, hotfix)
+- Manual execution as needed
+- ~Few times per year
 
-## Konfigurace
+## Configuration
 
 ### Environment Variables
 
-V `.env` nebo Azure DevOps Variable Groups:
+In `.env` or Azure DevOps Variable Groups:
 
 ```env
 # Azure Blob Storage
@@ -110,7 +110,7 @@ PACKAGES_PATH=/path/to/d365fo/source
 
 ### Azure DevOps Variable Group
 
-Vytvořte Variable Group `xpp-mcp-server-config`:
+Create Variable Group `xpp-mcp-server-config`:
 
 | Variable | Value | Secret |
 |----------|-------|--------|
@@ -121,62 +121,62 @@ Vytvořte Variable Group `xpp-mcp-server-config`:
 | AZURE_SUBSCRIPTION | `Your Azure Subscription` | ❌ |
 | AZURE_APP_SERVICE_NAME | `your-mcp-server` | ❌ |
 
-## Workflow Scénáře
+## Workflow Scenarios
 
-### Scénář 1: Denní Aktualizace Custom Modelů
+### Scenario 1: Daily Custom Models Update
 
-**Trigger:** Automatický (2:00 UTC každý den) nebo manuální
+**Trigger:** Automatic (2:00 AM UTC daily) or manual
 
-**Proces:**
-1. Pipeline se spustí
-2. Stáhne standard metadata z blobu (cache, rychlé)
-3. Smaže staré custom metadata z blobu
-4. Extrahuje custom modely z DevOps Git
-5. Sestaví databázi (standard + nové custom)
-6. Upload do blobu
-7. Restart App Service
+**Process:**
+1. Pipeline starts
+2. Downloads standard metadata from blob (cached, fast)
+3. Deletes old custom metadata from blob
+4. Extracts custom models from DevOps Git
+5. Builds database (standard + new custom)
+6. Uploads to blob
+7. Restarts App Service
 
-**Čas:** ~5-15 minut
+**Time:** ~5-15 minutes
 
-**Příkazy:**
+**Commands:**
 ```bash
-# Manuální spuštění
+# Manual execution
 az pipelines run --name "Quick Custom Update"
 ```
 
-### Scénář 2: Update Standard Modelů (Upgrade D365)
+### Scenario 2: Standard Models Update (D365 Upgrade)
 
-**Trigger:** Manuální po D365 upgrade
+**Trigger:** Manual after D365 upgrade
 
-**Proces:**
-1. Spuštění full pipeline s parametrem `extractionMode=all`
-2. Extrakce všech modelů (standard + custom)
-3. Upload všeho do blobu
-4. Rebuild databáze
+**Process:**
+1. Run full pipeline with parameter `extractionMode=all`
+2. Extract all models (standard + custom)
+3. Upload everything to blob
+4. Rebuild database
 
-**Čas:** ~1-3 hodiny (závisí na počtu modelů)
+**Time:** ~1-3 hours (depends on model count)
 
-**Příkazy:**
+**Commands:**
 ```bash
-# Manuální spuštění
+# Manual execution
 az pipelines run --name "Full Metadata Rebuild" --parameters extractionMode=all
 ```
 
-### Scénář 3: Update Specifických Custom Modelů
+### Scenario 3: Update Specific Custom Models
 
-**Trigger:** Manuální s parametry
+**Trigger:** Manual with parameters
 
-**Proces:**
-1. Spuštění s parametrem `customModels=Model1,Model2`
-2. Extrakce pouze uvedených modelů
-3. Upload do blobu
+**Process:**
+1. Run with parameter `customModels=Model1,Model2`
+2. Extract only specified models
+3. Upload to blob
 
-**Příkazy:**
+**Commands:**
 ```bash
 az pipelines run --name "Quick Custom Update" --parameters customModels=ISV_Module1,ISV_Module2
 ```
 
-## Struktura Azure Blob Storage
+## Azure Blob Storage Structure
 
 ```
 xpp-metadata/
@@ -192,29 +192,29 @@ xpp-metadata/
 │   │   │   └── enums/
 │   │   ├── ApplicationPlatform/
 │   │   ├── ApplicationSuite/
-│   │   └── ... (všechny standard modely)
+│   │   └── ... (all standard models)
 │   └── custom/
 │       ├── ISV_Module1/
 │       │   ├── classes/
 │       │   ├── tables/
 │       │   └── enums/
 │       ├── ISV_Module2/
-│       └── ... (custom modely)
+│       └── ... (custom models)
 └── databases/
     └── xpp-metadata-latest.db
 ```
 
-## Monitoring a Troubleshooting
+## Monitoring and Troubleshooting
 
-### Pipeline Logy
+### Pipeline Logs
 
-Každá fáze pipeline loguje:
-- Počet zpracovaných souborů
-- Počet extrahovaných classes/tables/enums
-- Chyby při parsování
-- Čas trvání
+Each pipeline stage logs:
+- Number of processed files
+- Number of extracted classes/tables/enums
+- Parsing errors
+- Duration
 
-### Kontrola Blob Storage
+### Blob Storage Verification
 
 ```bash
 # List all metadata
@@ -228,7 +228,7 @@ npm run blob-manager download-all
 npm run build-database
 ```
 
-### Lokální Testování
+### Local Testing
 
 ```bash
 # 1. Download standard metadata
@@ -245,24 +245,24 @@ npm run blob-manager upload-custom
 npm run blob-manager upload-database ./data/xpp-metadata.db
 ```
 
-## Optimalizace Výkonu
+## Performance Optimization
 
-### Čas Úspory
+### Time Savings
 
-| Operace | Před optimalizací | Po optimalizaci | Úspora |
+| Operation | Before Optimization | After Optimization | Savings |
 |---------|------------------|-----------------|---------|
-| Denní update | 2-3 hodiny | 5-15 minut | ~95% |
-| Standard update | 2-3 hodiny | 2-3 hodiny | 0% (párkrát ročně) |
-| Build databáze | 10-20 minut | 5-10 minut | ~50% |
+| Daily update | 2-3 hours | 5-15 minutes | ~95% |
+| Standard update | 2-3 hours | 2-3 hours | 0% (few times per year) |
+| Database build | 10-20 minutes | 5-10 minutes | ~50% |
 
-### Tipy
+### Tips
 
-1. **Cache Standard Metadata**: Nikdy nesmazat, pouze refresh při D365 upgrade
-2. **Inkrementální Custom**: Pouze changed custom modely
-3. **Paralelní Processing**: Pipeline používá artifacts pro paralelizaci
-4. **Redis Cache**: Optional, ale doporučené pro produkci
+1. **Cache Standard Metadata**: Never delete, only refresh on D365 upgrade
+2. **Incremental Custom**: Only changed custom models
+3. **Parallel Processing**: Pipeline uses artifacts for parallelization
+4. **Redis Cache**: Optional, but recommended for production
 
-## Náklady
+## Costs
 
 ### Azure Resources
 
@@ -273,16 +273,16 @@ npm run blob-manager upload-database ./data/xpp-metadata.db
 | App Service | P0v3 | ~$62 |
 | **Total** | | **~$63-64/month** |
 
-## Bezpečnost
+## Security
 
-### Doporučení
+### Recommendations
 
-1. **Connection Strings**: Vždy v Variable Groups jako Secret
-2. **RBAC**: Omezit přístup k pipeline na dev team
-3. **Blob SAS**: Použít SAS tokens místo connection strings (optional)
-4. **Git Permissions**: DevOps Git read-only pro pipeline
+1. **Connection Strings**: Always in Variable Groups as Secret
+2. **RBAC**: Restrict pipeline access to dev team only
+3. **Blob SAS**: Use SAS tokens instead of connection strings (optional)
+4. **Git Permissions**: DevOps Git read-only for pipeline
 
-### Příklad SAS Token
+### SAS Token Example
 
 ```bash
 # Generate SAS token with read/write/delete permissions
@@ -294,12 +294,12 @@ az storage container generate-sas \
   --https-only
 ```
 
-## Migrace ze Současného Setup
+## Migration from Current Setup
 
-### Krok 1: První Upload Standard Metadat
+### Step 1: Initial Standard Metadata Upload
 
 ```bash
-# Extrahovat všechny modely poprvé
+# Extract all models for the first time
 EXTRACT_MODE=all npm run extract-metadata
 
 # Upload standard models
@@ -313,14 +313,14 @@ npm run build-database
 npm run blob-manager upload-database ./data/xpp-metadata.db
 ```
 
-### Krok 2: Nastavit Azure Pipeline
+### Step 2: Configure Azure Pipeline
 
-1. V Azure DevOps vytvořit novou pipeline
-2. Použít `azure-pipelines-quick.yml`
-3. Konfigurovat Variable Group
-4. Test run (manuálně)
+1. Create new pipeline in Azure DevOps
+2. Use `azure-pipelines-quick.yml`
+3. Configure Variable Group
+4. Test run (manually)
 
-### Krok 3: Ověření
+### Step 3: Verification
 
 ```bash
 # Download and verify
@@ -331,15 +331,15 @@ npm run build-database
 npm run dev
 ```
 
-### Krok 4: Produkční Nasazení
+### Step 4: Production Deployment
 
-1. Nastavit scheduler (denně 2:00 UTC)
-2. Monitor první 2-3 runs
-3. Optimalizovat podle potřeby
+1. Setup scheduler (daily at 2:00 AM UTC)
+2. Monitor first 2-3 runs
+3. Optimize as needed
 
 ## Support
 
-Pro otázky a problémy:
+For questions and issues:
 - GitHub Issues: [dynamics365ninja/d365fo-mcp-server](https://github.com/dynamics365ninja/d365fo-mcp-server/issues)
 - Documentation: [docs/](../docs/)
 
