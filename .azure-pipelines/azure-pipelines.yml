@@ -1,0 +1,256 @@
+# Azure DevOps Pipeline for X++ Metadata Extraction and Database Build
+# This pipeline automates metadata extraction with separation of standard and custom models
+# Trigger: On changes to specific paths or manual execution
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - 'src/**'
+      - 'scripts/**'
+      - 'azure-pipelines.yml'
+
+# Manual trigger for on-demand extraction
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: xpp-mcp-server-config  # Variable group with Azure credentials
+  - name: nodeVersion
+    value: '22.x'
+  - name: METADATA_PATH
+    value: './extracted-metadata'
+  - name: DB_PATH
+    value: './data/xpp-metadata.db'
+
+stages:
+  # ============================================================================
+  # Stage 1: Prepare - Download existing standard metadata
+  # ============================================================================
+  - stage: Prepare
+    displayName: 'Prepare Environment'
+    jobs:
+      - job: PrepareJob
+        displayName: 'Setup and Download Standard Metadata'
+        steps:
+          - checkout: self
+            displayName: 'Checkout repository'
+
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: |
+              npm ci
+            displayName: 'Install dependencies'
+
+          - script: |
+              npm run blob-manager download-standard
+            displayName: 'Download standard metadata from Azure Blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish standard metadata as artifact'
+            inputs:
+              targetPath: $(METADATA_PATH)
+              artifactName: 'standard-metadata'
+
+  # ============================================================================
+  # Stage 2: Extract Custom Models from DevOps Git Repository
+  # ============================================================================
+  - stage: ExtractCustom
+    displayName: 'Extract Custom Metadata'
+    dependsOn: Prepare
+    jobs:
+      - job: ExtractJob
+        displayName: 'Extract Custom Models'
+        steps:
+          - checkout: self
+            displayName: 'Checkout D365FO source code'
+            path: 'd365fo-source'
+
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: |
+              npm ci
+            displayName: 'Install dependencies'
+            workingDirectory: '$(Pipeline.Workspace)/d365fo-mcp-server'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download standard metadata'
+            inputs:
+              artifactName: 'standard-metadata'
+              targetPath: $(METADATA_PATH)
+
+          # Delete old custom metadata (local)
+          - script: |
+              npm run blob-manager delete-local-custom
+            displayName: 'Delete old local custom metadata'
+            workingDirectory: '$(Pipeline.Workspace)/d365fo-mcp-server'
+            env:
+              METADATA_PATH: $(METADATA_PATH)
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+              EXTENSION_PREFIX: $(EXTENSION_PREFIX)
+
+          # Extract only custom models from Git repository
+          - script: |
+              npm run extract-metadata
+            displayName: 'Extract custom metadata from source code'
+            workingDirectory: '$(Pipeline.Workspace)/d365fo-mcp-server'
+            env:
+              PACKAGES_PATH: $(Pipeline.Workspace)/d365fo-source
+              METADATA_PATH: $(METADATA_PATH)
+              EXTRACT_MODE: 'custom'
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+              EXTENSION_PREFIX: $(EXTENSION_PREFIX)
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish all metadata (standard + custom)'
+            inputs:
+              targetPath: $(METADATA_PATH)
+              artifactName: 'all-metadata'
+
+  # ============================================================================
+  # Stage 3: Build Database
+  # ============================================================================
+  - stage: BuildDatabase
+    displayName: 'Build SQLite Database'
+    dependsOn: ExtractCustom
+    jobs:
+      - job: BuildJob
+        displayName: 'Build Database from Metadata'
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: |
+              npm ci
+            displayName: 'Install dependencies'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download all metadata'
+            inputs:
+              artifactName: 'all-metadata'
+              targetPath: $(METADATA_PATH)
+
+          - script: |
+              npm run build-database
+            displayName: 'Build SQLite database with FTS5 indexes'
+            env:
+              METADATA_PATH: $(METADATA_PATH)
+              DB_PATH: $(DB_PATH)
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish compiled database'
+            inputs:
+              targetPath: $(DB_PATH)
+              artifactName: 'xpp-database'
+
+  # ============================================================================
+  # Stage 4: Upload to Azure Blob Storage
+  # ============================================================================
+  - stage: UploadToBlob
+    displayName: 'Upload to Azure Blob Storage'
+    dependsOn: BuildDatabase
+    jobs:
+      - job: UploadJob
+        displayName: 'Upload Metadata and Database'
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: |
+              npm ci
+            displayName: 'Install dependencies'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download all metadata'
+            inputs:
+              artifactName: 'all-metadata'
+              targetPath: $(METADATA_PATH)
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download compiled database'
+            inputs:
+              artifactName: 'xpp-database'
+              targetPath: './data'
+
+          # Delete old custom metadata from blob
+          - script: |
+              npm run blob-manager delete-custom
+            displayName: 'Delete old custom metadata from Azure Blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+
+          # Upload only custom metadata to blob
+          - script: |
+              npm run blob-manager upload-custom
+            displayName: 'Upload new custom metadata to Azure Blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+              EXTENSION_PREFIX: $(EXTENSION_PREFIX)
+
+          # Upload compiled database
+          - script: |
+              npm run blob-manager upload-database $(DB_PATH)
+            displayName: 'Upload compiled database to Azure Blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              DB_PATH: $(DB_PATH)
+
+  # ============================================================================
+  # Stage 5: Deploy App Service (Optional - for automatic deployment)
+  # ============================================================================
+  - stage: Deploy
+    displayName: 'Deploy to Azure App Service'
+    dependsOn: UploadToBlob
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployJob
+        displayName: 'Deploy MCP Server'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: NodeTool@0
+                  displayName: 'Install Node.js'
+                  inputs:
+                    versionSpec: $(nodeVersion)
+
+                - script: |
+                    npm ci --production
+                    npm run build
+                  displayName: 'Build application'
+
+                - task: AzureWebApp@1
+                  displayName: 'Deploy to Azure App Service'
+                  inputs:
+                    azureSubscription: '$(AZURE_SUBSCRIPTION)'
+                    appType: 'webAppLinux'
+                    appName: '$(AZURE_APP_SERVICE_NAME)'
+                    package: '$(System.DefaultWorkingDirectory)'
+                    runtimeStack: 'NODE|22-lts'
+                    startUpCommand: 'npm start'

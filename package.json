@@ -12,7 +12,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "extract-metadata": "tsx scripts/extract-metadata.ts",
     "build-database": "tsx scripts/build-database.ts",
-    "index-metadata": "tsx scripts/extract-metadata.ts && tsx scripts/build-database.ts"
+    "index-metadata": "tsx scripts/extract-metadata.ts && tsx scripts/build-database.ts",
+    "blob-manager": "tsx scripts/azure-blob-manager.ts"
   },
   "keywords": [
     "mcp",
