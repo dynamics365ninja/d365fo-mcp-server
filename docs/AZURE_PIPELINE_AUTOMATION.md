@@ -84,6 +84,21 @@ Complete pipeline for periodic update of all models.
 - Manual execution as needed
 - ~Few times per year
 
+### 4. Azure Pipeline - Standard NuGet Extraction (`azure-pipelines-standard-extract.yml`)
+
+Automated pipeline for extracting standard D365 metadata from Microsoft NuGet packages.
+
+**Features:**
+- Downloads latest standard packages from NuGet feed
+- No need for local D365 VM
+- Quarterly scheduled runs
+- Directly uploads to blob storage
+
+**Usage:**
+- Automatic: Runs quarterly (Jan, Apr, Jul, Oct)
+- Manual: After D365 version upgrade
+- See [STANDARD_METADATA_NUGET.md](STANDARD_METADATA_NUGET.md) for setup
+
 ## Configuration
 
 ### Environment Variables
@@ -346,6 +361,7 @@ For questions and issues:
 ## Related Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture
+- [STANDARD_METADATA_NUGET.md](STANDARD_METADATA_NUGET.md) - NuGet package extraction setup
 - [AZURE_BLOB_SETUP.md](AZURE_BLOB_SETUP.md) - Azure Blob Storage setup
 - [AZURE_TROUBLESHOOTING.md](AZURE_TROUBLESHOOTING.md) - Troubleshooting guide
 - [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) - Development environment

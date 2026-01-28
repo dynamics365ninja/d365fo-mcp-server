@@ -221,36 +221,19 @@ stages:
               DB_PATH: $(DB_PATH)
 
   # ============================================================================
-  # Stage 5: Deploy App Service (Optional - for automatic deployment)
+  # Stage 5: Restart App Service to Load New Database
   # ============================================================================
-  - stage: Deploy
-    displayName: 'Deploy to Azure App Service'
+  - stage: RestartAppService
+    displayName: 'Restart App Service'
     dependsOn: UploadToBlob
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    condition: succeeded()
     jobs:
-      - deployment: DeployJob
-        displayName: 'Deploy MCP Server'
-        environment: 'production'
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - task: NodeTool@0
-                  displayName: 'Install Node.js'
-                  inputs:
-                    versionSpec: $(nodeVersion)
-
-                - script: |
-                    npm ci --production
-                    npm run build
-                  displayName: 'Build application'
-
-                - task: AzureWebApp@1
-                  displayName: 'Deploy to Azure App Service'
-                  inputs:
-                    azureSubscription: '$(AZURE_SUBSCRIPTION)'
-                    appType: 'webAppLinux'
-                    appName: '$(AZURE_APP_SERVICE_NAME)'
-                    package: '$(System.DefaultWorkingDirectory)'
-                    runtimeStack: 'NODE|22-lts'
-                    startUpCommand: 'npm start'
+      - job: RestartJob
+        displayName: 'Restart MCP Server'
+        steps:
+          - task: AzureAppServiceManage@0
+            displayName: 'Restart Azure App Service to load new database'
+            inputs:
+              azureSubscription: '$(AZURE_SUBSCRIPTION)'
+              action: 'Restart Azure App Service'
+              webAppName: '$(AZURE_APP_SERVICE_NAME)'

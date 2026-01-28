@@ -99,7 +99,7 @@ stages:
               CUSTOM_MODELS: $(CUSTOM_MODELS)
               EXTENSION_PREFIX: $(EXTENSION_PREFIX)
 
-          # Build database (standard + nové custom)
+          # Build database (standard + new custom)
           - script: npm run build-database
             displayName: 'Build database'
             env:

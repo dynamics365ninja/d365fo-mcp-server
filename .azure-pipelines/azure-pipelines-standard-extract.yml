@@ -1,0 +1,234 @@
+# Azure Pipeline for Standard D365FO Metadata Extraction from NuGet Packages
+# This pipeline downloads and extracts standard D365 models from Microsoft NuGet packages
+# Runs: Few times per year (D365 upgrade, hotfix) or manual trigger
+
+trigger: none  # Manual execution only
+
+# Schedule: Run on first day of each quarter (or as needed)
+schedules:
+  - cron: "0 3 1 1,4,7,10 *"  # 3 AM UTC on Jan 1, Apr 1, Jul 1, Oct 1
+    displayName: Quarterly standard metadata extraction
+    branches:
+      include:
+        - main
+    always: false  # Only run if there are changes
+
+pool:
+  vmImage: 'windows-latest'  # Windows required for NuGet.exe
+
+variables:
+  - group: xpp-mcp-server-config
+  - name: nodeVersion
+    value: '22.x'
+  - name: METADATA_PATH
+    value: './extracted-metadata'
+  - name: DB_PATH
+    value: './data/xpp-metadata.db'
+  - name: NugetConfigsPath
+    value: '$(Build.SourcesDirectory)/nuget-config'
+  - name: NugetsPath
+    value: '$(Build.SourcesDirectory)/nuget-packages'
+  - name: NugetsPathNoVer
+    value: '$(Build.SourcesDirectory)/standard-packages'
+  - name: ToolsPackage
+    value: 'Microsoft.Dynamics.AX.Platform.CompilerPackage'
+
+stages:
+  # ============================================================================
+  # Stage 1: Download and Extract NuGet Packages
+  # ============================================================================
+  - stage: DownloadNuGet
+    displayName: 'Download Standard Packages from NuGet'
+    jobs:
+      - job: DownloadJob
+        displayName: 'Download Microsoft NuGet Packages'
+        steps:
+          - checkout: self
+            displayName: 'Checkout repository'
+
+          # Install NuGet
+          - task: NuGetToolInstaller@1
+            displayName: 'Install NuGet'
+            inputs:
+              versionSpec: '6.x'
+
+          # Create directory structure
+          - task: PowerShell@2
+            displayName: 'Create directory structure'
+            inputs:
+              targetType: 'inline'
+              script: |
+                New-Item -ItemType Directory -Force -Path $(NugetConfigsPath)
+                New-Item -ItemType Directory -Force -Path $(NugetsPath)
+                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)
+                Write-Host "Directories created successfully"
+
+          # Copy latest.csproj and nuget.config from repository
+          - task: PowerShell@2
+            displayName: 'Verify NuGet configuration files'
+            inputs:
+              targetType: 'inline'
+              script: |
+                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/latest.csproj")) {
+                  Write-Error "latest.csproj not found in repository! Please add it to /nuget-config/ folder."
+                  exit 1
+                }
+                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/nuget.config")) {
+                  Write-Error "nuget.config not found in repository! Please add it to /nuget-config/ folder."
+                  exit 1
+                }
+                Write-Host "NuGet configuration files found"
+                Get-Content "$(Build.SourcesDirectory)/nuget-config/latest.csproj"
+
+          # Restore latest NuGet Application/Platform packages
+          - task: PowerShell@2
+            displayName: 'NuGet install Packages'
+            continueOnError: true
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Starting NuGet restore..."
+                Write-Host "Config Path: $(NugetConfigsPath)"
+                Write-Host "Output Path: $(NugetsPath)"
+                
+                nuget.exe restore $(NugetConfigsPath)\latest.csproj -ConfigFile $(NugetConfigsPath)\nuget.config -OutputDirectory $(NugetsPath) -Verbosity detailed
+                
+                Write-Host "NuGet restore completed"
+                Get-ChildItem -Path $(NugetsPath) -Recurse | Select-Object FullName
+                exit 0
+              errorActionPreference: 'silentlyContinue'
+              warningPreference: 'silentlyContinue'
+
+          # Exclude version from NuGet packages and put all metadata folders together
+          - task: PowerShell@2
+            displayName: 'Exclude version from MS NuGet Packages'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Creating output directories..."
+                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)\net40
+                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)\tools
+                
+                Write-Host "Moving metadata files from ref\net40..."
+                $net40Files = Get-ChildItem -Path $(NugetsPath)\*\*\ref\net40 -Recurse -ErrorAction SilentlyContinue
+                if ($net40Files) {
+                  $net40Files | Move-Item -Destination $(NugetsPathNoVer)\net40 -Force
+                  Write-Host "Moved $($net40Files.Count) net40 items"
+                } else {
+                  Write-Warning "No net40 files found"
+                }
+                
+                Write-Host "Moving tools from compiler package..."
+                $toolsPath = "$(NugetsPath)\$(ToolsPackage)"
+                if (Test-Path $toolsPath) {
+                  $toolsFiles = Get-ChildItem -Path $toolsPath\*\ -Recurse -ErrorAction SilentlyContinue
+                  if ($toolsFiles) {
+                    $toolsFiles | Move-Item -Destination $(NugetsPathNoVer)\tools -Force
+                    Write-Host "Moved $($toolsFiles.Count) tool items"
+                  }
+                } else {
+                  Write-Warning "Tools package not found at $toolsPath"
+                }
+                
+                Write-Host "Package extraction completed"
+                Get-ChildItem -Path $(NugetsPathNoVer) -Recurse | Select-Object FullName | Format-Table -AutoSize
+
+          # Publish NuGet packages as artifact
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish standard packages artifact'
+            inputs:
+              targetPath: $(NugetsPathNoVer)
+              artifactName: 'standard-nuget-packages'
+
+  # ============================================================================
+  # Stage 2: Extract Metadata from Standard Packages
+  # ============================================================================
+  - stage: ExtractStandard
+    displayName: 'Extract Standard Metadata'
+    dependsOn: DownloadNuGet
+    jobs:
+      - job: ExtractJob
+        displayName: 'Extract Standard Models'
+        steps:
+          - checkout: self
+            displayName: 'Checkout repository'
+
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: |
+              npm ci
+            displayName: 'Install dependencies'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download standard packages'
+            inputs:
+              artifactName: 'standard-nuget-packages'
+              targetPath: $(NugetsPathNoVer)
+
+          # Extract standard metadata
+          - script: |
+              npm run extract-metadata
+            displayName: 'Extract standard metadata'
+            env:
+              PACKAGES_PATH: $(NugetsPathNoVer)/net40
+              METADATA_PATH: $(METADATA_PATH)
+              EXTRACT_MODE: 'standard'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish extracted standard metadata'
+            inputs:
+              targetPath: $(METADATA_PATH)
+              artifactName: 'standard-metadata'
+
+  # ============================================================================
+  # Stage 3: Upload to Azure Blob Storage
+  # ============================================================================
+  - stage: UploadToBlob
+    displayName: 'Upload Standard Metadata to Blob'
+    dependsOn: ExtractStandard
+    jobs:
+      - job: UploadJob
+        displayName: 'Upload to Azure Blob Storage'
+        steps:
+          - checkout: self
+            displayName: 'Checkout repository'
+
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: |
+              npm ci
+            displayName: 'Install dependencies'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download extracted metadata'
+            inputs:
+              artifactName: 'standard-metadata'
+              targetPath: $(METADATA_PATH)
+
+          # Upload standard metadata to blob
+          - script: |
+              npm run blob-manager upload-standard
+            displayName: 'Upload standard metadata to Azure Blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+
+          # Log completion
+          - task: PowerShell@2
+            displayName: 'Log completion'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "============================================"
+                Write-Host "Standard metadata extraction completed!"
+                Write-Host "============================================"
+                Write-Host "Metadata uploaded to: metadata/standard/"
+                Write-Host "Next step: Run quick pipeline to update custom models"
+                Write-Host "============================================"
