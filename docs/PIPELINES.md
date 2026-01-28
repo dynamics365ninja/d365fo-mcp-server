@@ -70,17 +70,19 @@ xpp-metadata/
 │                    (Quarterly - NuGet)                       │
 └─────────────────┬───────────────────────────────────────────┘
                   │
+                  │ Upload
                   ▼
          ┌────────────────┐
-         │ Standard Models │ ────────┐
-         │  in Blob Store  │         │
-         └────────────────┘         │
-                  │                  │
-                  │                  │
-┌─────────────────▼──────────────────▼──────────────────────┐
-│              Daily Custom Extraction                       │
-│          (Git → Extract → Build → Upload)                  │
-└─────────────────┬──────────────────────────────────────────┘
+         │ Standard Models │
+         │  in Blob Store  │
+         └────────────────┘
+                  │
+                  │ Download (cached)
+                  ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Daily Custom Extraction                         │
+│    (Download Standard → Extract Custom → Build → Upload)    │
+└─────────────────┬───────────────────────────────────────────┘
                   │
                   ▼
          ┌────────────────┐
@@ -88,6 +90,7 @@ xpp-metadata/
          │ Standard+Custom │
          └────────────────┘
                   │
+                  │ Upload to Blob
                   ▼
          ┌────────────────┐
          │  App Service    │
