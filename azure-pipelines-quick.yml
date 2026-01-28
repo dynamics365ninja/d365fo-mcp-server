@@ -1,0 +1,193 @@
+# Simplified Azure Pipeline for Daily Custom Metadata Updates
+# This pipeline is optimized for quick daily updates of custom models only
+# Standard metadata is only updated when explicitly triggered or on schedule
+
+trigger: none  # Disable automatic triggers
+
+# Schedule: Run daily at 2 AM UTC for custom metadata sync
+schedules:
+  - cron: "0 2 * * *"
+    displayName: Daily custom metadata sync
+    branches:
+      include:
+        - main
+    always: true
+
+# Manual trigger with parameters
+parameters:
+  - name: extractionMode
+    displayName: 'Extraction Mode'
+    type: string
+    default: 'custom'
+    values:
+      - custom
+      - standard
+      - all
+  - name: customModels
+    displayName: 'Custom Models (comma-separated, leave empty for all)'
+    type: string
+    default: ''
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: xpp-mcp-server-config
+  - name: nodeVersion
+    value: '22.x'
+  - name: METADATA_PATH
+    value: './extracted-metadata'
+  - name: DB_PATH
+    value: './data/xpp-metadata.db'
+
+stages:
+  # ============================================================================
+  # Quick Daily Update - Custom Models Only
+  # ============================================================================
+  - stage: QuickUpdate
+    displayName: 'Quick Custom Metadata Update'
+    condition: eq('${{ parameters.extractionMode }}', 'custom')
+    jobs:
+      - job: QuickUpdateJob
+        displayName: 'Update Custom Metadata'
+        steps:
+          - checkout: self
+            displayName: 'Checkout D365FO source'
+            path: 'd365fo-source'
+
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: npm ci
+            displayName: 'Install dependencies'
+
+          # Download existing standard metadata (cached, neměnné)
+          - script: npm run blob-manager download-standard
+            displayName: 'Download standard metadata (cached)'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+
+          # Delete old custom metadata from blob
+          - script: |
+              if [ -n "${{ parameters.customModels }}" ]; then
+                npm run blob-manager delete-custom "${{ parameters.customModels }}"
+              else
+                npm run blob-manager delete-custom
+              fi
+            displayName: 'Delete old custom metadata from blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+
+          # Delete local custom metadata
+          - script: npm run blob-manager delete-local-custom
+            displayName: 'Clean local custom metadata'
+            env:
+              METADATA_PATH: $(METADATA_PATH)
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+
+          # Extract only custom models from Git
+          - script: npm run extract-metadata
+            displayName: 'Extract custom models'
+            env:
+              PACKAGES_PATH: $(Pipeline.Workspace)/d365fo-source
+              METADATA_PATH: $(METADATA_PATH)
+              EXTRACT_MODE: 'custom'
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+              EXTENSION_PREFIX: $(EXTENSION_PREFIX)
+
+          # Build database (standard + nové custom)
+          - script: npm run build-database
+            displayName: 'Build database'
+            env:
+              METADATA_PATH: $(METADATA_PATH)
+              DB_PATH: $(DB_PATH)
+
+          # Upload custom metadata
+          - script: npm run blob-manager upload-custom
+            displayName: 'Upload custom metadata'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+
+          # Upload database
+          - script: npm run blob-manager upload-database $(DB_PATH)
+            displayName: 'Upload database'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+
+          # Trigger App Service restart (optional)
+          - task: AzureAppServiceManage@0
+            displayName: 'Restart App Service'
+            inputs:
+              azureSubscription: '$(AZURE_SUBSCRIPTION)'
+              action: 'Restart Azure App Service'
+              webAppName: '$(AZURE_APP_SERVICE_NAME)'
+
+  # ============================================================================
+  # Full Rebuild - All Models (Standard + Custom)
+  # ============================================================================
+  - stage: FullRebuild
+    displayName: 'Full Metadata Rebuild'
+    condition: ne('${{ parameters.extractionMode }}', 'custom')
+    jobs:
+      - job: FullRebuildJob
+        displayName: 'Full Extract and Build'
+        steps:
+          - checkout: self
+            path: 'd365fo-source'
+
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: npm ci
+            displayName: 'Install dependencies'
+
+          # Clean everything
+          - script: |
+              rm -rf $(METADATA_PATH)
+              mkdir -p $(METADATA_PATH)
+            displayName: 'Clean metadata directory'
+
+          # Extract all or specific mode
+          - script: npm run extract-metadata
+            displayName: 'Extract all metadata'
+            env:
+              PACKAGES_PATH: $(Pipeline.Workspace)/d365fo-source
+              METADATA_PATH: $(METADATA_PATH)
+              EXTRACT_MODE: '${{ parameters.extractionMode }}'
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+
+          # Build database
+          - script: npm run build-database
+            displayName: 'Build database'
+            env:
+              METADATA_PATH: $(METADATA_PATH)
+              DB_PATH: $(DB_PATH)
+
+          # Upload based on mode
+          - script: |
+              if [ "${{ parameters.extractionMode }}" = "standard" ]; then
+                npm run blob-manager upload-standard
+              elif [ "${{ parameters.extractionMode }}" = "all" ]; then
+                npm run blob-manager upload-all
+              fi
+            displayName: 'Upload metadata to blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+
+          # Upload database
+          - script: npm run blob-manager upload-database $(DB_PATH)
+            displayName: 'Upload database'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
