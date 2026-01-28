@@ -299,6 +299,14 @@ Generate X++ code templates.
 
 ## GitHub Copilot Integration
 
+### Prerequisites
+
+⚠️ **Important**: To use custom MCP servers with GitHub Copilot, you must enable **"Editor preview features"** in your GitHub account settings:
+
+👉 https://github.com/settings/copilot/features
+
+Without this feature enabled, MCP tools will not be loaded in GitHub Copilot.
+
 ### Visual Studio 2022 Setup
 
 1. Install Visual Studio 2022 version 17.14+
