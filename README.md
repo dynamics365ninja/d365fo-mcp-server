@@ -53,6 +53,34 @@ Azure Blob Storage
 - **@modelcontextprotocol/sdk**: MCP protocol implementation
 - **express**: HTTP server for streamable transport
 
+## Quick Start
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Extract metadata from D365FO
+npm run extract-metadata
+
+# 3. Build database
+npm run build-database
+
+# 4. Start server
+npm run dev
+```
+
+For detailed setup instructions, see [docs/SETUP.md](docs/SETUP.md).
+
+## Documentation
+
+- **[SETUP.md](docs/SETUP.md)** - Complete setup guide for local and Azure deployment
+- **[PIPELINES.md](docs/PIPELINES.md)** - Azure DevOps pipeline automation guide
+- **[USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md)** - Practical examples and use cases
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design
+- **[PERFORMANCE.md](docs/PERFORMANCE.md)** - Performance optimization tips
+- **[CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md)** - Custom extension development
+- **[TESTING.md](docs/TESTING.md)** - Testing guide
+
 ## Installation
 
 ```bash
@@ -127,7 +155,7 @@ Server will be available at `http://localhost:8080/mcp`
 
 ### 4. Deploy to Azure (Optional)
 
-See [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md) for detailed deployment instructions.
+See [docs/SETUP.md](docs/SETUP.md) for detailed deployment instructions and [docs/PIPELINES.md](docs/PIPELINES.md) for automated CI/CD setup.
 
 **Quick Deploy:**
 ```bash

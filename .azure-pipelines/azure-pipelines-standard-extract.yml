@@ -25,11 +25,11 @@ variables:
   - name: DB_PATH
     value: './data/xpp-metadata.db'
   - name: NugetConfigsPath
-    value: '$(Build.SourcesDirectory)/nuget-config'
+    value: '$(Build.SourcesDirectory)/src/d365fo/build/MsApplFeeds'
   - name: NugetsPath
-    value: '$(Build.SourcesDirectory)/nuget-packages'
+    value: '$(Pipeline.Workspace)/NuGets'
   - name: NugetsPathNoVer
-    value: '$(Build.SourcesDirectory)/standard-packages'
+    value: '$(Pipeline.Workspace)/NuGetsNoVer'
   - name: ToolsPackage
     value: 'Microsoft.Dynamics.AX.Platform.CompilerPackage'
 
