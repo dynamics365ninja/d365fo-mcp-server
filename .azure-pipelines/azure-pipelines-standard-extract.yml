@@ -35,17 +35,19 @@ variables:
 
 stages:
   # ============================================================================
-  # Stage 1: Download and Extract NuGet Packages
+  # Single Stage: Download, Extract, and Upload - All Sequential
   # ============================================================================
-  - stage: DownloadNuGet
-    displayName: 'Download Standard Packages from NuGet'
+  - stage: ExtractAndUpload
+    displayName: 'Extract Standard Metadata and Upload to Blob'
     jobs:
-      - job: DownloadJob
-        displayName: 'Download Microsoft NuGet Packages'
+      - job: ProcessJob
+        displayName: 'Download → Extract → Upload'
         steps:
           - checkout: self
             displayName: 'Checkout repository'
 
+          # ========== Step 1: Download NuGet Packages ==========
+          
           # Install NuGet
           - task: NuGetToolInstaller@1
             displayName: 'Install NuGet'
@@ -63,7 +65,7 @@ stages:
                 New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)
                 Write-Host "Directories created successfully"
 
-          # Copy latest.csproj and nuget.config from repository
+          # Verify NuGet configuration files
           - task: PowerShell@2
             displayName: 'Verify NuGet configuration files'
             inputs:
@@ -80,7 +82,7 @@ stages:
                 Write-Host "NuGet configuration files found"
                 Get-Content "$(Build.SourcesDirectory)/nuget-config/latest.csproj"
 
-          # Restore latest NuGet Application/Platform packages
+          # Restore NuGet packages
           - task: PowerShell@2
             displayName: 'NuGet install Packages'
             continueOnError: true
@@ -99,9 +101,9 @@ stages:
               errorActionPreference: 'silentlyContinue'
               warningPreference: 'silentlyContinue'
 
-          # Exclude version from NuGet packages and put all metadata folders together
+          # Extract packages and remove version folders
           - task: PowerShell@2
-            displayName: 'Exclude version from MS NuGet Packages'
+            displayName: 'Extract and organize packages'
             inputs:
               targetType: 'inline'
               script: |
@@ -133,87 +135,30 @@ stages:
                 Write-Host "Package extraction completed"
                 Get-ChildItem -Path $(NugetsPathNoVer) -Recurse | Select-Object FullName | Format-Table -AutoSize
 
-          # Publish NuGet packages as artifact
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish standard packages artifact'
-            inputs:
-              targetPath: $(NugetsPathNoVer)
-              artifactName: 'standard-nuget-packages'
-
-  # ============================================================================
-  # Stage 2: Extract Metadata from Standard Packages
-  # ============================================================================
-  - stage: ExtractStandard
-    displayName: 'Extract Standard Metadata'
-    dependsOn: DownloadNuGet
-    jobs:
-      - job: ExtractJob
-        displayName: 'Extract Standard Models'
-        steps:
-          - checkout: self
-            displayName: 'Checkout repository'
-
+          # ========== Step 2: Extract Metadata ==========
+          
+          # Install Node.js
           - task: NodeTool@0
             displayName: 'Install Node.js'
             inputs:
               versionSpec: $(nodeVersion)
 
-          - script: |
-              npm ci
-            displayName: 'Install dependencies'
-
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download standard packages'
-            inputs:
-              artifactName: 'standard-nuget-packages'
-              targetPath: $(NugetsPathNoVer)
+          # Install NPM dependencies
+          - script: npm ci
+            displayName: 'Install NPM dependencies'
 
           # Extract standard metadata
-          - script: |
-              npm run extract-metadata
-            displayName: 'Extract standard metadata'
+          - script: npm run extract-metadata
+            displayName: 'Extract standard metadata from packages'
             env:
               PACKAGES_PATH: $(NugetsPathNoVer)/net40
               METADATA_PATH: $(METADATA_PATH)
               EXTRACT_MODE: 'standard'
 
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish extracted standard metadata'
-            inputs:
-              targetPath: $(METADATA_PATH)
-              artifactName: 'standard-metadata'
-
-  # ============================================================================
-  # Stage 3: Upload to Azure Blob Storage
-  # ============================================================================
-  - stage: UploadToBlob
-    displayName: 'Upload Standard Metadata to Blob'
-    dependsOn: ExtractStandard
-    jobs:
-      - job: UploadJob
-        displayName: 'Upload to Azure Blob Storage'
-        steps:
-          - checkout: self
-            displayName: 'Checkout repository'
-
-          - task: NodeTool@0
-            displayName: 'Install Node.js'
-            inputs:
-              versionSpec: $(nodeVersion)
-
-          - script: |
-              npm ci
-            displayName: 'Install dependencies'
-
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download extracted metadata'
-            inputs:
-              artifactName: 'standard-metadata'
-              targetPath: $(METADATA_PATH)
-
+          # ========== Step 3: Upload to Blob Storage ==========
+          
           # Upload standard metadata to blob
-          - script: |
-              npm run blob-manager upload-standard
+          - script: npm run blob-manager upload-standard
             displayName: 'Upload standard metadata to Azure Blob'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
@@ -222,13 +167,18 @@ stages:
 
           # Log completion
           - task: PowerShell@2
-            displayName: 'Log completion'
+            displayName: 'Log completion summary'
             inputs:
               targetType: 'inline'
               script: |
-                Write-Host "============================================"
-                Write-Host "Standard metadata extraction completed!"
-                Write-Host "============================================"
-                Write-Host "Metadata uploaded to: metadata/standard/"
+                Write-Host ""
+                Write-Host "============================================" -ForegroundColor Green
+                Write-Host "Standard metadata extraction completed!" -ForegroundColor Green
+                Write-Host "============================================" -ForegroundColor Green
+                Write-Host ""
+                Write-Host "✅ NuGet packages downloaded"
+                Write-Host "✅ Metadata extracted"
+                Write-Host "✅ Uploaded to: metadata/standard/"
+                Write-Host ""
                 Write-Host "Next step: Run quick pipeline to update custom models"
                 Write-Host "============================================"
