@@ -307,6 +307,9 @@ Generate X++ code templates.
 
 Without this feature enabled, MCP tools will not be loaded in GitHub Copilot.
 
+For more information about GitHub Copilot policies and feature management, see:
+📖 [Managing Policies for GitHub Copilot](https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-organization/manage-policies#about-policies-for-github-copilot)
+
 ### Visual Studio 2022 Setup
 
 1. Install Visual Studio 2022 version 17.14+
