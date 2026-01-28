@@ -336,6 +336,10 @@ For more information about GitHub Copilot policies and feature management, see:
 
 ```
 d365fo-mcp-server/
+├── .azure-pipelines/
+│   ├── azure-pipelines.yml                    # Full custom metadata extraction
+│   ├── azure-pipelines-quick.yml              # Daily custom updates (fast)
+│   └── azure-pipelines-standard-extract.yml   # Quarterly standard extraction
 ├── src/
 │   ├── index.ts                 # Main entry point
 │   ├── cache/
@@ -370,26 +374,33 @@ d365fo-mcp-server/
 │   └── types/
 │       └── context.ts           # Server context
 ├── scripts/
+│   ├── azure-blob-manager.ts    # Azure Blob Storage management
 │   ├── build-database.ts        # Database builder
 │   ├── extract-metadata.ts      # Metadata extraction
+│   ├── test-pipeline.ps1        # Pipeline workflow testing
 │   └── test-mcp.ps1             # PowerShell test script
 ├── config/
 │   └── standard-models.json     # Standard D365 models
 ├── docs/
-│   ├── AZURE_TROUBLESHOOTING.md
-│   ├── CUSTOM_EXTENSIONS.md
-│   ├── DEVELOPMENT_SETUP.md
-│   ├── GITHUB_SETUP.md
-│   ├── IMPLEMENTATION_STATUS.md
-│   ├── IMPLEMENTATION_SUMMARY.md
-│   ├── PERFORMANCE.md
-│   └── VISUAL_STUDIO_MCP_SETUP.md
+│   ├── ARCHITECTURE.md          # System architecture
+│   ├── CUSTOM_EXTENSIONS.md     # Custom extension development
+│   ├── PERFORMANCE.md           # Performance optimization
+│   ├── PIPELINES.md             # Azure DevOps automation
+│   ├── SETUP.md                 # Complete setup guide
+│   ├── TESTING.md               # Testing guide
+│   └── USAGE_EXAMPLES.md        # Practical examples
+├── nuget-config/
+│   ├── latest.csproj            # NuGet packages definition
+│   ├── nuget.config             # NuGet feed configuration
+│   └── README.md                # NuGet setup instructions
 ├── infrastructure/
 │   └── main.bicep               # Azure IaC
 ├── package.json
 ├── tsconfig.json
 ├── README.md
 ├── LICENSE
+└── startup.sh
+```
 └── startup.sh
 ```
 
@@ -439,10 +450,6 @@ RATE_LIMIT_AUTH_MAX_REQUESTS=5
 - `RateLimit-Remaining`: Requests remaining in current window
 - `RateLimit-Reset`: When the current window resets
 - `Retry-After`: Seconds to wait when rate limited (429 status)
-├── infrastructure/
-│   └── main.bicep               # Azure IaC
-└── package.json
-```
 
 ## Development
 
