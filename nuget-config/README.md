@@ -64,7 +64,7 @@ NuGet feed configuration and credentials.
    git push
    ```
 
-3. **Configure pipeline**: Import `.azure-pipelines/azure-pipelines-standard-extract.yml`
+3. **Configure pipeline**: Import `.azure-pipelines/d365fo-mcp-data-standard-extract.yml`
 
 4. **Run pipeline** to download and extract standard metadata
 

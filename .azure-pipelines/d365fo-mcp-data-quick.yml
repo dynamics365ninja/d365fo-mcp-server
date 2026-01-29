@@ -9,7 +9,7 @@ trigger:
   paths:
     include:
       - 'src/**'
-      - '.azure-pipelines/azure-pipelines-quick.yml'
+      - '.azure-pipelines/d365fo-mcp-data-quick.yml'
 
 # Note: No scheduled runs - pipeline runs only when changes are detected
 # To force a run, use manual trigger with parameters below

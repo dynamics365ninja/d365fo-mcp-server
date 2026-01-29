@@ -337,10 +337,10 @@ For more information about GitHub Copilot policies and feature management, see:
 ```
 d365fo-mcp-server/
 ├── .azure-pipelines/
-│   ├── azure-pipelines.yml                      # Full custom metadata extraction
-│   ├── azure-pipelines-quick.yml                # Updates on code changes
-│   ├── azure-pipelines-standard-extract.yml     # Quarterly standard extraction
-│   └── azure-pipelines-platform-upgrade.yml     # Complete platform upgrade
+│   ├── d365fo-mcp-data.yml                      # Full custom metadata extraction
+│   ├── d365fo-mcp-data-quick.yml                # Updates on code changes
+│   ├── d365fo-mcp-data-standard-extract.yml     # Standard metadata from NuGet
+│   └── d365fo-mcp-data-platform-upgrade.yml     # Complete platform upgrade
 ├── src/
 │   ├── index.ts                 # Main entry point
 │   ├── cache/

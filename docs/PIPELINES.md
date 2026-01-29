@@ -102,7 +102,7 @@ xpp-metadata/
 
 ## Pipeline Configurations
 
-### 1. azure-pipelines.yml - Full Custom Extraction
+### 1. d365fo-mcp-data.yml - Full Custom Extraction
 
 **Purpose:** Complete extraction of custom models from Git repository
 
@@ -128,7 +128,7 @@ xpp-metadata/
 
 **Agent:** ubuntu-latest
 
-### 2. azure-pipelines-quick.yml - Updates on Changes
+### 2. d365fo-mcp-data-quick.yml - Updates on Changes
 
 **Purpose:** Fast updates of custom models when code changes
 
@@ -160,7 +160,7 @@ xpp-metadata/
 
 **Agent:** ubuntu-latest
 
-### 3. azure-pipelines-standard-extract.yml - NuGet Extraction
+### 3. d365fo-mcp-data-standard-extract.yml - NuGet Extraction
 
 **Purpose:** Extract Microsoft standard models from NuGet packages
 
@@ -187,7 +187,7 @@ xpp-metadata/
 - Microsoft.Dynamics.AX.Platform.DevALM.BuildXpp (7.0.*)
 - Microsoft.Dynamics.AX.Platform.CompilerPackage (7.0.*)
 
-### 4. azure-pipelines-platform-upgrade.yml - Complete Platform Upgrade
+### 4. d365fo-mcp-data-platform-upgrade.yml - Complete Platform Upgrade
 
 **Purpose:** Complete D365 platform upgrade in single pipeline run - no intermediate uploads/downloads
 
@@ -229,7 +229,7 @@ xpp-metadata/
 - Pipeline runs automatically when you push changes to `main`
 - No manual intervention needed
 
-**Pipeline:** `azure-pipelines-quick.yml` (auto on push)
+**Pipeline:** `d365fo-mcp-data-quick.yml` (auto on push)
 
 **Result:** Updated metadata and database after each commit
 
@@ -240,12 +240,12 @@ xpp-metadata/
 **Situation:** Need immediate metadata update after important commit
 
 **Recommended Approach:**
-1. Navigate to Pipelines → azure-pipelines-quick.yml
+1. Navigate to Pipelines → d365fo-mcp-data-quick.yml
 2. Click "Run pipeline"
 3. Keep default parameters (custom mode)
 4. Wait 5-15 minutes
 
-**Pipeline:** `azure-pipelines-quick.yml` (manual)
+**Pipeline:** `d365fo-mcp-data-quick.yml` (manual)
 
 **Result:** Metadata updated within minutes
 
@@ -256,24 +256,24 @@ xpp-metadata/
 **Situation:** Microsoft released new D365 version (e.g., 10.0.42)
 
 **Recommended Approach (Option 1 - Single Pipeline):**
-1. Navigate to Pipelines → azure-pipelines-platform-upgrade.yml
+1. Navigate to Pipelines → d365fo-mcp-data-platform-upgrade.yml
 2. Click "Run pipeline"
 3. Enter D365 version number (e.g., "10.0.42")
 4. Wait for completion (~2-3 hours)
 
-**Pipeline:** `azure-pipelines-platform-upgrade.yml` (single run)
+**Pipeline:** `d365fo-mcp-data-platform-upgrade.yml` (single run)
 
 **Result:** Complete upgrade - standard metadata updated + custom rebuilt + database deployed
 
 **Alternative Approach (Option 2 - Separate Pipelines):**
 1. Update NuGet package versions in `nuget-config/latest.csproj`
-2. Run `azure-pipelines-standard-extract.yml` manually
+2. Run `d365fo-mcp-data-standard-extract.yml` manually
 3. Wait for completion (~2-3 hours)
-4. Run `azure-pipelines-quick.yml` to rebuild database
+4. Run `d365fo-mcp-data-quick.yml` to rebuild database
 
 **Pipelines:** 
-1. `azure-pipelines-standard-extract.yml` (manual)
-2. `azure-pipelines-quick.yml` (manual)
+1. `d365fo-mcp-data-standard-extract.yml` (manual)
+2. `d365fo-mcp-data-quick.yml` (manual)
 
 **Result:** Latest Microsoft metadata + your custom models
 
@@ -285,13 +285,13 @@ xpp-metadata/
 
 **Recommended Approach:**
 1. Configure all Azure DevOps variables
-2. Run `azure-pipelines-standard-extract.yml` for standard models
-3. Run `azure-pipelines.yml` for initial custom extraction
+2. Run `d365fo-mcp-data-standard-extract.yml` for standard models
+3. Run `d365fo-mcp-data.yml` for initial custom extraction
 
 **Pipelines:**
 1. `azure-pipelines-standard-extract.yml` (manual)
-2. `azure-pipelines.yml` (manual first run)
-3. `azure-pipelines-quick.yml` (auto on code changes)
+2. `d365fo-mcp-data.yml` (manual first run)
+3. `d365fo-mcp-data-quick.yml` (auto on code changes)
 
 **Result:** Complete setup with automated updates on code changes
 
@@ -306,7 +306,7 @@ xpp-metadata/
 2. Set parameter: `customModels: "YourCustomModel2"`
 3. Wait 3-5 minutes
 
-**Pipeline:** `azure-pipelines-quick.yml` (manual with parameter)
+**Pipeline:** `d365fo-mcp-data-quick.yml` (manual with parameter)
 
 **Result:** Only YourCustomModel2 updated, faster than extracting all
 
@@ -403,7 +403,7 @@ Pipeline Logs:
 **Solution:**
 ```bash
 # Run standard extraction first
-1. Execute azure-pipelines-standard-extract.yml
+1. Execute d365fo-mcp-data-standard-extract.yml
 2. Verify metadata/standard/ folder in blob
 3. Retry failed pipeline
 ```

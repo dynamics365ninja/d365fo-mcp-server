@@ -215,25 +215,25 @@ In Azure DevOps, create variable group `xpp-mcp-server-config`:
 
 Four pipelines are available in `.azure-pipelines/`:
 
-#### **azure-pipelines.yml** - Full Custom Metadata Extraction
+#### **d365fo-mcp-data.yml** - Full Custom Metadata Extraction
 - Triggered on changes to source code
 - Downloads standard metadata from blob
 - Extracts custom models from Git
 - Builds database and uploads to blob
 - Restarts App Service
 
-#### **azure-pipelines-quick.yml** - Updates on Changes
+#### **d365fo-mcp-data-quick.yml** - Updates on Changes
 - Triggered on changes to src/** or pipeline file in main branch
 - Quick custom metadata updates (~5-15 min)
 - Parameters for custom execution
 
-#### **azure-pipelines-standard-extract.yml** - Standard Metadata Extraction
+#### **d365fo-mcp-data-standard-extract.yml** - Standard Metadata Extraction
 - Manual execution only
 - Downloads standard packages from NuGet
 - Extracts and uploads to blob
 - Requires Windows agent
 
-#### **azure-pipelines-platform-upgrade.yml** - Complete Platform Upgrade
+#### **d365fo-mcp-data-platform-upgrade.yml** - Complete Platform Upgrade
 - Manual execution only
 - Single unified stage on Windows
 - Downloads NuGet → Extracts standard → Extracts custom → Builds database → Uploads all

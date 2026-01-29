@@ -11,7 +11,7 @@ trigger:
     include:
       - 'src/**'
       - 'scripts/**'
-      - 'azure-pipelines.yml'
+      - 'd365fo-mcp-data.yml'
 
 # Manual trigger for on-demand extraction
 pr: none
