@@ -1,17 +1,18 @@
 # Simplified Azure Pipeline for Daily Custom Metadata Updates
-# This pipeline is optimized for quick daily updates of custom models only
-# Standard metadata is only updated when explicitly triggered or on schedule
+# This pipeline is optimized for quick updates of custom models only
+# Triggers automatically on changes to main branch (no periodic runs)
 
-trigger: none  # Disable automatic triggers
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - 'src/**'
+      - '.azure-pipelines/azure-pipelines-quick.yml'
 
-# Schedule: Run daily at 2 AM UTC for custom metadata sync
-schedules:
-  - cron: "0 2 * * *"
-    displayName: Daily custom metadata sync
-    branches:
-      include:
-        - main
-    always: true
+# Note: No scheduled runs - pipeline runs only when changes are detected
+# To force a run, use manual trigger with parameters below
 
 # Manual trigger with parameters
 parameters:

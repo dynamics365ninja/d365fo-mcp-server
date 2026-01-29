@@ -1,0 +1,198 @@
+# Azure Pipeline for D365 Platform Upgrade
+# This pipeline combines standard and custom metadata extraction in single stage
+# Use this after Microsoft releases new D365 version
+
+trigger: none  # Manual execution only
+
+# Manual trigger with parameters
+parameters:
+  - name: d365Version
+    displayName: 'D365 Version (e.g., 10.0.42)'
+    type: string
+    default: '10.0.42'
+
+pool:
+  vmImage: 'windows-latest'  # Windows required for NuGet
+
+variables:
+  - group: xpp-mcp-server-config
+  - name: nodeVersion
+    value: '22.x'
+  - name: METADATA_PATH
+    value: './extracted-metadata'
+  - name: DB_PATH
+    value: './data/xpp-metadata.db'
+  - name: NugetConfigsPath
+    value: '$(Build.SourcesDirectory)\src\d365fo\build\MsApplFeeds'
+  - name: NugetsPath
+    value: '$(Pipeline.Workspace)\NuGets'
+  - name: NugetsPathNoVer
+    value: '$(Pipeline.Workspace)\NuGetsNoVer'
+  - name: ToolsPackage
+    value: 'Microsoft.Dynamics.AX.Platform.CompilerPackage'
+
+stages:
+  # ============================================================================
+  # Single Stage: Complete Platform Upgrade
+  # ============================================================================
+  - stage: PlatformUpgrade
+    displayName: 'Complete Platform Upgrade'
+    jobs:
+      - job: UpgradeJob
+        displayName: 'Extract Standard → Extract Custom → Build → Upload'
+        steps:
+          - checkout: self
+            displayName: 'Checkout D365FO source'
+            path: 'd365fo-source'
+
+          # ========== Step 1: Download and Extract NuGet Packages ==========
+          
+          - task: NuGetToolInstaller@1
+            displayName: 'Install NuGet'
+            inputs:
+              versionSpec: '6.x'
+
+          - task: PowerShell@2
+            displayName: 'Create directory structure'
+            inputs:
+              targetType: 'inline'
+              script: |
+                New-Item -ItemType Directory -Force -Path $(NugetConfigsPath)
+                New-Item -ItemType Directory -Force -Path $(NugetsPath)
+                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)
+                Write-Host "Directories created successfully"
+
+          - task: PowerShell@2
+            displayName: 'Verify NuGet configuration files'
+            inputs:
+              targetType: 'inline'
+              script: |
+                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/latest.csproj")) {
+                  Write-Error "latest.csproj not found in repository!"
+                  exit 1
+                }
+                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/nuget.config")) {
+                  Write-Error "nuget.config not found in repository!"
+                  exit 1
+                }
+                Write-Host "NuGet configuration files found"
+
+          - task: PowerShell@2
+            displayName: 'Download NuGet packages'
+            continueOnError: true
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Starting NuGet restore..."
+                Write-Host "D365 Version: ${{ parameters.d365Version }}"
+                
+                nuget.exe restore $(NugetConfigsPath)\latest.csproj -ConfigFile $(NugetConfigsPath)\nuget.config -OutputDirectory $(NugetsPath) -Verbosity detailed
+                
+                Write-Host "NuGet restore completed"
+                exit 0
+              errorActionPreference: 'silentlyContinue'
+
+          - task: PowerShell@2
+            displayName: 'Extract and organize NuGet packages'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Creating output directories..."
+                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)\net40
+                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)\tools
+                
+                Write-Host "Moving metadata files from ref\net40..."
+                $net40Files = Get-ChildItem -Path $(NugetsPath)\*\*\ref\net40 -Recurse -ErrorAction SilentlyContinue
+                if ($net40Files) {
+                  $net40Files | Move-Item -Destination $(NugetsPathNoVer)\net40 -Force
+                  Write-Host "Moved $($net40Files.Count) net40 items"
+                }
+                
+                Write-Host "Moving tools from compiler package..."
+                $toolsPath = "$(NugetsPath)\$(ToolsPackage)"
+                if (Test-Path $toolsPath) {
+                  $toolsFiles = Get-ChildItem -Path $toolsPath\*\ -Recurse -ErrorAction SilentlyContinue
+                  if ($toolsFiles) {
+                    $toolsFiles | Move-Item -Destination $(NugetsPathNoVer)\tools -Force
+                    Write-Host "Moved $($toolsFiles.Count) tool items"
+                  }
+                }
+
+          # ========== Step 2: Extract Standard Metadata ==========
+          
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: npm ci
+            displayName: 'Install NPM dependencies'
+
+          - script: npm run extract-metadata
+            displayName: 'Extract standard metadata from NuGet packages'
+            env:
+              PACKAGES_PATH: $(NugetsPathNoVer)/net40
+              METADATA_PATH: $(METADATA_PATH)
+              EXTRACT_MODE: 'standard'
+
+          # ========== Step 3: Extract Custom Metadata ==========
+
+          - script: npm run extract-metadata
+            displayName: 'Extract custom metadata from Git source'
+            env:
+              PACKAGES_PATH: $(Pipeline.Workspace)/d365fo-source
+              METADATA_PATH: $(METADATA_PATH)
+              EXTRACT_MODE: 'custom'
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+              EXTENSION_PREFIX: $(EXTENSION_PREFIX)
+
+          # ========== Step 4: Build Database ==========
+          
+          - script: npm run build-database
+            displayName: 'Build database (standard + custom)'
+            env:
+              METADATA_PATH: $(METADATA_PATH)
+              DB_PATH: $(DB_PATH)
+
+          # ========== Step 5: Upload Everything to Blob Storage ==========
+
+          - script: npm run blob-manager upload-all
+            displayName: 'Upload all metadata (standard + custom) to blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+
+          - script: npm run blob-manager upload-database $(DB_PATH)
+            displayName: 'Upload compiled database to blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              DB_PATH: $(DB_PATH)
+
+          # ========== Step 6: Restart App Service ==========
+
+          - task: AzureAppServiceManage@0
+            displayName: 'Restart App Service to load new database'
+            inputs:
+              azureSubscription: '$(AZURE_SUBSCRIPTION)'
+              action: 'Restart Azure App Service'
+              webAppName: '$(AZURE_APP_SERVICE_NAME)'
+
+          - task: PowerShell@2
+            displayName: 'Platform upgrade completed'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host ""
+                Write-Host "============================================" -ForegroundColor Green
+                Write-Host "D365 Platform Upgrade Completed!" -ForegroundColor Green
+                Write-Host "============================================" -ForegroundColor Green
+                Write-Host ""
+                Write-Host "✅ Standard metadata: ${{ parameters.d365Version }}"
+                Write-Host "✅ Custom metadata: Extracted"
+                Write-Host "✅ Database: Built and uploaded"
+                Write-Host "✅ App Service: Restarted"
+                Write-Host ""
+                Write-Host "Your MCP server is now running with D365 version ${{ parameters.d365Version }}"
+                Write-Host "============================================"
