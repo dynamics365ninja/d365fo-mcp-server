@@ -222,8 +222,8 @@ Three pipelines are available in `.azure-pipelines/`:
 - Builds database and uploads to blob
 - Restarts App Service
 
-#### **azure-pipelines-quick.yml** - Daily Updates
-- Scheduled daily at 2 AM UTC
+#### **azure-pipelines-quick.yml** - Updates on Changes
+- Triggered on changes to src/** or pipeline file in main branch
 - Quick custom metadata updates (~5-15 min)
 - Parameters for custom execution
 
@@ -232,6 +232,14 @@ Three pipelines are available in `.azure-pipelines/`:
 - Downloads standard packages from NuGet
 - Extracts and uploads to blob
 - Requires Windows agent
+
+#### **azure-pipelines-platform-upgrade.yml** - Complete Platform Upgrade
+- Manual execution only
+- Single unified stage on Windows
+- Downloads NuGet → Extracts standard → Extracts custom → Builds database → Uploads all
+- No intermediate blob operations (faster)
+- Execution time: ~1.5-2 hours
+- Use after D365 version updates
 
 ### 4. NuGet Configuration (for Standard Extraction)
 
