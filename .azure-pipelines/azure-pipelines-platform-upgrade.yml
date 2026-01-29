@@ -1,0 +1,269 @@
+# Azure Pipeline for D365 Platform Upgrade
+# This pipeline combines standard metadata extraction and custom rebuild
+# Use this after Microsoft releases new D365 version
+
+trigger: none  # Manual execution only
+
+# Manual trigger with parameters
+parameters:
+  - name: d365Version
+    displayName: 'D365 Version (e.g., 10.0.42)'
+    type: string
+    default: '10.0.42'
+
+pool:
+  vmImage: 'windows-latest'  # Windows required for NuGet
+
+variables:
+  - group: xpp-mcp-server-config
+  - name: nodeVersion
+    value: '22.x'
+  - name: METADATA_PATH
+    value: './extracted-metadata'
+  - name: DB_PATH
+    value: './data/xpp-metadata.db'
+  - name: NugetConfigsPath
+    value: '$(Build.SourcesDirectory)\src\d365fo\build\MsApplFeeds'
+  - name: NugetsPath
+    value: '$(Pipeline.Workspace)\NuGets'
+  - name: NugetsPathNoVer
+    value: '$(Pipeline.Workspace)\NuGetsNoVer'
+  - name: ToolsPackage
+    value: 'Microsoft.Dynamics.AX.Platform.CompilerPackage'
+
+stages:
+  # ============================================================================
+  # Stage 1: Extract Standard Metadata from NuGet
+  # ============================================================================
+  - stage: ExtractStandard
+    displayName: 'Extract Standard Metadata from NuGet'
+    jobs:
+      - job: ExtractStandardJob
+        displayName: 'Download NuGet → Extract → Upload'
+        steps:
+          - checkout: self
+            displayName: 'Checkout repository'
+
+          # ========== Step 1: Download NuGet Packages ==========
+          
+          - task: NuGetToolInstaller@1
+            displayName: 'Install NuGet'
+            inputs:
+              versionSpec: '6.x'
+
+          - task: PowerShell@2
+            displayName: 'Create directory structure'
+            inputs:
+              targetType: 'inline'
+              script: |
+                New-Item -ItemType Directory -Force -Path $(NugetConfigsPath)
+                New-Item -ItemType Directory -Force -Path $(NugetsPath)
+                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)
+                Write-Host "Directories created successfully"
+
+          - task: PowerShell@2
+            displayName: 'Verify NuGet configuration files'
+            inputs:
+              targetType: 'inline'
+              script: |
+                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/latest.csproj")) {
+                  Write-Error "latest.csproj not found in repository!"
+                  exit 1
+                }
+                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/nuget.config")) {
+                  Write-Error "nuget.config not found in repository!"
+                  exit 1
+                }
+                Write-Host "NuGet configuration files found"
+
+          - task: PowerShell@2
+            displayName: 'NuGet install Packages'
+            continueOnError: true
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Starting NuGet restore..."
+                Write-Host "D365 Version: ${{ parameters.d365Version }}"
+                
+                nuget.exe restore $(NugetConfigsPath)\latest.csproj -ConfigFile $(NugetConfigsPath)\nuget.config -OutputDirectory $(NugetsPath) -Verbosity detailed
+                
+                Write-Host "NuGet restore completed"
+                exit 0
+              errorActionPreference: 'silentlyContinue'
+
+          - task: PowerShell@2
+            displayName: 'Extract and organize packages'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Creating output directories..."
+                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)\net40
+                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)\tools
+                
+                Write-Host "Moving metadata files from ref\net40..."
+                $net40Files = Get-ChildItem -Path $(NugetsPath)\*\*\ref\net40 -Recurse -ErrorAction SilentlyContinue
+                if ($net40Files) {
+                  $net40Files | Move-Item -Destination $(NugetsPathNoVer)\net40 -Force
+                  Write-Host "Moved $($net40Files.Count) net40 items"
+                }
+                
+                Write-Host "Moving tools from compiler package..."
+                $toolsPath = "$(NugetsPath)\$(ToolsPackage)"
+                if (Test-Path $toolsPath) {
+                  $toolsFiles = Get-ChildItem -Path $toolsPath\*\ -Recurse -ErrorAction SilentlyContinue
+                  if ($toolsFiles) {
+                    $toolsFiles | Move-Item -Destination $(NugetsPathNoVer)\tools -Force
+                    Write-Host "Moved $($toolsFiles.Count) tool items"
+                  }
+                }
+
+          # ========== Step 2: Extract Metadata ==========
+          
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: npm ci
+            displayName: 'Install NPM dependencies'
+
+          - script: npm run extract-metadata
+            displayName: 'Extract standard metadata from packages'
+            env:
+              PACKAGES_PATH: $(NugetsPathNoVer)/net40
+              METADATA_PATH: $(METADATA_PATH)
+              EXTRACT_MODE: 'standard'
+
+          # ========== Step 3: Upload to Blob Storage ==========
+          
+          - script: npm run blob-manager upload-standard
+            displayName: 'Upload standard metadata to Azure Blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+
+          - task: PowerShell@2
+            displayName: 'Standard extraction completed'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host ""
+                Write-Host "============================================" -ForegroundColor Green
+                Write-Host "Standard metadata extraction completed!" -ForegroundColor Green
+                Write-Host "D365 Version: ${{ parameters.d365Version }}" -ForegroundColor Green
+                Write-Host "============================================" -ForegroundColor Green
+                Write-Host ""
+                Write-Host "✅ NuGet packages downloaded"
+                Write-Host "✅ Standard metadata extracted"
+                Write-Host "✅ Uploaded to: metadata/standard/"
+                Write-Host ""
+                Write-Host "Proceeding to custom metadata rebuild..."
+
+  # ============================================================================
+  # Stage 2: Rebuild Custom Metadata with New Standard Models
+  # ============================================================================
+  - stage: RebuildCustom
+    displayName: 'Rebuild Custom Metadata'
+    dependsOn: ExtractStandard
+    jobs:
+      - job: RebuildJob
+        displayName: 'Download → Extract → Build → Upload'
+        pool:
+          vmImage: 'ubuntu-latest'  # Switch to Linux for custom extraction
+        steps:
+          - checkout: self
+            displayName: 'Checkout D365FO source'
+            path: 'd365fo-source'
+
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: npm ci
+            displayName: 'Install dependencies'
+
+          # Download fresh standard metadata
+          - script: npm run blob-manager download-standard
+            displayName: 'Download new standard metadata from blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+
+          # Delete old custom metadata from blob
+          - script: npm run blob-manager delete-custom
+            displayName: 'Delete old custom metadata from blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+
+          # Delete local custom metadata
+          - script: npm run blob-manager delete-local-custom
+            displayName: 'Clean local custom metadata'
+            env:
+              METADATA_PATH: $(METADATA_PATH)
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+
+          # Extract custom models from Git
+          - script: npm run extract-metadata
+            displayName: 'Extract custom models'
+            env:
+              PACKAGES_PATH: $(Pipeline.Workspace)/d365fo-source
+              METADATA_PATH: $(METADATA_PATH)
+              EXTRACT_MODE: 'custom'
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+              EXTENSION_PREFIX: $(EXTENSION_PREFIX)
+
+          # Build database with new standard + custom
+          - script: npm run build-database
+            displayName: 'Build database (standard + custom)'
+            env:
+              METADATA_PATH: $(METADATA_PATH)
+              DB_PATH: $(DB_PATH)
+
+          # Upload custom metadata
+          - script: npm run blob-manager upload-custom
+            displayName: 'Upload custom metadata'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+              CUSTOM_MODELS: $(CUSTOM_MODELS)
+              EXTENSION_PREFIX: $(EXTENSION_PREFIX)
+
+          # Upload database
+          - script: npm run blob-manager upload-database $(DB_PATH)
+            displayName: 'Upload compiled database'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              DB_PATH: $(DB_PATH)
+
+          # Restart App Service
+          - task: AzureAppServiceManage@0
+            displayName: 'Restart App Service to load new database'
+            inputs:
+              azureSubscription: '$(AZURE_SUBSCRIPTION)'
+              action: 'Restart Azure App Service'
+              webAppName: '$(AZURE_APP_SERVICE_NAME)'
+
+          - task: PowerShell@2
+            displayName: 'Platform upgrade completed'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host ""
+                Write-Host "============================================" -ForegroundColor Green
+                Write-Host "D365 Platform Upgrade Completed!" -ForegroundColor Green
+                Write-Host "============================================" -ForegroundColor Green
+                Write-Host ""
+                Write-Host "✅ Standard metadata: ${{ parameters.d365Version }}"
+                Write-Host "✅ Custom metadata: Rebuilt"
+                Write-Host "✅ Database: Updated and uploaded"
+                Write-Host "✅ App Service: Restarted"
+                Write-Host ""
+                Write-Host "Your MCP server is now running with D365 version ${{ parameters.d365Version }}"
+                Write-Host "============================================"

@@ -188,6 +188,38 @@ xpp-metadata/
 - Microsoft.Dynamics.AX.Platform.DevALM.BuildXpp (7.0.*)
 - Microsoft.Dynamics.AX.Platform.CompilerPackage (7.0.*)
 
+### 4. azure-pipelines-platform-upgrade.yml - Complete Platform Upgrade
+
+**Purpose:** Complete D365 platform upgrade in single pipeline run
+
+**Trigger:**
+- Manual execution only
+
+**Parameters:**
+- `d365Version`: D365 version number (e.g., 10.0.42)
+
+**Process:**
+1. **Stage 1 - Extract Standard:**
+   - Download NuGet packages (Application, Platform, Compiler)
+   - Extract standard metadata from packages
+   - Upload to blob storage under `/metadata/standard/`
+2. **Stage 2 - Rebuild Custom:**
+   - Download fresh standard metadata from blob
+   - Delete old custom metadata
+   - Extract custom models from Git
+   - Build database (new standard + custom)
+   - Upload custom metadata and database
+   - Restart App Service
+
+**When to Use:**
+- After D365 platform/application updates
+- New version release
+- Complete upgrade in single run
+
+**Execution Time:** ~2-3 hours (both stages combined)
+
+**Agent:** windows-latest (Stage 1), ubuntu-latest (Stage 2)
+
 ---
 
 ## Workflow Scenarios
@@ -226,13 +258,23 @@ xpp-metadata/
 
 **Situation:** Microsoft released new D365 version (e.g., 10.0.42)
 
-**Recommended Approach:**
+**Recommended Approach (Option 1 - Single Pipeline):**
+1. Navigate to Pipelines → azure-pipelines-platform-upgrade.yml
+2. Click "Run pipeline"
+3. Enter D365 version number (e.g., "10.0.42")
+4. Wait for completion (~2-3 hours)
+
+**Pipeline:** `azure-pipelines-platform-upgrade.yml` (single run)
+
+**Result:** Complete upgrade - standard metadata updated + custom rebuilt + database deployed
+
+**Alternative Approach (Option 2 - Separate Pipelines):**
 1. Update NuGet package versions in `nuget-config/latest.csproj`
 2. Run `azure-pipelines-standard-extract.yml` manually
 3. Wait for completion (~2-3 hours)
-4. Run quick pipeline to rebuild database with new standard models
+4. Run `azure-pipelines-quick.yml` to rebuild database
 
-**Pipeline:** 
+**Pipelines:** 
 1. `azure-pipelines-standard-extract.yml` (manual)
 2. `azure-pipelines-quick.yml` (manual)
 
