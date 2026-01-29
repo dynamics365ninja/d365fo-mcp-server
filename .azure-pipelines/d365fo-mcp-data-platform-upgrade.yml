@@ -83,36 +83,142 @@ stages:
               warningPreference: 'silentlyContinue'
               
 
-          # Exclude version from NuGet packages and put all metadata foldes together
+          # Debug: Inspect NuGet packages structure
+          - task: PowerShell@2
+            displayName: 'Debug - Inspect NuGet packages structure'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host ""
+                Write-Host "============================================" -ForegroundColor Cyan
+                Write-Host "DEBUG: NuGet Packages Structure" -ForegroundColor Cyan
+                Write-Host "============================================" -ForegroundColor Cyan
+                Write-Host "NugetsPath: $(NugetsPath)" -ForegroundColor Yellow
+                
+                if (Test-Path "$(NugetsPath)") {
+                  $packages = Get-ChildItem -Path "$(NugetsPath)" -Directory
+                  Write-Host "Found $($packages.Count) packages:" -ForegroundColor Yellow
+                  foreach ($pkg in $packages) {
+                    Write-Host ""
+                    Write-Host "📦 Package: $($pkg.Name)" -ForegroundColor Green
+                    
+                    # Check version folders
+                    $versionDirs = Get-ChildItem -Path $pkg.FullName -Directory
+                    Write-Host "   Version folders: $($versionDirs.Count)" -ForegroundColor White
+                    foreach ($ver in $versionDirs) {
+                      Write-Host "   └── $($ver.Name)" -ForegroundColor Gray
+                      
+                      # Check for ref folder
+                      $refPath = Join-Path $ver.FullName "ref"
+                      if (Test-Path $refPath) {
+                        Write-Host "       ✅ ref folder exists" -ForegroundColor Green
+                        
+                        # Check for net40 folder
+                        $net40Path = Join-Path $refPath "net40"
+                        if (Test-Path $net40Path) {
+                          Write-Host "          ✅ net40 folder exists" -ForegroundColor Green
+                          
+                          # List contents
+                          $contents = Get-ChildItem -Path $net40Path -Directory
+                          Write-Host "          Contains $($contents.Count) folders:" -ForegroundColor White
+                          foreach ($item in $contents) {
+                            Write-Host "             - $($item.Name)" -ForegroundColor Cyan
+                          }
+                        } else {
+                          Write-Host "          ❌ net40 folder NOT found" -ForegroundColor Red
+                        }
+                      } else {
+                        Write-Host "       ❌ ref folder NOT found" -ForegroundColor Red
+                        Write-Host "       Contents of $($ver.Name):" -ForegroundColor Yellow
+                        Get-ChildItem -Path $ver.FullName | ForEach-Object {
+                          Write-Host "         - $($_.Name)" -ForegroundColor Gray
+                        }
+                      }
+                    }
+                  }
+                } else {
+                  Write-Host "❌ NugetsPath does not exist!" -ForegroundColor Red
+                }
+                Write-Host ""
+                Write-Host "============================================" -ForegroundColor Cyan
+
+          # Exclude version from NuGet packages and put all metadata folders together
           - task: PowerShell@2
             displayName: 'Exclude version from MS NuGet Packages'
             inputs:
               targetType: 'inline'
               script: |
-                New-Item -ItemType Directory $(NugetsPathNoVer)\net40
-                New-Item -ItemType Directory $(NugetsPathNoVer)\tools
-                Get-ChildItem -Path $(NugetsPath)\*\*\ref\net40 -Recurse | Move-Item -Destination $(NugetsPathNoVer)\net40
-                Get-ChildItem -Path $(NugetsPath)\$(ToolsPackage)\*\ -Recurse | Move-Item -Destination $(NugetsPathNoVer)\tools
+                New-Item -ItemType Directory $(NugetsPathNoVer)\net40 -Force
+                New-Item -ItemType Directory $(NugetsPathNoVer)\tools -Force
+                
+                Write-Host "Extracting metadata from NuGet packages..." -ForegroundColor Cyan
+                
+                # Get all packages (case-insensitive)
+                $allPackages = Get-ChildItem -Path "$(NugetsPath)" -Directory
+                
+                foreach ($pkg in $allPackages) {
+                  Write-Host "Processing package: $($pkg.Name)" -ForegroundColor Yellow
+                  
+                  # Get version folders
+                  $versionDirs = Get-ChildItem -Path $pkg.FullName -Directory
+                  
+                  foreach ($ver in $versionDirs) {
+                    # Check for ref\net40 folder
+                    $refNet40Path = Join-Path $ver.FullName "ref\net40"
+                    
+                    if (Test-Path $refNet40Path) {
+                      Write-Host "  Found ref\net40 in $($ver.Name)" -ForegroundColor Green
+                      
+                      # Copy all model folders from ref\net40 to net40
+                      $models = Get-ChildItem -Path $refNet40Path -Directory
+                      foreach ($model in $models) {
+                        $destPath = Join-Path "$(NugetsPathNoVer)\net40" $model.Name
+                        Write-Host "    Copying model: $($model.Name)" -ForegroundColor White
+                        Copy-Item -Path $model.FullName -Destination $destPath -Recurse -Force
+                      }
+                    }
+                  }
+                }
+                
+                # Extract compiler tools
+                Write-Host "Extracting compiler tools..." -ForegroundColor Cyan
+                $compilerPkgs = Get-ChildItem -Path "$(NugetsPath)" -Directory | Where-Object { $_.Name -match "CompilerPackage" }
+                foreach ($pkg in $compilerPkgs) {
+                  $versionDirs = Get-ChildItem -Path $pkg.FullName -Directory
+                  foreach ($ver in $versionDirs) {
+                    Get-ChildItem -Path $ver.FullName -Recurse | Copy-Item -Destination "$(NugetsPathNoVer)\tools" -Recurse -Force -ErrorAction SilentlyContinue
+                  }
+                }
+                
+                Write-Host "Extraction completed!" -ForegroundColor Green
 
           - task: PowerShell@2
             displayName: 'Verify extracted NuGet packages structure'
             inputs:
               targetType: 'inline'
               script: |
+                # Verify metadata structure (check if AxClass folders exist)
                 Write-Host ""
                 Write-Host "============================================" -ForegroundColor Cyan
-                Write-Host "NuGet Packages Directory Structure" -ForegroundColor Cyan
+                Write-Host "Verifying Metadata Content" -ForegroundColor Cyan
                 Write-Host "============================================" -ForegroundColor Cyan
-                Write-Host ""
-                Write-Host "$(NugetsPathNoVer)" -ForegroundColor Yellow
-                
-                Get-ChildItem -Path $(NugetsPathNoVer) -Recurse -Directory | ForEach-Object {
-                  $relativePath = $_.FullName.Replace("$(NugetsPathNoVer)", "")
-                  $depth = ($relativePath.Split('\') | Where-Object { $_ -ne "" }).Count
-                  $indent = "  " * $depth
-                  Write-Host "$indent📁 $($_.Name)" -ForegroundColor Green
+                $net40Path = "$(NugetsPathNoVer)\net40"
+                if (Test-Path $net40Path) {
+                  $models = Get-ChildItem -Path $net40Path -Directory
+                  Write-Host "Found $($models.Count) models in net40:" -ForegroundColor Yellow
+                  foreach ($model in $models) {
+                    Write-Host "  📦 $($model.Name)" -ForegroundColor Green
+                    $hasAxClass = Test-Path "$($model.FullName)\AxClass"
+                    $hasAxTable = Test-Path "$($model.FullName)\AxTable"
+                    $hasAxEnum = Test-Path "$($model.FullName)\AxEnum"
+                    if ($hasAxClass) { Write-Host "    ✅ AxClass folder found" -ForegroundColor Green }
+                    if ($hasAxTable) { Write-Host "    ✅ AxTable folder found" -ForegroundColor Green }
+                    if ($hasAxEnum) { Write-Host "    ✅ AxEnum folder found" -ForegroundColor Green }
+                    if (-not ($hasAxClass -or $hasAxTable -or $hasAxEnum)) {
+                      Write-Host "    ⚠️  No metadata folders found" -ForegroundColor Yellow
+                    }
+                  }
                 }
-                
                 Write-Host ""
                 Write-Host "============================================" -ForegroundColor Cyan
 
