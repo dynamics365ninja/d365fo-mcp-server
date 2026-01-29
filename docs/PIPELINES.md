@@ -27,13 +27,13 @@ Manual metadata extraction and database builds are time-consuming:
 Three automated pipelines that separate standard (quarterly) and custom (daily) metadata:
 
 1. **Full Pipeline** - Complete custom metadata extraction
-2. **Quick Pipeline** - Daily custom updates (~95% faster)
-3. **Standard Pipeline** - Quarterly standard metadata from NuGet
+2. **Quick Pipeline** - Custom updates on code changes (~95% faster)
+3. **Standard Pipeline** - Standard metadata from NuGet
+4. **Platform Upgrade Pipeline** - Complete D365 version upgrade
 
 ### Benefits
 
-- ⚡ **95% faster updates** - Daily updates in 5-15 minutes
-- 🔄 **Automated scheduling** - No manual intervention
+- ⚡ **95% faster updates** - Updates in 5-15 minutes on code changes
 - 📊 **Separation of concerns** - Standard vs custom metadata
 - 💰 **Cost optimization** - Reduced compute time
 - 🛡️ **Reliable** - Consistent, repeatable process
@@ -164,9 +164,9 @@ xpp-metadata/
 
 **Purpose:** Extract Microsoft standard models from NuGet packages
 
-**Schedule:**
-- Quarterly: Jan 1, Apr 1, Jul 1, Oct 1 at 3:00 AM UTC
-- Manual execution before D365 upgrades
+**Trigger:**
+- Manual execution only
+- Use before D365 platform upgrades
 
 **Process:**
 1. Download NuGet packages (Application, Platform, Compiler)
@@ -176,7 +176,6 @@ xpp-metadata/
 **When to Use:**
 - After D365 platform/application updates
 - New version release
-- Quarterly scheduled runs
 
 **Execution Time:** ~2-3 hours (runs rarely)
 
@@ -291,14 +290,13 @@ xpp-metadata/
 1. Configure all Azure DevOps variables
 2. Run `azure-pipelines-standard-extract.yml` for standard models
 3. Run `azure-pipelines.yml` for initial custom extraction
-4. Enable scheduled quick pipeline
 
 **Pipelines:**
-1. `azure-pipelines-standard-extract.yml`
-2. `azure-pipelines.yml`
-3. Enable schedule on `azure-pipelines-quick.yml`
+1. `azure-pipelines-standard-extract.yml` (manual)
+2. `azure-pipelines.yml` (manual first run)
+3. `azure-pipelines-quick.yml` (auto on code changes)
 
-**Result:** Complete setup with automated daily updates
+**Result:** Complete setup with automated updates on code changes
 
 ---
 
@@ -441,9 +439,9 @@ Pipeline Logs:
 
 ### 1. Use Appropriate Pipeline
 
-- **Daily development** → Quick pipeline (scheduled)
+- **Code changes** → Quick pipeline (auto trigger)
 - **Major changes** → Full pipeline (manual)
-- **D365 upgrades** → Standard pipeline (manual)
+- **D365 upgrades** → Platform upgrade pipeline (manual)
 
 ### 2. Parameterize When Possible
 
@@ -455,7 +453,7 @@ Pipeline Logs:
 
 - Review Azure DevOps parallel jobs usage
 - Check blob storage costs monthly
-- Optimize pipeline schedules
+- Monitor pipeline execution frequency
 
 ### 4. Version Control
 

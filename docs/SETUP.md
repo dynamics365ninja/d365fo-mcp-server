@@ -227,8 +227,8 @@ Four pipelines are available in `.azure-pipelines/`:
 - Quick custom metadata updates (~5-15 min)
 - Parameters for custom execution
 
-#### **azure-pipelines-standard-extract.yml** - Quarterly Standard Extraction
-- Scheduled quarterly (Jan, Apr, Jul, Oct)
+#### **azure-pipelines-standard-extract.yml** - Standard Metadata Extraction
+- Manual execution only
 - Downloads standard packages from NuGet
 - Extracts and uploads to blob
 - Requires Windows agent
@@ -329,11 +329,11 @@ Create `.mcp.json` file in your D365FO solution root directory:
 After configuration, you can use natural language prompts in Copilot Chat:
 
 ```
-@workspace Find all classes that extend SalesFormLetter
-@workspace Show me table structure for CustTable
-@workspace Generate X++ code for creating a sales order
-@workspace Review this X++ method for best practices
-@workspace Search for custom extensions with prefix ISV_
+Find all classes that extend SalesFormLetter
+Show me table structure for CustTable
+Generate X++ code for creating a sales order
+Review this X++ method for best practices
+Search for custom extensions with prefix ISV_
 ```
 
 See [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) for more examples.
