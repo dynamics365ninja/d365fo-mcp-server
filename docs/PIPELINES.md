@@ -128,12 +128,12 @@ xpp-metadata/
 
 **Agent:** ubuntu-latest
 
-### 2. azure-pipelines-quick.yml - Daily Updates
+### 2. azure-pipelines-quick.yml - Updates on Changes
 
-**Purpose:** Fast daily updates of custom models only
+**Purpose:** Fast updates of custom models when code changes
 
-**Schedule:**
-- Daily at 2:00 AM UTC (`cron: "0 2 * * *"`)
+**Trigger:**
+- Automatic on changes to `main` branch in `src/**` or pipeline file
 - Manual with parameters
 
 **Parameters:**
@@ -141,14 +141,15 @@ xpp-metadata/
 - `customModels`: Specific models or empty for all
 
 **Process (Custom Mode):**
-1. Download standard metadata (unchanged)
-2. Delete old custom metadata from blob
-3. Clean local custom metadata
-4. Extract only custom models
-5. Build database (fast - standard already indexed)
-6. Upload new custom metadata
-7. Upload database
-8. Restart App Service
+1. Checkout D365FO source code from Git repository
+2. Download standard metadata from blob (cached, unchanged)
+3. Delete old custom metadata from blob
+4. Clean local custom metadata
+5. Extract custom models from Git source
+6. Build database (fast - standard already indexed)
+7. Upload new custom metadata
+8. Upload database
+9. Restart App Service
 
 **When to Use:**
 - Daily automated sync
@@ -193,15 +194,15 @@ xpp-metadata/
 
 ### Scenario 1: Daily Development
 
-**Situation:** Normal development, daily code commits
+**Situation:** Normal development, code commits to main branch
 
 **Recommended Approach:**
-- Let scheduled quick pipeline run daily at 2 AM
+- Pipeline runs automatically when you push changes to `main`
 - No manual intervention needed
 
-**Pipeline:** `azure-pipelines-quick.yml` (auto)
+**Pipeline:** `azure-pipelines-quick.yml` (auto on push)
 
-**Result:** Updated metadata and database every morning
+**Result:** Updated metadata and database after each commit
 
 ---
 
