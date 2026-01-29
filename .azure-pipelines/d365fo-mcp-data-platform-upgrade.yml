@@ -17,7 +17,7 @@ variables:
   - name: DB_PATH
     value: './data/xpp-metadata.db'
   - name: NugetConfigsPath
-    value: '$(Build.SourcesDirectory)\src\d365fo\build\MsApplFeeds'
+    value: '$(Build.SourcesDirectory)\nuget-config'
   - name: NugetsPath
     value: '$(Pipeline.Workspace)\NuGets'
   - name: NugetsPathNoVer
@@ -51,29 +51,24 @@ stages:
             inputs:
               targetType: 'inline'
               script: |
-                New-Item -ItemType Directory -Force -Path $(NugetConfigsPath)
                 New-Item -ItemType Directory -Force -Path $(NugetsPath)
                 New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)
                 Write-Host "Directories created successfully"
 
           - task: PowerShell@2
-            displayName: 'Copy NuGet configuration files'
+            displayName: 'Verify NuGet configuration files'
             inputs:
               targetType: 'inline'
               script: |
-                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/latest.csproj")) {
-                  Write-Error "latest.csproj not found in repository!"
+                if (-not (Test-Path "$(NugetConfigsPath)\latest.csproj")) {
+                  Write-Error "latest.csproj not found in $(NugetConfigsPath)!"
                   exit 1
                 }
-                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/nuget.config")) {
-                  Write-Error "nuget.config not found in repository!"
+                if (-not (Test-Path "$(NugetConfigsPath)\nuget.config")) {
+                  Write-Error "nuget.config not found in $(NugetConfigsPath)!"
                   exit 1
                 }
-                
-                Write-Host "Copying NuGet configuration files to $(NugetConfigsPath)"
-                Copy-Item "$(Build.SourcesDirectory)/nuget-config/latest.csproj" "$(NugetConfigsPath)\latest.csproj" -Force
-                Copy-Item "$(Build.SourcesDirectory)/nuget-config/nuget.config" "$(NugetConfigsPath)\nuget.config" -Force
-                Write-Host "NuGet configuration files copied successfully"
+                Write-Host "NuGet configuration files found in $(NugetConfigsPath)"
 
           - task: PowerShell@2
             displayName: 'Download NuGet packages'
