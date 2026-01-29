@@ -213,7 +213,7 @@ In Azure DevOps, create variable group `xpp-mcp-server-config`:
 
 ### 3. Configure Pipelines
 
-Three pipelines are available in `.azure-pipelines/`:
+Four pipelines are available in `.azure-pipelines/`:
 
 #### **azure-pipelines.yml** - Full Custom Metadata Extraction
 - Triggered on changes to source code
@@ -272,42 +272,68 @@ Create files in `nuget-config/` folder:
 
 ---
 
-## Visual Studio Setup
+## Visual Studio 2022 Setup
 
-### 1. Install MCP Extension
+### 1. Prerequisites
 
-Install the official Model Context Protocol extension from VS Code marketplace.
+- **Visual Studio 2022** version 17.14 or later
+- **GitHub Copilot** extension installed
+- GitHub account with Copilot subscription
+- **Enable Editor preview features** at https://github.com/settings/copilot/features
 
-### 2. Configure MCP Settings
+### 2. Enable MCP Integration
 
-Add to your VS Code `settings.json`:
+1. Open Visual Studio 2022
+2. Go to **Tools** → **Options**
+3. Navigate to **GitHub** → **Copilot**
+4. Enable **"Enable MCP server integration in agent mode"**
+5. Click **OK** to save
+
+### 3. Configure MCP Server
+
+Create `.mcp.json` file in your D365FO solution root directory:
 
 ```json
 {
-  "mcp.servers": {
-    "d365fo-xpp": {
-      "command": "node",
-      "args": ["C:/path/to/d365fo-mcp-server/dist/index.js"],
-      "env": {
-        "PACKAGES_PATH": "C:/AOSService/PackagesLocalDirectory",
-        "METADATA_PATH": "./extracted-metadata",
-        "DB_PATH": "./data/xpp-metadata.db",
-        "CUSTOM_MODELS": "YourCustomModel1,YourCustomModel2"
-      }
+  "servers": {
+    "xpp-completion": {
+      "url": "https://your-app-name.azurewebsites.net/mcp/",
+      "description": "X++ Code Completion Server for D365 F&O"
     }
   }
 }
 ```
 
-### 3. Using MCP in Copilot
+**For local development:**
+```json
+{
+  "servers": {
+    "xpp-completion": {
+      "url": "http://localhost:3000/mcp/",
+      "description": "X++ Code Completion Server (Local)"
+    }
+  }
+}
+```
 
-After configuration, you can use natural language prompts:
+### 4. Using MCP in GitHub Copilot
+
+1. Restart Visual Studio 2022 to apply changes
+2. Open your D365FO solution
+3. Open **Copilot Chat** window (View → GitHub Copilot Chat)
+4. Switch to **Agent Mode** in Copilot Chat
+5. Verify X++ MCP tools are loaded (you should see xpp_search, xpp_get_class, etc.)
+
+### 5. Example Prompts
+
+After configuration, you can use natural language prompts in Copilot Chat:
 
 ```
-Find all classes that extend SalesFormLetter
-Show me table structure for CustTable
-Generate X++ code for creating a sales order
-Review this X++ method for best practices
+@workspace Find all classes that extend SalesFormLetter
+@workspace Show me table structure for CustTable
+@workspace Generate X++ code for creating a sales order
+@workspace Review this X++ method for best practices
+@workspace Search for custom extensions with prefix ISV_
 ```
 
 See [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) for more examples.
