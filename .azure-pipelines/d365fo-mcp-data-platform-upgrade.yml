@@ -57,7 +57,7 @@ stages:
                 Write-Host "Directories created successfully"
 
           - task: PowerShell@2
-            displayName: 'Verify NuGet configuration files'
+            displayName: 'Copy NuGet configuration files'
             inputs:
               targetType: 'inline'
               script: |
@@ -69,7 +69,11 @@ stages:
                   Write-Error "nuget.config not found in repository!"
                   exit 1
                 }
-                Write-Host "NuGet configuration files found"
+                
+                Write-Host "Copying NuGet configuration files to $(NugetConfigsPath)"
+                Copy-Item "$(Build.SourcesDirectory)/nuget-config/latest.csproj" "$(NugetConfigsPath)\latest.csproj" -Force
+                Copy-Item "$(Build.SourcesDirectory)/nuget-config/nuget.config" "$(NugetConfigsPath)\nuget.config" -Force
+                Write-Host "NuGet configuration files copied successfully"
 
           - task: PowerShell@2
             displayName: 'Download NuGet packages'
