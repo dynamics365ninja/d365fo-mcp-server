@@ -190,7 +190,7 @@ xpp-metadata/
 
 ### 4. azure-pipelines-platform-upgrade.yml - Complete Platform Upgrade
 
-**Purpose:** Complete D365 platform upgrade in single pipeline run
+**Purpose:** Complete D365 platform upgrade in single pipeline run - no intermediate uploads/downloads
 
 **Trigger:**
 - Manual execution only
@@ -199,26 +199,27 @@ xpp-metadata/
 - `d365Version`: D365 version number (e.g., 10.0.42)
 
 **Process:**
-1. **Stage 1 - Extract Standard:**
-   - Download NuGet packages (Application, Platform, Compiler)
-   - Extract standard metadata from packages
-   - Upload to blob storage under `/metadata/standard/`
-2. **Stage 2 - Rebuild Custom:**
-   - Download fresh standard metadata from blob
-   - Delete old custom metadata
-   - Extract custom models from Git
-   - Build database (new standard + custom)
-   - Upload custom metadata and database
-   - Restart App Service
+1. Download NuGet packages (Application, Platform, Compiler)
+2. Extract standard metadata from packages (local)
+3. Extract custom metadata from Git source (local)
+4. Build database (standard + custom, local)
+5. Upload everything to blob storage (standard + custom + database)
+6. Restart App Service
+
+**Key Benefits:**
+- **Single stage** - no intermediate blob operations
+- **Faster** - eliminates upload/download between extraction steps
+- **Simpler** - unified process on one agent
+- **More efficient** - all metadata stays local until final upload
 
 **When to Use:**
 - After D365 platform/application updates
 - New version release
 - Complete upgrade in single run
 
-**Execution Time:** ~2-3 hours (both stages combined)
+**Execution Time:** ~1.5-2 hours (optimized, single stage)
 
-**Agent:** windows-latest (Stage 1), ubuntu-latest (Stage 2)
+**Agent:** windows-latest (required for NuGet.exe)
 
 ---
 

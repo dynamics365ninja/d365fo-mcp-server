@@ -1,5 +1,5 @@
 # Azure Pipeline for D365 Platform Upgrade
-# This pipeline combines standard metadata extraction and custom rebuild
+# This pipeline combines standard and custom metadata extraction in single stage
 # Use this after Microsoft releases new D365 version
 
 trigger: none  # Manual execution only
@@ -33,18 +33,19 @@ variables:
 
 stages:
   # ============================================================================
-  # Stage 1: Extract Standard Metadata from NuGet
+  # Single Stage: Complete Platform Upgrade
   # ============================================================================
-  - stage: ExtractStandard
-    displayName: 'Extract Standard Metadata from NuGet'
+  - stage: PlatformUpgrade
+    displayName: 'Complete Platform Upgrade'
     jobs:
-      - job: ExtractStandardJob
-        displayName: 'Download NuGet → Extract → Upload'
+      - job: UpgradeJob
+        displayName: 'Extract Standard → Extract Custom → Build → Upload'
         steps:
           - checkout: self
-            displayName: 'Checkout repository'
+            displayName: 'Checkout D365FO source'
+            path: 'd365fo-source'
 
-          # ========== Step 1: Download NuGet Packages ==========
+          # ========== Step 1: Download and Extract NuGet Packages ==========
           
           - task: NuGetToolInstaller@1
             displayName: 'Install NuGet'
@@ -77,7 +78,7 @@ stages:
                 Write-Host "NuGet configuration files found"
 
           - task: PowerShell@2
-            displayName: 'NuGet install Packages'
+            displayName: 'Download NuGet packages'
             continueOnError: true
             inputs:
               targetType: 'inline'
@@ -92,7 +93,7 @@ stages:
               errorActionPreference: 'silentlyContinue'
 
           - task: PowerShell@2
-            displayName: 'Extract and organize packages'
+            displayName: 'Extract and organize NuGet packages'
             inputs:
               targetType: 'inline'
               script: |
@@ -117,7 +118,7 @@ stages:
                   }
                 }
 
-          # ========== Step 2: Extract Metadata ==========
+          # ========== Step 2: Extract Standard Metadata ==========
           
           - task: NodeTool@0
             displayName: 'Install Node.js'
@@ -128,88 +129,16 @@ stages:
             displayName: 'Install NPM dependencies'
 
           - script: npm run extract-metadata
-            displayName: 'Extract standard metadata from packages'
+            displayName: 'Extract standard metadata from NuGet packages'
             env:
               PACKAGES_PATH: $(NugetsPathNoVer)/net40
               METADATA_PATH: $(METADATA_PATH)
               EXTRACT_MODE: 'standard'
 
-          # ========== Step 3: Upload to Blob Storage ==========
-          
-          - script: npm run blob-manager upload-standard
-            displayName: 'Upload standard metadata to Azure Blob'
-            env:
-              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
-              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
-              METADATA_PATH: $(METADATA_PATH)
+          # ========== Step 3: Extract Custom Metadata ==========
 
-          - task: PowerShell@2
-            displayName: 'Standard extraction completed'
-            inputs:
-              targetType: 'inline'
-              script: |
-                Write-Host ""
-                Write-Host "============================================" -ForegroundColor Green
-                Write-Host "Standard metadata extraction completed!" -ForegroundColor Green
-                Write-Host "D365 Version: ${{ parameters.d365Version }}" -ForegroundColor Green
-                Write-Host "============================================" -ForegroundColor Green
-                Write-Host ""
-                Write-Host "✅ NuGet packages downloaded"
-                Write-Host "✅ Standard metadata extracted"
-                Write-Host "✅ Uploaded to: metadata/standard/"
-                Write-Host ""
-                Write-Host "Proceeding to custom metadata rebuild..."
-
-  # ============================================================================
-  # Stage 2: Rebuild Custom Metadata with New Standard Models
-  # ============================================================================
-  - stage: RebuildCustom
-    displayName: 'Rebuild Custom Metadata'
-    dependsOn: ExtractStandard
-    jobs:
-      - job: RebuildJob
-        displayName: 'Download → Extract → Build → Upload'
-        pool:
-          vmImage: 'ubuntu-latest'  # Switch to Linux for custom extraction
-        steps:
-          - checkout: self
-            displayName: 'Checkout D365FO source'
-            path: 'd365fo-source'
-
-          - task: NodeTool@0
-            displayName: 'Install Node.js'
-            inputs:
-              versionSpec: $(nodeVersion)
-
-          - script: npm ci
-            displayName: 'Install dependencies'
-
-          # Download fresh standard metadata
-          - script: npm run blob-manager download-standard
-            displayName: 'Download new standard metadata from blob'
-            env:
-              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
-              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
-              METADATA_PATH: $(METADATA_PATH)
-
-          # Delete old custom metadata from blob
-          - script: npm run blob-manager delete-custom
-            displayName: 'Delete old custom metadata from blob'
-            env:
-              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
-              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
-              CUSTOM_MODELS: $(CUSTOM_MODELS)
-
-          # Delete local custom metadata
-          - script: npm run blob-manager delete-local-custom
-            displayName: 'Clean local custom metadata'
-            env:
-              METADATA_PATH: $(METADATA_PATH)
-              CUSTOM_MODELS: $(CUSTOM_MODELS)
-
-          # Extract custom models from Git
           - script: npm run extract-metadata
-            displayName: 'Extract custom models'
+            displayName: 'Extract custom metadata from Git source'
             env:
               PACKAGES_PATH: $(Pipeline.Workspace)/d365fo-source
               METADATA_PATH: $(METADATA_PATH)
@@ -217,32 +146,32 @@ stages:
               CUSTOM_MODELS: $(CUSTOM_MODELS)
               EXTENSION_PREFIX: $(EXTENSION_PREFIX)
 
-          # Build database with new standard + custom
+          # ========== Step 4: Build Database ==========
+          
           - script: npm run build-database
             displayName: 'Build database (standard + custom)'
             env:
               METADATA_PATH: $(METADATA_PATH)
               DB_PATH: $(DB_PATH)
 
-          # Upload custom metadata
-          - script: npm run blob-manager upload-custom
-            displayName: 'Upload custom metadata'
+          # ========== Step 5: Upload Everything to Blob Storage ==========
+
+          - script: npm run blob-manager upload-all
+            displayName: 'Upload all metadata (standard + custom) to blob'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               METADATA_PATH: $(METADATA_PATH)
-              CUSTOM_MODELS: $(CUSTOM_MODELS)
-              EXTENSION_PREFIX: $(EXTENSION_PREFIX)
 
-          # Upload database
           - script: npm run blob-manager upload-database $(DB_PATH)
-            displayName: 'Upload compiled database'
+            displayName: 'Upload compiled database to blob'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               DB_PATH: $(DB_PATH)
 
-          # Restart App Service
+          # ========== Step 6: Restart App Service ==========
+
           - task: AzureAppServiceManage@0
             displayName: 'Restart App Service to load new database'
             inputs:
@@ -261,8 +190,8 @@ stages:
                 Write-Host "============================================" -ForegroundColor Green
                 Write-Host ""
                 Write-Host "✅ Standard metadata: ${{ parameters.d365Version }}"
-                Write-Host "✅ Custom metadata: Rebuilt"
-                Write-Host "✅ Database: Updated and uploaded"
+                Write-Host "✅ Custom metadata: Extracted"
+                Write-Host "✅ Database: Built and uploaded"
                 Write-Host "✅ App Service: Restarted"
                 Write-Host ""
                 Write-Host "Your MCP server is now running with D365 version ${{ parameters.d365Version }}"
