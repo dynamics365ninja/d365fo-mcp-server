@@ -337,9 +337,10 @@ For more information about GitHub Copilot policies and feature management, see:
 ```
 d365fo-mcp-server/
 ├── .azure-pipelines/
-│   ├── azure-pipelines.yml                    # Full custom metadata extraction
-│   ├── azure-pipelines-quick.yml              # Daily custom updates (fast)
-│   └── azure-pipelines-standard-extract.yml   # Quarterly standard extraction
+│   ├── azure-pipelines.yml                      # Full custom metadata extraction
+│   ├── azure-pipelines-quick.yml                # Updates on code changes
+│   ├── azure-pipelines-standard-extract.yml     # Quarterly standard extraction
+│   └── azure-pipelines-platform-upgrade.yml     # Complete platform upgrade
 ├── src/
 │   ├── index.ts                 # Main entry point
 │   ├── cache/
@@ -377,6 +378,7 @@ d365fo-mcp-server/
 │   ├── azure-blob-manager.ts    # Azure Blob Storage management
 │   ├── build-database.ts        # Database builder
 │   ├── extract-metadata.ts      # Metadata extraction
+│   ├── test-parse.ts            # Parser testing
 │   ├── test-pipeline.ps1        # Pipeline workflow testing
 │   └── test-mcp.ps1             # PowerShell test script
 ├── config/
@@ -397,10 +399,9 @@ d365fo-mcp-server/
 │   └── main.bicep               # Azure IaC
 ├── package.json
 ├── tsconfig.json
+├── vitest.config.ts
 ├── README.md
 ├── LICENSE
-└── startup.sh
-```
 └── startup.sh
 ```
 
