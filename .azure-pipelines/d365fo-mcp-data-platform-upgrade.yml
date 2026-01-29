@@ -119,8 +119,8 @@ stages:
             displayName: 'Extract standard metadata from NuGet packages'
             workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
             env:
-              PACKAGES_PATH: $(NugetsPathNoVer)/net40
-              METADATA_PATH: $(METADATA_PATH)
+              PACKAGES_PATH: $(NugetsPathNoVer)\net40
+              METADATA_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\extracted-metadata
               EXTRACT_MODE: 'standard'
 
           # ========== Step 3: Extract Custom Metadata ==========
@@ -129,8 +129,8 @@ stages:
             displayName: 'Extract custom metadata from Git source'
             workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
             env:
-              PACKAGES_PATH: $(Pipeline.Workspace)/d365fo-source
-              METADATA_PATH: $(METADATA_PATH)
+              PACKAGES_PATH: $(Pipeline.Workspace)\d365fo-source
+              METADATA_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\extracted-metadata
               EXTRACT_MODE: 'custom'
               CUSTOM_MODELS: $(CUSTOM_MODELS)
               EXTENSION_PREFIX: $(EXTENSION_PREFIX)
@@ -141,8 +141,8 @@ stages:
             displayName: 'Build database (standard + custom)'
             workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
             env:
-              METADATA_PATH: $(METADATA_PATH)
-              DB_PATH: $(DB_PATH)
+              METADATA_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\extracted-metadata
+              DB_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\data\xpp-metadata.db
 
           # ========== Step 5: Upload Everything to Blob Storage ==========
 
@@ -152,15 +152,15 @@ stages:
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
-              METADATA_PATH: $(METADATA_PATH)
+              METADATA_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\extracted-metadata
 
-          - script: npm run blob-manager upload-database $(DB_PATH)
+          - script: npm run blob-manager upload-database $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\data\xpp-metadata.db
             displayName: 'Upload compiled database to blob'
             workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
-              DB_PATH: $(DB_PATH)
+              DB_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\data\xpp-metadata.db
 
           # ========== Step 6: Restart App Service ==========
 
