@@ -101,27 +101,18 @@ stages:
               script: |
                 Write-Host ""
                 Write-Host "============================================" -ForegroundColor Cyan
-                Write-Host "NuGet Packages Structure ($(NugetsPathNoVer))" -ForegroundColor Cyan
+                Write-Host "NuGet Packages Directory Structure" -ForegroundColor Cyan
                 Write-Host "============================================" -ForegroundColor Cyan
                 Write-Host ""
+                Write-Host "$(NugetsPathNoVer)" -ForegroundColor Yellow
                 
-                Write-Host "Directory structure:" -ForegroundColor Yellow
-                Get-ChildItem -Path $(NugetsPathNoVer) -Directory | ForEach-Object {
-                  Write-Host "  📁 $($_.Name)" -ForegroundColor Green
-                  $count = (Get-ChildItem -Path $_.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
-                  Write-Host "     Files: $count" -ForegroundColor Gray
+                Get-ChildItem -Path $(NugetsPathNoVer) -Recurse -Directory | ForEach-Object {
+                  $relativePath = $_.FullName.Replace("$(NugetsPathNoVer)", "")
+                  $depth = ($relativePath.Split('\') | Where-Object { $_ -ne "" }).Count
+                  $indent = "  " * $depth
+                  Write-Host "$indent📁 $($_.Name)" -ForegroundColor Green
                 }
                 
-                Write-Host ""
-                Write-Host "net40 folder content (first 10 items):" -ForegroundColor Yellow
-                Get-ChildItem -Path $(NugetsPathNoVer)\net40 -File -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object {
-                  Write-Host "  📄 $($_.Name)" -ForegroundColor White
-                }
-                
-                Write-Host ""
-                Write-Host "Total files in net40:" -ForegroundColor Yellow
-                $net40Count = (Get-ChildItem -Path $(NugetsPathNoVer)\net40 -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
-                Write-Host "  $net40Count files" -ForegroundColor Green
                 Write-Host ""
                 Write-Host "============================================" -ForegroundColor Cyan
 
