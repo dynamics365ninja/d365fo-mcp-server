@@ -194,11 +194,8 @@ xpp-metadata/
 **Trigger:**
 - Manual execution only
 
-**Parameters:**
-- `d365Version`: D365 version number (e.g., 10.0.42)
-
 **Process:**
-1. Download NuGet packages (Application, Platform, Compiler)
+1. Download latest NuGet packages (Application 10.0.*, Platform 7.0.*, Compiler 7.0.*)
 2. Extract standard metadata from packages (local)
 3. Extract custom metadata from Git source (local)
 4. Build database (standard + custom, local)

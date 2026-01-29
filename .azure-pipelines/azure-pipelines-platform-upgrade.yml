@@ -1,15 +1,9 @@
 # Azure Pipeline for D365 Platform Upgrade
 # This pipeline combines standard and custom metadata extraction in single stage
 # Use this after Microsoft releases new D365 version
+# Pipeline automatically downloads latest version from NuGet (10.0.* and 7.0.*)
 
 trigger: none  # Manual execution only
-
-# Manual trigger with parameters
-parameters:
-  - name: d365Version
-    displayName: 'D365 Version (e.g., 10.0.42)'
-    type: string
-    default: '10.0.42'
 
 pool:
   vmImage: 'windows-latest'  # Windows required for NuGet
@@ -84,7 +78,7 @@ stages:
               targetType: 'inline'
               script: |
                 Write-Host "Starting NuGet restore..."
-                Write-Host "D365 Version: ${{ parameters.d365Version }}"
+                Write-Host "Downloading latest D365 packages (10.0.* and 7.0.*)"
                 
                 nuget.exe restore $(NugetConfigsPath)\latest.csproj -ConfigFile $(NugetConfigsPath)\nuget.config -OutputDirectory $(NugetsPath) -Verbosity detailed
                 
@@ -189,10 +183,10 @@ stages:
                 Write-Host "D365 Platform Upgrade Completed!" -ForegroundColor Green
                 Write-Host "============================================" -ForegroundColor Green
                 Write-Host ""
-                Write-Host "✅ Standard metadata: ${{ parameters.d365Version }}"
+                Write-Host "✅ Standard metadata: Latest version from NuGet (10.0.* and 7.0.*)"
                 Write-Host "✅ Custom metadata: Extracted"
                 Write-Host "✅ Database: Built and uploaded"
                 Write-Host "✅ App Service: Restarted"
                 Write-Host ""
-                Write-Host "Your MCP server is now running with D365 version ${{ parameters.d365Version }}"
+                Write-Host "Your MCP server is now running with the latest D365 version"
                 Write-Host "============================================"
