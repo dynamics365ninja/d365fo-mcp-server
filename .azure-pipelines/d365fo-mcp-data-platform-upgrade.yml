@@ -24,6 +24,8 @@ variables:
     value: '$(Pipeline.Workspace)\NuGetsNoVer'
   - name: ToolsPackage
     value: 'Microsoft.Dynamics.AX.Platform.CompilerPackage'
+  - name: MsAppVersion
+    value: 'latest'
 
 stages:
   # ============================================================================
@@ -35,12 +37,10 @@ stages:
       - job: UpgradeJob
         displayName: 'Extract Standard → Extract Custom → Build → Upload'
         steps:
-          - checkout: self
-            displayName: 'Checkout D365FO source'
-            path: 'd365fo-source'
-
           # ========== Step 1: Download and Extract NuGet Packages ==========
-          
+          - task: NuGetAuthenticate@1
+            displayName: 'NuGet authentication'
+
           - task: NuGetToolInstaller@1
             displayName: 'Install NuGet'
             inputs:
@@ -51,7 +51,6 @@ stages:
             inputs:
               targetType: 'inline'
               script: |
-                New-Item -ItemType Directory -Force -Path $(NugetConfigsPath)
                 New-Item -ItemType Directory -Force -Path $(NugetsPath)
                 New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)
                 Write-Host "Directories created successfully"
@@ -61,57 +60,72 @@ stages:
             inputs:
               targetType: 'inline'
               script: |
-                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/latest.csproj")) {
-                  Write-Error "latest.csproj not found in repository!"
+                if (-not (Test-Path "$(NugetConfigsPath)\$(MsAppVersion).csproj")) {
+                  Write-Error "$(MsAppVersion).csproj not found in $(NugetConfigsPath)!"
                   exit 1
                 }
-                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/nuget.config")) {
-                  Write-Error "nuget.config not found in repository!"
+                if (-not (Test-Path "$(NugetConfigsPath)\nuget.config")) {
+                  Write-Error "nuget.config not found in $(NugetConfigsPath)!"
                   exit 1
                 }
-                Write-Host "NuGet configuration files found"
+                Write-Host "NuGet configuration files found in $(NugetConfigsPath)"
 
+          # MS NugEt packages do not support NuGet restore task, use Powershell
           - task: PowerShell@2
-            displayName: 'Download NuGet packages'
-            continueOnError: true
+            displayName: 'NuGet install Packages'
+            continueOnError: true   
             inputs:
               targetType: 'inline'
               script: |
-                Write-Host "Starting NuGet restore..."
-                Write-Host "Downloading latest D365 packages (10.0.* and 7.0.*)"
-                
-                nuget.exe restore $(NugetConfigsPath)\latest.csproj -ConfigFile $(NugetConfigsPath)\nuget.config -OutputDirectory $(NugetsPath) -Verbosity detailed
-                
-                Write-Host "NuGet restore completed"
+                nuget.exe restore $(NugetConfigsPath)\$(MsAppVersion).csproj -ConfigFile $(NugetConfigsPath)\nuget.config -OutputDirectory $(NugetsPath)
                 exit 0
               errorActionPreference: 'silentlyContinue'
+              warningPreference: 'silentlyContinue'
+              
 
+          # Exclude version from NuGet packages and put all metadata foldes together
           - task: PowerShell@2
-            displayName: 'Extract and organize NuGet packages'
+            displayName: 'Exclude version from MS NuGet Packages'
             inputs:
               targetType: 'inline'
               script: |
-                Write-Host "Creating output directories..."
-                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)\net40
-                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)\tools
-                
-                Write-Host "Moving metadata files from ref\net40..."
-                $net40Files = Get-ChildItem -Path $(NugetsPath)\*\*\ref\net40 -Recurse -ErrorAction SilentlyContinue
-                if ($net40Files) {
-                  $net40Files | Move-Item -Destination $(NugetsPathNoVer)\net40 -Force
-                  Write-Host "Moved $($net40Files.Count) net40 items"
-                }
-                
-                Write-Host "Moving tools from compiler package..."
-                $toolsPath = "$(NugetsPath)\$(ToolsPackage)"
-                if (Test-Path $toolsPath) {
-                  $toolsFiles = Get-ChildItem -Path $toolsPath\*\ -Recurse -ErrorAction SilentlyContinue
-                  if ($toolsFiles) {
-                    $toolsFiles | Move-Item -Destination $(NugetsPathNoVer)\tools -Force
-                    Write-Host "Moved $($toolsFiles.Count) tool items"
-                  }
-                }
+                New-Item -ItemType Directory $(NugetsPathNoVer)\net40
+                New-Item -ItemType Directory $(NugetsPathNoVer)\tools
+                Get-ChildItem -Path $(NugetsPath)\*\*\ref\net40 -Recurse | Move-Item -Destination $(NugetsPathNoVer)\net40
+                Get-ChildItem -Path $(NugetsPath)\$(ToolsPackage)\*\ -Recurse | Move-Item -Destination $(NugetsPathNoVer)\tools
 
+          - task: PowerShell@2
+            displayName: 'Verify extracted NuGet packages structure'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host ""
+                Write-Host "============================================" -ForegroundColor Cyan
+                Write-Host "NuGet Packages Directory Structure" -ForegroundColor Cyan
+                Write-Host "============================================" -ForegroundColor Cyan
+                Write-Host ""
+                Write-Host "$(NugetsPathNoVer)" -ForegroundColor Yellow
+                
+                Get-ChildItem -Path $(NugetsPathNoVer) -Recurse -Directory | ForEach-Object {
+                  $relativePath = $_.FullName.Replace("$(NugetsPathNoVer)", "")
+                  $depth = ($relativePath.Split('\') | Where-Object { $_ -ne "" }).Count
+                  $indent = "  " * $depth
+                  Write-Host "$indent📁 $($_.Name)" -ForegroundColor Green
+                }
+                
+                Write-Host ""
+                Write-Host "============================================" -ForegroundColor Cyan
+
+          # Download d365fo-mcp-server from GitHub
+          - task: PowerShell@2
+            displayName: 'Download d365fo-mcp-server from GitHub'
+            inputs:
+              targetType: 'inline'
+              script: |
+                New-Item -Force -Path $(Build.SourcesDirectory) -Name "d365fo-mcp-server" -ItemType directory | Out-Null
+                Invoke-WebRequest 'https://github.com/dynamics365ninja/d365fo-mcp-server/archive/refs/heads/main.zip' -OutFile $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server.zip
+                Expand-Archive $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server.zip $(Build.SourcesDirectory)\d365fo-mcp-server\ | Write-Output
+        
           # ========== Step 2: Extract Standard Metadata ==========
           
           - task: NodeTool@0
@@ -121,21 +135,24 @@ stages:
 
           - script: npm ci
             displayName: 'Install NPM dependencies'
+            workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
 
           - script: npm run extract-metadata
             displayName: 'Extract standard metadata from NuGet packages'
+            workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
             env:
-              PACKAGES_PATH: $(NugetsPathNoVer)/net40
-              METADATA_PATH: $(METADATA_PATH)
+              PACKAGES_PATH: $(NugetsPathNoVer)\net40
+              METADATA_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\extracted-metadata
               EXTRACT_MODE: 'standard'
 
           # ========== Step 3: Extract Custom Metadata ==========
 
           - script: npm run extract-metadata
             displayName: 'Extract custom metadata from Git source'
+            workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
             env:
-              PACKAGES_PATH: $(Pipeline.Workspace)/d365fo-source
-              METADATA_PATH: $(METADATA_PATH)
+              PACKAGES_PATH: $(Pipeline.Workspace)\d365fo-source
+              METADATA_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\extracted-metadata
               EXTRACT_MODE: 'custom'
               CUSTOM_MODELS: $(CUSTOM_MODELS)
               EXTENSION_PREFIX: $(EXTENSION_PREFIX)
@@ -144,25 +161,28 @@ stages:
           
           - script: npm run build-database
             displayName: 'Build database (standard + custom)'
+            workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
             env:
-              METADATA_PATH: $(METADATA_PATH)
-              DB_PATH: $(DB_PATH)
+              METADATA_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\extracted-metadata
+              DB_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\data\xpp-metadata.db
 
           # ========== Step 5: Upload Everything to Blob Storage ==========
 
           - script: npm run blob-manager upload-all
             displayName: 'Upload all metadata (standard + custom) to blob'
+            workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
-              METADATA_PATH: $(METADATA_PATH)
+              METADATA_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\extracted-metadata
 
-          - script: npm run blob-manager upload-database $(DB_PATH)
+          - script: npm run blob-manager upload-database $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\data\xpp-metadata.db
             displayName: 'Upload compiled database to blob'
+            workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
-              DB_PATH: $(DB_PATH)
+              DB_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\data\xpp-metadata.db
 
           # ========== Step 6: Restart App Service ==========
 
