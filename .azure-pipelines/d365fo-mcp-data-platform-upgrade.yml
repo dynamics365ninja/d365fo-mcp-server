@@ -106,12 +106,27 @@ stages:
                 Write-Host ""
                 Write-Host "$(NugetsPathNoVer)" -ForegroundColor Yellow
                 
-                Get-ChildItem -Path $(NugetsPathNoVer) -Recurse -Directory | ForEach-Object {
-                  $relativePath = $_.FullName.Replace("$(NugetsPathNoVer)", "")
-                  $depth = ($relativePath.Split('\') | Where-Object { $_ -ne "" }).Count
-                  $indent = "  " * $depth
-                  Write-Host "$indent📁 $($_.Name)" -ForegroundColor Green
+                function Show-Tree {
+                  param(
+                    [string]$Path,
+                    [string]$Indent = ""
+                  )
+                  
+                  $items = Get-ChildItem -Path $Path -Directory | Sort-Object Name
+                  
+                  for ($i = 0; $i -lt $items.Count; $i++) {
+                    $item = $items[$i]
+                    $isLast = ($i -eq $items.Count - 1)
+                    $connector = if ($isLast) { "└── " } else { "├── " }
+                    $newIndent = if ($isLast) { "$Indent    " } else { "$Indent│   " }
+                    
+                    Write-Host "$Indent$connector📁 $($item.Name)" -ForegroundColor Green
+                    
+                    Show-Tree -Path $item.FullName -Indent $newIndent
+                  }
                 }
+                
+                Show-Tree -Path $(NugetsPathNoVer)
                 
                 Write-Host ""
                 Write-Host "============================================" -ForegroundColor Cyan
@@ -141,7 +156,7 @@ stages:
             displayName: 'Extract standard metadata from NuGet packages'
             workingDirectory: '$(Build.SourcesDirectory)/d365fo-mcp-server/d365fo-mcp-server-main'
             env:
-              PACKAGES_PATH: $(NugetsPathNoVer)\net40
+              PACKAGES_PATH: $(NugetsPathNoVer)
               METADATA_PATH: $(Build.SourcesDirectory)\d365fo-mcp-server\d365fo-mcp-server-main\extracted-metadata
               EXTRACT_MODE: 'standard'
 
