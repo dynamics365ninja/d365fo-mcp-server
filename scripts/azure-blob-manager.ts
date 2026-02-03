@@ -222,7 +222,7 @@ export class AzureBlobMetadataManager {
   async uploadDatabase(dbPath: string): Promise<void> {
     console.log('\n📤 Uploading compiled database to Azure Blob Storage');
     
-    const blobName = 'databases/xpp-metadata-latest.db';
+    const blobName = 'database/xpp-metadata.db';
     const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
     
     const uploadBlobResponse = await blockBlobClient.uploadFile(dbPath, {
@@ -246,7 +246,7 @@ export class AzureBlobMetadataManager {
   async downloadDatabase(localDbPath: string): Promise<void> {
     console.log('\n📥 Downloading compiled database from Azure Blob Storage');
     
-    const blobName = 'databases/xpp-metadata-latest.db';
+    const blobName = 'database/xpp-metadata.db';
     const blobClient = this.containerClient.getBlobClient(blobName);
     
     // Ensure directory exists
