@@ -37,7 +37,7 @@ describe('searchTool', () => {
     mockCache = {
       get: vi.fn(async () => null),
       set: vi.fn(async () => {}),
-      generateSearchKey: vi.fn((query: string, limit?: number) => `search:${query}:${limit||20}`),
+      generateSearchKey: vi.fn((query: string, limit?: number, type?: string) => `search:${query}:${type||'all'}:${limit||20}`),
     };
 
     mockContext = {
@@ -62,7 +62,92 @@ describe('searchTool', () => {
     expect(result.content[0].type).toBe('text');
     expect(result.content[0].text).toContain('CustTable');
     expect(result.content[0].text).toContain('createCustomer');
-    expect(mockSymbolIndex.searchSymbols).toHaveBeenCalledWith('CustTable', 20);
+    expect(mockSymbolIndex.searchSymbols).toHaveBeenCalledWith('CustTable', 20, undefined);
+  });
+
+  it('should filter by type=class', async () => {
+    mockSymbolIndex.searchSymbols = vi.fn(() => [
+      {
+        id: 1,
+        name: 'CustTableClass',
+        type: 'class' as const,
+        parentName: undefined,
+        signature: undefined,
+        filePath: '/Classes/CustTableClass.xml',
+        model: 'ApplicationSuite',
+      },
+    ]);
+
+    const request = {
+      method: 'tools/call',
+      params: {
+        name: 'xpp_search',
+        arguments: { query: 'CustTable', type: 'class' }
+      }
+    } as CallToolRequest;
+
+    const result = await searchTool(request, mockContext);
+
+    expect(result).toBeDefined();
+    expect(result.content[0].text).toContain('CustTableClass');
+    expect(mockSymbolIndex.searchSymbols).toHaveBeenCalledWith('CustTable', 20, ['class']);
+  });
+
+  it('should filter by type=table', async () => {
+    mockSymbolIndex.searchSymbols = vi.fn(() => [
+      {
+        id: 1,
+        name: 'CustTable',
+        type: 'table' as const,
+        parentName: undefined,
+        signature: undefined,
+        filePath: '/Tables/CustTable.xml',
+        model: 'ApplicationSuite',
+      },
+    ]);
+
+    const request = {
+      method: 'tools/call',
+      params: {
+        name: 'xpp_search',
+        arguments: { query: 'Cust', type: 'table' }
+      }
+    } as CallToolRequest;
+
+    const result = await searchTool(request, mockContext);
+
+    expect(result).toBeDefined();
+    expect(result.content[0].text).toContain('CustTable');
+    expect(mockSymbolIndex.searchSymbols).toHaveBeenCalledWith('Cust', 20, ['table']);
+  });
+
+  it('should filter by type=method', async () => {
+    mockSymbolIndex.searchSymbols = vi.fn(() => [
+      {
+        id: 1,
+        name: 'validateField',
+        type: 'method' as const,
+        parentName: 'CustTable',
+        signature: 'boolean validateField(FieldId fieldId)',
+        filePath: '/Tables/CustTable.xml',
+        model: 'ApplicationSuite',
+      },
+    ]);
+
+    const request = {
+      method: 'tools/call',
+      params: {
+        name: 'xpp_search',
+        arguments: { query: 'validate', type: 'method' }
+      }
+    } as CallToolRequest;
+
+    const result = await searchTool(request, mockContext);
+
+    expect(result).toBeDefined();
+    expect(result.content[0].text).toContain('validateField');
+    expect(result.content[0].text).toContain('CustTable');
+    expect(mockSymbolIndex.searchSymbols).toHaveBeenCalledWith('validate', 20, ['method']);
   });
 
   it('should handle empty query', async () => {
@@ -114,7 +199,7 @@ describe('searchTool', () => {
 
     await searchTool(request, mockContext);
 
-    expect(mockSymbolIndex.searchSymbols).toHaveBeenCalledWith('test', 5);
+    expect(mockSymbolIndex.searchSymbols).toHaveBeenCalledWith('test', 5, undefined);
   });
 
   it('should handle errors gracefully', async () => {

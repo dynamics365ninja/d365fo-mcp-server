@@ -131,17 +131,26 @@ export class XppSymbolIndex {
   /**
    * Search symbols by query with full-text search
    */
-  searchSymbols(query: string, limit: number = 20): XppSymbol[] {
-    const stmt = this.db.prepare(`
+  searchSymbols(query: string, limit: number = 20, types?: string[]): XppSymbol[] {
+    let sql = `
       SELECT s.name, s.type, s.parent_name, s.signature, s.file_path, s.model
       FROM symbols_fts fts
       JOIN symbols s ON s.id = fts.rowid
       WHERE symbols_fts MATCH ?
-      ORDER BY rank
-      LIMIT ?
-    `);
+    `;
 
-    const rows = stmt.all(query, limit) as any[];
+    const params: any[] = [query];
+
+    if (types && types.length > 0) {
+      sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
+      params.push(...types);
+    }
+
+    sql += ` ORDER BY rank LIMIT ?`;
+    params.push(limit);
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as any[];
     return rows.map(row => ({
       name: row.name,
       type: row.type as any,

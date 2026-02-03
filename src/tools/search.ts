@@ -9,6 +9,7 @@ import type { XppServerContext } from '../types/context.js';
 
 const SearchArgsSchema = z.object({
   query: z.string().describe('Search query (class name, method name, etc.)'),
+  type: z.enum(['class', 'table', 'field', 'method', 'enum', 'all']).optional().default('all').describe('Filter by object type (class=AxClass, table=AxTable, enum=AxEnum, all=no filter)'),
   limit: z.number().optional().default(20).describe('Maximum results to return'),
 });
 
@@ -18,7 +19,7 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
 
   try {
     // Check cache first
-    const cacheKey = cache.generateSearchKey(args.query, args.limit);
+    const cacheKey = cache.generateSearchKey(args.query, args.limit, args.type);
     const cachedResults = await cache.get<any[]>(cacheKey);
     
     if (cachedResults) {
@@ -40,8 +41,9 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
       };
     }
 
-    // Query database
-    const results = symbolIndex.searchSymbols(args.query, args.limit);
+    // Query database with type filter
+    const types = args.type === 'all' ? undefined : [args.type];
+    const results = symbolIndex.searchSymbols(args.query, args.limit, types);
     
     // Cache results
     if (results.length > 0) {

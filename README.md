@@ -219,18 +219,49 @@ The server provides these MCP tools:
 
 ### `xpp_search`
 
-Search for X++ symbols by name or keyword.
+Search for X++ symbols by name or keyword. Can filter by type to search only in specific categories (class=AxClass, table=AxTable, enum=AxEnum).
 
 **Arguments:**
 - `query` (string): Search query
+- `type` (string, optional): Filter by object type - `class`, `table`, `field`, `method`, `enum`, or `all` (default: `all`)
+  - `class` - corresponds to AxClass directory
+  - `table` - corresponds to AxTable directory
+  - `enum` - corresponds to AxEnum directory
+  - `field` - table fields only
+  - `method` - class methods only
+  - `all` - no filtering
 - `limit` (number, optional): Maximum results (default: 20)
 
-**Example:**
+**Examples:**
 ```json
 {
   "name": "xpp_search",
   "arguments": {
     "query": "CustTable",
+    "limit": 10
+  }
+}
+```
+
+Search only in classes (AxClass):
+```json
+{
+  "name": "xpp_search",
+  "arguments": {
+    "query": "Customer",
+    "type": "class",
+    "limit": 10
+  }
+}
+```
+
+Search only in tables (AxTable):
+```json
+{
+  "name": "xpp_search",
+  "arguments": {
+    "query": "Cust",
+    "type": "table",
     "limit": 10
   }
 }
