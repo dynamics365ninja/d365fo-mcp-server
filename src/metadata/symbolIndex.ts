@@ -317,12 +317,15 @@ export class XppSymbolIndex {
       const content = fs.readFileSync(filePath, 'utf-8');
       const classData = JSON.parse(content);
 
+      // Use sourcePath from metadata (original XML file) instead of JSON file path
+      const sourceFilePath = classData.sourcePath || filePath;
+
       // Add class symbol
       this.addSymbol({
         name: classData.name,
         type: 'class',
         signature: classData.extends ? `extends ${classData.extends}` : undefined,
-        filePath,
+        filePath: sourceFilePath,
         model,
       });
 
@@ -335,7 +338,7 @@ export class XppSymbolIndex {
             type: 'method',
             parentName: classData.name,
             signature: `${method.returnType} ${method.name}(${params})`,
-            filePath,
+            filePath: sourceFilePath,
             model,
           });
         }
@@ -351,12 +354,15 @@ export class XppSymbolIndex {
       const content = fs.readFileSync(filePath, 'utf-8');
       const tableData = JSON.parse(content);
 
+      // Use sourcePath from metadata (original XML file) instead of JSON file path
+      const sourceFilePath = tableData.sourcePath || filePath;
+
       // Add table symbol
       this.addSymbol({
         name: tableData.name,
         type: 'table',
         signature: tableData.label || undefined,
-        filePath,
+        filePath: sourceFilePath,
         model,
       });
 
@@ -368,7 +374,7 @@ export class XppSymbolIndex {
             type: 'field',
             parentName: tableData.name,
             signature: field.type,
-            filePath,
+            filePath: sourceFilePath,
             model,
           });
         }
@@ -381,13 +387,18 @@ export class XppSymbolIndex {
 
     for (const file of files) {
       const filePath = path.join(enumsPath, file);
-      const enumName = path.basename(file, '.json');
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const enumData = JSON.parse(content);
+
+      // Use sourcePath from metadata (original XML file) instead of JSON file path
+      const sourceFilePath = enumData.sourcePath || filePath;
+      const enumName = enumData.name || path.basename(file, '.json');
 
       // Add enum symbol
       this.addSymbol({
         name: enumName,
         type: 'enum',
-        filePath,
+        filePath: sourceFilePath,
         model,
       });
     }

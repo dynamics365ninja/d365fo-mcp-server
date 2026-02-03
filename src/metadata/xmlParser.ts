@@ -49,6 +49,7 @@ export class XppMetadataParser {
       const classInfo: XppClassInfo = {
         name: className,
         model: model || 'Unknown',
+        sourcePath: filePath,  // Store original XML file path
         extends: axClass.Extends || undefined,
         implements: this.parseImplements(axClass.Implements),
         isAbstract: axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true',
@@ -85,6 +86,7 @@ export class XppMetadataParser {
       const tableInfo: XppTableInfo = {
         name: tableName,
         model: model || 'Unknown',
+        sourcePath: filePath,  // Store original XML file path
         label: axTable.Label || tableName,
         tableGroup: axTable.TableGroup || 'Main',
         primaryIndex: axTable.PrimaryIndex || undefined,

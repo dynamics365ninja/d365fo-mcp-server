@@ -11,6 +11,7 @@ export interface XppParseResult<T> {
 export interface XppClassInfo {
   name: string;
   model: string;
+  sourcePath: string;  // Path to original XML file
   extends?: string;
   implements: string[];
   isAbstract: boolean;
@@ -38,6 +39,7 @@ export interface XppParameterInfo {
 export interface XppTableInfo {
   name: string;
   model: string;
+  sourcePath: string;  // Path to original XML file
   label: string;
   tableGroup: string;
   primaryIndex?: string;
