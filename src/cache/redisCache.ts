@@ -147,8 +147,8 @@ export class RedisCacheService {
   /**
    * Generate cache key for search queries
    */
-  generateSearchKey(query: string, limit?: number): string {
-    return `xpp:search:${query}:${limit || 10}`;
+  generateSearchKey(query: string, limit?: number, type?: string): string {
+    return `xpp:search:${query}:${type || 'all'}:${limit || 10}`;
   }
 
   /**

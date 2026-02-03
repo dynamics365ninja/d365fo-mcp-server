@@ -44,12 +44,18 @@ export function createXppMcpServer(context: XppServerContext): Server {
       tools: [
         {
           name: 'xpp_search',
-          description: 'Search for X++ symbols by name or keyword',
+          description: 'Search for X++ symbols by name or keyword. Can filter by type (class=AxClass, table=AxTable, enum=AxEnum)',
           inputSchema: {
             type: 'object',
             properties: {
               query: { type: 'string', description: 'Search query' },
-              limit: { type: 'number', description: 'Maximum results' },
+              type: { 
+                type: 'string', 
+                enum: ['class', 'table', 'field', 'method', 'enum', 'all'],
+                description: 'Filter by object type (class=AxClass, table=AxTable, enum=AxEnum, all=no filter)',
+                default: 'all'
+              },
+              limit: { type: 'number', description: 'Maximum results', default: 20 },
             },
             required: ['query'],
           },

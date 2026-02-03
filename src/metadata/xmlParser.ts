@@ -4,7 +4,7 @@
  */
 
 import * as fs from 'fs/promises';
-import * as xml2js from 'xml2js';
+import { Parser } from 'xml2js';
 import type {
   XppParseResult,
   XppClassInfo,
@@ -17,10 +17,10 @@ import type {
 } from './types.js';
 
 export class XppMetadataParser {
-  private parser: xml2js.Parser;
+  private parser: Parser;
 
   constructor() {
-    this.parser = new xml2js.Parser({
+    this.parser = new Parser({
       explicitArray: false,
       mergeAttrs: true,
       trim: true,
@@ -49,6 +49,7 @@ export class XppMetadataParser {
       const classInfo: XppClassInfo = {
         name: className,
         model: model || 'Unknown',
+        sourcePath: filePath,  // Store original XML file path
         extends: axClass.Extends || undefined,
         implements: this.parseImplements(axClass.Implements),
         isAbstract: axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true',
@@ -85,6 +86,7 @@ export class XppMetadataParser {
       const tableInfo: XppTableInfo = {
         name: tableName,
         model: model || 'Unknown',
+        sourcePath: filePath,  // Store original XML file path
         label: axTable.Label || tableName,
         tableGroup: axTable.TableGroup || 'Main',
         primaryIndex: axTable.PrimaryIndex || undefined,

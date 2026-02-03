@@ -131,17 +131,26 @@ export class XppSymbolIndex {
   /**
    * Search symbols by query with full-text search
    */
-  searchSymbols(query: string, limit: number = 20): XppSymbol[] {
-    const stmt = this.db.prepare(`
+  searchSymbols(query: string, limit: number = 20, types?: string[]): XppSymbol[] {
+    let sql = `
       SELECT s.name, s.type, s.parent_name, s.signature, s.file_path, s.model
       FROM symbols_fts fts
       JOIN symbols s ON s.id = fts.rowid
       WHERE symbols_fts MATCH ?
-      ORDER BY rank
-      LIMIT ?
-    `);
+    `;
 
-    const rows = stmt.all(query, limit) as any[];
+    const params: any[] = [query];
+
+    if (types && types.length > 0) {
+      sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
+      params.push(...types);
+    }
+
+    sql += ` ORDER BY rank LIMIT ?`;
+    params.push(limit);
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as any[];
     return rows.map(row => ({
       name: row.name,
       type: row.type as any,
@@ -308,12 +317,15 @@ export class XppSymbolIndex {
       const content = fs.readFileSync(filePath, 'utf-8');
       const classData = JSON.parse(content);
 
+      // Use sourcePath from metadata (original XML file) instead of JSON file path
+      const sourceFilePath = classData.sourcePath || filePath;
+
       // Add class symbol
       this.addSymbol({
         name: classData.name,
         type: 'class',
         signature: classData.extends ? `extends ${classData.extends}` : undefined,
-        filePath,
+        filePath: sourceFilePath,
         model,
       });
 
@@ -326,7 +338,7 @@ export class XppSymbolIndex {
             type: 'method',
             parentName: classData.name,
             signature: `${method.returnType} ${method.name}(${params})`,
-            filePath,
+            filePath: sourceFilePath,
             model,
           });
         }
@@ -342,12 +354,15 @@ export class XppSymbolIndex {
       const content = fs.readFileSync(filePath, 'utf-8');
       const tableData = JSON.parse(content);
 
+      // Use sourcePath from metadata (original XML file) instead of JSON file path
+      const sourceFilePath = tableData.sourcePath || filePath;
+
       // Add table symbol
       this.addSymbol({
         name: tableData.name,
         type: 'table',
         signature: tableData.label || undefined,
-        filePath,
+        filePath: sourceFilePath,
         model,
       });
 
@@ -359,7 +374,7 @@ export class XppSymbolIndex {
             type: 'field',
             parentName: tableData.name,
             signature: field.type,
-            filePath,
+            filePath: sourceFilePath,
             model,
           });
         }
@@ -372,13 +387,18 @@ export class XppSymbolIndex {
 
     for (const file of files) {
       const filePath = path.join(enumsPath, file);
-      const enumName = path.basename(file, '.json');
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const enumData = JSON.parse(content);
+
+      // Use sourcePath from metadata (original XML file) instead of JSON file path
+      const sourceFilePath = enumData.sourcePath || filePath;
+      const enumName = enumData.name || path.basename(file, '.json');
 
       // Add enum symbol
       this.addSymbol({
         name: enumName,
         type: 'enum',
-        filePath,
+        filePath: sourceFilePath,
         model,
       });
     }
