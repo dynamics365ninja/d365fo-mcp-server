@@ -4,7 +4,7 @@
  */
 
 import * as fs from 'fs/promises';
-import * as xml2js from 'xml2js';
+import { Parser } from 'xml2js';
 import type {
   XppParseResult,
   XppClassInfo,
@@ -17,10 +17,10 @@ import type {
 } from './types.js';
 
 export class XppMetadataParser {
-  private parser: xml2js.Parser;
+  private parser: Parser;
 
   constructor() {
-    this.parser = new xml2js.Parser({
+    this.parser = new Parser({
       explicitArray: false,
       mergeAttrs: true,
       trim: true,
