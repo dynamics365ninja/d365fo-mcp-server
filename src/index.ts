@@ -45,9 +45,8 @@ async function main() {
     try {
       await fs.access(METADATA_PATH);
       console.log(`📖 Indexing metadata from: ${METADATA_PATH}`);
-      const modelNamesStr = process.env.MODEL_NAMES || process.env.MODEL_NAME || 'CustomModel';
-      const separator = process.env.MODEL_NAMES_SEPARATOR || ',';
-      const modelNames = modelNamesStr.split(separator).map(m => m.trim()).filter(Boolean);
+      const modelNamesStr = process.env.CUSTOM_MODELS || 'CustomModel';
+      const modelNames = modelNamesStr.split(',').map(m => m.trim()).filter(Boolean);
       console.log(`📦 Using model names: ${modelNames.join(', ')}`);
       
       for (const modelName of modelNames) {

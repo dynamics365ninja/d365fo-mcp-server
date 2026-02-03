@@ -37,25 +37,30 @@ function loadStandardModels(): string[] {
   }
 }
 
-const STANDARD_MODELS_TO_EXCLUDE = loadStandardModels();
+const STANDARD_MODELS = loadStandardModels();
 
 // Custom extension models to extract (if specified, only extract these)
 const CUSTOM_MODELS = process.env.CUSTOM_MODELS?.split(',').map(m => m.trim()).filter(Boolean) || [];
 
-// Extract mode: 'all' = all models (standard + custom), 'custom' = only CUSTOM_MODELS, 'standard' = only standard models
+// Extract mode: 'all' = all models (standard + custom), 'custom' = only custom models (exclude standard), 'standard' = only standard models
 const EXTRACT_MODE = process.env.EXTRACT_MODE || 'all';
 
 let MODELS_TO_EXTRACT: string[] = [];
+let EXCLUDE_STANDARD = false;
 
 if (EXTRACT_MODE === 'custom' && CUSTOM_MODELS.length > 0) {
   // Extract only specified custom models
   MODELS_TO_EXTRACT = CUSTOM_MODELS;
+} else if (EXTRACT_MODE === 'custom') {
+  // Extract all custom models (exclude standard)
+  MODELS_TO_EXTRACT = [];
+  EXCLUDE_STANDARD = true;
 } else if (EXTRACT_MODE === 'standard') {
-  // Extract only standard models (for testing)
-  MODELS_TO_EXTRACT = STANDARD_MODELS_TO_EXCLUDE;
+  // Extract only standard models
+  MODELS_TO_EXTRACT = STANDARD_MODELS;
 } else {
-  // Extract all models (will filter out standard models during processing)
-  MODELS_TO_EXTRACT = []; // Empty means scan all packages
+  // Extract all models (standard + custom)
+  MODELS_TO_EXTRACT = [];
 }
 
 interface ExtractionStats {
@@ -73,10 +78,12 @@ async function extractMetadata() {
   console.log(`📁 Output: ${OUTPUT_PATH}`);
   console.log(`� Extract Mode: ${EXTRACT_MODE}`);
   
-  if (EXTRACT_MODE === 'custom') {
+  if (EXTRACT_MODE === 'custom' && CUSTOM_MODELS.length > 0) {
     console.log(`📋 Custom Models: ${CUSTOM_MODELS.join(', ')}`);
+  } else if (EXTRACT_MODE === 'custom') {
+    console.log(`📋 Mode: Extract custom models only (exclude standard)`);
   } else if (EXTRACT_MODE === 'standard') {
-    console.log(`📋 Standard Models: ${STANDARD_MODELS_TO_EXCLUDE.join(', ')}`);
+    console.log(`📋 Standard Models: ${STANDARD_MODELS.join(', ')}`);
   } else {
     console.log(`📋 Mode: Extract all models (standard + custom)`);
   }
@@ -92,6 +99,14 @@ async function extractMetadata() {
     errors: 0,
   };
 
+  // Clean up existing output directory
+  try {
+    await fs.rm(OUTPUT_PATH, { recursive: true, force: true });
+    console.log('🗑️  Cleaned up existing metadata directory');
+  } catch (error) {
+    // Ignore errors if directory doesn't exist
+  }
+
   // Create output directory
   await fs.mkdir(OUTPUT_PATH, { recursive: true });
 
@@ -102,13 +117,19 @@ async function extractMetadata() {
     // Explicit list provided
     packagesToProcess = MODELS_TO_EXTRACT;
   } else {
-    // Scan all packages (no filtering for 'all' mode)
+    // Scan all packages (including symbolic links)
     const allPackages = await fs.readdir(PACKAGES_PATH, { withFileTypes: true });
     packagesToProcess = allPackages
-      .filter(e => e.isDirectory())
+      .filter(e => e.isDirectory() || e.isSymbolicLink())
       .map(e => e.name);
     
-    console.log(`📦 Found ${packagesToProcess.length} custom packages to process`);
+    // Filter out standard models if in custom mode
+    if (EXCLUDE_STANDARD) {
+      packagesToProcess = packagesToProcess.filter(pkg => !STANDARD_MODELS.includes(pkg));
+      console.log(`📦 Found ${packagesToProcess.length} custom packages to process (${STANDARD_MODELS.length} standard models excluded)`);
+    } else {
+      console.log(`📦 Found ${packagesToProcess.length} packages to process`);
+    }
   }
 
   // Process each package/model
@@ -124,11 +145,23 @@ async function extractMetadata() {
       continue;
     }
 
-    // Find all models within this package
+    // Find all models within this package (including symbolic links)
     const entries = await fs.readdir(packagePath, { withFileTypes: true });
-    const modelDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+    const modelDirs = entries.filter(e => e.isDirectory() || e.isSymbolicLink()).map(e => e.name);
 
     for (const modelName of modelDirs) {
+      // Skip FormAdaptor models
+      if (modelName.endsWith('FormAdaptor')) {
+        console.log(`   ⏭️  Skipping FormAdaptor model: ${modelName}`);
+        continue;
+      }
+
+      // Skip standard models if in custom mode
+      if (EXCLUDE_STANDARD && STANDARD_MODELS.includes(modelName)) {
+        console.log(`   ⏭️  Skipping standard model: ${modelName}`);
+        continue;
+      }
+
       const modelPath = path.join(packagePath, modelName);
       
       // Check if this directory contains X++ metadata (has AxClass, AxTable, etc.)
@@ -294,83 +327,8 @@ async function extractEnums(
   }
 }
 
-async function extractCustomExtensionsOnly() {
-  console.log('🔍 X++ Custom Extensions Extraction');
-  console.log(`📂 Source: ${CUSTOM_MODELS_PATH || PACKAGES_PATH}`);
-  console.log(`📁 Output: ${OUTPUT_PATH}`);
-  console.log(`🏷️  Extension Prefix: ${EXTENSION_PREFIX || '(none)'}`);
-  console.log(`📋 Models: ${CUSTOM_MODELS.join(', ')}`);
-  console.log('');
-
-  const parser = new XppMetadataParser();
-  const stats: ExtractionStats = {
-    totalFiles: 0,
-    classes: 0,
-    tables: 0,
-    forms: 0,
-    enums: 0,
-    errors: 0,
-  };
-
-  await fs.mkdir(OUTPUT_PATH, { recursive: true });
-
-  const basePath = CUSTOM_MODELS_PATH || PACKAGES_PATH;
-
-  for (const packageName of CUSTOM_MODELS) {
-    console.log(`\n📦 Processing custom package: ${packageName}`);
-    const packagePath = path.join(basePath, packageName);
-    
-    try {
-      await fs.access(packagePath);
-    } catch {
-      console.warn(`⚠️  Package path not found: ${packagePath}`);
-      continue;
-    }
-
-    // Find all models within this package
-    const entries = await fs.readdir(packagePath, { withFileTypes: true });
-    const modelDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
-
-    for (const modelName of modelDirs) {
-      const modelPath = path.join(packagePath, modelName);
-      
-      // Check if this directory contains X++ metadata
-      const hasAxClass = await fs.access(path.join(modelPath, 'AxClass')).then(() => true).catch(() => false);
-      const hasAxTable = await fs.access(path.join(modelPath, 'AxTable')).then(() => true).catch(() => false);
-      const hasAxEnum = await fs.access(path.join(modelPath, 'AxEnum')).then(() => true).catch(() => false);
-
-      if (!hasAxClass && !hasAxTable && !hasAxEnum) {
-        continue;
-      }
-
-      console.log(`   📂 Model: ${modelName}`);
-
-      await extractClasses(parser, modelPath, modelName, stats);
-      await extractTables(parser, modelPath, modelName, stats);
-      await extractEnums(parser, modelPath, modelName, stats);
-    }
-  }
-
-  console.log('\n✅ Custom extensions extraction complete!');
-  console.log(`📊 Statistics:`);
-  console.log(`   Total files: ${stats.totalFiles}`);
-  console.log(`   Classes: ${stats.classes}`);
-  console.log(`   Tables: ${stats.tables}`);
-  console.log(`   Enums: ${stats.enums}`);
-  console.log(`   Errors: ${stats.errors}`);
-}
-
-// Run extraction based on mode
-const mode = process.env.EXTRACT_MODE || 'all'; // 'all', 'standard', 'custom'
-
-if (mode === 'custom') {
-  extractCustomExtensionsOnly().catch((error) => {
-    console.error('❌ Fatal error:', error);
-    process.exit(1);
-  });
-} else {
-  extractMetadata().catch((error) => {
-    console.error('❌ Fatal error:', error);
-    process.exit(1);
-  });
-}
+// Run extraction
+extractMetadata().catch((error) => {
+  console.error('❌ Fatal error:', error);
+  process.exit(1);
+});
