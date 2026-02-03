@@ -5,25 +5,85 @@
 
 import 'dotenv/config';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import { XppSymbolIndex } from '../src/metadata/symbolIndex.js';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const INPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
 const OUTPUT_DB = process.env.DB_PATH || './data/xpp-metadata.db';
+const EXTRACT_MODE = process.env.EXTRACT_MODE || 'all';
+const CUSTOM_MODELS = process.env.CUSTOM_MODELS?.split(',').map(m => m.trim()).filter(Boolean) || [];
+
+// Load standard models from config
+function loadStandardModels(): string[] {
+  try {
+    const configPath = path.resolve(__dirname, '../config/standard-models.json');
+    const configContent = fsSync.readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(configContent);
+    return config.standardModels || [];
+  } catch (error) {
+    return [];
+  }
+}
+
+const STANDARD_MODELS = loadStandardModels();
 
 async function buildDatabase() {
   console.log('🔨 Building X++ Metadata Database');
   console.log(`📂 Input: ${INPUT_PATH}`);
   console.log(`💾 Output: ${OUTPUT_DB}`);
+  console.log(`⚙️  Extract Mode: ${EXTRACT_MODE}`);
   console.log('');
 
   // Create symbol index
   const symbolIndex = new XppSymbolIndex(OUTPUT_DB);
 
+  // Determine which models to rebuild based on EXTRACT_MODE
+  let modelsToRebuild: string[] = [];
+  
+  if (EXTRACT_MODE === 'all') {
+    // Clear entire database for full rebuild
+    console.log('🗑️  Clearing entire database for full rebuild...');
+    symbolIndex.clear();
+  } else if (EXTRACT_MODE === 'custom') {
+    // Clear only custom models
+    if (CUSTOM_MODELS.length > 0) {
+      // Clear specific custom models
+      symbolIndex.clearModels(CUSTOM_MODELS);
+      modelsToRebuild = CUSTOM_MODELS;
+    } else {
+      // Clear all custom models (exclude standard)
+      const allModels = fsSync.readdirSync(INPUT_PATH, { withFileTypes: true })
+        .filter(e => e.isDirectory())
+        .map(e => e.name);
+      modelsToRebuild = allModels.filter(m => !STANDARD_MODELS.includes(m));
+      symbolIndex.clearModels(modelsToRebuild);
+    }
+  } else if (EXTRACT_MODE === 'standard') {
+    // Clear only standard models
+    symbolIndex.clearModels(STANDARD_MODELS);
+    modelsToRebuild = STANDARD_MODELS;
+  }
+
   // Index the extracted metadata
   console.log('📖 Indexing metadata...');
   const startTime = Date.now();
-  await symbolIndex.indexMetadataDirectory(INPUT_PATH);
+  
+  if (modelsToRebuild.length > 0) {
+    // Index specific models
+    console.log(`📦 Indexing ${modelsToRebuild.length} model(s): ${modelsToRebuild.join(', ')}`);
+    for (const modelName of modelsToRebuild) {
+      await symbolIndex.indexMetadataDirectory(INPUT_PATH, modelName);
+    }
+  } else {
+    // Index all models in the directory
+    await symbolIndex.indexMetadataDirectory(INPUT_PATH);
+  }
+  
   const endTime = Date.now();
   const duration = ((endTime - startTime) / 1000).toFixed(2);
 

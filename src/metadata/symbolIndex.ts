@@ -106,6 +106,8 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
       CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols(type);
       CREATE INDEX IF NOT EXISTS idx_symbols_model ON symbols(model);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_symbols_unique 
+        ON symbols(name, type, COALESCE(parent_name, ''), model);
     `);
   }
 
@@ -114,7 +116,7 @@ export class XppSymbolIndex {
    */
   addSymbol(symbol: XppSymbol): void {
     const stmt = this.db.prepare(`
-      INSERT INTO symbols (name, type, parent_name, signature, file_path, model)
+      INSERT OR REPLACE INTO symbols (name, type, parent_name, signature, file_path, model)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
 
@@ -523,6 +525,28 @@ export class XppSymbolIndex {
    */
   clear(): void {
     this.db.exec('DELETE FROM symbols');
+    this.vacuum();
+  }
+
+  /**
+   * Clear symbols for specific models
+   */
+  clearModels(modelNames: string[]): void {
+    if (modelNames.length === 0) return;
+    
+    const placeholders = modelNames.map(() => '?').join(',');
+    const stmt = this.db.prepare(`DELETE FROM symbols WHERE model IN (${placeholders})`);
+    stmt.run(...modelNames);
+    
+    console.log(`🗑️  Cleared symbols for models: ${modelNames.join(', ')}`);
+    this.vacuum();
+  }
+
+  /**
+   * Vacuum the database to reclaim space after deletions
+   */
+  private vacuum(): void {
+    this.db.exec('VACUUM');
   }
 
   /**
