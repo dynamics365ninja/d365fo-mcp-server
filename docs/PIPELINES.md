@@ -81,7 +81,9 @@ xpp-metadata/
                   ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              Daily Custom Extraction                         │
-│    (Download Standard → Extract Custom → Build → Upload)    │
+│  1. Checkout D365FO source (Azure DevOps)                   │
+│  2. Checkout MCP Server (GitHub)                            │
+│  3. Download Standard → Extract Custom → Build → Upload     │
 └─────────────────┬───────────────────────────────────────────┘
                   │
                   ▼
@@ -138,18 +140,37 @@ xpp-metadata/
 
 **Parameters:**
 - `extractionMode`: `custom` (default), `standard`, `all`
-- `customModels`: Specific models or empty for all
+- `customModels`: Specific models or 'all' for all (default: 'all')
 
-**Process (Custom Mode):**
-1. Checkout D365FO source code from Git repository
-2. Download standard metadata from blob (cached, unchanged)
-3. Delete old custom metadata from blob
-4. Clean local custom metadata
-5. Extract custom models from Git source
-6. Build database (fast - standard already indexed)
-7. Upload new custom metadata
-8. Upload database
-9. Restart App Service
+**Source Code Checkouts:**
+1. D365FO source code from Azure DevOps repository (checkout: self)
+   - Location: `$(Build.SourcesDirectory)`
+   - Contains D365FO metadata at `ASL/src/d365fo/metadata`
+2. MCP Server code from GitHub (dynamics365ninja/d365fo-mcp-server)
+   - Location: `$(Pipeline.Workspace)/mcp-server`
+   - Contains scripts and tools
+
+**Process (Custom Mode - Default):**
+1. Checkout D365FO source code from Azure DevOps
+2. Checkout MCP Server code from GitHub
+3. Install Node.js dependencies
+4. Download existing database from blob
+5. Download standard metadata from blob (cached, unchanged)
+6. Delete old custom metadata from blob
+7. Extract custom models from D365FO Git source
+8. Build database (fast - standard already indexed, only custom models updated)
+9. Upload new custom metadata
+10. Upload database
+11. Restart App Service
+
+**Process (Standard/All Mode):**
+1. Checkout D365FO source code from Azure DevOps
+2. Checkout MCP Server code from GitHub
+3. Install Node.js dependencies
+4. Extract metadata based on mode (standard/all)
+5. Build database from scratch
+6. Upload metadata and database
+7. Restart App Service
 
 **When to Use:**
 - Daily automated sync
@@ -231,6 +252,11 @@ xpp-metadata/
 
 **Pipeline:** `d365fo-mcp-data-quick.yml` (auto on push)
 
+**Process:**
+- Automatically checks out both D365FO source (Azure DevOps) and MCP Server (GitHub)
+- Extracts only custom models from D365FO source
+- Updates database with changes
+
 **Result:** Updated metadata and database after each commit
 
 ---
@@ -242,10 +268,18 @@ xpp-metadata/
 **Recommended Approach:**
 1. Navigate to Pipelines → d365fo-mcp-data-quick.yml
 2. Click "Run pipeline"
-3. Keep default parameters (custom mode)
+3. Keep default parameters:
+   - extractionMode: custom
+   - customModels: all
 4. Wait 5-15 minutes
 
 **Pipeline:** `d365fo-mcp-data-quick.yml` (manual)
+
+**Process:**
+- Checks out D365FO source from Azure DevOps (ASL/src/d365fo/metadata)
+- Checks out MCP Server from GitHub
+- Extracts custom models from local D365FO source
+- Updates database
 
 **Result:** Metadata updated within minutes
 
@@ -303,10 +337,17 @@ xpp-metadata/
 
 **Recommended Approach:**
 1. Run quick pipeline manually
-2. Set parameter: `customModels: "YourCustomModel2"`
+2. Set parameters:
+   - extractionMode: custom
+   - customModels: "YourCustomModel2"
 3. Wait 3-5 minutes
 
 **Pipeline:** `d365fo-mcp-data-quick.yml` (manual with parameter)
+
+**Process:**
+- Checks out both D365FO source and MCP Server
+- Extracts only YourCustomModel2 from D365FO source
+- Updates database with specific model only
 
 **Result:** Only YourCustomModel2 updated, faster than extracting all
 
