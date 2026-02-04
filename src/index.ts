@@ -10,6 +10,8 @@ import { createStreamableHttpTransport } from './server/transport.js';
 import { XppSymbolIndex } from './metadata/symbolIndex.js';
 import { XppMetadataParser } from './metadata/xmlParser.js';
 import { RedisCacheService } from './cache/redisCache.js';
+import { downloadDatabaseFromBlob } from './database/download.js';
+import * as fs from 'fs/promises';
 
 const PORT = parseInt(process.env.PORT || '8080');
 const DB_PATH = process.env.DB_PATH || './data/xpp-metadata.db';
@@ -28,6 +30,16 @@ async function main() {
     console.log('⚠️  Redis cache disabled - running without cache');
   }
 
+  // Download database from blob storage if configured
+  if (process.env.AZURE_STORAGE_CONNECTION_STRING && process.env.BLOB_CONTAINER_NAME) {
+    try {
+      await downloadDatabaseFromBlob();
+    } catch (error) {
+      console.error('⚠️  Failed to download database from blob storage:', error);
+      console.log('   Attempting to use existing local database...');
+    }
+  }
+
   // Initialize symbol index and parser
   console.log(`📚 Loading metadata from: ${DB_PATH}`);
   const symbolIndex = new XppSymbolIndex(DB_PATH);
@@ -41,7 +53,6 @@ async function main() {
     console.log('   or set METADATA_PATH and the server will index on startup');
     
     // If metadata path exists, index it
-    const fs = await import('fs/promises');
     try {
       await fs.access(METADATA_PATH);
       console.log(`📖 Indexing metadata from: ${METADATA_PATH}`);
