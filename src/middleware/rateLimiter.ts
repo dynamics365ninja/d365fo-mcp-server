@@ -6,24 +6,12 @@ import type { Request, Response } from 'express';
  */
 
 /**
- * Custom key generator for Azure App Service
- * Handles IP addresses that may include port numbers (e.g., "20.73.89.75:1024")
- */
-function getClientIp(req: Request): string {
-  // Azure App Service behind reverse proxy may append port to IP
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  // Strip port if present (format: "IP:PORT")
-  return ip.split(':').slice(0, -1).join(':') || ip;
-}
-
-/**
  * General API rate limiter
  * Default: 100 requests per 15 minutes per IP
  */
 export const apiRateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
-  keyGenerator: getClientIp,
   message: {
     error: 'Too many requests from this IP, please try again later.',
     retryAfter: 'Please check the Retry-After header.',
@@ -50,7 +38,6 @@ export const apiRateLimiter = rateLimit({
 export const strictRateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_STRICT_MAX_REQUESTS || '20', 10),
-  keyGenerator: getClientIp,
   message: {
     error: 'Too many requests for this endpoint, please try again later.',
     retryAfter: 'Please check the Retry-After header.',
@@ -74,7 +61,6 @@ export const authRateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS || '5', 10),
   keyGenerator: getClientIp,
-  message: {
     error: 'Too many authentication attempts, please try again later.',
     retryAfter: 'Please check the Retry-After header.',
   },
