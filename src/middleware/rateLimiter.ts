@@ -60,7 +60,7 @@ export const strictRateLimiter = rateLimit({
 export const authRateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS || '5', 10),
-  keyGenerator: getClientIp,
+  message: {
     error: 'Too many authentication attempts, please try again later.',
     retryAfter: 'Please check the Retry-After header.',
   },
