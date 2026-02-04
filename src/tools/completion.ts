@@ -8,7 +8,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 
 const CompletionArgsSchema = z.object({
-  objectName: z.string().describe('Class or table name'),
+  className: z.string().describe('Class or table name'),
   prefix: z.string().optional().default('').describe('Method/field name prefix to filter'),
 });
 
@@ -17,8 +17,8 @@ export async function completionTool(request: CallToolRequest, context: XppServe
   const { symbolIndex } = context;
 
   try {
-    const methods = symbolIndex.getClassMethods(args.objectName);
-    const fields = symbolIndex.getTableFields(args.objectName);
+    const methods = symbolIndex.getClassMethods(args.className);
+    const fields = symbolIndex.getTableFields(args.className);
 
     const allMembers = [...methods, ...fields].filter((m) =>
       m.name.toLowerCase().startsWith(args.prefix.toLowerCase())
@@ -29,7 +29,7 @@ export async function completionTool(request: CallToolRequest, context: XppServe
         content: [
           {
             type: 'text',
-            text: `No members found for "${args.objectName}" starting with "${args.prefix}"`,
+            text: `No members found for "${args.className}" starting with "${args.prefix}"`,
           },
         ],
       };
