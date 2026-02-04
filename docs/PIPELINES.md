@@ -26,10 +26,9 @@ Manual metadata extraction and database builds are time-consuming:
 
 Three automated pipelines that separate standard (quarterly) and custom (daily) metadata:
 
-1. **Full Pipeline** - Complete custom metadata extraction
-2. **Quick Pipeline** - Custom updates on code changes (~95% faster)
-3. **Standard Pipeline** - Standard metadata from NuGet
-4. **Platform Upgrade Pipeline** - Complete D365 version upgrade
+1. **Quick Pipeline** - Custom updates on code changes (~95% faster)
+2. **Standard Pipeline** - Standard metadata from NuGet
+3. **Platform Upgrade Pipeline** - Complete D365 version upgrade
 
 ### Benefits
 
@@ -104,33 +103,7 @@ xpp-metadata/
 
 ## Pipeline Configurations
 
-### 1. d365fo-mcp-data.yml - Full Custom Extraction
-
-**Purpose:** Complete extraction of custom models from Git repository
-
-**Trigger:**
-- Changes to `src/`, `scripts/`, or pipeline files
-- Manual execution
-
-**Process:**
-1. Download standard metadata from blob (cached)
-2. Extract custom models from Git repository
-3. Build SQLite database (standard + custom)
-4. Upload custom metadata to blob
-5. Upload database to blob
-6. Restart App Service
-
-**When to Use:**
-- Initial setup
-- Major code changes
-- After Git force-push or rebase
-- Troubleshooting metadata issues
-
-**Execution Time:** ~30-45 minutes
-
-**Agent:** ubuntu-latest
-
-### 2. d365fo-mcp-data-quick.yml - Updates on Changes
+### 1. d365fo-mcp-data-quick.yml - Updates on Changes
 
 **Purpose:** Fast updates of custom models when code changes
 
@@ -181,7 +154,7 @@ xpp-metadata/
 
 **Agent:** ubuntu-latest
 
-### 3. d365fo-mcp-data-standard-extract.yml - NuGet Extraction
+### 2. d365fo-mcp-data-standard-extract.yml - NuGet Extraction
 
 **Purpose:** Extract Microsoft standard models from NuGet packages
 
@@ -208,7 +181,7 @@ xpp-metadata/
 - Microsoft.Dynamics.AX.Platform.DevALM.BuildXpp (7.0.*)
 - Microsoft.Dynamics.AX.Platform.CompilerPackage (7.0.*)
 
-### 4. d365fo-mcp-data-platform-upgrade.yml - Complete Platform Upgrade
+### 3. d365fo-mcp-data-platform-upgrade.yml - Complete Platform Upgrade
 
 **Purpose:** Complete D365 platform upgrade in single pipeline run - no intermediate uploads/downloads
 
@@ -320,12 +293,11 @@ xpp-metadata/
 **Recommended Approach:**
 1. Configure all Azure DevOps variables
 2. Run `d365fo-mcp-data-standard-extract.yml` for standard models
-3. Run `d365fo-mcp-data.yml` for initial custom extraction
+3. Run `d365fo-mcp-data-quick.yml` for initial custom extraction
 
 **Pipelines:**
-1. `azure-pipelines-standard-extract.yml` (manual)
-2. `d365fo-mcp-data.yml` (manual first run)
-3. `d365fo-mcp-data-quick.yml` (auto on code changes)
+1. `d365fo-mcp-data-standard-extract.yml` (manual)
+2. `d365fo-mcp-data-quick.yml` (manual first run, then auto on code changes)
 
 **Result:** Complete setup with automated updates on code changes
 
@@ -365,8 +337,8 @@ xpp-metadata/
 
 **Key Metrics:**
 - Quick pipeline: Should complete in 5-15 minutes
-- Full pipeline: Should complete in 30-45 minutes
 - Standard pipeline: Should complete in 2-3 hours
+- Platform upgrade pipeline: Should complete in 1.5-2 hours
 - Success rate: Should be >95%
 
 ### Log Analysis
@@ -390,7 +362,6 @@ Pipeline Logs:
 
 **Compute Costs:**
 - Quick pipeline: ~$0.50/month (daily runs)
-- Full pipeline: ~$2-5/month (occasional runs)
 - Standard pipeline: ~$5-10/year (quarterly runs)
 
 **Storage Costs:**
@@ -454,10 +425,9 @@ Pipeline Logs:
 **Solution:**
 ```bash
 # Optimize extraction
-1. Use quick pipeline instead of full
-2. Specify exact models with customModels parameter
-3. Check Git repository size
-4. Verify agent performance
+1. Specify exact models with customModels parameter
+2. Check Git repository size
+3. Verify agent performance
 ```
 
 #### Database Too Large
@@ -478,7 +448,6 @@ Pipeline Logs:
 ### 1. Use Appropriate Pipeline
 
 - **Code changes** → Quick pipeline (auto trigger)
-- **Major changes** → Full pipeline (manual)
 - **D365 upgrades** → Platform upgrade pipeline (manual)
 
 ### 2. Parameterize When Possible
