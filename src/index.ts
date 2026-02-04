@@ -79,6 +79,10 @@ async function main() {
 
   // Create Express app with transport
   const app = express();
+  
+  // Trust proxy - required for Azure App Service (behind reverse proxy)
+  app.set('trust proxy', 1);
+  
   app.use(express.json());
 
   // Health check endpoint
