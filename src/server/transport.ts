@@ -314,6 +314,9 @@ export class StreamableHttpTransport {
           throw new Error(`Unknown tool: ${name}`);
       }
 
+      // Log the result
+      console.log(`[MCP] Tool ${name} returned:`, JSON.stringify(result).substring(0, 500));
+
       return {
         jsonrpc: "2.0",
         result,
