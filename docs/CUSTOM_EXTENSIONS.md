@@ -55,17 +55,17 @@ npm run build-database
 
 The server provides a dedicated tool for searching only in custom extensions:
 
-### Tool: `xpp_search_extensions`
+### Tool: `search_extensions`
 
 **Arguments:**
 - `query` (required): Search term
-- `prefix` (optional): Filter by extension prefix (e.g., "ISV_")
+- `prefix` (optional): Filter by extension prefix (e.g., "ISV_", "Custom_")
 - `limit` (optional): Maximum results (default: 20)
 
 **Example:**
 ```json
 {
-  "name": "xpp_search_extensions",
+  "name": "search_extensions",
   "arguments": {
     "query": "CustomClass",
     "prefix": "ISV_",

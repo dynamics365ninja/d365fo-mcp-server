@@ -51,7 +51,7 @@ describe('searchTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_search',
+        name: 'search',
         arguments: { query: 'CustTable' }
       }
     } as CallToolRequest;
@@ -81,7 +81,7 @@ describe('searchTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_search',
+        name: 'search',
         arguments: { query: 'CustTable', type: 'class' }
       }
     } as CallToolRequest;
@@ -109,7 +109,7 @@ describe('searchTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_search',
+        name: 'search',
         arguments: { query: 'Cust', type: 'table' }
       }
     } as CallToolRequest;
@@ -137,7 +137,7 @@ describe('searchTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_search',
+        name: 'search',
         arguments: { query: 'validate', type: 'method' }
       }
     } as CallToolRequest;
@@ -156,7 +156,7 @@ describe('searchTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_search',
+        name: 'search',
         arguments: { query: '' }
       }
     } as CallToolRequest;
@@ -177,7 +177,7 @@ describe('searchTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_search',
+        name: 'search',
         arguments: { query: 'test' }
       }
     } as CallToolRequest;
@@ -192,7 +192,7 @@ describe('searchTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_search',
+        name: 'search',
         arguments: { query: 'test', limit: 5 }
       }
     } as CallToolRequest;
@@ -210,7 +210,7 @@ describe('searchTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_search',
+        name: 'search',
         arguments: { query: 'test' }
       }
     } as CallToolRequest;

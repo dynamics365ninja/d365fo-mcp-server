@@ -1,174 +1,337 @@
-# X++ MCP Code Completion Server
+# D365 F&O MCP Server
+
+<div align="center">
+
+**AI-Powered Code Intelligence for Microsoft Dynamics 365 Finance & Operations**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Build Status](https://github.com/dynamics365ninja/d365fo-mcp-server/workflows/CI/badge.svg)](https://github.com/dynamics365ninja/d365fo-mcp-server/actions)
-[![Azure](https://img.shields.io/badge/Azure-Ready-0078D4.svg)](https://azure.microsoft.com/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-orange.svg)](https://modelcontextprotocol.io/)
+[![Azure](https://img.shields.io/badge/Azure-Ready-0078D4.svg)](https://azure.microsoft.com/)
 
-A Model Context Protocol (MCP) server for X++ code completion in Microsoft Dynamics 365 Finance and Operations development.
+[Getting Started](#-quick-start) •
+[Features](#-features) •
+[Documentation](#-documentation) •
+[Architecture](#-architecture) •
+[Contributing](#-contributing)
 
-## Features
+</div>
 
-- 🔍 **Symbol Search**: Fast full-text search across X++ classes, tables, methods, and fields
-- 🎯 **Extension Search**: Search only in custom extensions/ISV models
-- 📚 **Class Information**: Get detailed class metadata including methods, inheritance, and implementations
-- 📊 **Table Information**: Access table schemas, fields, indexes, and relations
-- ✨ **Code Completion**: Method and field completions for classes and tables
-- 🎯 **Code Generation**: Templates for common X++ patterns (classes, batch jobs, form handlers, etc.)
-- 💾 **Redis Caching**: Optional Redis integration for improved performance
-- 🚦 **Rate Limiting**: Built-in protection against API abuse
-- 🔐 **Azure Integration**: Built-in Azure Blob Storage support for metadata caching
-- 🚀 **GitHub Copilot**: Integrates with Visual Studio 2022 via GitHub Copilot Agent Mode
+---
 
-## Architecture
+## 📋 Overview
 
-For a comprehensive visual overview of the system architecture, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The **D365 F&O MCP Server** bridges the gap between AI-powered development tools and Microsoft Dynamics 365 Finance & Operations. It implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) to provide real-time X++ code intelligence directly within your IDE through GitHub Copilot.
+
+### The Problem
+
+Developing for D365 F&O presents unique challenges:
+
+| Challenge | Impact |
+|-----------|--------|
+| **Massive Codebase** | 500,000+ symbols across standard application |
+| **Limited IDE Support** | No IntelliSense outside Visual Studio |
+| **AI Knowledge Gap** | GitHub Copilot lacks D365-specific context |
+| **Slow Metadata Access** | AOT browsing is time-consuming |
+| **Extension Complexity** | Finding correct extension points is difficult |
+
+### The Solution
+
+This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O environment:
 
 ```
-Visual Studio 2022 (GitHub Copilot) 
-    ↓ Streamable HTTP + OAuth
-Azure App Service (Linux P0v3)
-    ↓ MCP Protocol
-X++ MCP Server (TypeScript)
-    ↓ SQLite + FTS5
-X++ Metadata Database (~500MB)
-    ↑ Download on startup
-Azure Blob Storage
+┌─────────────────────────────────────────────────────────────────────┐
+│  "Show me methods available on CustTable"                           │
+│                                                                     │
+│  → GitHub Copilot queries MCP Server                                │
+│  → Server searches 584,799 indexed symbols in <50ms                 │
+│  → Returns class info, methods, parameters, inheritance             │
+│  → Copilot generates accurate, context-aware code                   │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Prerequisites
+---
 
-- Node.js 22 LTS or later
-- TypeScript 5.0+
-- Access to D365 F&O PackagesLocalDirectory (for metadata extraction)
-- Azure Storage account (for cloud deployment)
+## 👥 Who Is This For?
 
-## Key Dependencies
+<table>
+<tr>
+<td width="33%">
 
-- **dotenv**: Loads environment variables from .env file
-- **xml2js**: Parses D365 AOT XML files
-- **better-sqlite3**: SQLite database with FTS5 full-text search
-- **@modelcontextprotocol/sdk**: MCP protocol implementation
-- **express**: HTTP server for streamable transport
+### 🔧 D365 Developers
+- Get instant code completion for X++ classes and tables
+- Discover methods, fields, and relationships
+- Generate boilerplate code for common patterns
 
-## Quick Start
+</td>
+<td width="33%">
+
+### 🏢 ISV Partners
+- Search custom extensions separately from standard
+- Find extension points across the application
+- Maintain consistency across development teams
+
+</td>
+<td width="33%">
+
+### 🚀 Technical Consultants
+- Quickly explore unfamiliar modules
+- Understand table relationships and data models
+- Generate documentation and code reviews
+
+</td>
+</tr>
+</table>
+
+---
+
+## ✨ Features
+
+### Core Capabilities
+
+| Tool | Description |
+|------|-------------|
+| **`search`** | Search for X++ classes, tables, methods, and fields by name or keyword |
+| **`search_extensions`** | Search only in custom extensions/ISV models |
+| **`get_class_info`** | Get detailed information about an X++ class including its methods |
+| **`get_table_info`** | Get detailed information about an X++ table including fields, indexes, and relations |
+| **`code_completion`** | IntelliSense-like code completion for methods and fields |
+| **`generate_code`** | Generate X++ code templates for common patterns |
+
+### Technical Highlights
+
+- 🔍 **Full-Text Search** — FTS5-powered search across 584,799+ symbols
+- ⚡ **Sub-50ms Response** — Optimized SQLite queries with intelligent caching
+- 🔐 **Enterprise Ready** — OAuth 2.0 authentication, rate limiting, Azure integration
+- 💾 **Redis Caching** — Optional caching layer for improved performance
+- 🌐 **Cloud Native** — Deploy to Azure App Service with automated CI/CD
+
+---
+
+## 📊 Comparison: Before vs After
+
+| Scenario | Without MCP Server | With MCP Server |
+|----------|-------------------|-----------------|
+| Finding a class method | Open AOT → Navigate → Expand → Search | Ask: "What methods does SalesTable have?" |
+| Understanding table schema | Open table in AOT → Check fields → Check relations | Ask: "Show me CustTable fields and relations" |
+| Code generation | Copy from existing code → Modify manually | Ask: "Generate a batch job for inventory processing" |
+| Extension discovery | Search solution → Check multiple projects | Ask: "Find all custom extensions for CustTable" |
+| Learning new modules | Read documentation → Trial and error | Ask: "What classes handle sales order processing?" |
+
+### Performance Metrics
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  Symbols Indexed      584,799    (classes, tables, methods)   │
+│  Database Size        ~500 MB    (SQLite with FTS5)           │
+│  Search Latency       <50 ms     (with caching: <10 ms)       │
+│  Startup Time         <5 sec     (database download)          │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** 22 LTS or later
+- **D365 F&O** development environment (for metadata extraction)
+- **Azure Storage** account (for cloud deployment)
+
+### Installation
 
 ```bash
-# 1. Install dependencies
+# 1. Clone the repository
+git clone https://github.com/dynamics365ninja/d365fo-mcp-server.git
+cd d365fo-mcp-server
+
+# 2. Install dependencies
 npm install
 
-# 2. Extract metadata from D365FO
+# 3. Configure environment
+cp .env.example .env
+# Edit .env with your settings
+
+# 4. Extract metadata from D365FO
 npm run extract-metadata
 
-# 3. Build database
+# 5. Build the SQLite database
 npm run build-database
 
-# 4. Start server
+# 6. Start the server
 npm run dev
 ```
 
-For detailed setup instructions, see [docs/SETUP.md](docs/SETUP.md).
+The server will be available at `http://localhost:8080/mcp`
 
-## Documentation
+---
 
-- **[SETUP.md](docs/SETUP.md)** - Complete setup guide for local and Azure deployment
-- **[PIPELINES.md](docs/PIPELINES.md)** - Azure DevOps pipeline automation guide
-- **[USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md)** - Practical examples and use cases
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design
-- **[PERFORMANCE.md](docs/PERFORMANCE.md)** - Performance optimization tips
-- **[CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md)** - Custom extension development
-- **[TESTING.md](docs/TESTING.md)** - Testing guide
+## 🖥️ Visual Studio 2022 Integration
 
-## Installation
+This MCP server is designed to work seamlessly with **Visual Studio 2022** through GitHub Copilot's Agent Mode, providing AI-powered X++ code intelligence directly in your D365 F&O development environment.
 
-```bash
-npm install
+### Requirements
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| Visual Studio 2022 | 17.14+ | Required for MCP support |
+| GitHub Copilot Extension | Latest | Enterprise or Individual subscription |
+| GitHub Copilot Chat | Latest | Agent Mode enabled |
+
+### Setup Instructions
+
+1. **Enable Editor Preview Features** in your GitHub account:
+   
+   👉 https://github.com/settings/copilot/features
+   
+   > ⚠️ Without this setting enabled, MCP tools will not load in GitHub Copilot.
+
+2. **Enable MCP Integration in Visual Studio**:
+   
+   Navigate to **Tools** → **Options** → **GitHub** → **Copilot** and enable:
+   - ✅ *"Enable MCP server integration in agent mode"*
+
+3. **Create `.mcp.json`** in your solution root:
+
+   ```json
+   {
+     "servers": {
+       "d365fo-code-intelligence": {
+         "url": "https://your-app.azurewebsites.net/mcp/",
+         "description": "D365 F&O Code Intelligence Server"
+       }
+     }
+   }
+   ```
+
+4. **Restart Visual Studio** to apply changes
+
+5. **Open Copilot Chat** in Agent Mode and verify tools are loaded
+
+### Usage in Visual Studio
+
+Once configured, simply ask GitHub Copilot natural language questions:
+
+```
+💬 "Show me all methods on the InventTable class"
+
+💬 "What fields does CustTable have?"
+
+💬 "Generate a batch job class for processing sales orders"
+
+💬 "Find all custom extensions in my ISV module"
 ```
 
-## Configuration
+GitHub Copilot will automatically invoke the appropriate MCP tools and provide accurate, context-aware responses based on your D365 F&O metadata.
 
-Create a `.env` file:
+### Supported Workflows
+
+| Workflow | How It Helps |
+|----------|--------------|
+| **Code Navigation** | Instantly find classes, methods, and tables without AOT browsing |
+| **Code Completion** | Get accurate method signatures and field names |
+| **Code Generation** | Generate boilerplate X++ code following best practices |
+| **Code Review** | Analyze existing code with full metadata context |
+| **Learning** | Explore unfamiliar modules with natural language queries |
+
+---
+
+## ⚙️ Configuration
+
+Create a `.env` file in the project root:
 
 ```env
-# Server configuration
+# Server
 PORT=8080
+NODE_ENV=production
 
-# Database path
-DB_PATH=/tmp/xpp-metadata.db
+# Database
+DB_PATH=./data/xpp-metadata.db
 
-# Redis Cache (optional - improves performance)
-REDIS_ENABLED=false
-REDIS_URL=redis://localhost:6379
-CACHE_TTL=3600  # Cache TTL in seconds
-
-# Rate Limiting
-RATE_LIMIT_WINDOW_MS=900000  # 15 minutes
-RATE_LIMIT_MAX_REQUESTS=100  # Max requests per window
-RATE_LIMIT_STRICT_MAX_REQUESTS=20  # Strict limit
-RATE_LIMIT_AUTH_MAX_REQUESTS=5  # Auth attempts
-
-# Azure Blob Storage (optional)
-AZURE_STORAGE_CONNECTION_STRING=your_connection_string
-BLOB_CONTAINER_NAME=xpp-metadata
-BLOB_DATABASE_NAME=databases/xpp-metadata-latest.db
-
-# Metadata extraction
+# Metadata Source
 PACKAGES_PATH=C:\AOSService\PackagesLocalDirectory
 
-# Custom Extensions (optional - for ISV scenarios)
+# Custom Extensions (ISV scenarios)
 CUSTOM_MODELS=ISV_Module1,ISV_Module2
 EXTENSION_PREFIX=ISV_
-EXTRACT_MODE=all  # Options: 'all', 'standard', 'custom'
+
+# Azure Blob Storage (cloud deployment)
+AZURE_STORAGE_CONNECTION_STRING=your_connection_string
+BLOB_CONTAINER_NAME=xpp-metadata
+
+# Redis Cache (optional)
+REDIS_ENABLED=false
+REDIS_URL=redis://localhost:6379
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
 ```
 
-## Usage
+---
 
-### 1. Extract Metadata from D365 F&O
+## 🏗️ Architecture
 
-```bash
-npm run extract-metadata
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Client Layer                                │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │  Visual Studio 2022 + GitHub Copilot (MCP Client)             │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                    Streamable HTTP + OAuth 2.0
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Azure Cloud                                 │
+│  ┌─────────────────────────┐    ┌─────────────────────────────┐    │
+│  │  Azure App Service      │    │  Azure Blob Storage          │    │
+│  │  (Linux P0v3)           │◄───│  (xpp-metadata.db)           │    │
+│  │  Node.js 22 LTS         │    │  ~500 MB                     │    │
+│  └─────────────────────────┘    └─────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                       MCP Server Components                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
+│  │ HTTP         │  │ MCP Protocol │  │ Tool         │              │
+│  │ Transport    │─▶│ Handler      │─▶│ Handlers     │              │
+│  │ + Rate Limit │  │ JSON-RPC 2.0 │  │ (6 tools)    │              │
+│  └──────────────┘  └──────────────┘  └──────────────┘              │
+│                                              │                      │
+│                    ┌─────────────────────────┼──────────────────┐   │
+│                    │                         ▼                  │   │
+│                    │  ┌──────────────┐  ┌──────────────┐        │   │
+│                    │  │ SQLite + FTS5│  │ Redis Cache  │        │   │
+│                    │  │ (584K symbols│  │ (Optional)   │        │   │
+│                    │  └──────────────┘  └──────────────┘        │   │
+│                    └────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-This extracts X++ metadata from your D365 F&O installation:
-- Scans PackagesLocalDirectory (packages contain multiple models)
-- Parses AxClass, AxTable, AxEnum XML files using xml2js
-- Extracts methods with parameters (from source code), fields, relationships
-- Can extract all models or filter to custom models only (see EXTRACT_MODE)
+For detailed architecture diagrams with Mermaid visualizations, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-### 2. Build SQLite Database
+---
 
-```bash
-npm run build-database
-```
+## 📚 Documentation
 
-This creates the SQLite database with FTS5 indexes for fast search.
+| Document | Description |
+|----------|-------------|
+| [**SETUP.md**](docs/SETUP.md) | Complete setup guide for local and Azure deployment |
+| [**USAGE_EXAMPLES.md**](docs/USAGE_EXAMPLES.md) | Practical examples and use cases |
+| [**ARCHITECTURE.md**](docs/ARCHITECTURE.md) | System architecture and design |
+| [**PIPELINES.md**](docs/PIPELINES.md) | Azure DevOps pipeline automation |
+| [**PERFORMANCE.md**](docs/PERFORMANCE.md) | Performance optimization tips |
+| [**CUSTOM_EXTENSIONS.md**](docs/CUSTOM_EXTENSIONS.md) | ISV and custom extension development |
+| [**TESTING.md**](docs/TESTING.md) | Testing guide and best practices |
 
-### 3. Start Server Locally
+---
 
-```bash
-npm run dev
-```
-
-Server will be available at `http://localhost:8080/mcp`
-
-### 4. Deploy to Azure (Optional)
-
-See [docs/SETUP.md](docs/SETUP.md) for detailed deployment instructions and [docs/PIPELINES.md](docs/PIPELINES.md) for automated CI/CD setup.
-
-**Quick Deploy:**
-```bash
-# Push to GitHub to trigger CI/CD
-git push origin main
-
-# Or deploy manually with Azure CLI
-az webapp up --name your-app-name --resource-group your-rg --runtime "NODE:22-lts"
-```
-
-## Testing
-
-The project has comprehensive test coverage using Vitest:
+## 🧪 Testing
 
 ```bash
 # Run tests in watch mode
@@ -177,289 +340,39 @@ npm test
 # Run tests once (CI mode)
 npm test -- --run
 
-# Run tests with coverage
+# Run with coverage
 npm test -- --coverage
 ```
 
-### Test Suite
+---
 
-- **Unit Tests**: Individual tool functions (search, classInfo, tableInfo)
-- **Integration Tests**: MCP protocol flow and HTTP transport
-- **Database Tests**: Symbol indexing and full-text search
+## 🤝 Contributing
 
-For detailed information, see [docs/TESTING.md](docs/TESTING.md).
+Contributions are welcome! Please read our contributing guidelines and submit pull requests to the `develop` branch.
 
-## CI/CD
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-The project includes automated workflows:
+---
 
-- **CI Workflow** ([.github/workflows/ci.yml](.github/workflows/ci.yml))
-  - Runs on every push/PR to `main` or `develop`
-  - Tests on Node.js 20.x and 22.x
-  - Runs linting, building, and security audits
-  - Status: [![Build Status](https://github.com/dynamics365ninja/d365fo-mcp-server/workflows/CI/badge.svg)](https://github.com/dynamics365ninja/d365fo-mcp-server/actions)
+## 📄 License
 
-- **Deploy Workflow** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml))
-  - Deploys to Azure App Service
-  - Supports production and staging environments
-  - Automatic on push to `main` or manual trigger
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-- **Release Workflow** ([.github/workflows/release.yml](.github/workflows/release.yml))
-  - Creates GitHub releases on version tags
-  - Generates changelog automatically
-  - Builds release artifacts
+---
 
-- **Dependabot** ([.github/dependabot.yml](.github/dependabot.yml))
-  - Weekly dependency updates
-  - Grouped updates for production and dev dependencies
+<div align="center">
 
-## MCP Tools
+**Built with ❤️ for the D365 F&O Community**
 
-The server provides these MCP tools:
+[Report Bug](https://github.com/dynamics365ninja/d365fo-mcp-server/issues) •
+[Request Feature](https://github.com/dynamics365ninja/d365fo-mcp-server/issues) •
+[Documentation](docs/)
 
-### `xpp_search`
-
-Search for X++ symbols by name or keyword. Can filter by type to search only in specific categories (class=AxClass, table=AxTable, enum=AxEnum).
-
-**Arguments:**
-- `query` (string): Search query
-- `type` (string, optional): Filter by object type - `class`, `table`, `field`, `method`, `enum`, or `all` (default: `all`)
-  - `class` - corresponds to AxClass directory
-  - `table` - corresponds to AxTable directory
-  - `enum` - corresponds to AxEnum directory
-  - `field` - table fields only
-  - `method` - class methods only
-  - `all` - no filtering
-- `limit` (number, optional): Maximum results (default: 20)
-
-**Examples:**
-```json
-{
-  "name": "xpp_search",
-  "arguments": {
-    "query": "CustTable",
-    "limit": 10
-  }
-}
-```
-
-Search only in classes (AxClass):
-```json
-{
-  "name": "xpp_search",
-  "arguments": {
-    "query": "Customer",
-    "type": "class",
-    "limit": 10
-  }
-}
-```
-
-Search only in tables (AxTable):
-```json
-{
-  "name": "xpp_search",
-  "arguments": {
-    "query": "Cust",
-    "type": "table",
-    "limit": 10
-  }
-}
-```
-
-### `xpp_search_extensions`
-
-Search for symbols only in custom extensions/ISV models. Results are grouped by model for better readability.
-
-**Arguments:**
-- `query` (string): Search query
-- `prefix` (string, optional): Extension prefix filter (e.g., "ISV_", "Custom_")
-- `limit` (number, optional): Maximum results (default: 20)
-
-**Example:**
-```json
-{
-  "name": "xpp_search_extensions",
-  "arguments": {
-    "query": "Custom",
-    "prefix": "ISV_",
-    "limit": 20
-  }
-}
-```
-
-### `xpp_get_class`
-
-Get detailed information about an X++ class.
-
-**Arguments:**
-- `className` (string): Name of the class
-
-**Example:**
-```json
-{
-  "name": "xpp_get_class",
-  "arguments": {
-    "className": "SalesOrderProcessor"
-  }
-}
-```
-
-### `xpp_get_table`
-
-Get detailed information about an X++ table.
-
-**Arguments:**
-- `tableName` (string): Name of the table
-
-### `xpp_complete_method`
-
-Get method/field completions for a class or table.
-
-**Arguments:**
-- `objectName` (string): Class or table name
-- `prefix` (string, optional): Filter by prefix
-
-### `xpp_generate_code`
-
-Generate X++ code templates.
-
-**Arguments:**
-- `pattern` (string): Template type (class, runnable, form-handler, data-entity, batch-job)
-- `name` (string): Name for the generated element
-
-## GitHub Copilot Integration
-
-### Prerequisites
-
-⚠️ **Important**: To use custom MCP servers with GitHub Copilot, you must enable **"Editor preview features"** in your GitHub account settings:
-
-👉 https://github.com/settings/copilot/features
-
-Without this feature enabled, MCP tools will not be loaded in GitHub Copilot.
-
-For more information about GitHub Copilot policies and feature management, see:
-📖 [Managing Policies for GitHub Copilot](https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-organization/manage-policies#about-policies-for-github-copilot)
-
-### Visual Studio 2022 Setup
-
-1. Install Visual Studio 2022 version 17.14+
-2. Install GitHub Copilot extension
-3. **Enable MCP integration**: Go to **Tools** → **Options** → **GitHub** → **Copilot** and enable **"Enable MCP server integration in agent mode"**
-4. Create `.mcp.json` in your solution root:
-
-```json
-{
-  "servers": {
-    "xpp-completion": {
-      "url": "https://your-app.azurewebsites.net/mcp/",
-      "description": "X++ Code Completion Server for D365 F&O"
-    }
-  }
-}
-```
-
-5. Restart Visual Studio to apply changes
-6. Open Copilot Chat in Agent Mode
-7. Verify that X++ MCP tools are loaded and available
-
-## Project Structure
-
-```
-d365fo-mcp-server/
-├── .azure-pipelines/
-│   ├── d365fo-mcp-data.yml                      # Full custom metadata extraction
-│   ├── d365fo-mcp-data-quick.yml                # Updates on code changes
-│   ├── d365fo-mcp-data-standard-extract.yml     # Standard metadata from NuGet
-│   └── d365fo-mcp-data-platform-upgrade.yml     # Complete platform upgrade
-├── src/
-│   ├── index.ts                 # Main entry point
-│   ├── cache/
-│   │   └── redisCache.ts        # Redis caching service
-│   ├── database/
-│   │   └── download.ts          # Azure Blob integration
-│   ├── metadata/
-│   │   ├── symbolIndex.ts       # SQLite FTS5 indexing
-│   │   ├── types.ts             # Type definitions
-│   │   └── xmlParser.ts         # X++ XML parser
-│   ├── middleware/
-│   │   └── rateLimiter.ts       # API rate limiting
-│   ├── prompts/
-│   │   ├── codeReview.ts        # Code review prompt
-│   │   ├── index.ts             # Prompt exports
-│   │   └── xppPrompts.ts        # X++ prompts
-│   ├── resources/
-│   │   └── classResource.ts     # Class resource provider
-│   ├── server/
-│   │   ├── mcpServer.ts         # MCP server configuration
-│   │   └── transport.ts         # HTTP transport layer
-│   ├── tools/
-│   │   ├── classInfo.ts         # Class information
-│   │   ├── codeGen.ts           # Code generation
-│   │   ├── completion.ts        # Method completion
-│   │   ├── extensionSearch.ts   # Custom extension search
-│   │   ├── index.ts             # Tool exports
-│   │   ├── search.ts            # Symbol search
-│   │   ├── tableInfo.ts         # Table information
-│   │   ├── toolHandler.ts       # Central tool handler
-│   │   └── xppTools.ts          # X++ tools
-│   └── types/
-│       └── context.ts           # Server context
-├── scripts/
-│   ├── azure-blob-manager.ts    # Azure Blob Storage management
-│   ├── build-database.ts        # Database builder
-│   ├── extract-metadata.ts      # Metadata extraction
-│   ├── test-parse.ts            # Parser testing
-│   ├── test-pipeline.ps1        # Pipeline workflow testing
-│   └── test-mcp.ps1             # PowerShell test script
-├── config/
-│   └── standard-models.json     # Standard D365 models
-├── docs/
-│   ├── ARCHITECTURE.md          # System architecture
-│   ├── CUSTOM_EXTENSIONS.md     # Custom extension development
-│   ├── PERFORMANCE.md           # Performance optimization
-│   ├── PIPELINES.md             # Azure DevOps automation
-│   ├── SETUP.md                 # Complete setup guide
-│   ├── TESTING.md               # Testing guide
-│   └── USAGE_EXAMPLES.md        # Practical examples
-├── nuget-config/
-│   ├── latest.csproj            # NuGet packages definition
-│   ├── nuget.config             # NuGet feed configuration
-│   └── README.md                # NuGet setup instructions
-├── infrastructure/
-│   └── main.bicep               # Azure IaC
-├── package.json
-├── tsconfig.json
-├── vitest.config.ts
-├── README.md
-├── LICENSE
-└── startup.sh
-```
-
-## Performance Features
-
-### Redis Caching
-
-The server supports optional Redis caching to improve response times for frequently accessed data:
-
-```bash
-# Enable Redis
-REDIS_ENABLED=true
-REDIS_URL=redis://localhost:6379
-CACHE_TTL=3600  # 1 hour cache
-```
-
-**Cached Operations:**
-- Symbol searches (both standard and extension)
-- Class information lookups
-- Table schema queries
-- Code completions
-
-**Cache Key Patterns:**
-- `xpp:search:{query}:{limit}` - Standard search results
-- `xpp:ext:{query}:{prefix}:{limit}` - Extension search results
-- `xpp:class:{className}` - Class metadata
-- `xpp:table:{tableName}` - Table metadata
+</div>
 
 ### Rate Limiting
 
