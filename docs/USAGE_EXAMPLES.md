@@ -1,456 +1,480 @@
 # D365FO MCP Server - Usage Examples
 
-This guide provides practical examples of how to use the D365FO MCP Server with modern MCP clients like GitHub Copilot. With newer MCP extensions, you can interact naturally without needing to use command prefixes like `@xpp-completion`.
+Practical examples for X++ code completion and symbol lookup in Visual Studio Code with GitHub Copilot.
 
 ## Table of Contents
 
-- [Search for X++ Classes or Tables](#search-for-x-classes-or-tables)
-- [Get Detailed Class Information](#get-detailed-class-information)
-- [Get Table Schema Information](#get-table-schema-information)
-- [Search Custom Extensions Only](#search-custom-extensions-only)
-- [Method and Field Completion](#method-and-field-completion)
-- [Generate X++ Code Templates](#generate-x-code-templates)
-- [Combined Queries](#combined-queries)
-- [Code Review and Analysis](#code-review-and-analysis)
+- [Code Completion (Primary Use Case)](#code-completion-primary-use-case)
+- [Symbol Search](#symbol-search)
+- [Class Information](#class-information)
+- [Table Information](#table-information)
 - [Extension Development](#extension-development)
-- [Learning and Documentation](#learning-and-documentation)
-
-## Search for X++ Classes or Tables
-
-The MCP server provides fast full-text search across all X++ symbols in your D365FO environment.
-
-### Examples:
-
-```
-Find the CustTable class and show me its structure
-```
-
-```
-Search for all classes related to sales orders
-```
-
-```
-What tables are available for inventory management?
-```
-
-```
-Show me all classes that implement the SysOperationServiceController
-```
-
-```
-Find enums related to payment methods
-```
-
-**What happens behind the scenes:** The server uses the `search` tool to perform FTS5-powered full-text search across classes, tables, enums, and other X++ elements.
+- [Code Generation](#code-generation)
+- [Configuration](#configuration)
 
 ---
 
-## Get Detailed Class Information
+## Code Completion (Primary Use Case)
 
-Get comprehensive information about any X++ class including methods, inheritance, interfaces, and attributes.
+The primary purpose of this MCP server is to provide intelligent code completion for X++ development. When you're writing code and need to know what methods or fields are available, just ask.
 
-### Examples:
+### Finding Methods on a Class
 
-```
-Show me the methods available in the SalesOrderProcessor class
-```
+**Scenario:** You're working with `SalesTable` and need to find the right method to update totals.
 
 ```
-What does the CustVendTransPostingLog_RU class do and what methods does it have?
+What methods are available on SalesTable that relate to totals?
 ```
 
-```
-Get information about the FormLetterService class including inheritance
-```
-
-```
-What interfaces does the WHSWorkExecute class implement?
-```
-
-```
-Show me all protected and public methods in the InventMovement class
-```
-
-**What happens behind the scenes:** The server uses the `get_class_info` tool to retrieve detailed metadata including method signatures, parameters, return types, inheritance hierarchy, and implemented interfaces.
+**Response includes:**
+- `updateSalesOrderTotals()`
+- `calcTotals()`
+- `initFromSalesLine()`
+- Method signatures and return types
 
 ---
 
-## Get Table Schema Information
+### Getting Field Names for a Table
 
-Access detailed table schemas including fields, field groups, indexes, relations, and delete actions.
-
-### Examples:
+**Scenario:** Writing a query and need exact field names for `CustTable`.
 
 ```
-What are the fields and indexes in the CustTable?
+List all fields on CustTable
 ```
 
-```
-Show me the schema for InventTable including all relations
-```
-
-```
-What fields does the SalesTable have?
-```
-
-```
-List all indexes on the VendTable and their fields
-```
-
-```
-Show me the foreign key relations for PurchLine
-```
-
-**What happens behind the scenes:** The server uses the `get_table_info` tool to retrieve comprehensive table metadata including EDT types, mandatory fields, and relationship definitions.
+**Response includes:**
+- `AccountNum` (EDT: CustAccount, Mandatory: Yes)
+- `CustGroup` (EDT: CustGroupId)
+- `Currency` (EDT: CurrencyCode)
+- All 200+ fields with types
 
 ---
 
-## Search Custom Extensions Only
+### Finding Methods Starting with Specific Prefix
 
-Filter search results to show only your custom ISV models and extensions, perfect for tracking your customizations.
-
-### Examples:
+**Scenario:** You know there's a `find*` method but can't remember the exact name.
 
 ```
-Find all my custom ISV extensions related to invoicing
+What methods on InventTable start with "find"?
 ```
 
-```
-Search for custom tables with prefix ISV_ that relate to customers
-```
-
-```
-List my custom modifications to the sales process
-```
-
-```
-Show me all Custom_ prefixed classes in my extensions
-```
-
-```
-What custom event handlers have I created for inventory?
-```
-
-**What happens behind the scenes:** The server uses the `search_extensions` tool with configurable prefixes (e.g., "ISV_", "Custom_") to filter results to only your custom models.
+**Response:**
+- `find(ItemId _itemId, boolean _forUpdate = false)`
+- `findByProduct(RecId _product)`
+- `findRecId(RecId _recId)`
+- `findByItemIdLegalEntity(...)`
 
 ---
 
-## Method and Field Completion
+### Discovering Available parm Methods
 
-Get IntelliSense-style completions for methods and fields on classes and tables.
-
-### Examples:
+**Scenario:** Working with a class that uses the parm pattern.
 
 ```
-What methods can I call on a CustTable record?
+Show me all parm methods on SalesFormLetter
 ```
 
-```
-Show me all available fields for the SalesLine table
-```
-
-```
-What methods are available on the InventDim class that start with "find"?
-```
-
-```
-List all parm methods on the SalesFormLetter class
-```
-
-```
-What fields can I access on WHSWorkLine?
-```
-
-**What happens behind the scenes:** The server uses the `code_completion` tool to provide filtered method and field lists with optional prefix matching.
+**Response lists:**
+- `parmCallerTable()`
+- `parmDocumentStatus()`
+- `parmVersioningUpdateType()`
+- Parameter types and return types
 
 ---
 
-## Generate X++ Code Templates
+### Finding Event Handler Methods
 
-Generate ready-to-use X++ code templates following D365FO best practices and patterns.
+**Scenario:** Need to know what events you can subscribe to.
 
-### Examples:
-
-#### Runnable Class
 ```
-Generate a runnable class template for a data migration job
+What events can I subscribe to on SalesTable?
 ```
 
-#### Batch Job
-```
-Create a batch job skeleton for processing customer invoices
-```
-
-#### Form Event Handler
-```
-Generate a form event handler for the CustTable form
-```
-
-#### Data Entity
-```
-Create a data entity template for exporting sales orders
-```
-
-#### Basic Class
-```
-Generate a basic X++ class with standard structure
-```
-
-#### Service Class
-```
-Create a service class template for external integrations
-```
-
-**What happens behind the scenes:** The server uses the `generate_code` tool with predefined patterns for common X++ development scenarios.
-
-**Available Patterns:**
-- `class` - Basic X++ class with constructor
-- `runnable` - Runnable class (extends RunBaseBatch)
-- `batch-job` - Batch job with SysOperation framework
-- `form-handler` - Form event handler class
-- `data-entity` - Data entity with staging table
-- `service` - Service class for integration
+**Response:**
+- `onValidatingWrite`
+- `onValidatedWrite`
+- `onInserting`
+- `onInserted`
+- `onUpdating`
+- `onUpdated`
+- `onDeleting`
+- `onDeleted`
 
 ---
 
-## Combined Queries
+## Symbol Search
 
-Combine multiple operations in a single conversation to streamline your development workflow.
+Fast full-text search across all X++ symbols when you need to find classes, tables, or enums.
 
-### Examples:
+### Finding Classes by Functionality
 
-```
-Find the SalesFormLetter class and generate a similar class for my custom invoice processing
-```
+**Scenario:** Need to find classes related to posting sales invoices.
 
 ```
-Show me the CustInvoiceJour table structure and create a data entity to expose it
+Search for classes related to sales invoice posting
 ```
 
-```
-Search for batch job examples and then generate a new batch job for my custom process
-```
-
-```
-Analyze the InventMovement class design and create a similar class for my warehouse tracking
-```
-
-```
-Find extension examples for PurchTable and show me how to add my custom fields
-```
-
-**What happens behind the scenes:** The server intelligently chains multiple tool calls (search → class info → code generation) to provide comprehensive responses.
+**Returns:**
+- `SalesInvoiceJournalPost`
+- `SalesInvoiceController`
+- `CustInvoiceJour`
+- Relevance-ranked results
 
 ---
 
-## Code Review and Analysis
+### Finding Tables for a Module
 
-Get AI-powered code reviews based on D365FO best practices and design patterns.
-
-### Examples:
+**Scenario:** Exploring what tables exist for warehouse management.
 
 ```
-Review this X++ code and suggest improvements based on D365FO best practices
+Find all WHS tables for warehouse work
 ```
 
-```
-Analyze this class and tell me if I'm following standard patterns
-```
+**Returns:**
+- `WHSWorkTable`
+- `WHSWorkLine`
+- `WHSWorkInventTrans`
+- `WHSContainerTable`
+
+---
+
+### Finding Enums
+
+**Scenario:** Need the right enum for sales order status.
 
 ```
-Is this the correct way to implement table extension methods?
+What enums are available for sales order status?
 ```
 
-```
-Check if my batch job follows Microsoft's recommended patterns
-```
+**Returns:**
+- `SalesStatus`
+- `SalesTableStatus`
+- `DocumentStatus`
+- Enum values for each
+
+---
+
+### Finding Data Entities
+
+**Scenario:** Looking for existing data entities before creating a new one.
 
 ```
-Review my data entity implementation for performance issues
+Search for data entities related to customers
 ```
 
-**What happens behind the scenes:** The server combines symbol search with X++ best practices knowledge to provide contextual code reviews.
+**Returns:**
+- `CustCustomerV3Entity`
+- `CustCustomerGroupEntity`
+- `CustCustomerBaseEntity`
+
+---
+
+## Class Information
+
+Get detailed information about X++ classes including inheritance, interfaces, and all members.
+
+### Understanding Class Hierarchy
+
+**Scenario:** Before extending a class, you need to understand its inheritance.
+
+```
+Show me the inheritance hierarchy for SalesFormLetter
+```
+
+**Returns:**
+```
+SalesFormLetter
+  └── FormLetter
+        └── RunBase
+              └── Object
+```
+
+---
+
+### Finding Overridable Methods
+
+**Scenario:** Need to know what methods you can override in an extension.
+
+```
+What protected methods can I override in InventMovement?
+```
+
+**Returns list of protected and public methods with signatures.**
+
+---
+
+### Understanding Class Interfaces
+
+**Scenario:** Need to implement the same interface as another class.
+
+```
+What interfaces does WHSWorkExecuteDisplay implement?
+```
+
+**Returns:**
+- `WHSWorkExecuteMode`
+- `SysPackable`
+- Interface method requirements
+
+---
+
+## Table Information
+
+Access complete table metadata including fields, indexes, relations, and field groups.
+
+### Getting Table Relations
+
+**Scenario:** Understanding foreign keys before writing joins.
+
+```
+Show me all relations on SalesLine
+```
+
+**Returns:**
+- `SalesTable` (SalesId → SalesId)
+- `InventTable` (ItemId → ItemId)
+- `InventDim` (InventDimId → InventDimId)
+- Delete actions for each relation
+
+---
+
+### Finding Indexes
+
+**Scenario:** Optimizing a query by using the right index.
+
+```
+What indexes exist on CustTrans?
+```
+
+**Returns:**
+- `AccountIdx` (AccountNum, TransDate)
+- `VoucherIdx` (Voucher, TransDate)
+- `PaymModeIdx` (PaymMode, AccountNum)
+- Unique/non-unique flags
+
+---
+
+### Understanding Field Groups
+
+**Scenario:** Need to know what fields are in AutoReport or AutoLookup.
+
+```
+Show me the field groups on SalesTable
+```
+
+**Returns:**
+- `AutoReport`: SalesId, CustAccount, SalesStatus...
+- `AutoLookup`: SalesId, SalesName, CustAccount...
+- `Overview`: All overview fields
 
 ---
 
 ## Extension Development
 
-Get guidance and examples for extending standard D365FO functionality.
+Guidance for extending standard D365FO functionality with Chain of Command or event handlers.
 
-### Examples:
+### Chain of Command Pattern
 
-```
-How do I extend the CustTable with a new field?
-```
+**Scenario:** Need to extend the `insert` method on `CustTable`.
 
 ```
-Show me examples of event handlers for the SalesTable
+How do I use Chain of Command to extend CustTable.insert()?
 ```
 
+**Returns:**
+```xpp
+[ExtensionOf(tableStr(CustTable))]
+final class CustTable_Extension
+{
+    public void insert()
+    {
+        // Pre-logic
+        
+        next insert();
+        
+        // Post-logic
+    }
+}
 ```
-What's the best way to extend the PurchCreateFromSalesOrder class?
-```
-
-```
-How do I chain of command on the InventMovement class?
-```
-
-```
-Show me how to subscribe to the onValidateWrite event for VendTable
-```
-
-**What happens behind the scenes:** The server provides extension patterns and searches for relevant base class information to guide your implementation.
 
 ---
 
-## Learning and Documentation
+### Event Handler Pattern
 
-Use the MCP server as a learning tool to understand D365FO architecture and patterns.
-
-### Examples:
+**Scenario:** Need to react when a sales order is validated.
 
 ```
-Explain how the InventMovement class works
+Show me how to create an event handler for SalesTable onValidatedWrite
 ```
 
+**Returns:**
+```xpp
+public class SalesTable_EventHandler
+{
+    [DataEventHandler(tableStr(SalesTable), DataEventType::ValidatedWrite)]
+    public static void SalesTable_onValidatedWrite(Common sender, DataEventArgs e)
+    {
+        SalesTable salesTable = sender as SalesTable;
+        // Your logic here
+    }
+}
 ```
-What design patterns are used in the SalesOrderProcessor class?
-```
-
-```
-Show me examples of using the Query framework in X++
-```
-
-```
-How does the dimension framework work in D365FO?
-```
-
-```
-Explain the difference between CustTable and CustTableExt
-```
-
-**What happens behind the scenes:** The server combines class metadata with contextual knowledge to provide educational explanations.
 
 ---
 
-## Key Features
+### Finding What to Extend
 
-### Natural Language Interface
-- **No prefix needed** - Just ask naturally as you would with any AI assistant
-- **Context-aware** - Understands D365FO terminology and concepts
-- **Conversational** - Follow-up questions work seamlessly
+**Scenario:** Need to add custom logic to sales invoice posting.
 
-### Automatic Tool Selection
-- **Tools work automatically** - The MCP server handles tool selection behind the scenes
-- **Intelligent routing** - Chooses the right combination of tools for your query
-- **Optimized performance** - Uses caching and FTS5 indexing for fast responses
+```
+What class should I extend to add custom logic during sales invoice posting?
+```
 
-### Comprehensive Coverage
-- **Full metadata access** - 500+ standard models indexed
-- **Extension-focused** - Special support for ISV/custom model development
-- **Code generation** - Ready-to-use templates following best practices
+**Returns:**
+- `SalesInvoiceJournalPost` - Main posting class
+- Key methods: `postLine()`, `postHeader()`
+- Extension points available
 
-### Developer-Friendly
-- **Combines tools** - Can search, analyze, and generate code in a single conversation
-- **Real metadata** - Based on actual D365FO XML and code parsing
-- **Always up-to-date** - Metadata extracted from your PackagesLocalDirectory
+---
+
+## Code Generation
+
+Generate X++ code templates following D365FO best practices.
+
+### Runnable Class
+
+```
+Generate a runnable class for customer data cleanup
+```
+
+**Returns complete runnable class with:**
+- `main()` method
+- `run()` implementation
+- Dialog parameters
+- Info logging
+
+---
+
+### Batch Job with SysOperation
+
+```
+Create a batch job for processing open sales orders
+```
+
+**Returns:**
+- Controller class
+- Service class  
+- Data contract class
+- Batch job registration
+
+---
+
+### Data Entity
+
+```
+Generate a data entity for custom table MyCustomTable
+```
+
+**Returns:**
+- Entity class structure
+- Staging table template
+- Field mappings
+- Public entity name
+
+---
+
+### Form Extension
+
+```
+Create a form extension for CustTable form to add a new button
+```
+
+**Returns:**
+- Form extension class
+- Button event handler
+- Menu item binding
 
 ---
 
 ## Configuration
 
-The MCP server requires minimal configuration. See your `.mcp.json` for connection details:
+### MCP Client Setup (`.mcp.json`)
 
 ```json
 {
   "servers": {
     "xpp-completion": {
       "url": "https://your-app.azurewebsites.net/mcp/",
-      "description": "X++ Code Completion Server for D365 F&O"
+      "description": "X++ Code Completion Server"
     }
   }
 }
 ```
 
-For custom extensions, configure your `.env` file:
+### Extension Prefix Configuration (`.env`)
 
 ```env
-# Custom Extensions Configuration
-CUSTOM_MODELS=ISV_Module1,ISV_Module2
+# Your custom model prefixes for filtering
 EXTENSION_PREFIX=ISV_
-EXTRACT_MODE=all  # Options: 'all', 'standard', 'custom'
+CUSTOM_MODELS=ISV_Sales,ISV_Inventory
+
+# Extraction mode
+EXTRACT_MODE=custom
 ```
+
+### Searching Custom Extensions Only
+
+```
+Search my custom ISV_ extensions for sales modifications
+```
+
+This filters results to only your custom models, useful when you have 500+ standard models indexed.
 
 ---
 
-## Performance Tips
+## Tips for Effective Use
 
-### Use Specific Queries
-Instead of:
-```
-Find customer stuff
-```
+### Be Specific
+Instead of: `Find customer stuff`  
+Use: `Find methods on CustTable for updating credit limit`
 
-Use:
-```
-Find classes related to customer invoicing in the accounts receivable module
-```
+### Use Exact Names When Known
+Instead of: `sales table class`  
+Use: `SalesTable` or `SalesFormLetter`
 
-### Leverage Extension Search
-For ISV development:
+### Combine Queries
 ```
-Search my ISV_ extensions for sales order customizations
-```
-This is much faster than searching all 500+ standard models.
-
-### Use Code Generation
-Instead of manually writing boilerplate:
-```
-Generate a batch job for updating customer credit limits
+Show me SalesTable relations and generate a query to join with CustTable
 ```
 
-### Cache Benefits
-Frequently accessed data is cached automatically:
-- Symbol searches
-- Class metadata
-- Table schemas
-- Code completions
+### Ask for Patterns
+```
+What's the standard pattern for implementing a number sequence in X++?
+```
 
 ---
 
 ## Troubleshooting
 
-### No Results Found
-- Check if metadata was extracted: `npm run extract-metadata`
-- Verify database exists: Check `DB_PATH` in `.env`
+### No Results
+- Verify the metadata database exists
+- Check if the symbol name is correct (X++ is case-insensitive but search may not be)
 - Try broader search terms
 
-### Slow Responses
-- Enable Redis caching: Set `REDIS_ENABLED=true`
-- Check Azure App Service scaling
-- Review rate limiting settings
+### Missing Custom Models
+- Verify `CUSTOM_MODELS` environment variable
+- Check `EXTENSION_PREFIX` matches your naming convention
+- Re-run extraction pipeline
 
-### Extension Search Not Working
-- Verify `CUSTOM_MODELS` in `.env`
-- Check `EXTENSION_PREFIX` matches your naming
-- Ensure `EXTRACT_MODE` includes your models
+### Slow Responses
+- Enable Redis caching (`REDIS_ENABLED=true`)
+- Check Azure App Service performance tier
 
 ---
 
 ## Related Documentation
 
-- [README.md](../README.md) - Main documentation and setup guide
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture and design
-- [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) - ISV extension configuration
-- [PERFORMANCE.md](PERFORMANCE.md) - Performance optimization
-- [TESTING.md](TESTING.md) - Testing guide
-- [VISUAL_STUDIO_MCP_SETUP.md](VISUAL_STUDIO_MCP_SETUP.md) - Visual Studio integration
-
----
-
-## Support
-
-For issues, questions, or contributions:
-- **GitHub Repository**: [dynamics365ninja/d365fo-mcp-server](https://github.com/dynamics365ninja/d365fo-mcp-server)
-- **Report Issues**: [GitHub Issues](https://github.com/dynamics365ninja/d365fo-mcp-server/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/dynamics365ninja/d365fo-mcp-server/discussions)
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System design
+- [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) - ISV configuration
+- [PIPELINES.md](PIPELINES.md) - Azure DevOps automation
+- [SETUP.md](SETUP.md) - Installation guide
