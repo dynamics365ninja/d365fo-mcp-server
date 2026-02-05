@@ -29,6 +29,30 @@ export class XppSymbolIndex {
   }
 
   /**
+   * Convert database row to XppSymbol with enhanced metadata
+   */
+  private rowToSymbol(row: any): XppSymbol {
+    return {
+      name: row.name,
+      type: row.type as any,
+      parentName: row.parent_name || undefined,
+      signature: row.signature || undefined,
+      filePath: row.file_path,
+      model: row.model,
+      description: row.description || undefined,
+      tags: row.tags || undefined,
+      sourceSnippet: row.source_snippet || undefined,
+      complexity: row.complexity || undefined,
+      usedTypes: row.used_types || undefined,
+      methodCalls: row.method_calls || undefined,
+      inlineComments: row.inline_comments || undefined,
+      extendsClass: row.extends_class || undefined,
+      implementsInterfaces: row.implements_interfaces || undefined,
+      usageExample: row.usage_example || undefined,
+    };
+  }
+
+  /**
    * Load standard models from configuration file
    */
   private loadStandardModels(): void {
@@ -51,7 +75,7 @@ export class XppSymbolIndex {
   }
 
   private initializeDatabase(): void {
-    // Create symbols table
+    // Create symbols table with enhanced metadata fields
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS symbols (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,17 +84,31 @@ export class XppSymbolIndex {
         parent_name TEXT,
         signature TEXT,
         file_path TEXT NOT NULL,
-        model TEXT NOT NULL
+        model TEXT NOT NULL,
+        description TEXT,
+        tags TEXT,
+        source_snippet TEXT,
+        complexity INTEGER,
+        used_types TEXT,
+        method_calls TEXT,
+        inline_comments TEXT,
+        extends_class TEXT,
+        implements_interfaces TEXT,
+        usage_example TEXT
       );
     `);
 
-    // Create FTS5 virtual table for full-text search
+    // Create FTS5 virtual table for full-text search with enhanced fields
     this.db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
         name,
         type,
         parent_name,
         signature,
+        description,
+        tags,
+        source_snippet,
+        inline_comments,
         content='symbols',
         content_rowid='id'
       );
@@ -79,8 +117,8 @@ export class XppSymbolIndex {
     // Create triggers to keep FTS table in sync
     this.db.exec(`
       CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
-        INSERT INTO symbols_fts(rowid, name, type, parent_name, signature)
-        VALUES (new.id, new.name, new.type, new.parent_name, new.signature);
+        INSERT INTO symbols_fts(rowid, name, type, parent_name, signature, description, tags, source_snippet, inline_comments)
+        VALUES (new.id, new.name, new.type, new.parent_name, new.signature, new.description, new.tags, new.source_snippet, new.inline_comments);
       END;
     `);
 
@@ -96,7 +134,11 @@ export class XppSymbolIndex {
           name = new.name,
           type = new.type,
           parent_name = new.parent_name,
-          signature = new.signature
+          signature = new.signature,
+          description = new.description,
+          tags = new.tags,
+          source_snippet = new.source_snippet,
+          inline_comments = new.inline_comments
         WHERE rowid = new.id;
       END;
     `);
@@ -112,12 +154,16 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Add a symbol to the index
+   * Add a symbol to the index with enhanced metadata
    */
   addSymbol(symbol: XppSymbol): void {
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO symbols (name, type, parent_name, signature, file_path, model)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO symbols (
+        name, type, parent_name, signature, file_path, model,
+        description, tags, source_snippet, complexity, used_types, method_calls,
+        inline_comments, extends_class, implements_interfaces, usage_example
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -126,7 +172,17 @@ export class XppSymbolIndex {
       symbol.parentName || null,
       symbol.signature || null,
       symbol.filePath,
-      symbol.model
+      symbol.model,
+      symbol.description || null,
+      symbol.tags || null,
+      symbol.sourceSnippet || null,
+      symbol.complexity || null,
+      symbol.usedTypes || null,
+      symbol.methodCalls || null,
+      symbol.inlineComments || null,
+      symbol.extendsClass || null,
+      symbol.implementsInterfaces || null,
+      symbol.usageExample || null
     );
   }
 
@@ -135,7 +191,7 @@ export class XppSymbolIndex {
    */
   searchSymbols(query: string, limit: number = 20, types?: string[]): XppSymbol[] {
     let sql = `
-      SELECT s.name, s.type, s.parent_name, s.signature, s.file_path, s.model
+      SELECT s.*
       FROM symbols_fts fts
       JOIN symbols s ON s.id = fts.rowid
       WHERE symbols_fts MATCH ?
@@ -153,14 +209,7 @@ export class XppSymbolIndex {
 
     const stmt = this.db.prepare(sql);
     const rows = stmt.all(...params) as any[];
-    return rows.map(row => ({
-      name: row.name,
-      type: row.type as any,
-      parentName: row.parent_name || undefined,
-      signature: row.signature || undefined,
-      filePath: row.file_path,
-      model: row.model,
-    }));
+    return rows.map(row => this.rowToSymbol(row));
   }
 
   /**
@@ -168,7 +217,7 @@ export class XppSymbolIndex {
    */
   searchByPrefix(prefix: string, types?: string[], limit: number = 20): XppSymbol[] {
     let sql = `
-      SELECT name, type, parent_name, signature, file_path, model
+      SELECT *
       FROM symbols
       WHERE name LIKE ?
     `;
@@ -185,15 +234,7 @@ export class XppSymbolIndex {
 
     const stmt = this.db.prepare(sql);
     const rows = stmt.all(...params) as any[];
-
-    return rows.map(row => ({
-      name: row.name,
-      type: row.type as any,
-      parentName: row.parent_name || undefined,
-      signature: row.signature || undefined,
-      filePath: row.file_path,
-      model: row.model,
-    }));
+    return rows.map(row => this.rowToSymbol(row));
   }
 
   /**
@@ -201,7 +242,7 @@ export class XppSymbolIndex {
    */
   getSymbolByName(name: string, type: string): XppSymbol | null {
     const stmt = this.db.prepare(`
-      SELECT name, type, parent_name, signature, file_path, model
+      SELECT *
       FROM symbols
       WHERE name = ? AND type = ?
       LIMIT 1
@@ -210,14 +251,7 @@ export class XppSymbolIndex {
     const row = stmt.get(name, type) as any;
     if (!row) return null;
 
-    return {
-      name: row.name,
-      type: row.type as any,
-      parentName: row.parent_name || undefined,
-      signature: row.signature || undefined,
-      filePath: row.file_path,
-      model: row.model,
-    };
+    return this.rowToSymbol(row);
   }
 
   /**
@@ -225,21 +259,14 @@ export class XppSymbolIndex {
    */
   getAllClasses(): XppSymbol[] {
     const stmt = this.db.prepare(`
-      SELECT name, type, parent_name, signature, file_path, model
+      SELECT *
       FROM symbols
       WHERE type = 'class'
       ORDER BY name
     `);
 
     const rows = stmt.all() as any[];
-    return rows.map(row => ({
-      name: row.name,
-      type: row.type as any,
-      parentName: row.parent_name || undefined,
-      signature: row.signature || undefined,
-      filePath: row.file_path,
-      model: row.model,
-    }));
+    return rows.map(row => this.rowToSymbol(row));
   }
 
   /**
@@ -322,16 +349,21 @@ export class XppSymbolIndex {
       // Use sourcePath from metadata (original XML file) instead of JSON file path
       const sourceFilePath = classData.sourcePath || filePath;
 
-      // Add class symbol
+      // Add class symbol with enhanced metadata
       this.addSymbol({
         name: classData.name,
         type: 'class',
         signature: classData.extends ? `extends ${classData.extends}` : undefined,
         filePath: sourceFilePath,
         model,
+        description: classData.description || classData.documentation,
+        tags: classData.tags?.join(', '),
+        extendsClass: classData.extends,
+        implementsInterfaces: classData.implements?.join(', '),
+        usedTypes: classData.usedTypes?.join(', '),
       });
 
-      // Add method symbols
+      // Add method symbols with enhanced metadata
       if (classData.methods && Array.isArray(classData.methods)) {
         for (const method of classData.methods) {
           const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') || '';
@@ -342,6 +374,14 @@ export class XppSymbolIndex {
             signature: `${method.returnType} ${method.name}(${params})`,
             filePath: sourceFilePath,
             model,
+            description: method.documentation,
+            tags: method.tags?.join(', '),
+            sourceSnippet: method.sourceSnippet,
+            complexity: method.complexity,
+            usedTypes: method.usedTypes?.join(', '),
+            methodCalls: method.methodCalls?.join(', '),
+            inlineComments: method.inlineComments,
+            usageExample: method.usageExample,
           });
         }
       }
@@ -411,21 +451,14 @@ export class XppSymbolIndex {
    */
   getClassMethods(className: string): XppSymbol[] {
     const stmt = this.db.prepare(`
-      SELECT name, type, parent_name, signature, file_path, model
+      SELECT *
       FROM symbols
       WHERE parent_name = ? AND type = 'method'
       ORDER BY name
     `);
 
     const rows = stmt.all(className) as any[];
-    return rows.map(row => ({
-      name: row.name,
-      type: row.type as any,
-      parentName: row.parent_name || undefined,
-      signature: row.signature || undefined,
-      filePath: row.file_path,
-      model: row.model,
-    }));
+    return rows.map(row => this.rowToSymbol(row));
   }
 
   /**
@@ -433,21 +466,14 @@ export class XppSymbolIndex {
    */
   getTableFields(tableName: string): XppSymbol[] {
     const stmt = this.db.prepare(`
-      SELECT name, type, parent_name, signature, file_path, model
+      SELECT *
       FROM symbols
       WHERE parent_name = ? AND type = 'field'
       ORDER BY name
     `);
 
     const rows = stmt.all(tableName) as any[];
-    return rows.map(row => ({
-      name: row.name,
-      type: row.type as any,
-      parentName: row.parent_name || undefined,
-      signature: row.signature || undefined,
-      filePath: row.file_path,
-      model: row.model,
-    }));
+    return rows.map(row => this.rowToSymbol(row));
   }
 
   /**
@@ -475,7 +501,7 @@ export class XppSymbolIndex {
    */
   searchCustomExtensions(query: string, prefix?: string, limit: number = 20): XppSymbol[] {
     let sql = `
-      SELECT name, type, parent_name, signature, file_path, model
+      SELECT *
       FROM symbols
       WHERE name LIKE ?
     `;
@@ -492,15 +518,7 @@ export class XppSymbolIndex {
 
     const stmt = this.db.prepare(sql);
     const rows = stmt.all(...params) as any[];
-
-    return rows.map(row => ({
-      name: row.name,
-      type: row.type as any,
-      parentName: row.parent_name || undefined,
-      signature: row.signature || undefined,
-      filePath: row.file_path,
-      model: row.model,
-    }));
+    return rows.map(row => this.rowToSymbol(row));
   }
 
   /**

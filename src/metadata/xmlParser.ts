@@ -15,9 +15,11 @@ import type {
   XppIndexInfo,
   XppRelationInfo,
 } from './types.js';
+import { EnhancedXppParser } from './enhancedParser.js';
 
 export class XppMetadataParser {
   private parser: Parser;
+  private enhancedParser: EnhancedXppParser;
 
   constructor() {
     this.parser = new Parser({
@@ -25,6 +27,7 @@ export class XppMetadataParser {
       mergeAttrs: true,
       trim: true,
     });
+    this.enhancedParser = new EnhancedXppParser();
   }
 
   /**
@@ -55,8 +58,34 @@ export class XppMetadataParser {
         isAbstract: axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true',
         isFinal: axClass.IsFinal === 'Yes' || axClass.IsFinal === 'true',
         declaration: this.extractClassDeclaration(axClass),
-        methods: this.parseMethods(methodsData),
+        methods: this.parseMethods(methodsData, className),
         documentation: axClass.DeveloperDocumentation || undefined,
+        // Enhanced metadata
+        tags: this.enhancedParser.generateClassTags({
+          name: className,
+          model: model || 'Unknown',
+          sourcePath: filePath,
+          extends: axClass.Extends || undefined,
+          implements: this.parseImplements(axClass.Implements),
+          isAbstract: axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true',
+          isFinal: axClass.IsFinal === 'Yes' || axClass.IsFinal === 'true',
+          declaration: this.extractClassDeclaration(axClass),
+          methods: [],
+          documentation: axClass.DeveloperDocumentation || undefined,
+        }),
+        usedTypes: this.enhancedParser.extractClassDependencies({
+          name: className,
+          model: model || 'Unknown',
+          sourcePath: filePath,
+          extends: axClass.Extends || undefined,
+          implements: this.parseImplements(axClass.Implements),
+          isAbstract: axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true',
+          isFinal: axClass.IsFinal === 'Yes' || axClass.IsFinal === 'true',
+          declaration: this.extractClassDeclaration(axClass),
+          methods: this.parseMethods(methodsData, className),
+          documentation: axClass.DeveloperDocumentation || undefined,
+        }),
+        description: axClass.DeveloperDocumentation || `${className} class${axClass.Extends ? ` extending ${axClass.Extends}` : ''}`,
       };
 
       return { success: true, data: classInfo };
@@ -94,7 +123,7 @@ export class XppMetadataParser {
         fields: this.parseFields(axTable.Fields?.AxTableField),
         indexes: this.parseIndexes(axTable.Indexes?.AxTableIndex),
         relations: this.parseRelations(axTable.Relations?.AxTableRelation),
-        methods: this.parseMethods(axTable.Methods?.Method),
+        methods: this.parseMethods(axTable.Methods?.Method, tableName),
       };
 
       return { success: true, data: tableInfo };
@@ -125,7 +154,7 @@ export class XppMetadataParser {
     return decl;
   }
 
-  private parseMethods(methodsData: any): XppMethodInfo[] {
+  private parseMethods(methodsData: any, parentClass: string = 'Unknown'): XppMethodInfo[] {
     if (!methodsData) return [];
 
     const methods = Array.isArray(methodsData) ? methodsData : [methodsData];
@@ -133,7 +162,7 @@ export class XppMetadataParser {
       const source = method.Source || '';
       const methodName = method.Name || 'unknown';
       
-      return {
+      const baseMethod: XppMethodInfo = {
         name: methodName,
         visibility: this.parseVisibility(method.Visibility),
         returnType: this.extractReturnType(source, methodName) || method.ReturnType || 'void',
@@ -142,6 +171,9 @@ export class XppMetadataParser {
         source: source,
         documentation: method.DeveloperDocumentation || undefined,
       };
+
+      // Add enhanced metadata
+      return this.enhancedParser.parseMethodEnhanced(baseMethod, parentClass);
     });
   }
 

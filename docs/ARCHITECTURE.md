@@ -308,12 +308,26 @@ erDiagram
         text signature "nullable"
         text filePath
         text model
+        text description "Enhanced: human-readable description"
+        text tags "Enhanced: comma-separated semantic tags"
+        text sourceSnippet "Enhanced: first 10 lines preview"
+        integer complexity "Enhanced: complexity score 0-100"
+        text usedTypes "Enhanced: comma-separated types used"
+        text methodCalls "Enhanced: comma-separated method calls"
+        text inlineComments "Enhanced: extracted comments"
+        text extendsClass "Enhanced: inheritance info"
+        text implementsInterfaces "Enhanced: interface implementations"
+        text usageExample "Enhanced: generated usage example"
     }
     
     SYMBOLS_FTS {
         text name "FTS5 indexed"
         text type "FTS5 indexed"
         text model "FTS5 indexed"
+        text description "FTS5 indexed - Enhanced"
+        text tags "FTS5 indexed - Enhanced"
+        text sourceSnippet "FTS5 indexed - Enhanced"
+        text inlineComments "FTS5 indexed - Enhanced"
     }
     
     SYMBOLS ||--|| SYMBOLS_FTS : "mirrored for FTS5"
@@ -330,6 +344,33 @@ erDiagram
 | `enum` | Enumeration | `NoYes`, `TransactionType` |
 | `edt` | Extended Data Type | `CustAccount`, `ItemId` |
 
+### Enhanced Metadata Fields
+
+The database now includes rich contextual metadata for better GitHub Copilot integration:
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `description` | TEXT | Human-readable description | "CustTable class extending SalesTable" |
+| `tags` | TEXT | Semantic tags (comma-separated) | "validation, query, customer" |
+| `sourceSnippet` | TEXT | First 10 lines of code | "public boolean validate() {...}" |
+| `complexity` | INTEGER | Complexity score (0-100) | 45 |
+| `usedTypes` | TEXT | Referenced types | "CustTable, SalesLine, InventTable" |
+| `methodCalls` | TEXT | Called methods | "select, insert, validateWrite" |
+| `inlineComments` | TEXT | Extracted comments | "Validate customer account..." |
+| `extendsClass` | TEXT | Parent class (for classes) | "FormRun" |
+| `implementsInterfaces` | TEXT | Interfaces implemented | "Runnable, Serializable" |
+| `usageExample` | TEXT | Generated usage example | "CustTable custTable = new..." |
+
+### Semantic Tags
+
+Automatically extracted tags help Copilot understand code context:
+
+**Method Tags:** validation, initialization, data-modification, query, deletion, calculation, conversion, event-handler, transaction, error-handling, database-query, set-based, loop, conditional, async, static-method
+
+**Class Tags:** controller, utility, business-logic, builder-pattern, factory-pattern, event-handler, abstract, final, runnable
+
+**Domain Tags:** customer, vendor, inventory, sales, purchasing, ledger, tax, project, warehouse, production
+
 ### Indexes
 
 ```sql
@@ -339,16 +380,22 @@ CREATE UNIQUE INDEX idx_symbols_id ON symbols(id);
 -- Type-based queries
 CREATE INDEX idx_symbols_type ON symbols(type);
 
--- Parent lookups (methods, fields)
-CREATE INDEX idx_symbols_parent ON symbols(parentName);
+-- Name lookups
+CREATE INDEX idx_symbols_name ON symbols(name);
 
 -- Model filtering
 CREATE INDEX idx_symbols_model ON symbols(model);
 
--- Full-Text Search (FTS5)
+-- Unique constraint to prevent duplicates
+CREATE UNIQUE INDEX idx_symbols_unique 
+    ON symbols(name, type, COALESCE(parent_name, ''), model);
+
+-- Full-Text Search (FTS5) with enhanced fields
 CREATE VIRTUAL TABLE symbols_fts USING fts5(
-    name, type, model, 
-    content='symbols'
+    name, type, parent_name, signature,
+    description, tags, source_snippet, inline_comments,
+    content='symbols',
+    content_rowid='id'
 );
 ```
 

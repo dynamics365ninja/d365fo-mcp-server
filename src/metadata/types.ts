@@ -19,6 +19,10 @@ export interface XppClassInfo {
   declaration: string;
   methods: XppMethodInfo[];
   documentation?: string;
+  // Enhanced metadata for better Copilot integration
+  tags?: string[];              // Semantic tags (controller, utility, etc.)
+  usedTypes?: string[];         // Classes/tables used in class
+  description?: string;         // Generated description from docs/declaration
 }
 
 export interface XppMethodInfo {
@@ -29,6 +33,13 @@ export interface XppMethodInfo {
   isStatic: boolean;
   source: string;
   documentation?: string;
+  // Enhanced metadata for better Copilot integration
+  sourceSnippet?: string;       // First 10 lines for preview
+  complexity?: number;          // Complexity score (0-100)
+  usedTypes?: string[];         // Classes/tables used in method
+  methodCalls?: string[];       // Methods called within this method
+  tags?: string[];              // Semantic tags (validation, query, etc.)
+  inlineComments?: string;      // Extracted inline comments
 }
 
 export interface XppParameterInfo {
@@ -83,4 +94,15 @@ export interface XppSymbol {
   signature?: string;
   filePath: string;
   model: string;
+  // Enhanced metadata for better Copilot integration
+  description?: string;         // Human-readable description
+  tags?: string;                // Comma-separated tags (stored as TEXT in SQLite)
+  sourceSnippet?: string;       // First 10 lines for preview
+  complexity?: number;          // Complexity score (0-100)
+  usedTypes?: string;           // Comma-separated types used
+  methodCalls?: string;         // Comma-separated method calls
+  inlineComments?: string;      // Extracted inline comments
+  extendsClass?: string;        // For classes: extends relationship
+  implementsInterfaces?: string;// For classes: comma-separated interfaces
+  usageExample?: string;        // Generated usage example
 }
