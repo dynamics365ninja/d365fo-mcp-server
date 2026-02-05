@@ -58,7 +58,7 @@ try {
 switch ($Action) {
     'search' {
         Write-Host "[SEARCH] Searching for: $Query" -ForegroundColor Yellow
-        $result = Invoke-MCPTool -ToolName "xpp_search" -Arguments @{ query = $Query; limit = 10 }
+        $result = Invoke-MCPTool -ToolName "search" -Arguments @{ query = $Query; limit = 10 }
         if ($result.content) {
             Write-Host $result.content[0].text -ForegroundColor Green
         }
@@ -66,7 +66,7 @@ switch ($Action) {
     
     'class' {
         Write-Host "[CLASS] Getting class info: $Query" -ForegroundColor Yellow
-        $result = Invoke-MCPTool -ToolName "xpp_get_class" -Arguments @{ className = $Query }
+        $result = Invoke-MCPTool -ToolName "get_class_info" -Arguments @{ className = $Query }
         if ($result.content) {
             $data = $result.content[0].text | ConvertFrom-Json
             Write-Host "Class: $($data.name)" -ForegroundColor Green
@@ -80,7 +80,7 @@ switch ($Action) {
     
     'table' {
         Write-Host "[TABLE] Getting table info: $Query" -ForegroundColor Yellow
-        $result = Invoke-MCPTool -ToolName "xpp_get_table" -Arguments @{ tableName = $Query }
+        $result = Invoke-MCPTool -ToolName "get_table_info" -Arguments @{ tableName = $Query }
         if ($result.content) {
             $data = $result.content[0].text | ConvertFrom-Json
             Write-Host "Table: $($data.name)" -ForegroundColor Green
@@ -93,7 +93,7 @@ switch ($Action) {
     
     'extensions' {
         Write-Host "[EXTENSIONS] Searching extensions: $Query" -ForegroundColor Yellow
-        $result = Invoke-MCPTool -ToolName "xpp_search_extensions" -Arguments @{ query = $Query; limit = 10 }
+        $result = Invoke-MCPTool -ToolName "search_extensions" -Arguments @{ query = $Query; limit = 10 }
         if ($result.content) {
             $data = $result.content[0].text | ConvertFrom-Json
             Write-Host "Found $($data.totalResults) custom extension results" -ForegroundColor Green

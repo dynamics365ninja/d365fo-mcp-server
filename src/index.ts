@@ -106,11 +106,12 @@ async function main() {
     console.log(`🏥 Health check: http://localhost:${PORT}/health`);
     console.log('');
     console.log('🎯 Available tools:');
-    console.log('   - xpp_search: Search for X++ symbols');
-    console.log('   - xpp_get_class: Get class details');
-    console.log('   - xpp_get_table: Get table details');
-    console.log('   - xpp_complete_method: Get method completions');
-    console.log('   - xpp_generate_code: Generate X++ code templates');
+    console.log('   - search: Search for X++ classes, tables, methods, and fields');
+    console.log('   - search_extensions: Search for symbols in custom extensions/ISV models');
+    console.log('   - get_class_info: Get detailed class information');
+    console.log('   - get_table_info: Get detailed table information');
+    console.log('   - code_completion: Get method and field completions (IntelliSense)');
+    console.log('   - generate_code: Generate X++ code templates');
   });
 }
 

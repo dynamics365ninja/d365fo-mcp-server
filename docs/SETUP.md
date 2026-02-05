@@ -322,7 +322,7 @@ Create `.mcp.json` file in your D365FO solution root directory:
 2. Open your D365FO solution
 3. Open **Copilot Chat** window (View → GitHub Copilot Chat)
 4. Switch to **Agent Mode** in Copilot Chat
-5. Verify X++ MCP tools are loaded (you should see xpp_search, xpp_get_class, etc.)
+5. Verify X++ MCP tools are loaded (you should see search, get_class_info, get_table_info, etc.)
 
 ### 5. Example Prompts
 
