@@ -209,23 +209,14 @@ export class EnhancedXppParser {
   /**
    * Parse method with enhanced metadata
    */
-  parseMethodEnhanced(method: any, parentClass: string): EnhancedMethodInfo {
-    const source = method.Source || '';
-    const methodName = method.Name || 'unknown';
-    
-    const baseInfo: XppMethodInfo = {
-      name: methodName,
-      visibility: this.parseVisibility(method.Visibility),
-      returnType: this.extractReturnType(source, methodName) || method.ReturnType || 'void',
-      parameters: this.extractParametersFromSource(source, methodName),
-      isStatic: this.isMethodStatic(source),
-      source: source,
-      documentation: method.DeveloperDocumentation || undefined,
-    };
+  parseMethodEnhanced(method: XppMethodInfo, parentClass: string): EnhancedMethodInfo {
+    // method parameter is already a parsed XppMethodInfo object with lowercase properties
+    const source = method.source || '';
+    const methodName = method.name || 'unknown';
     
     // Enhanced metadata
     const enhanced: EnhancedMethodInfo = {
-      ...baseInfo,
+      ...method,
       sourceSnippet: this.getFirstLines(source, 10),
       complexity: this.calculateComplexity(source),
       usedTypes: this.extractUsedTypes(source),
@@ -319,52 +310,5 @@ export class EnhancedXppParser {
     }
     
     return Array.from(tags);
-  }
-
-  // Helper methods (placeholder implementations - these should match xmlParser.ts)
-  
-  private parseVisibility(vis?: string): 'public' | 'private' | 'protected' {
-    if (!vis) return 'public';
-    const lower = vis.toLowerCase();
-    if (lower === 'private') return 'private';
-    if (lower === 'protected') return 'protected';
-    return 'public';
-  }
-
-  private extractReturnType(source: string, methodName: string): string | undefined {
-    // Extract return type from method signature
-    const signaturePattern = new RegExp(
-      `(public|private|protected)?\\s*(static)?\\s*([\\w\\[\\]]+)\\s+${methodName}\\s*\\(`,
-      'i'
-    );
-    const match = source.match(signaturePattern);
-    return match ? match[3] : undefined;
-  }
-
-  private extractParametersFromSource(source: string, methodName: string): any[] {
-    // Simple parameter extraction - enhance as needed
-    const paramPattern = new RegExp(
-      `${methodName}\\s*\\(([^)]*)\\)`,
-      'i'
-    );
-    const match = source.match(paramPattern);
-    
-    if (!match || !match[1].trim()) {
-      return [];
-    }
-    
-    const params = match[1].split(',').map(p => {
-      const parts = p.trim().split(/\s+/);
-      if (parts.length >= 2) {
-        return { type: parts[0], name: parts[1] };
-      }
-      return { type: 'any', name: parts[0] };
-    });
-    
-    return params;
-  }
-
-  private isMethodStatic(source: string): boolean {
-    return /\bstatic\b/i.test(source.substring(0, 200));
   }
 }
