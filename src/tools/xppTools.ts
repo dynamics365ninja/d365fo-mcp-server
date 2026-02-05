@@ -19,6 +19,12 @@ export const SearchSchema = z.object({
   limit: z.number().optional().default(20).describe('Maximum results to return')
 });
 
+export const SearchExtensionsSchema = z.object({
+  query: z.string().describe('Search query (class name, method name, etc.)'),
+  prefix: z.string().optional().describe('Extension prefix filter (e.g., ISV_, Custom_)'),
+  limit: z.number().optional().default(20).describe('Maximum results to return')
+});
+
 export const GetClassSchema = z.object({
   className: z.string().describe('Name of the X++ class')
 });
@@ -497,27 +503,32 @@ export interface ToolDefinition {
 
 export const toolDefinitions: ToolDefinition[] = [
   {
-    name: 'xpp_search',
+    name: 'search',
     description: 'Search for X++ classes, tables, methods, fields, enums, and EDTs by name or keyword. Use this to find symbols in the D365 Finance & Operations codebase.',
     inputSchema: SearchSchema
   },
   {
-    name: 'xpp_get_class',
+    name: 'search_extensions',
+    description: 'Search for symbols only in custom extensions/ISV models. Use this to filter results to custom code only.',
+    inputSchema: SearchExtensionsSchema
+  },
+  {
+    name: 'get_class_info',
     description: 'Get detailed information about an X++ class including its declaration, inheritance, and all methods with source code.',
     inputSchema: GetClassSchema
   },
   {
-    name: 'xpp_get_table',
+    name: 'get_table_info',
     description: 'Get detailed information about an X++ table including fields, indexes, relations, and methods.',
     inputSchema: GetTableSchema
   },
   {
-    name: 'xpp_complete_method',
+    name: 'code_completion',
     description: 'Get method and field completions for a class or table. Use this for IntelliSense-style code completion.',
     inputSchema: CompleteMethodSchema
   },
   {
-    name: 'xpp_generate_code',
+    name: 'generate_code',
     description: 'Generate X++ code templates for common patterns like runnable classes, batch jobs, form extensions, Chain of Command extensions, and event handlers.',
     inputSchema: GenerateCodeSchema
   }
