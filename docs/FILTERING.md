@@ -13,13 +13,13 @@ The server now supports filtering search results by object type, which correspon
 | `method` | - | Class methods |
 | `all` | All | No filtering (default) |
 
-## Using the `xpp_search` Tool
+## Using the `search` Tool
 
 ### Basic Search (without filter)
 
 ```json
 {
-  "name": "xpp_search",
+  "name": "search",
   "arguments": {
     "query": "Customer"
   }
@@ -32,7 +32,7 @@ Returns all symbols containing "Customer" - classes, tables, methods, fields, et
 
 ```json
 {
-  "name": "xpp_search",
+  "name": "search",
   "arguments": {
     "query": "Customer",
     "type": "class"
@@ -46,7 +46,7 @@ Returns only classes whose name contains "Customer".
 
 ```json
 {
-  "name": "xpp_search",
+  "name": "search",
   "arguments": {
     "query": "Cust",
     "type": "table"
@@ -60,7 +60,7 @@ Returns only tables whose name contains "Cust" (e.g., CustTable, CustTrans, etc.
 
 ```json
 {
-  "name": "xpp_search",
+  "name": "search",
   "arguments": {
     "query": "Status",
     "type": "enum"
@@ -74,7 +74,7 @@ Returns only enumerations containing "Status".
 
 ```json
 {
-  "name": "xpp_search",
+  "name": "search",
   "arguments": {
     "query": "validate",
     "type": "method",
@@ -92,7 +92,7 @@ Returns only methods with names containing "validate", maximum 50 results.
 **Query:**
 ```json
 {
-  "name": "xpp_search",
+  "name": "search",
   "arguments": {
     "query": "Cust",
     "type": "class",
@@ -117,7 +117,7 @@ Found 15 matches:
 **Query:**
 ```json
 {
-  "name": "xpp_search",
+  "name": "search",
   "arguments": {
     "query": "validate",
     "type": "method",
@@ -141,7 +141,7 @@ Found 28 matches:
 **Query:**
 ```json
 {
-  "name": "xpp_search",
+  "name": "search",
   "arguments": {
     "query": "Amount",
     "type": "field",

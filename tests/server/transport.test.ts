@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import express from 'express';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { createStreamableHttpTransport } from '../../src/server/transport';
+import { registerToolHandler } from '../../src/tools/toolHandler';
 import type { XppServerContext } from '../../src/types/context';
 import type { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import type { RedisCacheService } from '../../src/cache/redisCache';
@@ -53,6 +54,7 @@ describe('MCP Server Transport', () => {
     const mockCache: Partial<RedisCacheService> = {
       get: async () => null,
       set: async () => {},
+      generateSearchKey: () => 'test-key',
     };
 
     mockContext = {
@@ -60,6 +62,9 @@ describe('MCP Server Transport', () => {
       cache: mockCache as RedisCacheService,
       parser: {} as any,
     };
+
+    // Register tool handler
+    registerToolHandler(mcpServer, mockContext);
 
     // Add health endpoint like in main app
     app.get('/health', (_req, res) => {
@@ -126,11 +131,16 @@ describe('MCP Server Transport', () => {
         id: 3,
         method: 'tools/call',
         params: {
-          name: 'xpp_search',
+          name: 'search',
           arguments: { query: 'test' },
         },
       })
       .expect(200);
+
+    // Debug output
+    if (!response.body.result) {
+      console.log('Response body:', JSON.stringify(response.body, null, 2));
+    }
 
     expect(response.body.result).toBeDefined();
     expect(response.body.result.content).toBeDefined();

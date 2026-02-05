@@ -18,12 +18,13 @@ This document provides visual diagrams and detailed explanations of the D365 F&O
 ```mermaid
 graph TB
     subgraph "Client Layer"
-        VS[Visual Studio 2022<br/>GitHub Copilot]
+        VS[Visual Studio 2022 17.14+<br/>GitHub Copilot Agent Mode]
+        VSCODE[VS Code<br/>GitHub Copilot Extension]
     end
 
     subgraph "Azure Cloud"
         subgraph "App Service"
-            MCP[MCP Server<br/>Node.js 22<br/>Express HTTP]
+            MCP[MCP Server<br/>Node.js 22 LTS<br/>Express 5.x HTTP]
         end
         
         subgraph "Storage"
@@ -40,6 +41,7 @@ graph TB
     end
 
     VS -->|"Streamable HTTP<br/>OAuth 2.0"| MCP
+    VSCODE -->|"Streamable HTTP<br/>OAuth 2.0"| MCP
     MCP -->|"Download on startup"| BLOB
     MCP --> HTTP
     HTTP --> PROTO
@@ -47,7 +49,8 @@ graph TB
     TOOLS --> DB
     TOOLS -.->|"Optional"| CACHE
     
-    style VS fill:#0078D4,color:#fff
+    style VS fill:#68217A,color:#fff
+    style VSCODE fill:#0078D4,color:#fff
     style MCP fill:#00A4EF,color:#fff
     style BLOB fill:#FF6C00,color:#fff
     style DB fill:#4CAF50,color:#fff
@@ -60,24 +63,26 @@ graph TB
 
 ```mermaid
 sequenceDiagram
-    participant VS as Visual Studio<br/>GitHub Copilot
+    participant IDE as Visual Studio 2022 /<br/>VS Code
     participant HTTP as HTTP Transport
     participant MCP as MCP Protocol
-    participant Tool as Tool Handler
+    participant Handler as Tool Handler
+    participant Tool as Tool Implementation
     participant Cache as Redis Cache
     participant DB as SQLite DB
 
-    VS->>HTTP: POST /mcp<br/>JSON-RPC Request
+    IDE->>HTTP: POST /mcp<br/>JSON-RPC Request
     HTTP->>HTTP: Rate Limit Check
     HTTP->>MCP: Parse JSON-RPC
     MCP->>MCP: Route Method
     
     alt Initialize
-        MCP-->>VS: Server Capabilities
+        MCP-->>IDE: Server Capabilities
     else Tools List
-        MCP-->>VS: 6 Tool Definitions
+        MCP-->>IDE: 6 Tool Definitions
     else Tool Call
-        MCP->>Tool: Execute Tool
+        MCP->>Handler: Route to Handler
+        Handler->>Tool: Execute Tool
         Tool->>Cache: Check Cache
         alt Cache Hit
             Cache-->>Tool: Cached Result
@@ -86,8 +91,9 @@ sequenceDiagram
             DB-->>Tool: Symbol Results
             Tool->>Cache: Store Result
         end
-        Tool-->>MCP: Tool Result
-        MCP-->>VS: JSON-RPC Response
+        Tool-->>Handler: Tool Result
+        Handler-->>MCP: Formatted Response
+        MCP-->>IDE: JSON-RPC Response
     end
 ```
 
@@ -104,15 +110,16 @@ graph LR
     subgraph "Server Layer"
         SERVER[mcpServer.ts<br/>MCP Server Config]
         TRANSPORT[transport.ts<br/>HTTP Transport]
+        HANDLER[toolHandler.ts<br/>Tool Router]
     end
 
     subgraph "Tool Layer"
-        SEARCH[search.ts<br/>Symbol Search]
-        CLASS[classInfo.ts<br/>Class Details]
-        TABLE[tableInfo.ts<br/>Table Details]
-        COMP[completion.ts<br/>Completions]
-        GEN[codeGen.ts<br/>Code Templates]
-        EXT[extensionSearch.ts<br/>Extension Filter]
+        SEARCH[search.ts<br/>search Tool]
+        CLASS[classInfo.ts<br/>get_class_info Tool]
+        TABLE[tableInfo.ts<br/>get_table_info Tool]
+        COMP[completion.ts<br/>code_completion Tool]
+        GEN[codeGen.ts<br/>generate_code Tool]
+        EXT[extensionSearch.ts<br/>search_extensions Tool]
     end
 
     subgraph "Metadata Layer"
@@ -133,12 +140,13 @@ graph LR
     INDEX --> CACHE_SVC
     INDEX --> DOWNLOAD
 
-    SERVER --> SEARCH
-    SERVER --> CLASS
-    SERVER --> TABLE
-    SERVER --> COMP
-    SERVER --> GEN
-    SERVER --> EXT
+    SERVER --> HANDLER
+    HANDLER --> SEARCH
+    HANDLER --> CLASS
+    HANDLER --> TABLE
+    HANDLER --> COMP
+    HANDLER --> GEN
+    HANDLER --> EXT
 
     SEARCH --> SYMBOL
     CLASS --> SYMBOL
@@ -261,9 +269,9 @@ graph TB
     end
 
     subgraph "Azure Resources"
-        subgraph "Resource Group: d365fo-mcp-rg"
-            APP[App Service<br/>d365fo-mcp-server<br/>Linux P0v3<br/>Node.js 22]
-            STORAGE[Storage Account<br/>d365fomcpdata<br/>StorageV2, Hot, LRS]
+        subgraph "Resource Group: rg-xpp-mcp"
+            APP[App Service<br/>app-xpp-mcp-*<br/>Linux P0v3<br/>Node.js 22-lts]
+            STORAGE[Storage Account<br/>st-xpp-mcp-*<br/>StorageV2, Hot, LRS]
         end
     end
 
@@ -362,7 +370,7 @@ graph LR
     end
 
     INIT -.-> CAPS[Capabilities:<br/>tools, resources, prompts]
-    TOOLS_LIST -.-> TOOL_DEFS[Tool Definitions:<br/>xpp_search, xpp_get_class,<br/>xpp_get_table, xpp_completion,<br/>xpp_generate_code,<br/>xpp_search_extensions]
+    TOOLS_LIST -.-> TOOL_DEFS[Tool Definitions:<br/>search, get_class_info,<br/>get_table_info, code_completion,<br/>generate_code,<br/>search_extensions]
     TOOLS_CALL -.-> EXEC[Tool Execution:<br/>search DB, parse XML,<br/>return results]
     
     style INIT fill:#4CAF50,color:#fff
@@ -371,11 +379,12 @@ graph LR
 
 ### Tool Arguments & Responses
 
-#### 1. xpp_search
+#### 1. search
 **Input:**
 ```json
 {
   "query": "CustTable",
+  "type": "all",
   "limit": 20
 }
 ```
@@ -389,7 +398,9 @@ Found 5 matches:
 [FIELD] CustTable.AccountNum - str AccountNum
 ```
 
-#### 2. xpp_get_class
+**Type Filter Options:** `class`, `table`, `field`, `method`, `enum`, `all`
+
+#### 2. get_class_info
 **Input:**
 ```json
 {
@@ -399,7 +410,7 @@ Found 5 matches:
 
 **Output:** Markdown-formatted class details with methods, inheritance, modifiers
 
-#### 3. xpp_get_table
+#### 3. get_table_info
 **Input:**
 ```json
 {
@@ -409,34 +420,34 @@ Found 5 matches:
 
 **Output:** Markdown-formatted table schema with fields, indexes, relations
 
-#### 4. xpp_completion
+#### 4. code_completion
 **Input:**
 ```json
 {
-  "className": "CustTable",
+  "objectName": "CustTable",
   "prefix": "set"
 }
 ```
 
 **Output:** List of matching methods starting with "set"
 
-#### 5. xpp_generate_code
+#### 5. generate_code
 **Input:**
 ```json
 {
-  "templateType": "batch-job",
+  "pattern": "batch-job",
   "name": "MyBatch"
 }
 ```
 
 **Output:** X++ code template for batch job
 
-#### 6. xpp_search_extensions
+#### 6. search_extensions
 **Input:**
 ```json
 {
   "query": "Cust",
-  "modelPrefix": "ISV"
+  "prefix": "ISV_"
 }
 ```
 
@@ -612,7 +623,7 @@ graph LR
 ```mermaid
 graph TB
     subgraph "Test Pyramid"
-        UNIT[Unit Tests<br/>26 tests<br/>search, classInfo, tableInfo]
+        UNIT[Unit Tests<br/>30 tests<br/>search, classInfo, tableInfo]
         INT[Integration Tests<br/>MCP Protocol, HTTP Transport]
         E2E[End-to-End Tests<br/>symbolIndex, Database]
     end
@@ -655,8 +666,8 @@ graph TB
     end
 
     subgraph "Web Framework"
-        EXPRESS[Express 4.21]
-        RATE_LIM[express-rate-limit]
+        EXPRESS[Express 5.2]
+        RATE_LIM[express-rate-limit 8.2]
     end
 
     subgraph "MCP Protocol"
@@ -665,17 +676,18 @@ graph TB
     end
 
     subgraph "Database"
-        SQLITE[better-sqlite3 11.7]
+        SQLITE[better-sqlite3 12.6]
         FTS[SQLite FTS5 Extension]
     end
 
     subgraph "Parsing"
         XML[xml2js 0.6]
-        ZOD[zod 3.25 - Validation]
+        ZOD[zod 4.3 - Validation]
     end
 
     subgraph "Caching"
         REDIS[ioredis 5.9]
+        FAST_XML[fast-xml-parser 5.3]
     end
 
     subgraph "Azure"
@@ -684,8 +696,8 @@ graph TB
     end
 
     subgraph "Testing"
-        VIT[Vitest 2.1]
-        SUPER_T[Supertest 7.0]
+        VIT[Vitest 4.0]
+        SUPER_T[Supertest 7.2]
     end
 
     style NODE fill:#68A063,color:#fff

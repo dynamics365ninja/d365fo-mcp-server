@@ -41,7 +41,7 @@ Show me all classes that implement the SysOperationServiceController
 Find enums related to payment methods
 ```
 
-**What happens behind the scenes:** The server uses the `xpp_search` tool to perform FTS5-powered full-text search across classes, tables, enums, and other X++ elements.
+**What happens behind the scenes:** The server uses the `search` tool to perform FTS5-powered full-text search across classes, tables, enums, and other X++ elements.
 
 ---
 
@@ -71,7 +71,7 @@ What interfaces does the WHSWorkExecute class implement?
 Show me all protected and public methods in the InventMovement class
 ```
 
-**What happens behind the scenes:** The server uses the `xpp_get_class` tool to retrieve detailed metadata including method signatures, parameters, return types, inheritance hierarchy, and implemented interfaces.
+**What happens behind the scenes:** The server uses the `get_class_info` tool to retrieve detailed metadata including method signatures, parameters, return types, inheritance hierarchy, and implemented interfaces.
 
 ---
 
@@ -101,7 +101,7 @@ List all indexes on the VendTable and their fields
 Show me the foreign key relations for PurchLine
 ```
 
-**What happens behind the scenes:** The server uses the `xpp_get_table` tool to retrieve comprehensive table metadata including EDT types, mandatory fields, and relationship definitions.
+**What happens behind the scenes:** The server uses the `get_table_info` tool to retrieve comprehensive table metadata including EDT types, mandatory fields, and relationship definitions.
 
 ---
 
@@ -131,7 +131,7 @@ Show me all Custom_ prefixed classes in my extensions
 What custom event handlers have I created for inventory?
 ```
 
-**What happens behind the scenes:** The server uses the `xpp_search_extensions` tool with configurable prefixes (e.g., "ISV_", "Custom_") to filter results to only your custom models.
+**What happens behind the scenes:** The server uses the `search_extensions` tool with configurable prefixes (e.g., "ISV_", "Custom_") to filter results to only your custom models.
 
 ---
 
@@ -161,7 +161,7 @@ List all parm methods on the SalesFormLetter class
 What fields can I access on WHSWorkLine?
 ```
 
-**What happens behind the scenes:** The server uses the `xpp_complete_method` tool to provide filtered method and field lists with optional prefix matching.
+**What happens behind the scenes:** The server uses the `code_completion` tool to provide filtered method and field lists with optional prefix matching.
 
 ---
 
@@ -201,7 +201,7 @@ Generate a basic X++ class with standard structure
 Create a service class template for external integrations
 ```
 
-**What happens behind the scenes:** The server uses the `xpp_generate_code` tool with predefined patterns for common X++ development scenarios.
+**What happens behind the scenes:** The server uses the `generate_code` tool with predefined patterns for common X++ development scenarios.
 
 **Available Patterns:**
 - `class` - Basic X++ class with constructor

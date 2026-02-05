@@ -40,6 +40,7 @@ describe('tableInfoTool', () => {
         data: {
           name: 'CustTable',
           model: 'ApplicationSuite',
+          sourcePath: '/Tables/CustTable.xml',
           fields: [
             {
               name: 'AccountNum',
@@ -73,7 +74,7 @@ describe('tableInfoTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_get_table',
+        name: 'get_table_info',
         arguments: { tableName: 'CustTable' }
       }
     } as CallToolRequest;
@@ -97,7 +98,7 @@ describe('tableInfoTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_get_table',
+        name: 'get_table_info',
         arguments: { tableName: 'CustTable' }
       }
     } as CallToolRequest;
@@ -116,7 +117,7 @@ describe('tableInfoTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_get_table',
+        name: 'get_table_info',
         arguments: { tableName: 'NonExistentTable' }
       }
     } as CallToolRequest;
@@ -135,7 +136,7 @@ describe('tableInfoTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_get_table',
+        name: 'get_table_info',
         arguments: { tableName: 'CustTable' }
       }
     } as CallToolRequest;

@@ -16,17 +16,17 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     const toolName = request.params.name;
 
     switch (toolName) {
-      case 'xpp_search':
+      case 'search':
         return searchTool(request, context);
-      case 'xpp_search_extensions':
+      case 'search_extensions':
         return extensionSearchTool(request, context);
-      case 'xpp_get_class':
+      case 'get_class_info':
         return classInfoTool(request, context);
-      case 'xpp_get_table':
+      case 'get_table_info':
         return tableInfoTool(request, context);
-      case 'xpp_complete_method':
+      case 'code_completion':
         return completionTool(request, context);
-      case 'xpp_generate_code':
+      case 'generate_code':
         return codeGenTool(request);
       default:
         return {
