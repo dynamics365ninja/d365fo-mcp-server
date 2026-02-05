@@ -77,7 +77,7 @@ describe('classInfoTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_get_class',
+        name: 'get_class_info',
         arguments: { className: 'TestClass' }
       }
     } as CallToolRequest;
@@ -101,7 +101,7 @@ describe('classInfoTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_get_class',
+        name: 'get_class_info',
         arguments: { className: 'TestClass' }
       }
     } as CallToolRequest;
@@ -120,7 +120,7 @@ describe('classInfoTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_get_class',
+        name: 'get_class_info',
         arguments: { className: 'NonExistentClass' }
       }
     } as CallToolRequest;
@@ -139,7 +139,7 @@ describe('classInfoTool', () => {
     const request = {
       method: 'tools/call',
       params: {
-        name: 'xpp_get_class',
+        name: 'get_class_info',
         arguments: { className: 'TestClass' }
       }
     } as CallToolRequest;

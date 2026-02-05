@@ -43,82 +43,82 @@ export function createXppMcpServer(context: XppServerContext): Server {
     return {
       tools: [
         {
-          name: 'xpp_search',
-          description: 'Search for X++ symbols by name or keyword. Can filter by type (class=AxClass, table=AxTable, enum=AxEnum)',
+          name: 'search',
+          description: 'Search for X++ classes, tables, methods, and fields by name or keyword',
           inputSchema: {
             type: 'object',
             properties: {
-              query: { type: 'string', description: 'Search query' },
+              query: { type: 'string', description: 'Search query (class name, method name, table name, etc.)' },
               type: { 
                 type: 'string', 
                 enum: ['class', 'table', 'field', 'method', 'enum', 'all'],
                 description: 'Filter by object type (class=AxClass, table=AxTable, enum=AxEnum, all=no filter)',
                 default: 'all'
               },
-              limit: { type: 'number', description: 'Maximum results', default: 20 },
+              limit: { type: 'number', description: 'Maximum results to return', default: 20 },
             },
             required: ['query'],
           },
         },
         {
-          name: 'xpp_search_extensions',
-          description: 'Search for X++ symbols only in custom extensions/ISV models',
+          name: 'search_extensions',
+          description: 'Search for symbols only in custom extensions/ISV models',
           inputSchema: {
             type: 'object',
             properties: {
-              query: { type: 'string', description: 'Search query' },
+              query: { type: 'string', description: 'Search query (class name, method name, etc.)' },
               prefix: { type: 'string', description: 'Extension prefix filter (e.g., ISV_, Custom_)' },
-              limit: { type: 'number', description: 'Maximum results' },
+              limit: { type: 'number', description: 'Maximum results to return', default: 20 },
             },
             required: ['query'],
           },
         },
         {
-          name: 'xpp_get_class',
-          description: 'Get detailed information about an X++ class',
+          name: 'get_class_info',
+          description: 'Get detailed information about an X++ class including its methods',
           inputSchema: {
             type: 'object',
             properties: {
-              className: { type: 'string', description: 'Name of the class' },
+              className: { type: 'string', description: 'Name of the X++ class' },
             },
             required: ['className'],
           },
         },
         {
-          name: 'xpp_get_table',
-          description: 'Get detailed information about an X++ table',
+          name: 'get_table_info',
+          description: 'Get detailed information about an X++ table including fields, indexes, and relations',
           inputSchema: {
             type: 'object',
             properties: {
-              tableName: { type: 'string', description: 'Name of the table' },
+              tableName: { type: 'string', description: 'Name of the X++ table' },
             },
             required: ['tableName'],
           },
         },
         {
-          name: 'xpp_complete_method',
-          description: 'Get method/field completions for a class or table',
+          name: 'code_completion',
+          description: 'Get method and field completions for classes or tables - provides IntelliSense-like code completion',
           inputSchema: {
             type: 'object',
             properties: {
               objectName: { type: 'string', description: 'Class or table name' },
-              prefix: { type: 'string', description: 'Method name prefix' },
+              prefix: { type: 'string', description: 'Method/field name prefix to filter', default: '' },
             },
             required: ['objectName'],
           },
         },
         {
-          name: 'xpp_generate_code',
-          description: 'Generate X++ code templates',
+          name: 'generate_code',
+          description: 'Generate X++ code templates for common patterns',
           inputSchema: {
             type: 'object',
             properties: {
               pattern: { 
                 type: 'string', 
                 enum: ['class', 'runnable', 'form-handler', 'data-entity', 'batch-job'],
-                description: 'Code pattern type' 
+                description: 'Code pattern to generate' 
               },
-              name: { type: 'string', description: 'Element name' },
+              name: { type: 'string', description: 'Name for the generated element' },
             },
             required: ['pattern', 'name'],
           },

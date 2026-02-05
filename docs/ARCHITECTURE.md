@@ -362,7 +362,7 @@ graph LR
     end
 
     INIT -.-> CAPS[Capabilities:<br/>tools, resources, prompts]
-    TOOLS_LIST -.-> TOOL_DEFS[Tool Definitions:<br/>xpp_search, xpp_get_class,<br/>xpp_get_table, xpp_completion,<br/>xpp_generate_code,<br/>xpp_search_extensions]
+    TOOLS_LIST -.-> TOOL_DEFS[Tool Definitions:<br/>search, get_class_info,<br/>get_table_info, code_completion,<br/>generate_code,<br/>search_extensions]
     TOOLS_CALL -.-> EXEC[Tool Execution:<br/>search DB, parse XML,<br/>return results]
     
     style INIT fill:#4CAF50,color:#fff
@@ -371,7 +371,7 @@ graph LR
 
 ### Tool Arguments & Responses
 
-#### 1. xpp_search
+#### 1. search
 **Input:**
 ```json
 {
@@ -389,7 +389,7 @@ Found 5 matches:
 [FIELD] CustTable.AccountNum - str AccountNum
 ```
 
-#### 2. xpp_get_class
+#### 2. get_class_info
 **Input:**
 ```json
 {
@@ -399,7 +399,7 @@ Found 5 matches:
 
 **Output:** Markdown-formatted class details with methods, inheritance, modifiers
 
-#### 3. xpp_get_table
+#### 3. get_table_info
 **Input:**
 ```json
 {
@@ -409,34 +409,34 @@ Found 5 matches:
 
 **Output:** Markdown-formatted table schema with fields, indexes, relations
 
-#### 4. xpp_completion
+#### 4. code_completion
 **Input:**
 ```json
 {
-  "className": "CustTable",
+  "objectName": "CustTable",
   "prefix": "set"
 }
 ```
 
 **Output:** List of matching methods starting with "set"
 
-#### 5. xpp_generate_code
+#### 5. generate_code
 **Input:**
 ```json
 {
-  "templateType": "batch-job",
+  "pattern": "batch-job",
   "name": "MyBatch"
 }
 ```
 
 **Output:** X++ code template for batch job
 
-#### 6. xpp_search_extensions
+#### 6. search_extensions
 **Input:**
 ```json
 {
   "query": "Cust",
-  "modelPrefix": "ISV"
+  "prefix": "ISV_"
 }
 ```
 
