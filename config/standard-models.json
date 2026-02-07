@@ -1,8 +1,0 @@
-{
-  "description": "List of Microsoft's standard D365 F&O models that should be excluded from custom model searches",
-  "standardModels": [
-    "ApplicationFoundation",
-    "ApplicationPlatform",
-    "ApplicationSuite"
-  ]
-}

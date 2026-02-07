@@ -184,7 +184,7 @@ xpp-metadata/
 
 **Storage Requirements:**
 - PackagesLocalDirectory.zip must be pre-uploaded to Azure Blob Storage (container: `packages`)
-- Extracts only standard models defined in `config/standard-models.json`
+- Extracts only standard models (all models NOT in CUSTOM_MODELS env variable)
 
 ### 3. d365fo-mcp-data-platform-upgrade.yml - Complete Platform Upgrade
 
