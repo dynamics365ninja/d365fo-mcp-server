@@ -110,12 +110,33 @@ async function extractMetadata() {
   // Create output directory
   await fs.mkdir(OUTPUT_PATH, { recursive: true });
 
+  // Helper function to find actual directory name (case-insensitive)
+  async function findActualDirectoryName(basePath: string, targetName: string): Promise<string | null> {
+    try {
+      const entries = await fs.readdir(basePath, { withFileTypes: true });
+      const found = entries.find(e => 
+        (e.isDirectory() || e.isSymbolicLink()) && 
+        e.name.toLowerCase() === targetName.toLowerCase()
+      );
+      return found ? found.name : null;
+    } catch {
+      return null;
+    }
+  }
+
   // Determine which packages to process
   let packagesToProcess: string[] = [];
   
   if (MODELS_TO_EXTRACT.length > 0) {
-    // Explicit list provided
-    packagesToProcess = MODELS_TO_EXTRACT;
+    // Explicit list provided - resolve to actual names (case-insensitive)
+    for (const modelName of MODELS_TO_EXTRACT) {
+      const actualName = await findActualDirectoryName(PACKAGES_PATH, modelName);
+      if (actualName) {
+        packagesToProcess.push(actualName);
+      } else {
+        console.warn(`⚠️  Model not found: ${modelName}`);
+      }
+    }
   } else {
     // Scan all packages (including symbolic links)
     const allPackages = await fs.readdir(PACKAGES_PATH, { withFileTypes: true });

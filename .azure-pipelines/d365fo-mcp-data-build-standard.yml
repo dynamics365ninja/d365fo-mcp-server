@@ -23,10 +23,10 @@ variables:
     value: './metadata'
   - name: DB_PATH
     value: './database/xpp-metadata.db'
+  - name: PACKAGES_DIR_NAME
+    value: 'PackagesLocalDirectory'
   - name: PACKAGES_ZIP_PATH
-    value: '$(Pipeline.Workspace)/PackagesLocalDirectory.zip'
-  - name: PACKAGES_PATH
-    value: '$(Pipeline.Workspace)/PackagesLocalDirectory'
+    value: '$(Pipeline.Workspace)/$(PACKAGES_DIR_NAME).zip'
   - name: PACKAGES_CONTAINER_NAME
     value: 'packages'
   - name: MCP_SERVER_PATH
@@ -61,31 +61,30 @@ stages:
           # ========== Step 2: Download PackagesLocalDirectory.zip from Azure Blob ==========
           
           - script: |
-              echo "Downloading PackagesLocalDirectory.zip from Azure Blob Storage..."
+              echo "Downloading $(PACKAGES_DIR_NAME).zip from Azure Blob Storage..."
               az storage blob download \
                 --connection-string "$AZURE_STORAGE_CONNECTION_STRING" \
                 --container-name $(PACKAGES_CONTAINER_NAME) \
-                --name PackagesLocalDirectory.zip \
+                --name $(PACKAGES_DIR_NAME).zip \
                 --file $(PACKAGES_ZIP_PATH) \
                 --output table
               
               echo "Download completed successfully"
               ls -lh $(PACKAGES_ZIP_PATH)
-            displayName: 'Download PackagesLocalDirectory.zip from Azure Blob'
+            displayName: 'Download $(PACKAGES_DIR_NAME).zip from Azure Blob'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
 
           # ========== Step 3: Extract PackagesLocalDirectory.zip ==========
           
           - script: |
-              echo "Extracting PackagesLocalDirectory.zip..."
-              mkdir -p $(PACKAGES_PATH)
-              unzip -q $(PACKAGES_ZIP_PATH) -d $(PACKAGES_PATH)
+              echo "Extracting $(PACKAGES_DIR_NAME).zip..."
+              unzip -q $(PACKAGES_ZIP_PATH) -d $(Pipeline.Workspace)
               
               echo "Extraction completed successfully"
               echo "Contents of extracted directory:"
-              ls -la $(PACKAGES_PATH)
-            displayName: 'Extract PackagesLocalDirectory.zip'
+              ls -la $(Pipeline.Workspace)/$(PACKAGES_DIR_NAME)
+            displayName: 'Extract $(PACKAGES_DIR_NAME).zip'
 
           # ========== Step 4: Extract Metadata ==========
           
@@ -93,7 +92,7 @@ stages:
             displayName: 'Extract standard metadata from packages'
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
-              PACKAGES_PATH: $(PACKAGES_PATH)
+              PACKAGES_PATH: $(Pipeline.Workspace)/$(PACKAGES_DIR_NAME)
               METADATA_PATH: $(METADATA_PATH)
               EXTRACT_MODE: 'standard'
 
@@ -142,7 +141,7 @@ stages:
               echo "Standard metadata extraction completed!"
               echo "============================================"
               echo ""
-              echo "✅ PackagesLocalDirectory.zip downloaded from Azure Blob"
+              echo "✅ $(PACKAGES_DIR_NAME).zip downloaded from Azure Blob"
               echo "✅ Package extracted"
               echo "✅ Metadata extracted"
               echo "✅ Metadata uploaded to: metadata/standard/"
