@@ -7,6 +7,7 @@ import 'dotenv/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';
+import { isCustomModel } from '../src/utils/modelClassifier.js';
 
 const AZURE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING || '';
 const BLOB_CONTAINER = process.env.BLOB_CONTAINER_NAME || 'xpp-metadata';
@@ -332,22 +333,7 @@ export class AzureBlobMetadataManager {
     }
     
     // Check against standard models list
-    const standardModels = await this.loadStandardModels();
-    return !standardModels.includes(modelName);
-  }
-
-  /**
-   * Helper: Load standard models from config
-   */
-  private async loadStandardModels(): Promise<string[]> {
-    try {
-      const configPath = path.resolve('./config/standard-models.json');
-      const configContent = await fs.readFile(configPath, 'utf-8');
-      const config = JSON.parse(configContent);
-      return config.standardModels || [];
-    } catch {
-      return [];
-    }
+    return isCustomModel(modelName);
   }
 
   /**

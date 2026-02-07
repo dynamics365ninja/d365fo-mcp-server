@@ -6,11 +6,7 @@
 import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import type { XppSymbol } from './types.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export class XppSymbolIndex {
   private db: Database.Database;
@@ -53,25 +49,14 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Load standard models from configuration file
+   * Load standard models - now determined dynamically
+   * Standard = all models NOT in CUSTOM_MODELS env variable
    */
   private loadStandardModels(): void {
-    try {
-      const configPath = path.resolve(__dirname, '../../config/standard-models.json');
-      const configContent = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(configContent);
-      this.standardModels = config.standardModels || [];
-    } catch (error) {
-      // Fallback to minimal set if config file not found
-      console.warn('Could not load standard-models.json, using fallback list');
-      this.standardModels = [
-        'ApplicationFoundation',
-        'ApplicationPlatform',
-        'ApplicationSuite',
-        'Directory',
-        'Ledger',
-      ];
-    }
+    // Standard models are now determined dynamically based on CUSTOM_MODELS
+    // This method kept for compatibility but standardModels array is no longer used
+    // Use isStandardModel() from modelClassifier instead
+    this.standardModels = [];
   }
 
   private initializeDatabase(): void {

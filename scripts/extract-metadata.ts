@@ -9,6 +9,7 @@ import * as fsSync from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { XppMetadataParser } from '../src/metadata/xmlParser.js';
+import { isCustomModel as checkIsCustomModel, getCustomModels } from '../src/utils/modelClassifier.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,51 +17,32 @@ const __dirname = path.dirname(__filename);
 const PACKAGES_PATH = process.env.PACKAGES_PATH || 'C:\\AOSService\\PackagesLocalDirectory';
 const OUTPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
 const CUSTOM_MODELS_PATH = process.env.CUSTOM_MODELS_PATH; // Optional: separate path for custom extensions
-const EXTENSION_PREFIX = process.env.EXTENSION_PREFIX || '';
 
-// Load standard F&O models from config file
-function loadStandardModels(): string[] {
-  try {
-    const configPath = path.resolve(__dirname, '../config/standard-models.json');
-    const configContent = fsSync.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(configContent);
-    return config.standardModels || [];
-  } catch (error) {
-    console.warn('⚠️  Could not load standard-models.json, using fallback list');
-    return [
-      'ApplicationFoundation',
-      'ApplicationPlatform',
-      'ApplicationSuite',
-      'Directory',
-      'Ledger',
-    ];
-  }
-}
+// Custom models defined in .env - these are YOUR extensions
+const CUSTOM_MODELS = getCustomModels();
 
-const STANDARD_MODELS = loadStandardModels();
-
-// Custom extension models to extract (if specified, only extract these)
-const CUSTOM_MODELS = process.env.CUSTOM_MODELS?.split(',').map(m => m.trim()).filter(Boolean) || [];
-
-// Extract mode: 'all' = all models (standard + custom), 'custom' = only custom models (exclude standard), 'standard' = only standard models
+// Extract mode: 'all' = all models (standard + custom), 'custom' = only custom models, 'standard' = only standard models (all except custom)
 const EXTRACT_MODE = process.env.EXTRACT_MODE || 'all';
 
-let MODELS_TO_EXTRACT: string[] = [];
-let EXCLUDE_STANDARD = false;
+// Use shared utility for checking custom models
+const isCustomModel = checkIsCustomModel;
 
-if (EXTRACT_MODE === 'custom' && CUSTOM_MODELS.length > 0) {
-  // Extract only specified custom models
-  MODELS_TO_EXTRACT = CUSTOM_MODELS;
-} else if (EXTRACT_MODE === 'custom') {
-  // Extract all custom models (exclude standard)
-  MODELS_TO_EXTRACT = [];
-  EXCLUDE_STANDARD = true;
+let MODELS_TO_EXTRACT: string[] = [];
+let FILTER_MODE: 'all' | 'custom-only' | 'standard-only' = 'all';
+
+if (EXTRACT_MODE === 'custom') {
+  // Extract only custom models
+  if (CUSTOM_MODELS.length > 0) {
+    MODELS_TO_EXTRACT = CUSTOM_MODELS;
+  } else {
+    FILTER_MODE = 'custom-only'; // Will filter dynamically based on prefix
+  }
 } else if (EXTRACT_MODE === 'standard') {
-  // Extract only standard models
-  MODELS_TO_EXTRACT = STANDARD_MODELS;
+  // Extract all models EXCEPT custom models
+  FILTER_MODE = 'standard-only';
 } else {
   // Extract all models (standard + custom)
-  MODELS_TO_EXTRACT = [];
+  FILTER_MODE = 'all';
 }
 
 interface ExtractionStats {
@@ -76,14 +58,24 @@ async function extractMetadata() {
   console.log('🔍 X++ Metadata Extraction');
   console.log(`📂 Source: ${PACKAGES_PATH}`);
   console.log(`📁 Output: ${OUTPUT_PATH}`);
-  console.log(`� Extract Mode: ${EXTRACT_MODE}`);
+  console.log(`🎯 Extract Mode: ${EXTRACT_MODE}`);
   
   if (EXTRACT_MODE === 'custom' && CUSTOM_MODELS.length > 0) {
-    console.log(`📋 Custom Models: ${CUSTOM_MODELS.join(', ')}`);
+    console.log(`📋 Custom Models (explicit): ${CUSTOM_MODELS.join(', ')}`);
   } else if (EXTRACT_MODE === 'custom') {
-    console.log(`📋 Mode: Extract custom models only (exclude standard)`);
+    console.log(`📋 Mode: Extract custom models only`);
+    if (CUSTOM_MODELS.length > 0) {
+      console.log(`📋 Custom Models defined: ${CUSTOM_MODELS.join(', ')}`);
+    }
+    const extensionPrefix = process.env.EXTENSION_PREFIX;
+    if (extensionPrefix) {
+      console.log(`📋 Extension Prefix: ${extensionPrefix}`);
+    }
   } else if (EXTRACT_MODE === 'standard') {
-    console.log(`📋 Standard Models: ${STANDARD_MODELS.join(', ')}`);
+    console.log(`📋 Mode: Extract standard models (exclude custom)`);
+    if (CUSTOM_MODELS.length > 0) {
+      console.log(`📋 Custom Models to exclude: ${CUSTOM_MODELS.join(', ')}`);
+    }
   } else {
     console.log(`📋 Mode: Extract all models (standard + custom)`);
   }
@@ -140,16 +132,22 @@ async function extractMetadata() {
   } else {
     // Scan all packages (including symbolic links)
     const allPackages = await fs.readdir(PACKAGES_PATH, { withFileTypes: true });
-    packagesToProcess = allPackages
+    const allPackageNames = allPackages
       .filter(e => e.isDirectory() || e.isSymbolicLink())
       .map(e => e.name);
     
-    // Filter out standard models if in custom mode (case-insensitive)
-    if (EXCLUDE_STANDARD) {
-      const standardModelsLower = STANDARD_MODELS.map(m => m.toLowerCase());
-      packagesToProcess = packagesToProcess.filter(pkg => !standardModelsLower.includes(pkg.toLowerCase()));
-      console.log(`📦 Found ${packagesToProcess.length} custom packages to process (${STANDARD_MODELS.length} standard models excluded)`);
+    // Apply filtering based on mode
+    if (FILTER_MODE === 'custom-only') {
+      // Keep only custom models (defined in CUSTOM_MODELS or with EXTENSION_PREFIX)
+      packagesToProcess = allPackageNames.filter(pkg => isCustomModel(pkg));
+      console.log(`📦 Found ${packagesToProcess.length} custom packages to process (${allPackageNames.length - packagesToProcess.length} standard models excluded)`);
+    } else if (FILTER_MODE === 'standard-only') {
+      // Keep only standard models (exclude custom)
+      packagesToProcess = allPackageNames.filter(pkg => !isCustomModel(pkg));
+      console.log(`📦 Found ${packagesToProcess.length} standard packages to process (${allPackageNames.length - packagesToProcess.length} custom models excluded)`);
     } else {
+      // Process all packages
+      packagesToProcess = allPackageNames;
       console.log(`📦 Found ${packagesToProcess.length} packages to process`);
     }
   }
@@ -178,9 +176,13 @@ async function extractMetadata() {
         continue;
       }
 
-      // Skip standard models if in custom mode (case-insensitive)
-      if (EXCLUDE_STANDARD && STANDARD_MODELS.some(m => m.toLowerCase() === modelName.toLowerCase())) {
+      // Apply model-level filtering
+      if (FILTER_MODE === 'custom-only' && !isCustomModel(modelName)) {
         console.log(`   ⏭️  Skipping standard model: ${modelName}`);
+        continue;
+      }
+      if (FILTER_MODE === 'standard-only' && isCustomModel(modelName)) {
+        console.log(`   ⏭️  Skipping custom model: ${modelName}`);
         continue;
       }
 

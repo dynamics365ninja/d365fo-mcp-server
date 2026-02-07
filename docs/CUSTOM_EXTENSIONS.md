@@ -20,7 +20,7 @@ EXTENSION_PREFIX=ISV_
 EXTRACT_MODE=all
 ```
 
-**Note**: The extraction process filters out Microsoft standard models using the list in `config/standard-models.json` (36 standard models).
+**Note**: Custom models are defined in `CUSTOM_MODELS` environment variable. All other models are automatically considered Microsoft standard models. This approach automatically adapts to new D365 versions without maintaining a static list.
 
 ## Extract Custom Extensions Only
 

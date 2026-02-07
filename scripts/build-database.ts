@@ -13,24 +13,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { isCustomModel, isStandardModel, getCustomModels } from '../src/utils/modelClassifier.js';
+
 const INPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
 const OUTPUT_DB = process.env.DB_PATH || './data/xpp-metadata.db';
 const EXTRACT_MODE = process.env.EXTRACT_MODE || 'all';
-const CUSTOM_MODELS = process.env.CUSTOM_MODELS?.split(',').map(m => m.trim()).filter(Boolean) || [];
-
-// Load standard models from config
-function loadStandardModels(): string[] {
-  try {
-    const configPath = path.resolve(__dirname, '../config/standard-models.json');
-    const configContent = fsSync.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(configContent);
-    return config.standardModels || [];
-  } catch (error) {
-    return [];
-  }
-}
-
-const STANDARD_MODELS = loadStandardModels();
+const CUSTOM_MODELS = getCustomModels();
 
 async function buildDatabase() {
   console.log('🔨 Building X++ Metadata Database');
@@ -60,13 +48,16 @@ async function buildDatabase() {
       const allModels = fsSync.readdirSync(INPUT_PATH, { withFileTypes: true })
         .filter(e => e.isDirectory())
         .map(e => e.name);
-      modelsToRebuild = allModels.filter(m => !STANDARD_MODELS.includes(m));
+      modelsToRebuild = allModels.filter(m => isCustomModel(m));
       symbolIndex.clearModels(modelsToRebuild);
     }
   } else if (EXTRACT_MODE === 'standard') {
-    // Clear only standard models
-    symbolIndex.clearModels(STANDARD_MODELS);
-    modelsToRebuild = STANDARD_MODELS;
+    // Clear only standard models (all except custom)
+    const allModels = fsSync.readdirSync(INPUT_PATH, { withFileTypes: true })
+      .filter(e => e.isDirectory())
+      .map(e => e.name);
+    modelsToRebuild = allModels.filter(m => isStandardModel(m));
+    symbolIndex.clearModels(modelsToRebuild);
   }
 
   // Index the extracted metadata
