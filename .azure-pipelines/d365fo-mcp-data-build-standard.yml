@@ -1,7 +1,6 @@
-# Azure Pipeline for D365 Platform Upgrade
-# This pipeline combines standard and custom metadata extraction in single stage
-# Use this after Microsoft releases new D365 version
-# Pipeline automatically downloads latest version from NuGet (10.0.* and 7.0.*)
+# Azure Pipeline for Standard D365FO Metadata Extraction from Azure Blob Storage
+# This pipeline downloads and extracts standard D365 models from PackagesLocalDirectory.zip
+# Runs: Few times per year (D365 upgrade, hotfix) or manual trigger
 
 trigger: none  # Manual execution only
 
@@ -21,9 +20,9 @@ variables:
   - name: nodeVersion
     value: '22.x'
   - name: METADATA_PATH
-    value: './extracted-metadata'
+    value: './metadata'
   - name: DB_PATH
-    value: './data/xpp-metadata.db'
+    value: './database/xpp-metadata.db'
   - name: PACKAGES_ZIP_PATH
     value: '$(Pipeline.Workspace)/PackagesLocalDirectory.zip'
   - name: PACKAGES_PATH
@@ -35,20 +34,20 @@ variables:
 
 stages:
   # ============================================================================
-  # Single Stage: Complete Platform Upgrade
+  # Single Stage: Download, Extract, and Upload
   # ============================================================================
-  - stage: PlatformUpgrade
-    displayName: 'Complete Platform Upgrade'
+  - stage: ExtractAndUpload
+    displayName: 'Extract Standard Metadata and Upload to Blob'
     jobs:
-      - job: UpgradeJob
-        displayName: 'Download → Extract Standard → Extract Custom → Build → Upload'
+      - job: ProcessJob
+        displayName: 'Download → Extract → Upload'
         steps:
-          # ========== Step 1: Checkout MCP Server code from GitHub ==========
+          # ========== Checkout MCP Server code from GitHub ==========
           - checkout: mcpServer
             displayName: 'Checkout MCP Server code from GitHub'
             path: mcp-server
-        
-          # ========== Step 2: Install Node.js and Dependencies ==========
+
+          # ========== Step 1: Install Node.js and Dependencies ==========
           
           - task: NodeTool@0
             displayName: 'Install Node.js'
@@ -59,7 +58,7 @@ stages:
             displayName: 'Install NPM dependencies'
             workingDirectory: '$(MCP_SERVER_PATH)'
 
-          # ========== Step 3: Download PackagesLocalDirectory.zip from Azure Blob ==========
+          # ========== Step 2: Download PackagesLocalDirectory.zip from Azure Blob ==========
           
           - script: |
               echo "Downloading PackagesLocalDirectory.zip from Azure Blob Storage..."
@@ -76,7 +75,7 @@ stages:
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
 
-          # ========== Step 4: Extract PackagesLocalDirectory.zip ==========
+          # ========== Step 3: Extract PackagesLocalDirectory.zip ==========
           
           - script: |
               echo "Extracting PackagesLocalDirectory.zip..."
@@ -88,7 +87,7 @@ stages:
               ls -la $(PACKAGES_PATH)
             displayName: 'Extract PackagesLocalDirectory.zip'
 
-          # ========== Step 5: Extract Standard Metadata ==========
+          # ========== Step 4: Extract Metadata ==========
           
           - script: npm run extract-metadata
             displayName: 'Extract standard metadata from packages'
@@ -98,27 +97,27 @@ stages:
               METADATA_PATH: $(METADATA_PATH)
               EXTRACT_MODE: 'standard'
 
-          # ========== Step 6: Download Custom Metadata from Azure Blob ==========
+          # ========== Step 5: Upload Metadata to Blob Storage ==========
           
-          - script: npm run blob-manager download-custom
-            displayName: 'Download custom metadata from Azure Blob'
+          - script: npm run blob-manager upload-standard
+            displayName: 'Upload standard metadata to Azure Blob'
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               METADATA_PATH: $(METADATA_PATH)
 
-          # ========== Step 7: Build Database ==========
+          # ========== Step 6: Build Database ==========
           
           - script: npm run build-database
-            displayName: 'Build database (standard + custom)'
+            displayName: 'Build database from standard metadata'
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               METADATA_PATH: $(METADATA_PATH)
               DB_PATH: $(DB_PATH)
 
-          # ========== Step 8: Upload Database to Blob Storage ==========
-
+          # ========== Step 7: Upload Database to Blob Storage ==========
+          
           - script: npm run blob-manager upload-database
             displayName: 'Upload compiled database to Azure Blob'
             workingDirectory: '$(MCP_SERVER_PATH)'
@@ -127,29 +126,29 @@ stages:
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               DB_PATH: $(DB_PATH)
 
-          # ========== Step 9: Restart App Service ==========
-
+          # Restart App Service
           - task: AzureAppServiceManage@0
-            displayName: 'Restart App Service to load new database'
+            displayName: 'Restart App Service'
             inputs:
               azureSubscription: '$(AZURE_SUBSCRIPTION)'
               action: 'Restart Azure App Service'
               webAppName: '$(AZURE_APP_SERVICE_NAME)'
 
-          # ========== Step 10: Log Completion ==========
+          # ========== Step 8: Log Completion ==========
           
           - script: |
               echo ""
               echo "============================================"
-              echo "D365 Platform Upgrade Completed!"
+              echo "Standard metadata extraction completed!"
               echo "============================================"
               echo ""
-              echo "✅ MCP Server: Checked out from GitHub"
-              echo "✅ Standard metadata: Downloaded and extracted from Blob"
-              echo "✅ Custom metadata: Downloaded from Blob"
-              echo "✅ Database: Built and uploaded"
-              echo "✅ App Service: Restarted"
+              echo "✅ PackagesLocalDirectory.zip downloaded from Azure Blob"
+              echo "✅ Package extracted"
+              echo "✅ Metadata extracted"
+              echo "✅ Metadata uploaded to: metadata/standard/"
+              echo "✅ Database built"
+              echo "✅ Database uploaded to Azure Blob"
               echo ""
-              echo "Your MCP server is now running with the latest D365 version"
+              echo "Next step: Run custom pipeline to update custom models"
               echo "============================================"
             displayName: 'Log completion summary'

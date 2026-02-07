@@ -26,8 +26,8 @@ Manual metadata extraction and database builds are time-consuming:
 
 Three automated pipelines that separate standard (quarterly) and custom (daily) metadata:
 
-1. **Quick Pipeline** - Custom updates on code changes (~95% faster)
-2. **Standard Pipeline** - Standard metadata from NuGet
+1. **Build Custom Pipeline** - Custom updates on code changes (~95% faster)
+2. **Build Standard Pipeline** - Standard metadata extraction with database build
 3. **Platform Upgrade Pipeline** - Complete D365 version upgrade
 
 ### Benefits
@@ -103,12 +103,12 @@ xpp-metadata/
 
 ## Pipeline Configurations
 
-### 1. d365fo-mcp-data-quick.yml - Updates on Changes
+### 1. d365fo-mcp-data-build-custom.yml - Updates on Changes
 
 **Purpose:** Fast updates of custom models when code changes
 
 **Trigger:**
-- Automatic on changes to `main` branch in `src/**` or pipeline file
+- Automatic on changes to `dev` branch in `src/**` or pipeline file
 - Manual with parameters
 
 **Parameters:**
@@ -154,62 +154,74 @@ xpp-metadata/
 
 **Agent:** ubuntu-latest
 
-### 2. d365fo-mcp-data-standard-extract.yml - NuGet Extraction
+### 2. d365fo-mcp-data-build-standard.yml - Standard Metadata Extraction & Build
 
-**Purpose:** Extract Microsoft standard models from NuGet packages
+**Purpose:** Extract Microsoft standard models from PackagesLocalDirectory.zip and build database
 
 **Trigger:**
 - Manual execution only
-- Use before D365 platform upgrades
+- Scheduled quarterly (cron: "0 3 1 1,4,7,10 *" - Jan 1, Apr 1, Jul 1, Oct 1 at 3 AM UTC)
 
 **Process:**
-1. Download NuGet packages (Application, Platform, Compiler)
-2. Extract metadata from packages
-3. Upload to blob storage under `/metadata/standard/`
+1. Checkout MCP Server code from GitHub
+2. Install Node.js dependencies
+3. Download PackagesLocalDirectory.zip from Azure Blob Storage
+4. Extract the ZIP file
+5. Extract standard metadata from packages (EXTRACT_MODE: 'standard')
+6. Upload metadata to blob storage under `/metadata/standard/`
+7. Build database from standard metadata
+8. Upload database to Azure Blob Storage
+9. Restart App Service to load new database
 
 **When to Use:**
 - After D365 platform/application updates
-- New version release
+- New version release (quarterly)
+- When PackagesLocalDirectory.zip is updated in Blob Storage
 
-**Execution Time:** ~2-3 hours (runs rarely)
+**Execution Time:** ~30-60 minutes
 
-**Agent:** windows-latest (required for NuGet.exe)
+**Agent:** ubuntu-latest
 
-**NuGet Packages:**
-- Microsoft.Dynamics.AX.Application.DevALM.BuildXpp (10.0.*)
-- Microsoft.Dynamics.AX.ApplicationSuite.DevALM.BuildXpp (10.0.*)
-- Microsoft.Dynamics.AX.Platform.DevALM.BuildXpp (7.0.*)
-- Microsoft.Dynamics.AX.Platform.CompilerPackage (7.0.*)
+**Storage Requirements:**
+- PackagesLocalDirectory.zip must be pre-uploaded to Azure Blob Storage (container: `packages`)
+- Extracts only standard models defined in `config/standard-models.json`
 
 ### 3. d365fo-mcp-data-platform-upgrade.yml - Complete Platform Upgrade
 
-**Purpose:** Complete D365 platform upgrade in single pipeline run - no intermediate uploads/downloads
+**Purpose:** Complete D365 platform upgrade combining standard and custom metadata with service restart
 
 **Trigger:**
 - Manual execution only
 
 **Process:**
-1. Download latest NuGet packages (Application 10.0.*, Platform 7.0.*, Compiler 7.0.*)
-2. Extract standard metadata from packages (local)
-3. Extract custom metadata from Git source (local)
-4. Build database (standard + custom, local)
-5. Upload everything to blob storage (standard + custom + database)
-6. Restart App Service
+1. Checkout MCP Server code from GitHub
+2. Install Node.js dependencies
+3. Download PackagesLocalDirectory.zip from Azure Blob Storage
+4. Extract the ZIP file
+5. Extract standard metadata from packages (EXTRACT_MODE: 'standard')
+6. Download custom metadata from Azure Blob Storage
+7. Build database (standard + custom, combined)
+8. Upload database to Azure Blob Storage
+9. Restart App Service to load new database
 
 **Key Benefits:**
-- **Single stage** - no intermediate blob operations
-- **Faster** - eliminates upload/download between extraction steps
-- **Simpler** - unified process on one agent
-- **More efficient** - all metadata stays local until final upload
+- **Complete upgrade** - combines standard and custom metadata in one run
+- **Service restart** - automatically deploys new database to production
+- **Efficient** - downloads pre-extracted custom metadata instead of re-extracting
 
 **When to Use:**
 - After D365 platform/application updates
-- New version release
-- Complete upgrade in single run
+- When you need to deploy updated database to production
+- Complete upgrade with service restart
 
-**Execution Time:** ~1.5-2 hours (optimized, single stage)
+**Execution Time:** ~30-45 minutes
 
-**Agent:** windows-latest (required for NuGet.exe)
+**Agent:** ubuntu-latest
+
+**Important Notes:**
+- **Requires pre-extracted custom metadata** in Blob Storage (from build-custom pipeline)
+- **Restarts App Service** - impacts production availability briefly
+- Uses PackagesLocalDirectory.zip from Blob Storage (not NuGet)
 
 ---
 
@@ -217,13 +229,13 @@ xpp-metadata/
 
 ### Scenario 1: Daily Development
 
-**Situation:** Normal development, code commits to main branch
+**Situation:** Normal development, code commits to dev branch
 
 **Recommended Approach:**
-- Pipeline runs automatically when you push changes to `main`
+- Pipeline runs automatically when you push changes to `dev`
 - No manual intervention needed
 
-**Pipeline:** `d365fo-mcp-data-quick.yml` (auto on push)
+**Pipeline:** `d365fo-mcp-data-build-custom.yml` (auto on push to dev)
 
 **Process:**
 - Automatically checks out both D365FO source (Azure DevOps) and MCP Server (GitHub)
@@ -239,14 +251,14 @@ xpp-metadata/
 **Situation:** Need immediate metadata update after important commit
 
 **Recommended Approach:**
-1. Navigate to Pipelines → d365fo-mcp-data-quick.yml
+1. Navigate to Pipelines → d365fo-mcp-data-build-custom.yml
 2. Click "Run pipeline"
 3. Keep default parameters:
    - extractionMode: custom
    - customModels: all
 4. Wait 5-15 minutes
 
-**Pipeline:** `d365fo-mcp-data-quick.yml` (manual)
+**Pipeline:** `d365fo-mcp-data-build-custom.yml` (manual)
 
 **Process:**
 - Checks out D365FO source from Azure DevOps (ASL/src/d365fo/metadata)
@@ -260,29 +272,33 @@ xpp-metadata/
 
 ### Scenario 3: D365 Platform Upgrade
 
-**Situation:** Microsoft released new D365 version (e.g., 10.0.42)
+**Situation:** Microsoft released new D365 version or you have new PackagesLocalDirectory.zip
 
-**Recommended Approach (Option 1 - Single Pipeline):**
-1. Navigate to Pipelines → d365fo-mcp-data-platform-upgrade.yml
-2. Click "Run pipeline"
-3. Enter D365 version number (e.g., "10.0.42")
-4. Wait for completion (~2-3 hours)
-
-**Pipeline:** `d365fo-mcp-data-platform-upgrade.yml` (single run)
-
-**Result:** Complete upgrade - standard metadata updated + custom rebuilt + database deployed
-
-**Alternative Approach (Option 2 - Separate Pipelines):**
-1. Update NuGet package versions in `nuget-config/latest.csproj`
-2. Run `d365fo-mcp-data-standard-extract.yml` manually
-3. Wait for completion (~2-3 hours)
-4. Run `d365fo-mcp-data-quick.yml` to rebuild database
+**Recommended Approach (Separate Pipelines - Recommended):**
+1. Upload new PackagesLocalDirectory.zip to Azure Blob Storage (container: `packages`)
+2. Navigate to Pipelines → d365fo-mcp-data-build-standard.yml
+3. Click "Run pipeline" (or wait for quarterly scheduled run)
+4. Wait for completion (~30-60 minutes)
+5. Run d365fo-mcp-data-build-custom.yml to rebuild custom metadata
+6. Run d365fo-mcp-data-platform-upgrade.yml to deploy to production
 
 **Pipelines:** 
-1. `d365fo-mcp-data-standard-extract.yml` (manual)
-2. `d365fo-mcp-data-quick.yml` (manual)
+1. `d365fo-mcp-data-build-standard.yml` (manual or scheduled quarterly)
+2. `d365fo-mcp-data-build-custom.yml` (optional - if custom models changed)
+3. `d365fo-mcp-data-platform-upgrade.yml` (manual - final deployment)
 
-**Result:** Latest Microsoft metadata + your custom models
+**Result:** Latest Microsoft metadata + your custom models deployed to production
+
+**Alternative Approach (Single Pipeline):**
+1. Upload new PackagesLocalDirectory.zip to Azure Blob Storage
+2. Ensure custom metadata is up-to-date in Blob Storage
+3. Navigate to Pipelines → d365fo-mcp-data-platform-upgrade.yml
+4. Click "Run pipeline"
+5. Wait for completion (~30-45 minutes)
+
+**Pipeline:** `d365fo-mcp-data-platform-upgrade.yml` (single run with service restart)
+
+**Result:** Complete upgrade - standard metadata updated + custom metadata combined + database deployed + service restarted
 
 ---
 
@@ -292,12 +308,15 @@ xpp-metadata/
 
 **Recommended Approach:**
 1. Configure all Azure DevOps variables
-2. Run `d365fo-mcp-data-standard-extract.yml` for standard models
-3. Run `d365fo-mcp-data-quick.yml` for initial custom extraction
+2. Upload PackagesLocalDirectory.zip to Azure Blob Storage (container: `packages`)
+3. Run `d365fo-mcp-data-build-standard.yml` for standard models (~30-60 min)
+4. Run `d365fo-mcp-data-build-custom.yml` for initial custom extraction (~5-15 min)
+5. Run `d365fo-mcp-data-platform-upgrade.yml` to deploy to production
 
 **Pipelines:**
-1. `d365fo-mcp-data-standard-extract.yml` (manual)
-2. `d365fo-mcp-data-quick.yml` (manual first run, then auto on code changes)
+1. `d365fo-mcp-data-build-standard.yml` (manual)
+2. `d365fo-mcp-data-build-custom.yml` (manual first run, then auto on code changes to dev)
+3. `d365fo-mcp-data-platform-upgrade.yml` (manual - final deployment)
 
 **Result:** Complete setup with automated updates on code changes
 
@@ -308,13 +327,13 @@ xpp-metadata/
 **Situation:** Changed only YourCustomModel2, no need to extract all
 
 **Recommended Approach:**
-1. Run quick pipeline manually
+1. Run build-custom pipeline manually
 2. Set parameters:
    - extractionMode: custom
    - customModels: "YourCustomModel2"
 3. Wait 3-5 minutes
 
-**Pipeline:** `d365fo-mcp-data-quick.yml` (manual with parameter)
+**Pipeline:** `d365fo-mcp-data-build-custom.yml` (manual with parameter)
 
 **Process:**
 - Checks out both D365FO source and MCP Server
@@ -336,9 +355,9 @@ xpp-metadata/
 4. Set up email notifications for failures
 
 **Key Metrics:**
-- Quick pipeline: Should complete in 5-15 minutes
-- Standard pipeline: Should complete in 2-3 hours
-- Platform upgrade pipeline: Should complete in 1.5-2 hours
+- Build-custom pipeline: Should complete in 5-15 minutes
+- Build-standard pipeline: Should complete in 30-60 minutes
+- Platform upgrade pipeline: Should complete in 30-45 minutes
 - Success rate: Should be >95%
 
 ### Log Analysis
@@ -361,19 +380,20 @@ Pipeline Logs:
 ### Cost Optimization
 
 **Compute Costs:**
-- Quick pipeline: ~$0.50/month (daily runs)
-- Standard pipeline: ~$5-10/year (quarterly runs)
+- Build-custom pipeline: ~$0.50/month (daily runs)
+- Build-standard pipeline: ~$2-5/year (quarterly runs)
 
 **Storage Costs:**
 - Metadata: ~2-3 GB → ~$0.05/month
 - Database: ~500 MB → ~$0.01/month
-- Total: ~$0.06/month
+- PackagesLocalDirectory.zip: ~5-10 GB → ~$0.15/month
+- Total: ~$0.21/month
 
 **Total Monthly Cost:** ~$1-2/month
 
 **Optimization Tips:**
-1. Use quick pipeline for daily updates
-2. Disable full pipeline auto-trigger if not needed
+1. Use build-custom pipeline for daily updates
+2. Let build-standard run on quarterly schedule
 3. Clean old blob versions periodically
 4. Use Basic tier Redis or disable caching
 
@@ -389,8 +409,8 @@ Pipeline Logs:
 - ✅ Review App Service metrics
 
 #### Quarterly
-- ✅ Update NuGet packages for D365 versions
-- ✅ Run standard extraction after D365 updates
+- ✅ Verify PackagesLocalDirectory.zip is current version in Blob Storage
+- ✅ Run build-standard extraction after D365 updates (or rely on scheduled run)
 - ✅ Review and optimize custom models list
 
 #### Yearly
@@ -415,9 +435,10 @@ Pipeline Logs:
 **Solution:**
 ```bash
 # Run standard extraction first
-1. Execute d365fo-mcp-data-standard-extract.yml
-2. Verify metadata/standard/ folder in blob
-3. Retry failed pipeline
+1. Ensure PackagesLocalDirectory.zip is uploaded to Blob Storage (container: packages)
+2. Execute d365fo-mcp-data-build-standard.yml
+3. Verify metadata/standard/ folder in blob
+4. Retry failed pipeline
 ```
 
 #### Slow Extraction
@@ -447,8 +468,9 @@ Pipeline Logs:
 
 ### 1. Use Appropriate Pipeline
 
-- **Code changes** → Quick pipeline (auto trigger)
-- **D365 upgrades** → Platform upgrade pipeline (manual)
+- **Code changes** → Build-custom pipeline (auto trigger on dev branch)
+- **D365 upgrades** → Build-standard pipeline (quarterly or manual)
+- **Production deployment** → Platform upgrade pipeline (manual with service restart)
 
 ### 2. Parameterize When Possible
 
