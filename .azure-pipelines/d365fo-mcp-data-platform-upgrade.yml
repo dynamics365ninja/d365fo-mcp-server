@@ -21,13 +21,13 @@ variables:
   - name: nodeVersion
     value: '22.x'
   - name: METADATA_PATH
-    value: './extracted-metadata'
+    value: './metadata'
   - name: DB_PATH
-    value: './data/xpp-metadata.db'
+    value: './database/xpp-metadata.db'
+  - name: PACKAGES_DIR_NAME
+    value: 'PackagesLocalDirectory'
   - name: PACKAGES_ZIP_PATH
-    value: '$(Pipeline.Workspace)/PackagesLocalDirectory.zip'
-  - name: PACKAGES_PATH
-    value: '$(Pipeline.Workspace)/PackagesLocalDirectory'
+    value: '$(Pipeline.Workspace)/$(PACKAGES_DIR_NAME).zip'
   - name: PACKAGES_CONTAINER_NAME
     value: 'packages'
   - name: MCP_SERVER_PATH
@@ -62,31 +62,30 @@ stages:
           # ========== Step 3: Download PackagesLocalDirectory.zip from Azure Blob ==========
           
           - script: |
-              echo "Downloading PackagesLocalDirectory.zip from Azure Blob Storage..."
+              echo "Downloading $(PACKAGES_DIR_NAME).zip from Azure Blob Storage..."
               az storage blob download \
                 --connection-string "$AZURE_STORAGE_CONNECTION_STRING" \
                 --container-name $(PACKAGES_CONTAINER_NAME) \
-                --name PackagesLocalDirectory.zip \
+                --name $(PACKAGES_DIR_NAME).zip \
                 --file $(PACKAGES_ZIP_PATH) \
                 --output table
               
               echo "Download completed successfully"
               ls -lh $(PACKAGES_ZIP_PATH)
-            displayName: 'Download PackagesLocalDirectory.zip from Azure Blob'
+            displayName: 'Download $(PACKAGES_DIR_NAME).zip from Azure Blob'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
 
           # ========== Step 4: Extract PackagesLocalDirectory.zip ==========
           
           - script: |
-              echo "Extracting PackagesLocalDirectory.zip..."
-              mkdir -p $(PACKAGES_PATH)
-              unzip -q $(PACKAGES_ZIP_PATH) -d $(PACKAGES_PATH)
+              echo "Extracting $(PACKAGES_DIR_NAME).zip..."
+              unzip -q $(PACKAGES_ZIP_PATH) -d $(Pipeline.Workspace)
               
               echo "Extraction completed successfully"
               echo "Contents of extracted directory:"
-              ls -la $(PACKAGES_PATH)
-            displayName: 'Extract PackagesLocalDirectory.zip'
+              ls -la $(Pipeline.Workspace)/$(PACKAGES_DIR_NAME)
+            displayName: 'Extract $(PACKAGES_DIR_NAME).zip'
 
           # ========== Step 5: Extract Standard Metadata ==========
           
@@ -94,11 +93,21 @@ stages:
             displayName: 'Extract standard metadata from packages'
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
-              PACKAGES_PATH: $(PACKAGES_PATH)
+              PACKAGES_PATH: $(Pipeline.Workspace)/$(PACKAGES_DIR_NAME)
               METADATA_PATH: $(METADATA_PATH)
               EXTRACT_MODE: 'standard'
 
-          # ========== Step 6: Download Custom Metadata from Azure Blob ==========
+          # ========== Step 6: Upload Standard Metadata to Blob Storage ==========
+          
+          - script: npm run blob-manager upload-standard
+            displayName: 'Upload standard metadata to Azure Blob'
+            workingDirectory: '$(MCP_SERVER_PATH)'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              METADATA_PATH: $(METADATA_PATH)
+
+          # ========== Step 7: Download Custom Metadata from Azure Blob ==========
           
           - script: npm run blob-manager download-custom
             displayName: 'Download custom metadata from Azure Blob'
@@ -108,7 +117,7 @@ stages:
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               METADATA_PATH: $(METADATA_PATH)
 
-          # ========== Step 7: Build Database ==========
+          # ========== Step 8: Build Database ==========
           
           - script: npm run build-database
             displayName: 'Build database (standard + custom)'
@@ -117,7 +126,7 @@ stages:
               METADATA_PATH: $(METADATA_PATH)
               DB_PATH: $(DB_PATH)
 
-          # ========== Step 8: Upload Database to Blob Storage ==========
+          # ========== Step 9: Upload Database to Blob Storage ==========
 
           - script: npm run blob-manager upload-database
             displayName: 'Upload compiled database to Azure Blob'
@@ -127,16 +136,16 @@ stages:
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               DB_PATH: $(DB_PATH)
 
-          # ========== Step 9: Restart App Service ==========
+          # ========== Step 10: Restart App Service ==========
 
           - task: AzureAppServiceManage@0
-            displayName: 'Restart App Service to load new database'
+            displayName: 'Restart App Service'
             inputs:
               azureSubscription: '$(AZURE_SUBSCRIPTION)'
               action: 'Restart Azure App Service'
               webAppName: '$(AZURE_APP_SERVICE_NAME)'
 
-          # ========== Step 10: Log Completion ==========
+          # ========== Step 11: Log Completion ==========
           
           - script: |
               echo ""
@@ -144,11 +153,12 @@ stages:
               echo "D365 Platform Upgrade Completed!"
               echo "============================================"
               echo ""
-              echo "✅ MCP Server: Checked out from GitHub"
-              echo "✅ Standard metadata: Downloaded and extracted from Blob"
-              echo "✅ Custom metadata: Downloaded from Blob"
-              echo "✅ Database: Built and uploaded"
-              echo "✅ App Service: Restarted"
+              echo "✅ $(PACKAGES_DIR_NAME).zip downloaded from Azure Blob"
+              echo "✅ Package extracted"
+              echo "✅ Standard metadata extracted and uploaded"
+              echo "✅ Custom metadata downloaded from Blob"
+              echo "✅ Database built and uploaded"
+              echo "✅ App Service restarted"
               echo ""
               echo "Your MCP server is now running with the latest D365 version"
               echo "============================================"
