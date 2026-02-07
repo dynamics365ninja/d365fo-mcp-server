@@ -1,5 +1,5 @@
-# Azure Pipeline for Standard D365FO Metadata Extraction from NuGet Packages
-# This pipeline downloads and extracts standard D365 models from Microsoft NuGet packages
+# Azure Pipeline for Standard D365FO Metadata Extraction from Azure Blob Storage
+# This pipeline downloads and extracts standard D365 models from PackagesLocalDirectory.zip
 # Runs: Few times per year (D365 upgrade, hotfix) or manual trigger
 
 trigger: none  # Manual execution only
@@ -14,28 +14,36 @@ schedules:
     always: false  # Only run if there are changes
 
 pool:
-  vmImage: 'windows-latest'  # Windows required for NuGet.exe
+  vmImage: 'ubuntu-latest'
+
+resources:
+  repositories:
+    - repository: mcpServer
+      type: github
+      endpoint: github.com_dynamics365ninja
+      name: dynamics365ninja/d365fo-mcp-server
+      ref: refs/heads/main
 
 variables:
   - group: xpp-mcp-server-config
   - name: nodeVersion
     value: '22.x'
   - name: METADATA_PATH
-    value: './extracted-metadata'
+    value: './metadata'
   - name: DB_PATH
-    value: './data/xpp-metadata.db'
-  - name: NugetConfigsPath
-    value: '$(Build.SourcesDirectory)/src/d365fo/build/MsApplFeeds'
-  - name: NugetsPath
-    value: '$(Pipeline.Workspace)/NuGets'
-  - name: NugetsPathNoVer
-    value: '$(Pipeline.Workspace)/NuGetsNoVer'
-  - name: ToolsPackage
-    value: 'Microsoft.Dynamics.AX.Platform.CompilerPackage'
+    value: './database/xpp-metadata.db'
+  - name: PACKAGES_ZIP_PATH
+    value: '$(Pipeline.Workspace)/PackagesLocalDirectory.zip'
+  - name: PACKAGES_PATH
+    value: '$(Pipeline.Workspace)/PackagesLocalDirectory'
+  - name: PACKAGES_CONTAINER_NAME
+    value: 'packages'
+  - name: MCP_SERVER_PATH
+    value: '$(Pipeline.Workspace)/mcp-server'
 
 stages:
   # ============================================================================
-  # Single Stage: Download, Extract, and Upload - All Sequential
+  # Single Stage: Download, Extract, and Upload
   # ============================================================================
   - stage: ExtractAndUpload
     displayName: 'Extract Standard Metadata and Upload to Blob'
@@ -43,142 +51,84 @@ stages:
       - job: ProcessJob
         displayName: 'Download → Extract → Upload'
         steps:
-          - checkout: self
-            displayName: 'Checkout repository'
+          # ========== Checkout MCP Server code from GitHub ==========
+          - checkout: mcpServer
+            displayName: 'Checkout MCP Server code from GitHub'
+            path: mcp-server
 
-          # ========== Step 1: Download NuGet Packages ==========
+          # ========== Step 1: Install Node.js and Dependencies ==========
           
-          # Install NuGet
-          - task: NuGetToolInstaller@1
-            displayName: 'Install NuGet'
-            inputs:
-              versionSpec: '6.x'
-
-          # Create directory structure
-          - task: PowerShell@2
-            displayName: 'Create directory structure'
-            inputs:
-              targetType: 'inline'
-              script: |
-                New-Item -ItemType Directory -Force -Path $(NugetConfigsPath)
-                New-Item -ItemType Directory -Force -Path $(NugetsPath)
-                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)
-                Write-Host "Directories created successfully"
-
-          # Verify NuGet configuration files
-          - task: PowerShell@2
-            displayName: 'Verify NuGet configuration files'
-            inputs:
-              targetType: 'inline'
-              script: |
-                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/latest.csproj")) {
-                  Write-Error "latest.csproj not found in repository! Please add it to /nuget-config/ folder."
-                  exit 1
-                }
-                if (-not (Test-Path "$(Build.SourcesDirectory)/nuget-config/nuget.config")) {
-                  Write-Error "nuget.config not found in repository! Please add it to /nuget-config/ folder."
-                  exit 1
-                }
-                Write-Host "NuGet configuration files found"
-                Get-Content "$(Build.SourcesDirectory)/nuget-config/latest.csproj"
-
-          # Restore NuGet packages
-          - task: PowerShell@2
-            displayName: 'NuGet install Packages'
-            continueOnError: true
-            inputs:
-              targetType: 'inline'
-              script: |
-                Write-Host "Starting NuGet restore..."
-                Write-Host "Config Path: $(NugetConfigsPath)"
-                Write-Host "Output Path: $(NugetsPath)"
-                
-                nuget.exe restore $(NugetConfigsPath)\latest.csproj -ConfigFile $(NugetConfigsPath)\nuget.config -OutputDirectory $(NugetsPath) -Verbosity detailed
-                
-                Write-Host "NuGet restore completed"
-                Get-ChildItem -Path $(NugetsPath) -Recurse | Select-Object FullName
-                exit 0
-              errorActionPreference: 'silentlyContinue'
-              warningPreference: 'silentlyContinue'
-
-          # Extract packages and remove version folders
-          - task: PowerShell@2
-            displayName: 'Extract and organize packages'
-            inputs:
-              targetType: 'inline'
-              script: |
-                Write-Host "Creating output directories..."
-                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)\net40
-                New-Item -ItemType Directory -Force -Path $(NugetsPathNoVer)\tools
-                
-                Write-Host "Moving metadata files from ref\net40..."
-                $net40Files = Get-ChildItem -Path $(NugetsPath)\*\*\ref\net40 -Recurse -ErrorAction SilentlyContinue
-                if ($net40Files) {
-                  $net40Files | Move-Item -Destination $(NugetsPathNoVer)\net40 -Force
-                  Write-Host "Moved $($net40Files.Count) net40 items"
-                } else {
-                  Write-Warning "No net40 files found"
-                }
-                
-                Write-Host "Moving tools from compiler package..."
-                $toolsPath = "$(NugetsPath)\$(ToolsPackage)"
-                if (Test-Path $toolsPath) {
-                  $toolsFiles = Get-ChildItem -Path $toolsPath\*\ -Recurse -ErrorAction SilentlyContinue
-                  if ($toolsFiles) {
-                    $toolsFiles | Move-Item -Destination $(NugetsPathNoVer)\tools -Force
-                    Write-Host "Moved $($toolsFiles.Count) tool items"
-                  }
-                } else {
-                  Write-Warning "Tools package not found at $toolsPath"
-                }
-                
-                Write-Host "Package extraction completed"
-                Get-ChildItem -Path $(NugetsPathNoVer) -Recurse | Select-Object FullName | Format-Table -AutoSize
-
-          # ========== Step 2: Extract Metadata ==========
-          
-          # Install Node.js
           - task: NodeTool@0
             displayName: 'Install Node.js'
             inputs:
               versionSpec: $(nodeVersion)
 
-          # Install NPM dependencies
           - script: npm ci
             displayName: 'Install NPM dependencies'
+            workingDirectory: '$(MCP_SERVER_PATH)'
 
-          # Extract standard metadata
+          # ========== Step 2: Download PackagesLocalDirectory.zip from Azure Blob ==========
+          
+          - script: |
+              echo "Downloading PackagesLocalDirectory.zip from Azure Blob Storage..."
+              az storage blob download \
+                --connection-string "$AZURE_STORAGE_CONNECTION_STRING" \
+                --container-name $(PACKAGES_CONTAINER_NAME) \
+                --name PackagesLocalDirectory.zip \
+                --file $(PACKAGES_ZIP_PATH) \
+                --output table
+              
+              echo "Download completed successfully"
+              ls -lh $(PACKAGES_ZIP_PATH)
+            displayName: 'Download PackagesLocalDirectory.zip from Azure Blob'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+
+          # ========== Step 3: Extract PackagesLocalDirectory.zip ==========
+          
+          - script: |
+              echo "Extracting PackagesLocalDirectory.zip..."
+              mkdir -p $(PACKAGES_PATH)
+              unzip -q $(PACKAGES_ZIP_PATH) -d $(PACKAGES_PATH)
+              
+              echo "Extraction completed successfully"
+              echo "Contents of extracted directory:"
+              ls -la $(PACKAGES_PATH)
+            displayName: 'Extract PackagesLocalDirectory.zip'
+
+          # ========== Step 4: Extract Metadata ==========
+          
           - script: npm run extract-metadata
             displayName: 'Extract standard metadata from packages'
+            workingDirectory: '$(MCP_SERVER_PATH)'
             env:
-              PACKAGES_PATH: $(NugetsPathNoVer)/net40
+              PACKAGES_PATH: $(PACKAGES_PATH)
               METADATA_PATH: $(METADATA_PATH)
               EXTRACT_MODE: 'standard'
 
-          # ========== Step 3: Upload to Blob Storage ==========
+          # ========== Step 5: Upload to Blob Storage ==========
           
-          # Upload standard metadata to blob
           - script: npm run blob-manager upload-standard
             displayName: 'Upload standard metadata to Azure Blob'
+            workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               METADATA_PATH: $(METADATA_PATH)
 
-          # Log completion
-          - task: PowerShell@2
+          # ========== Step 6: Log Completion ==========
+          
+          - script: |
+              echo ""
+              echo "============================================"
+              echo "Standard metadata extraction completed!"
+              echo "============================================"
+              echo ""
+              echo "✅ PackagesLocalDirectory.zip downloaded from Azure Blob"
+              echo "✅ Package extracted"
+              echo "✅ Metadata extracted"
+              echo "✅ Uploaded to: metadata/standard/"
+              echo ""
+              echo "Next step: Run quick pipeline to update custom models"
+              echo "============================================"
             displayName: 'Log completion summary'
-            inputs:
-              targetType: 'inline'
-              script: |
-                Write-Host ""
-                Write-Host "============================================" -ForegroundColor Green
-                Write-Host "Standard metadata extraction completed!" -ForegroundColor Green
-                Write-Host "============================================" -ForegroundColor Green
-                Write-Host ""
-                Write-Host "✅ NuGet packages downloaded"
-                Write-Host "✅ Metadata extracted"
-                Write-Host "✅ Uploaded to: metadata/standard/"
-                Write-Host ""
-                Write-Host "Next step: Run quick pipeline to update custom models"
-                Write-Host "============================================"
