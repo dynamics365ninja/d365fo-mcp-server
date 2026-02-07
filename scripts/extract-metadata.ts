@@ -123,9 +123,10 @@ async function extractMetadata() {
       .filter(e => e.isDirectory() || e.isSymbolicLink())
       .map(e => e.name);
     
-    // Filter out standard models if in custom mode
+    // Filter out standard models if in custom mode (case-insensitive)
     if (EXCLUDE_STANDARD) {
-      packagesToProcess = packagesToProcess.filter(pkg => !STANDARD_MODELS.includes(pkg));
+      const standardModelsLower = STANDARD_MODELS.map(m => m.toLowerCase());
+      packagesToProcess = packagesToProcess.filter(pkg => !standardModelsLower.includes(pkg.toLowerCase()));
       console.log(`📦 Found ${packagesToProcess.length} custom packages to process (${STANDARD_MODELS.length} standard models excluded)`);
     } else {
       console.log(`📦 Found ${packagesToProcess.length} packages to process`);
@@ -156,8 +157,8 @@ async function extractMetadata() {
         continue;
       }
 
-      // Skip standard models if in custom mode
-      if (EXCLUDE_STANDARD && STANDARD_MODELS.includes(modelName)) {
+      // Skip standard models if in custom mode (case-insensitive)
+      if (EXCLUDE_STANDARD && STANDARD_MODELS.some(m => m.toLowerCase() === modelName.toLowerCase())) {
         console.log(`   ⏭️  Skipping standard model: ${modelName}`);
         continue;
       }
@@ -165,9 +166,13 @@ async function extractMetadata() {
       const modelPath = path.join(packagePath, modelName);
       
       // Check if this directory contains X++ metadata (has AxClass, AxTable, etc.)
-      const hasAxClass = await fs.access(path.join(modelPath, 'AxClass')).then(() => true).catch(() => false);
-      const hasAxTable = await fs.access(path.join(modelPath, 'AxTable')).then(() => true).catch(() => false);
-      const hasAxEnum = await fs.access(path.join(modelPath, 'AxEnum')).then(() => true).catch(() => false);
+      // Support both uppercase and lowercase directory names (Linux case-sensitivity)
+      const hasAxClass = await fs.access(path.join(modelPath, 'AxClass')).then(() => true)
+        .catch(() => fs.access(path.join(modelPath, 'axclass')).then(() => true).catch(() => false));
+      const hasAxTable = await fs.access(path.join(modelPath, 'AxTable')).then(() => true)
+        .catch(() => fs.access(path.join(modelPath, 'axtable')).then(() => true).catch(() => false));
+      const hasAxEnum = await fs.access(path.join(modelPath, 'AxEnum')).then(() => true)
+        .catch(() => fs.access(path.join(modelPath, 'axenum')).then(() => true).catch(() => false));
 
       if (!hasAxClass && !hasAxTable && !hasAxEnum) {
         // Skip directories that don't contain X++ metadata
@@ -202,12 +207,19 @@ async function extractClasses(
   modelName: string,
   stats: ExtractionStats
 ) {
-  const classesPath = path.join(modelPath, 'AxClass');
+  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
+  let classesPath = path.join(modelPath, 'AxClass');
   
   try {
     await fs.access(classesPath);
   } catch {
-    return; // No classes in this model
+    // Try lowercase
+    classesPath = path.join(modelPath, 'axclass');
+    try {
+      await fs.access(classesPath);
+    } catch {
+      return; // No classes in this model
+    }
   }
 
   const files = await fs.readdir(classesPath);
@@ -248,12 +260,19 @@ async function extractTables(
   modelName: string,
   stats: ExtractionStats
 ) {
-  const tablesPath = path.join(modelPath, 'AxTable');
+  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
+  let tablesPath = path.join(modelPath, 'AxTable');
   
   try {
     await fs.access(tablesPath);
   } catch {
-    return; // No tables in this model
+    // Try lowercase
+    tablesPath = path.join(modelPath, 'axtable');
+    try {
+      await fs.access(tablesPath);
+    } catch {
+      return; // No tables in this model
+    }
   }
 
   const files = await fs.readdir(tablesPath);
@@ -294,12 +313,19 @@ async function extractEnums(
   modelName: string,
   stats: ExtractionStats
 ) {
-  const enumsPath = path.join(modelPath, 'AxEnum');
+  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
+  let enumsPath = path.join(modelPath, 'AxEnum');
   
   try {
     await fs.access(enumsPath);
   } catch {
-    return; // No enums in this model
+    // Try lowercase
+    enumsPath = path.join(modelPath, 'axenum');
+    try {
+      await fs.access(enumsPath);
+    } catch {
+      return; // No enums in this model
+    }
   }
 
   const files = await fs.readdir(enumsPath);

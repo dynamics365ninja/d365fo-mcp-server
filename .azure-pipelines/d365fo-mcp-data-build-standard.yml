@@ -4,15 +4,6 @@
 
 trigger: none  # Manual execution only
 
-# Schedule: Run on first day of each quarter (or as needed)
-schedules:
-  - cron: "0 3 1 1,4,7,10 *"  # 3 AM UTC on Jan 1, Apr 1, Jul 1, Oct 1
-    displayName: Quarterly standard metadata extraction
-    branches:
-      include:
-        - main
-    always: false  # Only run if there are changes
-
 pool:
   vmImage: 'ubuntu-latest'
 
@@ -106,7 +97,7 @@ stages:
               METADATA_PATH: $(METADATA_PATH)
               EXTRACT_MODE: 'standard'
 
-          # ========== Step 5: Upload to Blob Storage ==========
+          # ========== Step 5: Upload Metadata to Blob Storage ==========
           
           - script: npm run blob-manager upload-standard
             displayName: 'Upload standard metadata to Azure Blob'
@@ -116,7 +107,34 @@ stages:
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               METADATA_PATH: $(METADATA_PATH)
 
-          # ========== Step 6: Log Completion ==========
+          # ========== Step 6: Build Database ==========
+          
+          - script: npm run build-database
+            displayName: 'Build database from standard metadata'
+            workingDirectory: '$(MCP_SERVER_PATH)'
+            env:
+              METADATA_PATH: $(METADATA_PATH)
+              DB_PATH: $(DB_PATH)
+
+          # ========== Step 7: Upload Database to Blob Storage ==========
+          
+          - script: npm run blob-manager upload-database
+            displayName: 'Upload compiled database to Azure Blob'
+            workingDirectory: '$(MCP_SERVER_PATH)'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              DB_PATH: $(DB_PATH)
+
+          # Restart App Service
+          - task: AzureAppServiceManage@0
+            displayName: 'Restart App Service'
+            inputs:
+              azureSubscription: '$(AZURE_SUBSCRIPTION)'
+              action: 'Restart Azure App Service'
+              webAppName: '$(AZURE_APP_SERVICE_NAME)'
+
+          # ========== Step 8: Log Completion ==========
           
           - script: |
               echo ""
@@ -127,8 +145,10 @@ stages:
               echo "✅ PackagesLocalDirectory.zip downloaded from Azure Blob"
               echo "✅ Package extracted"
               echo "✅ Metadata extracted"
-              echo "✅ Uploaded to: metadata/standard/"
+              echo "✅ Metadata uploaded to: metadata/standard/"
+              echo "✅ Database built"
+              echo "✅ Database uploaded to Azure Blob"
               echo ""
-              echo "Next step: Run quick pipeline to update custom models"
+              echo "Next step: Run custom pipeline to update custom models"
               echo "============================================"
             displayName: 'Log completion summary'
