@@ -15,6 +15,7 @@ const LOCAL_METADATA_PATH = process.env.METADATA_PATH || './extracted-metadata';
 
 // Concurrency limit to avoid EMFILE errors (too many open files)
 const MAX_CONCURRENT_UPLOADS = 50;
+const MAX_CONCURRENT_DOWNLOADS = 50;
 
 // Blob structure:
 // /metadata/standard/{ModelName}/...  - Standard metadata (změna párkrát ročně)
@@ -130,6 +131,8 @@ export class AzureBlobMetadataManager {
     for (const prefix of prefixes) {
       console.log(`\n   📁 Downloading from: ${prefix}`);
       
+      // First, collect all blobs to download
+      const blobsToDownload: Array<{ name: string; size?: number }> = [];
       const blobs = this.containerClient.listBlobsFlat({ prefix });
       
       for await (const blob of blobs) {
@@ -141,26 +144,57 @@ export class AzureBlobMetadataManager {
           }
         }
         
-        try {
-          const relativePath = blob.name.replace(/^metadata\/(standard|custom)\//, '');
-          const localFilePath = path.join(LOCAL_METADATA_PATH, relativePath);
-          
-          // Create directory structure
-          await fs.mkdir(path.dirname(localFilePath), { recursive: true });
-          
-          // Download blob
-          const blobClient = this.containerClient.getBlobClient(blob.name);
-          await blobClient.downloadToFile(localFilePath);
-          
-          downloadCount++;
-          
-          if (downloadCount % 100 === 0) {
-            console.log(`   📄 Downloaded ${downloadCount} files...`);
+        blobsToDownload.push({ name: blob.name, size: blob.properties.contentLength });
+      }
+      
+      console.log(`   📊 Found ${blobsToDownload.length} files to download`);
+      
+      // Download in parallel batches
+      const downloadPromises: Promise<boolean>[] = [];
+      let completed = 0;
+      
+      for (const blob of blobsToDownload) {
+        const downloadTask = (async () => {
+          try {
+            const relativePath = blob.name.replace(/^metadata\/(standard|custom)\//, '');
+            const localFilePath = path.join(LOCAL_METADATA_PATH, relativePath);
+            
+            // Create directory structure
+            await fs.mkdir(path.dirname(localFilePath), { recursive: true });
+            
+            // Download blob
+            const blobClient = this.containerClient.getBlobClient(blob.name);
+            await blobClient.downloadToFile(localFilePath);
+            
+            completed++;
+            if (completed % 100 === 0) {
+              console.log(`   📄 Downloaded ${completed}/${blobsToDownload.length} files...`);
+            }
+            
+            return true;
+          } catch (error) {
+            console.error(`   ❌ Error downloading ${blob.name}:`, error);
+            return false;
           }
-        } catch (error) {
-          console.error(`   ❌ Error downloading ${blob.name}:`, error);
+        })();
+        
+        downloadPromises.push(downloadTask);
+        
+        // Process in batches to avoid overwhelming the system
+        if (downloadPromises.length >= MAX_CONCURRENT_DOWNLOADS) {
+          await Promise.all(downloadPromises);
+          downloadCount += downloadPromises.length;
+          downloadPromises.length = 0;
         }
       }
+      
+      // Process remaining downloads
+      if (downloadPromises.length > 0) {
+        await Promise.all(downloadPromises);
+        downloadCount += downloadPromises.length;
+      }
+      
+      console.log(`   ✅ Completed: ${blobsToDownload.length} files`);
     }
     
     console.log(`\n✅ Download complete! Total files: ${downloadCount}`);
