@@ -9,6 +9,7 @@ export class RedisCacheService {
   private client: Redis | null = null;
   private enabled: boolean = false;
   private defaultTTL: number = 3600; // 1 hour default
+  private connectionPromise: Promise<void> | null = null;
 
   constructor() {
     const redisUrl = process.env.REDIS_URL;
@@ -37,12 +38,12 @@ export class RedisCacheService {
         });
 
         this.client.on('connect', () => {
-          console.log('Redis connected successfully');
+          console.log('✅ Redis connected successfully');
           this.enabled = true;
         });
 
-        // Attempt to connect
-        this.client.connect().catch((err: Error) => {
+        // Store connection promise
+        this.connectionPromise = this.client.connect().catch((err: Error) => {
           console.warn('Failed to connect to Redis, caching disabled:', err.message);
           this.enabled = false;
         });
@@ -57,6 +58,17 @@ export class RedisCacheService {
     } else {
       console.log('Redis not configured, caching disabled');
     }
+  }
+
+  /**
+   * Wait for Redis connection to complete
+   * Returns true if connected, false if connection failed
+   */
+  async waitForConnection(): Promise<boolean> {
+    if (this.connectionPromise) {
+      await this.connectionPromise;
+    }
+    return this.enabled;
   }
 
   /**
