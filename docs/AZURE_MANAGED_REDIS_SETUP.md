@@ -26,9 +26,9 @@ Azure Managed Redis with Private Link provides secure, managed Redis caching. Th
 - **Location**: Same as your App Service (for best performance)
 - **Cache type** (Pricing tier):
   - **Basic B0** (250MB) - ~$15/month - **Dev only** - No SLA, single node
-  - **Basic B1** (1GB) - ~$40/month - **Dev only** - No SLA, single node
-  - **Basic B2** (3GB) - ~$75/month - Dev/small test - No SLA, single node
-  - **Basic B3** (6GB) - ~$190/month - Larger dev - No SLA, single node
+  - **Basic B1** (1GB) - ~$55/month - **Dev only** - No SLA, single node
+  - **Basic B2** (3GB) - ~$110/month - Dev/small test - No SLA, single node
+  - **Basic B3** (6GB) - ~$220/month - Larger dev - No SLA, single node
   - **Standard C0** (250MB) - ~$15/month - Dev with SLA
   - **Standard C1** (1GB) - ~$50/month - Dev/test with SLA
   - **Standard C2** (2.5GB) - ~$75/month - **Good for dev/test** - SLA, replica
@@ -219,12 +219,12 @@ redis-cli -h <old-redis>.redis.cache.windows.net -p 6380 -a <old-key> --tls --du
 
 **Development (Cheapest):**
 - **Basic B0** (250MB) - ~$15/month - **Cheapest option** - Good for initial testing
-- **Basic B1** (1GB) - ~$40/month - Better cache size for dev
-- **Standard C0** (250MB) - ~$15/month - Same price but with SLA and replica
+- **Basic B1** (1GB) - ~$55/month - Better cache size for dev
+- **Standard C0** (250MB) - ~$15/month - Cheapest with SLA and replica
 
 **Development (Recommended):**
-- **Basic B2** (3GB) - ~$75/month - **Best value for dev** - Sufficient for most dev scenarios
-- **Standard C2** (2.5GB) - ~$75/month - With SLA and replica (better reliability)
+- **Standard C2** (2.5GB) - ~$75/month - **Best value for dev** - With SLA and replica
+- **Basic B2** (3GB) - ~$110/month - More cache, but no SLA (single node)
 
 **Staging/Pre-Production:**
 - **Standard C2** (2.5GB) - ~$75/month - Good for staging with SLA
@@ -236,11 +236,11 @@ redis-cli -h <old-redis>.redis.cache.windows.net -p 6380 -a <old-key> --tls --du
 - **Premium P2** (13GB) - ~$560/month - For larger workloads
 
 **Cost savings vs Enterprise:**
-- Basic B2 (~$75/month) vs Enterprise E10 (~$700/month) = **89% savings** ✅
-- Standard C2 (~$75/month) vs Enterprise E10 (~$700/month) = **89% savings**
+- Standard C2 (~$75/month) vs Enterprise E10 (~$700/month) = **89% savings** ✅
+- Basic B2 (~$110/month) vs Enterprise E10 (~$700/month) = **84% savings**
 - Premium P1 (~$280/month) vs Enterprise E10 (~$700/month) = **60% savings**
 
-**Recommendation for dev:** Start with **Basic B2 (3GB, ~$75/month)** - sufficient for development and testing. Upgrade to Standard C2 if you need SLA and high availability.
+**Recommendation for dev:** Start with **Standard C2 (2.5GB, ~$75/month)** - best value with SLA and high availability. Use Basic B2 if you need more cache space and don't require SLA.
 
 ## Security Best Practices
 
@@ -280,9 +280,9 @@ redis-cli -h <old-redis>.redis.cache.windows.net -p 6380 -a <old-key> --tls --du
 | Tier | Size | Price/Month | SLA | High Availability | Private Link | VNet Injection | Best For |
 |------|------|-------------|-----|-------------------|--------------|----------------|----------|
 | **Basic B0** | 250MB | ~$15 | ❌ No | ❌ Single node | ❌ | ❌ | Initial testing |
-| **Basic B1** | 1GB | ~$40 | ❌ No | ❌ Single node | ❌ | ❌ | Small dev cache |
-| **Basic B2** | 3GB | ~$75 | ❌ No | ❌ Single node | ❌ | ❌ | **Dev (cheapest with space)** |
-| **Basic B3** | 6GB | ~$190 | ❌ No | ❌ Single node | ❌ | ❌ | Larger dev cache |
+| **Basic B1** | 1GB | ~$55 | ❌ No | ❌ Single node | ❌ | ❌ | Small dev cache |
+| **Basic B2** | 3GB | ~$110 | ❌ No | ❌ Single node | ❌ | ❌ | Dev (more cache) |
+| **Basic B3** | 6GB | ~$220 | ❌ No | ❌ Single node | ❌ | ❌ | Larger dev cache |
 | **Standard C0** | 250MB | ~$15 | ✅ Yes | ✅ Replica | ✅ Yes | ❌ | Small dev with SLA |
 | **Standard C2** | 2.5GB | ~$75 | ✅ Yes | ✅ Replica | ✅ Yes | ❌ | **Dev/Test (recommended)** |
 | **Standard C3** | 6GB | ~$190 | ✅ Yes | ✅ Replica | ✅ Yes | ❌ | Staging |
@@ -293,7 +293,7 @@ redis-cli -h <old-redis>.redis.cache.windows.net -p 6380 -a <old-key> --tls --du
 - **Standard (C series)** - SLA, replica (high availability), Private Link support
 - **Premium (P series)** - Everything in Standard + VNet injection, clustering, persistence
 
-**For development:** Use **Basic B2 (3GB, ~$75/month)** if you don't need high availability. It's the cheapest option with sufficient cache space.
+**For development:** Use **Standard C2 (2.5GB, ~$75/month)** - best value with SLA and high availability. Use **Basic B2 (3GB, ~$110/month)** only if you need more cache space and can tolerate downtime.
 
 **For staging/production:** Use **Standard C2** or higher for SLA and reliability.
 
