@@ -9,6 +9,8 @@ export class RedisCacheService {
   private client: Redis | null = null;
   private enabled: boolean = false;
   private defaultTTL: number = 3600; // 1 hour default
+  private connecting: boolean = false;
+  private connectionPromise: Promise<void> | null = null;
 
   constructor() {
     const redisUrl = process.env.REDIS_URL;
@@ -16,6 +18,7 @@ export class RedisCacheService {
 
     if (redisEnabled && redisUrl) {
       try {
+        this.connecting = true;
         this.client = new Redis(redisUrl, {
           retryStrategy: (times: number) => {
             const delay = Math.min(times * 50, 2000);
@@ -37,14 +40,16 @@ export class RedisCacheService {
         });
 
         this.client.on('connect', () => {
-          console.log('Redis connected successfully');
+          console.log('✅ Redis connected successfully');
           this.enabled = true;
+          this.connecting = false;
         });
 
-        // Attempt to connect
-        this.client.connect().catch((err: Error) => {
+        // Store connection promise
+        this.connectionPromise = this.client.connect().catch((err: Error) => {
           console.warn('Failed to connect to Redis, caching disabled:', err.message);
           this.enabled = false;
+          this.connecting = false;
         });
 
         // Set default TTL from env or use 1 hour
@@ -53,10 +58,22 @@ export class RedisCacheService {
       } catch (error) {
         console.warn('Redis initialization failed, caching disabled:', error);
         this.enabled = false;
+        this.connecting = false;
       }
     } else {
       console.log('Redis not configured, caching disabled');
     }
+  }
+
+  /**
+   * Wait for Redis connection to complete
+   * Returns true if connected, false if connection failed
+   */
+  async waitForConnection(): Promise<boolean> {
+    if (this.connectionPromise) {
+      await this.connectionPromise;
+    }
+    return this.enabled;
   }
 
   /**

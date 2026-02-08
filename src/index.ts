@@ -23,7 +23,10 @@ async function main() {
   // Initialize cache service
   console.log('💾 Initializing cache service...');
   const cache = new RedisCacheService();
-  if (cache.isEnabled()) {
+  
+  // Wait for Redis connection
+  const isConnected = await cache.waitForConnection();
+  if (isConnected) {
     const stats = await cache.getStats();
     console.log(`✅ Redis cache enabled (${stats.keyCount || 0} keys, ${stats.memory || 'unknown'} memory)`);
   } else {
