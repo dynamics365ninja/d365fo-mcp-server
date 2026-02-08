@@ -1,6 +1,6 @@
 # Simplified Azure Pipeline for Daily Custom Metadata Updates
 # This pipeline is optimized for quick updates of custom models only
-# Triggers automatically on changes to main branch (no periodic runs)
+# Triggers automatically on changes to dev branch (no periodic runs)
 
 trigger:
   branches:
@@ -9,7 +9,7 @@ trigger:
   paths:
     include:
       - 'src/**'
-      - '.azure-pipelines/d365fo-mcp-data-quick.yml'
+      - '.azure-pipelines/d365fo-mcp-data-build-custom.yml'
 
 # Note: No scheduled runs - pipeline runs only when changes are detected
 # To force a run, use manual trigger with parameters below
@@ -25,7 +25,7 @@ parameters:
       - standard
       - all
   - name: customModels
-    displayName: 'Custom Models (comma-separated, leave empty for all)'
+    displayName: 'Custom Models (comma-separated, or all)'
     type: string
     default: 'all'
 
