@@ -25,15 +25,16 @@ Azure Managed Redis with Private Link provides secure, managed Redis caching. Th
 - **DNS name**: `d365fo-mcp-cache` (or your preferred name)
 - **Location**: Same as your App Service (for best performance)
 - **Cache type** (Pricing tier):
-  - **Basic B0** (250MB) - ~$15/month - **Dev only** - No SLA, single node
+  - **Basic B0** (250MB) - ~$17/month - **Dev only** - No SLA, single node
   - **Basic B1** (1GB) - ~$55/month - **Dev only** - No SLA, single node
-  - **Basic B2** (3GB) - ~$110/month - Dev/small test - No SLA, single node
+  - **Basic B2** (3GB) - ~$110/month - Dev/test - No SLA, single node
   - **Basic B3** (6GB) - ~$220/month - Larger dev - No SLA, single node
-  - **Standard C0** (250MB) - ~$15/month - Dev with SLA
-  - **Standard C1** (1GB) - ~$50/month - Dev/test with SLA
-  - **Standard C2** (2.5GB) - ~$75/month - **Good for dev/test** - SLA, replica
-  - **Standard C3** (6GB) - ~$190/month - Larger dev/test datasets
-  - **Premium P1** (6GB) - ~$280/month - **Recommended for production**
+  - **Standard C0** (250MB) - ~$52/month - Dev with SLA
+  - **Standard C1** (1GB) - ~$76/month - Dev/test with SLA
+  - **Standard C2** (2.5GB) - ~$154/month - **Good for staging** - SLA, replica
+  - **Standard C3** (6GB) - ~$308/month - Pre-production
+  - **Premium P1** (6GB) - ~$616/month - **Production**
+  - **Premium P2** (13GB) - ~$1,232/month - Large production workloads
 - **Clustering**: Not needed for most use cases (Premium only)
 - **Redis version**: 6 (latest stable)
 - **Eviction policy**: `volatile-lru` (recommended for cache)
@@ -218,29 +219,30 @@ redis-cli -h <old-redis>.redis.cache.windows.net -p 6380 -a <old-key> --tls --du
 ## Cost Optimization
 
 **Development (Cheapest):**
-- **Basic B0** (250MB) - ~$15/month - **Cheapest option** - Good for initial testing
-- **Basic B1** (1GB) - ~$55/month - Better cache size for dev
-- **Standard C0** (250MB) - ~$15/month - Cheapest with SLA and replica
-
-**Development (Recommended):**
-- **Standard C2** (2.5GB) - ~$75/month - **Best value for dev** - With SLA and replica
+- **Basic B0** (250MB) - ~$17/month - **Cheapest option** - Good for initial testing
+- **Basic B1** (1GB) - ~$55/month - **Recommended for dev** - Best value, sufficient cache
 - **Basic B2** (3GB) - ~$110/month - More cache, but no SLA (single node)
 
-**Staging/Pre-Production:**
-- **Standard C2** (2.5GB) - ~$75/month - Good for staging with SLA
-- **Standard C3** (6GB) - ~$190/month - Larger datasets, closer to production
+**Staging/Testing:**
+- **Standard C0** (250MB) - ~$52/month - Small staging with SLA
+- **Standard C1** (1GB) - ~$76/month - Good for test environments
+- **Standard C2** (2.5GB) - ~$154/month - **Recommended for staging** - SLA + replica
+
+**Pre-Production:**
+- **Standard C3** (6GB) - ~$308/month - Larger datasets
+- **Premium P1** (6GB) - ~$616/month - Production-like setup with VNet
 
 **Production:**
-- **Premium P1** (6GB) - ~$280/month - **Recommended** - VNet support, clustering optional
-- **Standard C3** (6GB) - ~$190/month - If Private Link is sufficient (no VNet injection)
-- **Premium P2** (13GB) - ~$560/month - For larger workloads
+- **Premium P1** (6GB) - ~$616/month - **Recommended** - VNet, clustering, persistence
+- **Premium P2** (13GB) - ~$1,232/month - Large workloads
+- **Premium P3** (26GB) - ~$2,464/month - Enterprise workloads
 
 **Cost savings vs Enterprise:**
-- Standard C2 (~$75/month) vs Enterprise E10 (~$700/month) = **89% savings** ✅
-- Basic B2 (~$110/month) vs Enterprise E10 (~$700/month) = **84% savings**
-- Premium P1 (~$280/month) vs Enterprise E10 (~$700/month) = **60% savings**
+- Basic B1 (~$55/month) vs Enterprise E10 (~$700/month) = **92% savings** ✅
+- Standard C2 (~$154/month) vs Enterprise E10 (~$700/month) = **78% savings**
+- Premium P1 (~$616/month) vs Enterprise E10 (~$700/month) = **12% savings**
 
-**Recommendation for dev:** Start with **Standard C2 (2.5GB, ~$75/month)** - best value with SLA and high availability. Use Basic B2 if you need more cache space and don't require SLA.
+**Recommendation for dev:** Start with **Basic B1 (1GB, ~$55/month)** - cheapest with sufficient space for development. Upgrade to Standard C1/C2 when you need SLA and high availability for testing.
 
 ## Security Best Practices
 
@@ -279,35 +281,39 @@ redis-cli -h <old-redis>.redis.cache.windows.net -p 6380 -a <old-key> --tls --du
 
 | Tier | Size | Price/Month | SLA | High Availability | Private Link | VNet Injection | Best For |
 |------|------|-------------|-----|-------------------|--------------|----------------|----------|
-| **Basic B0** | 250MB | ~$15 | ❌ No | ❌ Single node | ❌ | ❌ | Initial testing |
-| **Basic B1** | 1GB | ~$55 | ❌ No | ❌ Single node | ❌ | ❌ | Small dev cache |
+| **Basic B0** | 250MB | ~$17 | ❌ No | ❌ Single node | ❌ | ❌ | Initial testing |
+| **Basic B1** | 1GB | ~$55 | ❌ No | ❌ Single node | ❌ | ❌ | **Dev (best value)** |
 | **Basic B2** | 3GB | ~$110 | ❌ No | ❌ Single node | ❌ | ❌ | Dev (more cache) |
 | **Basic B3** | 6GB | ~$220 | ❌ No | ❌ Single node | ❌ | ❌ | Larger dev cache |
-| **Standard C0** | 250MB | ~$15 | ✅ Yes | ✅ Replica | ✅ Yes | ❌ | Small dev with SLA |
-| **Standard C2** | 2.5GB | ~$75 | ✅ Yes | ✅ Replica | ✅ Yes | ❌ | **Dev/Test (recommended)** |
-| **Standard C3** | 6GB | ~$190 | ✅ Yes | ✅ Replica | ✅ Yes | ❌ | Staging |
-| **Premium P1** | 6GB | ~$280 | ✅ Yes | ✅ Replica | ✅ Yes | ✅ Yes | **Production** |
+| **Standard C0** | 250MB | ~$52 | ✅ Yes | ✅ Replica | ✅ Yes | ❌ | Small test with SLA |
+| **Standard C1** | 1GB | ~$76 | ✅ Yes | ✅ Replica | ✅ Yes | ❌ | Test environments |
+| **Standard C2** | 2.5GB | ~$154 | ✅ Yes | ✅ Replica | ✅ Yes | ❌ | **Staging** |
+| **Standard C3** | 6GB | ~$308 | ✅ Yes | ✅ Replica | ✅ Yes | ❌ | Pre-production |
+| **Premium P1** | 6GB | ~$616 | ✅ Yes | ✅ Replica | ✅ Yes | ✅ Yes | **Production** |
+| **Premium P2** | 13GB | ~$1,232 | ✅ Yes | ✅ Replica | ✅ Yes | ✅ Yes | Large production |
 
 **Key differences:**
 - **Basic (B series)** - No SLA, single node (data loss risk), no Private Link
 - **Standard (C series)** - SLA, replica (high availability), Private Link support
 - **Premium (P series)** - Everything in Standard + VNet injection, clustering, persistence
 
-**For development:** Use **Standard C2 (2.5GB, ~$75/month)** - best value with SLA and high availability. Use **Basic B2 (3GB, ~$110/month)** only if you need more cache space and can tolerate downtime.
+**For development:** Use **Basic B1 (1GB, ~$55/month)** - best value for development. Upgrade to **Basic B2 (3GB, ~$110/month)** if you need more cache space.
 
-**For staging/production:** Use **Standard C2** or higher for SLA and reliability.
+**For staging/testing:** Use **Standard C1 (~$76/month)** or **Standard C2 (~$154/month)** for SLA and high availability.
+
+**For production:** Use **Premium P1 (~$616/month)** or higher for VNet injection, clustering, and persistence.
 
 ## Comparison: Premium vs Standard with Private Link
 
 | Feature | Standard + Private Link | Premium + VNet |
 |---------|------------------------|----------------|
-| **Price (6GB)** | ~$190/month | ~$280/month |
+| **Price (6GB)** | ~$308/month (C3) | ~$616/month (P1) |
 | **Networking** | Private Link | VNet Injection or Private Link |
 | **Performance** | Good | Better |
 | **Clustering** | No | Yes (optional) |
 | **Persistence** | No | Yes (RDB/AOF) |
 | **Geo-replication** | No | Yes |
 | **Import/Export** | Limited | Full |
-| **Best for** | Cost-sensitive, simple caching | Production, high availability |
+| **Best for** | Pre-production, staging | Production, high availability |
 
-**Recommendation:** Start with **Premium P1** for production (better features, flexibility). Use **Standard C3** for dev/test to save costs.
+**Recommendation:** Use **Basic B1 (~$55/month)** for dev, **Standard C2 (~$154/month)** for staging, and **Premium P1 (~$616/month)** for production.
