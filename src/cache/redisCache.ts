@@ -2,6 +2,7 @@ import { Redis } from 'ioredis';
 
 /**
  * Redis cache service for caching X++ metadata queries
+ * Supports both Azure Cache for Redis and Azure Managed Redis (Enterprise)
  * Falls back to no-op operations if Redis is not configured
  */
 export class RedisCacheService {
@@ -22,6 +23,12 @@ export class RedisCacheService {
           },
           maxRetriesPerRequest: 3,
           lazyConnect: true, // Don't auto-connect, we'll connect explicitly
+          connectTimeout: 10000, // 10 seconds
+          tls: {
+            rejectUnauthorized: true, // Verify server certificate for production
+          },
+          enableReadyCheck: true,
+          enableOfflineQueue: true,
         });
 
         this.client.on('error', (err: Error) => {
