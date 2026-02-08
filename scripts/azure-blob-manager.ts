@@ -13,6 +13,9 @@ const AZURE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING || '
 const BLOB_CONTAINER = process.env.BLOB_CONTAINER_NAME || 'xpp-metadata';
 const LOCAL_METADATA_PATH = process.env.METADATA_PATH || './extracted-metadata';
 
+// Concurrency limit to avoid EMFILE errors (too many open files)
+const MAX_CONCURRENT_UPLOADS = 50;
+
 // Blob structure:
 // /metadata/standard/{ModelName}/...  - Standard metadata (změna párkrát ročně)
 // /metadata/custom/{ModelName}/...    - Custom metadata (denní změny)
@@ -277,39 +280,63 @@ export class AzureBlobMetadataManager {
   }
 
   /**
-   * Helper: Upload directory recursively with parallel file uploads
+   * Helper: Upload directory recursively with controlled parallel file uploads
    */
   private async uploadDirectory(localDir: string, blobPrefix: string): Promise<number> {
     const entries = await fs.readdir(localDir, { withFileTypes: true });
-    const uploadPromises: Promise<number>[] = [];
+    const uploadTasks: Array<() => Promise<number>> = [];
     
     for (const entry of entries) {
       const localPath = path.join(localDir, entry.name);
       const blobPath = `${blobPrefix}/${entry.name}`;
       
       if (entry.isDirectory()) {
-        // Recursively upload subdirectories (still parallel at file level)
-        uploadPromises.push(this.uploadDirectory(localPath, blobPath));
+        // Recursively upload subdirectories (controlled parallelism at file level)
+        uploadTasks.push(() => this.uploadDirectory(localPath, blobPath));
       } else {
-        // Upload files in parallel
-        uploadPromises.push(
-          (async () => {
-            try {
-              const blockBlobClient = this.containerClient.getBlockBlobClient(blobPath);
-              await blockBlobClient.uploadFile(localPath);
-              return 1;
-            } catch (error) {
-              console.error(`   ❌ Error uploading ${localPath}:`, error);
-              return 0;
-            }
-          })()
-        );
+        // Create upload task (not executed yet)
+        uploadTasks.push(async () => {
+          try {
+            const blockBlobClient = this.containerClient.getBlockBlobClient(blobPath);
+            await blockBlobClient.uploadFile(localPath);
+            return 1;
+          } catch (error) {
+            console.error(`   ❌ Error uploading ${localPath}:`, error);
+            return 0;
+          }
+        });
       }
     }
     
-    // Wait for all uploads to complete and sum results
-    const results = await Promise.all(uploadPromises);
-    return results.reduce((sum, count) => sum + count, 0);
+    // Execute tasks with controlled concurrency
+    return await this.executeBatch(uploadTasks, MAX_CONCURRENT_UPLOADS);
+  }
+
+  /**
+   * Helper: Execute promises in batches with controlled concurrency
+   */
+  private async executeBatch<T>(
+    tasks: Array<() => Promise<T>>,
+    concurrency: number
+  ): Promise<T extends number ? number : T[]> {
+    const results: T[] = [];
+    
+    for (let i = 0; i < tasks.length; i += concurrency) {
+      const batch = tasks.slice(i, i + concurrency);
+      const batchResults = await Promise.all(batch.map(task => task()));
+      results.push(...batchResults);
+      
+      // Log progress for large batches
+      if (tasks.length > 100 && i > 0 && i % 100 === 0) {
+        console.log(`   📊 Progress: ${i}/${tasks.length} files processed`);
+      }
+    }
+    
+    // Sum if results are numbers, otherwise return array
+    if (typeof results[0] === 'number') {
+      return results.reduce((sum: number, val) => sum + (val as number), 0) as any;
+    }
+    return results as any;
   }
 
   /**
