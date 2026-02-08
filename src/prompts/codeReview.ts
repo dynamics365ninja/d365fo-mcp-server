@@ -7,6 +7,7 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { GetPromptRequestSchema, ListPromptsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { getSystemInstructionsPromptDefinition, handleSystemInstructionsPrompt } from './systemInstructions.js';
 
 const CodeReviewArgsSchema = z.object({
   code: z.string().describe('X++ code to review'),
@@ -23,6 +24,7 @@ export function registerCodeReviewPrompt(server: Server, context: XppServerConte
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
     return {
       prompts: [
+        getSystemInstructionsPromptDefinition(),
         {
           name: 'xpp_code_review',
           description: 'Review X++ code for best practices and potential issues',
@@ -52,6 +54,11 @@ export function registerCodeReviewPrompt(server: Server, context: XppServerConte
   // Handle prompt requests
   server.setRequestHandler(GetPromptRequestSchema, async (request) => {
     const promptName = request.params.name;
+
+    // Handle system instructions prompt
+    if (promptName === 'xpp_system_instructions') {
+      return handleSystemInstructionsPrompt();
+    }
 
     if (promptName === 'xpp_code_review') {
       const args = CodeReviewArgsSchema.parse(request.params.arguments || {});
