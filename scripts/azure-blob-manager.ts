@@ -57,7 +57,8 @@ export class AzureBlobMetadataManager {
     const localPath = LOCAL_METADATA_PATH;
     const models = specificModels || await this.getLocalModels();
     
-    let uploadCount = 0;
+    // Filter and prepare models for parallel upload
+    const uploadPromises: Promise<{ modelName: string; count: number }>[] = [];
     
     for (const modelName of models) {
       const modelPath = path.join(localPath, modelName);
@@ -74,17 +75,33 @@ export class AzureBlobMetadataManager {
         if (modelType === 'custom' && !isCustomModel) continue;
         if (modelType === 'standard' && isCustomModel) continue;
         
-        console.log(`   📂 Uploading model: ${modelName} → ${targetPrefix}/${modelName}`);
+        console.log(`   📂 Queuing model: ${modelName} → ${targetPrefix}/${modelName}`);
         
-        // Upload all files in model directory
-        const filesUploaded = await this.uploadDirectory(modelPath, `${targetPrefix}/${modelName}`);
-        uploadCount += filesUploaded;
-        
-        console.log(`   ✅ Uploaded ${filesUploaded} files`);
+        // Add to parallel upload queue
+        uploadPromises.push(
+          this.uploadDirectory(modelPath, `${targetPrefix}/${modelName}`)
+            .then(count => ({ modelName, count }))
+            .catch(error => {
+              console.error(`   ❌ Error uploading ${modelName}:`, error);
+              return { modelName, count: 0 };
+            })
+        );
       } catch (error) {
-        console.error(`   ❌ Error uploading ${modelName}:`, error);
+        console.error(`   ❌ Error preparing ${modelName}:`, error);
       }
     }
+    
+    // Execute all uploads in parallel
+    console.log(`\n🚀 Starting parallel upload of ${uploadPromises.length} models...`);
+    const results = await Promise.all(uploadPromises);
+    
+    // Calculate total and log results
+    const uploadCount = results.reduce((sum, r) => sum + r.count, 0);
+    results.forEach(r => {
+      if (r.count > 0) {
+        console.log(`   ✅ ${r.modelName}: ${r.count} files`);
+      }
+    });
     
     console.log(`\n✅ Upload complete! Total files: ${uploadCount}`);
   }
@@ -260,31 +277,39 @@ export class AzureBlobMetadataManager {
   }
 
   /**
-   * Helper: Upload directory recursively
+   * Helper: Upload directory recursively with parallel file uploads
    */
   private async uploadDirectory(localDir: string, blobPrefix: string): Promise<number> {
-    let uploadCount = 0;
-    
     const entries = await fs.readdir(localDir, { withFileTypes: true });
+    const uploadPromises: Promise<number>[] = [];
     
     for (const entry of entries) {
       const localPath = path.join(localDir, entry.name);
       const blobPath = `${blobPrefix}/${entry.name}`;
       
       if (entry.isDirectory()) {
-        uploadCount += await this.uploadDirectory(localPath, blobPath);
+        // Recursively upload subdirectories (still parallel at file level)
+        uploadPromises.push(this.uploadDirectory(localPath, blobPath));
       } else {
-        try {
-          const blockBlobClient = this.containerClient.getBlockBlobClient(blobPath);
-          await blockBlobClient.uploadFile(localPath);
-          uploadCount++;
-        } catch (error) {
-          console.error(`   ❌ Error uploading ${localPath}:`, error);
-        }
+        // Upload files in parallel
+        uploadPromises.push(
+          (async () => {
+            try {
+              const blockBlobClient = this.containerClient.getBlockBlobClient(blobPath);
+              await blockBlobClient.uploadFile(localPath);
+              return 1;
+            } catch (error) {
+              console.error(`   ❌ Error uploading ${localPath}:`, error);
+              return 0;
+            }
+          })()
+        );
       }
     }
     
-    return uploadCount;
+    // Wait for all uploads to complete and sum results
+    const results = await Promise.all(uploadPromises);
+    return results.reduce((sum, count) => sum + count, 0);
   }
 
   /**
