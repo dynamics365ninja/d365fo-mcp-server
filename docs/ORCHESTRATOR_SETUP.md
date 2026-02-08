@@ -195,8 +195,6 @@ Available prompts:
 - **`xpp_system_instructions`** - System instructions for GitHub Copilot (automatically used)
 - **`xpp_code_review`** - Review X++ code for best practices
 - **`xpp_explain_class`** - Detailed explanation of an X++ class
-- **`xpp_refactor_code`** - Refactoring suggestions for code
-- **`xpp_best_practices`** - Best practices for various topics (transactions, error handling, etc.)
 
 ## Testing in Visual Studio
 
@@ -270,7 +268,7 @@ Copilot should:
 **Problem:** Tools return empty results or "not found"
 
 **Solution:**
-1. Verify you have downloaded metadata: `npm run build:db`
+1. Verify you have downloaded metadata: `npm run build-database`
 2. Check Redis cache connection (if using)
 3. Try broader search with `type='all'`
 4. Check spelling of object name (case-sensitive)

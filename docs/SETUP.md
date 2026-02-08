@@ -71,7 +71,7 @@ REDIS_URL=redis://localhost:6379
 REDIS_ENABLED=false
 
 # Server Configuration
-PORT=3000
+PORT=8080
 NODE_ENV=development
 ```
 
@@ -105,7 +105,9 @@ npm run dev
 npm start
 ```
 
-Server runs on `http://localhost:3000` with health check at `/health`.
+Server runs on `http://localhost:8080` with health check at `/health`.
+
+> **Note:** The default port is 8080. You can override this with the `PORT` environment variable in `.env`.
 
 ---
 
@@ -309,7 +311,7 @@ Create `.mcp.json` file in your D365FO solution root directory:
 {
   "servers": {
     "xpp-completion": {
-      "url": "http://localhost:3000/mcp/",
+      "url": "http://localhost:8080/mcp/",
       "description": "X++ Code Completion Server (Local)"
     }
   }
