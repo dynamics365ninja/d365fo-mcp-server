@@ -33,7 +33,15 @@ let FILTER_MODE: 'all' | 'custom-only' | 'standard-only' = 'all';
 if (EXTRACT_MODE === 'custom') {
   // Extract only custom models
   if (CUSTOM_MODELS.length > 0) {
-    MODELS_TO_EXTRACT = CUSTOM_MODELS;
+    // Check if any patterns contain wildcards
+    const hasWildcards = CUSTOM_MODELS.some(pattern => pattern.includes('*'));
+    if (hasWildcards) {
+      // Will expand wildcards dynamically by scanning packages
+      FILTER_MODE = 'custom-only';
+    } else {
+      // Exact model names - use directly
+      MODELS_TO_EXTRACT = CUSTOM_MODELS;
+    }
   } else {
     FILTER_MODE = 'custom-only'; // Will filter dynamically based on prefix
   }
@@ -60,16 +68,18 @@ async function extractMetadata() {
   console.log(`📁 Output: ${OUTPUT_PATH}`);
   console.log(`🎯 Extract Mode: ${EXTRACT_MODE}`);
   
-  if (EXTRACT_MODE === 'custom' && CUSTOM_MODELS.length > 0) {
-    console.log(`📋 Custom Models (explicit): ${CUSTOM_MODELS.join(', ')}`);
-  } else if (EXTRACT_MODE === 'custom') {
-    console.log(`📋 Mode: Extract custom models only`);
-    if (CUSTOM_MODELS.length > 0) {
-      console.log(`📋 Custom Models defined: ${CUSTOM_MODELS.join(', ')}`);
-    }
-    const extensionPrefix = process.env.EXTENSION_PREFIX;
-    if (extensionPrefix) {
-      console.log(`📋 Extension Prefix: ${extensionPrefix}`);
+  if (EXTRACT_MODE === 'custom') {
+    if (MODELS_TO_EXTRACT.length > 0) {
+      console.log(`📋 Custom Models (explicit): ${MODELS_TO_EXTRACT.join(', ')}`);
+    } else {
+      console.log(`📋 Mode: Extract custom models only`);
+      if (CUSTOM_MODELS.length > 0) {
+        console.log(`📋 Custom Model patterns: ${CUSTOM_MODELS.join(', ')}`);
+      }
+      const extensionPrefix = process.env.EXTENSION_PREFIX;
+      if (extensionPrefix) {
+        console.log(`📋 Extension Prefix: ${extensionPrefix}`);
+      }
     }
   } else if (EXTRACT_MODE === 'standard') {
     console.log(`📋 Mode: Extract standard models (exclude custom)`);
