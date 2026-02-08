@@ -472,6 +472,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## Related Documentation
 
+- [docs/ORCHESTRATOR_SETUP.md](docs/ORCHESTRATOR_SETUP.md) - **How to configure AI orchestrators to use X++ MCP tools**
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture diagrams and detailed explanations
 - [docs/TESTING.md](docs/TESTING.md) - Testing guide and coverage information
 - [docs/USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md) - Practical usage examples and scenarios

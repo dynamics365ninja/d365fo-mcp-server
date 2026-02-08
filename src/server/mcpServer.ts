@@ -35,7 +35,7 @@ export function createXppMcpServer(context: XppServerContext): Server {
   // Register resources
   registerClassResource(server, context);
 
-  // Register prompts
+  // Register prompts (includes system instructions)
   registerCodeReviewPrompt(server, context);
 
   // List available tools
