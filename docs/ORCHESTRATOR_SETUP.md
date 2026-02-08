@@ -1,41 +1,39 @@
-# Jak nastavit GitHub Copilot ve Visual Studio 2022 pro použití X++ MCP Tools
+# How to Configure GitHub Copilot in Visual Studio 2022 to Use X++ MCP Tools
 
-Tento průvodce vysvětluje, jak nastavit GitHub Copilot ve Visual Studio 2022, aby používal vaše X++ MCP tools pro D365 Finance & Operations development.
+This guide explains how to configure GitHub Copilot in Visual Studio 2022 to use your X++ MCP tools for D365 Finance & Operations development.
 
-## Řešení: System Instructions Prompt
+## Solution: System Instructions Prompt
 
-Vytvořili jsme speciální MCP prompt nazvaný **`xpp_system_instructions`**, který instruuje GitHub Copilot, jak správně používat X++ tools při vývoji D365 F&O.
+We've created a special MCP prompt called **`xpp_system_instructions`** that instructs GitHub Copilot how to properly use X++ tools during D365 F&O development.
 
-## Požadavky
+## Requirements
 
-| Komponenta | Verze | Poznámka |
-|-----------|-------|----------|
-| Visual Studio 2022 | 17.14+ | Vyžadováno pro MCP podporu |
-| GitHub Copilot Extension | Nejnovější | Enterprise nebo Individual předplatné |
-| GitHub Copilot Chat | Nejnovější | Agent Mode povolen |
-| D365 F&O Dev Tools | Nejnovější | Pro X++ development |
+| Component | Version | Notes |
+|-----------|---------|-------|
+| Visual Studio 2022 | 17.14+ | Required for MCP support |
+| GitHub Copilot Extension | Latest | Enterprise or Individual subscription |
+| GitHub Copilot Chat | Latest | Agent Mode enabled |
+| D365 F&O Dev Tools | Latest | For X++ development |
 
-## Nastavení
+## Setup
 
-## Nastavení
+### Step 1: Enable MCP in GitHub Account
 
-### Krok 1: Povolit MCP v GitHub účtu
-
-Přejděte na **GitHub account settings** a zapněte Editor Preview Features:
+Navigate to **GitHub account settings** and enable Editor Preview Features:
 
 👉 https://github.com/settings/copilot/features
 
-> ⚠️ **Důležité:** Bez tohoto nastavení se MCP tools nenačtou v GitHub Copilot!
+> ⚠️ **Important:** Without this setting, MCP tools will not load in GitHub Copilot!
 
-### Krok 2: Povolit MCP v Visual Studio 2022
+### Step 2: Enable MCP in Visual Studio 2022
 
-1. Otevřete **Tools** → **Options** → **GitHub** → **Copilot**
-2. Zaškrtněte: ✅ *"Enable MCP server integration in agent mode"*
-3. Klikněte **OK**
+1. Open **Tools** → **Options** → **GitHub** → **Copilot**
+2. Check: ✅ *"Enable MCP server integration in agent mode"*
+3. Click **OK**
 
-### Krok 3: Vytvořit `.mcp.json` konfiguraci
+### Step 3: Create `.mcp.json` Configuration
 
-V kořenové složce vašeho D365 F&O solution vytvořte soubor `.mcp.json`:
+In the root folder of your D365 F&O solution, create a `.mcp.json` file:
 
 ```json
 {
@@ -48,24 +46,42 @@ V kořenové složce vašeho D365 F&O solution vytvořte soubor `.mcp.json`:
 }
 ```
 
-**Poznámky:**
-- Pro **cloud deployment**: Použijte URL vašeho Azure App Service
-- Pro **local development**: Použijte `http://localhost:8080/mcp/`
+**Notes:**
+- For **cloud deployment**: Use your Azure App Service URL
+- For **local development**: Use `http://localhost:8080/mcp/`
 
-#### Příklad pro local development:
+#### Example for local development:
 
 ```json
-{Použití v Visual Studio 2022
+{
+  "servers": {
+    "d365fo-xpp-local": {
+      "url": "http://localhost:8080/mcp/",
+      "description": "D365 F&O X++ Local Development Server"
+    }
+  }
+}
+```
 
-### Automatické použití system instructions
+### Step 4: Restart Visual Studio
 
-Gi Co system instructions dělají
+Restart Visual Studio 2022 to load the new configuration.
 
-### ✅ VŽDY POUŽÍT tyto X++ MCP tools při práci s D365 F&O:na X++ MCP tools. Není potřeba manuálně volat prompt.
+### Step 5: Verify
 
-### Příklady dotazů v Copilot Chat
+1. Open **GitHub Copilot Chat** in Visual Studio
+2. Enable **Agent Mode** (robot icon)
+3. Type: `@workspace /tools`
+4. You should see your X++ MCP tools in the list
+## Using in Visual Studio 2022
 
-Jednoduše pokládejte otázky v přirozeném jazyce:
+### Automatic System Instructions
+
+GitHub Copilot automatically loads system instructions when querying X++ MCP tools. No need to manually call the prompt.
+
+### Example Queries in Copilot Chat
+
+Simply ask questions in natural language:
 
 ```
 💬 "Show me all methods on the InventTable class"
@@ -79,184 +95,193 @@ Jednoduše pokládejte otázky v přirozeném jazyce:
 💬 "Help me extend SalesTable validation"
 ```
 
-GitHub Copilot automaticky:
-1. Rozpozná, že jde o D365 F&O dotaz
-2. Použije příslušný MCP tool (`get_class_info`, `get_table_info`, atd.)
-3. Vrátí přesné informace z vašich metadat
-4. Vygeneruje kód podle D365 F&O best practices
-      "url": "http://localhost:8080/mcp/",
-      "description": "D365 F&O X++ Local Development Server"
-    }
-  }
-}
-``` pro D365 F&O
+GitHub Copilot automatically:
+1. Recognizes this is a D365 F&O query
+2. Uses the appropriate MCP tool (`get_class_info`, `get_table_info`, etc.)
+3. Returns accurate information from your metadata
+4. Generates code following D365 F&O best practices
 
-### Krok 4: Restartovat Visual Studio
+## What System Instructions Do
 
-Restartujte Visual Studio 2022, aby se načetla nová konfigurace.
+System instructions tell GitHub Copilot:
 
-### Krok 5: Ověřit f ve Visual Studio 2022
+### ✅ ALWAYS USE these X++ MCP tools when working with D365 F&O:
 
-### Příklad 1: Přidání metody do existující třídy
+1. **`code_completion`** - for IntelliSense/autocomplete on classes and tables
+2. **`get_class_info`** - for details about class structure, methods, inheritance
+3. **`get_table_info`** - for table structure (fields, indexes, relations)
+4. **`search`** - for searching symbols (classes, tables, methods, fields, enums)
+5. **`search_extensions`** - for finding only custom/ISV code
+6. **`generate_code`** - for generating X++ code templates
 
-**Developer v Copilot Chatište: `@workspace /tools`
-4. Měli byste vidět vaše X++ MCP tools v seznamu
-GitHub Copilot provede:**
+### ❌ DO NOT USE for D365 F&O:
+
+- Built-in code completion
+- Guessing method names or field names
+- Generating code without verifying symbol existence
+
+## Workflow Examples in Visual Studio 2022
+
+### Example 1: Adding a Method to an Existing Class
+
+**Developer in Copilot Chat:** "Add a method to CustTable to calculate total orders"
+
+**GitHub Copilot will:**
 ```
-1. get_class_info("CustTable") → zjistí strukturu třídy z AOT metadat
-2. code_completion("CustTable") → zjistí dostupné API metody
-3. Vygeneruje Chain of Command extension class
-4. Použije správné X++ konvence a D365 F&O best practices
-```
-
-### Příklad 2: Psaní query kódu
-
-**Developer v Copilot Chat:** "Dotaz na všechny zákazníky s balance > 1000"
-
-**GitHub Copilot provede:**
-```
-1. get_table_info("CustTable") → zjistí přesné názvy polí z AOT
-2. search("balance", type="field") → najde přesný název pole
-3. Zkontroluje indexy pro performance optimalizaci
-4. Vygeneruje optimalizovaný X++ query s správnými field names
+1. get_class_info("CustTable") → Get class structure from AOT metadata
+2. code_completion("CustTable") → Get available API methods
+3. Generate Chain of Command extension class
+4. Use proper X++ conventions and D365 F&O best practices
 ```
 
-### Příklad 3: Extension standardního kódu
+### Example 2: Writing Query Code
 
-**Developer v Copilot Chat:** "Extenduj SalesTable validaci"
+**Developer in Copilot Chat:** "Query all customers with balance > 1000"
 
-**GitHub Copilot provede:**
+**GitHub Copilot will:**
 ```
-1. get_class_info("SalesTable") → najde validační metody v metadatech
-2. code_completion("SalesTable", "validate") → zjistí přesné method signatures
-3. Vygeneruje Chain of Command extension třídu
-4. Použije správné X++ extension patterns pro D365 F&O Cloud
+1. get_table_info("CustTable") → Get exact field names from AOT
+2. search("balance", type="field") → Find exact field name
+3. Check indexes for performance optimization
+4. Generate optimized X++ query with correct field names
 ```
 
-## Podporované workflow
+### Example 3: Extending Standard Code
 
-| Workflow | Jak pomáhá |
+**Developer in Copilot Chat:** "Extend SalesTable validation"
+
+**GitHub Copilot will:**
+```
+1. get_class_info("SalesTable") → Find validation methods in metadata
+2. code_completion("SalesTable", "validate") → Get exact method signatures
+3. Generate Chain of Command extension class
+4. Use proper X++ extension patterns for D365 F&O Cloud
+```
+
+## Supported Workflows
+
+| Workflow | How It Helps |
 |----------|------------|
-| **Code Navigation** | Okamžitě najde classes, methods a tables bez browsování AOT |
-| **Code Completion** | Přesné method signatures a field names z vašich metadat |
-| **Code Generation** | Generuje boilerplate X++ kód podle D365 F&O best practices |
-| **Code Review** | Analyzuje existující kód s plným metadata contextem |
-| **Learning** | Prozkoumává neznámé moduly pomocí natural language dotazů |
-| **Extension Development** | Najde extension points a vygeneruje Chain of Command extensions |
+| **Code Navigation** | Instantly find classes, methods, and tables without browsing AOT |
+| **Code Completion** | Accurate method signatures and field names from your metadata |
+| **Code Generation** | Generates boilerplate X++ code following D365 F&O best practices |
+| **Code Review** | Analyzes existing code with full metadata context |
+| **Learning** | Explores unfamiliar modules using natural language queries |
+| **Extension Development** | Finds extension points and generates Chain of Command extensions |
 
-## Dostupné MCP tools
+## Available MCP Tools
 
-Kompletní seznam tools dostupných v GitHub Copilot:
+Complete list of tools available in GitHub Copilot:
 
-| Tool | Popis | Příklad použití |
-|------|-------|-----------------|
-| `search` | Hledá X++ classes, tables, methods, fields | "Find all classes with 'Sales' in name" |
-| `search_extensions` | Hledá pouze custom/ISV extensions | "Show my custom extensions" |
-| `get_class_info` | Detailní info o třídě včetně metod | "What methods does CustTable have?" |
-| `get_table_info` | Detailní info o tabulce, fieldy, indexy | "Show CustTable structure" |
-| `code_completion` | IntelliSense pro methods a fields | "What can I call on SalesLine?" |
-| `generate_code` | Generuje X++ šablony | "Generate batch job template" |
+| Tool | Description | Example Usage |
+|------|-------------|---------------|
+| `search` | Search X++ classes, tables, methods, fields | "Find all classes with 'Sales' in name" |
+| `search_extensions` | Search only custom/ISV extensions | "Show my custom extensions" |
+| `get_class_info` | Detailed info about a class including methods | "What methods does CustTable have?" |
+| `get_table_info` | Detailed info about a table, fields, indexes | "Show CustTable structure" |
+| `code_completion` | IntelliSense for methods and fields | "What can I call on SalesLine?" |
+| `generate_code` | Generate X++ templates | "Generate batch job template" |
 
-## Dostupné prompts
+## Available Prompts
 
-Seznam všech dostupných promptů pro code review a best practices:
+List of all available prompts for code review and best practices:
 
 ```bash
-# Zobrazit všechny prompty (z terminálu nebo PowerShell)
+# Show all prompts (from terminal or PowerShell)
 curl http://localhost:8080/prompts/list
 ```
 
-Dostupné prompty:
-- **`xpp_system_instructions`** - System instrukce pro GitHub Copilot (automaticky použité)
-- **`xpp_code_review`** - Review X++ kódu na best practices
-- **`xpp_explain_class`** - Detailní vysvětlení X++ třídy
-- **`xpp_refactor_code`** - Návrhy na refactoring kódu
-- **`xpp_best_practices`** - Best practices pro různá témata (transactions, error handling, atd.)
+Available prompts:
+- **`xpp_system_instructions`** - System instructions for GitHub Copilot (automatically used)
+- **`xpp_code_review`** - Review X++ code for best practices
+- **`xpp_explain_class`** - Detailed explanation of an X++ class
+- **`xpp_refactor_code`** - Refactoring suggestions for code
+- **`xpp_best_practices`** - Best practices for various topics (transactions, error handling, etc.)
 
-## Testování v Visual Studio
+## Testing in Visual Studio
 
-### Test 1: Ověření načtení tools
+### Test 1: Verify Tools Loading
 
-1. Otevřete GitHub Copilot Chat
-2. Zapněte Agent Mode
-3. Napište: `@workspace /tools`
-4. Ověřte, že vidíte: `search`, `get_class_info`, `get_table_info`, atd.
+1. Open GitHub Copilot Chat
+2. Enable Agent Mode
+3. Type: `@workspace /tools`
+4. Verify you see: `search`, `get_class_info`, `get_table_info`, etc.
 
-### Test 2: Test funkčnosti
+### Test 2: Test Functionality
 
-V Copilot Chat zkuste:
+In Copilot Chat, try:
 
 ```
 What methods are available on InventTable class?
 ```
 
-Copilot by měl:
-1. Zavolat `get_class_info("InventTable")`
-2. Vrátit seznam metod z vašich metadat
-3. Zobrazit method signatures a popis
+Copilot should:
+1. Call `get_class_info("InventTable")`
+2. Return list of methods from your metadata
+3. Display method signatures and descriptions
 
-### Test 3: Code generation
+### Test 3: Code Generation
 
-V Copilot Chat zkuste:
+In Copilot Chat, try:
 
 ```
 Generate a runnable class that queries CustTable for customers with CreditMax > 10000
 ```
 
-Copilot by měl:
-1. Zavolat `get_table_info("CustTable")` pro zjištění field names
-2. Zavolat `generate_code` pro batch job template
-3. Vygenerovat kompletní X++ kód s správnými field names
+Copilot should:
+1. Call `get_table_info("CustTable")` to get field names
+2. Call `generate_code` for batch job template
+3. Generate complete X++ code with correct field names
 
 ## Troubleshooting
 
-### Tools se nenačítají
+### Tools Not Loading
 
-**Problém:** MCP tools nejsou viditelné v Copilot Chat
+**Problem:** MCP tools are not visible in Copilot Chat
 
-**Řešení:**
-1. Ověřte, že máte povoleny **Editor Preview Features** na GitHub
-2. Zkontrolujte **Tools → Options → GitHub → Copilot** v VS 2022
-3. Ověřte syntaxi `.mcp.json` souboru (použijte JSON validator)
-4. Restartujte Visual Studio úplně (zavřete všechna okna)
+**Solution:**
+1. Verify **Editor Preview Features** are enabled on GitHub
+2. Check **Tools → Options → GitHub → Copilot** in VS 2022
+3. Verify `.mcp.json` file syntax (use JSON validator)
+4. Restart Visual Studio completely (close all windows)
 
-### MCP server neodpovídá
+### MCP Server Not Responding
 
-**Problém:** Tools jsou viditelné, ale nevrací data
+**Problem:** Tools are visible but not returning data
 
-**Řešení:**
-1. Pro **local**: Ověřte, že server běží (`npm run dev`)
-2. Pro **cloud**: Zkontrolujte, že Azure App Service je spuštěný
-3. Zkontrolujte síťové připojení a firewall
-4. Zkontrolujte logy serveru pro chyby
+**Solution:**
+1. For **local**: Verify server is running (`npm run dev`)
+2. For **cloud**: Check that Azure App Service is running
+3. Check network connectivity and firewall
+4. Check server logs for errors
 
-### Copilot nepoužívá tools automaticky
+### Copilot Not Using Tools Automatically
 
-**Problém:** Copilot generuje kód, ale nepoužívá MCP tools
+**Problem:** Copilot generates code but doesn't use MCP tools
 
-**Řešení:**
-1. Explicitně požádejte: "Use get_class_info to check CustTable methods"
-2. Použijte Agent Mode (@workspace) pro lepší tool detection
-3. Restartujte konverzaci v Copilot Chat
-4. Ověřte, že system instructions prompt existuje (`xpp_system_instructions`)
+**Solution:**
+1. Explicitly ask: "Use get_class_info to check CustTable methods"
+2. Use Agent Mode (@workspace) for better tool detection
+3. Restart conversation in Copilot Chat
+4. Verify system instructions prompt exists (`xpp_system_instructions`)
 
-### Prázdné výsledky z tools
+### Empty Results from Tools
 
-**Problém:** Tools vrací prázdné výsledky nebo "not found"
+**Problem:** Tools return empty results or "not found"
 
-**Řešení:**
-1. Ověřte, že máte stažená metadata: `npm run build:db`
-2. Zkontrolujte připojení k Redis cache (pokud používáte)
-3. Zkuste širší search s `type='all'`
-4. Zkontrolujte spelling názvu objektu (case-sensitive)
+**Solution:**
+1. Verify you have downloaded metadata: `npm run build:db`
+2. Check Redis cache connection (if using)
+3. Try broader search with `type='all'`
+4. Check spelling of object name (case-sensitive)
 
-## Optimalizace pro ISV/Partner scénáře
+## Optimization for ISV/Partner Scenarios
 
-Pokud vyvíjíte custom extensions nebo pracujete jako ISV partner:
+If you're developing custom extensions or working as an ISV partner:
 
-### Konfigurace custom models
+### Configure Custom Models
 
-V `.env` souboru MCP serveru:
+In the MCP server `.env` file:
 
 ```env
 # Custom Extensions (ISV scenarios)
@@ -264,79 +289,53 @@ CUSTOM_MODELS=ISV_YourCompany,Custom_Module1,Custom_Module2
 EXTENSION_PREFIX=ISV_,CUS_
 ```
 
-### Použití search_extensions
+### Using search_extensions
 
-Pro hledání pouze vašeho custom kódu:
+To search only your custom code:
 
 ```
 💬 "Find all my custom ISV extensions for CustTable"
 ```
 
-Copilot použije `search_extensions` místo `search`, takže neuvidíte standardní Microsoft objekty.
+Copilot will use `search_extensions` instead of `search`, so you won't see standard Microsoft objects.
 
-## Performance tipy
+## Performance Tips
 
-1. **První query je pomalejší** (~50ms) - následující jsou cachované (<10ms)
-2. **Redis cache** - Zapněte pro produkci pro nejlepší performance
-3. **Batch queries** - Copilot může volat několik tools najednou
-4. **Metadata sync** - Pravidelně aktualizujte metadata z PackagesLocalDirectory
+1. **First query is slower** (~50ms) - subsequent ones are cached (<10ms)
+2. **Redis cache** - Enable for production for best performance
+3. **Batch queries** - Copilot can call multiple tools at once
+4. **Metadata sync** - Regularly update metadata from PackagesLocalDirectory
 
-## Bezpečnost
+## Security
 
-### Cloud deployment (Azure)
+### Cloud Deployment (Azure)
 
-- Použijte **Azure App Service** s authentication
-- Zapněte **Managed Identity** pro Blob Storage
-- Nastavte **IP restrictions** pokud potřeba
-- Použijte **Azure Cache for Redis** s SSL
+- Use **Azure App Service** with authentication
+- Enable **Managed Identity** for Blob Storage
+- Set **IP restrictions** if needed
+- Use **Azure Cache for Redis** with SSL
 
-### On-premise deployment
+### On-Premise Deployment
 
-- Omezit přístup na **internal network only**
-- Použít **reverse proxy** (nginx/IIS) s authentication
-- Pravidelná **backup metadat**
+- Restrict access to **internal network only**
+- Use **reverse proxy** (nginx/IIS) with authentication
+- Regular **metadata backups**
 
-## Související dokumentace
+## Related Documentation
 
-- [SETUP.md](./SETUP.md) - Úvodní nastavení MCP serveru
-- [USAGE_EXAMPLES.md](./USAGE_EXAMPLES.md) - Příklady použití tools
-- [TESTING.md](./TESTING.md) - Testování MCP serveru
-- [CUSTOM_EXTENSIONS.md](./CUSTOM_EXTENSIONS.md) - ISV extension konfigurace
-- [PERFORMANCE.md](./PERFORMANCE.md) - Performance optimalizace
-- [README.md](../README.md) - Hlavní dokumentace
+- [SETUP.md](./SETUP.md) - Initial MCP server setup
+- [USAGE_EXAMPLES.md](./USAGE_EXAMPLES.md) - Usage examples for tools
+- [TESTING.md](./TESTING.md) - MCP server testing
+- [CUSTOM_EXTENSIONS.md](./CUSTOM_EXTENSIONS.md) - ISV extension configuration
+- [PERFORMANCE.md](./PERFORMANCE.md) - Performance optimization
+- [README.md](../README.md) - Main documentation
 
-## Shrnutí
+## Summary
 
 ✅ **MCP server + GitHub Copilot + Visual Studio 2022 = Powerful X++ development**
 
-System instructions automaticky řídí GitHub Copilot k použití vašich X++ MCP tools, což poskytuje:
-- 🎯 **Přesné code completion** z real-time metadat
-- ⚡ **Rychlé vyhledávání** v 500k+ symbolech
-- 🔧 **D365 F&O best practices** při generování kódu
-- 🚀 **Produktivnější development** bez browsování AOT
-1. **Vždy načtěte system instructions na začátku** - Ideálně jako první věc v konverzaci
-2. **Můžete je kombinovat** - System instructions + code review najednou
-3. **Pro nové projekty** - Nastavte jako default v konfiguraci IDE/editoru
-4. **Redis caching** - Tools jsou rychlé díky cachingu, nebojte se jich používat často
-
-## Troubleshooting
-
-**Problém:** AI stále nepoužívá tools
-
-**Řešení:** 
-- Ověřte, že máte načtený `@xpp_system_instructions` prompt
-- Zkuste explicitně požádat: "Prosím použij get_class_info pro zjištění struktury CustTable"
-- Restartujte MCP server
-
-**Problém:** Tools vracejí prázdné výsledky
-
-**Řešení:**
-- Zkontrolujte, že máte stažená metadata (`npm run build:db`)
-- Ověřte připojení k Redis cache
-- Použijte `search` s type='all' pro širší výsledky
-
-## Související
-
-- [USAGE_EXAMPLES.md](./USAGE_EXAMPLES.md) - Příklady použití
-- [SETUP.md](./SETUP.md) - Úvodní nastavení
-- [TESTING.md](./TESTING.md) - Testování MCP serveru
+System instructions automatically guide GitHub Copilot to use your X++ MCP tools, providing:
+- 🎯 **Accurate code completion** from real-time metadata
+- ⚡ **Fast search** across 500k+ symbols
+- 🔧 **D365 F&O best practices** when generating code
+- 🚀 **More productive development** without browsing AOT
