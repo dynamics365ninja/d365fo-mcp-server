@@ -22,82 +22,122 @@ const METADATA_PATH = process.env.METADATA_PATH || './metadata';
 // Force HTTP mode in Azure (when PORT or WEBSITES_PORT env var is set)
 const isStdioMode = !process.env.PORT && !process.env.WEBSITES_PORT && !process.stdin.isTTY;
 
-async function main() {
+// Readiness state tracking
+interface ServerState {
+  isReady: boolean;
+  isHealthy: boolean;
+  statusMessage: string;
+  symbolIndex?: XppSymbolIndex;
+  parser?: XppMetadataParser;
+  cache?: RedisCacheService;
+}
+
+const serverState: ServerState = {
+  isReady: false,
+  isHealthy: false,
+  statusMessage: 'Starting...',
+};
+
+async function initializeServices() {
   console.log('🚀 Starting X++ MCP Code Completion Server...');
+
+  try {
+    // Initialize cache service
+    console.log('💾 Initializing cache service...');
+    serverState.statusMessage = 'Connecting to Redis...';
+    const cache = new RedisCacheService();
+    
+    // Wait for Redis connection
+    const isConnected = await cache.waitForConnection();
+    if (isConnected) {
+      const stats = await cache.getStats();
+      console.log(`✅ Redis cache enabled (${stats.keyCount || 0} keys, ${stats.memory || 'unknown'} memory)`);
+    } else {
+      console.log('⚠️  Redis cache disabled - running without cache');
+    }
+    serverState.cache = cache;
+
+    // Download database from blob storage if configured
+    if (process.env.AZURE_STORAGE_CONNECTION_STRING && process.env.BLOB_CONTAINER_NAME) {
+      try {
+        serverState.statusMessage = 'Downloading database from Azure Blob Storage...';
+        await downloadDatabaseFromBlob();
+      } catch (error) {
+        console.log('⚠️  Failed to download database from blob storage:', error);
+        console.log('   Attempting to use existing local database...');
+      }
+    }
+
+    // Initialize symbol index and parser
+    console.log(`📚 Loading metadata from: ${DB_PATH}`);
+    serverState.statusMessage = 'Loading metadata database...';
+    const symbolIndex = new XppSymbolIndex(DB_PATH);
+    const parser = new XppMetadataParser();
+    
+    // Check if database needs indexing
+    const symbolCount = symbolIndex.getSymbolCount();
+    if (symbolCount === 0) {
+      console.log('⚠️  No symbols found in database. Run indexing first:');
+      console.log('   npm run index-metadata');
+      console.log('   or set METADATA_PATH and the server will index on startup');
+      
+      // If metadata path exists, index it
+      try {
+        await fs.access(METADATA_PATH);
+        console.log(`📖 Indexing metadata from: ${METADATA_PATH}`);
+        serverState.statusMessage = 'Indexing metadata...';
+        const modelNamesStr = process.env.CUSTOM_MODELS || 'CustomModel';
+        const modelNames = modelNamesStr.split(',').map(m => m.trim()).filter(Boolean);
+        console.log(`📦 Using model names: ${modelNames.join(', ')}`);
+        
+        for (const modelName of modelNames) {
+          console.log(`   Indexing ${modelName}...`);
+          await symbolIndex.indexMetadataDirectory(METADATA_PATH, modelName);
+        }
+        
+        console.log(`✅ Indexed ${symbolIndex.getSymbolCount()} symbols from ${modelNames.length} model(s)`);
+      } catch (error) {
+        console.log('⚠️  Metadata path not accessible, starting with empty index');
+      }
+    } else {
+      console.log(`✅ Loaded ${symbolCount} symbols from database`);
+    }
+
+    serverState.symbolIndex = symbolIndex;
+    serverState.parser = parser;
+
+    // Create MCP server with symbol index, parser, and cache
+    serverState.statusMessage = 'Initializing MCP server...';
+    const mcpServer = createXppMcpServer({ symbolIndex, parser, cache });
+    console.log('✅ MCP Server initialized');
+
+    return { mcpServer, symbolIndex, parser, cache };
+  } catch (error) {
+    console.error('❌ Initialization error:', error);
+    serverState.statusMessage = `Initialization failed: ${error}`;
+    throw error;
+  }
+}
+
+async function main() {
   console.log(`📡 Mode: ${isStdioMode ? 'STDIO' : 'HTTP'}`);
 
-  // Initialize cache service
-  console.log('💾 Initializing cache service...');
-  const cache = new RedisCacheService();
-  
-  // Wait for Redis connection
-  const isConnected = await cache.waitForConnection();
-  if (isConnected) {
-    const stats = await cache.getStats();
-    console.log(`✅ Redis cache enabled (${stats.keyCount || 0} keys, ${stats.memory || 'unknown'} memory)`);
-  } else {
-    console.log('⚠️  Redis cache disabled - running without cache');
-  }
-
-  // Download database from blob storage if configured
-  if (process.env.AZURE_STORAGE_CONNECTION_STRING && process.env.BLOB_CONTAINER_NAME) {
-    try {
-      await downloadDatabaseFromBlob();
-    } catch (error) {
-      console.log('⚠️  Failed to download database from blob storage:', error);
-      console.log('   Attempting to use existing local database...');
-    }
-  }
-
-  // Initialize symbol index and parser
-  console.log(`📚 Loading metadata from: ${DB_PATH}`);
-  const symbolIndex = new XppSymbolIndex(DB_PATH);
-  const parser = new XppMetadataParser();
-  
-  // Check if database needs indexing
-  const symbolCount = symbolIndex.getSymbolCount();
-  if (symbolCount === 0) {
-    console.log('⚠️  No symbols found in database. Run indexing first:');
-    console.log('   npm run index-metadata');
-    console.log('   or set METADATA_PATH and the server will index on startup');
-    
-    // If metadata path exists, index it
-    try {
-      await fs.access(METADATA_PATH);
-      console.log(`📖 Indexing metadata from: ${METADATA_PATH}`);
-      const modelNamesStr = process.env.CUSTOM_MODELS || 'CustomModel';
-      const modelNames = modelNamesStr.split(',').map(m => m.trim()).filter(Boolean);
-      console.log(`📦 Using model names: ${modelNames.join(', ')}`);
-      
-      for (const modelName of modelNames) {
-        console.log(`   Indexing ${modelName}...`);
-        await symbolIndex.indexMetadataDirectory(METADATA_PATH, modelName);
-      }
-      
-      console.log(`✅ Indexed ${symbolIndex.getSymbolCount()} symbols from ${modelNames.length} model(s)`);
-    } catch (error) {
-      console.log('⚠️  Metadata path not accessible, starting with empty index');
-    }
-  } else {
-    console.log(`✅ Loaded ${symbolCount} symbols from database`);
-  }
-
-  // Create MCP server with symbol index, parser, and cache
-  const mcpServer = createXppMcpServer({ symbolIndex, parser, cache });
-  console.log('✅ MCP Server initialized');
-
   if (isStdioMode) {
-    // Use stdio transport for MCP client integration (VS Code, Visual Studio, etc.)
+    // STDIO mode - initialize synchronously before connecting
+    const { mcpServer } = await initializeServices();
     console.log('📡 Using stdio transport for MCP client');
     const transport = new StdioServerTransport();
     await mcpServer.connect(transport);
     console.log('✅ Stdio transport connected');
     console.log('🎯 Registered 10 X++ MCP tools (6 basic + 4 intelligent)');
+    serverState.isReady = true;
+    serverState.isHealthy = true;
+    serverState.statusMessage = 'Ready';
   } else {
-    // Use HTTP transport for standalone server mode
+    // HTTP mode - start server immediately, initialize asynchronously
     console.log('📡 Using HTTP transport for standalone server');
     
-    // Create Express app with transport
+    // Create Express app immediately
     const app = express();
     
     // Trust proxy - required for Azure App Service (behind reverse proxy)
@@ -105,41 +145,73 @@ async function main() {
     
     app.use(express.json());
 
-    // Health check endpoint
+    // Health check endpoint - responds immediately with current state
     app.get('/health', (_req, res) => {
-      res.json({
+      if (!serverState.isReady) {
+        // Server is starting - return 503 Service Unavailable
+        return res.status(503).json({
+          status: 'starting',
+          ready: false,
+          service: 'd365fo-mcp-server',
+          version: '1.0.0',
+          message: serverState.statusMessage,
+        });
+      }
+
+      // Server is ready - return 200 OK
+      return res.json({
         status: 'healthy',
+        ready: true,
         service: 'd365fo-mcp-server',
         version: '1.0.0',
-        symbols: symbolIndex.getSymbolCount(),
+        symbols: serverState.symbolIndex?.getSymbolCount() || 0,
       });
     });
-
-    // MCP endpoints
-    createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache });
 
     // Start server on 0.0.0.0 for Azure App Service
     const host = process.env.HOST || '0.0.0.0';
     app.listen(PORT, host, () => {
       console.log(`✅ D365 F&O MCP Server listening on ${host}:${PORT}`);
-      console.log(`📡 MCP endpoint: http://localhost:${PORT}/mcp`);
       console.log(`🏥 Health check: http://localhost:${PORT}/health`);
-      console.log('');
-      console.log('🎯 Available tools:');
-      console.log('   Basic Discovery:');
-      console.log('   - search: Search for X++ classes, tables, methods, and fields');
-      console.log('   - search_extensions: Search for symbols in custom extensions/ISV models');
-      console.log('   - get_class_info: Get detailed class information');
-      console.log('   - get_table_info: Get detailed table information');
-      console.log('   - code_completion: Get method and field completions (IntelliSense)');
-      console.log('   - generate_code: Generate X++ code templates');
-      console.log('');
-      console.log('   🧠 Intelligent Code Generation:');
-      console.log('   - analyze_code_patterns: Analyze codebase for similar patterns');
-      console.log('   - suggest_method_implementation: Get implementation examples from codebase');
-      console.log('   - analyze_class_completeness: Find missing methods in classes');
-      console.log('   - get_api_usage_patterns: See how APIs are used in codebase');
+      console.log('⏳ Initializing services asynchronously...');
     });
+
+    // Initialize services asynchronously after server is running
+    initializeServices()
+      .then(({ mcpServer, symbolIndex, parser, cache }) => {
+        // MCP endpoints - register after initialization
+        createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache });
+        
+        serverState.isReady = true;
+        serverState.isHealthy = true;
+        serverState.statusMessage = 'Ready';
+        
+        console.log('');
+        console.log('✅ Server is READY!');
+        console.log(`📡 MCP endpoint: http://localhost:${PORT}/mcp`);
+        console.log('');
+        console.log('🎯 Available tools:');
+        console.log('   Basic Discovery:');
+        console.log('   - search: Search for X++ classes, tables, methods, and fields');
+        console.log('   - search_extensions: Search for symbols in custom extensions/ISV models');
+        console.log('   - get_class_info: Get detailed class information');
+        console.log('   - get_table_info: Get detailed table information');
+        console.log('   - code_completion: Get method and field completions (IntelliSense)');
+        console.log('   - generate_code: Generate X++ code templates');
+        console.log('');
+        console.log('   🧠 Intelligent Code Generation:');
+        console.log('   - analyze_code_patterns: Analyze codebase for similar patterns');
+        console.log('   - suggest_method_implementation: Get implementation examples from codebase');
+        console.log('   - analyze_class_completeness: Find missing methods in classes');
+        console.log('   - get_api_usage_patterns: See how APIs are used in codebase');
+      })
+      .catch((error) => {
+        console.error('❌ Failed to initialize services:', error);
+        serverState.isReady = false;
+        serverState.isHealthy = false;
+        serverState.statusMessage = `Initialization failed: ${error.message}`;
+        // Don't exit - keep server running for health check visibility
+      });
   }
 }
 

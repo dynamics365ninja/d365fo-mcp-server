@@ -80,9 +80,39 @@ jobs:
 
       - name: Health check
         run: |
-          echo "Waiting for deployment to complete..."
-          sleep 30
-          curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health || exit 1
+          echo "Waiting for server to start..."
+          sleep 15
+          
+          MAX_RETRIES=25
+          RETRY_DELAY=10
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Health check attempt $i/$MAX_RETRIES..."
+            
+            # Call health endpoint and capture both status code and response
+            HTTP_CODE=$(curl -s -o /tmp/health_response.json -w "%{http_code}" --max-time 10 \
+              https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health || echo "000")
+            
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Server is READY!"
+              cat /tmp/health_response.json
+              exit 0
+            elif [ "$HTTP_CODE" = "503" ]; then
+              # Server is starting - show status message
+              echo "⏳ Server starting..."
+              cat /tmp/health_response.json 2>/dev/null || true
+            else
+              echo "⚠️  Unexpected response: HTTP $HTTP_CODE"
+            fi
+            
+            if [ $i -lt $MAX_RETRIES ]; then
+              echo "   Waiting ${RETRY_DELAY}s before retry..."
+              sleep $RETRY_DELAY
+            fi
+          done
+          
+          echo "❌ Server failed to become ready after $MAX_RETRIES attempts"
+          exit 1
 
       - name: Logout from Azure
         run: az logout
