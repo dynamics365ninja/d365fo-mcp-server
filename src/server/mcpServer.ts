@@ -123,6 +123,55 @@ export function createXppMcpServer(context: XppServerContext): Server {
             required: ['pattern', 'name'],
           },
         },
+        {
+          name: 'analyze_code_patterns',
+          description: 'Analyze existing codebase for similar code patterns. Essential for creating code based on real D365FO patterns.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              scenario: { type: 'string', description: 'Description of the scenario or functionality to analyze (e.g., "financial dimensions", "inventory transactions")' },
+              classPattern: { type: 'string', description: 'Optional class name pattern to filter results (e.g., "Helper", "Service")' },
+              limit: { type: 'number', description: 'Maximum number of pattern examples to return', default: 5 },
+            },
+            required: ['scenario'],
+          },
+        },
+        {
+          name: 'suggest_method_implementation',
+          description: 'Suggest method body implementation based on similar methods in the codebase. Provides real examples from actual D365FO code.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              className: { type: 'string', description: 'Name of the class containing the method' },
+              methodName: { type: 'string', description: 'Name of the method to implement' },
+              parameters: { type: 'string', description: 'Optional method parameters to help find similar methods' },
+            },
+            required: ['className', 'methodName'],
+          },
+        },
+        {
+          name: 'analyze_class_completeness',
+          description: 'Analyze a class and suggest missing methods based on similar classes. Helps identify methods to follow common patterns.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              className: { type: 'string', description: 'Name of the class to analyze' },
+            },
+            required: ['className'],
+          },
+        },
+        {
+          name: 'get_api_usage_patterns',
+          description: 'Get common usage patterns for a specific API or class. Shows initialization patterns and method call sequences.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              apiName: { type: 'string', description: 'Name of the API/class to get usage patterns for' },
+              context: { type: 'string', description: 'Optional context to filter patterns (e.g., "initialization", "validation")' },
+            },
+            required: ['apiName'],
+          },
+        },
       ],
     };
   });
