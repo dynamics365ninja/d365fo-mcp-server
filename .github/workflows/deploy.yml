@@ -80,6 +80,7 @@ jobs:
 
       - name: Health check
         run: |
+
           echo "Waiting for server to start..."
           sleep 15
           
