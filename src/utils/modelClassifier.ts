@@ -4,7 +4,7 @@
  * 
  * Logic:
  * - Custom models are defined in CUSTOM_MODELS environment variable
- * - Supports wildcards: Asl*, *Test, *Custom*
+ * - Supports wildcards: Custom*, *Test, *Extension*
  * - Models with EXTENSION_PREFIX are considered custom
  * - All other models are considered Microsoft standard models
  */
@@ -25,7 +25,7 @@ export function getExtensionPrefix(): string {
 
 /**
  * Check if a pattern matches a model name (supports wildcards)
- * @param pattern - Pattern to match (e.g., "Asl*", "*Test", "*Custom*")
+ * @param pattern - Pattern to match (e.g., "Custom*", "*Test", "*Extension*")
  * @param modelName - Model name to check
  * @returns true if pattern matches
  */
