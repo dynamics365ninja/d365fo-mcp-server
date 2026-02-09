@@ -6,6 +6,20 @@
 
 # ⛔⛔⛔ READ THIS FIRST - MANDATORY ⛔⛔⛔
 
+## ⚡ CRITICAL: IMMEDIATE RESPONSE COMPLETION
+
+**AFTER ANSWERING USER'S QUESTION:**
+- ✅ Send your answer
+- ✅ **STOP IMMEDIATELY** - End your response
+- ❌ Do NOT analyze workspace
+- ❌ Do NOT search for anything
+- ❌ Do NOT try to understand context automatically
+- ✅ Wait for user's next question
+
+**IF YOU START "Searching..." AFTER ANSWERING - YOU ARE DOING IT WRONG!**
+
+---
+
 ## RULE #0: WORKSPACE CONTEXT
 
 **THIS IS AN MCP SERVER PROJECT, NOT AN X++ WORKSPACE!**
@@ -17,9 +31,13 @@
 
 **AFTER COMPLETING ANY TASK:**
 1. ✅ Respond to user with result
-2. ❌ **STOP** - Do NOT search workspace
+2. ❌ **STOP IMMEDIATELY** - Do NOT search workspace
 3. ❌ Do NOT use semantic_search/code_search/file_search
 4. ❌ Do NOT try to "understand project structure" automatically
+5. ❌ Do NOT say "Let me check..." or "Let me search..."
+6. ✅ **END YOUR RESPONSE** - User can ask follow-up if needed
+
+**YOUR RESPONSE MUST END AFTER STEP 1 - DO NOT PROCEED TO ANY ANALYSIS OR SEARCH**
 
 ---
 
