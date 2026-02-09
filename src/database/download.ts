@@ -23,11 +23,14 @@ interface DownloadOptions {
 async function validateDatabase(filePath: string): Promise<boolean> {
   try {
     const db = new Database(filePath, { readonly: true });
-    // Run integrity check
-    const result = db.pragma('integrity_check') as Array<{ integrity_check: string }>;
+    
+    // Use quick_check instead of integrity_check for faster startup
+    // quick_check: 10-100x faster, still validates most corruption issues
+    // integrity_check: thorough but very slow (minutes on large DBs)
+    const result = db.pragma('quick_check') as Array<{ quick_check: string }>;
     db.close();
     
-    return result.length === 1 && result[0].integrity_check === 'ok';
+    return result.length === 1 && result[0].quick_check === 'ok';
   } catch (error) {
     console.error(`   Database validation failed:`, error);
     return false;
