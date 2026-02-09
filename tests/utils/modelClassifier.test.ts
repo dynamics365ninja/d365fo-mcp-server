@@ -113,21 +113,21 @@ describe('modelClassifier', () => {
       'ApplicationFoundation',
       'ApplicationPlatform',
       'CustomCore',
-      'FinanceExtension',
+      'CustomFinance',
       'Directory',
       'Ledger',
       'MyCustomModel'
     ];
 
     it('should filter custom models', () => {
-      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension,MyCustomModel';
+      process.env.CUSTOM_MODELS = 'CustomCore,CustomFinance,MyCustomModel';
       
       const customModels = filterModelsByType(allModels, 'custom');
-      expect(customModels).toEqual(['CustomCore', 'FinanceExtension', 'MyCustomModel']);
+      expect(customModels).toEqual(['CustomCore', 'CustomFinance', 'MyCustomModel']);
     });
 
     it('should filter standard models', () => {
-      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension,MyCustomModel';
+      process.env.CUSTOM_MODELS = 'CustomCore,CustomFinance,MyCustomModel';
       
       const standardModels = filterModelsByType(allModels, 'standard');
       expect(standardModels).toEqual([
