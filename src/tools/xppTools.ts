@@ -34,7 +34,7 @@ export const GetTableSchema = z.object({
 });
 
 export const CompleteMethodSchema = z.object({
-  objectName: z.string().describe('Class or table name'),
+  className: z.string().describe('Class or table name'),
   prefix: z.string().optional().default('').describe('Method/field name prefix to filter')
 });
 
@@ -241,15 +241,15 @@ export function createGetTableTool(symbolIndex: XppSymbolIndex, parser: XppMetad
 
 export function createCompleteMethodTool(symbolIndex: XppSymbolIndex) {
   return async (args: z.infer<typeof CompleteMethodSchema>): Promise<ToolResult> => {
-    const { objectName, prefix } = args;
+    const { className, prefix } = args;
     
-    const completions = symbolIndex.getCompletions(objectName, prefix);
+    const completions = symbolIndex.getCompletions(className, prefix);
 
     if (completions.length === 0) {
       return {
         content: [{ 
           type: 'text', 
-          text: `No members found for "${objectName}"${prefix ? ` starting with "${prefix}"` : ''}` 
+          text: `No members found for "${className}"${prefix ? ` starting with "${prefix}"` : ''}` 
         }]
       };
     }
@@ -264,7 +264,7 @@ export function createCompleteMethodTool(symbolIndex: XppSymbolIndex) {
     return {
       content: [{ 
         type: 'text', 
-        text: `## Completions for ${objectName}${prefix ? `.${prefix}*` : ''}\n\n\`\`\`json\n${JSON.stringify(formatted, null, 2)}\n\`\`\`` 
+        text: `## Completions for ${className}${prefix ? `.${prefix}*` : ''}\n\n\`\`\`json\n${JSON.stringify(formatted, null, 2)}\n\`\`\`` 
       }]
     };
   };

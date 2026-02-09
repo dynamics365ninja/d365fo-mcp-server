@@ -475,7 +475,7 @@ Found 5 matches:
 **Input:**
 ```json
 {
-  "objectName": "CustTable",
+  "className": "CustTable",
   "prefix": "set"
 }
 ```
