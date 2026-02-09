@@ -4,10 +4,19 @@
 
 **Before generating ANY X++ code, writing ANY class, method, or code snippet for D365 Finance & Operations, you MUST use the X++ MCP tools available to you.**
 
+### 🚫 FORBIDDEN: Do NOT Use These Tools for X++ Code
+
+**NEVER use these built-in Copilot tools when working with D365FO/X++ code:**
+- ❌ `semantic_search` - Slow, file-based search (use MCP `search` instead)
+- ❌ `grep_search` - Text-only search (use MCP `search` instead)  
+- ❌ `file_search` - No X++ awareness (use MCP `search` instead)
+
+**WHY:** Your MCP `search` tool is 100x faster (indexed SQL database) and X++-aware (understands AOT structure, inheritance, relations).
+
 ### Critical Rules:
 
 1. **NEVER generate D365FO code from your training data alone** - It may be outdated or incorrect
-2. **ALWAYS search first** - Use the `search` tool to find related D365FO patterns and classes
+2. **ALWAYS use MCP `search` tool** - NOT semantic_search, NOT grep_search - Use the X++ MCP `search` tool
 3. **ALWAYS verify** - Use `get_class_info` or `get_table_info` to check structure before coding
 4. **ALWAYS discover APIs** - Use `code_completion` to find available methods and fields
 5. **PREFER generation tools** - Use `generate_code` for creating new classes with proper D365FO patterns
