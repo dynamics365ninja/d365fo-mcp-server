@@ -5,6 +5,7 @@
 
 import 'dotenv/config';
 import express from 'express';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createXppMcpServer } from './server/mcpServer.js';
 import { createStreamableHttpTransport } from './server/transport.js';
 import { XppSymbolIndex } from './metadata/symbolIndex.js';
@@ -17,20 +18,24 @@ const PORT = parseInt(process.env.PORT || '8080');
 const DB_PATH = process.env.DB_PATH || './data/xpp-metadata.db';
 const METADATA_PATH = process.env.METADATA_PATH || './metadata';
 
+// Detect if running in stdio mode (launched by MCP client)
+const isStdioMode = !process.stdin.isTTY;
+
 async function main() {
-  console.log('🚀 Starting X++ MCP Code Completion Server...');
+  console.error('🚀 Starting X++ MCP Code Completion Server...');
+  console.error(`📡 Mode: ${isStdioMode ? 'STDIO' : 'HTTP'}`);
 
   // Initialize cache service
-  console.log('💾 Initializing cache service...');
+  console.error('💾 Initializing cache service...');
   const cache = new RedisCacheService();
   
   // Wait for Redis connection
   const isConnected = await cache.waitForConnection();
   if (isConnected) {
     const stats = await cache.getStats();
-    console.log(`✅ Redis cache enabled (${stats.keyCount || 0} keys, ${stats.memory || 'unknown'} memory)`);
+    console.error(`✅ Redis cache enabled (${stats.keyCount || 0} keys, ${stats.memory || 'unknown'} memory)`);
   } else {
-    console.log('⚠️  Redis cache disabled - running without cache');
+    console.error('⚠️  Redis cache disabled - running without cache');
   }
 
   // Download database from blob storage if configured
@@ -39,90 +44,102 @@ async function main() {
       await downloadDatabaseFromBlob();
     } catch (error) {
       console.error('⚠️  Failed to download database from blob storage:', error);
-      console.log('   Attempting to use existing local database...');
+      console.error('   Attempting to use existing local database...');
     }
   }
 
   // Initialize symbol index and parser
-  console.log(`📚 Loading metadata from: ${DB_PATH}`);
+  console.error(`📚 Loading metadata from: ${DB_PATH}`);
   const symbolIndex = new XppSymbolIndex(DB_PATH);
   const parser = new XppMetadataParser();
   
   // Check if database needs indexing
   const symbolCount = symbolIndex.getSymbolCount();
   if (symbolCount === 0) {
-    console.log('⚠️  No symbols found in database. Run indexing first:');
-    console.log('   npm run index-metadata');
-    console.log('   or set METADATA_PATH and the server will index on startup');
+    console.error('⚠️  No symbols found in database. Run indexing first:');
+    console.error('   npm run index-metadata');
+    console.error('   or set METADATA_PATH and the server will index on startup');
     
     // If metadata path exists, index it
     try {
       await fs.access(METADATA_PATH);
-      console.log(`📖 Indexing metadata from: ${METADATA_PATH}`);
+      console.error(`📖 Indexing metadata from: ${METADATA_PATH}`);
       const modelNamesStr = process.env.CUSTOM_MODELS || 'CustomModel';
       const modelNames = modelNamesStr.split(',').map(m => m.trim()).filter(Boolean);
-      console.log(`📦 Using model names: ${modelNames.join(', ')}`);
+      console.error(`📦 Using model names: ${modelNames.join(', ')}`);
       
       for (const modelName of modelNames) {
-        console.log(`   Indexing ${modelName}...`);
+        console.error(`   Indexing ${modelName}...`);
         await symbolIndex.indexMetadataDirectory(METADATA_PATH, modelName);
       }
       
-      console.log(`✅ Indexed ${symbolIndex.getSymbolCount()} symbols from ${modelNames.length} model(s)`);
+      console.error(`✅ Indexed ${symbolIndex.getSymbolCount()} symbols from ${modelNames.length} model(s)`);
     } catch (error) {
-      console.warn('⚠️  Metadata path not accessible, starting with empty index');
+      console.error('⚠️  Metadata path not accessible, starting with empty index');
     }
   } else {
-    console.log(`✅ Loaded ${symbolCount} symbols from database`);
+    console.error(`✅ Loaded ${symbolCount} symbols from database`);
   }
 
   // Create MCP server with symbol index, parser, and cache
   const mcpServer = createXppMcpServer({ symbolIndex, parser, cache });
-  console.log('✅ MCP Server initialized');
+  console.error('✅ MCP Server initialized');
 
-  // Create Express app with transport
-  const app = express();
-  
-  // Trust proxy - required for Azure App Service (behind reverse proxy)
-  app.set('trust proxy', 1);
-  
-  app.use(express.json());
+  if (isStdioMode) {
+    // Use stdio transport for MCP client integration (VS Code, Visual Studio, etc.)
+    console.error('📡 Using stdio transport for MCP client');
+    const transport = new StdioServerTransport();
+    await mcpServer.connect(transport);
+    console.error('✅ Stdio transport connected');
+    console.error('🎯 Registered 10 X++ MCP tools (6 basic + 4 intelligent)');
+  } else {
+    // Use HTTP transport for standalone server mode
+    console.error('📡 Using HTTP transport for standalone server');
+    
+    // Create Express app with transport
+    const app = express();
+    
+    // Trust proxy - required for Azure App Service (behind reverse proxy)
+    app.set('trust proxy', 1);
+    
+    app.use(express.json());
 
-  // Health check endpoint
-  app.get('/health', (_req, res) => {
-    res.json({
-      status: 'healthy',
-      service: 'd365fo-mcp-server',
-      version: '1.0.0',
-      symbols: symbolIndex.getSymbolCount(),
+    // Health check endpoint
+    app.get('/health', (_req, res) => {
+      res.json({
+        status: 'healthy',
+        service: 'd365fo-mcp-server',
+        version: '1.0.0',
+        symbols: symbolIndex.getSymbolCount(),
+      });
     });
-  });
 
-  // MCP endpoints
-  createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache });
+    // MCP endpoints
+    createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache });
 
-  // Start server on 0.0.0.0 for Azure App Service
-  const host = process.env.HOST || '0.0.0.0';
-  app.listen(PORT, host, () => {
-    console.log(`✅ D365 F&O MCP Server listening on ${host}:${PORT}`);
-    console.log(`📡 MCP endpoint: http://localhost:${PORT}/mcp`);
-    console.log(`🏥 Health check: http://localhost:${PORT}/health`);
-    console.log('');
-    console.log('🎯 Available tools:');
-    console.log('   Basic Discovery:');
-    console.log('   - search: Search for X++ classes, tables, methods, and fields');
-    console.log('   - search_extensions: Search for symbols in custom extensions/ISV models');
-    console.log('   - get_class_info: Get detailed class information');
-    console.log('   - get_table_info: Get detailed table information');
-    console.log('   - code_completion: Get method and field completions (IntelliSense)');
-    console.log('   - generate_code: Generate X++ code templates');
-    console.log('');
-    console.log('   🧠 Intelligent Code Generation:');
-    console.log('   - analyze_code_patterns: Analyze codebase for similar patterns');
-    console.log('   - suggest_method_implementation: Get implementation examples from codebase');
-    console.log('   - analyze_class_completeness: Find missing methods in classes');
-    console.log('   - get_api_usage_patterns: See how APIs are used in codebase');
-  });
+    // Start server on 0.0.0.0 for Azure App Service
+    const host = process.env.HOST || '0.0.0.0';
+    app.listen(PORT, host, () => {
+      console.error(`āś… D365 F&O MCP Server listening on ${host}:${PORT}`);
+      console.error(`📡 MCP endpoint: http://localhost:${PORT}/mcp`);
+      console.error(`🏥 Health check: http://localhost:${PORT}/health`);
+      console.error('');
+      console.error('🎯 Available tools:');
+      console.error('   Basic Discovery:');
+      console.error('   - search: Search for X++ classes, tables, methods, and fields');
+      console.error('   - search_extensions: Search for symbols in custom extensions/ISV models');
+      console.error('   - get_class_info: Get detailed class information');
+      console.error('   - get_table_info: Get detailed table information');
+      console.error('   - code_completion: Get method and field completions (IntelliSense)');
+      console.error('   - generate_code: Generate X++ code templates');
+      console.error('');
+      console.error('   🧠 Intelligent Code Generation:');
+      console.error('   - analyze_code_patterns: Analyze codebase for similar patterns');
+      console.error('   - suggest_method_implementation: Get implementation examples from codebase');
+      console.error('   - analyze_class_completeness: Find missing methods in classes');
+      console.error('   - get_api_usage_patterns: See how APIs are used in codebase');
+    });
+  }
 }
 
 main().catch((error) => {
