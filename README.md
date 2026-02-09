@@ -53,6 +53,24 @@ This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O
 
 ---
 
+## ⚠️ Important for GitHub Copilot Users
+
+**When working with this repository, GitHub Copilot MUST use the specialized X++ MCP tools, NOT the built-in search tools.**
+
+### 🚫 DO NOT USE:
+- ❌ `semantic_search` - Will hang for 5+ minutes with "Searching (seznam tříd)..."
+- ❌ `grep_search` - No X++ awareness, very slow
+- ❌ `file_search` - Use MCP `search` instead
+
+### ✅ ALWAYS USE:
+- ✅ `search` (MCP tool) - 100x faster, indexed SQL, X++-aware
+- ✅ `get_class_info` - Get class structure instantly
+- ✅ `get_table_info` - Get table structure instantly
+
+**See [.github/copilot-instructions.md](.github/copilot-instructions.md) for complete guidelines.**
+
+---
+
 ## 👥 Who Is This For?
 
 <table>
