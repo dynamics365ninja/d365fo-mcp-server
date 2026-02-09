@@ -19,7 +19,8 @@ const DB_PATH = process.env.DB_PATH || './data/xpp-metadata.db';
 const METADATA_PATH = process.env.METADATA_PATH || './metadata';
 
 // Detect if running in stdio mode (launched by MCP client)
-const isStdioMode = !process.stdin.isTTY;
+// Force HTTP mode in Azure (when PORT or WEBSITES_PORT env var is set)
+const isStdioMode = !process.env.PORT && !process.env.WEBSITES_PORT && !process.stdin.isTTY;
 
 async function main() {
   console.error('🚀 Starting X++ MCP Code Completion Server...');
