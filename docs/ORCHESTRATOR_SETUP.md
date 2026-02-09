@@ -63,11 +63,28 @@ In the root folder of your D365 F&O solution, create a `.mcp.json` file:
 }
 ```
 
-### Step 4: Restart Visual Studio
+### Step 4: Copy System Instructions to Your D365FO Project
+
+**CRITICAL:** To ensure GitHub Copilot always uses the X++ MCP tools, copy the `.github` folder from this repository to your D365 F&O workspace root:
+
+```powershell
+# Copy from this repo to your D365FO workspace
+Copy-Item -Path ".github" -Destination "C:\Path\To\Your\D365FO\Workspace\" -Recurse
+```
+
+The `.github/copilot-instructions.md` file contains mandatory instructions that tell GitHub Copilot to:
+- ✅ Always use MCP tools before generating D365FO code
+- ✅ Never guess class names, methods, or fields
+- ✅ Query the actual environment metadata first
+- ✅ Use `search`, `get_class_info`, `code_completion` for all code generation
+
+**This file is automatically loaded by GitHub Copilot and ensures proper tool usage without needing to explicitly request the `xpp_system_instructions` prompt.**
+
+### Step 5: Restart Visual Studio
 
 Restart Visual Studio 2022 to load the new configuration.
 
-### Step 5: Verify
+### Step 6: Verify
 
 1. Open **GitHub Copilot Chat** in Visual Studio
 2. Enable **Agent Mode** (robot icon)
@@ -77,7 +94,18 @@ Restart Visual Studio 2022 to load the new configuration.
 
 ### Automatic System Instructions
 
-GitHub Copilot automatically loads system instructions when querying X++ MCP tools. No need to manually call the prompt.
+GitHub Copilot automatically loads system instructions from two sources:
+
+1. **`.github/copilot-instructions.md`** - Automatically loaded in every conversation (RECOMMENDED)
+   - Copy this file to your D365FO workspace as described in Step 4
+   - Ensures instructions are always active without manual intervention
+   - Works in both VS Code and Visual Studio 2022
+
+2. **`xpp_system_instructions` MCP Prompt** - Available as an MCP prompt
+   - Can be explicitly called if needed
+   - Provides the same instructions as the .github file
+
+**We recommend using method #1** (copying the .github folder) to ensure instructions are always loaded automatically.
 
 ### Example Queries in Copilot Chat
 
@@ -255,13 +283,26 @@ Copilot should:
 
 ### Copilot Not Using Tools Automatically
 
-**Problem:** Copilot generates code but doesn't use MCP tools
+**Problem:** Copilot generates D365FO code but doesn't use MCP tools (e.g., when asked to "create a helper class")
 
-**Solution:**
-1. Explicitly ask: "Use get_class_info to check CustTable methods"
-2. Use Agent Mode (@workspace) for better tool detection
-3. Restart conversation in Copilot Chat
-4. Verify system instructions prompt exists (`xpp_system_instructions`)
+**Root Cause:** System instructions are not being automatically loaded by GitHub Copilot.
+
+**Solution (RECOMMENDED):**
+1. **Copy `.github` folder to your D365FO workspace** (see Step 4 above)
+   - This ensures instructions are always loaded automatically
+   - The `.github/copilot-instructions.md` file forces Copilot to use MCP tools first
+   - Restart Visual Studio after copying
+
+**Alternative Solutions:**
+2. Explicitly mention tools: "Use search and generate_code to create a helper class"
+3. Use Agent Mode (@workspace) for better tool detection
+4. Explicitly call the prompt: "@workspace use xpp_system_instructions"
+5. Restart conversation in Copilot Chat
+
+**Verification:**
+- Ask: "Create a helper class for financial dimensions"
+- Copilot should call `search` tool BEFORE generating code
+- If it doesn't, the `.github/copilot-instructions.md` file wasn't loaded
 
 ### Empty Results from Tools
 

@@ -206,9 +206,20 @@ This MCP server is designed to work seamlessly with **Visual Studio 2022** throu
    }
    ```
 
-4. **Restart Visual Studio** to apply changes
+4. **Copy System Instructions to Your Workspace** (CRITICAL):
+   
+   ```powershell
+   # Copy .github folder from this repo to your D365FO workspace
+   Copy-Item -Path ".github" -Destination "C:\Path\To\Your\D365FO\Workspace\" -Recurse
+   ```
+   
+   The `.github/copilot-instructions.md` file ensures GitHub Copilot **always uses MCP tools before generating D365FO code**.
+   
+   ⚠️ **Without this file**, Copilot may use built-in code generation instead of querying your D365FO metadata, resulting in incorrect or outdated code.
 
-5. **Open Copilot Chat** in Agent Mode and verify tools are loaded
+5. **Restart Visual Studio** to apply changes
+
+6. **Open Copilot Chat** in Agent Mode and verify tools are loaded
 
 ### Usage in Visual Studio
 

@@ -85,7 +85,7 @@ stages:
           # ========== Custom Mode Steps (default) ==========
           # In custom mode, we only update custom models while preserving standard models in the database
           
-          # Download existing database
+          # Download existing database (contains standard models)
           - script: npm run blob-manager download-database
             displayName: 'Download existing database'
             condition: eq('${{ parameters.extractionMode }}', 'custom')
@@ -95,10 +95,10 @@ stages:
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               DB_PATH: $(DB_PATH)
 
-          # Download standard metadata (cached)
+          # Download standard metadata (only for standard/all modes, not for custom)
           - script: npm run blob-manager download-standard
             displayName: 'Download standard metadata (cached)'
-            condition: eq('${{ parameters.extractionMode }}', 'custom')
+            condition: ne('${{ parameters.extractionMode }}', 'custom')
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
