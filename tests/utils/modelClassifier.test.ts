@@ -168,7 +168,7 @@ describe('modelClassifier', () => {
       // Custom models
       expect(isCustomModel('CustomCore')).toBe(true);
       expect(isCustomModel('FinanceExtension')).toBe(true);
-      expect(isCustomModel('AuditExtension')).toBe(true); // Via prefix
+      expect(isCustomModel('CustomAudit')).toBe(true); // Via prefix
     });
 
     it('should handle wildcards in CUSTOM_MODELS', () => {
