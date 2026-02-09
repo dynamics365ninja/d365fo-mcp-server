@@ -143,7 +143,7 @@ describe('modelClassifier', () => {
       delete process.env.CUSTOM_MODELS;
       
       const customModels = filterModelsByType(allModels, 'custom');
-      expect(customModels).toEqual(['CustomCore', 'FinanceExtension']);
+      expect(customModels).toEqual(['CustomCore', 'CustomFinance']);
     });
 
     it('should return empty array when no models match', () => {
