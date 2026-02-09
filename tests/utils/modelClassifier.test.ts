@@ -113,21 +113,21 @@ describe('modelClassifier', () => {
       'ApplicationFoundation',
       'ApplicationPlatform',
       'CustomCore',
-      'FinanceExtension',
+      'CustomFinance',
       'Directory',
       'Ledger',
       'MyCustomModel'
     ];
 
     it('should filter custom models', () => {
-      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension,MyCustomModel';
+      process.env.CUSTOM_MODELS = 'CustomCore,CustomFinance,MyCustomModel';
       
       const customModels = filterModelsByType(allModels, 'custom');
-      expect(customModels).toEqual(['CustomCore', 'FinanceExtension', 'MyCustomModel']);
+      expect(customModels).toEqual(['CustomCore', 'CustomFinance', 'MyCustomModel']);
     });
 
     it('should filter standard models', () => {
-      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension,MyCustomModel';
+      process.env.CUSTOM_MODELS = 'CustomCore,CustomFinance,MyCustomModel';
       
       const standardModels = filterModelsByType(allModels, 'standard');
       expect(standardModels).toEqual([
@@ -143,7 +143,7 @@ describe('modelClassifier', () => {
       delete process.env.CUSTOM_MODELS;
       
       const customModels = filterModelsByType(allModels, 'custom');
-      expect(customModels).toEqual(['CustomCore', 'FinanceExtension']);
+      expect(customModels).toEqual(['CustomCore', 'CustomFinance']);
     });
 
     it('should return empty array when no models match', () => {
@@ -168,7 +168,7 @@ describe('modelClassifier', () => {
       // Custom models
       expect(isCustomModel('CustomCore')).toBe(true);
       expect(isCustomModel('FinanceExtension')).toBe(true);
-      expect(isCustomModel('AuditExtension')).toBe(true); // Via prefix
+      expect(isCustomModel('CustomAudit')).toBe(true); // Via prefix
     });
 
     it('should handle wildcards in CUSTOM_MODELS', () => {
