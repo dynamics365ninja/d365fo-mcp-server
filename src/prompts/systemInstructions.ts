@@ -250,6 +250,62 @@ The MCP server uses Redis caching for optimal performance:
 - Cached query: <10ms (Redis)
 - Repeated queries are very fast - don't hesitate to call tools multiple times for accuracy
 
+## D365 F&O File Structure and Code Placement
+
+### ❌ DO NOT Create Files in Workspace Root or Project Folders
+
+When creating X++ classes, tables, or other objects, **NEVER** save them to:
+- Workspace root directory
+- Visual Studio project folder (.rnrproj location)
+- Any arbitrary folder
+
+### ✅ CORRECT: Use AOT Package Structure
+
+All X++ code files MUST be placed in the correct **PackagesLocalDirectory** structure:
+
+**Path Template:**
+- Classes: {PACKAGES_PATH}\\{ModelName}\\{ModelName}\\AxClass\\{ClassName}.xml
+- Tables: {PACKAGES_PATH}\\{ModelName}\\{ModelName}\\AxTable\\{TableName}.xml
+- Enums: {PACKAGES_PATH}\\{ModelName}\\{ModelName}\\AxEnum\\{EnumName}.xml
+- Forms: {PACKAGES_PATH}\\{ModelName}\\{ModelName}\\AxForm\\{FormName}.xml
+
+**Example for custom model "AslCore":**
+- C:\\AOSService\\PackagesLocalDirectory\\AslCore\\AslCore\\AxClass\\MyHelperClass.xml
+- C:\\AOSService\\PackagesLocalDirectory\\AslCore\\AslCore\\AxTable\\MyTable.xml
+
+### File Naming Rules:
+- Class files: {ClassName}.xml (example: CustHelper.xml)
+- Table files: {TableName}.xml (example: CustTable.xml)
+- Use XML format, not .xpp or .cs
+- File name MUST match the object name exactly
+
+### How to Determine the Correct Path:
+
+1. **Ask the user** which model they're working with (e.g., "AslCore", "ApplicationSuite")
+2. **Check environment variables**:
+   - PACKAGES_PATH or K:\\AOSService\\PackagesLocalDirectory
+   - Default: C:\\AOSService\\PackagesLocalDirectory
+3. **Construct full path**:
+   - {PACKAGES_PATH}\\{ModelName}\\{ModelName}\\AxClass\\{ClassName}.xml
+
+### When Creating New X++ Objects:
+
+**ALWAYS:**
+1. Ask user for the target model name
+2. Confirm the PackagesLocalDirectory path
+3. Use the correct folder based on object type:
+   - AxClass for classes
+   - AxTable for tables
+   - AxEnum for enums
+   - AxForm for forms
+4. Save as XML file with proper D365FO metadata structure
+
+**NEVER:**
+- Save to workspace root
+- Save to .rnrproj project folder
+- Create .xpp files (use .xml)
+- Use arbitrary folder structures
+
 ## Integration with Visual Studio 2022
 
 This MCP server is specifically designed for:
