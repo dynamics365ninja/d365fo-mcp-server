@@ -6,12 +6,28 @@ import type { Request, Response } from 'express';
  */
 
 /**
+ * Custom key generator that handles IP addresses with ports
+ * Fixes Azure App Service proxy scenarios where IP comes as "IP:PORT"
+ */
+function generateKey(req: Request): string {
+  // Get IP from various sources (trusting proxy headers)
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  
+  // Strip port number if present at the end (e.g., "20.73.89.75:1024" -> "20.73.89.75")
+  // This regex removes :PORT at the end, but preserves IPv6 addresses
+  const ipWithoutPort = ip.replace(/:\d+$/, '');
+  
+  return ipWithoutPort || 'unknown';
+}
+
+/**
  * General API rate limiter
  * Default: 100 requests per 15 minutes per IP
  */
 export const apiRateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
+  keyGenerator: generateKey,
   message: {
     error: 'Too many requests from this IP, please try again later.',
     retryAfter: 'Please check the Retry-After header.',
@@ -38,6 +54,7 @@ export const apiRateLimiter = rateLimit({
 export const strictRateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_STRICT_MAX_REQUESTS || '20', 10),
+  keyGenerator: generateKey,
   message: {
     error: 'Too many requests for this endpoint, please try again later.',
     retryAfter: 'Please check the Retry-After header.',
@@ -60,6 +77,7 @@ export const strictRateLimiter = rateLimit({
 export const authRateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS || '5', 10),
+  keyGenerator: generateKey,
   message: {
     error: 'Too many authentication attempts, please try again later.',
     retryAfter: 'Please check the Retry-After header.',
@@ -83,6 +101,7 @@ export function createCustomRateLimiter(windowMs: number, maxRequests: number) {
   return rateLimit({
     windowMs,
     max: maxRequests,
+    keyGenerator: generateKey,
     message: {
       error: 'Rate limit exceeded',
       retryAfter: 'Please check the Retry-After header.',
