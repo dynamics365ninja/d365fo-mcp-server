@@ -80,18 +80,18 @@ jobs:
 
       - name: Health check
         run: |
-          echo "Waiting for server to start..."
-          sleep 15
+          echo "Waiting for Azure App Service cold start..."
+          sleep 50
           
           MAX_RETRIES=25
-          RETRY_DELAY=10
+          RETRY_DELAY=12
           
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Health check attempt $i/$MAX_RETRIES..."
             
             # Call health endpoint and capture both status code and response
             HTTP_CODE=$(curl -s -o /tmp/health_response.json -w "%{http_code}" --max-time 10 \
-              https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health || echo "000")
+              https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health 2>/tmp/curl_error.txt || echo "000")
             
             if [ "$HTTP_CODE" = "200" ]; then
               echo "✅ Server is READY!"
@@ -101,8 +101,20 @@ jobs:
               # Server is starting - show status message
               echo "⏳ Server starting..."
               cat /tmp/health_response.json 2>/dev/null || true
+            elif [ "$HTTP_CODE" = "000" ]; then
+              # Connection failed - show detailed error
+              echo "⚠️  Connection failed (HTTP 000)"
+              if [ -s /tmp/curl_error.txt ]; then
+                echo "   Error details:"
+                cat /tmp/curl_error.txt | head -n 3
+              fi
+              echo "   Possible causes:"
+              echo "   - Azure App Service still starting (wait 30-60s for cold start)"
+              echo "   - Server crashed during initialization"
+              echo "   - Network/DNS issue"
             else
               echo "⚠️  Unexpected response: HTTP $HTTP_CODE"
+              cat /tmp/health_response.json 2>/dev/null || true
             fi
             
             if [ $i -lt $MAX_RETRIES ]; then
@@ -111,7 +123,10 @@ jobs:
             fi
           done
           
+          echo ""
           echo "❌ Server failed to become ready after $MAX_RETRIES attempts"
+          echo "Last error details:"
+          cat /tmp/curl_error.txt 2>/dev/null || echo "No error details available"
           exit 1
 
       - name: Logout from Azure
