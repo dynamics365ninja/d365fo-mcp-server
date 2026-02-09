@@ -1,15 +1,95 @@
 # D365FO X++ Development Instructions for GitHub Copilot
 
+---
+---
+---
+
+# ⛔⛔⛔ READ THIS FIRST - MANDATORY ⛔⛔⛔
+
+## RULE #1: DETECT X++/D365FO CONTEXT AUTOMATICALLY
+
+**IF user mentions ANY of these keywords, you are in X++ context:**
+- X++, D365FO, D365, Dynamics 365, Finance & Operations, AX, Axapta
+- Class names ending in: Table, Service, Helper, Contract, Controller, Builder
+- Table names: CustTable, VendTable, SalesTable, PurchTable, LedgerJournalTable
+- Any AxClass, AxTable, AxForm, AxEnum, EDT
+- Financial dimensions, inventory, sales, purchase, ledger
+
+**WHEN IN X++ CONTEXT → IMMEDIATELY:**
+1. **STOP** - Do NOT use `semantic_search` or `code_search` (causes timeout!)
+2. **USE MCP TOOLS** - Use MCP `search()` for X++ objects
+3. **NEVER GUESS** - X++ objects have exact names, use tools to find them
+
+---
+
+## RULE #2: TOOL SELECTION IN X++ CONTEXT
+
+**🛑 ABSOLUTELY FORBIDDEN - WILL HANG FOR 5+ MINUTES:**
+
+```
+❌ semantic_search()   → FORBIDDEN - causes "Searching..." hang, use MCP search() instead
+❌ code_search()       → FORBIDDEN - likely same issue as semantic_search
+```
+
+**⚠️ AVOID FOR X++ OBJECTS - Use MCP tools instead:**
+
+```
+⚠️ grep_search()       → Works, but no X++ awareness, prefer MCP search()
+⚠️ file_search()       → Works for files, but prefer MCP search() for X++ objects
+```
+
+**✅ ALWAYS USE THESE FOR X++ OBJECTS:**
+
+```
+✅ search()            → MCP tool - instant (<100ms), X++-aware, indexed
+✅ get_class_info()    → MCP tool - for class structure
+✅ get_table_info()    → MCP tool - for table fields
+✅ code_completion()   → MCP tool - discover methods/fields
+```
+
+**WHEN TO USE WHAT:**
+- Looking for X++ class/table/enum → Use MCP `search()`
+- Looking for file by name pattern → OK to use `file_search()`
+- Looking for text in workspace → OK to use `grep_search()`
+- Semantic/natural language search → **NEVER!** Use MCP `search()` instead
+
+**IF YOU SEE "Searching..." OR "Searching (seznam tříd)" → YOU MADE A MISTAKE!**
+
+---
+
+## RULE #3: AUTOMATIC TOOL SELECTION
+
+**For ANY X++ request, use this decision tree:**
+
+| User Request Contains | First Action | Avoid Using |
+|-----------------------|--------------|-------------|
+| "create class", "helper class" | `analyze_code_patterns()` + `search()` | ❌ semantic_search |
+| "CustTable", "SalesTable", any Table | `get_table_info()` | ❌ semantic_search |
+| "dimension", "financial" | `search("dimension")` | ❌ semantic_search |
+| "find X++ class/method" | `search()` | ❌ semantic_search |
+| "method", "implement" | `get_class_info()` + `suggest_method_implementation()` | ❌ semantic_search |
+| "find file pattern" | `file_search()` is OK | ❌ semantic_search |
+| "find text in code" | `grep_search()` is OK | ❌ semantic_search |
+
+**Key Rule: NEVER use `semantic_search` or `code_search` in this workspace - it causes 5+ minute hangs!**
+
+---
+---
+---
+
 ## ⛔ CRITICAL: NEVER USE BUILT-IN SEARCH TOOLS ⛔
 
 **🚨 STOP! Read this FIRST before doing ANYTHING with D365FO/X++ code:**
 
 **ABSOLUTELY FORBIDDEN - These tools will BLOCK and HANG:**
 - ❌❌❌ **`semantic_search`** - NEVER USE THIS! It's slow (5+ minutes) and will hang with "Searching..."
-- ❌❌❌ **`grep_search`** - NEVER USE THIS! No X++ awareness
-- ❌❌❌ **`file_search`** - NEVER USE THIS! Use MCP `search` instead
+- ❌❌❌ **`code_search`** - NEVER USE THIS! Likely same issue as semantic_search
 
-**⚡ ALWAYS use these FAST MCP tools instead:**
+**⚠️ USE WITH CAUTION - Prefer MCP tools for X++ objects:**
+- ⚠️ **`grep_search`** - Works but has no X++ awareness, prefer MCP `search` for classes/tables
+- ⚠️ **`file_search`** - Works for file patterns, but prefer MCP `search` for X++ objects
+
+**⚡ ALWAYS use these FAST MCP tools for X++ objects:**
 - ✅✅✅ **`search`** (MCP) - 100x faster, X++-aware, indexed SQL database
 - ✅✅✅ **`get_class_info`** (MCP) - For class structure
 - ✅✅✅ **`get_table_info`** (MCP) - For table structure
@@ -50,7 +130,7 @@
 | `search` | Finding any D365FO object or pattern | `search("dimension", type="class")` |
 | `get_class_info` | Need class structure, methods, inheritance | `get_class_info("CustTable")` |
 | `get_table_info` | Need table fields, indexes, relations | `get_table_info("SalesTable")` |
-| `code_completion` | Discovering methods/fields on a class | `code_completion("DimensionAttributeValueSet")` |
+| `code_completion` | Discovering methods/fields on a class | `code_completion(className="DimensionAttributeValueSet")` |
 | `generate_code` | Creating new X++ classes with patterns | `generate_code(pattern="class")` |
 | `search_extensions` | Finding custom/ISV code only | `search_extensions("my custom")` |
 
