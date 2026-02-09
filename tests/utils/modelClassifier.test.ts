@@ -21,18 +21,18 @@ describe('modelClassifier', () => {
     });
 
     it('should parse comma-separated custom models', () => {
-      process.env.CUSTOM_MODELS = 'AslCore,AslFinanceCore,MyCustomModel';
-      expect(getCustomModels()).toEqual(['AslCore', 'AslFinanceCore', 'MyCustomModel']);
+      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension,MyCustomModel';
+      expect(getCustomModels()).toEqual(['CustomCore', 'FinanceExtension', 'MyCustomModel']);
     });
 
     it('should trim whitespace from model names', () => {
-      process.env.CUSTOM_MODELS = ' AslCore , AslFinanceCore , MyCustomModel ';
-      expect(getCustomModels()).toEqual(['AslCore', 'AslFinanceCore', 'MyCustomModel']);
+      process.env.CUSTOM_MODELS = ' CustomCore , FinanceExtension , MyCustomModel ';
+      expect(getCustomModels()).toEqual(['CustomCore', 'FinanceExtension', 'MyCustomModel']);
     });
 
     it('should filter out empty strings', () => {
-      process.env.CUSTOM_MODELS = 'AslCore,,AslFinanceCore,';
-      expect(getCustomModels()).toEqual(['AslCore', 'AslFinanceCore']);
+      process.env.CUSTOM_MODELS = 'CustomCore,,FinanceExtension,';
+      expect(getCustomModels()).toEqual(['CustomCore', 'FinanceExtension']);
     });
   });
 
@@ -46,43 +46,43 @@ describe('modelClassifier', () => {
     });
 
     it('should identify models in CUSTOM_MODELS list', () => {
-      process.env.CUSTOM_MODELS = 'AslCore,AslFinanceCore';
-      
-      expect(isCustomModel('AslCore')).toBe(true);
-      expect(isCustomModel('AslFinanceCore')).toBe(true);
+      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension';
+
+      expect(isCustomModel('CustomCore')).toBe(true);
+      expect(isCustomModel('FinanceExtension')).toBe(true);
       expect(isCustomModel('ApplicationFoundation')).toBe(false);
     });
 
     it('should be case-insensitive for custom models', () => {
-      process.env.CUSTOM_MODELS = 'AslCore,AslFinanceCore';
-      
-      expect(isCustomModel('aslcore')).toBe(true);
-      expect(isCustomModel('ASLCORE')).toBe(true);
-      expect(isCustomModel('AslCore')).toBe(true);
+      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension';
+
+      expect(isCustomModel('customcore')).toBe(true);
+      expect(isCustomModel('CUSTOMCORE')).toBe(true);
+      expect(isCustomModel('CustomCore')).toBe(true);
     });
 
     it('should identify models with EXTENSION_PREFIX', () => {
-      process.env.EXTENSION_PREFIX = 'Asl';
+      process.env.EXTENSION_PREFIX = 'Custom';
       delete process.env.CUSTOM_MODELS;
       
-      expect(isCustomModel('AslCore')).toBe(true);
-      expect(isCustomModel('AslFinanceCore')).toBe(true);
+      expect(isCustomModel('CustomCore')).toBe(true);
+      expect(isCustomModel('CustomFinance')).toBe(true);
       expect(isCustomModel('ApplicationFoundation')).toBe(false);
     });
 
     it('should combine CUSTOM_MODELS and EXTENSION_PREFIX', () => {
       process.env.CUSTOM_MODELS = 'MyCustomModel';
-      process.env.EXTENSION_PREFIX = 'Asl';
+      process.env.EXTENSION_PREFIX = 'Custom';
       
       expect(isCustomModel('MyCustomModel')).toBe(true);
-      expect(isCustomModel('AslCore')).toBe(true);
+      expect(isCustomModel('CustomCore')).toBe(true);
       expect(isCustomModel('ApplicationFoundation')).toBe(false);
     });
   });
 
   describe('isStandardModel', () => {
     it('should return true for models not in custom list', () => {
-      process.env.CUSTOM_MODELS = 'AslCore,AslFinanceCore';
+      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension';
       
       expect(isStandardModel('ApplicationFoundation')).toBe(true);
       expect(isStandardModel('ApplicationPlatform')).toBe(true);
@@ -90,17 +90,17 @@ describe('modelClassifier', () => {
     });
 
     it('should return false for custom models', () => {
-      process.env.CUSTOM_MODELS = 'AslCore,AslFinanceCore';
-      
-      expect(isStandardModel('AslCore')).toBe(false);
-      expect(isStandardModel('AslFinanceCore')).toBe(false);
+      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension';
+
+      expect(isStandardModel('CustomCore')).toBe(false);
+      expect(isStandardModel('FinanceExtension')).toBe(false);
     });
 
     it('should be opposite of isCustomModel', () => {
-      process.env.CUSTOM_MODELS = 'AslCore';
+      process.env.CUSTOM_MODELS = 'CustomCore';
       process.env.EXTENSION_PREFIX = 'My';
       
-      const testModels = ['AslCore', 'MyCustom', 'ApplicationFoundation', 'Directory'];
+      const testModels = ['CustomCore', 'MyCustom', 'ApplicationFoundation', 'Directory'];
       
       testModels.forEach(model => {
         expect(isStandardModel(model)).toBe(!isCustomModel(model));
@@ -112,22 +112,22 @@ describe('modelClassifier', () => {
     const allModels = [
       'ApplicationFoundation',
       'ApplicationPlatform',
-      'AslCore',
-      'AslFinanceCore',
+      'CustomCore',
+      'FinanceExtension',
       'Directory',
       'Ledger',
       'MyCustomModel'
     ];
 
     it('should filter custom models', () => {
-      process.env.CUSTOM_MODELS = 'AslCore,AslFinanceCore,MyCustomModel';
+      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension,MyCustomModel';
       
       const customModels = filterModelsByType(allModels, 'custom');
-      expect(customModels).toEqual(['AslCore', 'AslFinanceCore', 'MyCustomModel']);
+      expect(customModels).toEqual(['CustomCore', 'FinanceExtension', 'MyCustomModel']);
     });
 
     it('should filter standard models', () => {
-      process.env.CUSTOM_MODELS = 'AslCore,AslFinanceCore,MyCustomModel';
+      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension,MyCustomModel';
       
       const standardModels = filterModelsByType(allModels, 'standard');
       expect(standardModels).toEqual([
@@ -139,11 +139,11 @@ describe('modelClassifier', () => {
     });
 
     it('should work with EXTENSION_PREFIX', () => {
-      process.env.EXTENSION_PREFIX = 'Asl';
+      process.env.EXTENSION_PREFIX = 'Custom';
       delete process.env.CUSTOM_MODELS;
       
       const customModels = filterModelsByType(allModels, 'custom');
-      expect(customModels).toEqual(['AslCore', 'AslFinanceCore']);
+      expect(customModels).toEqual(['CustomCore', 'FinanceExtension']);
     });
 
     it('should return empty array when no models match', () => {
@@ -155,9 +155,9 @@ describe('modelClassifier', () => {
   });
 
   describe('Real-world scenarios', () => {
-    it('should handle typical Asseco Solutions setup', () => {
-      process.env.CUSTOM_MODELS = 'AslCore,AslFinanceCore,AslFinanceCZ,AslReports';
-      process.env.EXTENSION_PREFIX = 'Asl';
+    it('should handle typical custom model setup', () => {
+      process.env.CUSTOM_MODELS = 'CustomCore,FinanceExtension,FinanceLocalization,CustomReports';
+      process.env.EXTENSION_PREFIX = 'Custom';
       
       // Standard Microsoft models
       expect(isStandardModel('ApplicationFoundation')).toBe(true);
@@ -165,20 +165,20 @@ describe('modelClassifier', () => {
       expect(isStandardModel('ApplicationSuite')).toBe(true);
       expect(isStandardModel('Ledger')).toBe(true);
       
-      // Custom Asl models
-      expect(isCustomModel('AslCore')).toBe(true);
-      expect(isCustomModel('AslFinanceCore')).toBe(true);
-      expect(isCustomModel('AslAuditReports')).toBe(true); // Via prefix
+      // Custom models
+      expect(isCustomModel('CustomCore')).toBe(true);
+      expect(isCustomModel('FinanceExtension')).toBe(true);
+      expect(isCustomModel('AuditExtension')).toBe(true); // Via prefix
     });
 
     it('should handle wildcards in CUSTOM_MODELS', () => {
-      process.env.CUSTOM_MODELS = 'Asl*,MyCompany*';
+      process.env.CUSTOM_MODELS = 'Custom*,MyCompany*';
       delete process.env.EXTENSION_PREFIX;
       
-      // Should match Asl*
-      expect(isCustomModel('AslCore')).toBe(true);
-      expect(isCustomModel('AslFinanceCore')).toBe(true);
-      expect(isCustomModel('AslAuditReports')).toBe(true);
+      // Should match Custom*
+      expect(isCustomModel('CustomCore')).toBe(true);
+      expect(isCustomModel('CustomFinance')).toBe(true);
+      expect(isCustomModel('CustomReports')).toBe(true);
       
       // Should match MyCompany*
       expect(isCustomModel('MyCompanyModule')).toBe(true);
@@ -209,18 +209,18 @@ describe('modelClassifier', () => {
     });
 
     it('should handle mixed case in real zip files', () => {
-      process.env.CUSTOM_MODELS = 'Asl*';
+      process.env.CUSTOM_MODELS = 'Custom*';
       
       // Lowercase names from zip
-      expect(isCustomModel('aslcore')).toBe(true);
-      expect(isCustomModel('aslfinancecore')).toBe(true);
+      expect(isCustomModel('customcore')).toBe(true);
+      expect(isCustomModel('customfinance')).toBe(true);
       expect(isStandardModel('applicationfoundation')).toBe(true);
     });
 
     it('should combine wildcards and exact matches', () => {
-      process.env.CUSTOM_MODELS = 'Asl*,SpecificModel,*Extension';
+      process.env.CUSTOM_MODELS = 'Custom*,SpecificModel,*Extension';
       
-      expect(isCustomModel('AslCore')).toBe(true);
+      expect(isCustomModel('CustomCore')).toBe(true);
       expect(isCustomModel('SpecificModel')).toBe(true);
       expect(isCustomModel('MyExtension')).toBe(true);
       expect(isStandardModel('OtherModel')).toBe(true);

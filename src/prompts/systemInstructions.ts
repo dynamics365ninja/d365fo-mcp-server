@@ -269,9 +269,9 @@ All X++ code files MUST be placed in the correct **PackagesLocalDirectory** stru
 - Enums: {PACKAGES_PATH}\\{ModelName}\\{ModelName}\\AxEnum\\{EnumName}.xml
 - Forms: {PACKAGES_PATH}\\{ModelName}\\{ModelName}\\AxForm\\{FormName}.xml
 
-**Example for custom model "AslCore":**
-- C:\\AOSService\\PackagesLocalDirectory\\AslCore\\AslCore\\AxClass\\MyHelperClass.xml
-- C:\\AOSService\\PackagesLocalDirectory\\AslCore\\AslCore\\AxTable\\MyTable.xml
+**Example for custom model "CustomCore":**
+- C:\\AOSService\\PackagesLocalDirectory\\CustomCore\\CustomCore\\AxClass\\MyHelperClass.xml
+- C:\\AOSService\\PackagesLocalDirectory\\CustomCore\\CustomCore\\AxTable\\MyTable.xml
 
 ### File Naming Rules:
 - Class files: {ClassName}.xml (example: CustHelper.xml)
@@ -281,7 +281,7 @@ All X++ code files MUST be placed in the correct **PackagesLocalDirectory** stru
 
 ### How to Determine the Correct Path:
 
-1. **Ask the user** which model they're working with (e.g., "AslCore", "ApplicationSuite")
+1. **Ask the user** which model they're working with (e.g., "CustomCore", "ApplicationSuite")
 2. **Check environment variables**:
    - PACKAGES_PATH or K:\\AOSService\\PackagesLocalDirectory
    - Default: C:\\AOSService\\PackagesLocalDirectory
