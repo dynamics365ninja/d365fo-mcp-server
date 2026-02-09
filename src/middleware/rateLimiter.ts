@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Request, Response } from 'express';
 
 /**
@@ -7,17 +7,21 @@ import type { Request, Response } from 'express';
 
 /**
  * Custom key generator that handles IP addresses with ports
+ * Uses ipKeyGenerator helper for proper IPv6 support
  * Fixes Azure App Service proxy scenarios where IP comes as "IP:PORT"
  */
 function generateKey(req: Request): string {
   // Get IP from various sources (trusting proxy headers)
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const rawIp = req.ip || req.socket.remoteAddress || 'unknown';
   
-  // Strip port number if present at the end (e.g., "20.73.89.75:1024" -> "20.73.89.75")
-  // This regex removes :PORT at the end, but preserves IPv6 addresses
-  const ipWithoutPort = ip.replace(/:\d+$/, '');
+  // Azure App Service sometimes appends port to IP (e.g., "20.73.89.75:1024")
+  // Strip port number before normalizing
+  const ipWithoutPort = rawIp.replace(/:\d+$/, '');
   
-  return ipWithoutPort || 'unknown';
+  // Use the official ipKeyGenerator helper for proper IPv4/IPv6 normalization
+  const normalizedIp = ipKeyGenerator(ipWithoutPort);
+  
+  return normalizedIp;
 }
 
 /**
@@ -28,6 +32,10 @@ export const apiRateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
   keyGenerator: generateKey,
+  validate: {
+    // We safely use ipKeyGenerator in our custom generateKey function
+    keyGeneratorIpFallback: false,
+  },
   message: {
     error: 'Too many requests from this IP, please try again later.',
     retryAfter: 'Please check the Retry-After header.',
@@ -55,6 +63,10 @@ export const strictRateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_STRICT_MAX_REQUESTS || '20', 10),
   keyGenerator: generateKey,
+  validate: {
+    // We safely use ipKeyGenerator in our custom generateKey function
+    keyGeneratorIpFallback: false,
+  },
   message: {
     error: 'Too many requests for this endpoint, please try again later.',
     retryAfter: 'Please check the Retry-After header.',
@@ -78,6 +90,10 @@ export const authRateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_AUTH_MAX_REQUESTS || '5', 10),
   keyGenerator: generateKey,
+  validate: {
+    // We safely use ipKeyGenerator in our custom generateKey function
+    keyGeneratorIpFallback: false,
+  },
   message: {
     error: 'Too many authentication attempts, please try again later.',
     retryAfter: 'Please check the Retry-After header.',
@@ -102,6 +118,10 @@ export function createCustomRateLimiter(windowMs: number, maxRequests: number) {
     windowMs,
     max: maxRequests,
     keyGenerator: generateKey,
+    validate: {
+      // We safely use ipKeyGenerator in our custom generateKey function
+      keyGeneratorIpFallback: false,
+    },
     message: {
       error: 'Rate limit exceeded',
       retryAfter: 'Please check the Retry-After header.',
