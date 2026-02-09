@@ -1,22 +1,31 @@
 # D365FO X++ Development Instructions for GitHub Copilot
 
+## ⛔ CRITICAL: NEVER USE BUILT-IN SEARCH TOOLS ⛔
+
+**🚨 STOP! Read this FIRST before doing ANYTHING with D365FO/X++ code:**
+
+**ABSOLUTELY FORBIDDEN - These tools will BLOCK and HANG:**
+- ❌❌❌ **`semantic_search`** - NEVER USE THIS! It's slow (5+ minutes) and will hang with "Searching..."
+- ❌❌❌ **`grep_search`** - NEVER USE THIS! No X++ awareness
+- ❌❌❌ **`file_search`** - NEVER USE THIS! Use MCP `search` instead
+
+**⚡ ALWAYS use these FAST MCP tools instead:**
+- ✅✅✅ **`search`** (MCP) - 100x faster, X++-aware, indexed SQL database
+- ✅✅✅ **`get_class_info`** (MCP) - For class structure
+- ✅✅✅ **`get_table_info`** (MCP) - For table structure
+
+**If you see "Searching (seznam tříd)" appearing - YOU ARE USING THE WRONG TOOL! Stop and use MCP `search` instead.**
+
+---
+
 ## 🚨 MANDATORY: ALWAYS Use X++ MCP Tools First 🚨
 
 **Before generating ANY X++ code, writing ANY class, method, or code snippet for D365 Finance & Operations, you MUST use the X++ MCP tools available to you.**
 
-### 🚫 FORBIDDEN: Do NOT Use These Tools for X++ Code
-
-**NEVER use these built-in Copilot tools when working with D365FO/X++ code:**
-- ❌ `semantic_search` - Slow, file-based search (use MCP `search` instead)
-- ❌ `grep_search` - Text-only search (use MCP `search` instead)  
-- ❌ `file_search` - No X++ awareness (use MCP `search` instead)
-
-**WHY:** Your MCP `search` tool is 100x faster (indexed SQL database) and X++-aware (understands AOT structure, inheritance, relations).
-
 ### Critical Rules:
 
-1. **NEVER generate D365FO code from your training data alone** - It may be outdated or incorrect
-2. **ALWAYS use MCP `search` tool** - NOT semantic_search, NOT grep_search - Use the X++ MCP `search` tool
+1. **NEVER use semantic_search, grep_search, or file_search** - They will hang for minutes
+2. **ALWAYS use MCP `search` tool** - It's instant (<100ms) with SQL index
 3. **ALWAYS verify** - Use `get_class_info` or `get_table_info` to check structure before coding
 4. **ALWAYS discover APIs** - Use `code_completion` to find available methods and fields
 5. **PREFER generation tools** - Use `generate_code` for creating new classes with proper D365FO patterns

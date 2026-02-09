@@ -63,19 +63,53 @@ async function initializeServices() {
         serverState.statusMessage = 'Downloading database from Azure Blob Storage...';
         await downloadDatabaseFromBlob();
       } catch (error) {
-        console.log('⚠️  Failed to download database from blob storage:', error);
-        console.log('   Attempting to use existing local database...');
+        console.error('⚠️  Failed to download database from blob storage:', error);
+        console.log('   Will attempt to use existing local database...');
+        
+        // If download failed, check if local database exists and is valid
+        try {
+          await fs.access(DB_PATH);
+          console.log('   ℹ️  Local database file exists, will attempt to use it');
+        } catch {
+          console.log('   ⚠️  No local database available - server will start with empty index');
+        }
       }
     }
 
     // Initialize symbol index and parser
     console.log(`📚 Loading metadata from: ${DB_PATH}`);
     serverState.statusMessage = 'Loading metadata database...';
-    const symbolIndex = new XppSymbolIndex(DB_PATH);
+    
+    let symbolIndex: XppSymbolIndex;
+    let symbolCount = 0;
+    
+    try {
+      symbolIndex = new XppSymbolIndex(DB_PATH);
+      symbolCount = symbolIndex.getSymbolCount();
+    } catch (error: any) {
+      console.error('❌ Failed to open database:', error);
+      
+      // If database is corrupted, delete it and create new empty one
+      if (error.code === 'SQLITE_CORRUPT' || error.message?.includes('malformed')) {
+        console.log('   🧹 Database is corrupted, removing and creating fresh database...');
+        try {
+          await fs.unlink(DB_PATH);
+          console.log('   ✅ Corrupted database removed');
+        } catch (unlinkError) {
+          console.error('   ⚠️  Failed to remove corrupted database:', unlinkError);
+        }
+        
+        // Try again with fresh database
+        symbolIndex = new XppSymbolIndex(DB_PATH);
+        symbolCount = symbolIndex.getSymbolCount();
+      } else {
+        throw error;
+      }
+    }
+    
     const parser = new XppMetadataParser();
     
     // Check if database needs indexing
-    const symbolCount = symbolIndex.getSymbolCount();
     if (symbolCount === 0) {
       console.log('⚠️  No symbols found in database. Run indexing first:');
       console.log('   npm run index-metadata');
