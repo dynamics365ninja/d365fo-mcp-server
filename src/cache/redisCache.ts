@@ -10,6 +10,11 @@ export class RedisCacheService {
   private enabled: boolean = false;
   private defaultTTL: number = 3600; // 1 hour default
   private connectionPromise: Promise<void> | null = null;
+  
+  // Optimized TTL values for different data types
+  private readonly TTL_MEDIUM = 1800;    // 30 min - for semi-static data  
+  private readonly TTL_LONG = 7200;      // 2 hours - for static metadata
+  private readonly TTL_VERY_LONG = 86400; // 24 hours - for class/table structures
 
   constructor() {
     const redisUrl = process.env.REDIS_URL;
@@ -196,6 +201,27 @@ export class RedisCacheService {
    */
   generateCompletionKey(className: string, prefix?: string): string {
     return `xpp:complete:${className}:${prefix || ''}`;
+  }
+  
+  /**
+   * Set class/table info with long TTL (static metadata)
+   */
+  async setClassInfo<T>(key: string, value: T): Promise<void> {
+    return this.set(key, value, this.TTL_VERY_LONG);
+  }
+  
+  /**
+   * Set search results with medium TTL
+   */
+  async setSearchResults<T>(key: string, value: T): Promise<void> {
+    return this.set(key, value, this.TTL_MEDIUM);
+  }
+  
+  /**
+   * Set pattern analysis with long TTL (semi-static)
+   */
+  async setPatternAnalysis<T>(key: string, value: T): Promise<void> {
+    return this.set(key, value, this.TTL_LONG);
   }
 
   /**

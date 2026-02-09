@@ -11,6 +11,7 @@ import type { XppSymbol } from './types.js';
 export class XppSymbolIndex {
   private db: Database.Database;
   private standardModels: string[] = [];
+  private stmtCache: Map<string, Database.Statement> = new Map();
 
   constructor(dbPath: string) {
     // Ensure database directory exists
@@ -20,8 +21,26 @@ export class XppSymbolIndex {
     }
 
     this.db = new Database(dbPath);
+    
+    // Enable SQLite performance optimizations
+    this.db.pragma('journal_mode = WAL'); // Write-Ahead Logging for better concurrency
+    this.db.pragma('synchronous = NORMAL'); // Faster writes, still crash-safe
+    this.db.pragma('cache_size = -64000'); // 64MB cache (negative = kibibytes)
+    this.db.pragma('temp_store = MEMORY'); // Store temp tables in memory
+    this.db.pragma('mmap_size = 268435456'); // 256MB memory-mapped I/O
+    this.db.pragma('page_size = 8192'); // Optimal page size for modern systems
+    this.db.pragma('optimize'); // Run query optimizer
+    
     this.loadStandardModels();
     this.initializeDatabase();
+    
+    // Analyze database after initialization for better query plans
+    try {
+      this.db.pragma('analysis_limit = 1000');
+      this.db.exec('ANALYZE');
+    } catch (e) {
+      // ANALYZE might fail on empty DB, ignore
+    }
   }
 
   /**
@@ -140,7 +159,7 @@ export class XppSymbolIndex {
       END;
     `);
 
-    // Create indexes
+    // Create indexes - optimized with composite indexes for common query patterns
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
       CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols(type);
@@ -149,6 +168,12 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_symbols_parent_name ON symbols(parent_name);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_symbols_unique 
         ON symbols(name, type, COALESCE(parent_name, ''), model);
+      
+      -- Composite indexes for common query patterns (major speed boost)
+      CREATE INDEX IF NOT EXISTS idx_type_parent ON symbols(type, parent_name) WHERE parent_name IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_type_name ON symbols(type, name);
+      CREATE INDEX IF NOT EXISTS idx_parent_type ON symbols(parent_name, type) WHERE parent_name IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_name_type ON symbols(name, type);
     `);
 
     // Create code_patterns table for pattern analysis
@@ -935,6 +960,7 @@ export class XppSymbolIndex {
    * Close the database connection
    */
   close(): void {
+    this.stmtCache.clear();
     this.db.close();
   }
 }
