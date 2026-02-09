@@ -105,4 +105,22 @@ export interface XppSymbol {
   extendsClass?: string;        // For classes: extends relationship
   implementsInterfaces?: string;// For classes: comma-separated interfaces
   usageExample?: string;        // Generated usage example
+  // Pattern analysis metadata
+  usageFrequency?: number;      // How many places use/call this
+  patternType?: string;         // Helper, Service, Repository, Controller, etc.
+  typicalUsages?: string;       // JSON array of typical usage examples
+  calledByCount?: number;       // How many methods call this
+  relatedMethods?: string;      // Comma-separated related methods
+  apiPatterns?: string;         // JSON of common API usage patterns
+}
+
+export interface CodePattern {
+  patternName: string;
+  patternType: string;          // Helper, Service, Repository, etc.
+  commonMethods: string[];      // Most frequent methods in this pattern
+  dependencies: string[];       // Common dependencies
+  usageExamples: string[];      // Real implementation examples
+  frequency: number;            // How many classes follow this pattern
+  domain?: string;              // Customer, Inventory, Sales, etc.
+  characteristics?: string[];   // Distinguishing features
 }

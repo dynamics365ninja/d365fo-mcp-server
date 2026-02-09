@@ -309,8 +309,8 @@ xpp-metadata/
 **Recommended Approach:**
 1. Configure all Azure DevOps variables
 2. Upload PackagesLocalDirectory.zip to Azure Blob Storage (container: `packages`)
-3. Run `d365fo-mcp-data-build-standard.yml` for standard models (~30-60 min)
-4. Run `d365fo-mcp-data-build-custom.yml` for initial custom extraction (~5-15 min)
+3. Run `d365fo-mcp-data-build-standard.yml` for standard models (~10 min)
+4. Run `d365fo-mcp-data-build-custom.yml` for initial custom extraction (~2 min)
 5. Run `d365fo-mcp-data-platform-upgrade.yml` to deploy to production
 
 **Pipelines:**
@@ -504,7 +504,6 @@ Pipeline Logs:
 - Review [SETUP.md](SETUP.md) for initial configuration
 - Check [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) for MCP usage
 - See [ARCHITECTURE.md](ARCHITECTURE.md) for system design
-- Read [PERFORMANCE.md](PERFORMANCE.md) for optimization
 
 ---
 

@@ -10,6 +10,7 @@ Practical examples for X++ code completion and symbol lookup in Visual Studio Co
 - [Table Information](#table-information)
 - [Extension Development](#extension-development)
 - [Code Generation](#code-generation)
+- [Pattern Analysis & Intelligent Code Generation](#pattern-analysis--intelligent-code-generation)
 - [Configuration](#configuration)
 
 ---
@@ -393,6 +394,173 @@ Create a form extension for CustTable form to add a new button
 - Form extension class
 - Button event handler
 - Menu item binding
+
+---
+
+## Pattern Analysis & Intelligent Code Generation
+
+New intelligent tools that learn from your codebase to provide smart suggestions and pattern-based code generation.
+
+### Analyzing Code Patterns
+
+**Scenario:** You need to implement financial dimension handling but don't know which classes and patterns to use.
+
+```
+Analyze code patterns for financial dimensions
+```
+
+**Returns:**
+- Common classes used together (DimensionAttributeValueSet, DimensionStorage, etc.)
+- Typical dependencies and relationships
+- Frequency analysis showing most-used patterns
+- Example code snippets from your codebase
+
+**MCP Tool:** `analyze_code_patterns`
+
+```json
+{
+  "scenario": "financial dimensions",
+  "classPattern": "Dimension",
+  "limit": 5
+}
+```
+
+---
+
+### Getting Implementation Suggestions
+
+**Scenario:** You're creating a helper class and need to implement a `validate()` method but aren't sure of the best approach.
+
+```
+Suggest implementation for validate method in my DimensionHelper class
+```
+
+**Returns:**
+- Similar validate methods from your codebase
+- Implementation patterns (error handling, parameter validation, etc.)
+- Complete code examples with complexity analysis
+- Context-specific suggestions based on method name pattern
+
+**MCP Tool:** `suggest_method_implementation`
+
+```json
+{
+  "className": "DimensionHelper",
+  "methodName": "validate",
+  "parameters": ["_dimension", "_value"]
+}
+```
+
+**Common Method Patterns:**
+- `validate*` - Returns boolean, includes error handling patterns
+- `find*` - Query patterns with null checks
+- `create*` - Initialization and insertion patterns
+- `update*` - Modification patterns with ttsbegin/ttscommit
+- `delete*` - Cleanup patterns with cascade logic
+- `calculate*` - Mathematical operations with unit tests
+
+---
+
+### Analyzing Class Completeness
+
+**Scenario:** You created a new `CustTableHelper` class and want to ensure it follows common patterns.
+
+```
+Analyze my CustTableHelper class for completeness
+```
+
+**Returns:**
+- List of existing methods in your class
+- Suggested missing methods based on similar Helper classes
+- Importance ranking (🔴 Very common, 🟠 Common, 🟡 Somewhat common)
+- Percentage of similar classes that implement each method
+
+**MCP Tool:** `analyze_class_completeness`
+
+```json
+{
+  "className": "CustTableHelper"
+}
+```
+
+**Example Output:**
+```
+🔴 validate: Found in 85% of similar classes (17/20)
+🟠 checkMandatoryFields: Found in 65% of similar classes (13/20)
+🟡 copyToClipboard: Found in 35% of similar classes (7/20)
+```
+
+---
+
+### Getting API Usage Patterns
+
+**Scenario:** You need to use `DimensionAttributeValueSet` but don't know the correct initialization and method call sequence.
+
+```
+Show me how to use DimensionAttributeValueSet API
+```
+
+**Returns:**
+- Common initialization patterns
+- Typical method call sequences
+- Complete working examples from your codebase
+- Related APIs often used together
+- Common parameters and their typical values
+- Error handling patterns
+- Best practices
+
+**MCP Tool:** `get_api_usage_patterns`
+
+```json
+{
+  "apiName": "DimensionAttributeValueSet",
+  "context": "initialization"
+}
+```
+
+**Example Output:**
+```xpp
+// Typical initialization
+DimensionAttributeValueSet valueSet;
+DimensionAttribute attribute;
+
+attribute = DimensionAttribute::findByName('Department');
+valueSet = DimensionAttributeValueSet::construct();
+
+// Common method sequence
+valueSet.addDimension(attribute, dimensionValue);
+valueSet.save();
+```
+
+---
+
+### Combining Intelligent Tools
+
+**Workflow Example:** Creating a new posting service
+
+1. **Analyze patterns:**
+   ```
+   Analyze code patterns for inventory posting
+   ```
+   → Identifies common classes like `InventMovement`, `InventUpd_*`, `TmpInventTransMark`
+
+2. **Check completeness:**
+   ```
+   Analyze my InventPostingService class for completeness
+   ```
+   → Suggests missing methods: `validateBeforePost`, `createJournal`, `updateInventory`
+
+3. **Get implementation:**
+   ```
+   Suggest implementation for validateBeforePost in InventPostingService
+   ```
+   → Shows similar validation methods with error handling patterns
+
+4. **Learn API usage:**
+   ```
+   Show me how to use InventMovement API
+   ```
+   → Provides initialization patterns and method sequences
 
 ---
 

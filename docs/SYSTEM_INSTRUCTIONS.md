@@ -31,7 +31,11 @@ The file instructs GitHub Copilot to:
 1. ✅ **ALWAYS search first** - Use `search` tool to find D365FO patterns
 2. ✅ **ALWAYS verify** - Use `get_class_info` or `get_table_info` before coding  
 3. ✅ **ALWAYS discover APIs** - Use `code_completion` to find methods
-4. ✅ **NEVER guess** - Never generate D365FO code without querying tools first
+4. ✅ **ALWAYS analyze patterns** - Use `analyze_code_patterns` to learn from actual codebase
+5. ✅ **ALWAYS get smart suggestions** - Use `suggest_method_implementation` for context-specific examples
+6. ✅ **ALWAYS check completeness** - Use `analyze_class_completeness` to find missing methods
+7. ✅ **ALWAYS learn API usage** - Use `get_api_usage_patterns` to see real initialization and usage
+8. ✅ **NEVER guess** - Never generate D365FO code without querying tools first
 
 ## Example: Before and After
 
@@ -46,10 +50,13 @@ The file instructs GitHub Copilot to:
 **User:** "Create a helper class for maintaining financial dimensions"
 
 **Copilot:** 
-1. Calls `search("dimension", type="class")` → Finds actual D365FO dimension classes
-2. Calls `get_class_info("DimensionDefaultingService")` → Studies Microsoft's patterns
-3. Calls `code_completion("DimensionAttributeValueSet")` → Gets proper APIs
-4. Generates code with **correct, verified class names and methods**
+1. Calls `analyze_code_patterns("financial dimensions")` → Learns common patterns from codebase
+2. Calls `search("dimension", type="class")` → Finds actual D365FO dimension classes
+3. Calls `get_class_info("DimensionDefaultingService")` → Studies Microsoft's patterns
+4. Calls `code_completion("DimensionAttributeValueSet")` → Gets proper APIs
+5. Calls `get_api_usage_patterns("DimensionAttributeValueSet")` → Sees initialization and method sequences
+6. Generates code with **correct, verified class names and methods**
+7. Calls `analyze_class_completeness("MyDimHelper")` → Suggests commonly missing methods
 
 ## How It Works
 

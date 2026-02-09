@@ -98,6 +98,10 @@ This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O
 | **`get_table_info`** | Get detailed information about an X++ table including fields, indexes, and relations |
 | **`code_completion`** | IntelliSense-like code completion for methods and fields |
 | **`generate_code`** | Generate X++ code templates for common patterns |
+| **`analyze_code_patterns`** | 🆕 Analyze common code patterns and dependencies for specific scenarios |
+| **`suggest_method_implementation`** | 🆕 Suggest method implementations based on similar code in your codebase |
+| **`analyze_class_completeness`** | 🆕 Analyze a class and suggest missing methods based on common patterns |
+| **`get_api_usage_patterns`** | 🆕 Show how to use specific APIs with initialization and usage examples |
 
 ### Technical Highlights
 
@@ -336,7 +340,6 @@ For detailed architecture diagrams with Mermaid visualizations, see [ARCHITECTUR
 | [**USAGE_EXAMPLES.md**](docs/USAGE_EXAMPLES.md) | Practical examples and use cases |
 | [**ARCHITECTURE.md**](docs/ARCHITECTURE.md) | System architecture and design |
 | [**PIPELINES.md**](docs/PIPELINES.md) | Azure DevOps pipeline automation |
-| [**PERFORMANCE.md**](docs/PERFORMANCE.md) | Performance optimization tips |
 | [**CUSTOM_EXTENSIONS.md**](docs/CUSTOM_EXTENSIONS.md) | ISV and custom extension development |
 | [**TESTING.md**](docs/TESTING.md) | Testing guide and best practices |
 
@@ -490,7 +493,6 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 - [docs/AZURE_PIPELINE_AUTOMATION.md](docs/AZURE_PIPELINE_AUTOMATION.md) - Azure DevOps pipeline automation for metadata extraction
 - [docs/STANDARD_METADATA_NUGET.md](docs/STANDARD_METADATA_NUGET.md) - Standard metadata extraction from NuGet packages
 - [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md) - GitHub repository setup guide
-- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) - Performance optimization guide
 - [docs/CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md) - ISV extension configuration
 - [docs/DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md) - Development environment setup
 - [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) - Project implementation status
