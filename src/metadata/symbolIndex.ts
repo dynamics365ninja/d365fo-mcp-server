@@ -622,15 +622,34 @@ export class XppSymbolIndex {
    * Analyze code patterns for a given scenario/domain
    */
   analyzeCodePatterns(scenario: string, classPattern?: string, limit: number = 20): any {
-    let sql = `
-      SELECT * FROM symbols
-      WHERE type = 'class'
-    `;
+    // Extract keywords from scenario for better search
+    const keywords = scenario.toLowerCase()
+      .split(/\s+/)
+      .filter(w => w.length > 3 && !['with', 'which', 'will', 'that', 'this', 'from', 'have'].includes(w));
     
+    let sql: string;
     const params: any[] = [];
     
-    if (scenario) {
-      sql += ` AND (name LIKE ? OR tags LIKE ? OR description LIKE ?)`;
+    if (keywords.length > 0) {
+      // Use FTS5 for better text search
+      sql = `
+        SELECT DISTINCT s.* 
+        FROM symbols s
+        LEFT JOIN symbols_fts f ON s.rowid = f.rowid
+        WHERE s.type = 'class'
+          AND (${keywords.map(() => '(f.symbols_fts MATCH ? OR s.name LIKE ? OR s.tags LIKE ?)').join(' OR ')})
+      `;
+      
+      for (const keyword of keywords) {
+        params.push(keyword, `%${keyword}%`, `%${keyword}%`);
+      }
+    } else {
+      // Fallback to simple search
+      sql = `
+        SELECT * FROM symbols
+        WHERE type = 'class'
+          AND (name LIKE ? OR tags LIKE ? OR description LIKE ?)
+      `;
       params.push(`%${scenario}%`, `%${scenario}%`, `%${scenario}%`);
     }
     
@@ -683,6 +702,7 @@ export class XppSymbolIndex {
       .map(([name, count]) => ({ name, frequency: count }));
     
     return {
+      scenario,
       totalMatches: classes.length,
       commonMethods,
       commonDependencies,
