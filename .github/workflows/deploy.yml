@@ -81,8 +81,28 @@ jobs:
       - name: Health check
         run: |
           echo "Waiting for deployment to complete..."
-          sleep 30
-          curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health || exit 1
+          sleep 45
+          
+          MAX_RETRIES=12
+          RETRY_DELAY=15
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Health check attempt $i/$MAX_RETRIES..."
+            
+            if curl -f --max-time 30 -s https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health > /dev/null 2>&1; then
+              echo "✅ Health check passed!"
+              curl https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health
+              exit 0
+            fi
+            
+            if [ $i -lt $MAX_RETRIES ]; then
+              echo "⏳ Server not ready yet, waiting ${RETRY_DELAY}s before retry..."
+              sleep $RETRY_DELAY
+            fi
+          done
+          
+          echo "❌ Health check failed after $MAX_RETRIES attempts"
+          exit 1
 
       - name: Logout from Azure
         run: az logout
