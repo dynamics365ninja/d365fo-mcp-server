@@ -635,13 +635,26 @@ export class XppSymbolIndex {
       sql = `
         SELECT DISTINCT s.* 
         FROM symbols s
-        LEFT JOIN symbols_fts f ON s.rowid = f.rowid
         WHERE s.type = 'class'
-          AND (${keywords.map(() => '(f.symbols_fts MATCH ? OR s.name LIKE ? OR s.tags LIKE ?)').join(' OR ')})
+          AND (
+            s.id IN (
+              SELECT rowid FROM symbols_fts WHERE symbols_fts MATCH ?
+            )
+            ${keywords.slice(1).map(() => `
+            OR s.id IN (
+              SELECT rowid FROM symbols_fts WHERE symbols_fts MATCH ?
+            )`).join('')}
+            ${keywords.map(() => 'OR s.name LIKE ? OR s.tags LIKE ?').join(' ')}
+          )
       `;
       
+      // Add FTS match parameters
       for (const keyword of keywords) {
-        params.push(keyword, `%${keyword}%`, `%${keyword}%`);
+        params.push(keyword);
+      }
+      // Add LIKE parameters
+      for (const keyword of keywords) {
+        params.push(`%${keyword}%`, `%${keyword}%`);
       }
     } else {
       // Fallback to simple search
