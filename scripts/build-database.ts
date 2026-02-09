@@ -78,6 +78,10 @@ async function buildDatabase() {
   const endTime = Date.now();
   const duration = ((endTime - startTime) / 1000).toFixed(2);
 
+  // Compute usage statistics (usage_frequency, called_by_count)
+  console.log('');
+  symbolIndex.computeUsageStatistics();
+
   const count = symbolIndex.getSymbolCount();
   console.log(`✅ Database built successfully in ${duration}s!`);
   console.log(`📊 Total symbols: ${count}`);

@@ -50,6 +50,14 @@ The test suite covers:
   - Table not found handling
   - Error handling
 
+- **intelligentTools.test.ts**: Tests for intelligent code generation tools
+  - Pattern analysis (analyze_code_patterns)
+  - Method implementation suggestions (suggest_method_implementation)
+  - Class completeness analysis (analyze_class_completeness)
+  - API usage patterns (get_api_usage_patterns)
+  - Cache integration for pattern analysis
+  - Error handling and empty result scenarios
+
 ### Server Components (Integration Tests)
 - **transport.test.ts**: Tests for MCP protocol transport layer
   - Initialize request handling

@@ -57,6 +57,30 @@ export const GenerateCodeSchema = z.object({
   }).optional().describe('Additional options for code generation')
 });
 
+export const AnalyzeCodePatternsSchema = z.object({
+  scenario: z.string().describe('Scenario or domain to analyze (e.g., "dimension", "validation", "customer")'),
+  classPattern: z.string().optional().describe('Class name pattern filter (e.g., "Helper", "Service")'),
+  limit: z.number().optional().default(20).describe('Maximum number of classes to analyze')
+});
+
+export const SuggestMethodImplementationSchema = z.object({
+  className: z.string().describe('Name of the class containing the method'),
+  methodName: z.string().describe('Name of the method to suggest implementation for'),
+  parameters: z.array(z.object({
+    name: z.string(),
+    type: z.string()
+  })).optional().describe('Method parameters'),
+  returnType: z.string().optional().default('void').describe('Method return type')
+});
+
+export const AnalyzeClassCompletenessSchema = z.object({
+  className: z.string().describe('Name of the class to analyze')
+});
+
+export const GetApiUsagePatternsSchema = z.object({
+  className: z.string().describe('Name of the class/API to get usage patterns for')
+});
+
 // ============================================
 // Tool Result Types
 // ============================================
@@ -491,6 +515,232 @@ class ${name}Service extends SysOperationServiceBase
   };
 }
 
+export function createAnalyzeCodePatternsTool(symbolIndex: XppSymbolIndex) {
+  return async (args: z.infer<typeof AnalyzeCodePatternsSchema>): Promise<ToolResult> => {
+    const { scenario, classPattern, limit } = args;
+    
+    const analysis = symbolIndex.analyzeCodePatterns(scenario, classPattern, limit);
+    
+    let output = `# Code Pattern Analysis: ${scenario}\n\n`;
+    output += `**Total Matching Classes:** ${analysis.totalMatches}\n\n`;
+    
+    if (analysis.patterns.length > 0) {
+      output += `## Detected Patterns\n\n`;
+      for (const pattern of analysis.patterns) {
+        output += `- **${pattern.patternType}**: ${pattern.count} classes\n`;
+        output += `  Examples: ${pattern.examples.join(', ')}\n`;
+      }
+      output += '\n';
+    }
+    
+    if (analysis.commonMethods.length > 0) {
+      output += `## Common Methods (Top 10)\n\n`;
+      for (const method of analysis.commonMethods.slice(0, 10)) {
+        output += `- **${method.name}**: found in ${method.frequency} classes\n`;
+      }
+      output += '\n';
+    }
+    
+    if (analysis.commonDependencies.length > 0) {
+      output += `## Common Dependencies\n\n`;
+      for (const dep of analysis.commonDependencies.slice(0, 10)) {
+        output += `- **${dep.name}**: used by ${dep.frequency} classes\n`;
+      }
+      output += '\n';
+    }
+    
+    if (analysis.exampleClasses.length > 0) {
+      output += `## Example Classes\n\n`;
+      for (const cls of analysis.exampleClasses) {
+        output += `- ${cls}\n`;
+      }
+    }
+    
+    return {
+      content: [{ type: 'text', text: output }]
+    };
+  };
+}
+
+export function createSuggestMethodImplementationTool(symbolIndex: XppSymbolIndex, _parser: XppMetadataParser) {
+  return async (args: z.infer<typeof SuggestMethodImplementationSchema>): Promise<ToolResult> => {
+    const { className, methodName, parameters = [], returnType = 'void' } = args;
+    
+    // Find similar methods
+    const similarMethods = symbolIndex.findSimilarMethods(methodName, className, 5);
+    
+    if (similarMethods.length === 0) {
+      return {
+        content: [{ 
+          type: 'text', 
+          text: `No similar methods found for "${methodName}". Try using more generic method names or check spelling.` 
+        }]
+      };
+    }
+    
+    let output = `# Method Implementation Suggestions\n\n`;
+    output += `**Class:** ${className}\n`;
+    output += `**Method:** ${returnType} ${methodName}(${parameters.map(p => `${p.type} ${p.name}`).join(', ')})\n\n`;
+    
+    output += `## Similar Methods Found\n\n`;
+    
+    for (let i = 0; i < similarMethods.length; i++) {
+      const similar = similarMethods[i];
+      output += `### ${i + 1}. ${similar.className}.${similar.methodName}\n\n`;
+      output += `**Signature:** \`${similar.signature}\`\n`;
+      output += `**Complexity:** ${similar.complexity || 'N/A'}\n`;
+      if (similar.tags.length > 0) {
+        output += `**Tags:** ${similar.tags.join(', ')}\n`;
+      }
+      output += `\n**Implementation Preview:**\n\n\`\`\`xpp\n${similar.sourceSnippet || 'Source not available'}\n\`\`\`\n\n`;
+    }
+    
+    output += `## Suggested Implementation Pattern\n\n`;
+    output += `Based on similar methods, consider implementing:\n\n`;
+    output += `\`\`\`xpp\n`;
+    output += `public ${returnType} ${methodName}(${parameters.map(p => `${p.type} _${p.name}`).join(', ')})\n`;
+    output += `{\n`;
+    output += `    // TODO: Implement method based on similar patterns above\n`;
+    
+    // Add common patterns based on method name
+    if (methodName.toLowerCase().includes('validate')) {
+      output += `    boolean isValid = true;\n`;
+      output += `    \n`;
+      output += `    // Add validation logic here\n`;
+      output += `    \n`;
+      output += `    return isValid;\n`;
+    } else if (methodName.toLowerCase().includes('find') || methodName.toLowerCase().includes('get')) {
+      output += `    ${returnType} result;\n`;
+      output += `    \n`;
+      output += `    // Add query logic here\n`;
+      output += `    \n`;
+      output += `    return result;\n`;
+    } else if (methodName.toLowerCase().includes('create') || methodName.toLowerCase().includes('insert')) {
+      output += `    ttsbegin;\n`;
+      output += `    \n`;
+      output += `    // Add creation logic here\n`;
+      output += `    \n`;
+      output += `    ttscommit;\n`;
+    } else {
+      output += `    // Add implementation here\n`;
+    }
+    
+    output += `}\n`;
+    output += `\`\`\`\n`;
+    
+    return {
+      content: [{ type: 'text', text: output }]
+    };
+  };
+}
+
+export function createAnalyzeClassCompletenessTool(symbolIndex: XppSymbolIndex) {
+  return async (args: z.infer<typeof AnalyzeClassCompletenessSchema>): Promise<ToolResult> => {
+    const { className } = args;
+    
+    const classSymbol = symbolIndex.getSymbolByName(className, 'class');
+    
+    if (!classSymbol) {
+      return {
+        content: [{ type: 'text', text: `Class "${className}" not found` }],
+        isError: true
+      };
+    }
+    
+    const existingMethods = symbolIndex.getClassMethods(className);
+    const suggestedMethods = symbolIndex.suggestMissingMethods(className);
+    
+    let output = `# Class Completeness Analysis: ${className}\n\n`;
+    output += `**Model:** ${classSymbol.model}\n`;
+    output += `**Pattern Type:** ${classSymbol.patternType || 'Unknown'}\n`;
+    output += `**Existing Methods:** ${existingMethods.length}\n\n`;
+    
+    if (existingMethods.length > 0) {
+      output += `## Implemented Methods\n\n`;
+      for (const method of existingMethods) {
+        output += `- \`${method.signature || method.name}\`\n`;
+      }
+      output += '\n';
+    }
+    
+    if (suggestedMethods.length > 0) {
+      output += `## Suggested Missing Methods\n\n`;
+      output += `Based on analysis of similar ${classSymbol.patternType || 'classes'}:\n\n`;
+      
+      for (const suggestion of suggestedMethods) {
+        output += `- **${suggestion.methodName}**: Found in ${suggestion.percentage}% of similar classes (${suggestion.frequency}/${suggestion.totalClasses})\n`;
+      }
+      output += '\n';
+      output += `**Recommendation:** Consider implementing these methods to follow common patterns in your codebase.\n`;
+    } else {
+      output += `## Analysis Result\n\n`;
+      output += `No missing methods detected. Class appears complete for its pattern type.\n`;
+    }
+    
+    return {
+      content: [{ type: 'text', text: output }]
+    };
+  };
+}
+
+export function createGetApiUsagePatternsTool(symbolIndex: XppSymbolIndex) {
+  return async (args: z.infer<typeof GetApiUsagePatternsSchema>): Promise<ToolResult> => {
+    const { className } = args;
+    
+    const patterns = symbolIndex.getApiUsagePatterns(className);
+    
+    let output = `# API Usage Patterns: ${className}\n\n`;
+    output += `**Usage Count:** ${patterns.usageCount} places in codebase\n\n`;
+    
+    if (patterns.usageCount === 0) {
+      output += `No usage found for ${className}. This might be:\n`;
+      output += `- A new class not yet used\n`;
+      output += `- An internal/private class\n`;
+      output += `- Misspelled class name\n`;
+      return {
+        content: [{ type: 'text', text: output }]
+      };
+    }
+    
+    if (patterns.commonMethodCalls && patterns.commonMethodCalls.length > 0) {
+      output += `## Most Common Method Calls\n\n`;
+      for (const call of patterns.commonMethodCalls) {
+        output += `- **${call.method}**: called ${call.frequency} times\n`;
+      }
+      output += '\n';
+    }
+    
+    if (patterns.initPatterns && patterns.initPatterns.length > 0) {
+      output += `## Common Initialization Patterns\n\n`;
+      for (let i = 0; i < patterns.initPatterns.length; i++) {
+        output += `### Pattern ${i + 1}\n\n`;
+        output += `\`\`\`xpp\n${patterns.initPatterns[i]}\n\`\`\`\n\n`;
+      }
+    }
+    
+    if (patterns.usedInClasses && patterns.usedInClasses.length > 0) {
+      output += `## Used In Classes\n\n`;
+      for (const cls of patterns.usedInClasses) {
+        output += `- ${cls}\n`;
+      }
+      output += '\n';
+    }
+    
+    output += `## Usage Recommendation\n\n`;
+    output += `Based on codebase analysis, the typical usage flow is:\n`;
+    if (patterns.commonMethodCalls && patterns.commonMethodCalls.length > 0) {
+      output += `1. Initialize ${className}\n`;
+      for (let i = 0; i < Math.min(3, patterns.commonMethodCalls.length); i++) {
+        output += `${i + 2}. Call ${patterns.commonMethodCalls[i].method}()\n`;
+      }
+    }
+    
+    return {
+      content: [{ type: 'text', text: output }]
+    };
+  };
+}
+
 // ============================================
 // Tool Definitions for MCP Server
 // ============================================
@@ -531,5 +781,25 @@ export const toolDefinitions: ToolDefinition[] = [
     name: 'generate_code',
     description: 'Generate X++ code templates for common patterns like runnable classes, batch jobs, form extensions, Chain of Command extensions, and event handlers.',
     inputSchema: GenerateCodeSchema
+  },
+  {
+    name: 'analyze_code_patterns',
+    description: 'Analyze existing codebase for similar code patterns. Use this to find common methods, dependencies, and implementation patterns before generating new code. Essential for creating code based on real D365FO patterns, not templates.',
+    inputSchema: AnalyzeCodePatternsSchema
+  },
+  {
+    name: 'suggest_method_implementation',
+    description: 'Suggest method body implementation based on similar methods in the codebase. Provides real examples and implementation patterns from actual D365FO code.',
+    inputSchema: SuggestMethodImplementationSchema
+  },
+  {
+    name: 'analyze_class_completeness',
+    description: 'Analyze a class and suggest missing methods based on similar classes. Helps identify what methods should be added to follow common patterns.',
+    inputSchema: AnalyzeClassCompletenessSchema
+  },
+  {
+    name: 'get_api_usage_patterns',
+    description: 'Get common usage patterns for a specific API or class. Shows how other code in the codebase uses this class, including initialization patterns and method call sequences.',
+    inputSchema: GetApiUsagePatternsSchema
   }
 ];

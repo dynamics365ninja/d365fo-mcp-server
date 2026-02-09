@@ -120,6 +120,10 @@ graph LR
         COMP[completion.ts<br/>code_completion Tool]
         GEN[codeGen.ts<br/>generate_code Tool]
         EXT[extensionSearch.ts<br/>search_extensions Tool]
+        PATTERN[analyzePatterns.ts<br/>analyze_code_patterns Tool]
+        SUGGEST[suggestImplementation.ts<br/>suggest_method_implementation Tool]
+        COMPLETE[analyzeCompleteness.ts<br/>analyze_class_completeness Tool]
+        API[apiUsagePatterns.ts<br/>get_api_usage_patterns Tool]
     end
 
     subgraph "Metadata Layer"
@@ -408,7 +412,7 @@ graph LR
     subgraph "MCP Protocol Methods"
         INIT[initialize<br/>Server Capabilities]
         NOTIFY[notifications/initialized<br/>Handshake Complete]
-        TOOLS_LIST[tools/list<br/>6 Available Tools]
+        TOOLS_LIST[tools/list<br/>10 Available Tools]
         TOOLS_CALL[tools/call<br/>Execute Tool]
         RES_LIST[resources/list<br/>Empty]
         RES_TMPL[resources/templates/list<br/>Empty]
@@ -417,7 +421,7 @@ graph LR
     end
 
     INIT -.-> CAPS[Capabilities:<br/>tools, resources, prompts]
-    TOOLS_LIST -.-> TOOL_DEFS[Tool Definitions:<br/>search, get_class_info,<br/>get_table_info, code_completion,<br/>generate_code,<br/>search_extensions]
+    TOOLS_LIST -.-> TOOL_DEFS[Tool Definitions:<br/>search, get_class_info,<br/>get_table_info, code_completion,<br/>generate_code,<br/>search_extensions,<br/>analyze_code_patterns,<br/>suggest_method_implementation,<br/>analyze_class_completeness,<br/>get_api_usage_patterns]
     TOOLS_CALL -.-> EXEC[Tool Execution:<br/>search DB, parse XML,<br/>return results]
     
     style INIT fill:#4CAF50,color:#fff
@@ -499,6 +503,51 @@ Found 5 matches:
 ```
 
 **Output:** Search results filtered to custom/ISV models only
+
+#### 7. analyze_code_patterns
+**Input:**
+```json
+{
+  "scenario": "financial dimensions",
+  "classPattern": "Helper",
+  "limit": 10
+}
+```
+
+**Output:** Markdown-formatted pattern analysis with common classes, methods, and dependencies
+
+#### 8. suggest_method_implementation
+**Input:**
+```json
+{
+  "className": "MyHelper",
+  "methodName": "validate",
+  "parameters": ["_value"]
+}
+```
+
+**Output:** Implementation suggestions from similar methods in codebase with code examples
+
+#### 9. analyze_class_completeness
+**Input:**
+```json
+{
+  "className": "CustTableHelper"
+}
+```
+
+**Output:** Analysis of existing methods and suggestions for commonly missing methods
+
+#### 10. get_api_usage_patterns
+**Input:**
+```json
+{
+  "apiName": "DimensionAttributeValueSet",
+  "context": "initialization"
+}
+```
+
+**Output:** Common usage patterns with initialization, method sequences, and error handling examples
 
 ---
 

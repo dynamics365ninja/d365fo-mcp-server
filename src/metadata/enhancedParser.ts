@@ -311,4 +311,175 @@ export class EnhancedXppParser {
     
     return Array.from(tags);
   }
+
+  /**
+   * Detect pattern type for a class
+   */
+  detectClassPatternType(className: string, methods: XppMethodInfo[]): string {
+    // Pattern detection based on class name suffix
+    if (className.endsWith('Helper')) return 'Helper';
+    if (className.endsWith('Service')) return 'Service';
+    if (className.endsWith('Controller')) return 'Controller';
+    if (className.endsWith('Handler')) return 'Handler';
+    if (className.endsWith('Repository') || className.endsWith('Repo')) return 'Repository';
+    if (className.endsWith('Manager')) return 'Manager';
+    if (className.endsWith('Factory')) return 'Factory';
+    if (className.endsWith('Builder')) return 'Builder';
+    if (className.endsWith('Processor')) return 'Processor';
+    if (className.endsWith('Validator')) return 'Validator';
+    if (className.endsWith('Provider')) return 'Provider';
+    if (className.endsWith('Adapter')) return 'Adapter';
+    
+    // Pattern detection based on method patterns
+    const methodNames = methods.map(m => m.name.toLowerCase());
+    
+    // Repository pattern: find, get, save, update, delete
+    const repoMethods = ['find', 'get', 'save', 'update', 'delete', 'insert'];
+    if (methodNames.filter(n => repoMethods.some(rm => n.includes(rm))).length >= 3) {
+      return 'Repository';
+    }
+    
+    // Service pattern: process, execute, handle, run
+    const serviceMethods = ['process', 'execute', 'handle', 'run', 'perform'];
+    if (methodNames.filter(n => serviceMethods.some(sm => n.includes(sm))).length >= 2) {
+      return 'Service';
+    }
+    
+    // Validator pattern: validate, check, verify, isValid
+    const validatorMethods = ['validate', 'check', 'verify', 'isvalid'];
+    if (methodNames.filter(n => validatorMethods.some(vm => n.includes(vm))).length >= 2) {
+      return 'Validator';
+    }
+    
+    return 'Unknown';
+  }
+
+  /**
+   * Generate typical usage patterns from method source
+   */
+  generateTypicalUsages(className: string, methods: XppMethodInfo[]): string[] {
+    const usages: string[] = [];
+    
+    // Look for static methods - these are common entry points
+    const staticMethods = methods.filter(m => m.isStatic);
+    for (const method of staticMethods.slice(0, 3)) {
+      const params = method.parameters.map(p => this.generateExampleValue(p.type)).join(', ');
+      usages.push(`${className}::${method.name}(${params});`);
+    }
+    
+    // Look for main/run methods
+    const mainMethod = methods.find(m => m.name === 'main' && m.isStatic);
+    if (mainMethod) {
+      usages.push(`${className}::main(args);`);
+    }
+    
+    // Instance usage pattern
+    const publicMethods = methods.filter(m => !m.isStatic && m.visibility === 'public');
+    if (publicMethods.length > 0) {
+      const method = publicMethods[0];
+      const params = method.parameters.map(p => this.generateExampleValue(p.type)).join(', ');
+      usages.push(`${className} instance = new ${className}();\ninstance.${method.name}(${params});`);
+    }
+    
+    return usages;
+  }
+
+  /**
+   * Generate example value based on type
+   */
+  private generateExampleValue(typeName: string): string {
+    const lower = typeName.toLowerCase();
+    
+    if (lower.includes('int') || lower.includes('recid')) return '0';
+    if (lower.includes('str') || lower.includes('string')) return '""';
+    if (lower.includes('bool')) return 'false';
+    if (lower.includes('date')) return 'today()';
+    if (lower.includes('datetime')) return 'DateTimeUtil::utcNow()';
+    if (lower.includes('real')) return '0.0';
+    if (lower.includes('guid')) return 'newGuid()';
+    
+    return `${typeName.toLowerCase()}Value`;
+  }
+
+  /**
+   * Analyze method relationships and generate related methods list
+   */
+  generateRelatedMethods(method: XppMethodInfo, allMethods: XppMethodInfo[]): string[] {
+    const related = new Set<string>();
+    
+    // Methods that share similar names (prefix/suffix)
+    const baseMethodName = method.name.replace(/(get|set|is|has|can|validate|check)/, '');
+    for (const other of allMethods) {
+      if (other.name !== method.name && other.name.includes(baseMethodName)) {
+        related.add(other.name);
+      }
+    }
+    
+    // Methods called by this method
+    if (method.methodCalls) {
+      for (const call of method.methodCalls) {
+        const found = allMethods.find(m => m.name === call);
+        if (found) {
+          related.add(call);
+        }
+      }
+    }
+    
+    // Methods with similar tags
+    if (method.tags) {
+      for (const other of allMethods) {
+        if (other.name !== method.name && other.tags) {
+          const commonTags = method.tags.filter(t => other.tags?.includes(t));
+          if (commonTags.length >= 2) {
+            related.add(other.name);
+          }
+        }
+      }
+    }
+    
+    return Array.from(related).slice(0, 10);
+  }
+
+  /**
+   * Build API patterns from method source code
+   */
+  buildApiPatterns(_className: string, method: XppMethodInfo): any {
+    const patterns: any = {
+      initialization: [],
+      commonSequences: [],
+      errorHandling: []
+    };
+    
+    const source = method.source;
+    
+    // Detect initialization patterns
+    if (source.includes('new ')) {
+      const initMatch = source.match(/new\s+\w+\s*\([^)]*\)/g);
+      if (initMatch) {
+        patterns.initialization = initMatch.slice(0, 3);
+      }
+    }
+    
+    // Detect method call sequences
+    const lines = source.split('\n');
+    const sequences: string[] = [];
+    for (let i = 0; i < lines.length - 1; i++) {
+      const line1 = lines[i].trim();
+      const line2 = lines[i + 1].trim();
+      if (line1.includes('.') && line2.includes('.')) {
+        sequences.push(`${line1}\n${line2}`);
+      }
+    }
+    patterns.commonSequences = sequences.slice(0, 3);
+    
+    // Detect error handling patterns
+    if (source.includes('try') || source.includes('catch')) {
+      const tryMatch = source.match(/try\s*{[^}]+}\s*catch[^{]*{[^}]+}/s);
+      if (tryMatch) {
+        patterns.errorHandling.push(tryMatch[0].slice(0, 200));
+      }
+    }
+    
+    return patterns;
+  }
 }

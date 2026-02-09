@@ -324,7 +324,7 @@ Create `.mcp.json` file in your D365FO solution root directory:
 2. Open your D365FO solution
 3. Open **Copilot Chat** window (View → GitHub Copilot Chat)
 4. Switch to **Agent Mode** in Copilot Chat
-5. Verify X++ MCP tools are loaded (you should see search, get_class_info, get_table_info, etc.)
+5. Verify X++ MCP tools are loaded (you should see search, get_class_info, get_table_info, code_completion, generate_code, search_extensions, analyze_code_patterns, suggest_method_implementation, analyze_class_completeness, get_api_usage_patterns)
 
 ### 5. Example Prompts
 
@@ -417,7 +417,6 @@ npm rebuild better-sqlite3
 - Review [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) for practical examples
 - Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design
 - See [PIPELINES.md](PIPELINES.md) for automation details
-- Read [PERFORMANCE.md](PERFORMANCE.md) for optimization tips
 
 ---
 

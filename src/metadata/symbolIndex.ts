@@ -45,6 +45,12 @@ export class XppSymbolIndex {
       extendsClass: row.extends_class || undefined,
       implementsInterfaces: row.implements_interfaces || undefined,
       usageExample: row.usage_example || undefined,
+      usageFrequency: row.usage_frequency || undefined,
+      patternType: row.pattern_type || undefined,
+      typicalUsages: row.typical_usages || undefined,
+      calledByCount: row.called_by_count || undefined,
+      relatedMethods: row.related_methods || undefined,
+      apiPatterns: row.api_patterns || undefined,
     };
   }
 
@@ -79,7 +85,13 @@ export class XppSymbolIndex {
         inline_comments TEXT,
         extends_class TEXT,
         implements_interfaces TEXT,
-        usage_example TEXT
+        usage_example TEXT,
+        usage_frequency INTEGER DEFAULT 0,
+        pattern_type TEXT,
+        typical_usages TEXT,
+        called_by_count INTEGER DEFAULT 0,
+        related_methods TEXT,
+        api_patterns TEXT
       );
     `);
 
@@ -133,8 +145,30 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
       CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols(type);
       CREATE INDEX IF NOT EXISTS idx_symbols_model ON symbols(model);
+      CREATE INDEX IF NOT EXISTS idx_symbols_pattern_type ON symbols(pattern_type);
+      CREATE INDEX IF NOT EXISTS idx_symbols_parent_name ON symbols(parent_name);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_symbols_unique 
         ON symbols(name, type, COALESCE(parent_name, ''), model);
+    `);
+
+    // Create code_patterns table for pattern analysis
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS code_patterns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pattern_name TEXT NOT NULL UNIQUE,
+        pattern_type TEXT NOT NULL,
+        common_methods TEXT,
+        dependencies TEXT,
+        usage_examples TEXT,
+        frequency INTEGER DEFAULT 0,
+        domain TEXT,
+        characteristics TEXT
+      );
+    `);
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_patterns_type ON code_patterns(pattern_type);
+      CREATE INDEX IF NOT EXISTS idx_patterns_domain ON code_patterns(domain);
     `);
   }
 
@@ -146,9 +180,10 @@ export class XppSymbolIndex {
       INSERT OR REPLACE INTO symbols (
         name, type, parent_name, signature, file_path, model,
         description, tags, source_snippet, complexity, used_types, method_calls,
-        inline_comments, extends_class, implements_interfaces, usage_example
+        inline_comments, extends_class, implements_interfaces, usage_example,
+        usage_frequency, pattern_type, typical_usages, called_by_count, related_methods, api_patterns
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -167,7 +202,13 @@ export class XppSymbolIndex {
       symbol.inlineComments || null,
       symbol.extendsClass || null,
       symbol.implementsInterfaces || null,
-      symbol.usageExample || null
+      symbol.usageExample || null,
+      symbol.usageFrequency || 0,
+      symbol.patternType || null,
+      symbol.typicalUsages || null,
+      symbol.calledByCount || 0,
+      symbol.relatedMethods || null,
+      symbol.apiPatterns || null
     );
   }
 
@@ -282,6 +323,52 @@ export class XppSymbolIndex {
   }
 
   /**
+   * Compute usage statistics (usage_frequency and called_by_count) for all methods
+   * Should be called after initial indexing is complete
+   */
+  computeUsageStatistics(): void {
+    console.log('📊 Computing usage statistics...');
+    
+    // Count how many times each method/class is called by analyzing method_calls
+    const callCountMap = new Map<string, number>();
+    
+    // Get all methods with their method_calls
+    const allMethods = this.db.prepare(`
+      SELECT name, parent_name, method_calls 
+      FROM symbols 
+      WHERE type = 'method' AND method_calls IS NOT NULL
+    `).all() as Array<{ name: string; parent_name: string; method_calls: string }>;
+    
+    // Count references
+    for (const method of allMethods) {
+      const calls = method.method_calls.split(',').map(c => c.trim()).filter(c => c);
+      for (const calledMethod of calls) {
+        // Increment count for the called method
+        const currentCount = callCountMap.get(calledMethod) || 0;
+        callCountMap.set(calledMethod, currentCount + 1);
+      }
+    }
+    
+    // Update database with computed statistics
+    const updateStmt = this.db.prepare(`
+      UPDATE symbols 
+      SET usage_frequency = ?, called_by_count = ?
+      WHERE name = ? AND type = 'method'
+    `);
+    
+    const transaction = this.db.transaction(() => {
+      for (const [methodName, count] of callCountMap.entries()) {
+        // usage_frequency and called_by_count are the same in this simple analysis
+        updateStmt.run(count, count, methodName);
+      }
+    });
+    
+    transaction();
+    
+    console.log(`✅ Updated usage statistics for ${callCountMap.size} methods`);
+  }
+
+  /**
    * Index metadata from a directory
    */
   async indexMetadataDirectory(metadataPath: string, modelName?: string): Promise<void> {
@@ -346,6 +433,11 @@ export class XppSymbolIndex {
         extendsClass: classData.extends,
         implementsInterfaces: classData.implements?.join(', '),
         usedTypes: classData.usedTypes?.join(', '),
+        // New pattern analysis fields
+        patternType: classData.patternType,
+        typicalUsages: classData.typicalUsages ? JSON.stringify(classData.typicalUsages) : undefined,
+        relatedMethods: classData.relatedMethods ? JSON.stringify(classData.relatedMethods) : undefined,
+        apiPatterns: classData.apiPatterns ? JSON.stringify(classData.apiPatterns) : undefined,
       });
 
       // Add method symbols with enhanced metadata
@@ -367,6 +459,9 @@ export class XppSymbolIndex {
             methodCalls: method.methodCalls?.join(', '),
             inlineComments: method.inlineComments,
             usageExample: method.usageExample,
+            // New pattern analysis fields
+            typicalUsages: method.typicalUsages ? JSON.stringify(method.typicalUsages) : undefined,
+            relatedMethods: method.relatedMethods ? JSON.stringify(method.relatedMethods) : undefined,
           });
         }
       }
@@ -521,6 +616,257 @@ export class XppSymbolIndex {
     return rows
       .map(row => row.model)
       .filter(model => !this.standardModels.includes(model));
+  }
+
+  /**
+   * Analyze code patterns for a given scenario/domain
+   */
+  analyzeCodePatterns(scenario: string, classPattern?: string, limit: number = 20): any {
+    let sql = `
+      SELECT * FROM symbols
+      WHERE type = 'class'
+    `;
+    
+    const params: any[] = [];
+    
+    if (scenario) {
+      sql += ` AND (name LIKE ? OR tags LIKE ? OR description LIKE ?)`;
+      params.push(`%${scenario}%`, `%${scenario}%`, `%${scenario}%`);
+    }
+    
+    if (classPattern) {
+      sql += ` AND name LIKE ?`;
+      params.push(`%${classPattern}`);
+    }
+    
+    sql += ` LIMIT ?`;
+    params.push(limit);
+    
+    const stmt = this.db.prepare(sql);
+    const classes = stmt.all(...params) as any[];
+    
+    // Analyze common patterns
+    const methodFrequency: Record<string, number> = {};
+    const dependencyFrequency: Record<string, number> = {};
+    const exampleClasses: string[] = [];
+    
+    for (const cls of classes) {
+      exampleClasses.push(cls.name);
+      
+      // Count method frequencies
+      const methods = this.getClassMethods(cls.name);
+      for (const method of methods) {
+        methodFrequency[method.name] = (methodFrequency[method.name] || 0) + 1;
+      }
+      
+      // Count dependency frequencies
+      if (cls.used_types) {
+        const types = cls.used_types.split(',');
+        for (const type of types) {
+          const cleaned = type.trim();
+          if (cleaned) {
+            dependencyFrequency[cleaned] = (dependencyFrequency[cleaned] || 0) + 1;
+          }
+        }
+      }
+    }
+    
+    // Get top methods and dependencies
+    const commonMethods = Object.entries(methodFrequency)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 20)
+      .map(([name, count]) => ({ name, frequency: count }));
+      
+    const commonDependencies = Object.entries(dependencyFrequency)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 15)
+      .map(([name, count]) => ({ name, frequency: count }));
+    
+    return {
+      totalMatches: classes.length,
+      commonMethods,
+      commonDependencies,
+      exampleClasses: exampleClasses.slice(0, 10),
+      patterns: this.detectPatternTypes(classes)
+    };
+  }
+
+  /**
+   * Detect pattern types from set of classes
+   */
+  private detectPatternTypes(classes: any[]): any[] {
+    const patterns: Record<string, { count: number; examples: string[] }> = {};
+    
+    for (const cls of classes) {
+      const name = cls.name;
+      let patternType = 'Unknown';
+      
+      if (name.endsWith('Helper')) patternType = 'Helper';
+      else if (name.endsWith('Service')) patternType = 'Service';
+      else if (name.endsWith('Controller')) patternType = 'Controller';
+      else if (name.endsWith('Handler')) patternType = 'Handler';
+      else if (name.endsWith('Repository') || name.endsWith('Repo')) patternType = 'Repository';
+      else if (name.endsWith('Manager')) patternType = 'Manager';
+      else if (name.endsWith('Factory')) patternType = 'Factory';
+      else if (name.endsWith('Builder')) patternType = 'Builder';
+      else if (name.endsWith('Processor')) patternType = 'Processor';
+      else if (name.endsWith('Validator')) patternType = 'Validator';
+      
+      if (!patterns[patternType]) {
+        patterns[patternType] = { count: 0, examples: [] };
+      }
+      patterns[patternType].count++;
+      if (patterns[patternType].examples.length < 5) {
+        patterns[patternType].examples.push(name);
+      }
+    }
+    
+    return Object.entries(patterns).map(([type, data]) => ({
+      patternType: type,
+      count: data.count,
+      examples: data.examples
+    }));
+  }
+
+  /**
+   * Find similar methods based on name and context
+   */
+  findSimilarMethods(methodName: string, _contextClass?: string, limit: number = 10): any[] {
+    const sql = `
+      SELECT s.*, parent.name as class_name, parent.pattern_type
+      FROM symbols s
+      LEFT JOIN symbols parent ON s.parent_name = parent.name AND parent.type = 'class'
+      WHERE s.type = 'method' 
+        AND s.name LIKE ?
+      ORDER BY s.complexity ASC, s.name
+      LIMIT ?
+    `;
+    
+    const stmt = this.db.prepare(sql);
+    const methods = stmt.all(`%${methodName}%`, limit) as any[];
+    
+    return methods.map(m => ({
+      className: m.class_name || m.parent_name,
+      methodName: m.name,
+      signature: m.signature,
+      sourceSnippet: m.source_snippet,
+      complexity: m.complexity,
+      tags: m.tags?.split(',').filter(Boolean) || [],
+      patternType: m.pattern_type
+    }));
+  }
+
+  /**
+   * Get API usage patterns for a class
+   */
+  getApiUsagePatterns(className: string): any {
+    // Find all places where this class is used
+    const sql = `
+      SELECT * FROM symbols
+      WHERE type = 'method'
+        AND used_types LIKE ?
+      LIMIT 50
+    `;
+    
+    const stmt = this.db.prepare(sql);
+    const methods = stmt.all(`%${className}%`) as any[];
+    
+    if (methods.length === 0) {
+      return {
+        className,
+        usageCount: 0,
+        commonPatterns: [],
+        initPatterns: [],
+        methodCallSequences: []
+      };
+    }
+    
+    const methodCallPatterns: Record<string, number> = {};
+    const initPatterns: string[] = [];
+    
+    for (const method of methods) {
+      if (method.method_calls) {
+        const calls = method.method_calls.split(',').map((c: string) => c.trim());
+        for (const call of calls) {
+          methodCallPatterns[call] = (methodCallPatterns[call] || 0) + 1;
+        }
+      }
+      
+      // Detect initialization patterns
+      if (method.source_snippet && method.source_snippet.includes('new ' + className)) {
+        const snippetLines = method.source_snippet.split('\n').slice(0, 5);
+        initPatterns.push(snippetLines.join('\n'));
+      }
+    }
+    
+    const commonMethodCalls = Object.entries(methodCallPatterns)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([name, count]) => ({ method: name, frequency: count }));
+    
+    return {
+      className,
+      usageCount: methods.length,
+      commonMethodCalls,
+      initPatterns: initPatterns.slice(0, 5),
+      usedInClasses: methods.map((m: any) => m.parent_name).filter(Boolean).slice(0, 10)
+    };
+  }
+
+  /**
+   * Suggest missing methods for a class based on pattern analysis
+   */
+  suggestMissingMethods(className: string): any[] {
+    const classSymbol = this.getSymbolByName(className, 'class');
+    if (!classSymbol) return [];
+    
+    // Get existing methods
+    const existingMethods = this.getClassMethods(className);
+    const existingMethodNames = new Set(existingMethods.map(m => m.name));
+    
+    // Detect pattern type
+    let patternType = classSymbol.patternType || 'Unknown';
+    if (!patternType || patternType === 'Unknown') {
+      if (className.endsWith('Helper')) patternType = 'Helper';
+      else if (className.endsWith('Service')) patternType = 'Service';
+      else if (className.endsWith('Controller')) patternType = 'Controller';
+    }
+    
+    // Find similar classes with same pattern
+    const sql = `
+      SELECT DISTINCT parent_name
+      FROM symbols
+      WHERE type = 'method'
+        AND parent_name LIKE ?
+        AND parent_name != ?
+      LIMIT 20
+    `;
+    
+    const stmt = this.db.prepare(sql);
+    const similarClasses = stmt.all(`%${patternType}`, className) as any[];
+    
+    // Count method occurrences in similar classes
+    const methodFrequency: Record<string, number> = {};
+    
+    for (const row of similarClasses) {
+      const methods = this.getClassMethods(row.parent_name);
+      for (const method of methods) {
+        if (!existingMethodNames.has(method.name)) {
+          methodFrequency[method.name] = (methodFrequency[method.name] || 0) + 1;
+        }
+      }
+    }
+    
+    // Return top missing methods
+    return Object.entries(methodFrequency)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([name, count]) => ({
+        methodName: name,
+        frequency: count,
+        totalClasses: similarClasses.length,
+        percentage: Math.round((count / similarClasses.length) * 100)
+      }));
   }
 
   /**

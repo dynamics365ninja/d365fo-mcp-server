@@ -76,7 +76,7 @@ The `.github/copilot-instructions.md` file contains mandatory instructions that 
 - ✅ Always use MCP tools before generating D365FO code
 - ✅ Never guess class names, methods, or fields
 - ✅ Query the actual environment metadata first
-- ✅ Use `search`, `get_class_info`, `code_completion` for all code generation
+- ✅ Use `search`, `get_class_info`, `code_completion`, and intelligent tools for all code generation
 
 **This file is automatically loaded by GitHub Copilot and ensures proper tool usage without needing to explicitly request the `xpp_system_instructions` prompt.**
 
@@ -141,6 +141,10 @@ System instructions tell GitHub Copilot:
 4. **`search`** - for searching symbols (classes, tables, methods, fields, enums)
 5. **`search_extensions`** - for finding only custom/ISV code
 6. **`generate_code`** - for generating X++ code templates
+7. **`analyze_code_patterns`** - for learning common patterns in codebase
+8. **`suggest_method_implementation`** - for getting implementation examples
+9. **`analyze_class_completeness`** - for finding missing methods in classes
+10. **`get_api_usage_patterns`** - for seeing how to use APIs correctly
 
 ### ❌ DO NOT USE for D365 F&O:
 
@@ -209,6 +213,10 @@ Complete list of tools available in GitHub Copilot:
 | `get_table_info` | Detailed info about a table, fields, indexes | "Show CustTable structure" |
 | `code_completion` | IntelliSense for methods and fields | "What can I call on SalesLine?" |
 | `generate_code` | Generate X++ templates | "Generate batch job template" |
+| `analyze_code_patterns` | Learn common patterns for scenarios | "Analyze patterns for financial dimensions" |
+| `suggest_method_implementation` | Get implementation examples | "Suggest validate method implementation" |
+| `analyze_class_completeness` | Find missing methods in class | "Check what methods my Helper class needs" |
+| `get_api_usage_patterns` | See how to use APIs | "Show how to use DimensionAttributeValueSet" |
 
 ## Available Prompts
 
@@ -366,7 +374,6 @@ Copilot will use `search_extensions` instead of `search`, so you won't see stand
 - [USAGE_EXAMPLES.md](./USAGE_EXAMPLES.md) - Usage examples for tools
 - [TESTING.md](./TESTING.md) - MCP server testing
 - [CUSTOM_EXTENSIONS.md](./CUSTOM_EXTENSIONS.md) - ISV extension configuration
-- [PERFORMANCE.md](./PERFORMANCE.md) - Performance optimization
 - [README.md](../README.md) - Main documentation
 
 ## Summary

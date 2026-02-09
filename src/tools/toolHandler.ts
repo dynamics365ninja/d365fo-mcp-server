@@ -7,6 +7,10 @@ import { tableInfoTool } from './tableInfo.js';
 import { completionTool } from './completion.js';
 import { codeGenTool } from './codeGen.js';
 import { extensionSearchTool } from './extensionSearch.js';
+import { analyzeCodePatternsTool } from './analyzePatterns.js';
+import { suggestMethodImplementationTool } from './suggestImplementation.js';
+import { analyzeClassCompletenessTool } from './analyzeCompleteness.js';
+import { getApiUsagePatternsTool } from './apiUsagePatterns.js';
 
 /**
  * Centralized tool handler that dispatches to individual tool implementations
@@ -28,6 +32,14 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return completionTool(request, context);
       case 'generate_code':
         return codeGenTool(request);
+      case 'analyze_code_patterns':
+        return analyzeCodePatternsTool(request, context);
+      case 'suggest_method_implementation':
+        return suggestMethodImplementationTool(request, context);
+      case 'analyze_class_completeness':
+        return analyzeClassCompletenessTool(request, context);
+      case 'get_api_usage_patterns':
+        return getApiUsagePatternsTool(request, context);
       default:
         return {
           content: [
