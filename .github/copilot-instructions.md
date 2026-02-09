@@ -6,6 +6,23 @@
 
 # ⛔⛔⛔ READ THIS FIRST - MANDATORY ⛔⛔⛔
 
+## RULE #0: WORKSPACE CONTEXT
+
+**THIS IS AN MCP SERVER PROJECT, NOT AN X++ WORKSPACE!**
+- This repo contains TypeScript code for an MCP server
+- The MCP server provides tools to query EXTERNAL X++ metadata
+- **DO NOT** search this workspace for X++ classes/tables
+- **DO NOT** use semantic_search, code_search, or file_search after completing a task
+- When task is complete, STOP immediately - do not search workspace
+
+**AFTER COMPLETING ANY TASK:**
+1. ✅ Respond to user with result
+2. ❌ **STOP** - Do NOT search workspace
+3. ❌ Do NOT use semantic_search/code_search/file_search
+4. ❌ Do NOT try to "understand project structure" automatically
+
+---
+
 ## RULE #1: DETECT X++/D365FO CONTEXT AUTOMATICALLY
 
 **IF user mentions ANY of these keywords, you are in X++ context:**
