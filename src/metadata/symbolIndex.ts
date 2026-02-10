@@ -441,11 +441,12 @@ export class XppSymbolIndex {
 
     console.log(`   Processing ${models.length} model(s)...`);
 
-    // Process models in batches to balance speed vs memory usage
-    // Batch size of 20 models per transaction provides good balance:
-    // - Fast (fewer disk syncs than per-model transactions)
-    // - Memory-safe (won't exhaust memory like single transaction for 358 models)
-    const BATCH_SIZE = 20;
+    // Use smaller batch size for Azure DevOps to avoid long commits
+    // Batch size of 5 models provides best balance for cloud environments:
+    // - Fast commits (< 5 seconds each)
+    // - Frequent WAL checkpoints prevent log buildup
+    // - Memory-safe (very small memory footprint)
+    const BATCH_SIZE = 5;
     
     for (let batchStart = 0; batchStart < models.length; batchStart += BATCH_SIZE) {
       const batchEnd = Math.min(batchStart + BATCH_SIZE, models.length);
@@ -492,8 +493,17 @@ export class XppSymbolIndex {
         transaction();
         const batchDuration = Date.now() - batchStartTime;
         
-        // Log if batch took unusually long (> 30 seconds)
-        if (batchDuration > 30000) {
+        // Run WAL checkpoint after each batch to prevent log buildup
+        // PASSIVE mode doesn't block other operations
+        this.db.pragma('wal_checkpoint(PASSIVE)');
+        
+        // Every 50 models, force a full checkpoint to keep WAL small
+        if ((batchStart + BATCH_SIZE) % 50 === 0) {
+          this.db.pragma('wal_checkpoint(TRUNCATE)');
+        }
+        
+        // Log if batch took unusually long (> 10 seconds)
+        if (batchDuration > 10000) {
           console.log(`\n      ⏱️  Batch ${batchStart}-${batchEnd} took ${(batchDuration/1000).toFixed(1)}s`);
         }
       } catch (error) {
