@@ -124,6 +124,7 @@
 | User Request Contains | First Action | Avoid Using |
 |-----------------------|--------------|-------------|
 | "create class", "helper class" | `analyze_code_patterns()` + `search()` + `generate_code()` | ❌ semantic_search, ❌ direct code generation |
+| "find X and Y and Z" (multiple) | `batch_search([{query:"X"}, {query:"Y"}, {query:"Z"}])` | ❌ multiple sequential searches |
 | "CustTable", "SalesTable", any Table | `get_table_info()` | ❌ semantic_search |
 | "dimension", "financial" | `search("dimension")` | ❌ semantic_search |
 | "find X++ class/method" | `search()` | ❌ semantic_search |
@@ -197,6 +198,7 @@
 |------|----------|---------||
 | `search` | Finding any D365FO object or pattern | `search("dimension", type="class")` |
 | `search` (workspace) | Search in user's workspace + external | `search("MyClass", includeWorkspace=true, workspacePath="C:\\....")` |
+| `batch_search` | **⚡ NEW!** Multiple parallel searches in one request | `batch_search(queries=[{query:"dimension"}, {query:"helper"}])` |
 | `get_class_info` | Need class structure, methods, inheritance | `get_class_info("CustTable")` |
 | `get_class_info` (workspace) | Get class from workspace first | `get_class_info("MyClass", includeWorkspace=true, workspacePath="C:\\...")` |
 | `get_table_info` | Need table fields, indexes, relations | `get_table_info("SalesTable")` |
@@ -244,6 +246,42 @@ Generate class from scratch using general programming knowledge → ❌ INCORREC
 4. generate_code(pattern="class")              → Create with proper structure
 5. Apply discovered D365FO patterns            → Use correct APIs
 ```
+
+### ⚡ Use Batch Search for Parallel Exploration
+
+**When exploring multiple independent concepts, use `batch_search` to execute all queries in parallel:**
+
+**❌ SLOW Sequential Approach:**
+```
+1. search("dimension")         → Wait 50ms
+2. search("helper")            → Wait 50ms
+3. search("validation")        → Wait 50ms
+Total: ~150ms + 3 HTTP requests
+```
+
+**✅ FAST Parallel Approach:**
+```
+batch_search({
+  queries: [
+    { query: "dimension", type: "class", limit: 5 },
+    { query: "helper", type: "class", limit: 5 },
+    { query: "validation", type: "class", limit: 5 }
+  ]
+})
+→ Single HTTP request, parallel execution, ~50ms total → 3x faster!
+```
+
+**💡 When to Use Batch Search:**
+- Exploring multiple related concepts (dimension + ledger + financial)
+- Comparing different patterns (Helper vs Service vs Manager)
+- Finding classes with multiple keywords (validation + check + verify)
+- Initial exploratory phase with independent queries
+- User asks "find X and Y and Z" → use batch_search instead of 3 separate searches
+
+**🚫 When NOT to Use Batch Search:**
+- Queries depend on previous results (use sequential search)
+- Single focused query (use regular search)
+- Need workspace-aware search with different paths per query
 
 ### 🎯 Why Use Intelligent Tools?
 
