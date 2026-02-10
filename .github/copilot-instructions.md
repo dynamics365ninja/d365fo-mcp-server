@@ -43,10 +43,16 @@
 
 **THIS IS AN MCP SERVER PROJECT, NOT AN X++ WORKSPACE!**
 - This repo contains TypeScript code for an MCP server
-- The MCP server provides tools to query EXTERNAL X++ metadata
-- **DO NOT** search this workspace for X++ classes/tables
+- The MCP server provides tools to query BOTH external X++ metadata AND user's workspace files
+- **DO NOT** search THIS TypeScript workspace for X++ classes/tables (they're in user's D365FO workspace)
 - **DO NOT** use semantic_search, code_search, or file_search after completing a task
 - When task is complete, STOP immediately - do not search workspace
+
+**📁 WORKSPACE-AWARE FEATURES:**
+- MCP tools can now analyze user's local X++ project files
+- Use `includeWorkspace: true` + `workspacePath` to enable workspace search
+- Workspace files are marked with 🔹 (vs 📦 for external metadata)
+- Priority: Workspace files > External metadata (for deduplication)
 
 **AFTER COMPLETING ANY TASK:**
 1. ✅ Respond to user with result
@@ -190,9 +196,12 @@
 | Tool | Use When | Example |
 |------|----------|---------||
 | `search` | Finding any D365FO object or pattern | `search("dimension", type="class")` |
+| `search` (workspace) | Search in user's workspace + external | `search("MyClass", includeWorkspace=true, workspacePath="C:\\....")` |
 | `get_class_info` | Need class structure, methods, inheritance | `get_class_info("CustTable")` |
+| `get_class_info` (workspace) | Get class from workspace first | `get_class_info("MyClass", includeWorkspace=true, workspacePath="C:\\...")` |
 | `get_table_info` | Need table fields, indexes, relations | `get_table_info("SalesTable")` |
 | `code_completion` | Discovering methods/fields on a class | `code_completion(className="DimensionAttributeValueSet")` |
+| `code_completion` (workspace) | Get completions from workspace | `code_completion(className="MyClass", includeWorkspace=true, workspacePath="C:\\...")` |
 | `generate_code` | Creating new X++ classes with patterns | `generate_code(pattern="class")` |
 | `search_extensions` | Finding custom/ISV code only | `search_extensions("my custom")` |
 
@@ -239,6 +248,21 @@ Generate class from scratch using general programming knowledge → ❌ INCORREC
 ### 🎯 Why Use Intelligent Tools?
 
 **Intelligent code generation tools learn from YOUR codebase:**
+
+**💡 TIP: Use Workspace-Aware Search**
+When user has a D365FO workspace open, use workspace parameters:
+```
+✅ search("MyCustomClass", includeWorkspace=true, workspacePath="C:\\D365\\MyProject")
+✅ get_class_info("MyHelper", includeWorkspace=true, workspacePath="C:\\D365\\MyProject")
+✅ code_completion(className="MyTable", includeWorkspace=true, workspacePath="C:\\D365\\MyProject")
+```
+Benefits:
+- 🔹 Workspace files shown first (user's code priority)
+- XML parsing extracts methods/fields from local files
+- Faster iteration (no need to re-index external metadata)
+- See user's actual implementation patterns
+
+
 
 - **Pattern Analysis** (`analyze_code_patterns`) - Identifies what classes and methods are commonly used together for specific scenarios
 - **Smart Suggestions** (`suggest_method_implementation`) - Shows you how similar methods are implemented in your codebase
