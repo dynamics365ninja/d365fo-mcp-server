@@ -124,13 +124,20 @@ stages:
               if [ "${{ parameters.customModels }}" != "all" ]; then
                 export CUSTOM_MODELS="${{ parameters.customModels }}"
               fi
+              # For 'all' mode, extract only custom models (standard are already downloaded from blob)
+              # For 'custom' mode, extract only custom models
+              # For 'standard' mode, extract only standard models (but Git usually contains only custom)
+              if [ "${{ parameters.extractionMode }}" = "all" ]; then
+                export EXTRACT_MODE="custom"
+              else
+                export EXTRACT_MODE="${{ parameters.extractionMode }}"
+              fi
               npm run extract-metadata
-            displayName: 'Extract custom models from Git source'
+            displayName: 'Extract models from Git source'
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               PACKAGES_PATH: $(PACKAGES_PATH)
               METADATA_PATH: $(METADATA_PATH)
-              EXTRACT_MODE: '${{ parameters.extractionMode }}'
               EXTENSION_PREFIX: $(EXTENSION_PREFIX)
 
           # ========== Common Steps for All Modes ==========
