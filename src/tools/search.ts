@@ -177,9 +177,9 @@ async function performExternalSearch(
   cache: any
 ) {
   try {
-    // Check cache first
+    // Check cache first with fuzzy matching
     const cacheKey = cache.generateSearchKey(args.query, args.limit, args.type);
-    const cachedResults = (await cache.get(cacheKey)) as any[] | null;
+    const cachedResults = (await cache.getFuzzy(cacheKey)) as any[] | null;
     
     let results: any[] = cachedResults || [];
     let fromCache = !!cachedResults;
