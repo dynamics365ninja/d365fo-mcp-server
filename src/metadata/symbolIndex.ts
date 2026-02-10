@@ -353,9 +353,18 @@ export class XppSymbolIndex {
    */
   computeUsageStatistics(): void {
     console.log('📊 Computing usage statistics...');
+    const startTime = Date.now();
     
-    // Count how many times each method/class is called by analyzing method_calls
-    const callCountMap = new Map<string, number>();
+    // Step 1: Create temporary table with all method calls (split CSV in SQL)
+    // This is MUCH faster than iterating in JavaScript
+    this.db.exec(`
+      -- Create temp table for split method calls
+      CREATE TEMP TABLE IF NOT EXISTS temp_method_calls (
+        caller_method TEXT,
+        called_method TEXT
+      );
+      DELETE FROM temp_method_calls;
+    `);
     
     // Get all methods with their method_calls
     const allMethods = this.db.prepare(`
@@ -364,33 +373,46 @@ export class XppSymbolIndex {
       WHERE type = 'method' AND method_calls IS NOT NULL
     `).all() as Array<{ name: string; parent_name: string; method_calls: string }>;
     
-    // Count references
-    for (const method of allMethods) {
-      const calls = method.method_calls.split(',').map(c => c.trim()).filter(c => c);
-      for (const calledMethod of calls) {
-        // Increment count for the called method
-        const currentCount = callCountMap.get(calledMethod) || 0;
-        callCountMap.set(calledMethod, currentCount + 1);
-      }
-    }
+    // Step 2: Insert parsed method calls into temp table (batched for performance)
+    const insertStmt = this.db.prepare(
+      'INSERT INTO temp_method_calls (caller_method, called_method) VALUES (?, ?)'
+    );
     
-    // Update database with computed statistics
-    const updateStmt = this.db.prepare(`
-      UPDATE symbols 
-      SET usage_frequency = ?, called_by_count = ?
-      WHERE name = ? AND type = 'method'
-    `);
-    
-    const transaction = this.db.transaction(() => {
-      for (const [methodName, count] of callCountMap.entries()) {
-        // usage_frequency and called_by_count are the same in this simple analysis
-        updateStmt.run(count, count, methodName);
+    const insertTransaction = this.db.transaction(() => {
+      for (const method of allMethods) {
+        const calls = method.method_calls.split(',').map(c => c.trim()).filter(c => c);
+        for (const calledMethod of calls) {
+          insertStmt.run(method.name, calledMethod);
+        }
       }
     });
+    insertTransaction();
     
-    transaction();
+    // Step 3: Compute statistics using SQL aggregation (FAST!)
+    const updateTransaction = this.db.transaction(() => {
+      // Update usage statistics using SQL JOIN and GROUP BY
+      this.db.exec(`
+        UPDATE symbols
+        SET 
+          usage_frequency = COALESCE(
+            (SELECT COUNT(*) FROM temp_method_calls WHERE called_method = symbols.name),
+            0
+          ),
+          called_by_count = COALESCE(
+            (SELECT COUNT(DISTINCT caller_method) FROM temp_method_calls WHERE called_method = symbols.name),
+            0
+          )
+        WHERE type = 'method';
+      `);
+    });
+    updateTransaction();
     
-    console.log(`✅ Updated usage statistics for ${callCountMap.size} methods`);
+    // Cleanup
+    this.db.exec('DROP TABLE temp_method_calls;');
+    
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+    console.log(`✅ Usage statistics computed in ${duration}s`);
   }
 
   /**

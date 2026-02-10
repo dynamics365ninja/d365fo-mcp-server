@@ -79,8 +79,14 @@ async function buildDatabase() {
   const duration = ((endTime - startTime) / 1000).toFixed(2);
 
   // Compute usage statistics (usage_frequency, called_by_count)
-  console.log('');
-  symbolIndex.computeUsageStatistics();
+  // Only run for full rebuilds or when explicitly enabled via COMPUTE_STATS=true
+  const shouldComputeStats = process.env.COMPUTE_STATS === 'true' || EXTRACT_MODE === 'all';
+  if (shouldComputeStats) {
+    console.log('');
+    symbolIndex.computeUsageStatistics();
+  } else {
+    console.log('⏭️  Skipping usage statistics computation (use COMPUTE_STATS=true to enable)');
+  }
 
   const count = symbolIndex.getSymbolCount();
   console.log(`✅ Database built successfully in ${duration}s!`);
