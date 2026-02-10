@@ -9,6 +9,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { registerToolHandler } from '../tools/toolHandler.js';
 import { registerClassResource } from '../resources/classResource.js';
+import { registerWorkspaceResources } from '../resources/workspaceResource.js';
 import { registerCodeReviewPrompt } from '../prompts/codeReview.js';
 import type { XppServerContext } from '../types/context.js';
 
@@ -34,6 +35,7 @@ export function createXppMcpServer(context: XppServerContext): Server {
 
   // Register resources
   registerClassResource(server, context);
+  registerWorkspaceResources(server, context);
 
   // Register prompts (includes system instructions)
   registerCodeReviewPrompt(server, context);

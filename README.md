@@ -121,6 +121,39 @@ This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O
 | **`analyze_class_completeness`** | 🆕 Analyze a class and suggest missing methods based on common patterns |
 | **`get_api_usage_patterns`** | 🆕 Show how to use specific APIs with initialization and usage examples |
 
+### 🔹 Workspace-Aware Features
+
+The MCP server now supports **hybrid search** — combining external D365FO metadata with your local project files for context-aware code intelligence.
+
+| Feature | Description |
+|---------|-------------|
+| **Workspace Scanning** | Automatically detects X++ files (AxClass, AxTable, AxForm, AxEnum) in your project |
+| **Hybrid Search** | Searches both external D365FO metadata AND your local workspace |
+| **Prioritization** | Workspace files appear first in search results (marked with 🔹) |
+| **Pattern Analysis** | Analyzes code patterns from YOUR project, not just generic examples |
+
+**Usage Example:**
+```typescript
+// Enable workspace-aware search
+search({
+  query: "dimension",
+  includeWorkspace: true,
+  workspacePath: "C:\\MyProject"
+})
+
+// Result shows both your custom code and D365FO standard:
+// 🔹 WORKSPACE [CLASS] MyDimensionHelper (your project)
+// 📦 EXTERNAL [CLASS] DimensionAttributeValueSet (D365FO)
+```
+
+**Benefits:**
+- ✅ See your custom extensions alongside standard D365FO code
+- ✅ Pattern analysis learns from YOUR codebase
+- ✅ Workspace code prioritized over external metadata
+- ✅ No manual indexing needed — scans on-demand with caching
+
+See [docs/WORKSPACE_AWARE.md](docs/WORKSPACE_AWARE.md) for complete documentation.
+
 ### Technical Highlights
 
 - 🔍 **Full-Text Search** — FTS5-powered search across 584,799+ symbols

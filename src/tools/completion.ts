@@ -6,17 +6,44 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { validateWorkspacePath } from '../workspace/workspaceUtils.js';
 
 const CompletionArgsSchema = z.object({
   className: z.string().describe('Class or table name'),
   prefix: z.string().optional().default('').describe('Method/field name prefix to filter'),
+  includeWorkspace: z.boolean().optional().default(false).describe('Whether to include workspace files'),
+  workspacePath: z.string().optional().describe('Workspace path to search'),
 });
 
 export async function completionTool(request: CallToolRequest, context: XppServerContext) {
   const args = CompletionArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, cache } = context;
+  const { symbolIndex, cache, workspaceScanner } = context;
 
   try {
+    // Validate workspace path if provided
+    if (args.includeWorkspace && args.workspacePath) {
+      const validation = await validateWorkspacePath(args.workspacePath);
+      if (!validation.valid) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ Invalid workspace path: ${validation.error}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+
+    // Try workspace first if requested
+    if (args.includeWorkspace && args.workspacePath && workspaceScanner) {
+      const workspaceCompletions = await getWorkspaceCompletions(args, workspaceScanner);
+      if (workspaceCompletions) {
+        return workspaceCompletions;
+      }
+    }
+
     // Check cache first
     const cacheKey = `completion:${args.className}:${args.prefix}`;
     const cachedResults = await cache.get<any[]>(cacheKey);
@@ -137,4 +164,116 @@ function formatCompletions(completions: any[], className: string, prefix: string
   }
 
   return output;
+}
+
+/**
+ * Get completions from workspace
+ */
+async function getWorkspaceCompletions(
+  args: z.infer<typeof CompletionArgsSchema>,
+  scanner: any
+): Promise<any | null> {
+  try {
+    // Search for class or table in workspace
+    const classFiles = await scanner.searchInWorkspace(args.workspacePath!, args.className, 'class');
+    const tableFiles = await scanner.searchInWorkspace(args.workspacePath!, args.className, 'table');
+    
+    const files = [...classFiles, ...tableFiles];
+    
+    if (files.length === 0) {
+      return null;
+    }
+
+    const file = files[0];
+    const fileWithMetadata = await scanner.getFileWithMetadata(file.path);
+
+    if (!fileWithMetadata || !fileWithMetadata.metadata) {
+      return null;
+    }
+
+    const metadata = fileWithMetadata.metadata;
+    const completions: any[] = [];
+
+    // Add methods
+    if (metadata.methods) {
+      for (const method of metadata.methods) {
+        if (!args.prefix || method.name.toLowerCase().startsWith(args.prefix.toLowerCase())) {
+          completions.push({
+            label: method.name,
+            kind: 'Method',
+            detail: method.signature,
+            documentation: method.isStatic ? 'Static method' : undefined,
+          });
+        }
+      }
+    }
+
+    // Add fields
+    if (metadata.fields) {
+      for (const field of metadata.fields) {
+        if (!args.prefix || field.name.toLowerCase().startsWith(args.prefix.toLowerCase())) {
+          completions.push({
+            label: field.name,
+            kind: 'Field',
+            detail: field.edt || field.type,
+            documentation: field.mandatory ? 'Mandatory field' : undefined,
+          });
+        }
+      }
+    }
+
+    if (completions.length === 0) {
+      return null;
+    }
+
+    const prefixMsg = args.prefix ? ` starting with "${args.prefix}"` : '';
+    let output = `# 🔹 WORKSPACE Code Completion: ${args.className}${prefixMsg}\n\n`;
+    output += `Found ${completions.length} member(s) in workspace:\n\n`;
+
+    const methods = completions.filter(c => c.kind === 'Method');
+    const fields = completions.filter(c => c.kind === 'Field');
+
+    if (methods.length > 0) {
+      output += `## Methods (${methods.length})\n\n`;
+      methods.forEach(m => {
+        output += `- **${m.label}**`;
+        if (m.detail) {
+          output += `: ${m.detail}`;
+        }
+        if (m.documentation) {
+          output += ` *(${m.documentation})*`;
+        }
+        output += '\n';
+      });
+      output += '\n';
+    }
+
+    if (fields.length > 0) {
+      output += `## Fields (${fields.length})\n\n`;
+      fields.forEach(f => {
+        output += `- **${f.label}**`;
+        if (f.detail) {
+          output += `: ${f.detail}`;
+        }
+        if (f.documentation) {
+          output += ` *(${f.documentation})*`;
+        }
+        output += '\n';
+      });
+    }
+
+    output += `\n---\n\n💡 Completions from workspace. External D365FO completions may also be available.\n`;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: output,
+        },
+      ],
+    };
+  } catch (error) {
+    console.warn('Error getting workspace completions:', error);
+    return null;
+  }
 }

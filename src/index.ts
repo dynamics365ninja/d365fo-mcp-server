@@ -11,6 +11,8 @@ import { createStreamableHttpTransport } from './server/transport.js';
 import { XppSymbolIndex } from './metadata/symbolIndex.js';
 import { XppMetadataParser } from './metadata/xmlParser.js';
 import { RedisCacheService } from './cache/redisCache.js';
+import { WorkspaceScanner } from './workspace/workspaceScanner.js';
+import { HybridSearch } from './workspace/hybridSearch.js';
 import { downloadDatabaseFromBlob } from './database/download.js';
 import * as fs from 'fs/promises';
 
@@ -140,12 +142,24 @@ async function initializeServices() {
     serverState.symbolIndex = symbolIndex;
     serverState.parser = parser;
 
-    // Create MCP server with symbol index, parser, and cache
-    serverState.statusMessage = 'Initializing MCP server...';
-    const mcpServer = createXppMcpServer({ symbolIndex, parser, cache });
-    console.log('✅ MCP Server initialized');
+    // Initialize workspace scanner and hybrid search
+    console.log('🔍 Initializing workspace scanner...');
+    const workspaceScanner = new WorkspaceScanner();
+    const hybridSearch = new HybridSearch(symbolIndex, workspaceScanner);
+    console.log('✅ Workspace-aware search enabled');
 
-    return { mcpServer, symbolIndex, parser, cache };
+    // Create MCP server with full context
+    serverState.statusMessage = 'Initializing MCP server...';
+    const mcpServer = createXppMcpServer({ 
+      symbolIndex, 
+      parser, 
+      cache, 
+      workspaceScanner, 
+      hybridSearch 
+    });
+    console.log('✅ MCP Server initialized with workspace support');
+
+    return { mcpServer, symbolIndex, parser, cache, workspaceScanner, hybridSearch };
   } catch (error) {
     console.error('❌ Initialization error:', error);
     serverState.statusMessage = `Initialization failed: ${error}`;
@@ -212,9 +226,9 @@ async function main() {
 
     // Initialize services asynchronously after server is running
     initializeServices()
-      .then(({ mcpServer, symbolIndex, parser, cache }) => {
+      .then(({ mcpServer, symbolIndex, parser, cache, workspaceScanner, hybridSearch }) => {
         // MCP endpoints - register after initialization
-        createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache });
+        createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache, workspaceScanner, hybridSearch });
         
         serverState.isReady = true;
         serverState.isHealthy = true;

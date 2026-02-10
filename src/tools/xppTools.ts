@@ -26,7 +26,9 @@ export const SearchExtensionsSchema = z.object({
 });
 
 export const GetClassSchema = z.object({
-  className: z.string().describe('Name of the X++ class')
+  className: z.string().describe('Name of the X++ class'),
+  includeWorkspace: z.boolean().optional().default(false).describe('Whether to search in workspace first'),
+  workspacePath: z.string().optional().describe('Workspace path to search for class')
 });
 
 export const GetTableSchema = z.object({
@@ -35,7 +37,9 @@ export const GetTableSchema = z.object({
 
 export const CompleteMethodSchema = z.object({
   className: z.string().describe('Class or table name'),
-  prefix: z.string().optional().default('').describe('Method/field name prefix to filter')
+  prefix: z.string().optional().default('').describe('Method/field name prefix to filter'),
+  includeWorkspace: z.boolean().optional().default(false).describe('Whether to include workspace files'),
+  workspacePath: z.string().optional().describe('Workspace path to search')
 });
 
 export const GenerateCodeSchema = z.object({
@@ -764,7 +768,7 @@ export const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: 'get_class_info',
-    description: 'Get detailed information about an X++ class including its declaration, inheritance, and all methods with source code.',
+    description: '🔹 Get detailed information about an X++ class including its declaration, inheritance, and all methods with source code. Optionally search workspace files first before external metadata (use includeWorkspace=true). Workspace-first search prioritizes your local project code.',
     inputSchema: GetClassSchema
   },
   {
@@ -774,7 +778,7 @@ export const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: 'code_completion',
-    description: '🔍 Get all methods and fields for a class or table (IntelliSense-style completion). Use this to discover what members are available on a D365FO object. Optionally filter by prefix. Leave prefix empty to see ALL members. Works for both classes and tables.',
+    description: '🔍 Get all methods and fields for a class or table (IntelliSense-style completion). Use this to discover what members are available on a D365FO object. Optionally filter by prefix. Leave prefix empty to see ALL members. Works for both classes and tables. Supports workspace-first search (includeWorkspace=true) to prioritize your local project code.',
     inputSchema: CompleteMethodSchema
   },
   {

@@ -6,16 +6,44 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { validateWorkspacePath } from '../workspace/workspaceUtils.js';
 
 const ClassInfoArgsSchema = z.object({
   className: z.string().describe('Name of the X++ class'),
+  includeWorkspace: z.boolean().optional().default(false).describe('Whether to search in workspace first'),
+  workspacePath: z.string().optional().describe('Workspace path to search for class'),
 });
 
 export async function classInfoTool(request: CallToolRequest, context: XppServerContext) {
   const args = ClassInfoArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, parser, cache } = context;
+  const { symbolIndex, parser, cache, workspaceScanner } = context;
 
   try {
+    // Validate workspace path if provided
+    if (args.includeWorkspace && args.workspacePath) {
+      const validation = await validateWorkspacePath(args.workspacePath);
+      if (!validation.valid) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ Invalid workspace path: ${validation.error}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+
+    // Try workspace first if requested
+    if (args.includeWorkspace && args.workspacePath && workspaceScanner) {
+      const workspaceResult = await searchInWorkspace(args, workspaceScanner);
+      if (workspaceResult) {
+        return workspaceResult;
+      }
+      // If not found in workspace, continue to external search
+    }
+
     // Check cache first
     const cacheKey = cache.generateClassKey(args.className);
     const cachedClass = await cache.get<any>(cacheKey);
@@ -147,5 +175,80 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
       ],
       isError: true,
     };
+  }
+}
+
+/**
+ * Search for class in workspace
+ */
+async function searchInWorkspace(
+  args: z.infer<typeof ClassInfoArgsSchema>,
+  scanner: any
+): Promise<any | null> {
+  try {
+    const files = await scanner.searchInWorkspace(args.workspacePath!, args.className, 'class');
+    
+    if (files.length === 0) {
+      return null;
+    }
+
+    const file = files[0];
+    const fileWithMetadata = await scanner.getFileWithMetadata(file.path);
+
+    if (!fileWithMetadata || !fileWithMetadata.metadata) {
+      return null;
+    }
+
+    const metadata = fileWithMetadata.metadata;
+    let output = `# 🔹 WORKSPACE Class: ${args.className}\n\n`;
+    output += `**Location:** ${file.path}\n`;
+    output += `**Last Modified:** ${file.lastModified.toISOString()}\n\n`;
+
+    if (metadata.extends) {
+      output += `**Extends:** ${metadata.extends}\n`;
+    }
+
+    if (metadata.implements && metadata.implements.length > 0) {
+      output += `**Implements:** ${metadata.implements.join(', ')}\n`;
+    }
+
+    if (metadata.methods && metadata.methods.length > 0) {
+      output += `\n## Methods (${metadata.methods.length})\n\n`;
+      for (const method of metadata.methods) {
+        output += `- **${method.name}**`;
+        if (method.signature) {
+          output += `: ${method.signature}`;
+        }
+        if (method.isStatic) {
+          output += ' *(static)*';
+        }
+        output += `\n`;
+      }
+    }
+
+    if (metadata.fields && metadata.fields.length > 0) {
+      output += `\n## Fields (${metadata.fields.length})\n\n`;
+      for (const field of metadata.fields) {
+        output += `- **${field.name}**`;
+        if (field.type || field.edt) {
+          output += `: ${field.edt || field.type}`;
+        }
+        output += `\n`;
+      }
+    }
+
+    output += `\n---\n\n💡 This class was found in your workspace. External D365FO version may also exist.\n`;
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: output,
+        },
+      ],
+    };
+  } catch (error) {
+    console.warn('Error searching workspace:', error);
+    return null;
   }
 }
