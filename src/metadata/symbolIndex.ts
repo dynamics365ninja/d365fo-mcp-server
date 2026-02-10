@@ -487,9 +487,6 @@ export class XppSymbolIndex {
 
   private indexClasses(classesPath: string, model: string): void {
     const files = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
-    const totalFiles = files.length;
-    let processedCount = 0;
-    const progressInterval = Math.max(1, Math.floor(totalFiles / 10)); // Show progress 10 times
 
     for (const file of files) {
       try {
@@ -548,24 +545,11 @@ export class XppSymbolIndex {
       } catch (error) {
         console.error(`\n      ⚠️  Error indexing class ${file}: ${error}`);
       }
-      
-      // Show progress periodically
-      processedCount++;
-      if (processedCount % progressInterval === 0 || processedCount === totalFiles) {
-        const percentage = Math.round((processedCount / totalFiles) * 100);
-        process.stdout.write(`\r      Classes: ${processedCount}/${totalFiles} (${percentage}%)`);
-      }
-    }
-    if (totalFiles > 0) {
-      process.stdout.write('\n');
     }
   }
 
   private indexTables(tablesPath: string, model: string): void {
     const files = fs.readdirSync(tablesPath).filter(f => f.endsWith('.json'));
-    const totalFiles = files.length;
-    let processedCount = 0;
-    const progressInterval = Math.max(1, Math.floor(totalFiles / 10));
 
     for (const file of files) {
       try {
@@ -602,24 +586,11 @@ export class XppSymbolIndex {
       } catch (error) {
         console.error(`\n      ⚠️  Error indexing table ${file}: ${error}`);
       }
-      
-      // Show progress periodically
-      processedCount++;
-      if (processedCount % progressInterval === 0 || processedCount === totalFiles) {
-        const percentage = Math.round((processedCount / totalFiles) * 100);
-        process.stdout.write(`\r      Tables: ${processedCount}/${totalFiles} (${percentage}%)`);
-      }
-    }
-    if (totalFiles > 0) {
-      process.stdout.write('\n');
     }
   }
 
   private indexEnums(enumsPath: string, model: string): void {
     const files = fs.readdirSync(enumsPath).filter(f => f.endsWith('.json'));
-    const totalFiles = files.length;
-    let processedCount = 0;
-    const progressInterval = Math.max(1, Math.floor(totalFiles / 10));
 
     for (const file of files) {
       try {
@@ -642,16 +613,6 @@ export class XppSymbolIndex {
       } catch (error) {
         console.error(`\n      ⚠️  Error indexing enum ${file}: ${error}`);
       }
-      
-      // Show progress periodically
-      processedCount++;
-      if (processedCount % progressInterval === 0 || processedCount === totalFiles) {
-        const percentage = Math.round((processedCount / totalFiles) * 100);
-        process.stdout.write(`\r      Enums: ${processedCount}/${totalFiles} (${percentage}%)`);
-      }
-    }
-    if (totalFiles > 0) {
-      process.stdout.write('\n');
     }
   }
 
