@@ -45,6 +45,8 @@ describe('searchTool', () => {
       symbolIndex: mockSymbolIndex as XppSymbolIndex,
       cache: mockCache as RedisCacheService,
       parser: {} as any,
+      workspaceScanner: {} as any,
+      hybridSearch: {} as any,
     };
   });
 
