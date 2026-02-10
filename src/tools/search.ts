@@ -13,6 +13,10 @@ import {
   generateContextualTips,
   formatRichContext
 } from '../utils/richContext.js';
+import {
+  generateSearchSuggestions,
+  formatSuggestions
+} from '../utils/suggestionEngine.js';
 
 const SearchArgsSchema = z.object({
   query: z.string().describe('Search query (class name, method name, etc.)'),
@@ -80,16 +84,33 @@ async function performHybridSearch(
   });
 
   if (results.length === 0) {
-    const tips = generateContextualTips(args.query, [], args.type);
+    // Generate intelligent suggestions using suggestion engine
+    const { symbolIndex } = context;
+    const allSymbolNames = symbolIndex.getAllSymbolNames();
+    const symbolsByTerm = symbolIndex.getSymbolsByTerm();
+    
+    const suggestions = generateSearchSuggestions(
+      args.query,
+      allSymbolNames,
+      symbolsByTerm,
+      5 // max suggestions
+    );
     
     let output = `No X++ symbols found matching "${args.query}" in external metadata or workspace`;
     
-    if (tips.length > 0) {
-      output += '\n\n## 💡 Suggestions\n';
-      tips.forEach(tip => {
-        const toolHint = tip.tool ? ` → Use \`${tip.tool}()\`` : '';
-        output += `\n• ${tip.tip}${toolHint}`;
-      });
+    // Add intelligent suggestions
+    if (suggestions.length > 0) {
+      output += '\n' + formatSuggestions(suggestions);
+    } else {
+      // Fall back to basic tips if no suggestions
+      const tips = generateContextualTips(args.query, [], args.type);
+      if (tips.length > 0) {
+        output += '\n\n## 💡 Suggestions\n';
+        tips.forEach(tip => {
+          const toolHint = tip.tool ? ` → Use \`${tip.tool}()\`` : '';
+          output += `\n• ${tip.tip}${toolHint}`;
+        });
+      }
     }
     
     return {
@@ -197,17 +218,33 @@ async function performExternalSearch(
 
     // Ensure results is not null
     if (!results || results.length === 0) {
-      // Generate suggestions for empty results
-      const tips = generateContextualTips(args.query, [], args.type);
+      // Generate intelligent suggestions using suggestion engine
+      const allSymbolNames = symbolIndex.getAllSymbolNames();
+      const symbolsByTerm = symbolIndex.getSymbolsByTerm();
+      
+      // Note: context is passed as parameter, so we can access it
+      const suggestions = generateSearchSuggestions(
+        args.query,
+        allSymbolNames,
+        symbolsByTerm,
+        5 // max suggestions
+      );
       
       let output = `No X++ symbols found matching "${args.query}"`;
       
-      if (tips.length > 0) {
-        output += '\n\n## 💡 Suggestions\n';
-        tips.forEach(tip => {
-          const toolHint = tip.tool ? ` → Use \`${tip.tool}()\`` : '';
-          output += `\n• ${tip.tip}${toolHint}`;
-        });
+      // Add intelligent suggestions
+      if (suggestions.length > 0) {
+        output += '\n' + formatSuggestions(suggestions);
+      } else {
+        // Fall back to basic tips if no suggestions
+        const tips = generateContextualTips(args.query, [], args.type);
+        if (tips.length > 0) {
+          output += '\n\n## 💡 Suggestions\n';
+          tips.forEach(tip => {
+            const toolHint = tip.tool ? ` → Use \`${tip.tool}()\`` : '';
+            output += `\n• ${tip.tip}${toolHint}`;
+          });
+        }
       }
       
       return {

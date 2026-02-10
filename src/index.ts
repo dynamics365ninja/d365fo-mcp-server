@@ -148,6 +148,14 @@ async function initializeServices() {
     const hybridSearch = new HybridSearch(symbolIndex, workspaceScanner);
     console.log('✅ Workspace-aware search enabled');
 
+    // Initialize term relationship graph for search suggestions
+    console.log('🔗 Building term relationship graph...');
+    const { TermRelationshipGraph } = await import('./utils/suggestionEngine.js');
+    const termRelationshipGraph = new TermRelationshipGraph();
+    const symbolsForAnalysis = symbolIndex.getAllSymbolsForAnalysis();
+    termRelationshipGraph.build(symbolsForAnalysis);
+    console.log('✅ Term relationship graph built for intelligent suggestions');
+
     // Create MCP server with full context
     serverState.statusMessage = 'Initializing MCP server...';
     const mcpServer = createXppMcpServer({ 
@@ -155,11 +163,12 @@ async function initializeServices() {
       parser, 
       cache, 
       workspaceScanner, 
-      hybridSearch 
+      hybridSearch,
+      termRelationshipGraph
     });
     console.log('✅ MCP Server initialized with workspace support');
 
-    return { mcpServer, symbolIndex, parser, cache, workspaceScanner, hybridSearch };
+    return { mcpServer, symbolIndex, parser, cache, workspaceScanner, hybridSearch, termRelationshipGraph };
   } catch (error) {
     console.error('❌ Initialization error:', error);
     serverState.statusMessage = `Initialization failed: ${error}`;
@@ -226,9 +235,9 @@ async function main() {
 
     // Initialize services asynchronously after server is running
     initializeServices()
-      .then(({ mcpServer, symbolIndex, parser, cache, workspaceScanner, hybridSearch }) => {
+      .then(({ mcpServer, symbolIndex, parser, cache, workspaceScanner, hybridSearch, termRelationshipGraph }) => {
         // MCP endpoints - register after initialization
-        createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache, workspaceScanner, hybridSearch });
+        createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache, workspaceScanner, hybridSearch, termRelationshipGraph });
         
         serverState.isReady = true;
         serverState.isHealthy = true;

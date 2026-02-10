@@ -957,6 +957,68 @@ export class XppSymbolIndex {
   }
 
   /**
+   * Get all symbol names for fuzzy matching
+   * Used by suggestion engine for typo detection
+   */
+  getAllSymbolNames(): string[] {
+    const stmt = this.db.prepare(`
+      SELECT DISTINCT name
+      FROM symbols
+      ORDER BY name
+    `);
+    
+    const rows = stmt.all() as Array<{ name: string }>;
+    return rows.map(row => row.name);
+  }
+
+  /**
+   * Get symbols grouped by term (for relationship analysis)
+   * Returns a map of term -> symbols with that term
+   */
+  getSymbolsByTerm(): Map<string, XppSymbol[]> {
+    const stmt = this.db.prepare(`
+      SELECT *
+      FROM symbols
+      ORDER BY name
+    `);
+    
+    const rows = stmt.all() as any[];
+    const symbolsByTerm = new Map<string, XppSymbol[]>();
+    
+    for (const row of rows) {
+      const symbol = this.rowToSymbol(row);
+      const termLower = symbol.name.toLowerCase();
+      
+      if (!symbolsByTerm.has(termLower)) {
+        symbolsByTerm.set(termLower, []);
+      }
+      symbolsByTerm.get(termLower)!.push(symbol);
+    }
+    
+    return symbolsByTerm;
+  }
+
+  /**
+   * Get all symbols for relationship analysis
+   * Used to build term relationship graph
+   */
+  getAllSymbolsForAnalysis(): XppSymbol[] {
+    const stmt = this.db.prepare(`
+      SELECT *
+      FROM symbols
+      WHERE used_types IS NOT NULL 
+         OR method_calls IS NOT NULL 
+         OR related_methods IS NOT NULL
+         OR parent_name IS NOT NULL
+         OR extends_class IS NOT NULL
+      LIMIT 10000
+    `);
+    
+    const rows = stmt.all() as any[];
+    return rows.map(row => this.rowToSymbol(row));
+  }
+
+  /**
    * Close the database connection
    */
   close(): void {

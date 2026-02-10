@@ -55,6 +55,7 @@ describe('batchSearchTool', () => {
       parser: {} as any,
       workspaceScanner: {} as any,
       hybridSearch: {} as any,
+      termRelationshipGraph: {} as any,
     };
   });
 
