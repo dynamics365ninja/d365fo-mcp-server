@@ -53,6 +53,7 @@ describe('MCP Server Transport', () => {
 
     const mockCache: Partial<RedisCacheService> = {
       get: async () => null,
+      getFuzzy: async () => null,
       set: async () => {},
       generateSearchKey: () => 'test-key',
     };
