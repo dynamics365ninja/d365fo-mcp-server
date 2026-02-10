@@ -441,38 +441,43 @@ export class XppSymbolIndex {
 
     console.log(`   Processing ${models.length} model(s)...`);
 
-    let modelIndex = 0;
-    // Wrap everything in a single transaction for massive performance boost
-    const transaction = this.db.transaction(() => {
-      for (const model of models) {
-        modelIndex++;
-        const modelPath = path.join(metadataPath, model);
-        
-        // Show progress before processing each model
-        process.stdout.write(`\r   [${modelIndex}/${models.length}] Indexing ${model}...`);
-        
-        // Index classes
-        const classesPath = path.join(modelPath, 'classes');
-        if (fs.existsSync(classesPath)) {
-          this.indexClasses(classesPath, model);
-        }
+    // Process each model in its own transaction to avoid memory issues with large models
+    for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
+      const model = models[modelIndex];
+      const modelPath = path.join(metadataPath, model);
+      
+      // Show progress before processing each model
+      process.stdout.write(`\r   [${modelIndex + 1}/${models.length}] Indexing ${model}...`);
+      
+      try {
+        // Each model gets its own transaction to prevent memory issues
+        const transaction = this.db.transaction(() => {
+          // Index classes
+          const classesPath = path.join(modelPath, 'classes');
+          if (fs.existsSync(classesPath)) {
+            this.indexClasses(classesPath, model);
+          }
 
-        // Index tables
-        const tablesPath = path.join(modelPath, 'tables');
-        if (fs.existsSync(tablesPath)) {
-          this.indexTables(tablesPath, model);
-        }
+          // Index tables
+          const tablesPath = path.join(modelPath, 'tables');
+          if (fs.existsSync(tablesPath)) {
+            this.indexTables(tablesPath, model);
+          }
 
-        // Index enums
-        const enumsPath = path.join(modelPath, 'enums');
-        if (fs.existsSync(enumsPath)) {
-          this.indexEnums(enumsPath, model);
-        }
+          // Index enums
+          const enumsPath = path.join(modelPath, 'enums');
+          if (fs.existsSync(enumsPath)) {
+            this.indexEnums(enumsPath, model);
+          }
+        });
+
+        // Execute transaction for this model
+        transaction();
+      } catch (error) {
+        console.error(`\n      ❌ Error indexing model ${model}: ${error}`);
+        // Continue with next model instead of failing completely
       }
-    });
-
-    // Execute the entire indexing in one transaction
-    transaction();
+    }
     
     // Clear progress line and show completion
     process.stdout.write(`\r   ✅ Indexed ${models.length} model(s)${' '.repeat(50)}\n`);
