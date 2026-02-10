@@ -434,10 +434,17 @@ export class XppSymbolIndex {
   async indexMetadataDirectory(metadataPath: string, modelName?: string): Promise<void> {
     const models = modelName ? [modelName] : await this.getModelDirectories(metadataPath);
 
+    console.log(`   Processing ${models.length} model(s)...`);
+
+    let modelIndex = 0;
     // Wrap everything in a single transaction for massive performance boost
     const transaction = this.db.transaction(() => {
       for (const model of models) {
+        modelIndex++;
         const modelPath = path.join(metadataPath, model);
+        
+        // Show progress before processing each model
+        process.stdout.write(`\r   [${modelIndex}/${models.length}] Indexing ${model}...`);
         
         // Index classes
         const classesPath = path.join(modelPath, 'classes');
@@ -461,6 +468,9 @@ export class XppSymbolIndex {
 
     // Execute the entire indexing in one transaction
     transaction();
+    
+    // Clear progress line and show completion
+    process.stdout.write(`\r   ✅ Indexed ${models.length} model(s)${' '.repeat(50)}\n`);
   }
 
   private async getModelDirectories(metadataPath: string): Promise<string[]> {
@@ -472,6 +482,9 @@ export class XppSymbolIndex {
 
   private indexClasses(classesPath: string, model: string): void {
     const files = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
+    const totalFiles = files.length;
+    let processedCount = 0;
+    const progressInterval = Math.max(1, Math.floor(totalFiles / 10)); // Show progress 10 times
 
     for (const file of files) {
       const filePath = path.join(classesPath, file);
@@ -525,11 +538,24 @@ export class XppSymbolIndex {
           });
         }
       }
+      
+      // Show progress periodically
+      processedCount++;
+      if (processedCount % progressInterval === 0 || processedCount === totalFiles) {
+        const percentage = Math.round((processedCount / totalFiles) * 100);
+        process.stdout.write(`\r      Classes: ${processedCount}/${totalFiles} (${percentage}%)`);
+      }
+    }
+    if (totalFiles > 0) {
+      process.stdout.write('\n');
     }
   }
 
   private indexTables(tablesPath: string, model: string): void {
     const files = fs.readdirSync(tablesPath).filter(f => f.endsWith('.json'));
+    const totalFiles = files.length;
+    let processedCount = 0;
+    const progressInterval = Math.max(1, Math.floor(totalFiles / 10));
 
     for (const file of files) {
       const filePath = path.join(tablesPath, file);
@@ -561,11 +587,24 @@ export class XppSymbolIndex {
           });
         }
       }
+      
+      // Show progress periodically
+      processedCount++;
+      if (processedCount % progressInterval === 0 || processedCount === totalFiles) {
+        const percentage = Math.round((processedCount / totalFiles) * 100);
+        process.stdout.write(`\r      Tables: ${processedCount}/${totalFiles} (${percentage}%)`);
+      }
+    }
+    if (totalFiles > 0) {
+      process.stdout.write('\n');
     }
   }
 
   private indexEnums(enumsPath: string, model: string): void {
     const files = fs.readdirSync(enumsPath).filter(f => f.endsWith('.json'));
+    const totalFiles = files.length;
+    let processedCount = 0;
+    const progressInterval = Math.max(1, Math.floor(totalFiles / 10));
 
     for (const file of files) {
       const filePath = path.join(enumsPath, file);
@@ -583,6 +622,16 @@ export class XppSymbolIndex {
         filePath: sourceFilePath,
         model,
       });
+      
+      // Show progress periodically
+      processedCount++;
+      if (processedCount % progressInterval === 0 || processedCount === totalFiles) {
+        const percentage = Math.round((processedCount / totalFiles) * 100);
+        process.stdout.write(`\r      Enums: ${processedCount}/${totalFiles} (${percentage}%)`);
+      }
+    }
+    if (totalFiles > 0) {
+      process.stdout.write('\n');
     }
   }
 

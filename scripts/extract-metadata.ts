@@ -101,12 +101,17 @@ async function extractMetadata() {
     errors: 0,
   };
 
-  // Clean up existing output directory
-  try {
-    await fs.rm(OUTPUT_PATH, { recursive: true, force: true });
-    console.log('🗑️  Cleaned up existing metadata directory');
-  } catch (error) {
-    // Ignore errors if directory doesn't exist
+  // Clean up existing output directory ONLY for 'all' mode
+  // For 'custom' and 'standard' modes, preserve existing metadata (e.g., downloaded from blob)
+  if (EXTRACT_MODE === 'all') {
+    try {
+      await fs.rm(OUTPUT_PATH, { recursive: true, force: true });
+      console.log('🗑️  Cleaned up existing metadata directory');
+    } catch (error) {
+      // Ignore errors if directory doesn't exist
+    }
+  } else {
+    console.log(`ℹ️  Preserving existing metadata (mode: ${EXTRACT_MODE})`);
   }
 
   // Create output directory
