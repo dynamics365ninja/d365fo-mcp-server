@@ -201,15 +201,20 @@ export class XppSymbolIndex {
    * Add a symbol to the index with enhanced metadata
    */
   addSymbol(symbol: XppSymbol): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO symbols (
-        name, type, parent_name, signature, file_path, model,
-        description, tags, source_snippet, complexity, used_types, method_calls,
-        inline_comments, extends_class, implements_interfaces, usage_example,
-        usage_frequency, pattern_type, typical_usages, called_by_count, related_methods, api_patterns
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    // Use cached prepared statement for performance
+    let stmt = this.stmtCache.get('addSymbol');
+    if (!stmt) {
+      stmt = this.db.prepare(`
+        INSERT OR REPLACE INTO symbols (
+          name, type, parent_name, signature, file_path, model,
+          description, tags, source_snippet, complexity, used_types, method_calls,
+          inline_comments, extends_class, implements_interfaces, usage_example,
+          usage_frequency, pattern_type, typical_usages, called_by_count, related_methods, api_patterns
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      this.stmtCache.set('addSymbol', stmt);
+    }
 
     stmt.run(
       symbol.name,
@@ -487,9 +492,10 @@ export class XppSymbolIndex {
     const progressInterval = Math.max(1, Math.floor(totalFiles / 10)); // Show progress 10 times
 
     for (const file of files) {
-      const filePath = path.join(classesPath, file);
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const classData = JSON.parse(content);
+      try {
+        const filePath = path.join(classesPath, file);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const classData = JSON.parse(content);
 
       // Use sourcePath from metadata (original XML file) instead of JSON file path
       const sourceFilePath = classData.sourcePath || filePath;
@@ -539,6 +545,10 @@ export class XppSymbolIndex {
         }
       }
       
+      } catch (error) {
+        console.error(`\n      ⚠️  Error indexing class ${file}: ${error}`);
+      }
+      
       // Show progress periodically
       processedCount++;
       if (processedCount % progressInterval === 0 || processedCount === totalFiles) {
@@ -558,34 +568,39 @@ export class XppSymbolIndex {
     const progressInterval = Math.max(1, Math.floor(totalFiles / 10));
 
     for (const file of files) {
-      const filePath = path.join(tablesPath, file);
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const tableData = JSON.parse(content);
+      try {
+        const filePath = path.join(tablesPath, file);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const tableData = JSON.parse(content);
 
-      // Use sourcePath from metadata (original XML file) instead of JSON file path
-      const sourceFilePath = tableData.sourcePath || filePath;
+        // Use sourcePath from metadata (original XML file) instead of JSON file path
+        const sourceFilePath = tableData.sourcePath || filePath;
 
-      // Add table symbol
-      this.addSymbol({
-        name: tableData.name,
-        type: 'table',
-        signature: tableData.label || undefined,
-        filePath: sourceFilePath,
-        model,
-      });
+        // Add table symbol
+        this.addSymbol({
+          name: tableData.name,
+          type: 'table',
+          signature: tableData.label || undefined,
+          filePath: sourceFilePath,
+          model,
+        });
 
-      // Add field symbols
-      if (tableData.fields && Array.isArray(tableData.fields)) {
-        for (const field of tableData.fields) {
-          this.addSymbol({
-            name: field.name,
-            type: 'field',
-            parentName: tableData.name,
-            signature: field.type,
-            filePath: sourceFilePath,
-            model,
-          });
+        // Add field symbols
+        if (tableData.fields && Array.isArray(tableData.fields)) {
+          for (const field of tableData.fields) {
+            this.addSymbol({
+              name: field.name,
+              type: 'field',
+              parentName: tableData.name,
+              signature: field.type,
+              filePath: sourceFilePath,
+              model,
+            });
+          }
         }
+      
+      } catch (error) {
+        console.error(`\n      ⚠️  Error indexing table ${file}: ${error}`);
       }
       
       // Show progress periodically
@@ -607,21 +622,26 @@ export class XppSymbolIndex {
     const progressInterval = Math.max(1, Math.floor(totalFiles / 10));
 
     for (const file of files) {
-      const filePath = path.join(enumsPath, file);
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const enumData = JSON.parse(content);
+      try {
+        const filePath = path.join(enumsPath, file);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const enumData = JSON.parse(content);
 
-      // Use sourcePath from metadata (original XML file) instead of JSON file path
-      const sourceFilePath = enumData.sourcePath || filePath;
-      const enumName = enumData.name || path.basename(file, '.json');
+        // Use sourcePath from metadata (original XML file) instead of JSON file path
+        const sourceFilePath = enumData.sourcePath || filePath;
+        const enumName = enumData.name || path.basename(file, '.json');
 
-      // Add enum symbol
-      this.addSymbol({
-        name: enumName,
-        type: 'enum',
-        filePath: sourceFilePath,
-        model,
-      });
+        // Add enum symbol
+        this.addSymbol({
+          name: enumName,
+          type: 'enum',
+          filePath: sourceFilePath,
+          model,
+        });
+      
+      } catch (error) {
+        console.error(`\n      ⚠️  Error indexing enum ${file}: ${error}`);
+      }
       
       // Show progress periodically
       processedCount++;
