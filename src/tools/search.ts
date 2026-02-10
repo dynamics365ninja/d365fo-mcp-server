@@ -84,25 +84,38 @@ async function performHybridSearch(
   });
 
   if (results.length === 0) {
-    // Generate intelligent suggestions using suggestion engine
-    const { symbolIndex } = context;
-    const allSymbolNames = symbolIndex.getAllSymbolNames();
-    const symbolsByTerm = symbolIndex.getSymbolsByTerm();
-    
-    const suggestions = generateSearchSuggestions(
-      args.query,
-      allSymbolNames,
-      symbolsByTerm,
-      5 // max suggestions
-    );
-    
+    // Generate intelligent suggestions using suggestion engine (if available)
     let output = `No X++ symbols found matching "${args.query}" in external metadata or workspace`;
     
-    // Add intelligent suggestions
-    if (suggestions.length > 0) {
-      output += '\n' + formatSuggestions(suggestions);
-    } else {
-      // Fall back to basic tips if no suggestions
+    try {
+      const { symbolIndex } = context;
+      const allSymbolNames = symbolIndex.getAllSymbolNames();
+      const symbolsByTerm = symbolIndex.getSymbolsByTerm();
+      
+      const suggestions = generateSearchSuggestions(
+        args.query,
+        allSymbolNames,
+        symbolsByTerm,
+        5 // max suggestions
+      );
+      
+      // Add intelligent suggestions
+      if (suggestions.length > 0) {
+        output += '\n' + formatSuggestions(suggestions);
+      } else {
+        // Fall back to basic tips if no suggestions
+        const tips = generateContextualTips(args.query, [], args.type);
+        if (tips.length > 0) {
+          output += '\n\n## 💡 Suggestions\n';
+          tips.forEach(tip => {
+            const toolHint = tip.tool ? ` → Use \`${tip.tool}()\`` : '';
+            output += `\n• ${tip.tip}${toolHint}`;
+          });
+        }
+      }
+    } catch (error) {
+      // Gracefully handle suggestion errors (e.g., relationship graph not built yet)
+      console.warn('⚠️ Could not generate search suggestions:', error);
       const tips = generateContextualTips(args.query, [], args.type);
       if (tips.length > 0) {
         output += '\n\n## 💡 Suggestions\n';

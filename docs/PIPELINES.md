@@ -377,6 +377,33 @@ Pipeline Logs:
 3. Test blob storage connection
 4. Validate model paths
 
+### Memory Management
+
+**Pipeline Node.js Heap Configuration:**
+
+All pipelines are configured with memory-optimized settings:
+
+```yaml
+env:
+  ENABLE_SEARCH_SUGGESTIONS: 'false'  # Disable in CI/CD to reduce memory
+  NODE_OPTIONS: '--max-old-space-size=2048'  # 2GB heap size
+```
+
+**Settings Explanation:**
+- `ENABLE_SEARCH_SUGGESTIONS=false` - Disables term relationship graph building during database build
+  - Saves ~500MB-1GB memory during pipeline execution
+  - Search suggestions are not needed during metadata extraction
+  - Reduces risk of "JavaScript heap out of memory" errors
+- `NODE_OPTIONS='--max-old-space-size=2048'` - Sets Node.js heap limit to 2GB
+  - Provides sufficient memory for large metadata sets (500K+ symbols)
+  - Standard Azure Pipeline agents have 7GB RAM, so 2GB heap is safe
+
+**⚠️ If Pipeline Fails with "heap out of memory":**
+1. Verify `ENABLE_SEARCH_SUGGESTIONS=false` is set in pipeline YAML
+2. Increase heap size: `--max-old-space-size=3072` (3GB)
+3. Check metadata size - 500K+ symbols may need more memory
+4. Consider splitting extraction into smaller batches
+
 ### Cost Optimization
 
 **Compute Costs:**

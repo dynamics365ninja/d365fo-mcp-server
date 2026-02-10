@@ -148,13 +148,30 @@ async function initializeServices() {
     const hybridSearch = new HybridSearch(symbolIndex, workspaceScanner);
     console.log('✅ Workspace-aware search enabled');
 
-    // Initialize term relationship graph for search suggestions
-    console.log('🔗 Building term relationship graph...');
-    const { TermRelationshipGraph } = await import('./utils/suggestionEngine.js');
-    const termRelationshipGraph = new TermRelationshipGraph();
-    const symbolsForAnalysis = symbolIndex.getAllSymbolsForAnalysis();
-    termRelationshipGraph.build(symbolsForAnalysis);
-    console.log('✅ Term relationship graph built for intelligent suggestions');
+    // Initialize term relationship graph for search suggestions (lazy loading)
+    // Only build if explicitly enabled or in development mode
+    const enableSuggestions = process.env.ENABLE_SEARCH_SUGGESTIONS === 'true' || process.env.NODE_ENV === 'development';
+    let termRelationshipGraph: any;
+    
+    if (enableSuggestions) {
+      console.log('🔗 Building term relationship graph (lazy mode)...');
+      const { TermRelationshipGraph } = await import('./utils/suggestionEngine.js');
+      termRelationshipGraph = new TermRelationshipGraph();
+      // Build graph asynchronously to avoid blocking startup
+      setImmediate(() => {
+        try {
+          const symbolsForAnalysis = symbolIndex.getAllSymbolsForAnalysis();
+          termRelationshipGraph.build(symbolsForAnalysis);
+          console.log(`✅ Term relationship graph built (${symbolsForAnalysis.length} symbols analyzed)`);
+        } catch (error) {
+          console.warn('⚠️ Failed to build term relationship graph:', error);
+        }
+      });
+    } else {
+      console.log('⏭️  Search suggestions disabled (set ENABLE_SEARCH_SUGGESTIONS=true to enable)');
+      const { TermRelationshipGraph } = await import('./utils/suggestionEngine.js');
+      termRelationshipGraph = new TermRelationshipGraph(); // Empty graph
+    }
 
     // Create MCP server with full context
     serverState.statusMessage = 'Initializing MCP server...';
