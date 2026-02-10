@@ -63,6 +63,7 @@ export class AzureBlobMetadataManager {
     
     // Filter and prepare models for parallel upload
     const uploadPromises: Promise<{ modelName: string; count: number }>[] = [];
+    let queuedCount = 0;
     
     for (const modelName of models) {
       const modelPath = path.join(localPath, modelName);
@@ -79,7 +80,11 @@ export class AzureBlobMetadataManager {
         if (modelType === 'custom' && !isCustomModel) continue;
         if (modelType === 'standard' && isCustomModel) continue;
         
-        console.log(`   📂 Queuing model: ${modelName} → ${targetPrefix}/${modelName}`);
+        queuedCount++;
+        // Only log first few models and every 20th model to reduce log spam
+        if (queuedCount <= 3 || queuedCount % 20 === 0) {
+          console.log(`   📂 Queuing model ${queuedCount}: ${modelName}`);
+        }
         
         // Add to parallel upload queue
         uploadPromises.push(
@@ -99,15 +104,13 @@ export class AzureBlobMetadataManager {
     console.log(`\n🚀 Starting parallel upload of ${uploadPromises.length} models...`);
     const results = await Promise.all(uploadPromises);
     
-    // Calculate total and log results
+    // Calculate total and log summary (not every model to reduce log spam)
     const uploadCount = results.reduce((sum, r) => sum + r.count, 0);
-    results.forEach(r => {
-      if (r.count > 0) {
-        console.log(`   ✅ ${r.modelName}: ${r.count} files`);
-      }
-    });
+    const successCount = results.filter(r => r.count > 0).length;
     
-    console.log(`\n✅ Upload complete! Total files: ${uploadCount}`);
+    console.log(`\n✅ Upload complete!`);
+    console.log(`   Models uploaded: ${successCount}/${results.length}`);
+    console.log(`   Total files: ${uploadCount}`);
   }
 
   /**
@@ -167,9 +170,6 @@ export class AzureBlobMetadataManager {
             await blobClient.downloadToFile(localFilePath);
             
             completed++;
-            if (completed % 100 === 0) {
-              console.log(`   📄 Downloaded ${completed}/${blobsToDownload.length} files...`);
-            }
             
             return true;
           } catch (error) {
@@ -185,6 +185,11 @@ export class AzureBlobMetadataManager {
           await Promise.all(downloadPromises);
           downloadCount += downloadPromises.length;
           downloadPromises.length = 0;
+          
+          // Log progress less frequently for large downloads
+          if (blobsToDownload.length > 500 && completed % 500 === 0) {
+            console.log(`   📄 Progress: ${completed}/${blobsToDownload.length} files`);
+          }
         }
       }
       
@@ -233,7 +238,8 @@ export class AzureBlobMetadataManager {
         await blobClient.delete();
         deleteCount++;
         
-        if (deleteCount % 50 === 0) {
+        // Log progress every 500 files for large deletions
+        if (deleteCount % 500 === 0) {
           console.log(`   🗑️  Deleted ${deleteCount} files...`);
         }
       } catch (error) {
@@ -360,9 +366,9 @@ export class AzureBlobMetadataManager {
       const batchResults = await Promise.all(batch.map(task => task()));
       results.push(...batchResults);
       
-      // Log progress for large batches
-      if (tasks.length > 100 && i > 0 && i % 100 === 0) {
-        console.log(`   📊 Progress: ${i}/${tasks.length} files processed`);
+      // Log progress less frequently for large batches
+      if (tasks.length > 500 && i > 0 && i % 500 === 0) {
+        console.log(`   📊 Progress: ${i}/${tasks.length} files`);
       }
     }
     
