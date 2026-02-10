@@ -373,20 +373,33 @@ export class XppSymbolIndex {
       WHERE type = 'method' AND method_calls IS NOT NULL
     `).all() as Array<{ name: string; parent_name: string; method_calls: string }>;
     
+    console.log(`   Found ${allMethods.length} methods with call references`);
+    
     // Step 2: Insert parsed method calls into temp table (batched for performance)
+    console.log('   Parsing method calls...');
     const insertStmt = this.db.prepare(
       'INSERT INTO temp_method_calls (caller_method, called_method) VALUES (?, ?)'
     );
     
+    let processedMethods = 0;
     const insertTransaction = this.db.transaction(() => {
       for (const method of allMethods) {
         const calls = method.method_calls.split(',').map(c => c.trim()).filter(c => c);
         for (const calledMethod of calls) {
           insertStmt.run(method.name, calledMethod);
         }
+        processedMethods++;
+        
+        // Progress indicator every 10%
+        if (processedMethods % Math.ceil(allMethods.length / 10) === 0) {
+          const percent = Math.round((processedMethods / allMethods.length) * 100);
+          console.log(`   Progress: ${percent}% (${processedMethods}/${allMethods.length} methods)`);
+        }
       }
     });
     insertTransaction();
+    
+    console.log('   Analyzing call patterns with SQL...');
     
     // Step 3: Compute statistics using SQL aggregation (FAST!)
     const updateTransaction = this.db.transaction(() => {
