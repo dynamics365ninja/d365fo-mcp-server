@@ -462,30 +462,43 @@ export class XppSymbolIndex {
             // Show progress before processing each model
             process.stdout.write(`\r   [${modelIndex + 1}/${models.length}] Indexing ${model}...`);
             
-            // Index classes
-            const classesPath = path.join(modelPath, 'classes');
-            if (fs.existsSync(classesPath)) {
-              this.indexClasses(classesPath, model);
-            }
+            try {
+              // Index classes
+              const classesPath = path.join(modelPath, 'classes');
+              if (fs.existsSync(classesPath)) {
+                this.indexClasses(classesPath, model);
+              }
 
-            // Index tables
-            const tablesPath = path.join(modelPath, 'tables');
-            if (fs.existsSync(tablesPath)) {
-              this.indexTables(tablesPath, model);
-            }
+              // Index tables
+              const tablesPath = path.join(modelPath, 'tables');
+              if (fs.existsSync(tablesPath)) {
+                this.indexTables(tablesPath, model);
+              }
 
-            // Index enums
-            const enumsPath = path.join(modelPath, 'enums');
-            if (fs.existsSync(enumsPath)) {
-              this.indexEnums(enumsPath, model);
+              // Index enums
+              const enumsPath = path.join(modelPath, 'enums');
+              if (fs.existsSync(enumsPath)) {
+                this.indexEnums(enumsPath, model);
+              }
+            } catch (modelError) {
+              // Log error but continue with next model in batch
+              console.error(`\n      ⚠️  Error processing model ${model}: ${modelError}`);
             }
           }
         });
 
-        // Execute transaction for this batch
+        // Execute transaction for this batch with timing
+        const batchStartTime = Date.now();
         transaction();
+        const batchDuration = Date.now() - batchStartTime;
+        
+        // Log if batch took unusually long (> 30 seconds)
+        if (batchDuration > 30000) {
+          console.log(`\n      ⏱️  Batch ${batchStart}-${batchEnd} took ${(batchDuration/1000).toFixed(1)}s`);
+        }
       } catch (error) {
-        console.error(`\n      ❌ Error indexing batch ${batchStart}-${batchEnd}: ${error}`);
+        console.error(`\n      ❌ Error committing batch ${batchStart}-${batchEnd}: ${error}`);
+        console.error(`      Models in failed batch: ${batchModels.join(', ')}`);
         // Continue with next batch instead of failing completely
       }
     }
