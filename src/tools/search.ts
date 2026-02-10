@@ -7,6 +7,12 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { validateWorkspacePath } from '../workspace/workspaceUtils.js';
+import {
+  generateRelatedSearches,
+  detectCommonPatterns,
+  generateContextualTips,
+  formatRichContext
+} from '../utils/richContext.js';
 
 const SearchArgsSchema = z.object({
   query: z.string().describe('Search query (class name, method name, etc.)'),
@@ -74,16 +80,37 @@ async function performHybridSearch(
   });
 
   if (results.length === 0) {
+    const tips = generateContextualTips(args.query, [], args.type);
+    
+    let output = `No X++ symbols found matching "${args.query}" in external metadata or workspace`;
+    
+    if (tips.length > 0) {
+      output += '\n\n## 💡 Suggestions\n';
+      tips.forEach(tip => {
+        const toolHint = tip.tool ? ` → Use \`${tip.tool}()\`` : '';
+        output += `\n• ${tip.tip}${toolHint}`;
+      });
+    }
+    
     return {
       content: [
         {
           type: 'text',
-          text: `No X++ symbols found matching "${args.query}" in external metadata or workspace`,
+          text: output,
         },
       ],
     };
   }
 
+  // Convert hybrid results to XppSymbol format for rich context
+  const symbols = results.map(r => r.symbol).filter(Boolean) as any[];
+  
+  // Generate rich context from symbols
+  const relatedSearches = generateRelatedSearches(args.query, symbols, 5);
+  const commonPatterns = detectCommonPatterns(symbols);
+  const tips = generateContextualTips(args.query, symbols, args.type);
+
+  // Format results with source indicators
   const formatted = results
     .map((r) => {
       const source = r.source === 'workspace' ? '🔹 WORKSPACE' : '📦 EXTERNAL';
@@ -103,14 +130,39 @@ async function performHybridSearch(
   const workspaceCount = results.filter((r) => r.source === 'workspace').length;
   const externalCount = results.filter((r) => r.source === 'external').length;
 
+  let output = `Found ${results.length} matches (${workspaceCount} workspace, ${externalCount} external):\n\n${formatted}`;
+  
+  // Add rich context sections
+  if (relatedSearches.length > 0) {
+    output += '\n\n## 🔍 Related Searches\n';
+    relatedSearches.forEach(rel => {
+      output += `\n• **"${rel.query}"** - ${rel.reason}`;
+    });
+  }
+
+  if (commonPatterns.length > 0) {
+    output += '\n\n## 💡 Common Patterns\n';
+    commonPatterns.forEach(pattern => {
+      const freq = pattern.frequency ? ` (found ${pattern.frequency}×)` : '';
+      output += `\n• ${pattern.pattern}${freq}`;
+    });
+  }
+
+  if (tips.length > 0) {
+    output += '\n\n## 📌 Tips\n';
+    tips.forEach(tip => {
+      const toolHint = tip.tool ? ` → Use \`${tip.tool}()\`` : '';
+      output += `\n• ${tip.tip}${toolHint}`;
+    });
+  }
+
+  output += `\n\n💡 **Workspace-aware search** includes both your local project files and D365FO external metadata.`;
+
   return {
     content: [
       {
         type: 'text',
-        text:
-          `Found ${results.length} matches (${workspaceCount} workspace, ${externalCount} external):\n\n` +
-          formatted +
-          `\n\n💡 **Workspace-aware search** includes both your local project files and D365FO external metadata.`,
+        text: output,
       },
     ],
   };
@@ -125,62 +177,69 @@ async function performExternalSearch(
   cache: any
 ) {
   try {
-    // Check cache first
+    // Check cache first with fuzzy matching
     const cacheKey = cache.generateSearchKey(args.query, args.limit, args.type);
-    const cachedResults = (await cache.get(cacheKey)) as any[] | null;
+    const cachedResults = (await cache.getFuzzy(cacheKey)) as any[] | null;
     
-    if (cachedResults) {
-      const formatted = cachedResults
-        .map((s: any) => {
-          const parentPrefix = s.parentName ? `${s.parentName}.` : '';
-          const signature = s.signature ? ` - ${s.signature}` : '';
-          return `[${s.type.toUpperCase()}] ${parentPrefix}${s.name}${signature}`;
-        })
-        .join('\n');
+    let results: any[] = cachedResults || [];
+    let fromCache = !!cachedResults;
+    
+    if (cachedResults === null) {
+      // Query database with type filter
+      const types = args.type === 'all' ? undefined : [args.type];
+      results = symbolIndex.searchSymbols(args.query, args.limit, types) || [];
+      
+      // Cache results
+      if (results.length > 0) {
+        await cache.set(cacheKey, results);
+      }
+    }
 
+    // Ensure results is not null
+    if (!results || results.length === 0) {
+      // Generate suggestions for empty results
+      const tips = generateContextualTips(args.query, [], args.type);
+      
+      let output = `No X++ symbols found matching "${args.query}"`;
+      
+      if (tips.length > 0) {
+        output += '\n\n## 💡 Suggestions\n';
+        tips.forEach(tip => {
+          const toolHint = tip.tool ? ` → Use \`${tip.tool}()\`` : '';
+          output += `\n• ${tip.tip}${toolHint}`;
+        });
+      }
+      
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${cachedResults.length} matches (cached):\n\n${formatted}`,
+            text: output,
           },
         ],
       };
     }
 
-    // Query database with type filter
-    const types = args.type === 'all' ? undefined : [args.type];
-    const results = symbolIndex.searchSymbols(args.query, args.limit, types);
+    // Generate rich context
+    const relatedSearches = generateRelatedSearches(args.query, results, 5);
+    const commonPatterns = detectCommonPatterns(results);
+    const tips = generateContextualTips(args.query, results, args.type);
+
+    // Format output with rich context
+    const cacheIndicator = fromCache ? ' (cached)' : '';
+    let output = `Found ${results.length} matches${cacheIndicator}:\n`;
     
-    // Cache results
-    if (results.length > 0) {
-      await cache.set(cacheKey, results);
-    }
-
-    if (results.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `No X++ symbols found matching "${args.query}"`,
-          },
-        ],
-      };
-    }
-
-    const formatted = results
-      .map((s: { parentName?: string; signature?: string; type: string; name: string }) => {
-        const parentPrefix = s.parentName ? `${s.parentName}.` : '';
-        const signature = s.signature ? ` - ${s.signature}` : '';
-        return `[${s.type.toUpperCase()}] ${parentPrefix}${s.name}${signature}`;
-      })
-      .join('\n');
+    output += formatRichContext(args.query, results, {
+      relatedSearches,
+      commonPatterns,
+      tips
+    });
 
     return {
       content: [
         {
           type: 'text',
-          text: `Found ${results.length} matches:\n\n${formatted}`,
+          text: output,
         },
       ],
     };
