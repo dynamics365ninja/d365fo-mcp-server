@@ -53,6 +53,7 @@ describe('MCP Server Transport', () => {
 
     const mockCache: Partial<RedisCacheService> = {
       get: async () => null,
+      getFuzzy: async () => null,
       set: async () => {},
       generateSearchKey: () => 'test-key',
     };
@@ -61,6 +62,8 @@ describe('MCP Server Transport', () => {
       symbolIndex: mockSymbolIndex as XppSymbolIndex,
       cache: mockCache as RedisCacheService,
       parser: {} as any,
+      workspaceScanner: {} as any,
+      hybridSearch: {} as any,
     };
 
     // Register tool handler

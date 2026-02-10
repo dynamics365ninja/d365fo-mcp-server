@@ -36,6 +36,7 @@ describe('searchTool', () => {
 
     mockCache = {
       get: vi.fn(async () => null),
+      getFuzzy: vi.fn(async () => null),
       set: vi.fn(async () => {}),
       generateSearchKey: vi.fn((query: string, limit?: number, type?: string) => `search:${query}:${type||'all'}:${limit||20}`),
     };
@@ -44,6 +45,8 @@ describe('searchTool', () => {
       symbolIndex: mockSymbolIndex as XppSymbolIndex,
       cache: mockCache as RedisCacheService,
       parser: {} as any,
+      workspaceScanner: {} as any,
+      hybridSearch: {} as any,
     };
   });
 
@@ -172,7 +175,7 @@ describe('searchTool', () => {
     const cachedData = [
       { name: 'CachedClass', type: 'class', model: 'TestModel' },
     ];
-    mockCache.get = vi.fn(async () => cachedData) as any;
+    mockCache.getFuzzy = vi.fn(async () => cachedData) as any;
 
     const request = {
       method: 'tools/call',
@@ -184,7 +187,7 @@ describe('searchTool', () => {
 
     const result = await searchTool(request, mockContext);
 
-    expect(mockCache.get).toHaveBeenCalled();
+    expect(mockCache.getFuzzy).toHaveBeenCalled();
     expect(result.content[0].text).toContain('CachedClass');
   });
 
