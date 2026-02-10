@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
 import { searchTool } from './search.js';
+import { batchSearchTool } from './batchSearch.js';
 import { classInfoTool } from './classInfo.js';
 import { tableInfoTool } from './tableInfo.js';
 import { completionTool } from './completion.js';
@@ -22,6 +23,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     switch (toolName) {
       case 'search':
         return searchTool(request, context);
+      case 'batch_search':
+        return batchSearchTool(request, context);
       case 'search_extensions':
         return extensionSearchTool(request, context);
       case 'get_class_info':
