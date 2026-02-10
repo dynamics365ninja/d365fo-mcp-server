@@ -7,6 +7,7 @@ import type { XppMetadataParser } from '../metadata/xmlParser.js';
 import type { RedisCacheService } from '../cache/redisCache.js';
 import type { WorkspaceScanner } from '../workspace/workspaceScanner.js';
 import type { HybridSearch } from '../workspace/hybridSearch.js';
+import type { TermRelationshipGraph } from '../utils/suggestionEngine.js';
 
 /**
  * Editor context from IDE (VS Code, VS2022)
@@ -35,6 +36,8 @@ export interface XppServerContext {
   cache: RedisCacheService;
   workspaceScanner: WorkspaceScanner;
   hybridSearch: HybridSearch;
+  termRelationshipGraph: TermRelationshipGraph;
   editorContext?: EditorContext;
 }
+
 

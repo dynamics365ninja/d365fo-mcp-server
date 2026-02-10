@@ -45,7 +45,7 @@
 - This repo contains TypeScript code for an MCP server
 - The MCP server provides tools to query BOTH external X++ metadata AND user's workspace files
 - **DO NOT** search THIS TypeScript workspace for X++ classes/tables (they're in user's D365FO workspace)
-- **DO NOT** use semantic_search, code_search, or file_search after completing a task
+- **DO NOT** use code_search or file_search after completing a task
 - When task is complete, STOP immediately - do not search workspace
 
 **📁 WORKSPACE-AWARE FEATURES:**
@@ -57,7 +57,7 @@
 **AFTER COMPLETING ANY TASK:**
 1. ✅ Respond to user with result
 2. ❌ **STOP IMMEDIATELY** - Do NOT search workspace
-3. ❌ Do NOT use semantic_search/code_search/file_search
+3. ❌ Do NOT use code_search/file_search on this TypeScript workspace
 4. ❌ Do NOT try to "understand project structure" automatically
 5. ❌ Do NOT say "Let me check..." or "Let me search..."
 6. ✅ **END YOUR RESPONSE** - User can ask follow-up if needed
@@ -76,7 +76,7 @@
 - Financial dimensions, inventory, sales, purchase, ledger
 
 **WHEN IN X++ CONTEXT → IMMEDIATELY:**
-1. **STOP** - Do NOT use `semantic_search` or `code_search` (causes timeout!)
+1. **STOP** - Do NOT use `code_search` (causes timeout on large workspaces!)
 2. **USE MCP TOOLS** - Use MCP `search()` for X++ objects
 3. **NEVER GUESS** - X++ objects have exact names, use tools to find them
 
@@ -87,15 +87,13 @@
 **🛑 ABSOLUTELY FORBIDDEN - WILL HANG FOR 5+ MINUTES:**
 
 ```
-❌ semantic_search()   → FORBIDDEN - causes "Searching..." hang, use MCP search() instead
-❌ code_search()       → FORBIDDEN - likely same issue as semantic_search
+❌ code_search()       → FORBIDDEN - causes "Searching..." hang on large workspaces, use MCP search() instead
 ```
 
 **⚠️ AVOID FOR X++ OBJECTS - Use MCP tools instead:**
 
 ```
-⚠️ grep_search()       → Works, but no X++ awareness, prefer MCP search()
-⚠️ file_search()       → Works for files, but prefer MCP search() for X++ objects
+⚠️ file_search()       → Works for file patterns, but prefer MCP search() for X++ objects
 ```
 
 **✅ ALWAYS USE THESE FOR X++ OBJECTS:**
@@ -109,9 +107,8 @@
 
 **WHEN TO USE WHAT:**
 - Looking for X++ class/table/enum → Use MCP `search()`
-- Looking for file by name pattern → OK to use `file_search()`
-- Looking for text in workspace → OK to use `grep_search()`
-- Semantic/natural language search → **NEVER!** Use MCP `search()` instead
+- Looking for file by name pattern in THIS workspace → OK to use `file_search()`
+- Looking for text/code patterns → Use MCP `search()` for X++ objects, `file_search` for workspace files
 
 **IF YOU SEE "Searching..." OR "Searching (seznam tříd)" → YOU MADE A MISTAKE!**
 
@@ -123,16 +120,16 @@
 
 | User Request Contains | First Action | Avoid Using |
 |-----------------------|--------------|-------------|
-| "create class", "helper class" | `analyze_code_patterns()` + `search()` + `generate_code()` | ❌ semantic_search, ❌ direct code generation |
+| "create class", "helper class" | `analyze_code_patterns()` + `search()` + `generate_code()` | ❌ code_search, ❌ direct code generation |
 | "find X and Y and Z" (multiple) | `batch_search([{query:"X"}, {query:"Y"}, {query:"Z"}])` | ❌ multiple sequential searches |
-| "CustTable", "SalesTable", any Table | `get_table_info()` | ❌ semantic_search |
-| "dimension", "financial" | `search("dimension")` | ❌ semantic_search |
-| "find X++ class/method" | `search()` | ❌ semantic_search |
-| "method", "implement" | `get_class_info()` + `suggest_method_implementation()` | ❌ semantic_search |
-| "find file pattern" | `file_search()` is OK | ❌ semantic_search |
-| "find text in code" | `grep_search()` is OK | ❌ semantic_search |
+| "CustTable", "SalesTable", any Table | `get_table_info()` | ❌ code_search |
+| "dimension", "financial" | `search("dimension")` | ❌ code_search |
+| "find X++ class/method" | `search()` | ❌ code_search |
+| "method", "implement" | `get_class_info()` + `suggest_method_implementation()` | ❌ code_search |
+| "find file pattern" | `file_search()` is OK | ❌ code_search |
+| "find text in code" | `file_search()` with pattern | ❌ code_search |
 
-**Key Rule: NEVER use `semantic_search` or `code_search` in this workspace - it causes 5+ minute hangs!**
+**Key Rule: NEVER use `code_search` for X++ objects - it causes 5+ minute hangs on large workspaces!**
 
 ---
 ---
@@ -142,13 +139,11 @@
 
 **🚨 STOP! Read this FIRST before doing ANYTHING with D365FO/X++ code:**
 
-**ABSOLUTELY FORBIDDEN - These tools will BLOCK and HANG:**
-- ❌❌❌ **`semantic_search`** - NEVER USE THIS! It's slow (5+ minutes) and will hang with "Searching..."
-- ❌❌❌ **`code_search`** - NEVER USE THIS! Likely same issue as semantic_search
+**ABSOLUTELY FORBIDDEN FOR X++ SEARCHES - Will BLOCK and HANG:**
+- ❌❌❌ **`code_search`** - NEVER USE for X++ objects! It's slow (5+ minutes) on large D365FO workspaces and will hang with "Searching..."
 
-**⚠️ USE WITH CAUTION - Prefer MCP tools for X++ objects:**
-- ⚠️ **`grep_search`** - Works but has no X++ awareness, prefer MCP `search` for classes/tables
-- ⚠️ **`file_search`** - Works for file patterns, but prefer MCP `search` for X++ objects
+**⚠️ USE WITH CAUTION - These work but lack X++ awareness:**
+- ⚠️ **`file_search`** - Works for file patterns in THIS workspace, but prefer MCP `search()` for X++ objects
 
 **⚡ ALWAYS use these FAST MCP tools for X++ objects:**
 - ✅✅✅ **`search`** (MCP) - 100x faster, X++-aware, indexed SQL database
@@ -172,8 +167,8 @@
 
 ### Critical Rules:
 
-1. **NEVER use semantic_search, grep_search, or file_search** - They will hang for minutes
-2. **ALWAYS use MCP `search` tool** - It's instant (<100ms) with SQL index
+1. **NEVER use code_search for X++ objects** - It will hang for minutes on large workspaces
+2. **ALWAYS use MCP `search()` tool for X++** - It's instant (<100ms) with SQL index
 3. **ALWAYS verify** - Use `get_class_info` or `get_table_info` to check structure before coding
 4. **ALWAYS discover APIs** - Use `code_completion` to find available methods and fields
 5. **MANDATORY: Use `generate_code` tool** - NEVER generate X++ code manually! Always use `generate_code` for creating classes with proper D365FO patterns

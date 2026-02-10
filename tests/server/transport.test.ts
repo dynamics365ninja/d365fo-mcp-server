@@ -64,6 +64,7 @@ describe('MCP Server Transport', () => {
       parser: {} as any,
       workspaceScanner: {} as any,
       hybridSearch: {} as any,
+      termRelationshipGraph: {} as any,
     };
 
     // Register tool handler

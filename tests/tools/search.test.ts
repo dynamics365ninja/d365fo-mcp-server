@@ -32,6 +32,8 @@ describe('searchTool', () => {
           model: 'ApplicationSuite',
         },
       ]),
+      getAllSymbolNames: vi.fn(() => ['CustTable', 'VendTable', 'SalesTable']),
+      getSymbolsByTerm: vi.fn(() => new Map()),
     };
 
     mockCache = {
@@ -47,6 +49,7 @@ describe('searchTool', () => {
       parser: {} as any,
       workspaceScanner: {} as any,
       hybridSearch: {} as any,
+      termRelationshipGraph: {} as any,
     };
   });
 
