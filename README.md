@@ -462,6 +462,43 @@ RATE_LIMIT_AUTH_MAX_REQUESTS=5
 - `RateLimit-Reset`: When the current window resets
 - `Retry-After`: Seconds to wait when rate limited (429 status)
 
+### Memory Optimization
+
+The server includes intelligent memory management for large D365FO metadata sets:
+
+**Search Suggestions (Optional Feature):**
+```bash
+# Enable intelligent "Did you mean?" suggestions (requires more memory)
+ENABLE_SEARCH_SUGGESTIONS=true
+
+# Disable suggestions in production/CI environments to reduce memory usage
+ENABLE_SEARCH_SUGGESTIONS=false  # Default in production
+```
+
+**Memory-Efficient Design:**
+- ✅ **Iterator-based queries** - Processes large result sets without loading all into memory
+- ✅ **Lazy initialization** - Term relationship graph builds asynchronously when enabled
+- ✅ **Limited analysis sets** - Analyzes 2,000-5,000 symbols instead of full database
+- ✅ **Graceful degradation** - Falls back to basic tips if suggestions unavailable
+
+**Recommendations by Environment:**
+
+| Environment | ENABLE_SEARCH_SUGGESTIONS | Notes |
+|-------------|---------------------------|-------|
+| **Development** | `true` (default) | Full features including AI suggestions |
+| **Azure Pipeline** | `false` or omit | Minimize memory footprint during CI/CD |
+| **Production** | `false` or `true`* | *Enable only if >2GB RAM available |
+| **Docker Container** | `false` recommended | Use smaller memory limits |
+
+**Memory Usage:**
+- **Suggestions disabled**: ~200-500 MB heap
+- **Suggestions enabled**: ~800MB-1.5GB heap (depends on symbol count)
+
+**⚠️ If you encounter "JavaScript heap out of memory" errors:**
+1. Set `ENABLE_SEARCH_SUGGESTIONS=false` in your environment
+2. Or increase Node.js heap: `NODE_OPTIONS="--max-old-space-size=2048"` (2GB)
+3. Or reduce symbol analysis limits in `symbolIndex.ts`
+
 ## Development
 
 ```bash

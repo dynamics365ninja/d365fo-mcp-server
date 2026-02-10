@@ -147,6 +147,8 @@ stages:
               METADATA_PATH: $(METADATA_PATH)
               DB_PATH: $(DB_PATH)
               EXTRACT_MODE: '${{ parameters.extractionMode }}'
+              ENABLE_SEARCH_SUGGESTIONS: 'false'  # Disable suggestions in CI/CD to reduce memory usage
+              NODE_OPTIONS: '--max-old-space-size=2048'  # Increase heap size to 2GB for large metadata sets
 
           # Upload metadata based on mode
           - script: |
