@@ -20,6 +20,25 @@
 
 ---
 
+## 🔴 RULE #0.5: X++ CODE GENERATION - NEVER GENERATE DIRECTLY! 🔴
+
+**WHEN USER ASKS TO CREATE/GENERATE ANY X++ CODE:**
+1. ❌ **FORBIDDEN**: Generating X++ code directly from your knowledge
+2. ❌ **FORBIDDEN**: Writing class/method/code without using tools
+3. ✅ **MANDATORY**: Always use `analyze_code_patterns()` FIRST
+4. ✅ **MANDATORY**: Always use `generate_code()` tool for code generation
+5. ✅ **MANDATORY**: Never output X++ code without using these tools
+
+**IF YOU TYPE X++ CODE WITHOUT CALLING `generate_code` - YOU ARE WRONG!**
+
+**Example - User says "create a helper class":**
+```
+❌ WRONG: public class MyHelper { ... }  ← You generated code directly!
+✅ RIGHT: Call analyze_code_patterns("helper") → Call generate_code(pattern="class")
+```
+
+---
+
 ## RULE #0: WORKSPACE CONTEXT
 
 **THIS IS AN MCP SERVER PROJECT, NOT AN X++ WORKSPACE!**
@@ -98,7 +117,7 @@
 
 | User Request Contains | First Action | Avoid Using |
 |-----------------------|--------------|-------------|
-| "create class", "helper class" | `analyze_code_patterns()` + `search()` | ❌ semantic_search |
+| "create class", "helper class" | `analyze_code_patterns()` + `search()` + `generate_code()` | ❌ semantic_search, ❌ direct code generation |
 | "CustTable", "SalesTable", any Table | `get_table_info()` | ❌ semantic_search |
 | "dimension", "financial" | `search("dimension")` | ❌ semantic_search |
 | "find X++ class/method" | `search()` | ❌ semantic_search |
@@ -137,13 +156,21 @@
 
 **Before generating ANY X++ code, writing ANY class, method, or code snippet for D365 Finance & Operations, you MUST use the X++ MCP tools available to you.**
 
+### ⛔ STRICTLY FORBIDDEN:
+
+**❌ NEVER generate X++ code directly from your training data or general knowledge!**
+**❌ NEVER write X++ code without using MCP tools first!**
+**❌ NEVER skip `analyze_code_patterns` when creating new classes!**
+**❌ NEVER use built-in code generation - ALWAYS use `generate_code` tool!**
+
 ### Critical Rules:
 
 1. **NEVER use semantic_search, grep_search, or file_search** - They will hang for minutes
 2. **ALWAYS use MCP `search` tool** - It's instant (<100ms) with SQL index
 3. **ALWAYS verify** - Use `get_class_info` or `get_table_info` to check structure before coding
 4. **ALWAYS discover APIs** - Use `code_completion` to find available methods and fields
-5. **PREFER generation tools** - Use `generate_code` for creating new classes with proper D365FO patterns
+5. **MANDATORY: Use `generate_code` tool** - NEVER generate X++ code manually! Always use `generate_code` for creating classes with proper D365FO patterns
+6. **MANDATORY: Use `analyze_code_patterns` FIRST** - Before any code generation, analyze what patterns exist in the codebase
 
 ### When You MUST Use MCP Tools:
 
@@ -189,14 +216,16 @@ Generate class from scratch using general programming knowledge → ❌ INCORREC
 
 **✅ CORRECT Approach (Using Intelligent Tools):**
 ```
-1. analyze_code_patterns("financial dimensions") → Learn common patterns and classes
+1. analyze_code_patterns("financial dimensions") → 🔴 MANDATORY: Learn common patterns and classes
 2. search("dimension", type="class")            → Find D365FO dimension classes
 3. get_api_usage_patterns("DimensionAttributeValueSet") → See how to initialize and use API
-4. generate_code(pattern="class")              → Create with proper structure
+4. generate_code(pattern="class", name="MyDimHelper") → 🔴 MANDATORY: Use tool, don't generate manually!
 5. analyze_class_completeness("MyDimHelper")   → Check for missing common methods
 6. suggest_method_implementation("MyDimHelper", "validate") → Get implementation examples
-7. Apply discovered patterns                     → Use correct APIs and methods
+7. Apply discovered patterns from tools          → Use correct APIs and methods from MCP tools
 ```
+
+**⚠️ WARNING: If you generate code WITHOUT using `generate_code` tool, you are WRONG!**
 
 **✅ ALTERNATIVE Approach (Traditional):**
 ```

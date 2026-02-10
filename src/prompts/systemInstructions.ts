@@ -100,11 +100,37 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 - **Instead of:** Searching all symbols including standard Microsoft code
 - **Example:** Finding team's customizations vs. standard objects
 
-### 6. Code Generation
+### 6. 🔴 Code Pattern Analysis (MANDATORY BEFORE CODE GENERATION)
+- **Tool:** \`analyze_code_patterns\`
+- **When:** ALWAYS use BEFORE creating any new X++ code
+- **Instead of:** Generating code from general knowledge or templates
+- **Purpose:** Discovers real D365FO patterns, common classes, and methods used together
+- **Example:** analyze_code_patterns("financial dimensions") before creating dimension helper
+
+### 7. 🔴 Code Generation (ALWAYS USE - NEVER GENERATE MANUALLY)
 - **Tool:** \`generate_code\`
-- **When:** Creating new X++ code from templates
-- **Instead of:** Writing code from scratch without patterns
-- **Patterns:** 'class', 'runnable', 'form-handler', 'data-entity', 'batch-job'
+- **When:** Creating any new X++ code (classes, methods, extensions)
+- **Instead of:** Writing code from scratch or using built-in generation
+- **Patterns:** 'class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'coc-extension', 'event-handler', 'service-class'
+- **CRITICAL:** NEVER generate X++ code without using this tool!
+
+### 8. Method Implementation Suggestions
+- **Tool:** \`suggest_method_implementation\`
+- **When:** Implementing a specific method in a class
+- **Instead of:** Guessing implementation patterns
+- **Purpose:** Shows real examples from codebase of how similar methods are implemented
+
+### 9. Class Completeness Analysis
+- **Tool:** \`analyze_class_completeness\`
+- **When:** Want to ensure a class follows common patterns
+- **Instead of:** Manually checking what methods might be missing
+- **Purpose:** Suggests missing methods based on similar classes in the codebase
+
+### 10. API Usage Patterns
+- **Tool:** \`get_api_usage_patterns\`
+- **When:** Need to use a D365FO API/class correctly
+- **Instead of:** Guessing initialization and method sequences
+- **Purpose:** Shows real usage examples from codebase including initialization patterns
 
 ## Workflow Examples for Visual Studio 2022
 
@@ -112,19 +138,23 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 \`\`\`
 Developer: "Create a helper class for maintaining financial dimensions"
 
-CORRECT Workflow:
-1. Use search("dimension", type="class") → Find existing D365FO dimension classes
-2. Use search("financial dimension", type="all") → Discover D365FO patterns and APIs
-3. Use get_class_info("DimensionDefaultingService") → Study Microsoft's implementation
-4. Use code_completion("DimensionAttributeValueSet") → Get proper API methods
-5. Use generate_code(pattern="class") → Create helper with proper structure
-6. Apply discovered D365FO patterns for dimension handling
+🔴 MANDATORY WORKFLOW (USE TOOLS, NOT BUILT-IN GENERATION):
+1. Use analyze_code_patterns("financial dimensions") → 🔴 MANDATORY: Learn what D365FO classes are used together
+2. Use search("dimension", type="class") → Find existing D365FO dimension classes
+3. Use get_api_usage_patterns("DimensionAttributeValueSet") → See how API is initialized and used
+4. Use get_class_info("DimensionDefaultingService") → Study Microsoft's implementation
+5. Use code_completion("DimensionAttributeValueSet") → Get proper API methods
+6. Use generate_code(pattern="class", name="MyDimHelper") → 🔴 MANDATORY: Use tool, DON'T type code!
+7. Use suggest_method_implementation("MyDimHelper", "validate") → Get real implementation examples
+8. Apply discovered patterns from tools above
 
-WRONG Workflow:
-❌ Generate helper class from scratch without checking D365FO dimension APIs
+❌ ABSOLUTELY FORBIDDEN WORKFLOW:
+❌ Generate helper class from scratch without using analyze_code_patterns
+❌ Type "public class MyHelper { }" without calling generate_code tool
 ❌ Use generic coding patterns instead of D365FO-specific dimension framework
 ❌ Assume method names without querying actual D365FO classes
 ❌ Create code that doesn't integrate with standard dimension infrastructure
+❌ Use built-in code generation instead of MCP tools
 \`\`\`
 
 ### Example 2: Adding Code to Existing Class
