@@ -257,7 +257,7 @@ export async function codeGenTool(request: CallToolRequest) {
       content: [
         {
           type: 'text',
-          text: `Generated ${args.pattern} template for "${args.name}":\n\n\`\`\`xpp${code}\n\`\`\``,
+          text: `Generated ${args.pattern} template for "${args.name}":\n\n\`\`\`xpp${code}\n\`\`\`\n\n---\n\n💡 **Next Steps for Better Code Quality:**\n\n1. ✅ Use \`analyze_code_patterns("<scenario>")\` - Learn what D365FO classes are commonly used together\n2. ✅ Use \`suggest_method_implementation("${args.name}", "<methodName>")\` - Get real implementation examples\n3. ✅ Use \`analyze_class_completeness("${args.name}")\` - Check for missing common methods\n4. ✅ Use \`get_api_usage_patterns("<ClassName>")\` - See how to use D365FO APIs correctly\n\nThese tools provide patterns from the actual codebase, not generic templates.`,
         },
       ],
     };

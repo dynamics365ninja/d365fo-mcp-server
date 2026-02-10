@@ -774,17 +774,17 @@ export const toolDefinitions: ToolDefinition[] = [
   },
   {
     name: 'code_completion',
-    description: 'Get method and field completions for a class or table. Use this for IntelliSense-style code completion.',
+    description: '🔍 Get all methods and fields for a class or table (IntelliSense-style completion). Use this to discover what members are available on a D365FO object. Optionally filter by prefix. Leave prefix empty to see ALL members. Works for both classes and tables.',
     inputSchema: CompleteMethodSchema
   },
   {
     name: 'generate_code',
-    description: 'Generate X++ code templates for common patterns like runnable classes, batch jobs, form extensions, Chain of Command extensions, and event handlers.',
+    description: '⚡ ALWAYS USE THIS for creating new X++ code! Generates production-ready X++ code using D365FO best practices and patterns. Creates runnable classes, batch jobs, form extensions, Chain of Command extensions, event handlers, and service classes. DO NOT generate X++ code manually - use this tool to ensure correct D365FO patterns, naming conventions, and structure.',
     inputSchema: GenerateCodeSchema
   },
   {
     name: 'analyze_code_patterns',
-    description: 'Analyze existing codebase for similar code patterns. Use this to find common methods, dependencies, and implementation patterns before generating new code. Essential for creating code based on real D365FO patterns, not templates.',
+    description: '🔍 MANDATORY FIRST STEP before generating any X++ code! Analyzes existing codebase for similar code patterns. Finds common methods, dependencies, classes, and real implementation patterns. Always call this BEFORE generate_code to learn what D365FO classes and methods to use from the actual codebase, not from generic knowledge.',
     inputSchema: AnalyzeCodePatternsSchema
   },
   {
