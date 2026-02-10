@@ -81,10 +81,6 @@ export class AzureBlobMetadataManager {
         if (modelType === 'standard' && isCustomModel) continue;
         
         queuedCount++;
-        // Only log first few models and every 20th model to reduce log spam
-        if (queuedCount <= 3 || queuedCount % 20 === 0) {
-          console.log(`   📂 Queuing model ${queuedCount}: ${modelName}`);
-        }
         
         // Add to parallel upload queue
         uploadPromises.push(
@@ -101,7 +97,6 @@ export class AzureBlobMetadataManager {
     }
     
     // Execute all uploads in parallel
-    console.log(`\n🚀 Starting parallel upload of ${uploadPromises.length} models...`);
     const results = await Promise.all(uploadPromises);
     
     // Calculate total and log summary (not every model to reduce log spam)
@@ -365,11 +360,6 @@ export class AzureBlobMetadataManager {
       const batch = tasks.slice(i, i + concurrency);
       const batchResults = await Promise.all(batch.map(task => task()));
       results.push(...batchResults);
-      
-      // Log progress less frequently for large batches
-      if (tasks.length > 500 && i > 0 && i % 500 === 0) {
-        console.log(`   📊 Progress: ${i}/${tasks.length} files`);
-      }
     }
     
     // Sum if results are numbers, otherwise return array

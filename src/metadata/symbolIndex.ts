@@ -441,38 +441,43 @@ export class XppSymbolIndex {
 
     console.log(`   Processing ${models.length} model(s)...`);
 
-    let modelIndex = 0;
-    // Wrap everything in a single transaction for massive performance boost
-    const transaction = this.db.transaction(() => {
-      for (const model of models) {
-        modelIndex++;
-        const modelPath = path.join(metadataPath, model);
-        
-        // Show progress before processing each model
-        process.stdout.write(`\r   [${modelIndex}/${models.length}] Indexing ${model}...`);
-        
-        // Index classes
-        const classesPath = path.join(modelPath, 'classes');
-        if (fs.existsSync(classesPath)) {
-          this.indexClasses(classesPath, model);
-        }
+    // Process each model in its own transaction to avoid memory issues with large models
+    for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
+      const model = models[modelIndex];
+      const modelPath = path.join(metadataPath, model);
+      
+      // Show progress before processing each model
+      process.stdout.write(`\r   [${modelIndex + 1}/${models.length}] Indexing ${model}...`);
+      
+      try {
+        // Each model gets its own transaction to prevent memory issues
+        const transaction = this.db.transaction(() => {
+          // Index classes
+          const classesPath = path.join(modelPath, 'classes');
+          if (fs.existsSync(classesPath)) {
+            this.indexClasses(classesPath, model);
+          }
 
-        // Index tables
-        const tablesPath = path.join(modelPath, 'tables');
-        if (fs.existsSync(tablesPath)) {
-          this.indexTables(tablesPath, model);
-        }
+          // Index tables
+          const tablesPath = path.join(modelPath, 'tables');
+          if (fs.existsSync(tablesPath)) {
+            this.indexTables(tablesPath, model);
+          }
 
-        // Index enums
-        const enumsPath = path.join(modelPath, 'enums');
-        if (fs.existsSync(enumsPath)) {
-          this.indexEnums(enumsPath, model);
-        }
+          // Index enums
+          const enumsPath = path.join(modelPath, 'enums');
+          if (fs.existsSync(enumsPath)) {
+            this.indexEnums(enumsPath, model);
+          }
+        });
+
+        // Execute transaction for this model
+        transaction();
+      } catch (error) {
+        console.error(`\n      ❌ Error indexing model ${model}: ${error}`);
+        // Continue with next model instead of failing completely
       }
-    });
-
-    // Execute the entire indexing in one transaction
-    transaction();
+    }
     
     // Clear progress line and show completion
     process.stdout.write(`\r   ✅ Indexed ${models.length} model(s)${' '.repeat(50)}\n`);
@@ -487,9 +492,6 @@ export class XppSymbolIndex {
 
   private indexClasses(classesPath: string, model: string): void {
     const files = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
-    const totalFiles = files.length;
-    let processedCount = 0;
-    const progressInterval = Math.max(1, Math.floor(totalFiles / 10)); // Show progress 10 times
 
     for (const file of files) {
       try {
@@ -548,24 +550,11 @@ export class XppSymbolIndex {
       } catch (error) {
         console.error(`\n      ⚠️  Error indexing class ${file}: ${error}`);
       }
-      
-      // Show progress periodically
-      processedCount++;
-      if (processedCount % progressInterval === 0 || processedCount === totalFiles) {
-        const percentage = Math.round((processedCount / totalFiles) * 100);
-        process.stdout.write(`\r      Classes: ${processedCount}/${totalFiles} (${percentage}%)`);
-      }
-    }
-    if (totalFiles > 0) {
-      process.stdout.write('\n');
     }
   }
 
   private indexTables(tablesPath: string, model: string): void {
     const files = fs.readdirSync(tablesPath).filter(f => f.endsWith('.json'));
-    const totalFiles = files.length;
-    let processedCount = 0;
-    const progressInterval = Math.max(1, Math.floor(totalFiles / 10));
 
     for (const file of files) {
       try {
@@ -602,24 +591,11 @@ export class XppSymbolIndex {
       } catch (error) {
         console.error(`\n      ⚠️  Error indexing table ${file}: ${error}`);
       }
-      
-      // Show progress periodically
-      processedCount++;
-      if (processedCount % progressInterval === 0 || processedCount === totalFiles) {
-        const percentage = Math.round((processedCount / totalFiles) * 100);
-        process.stdout.write(`\r      Tables: ${processedCount}/${totalFiles} (${percentage}%)`);
-      }
-    }
-    if (totalFiles > 0) {
-      process.stdout.write('\n');
     }
   }
 
   private indexEnums(enumsPath: string, model: string): void {
     const files = fs.readdirSync(enumsPath).filter(f => f.endsWith('.json'));
-    const totalFiles = files.length;
-    let processedCount = 0;
-    const progressInterval = Math.max(1, Math.floor(totalFiles / 10));
 
     for (const file of files) {
       try {
@@ -642,16 +618,6 @@ export class XppSymbolIndex {
       } catch (error) {
         console.error(`\n      ⚠️  Error indexing enum ${file}: ${error}`);
       }
-      
-      // Show progress periodically
-      processedCount++;
-      if (processedCount % progressInterval === 0 || processedCount === totalFiles) {
-        const percentage = Math.round((processedCount / totalFiles) * 100);
-        process.stdout.write(`\r      Enums: ${processedCount}/${totalFiles} (${percentage}%)`);
-      }
-    }
-    if (totalFiles > 0) {
-      process.stdout.write('\n');
     }
   }
 
