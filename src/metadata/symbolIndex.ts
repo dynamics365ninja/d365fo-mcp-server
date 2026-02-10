@@ -441,41 +441,52 @@ export class XppSymbolIndex {
 
     console.log(`   Processing ${models.length} model(s)...`);
 
-    // Process each model in its own transaction to avoid memory issues with large models
-    for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
-      const model = models[modelIndex];
-      const modelPath = path.join(metadataPath, model);
-      
-      // Show progress before processing each model
-      process.stdout.write(`\r   [${modelIndex + 1}/${models.length}] Indexing ${model}...`);
+    // Process models in batches to balance speed vs memory usage
+    // Batch size of 20 models per transaction provides good balance:
+    // - Fast (fewer disk syncs than per-model transactions)
+    // - Memory-safe (won't exhaust memory like single transaction for 358 models)
+    const BATCH_SIZE = 20;
+    
+    for (let batchStart = 0; batchStart < models.length; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, models.length);
+      const batchModels = models.slice(batchStart, batchEnd);
       
       try {
-        // Each model gets its own transaction to prevent memory issues
+        // Process batch of models in single transaction
         const transaction = this.db.transaction(() => {
-          // Index classes
-          const classesPath = path.join(modelPath, 'classes');
-          if (fs.existsSync(classesPath)) {
-            this.indexClasses(classesPath, model);
-          }
+          for (let i = 0; i < batchModels.length; i++) {
+            const model = batchModels[i];
+            const modelIndex = batchStart + i;
+            const modelPath = path.join(metadataPath, model);
+            
+            // Show progress before processing each model
+            process.stdout.write(`\r   [${modelIndex + 1}/${models.length}] Indexing ${model}...`);
+            
+            // Index classes
+            const classesPath = path.join(modelPath, 'classes');
+            if (fs.existsSync(classesPath)) {
+              this.indexClasses(classesPath, model);
+            }
 
-          // Index tables
-          const tablesPath = path.join(modelPath, 'tables');
-          if (fs.existsSync(tablesPath)) {
-            this.indexTables(tablesPath, model);
-          }
+            // Index tables
+            const tablesPath = path.join(modelPath, 'tables');
+            if (fs.existsSync(tablesPath)) {
+              this.indexTables(tablesPath, model);
+            }
 
-          // Index enums
-          const enumsPath = path.join(modelPath, 'enums');
-          if (fs.existsSync(enumsPath)) {
-            this.indexEnums(enumsPath, model);
+            // Index enums
+            const enumsPath = path.join(modelPath, 'enums');
+            if (fs.existsSync(enumsPath)) {
+              this.indexEnums(enumsPath, model);
+            }
           }
         });
 
-        // Execute transaction for this model
+        // Execute transaction for this batch
         transaction();
       } catch (error) {
-        console.error(`\n      ❌ Error indexing model ${model}: ${error}`);
-        // Continue with next model instead of failing completely
+        console.error(`\n      ❌ Error indexing batch ${batchStart}-${batchEnd}: ${error}`);
+        // Continue with next batch instead of failing completely
       }
     }
     
