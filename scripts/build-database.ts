@@ -68,13 +68,18 @@ async function buildDatabase() {
     // Index specific models
     console.log(`📦 Indexing ${modelsToRebuild.length} model(s): ${modelsToRebuild.join(', ')}`);
     for (const modelName of modelsToRebuild) {
+      console.log(`   🔄 Starting indexing of ${modelName}...`);
       await symbolIndex.indexMetadataDirectory(INPUT_PATH, modelName);
+      console.log(`   ✅ Completed indexing of ${modelName}`);
     }
   } else {
     // Index all models in the directory
+    console.log(`   🔄 Starting full directory indexing...`);
     await symbolIndex.indexMetadataDirectory(INPUT_PATH);
+    console.log(`   ✅ Completed directory indexing`);
   }
   
+  console.log(`\n📊 Indexing complete, now collecting statistics...`);
   const endTime = Date.now();
   const duration = ((endTime - startTime) / 1000).toFixed(2);
 
@@ -82,8 +87,9 @@ async function buildDatabase() {
   // Only run for full rebuilds or when explicitly enabled via COMPUTE_STATS=true
   const shouldComputeStats = process.env.COMPUTE_STATS === 'true' || EXTRACT_MODE === 'all';
   if (shouldComputeStats) {
-    console.log('');
+    console.log('📈 Computing usage statistics...');
     symbolIndex.computeUsageStatistics();
+    console.log('✅ Usage statistics computed');
   } else {
     console.log('⏭️  Skipping usage statistics computation (use COMPUTE_STATS=true to enable)');
   }

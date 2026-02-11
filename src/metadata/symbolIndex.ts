@@ -407,21 +407,42 @@ export class XppSymbolIndex {
     console.log('   Analyzing call patterns with SQL...');
     
     // Step 3: Compute statistics using SQL aggregation (FAST!)
+    // Create an aggregated temp table first (much faster than correlated subqueries)
     const updateTransaction = this.db.transaction(() => {
-      // Update usage statistics using SQL JOIN and GROUP BY
+      console.log('   Creating aggregated statistics...');
+      
+      // Create temp table with aggregated counts
+      this.db.exec(`
+        CREATE TEMP TABLE IF NOT EXISTS temp_call_stats AS
+        SELECT 
+          called_method,
+          COUNT(*) as total_calls,
+          COUNT(DISTINCT caller_method) as unique_callers
+        FROM temp_method_calls
+        GROUP BY called_method;
+        
+        CREATE INDEX IF NOT EXISTS idx_temp_call_stats ON temp_call_stats(called_method);
+      `);
+      
+      console.log('   Updating symbol statistics...');
+      
+      // Now do a simple JOIN update (much faster than correlated subquery per row!)
       this.db.exec(`
         UPDATE symbols
         SET 
           usage_frequency = COALESCE(
-            (SELECT COUNT(*) FROM temp_method_calls WHERE called_method = symbols.name),
+            (SELECT total_calls FROM temp_call_stats WHERE called_method = symbols.name),
             0
           ),
           called_by_count = COALESCE(
-            (SELECT COUNT(DISTINCT caller_method) FROM temp_method_calls WHERE called_method = symbols.name),
+            (SELECT unique_callers FROM temp_call_stats WHERE called_method = symbols.name),
             0
           )
         WHERE type = 'method';
       `);
+      
+      // Cleanup temp stats table
+      this.db.exec('DROP TABLE IF EXISTS temp_call_stats;');
     });
     updateTransaction();
     
