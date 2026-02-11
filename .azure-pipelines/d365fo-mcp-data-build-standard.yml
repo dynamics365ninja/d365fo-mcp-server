@@ -111,11 +111,13 @@ stages:
           - script: npm run build-database
             displayName: 'Build database from standard metadata'
             workingDirectory: '$(MCP_SERVER_PATH)'
+            timeoutInMinutes: 120  # Increase timeout to 2 hours for 350+ models
             env:
               METADATA_PATH: $(METADATA_PATH)
               DB_PATH: $(DB_PATH)
               ENABLE_SEARCH_SUGGESTIONS: 'false'  # Disable suggestions in CI/CD to reduce memory usage
-              NODE_OPTIONS: '--max-old-space-size=2048'  # Increase heap size to 2GB for large metadata sets
+              COMPUTE_STATS: 'true'  # Enable statistics computation
+              NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'  # Increase heap to 4GB, enable GC for 350+ models
 
           # ========== Step 7: Upload Database to Blob Storage ==========
           

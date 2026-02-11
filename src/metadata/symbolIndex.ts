@@ -467,7 +467,8 @@ export class XppSymbolIndex {
     // - Fast commits (< 5 seconds each)
     // - Frequent WAL checkpoints prevent log buildup
     // - Memory-safe (very small memory footprint)
-    const BATCH_SIZE = 5;
+    // Reduce to 3 for Azure Pipelines with 350+ models to prevent timeouts
+    const BATCH_SIZE = process.env.CI ? 3 : 5;
     
     for (let batchStart = 0; batchStart < models.length; batchStart += BATCH_SIZE) {
       const batchEnd = Math.min(batchStart + BATCH_SIZE, models.length);
@@ -518,14 +519,22 @@ export class XppSymbolIndex {
         // PASSIVE mode doesn't block other operations
         this.db.pragma('wal_checkpoint(PASSIVE)');
         
-        // Every 50 models, force a full checkpoint to keep WAL small
-        if ((batchStart + BATCH_SIZE) % 50 === 0) {
+        // Every 30 models (more frequent in CI), force a full checkpoint to keep WAL small
+        // This prevents memory buildup and ensures progress is saved
+        const checkpointInterval = process.env.CI ? 30 : 50;
+        if ((batchStart + BATCH_SIZE) % checkpointInterval === 0) {
           this.db.pragma('wal_checkpoint(TRUNCATE)');
+          console.log(`      💾 WAL checkpoint at model ${batchStart + BATCH_SIZE}`);
         }
         
-        // Log if batch took unusually long (> 10 seconds)
-        if (batchDuration > 10000) {
+        // Log batch timing - always in CI to monitor progress, only slow batches locally
+        if (process.env.CI || batchDuration > 10000) {
           console.log(`\n      ⏱️  Batch ${batchStart}-${batchEnd} took ${(batchDuration/1000).toFixed(1)}s`);
+        }
+        
+        // Force garbage collection in CI after each batch to prevent memory buildup
+        if (process.env.CI && global.gc) {
+          global.gc();
         }
       } catch (error) {
         console.error(`\n      ❌ Error committing batch ${batchStart}-${batchEnd}: ${error}`);
