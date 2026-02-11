@@ -665,8 +665,9 @@ export class XppSymbolIndex {
     console.log(`\n      🔸 Processing huge model with chunked transactions...`);
     
     // CRITICAL: In CI, use much smaller chunks to prevent memory exhaustion
-    // Each class can have 50-100+ methods, so 500 classes = 25,000+ INSERT operations
-    const CHUNK_SIZE = isCI() ? 100 : 500; // CI: 100 classes/chunk, Local: 500
+    // Each class can have 50-100+ methods, so even 100 classes = 5,000+ INSERT operations
+    // Testing shows: 100 classes gets to 10k, so we need even smaller chunks
+    const CHUNK_SIZE = isCI() ? 50 : 500; // CI: 50 classes/chunk, Local: 500
     const classesPath = path.join(modelPath, 'classes');
     
     if (!fs.existsSync(classesPath)) {
