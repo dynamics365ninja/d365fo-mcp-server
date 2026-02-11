@@ -116,7 +116,6 @@ stages:
               METADATA_PATH: $(METADATA_PATH)
               DB_PATH: $(DB_PATH)
               ENABLE_SEARCH_SUGGESTIONS: 'false'  # Disable suggestions in CI/CD to reduce memory usage
-              COMPUTE_STATS: 'true'  # Optimized statistics computation with batching and GC
               NODE_OPTIONS: '--max-old-space-size=8192 --expose-gc'  # Increase heap to 8GB for single-transaction indexing
 
           # ========== Step 7: Upload Database to Blob Storage ==========
