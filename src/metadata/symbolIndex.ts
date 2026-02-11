@@ -8,6 +8,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { XppSymbol } from './types.js';
 
+/**
+ * Detect if running in CI environment
+ * Supports: Azure Pipelines (TF_BUILD), GitHub Actions (CI), GitLab CI (CI)
+ */
+const isCI = (): boolean => {
+  return !!(process.env.CI || process.env.TF_BUILD || process.env.GITHUB_ACTIONS);
+};
+
 export class XppSymbolIndex {
   private db: Database.Database;
   private standardModels: string[] = [];
@@ -468,7 +476,7 @@ export class XppSymbolIndex {
     // - Frequent WAL checkpoints prevent log buildup
     // - Memory-safe (very small memory footprint)
     // Reduce to 3 for Azure Pipelines with 350+ models to prevent timeouts
-    const BATCH_SIZE = process.env.CI ? 3 : 5;
+    const BATCH_SIZE = isCI() ? 3 : 5;
     
     // Track last activity timestamp to detect hangs
     let lastActivityTime = Date.now();
@@ -496,7 +504,7 @@ export class XppSymbolIndex {
               const classesPath = path.join(modelPath, 'classes');
               if (fs.existsSync(classesPath)) {
                 const classFiles = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
-                if (classFiles.length > 500 && process.env.CI) {
+                if (classFiles.length > 500 && isCI()) {
                   // Large model - log intermediate progress
                   process.stdout.write(`\r${progressMsg} (${classFiles.length} classes)...`);
                 }
@@ -532,20 +540,20 @@ export class XppSymbolIndex {
         
         // Every 30 models (more frequent in CI), force a full checkpoint to keep WAL small
         // This prevents memory buildup and ensures progress is saved
-        const checkpointInterval = process.env.CI ? 30 : 50;
+        const checkpointInterval = isCI() ? 30 : 50;
         if ((batchStart + BATCH_SIZE) % checkpointInterval === 0) {
           this.db.pragma('wal_checkpoint(TRUNCATE)');
           console.log(`\n      💾 WAL checkpoint at model ${batchStart + BATCH_SIZE}`);
         }
         
         // Log batch timing - always in CI to monitor progress, only slow batches locally
-        if (process.env.CI || batchDuration > 10000) {
+        if (isCI() || batchDuration > 10000) {
           const avgPerModel = (batchDuration / batchModels.length / 1000).toFixed(1);
           console.log(`\n      ⏱️  Batch ${batchStart}-${batchEnd} took ${(batchDuration/1000).toFixed(1)}s (avg ${avgPerModel}s/model)`);
         }
         
         // Force garbage collection in CI after each batch to prevent memory buildup
-        if (process.env.CI && global.gc) {
+        if (isCI() && global.gc) {
           global.gc();
         }
         
@@ -654,7 +662,7 @@ export class XppSymbolIndex {
       }
       
       // For very large models in CI, show sub-progress and yield to event loop
-      if (files.length > SUB_BATCH_SIZE && process.env.CI && subBatchEnd < files.length) {
+      if (files.length > SUB_BATCH_SIZE && isCI() && subBatchEnd < files.length) {
         // Yield to event loop to prevent blocking
         const progress = Math.round((subBatchEnd / files.length) * 100);
         if (progress % 25 === 0) {
