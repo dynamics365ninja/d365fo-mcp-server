@@ -456,6 +456,10 @@ export class XppSymbolIndex {
       // OPTIMIZED: Use LEFT JOIN UPDATE (SQLite 3.33+) - much faster!
       // If not supported, falls back to correlated subquery with index
       try {
+        if (isCI()) {
+          console.log('   Updating usage_frequency and called_by_count (this may take 1-2 minutes)...');
+        }
+        
         this.db.exec(`
           UPDATE symbols
           SET 
@@ -472,6 +476,10 @@ export class XppSymbolIndex {
           WHERE type = 'method'
             AND EXISTS (SELECT 1 FROM temp_call_stats WHERE temp_call_stats.called_method = symbols.name);
         `);
+        
+        if (isCI()) {
+          console.log('   Setting zero counts for unused methods...');
+        }
         
         // Set to 0 for methods not in temp_call_stats
         this.db.exec(`
@@ -670,6 +678,8 @@ export class XppSymbolIndex {
     
     const startTime = Date.now();
     let processedClasses = 0;
+    let lastProgressUpdate = Date.now();
+    const PROGRESS_UPDATE_INTERVAL = 5000; // Update every 5 seconds
     
     // Process in chunks with separate transactions
     for (let chunkStart = 0; chunkStart < allFiles.length; chunkStart += CHUNK_SIZE) {
@@ -678,11 +688,14 @@ export class XppSymbolIndex {
       const chunkNumber = Math.floor(chunkStart / CHUNK_SIZE) + 1;
       const totalChunks = Math.ceil(allFiles.length / CHUNK_SIZE);
       
+      const chunkStartTime = Date.now();
+      
       try {
         // Each chunk in its own transaction
         this.db.prepare('BEGIN TRANSACTION').run();
         
         // Process chunk
+        let classesInChunk = 0;
         for (const file of chunkFiles) {
           try {
             const filePath = path.join(classesPath, file);
@@ -736,22 +749,46 @@ export class XppSymbolIndex {
             });
 
             processedClasses++;
+            classesInChunk++;
+            
+            // Show progress within chunk every 5 seconds
+            const timeSinceLastUpdate = Date.now() - lastProgressUpdate;
+            if (timeSinceLastUpdate > PROGRESS_UPDATE_INTERVAL) {
+              const elapsedMs = Date.now() - startTime;
+              const classesPerMs = processedClasses / elapsedMs;
+              const remainingClasses = totalClasses - processedClasses;
+              const etaMs = remainingClasses / classesPerMs;
+              const etaMin = Math.ceil(etaMs / 60000);
+              
+              // In CI, use console.log to avoid buffering issues; locally use \r for same-line updates
+              if (isCI()) {
+                console.log(`      📦 Chunk ${chunkNumber}/${totalChunks} | ${processedClasses.toLocaleString()}/${totalClasses.toLocaleString()} | ${classesInChunk}/${chunkFiles.length} in chunk | ETA: ${etaMin}min`);
+              } else {
+                process.stdout.write(`\r      📦 Chunk ${chunkNumber}/${totalChunks} | ${processedClasses.toLocaleString()}/${totalClasses.toLocaleString()} | ${classesInChunk}/${chunkFiles.length} in chunk | ETA: ${etaMin}min`);
+              }
+              lastProgressUpdate = Date.now();
+            }
+            
           } catch (error: any) {
             console.error(`      ❌ Error processing ${file}: ${error.message}`);
           }
         }
         
         // Commit chunk transaction
+        const chunkDuration = Date.now() - chunkStartTime;
         this.db.prepare('COMMIT').run();
         
-        // Progress report with ETA
+        // Progress report with ETA and chunk timing
         const elapsedMs = Date.now() - startTime;
         const classesPerMs = processedClasses / elapsedMs;
         const remainingClasses = totalClasses - processedClasses;
         const etaMs = remainingClasses / classesPerMs;
         const etaMin = Math.ceil(etaMs / 60000);
+        const chunkDurationS = (chunkDuration / 1000).toFixed(1);
         
-        process.stdout.write(`\r      📦 Chunk ${chunkNumber}/${totalChunks} | ${processedClasses.toLocaleString()}/${totalClasses.toLocaleString()} classes | ETA: ${etaMin}min`);
+        // Always use console.log for chunk completion to ensure it's visible in CI
+        console.log(`      ✅ Chunk ${chunkNumber}/${totalChunks} done in ${chunkDurationS}s | ${processedClasses.toLocaleString()}/${totalClasses.toLocaleString()} | ETA: ${etaMin}min`);
+        lastProgressUpdate = Date.now();
         
         // Force garbage collection after each chunk if available
         if (global.gc && chunkNumber % 5 === 0) {
@@ -770,7 +807,7 @@ export class XppSymbolIndex {
     }
     
     const totalTimeS = ((Date.now() - startTime) / 1000).toFixed(1);
-    process.stdout.write(`\r      ✅ Processed ${processedClasses.toLocaleString()} classes in ${totalTimeS}s${' '.repeat(30)}\n`);
+    console.log(`      ✅ Processed ${processedClasses.toLocaleString()} classes in ${totalTimeS}s`);
     
     // Index other object types (tables, enums, etc.) normally
     this.indexOtherObjectTypes(modelPath, model);
