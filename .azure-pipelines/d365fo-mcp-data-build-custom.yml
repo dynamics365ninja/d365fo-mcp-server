@@ -156,7 +156,7 @@ stages:
               DB_PATH: $(DB_PATH)
               EXTRACT_MODE: '${{ parameters.extractionMode }}'
               ENABLE_SEARCH_SUGGESTIONS: 'false'  # Disable suggestions in CI/CD to reduce memory usage
-              COMPUTE_STATS: 'true'  # Enable statistics computation
+              COMPUTE_STATS: 'true'  # Optimized statistics computation with batching and GC
               NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'  # Increase heap to 4GB, enable GC for 350+ models
 
           # Upload metadata based on mode
