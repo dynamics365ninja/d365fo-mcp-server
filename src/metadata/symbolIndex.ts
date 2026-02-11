@@ -521,13 +521,22 @@ export class XppSymbolIndex {
     const models = modelName ? [modelName] : await this.getModelDirectories(metadataPath);
 
     console.log(`   Processing ${models.length} model(s)...`);
+    const startTime = Date.now();
 
     // Wrap everything in a single transaction for maximum performance
     // With 8GB heap, this handles all 358 models without memory issues
     // Result: 1 transaction = 1 disk fsync = ~4 minutes (original speed)
     const transaction = this.db.transaction(() => {
+      let modelIndex = 0;
       for (const model of models) {
+        modelIndex++;
         const modelPath = path.join(metadataPath, model);
+        
+        // Log progress every 50 models in CI
+        if (isCI() && modelIndex % 50 === 0) {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          console.log(`   Progress: ${modelIndex}/${models.length} models (${elapsed}s elapsed)...`);
+        }
         
         // Index classes
         const classesPath = path.join(modelPath, 'classes');
@@ -552,7 +561,8 @@ export class XppSymbolIndex {
     // Execute the entire indexing in one transaction
     transaction();
     
-    console.log(`   ✅ Indexed ${models.length} model(s)`);
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`   ✅ Indexed ${models.length} model(s) in ${duration}s`);
   }
 
   private async getModelDirectories(metadataPath: string): Promise<string[]> {
@@ -565,35 +575,20 @@ export class XppSymbolIndex {
   private indexClasses(classesPath: string, model: string): void {
     const files = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
     
-    // For large models, show progress to indicate activity
-    const isLargeModel = files.length > 1000;
-    let lastProgressUpdate = Date.now();
-    const PROGRESS_INTERVAL = 5000; // Update progress every 5 seconds for large models
+    // Basic logging for large models
+    if (files.length > 1000) {
+      console.log(`      Processing ${files.length} classes...`);
+    }
     
-    // For very large models, process in sub-batches and report progress
-    // This is critical for models with 1000+ classes (e.g., ApplicationFoundation: 2888 classes)
-    const SUB_BATCH_SIZE = 100; // Process 100 classes at a time
-    
-    for (let subBatchStart = 0; subBatchStart < files.length; subBatchStart += SUB_BATCH_SIZE) {
-      const subBatchEnd = Math.min(subBatchStart + SUB_BATCH_SIZE, files.length);
-      const subBatchFiles = files.slice(subBatchStart, subBatchEnd);
-      
-      for (const file of subBatchFiles) {
-        try {
-          const filePath = path.join(classesPath, file);
-          const content = fs.readFileSync(filePath, 'utf-8');
-          const classData = JSON.parse(content);
+    let processedCount = 0;
+    for (const file of files) {
+      try {
+        const filePath = path.join(classesPath, file);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const classData = JSON.parse(content);
 
         // Use sourcePath from metadata (original XML file) instead of JSON file path
         const sourceFilePath = classData.sourcePath || filePath;
-
-        // Pre-stringify JSON fields ONLY if they exist (avoid unnecessary JSON.stringify)
-        const typicalUsagesStr = (classData.typicalUsages && classData.typicalUsages.length > 0) 
-          ? JSON.stringify(classData.typicalUsages) : undefined;
-        const relatedMethodsStr = (classData.relatedMethods && classData.relatedMethods.length > 0)
-          ? JSON.stringify(classData.relatedMethods) : undefined;
-        const apiPatternsStr = (classData.apiPatterns && classData.apiPatterns.length > 0)
-          ? JSON.stringify(classData.apiPatterns) : undefined;
 
         // Add class symbol with enhanced metadata
         this.addSymbol({
@@ -607,23 +602,17 @@ export class XppSymbolIndex {
           extendsClass: classData.extends,
           implementsInterfaces: classData.implements?.join(', '),
           usedTypes: classData.usedTypes?.join(', '),
-          // New pattern analysis fields
+          // Pattern analysis fields
           patternType: classData.patternType,
-          typicalUsages: typicalUsagesStr,
-          relatedMethods: relatedMethodsStr,
-          apiPatterns: apiPatternsStr,
+          typicalUsages: classData.typicalUsages ? JSON.stringify(classData.typicalUsages) : undefined,
+          relatedMethods: classData.relatedMethods ? JSON.stringify(classData.relatedMethods) : undefined,
+          apiPatterns: classData.apiPatterns ? JSON.stringify(classData.apiPatterns) : undefined,
         });
 
         // Add method symbols with enhanced metadata
         if (classData.methods && Array.isArray(classData.methods)) {
           for (const method of classData.methods) {
             const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') || '';
-            
-            // Pre-stringify JSON fields ONLY if they exist
-            const methodTypicalUsages = (method.typicalUsages && method.typicalUsages.length > 0)
-              ? JSON.stringify(method.typicalUsages) : undefined;
-            const methodRelatedMethods = (method.relatedMethods && method.relatedMethods.length > 0)
-              ? JSON.stringify(method.relatedMethods) : undefined;
             
             this.addSymbol({
               name: method.name,
@@ -640,23 +629,21 @@ export class XppSymbolIndex {
               methodCalls: method.methodCalls?.join(', '),
               inlineComments: method.inlineComments,
               usageExample: method.usageExample,
-              // New pattern analysis fields
-              typicalUsages: methodTypicalUsages,
-              relatedMethods: methodRelatedMethods,
+              // Pattern analysis fields
+              typicalUsages: method.typicalUsages ? JSON.stringify(method.typicalUsages) : undefined,
+              relatedMethods: method.relatedMethods ? JSON.stringify(method.relatedMethods) : undefined,
             });
           }
         }
-      
-        } catch (error) {
-          console.error(`\n      ⚠️  Error indexing class ${file}: ${error}`);
+        
+        processedCount++;
+        // Log progress every 500 classes for very large models
+        if (files.length > 1000 && processedCount % 500 === 0) {
+          console.log(`      Processed ${processedCount}/${files.length} classes...`);
         }
-      }
-      
-      // Show progress for large models to indicate activity (prevent "hang" perception)
-      if (isLargeModel && (Date.now() - lastProgressUpdate > PROGRESS_INTERVAL)) {
-        const progress = Math.round((subBatchEnd / files.length) * 100);
-        process.stdout.write(` ${progress}%`);
-        lastProgressUpdate = Date.now();
+      } catch (error) {
+        // Only log errors, don't stop processing
+        console.error(`      ⚠️  Skipped ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -695,9 +682,9 @@ export class XppSymbolIndex {
             });
           }
         }
-      
       } catch (error) {
-        console.error(`\n      ⚠️  Error indexing table ${file}: ${error}`);
+        // Only log errors, don't stop processing
+        console.error(`      ⚠️  Skipped table ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -724,7 +711,8 @@ export class XppSymbolIndex {
         });
       
       } catch (error) {
-        console.error(`\n      ⚠️  Error indexing enum ${file}: ${error}`);
+        // Only log errors, don't stop processing
+        console.error(`      ⚠️  Skipped enum ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }

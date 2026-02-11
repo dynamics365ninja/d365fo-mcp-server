@@ -133,20 +133,6 @@ The MCP server now supports **hybrid search** — combining external D365FO meta
 | **Prioritization** | Workspace files appear first in search results (marked with 🔹) |
 | **Pattern Analysis** | Analyzes code patterns from YOUR project, not just generic examples |
 
-**Usage Example:**
-```typescript
-// Enable workspace-aware search
-search({
-  query: "dimension",
-  includeWorkspace: true,
-  workspacePath: "C:\\MyProject"
-})
-
-// Result shows both your custom code and D365FO standard:
-// 🔹 WORKSPACE [CLASS] MyDimensionHelper (your project)
-// 📦 EXTERNAL [CLASS] DimensionAttributeValueSet (D365FO)
-```
-
 **Benefits:**
 - ✅ See your custom extensions alongside standard D365FO code
 - ✅ Pattern analysis learns from YOUR codebase
@@ -262,10 +248,10 @@ This MCP server is designed to work seamlessly with **Visual Studio 2022** throu
    }
    ```
 
-4. **Copy System Instructions to Your Workspace** (CRITICAL):
+4. **Copy Copilot Instructions to Your Workspace** (CRITICAL):
    
    ```powershell
-   # Copy .github folder from this repo to your D365FO workspace
+   # Copy .github folder from this repo to your D365FO workspace (Visual Studio solution folder)
    Copy-Item -Path ".github" -Destination "C:\Path\To\Your\D365FO\Workspace\" -Recurse
    ```
    
