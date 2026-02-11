@@ -521,13 +521,13 @@ export class XppSymbolIndex {
 
     console.log(`   Processing ${models.length} model(s)...`);
 
-    // Use smaller batch size for Azure DevOps to avoid long commits
-    // Batch size of 5 models provides best balance for cloud environments:
-    // - Fast commits (< 5 seconds each)
-    // - Frequent WAL checkpoints prevent log buildup
-    // - Memory-safe (very small memory footprint)
-    // Reduce to 3 for Azure Pipelines with 350+ models to prevent timeouts
-    const BATCH_SIZE = isCI() ? 3 : 5;
+    // Use larger batch size for better performance (fewer transactions)
+    // Batch size of 50 models provides best balance:
+    // - Fewer commits = fewer disk syncs (8 instead of 72 for 358 models)
+    // - Still memory-safe with 4GB heap (max 50 models in memory at once)
+    // - Reduces total indexing time from 1+ hour to ~5-10 minutes
+    // Original single transaction (all 358 models) was fast (4 min) but crashed on memory
+    const BATCH_SIZE = 50;
     
     // Track last activity timestamp to detect hangs
     let lastActivityTime = Date.now();
@@ -595,11 +595,6 @@ export class XppSymbolIndex {
               
               // Execute transaction for this single model
               modelTransaction();
-              
-              // Run passive checkpoint after large models to prevent WAL buildup
-              if (estimatedSize > 1000) {
-                this.db.pragma('wal_checkpoint(PASSIVE)');
-              }
             }
             
           } catch (modelError) {
@@ -610,13 +605,10 @@ export class XppSymbolIndex {
         
         const batchDuration = Date.now() - batchStartTime;
         
-        // Run WAL checkpoint after each batch to prevent log buildup
-        // PASSIVE mode doesn't block other operations
-        this.db.pragma('wal_checkpoint(PASSIVE)');
-        
-        // Every 30 models (more frequent in CI), force a full checkpoint to keep WAL small
-        // This prevents memory buildup and ensures progress is saved
-        const checkpointInterval = isCI() ? 30 : 50;
+        // Every 50 models, force a full checkpoint to keep WAL small
+        // PASSIVE checkpoints removed - they were causing excessive disk syncs (72 extra operations)
+        // TRUNCATE is sufficient - it forces fsync but only every 50 models (~8 times total)
+        const checkpointInterval = 50;
         if ((batchStart + BATCH_SIZE) % checkpointInterval === 0) {
           this.db.pragma('wal_checkpoint(TRUNCATE)');
           console.log(`\n      💾 WAL checkpoint at model ${batchStart + BATCH_SIZE}`);
@@ -789,12 +781,6 @@ export class XppSymbolIndex {
         // Commit chunk transaction
         const chunkDuration = Date.now() - chunkStartTime;
         this.db.prepare('COMMIT').run();
-        
-        // CRITICAL: Run WAL checkpoint after every chunk in CI to prevent log buildup
-        // This is essential for huge models to avoid memory exhaustion
-        if (isCI()) {
-          this.db.pragma('wal_checkpoint(PASSIVE)');
-        }
         
         // Force garbage collection after EVERY chunk (not just every 5)
         if (global.gc) {
