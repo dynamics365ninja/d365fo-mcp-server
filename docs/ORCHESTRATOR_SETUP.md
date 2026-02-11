@@ -208,6 +208,7 @@ Complete list of tools available in GitHub Copilot:
 | Tool | Description | Example Usage |
 |------|-------------|---------------|
 | `search` | Search X++ classes, tables, methods, fields | "Find all classes with 'Sales' in name" |
+| `batch_search` | Execute multiple searches in parallel | "Search for dimension, helper, and validation classes at once" |
 | `search_extensions` | Search only custom/ISV extensions | "Show my custom extensions" |
 | `get_class_info` | Detailed info about a class including methods | "What methods does CustTable have?" |
 | `get_table_info` | Detailed info about a table, fields, indexes | "Show CustTable structure" |

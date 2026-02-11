@@ -16,16 +16,16 @@ Complete guide for setting up and deploying the X++ MCP (Model Context Protocol)
 ## Prerequisites
 
 ### Required Software
-- **Node.js** 22.x LTS
+- **Node.js** 22.x or higher (LTS recommended)
 - **TypeScript** 5.7+
 - **Git** for version control
 - **Azure CLI** (for deployment)
-- **PowerShell** 7+ (for scripts)
+- **PowerShell** 7+ (optional, for Windows scripts)
 
 ### Azure Resources
-- **Azure Blob Storage** account
-- **Azure App Service** (P0v3 or higher recommended)
-- **Azure Cache for Redis** (optional, for performance)
+- **Azure Blob Storage** account for storing metadata and database
+- **Azure App Service** (B1 or higher recommended, P0v3+ for production)
+- **Azure Cache for Redis** (optional, improves performance significantly)
 
 ### D365FO Access
 - Access to D365FO PackagesLocalDirectory or metadata packages
@@ -135,7 +135,7 @@ az storage container create \
 az appservice plan create \
   --name xpp-mcp-plan \
   --resource-group your-rg \
-  --sku P0v3 \
+  --sku B1 \
   --is-linux
 
 az webapp create \
@@ -143,6 +143,15 @@ az webapp create \
   --plan xpp-mcp-plan \
   --resource-group your-rg \
   --runtime "NODE:22-lts"
+```
+
+For production environments, use P0v3 or higher SKU:
+```bash
+az appservice plan create \
+  --name xpp-mcp-plan-prod \
+  --resource-group your-rg \
+  --sku P0v3 \
+  --is-linux
 ```
 
 #### Redis Cache (Optional)
@@ -175,13 +184,22 @@ az webapp config appsettings set \
 ### 3. Deploy Application
 
 ```bash
-# Build and deploy
+# Build the application
 npm run build
+
+# Create deployment package
+cd dist
+zip -r ../deploy.zip .
+cd ..
+
+# Deploy to Azure
 az webapp deployment source config-zip \
   --resource-group your-rg \
   --name xpp-mcp-server \
-  --src dist.zip
+  --src deploy.zip
 ```
+
+Alternatively, use Azure DevOps pipelines for automated deployment (see [PIPELINES.md](PIPELINES.md)).
 
 ### 4. Verify Deployment
 
@@ -215,61 +233,65 @@ In Azure DevOps, create variable group `xpp-mcp-server-config`:
 
 ### 3. Configure Pipelines
 
-Four pipelines are available in `.azure-pipelines/`:
+Three pipelines are available in `.azure-pipelines/`:
 
-#### **d365fo-mcp-data.yml** - Full Custom Metadata Extraction
-- Triggered on changes to source code
-- Downloads standard metadata from blob
-- Extracts custom models from Git
+#### **d365fo-mcp-data-build-custom.yml** - Custom Metadata Extraction
+- Triggers automatically on changes to `dev` branch (src/** or pipeline file)
+- Downloads standard metadata from Azure Blob Storage
+- Extracts custom models from Git repository
 - Builds database and uploads to blob
-- Restarts App Service
+- Restarts App Service to apply changes
+- Quick updates (~5-15 min)
+- Supports manual trigger with parameters (extraction mode, custom models)
 
-#### **d365fo-mcp-data-quick.yml** - Updates on Changes
-- Triggered on changes to src/** or pipeline file in main branch
-- Quick custom metadata updates (~5-15 min)
-- Parameters for custom execution
-
-#### **d365fo-mcp-data-standard-extract.yml** - Standard Metadata Extraction
+#### **d365fo-mcp-data-build-standard.yml** - Standard Metadata Extraction
 - Manual execution only
-- Downloads standard packages from NuGet
-- Extracts and uploads to blob
-- Requires Windows agent
+- Downloads PackagesLocalDirectory.zip from Azure Blob Storage
+- Extracts standard D365FO models
+- Uploads extracted metadata to blob
+- Run after D365 version upgrades or hotfixes (few times per year)
+- Execution time: ~30-45 min
 
 #### **d365fo-mcp-data-platform-upgrade.yml** - Complete Platform Upgrade
 - Manual execution only
-- Single unified stage on Windows
-- Downloads NuGet → Extracts standard → Extracts custom → Builds database → Uploads all
-- No intermediate blob operations (faster)
+- Single unified stage for complete metadata refresh
+- Downloads PackagesLocalDirectory.zip → Extracts standard → Extracts custom → Builds database → Uploads all
+- No intermediate blob operations (faster, more efficient)
 - Execution time: ~1.5-2 hours
-- Use after D365 version updates
+- Use after major D365 version updates or platform upgrades
 
-### 4. NuGet Configuration (for Standard Extraction)
+### 4. Upload Standard Packages to Azure Blob
 
-Create files in `nuget-config/` folder:
+Before running the pipelines, you need to upload `PackagesLocalDirectory.zip` to Azure Blob Storage:
 
-**latest.csproj:**
-```xml
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Dynamics.AX.Application.DevALM.BuildXpp" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Dynamics.AX.ApplicationSuite.DevALM.BuildXpp" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Dynamics.AX.Platform.DevALM.BuildXpp" Version="7.0.*" />
-    <PackageReference Include="Microsoft.Dynamics.AX.Platform.CompilerPackage" Version="7.0.*" />
-  </ItemGroup>
-</Project>
+**Option 1: From D365FO Development VM**
+```bash
+# Compress PackagesLocalDirectory folder
+Compress-Archive -Path "C:\AOSService\PackagesLocalDirectory" -DestinationPath "PackagesLocalDirectory.zip"
+
+# Upload to Azure Blob Storage using Azure CLI
+az storage blob upload \
+  --connection-string "$AZURE_STORAGE_CONNECTION_STRING" \
+  --container-name packages \
+  --name PackagesLocalDirectory.zip \
+  --file PackagesLocalDirectory.zip \
+  --overwrite
 ```
 
-**nuget.config:**
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <add key="dynamics365-operations" value="https://pkgs.dev.azure.com/mseng/Dynamics365/_packaging/dynamics365-operations/nuget/v3/index.json" />
-  </packageSources>
-</configuration>
+**Option 2: Download from LCS**
+1. Download Deployable Package from LCS (Lifecycle Services)
+2. Extract the package to get standard models
+3. Compress as `PackagesLocalDirectory.zip`
+4. Upload to Azure Blob Storage container named `packages`
+
+**Container Structure:**
+```
+Azure Blob Storage
+└── packages (container)
+    └── PackagesLocalDirectory.zip  (standard D365FO models)
+└── xpp-metadata (container)
+    └── metadata files (extracted by pipelines)
+    └── xpp-metadata.db (built by pipelines)
 ```
 
 ---
@@ -278,10 +300,12 @@ Create files in `nuget-config/` folder:
 
 ### 1. Prerequisites
 
-- **Visual Studio 2022** version 17.14 or later
+- **Visual Studio 2022** version 17.14 or later (with MCP support)
 - **GitHub Copilot** extension installed
-- GitHub account with Copilot subscription
+- GitHub account with Copilot subscription (required for agent mode)
 - **Enable Editor preview features** at https://github.com/settings/copilot/features
+
+> **Note:** MCP integration in Visual Studio 2022 requires version 17.14 or newer. Earlier versions do not support MCP servers.
 
 ### 2. Enable MCP Integration
 
@@ -324,7 +348,18 @@ Create `.mcp.json` file in your D365FO solution root directory:
 2. Open your D365FO solution
 3. Open **Copilot Chat** window (View → GitHub Copilot Chat)
 4. Switch to **Agent Mode** in Copilot Chat
-5. Verify X++ MCP tools are loaded (you should see search, get_class_info, get_table_info, code_completion, generate_code, search_extensions, analyze_code_patterns, suggest_method_implementation, analyze_class_completeness, get_api_usage_patterns)
+5. Verify X++ MCP tools are loaded - you should see these 11 tools:
+   - `search` - Search X++ symbols
+   - `batch_search` - Parallel batch search
+   - `search_extensions` - Search custom extensions only
+   - `get_class_info` - Get class structure and methods
+   - `get_table_info` - Get table fields and relations
+   - `code_completion` - Discover methods and fields
+   - `generate_code` - Generate X++ code templates
+   - `analyze_code_patterns` - Analyze code patterns
+   - `suggest_method_implementation` - Get method implementation suggestions
+   - `analyze_class_completeness` - Check for missing methods
+   - `get_api_usage_patterns` - Get API usage examples
 
 ### 5. Example Prompts
 
@@ -376,13 +411,14 @@ npm rebuild better-sqlite3
 
 ### App Service Performance
 
-**Issue:** Slow response times
+**Issue:** Slow response times or timeouts
 
 **Solutions:**
-1. Enable Redis caching
-2. Scale up App Service plan (P1v3 or higher)
+1. Enable Redis caching (`REDIS_ENABLED=true`)
+2. Scale up App Service plan (B2 for dev, P1v3+ for production)
 3. Enable Application Insights for monitoring
-4. Check database size (should be ~500MB)
+4. Verify database size (typically ~1.5GB for standard + custom models)
+5. Check if App Service has sufficient memory (minimum 1.75GB for B1, 3.5GB for P0v3)
 
 ### Pipeline Failures
 
@@ -415,8 +451,10 @@ npm rebuild better-sqlite3
 ## Next Steps
 
 - Review [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) for practical examples
-- Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design
-- See [PIPELINES.md](PIPELINES.md) for automation details
+- Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design details
+- See [PIPELINES.md](PIPELINES.md) for pipeline automation details
+- Read [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) for ISV configuration
+- Explore [WORKSPACE_AWARE.md](WORKSPACE_AWARE.md) for workspace integration features
 
 ---
 

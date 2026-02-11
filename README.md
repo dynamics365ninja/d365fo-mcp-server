@@ -180,7 +180,7 @@ See [docs/WORKSPACE_AWARE.md](docs/WORKSPACE_AWARE.md) for complete documentatio
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │  Symbols Indexed      584,799    (classes, tables, methods)   │
-│  Database Size        ~500 MB    (SQLite with FTS5)           │
+│  Database Size        ~1.5 GB    (SQLite with FTS5)           │
 │  Search Latency       <50 ms     (with caching: <10 ms)       │
 │  Startup Time         <5 sec     (database download)          │
 └────────────────────────────────────────────────────────────────┘
@@ -357,7 +357,7 @@ RATE_LIMIT_MAX_REQUESTS=100
 │  ┌─────────────────────────┐    ┌─────────────────────────────┐    │
 │  │  Azure App Service      │    │  Azure Blob Storage          │    │
 │  │  (Linux P0v3)           │◄───│  (xpp-metadata.db)           │    │
-│  │  Node.js 22 LTS         │    │  ~500 MB                     │    │
+│  │  Node.js 22 LTS         │    │  ~1.5 GB                     │    │
 │  └─────────────────────────┘    └─────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
@@ -523,11 +523,11 @@ npm run build-database
 | Resource | Configuration | Monthly Cost |
 |----------|---------------|--------------|
 | App Service P0v3 | 1 vCPU, 4 GB RAM, Always-On | ~$62 |
-| Blob Storage | 500 MB Hot LRS | ~$1 |
+| Blob Storage | 1.5 GB Hot LRS | ~$3 |
 | Azure Cache for Redis | Basic C0 (optional) | ~$16 |
 | Application Insights | Basic monitoring | ~$0-5 |
-| **Total (without Redis)** | | **~$63-68/month** |
-| **Total (with Redis)** | | **~$79-84/month** |
+| **Total (without Redis)** | | **~$65-70/month** |
+| **Total (with Redis)** | | **~$81-86/month** |
 
 ### Redis Setup (Optional)
 
