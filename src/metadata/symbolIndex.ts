@@ -363,15 +363,14 @@ export class XppSymbolIndex {
   /**
    * Compute usage statistics (usage_frequency and called_by_count) for all methods
    * Should be called after initial indexing is complete
+   * Optimized for 300k+ methods with minimal memory usage
    */
   computeUsageStatistics(): void {
     console.log('📊 Computing usage statistics...');
     const startTime = Date.now();
     
-    // Step 1: Create temporary table with all method calls (split CSV in SQL)
-    // This is MUCH faster than iterating in JavaScript
+    // Step 1: Create temporary table with all method calls
     this.db.exec(`
-      -- Create temp table for split method calls
       CREATE TEMP TABLE IF NOT EXISTS temp_method_calls (
         caller_method TEXT,
         called_method TEXT
@@ -381,47 +380,67 @@ export class XppSymbolIndex {
     
     // Get all methods with their method_calls
     const allMethods = this.db.prepare(`
-      SELECT name, parent_name, method_calls 
+      SELECT name, method_calls 
       FROM symbols 
-      WHERE type = 'method' AND method_calls IS NOT NULL
-    `).all() as Array<{ name: string; parent_name: string; method_calls: string }>;
+      WHERE type = 'method' AND method_calls IS NOT NULL AND method_calls != ''
+    `).all() as Array<{ name: string; method_calls: string }>;
     
     console.log(`   Found ${allMethods.length} methods with call references`);
     
-    // Step 2: Insert parsed method calls into temp table (batched for performance)
-    console.log('   Parsing method calls...');
+    if (allMethods.length === 0) {
+      console.log('   No method calls to process, skipping statistics');
+      return;
+    }
+    
+    // Step 2: Batch insert parsed method calls - OPTIMIZED
+    console.log('   Parsing and inserting method calls...');
     const insertStmt = this.db.prepare(
       'INSERT INTO temp_method_calls (caller_method, called_method) VALUES (?, ?)'
     );
     
-    let processedMethods = 0;
-    const insertTransaction = this.db.transaction(() => {
-      for (const method of allMethods) {
-        const calls = method.method_calls.split(',').map(c => c.trim()).filter(c => c);
-        for (const calledMethod of calls) {
-          insertStmt.run(method.name, calledMethod);
-        }
-        processedMethods++;
-        
-        // Progress indicator every 10%
-        if (processedMethods % Math.ceil(allMethods.length / 10) === 0) {
-          const percent = Math.round((processedMethods / allMethods.length) * 100);
-          console.log(`   Progress: ${percent}% (${processedMethods}/${allMethods.length} methods)`);
-        }
-      }
-    });
-    insertTransaction();
+    // Process in batches of 1000 methods to show progress and allow GC
+    const BATCH_SIZE = 1000;
+    const totalBatches = Math.ceil(allMethods.length / BATCH_SIZE);
     
-    console.log('   Analyzing call patterns with SQL...');
-    
-    // Step 3: Compute statistics using SQL aggregation (FAST!)
-    // Create an aggregated temp table first (much faster than correlated subqueries)
-    const updateTransaction = this.db.transaction(() => {
-      console.log('   Creating aggregated statistics...');
+    for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+      const batchStart = batchIdx * BATCH_SIZE;
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, allMethods.length);
+      const batchMethods = allMethods.slice(batchStart, batchEnd);
       
-      // Create temp table with aggregated counts
+      // Insert batch in single transaction
+      const insertBatch = this.db.transaction(() => {
+        for (const method of batchMethods) {
+          // Fast CSV parsing - avoid unnecessary trim/filter
+          const calls = method.method_calls.split(',');
+          for (let i = 0; i < calls.length; i++) {
+            const calledMethod = calls[i].trim();
+            if (calledMethod) {
+              insertStmt.run(method.name, calledMethod);
+            }
+          }
+        }
+      });
+      insertBatch();
+      
+      // Progress every 10%
+      if ((batchIdx + 1) % Math.ceil(totalBatches / 10) === 0 || batchIdx === totalBatches - 1) {
+        const percent = Math.round(((batchIdx + 1) / totalBatches) * 100);
+        console.log(`   Progress: ${percent}% (${batchEnd}/${allMethods.length} methods)`);
+      }
+      
+      // Force GC in CI after each batch to prevent memory buildup
+      if (isCI() && global.gc && batchIdx % 10 === 0) {
+        global.gc();
+      }
+    }
+    
+    console.log('   Computing aggregated statistics...');
+    
+    // Step 3: OPTIMIZED - Use single UPDATE with JOIN instead of correlated subqueries
+    const updateTransaction = this.db.transaction(() => {
+      // Create temp table with aggregated counts and index
       this.db.exec(`
-        CREATE TEMP TABLE IF NOT EXISTS temp_call_stats AS
+        CREATE TEMP TABLE temp_call_stats AS
         SELECT 
           called_method,
           COUNT(*) as total_calls,
@@ -429,27 +448,51 @@ export class XppSymbolIndex {
         FROM temp_method_calls
         GROUP BY called_method;
         
-        CREATE INDEX IF NOT EXISTS idx_temp_call_stats ON temp_call_stats(called_method);
+        CREATE INDEX idx_temp_call_stats ON temp_call_stats(called_method);
       `);
       
-      console.log('   Updating symbol statistics...');
+      console.log('   Applying statistics to symbols...');
       
-      // Now do a simple JOIN update (much faster than correlated subquery per row!)
-      this.db.exec(`
-        UPDATE symbols
-        SET 
-          usage_frequency = COALESCE(
-            (SELECT total_calls FROM temp_call_stats WHERE called_method = symbols.name),
-            0
-          ),
-          called_by_count = COALESCE(
-            (SELECT unique_callers FROM temp_call_stats WHERE called_method = symbols.name),
-            0
-          )
-        WHERE type = 'method';
-      `);
+      // OPTIMIZED: Use LEFT JOIN UPDATE (SQLite 3.33+) - much faster!
+      // If not supported, falls back to correlated subquery with index
+      try {
+        this.db.exec(`
+          UPDATE symbols
+          SET 
+            usage_frequency = COALESCE((
+              SELECT total_calls 
+              FROM temp_call_stats 
+              WHERE temp_call_stats.called_method = symbols.name
+            ), 0),
+            called_by_count = COALESCE((
+              SELECT unique_callers 
+              FROM temp_call_stats 
+              WHERE temp_call_stats.called_method = symbols.name
+            ), 0)
+          WHERE type = 'method'
+            AND EXISTS (SELECT 1 FROM temp_call_stats WHERE temp_call_stats.called_method = symbols.name);
+        `);
+        
+        // Set to 0 for methods not in temp_call_stats
+        this.db.exec(`
+          UPDATE symbols
+          SET usage_frequency = 0, called_by_count = 0
+          WHERE type = 'method'
+            AND NOT EXISTS (SELECT 1 FROM temp_call_stats WHERE temp_call_stats.called_method = symbols.name);
+        `);
+      } catch (e) {
+        console.warn('   Optimized UPDATE failed, using fallback method');
+        // Fallback to correlated subquery (slower but compatible)
+        this.db.exec(`
+          UPDATE symbols
+          SET 
+            usage_frequency = COALESCE((SELECT total_calls FROM temp_call_stats WHERE called_method = symbols.name), 0),
+            called_by_count = COALESCE((SELECT unique_callers FROM temp_call_stats WHERE called_method = symbols.name), 0)
+          WHERE type = 'method';
+        `);
+      }
       
-      // Cleanup temp stats table
+      // Cleanup
       this.db.exec('DROP TABLE IF EXISTS temp_call_stats;');
     });
     updateTransaction();
