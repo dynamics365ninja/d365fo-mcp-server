@@ -529,28 +529,36 @@ export class XppSymbolIndex {
       const batchEnd = Math.min(batchStart + BATCH_SIZE, models.length);
       const batchModels = models.slice(batchStart, batchEnd);
       
+      const batchStartTime = Date.now();
+      
       try {
-        // Process batch of models in single transaction
-        const transaction = this.db.transaction(() => {
-          for (let i = 0; i < batchModels.length; i++) {
-            const model = batchModels[i];
-            const modelIndex = batchStart + i;
-            const modelPath = path.join(metadataPath, model);
-            
-            // Show progress before processing each model
-            const progressMsg = `   [${modelIndex + 1}/${models.length}] ${model}`;
-            process.stdout.write(`\r${progressMsg}${' '.repeat(Math.max(0, 80 - progressMsg.length))}`);
-            lastActivityTime = Date.now();
-            
-            try {
+        // CRITICAL CHANGE: Process each model in its own transaction
+        // This prevents memory exhaustion on large models (ApplicationFoundation: 46k objects)
+        for (let i = 0; i < batchModels.length; i++) {
+          const model = batchModels[i];
+          const modelIndex = batchStart + i;
+          const modelPath = path.join(metadataPath, model);
+          
+          // Show progress before processing each model
+          const progressMsg = `   [${modelIndex + 1}/${models.length}] ${model}`;
+          process.stdout.write(`\r${progressMsg}${' '.repeat(Math.max(0, 80 - progressMsg.length))}`);
+          lastActivityTime = Date.now();
+          
+          // Check model size for warning
+          const classesPath = path.join(modelPath, 'classes');
+          let estimatedSize = 0;
+          if (fs.existsSync(classesPath)) {
+            estimatedSize = fs.readdirSync(classesPath).filter(f => f.endsWith('.json')).length;
+            if (estimatedSize > 1000 && isCI()) {
+              process.stdout.write(`\r${progressMsg} (${estimatedSize} classes)...`);
+            }
+          }
+          
+          try {
+            // Each model gets its own transaction to prevent memory buildup
+            const modelTransaction = this.db.transaction(() => {
               // Index classes
-              const classesPath = path.join(modelPath, 'classes');
               if (fs.existsSync(classesPath)) {
-                const classFiles = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
-                if (classFiles.length > 500 && isCI()) {
-                  // Large model - log intermediate progress
-                  process.stdout.write(`\r${progressMsg} (${classFiles.length} classes)...`);
-                }
                 this.indexClasses(classesPath, model);
               }
 
@@ -565,16 +573,22 @@ export class XppSymbolIndex {
               if (fs.existsSync(enumsPath)) {
                 this.indexEnums(enumsPath, model);
               }
-            } catch (modelError) {
-              // Log error but continue with next model in batch
-              console.error(`\n      ⚠️  Error processing model ${model}: ${modelError}`);
+            });
+            
+            // Execute transaction for this single model
+            modelTransaction();
+            
+            // Run passive checkpoint after large models to prevent WAL buildup
+            if (estimatedSize > 1000) {
+              this.db.pragma('wal_checkpoint(PASSIVE)');
             }
+            
+          } catch (modelError) {
+            // Log error but continue with next model
+            console.error(`\n      ⚠️  Error processing model ${model}: ${modelError}`);
           }
-        });
-
-        // Execute transaction for this batch with timing
-        const batchStartTime = Date.now();
-        transaction();
+        }
+        
         const batchDuration = Date.now() - batchStartTime;
         
         // Run WAL checkpoint after each batch to prevent log buildup
