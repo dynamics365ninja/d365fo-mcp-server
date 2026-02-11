@@ -641,9 +641,14 @@ export class XppSymbolIndex {
   private indexClasses(classesPath: string, model: string): void {
     const files = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
     
-    // For large models, process in sub-batches to avoid memory exhaustion
-    // This is critical for models with 1000+ classes (e.g., ApplicationFoundation)
-    const SUB_BATCH_SIZE = 100; // Process 100 classes at a time within the transaction
+    // For large models, show progress to indicate activity
+    const isLargeModel = files.length > 1000;
+    let lastProgressUpdate = Date.now();
+    const PROGRESS_INTERVAL = 5000; // Update progress every 5 seconds for large models
+    
+    // For very large models, process in sub-batches and report progress
+    // This is critical for models with 1000+ classes (e.g., ApplicationFoundation: 2888 classes)
+    const SUB_BATCH_SIZE = 100; // Process 100 classes at a time
     
     for (let subBatchStart = 0; subBatchStart < files.length; subBatchStart += SUB_BATCH_SIZE) {
       const subBatchEnd = Math.min(subBatchStart + SUB_BATCH_SIZE, files.length);
@@ -658,10 +663,13 @@ export class XppSymbolIndex {
         // Use sourcePath from metadata (original XML file) instead of JSON file path
         const sourceFilePath = classData.sourcePath || filePath;
 
-        // Pre-stringify JSON fields to avoid doing it in tight loop
-        const typicalUsagesStr = classData.typicalUsages ? JSON.stringify(classData.typicalUsages) : undefined;
-        const relatedMethodsStr = classData.relatedMethods ? JSON.stringify(classData.relatedMethods) : undefined;
-        const apiPatternsStr = classData.apiPatterns ? JSON.stringify(classData.apiPatterns) : undefined;
+        // Pre-stringify JSON fields ONLY if they exist (avoid unnecessary JSON.stringify)
+        const typicalUsagesStr = (classData.typicalUsages && classData.typicalUsages.length > 0) 
+          ? JSON.stringify(classData.typicalUsages) : undefined;
+        const relatedMethodsStr = (classData.relatedMethods && classData.relatedMethods.length > 0)
+          ? JSON.stringify(classData.relatedMethods) : undefined;
+        const apiPatternsStr = (classData.apiPatterns && classData.apiPatterns.length > 0)
+          ? JSON.stringify(classData.apiPatterns) : undefined;
 
         // Add class symbol with enhanced metadata
         this.addSymbol({
@@ -687,9 +695,11 @@ export class XppSymbolIndex {
           for (const method of classData.methods) {
             const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') || '';
             
-            // Pre-stringify JSON fields
-            const methodTypicalUsages = method.typicalUsages ? JSON.stringify(method.typicalUsages) : undefined;
-            const methodRelatedMethods = method.relatedMethods ? JSON.stringify(method.relatedMethods) : undefined;
+            // Pre-stringify JSON fields ONLY if they exist
+            const methodTypicalUsages = (method.typicalUsages && method.typicalUsages.length > 0)
+              ? JSON.stringify(method.typicalUsages) : undefined;
+            const methodRelatedMethods = (method.relatedMethods && method.relatedMethods.length > 0)
+              ? JSON.stringify(method.relatedMethods) : undefined;
             
             this.addSymbol({
               name: method.name,
@@ -718,13 +728,11 @@ export class XppSymbolIndex {
         }
       }
       
-      // For very large models in CI, show sub-progress and yield to event loop
-      if (files.length > SUB_BATCH_SIZE && isCI() && subBatchEnd < files.length) {
-        // Yield to event loop to prevent blocking
+      // Show progress for large models to indicate activity (prevent "hang" perception)
+      if (isLargeModel && (Date.now() - lastProgressUpdate > PROGRESS_INTERVAL)) {
         const progress = Math.round((subBatchEnd / files.length) * 100);
-        if (progress % 25 === 0) {
-          process.stdout.write(` ${progress}%`);
-        }
+        process.stdout.write(` ${progress}%`);
+        lastProgressUpdate = Date.now();
       }
     }
   }
