@@ -664,7 +664,9 @@ export class XppSymbolIndex {
   private indexModelInChunks(modelPath: string, model: string): void {
     console.log(`\n      🔸 Processing huge model with chunked transactions...`);
     
-    const CHUNK_SIZE = 500; // Process 500 classes per transaction chunk
+    // CRITICAL: In CI, use much smaller chunks to prevent memory exhaustion
+    // Each class can have 50-100+ methods, so 500 classes = 25,000+ INSERT operations
+    const CHUNK_SIZE = isCI() ? 100 : 500; // CI: 100 classes/chunk, Local: 500
     const classesPath = path.join(modelPath, 'classes');
     
     if (!fs.existsSync(classesPath)) {
@@ -703,6 +705,15 @@ export class XppSymbolIndex {
             const classData = JSON.parse(content);
 
             const sourceFilePath = classData.sourcePath || filePath;
+            
+            // Skip classes with excessive methods to prevent memory exhaustion
+            const methodCount = classData.methods?.length || 0;
+            if (methodCount > 1000) {
+              console.warn(`      ⚠️  Skipping ${classData.name} (${methodCount} methods - too large)`);
+              processedClasses++;
+              classesInChunk++;
+              continue;
+            }
             
             // Pre-stringify JSON fields ONLY if they exist
             const typicalUsagesStr = (classData.typicalUsages && classData.typicalUsages.length > 0) 
@@ -778,6 +789,17 @@ export class XppSymbolIndex {
         const chunkDuration = Date.now() - chunkStartTime;
         this.db.prepare('COMMIT').run();
         
+        // CRITICAL: Run WAL checkpoint after every chunk in CI to prevent log buildup
+        // This is essential for huge models to avoid memory exhaustion
+        if (isCI()) {
+          this.db.pragma('wal_checkpoint(PASSIVE)');
+        }
+        
+        // Force garbage collection after EVERY chunk (not just every 5)
+        if (global.gc) {
+          global.gc();
+        }
+        
         // Progress report with ETA and chunk timing
         const elapsedMs = Date.now() - startTime;
         const classesPerMs = processedClasses / elapsedMs;
@@ -789,11 +811,6 @@ export class XppSymbolIndex {
         // Always use console.log for chunk completion to ensure it's visible in CI
         console.log(`      ✅ Chunk ${chunkNumber}/${totalChunks} done in ${chunkDurationS}s | ${processedClasses.toLocaleString()}/${totalClasses.toLocaleString()} | ETA: ${etaMin}min`);
         lastProgressUpdate = Date.now();
-        
-        // Force garbage collection after each chunk if available
-        if (global.gc && chunkNumber % 5 === 0) {
-          global.gc();
-        }
         
       } catch (error: any) {
         // Rollback failed chunk
