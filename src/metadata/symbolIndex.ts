@@ -470,6 +470,10 @@ export class XppSymbolIndex {
     // Reduce to 3 for Azure Pipelines with 350+ models to prevent timeouts
     const BATCH_SIZE = process.env.CI ? 3 : 5;
     
+    // Track last activity timestamp to detect hangs
+    let lastActivityTime = Date.now();
+    const HANG_DETECTION_INTERVAL = 30000; // 30 seconds without activity = warning
+    
     for (let batchStart = 0; batchStart < models.length; batchStart += BATCH_SIZE) {
       const batchEnd = Math.min(batchStart + BATCH_SIZE, models.length);
       const batchModels = models.slice(batchStart, batchEnd);
@@ -483,12 +487,19 @@ export class XppSymbolIndex {
             const modelPath = path.join(metadataPath, model);
             
             // Show progress before processing each model
-            process.stdout.write(`\r   [${modelIndex + 1}/${models.length}] Indexing ${model}...`);
+            const progressMsg = `   [${modelIndex + 1}/${models.length}] ${model}`;
+            process.stdout.write(`\r${progressMsg}${' '.repeat(Math.max(0, 80 - progressMsg.length))}`);
+            lastActivityTime = Date.now();
             
             try {
               // Index classes
               const classesPath = path.join(modelPath, 'classes');
               if (fs.existsSync(classesPath)) {
+                const classFiles = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
+                if (classFiles.length > 500 && process.env.CI) {
+                  // Large model - log intermediate progress
+                  process.stdout.write(`\r${progressMsg} (${classFiles.length} classes)...`);
+                }
                 this.indexClasses(classesPath, model);
               }
 
@@ -524,18 +535,26 @@ export class XppSymbolIndex {
         const checkpointInterval = process.env.CI ? 30 : 50;
         if ((batchStart + BATCH_SIZE) % checkpointInterval === 0) {
           this.db.pragma('wal_checkpoint(TRUNCATE)');
-          console.log(`      💾 WAL checkpoint at model ${batchStart + BATCH_SIZE}`);
+          console.log(`\n      💾 WAL checkpoint at model ${batchStart + BATCH_SIZE}`);
         }
         
         // Log batch timing - always in CI to monitor progress, only slow batches locally
         if (process.env.CI || batchDuration > 10000) {
-          console.log(`\n      ⏱️  Batch ${batchStart}-${batchEnd} took ${(batchDuration/1000).toFixed(1)}s`);
+          const avgPerModel = (batchDuration / batchModels.length / 1000).toFixed(1);
+          console.log(`\n      ⏱️  Batch ${batchStart}-${batchEnd} took ${(batchDuration/1000).toFixed(1)}s (avg ${avgPerModel}s/model)`);
         }
         
         // Force garbage collection in CI after each batch to prevent memory buildup
         if (process.env.CI && global.gc) {
           global.gc();
         }
+        
+        // Check for hang detection
+        const timeSinceActivity = Date.now() - lastActivityTime;
+        if (timeSinceActivity > HANG_DETECTION_INTERVAL) {
+          console.warn(`\n      ⚠️  Warning: ${(timeSinceActivity/1000).toFixed(0)}s since last activity`);
+        }
+        
       } catch (error) {
         console.error(`\n      ❌ Error committing batch ${batchStart}-${batchEnd}: ${error}`);
         console.error(`      Models in failed batch: ${batchModels.join(', ')}`);
@@ -556,63 +575,91 @@ export class XppSymbolIndex {
 
   private indexClasses(classesPath: string, model: string): void {
     const files = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
+    
+    // For large models, process in sub-batches to avoid memory exhaustion
+    // This is critical for models with 1000+ classes (e.g., ApplicationFoundation)
+    const SUB_BATCH_SIZE = 100; // Process 100 classes at a time within the transaction
+    
+    for (let subBatchStart = 0; subBatchStart < files.length; subBatchStart += SUB_BATCH_SIZE) {
+      const subBatchEnd = Math.min(subBatchStart + SUB_BATCH_SIZE, files.length);
+      const subBatchFiles = files.slice(subBatchStart, subBatchEnd);
+      
+      for (const file of subBatchFiles) {
+        try {
+          const filePath = path.join(classesPath, file);
+          const content = fs.readFileSync(filePath, 'utf-8');
+          const classData = JSON.parse(content);
 
-    for (const file of files) {
-      try {
-        const filePath = path.join(classesPath, file);
-        const content = fs.readFileSync(filePath, 'utf-8');
-        const classData = JSON.parse(content);
+        // Use sourcePath from metadata (original XML file) instead of JSON file path
+        const sourceFilePath = classData.sourcePath || filePath;
 
-      // Use sourcePath from metadata (original XML file) instead of JSON file path
-      const sourceFilePath = classData.sourcePath || filePath;
+        // Pre-stringify JSON fields to avoid doing it in tight loop
+        const typicalUsagesStr = classData.typicalUsages ? JSON.stringify(classData.typicalUsages) : undefined;
+        const relatedMethodsStr = classData.relatedMethods ? JSON.stringify(classData.relatedMethods) : undefined;
+        const apiPatternsStr = classData.apiPatterns ? JSON.stringify(classData.apiPatterns) : undefined;
 
-      // Add class symbol with enhanced metadata
-      this.addSymbol({
-        name: classData.name,
-        type: 'class',
-        signature: classData.extends ? `extends ${classData.extends}` : undefined,
-        filePath: sourceFilePath,
-        model,
-        description: classData.description || classData.documentation,
-        tags: classData.tags?.join(', '),
-        extendsClass: classData.extends,
-        implementsInterfaces: classData.implements?.join(', '),
-        usedTypes: classData.usedTypes?.join(', '),
-        // New pattern analysis fields
-        patternType: classData.patternType,
-        typicalUsages: classData.typicalUsages ? JSON.stringify(classData.typicalUsages) : undefined,
-        relatedMethods: classData.relatedMethods ? JSON.stringify(classData.relatedMethods) : undefined,
-        apiPatterns: classData.apiPatterns ? JSON.stringify(classData.apiPatterns) : undefined,
-      });
+        // Add class symbol with enhanced metadata
+        this.addSymbol({
+          name: classData.name,
+          type: 'class',
+          signature: classData.extends ? `extends ${classData.extends}` : undefined,
+          filePath: sourceFilePath,
+          model,
+          description: classData.description || classData.documentation,
+          tags: classData.tags?.join(', '),
+          extendsClass: classData.extends,
+          implementsInterfaces: classData.implements?.join(', '),
+          usedTypes: classData.usedTypes?.join(', '),
+          // New pattern analysis fields
+          patternType: classData.patternType,
+          typicalUsages: typicalUsagesStr,
+          relatedMethods: relatedMethodsStr,
+          apiPatterns: apiPatternsStr,
+        });
 
-      // Add method symbols with enhanced metadata
-      if (classData.methods && Array.isArray(classData.methods)) {
-        for (const method of classData.methods) {
-          const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') || '';
-          this.addSymbol({
-            name: method.name,
-            type: 'method',
-            parentName: classData.name,
-            signature: `${method.returnType} ${method.name}(${params})`,
-            filePath: sourceFilePath,
-            model,
-            description: method.documentation,
-            tags: method.tags?.join(', '),
-            sourceSnippet: method.sourceSnippet,
-            complexity: method.complexity,
-            usedTypes: method.usedTypes?.join(', '),
-            methodCalls: method.methodCalls?.join(', '),
-            inlineComments: method.inlineComments,
-            usageExample: method.usageExample,
-            // New pattern analysis fields
-            typicalUsages: method.typicalUsages ? JSON.stringify(method.typicalUsages) : undefined,
-            relatedMethods: method.relatedMethods ? JSON.stringify(method.relatedMethods) : undefined,
-          });
+        // Add method symbols with enhanced metadata
+        if (classData.methods && Array.isArray(classData.methods)) {
+          for (const method of classData.methods) {
+            const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') || '';
+            
+            // Pre-stringify JSON fields
+            const methodTypicalUsages = method.typicalUsages ? JSON.stringify(method.typicalUsages) : undefined;
+            const methodRelatedMethods = method.relatedMethods ? JSON.stringify(method.relatedMethods) : undefined;
+            
+            this.addSymbol({
+              name: method.name,
+              type: 'method',
+              parentName: classData.name,
+              signature: `${method.returnType} ${method.name}(${params})`,
+              filePath: sourceFilePath,
+              model,
+              description: method.documentation,
+              tags: method.tags?.join(', '),
+              sourceSnippet: method.sourceSnippet,
+              complexity: method.complexity,
+              usedTypes: method.usedTypes?.join(', '),
+              methodCalls: method.methodCalls?.join(', '),
+              inlineComments: method.inlineComments,
+              usageExample: method.usageExample,
+              // New pattern analysis fields
+              typicalUsages: methodTypicalUsages,
+              relatedMethods: methodRelatedMethods,
+            });
+          }
+        }
+      
+        } catch (error) {
+          console.error(`\n      ⚠️  Error indexing class ${file}: ${error}`);
         }
       }
       
-      } catch (error) {
-        console.error(`\n      ⚠️  Error indexing class ${file}: ${error}`);
+      // For very large models in CI, show sub-progress and yield to event loop
+      if (files.length > SUB_BATCH_SIZE && process.env.CI && subBatchEnd < files.length) {
+        // Yield to event loop to prevent blocking
+        const progress = Math.round((subBatchEnd / files.length) * 100);
+        if (progress % 25 === 0) {
+          process.stdout.write(` ${progress}%`);
+        }
       }
     }
   }
