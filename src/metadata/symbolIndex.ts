@@ -555,32 +555,43 @@ export class XppSymbolIndex {
           }
           
           try {
-            // Each model gets its own transaction to prevent memory buildup
-            const modelTransaction = this.db.transaction(() => {
-              // Index classes
-              if (fs.existsSync(classesPath)) {
-                this.indexClasses(classesPath, model);
-              }
-
-              // Index tables
-              const tablesPath = path.join(modelPath, 'tables');
-              if (fs.existsSync(tablesPath)) {
-                this.indexTables(tablesPath, model);
-              }
-
-              // Index enums
-              const enumsPath = path.join(modelPath, 'enums');
-              if (fs.existsSync(enumsPath)) {
-                this.indexEnums(enumsPath, model);
-              }
-            });
+            // CRITICAL: For extremely large models (Foundation: 30k classes), 
+            // use sub-transactions to prevent memory exhaustion and timeouts
+            const HUGE_MODEL_THRESHOLD = 10000; // 10k+ classes = huge model
+            const isHugeModel = estimatedSize >= HUGE_MODEL_THRESHOLD;
             
-            // Execute transaction for this single model
-            modelTransaction();
-            
-            // Run passive checkpoint after large models to prevent WAL buildup
-            if (estimatedSize > 1000) {
-              this.db.pragma('wal_checkpoint(PASSIVE)');
+            if (isHugeModel) {
+              // Process huge model in chunks with separate transactions
+              console.log(`\n      🔥 Huge model detected (${estimatedSize} classes), using chunked transactions...`);
+              this.indexModelInChunks(modelPath, model);
+            } else {
+              // Normal model - single transaction
+              const modelTransaction = this.db.transaction(() => {
+                // Index classes
+                if (fs.existsSync(classesPath)) {
+                  this.indexClasses(classesPath, model);
+                }
+
+                // Index tables
+                const tablesPath = path.join(modelPath, 'tables');
+                if (fs.existsSync(tablesPath)) {
+                  this.indexTables(tablesPath, model);
+                }
+
+                // Index enums
+                const enumsPath = path.join(modelPath, 'enums');
+                if (fs.existsSync(enumsPath)) {
+                  this.indexEnums(enumsPath, model);
+                }
+              });
+              
+              // Execute transaction for this single model
+              modelTransaction();
+              
+              // Run passive checkpoint after large models to prevent WAL buildup
+              if (estimatedSize > 1000) {
+                this.db.pragma('wal_checkpoint(PASSIVE)');
+              }
             }
             
           } catch (modelError) {
@@ -636,6 +647,150 @@ export class XppSymbolIndex {
     return entries
       .filter(entry => entry.isDirectory())
       .map(entry => entry.name);
+  }
+
+  /**
+   * Index a huge model in chunks with separate transactions per chunk
+   * This prevents memory exhaustion and timeouts for models like Foundation (30k+ classes)
+   */
+  private indexModelInChunks(modelPath: string, model: string): void {
+    console.log(`\n      🔸 Processing huge model with chunked transactions...`);
+    
+    const CHUNK_SIZE = 500; // Process 500 classes per transaction chunk
+    const classesPath = path.join(modelPath, 'classes');
+    
+    if (!fs.existsSync(classesPath)) {
+      console.log(`      ⚠️  No classes folder found`);
+      return;
+    }
+    
+    const allFiles = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
+    const totalClasses = allFiles.length;
+    console.log(`      📊 Total classes: ${totalClasses.toLocaleString()}, chunks: ${Math.ceil(totalClasses / CHUNK_SIZE)}`);
+    
+    const startTime = Date.now();
+    let processedClasses = 0;
+    
+    // Process in chunks with separate transactions
+    for (let chunkStart = 0; chunkStart < allFiles.length; chunkStart += CHUNK_SIZE) {
+      const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, allFiles.length);
+      const chunkFiles = allFiles.slice(chunkStart, chunkEnd);
+      const chunkNumber = Math.floor(chunkStart / CHUNK_SIZE) + 1;
+      const totalChunks = Math.ceil(allFiles.length / CHUNK_SIZE);
+      
+      try {
+        // Each chunk in its own transaction
+        this.db.prepare('BEGIN TRANSACTION').run();
+        
+        // Process chunk
+        for (const file of chunkFiles) {
+          try {
+            const filePath = path.join(classesPath, file);
+            const content = fs.readFileSync(filePath, 'utf-8');
+            const classData = JSON.parse(content);
+
+            const sourceFilePath = classData.sourcePath || filePath;
+            
+            // Pre-stringify JSON fields ONLY if they exist
+            const typicalUsagesStr = (classData.typicalUsages && classData.typicalUsages.length > 0) 
+              ? JSON.stringify(classData.typicalUsages) : undefined;
+            const relatedMethodsStr = (classData.relatedMethods && classData.relatedMethods.length > 0)
+              ? JSON.stringify(classData.relatedMethods) : undefined;
+            const apiPatternsStr = (classData.apiPatterns && classData.apiPatterns.length > 0)
+              ? JSON.stringify(classData.apiPatterns) : undefined;
+
+            // Add class
+            this.addSymbol({
+              name: classData.name,
+              type: 'class',
+              signature: classData.extends ? `extends ${classData.extends}` : undefined,
+              filePath: sourceFilePath,
+              model,
+              description: classData.description || classData.documentation,
+              tags: classData.tags?.join(', '),
+              extendsClass: classData.extends,
+              implementsInterfaces: classData.implements?.join(', '),
+              usedTypes: classData.usedTypes?.join(', '),
+              patternType: classData.patternType,
+              typicalUsages: typicalUsagesStr,
+              relatedMethods: relatedMethodsStr,
+              apiPatterns: apiPatternsStr
+            });
+
+            // Add methods
+            classData.methods?.forEach((method: any) => {
+              const methodTypicalUsagesStr = (method.typicalUsages && method.typicalUsages.length > 0)
+                ? JSON.stringify(method.typicalUsages) : undefined;
+              
+              this.addSymbol({
+                name: method.name,
+                parentName: classData.name,
+                type: 'method',
+                signature: method.signature || `${method.name}(${method.parameters?.join(', ') || ''})`,
+                filePath: sourceFilePath,
+                model,
+                description: method.description || method.documentation,
+                patternType: method.patternType,
+                typicalUsages: methodTypicalUsagesStr
+              });
+            });
+
+            processedClasses++;
+          } catch (error: any) {
+            console.error(`      ❌ Error processing ${file}: ${error.message}`);
+          }
+        }
+        
+        // Commit chunk transaction
+        this.db.prepare('COMMIT').run();
+        
+        // Progress report with ETA
+        const elapsedMs = Date.now() - startTime;
+        const classesPerMs = processedClasses / elapsedMs;
+        const remainingClasses = totalClasses - processedClasses;
+        const etaMs = remainingClasses / classesPerMs;
+        const etaMin = Math.ceil(etaMs / 60000);
+        
+        process.stdout.write(`\r      📦 Chunk ${chunkNumber}/${totalChunks} | ${processedClasses.toLocaleString()}/${totalClasses.toLocaleString()} classes | ETA: ${etaMin}min`);
+        
+        // Force garbage collection after each chunk if available
+        if (global.gc && chunkNumber % 5 === 0) {
+          global.gc();
+        }
+        
+      } catch (error: any) {
+        // Rollback failed chunk
+        try {
+          this.db.prepare('ROLLBACK').run();
+        } catch (rollbackError) {
+          // Ignore rollback errors
+        }
+        console.error(`\n      ❌ Error in chunk ${chunkNumber}: ${error.message}`);
+      }
+    }
+    
+    const totalTimeS = ((Date.now() - startTime) / 1000).toFixed(1);
+    process.stdout.write(`\r      ✅ Processed ${processedClasses.toLocaleString()} classes in ${totalTimeS}s${' '.repeat(30)}\n`);
+    
+    // Index other object types (tables, enums, etc.) normally
+    this.indexOtherObjectTypes(modelPath, model);
+  }
+  
+  /**
+   * Index other object types (tables, enums) for a model
+   */
+  private indexOtherObjectTypes(modelPath: string, model: string): void {
+    // Index tables
+    const tablesPath = path.join(modelPath, 'tables');
+    if (fs.existsSync(tablesPath)) {
+      this.indexTables(tablesPath, model);
+    }
+
+    // Index enums
+    const enumsPath = path.join(modelPath, 'enums');
+    if (fs.existsSync(enumsPath)) {
+      this.indexEnums(enumsPath, model);
+    }
   }
 
   private indexClasses(classesPath: string, model: string): void {
