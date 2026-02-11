@@ -515,131 +515,44 @@ export class XppSymbolIndex {
 
   /**
    * Index metadata from a directory
+   * Uses single transaction for all models - fastest approach with 8GB heap
    */
   async indexMetadataDirectory(metadataPath: string, modelName?: string): Promise<void> {
     const models = modelName ? [modelName] : await this.getModelDirectories(metadataPath);
 
     console.log(`   Processing ${models.length} model(s)...`);
 
-    // Use larger batch size for better performance (fewer transactions)
-    // Batch size of 50 models provides best balance:
-    // - Fewer commits = fewer disk syncs (8 instead of 72 for 358 models)
-    // - Still memory-safe with 4GB heap (max 50 models in memory at once)
-    // - Reduces total indexing time from 1+ hour to ~5-10 minutes
-    // Original single transaction (all 358 models) was fast (4 min) but crashed on memory
-    const BATCH_SIZE = 50;
-    
-    // Track last activity timestamp to detect hangs
-    let lastActivityTime = Date.now();
-    const HANG_DETECTION_INTERVAL = 30000; // 30 seconds without activity = warning
-    
-    for (let batchStart = 0; batchStart < models.length; batchStart += BATCH_SIZE) {
-      const batchEnd = Math.min(batchStart + BATCH_SIZE, models.length);
-      const batchModels = models.slice(batchStart, batchEnd);
-      
-      const batchStartTime = Date.now();
-      
-      try {
-        // CRITICAL CHANGE: Process each model in its own transaction
-        // This prevents memory exhaustion on large models (ApplicationFoundation: 46k objects)
-        for (let i = 0; i < batchModels.length; i++) {
-          const model = batchModels[i];
-          const modelIndex = batchStart + i;
-          const modelPath = path.join(metadataPath, model);
-          
-          // Show progress before processing each model
-          const progressMsg = `   [${modelIndex + 1}/${models.length}] ${model}`;
-          process.stdout.write(`\r${progressMsg}${' '.repeat(Math.max(0, 80 - progressMsg.length))}`);
-          lastActivityTime = Date.now();
-          
-          // Check model size for warning
-          const classesPath = path.join(modelPath, 'classes');
-          let estimatedSize = 0;
-          if (fs.existsSync(classesPath)) {
-            estimatedSize = fs.readdirSync(classesPath).filter(f => f.endsWith('.json')).length;
-            if (estimatedSize > 1000 && isCI()) {
-              process.stdout.write(`\r${progressMsg} (${estimatedSize} classes)...`);
-            }
-          }
-          
-          try {
-            // CRITICAL: For extremely large models (Foundation: 30k classes), 
-            // use sub-transactions to prevent memory exhaustion and timeouts
-            const HUGE_MODEL_THRESHOLD = 10000; // 10k+ classes = huge model
-            const isHugeModel = estimatedSize >= HUGE_MODEL_THRESHOLD;
-            
-            if (isHugeModel) {
-              // Process huge model in chunks with separate transactions
-              console.log(`\n      🔥 Huge model detected (${estimatedSize} classes), using chunked transactions...`);
-              this.indexModelInChunks(modelPath, model);
-            } else {
-              // Normal model - single transaction
-              const modelTransaction = this.db.transaction(() => {
-                // Index classes
-                if (fs.existsSync(classesPath)) {
-                  this.indexClasses(classesPath, model);
-                }
+    // Wrap everything in a single transaction for maximum performance
+    // With 8GB heap, this handles all 358 models without memory issues
+    // Result: 1 transaction = 1 disk fsync = ~4 minutes (original speed)
+    const transaction = this.db.transaction(() => {
+      for (const model of models) {
+        const modelPath = path.join(metadataPath, model);
+        
+        // Index classes
+        const classesPath = path.join(modelPath, 'classes');
+        if (fs.existsSync(classesPath)) {
+          this.indexClasses(classesPath, model);
+        }
 
-                // Index tables
-                const tablesPath = path.join(modelPath, 'tables');
-                if (fs.existsSync(tablesPath)) {
-                  this.indexTables(tablesPath, model);
-                }
+        // Index tables
+        const tablesPath = path.join(modelPath, 'tables');
+        if (fs.existsSync(tablesPath)) {
+          this.indexTables(tablesPath, model);
+        }
 
-                // Index enums
-                const enumsPath = path.join(modelPath, 'enums');
-                if (fs.existsSync(enumsPath)) {
-                  this.indexEnums(enumsPath, model);
-                }
-              });
-              
-              // Execute transaction for this single model
-              modelTransaction();
-            }
-            
-          } catch (modelError) {
-            // Log error but continue with next model
-            console.error(`\n      ⚠️  Error processing model ${model}: ${modelError}`);
-          }
+        // Index enums
+        const enumsPath = path.join(modelPath, 'enums');
+        if (fs.existsSync(enumsPath)) {
+          this.indexEnums(enumsPath, model);
         }
-        
-        const batchDuration = Date.now() - batchStartTime;
-        
-        // Every 50 models, force a full checkpoint to keep WAL small
-        // PASSIVE checkpoints removed - they were causing excessive disk syncs (72 extra operations)
-        // TRUNCATE is sufficient - it forces fsync but only every 50 models (~8 times total)
-        const checkpointInterval = 50;
-        if ((batchStart + BATCH_SIZE) % checkpointInterval === 0) {
-          this.db.pragma('wal_checkpoint(TRUNCATE)');
-          console.log(`\n      💾 WAL checkpoint at model ${batchStart + BATCH_SIZE}`);
-        }
-        
-        // Log batch timing - always in CI to monitor progress, only slow batches locally
-        if (isCI() || batchDuration > 10000) {
-          const avgPerModel = (batchDuration / batchModels.length / 1000).toFixed(1);
-          console.log(`\n      ⏱️  Batch ${batchStart}-${batchEnd} took ${(batchDuration/1000).toFixed(1)}s (avg ${avgPerModel}s/model)`);
-        }
-        
-        // Force garbage collection in CI after each batch to prevent memory buildup
-        if (isCI() && global.gc) {
-          global.gc();
-        }
-        
-        // Check for hang detection
-        const timeSinceActivity = Date.now() - lastActivityTime;
-        if (timeSinceActivity > HANG_DETECTION_INTERVAL) {
-          console.warn(`\n      ⚠️  Warning: ${(timeSinceActivity/1000).toFixed(0)}s since last activity`);
-        }
-        
-      } catch (error) {
-        console.error(`\n      ❌ Error committing batch ${batchStart}-${batchEnd}: ${error}`);
-        console.error(`      Models in failed batch: ${batchModels.join(', ')}`);
-        // Continue with next batch instead of failing completely
       }
-    }
+    });
+
+    // Execute the entire indexing in one transaction
+    transaction();
     
-    // Clear progress line and show completion
-    process.stdout.write(`\r   ✅ Indexed ${models.length} model(s)${' '.repeat(50)}\n`);
+    console.log(`   ✅ Indexed ${models.length} model(s)`);
   }
 
   private async getModelDirectories(metadataPath: string): Promise<string[]> {
@@ -647,191 +560,6 @@ export class XppSymbolIndex {
     return entries
       .filter(entry => entry.isDirectory())
       .map(entry => entry.name);
-  }
-
-  /**
-   * Index a huge model in chunks with separate transactions per chunk
-   * This prevents memory exhaustion and timeouts for models like Foundation (30k+ classes)
-   */
-  private indexModelInChunks(modelPath: string, model: string): void {
-    console.log(`\n      🔸 Processing huge model with chunked transactions...`);
-    
-    // CRITICAL: In CI, use much smaller chunks to prevent memory exhaustion
-    // Each class can have 50-100+ methods, so even 100 classes = 5,000+ INSERT operations
-    // Testing shows: 100 classes gets to 10k, so we need even smaller chunks
-    const CHUNK_SIZE = isCI() ? 50 : 500; // CI: 50 classes/chunk, Local: 500
-    const classesPath = path.join(modelPath, 'classes');
-    
-    if (!fs.existsSync(classesPath)) {
-      console.log(`      ⚠️  No classes folder found`);
-      return;
-    }
-    
-    const allFiles = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
-    const totalClasses = allFiles.length;
-    console.log(`      📊 Total classes: ${totalClasses.toLocaleString()}, chunks: ${Math.ceil(totalClasses / CHUNK_SIZE)}`);
-    
-    const startTime = Date.now();
-    let processedClasses = 0;
-    let lastProgressUpdate = Date.now();
-    const PROGRESS_UPDATE_INTERVAL = 5000; // Update every 5 seconds
-    
-    // Process in chunks with separate transactions
-    for (let chunkStart = 0; chunkStart < allFiles.length; chunkStart += CHUNK_SIZE) {
-      const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, allFiles.length);
-      const chunkFiles = allFiles.slice(chunkStart, chunkEnd);
-      const chunkNumber = Math.floor(chunkStart / CHUNK_SIZE) + 1;
-      const totalChunks = Math.ceil(allFiles.length / CHUNK_SIZE);
-      
-      const chunkStartTime = Date.now();
-      
-      try {
-        // Each chunk in its own transaction
-        this.db.prepare('BEGIN TRANSACTION').run();
-        
-        // Process chunk
-        let classesInChunk = 0;
-        for (const file of chunkFiles) {
-          try {
-            const filePath = path.join(classesPath, file);
-            const content = fs.readFileSync(filePath, 'utf-8');
-            const classData = JSON.parse(content);
-
-            const sourceFilePath = classData.sourcePath || filePath;
-            
-            // Skip classes with excessive methods to prevent memory exhaustion
-            const methodCount = classData.methods?.length || 0;
-            if (methodCount > 1000) {
-              console.warn(`      ⚠️  Skipping ${classData.name} (${methodCount} methods - too large)`);
-              processedClasses++;
-              classesInChunk++;
-              continue;
-            }
-            
-            // Pre-stringify JSON fields ONLY if they exist
-            const typicalUsagesStr = (classData.typicalUsages && classData.typicalUsages.length > 0) 
-              ? JSON.stringify(classData.typicalUsages) : undefined;
-            const relatedMethodsStr = (classData.relatedMethods && classData.relatedMethods.length > 0)
-              ? JSON.stringify(classData.relatedMethods) : undefined;
-            const apiPatternsStr = (classData.apiPatterns && classData.apiPatterns.length > 0)
-              ? JSON.stringify(classData.apiPatterns) : undefined;
-
-            // Add class
-            this.addSymbol({
-              name: classData.name,
-              type: 'class',
-              signature: classData.extends ? `extends ${classData.extends}` : undefined,
-              filePath: sourceFilePath,
-              model,
-              description: classData.description || classData.documentation,
-              tags: classData.tags?.join(', '),
-              extendsClass: classData.extends,
-              implementsInterfaces: classData.implements?.join(', '),
-              usedTypes: classData.usedTypes?.join(', '),
-              patternType: classData.patternType,
-              typicalUsages: typicalUsagesStr,
-              relatedMethods: relatedMethodsStr,
-              apiPatterns: apiPatternsStr
-            });
-
-            // Add methods
-            classData.methods?.forEach((method: any) => {
-              const methodTypicalUsagesStr = (method.typicalUsages && method.typicalUsages.length > 0)
-                ? JSON.stringify(method.typicalUsages) : undefined;
-              
-              this.addSymbol({
-                name: method.name,
-                parentName: classData.name,
-                type: 'method',
-                signature: method.signature || `${method.name}(${method.parameters?.join(', ') || ''})`,
-                filePath: sourceFilePath,
-                model,
-                description: method.description || method.documentation,
-                patternType: method.patternType,
-                typicalUsages: methodTypicalUsagesStr
-              });
-            });
-
-            processedClasses++;
-            classesInChunk++;
-            
-            // Show progress within chunk every 5 seconds
-            const timeSinceLastUpdate = Date.now() - lastProgressUpdate;
-            if (timeSinceLastUpdate > PROGRESS_UPDATE_INTERVAL) {
-              const elapsedMs = Date.now() - startTime;
-              const classesPerMs = processedClasses / elapsedMs;
-              const remainingClasses = totalClasses - processedClasses;
-              const etaMs = remainingClasses / classesPerMs;
-              const etaMin = Math.ceil(etaMs / 60000);
-              
-              // In CI, use console.log to avoid buffering issues; locally use \r for same-line updates
-              if (isCI()) {
-                console.log(`      📦 Chunk ${chunkNumber}/${totalChunks} | ${processedClasses.toLocaleString()}/${totalClasses.toLocaleString()} | ${classesInChunk}/${chunkFiles.length} in chunk | ETA: ${etaMin}min`);
-              } else {
-                process.stdout.write(`\r      📦 Chunk ${chunkNumber}/${totalChunks} | ${processedClasses.toLocaleString()}/${totalClasses.toLocaleString()} | ${classesInChunk}/${chunkFiles.length} in chunk | ETA: ${etaMin}min`);
-              }
-              lastProgressUpdate = Date.now();
-            }
-            
-          } catch (error: any) {
-            console.error(`      ❌ Error processing ${file}: ${error.message}`);
-          }
-        }
-        
-        // Commit chunk transaction
-        const chunkDuration = Date.now() - chunkStartTime;
-        this.db.prepare('COMMIT').run();
-        
-        // Force garbage collection after EVERY chunk (not just every 5)
-        if (global.gc) {
-          global.gc();
-        }
-        
-        // Progress report with ETA and chunk timing
-        const elapsedMs = Date.now() - startTime;
-        const classesPerMs = processedClasses / elapsedMs;
-        const remainingClasses = totalClasses - processedClasses;
-        const etaMs = remainingClasses / classesPerMs;
-        const etaMin = Math.ceil(etaMs / 60000);
-        const chunkDurationS = (chunkDuration / 1000).toFixed(1);
-        
-        // Always use console.log for chunk completion to ensure it's visible in CI
-        console.log(`      ✅ Chunk ${chunkNumber}/${totalChunks} done in ${chunkDurationS}s | ${processedClasses.toLocaleString()}/${totalClasses.toLocaleString()} | ETA: ${etaMin}min`);
-        lastProgressUpdate = Date.now();
-        
-      } catch (error: any) {
-        // Rollback failed chunk
-        try {
-          this.db.prepare('ROLLBACK').run();
-        } catch (rollbackError) {
-          // Ignore rollback errors
-        }
-        console.error(`\n      ❌ Error in chunk ${chunkNumber}: ${error.message}`);
-      }
-    }
-    
-    const totalTimeS = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`      ✅ Processed ${processedClasses.toLocaleString()} classes in ${totalTimeS}s`);
-    
-    // Index other object types (tables, enums, etc.) normally
-    this.indexOtherObjectTypes(modelPath, model);
-  }
-  
-  /**
-   * Index other object types (tables, enums) for a model
-   */
-  private indexOtherObjectTypes(modelPath: string, model: string): void {
-    // Index tables
-    const tablesPath = path.join(modelPath, 'tables');
-    if (fs.existsSync(tablesPath)) {
-      this.indexTables(tablesPath, model);
-    }
-
-    // Index enums
-    const enumsPath = path.join(modelPath, 'enums');
-    if (fs.existsSync(enumsPath)) {
-      this.indexEnums(enumsPath, model);
-    }
   }
 
   private indexClasses(classesPath: string, model: string): void {

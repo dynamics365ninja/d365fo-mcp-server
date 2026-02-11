@@ -28,7 +28,7 @@ graph TB
         end
         
         subgraph "Storage"
-            BLOB[Azure Blob Storage<br/>xpp-metadata.db<br/>~500MB]
+            BLOB[Azure Blob Storage<br/>xpp-metadata.db<br/>~1.5GB]
         end
     end
 
@@ -704,7 +704,7 @@ graph LR
 
 ### Current Capacity
 
-- **Storage:** 500MB database (584,799 symbols)
+- **Storage:** 1.5GB database (584,799 symbols)
 - **Memory:** 1.75GB (P0v3) - ~800MB used
 - **Throughput:** 100 req/15min per IP
 - **Latency:** 

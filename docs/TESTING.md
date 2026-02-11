@@ -8,23 +8,21 @@ This project uses [Vitest](https://vitest.dev/) as the testing framework.
 # Run all tests in watch mode
 npm test
 
-# Run tests once (CI mode)
-npm test -- --run
-
 # Run tests with coverage
 npm test -- --coverage
 
 # Run specific test file
-npm test -- tests/tools/search.test.ts
+npm test tests/tools/search.test.ts
 ```
 
 ## Test Structure
 
 Tests are organized into the following directories:
 
-- `tests/tools/` - Unit tests for MCP tools (search, classInfo, tableInfo, etc.)
-- `tests/server/` - Tests for server components (transport, MCP protocol)
-- `tests/` - Integration tests and database tests
+- `tests/tools/` - Unit tests for MCP tools (search, batchSearch, classInfo, tableInfo, intelligent tools)
+- `tests/server/` - Integration tests for server components (transport, MCP protocol)
+- `tests/utils/` - Unit tests for utility functions (fuzzyMatching, modelClassifier, suggestionEngine)
+- `tests/` - Root-level tests (symbolIndex, setup configuration)
 
 ## Test Coverage
 
@@ -37,6 +35,20 @@ The test suite covers:
   - Cache integration
   - MaxResults parameter
   - Error handling
+
+- **batchSearch.test.ts**: Tests for parallel batch search functionality
+  - Multiple parallel queries execution
+  - Result aggregation and deduplication
+  - Individual query error handling
+  - Empty batch handling
+  - Performance optimization validation
+
+- **searchSuggestions.test.ts**: Integration tests for intelligent search suggestions
+  - Typo correction when no results found ("Did you mean?")
+  - Broader search suggestions  
+  - Narrower search suggestions
+  - Integration with search tool and term relationship graph
+  - Cache integration for suggestions
 
 - **classInfo.test.ts**: Tests for class information retrieval
   - XML parsing
@@ -77,6 +89,29 @@ The test suite covers:
   - Symbol counting
   - Method/field retrieval
 
+### Utilities (Unit Tests)
+- **fuzzyMatching.test.ts**: Tests for fuzzy string matching algorithms
+  - Levenshtein distance calculation (edit distance)
+  - Similarity scoring (normalized 0.0-1.0)
+  - Fuzzy match finding with threshold
+  - Probable typo detection
+  - Broader/narrower search generation
+  - Root term extraction
+
+- **modelClassifier.test.ts**: Tests for D365FO model classification
+  - Parsing CUSTOM_MODELS environment variable
+  - Custom vs standard model identification
+  - EXTENSION_PREFIX matching logic
+  - Model filtering by type (custom/standard)
+  - Case-insensitive model name comparison
+
+- **suggestionEngine.test.ts**: Tests for intelligent suggestion system
+  - Typo correction with Levenshtein distance
+  - Broader and narrower search suggestions
+  - Term relationship graph building and traversal
+  - Suggestion formatting and ranking
+  - Limit enforcement and result deduplication
+
 ## Writing New Tests
 
 When adding new functionality, ensure to:
@@ -87,45 +122,23 @@ When adding new functionality, ensure to:
 4. Test edge cases (empty inputs, null values, etc.)
 5. Maintain test isolation - each test should be independent
 
-### Example Test
-
-```typescript
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { myFunction } from '../../src/myModule';
-
-describe('myFunction', () => {
-  beforeEach(() => {
-    // Setup mocks
-  });
-
-  it('should handle valid input', () => {
-    const result = myFunction('test');
-    expect(result).toBe('expected');
-  });
-
-  it('should handle errors gracefully', () => {
-    expect(() => myFunction(null)).toThrow();
-  });
-});
-```
-
 ## CI/CD Integration
 
 Tests run automatically in GitHub Actions on:
-- Every push to main branch
-- Pull requests
-- Before deployment to production
+- Every push to main and develop branches
+- Pull requests to main and develop branches
+- Matrix testing on Node.js 20.x and 22.x
 
-Tests must pass before deployment proceeds. The CI workflow will fail if any tests fail.
+**Note:** Tests currently run with `continue-on-error: true` in the CI pipeline, meaning the build can proceed even if tests fail. This is temporary during active development.
 
 ## Mock Strategy
 
-We use Vitest's built-in mocking for:
-- **XppSymbolIndex**: Database operations are mocked to avoid file I/O
-- **RedisCacheService**: Cache operations return controlled test data
-- **XmlParser**: XML parsing is mocked with predefined structures
+We use Vitest's `vi.fn()` to create mock implementations:
+- **XppSymbolIndex**: Database operations (searchSymbols, getClassMethods, etc.) are mocked with predefined return values
+- **RedisCacheService**: Cache operations (get, set, getFuzzy) return controlled test data and track calls
+- **Parser, WorkspaceScanner, HybridSearch**: Mocked as empty objects when not needed for specific tests
 
-This ensures tests run fast and are deterministic.
+Mocks are created with partial types and reset in `beforeEach()` hooks to ensure test isolation and deterministic behavior.
 
 ## Coverage Requirements
 
