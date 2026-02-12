@@ -112,6 +112,26 @@ export class CustomHttpTransport implements Transport {
         // Handle notifications (no response expected)
         if (!('id' in request)) {
           process.stdout.write(`📢 Notification received (no ID): ${(request as any).method}\n`);
+          
+          // Handle special notifications
+          if ((request as any).method === 'notifications/cancelled' || 
+              (request as any).method === 'cancelled' ||
+              (request as any).method === 'shutdown') {
+            process.stdout.write(`🛑 Session termination notification received\n`);
+            // Send 202 and signal completion
+            res.status(202).json({ status: 'accepted', completed: true });
+            this.currentResponse = null;
+            
+            // Trigger cleanup after response is sent
+            setImmediate(() => {
+              if (this.onclose) {
+                process.stdout.write(`🔚 Calling onclose handler\n`);
+                this.onclose();
+              }
+            });
+            return;
+          }
+          
           if (this.onmessage) {
             this.onmessage(request);
           }
