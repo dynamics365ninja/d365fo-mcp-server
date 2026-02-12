@@ -16,6 +16,7 @@ export class CustomHttpTransport implements Transport {
   private app: Express;
   private context: XppServerContext;
   private currentResponse: Response | null = null;
+  private pendingRequests = new Map<string | number, (message: JSONRPCMessage) => void>();
 
   // Transport interface properties
   onmessage?: (message: JSONRPCMessage) => void;
@@ -51,10 +52,23 @@ export class CustomHttpTransport implements Transport {
 
   async close(): Promise<void> {
     this.currentResponse = null;
+    this.pendingRequests.clear();
   }
 
   async send(message: JSONRPCMessage): Promise<void> {
-    // Called by MCP server when it has a response - send it via HTTP
+    // Called by MCP server when it has a response
+    
+    // If this is a response to a request (has id), resolve the pending promise
+    if ('id' in message && message.id !== undefined && message.id !== null) {
+      const resolver = this.pendingRequests.get(message.id);
+      if (resolver) {
+        resolver(message);
+        this.pendingRequests.delete(message.id);
+        return;
+      }
+    }
+    
+    // Fallback: send via currentResponse if available
     if (this.currentResponse && !this.currentResponse.headersSent) {
       this.currentResponse.json(message);
       this.currentResponse = null;
@@ -96,9 +110,26 @@ export class CustomHttpTransport implements Transport {
         }
 
         // Handle requests - send to MCP server via onmessage
-        // Server will call send() with the response
+        // Wait for response via Promise
         if (this.onmessage) {
+          const responsePromise = new Promise<JSONRPCMessage>((resolve, reject) => {
+            this.pendingRequests.set(request.id, resolve);
+            
+            // Timeout after 30 seconds
+            setTimeout(() => {
+              if (this.pendingRequests.has(request.id)) {
+                this.pendingRequests.delete(request.id);
+                reject(new Error('Request timeout'));
+              }
+            }, 30000);
+          });
+
+          // Send request to MCP server
           this.onmessage(request);
+          
+          // Wait for response from send()
+          const response = await responsePromise;
+          res.json(response);
         } else {
           res.status(500).json({
             jsonrpc: '2.0',
@@ -108,11 +139,16 @@ export class CustomHttpTransport implements Transport {
             },
             id: request.id,
           });
-          this.currentResponse = null;
         }
       } catch (error) {
         process.stderr.write(`MCP transport error: ${error}\n`);
         this.currentResponse = null;
+        
+        // Clean up pending request if it exists
+        if ('id' in (req.body as any)) {
+          this.pendingRequests.delete((req.body as any).id);
+        }
+        
         if (!res.headersSent) {
           res.status(500).json({
             jsonrpc: '2.0',
