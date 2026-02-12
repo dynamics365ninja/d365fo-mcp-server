@@ -17,7 +17,7 @@ const isCI = (): boolean => {
 };
 
 export class XppSymbolIndex {
-  private db: Database.Database;
+  public db: Database.Database; // Public for direct pragma access in build scripts
   private standardModels: string[] = [];
   private stmtCache: Map<string, Database.Statement> = new Map();
 
@@ -31,7 +31,11 @@ export class XppSymbolIndex {
     this.db = new Database(dbPath);
     
     // Enable SQLite performance optimizations
-    this.db.pragma('journal_mode = WAL'); // Write-Ahead Logging for better concurrency
+    // Note: journal_mode should be set by caller (MEMORY for build, WAL for production)
+    if (!this.db.pragma('journal_mode', { simple: true })) {
+      // Set default to WAL if not already configured
+      this.db.pragma('journal_mode = WAL'); // Write-Ahead Logging for better concurrency
+    }
     this.db.pragma('synchronous = NORMAL'); // Faster writes, still crash-safe
     this.db.pragma('cache_size = -64000'); // 64MB cache (negative = kibibytes)
     this.db.pragma('temp_store = MEMORY'); // Store temp tables in memory
@@ -139,33 +143,7 @@ export class XppSymbolIndex {
     `);
 
     // Create triggers to keep FTS table in sync
-    this.db.exec(`
-      CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
-        INSERT INTO symbols_fts(rowid, name, type, parent_name, signature, description, tags, source_snippet, inline_comments)
-        VALUES (new.id, new.name, new.type, new.parent_name, new.signature, new.description, new.tags, new.source_snippet, new.inline_comments);
-      END;
-    `);
-
-    this.db.exec(`
-      CREATE TRIGGER IF NOT EXISTS symbols_ad AFTER DELETE ON symbols BEGIN
-        DELETE FROM symbols_fts WHERE rowid = old.id;
-      END;
-    `);
-
-    this.db.exec(`
-      CREATE TRIGGER IF NOT EXISTS symbols_au AFTER UPDATE ON symbols BEGIN
-        UPDATE symbols_fts SET
-          name = new.name,
-          type = new.type,
-          parent_name = new.parent_name,
-          signature = new.signature,
-          description = new.description,
-          tags = new.tags,
-          source_snippet = new.source_snippet,
-          inline_comments = new.inline_comments
-        WHERE rowid = new.id;
-      END;
-    `);
+    this.createFTSTriggers();
 
     // Create indexes - optimized with composite indexes for common query patterns
     this.db.exec(`
@@ -202,6 +180,40 @@ export class XppSymbolIndex {
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_patterns_type ON code_patterns(pattern_type);
       CREATE INDEX IF NOT EXISTS idx_patterns_domain ON code_patterns(domain);
+    `);
+  }
+
+  /**
+   * Create FTS triggers for keeping symbols_fts in sync
+   * Extracted to allow disabling during bulk inserts and re-enabling after
+   */
+  private createFTSTriggers(): void {
+    this.db.exec(`
+      CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
+        INSERT INTO symbols_fts(rowid, name, type, parent_name, signature, description, tags, source_snippet, inline_comments)
+        VALUES (new.id, new.name, new.type, new.parent_name, new.signature, new.description, new.tags, new.source_snippet, new.inline_comments);
+      END;
+    `);
+
+    this.db.exec(`
+      CREATE TRIGGER IF NOT EXISTS symbols_ad AFTER DELETE ON symbols BEGIN
+        DELETE FROM symbols_fts WHERE rowid = old.id;
+      END;
+    `);
+
+    this.db.exec(`
+      CREATE TRIGGER IF NOT EXISTS symbols_au AFTER UPDATE ON symbols BEGIN
+        UPDATE symbols_fts SET
+          name = new.name,
+          type = new.type,
+          parent_name = new.parent_name,
+          signature = new.signature,
+          description = new.description,
+          tags = new.tags,
+          source_snippet = new.source_snippet,
+          inline_comments = new.inline_comments
+        WHERE rowid = new.id;
+      END;
     `);
   }
 
@@ -369,6 +381,10 @@ export class XppSymbolIndex {
     console.log('📊 Computing usage statistics...');
     const startTime = Date.now();
     
+    // Temporarily disable synchronous writes for speed during statistics computation
+    const originalSync = this.db.pragma('synchronous', { simple: true });
+    this.db.pragma('synchronous = OFF');
+    
     // Step 1: Create temporary table with all method calls
     this.db.exec(`
       CREATE TEMP TABLE IF NOT EXISTS temp_method_calls (
@@ -508,6 +524,9 @@ export class XppSymbolIndex {
     // Cleanup
     this.db.exec('DROP TABLE temp_method_calls;');
     
+    // Restore original synchronous setting
+    this.db.pragma(`synchronous = ${originalSync}`);
+    
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
     console.log(`✅ Usage statistics computed in ${duration}s`);
@@ -523,6 +542,14 @@ export class XppSymbolIndex {
     console.log(`   Processing ${models.length} model(s)...`);
     const startTime = Date.now();
 
+    // PERFORMANCE BOOST: Disable FTS triggers during bulk insert
+    // FTS5 triggers are the main bottleneck (3-5x slower than plain INSERT)
+    // We'll rebuild FTS index at the end using 'rebuild'
+    console.log('   ⚡ Disabling FTS triggers for bulk insert...');
+    this.db.exec('DROP TRIGGER IF EXISTS symbols_ai;');
+    this.db.exec('DROP TRIGGER IF EXISTS symbols_au;');
+    this.db.exec('DROP TRIGGER IF EXISTS symbols_ad;');
+
     // Wrap everything in a single transaction for maximum performance
     // With 8GB heap, this handles all 358 models without memory issues
     // Result: 1 transaction = 1 disk fsync = ~4 minutes (original speed)
@@ -532,10 +559,14 @@ export class XppSymbolIndex {
         modelIndex++;
         const modelPath = path.join(metadataPath, model);
         
-        // Log progress every 50 models in CI
+        // Log current model and progress percentage
+        const progressPercent = ((modelIndex / models.length) * 100).toFixed(1);
+        console.log(`   📦 [${progressPercent}%] Indexing: ${model}`);
+        
+        // Additional progress in CI every 50 models
         if (isCI() && modelIndex % 50 === 0) {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          console.log(`   Progress: ${modelIndex}/${models.length} models (${elapsed}s elapsed)...`);
+          console.log(`      ⏱️  ${modelIndex}/${models.length} models (${elapsed}s elapsed)`);
         }
         
         // Index classes
@@ -563,6 +594,17 @@ export class XppSymbolIndex {
     
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`   ✅ Indexed ${models.length} model(s) in ${duration}s`);
+    
+    // Rebuild FTS index from scratch (much faster than triggers)
+    console.log('   🔍 Rebuilding FTS index...');
+    const ftsStartTime = Date.now();
+    this.db.exec("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild');");
+    const ftsDuration = ((Date.now() - ftsStartTime) / 1000).toFixed(1);
+    console.log(`   ✅ FTS index rebuilt in ${ftsDuration}s`);
+    
+    // Re-create FTS triggers for runtime updates
+    console.log('   🔧 Re-creating FTS triggers...');
+    this.createFTSTriggers();
   }
 
   private async getModelDirectories(metadataPath: string): Promise<string[]> {
@@ -574,11 +616,6 @@ export class XppSymbolIndex {
 
   private indexClasses(classesPath: string, model: string): void {
     const files = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
-    
-    // Basic logging for large models
-    if (files.length > 1000) {
-      console.log(`      Processing ${files.length} classes...`);
-    }
     
     let processedCount = 0;
     for (const file of files) {
@@ -637,10 +674,6 @@ export class XppSymbolIndex {
         }
         
         processedCount++;
-        // Log progress every 500 classes for very large models
-        if (files.length > 1000 && processedCount % 500 === 0) {
-          console.log(`      Processed ${processedCount}/${files.length} classes...`);
-        }
       } catch (error) {
         // Only log errors, don't stop processing
         console.error(`      ⚠️  Skipped ${file}: ${error instanceof Error ? error.message : error}`);

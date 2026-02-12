@@ -194,6 +194,14 @@ async function initializeServices() {
 }
 
 async function main() {
+  // CRITICAL: In STDIO mode, redirect all console.log to stderr
+  // GitHub Copilot reads stdout for MCP protocol only!
+  if (isStdioMode) {
+    console.log = (...args: any[]) => process.stderr.write(args.join(' ') + '\n');
+    console.info = (...args: any[]) => process.stderr.write(args.join(' ') + '\n');
+    console.warn = (...args: any[]) => process.stderr.write('[WARN] ' + args.join(' ') + '\n');
+  }
+
   console.log(`📡 Mode: ${isStdioMode ? 'STDIO' : 'HTTP'}`);
 
   if (isStdioMode) {
