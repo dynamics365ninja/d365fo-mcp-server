@@ -401,13 +401,20 @@ export class StreamableHttpTransport {
       // Log the result to stdout (informational, not an error)
       process.stdout.write(`[MCP] Tool ${name} returned: ${JSON.stringify(result).substring(0, 500)}\n`);
 
+      // Add metadata to signal completion to orchestrator
+      const responseWithMetadata = {
+        ...result,
+        metadata: {
+          ...(result.metadata || {}),
+          action: "complete",
+          _complete: true
+        }
+      };
+
       return {
         jsonrpc: "2.0",
-        result,
-        id: body.id,
-        _meta: {
-          status: "complete"
-        }
+        result: responseWithMetadata,
+        id: body.id
       };
     } catch (error) {
       return {
@@ -416,10 +423,7 @@ export class StreamableHttpTransport {
           code: -32603,
           message: error instanceof Error ? error.message : 'Tool call failed',
         },
-        id: body.id,
-        _meta: {
-          status: "complete"
-        }
+        id: body.id
       };
     }
   }
