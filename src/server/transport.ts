@@ -60,9 +60,11 @@ export class StreamableHttpTransport {
         // Explicitly set headers and end response for Azure Web Service
         const payload = JSON.stringify(result);
         res.setHeader('Mcp-Session-Id', sessionId);
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Content-Length', Buffer.byteLength(payload));
-        res.status(200).send(payload);
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Content-Length', Buffer.byteLength(payload, 'utf8'));
+        res.setHeader('Connection', 'close');
+        res.status(200);
+        res.write(payload, 'utf8');
         res.end();
       } catch (error) {
         process.stderr.write(`MCP request error: ${error}\n`);
@@ -74,9 +76,10 @@ export class StreamableHttpTransport {
           },
           id: req.body.id || null,
         });
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Content-Length', Buffer.byteLength(errorPayload));
-        res.status(500).send(errorPayload);
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Content-Length', Buffer.byteLength(errorPayload, 'utf8'));
+        res.status(500);
+        res.write(errorPayload, 'utf8');
         res.end();
       }
     });
@@ -347,8 +350,8 @@ export class StreamableHttpTransport {
         arguments?: Record<string, unknown>;
       };
 
-      // Log tool invocation to stderr (not stdout - that's for MCP protocol)
-      process.stderr.write(`[MCP] Tool called: ${name} with args: ${JSON.stringify(args)}\n`);
+      // Log tool invocation to stdout (informational, not an error)
+      process.stdout.write(`[MCP] Tool called: ${name} with args: ${JSON.stringify(args)}\n`);
 
       // Build the CallToolRequest
       const request: CallToolRequest = {
@@ -396,8 +399,8 @@ export class StreamableHttpTransport {
           throw new Error(`Unknown tool: ${name}`);
       }
 
-      // Log the result to stderr (not stdout)
-      process.stderr.write(`[MCP] Tool ${name} returned: ${JSON.stringify(result).substring(0, 500)}\n`);
+      // Log the result to stdout (informational, not an error)
+      process.stdout.write(`[MCP] Tool ${name} returned: ${JSON.stringify(result).substring(0, 500)}\n`);
 
       return {
         jsonrpc: "2.0",
