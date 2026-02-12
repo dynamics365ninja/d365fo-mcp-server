@@ -12,10 +12,9 @@ const AnalyzeClassCompletenessArgsSchema = z.object({
 });
 
 export async function analyzeClassCompletenessTool(request: CallToolRequest, context: XppServerContext) {
-  const args = AnalyzeClassCompletenessArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, cache } = context;
-
   try {
+    const args = AnalyzeClassCompletenessArgsSchema.parse(request.params.arguments);
+    const { symbolIndex, cache } = context;
     const classSymbol = symbolIndex.getSymbolByName(args.className, 'class');
     
     if (!classSymbol) {

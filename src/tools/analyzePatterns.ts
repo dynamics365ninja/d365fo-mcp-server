@@ -14,10 +14,9 @@ const AnalyzeCodePatternsArgsSchema = z.object({
 });
 
 export async function analyzeCodePatternsTool(request: CallToolRequest, context: XppServerContext) {
-  const args = AnalyzeCodePatternsArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, cache } = context;
-
   try {
+    const args = AnalyzeCodePatternsArgsSchema.parse(request.params.arguments);
+    const { symbolIndex, cache } = context;
     // Check cache first
     const cacheKey = `pattern:${args.scenario}:${args.classPattern || 'all'}:${args.limit}`;
     const cachedResults = await cache.get<any>(cacheKey);

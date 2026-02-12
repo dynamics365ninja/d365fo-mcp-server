@@ -235,9 +235,8 @@ final class ${name}_Extension
 };
 
 export async function codeGenTool(request: CallToolRequest) {
-  const args = CodeGenArgsSchema.parse(request.params.arguments);
-
   try {
+    const args = CodeGenArgsSchema.parse(request.params.arguments);
     const template = templates[args.pattern];
     if (!template) {
       return {

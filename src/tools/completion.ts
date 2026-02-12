@@ -16,10 +16,9 @@ const CompletionArgsSchema = z.object({
 });
 
 export async function completionTool(request: CallToolRequest, context: XppServerContext) {
-  const args = CompletionArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, cache, workspaceScanner } = context;
-
   try {
+    const args = CompletionArgsSchema.parse(request.params.arguments);
+    const { symbolIndex, cache, workspaceScanner } = context;
     // Validate workspace path if provided
     if (args.includeWorkspace && args.workspacePath) {
       const validation = await validateWorkspacePath(args.workspacePath);
