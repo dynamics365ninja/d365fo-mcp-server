@@ -14,10 +14,9 @@ const ExtensionSearchArgsSchema = z.object({
 });
 
 export async function extensionSearchTool(request: CallToolRequest, context: XppServerContext) {
-  const args = ExtensionSearchArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, cache } = context;
-
   try {
+    const args = ExtensionSearchArgsSchema.parse(request.params.arguments);
+    const { symbolIndex, cache } = context;
     // Check cache first
     const cacheKey = cache.generateExtensionSearchKey(args.query, args.prefix, args.limit);
     const cachedResults = await cache.get<any[]>(cacheKey);

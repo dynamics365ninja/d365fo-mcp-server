@@ -15,10 +15,9 @@ const ClassInfoArgsSchema = z.object({
 });
 
 export async function classInfoTool(request: CallToolRequest, context: XppServerContext) {
-  const args = ClassInfoArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, parser, cache, workspaceScanner } = context;
-
   try {
+    const args = ClassInfoArgsSchema.parse(request.params.arguments);
+    const { symbolIndex, parser, cache, workspaceScanner } = context;
     // Validate workspace path if provided
     if (args.includeWorkspace && args.workspacePath) {
       const validation = await validateWorkspacePath(args.workspacePath);

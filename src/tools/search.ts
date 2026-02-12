@@ -27,10 +27,9 @@ const SearchArgsSchema = z.object({
 });
 
 export async function searchTool(request: CallToolRequest, context: XppServerContext) {
-  const args = SearchArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, cache } = context;
-
   try {
+    const args = SearchArgsSchema.parse(request.params.arguments);
+    const { symbolIndex, cache } = context;
     // Hybrid search if workspace is specified
     if (args.includeWorkspace && args.workspacePath) {
       return await performHybridSearch(args, context);

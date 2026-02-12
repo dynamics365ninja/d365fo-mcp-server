@@ -13,10 +13,9 @@ const GetApiUsagePatternsArgsSchema = z.object({
 });
 
 export async function getApiUsagePatternsTool(request: CallToolRequest, context: XppServerContext) {
-  const args = GetApiUsagePatternsArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, cache } = context;
-
   try {
+    const args = GetApiUsagePatternsArgsSchema.parse(request.params.arguments);
+    const { symbolIndex, cache } = context;
     // Check cache first
     const cacheKey = `api-patterns:${args.apiName}:${args.context || 'general'}`;
     const cachedResults = await cache.get<any>(cacheKey);

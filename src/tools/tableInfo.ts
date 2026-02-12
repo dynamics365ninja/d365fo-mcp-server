@@ -12,10 +12,9 @@ const TableInfoArgsSchema = z.object({
 });
 
 export async function tableInfoTool(request: CallToolRequest, context: XppServerContext) {
-  const args = TableInfoArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, parser, cache } = context;
-
   try {
+    const args = TableInfoArgsSchema.parse(request.params.arguments);
+    const { symbolIndex, parser, cache } = context;
     // Check cache first
     const cacheKey = cache.generateTableKey(args.tableName);
     const cachedTable = await cache.get<any>(cacheKey);

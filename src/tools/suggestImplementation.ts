@@ -18,10 +18,9 @@ const SuggestMethodImplementationArgsSchema = z.object({
 });
 
 export async function suggestMethodImplementationTool(request: CallToolRequest, context: XppServerContext) {
-  const args = SuggestMethodImplementationArgsSchema.parse(request.params.arguments);
-  const { symbolIndex, cache } = context;
-
   try {
+    const args = SuggestMethodImplementationArgsSchema.parse(request.params.arguments);
+    const { symbolIndex, cache } = context;
     // Check cache first
     const cacheKey = `suggest:${args.className}:${args.methodName}`;
     const cachedResults = await cache.get<any>(cacheKey);
