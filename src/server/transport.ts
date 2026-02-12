@@ -405,6 +405,9 @@ export class StreamableHttpTransport {
         jsonrpc: "2.0",
         result,
         id: body.id,
+        _meta: {
+          status: "complete"
+        }
       };
     } catch (error) {
       return {
@@ -414,6 +417,9 @@ export class StreamableHttpTransport {
           message: error instanceof Error ? error.message : 'Tool call failed',
         },
         id: body.id,
+        _meta: {
+          status: "complete"
+        }
       };
     }
   }
