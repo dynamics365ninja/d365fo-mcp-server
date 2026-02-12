@@ -138,31 +138,30 @@ get_class_info("MyCustomHelper",
 ```
 
 **Output:**
-```markdown
+
 # Class: DimensionAttributeValueSet
 
-**Model:** ApplicationPlatform
-**Extends:** Object
+**Model:** ApplicationPlatform  
+**Extends:** Object  
 **Implements:** -
 
 ## Declaration
-\`\`\`xpp
+```xpp
 public class DimensionAttributeValueSet extends Object
-\`\`\`
+```
 
 ## Methods (15)
 
 ### public DimensionAttribute getDimensionAttribute()
 - Returns the dimension attribute
 
-\`\`\`xpp
+```xpp
 public DimensionAttribute getDimensionAttribute()
 {
     return dimensionAttribute;
 }
-\`\`\`
-...
 ```
+...
 
 **🔹 Special features:**
 - **Workspace-aware**: Can search in user's local workspace before external metadata
@@ -191,13 +190,13 @@ get_table_info("CustTable")
 ```
 
 **Output:**
-```markdown
+
 # Table: SalesTable
 
-**Model:** ApplicationSuite
-**Label:** Sales orders
-**Table Group:** Main
-**Primary Index:** SalesIdx
+**Model:** ApplicationSuite  
+**Label:** Sales orders  
+**Table Group:** Main  
+**Primary Index:** SalesIdx  
 **Clustered Index:** SalesIdx
 
 ## Fields (85)
@@ -222,11 +221,10 @@ get_table_info("CustTable")
 
 ## Methods (45)
 
-- \`void insert()\`
-- \`void update()\`
-- \`boolean validateWrite()\`
+- `void insert()`
+- `void update()`
+- `boolean validateWrite()`
 ...
-```
 
 ---
 
@@ -319,18 +317,18 @@ analyze_code_patterns("customer", limit=30)
 ```
 
 **What it returns:**
-```markdown
+
 # Code Pattern Analysis: financial dimensions
 
 **Total Matching Classes:** 15
 
 ## Detected Patterns
 
-- **Helper**: 8 classes
+- **Helper**: 8 classes  
   Examples: DimensionHelper, DimensionAttributeHelper, DimensionDefaultingHelper
-- **Service**: 5 classes
+- **Service**: 5 classes  
   Examples: DimensionService, DimensionDefaultingService
-- **Manager**: 2 classes
+- **Manager**: 2 classes  
   Examples: DimensionManager
 
 ## Common Methods (Top 10)
@@ -338,22 +336,21 @@ analyze_code_patterns("customer", limit=30)
 - **getDimensionAttribute**: found in 12 classes
 - **validateDimension**: found in 10 classes
 - **createDefaultDimension**: found in 8 classes
-...
+- ...
 
 ## Common Dependencies
 
 - **DimensionAttributeValueSet**: used by 14 classes
 - **DimensionAttribute**: used by 12 classes
 - **DefaultDimensionView**: used by 10 classes
-...
+- ...
 
 ## Example Classes
 
 - DimensionAttributeValueSetHelper
 - DimensionDefaultingService
 - DimensionHelper
-...
-```
+- ...
 
 **When to use:**
 - ✅ Before creating any new class
@@ -514,7 +511,7 @@ suggest_method_implementation(
 4. Suggests pattern based on real code
 
 **Output:**
-```markdown
+
 # Method Implementation Suggestions
 
 **Class:** MyHelper
@@ -524,13 +521,13 @@ suggest_method_implementation(
 
 ### 1. DimensionHelper.validateDimension
 
-**Signature:** \`boolean validateDimension(Common _record)\`
-**Complexity:** Medium
+**Signature:** `boolean validateDimension(Common _record)`  
+**Complexity:** Medium  
 **Tags:** validation, dimension, check
 
 **Implementation Preview:**
 
-\`\`\`xpp
+```xpp
 boolean validateDimension(Common _record)
 {
     boolean isValid = true;
@@ -545,14 +542,14 @@ boolean validateDimension(Common _record)
     
     return isValid;
 }
-\`\`\`
+```
 
 ### 2. SalesTableHelper.validateRecord
 ...
 
 ## Suggested Implementation Pattern
 
-\`\`\`xpp
+```xpp
 public boolean validate(Common _record)
 {
     boolean isValid = true;
@@ -561,7 +558,6 @@ public boolean validate(Common _record)
     
     return isValid;
 }
-\`\`\`
 ```
 
 ---
@@ -590,18 +586,18 @@ analyze_class_completeness("MyCustomHelper")
 4. Shows frequency of occurrence for each method
 
 **Output:**
-```markdown
+
 # Class Completeness Analysis: MyCustomHelper
 
-**Model:** MyModel
-**Pattern Type:** Helper
+**Model:** MyModel  
+**Pattern Type:** Helper  
 **Existing Methods:** 3
 
 ## Implemented Methods
 
-- \`void init()\`
-- \`boolean validate()\`
-- \`void run()\`
+- `void init()`
+- `boolean validate()`
+- `void run()`
 
 ## Suggested Missing Methods
 
@@ -614,7 +610,6 @@ Based on analysis of similar Helper classes:
 - **update**: Found in 55% of similar classes (11/20)
 
 **Recommendation:** Consider implementing these methods to follow common patterns in your codebase.
-```
 
 ---
 
@@ -644,7 +639,7 @@ get_api_usage_patterns("NumberSeq")
 - Recommended usage flow
 
 **Output:**
-```markdown
+
 # API Usage Patterns: DimensionAttributeValueSet
 
 **Usage Count:** 142 places in codebase
@@ -661,18 +656,18 @@ get_api_usage_patterns("NumberSeq")
 
 ### Pattern 1
 
-\`\`\`xpp
+```xpp
 DimensionAttributeValueSet dimAttrValueSet;
 DimensionAttribute dimAttr;
 
 dimAttr = DimensionAttribute::findByName("Department");
 dimAttrValueSet = new DimensionAttributeValueSet();
 dimAttrValueSet.parmDimensionAttribute(dimAttr);
-\`\`\`
+```
 
 ### Pattern 2
 
-\`\`\`xpp
+```xpp
 DimensionAttributeValueSet dimAttrValueSet;
 
 dimAttrValueSet = DimensionAttributeValueSet::find(recId);
@@ -681,7 +676,7 @@ if (dimAttrValueSet)
     dimAttrValueSet.setValue("Value");
     dimAttrValueSet.save();
 }
-\`\`\`
+```
 
 ## Used In Classes
 
@@ -689,7 +684,7 @@ if (dimAttrValueSet)
 - DimensionHelper
 - LedgerDimensionFacade
 - FinancialDimensionManager
-...
+- ...
 
 ## Usage Recommendation
 
@@ -699,7 +694,6 @@ Based on codebase analysis, the typical usage flow is:
 3. Call setValue()
 4. Call validateValue()
 5. Call save()
-```
 
 ---
 
