@@ -155,8 +155,8 @@ stages:
               METADATA_PATH: $(METADATA_PATH)
               DB_PATH: $(DB_PATH)
               EXTRACT_MODE: '${{ parameters.extractionMode }}'
+              COMPUTE_STATS: 'false'  # Disable usage statistics computation (saves 1-2 minutes)
               ENABLE_SEARCH_SUGGESTIONS: 'false'  # Disable suggestions in CI/CD to reduce memory usage
-
               NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'  # Increase heap to 8GB for single-transaction indexing
 
           # Upload metadata based on mode
