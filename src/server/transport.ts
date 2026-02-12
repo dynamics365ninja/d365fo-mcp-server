@@ -62,10 +62,8 @@ export class StreamableHttpTransport {
         res.setHeader('Mcp-Session-Id', sessionId);
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader('Content-Length', Buffer.byteLength(payload, 'utf8'));
-        res.setHeader('Connection', 'close');
         res.status(200);
-        res.write(payload, 'utf8');
-        res.end();
+        res.end(payload, 'utf8');
       } catch (error) {
         process.stderr.write(`MCP request error: ${error}\n`);
         const errorPayload = JSON.stringify({
@@ -79,8 +77,7 @@ export class StreamableHttpTransport {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader('Content-Length', Buffer.byteLength(errorPayload, 'utf8'));
         res.status(500);
-        res.write(errorPayload, 'utf8');
-        res.end();
+        res.end(errorPayload, 'utf8');
       }
     });
 
