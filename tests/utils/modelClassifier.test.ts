@@ -148,6 +148,7 @@ describe('modelClassifier', () => {
 
     it('should return empty array when no models match', () => {
       process.env.CUSTOM_MODELS = 'NonExistent';
+      delete process.env.EXTENSION_PREFIX; // Clean up from previous test
       
       const customModels = filterModelsByType(allModels, 'custom');
       expect(customModels).toEqual([]);

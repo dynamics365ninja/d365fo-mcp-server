@@ -134,7 +134,7 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 - **Tool:** \`get_class_info\`
 - **When:** Need comprehensive details about a class: methods, inheritance, description, source code snippets
 - **Instead of:** General knowledge or assumptions about classes
-- **Example:** \`get_class_info("SalesTable")\` → Full class structure with documentation
+- **Example:** \`get_class_info("SalesTotals")\` → Full class structure with documentation
 - **Best for:** Understanding class architecture, finding specific methods, preparing for extensions
 
 ### 3. Table Information Lookup
@@ -288,8 +288,8 @@ WRONG Workflow:
 Developer: "Extend SalesTable validation"
 
 CORRECT Workflow:
-1. Use get_class_info("SalesTable") → Find validation methods in metadata
-2. Use code_completion("SalesTable", "validate") → Get exact method signatures
+1. Use get_table_info("SalesTable") → Find table methods and validation logic
+2. Use code_completion(className="SalesTable", prefix="validate") → Get exact method signatures
 3. Generate Chain of Command extension class in Visual Studio
 4. Use proper X++ extension patterns following D365 F&O best practices
 
