@@ -91,6 +91,9 @@ export class CustomHttpTransport implements Transport {
     // MCP endpoint - direct JSON-RPC
     this.app.post('/mcp', async (req: Request, res: Response): Promise<void> => {
       try {
+        // Disable Keep-Alive to close connection after each response
+        res.setHeader('Connection', 'close');
+        
         const request = req.body as JSONRPCRequest;
         process.stdout.write(`\n📥 Incoming request: ${JSON.stringify(request).substring(0, 200)}\n`);
         
@@ -103,6 +106,7 @@ export class CustomHttpTransport implements Transport {
             },
             id: null,
           });
+          process.stdout.write(`❌ Invalid request, closing connection\n`);
           return;
         }
 
@@ -169,7 +173,7 @@ export class CustomHttpTransport implements Transport {
           process.stdout.write(`✅ Response received for ID: ${request.id}, sending to client\n`);
           process.stdout.write(`📨 Response: ${JSON.stringify(response).substring(0, 300)}...\n`);
           res.json(response);
-          process.stdout.write(`✅ HTTP response sent for ID: ${request.id}\n`);
+          process.stdout.write(`✅ HTTP response sent for ID: ${request.id}, connection will close\n`);
           this.currentResponse = null;
         } else {
           res.status(500).json({
