@@ -164,10 +164,12 @@ workspacePath and includeWorkspace parameters.`,
           inputSchema: {
             type: 'object',
             properties: {
-              objectName: { type: 'string', description: 'Class or table name' },
+              className: { type: 'string', description: 'Class or table name' },
               prefix: { type: 'string', description: 'Method/field name prefix to filter', default: '' },
+              includeWorkspace: { type: 'boolean', description: 'Whether to include workspace files', default: false },
+              workspacePath: { type: 'string', description: 'Workspace path to search' },
             },
-            required: ['objectName'],
+            required: ['className'],
           },
         },
         {

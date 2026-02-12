@@ -57,11 +57,16 @@ export class StreamableHttpTransport {
         // Process MCP request
         const result = await this.handleMcpRequest(req.body, sessionId);
 
+        // Explicitly set headers and end response for Azure Web Service
+        const payload = JSON.stringify(result);
         res.setHeader('Mcp-Session-Id', sessionId);
-        res.json(result);
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Length', Buffer.byteLength(payload));
+        res.status(200).send(payload);
+        res.end();
       } catch (error) {
         process.stderr.write(`MCP request error: ${error}\n`);
-        res.status(500).json({
+        const errorPayload = JSON.stringify({
           jsonrpc: '2.0',
           error: {
             code: -32603,
@@ -69,6 +74,10 @@ export class StreamableHttpTransport {
           },
           id: req.body.id || null,
         });
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Length', Buffer.byteLength(errorPayload));
+        res.status(500).send(errorPayload);
+        res.end();
       }
     });
 
@@ -252,10 +261,12 @@ export class StreamableHttpTransport {
             inputSchema: {
               type: 'object',
               properties: {
-                objectName: { type: 'string', description: 'Class or table name' },
-                prefix: { type: 'string', description: 'Method/field name prefix to filter', default: '' },
+                className: { type: 'string', description: 'Class or table name' },
+                prefix: { type: 'string', description: 'Method/field name prefix to filter' },
+                includeWorkspace: { type: 'boolean', description: 'Whether to include workspace files', default: false },
+                workspacePath: { type: 'string', description: 'Workspace path to search' },
               },
-              required: ['objectName'],
+              required: ['className'],
             },
           },
           {
