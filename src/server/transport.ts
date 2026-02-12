@@ -350,8 +350,8 @@ export class StreamableHttpTransport {
         arguments?: Record<string, unknown>;
       };
 
-      // Log tool invocation to stderr (not stdout - that's for MCP protocol)
-      process.stderr.write(`[MCP] Tool called: ${name} with args: ${JSON.stringify(args)}\n`);
+      // Log tool invocation to stdout (informational, not an error)
+      process.stdout.write(`[MCP] Tool called: ${name} with args: ${JSON.stringify(args)}\n`);
 
       // Build the CallToolRequest
       const request: CallToolRequest = {
@@ -399,8 +399,8 @@ export class StreamableHttpTransport {
           throw new Error(`Unknown tool: ${name}`);
       }
 
-      // Log the result to stderr (not stdout)
-      process.stderr.write(`[MCP] Tool ${name} returned: ${JSON.stringify(result).substring(0, 500)}\n`);
+      // Log the result to stdout (informational, not an error)
+      process.stdout.write(`[MCP] Tool ${name} returned: ${JSON.stringify(result).substring(0, 500)}\n`);
 
       return {
         jsonrpc: "2.0",
