@@ -60,9 +60,11 @@ export class StreamableHttpTransport {
         // Explicitly set headers and end response for Azure Web Service
         const payload = JSON.stringify(result);
         res.setHeader('Mcp-Session-Id', sessionId);
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Content-Length', Buffer.byteLength(payload));
-        res.status(200).send(payload);
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Content-Length', Buffer.byteLength(payload, 'utf8'));
+        res.setHeader('Connection', 'close');
+        res.status(200);
+        res.write(payload, 'utf8');
         res.end();
       } catch (error) {
         process.stderr.write(`MCP request error: ${error}\n`);
@@ -74,9 +76,10 @@ export class StreamableHttpTransport {
           },
           id: req.body.id || null,
         });
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Content-Length', Buffer.byteLength(errorPayload));
-        res.status(500).send(errorPayload);
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Content-Length', Buffer.byteLength(errorPayload, 'utf8'));
+        res.status(500);
+        res.write(errorPayload, 'utf8');
         res.end();
       }
     });
