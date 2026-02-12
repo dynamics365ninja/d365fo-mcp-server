@@ -62,8 +62,10 @@ export class StreamableHttpTransport {
         res.setHeader('Mcp-Session-Id', sessionId);
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader('Content-Length', Buffer.byteLength(payload, 'utf8'));
-        res.status(200);
-        res.end(payload, 'utf8');
+        res.status(200).end(payload, 'utf8', () => {
+          // Force socket to close after response is sent (for Azure)
+          req.socket.end();
+        });
       } catch (error) {
         process.stderr.write(`MCP request error: ${error}\n`);
         const errorPayload = JSON.stringify({
