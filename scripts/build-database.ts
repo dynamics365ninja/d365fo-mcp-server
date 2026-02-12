@@ -30,6 +30,12 @@ async function buildDatabase() {
   // Create symbol index
   const symbolIndex = new XppSymbolIndex(OUTPUT_DB);
 
+  // Optimize for bulk loading: use MEMORY journal during build
+  console.log('⚡ Setting bulk load optimizations (MEMORY journal)...');
+  symbolIndex.db.pragma('journal_mode = MEMORY'); // Fastest for bulk inserts
+  symbolIndex.db.pragma('synchronous = OFF');     // Maximum speed (safe for build process)
+  symbolIndex.db.pragma('locking_mode = EXCLUSIVE'); // No concurrent access needed during build
+
   // Determine which models to rebuild based on EXTRACT_MODE
   let modelsToRebuild: string[] = [];
   
@@ -84,19 +90,28 @@ async function buildDatabase() {
   const duration = ((endTime - startTime) / 1000).toFixed(2);
 
   // Compute usage statistics (usage_frequency, called_by_count)
-  // Only run for full rebuilds or when explicitly enabled via COMPUTE_STATS=true
-  const shouldComputeStats = process.env.COMPUTE_STATS === 'true' || EXTRACT_MODE === 'all';
+  // IMPORTANT: This is SLOW (1-2 minutes for 300k+ methods)
+  // Only enable explicitly via COMPUTE_STATS=true (not automatic even for full rebuilds)
+  const shouldComputeStats = process.env.COMPUTE_STATS === 'true';
   if (shouldComputeStats) {
-    console.log('📈 Computing usage statistics...');
+    console.log('📈 Computing usage statistics (this may take 1-2 minutes)...');
     symbolIndex.computeUsageStatistics();
     console.log('✅ Usage statistics computed');
   } else {
     console.log('⏭️  Skipping usage statistics computation (use COMPUTE_STATS=true to enable)');
+    console.log('    ℹ️  Statistics provide usage_frequency and called_by_count fields');
   }
 
   const count = symbolIndex.getSymbolCount();
   console.log(`✅ Database built successfully in ${duration}s!`);
   console.log(`📊 Total symbols: ${count}`);
+
+  // Convert to WAL mode for production use (better concurrency)
+  console.log('\n🔄 Converting database to WAL mode for production...');
+  symbolIndex.db.pragma('locking_mode = NORMAL');  // Re-enable shared access
+  symbolIndex.db.pragma('journal_mode = WAL');     // Enable WAL for runtime
+  symbolIndex.db.pragma('synchronous = NORMAL');   // Balance speed/safety
+  console.log('✅ Database converted to WAL mode');
 
   // Show breakdown by type
   const breakdown = symbolIndex.getSymbolCountByType();

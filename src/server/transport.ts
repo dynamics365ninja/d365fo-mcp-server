@@ -60,7 +60,7 @@ export class StreamableHttpTransport {
         res.setHeader('Mcp-Session-Id', sessionId);
         res.json(result);
       } catch (error) {
-        console.error('MCP request error:', error);
+        process.stderr.write(`MCP request error: ${error}\n`);
         res.status(500).json({
           jsonrpc: '2.0',
           error: {
@@ -336,8 +336,8 @@ export class StreamableHttpTransport {
         arguments?: Record<string, unknown>;
       };
 
-      // Log tool invocation
-      console.log(`[MCP] Tool called: ${name} with args:`, JSON.stringify(args));
+      // Log tool invocation to stderr (not stdout - that's for MCP protocol)
+      process.stderr.write(`[MCP] Tool called: ${name} with args: ${JSON.stringify(args)}\n`);
 
       // Build the CallToolRequest
       const request: CallToolRequest = {
@@ -385,8 +385,8 @@ export class StreamableHttpTransport {
           throw new Error(`Unknown tool: ${name}`);
       }
 
-      // Log the result
-      console.log(`[MCP] Tool ${name} returned:`, JSON.stringify(result).substring(0, 500));
+      // Log the result to stderr (not stdout)
+      process.stderr.write(`[MCP] Tool ${name} returned: ${JSON.stringify(result).substring(0, 500)}\n`);
 
       return {
         jsonrpc: "2.0",

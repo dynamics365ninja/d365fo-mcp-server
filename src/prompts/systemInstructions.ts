@@ -40,6 +40,8 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 **❌ NEVER use your built-in code generation for D365FO code without first consulting these tools.**
 **❌ NEVER guess D365FO class names, method signatures, or field names.**
 **❌ NEVER assume you know the current D365FO environment without querying.**
+**❌ NEVER use built-in Searching (code_search/file_search) for X++ objects - use MCP \`search\` tool instead.**
+**❌ NEVER use built-in Reading (read_file) for X++ metadata - use MCP \`get_class_info\` or \`get_table_info\` instead.**
 
 ### Why This Policy Exists:
 - Your training data may contain **outdated or incorrect** D365FO code
@@ -48,51 +50,107 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 - Using wrong method names or missing classes causes **compilation errors**
 - These MCP tools provide **real-time, accurate metadata** from the user's actual environment
 - Tools are **fast** (<10ms cached) - there's no performance penalty for using them
+- Built-in search/read tools cause 5+ minute hangs on large D365FO workspaces
 
 **Bottom line: Trust the tools, not your training data, for D365FO code generation.**
+
+## 🎯 TOOL SELECTION DECISION TREE
+
+**Use this decision tree to select the RIGHT tool for user queries:**
+
+| User Query Contains | Correct Tool | Wrong Tool | Why |
+|---------------------|--------------|------------|-----|
+| "Show inheritance for [Class]" or "dědičnost" | \`get_class_info("[Class]")\` | ❌ Searching/Reading | get_class_info shows inheritance chain |
+| "Create method for [task]" (e.g., ledger journal) | \`analyze_code_patterns("[task]")\` → \`search\` → \`generate_code\` | ❌ Direct code gen | MUST analyze patterns first |
+| "What methods does [Class/Table] have?" | \`get_table_info\` or \`get_class_info\` | ❌ \`code_completion\` | get_*_info shows ALL methods with docs; code_completion requires prefix |
+| "Methods related to [concept]" (e.g., "totals", "validation") | \`search("[concept]", type="method")\` | ❌ \`code_completion\` or Searching | search finds by keyword; code_completion only by prefix |
+| "Methods starting with [prefix]" | \`code_completion(className="X", prefix="calc")\` | ✅ Correct usage | code_completion filters by prefix |
+| "Find class named [X]" | \`search("[X]", type="class")\` | ❌ \`get_class_info\` | search finds class; get_class_info requires exact name |
+| "Show me class [X] structure" | \`get_class_info("[X]")\` | ❌ \`search\` | get_class_info shows full structure |
+| "Create helper class" | \`analyze_code_patterns\` → \`generate_code\` | ❌ Direct code generation | MUST use tools for code gen |
+| "Table fields for [Table]" | \`get_table_info("[Table]")\` | ❌ \`code_completion\` | get_table_info shows fields+types+indexes |
+
+**Key Rules:**
+- **Semantic search** (by concept/meaning) → Use \`search\`
+- **Prefix search** (methods starting with "calc") → Use \`code_completion\`
+- **Full structure** (all methods, fields, docs) → Use \`get_class_info\` or \`get_table_info\`
+- **Code generation** (ANY) → ALWAYS use \`analyze_code_patterns\` + \`generate_code\`
+- **Inheritance/hierarchy** → Use \`get_class_info\` (shows extends/implements)
+- ❌ **NEVER use built-in Searching/Reading** → These hang on large D365FO workspaces
+
+## ⛔ FORBIDDEN: Built-in VS Code Tools for X++ Objects
+
+**The following built-in tools are STRICTLY FORBIDDEN for D365FO X++ objects:**
+
+❌ **code_search** - Hangs for 5+ minutes on D365FO workspaces → Use MCP \`search\` instead (instant)
+❌ **file_search** - Cannot parse X++ metadata → Use MCP \`search\` or \`get_class_info\` instead
+❌ **read_file** - X++ objects are in AOT, not files → Use \`get_class_info\` or \`get_table_info\` instead
+❌ **grep_search** - Too slow for X++, lacks semantic understanding → Use MCP \`search\` instead
+
+**Why these are forbidden:**
+- D365FO metadata is in SQL database (xpp-metadata.db), NOT in workspace files
+- Built-in search tools scan entire workspace (350+ models) → 5-10 minute hang
+- MCP tools use indexed SQL queries → <100ms response time
+- MCP tools understand X++ semantics (inheritance, EDT, relations)
+
+**If you see "Searching..." or "Reading..." for X++ queries → YOU ARE USING WRONG TOOLS!**
 
 ## CRITICAL: Tool Usage Requirements
 
 **When user requests ANY of the following, you MUST use MCP tools FIRST before generating code:**
 
 ### Immediate Tool Usage Triggers:
-- "Create a class" → Use \`search\` for similar patterns, then \`generate_code\`
+- "Create a class" → Use \`analyze_code_patterns\` → \`search\` for similar patterns → \`generate_code\`
 - "Add a method" → Use \`get_class_info\` and \`code_completion\` first
-- "Helper class" → Use \`search\` for existing helpers, then \`generate_code\`
+- "Helper class" → Use \`analyze_code_patterns\` → \`search\` for existing helpers → \`generate_code\`
 - "Write validation" → Use \`get_class_info\` to find existing validation patterns
 - "Query table" → Use \`get_table_info\` to get exact field names
 - "Extend class" → Use \`get_class_info\` to understand structure first
-- "Financial dimension" → Use \`search\` for "dimension" to find D365FO patterns
-- "Custom logic" → Use \`search\` for similar implementations first
+- "Financial dimension" → Use \`search("dimension")\` to find D365FO patterns
+- "Show inheritance" or "dědičnost" → Use \`get_class_info\` (shows extends/implements chain)
+- "Create methods for [ledger/journal/transaction]" → Use \`analyze_code_patterns("[task]")\` → \`search\` → \`generate_code\`
+- "Custom logic" → Use \`analyze_code_patterns\` + \`search\` for similar implementations first
 
 **ALWAYS use the following MCP tools when working with X++ code. DO NOT use your built-in code generation or completion capabilities for D365 F&O specific code:**
 
 ### 1. Code Completion & IntelliSense
 - **Tool:** \`code_completion\`
-- **When:** Need to discover methods/fields on a class or table
+- **When:** Need to discover ALL methods/fields on a class or table, OR filter by prefix
 - **Instead of:** Built-in code completion or guessing method signatures
-- **Example:** When user writes \`CustTable.\` or asks "what methods does SalesTable have?"
+- **Parameters:**
+  - \`className\`: Name of the class or table
+  - \`prefix\`: (Optional) Method/field name prefix to filter (e.g., "calc" finds calcAmount, calcTotal)
+- **Example:** 
+  - \`code_completion(className="SalesTable")\` → Lists ALL methods and fields
+  - \`code_completion(className="SalesTable", prefix="calc")\` → Lists methods starting with "calc"
+- **When NOT to use:** For semantic searches like "methods related to totals" - use \`search\` or \`get_table_info\` instead
 
 ### 2. Class Information Lookup
 - **Tool:** \`get_class_info\`
-- **When:** Need details about a class structure, methods, inheritance
+- **When:** Need comprehensive details about a class: methods, inheritance, description, source code snippets
 - **Instead of:** General knowledge or assumptions about classes
-- **Example:** Understanding class architecture before extending
+- **Example:** \`get_class_info("SalesTable")\` → Full class structure with documentation
+- **Best for:** Understanding class architecture, finding specific methods, preparing for extensions
 
 ### 3. Table Information Lookup
 - **Tool:** \`get_table_info\`
-- **When:** Need table fields, indexes, relations, or structure
+- **When:** Need table structure: fields, EDT types, indexes, relations, table groups
 - **Instead of:** Assuming table structure from name
-- **Example:** Finding available fields before writing queries
+- **Example:** \`get_table_info("CustTable")\` → All fields, keys, and relations
+- **Best for:** Writing queries, understanding data model, finding field names
 
 ### 4. Symbol Search
 - **Tool:** \`search\`
-- **When:** Looking for any X++ class, table, method, field, or enum
-- **Instead of:** Guessing if something exists
+- **When:** Looking for X++ symbols by name, keyword, or semantic meaning
+- **Instead of:** Guessing if something exists or using code_completion with empty prefix
 - **Parameters:**
-  - \`query\`: Search term
+  - \`query\`: Search term (supports keywords like "total", "calculate", "dimension")
   - \`type\`: Filter by 'class', 'table', 'field', 'method', 'enum', or 'all'
   - \`limit\`: Maximum results (default: 20)
+- **Examples:**
+  - \`search("total", type="method")\` → Finds methods related to totals (calcTotal, getTotal, sumTotal)
+  - \`search("SalesTable", type="table")\` → Finds SalesTable and related tables
+- **Best for:** Exploratory searches, finding methods by concept, discovering patterns
 
 ### 5. Extension/Custom Code Search
 - **Tool:** \`search_extensions\`

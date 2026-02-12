@@ -3,15 +3,23 @@
  * Manages separation of standard and custom metadata in Azure Blob Storage
  */
 
+console.log('📦 Loading azure-blob-manager.ts...');
+
 import 'dotenv/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';
 import { isCustomModel } from '../src/utils/modelClassifier.js';
 
+console.log('✅ Imports loaded');
+console.log(`🔑 Connection string configured: ${process.env.AZURE_STORAGE_CONNECTION_STRING ? 'YES' : 'NO'}`);
+
 const AZURE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING || '';
 const BLOB_CONTAINER = process.env.BLOB_CONTAINER_NAME || 'xpp-metadata';
 const LOCAL_METADATA_PATH = process.env.METADATA_PATH || './extracted-metadata';
+
+console.log(`📦 Container: ${BLOB_CONTAINER}`);
+console.log(`📁 Local path: ${LOCAL_METADATA_PATH}`);
 
 // Concurrency limit to avoid EMFILE errors (too many open files)
 const MAX_CONCURRENT_UPLOADS = 50;
@@ -46,8 +54,13 @@ export class AzureBlobMetadataManager {
    */
   async initialize(): Promise<void> {
     console.log(`📦 Initializing container: ${BLOB_CONTAINER}`);
-    await this.containerClient.createIfNotExists();
-    console.log('✅ Container ready');
+    try {
+      await this.containerClient.createIfNotExists();
+      console.log('✅ Container ready');
+    } catch (error) {
+      console.error('❌ Error initializing container:', error);
+      throw error;
+    }
   }
 
   /**
@@ -128,12 +141,21 @@ export class AzureBlobMetadataManager {
     
     for (const prefix of prefixes) {
       console.log(`\n   📁 Downloading from: ${prefix}`);
+      console.log(`   🔍 Listing blobs with prefix: ${prefix}`);
       
       // First, collect all blobs to download
       const blobsToDownload: Array<{ name: string; size?: number }> = [];
       const blobs = this.containerClient.listBlobsFlat({ prefix });
       
+      let scanCount = 0;
       for await (const blob of blobs) {
+        scanCount++;
+        
+        // Log first few blobs for debugging
+        if (scanCount <= 5) {
+          console.log(`   📄 Found: ${blob.name}`);
+        }
+        
         // Check if we should download this specific model
         if (specificModels && specificModels.length > 0) {
           const modelName = this.extractModelNameFromBlobPath(blob.name);
@@ -145,7 +167,16 @@ export class AzureBlobMetadataManager {
         blobsToDownload.push({ name: blob.name, size: blob.properties.contentLength });
       }
       
-      console.log(`   📊 Found ${blobsToDownload.length} files to download`);
+      if (scanCount > 5) {
+        console.log(`   ... (and ${scanCount - 5} more)`);
+      }
+      
+      console.log(`   📊 Found ${blobsToDownload.length} files to download (scanned ${scanCount} blobs)`);
+      
+      if (blobsToDownload.length === 0) {
+        console.log(`   ⚠️  No files found in ${prefix}`);
+        continue;
+      }
       
       // Download in parallel batches
       const downloadPromises: Promise<boolean>[] = [];
@@ -430,9 +461,29 @@ export class AzureBlobMetadataManager {
 
 // CLI Interface
 async function main() {
+  console.log('🚀 Azure Blob Metadata Manager');
+  console.log(`📋 Command: ${process.argv.slice(2).join(' ')}`);
+  
   const args = process.argv.slice(2);
   const command = args[0];
   
+  if (!command) {
+    console.log('Usage:');
+    console.log('  npm run blob-manager upload-standard     # Upload standard metadata');
+    console.log('  npm run blob-manager upload-custom       # Upload custom metadata');
+    console.log('  npm run blob-manager upload-all          # Upload all metadata');
+    console.log('  npm run blob-manager download-standard   # Download standard metadata');
+    console.log('  npm run blob-manager download-custom     # Download custom metadata');
+    console.log('  npm run blob-manager download-all        # Download all metadata');
+    console.log('  npm run blob-manager delete-custom       # Delete custom metadata from blob');
+    console.log('  npm run blob-manager delete-custom Model1,Model2  # Delete specific models');
+    console.log('  npm run blob-manager delete-local-custom # Delete local custom metadata');
+    console.log('  npm run blob-manager upload-database     # Upload compiled database');
+    console.log('  npm run blob-manager download-database   # Download compiled database');
+    process.exit(1);
+  }
+  
+  console.log(`\n🔧 Initializing Azure Blob Storage...`);
   const manager = new AzureBlobMetadataManager();
   await manager.initialize();
   
@@ -498,9 +549,20 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Normalize path for cross-platform compatibility (Windows uses backslashes)
+const scriptPath = process.argv[1]?.replace(/\\/g, '/');
+const isMainModule = import.meta.url === `file:///${scriptPath}` || import.meta.url === `file://${scriptPath}`;
+
+console.log(`📍 import.meta.url: ${import.meta.url}`);
+console.log(`📍 process.argv[1]: ${scriptPath}`);
+console.log(`📍 Is main module: ${isMainModule}`);
+
+if (isMainModule) {
+  console.log('✅ Running as main module, calling main()');
   main().catch((error) => {
     console.error('❌ Fatal error:', error);
     process.exit(1);
   });
+} else {
+  console.log('ℹ️  Loaded as module (not executing main)');
 }
