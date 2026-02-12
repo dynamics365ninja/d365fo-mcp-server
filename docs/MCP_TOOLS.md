@@ -1,46 +1,46 @@
-# MCP Nástroje pro D365FO/X++
+# MCP Tools for D365FO/X++
 
-Tento dokument popisuje všechny dostupné nástroje MCP serveru pro práci s D365 Finance & Operations a X++ kódem.
+This document describes all available MCP server tools for working with D365 Finance & Operations and X++ code.
 
-## 📚 Obsah
+## 📚 Table of Contents
 
-1. [Základní vyhledávací nástroje](#-základní-vyhledávací-nástroje)
-2. [Detailní informace o objektech](#-detailní-informace-o-objektech)
-3. [Inteligentní generování kódu](#-inteligentní-generování-kódu)
+1. [Core Search Tools](#-core-search-tools)
+2. [Detailed Object Information](#-detailed-object-information)
+3. [Intelligent Code Generation](#-intelligent-code-generation)
 4. [Workspace-Aware Features](#-workspace-aware-features)
-5. [Workflow pro tvorbu kódu](#-workflow-pro-tvorbu-kódu)
+5. [Code Generation Workflow](#-code-generation-workflow)
 
 ---
 
-## 🔍 Základní vyhledávací nástroje
+## 🔍 Core Search Tools
 
 ### `search`
 
-**Účel:** Vyhledávání X++ tříd, tabulek, metod, polí, enumů a EDT podle jména nebo klíčového slova
+**Purpose:** Search for X++ classes, tables, methods, fields, enums, and EDTs by name or keyword
 
-**Kdy použít:**
-- Hledáte konkrétní třídu jako `CustTable`, `SalesLine`
-- Potřebujete najít metodu podle názvu
-- Zjišťujete, jaké objekty jsou k dispozici v D365FO
+**When to use:**
+- Looking for specific classes like `CustTable`, `SalesLine`
+- Need to find methods by name
+- Discovering what objects are available in D365FO
 
-**Parametry:**
-- `query` (string) - vyhledávací dotaz (název třídy, metody, tabulky atd.)
-- `types` (array, optional) - filtr podle typu symbolu: `class`, `table`, `method`, `field`, `enum`, `edt`
-- `limit` (number, optional) - maximální počet výsledků (výchozí: 20)
+**Parameters:**
+- `query` (string) - search query (class name, method name, table name, etc.)
+- `types` (array, optional) - filter by symbol type: `class`, `table`, `method`, `field`, `enum`, `edt`
+- `limit` (number, optional) - maximum number of results (default: 20)
 
-**Příklady použití:**
+**Usage examples:**
 ```typescript
-// Najít všechny třídy obsahující "dimension"
+// Find all classes containing "dimension"
 search("dimension", types=["class"], limit=10)
 
-// Vyhledat tabulky s "sales" v názvu
+// Search tables with "sales" in name
 search("sales", types=["table"])
 
-// Obecné vyhledávání bez filtru
+// General search without filter
 search("validate")
 ```
 
-**Výstup:**
+**Output:**
 ```
 Found 10 matches:
 
@@ -52,22 +52,22 @@ Found 10 matches:
 
 ---
 
-### `batch_search` ⚡ NOVÝ
+### `batch_search` ⚡ NEW
 
-**Účel:** Paralelní spuštění více vyhledávání najednou pro rychlejší exploraci
+**Purpose:** Execute multiple searches in parallel for faster exploration
 
-**Kdy použít:**
-- Potřebujete vyhledat několik nezávislých konceptů (dimension + ledger + financial)
-- Chcete zrychlit explorační fázi (3x rychlejší než sekvenční vyhledávání)
-- Uživatel říká "najdi X a Y a Z"
+**When to use:**
+- Need to search multiple independent concepts (dimension + ledger + financial)
+- Want to speed up exploratory phase (3x faster than sequential searches)
+- User says "find X and Y and Z"
 
-**Parametry:**
-- `queries` (array) - pole vyhledávacích dotazů, každý s vlastními parametry:
-  - `query` (string) - vyhledávací text
-  - `type` (string, optional) - filtr typu
-  - `limit` (number, optional) - max výsledků
+**Parameters:**
+- `queries` (array) - array of search queries, each with its own parameters:
+  - `query` (string) - search text
+  - `type` (string, optional) - type filter
+  - `limit` (number, optional) - max results
 
-**Příklad použití:**
+**Usage example:**
 ```typescript
 batch_search({
   queries: [
@@ -78,66 +78,66 @@ batch_search({
 })
 ```
 
-**Výhoda:** Jeden HTTP požadavek místo tří → rychlejší o 67%, celkem ~50ms vs ~150ms
+**Advantage:** One HTTP request instead of three → 67% faster, ~50ms total vs ~150ms
 
 ---
 
 ### `search_extensions`
 
-**Účel:** Vyhledávání pouze v custom/ISV modulech (vlastních rozšířeních)
+**Purpose:** Search only in custom/ISV modules (custom extensions)
 
-**Kdy použít:**
-- Chcete filtrovat pouze vlastní rozšíření
-- Potřebujete odlišit Microsoft kód od custom kódu
-- Hledáte třídy s určitým prefixem (ISV_, Custom_, Asl)
+**When to use:**
+- Want to filter only custom extensions
+- Need to distinguish Microsoft code from custom code
+- Looking for classes with specific prefix (ISV_, Custom_, Asl)
 
-**Parametry:**
-- `query` (string) - vyhledávací dotaz
-- `prefix` (string, optional) - filtr podle extension prefixu
-- `limit` (number, optional) - maximální počet výsledků (výchozí: 20)
+**Parameters:**
+- `query` (string) - search query
+- `prefix` (string, optional) - extension prefix filter
+- `limit` (number, optional) - maximum number of results (default: 20)
 
-**Příklad použití:**
+**Usage example:**
 ```typescript
-// Najít všechny custom třídy obsahující "helper"
+// Find all custom classes containing "helper"
 search_extensions("helper", prefix="ISV_")
 
-// Vyhledat všechny Asl rozšíření
+// Search all Asl extensions
 search_extensions("dimension", prefix="Asl")
 ```
 
 ---
 
-## 📋 Detailní informace o objektech
+## 📋 Detailed Object Information
 
 ### `get_class_info` 🔹
 
-**Účel:** Získání kompletních informací o X++ třídě včetně zdrojového kódu všech metod
+**Purpose:** Get complete information about an X++ class including source code of all methods
 
-**Co vrací:**
-- Deklaraci třídy (abstract, final, modifikátory)
-- Dědičnost (extends, implements)
-- Seznam všech metod včetně zdrojového kódu
-- Viditelnost metod (public/private/protected/internal)
-- Dokumentaci (summary, parametry)
-- Model a cestu k souboru
+**What it returns:**
+- Class declaration (abstract, final, modifiers)
+- Inheritance (extends, implements)
+- List of all methods including source code
+- Method visibility (public/private/protected/internal)
+- Documentation (summary, parameters)
+- Model and file path
 
-**Parametry:**
-- `className` (string) - název X++ třídy
-- `includeWorkspace` (boolean, optional) - hledat v workspace uživatele jako první (výchozí: false)
-- `workspacePath` (string, optional) - cesta k workspace projektu
+**Parameters:**
+- `className` (string) - name of the X++ class
+- `includeWorkspace` (boolean, optional) - search in user's workspace first (default: false)
+- `workspacePath` (string, optional) - path to workspace project
 
-**Příklad použití:**
+**Usage example:**
 ```typescript
-// Základní použití
+// Basic usage
 get_class_info("DimensionAttributeValueSet")
 
-// Workspace-aware vyhledávání (preferuje lokální soubory)
+// Workspace-aware search (prefers local files)
 get_class_info("MyCustomHelper", 
   includeWorkspace=true, 
   workspacePath="C:\\D365\\MyProject")
 ```
 
-**Výstup:**
+**Output:**
 ```markdown
 # Class: DimensionAttributeValueSet
 
@@ -146,51 +146,51 @@ get_class_info("MyCustomHelper",
 **Implements:** -
 
 ## Declaration
-```xpp
+\`\`\`xpp
 public class DimensionAttributeValueSet extends Object
-```
+\`\`\`
 
 ## Methods (15)
 
 ### public DimensionAttribute getDimensionAttribute()
 - Returns the dimension attribute
 
-```xpp
+\`\`\`xpp
 public DimensionAttribute getDimensionAttribute()
 {
     return dimensionAttribute;
 }
-```
+\`\`\`
 ...
 ```
 
-**🔹 Speciální funkce:**
-- **Workspace-aware**: Může vyhledávat v lokálním workspace uživatele před externí metadata
-- XML parsing lokálních souborů pro okamžitý přístup k lokálnímu kódu
+**🔹 Special features:**
+- **Workspace-aware**: Can search in user's local workspace before external metadata
+- XML parsing of local files for immediate access to local code
 
 ---
 
 ### `get_table_info`
 
-**Účel:** Získání kompletní struktury X++ tabulky
+**Purpose:** Get complete structure of an X++ table
 
-**Co vrací:**
-- Seznam všech polí (název, typ, EDT, mandatory, label)
-- Indexy (primární, clustered, unique)
-- Relace/Foreign keys
-- Metody tabulky
+**What it returns:**
+- List of all fields (name, type, EDT, mandatory, label)
+- Indexes (primary, clustered, unique)
+- Relations/Foreign keys
+- Table methods
 - Table Group, Label, System Fields
 
-**Parametry:**
-- `tableName` (string) - název X++ tabulky
+**Parameters:**
+- `tableName` (string) - name of the X++ table
 
-**Příklad použití:**
+**Usage example:**
 ```typescript
 get_table_info("SalesTable")
 get_table_info("CustTable")
 ```
 
-**Výstup:**
+**Output:**
 ```markdown
 # Table: SalesTable
 
@@ -222,9 +222,9 @@ get_table_info("CustTable")
 
 ## Methods (45)
 
-- `void insert()`
-- `void update()`
-- `boolean validateWrite()`
+- \`void insert()\`
+- \`void update()\`
+- \`boolean validateWrite()\`
 ...
 ```
 
@@ -232,25 +232,25 @@ get_table_info("CustTable")
 
 ### `code_completion` 🔍
 
-**Účel:** IntelliSense-style dokončování – zobrazí všechny metody a pole dostupné na třídě/tabulce
+**Purpose:** IntelliSense-style completion – shows all methods and fields available on a class/table
 
-**Kdy použít:**
-- Objevujete, jaké metody jsou dostupné na objektu
-- Potřebujete zjistit signaturu metody
-- Hledáte pole tabulky s určitým prefixem
+**When to use:**
+- Discovering what methods are available on an object
+- Need to find method signature
+- Looking for table fields with specific prefix
 
-**Parametry:**
-- `className` (string) - název třídy nebo tabulky
-- `prefix` (string, optional) - filtr podle prefixu (výchozí: "" = všechny členy)
-- `includeWorkspace` (boolean, optional) - zahrnout workspace soubory (výchozí: false)
-- `workspacePath` (string, optional) - cesta k workspace
+**Parameters:**
+- `className` (string) - name of class or table
+- `prefix` (string, optional) - filter by prefix (default: "" = all members)
+- `includeWorkspace` (boolean, optional) - include workspace files (default: false)
+- `workspacePath` (string, optional) - path to workspace
 
-**Příklad použití:**
+**Usage example:**
 ```typescript
-// Zobrazit všechny metody třídy
+// Show all class methods
 code_completion(className="SalesTable")
 
-// Najít metody začínající na "calc"
+// Find methods starting with "calc"
 code_completion(className="SalesTable", prefix="calc")
 
 // Workspace-aware completion
@@ -261,7 +261,7 @@ code_completion(
 )
 ```
 
-**Výstup:**
+**Output:**
 ```json
 [
   {
@@ -279,46 +279,46 @@ code_completion(
 ]
 ```
 
-**Speciální funkce:**
-- Funguje pro třídy i tabulky
-- Podporuje workspace-first search
-- Prázdný prefix vrátí VŠECHNY dostupné členy
+**Special features:**
+- Works for both classes and tables
+- Supports workspace-first search
+- Empty prefix returns ALL available members
 
 ---
 
-## ⚡ Inteligentní generování kódu
+## ⚡ Intelligent Code Generation
 
-### `analyze_code_patterns` 🔴 POVINNÝ PRVNÍ KROK
+### `analyze_code_patterns` 🔴 MANDATORY FIRST STEP
 
-**Účel:** Analýza existujících vzorů v kódbazi PŘED generováním jakéhokoli kódu
+**Purpose:** Analyze existing patterns in codebase BEFORE generating any code
 
-**⚠️ KRITICKÉ: Tento nástroj MUSÍTE volat před jakýmkoli generováním X++ kódu!**
+**⚠️ CRITICAL: This tool MUST be called before generating any X++ code!**
 
-**Proč je POVINNÝ:**
-- Zjistí, jaké D365FO třídy a metody se běžně používají v projektu
-- Identifikuje časté závislosti a API
-- Najde příklady podobných implementací z reálného kódu
-- Prevence použití obecných vzorů místo skutečného D365FO kódu z projektu
-- Učí se z VAŠÍ kódbáze, ne z obecných příkladů
+**Why it's MANDATORY:**
+- Discovers which D365FO classes and methods are commonly used together in the project
+- Identifies frequent dependencies and APIs
+- Finds examples of similar implementations from real code
+- Prevents using generic patterns instead of actual D365FO code from the project
+- Learns from YOUR codebase, not from generic examples
 
-**Parametry:**
-- `scenario` (string) - scénář nebo doména k analýze (např. "dimension", "validation", "customer")
-- `classPattern` (string, optional) - filtr podle vzoru názvu třídy (např. "Helper", "Service")
-- `limit` (number, optional) - maximální počet tříd k analýze (výchozí: 20)
+**Parameters:**
+- `scenario` (string) - scenario or domain to analyze (e.g., "dimension", "validation", "customer")
+- `classPattern` (string, optional) - filter by class name pattern (e.g., "Helper", "Service")
+- `limit` (number, optional) - maximum number of classes to analyze (default: 20)
 
-**Příklad použití:**
+**Usage example:**
 ```typescript
-// Zjistit, jak se v projektu pracuje s dimensions
+// Discover how to work with dimensions in the project
 analyze_code_patterns("financial dimensions", classPattern="Helper")
 
-// Najít vzory pro validaci
+// Find patterns for validation
 analyze_code_patterns("validation")
 
-// Analyzovat customer-related třídy
+// Analyze customer-related classes
 analyze_code_patterns("customer", limit=30)
 ```
 
-**Co vrací:**
+**What it returns:**
 ```markdown
 # Code Pattern Analysis: financial dimensions
 
@@ -355,55 +355,55 @@ analyze_code_patterns("customer", limit=30)
 ...
 ```
 
-**Kdy použít:**
-- ✅ Před vytvořením nové třídy
-- ✅ Před implementací nové funkcionality
-- ✅ Když potřebujete zjistit, jaké D365FO API používat
-- ✅ Když chcete následovat team conventions
+**When to use:**
+- ✅ Before creating any new class
+- ✅ Before implementing new functionality
+- ✅ When you need to discover which D365FO APIs to use
+- ✅ When you want to follow team conventions
 
 ---
 
-### `generate_code` ⚡ POVINNÝ PRO TVORBU KÓDU
+### `generate_code` ⚡ MANDATORY FOR CODE CREATION
 
-**Účel:** Generování produkčního X++ kódu podle D365FO best practices a vzorů
+**Purpose:** Generate production-ready X++ code following D365FO best practices and patterns
 
-**⚠️ KRITICKÉ: NIKDY negenerujte X++ kód ručně – VŽDY používejte tento nástroj!**
+**⚠️ CRITICAL: NEVER generate X++ code manually – ALWAYS use this tool!**
 
-**Proč je povinný:**
-- Zajišťuje správné D365FO vzory (naming conventions, structure)
-- Generuje kompletní kostru s correct modifikátory (public/private/internal/final)
-- Obsahuje správné summary dokumentaci
-- Implementuje best practices (ttsbegin/ttscommit pro DML operace)
-- Prevence chyb v názvech a signaturách
+**Why it's mandatory:**
+- Ensures correct D365FO patterns (naming conventions, structure)
+- Generates complete skeleton with correct modifiers (public/private/internal/final)
+- Includes proper summary documentation
+- Implements best practices (ttsbegin/ttscommit for DML operations)
+- Prevents errors in names and signatures
 
-**Podporované vzory:**
-- `class` - základní třída
-- `runnable` - spustitelná třída s main() metodou
-- `form-handler` - extension pro formy ([ExtensionOf])
-- `data-entity` - datová entita s find(), exist()
-- `batch-job` - dávková úloha (SysOperationServiceController)
+**Supported patterns:**
+- `class` - basic class
+- `runnable` - runnable class with main() method
+- `form-handler` - form extension ([ExtensionOf])
+- `data-entity` - data entity with find(), exist()
+- `batch-job` - batch job (SysOperationServiceController)
 - `coc-extension` - Chain of Command extension
-- `event-handler` - event handler s DataEventHandler/PostHandlerFor
-- `service-class` - servisní třída s SysOperationServiceBase
+- `event-handler` - event handler with DataEventHandler/PostHandlerFor
+- `service-class` - service class with SysOperationServiceBase
 
-**Parametry:**
-- `pattern` (enum) - typ vzoru ke generování
-- `name` (string) - název pro generovaný element
-- `options` (object, optional) - dodatečné volby:
-  - `baseClass` (string) - rodičovská třída pro dědičnost
-  - `tableName` (string) - název tabulky pro data entity
-  - `formName` (string) - název formy pro form handler
+**Parameters:**
+- `pattern` (enum) - pattern type to generate
+- `name` (string) - name for the generated element
+- `options` (object, optional) - additional options:
+  - `baseClass` (string) - parent class for inheritance
+  - `tableName` (string) - table name for data entity
+  - `formName` (string) - form name for form handler
 
-**Příklady použití:**
+**Usage examples:**
 
 ```typescript
-// Základní třída
+// Basic class
 generate_code(
   pattern="class", 
   name="MyDimensionHelper"
 )
 
-// Spustitelná třída
+// Runnable class
 generate_code(
   pattern="runnable",
   name="MyDataProcessor"
@@ -444,7 +444,7 @@ generate_code(
 )
 ```
 
-**Výstup příklad (runnable):**
+**Output example (runnable):**
 ```xpp
 /// <summary>
 /// Runnable class MyDataProcessor
@@ -476,22 +476,22 @@ internal final class MyDataProcessor
 
 ### `suggest_method_implementation`
 
-**Účel:** Návrh implementace konkrétní metody na základě podobných metod v kódbazi
+**Purpose:** Suggest method body implementation based on similar methods in the codebase
 
-**Kdy použít:**
-- Potřebujete implementovat metodu jako validate(), find(), create()
-- Chcete vidět, jak podobné metody jsou implementovány v projektu
-- Hledáte správný vzor pro konkrétní typ metody
+**When to use:**
+- Need to implement methods like validate(), find(), create()
+- Want to see how similar methods are implemented in the project
+- Looking for the right pattern for specific method type
 
-**Parametry:**
-- `className` (string) - název třídy obsahující metodu
-- `methodName` (string) - název metody k návrhu implementace
-- `parameters` (array, optional) - parametry metody [{name, type}]
-- `returnType` (string, optional) - návratový typ (výchozí: "void")
+**Parameters:**
+- `className` (string) - name of class containing the method
+- `methodName` (string) - name of method to suggest implementation for
+- `parameters` (array, optional) - method parameters [{name, type}]
+- `returnType` (string, optional) - return type (default: "void")
 
-**Příklad použití:**
+**Usage example:**
 ```typescript
-// Návrh implementace validate metody
+// Suggest validate method implementation
 suggest_method_implementation(
   className="MyHelper",
   methodName="validate",
@@ -499,7 +499,7 @@ suggest_method_implementation(
   returnType="boolean"
 )
 
-// Návrh create metody
+// Suggest create method
 suggest_method_implementation(
   className="MyManager",
   methodName="createRecord",
@@ -507,13 +507,13 @@ suggest_method_implementation(
 )
 ```
 
-**Co dělá:**
-1. Najde podobné metody podle názvu v celé kódbazi
-2. Zobrazí jejich implementaci se zdrojovým kódem
-3. Analyzuje složitost a použité tagy
-4. Navrhne vzor na základě reálného kódu
+**What it does:**
+1. Finds similar methods by name across the entire codebase
+2. Shows their implementation with source code
+3. Analyzes complexity and used tags
+4. Suggests pattern based on real code
 
-**Výstup:**
+**Output:**
 ```markdown
 # Method Implementation Suggestions
 
@@ -524,13 +524,13 @@ suggest_method_implementation(
 
 ### 1. DimensionHelper.validateDimension
 
-**Signature:** `boolean validateDimension(Common _record)`
+**Signature:** \`boolean validateDimension(Common _record)\`
 **Complexity:** Medium
 **Tags:** validation, dimension, check
 
 **Implementation Preview:**
 
-```xpp
+\`\`\`xpp
 boolean validateDimension(Common _record)
 {
     boolean isValid = true;
@@ -545,14 +545,14 @@ boolean validateDimension(Common _record)
     
     return isValid;
 }
-```
+\`\`\`
 
 ### 2. SalesTableHelper.validateRecord
 ...
 
 ## Suggested Implementation Pattern
 
-```xpp
+\`\`\`xpp
 public boolean validate(Common _record)
 {
     boolean isValid = true;
@@ -561,35 +561,35 @@ public boolean validate(Common _record)
     
     return isValid;
 }
-```
+\`\`\`
 ```
 
 ---
 
 ### `analyze_class_completeness`
 
-**Účel:** Kontrola, zda třídě nechybí běžné metody podle vzorů v kódbazi
+**Purpose:** Check if class is missing common methods based on codebase patterns
 
-**Kdy použít:**
-- Po vytvoření nové třídy
-- Chcete zajistit, že třída následuje team conventions
-- Hledáte, jaké metody často chybí v podobných třídách
+**When to use:**
+- After creating a new class
+- Want to ensure class follows team conventions
+- Looking for methods that are often missing in similar classes
 
-**Parametry:**
-- `className` (string) - název třídy k analýze
+**Parameters:**
+- `className` (string) - name of class to analyze
 
-**Příklad použití:**
+**Usage example:**
 ```typescript
 analyze_class_completeness("MyCustomHelper")
 ```
 
-**Co dělá:**
-1. Najde typ vzoru třídy (Helper, Service, Manager atd.)
-2. Porovná s podobnými třídami v kódbazi
-3. Identifikuje běžné metody, které chybí
-4. Zobrazí frekvenci výskytu každé metody
+**What it does:**
+1. Finds class pattern type (Helper, Service, Manager, etc.)
+2. Compares with similar classes in codebase
+3. Identifies common methods that are missing
+4. Shows frequency of occurrence for each method
 
-**Výstup:**
+**Output:**
 ```markdown
 # Class Completeness Analysis: MyCustomHelper
 
@@ -599,9 +599,9 @@ analyze_class_completeness("MyCustomHelper")
 
 ## Implemented Methods
 
-- `void init()`
-- `boolean validate()`
-- `void run()`
+- \`void init()\`
+- \`boolean validate()\`
+- \`void run()\`
 
 ## Suggested Missing Methods
 
@@ -620,30 +620,30 @@ Based on analysis of similar Helper classes:
 
 ### `get_api_usage_patterns`
 
-**Účel:** Zjištění, jak se používá konkrétní API nebo třída v celé kódbazi
+**Purpose:** Discover how a specific API or class is used throughout the codebase
 
-**Kdy použít:**
-- Potřebujete použít D365FO API, ale nejste si jisti, jak ho inicializovat
-- Hledáte správnou sekvenci volání metod
-- Chcete vidět reálné příklady použití z projektu
+**When to use:**
+- Need to use D365FO API but unsure how to initialize it
+- Looking for correct method call sequence
+- Want to see real usage examples from the project
 
-**Parametry:**
-- `className` (string) - název třídy/API k získání usage patterns
+**Parameters:**
+- `className` (string) - name of class/API to get usage patterns for
 
-**Příklad použití:**
+**Usage example:**
 ```typescript
 get_api_usage_patterns("DimensionAttributeValueSet")
 get_api_usage_patterns("NumberSeq")
 ```
 
-**Co vrací:**
-- Počet použití v kódbazi
-- Nejčastější volání metod (seřazené podle frekvence)
-- Běžné inicializační vzory (code snippets)
-- Seznam tříd, kde se API používá
-- Doporučený usage flow
+**What it returns:**
+- Usage count in codebase
+- Most common method calls (sorted by frequency)
+- Common initialization patterns (code snippets)
+- List of classes where API is used
+- Recommended usage flow
 
-**Výstup:**
+**Output:**
 ```markdown
 # API Usage Patterns: DimensionAttributeValueSet
 
@@ -661,18 +661,18 @@ get_api_usage_patterns("NumberSeq")
 
 ### Pattern 1
 
-```xpp
+\`\`\`xpp
 DimensionAttributeValueSet dimAttrValueSet;
 DimensionAttribute dimAttr;
 
 dimAttr = DimensionAttribute::findByName("Department");
 dimAttrValueSet = new DimensionAttributeValueSet();
 dimAttrValueSet.parmDimensionAttribute(dimAttr);
-```
+\`\`\`
 
 ### Pattern 2
 
-```xpp
+\`\`\`xpp
 DimensionAttributeValueSet dimAttrValueSet;
 
 dimAttrValueSet = DimensionAttributeValueSet::find(recId);
@@ -681,7 +681,7 @@ if (dimAttrValueSet)
     dimAttrValueSet.setValue("Value");
     dimAttrValueSet.save();
 }
-```
+\`\`\`
 
 ## Used In Classes
 
@@ -705,37 +705,37 @@ Based on codebase analysis, the typical usage flow is:
 
 ## 🔹 Workspace-Aware Features
 
-Některé nástroje podporují vyhledávání v lokálním workspace uživatele s prioritou před externí metadata.
+Some tools support searching in user's local workspace with priority over external metadata.
 
-### Co jsou Workspace-Aware Features?
+### What are Workspace-Aware Features?
 
-**Workspace-aware** nástroje mohou:
-- Vyhledávat v lokálních X++ souborech uživatele (*.xml)
-- Parsovat XML metadata přímo z workspace
-- Preferovat lokální soubory před externí databází
-- Zobrazit aktuální stav kódu v projektu uživatele
+**Workspace-aware** tools can:
+- Search in user's local X++ files (*.xml)
+- Parse XML metadata directly from workspace
+- Prefer local files over external database
+- Show current state of code in user's project
 
-### Podporované nástroje
+### Supported Tools
 
-| Nástroj | Workspace Support | Popis |
+| Tool | Workspace Support | Description |
 |---------|-------------------|--------|
-| `search` | ✅ Ano | Vyhledává v workspace + externí metadata |
-| `get_class_info` | ✅ Ano | Preferuje lokální soubory před AOT |
-| `code_completion` | ✅ Ano | Zobrazí metody z lokálních XML souborů |
-| `get_table_info` | ❌ Ne | Pouze externí metadata |
+| `search` | ✅ Yes | Searches workspace + external metadata |
+| `get_class_info` | ✅ Yes | Prefers local files over AOT |
+| `code_completion` | ✅ Yes | Shows methods from local XML files |
+| `get_table_info` | ❌ No | External metadata only |
 
-### Jak používat Workspace-Aware vyhledávání
+### How to Use Workspace-Aware Search
 
-**Parametry:**
-- `includeWorkspace` (boolean) - zapne workspace-aware search
-- `workspacePath` (string) - absolutní cesta k D365FO workspace projektu
+**Parameters:**
+- `includeWorkspace` (boolean) - enable workspace-aware search
+- `workspacePath` (string) - absolute path to D365FO workspace project
 
-**Příklad:**
+**Example:**
 ```typescript
-// Standardní vyhledávání (jen externí metadata)
+// Standard search (external metadata only)
 get_class_info("MyClass")
 
-// Workspace-aware vyhledávání (lokální + externí)
+// Workspace-aware search (local + external)
 get_class_info(
   "MyClass",
   includeWorkspace=true,
@@ -743,103 +743,103 @@ get_class_info(
 )
 ```
 
-### Značení výsledků
+### Result Markers
 
-Výsledky jsou označeny podle zdroje:
+Results are marked by source:
 
-- 🔹 = **Soubor z workspace** (lokální projekt uživatele)
-- 📦 = **Externí metadata** (z centrální databáze)
+- 🔹 = **Workspace file** (user's local project)
+- 📦 = **External metadata** (from central database)
 
-### Výhody Workspace-Aware vyhledávání
+### Advantages of Workspace-Aware Search
 
-1. **Priorita lokálního kódu**: Vidíte aktuální stav vašeho kódu
-2. **Rychlejší iterace**: Okamžitý přístup k lokálním změnám
-3. **Skutečné implementace**: Ne cached verze, ale reálný kód
-4. **Deduplication**: Workspace soubory mají prioritu, duplikáty z external se ignorují
+1. **Local code priority**: See current state of your code
+2. **Faster iteration**: Immediate access to local changes
+3. **Real implementations**: Not cached versions, but actual code
+4. **Deduplication**: Workspace files have priority, external duplicates are ignored
 
 ### XML Parsing
 
-MCP server umí parsovat tyto X++ XML soubory:
-- AxClass - třídy s metodami
-- AxTable - tabulky s poli a metodami
-- AxForm - formuláře
-- AxDataEntity - datové entity
+MCP server can parse these X++ XML files:
+- AxClass - classes with methods
+- AxTable - tables with fields and methods
+- AxForm - forms
+- AxDataEntity - data entities
 
-**Co se extrahuje:**
-- Metody (název, návratový typ, parametry, viditelnost)
-- Pole (název, typ, label, mandatory)
-- Dokumentace (summary tags)
-- Relationships a indexy
+**What is extracted:**
+- Methods (name, return type, parameters, visibility)
+- Fields (name, type, label, mandatory)
+- Documentation (summary tags)
+- Relationships and indexes
 
 ---
 
-## 🎯 Workflow pro tvorbu kódu
+## 🎯 Code Generation Workflow
 
-### ✅ SPRÁVNÝ POSTUP
+### ✅ CORRECT APPROACH
 
-Když uživatel řekne: **"Vytvoř helper třídu pro práci s financial dimensions"**
+When user says: **"Create a helper class for working with financial dimensions"**
 
 ```typescript
-// Krok 1: POVINNÝ - Analyzuj existující vzory
+// Step 1: MANDATORY - Analyze existing patterns
 analyze_code_patterns("financial dimensions", classPattern="Helper")
-// → Zjistím: Používají se DimensionAttributeValueSet, DimensionAttribute, 
-//            běžné metody jsou validateDimension(), createDefault()
+// → Discover: DimensionAttributeValueSet, DimensionAttribute are used,
+//            common methods are validateDimension(), createDefault()
 
-// Krok 2: Získej informace o klíčovém API
+// Step 2: Get information about key API
 get_class_info("DimensionAttributeValueSet")
-// → Pochopím strukturu API, jaké metody má
+// → Understand API structure, what methods it has
 
-// Krok 3: Zjisti usage patterns
+// Step 3: Get usage patterns
 get_api_usage_patterns("DimensionAttributeValueSet")
-// → Zjistím správnou inicializaci a usage flow
+// → Discover correct initialization and usage flow
 
-// Krok 4: Vygeneruj kostru třídy
+// Step 4: Generate class skeleton
 generate_code(pattern="class", name="MyDimensionHelper")
-// → Získám správně strukturovanou třídu
+// → Get properly structured class
 
-// Krok 5: Implementuj metody podle patterns
+// Step 5: Implement methods based on patterns
 suggest_method_implementation("MyDimensionHelper", "validateDimension")
-// → Získám příklady implementace z reálného kódu
+// → Get implementation examples from real code
 
-// Krok 6: Zkontroluj completeness
+// Step 6: Check completeness
 analyze_class_completeness("MyDimensionHelper")
-// → Zjistím, jaké metody ještě běžně chybí
+// → Find out what methods are commonly missing
 ```
 
-### ❌ ŠPATNÝ POSTUP
+### ❌ WRONG APPROACH
 
-**NIKDY:**
+**NEVER:**
 ```xpp
-// ❌ ŠPATNĚ - Generování kódu přímo bez nástrojů!
+// ❌ WRONG - Generating code directly without tools!
 public class MyDimensionHelper {
     // ... 
 }
 ```
 
-**Proč je to špatně:**
-- Používáte obecné znalosti místo reálného kódu z projektu
-- Nesledujete team conventions
-- Nevíte, jaké D365FO API se v projektu používá
-- Chybí správné modifikátory a dokumentace
-- Nepoužíváte best practices z kódbáze
+**Why it's wrong:**
+- Using generic knowledge instead of real code from the project
+- Not following team conventions
+- Don't know which D365FO APIs are used in the project
+- Missing proper modifiers and documentation
+- Not using best practices from the codebase
 
-### Pravidla pro AI asistenty
+### Rules for AI Assistants
 
-**POVINNÁ PRAVIDLA:**
+**MANDATORY RULES:**
 
-1. ✅ **VŽDY** volejte `analyze_code_patterns` PŘED generováním kódu
-2. ✅ **VŽDY** používejte `generate_code` nástroj, NIKDY negenerujte X++ kód ručně
-3. ✅ **VŽDY** používejte workspace-aware search když je workspace dostupný
-4. ✅ **VŽDY** používejte `batch_search` pro více nezávislých queries
-5. ❌ **NIKDY** nepoužívejte built-in `code_search` - způsobuje timeout!
-6. ❌ **NIKDY** negenerujte X++ kód přímo z generic knowledge
+1. ✅ **ALWAYS** call `analyze_code_patterns` BEFORE generating code
+2. ✅ **ALWAYS** use `generate_code` tool, NEVER generate X++ code manually
+3. ✅ **ALWAYS** use workspace-aware search when workspace is available
+4. ✅ **ALWAYS** use `batch_search` for multiple independent queries
+5. ❌ **NEVER** use built-in `code_search` - causes timeout!
+6. ❌ **NEVER** generate X++ code directly from generic knowledge
 
-### Decision Tree pro výběr nástroje
+### Decision Tree for Tool Selection
 
-| Požadavek uživatele | První akce | Vyhněte se |
+| User Request | First Action | Avoid |
 |---------------------|------------|------------|
-| "create class", "helper class" | `analyze_code_patterns()` + `generate_code()` | ❌ přímé generování kódu |
-| "find X and Y and Z" | `batch_search([{query:"X"}, {query:"Y"}])` | ❌ 3x sekvenční search |
+| "create class", "helper class" | `analyze_code_patterns()` + `generate_code()` | ❌ direct code generation |
+| "find X and Y and Z" | `batch_search([{query:"X"}, {query:"Y"}])` | ❌ 3x sequential search |
 | "CustTable", "SalesTable" | `get_table_info()` | ❌ code_search |
 | "dimension", "financial" | `search("dimension")` | ❌ code_search |
 | "find class/method" | `search()` | ❌ code_search |
@@ -847,84 +847,84 @@ public class MyDimensionHelper {
 
 ---
 
-## 📊 Performance Metriky
+## 📊 Performance Metrics
 
-### Rychlost nástrojů
+### Tool Speed
 
-| Nástroj | Typická rychlost | Cache |
+| Tool | Typical Speed | Cache |
 |---------|------------------|-------|
 | `search` | < 10ms | ✅ SQLite index |
-| `batch_search` | ~50ms (3 queries) | ✅ Paralelní |
+| `batch_search` | ~50ms (3 queries) | ✅ Parallel |
 | `get_class_info` | < 5ms (cached) | ✅ File cache |
 | `get_table_info` | < 5ms (cached) | ✅ File cache |
 | `code_completion` | < 10ms | ✅ Prepared statements |
 | `generate_code` | < 1ms | ❌ Template-based |
-| `analyze_code_patterns` | 50-200ms | ⚠️ Částečně cachováno |
+| `analyze_code_patterns` | 50-200ms | ⚠️ Partially cached |
 
-### Database optimalizace
+### Database Optimization
 
-MCP server používá:
-- **SQLite s FTS5** - full-text search index pro rychlé vyhledávání
-- **WAL journal mode** - Write-Ahead Logging pro paralelní čtení
-- **Prepared statements** - cachované SQL dotazy
-- **Single transaction** - bulk insert během indexování
+MCP server uses:
+- **SQLite with FTS5** - full-text search index for fast searches
+- **WAL journal mode** - Write-Ahead Logging for parallel reads
+- **Prepared statements** - cached SQL queries
+- **Single transaction** - bulk insert during indexing
 
 ---
 
 ## 🔧 Troubleshooting
 
-### Časté problémy
+### Common Issues
 
-**1. Nástroj vrací "Not found"**
+**1. Tool returns "Not found"**
 ```typescript
-// Problém: Class "MyClass" not found
+// Problem: Class "MyClass" not found
 get_class_info("MyClass")
 
-// Řešení: Zkontrolujte překlepy, použijte search první
+// Solution: Check typos, use search first
 search("MyClass")
 ```
 
-**2. Workspace soubory se nenačítají**
+**2. Workspace files not loading**
 ```typescript
-// Problém: includeWorkspace=true nefunguje
+// Problem: includeWorkspace=true doesn't work
 
-// Zkontrolujte:
-// - Je workspacePath správně nastavená?
-// - Jsou v cestě XML soubory?
-// - Máte oprávnění číst soubory?
+// Check:
+// - Is workspacePath correctly set?
+// - Are there XML files in the path?
+// - Do you have permissions to read files?
 ```
 
-**3. Timeout při vyhledávání**
+**3. Timeout during search**
 ```typescript
-// ❌ NIKDY nepoužívejte built-in code_search!
-// Používá grep na velkých workspace → timeout 5+ minut
+// ❌ NEVER use built-in code_search!
+// Uses grep on large workspace → timeout 5+ minutes
 
-// ✅ Místo toho:
-search("myQuery")  // MCP nástroj - SQL index, < 10ms
+// ✅ Instead:
+search("myQuery")  // MCP tool - SQL index, < 10ms
 ```
 
-**4. Chybějící metody v completion**
+**4. Missing methods in completion**
 ```typescript
-// Problém: code_completion vrací prázdný seznam
+// Problem: code_completion returns empty list
 
-// Možné příčiny:
-// - Třída nemá veřejné metody
-// - Špatný název třídy (překlep)
-// - Třída není v indexu
+// Possible causes:
+// - Class has no public methods
+// - Wrong class name (typo)
+// - Class not in index
 
-// Řešení: Zkontrolujte existenci třídy
+// Solution: Check if class exists
 search("MyClass", types=["class"])
 ```
 
 ---
 
-## 📚 Další zdroje
+## 📚 Additional Resources
 
-- [WORKSPACE_AWARE.md](./WORKSPACE_AWARE.md) - Detaily o workspace-aware features
-- [USAGE_EXAMPLES.md](./USAGE_EXAMPLES.md) - Více příkladů použití
-- [SYSTEM_INSTRUCTIONS.md](./SYSTEM_INSTRUCTIONS.md) - Instrukce pro AI orchestrator
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - Architektura MCP serveru
+- [WORKSPACE_AWARE.md](./WORKSPACE_AWARE.md) - Details about workspace-aware features
+- [USAGE_EXAMPLES.md](./USAGE_EXAMPLES.md) - More usage examples
+- [SYSTEM_INSTRUCTIONS.md](./SYSTEM_INSTRUCTIONS.md) - Instructions for AI orchestrator
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - MCP server architecture
 
 ---
 
-**Poslední aktualizace:** 12. února 2026
+**Last updated:** February 12, 2026

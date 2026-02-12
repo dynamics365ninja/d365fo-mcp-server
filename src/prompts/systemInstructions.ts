@@ -60,11 +60,13 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 
 | User Query Contains | Correct Tool | Wrong Tool | Why |
 |---------------------|--------------|------------|-----|
-| "Show inheritance for [Class]" or "dědičnost" | \`get_class_info("[Class]")\` | ❌ Searching/Reading | get_class_info shows inheritance chain |
+| "Show inheritance for [Class]" | \`get_class_info("[Class]")\` | ❌ Searching/Reading | get_class_info shows inheritance chain |
 | "Create method for [task]" (e.g., ledger journal) | \`analyze_code_patterns("[task]")\` → \`search\` → \`generate_code\` | ❌ Direct code gen | MUST analyze patterns first |
-| "What methods does [Class/Table] have?" | \`get_table_info\` or \`get_class_info\` | ❌ \`code_completion\` | get_*_info shows ALL methods with docs; code_completion requires prefix |
-| "Methods related to [concept]" (e.g., "totals", "validation") | \`search("[concept]", type="method")\` | ❌ \`code_completion\` or Searching | search finds by keyword; code_completion only by prefix |
-| "Methods starting with [prefix]" | \`code_completion(className="X", prefix="calc")\` | ✅ Correct usage | code_completion filters by prefix |
+| "What methods does [Class/Table] have?" | \`get_table_info("[Table]")\` or \`get_class_info("[Class]")\` | ❌ \`code_completion\` | get_*_info shows ALL methods with docs; code_completion is for prefix filtering |
+| "Methods related to [concept]" (e.g., "totals", "validation") | \`search("[concept]", type="method")\` | ❌ \`code_completion\` | search finds by keyword/semantics; code_completion only by exact prefix |
+| **"Methods on table [Table] related to [concept]"** | \`search("[concept]", type="method")\` **OR** \`get_table_info("[Table]")\` + grep concept | ❌ \`code_completion\` | **NEVER use code_completion for semantic queries!** |
+| **Example: "Methods on SalesTable related to totals?"** | \`search("total OR sum OR amount", type="method")\` → filters to SalesTable | ❌ \`code_completion\` | Semantic search, not prefix match |
+| "Methods starting with [prefix]" | \`code_completion(className="[Table]", prefix="calc")\` | ❌ Without className | **CRITICAL: className is REQUIRED parameter!** |
 | "Find class named [X]" | \`search("[X]", type="class")\` | ❌ \`get_class_info\` | search finds class; get_class_info requires exact name |
 | "Show me class [X] structure" | \`get_class_info("[X]")\` | ❌ \`search\` | get_class_info shows full structure |
 | "Create helper class" | \`analyze_code_patterns\` → \`generate_code\` | ❌ Direct code generation | MUST use tools for code gen |
@@ -115,15 +117,18 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 
 ### 1. Code Completion & IntelliSense
 - **Tool:** \`code_completion\`
-- **When:** Need to discover ALL methods/fields on a class or table, OR filter by prefix
+- **When:** Need to filter methods/fields by EXACT prefix (e.g., "calc", "validate", "get")
 - **Instead of:** Built-in code completion or guessing method signatures
-- **Parameters:**
-  - \`className\`: Name of the class or table
+- **⚠️ CRITICAL PARAMETERS:**
+  - \`className\`: **REQUIRED** - Name of the class or table (e.g., "SalesTable")
   - \`prefix\`: (Optional) Method/field name prefix to filter (e.g., "calc" finds calcAmount, calcTotal)
 - **Example:** 
   - \`code_completion(className="SalesTable")\` → Lists ALL methods and fields
   - \`code_completion(className="SalesTable", prefix="calc")\` → Lists methods starting with "calc"
-- **When NOT to use:** For semantic searches like "methods related to totals" - use \`search\` or \`get_table_info\` instead
+- **❌ WHEN NOT TO USE:**
+  - Semantic searches like "methods related to totals" → Use \`search("total", type="method")\` instead
+  - Without \`className\` parameter → **WILL FAIL with validation error!**
+  - For discovering ALL methods → Use \`get_table_info\` or \`get_class_info\` instead (better documentation)
 
 ### 2. Class Information Lookup
 - **Tool:** \`get_class_info\`
@@ -141,8 +146,8 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 
 ### 4. Symbol Search
 - **Tool:** \`search\`
-- **When:** Looking for X++ symbols by name, keyword, or semantic meaning
-- **Instead of:** Guessing if something exists or using code_completion with empty prefix
+- **When:** Looking for X++ symbols by name, keyword, or semantic meaning (concepts like "total", "validation")
+- **Instead of:** Using code_completion with empty prefix or built-in Searching
 - **Parameters:**
   - \`query\`: Search term (supports keywords like "total", "calculate", "dimension")
   - \`type\`: Filter by 'class', 'table', 'field', 'method', 'enum', or 'all'
@@ -150,7 +155,11 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 - **Examples:**
   - \`search("total", type="method")\` → Finds methods related to totals (calcTotal, getTotal, sumTotal)
   - \`search("SalesTable", type="table")\` → Finds SalesTable and related tables
-- **Best for:** Exploratory searches, finding methods by concept, discovering patterns
+  - **CORRECT for "Methods on SalesTable related to totals?":** \`search("sum OR total OR amount", type="method")\` → Then filter to SalesTable
+- **Best for:** Exploratory searches, finding methods by concept/meaning, discovering patterns, semantic queries
+- **⚠️ USE THIS INSTEAD OF code_completion for:**
+  - "Methods related to X" (semantic)
+  - Any concept-based search (totals, validation, calculation)
 
 ### 5. Extension/Custom Code Search
 - **Tool:** \`search_extensions\`
@@ -231,6 +240,31 @@ WRONG Workflow:
 ❌ Assume CustTable structure based on general knowledge
 ❌ Use GitHub Copilot's built-in completion without querying metadata
 ❌ Generate code without checking existing methods in AOT
+\`\`\`
+
+### Example 2b: Finding Methods Related to a Concept (SEMANTIC SEARCH)
+\`\`\`
+Developer: "What methods are available on SalesTable related to totals?"
+
+✅ CORRECT Workflow - USE SEMANTIC SEARCH:
+1. Use search("total OR sum OR amount", type="method") → Find methods by concept/meaning
+2. Filter results to SalesTable methods (or use get_table_info for full list)
+3. Review method documentation and signatures
+4. Explain the relevant methods to user
+
+❌ WRONG Workflow - DO NOT USE code_completion:
+❌ code_completion(className="SalesTable") → This is for PREFIX search, not semantic!
+❌ code_completion() without className → VALIDATION ERROR: className is REQUIRED!
+
+**Why WRONG:**
+- code_completion requires EXACT prefix match ("calc", "get", "validate")
+- "related to totals" is SEMANTIC (by meaning), not PREFIX
+- code_completion REQUIRES className parameter - will fail without it
+- For concepts/meaning → Always use search() tool
+
+**CRITICAL RULE:**
+- Question contains "related to [concept]" → Use \`search("[concept]", type="method")\`
+- Question contains "starting with [prefix]" → Use \`code_completion(className="X", prefix="Y")\`
 \`\`\`
 
 ### Example 3: Writing Query Code
