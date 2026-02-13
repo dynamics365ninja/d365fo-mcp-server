@@ -39,6 +39,39 @@
 
 ---
 
+## 🔴 RULE #0.6: D365FO FILE CREATION - USE CORRECT TOOL! 🔴
+
+**WHEN USER ASKS TO CREATE ANY D365FO XML FILE:**
+1. ❌ **FORBIDDEN**: Using `create_file` for D365FO objects (AxClass, AxTable, AxForm, etc.)
+2. ❌ **FORBIDDEN**: Creating XML files manually with wrong structure/indentation
+3. ✅ **MANDATORY**: Always use `create_d365fo_file` MCP tool for D365FO objects
+4. ✅ **MANDATORY**: The tool ensures correct XML structure, TABS indentation, and proper AOT location
+
+**WHY `create_d365fo_file` IS MANDATORY:**
+- ✅ Uses **TABS** for indentation (Microsoft D365FO standard)
+- ✅ Correct XML structure matching real D365FO files from `K:\AosService\PackagesLocalDirectory`
+- ✅ Saves to proper AOT location: `K:\AosService\PackagesLocalDirectory\Model\Model\AxClass\`
+- ✅ No `<ClusteredIndex>` in tables (not in real files)
+- ✅ No `<Declaration>` in table `<SourceCode>` (only `<Methods />`)
+- ✅ No system fields in tables (CreatedBy, ModifiedBy - added by platform)
+- ✅ Can automatically add to Visual Studio project
+
+**IF YOU USE `create_file` FOR D365FO OBJECTS - YOU ARE WRONG!**
+
+**Example - User says "create a table MyCustomTable":**
+```
+❌ WRONG: create_file("MyCustomTable.xml", content="<AxTable>...")  ← Wrong tool!
+✅ RIGHT: create_d365fo_file(objectType="table", objectName="MyCustomTable", modelName="CustomCore")
+```
+
+**Example - User says "create a class MyHelper":**
+```
+❌ WRONG: create_file("MyHelper.xml", ...)  ← Wrong structure, spaces instead of tabs!
+✅ RIGHT: create_d365fo_file(objectType="class", objectName="MyHelper", modelName="CustomCore")
+```
+
+---
+
 ## RULE #0: WORKSPACE CONTEXT
 
 **THIS IS AN MCP SERVER PROJECT, NOT AN X++ WORKSPACE!**
@@ -121,6 +154,7 @@
 | User Request Contains | First Action | Avoid Using |
 |-----------------------|--------------|-------------|
 | "create class", "helper class" | `analyze_code_patterns()` + `search()` + `generate_code()` | ❌ code_search, ❌ direct code generation |
+| "create table/form/enum" | `create_d365fo_file(objectType=...)` | ❌ create_file |
 | "find X and Y and Z" (multiple) | `batch_search([{query:"X"}, {query:"Y"}, {query:"Z"}])` | ❌ multiple sequential searches |
 | "CustTable", "SalesTable", any Table | `get_table_info()` | ❌ code_search |
 | "dimension", "financial" | `search("dimension")` | ❌ code_search |

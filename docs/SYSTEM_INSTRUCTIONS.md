@@ -106,10 +106,32 @@ But this requires manual intervention every time. The `.github` folder is **stro
 The `.github/copilot-instructions.md` file includes:
 
 - 🚨 Mandatory policy to ALWAYS use tools first
+- � Mandatory use of `create_d365fo_file` for D365FO XML files (NOT `create_file`)
 - 📋 Decision tree for when to use which tool
 - ✅ Correct workflow examples with tool usage
 - ❌ Wrong workflow examples to avoid
 - 🎯 Specific triggers (e.g., "create class" → call `search` + `generate_code`)
+- 📁 File creation rules (use `create_d365fo_file` for AxClass, AxTable, AxForm, etc.)
+
+### Critical File Creation Rules
+
+**The instructions enforce:**
+
+1. ✅ **Use `create_d365fo_file`** for all D365FO objects (AxClass, AxTable, AxForm, AxEnum, etc.)
+   - Ensures correct XML structure with TABS indentation
+   - Saves to proper AOT location: `K:\AosService\PackagesLocalDirectory\Model\`
+   - Matches Microsoft D365FO standard format
+   
+2. ❌ **NEVER use `create_file`** for D365FO XML files
+   - Wrong indentation (spaces instead of TABS)
+   - Incorrect XML structure
+   - Wrong file location
+
+**Example:**
+```
+❌ WRONG: create_file("MyHelper.xml", ...)
+✅ RIGHT: create_d365fo_file(objectType="class", objectName="MyHelper", modelName="CustomCore")
+```
 
 ### Performance
 
