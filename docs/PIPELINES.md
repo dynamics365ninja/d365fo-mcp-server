@@ -459,7 +459,7 @@ env:
 - ✅ Review execution times for anomalies
 
 #### Monthly
-- ✅ Verify database size (~1.5GB expected)
+- ✅ Verify database size (~2GB expected)
 - ✅ Check blob storage usage
 - ✅ Review App Service metrics
 
@@ -515,7 +515,7 @@ env:
 1. Review CUSTOM_MODELS variable
 2. Remove unnecessary models
 3. Re-run extraction
-4. Expected size: ~1.5GB
+4. Expected size: ~2GB
 ```
 
 ---
