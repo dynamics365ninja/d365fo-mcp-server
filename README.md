@@ -139,7 +139,31 @@ The MCP server now supports **hybrid search** — combining external D365FO meta
 - ✅ Workspace code prioritized over external metadata
 - ✅ No manual indexing needed — scans on-demand with caching
 
-See [docs/WORKSPACE_AWARE.md](docs/WORKSPACE_AWARE.md) for complete documentation.
+#### How to Use Workspace-Aware Features
+
+**In VS Code (Automatic):**
+GitHub Copilot automatically detects your workspace path and includes it in MCP tool calls.
+
+**In Visual Studio 2022 (Manual Workaround):**
+Since VS 2022 doesn't automatically provide workspace path, explicitly specify it in your query:
+
+```
+Search for "MyCustomClass" including my workspace at "C:\AOSService\PackagesLocalDirectory\MyModel"
+```
+
+Or set context once per session:
+```
+My workspace path is C:\D365\MyProject\PackagesLocalDirectory\MyModel
+Remember this for all queries in this session.
+```
+
+#### Performance & Limitations
+
+- **Caching:** Workspace scans are cached for 5 minutes
+- **Speed:** Glob-based discovery is fast (<100ms for typical projects)
+- **Deduplication:** Workspace files take priority over external metadata
+- **Limitation:** Large workspaces (>1000 files) may be slower
+- **No auto-refresh:** Manual refresh needed after file changes
 
 ### Technical Highlights
 
@@ -166,7 +190,7 @@ See [docs/WORKSPACE_AWARE.md](docs/WORKSPACE_AWARE.md) for complete documentatio
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │  Symbols Indexed      584,799    (classes, tables, methods)   │
-│  Database Size        ~1.5 GB    (SQLite with FTS5)           │
+│  Database Size        ~2 GB      (SQLite with FTS5)           │
 │  Search Latency       <50 ms     (with caching: <10 ms)       │
 │  Startup Time         <5 sec     (database download)          │
 └────────────────────────────────────────────────────────────────┘
@@ -243,6 +267,9 @@ This MCP server is designed to work seamlessly with **Visual Studio 2022** throu
        "d365fo-code-intelligence": {
          "url": "https://your-app.azurewebsites.net/mcp/",
          "description": "D365 F&O Code Intelligence Server"
+       },
+       "context": {
+         "workspacePath": "K:\\AOSService\\PackagesLocalDirectory\\MyModel"
        }
      }
    }
@@ -343,7 +370,7 @@ RATE_LIMIT_MAX_REQUESTS=100
 │  ┌─────────────────────────┐    ┌─────────────────────────────┐    │
 │  │  Azure App Service      │    │  Azure Blob Storage          │    │
 │  │  (Linux P0v3)           │◄───│  (xpp-metadata.db)           │    │
-│  │  Node.js 22 LTS         │    │  ~1.5 GB                     │    │
+│  │  Node.js 22 LTS         │    │  ~2 GB                       │    │
 │  └─────────────────────────┘    └─────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
@@ -509,7 +536,7 @@ npm run build-database
 | Resource | Configuration | Monthly Cost |
 |----------|---------------|--------------|
 | App Service P0v3 | 1 vCPU, 4 GB RAM, Always-On | ~$62 |
-| Blob Storage | 1.5 GB Hot LRS | ~$3 |
+| Blob Storage | 2 GB Hot LRS | ~$3 |
 | Azure Cache for Redis | Basic C0 (optional) | ~$16 |
 | Application Insights | Basic monitoring | ~$0-5 |
 | **Total (without Redis)** | | **~$65-70/month** |
