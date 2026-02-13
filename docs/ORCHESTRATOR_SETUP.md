@@ -313,6 +313,59 @@ Copilot should:
 - Copilot should call `search` tool BEFORE generating code
 - If it doesn't, the `.github/copilot-instructions.md` file wasn't loaded
 
+### Workspace Context Not Available (VS 2022 Limitation)
+
+**Problem:** Workspace-aware features don't include your local project files
+
+**Root Cause:** GitHub Copilot extension for Visual Studio 2022 does not automatically send the workspace path to MCP server (unlike VS Code).
+
+**Solution: Explicitly Specify Workspace Path in Query**
+
+When using workspace-aware tools, include the workspace path in your natural language query:
+
+**Example 1: Search with workspace context**
+```
+Search for "MyCustomClass" including my workspace at "C:\AOSService\PackagesLocalDirectory\MyModel"
+```
+
+**Example 2: Pattern analysis**
+```
+Analyze dimension helper patterns in my project.
+Workspace path: C:\D365\MyProject\Trunk\Main
+```
+
+**Example 3: Generate code from patterns**
+```
+Create a dimension helper class based on patterns in my codebase.
+Use workspace: C:\AOS\PackagesLocalDirectory\MyCustomModel
+```
+
+**How it works:**
+1. GitHub Copilot extracts the workspace path from your query
+2. Passes `workspacePath` parameter to MCP tools
+3. Returns hybrid results (🔹 workspace + 📦 external metadata)
+
+**💡 Pro Tip: Set Workspace Context for Session**
+
+At the beginning of a Copilot Chat session, you can tell Copilot:
+
+```
+My workspace path is C:\D365\MyProject\PackagesLocalDirectory\MyModel
+Remember this for all queries in this session.
+```
+
+Then for subsequent queries, simply say:
+```
+Search for MyClass including workspace
+```
+
+GitHub Copilot should remember the workspace path within the conversation context.
+
+**⚠️ Limitations:**
+- Workspace path must be manually specified in each new conversation
+- VS Code automatically provides workspace path (this workaround is VS 2022 specific)
+- Future VS 2022 extension updates may add automatic workspace detection
+
 ### Empty Results from Tools
 
 **Problem:** Tools return empty results or "not found"

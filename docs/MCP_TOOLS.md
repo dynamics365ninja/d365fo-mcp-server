@@ -914,7 +914,7 @@ search("MyClass", types=["class"])
 
 ## 📚 Additional Resources
 
-- [WORKSPACE_AWARE.md](./WORKSPACE_AWARE.md) - Details about workspace-aware features
+- [README.md](../README.md) - Main documentation with workspace-aware features
 - [USAGE_EXAMPLES.md](./USAGE_EXAMPLES.md) - More usage examples
 - [SYSTEM_INSTRUCTIONS.md](./SYSTEM_INSTRUCTIONS.md) - Instructions for AI orchestrator
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - MCP server architecture

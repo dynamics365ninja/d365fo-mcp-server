@@ -454,7 +454,7 @@ npm rebuild better-sqlite3
 - Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design details
 - See [PIPELINES.md](PIPELINES.md) for pipeline automation details
 - Read [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) for ISV configuration
-- Explore [WORKSPACE_AWARE.md](WORKSPACE_AWARE.md) for workspace integration features
+- See [README.md](../README.md) for workspace-aware features and usage
 
 ---
 
