@@ -1,0 +1,595 @@
+/**
+ * D365FO File Creator Tool
+ * Creates physical XML files in the AOT package structure
+ */
+
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import { Parser, Builder } from 'xml2js';
+
+const CreateD365FileArgsSchema = z.object({
+  objectType: z
+    .enum(['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity'])
+    .describe('Type of D365FO object to create'),
+  objectName: z
+    .string()
+    .describe('Name of the object (e.g., MyHelperClass, MyCustomTable)'),
+  modelName: z
+    .string()
+    .describe('Model name (e.g., CustomCore, ApplicationSuite)'),
+  packagePath: z
+    .string()
+    .optional()
+    .describe('Base package path (default: K:\\AosService\\PackagesLocalDirectory)'),
+  sourceCode: z
+    .string()
+    .optional()
+    .describe('X++ source code for the object (class declaration, methods, etc.)'),
+  properties: z
+    .record(z.string(), z.any())
+    .optional()
+    .describe('Additional properties for the object (extends, implements, etc.)'),
+  addToProject: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Whether to automatically add file to Visual Studio project'),
+  projectPath: z
+    .string()
+    .optional()
+    .describe('Path to .rnrproj file (required if addToProject is true)'),
+});
+
+/**
+ * XML Templates for different D365FO object types
+ */
+class XmlTemplateGenerator {
+  /**
+   * Generate AxClass XML structure
+   */
+  static generateAxClassXml(
+    className: string,
+    sourceCode?: string,
+    properties?: Record<string, any>
+  ): string {
+    const declaration = sourceCode || `public class ${className}\n{\n}`;
+    const extendsAttr = properties?.extends
+      ? `  <Extends>${properties.extends}</Extends>\n`
+      : '';
+    const implementsAttr = properties?.implements
+      ? `  <Implements>${properties.implements}</Implements>\n`
+      : '';
+    const isFinalAttr = properties?.isFinal ? `  <IsFinal>Yes</IsFinal>\n` : '';
+    const isAbstractAttr = properties?.isAbstract
+      ? `  <IsAbstract>Yes</IsAbstract>\n`
+      : '';
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>${className}</Name>
+${extendsAttr}${implementsAttr}${isFinalAttr}${isAbstractAttr}  <SourceCode>
+    <Declaration><![CDATA[
+${declaration}
+    ]]></Declaration>
+    <Methods />
+  </SourceCode>
+</AxClass>
+`;
+  }
+
+  /**
+   * Generate AxTable XML structure (based on real D365FO table structure)
+   */
+  static generateAxTableXml(
+    tableName: string,
+    properties?: Record<string, any>
+  ): string {
+    const label = properties?.label || tableName;
+    const tableGroup = properties?.tableGroup || 'Main';
+    const titleField1 = properties?.titleField1 || '';
+    const titleField2 = properties?.titleField2 || '';
+    const extendsFrom = properties?.extends || 'common';
+    const configKey = properties?.configurationKey || '';
+    const primaryIndex = properties?.primaryIndex || '';
+    const cacheLookup = properties?.cacheLookup || 'NotInTOS';
+
+    // Build optional configuration key
+    const configKeyXml = configKey
+      ? `\t<ConfigurationKey>${configKey}</ConfigurationKey>\n`
+      : '';
+
+    // Build optional primary/clustered index
+    const primaryIndexXml = primaryIndex
+      ? `\t<PrimaryIndex>${primaryIndex}</PrimaryIndex>\n\t<ClusteredIndex>${primaryIndex}</ClusteredIndex>\n\t<ReplacementKey>${primaryIndex}</ReplacementKey>\n`
+      : '';
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>${tableName}</Name>
+\t<SourceCode>
+\t\t<Declaration><![CDATA[
+public class ${tableName} extends ${extendsFrom}
+{
+}
+]]></Declaration>
+\t\t<Methods />
+\t</SourceCode>
+${configKeyXml}\t<Label>${label}</Label>
+\t<TableGroup>${tableGroup}</TableGroup>
+\t<TitleField1>${titleField1}</TitleField1>
+\t<TitleField2>${titleField2}</TitleField2>
+\t<CacheLookup>${cacheLookup}</CacheLookup>
+${primaryIndexXml}\t<CreatedBy>Yes</CreatedBy>
+\t<CreatedDateTime>Yes</CreatedDateTime>
+\t<ModifiedBy>Yes</ModifiedBy>
+\t<ModifiedDateTime>Yes</ModifiedDateTime>
+\t<DeleteActions />
+\t<FieldGroups />
+\t<Fields />
+\t<Indexes />
+\t<Mappings />
+\t<Relations />
+\t<StateMachines />
+</AxTable>
+`;
+  }
+
+  /**
+   * Generate AxEnum XML structure
+   */
+  static generateAxEnumXml(
+    enumName: string,
+    properties?: Record<string, any>
+  ): string {
+    const label = properties?.label || enumName;
+    const useEnumValue = properties?.useEnumValue ? 'Yes' : 'No';
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>${enumName}</Name>
+  <Label>${label}</Label>
+  <UseEnumValue>${useEnumValue}</UseEnumValue>
+  <EnumValues />
+</AxEnum>
+`;
+  }
+
+  /**
+   * Generate AxForm XML structure (based on real D365FO form structure)
+   */
+  static generateAxFormXml(
+    formName: string,
+    properties?: Record<string, any>
+  ): string {
+    const caption = properties?.caption || `@${formName}`;
+    const formTemplate = properties?.formTemplate || 'DetailsPage';
+    const pattern = properties?.pattern || 'DetailsTransaction';
+    const dataSource = properties?.dataSource || '';
+    const interactionClass = properties?.interactionClass || '';
+    const style = properties?.style || 'DetailsFormTransaction';
+
+    // Build class declaration for SourceCode
+    const extendsFrom = properties?.extends || 'FormRun';
+    const classDeclaration = properties?.classDeclaration || 
+      `[Form]\npublic class ${formName} extends ${extendsFrom}\n{\n}`;
+
+    // Build optional InteractionClass
+    const interactionClassXml = interactionClass
+      ? `\t<InteractionClass>${interactionClass}</InteractionClass>\n`
+      : '';
+
+    // Build DataSource reference for Design
+    const dataSourceXml = dataSource
+      ? `\t\t<DataSource xmlns="">${dataSource}</DataSource>\n`
+      : '';
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>${formName}</Name>
+\t<SourceCode>
+\t\t<Methods xmlns="">
+\t\t\t<Method>
+\t\t\t\t<Name>classDeclaration</Name>
+\t\t\t\t<Source><![CDATA[
+${classDeclaration}
+]]></Source>
+\t\t\t</Method>
+\t\t</Methods>
+\t</SourceCode>
+\t<FormTemplate>${formTemplate}</FormTemplate>
+${interactionClassXml}\t<DataSources />
+\t<Design>
+\t\t<Caption xmlns="">${caption}</Caption>
+${dataSourceXml}\t\t<Pattern xmlns="">${pattern}</Pattern>
+\t\t<Style xmlns="">${style}</Style>
+\t\t<Controls xmlns="" />
+\t</Design>
+\t<Parts />
+</AxForm>
+`;
+  }
+
+  /**
+   * Generate AxQuery XML structure
+   */
+  static generateAxQueryXml(
+    queryName: string,
+    properties?: Record<string, any>
+  ): string {
+    const title = properties?.title || queryName;
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxQuery xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>${queryName}</Name>
+  <Title>${title}</Title>
+  <DataSources />
+</AxQuery>
+`;
+  }
+
+  /**
+   * Generate AxView XML structure
+   */
+  static generateAxViewXml(
+    viewName: string,
+    properties?: Record<string, any>
+  ): string {
+    const label = properties?.label || viewName;
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>${viewName}</Name>
+  <Label>${label}</Label>
+  <Fields />
+  <Mappings />
+  <Metadata />
+  <ViewMetadata />
+</AxView>
+`;
+  }
+
+  /**
+   * Generate AxDataEntityView XML structure
+   */
+  static generateAxDataEntityXml(
+    entityName: string,
+    properties?: Record<string, any>
+  ): string {
+    const label = properties?.label || entityName;
+    const publicEntityName = properties?.publicEntityName || entityName;
+    const publicCollectionName =
+      properties?.publicCollectionName || `${entityName}Collection`;
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>${entityName}</Name>
+  <Label>${label}</Label>
+  <DataManagementEnabled>Yes</DataManagementEnabled>
+  <DataManagementStagingTable>${entityName}Staging</DataManagementStagingTable>
+  <EntityCategory>Transaction</EntityCategory>
+  <IsPublic>Yes</IsPublic>
+  <PublicCollectionName>${publicCollectionName}</PublicCollectionName>
+  <PublicEntityName>${publicEntityName}</PublicEntityName>
+  <Fields />
+  <Keys />
+  <Mappings />
+  <Ranges />
+  <Relations />
+  <ViewMetadata />
+</AxDataEntityView>
+`;
+  }
+
+  /**
+   * Generate XML based on object type
+   */
+  static generate(
+    objectType: string,
+    objectName: string,
+    sourceCode?: string,
+    properties?: Record<string, any>
+  ): string {
+    switch (objectType) {
+      case 'class':
+        return this.generateAxClassXml(objectName, sourceCode, properties);
+      case 'table':
+        return this.generateAxTableXml(objectName, properties);
+      case 'enum':
+        return this.generateAxEnumXml(objectName, properties);
+      case 'form':
+        return this.generateAxFormXml(objectName, properties);
+      case 'query':
+        return this.generateAxQueryXml(objectName, properties);
+      case 'view':
+        return this.generateAxViewXml(objectName, properties);
+      case 'data-entity':
+        return this.generateAxDataEntityXml(objectName, properties);
+      default:
+        throw new Error(`Unsupported object type: ${objectType}`);
+    }
+  }
+}
+
+/**
+ * Visual Studio Project (.rnrproj) Manipulator
+ */
+class ProjectFileManager {
+  private parser: Parser;
+  private builder: Builder;
+
+  constructor() {
+    this.parser = new Parser({
+      explicitArray: false,
+      mergeAttrs: false,
+      trim: true,
+    });
+    this.builder = new Builder({
+      xmldec: { version: '1.0', encoding: 'utf-8' },
+      renderOpts: { pretty: true, indent: '  ' },
+    });
+  }
+
+  /**
+   * Get folder name for object type in project
+   */
+  private getFolderName(objectType: string): string {
+    const folderMap: Record<string, string> = {
+      class: 'Classes',
+      table: 'Tables',
+      enum: 'Enums',
+      form: 'Forms',
+      query: 'Queries',
+      view: 'Views',
+      'data-entity': 'Data Entities',
+    };
+    return folderMap[objectType] || 'Classes';
+  }
+
+  /**
+   * Add file reference to Visual Studio project
+   */
+  async addToProject(
+    projectPath: string,
+    objectType: string,
+    objectName: string,
+    relativeXmlPath: string
+  ): Promise<void> {
+    // Read project file
+    const projectContent = await fs.readFile(projectPath, 'utf-8');
+    const project = await this.parser.parseStringPromise(projectContent);
+
+    // Ensure project structure exists
+    if (!project.Project) {
+      throw new Error('Invalid .rnrproj file structure');
+    }
+
+    // Initialize ItemGroup if not exists
+    if (!project.Project.ItemGroup) {
+      project.Project.ItemGroup = [{ Folder: [] }, { Content: [] }];
+    }
+
+    // Convert to array if single ItemGroup
+    if (!Array.isArray(project.Project.ItemGroup)) {
+      project.Project.ItemGroup = [project.Project.ItemGroup];
+    }
+
+    // Find or create Folder ItemGroup
+    let folderGroup = project.Project.ItemGroup.find(
+      (group: any) => group.Folder !== undefined
+    );
+    if (!folderGroup) {
+      folderGroup = { Folder: [] };
+      project.Project.ItemGroup.push(folderGroup);
+    }
+
+    // Find or create Content ItemGroup
+    let contentGroup = project.Project.ItemGroup.find(
+      (group: any) => group.Content !== undefined
+    );
+    if (!contentGroup) {
+      contentGroup = { Content: [] };
+      project.Project.ItemGroup.push(contentGroup);
+    }
+
+    // Ensure arrays
+    if (!Array.isArray(folderGroup.Folder)) {
+      folderGroup.Folder = folderGroup.Folder ? [folderGroup.Folder] : [];
+    }
+    if (!Array.isArray(contentGroup.Content)) {
+      contentGroup.Content = contentGroup.Content ? [contentGroup.Content] : [];
+    }
+
+    // Get folder name
+    const folderName = this.getFolderName(objectType);
+
+    // Add folder if not exists
+    const folderExists = folderGroup.Folder.some(
+      (folder: any) =>
+        folder.$ && folder.$.Include === `${folderName}\\`
+    );
+    if (!folderExists) {
+      folderGroup.Folder.push({
+        $: { Include: `${folderName}\\` },
+      });
+    }
+
+    // Check if file already in project
+    const fileExists = contentGroup.Content.some(
+      (content: any) =>
+        content.$ && content.$.Include === relativeXmlPath
+    );
+
+    if (fileExists) {
+      throw new Error(`File ${objectName} is already in the project`);
+    }
+
+    // Add file reference
+    contentGroup.Content.push({
+      $: { Include: relativeXmlPath },
+      SubType: 'Content',
+      Name: objectName,
+      Link: `${folderName}\\${objectName}.xml`,
+    });
+
+    // Write back to project file
+    const updatedXml = this.builder.buildObject(project);
+    await fs.writeFile(projectPath, updatedXml, 'utf-8');
+  }
+}
+
+/**
+ * Create D365FO file handler function
+ */
+export async function handleCreateD365File(
+  request: CallToolRequest
+): Promise<{ content: Array<{ type: string; text: string }> }> {
+  const args = CreateD365FileArgsSchema.parse(request.params.arguments);
+
+  try {
+    // Determine object folder based on type
+    const objectFolderMap: Record<string, string> = {
+      class: 'AxClass',
+      table: 'AxTable',
+      enum: 'AxEnum',
+      form: 'AxForm',
+      query: 'AxQuery',
+      view: 'AxView',
+      'data-entity': 'AxDataEntityView',
+    };
+
+    const objectFolder = objectFolderMap[args.objectType];
+    if (!objectFolder) {
+      throw new Error(`Unsupported object type: ${args.objectType}`);
+    }
+
+    // Construct full path
+    const basePath =
+      args.packagePath || 'K:\\AosService\\PackagesLocalDirectory';
+    const modelPath = path.join(
+      basePath,
+      args.modelName,
+      args.modelName,
+      objectFolder
+    );
+    const fileName = `${args.objectName}.xml`;
+    const fullPath = path.join(modelPath, fileName);
+
+    // Check if directory exists, create if not
+    try {
+      await fs.access(modelPath);
+    } catch {
+      await fs.mkdir(modelPath, { recursive: true });
+    }
+
+    // Check if file already exists
+    try {
+      await fs.access(fullPath);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `⚠️ File already exists: ${fullPath}\n\nPlease choose a different name or delete the existing file first.`,
+          },
+        ],
+      };
+    } catch {
+      // File doesn't exist, proceed with creation
+    }
+
+    // Generate XML content
+    const xmlContent = XmlTemplateGenerator.generate(
+      args.objectType,
+      args.objectName,
+      args.sourceCode,
+      args.properties
+    );
+
+    // Write file
+    await fs.writeFile(fullPath, xmlContent, 'utf-8');
+
+    // Add to Visual Studio project if requested
+    let projectMessage = '';
+    if (args.addToProject) {
+      if (!args.projectPath) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `⚠️ Cannot add to project: projectPath parameter is required when addToProject is true.`,
+            },
+          ],
+        };
+      }
+
+      try {
+        // Validate project file exists
+        await fs.access(args.projectPath);
+
+        // Calculate relative path from project file to XML
+        const relativeXmlPath = `${objectFolder}\\${fileName}`;
+
+        // Add to project
+        const projectManager = new ProjectFileManager();
+        await projectManager.addToProject(
+          args.projectPath,
+          args.objectType,
+          args.objectName,
+          relativeXmlPath
+        );
+
+        projectMessage = `\n✅ Successfully added to Visual Studio project:\n📋 Project: ${args.projectPath}\n`;
+      } catch (projectError) {
+        projectMessage = `\n⚠️ File created but failed to add to project:\n${projectError instanceof Error ? projectError.message : 'Unknown error'}\n`;
+      }
+    }
+
+    // Build success message
+    const nextSteps = args.addToProject
+      ? `Next steps:\n` +
+        `1. Reload project in Visual Studio (or close/reopen solution)\n` +
+        `2. Build the project to synchronize the object\n` +
+        `3. Refresh AOT in Visual Studio to see the new object\n`
+      : `Next steps:\n` +
+        `1. Add the file to your Visual Studio project (.rnrproj)\n` +
+        `2. Build the project to synchronize the object\n` +
+        `3. Refresh AOT in Visual Studio to see the new object\n`;
+
+    // Return success message with file path
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `✅ Successfully created D365FO ${args.objectType} file:\n\n` +
+            `📁 Path: ${fullPath}\n` +
+            `📄 Object: ${args.objectName}\n` +
+            `📦 Model: ${args.modelName}\n` +
+            `🔧 Type: ${objectFolder}\n` +
+            projectMessage +
+            `\n${nextSteps}\n` +
+            `File content preview:\n\`\`\`xml\n${xmlContent.substring(0, 500)}...\n\`\`\``,
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `❌ Error creating D365FO file:\n\n${error instanceof Error ? error.message : 'Unknown error'}`,
+        },
+      ],
+    };
+  }
+}
+
+export const createD365FileToolDefinition = {
+  name: 'create_d365fo_file',
+  description:
+    'Creates a physical D365FO XML file in the correct AOT package structure. ' +
+    'This tool generates the complete XML metadata file for classes, tables, enums, forms, etc. ' +
+    'and saves it to the proper location in PackagesLocalDirectory. ' +
+    'Use this instead of creating files in the project folder directly.',
+  inputSchema: CreateD365FileArgsSchema,
+};

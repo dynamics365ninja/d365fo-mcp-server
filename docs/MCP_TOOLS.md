@@ -7,8 +7,9 @@ This document describes all available MCP server tools for working with D365 Fin
 1. [Core Search Tools](#-core-search-tools)
 2. [Detailed Object Information](#-detailed-object-information)
 3. [Intelligent Code Generation](#-intelligent-code-generation)
-4. [Workspace-Aware Features](#-workspace-aware-features)
-5. [Code Generation Workflow](#-code-generation-workflow)
+4. [File Creation Tools](#-file-creation-tools)
+5. [Workspace-Aware Features](#-workspace-aware-features)
+6. [Code Generation Workflow](#-code-generation-workflow)
 
 ---
 
@@ -697,7 +698,428 @@ Based on codebase analysis, the typical usage flow is:
 
 ---
 
-## 🔹 Workspace-Aware Features
+## � File Creation Tools
+
+### `create_d365fo_file`
+
+**Purpose:** Creates physical D365FO XML files in the correct AOT package structure
+
+**When to use:**
+- Need to create new X++ class, table, enum, form, or other D365FO object
+- Want to generate complete XML metadata file in proper location
+- Creating objects outside of Visual Studio (e.g., from scripts, automation)
+- Need proper XML structure for version control
+
+**What it does:**
+- Generates complete XML metadata file with proper D365FO structure
+- Saves file to correct location: `K:\AosService\PackagesLocalDirectory\ModelName\ModelName\AxClass\ObjectName.xml`
+- Creates directory structure if it doesn't exist
+- Validates file doesn't already exist to prevent accidental overwriting
+- Returns file path for adding to Visual Studio project
+
+**Parameters:**
+- `objectType` (enum, **required**) - type of D365FO object:
+  - `class` - AxClass file
+  - `table` - AxTable file
+  - `enum` - AxEnum file
+  - `form` - AxForm file
+  - `query` - AxQuery file
+  - `view` - AxView file
+  - `data-entity` - AxDataEntityView file
+- `objectName` (string, **required**) - name of the object (e.g., "MyHelperClass", "MyCustomTable")
+- `modelName` (string, **required**) - model name (e.g., "CustomCore", "ApplicationSuite")
+- `packagePath` (string, optional) - base package path (default: `K:\AosService\PackagesLocalDirectory`)
+- `sourceCode` (string, optional) - X++ source code for classes (class declaration, methods)
+- `properties` (object, optional) - additional properties:
+  - For classes: `extends`, `implements`, `isFinal`, `isAbstract`
+  - For tables: `label`, `tableGroup`, `titleField1`, `titleField2`, `extends` (default: "common"), `configurationKey`, `primaryIndex`, `cacheLookup` (default: "NotInTOS")
+  - For enums: `label`, `useEnumValue`
+  - For forms: `caption`, `formTemplate` (default: "DetailsPage"), `pattern` (default: "DetailsTransaction"), `style` (default: "DetailsFormTransaction"), `dataSource`, `interactionClass`, `extends` (default: "FormRun"), `classDeclaration`
+  - For data entities: `label`, `publicEntityName`, `publicCollectionName`
+- `addToProject` (boolean, optional) - automatically add file to Visual Studio project (default: false)
+- `projectPath` (string, optional) - path to .rnrproj file (required if `addToProject` is true)
+
+**Usage examples:**
+
+```typescript
+// Create a simple class
+create_d365fo_file(
+  objectType="class",
+  objectName="MyHelperClass",
+  modelName="CustomCore"
+)
+
+// Create class with source code and properties
+create_d365fo_file(
+  objectType="class",
+  objectName="MyDimensionHelper",
+  modelName="CustomCore",
+  sourceCode=`public class MyDimensionHelper extends RunBaseBatch
+{
+    public void run()
+    {
+        // TODO: Implement
+    }
+}`,
+  properties={
+    extends: "RunBaseBatch",
+    isFinal: true
+  }
+)
+
+// Create a table
+create_d365fo_file(
+  objectType="table",
+  objectName="MyCustomTable",
+  modelName="CustomCore",
+  properties={
+    label: "My Custom Table",
+    tableGroup: "Transaction",
+    titleField1: "Name",
+    titleField2: "Description",
+    extends: "common",              // Base class (default: "common")
+    configurationKey: "LogisticsBasic",  // Optional configuration key
+    primaryIndex: "NameIdx",        // Sets PrimaryIndex, ClusteredIndex, ReplacementKey
+    cacheLookup: "Found"            // Cache lookup setting (default: "NotInTOS")
+  }
+)
+
+// Create an enum
+create_d365fo_file(
+  objectType="enum",
+  objectName="MyStatusEnum",
+  modelName="CustomCore",
+  properties={
+    label: "My Status",
+    useEnumValue: false
+  }
+)
+
+// Create a form
+create_d365fo_file(
+  objectType="form",
+  objectName="MyCustomForm",
+  modelName="CustomCore",
+  properties={
+    caption: "@MyLabel:CustomForm",
+    formTemplate: "DetailsPage",       // DetailsPage, SimpleList, ListPage, etc.
+    pattern: "DetailsTransaction",      // Form pattern
+    style: "DetailsFormTransaction",    // Form style
+    dataSource: "MyTable",              // Primary data source
+    interactionClass: "MyFormInteraction", // Optional interaction class
+    extends: "FormRun"                  // Base class (default: FormRun)
+  }
+)
+
+// Create a data entity
+create_d365fo_file(
+  objectType="data-entity",
+  objectName="MyDataEntity",
+  modelName="CustomCore",
+  properties={
+    label: "My Data Entity",
+    publicEntityName: "MyEntity",
+    publicCollectionName: "MyEntities"
+  }
+)
+
+// Create with custom package path
+create_d365fo_file(
+  objectType="class",
+  objectName="MyClass",
+  modelName="CustomCore",
+  packagePath="C:\\AOSService\\PackagesLocalDirectory"
+)
+
+// 🆕 Automatically add to Visual Studio project
+create_d365fo_file(
+  objectType="class",
+  objectName="MyHelper",
+  modelName="CustomCore",
+  addToProject=true,
+  projectPath="K:\\MyProjects\\CustomCore\\CustomCore.rnrproj"
+)
+
+// 🆕 Full example with project integration
+create_d365fo_file(
+  objectType="class",
+  objectName="MyDimensionHelper",
+  modelName="CustomCore",
+  sourceCode=`public class MyDimensionHelper
+{
+    public void validate()
+    {
+        // TODO
+    }
+}`,
+  properties={
+    extends: "RunBaseBatch",
+    isFinal: true
+  },
+  addToProject=true,
+  projectPath="K:\\AOSService\\PackagesLocalDirectory\\CustomCore\\CustomCore.rnrproj"
+)
+```
+
+**Output example (without project integration):**
+
+```
+✅ Successfully created D365FO class file:
+
+📁 Path: K:\AosService\PackagesLocalDirectory\CustomCore\CustomCore\AxClass\MyHelperClass.xml
+📄 Object: MyHelperClass
+📦 Model: CustomCore
+🔧 Type: AxClass
+
+Next steps:
+1. Add the file to your Visual Studio project (.rnrproj)
+2. Build the project to synchronize the object
+3. Refresh AOT in Visual Studio to see the new object
+
+File content preview:
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>MyHelperClass</Name>
+  <SourceCode>
+    <Declaration><![CDATA[
+public class MyHelperClass
+{
+}
+    ]]></Declaration>
+    <Methods />
+  </SourceCode>
+</AxClass>
+```
+```
+
+**Output example (with project integration - addToProject=true):**
+
+```
+✅ Successfully created D365FO class file:
+
+📁 Path: K:\AosService\PackagesLocalDirectory\CustomCore\CustomCore\AxClass\MyHelperClass.xml
+📄 Object: MyHelperClass
+📦 Model: CustomCore
+🔧 Type: AxClass
+
+✅ Successfully added to Visual Studio project:
+📋 Project: K:\AOSService\PackagesLocalDirectory\CustomCore\CustomCore.rnrproj
+
+Next steps:
+1. Reload project in Visual Studio (or close/reopen solution)
+2. Build the project to synchronize the object
+3. Refresh AOT in Visual Studio to see the new object
+
+File content preview:
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>MyHelperClass</Name>
+  <SourceCode>
+    <Declaration><![CDATA[
+public class MyHelperClass
+{
+}
+    ]]></Declaration>
+    <Methods />
+  </SourceCode>
+</AxClass>
+```
+```
+
+**Table XML structure example (based on real D365FO tables):**
+
+When creating a table with:
+```typescript
+create_d365fo_file(
+  objectType="table",
+  objectName="MyCustomTable",
+  modelName="CustomCore",
+  properties={
+    label: "My Custom Table",
+    tableGroup: "Transaction",
+    titleField1: "RecId",
+    primaryIndex: "RecIdIdx",
+    cacheLookup: "Found"
+  }
+)
+```
+
+The generated XML includes:
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>MyCustomTable</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class MyCustomTable extends common
+{
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+	<Label>My Custom Table</Label>
+	<TableGroup>Transaction</TableGroup>
+	<TitleField1>RecId</TitleField1>
+	<TitleField2></TitleField2>
+	<CacheLookup>Found</CacheLookup>
+	<PrimaryIndex>RecIdIdx</PrimaryIndex>
+	<ClusteredIndex>RecIdIdx</ClusteredIndex>
+	<ReplacementKey>RecIdIdx</ReplacementKey>
+	<CreatedBy>Yes</CreatedBy>
+	<CreatedDateTime>Yes</CreatedDateTime>
+	<ModifiedBy>Yes</ModifiedBy>
+	<ModifiedDateTime>Yes</ModifiedDateTime>
+	<DeleteActions />
+	<FieldGroups />
+	<Fields />
+	<Indexes />
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>
+```
+
+**Form XML structure example (based on real D365FO forms):**
+
+When creating a form with:
+```typescript
+create_d365fo_file(
+  objectType="form",
+  objectName="MyCustomForm",
+  modelName="CustomCore",
+  properties={
+    caption: "@MyModule:CustomForm",
+    formTemplate: "DetailsPage",
+    pattern: "DetailsTransaction",
+    dataSource: "MyTable",
+    interactionClass: "MyFormInteraction"
+  }
+)
+```
+
+The generated XML includes:
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>MyCustomForm</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+[Form]
+public class MyCustomForm extends FormRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<FormTemplate>DetailsPage</FormTemplate>
+	<InteractionClass>MyFormInteraction</InteractionClass>
+	<DataSources />
+	<Design>
+		<Caption xmlns="">@MyModule:CustomForm</Caption>
+		<DataSource xmlns="">MyTable</DataSource>
+		<Pattern xmlns="">DetailsTransaction</Pattern>
+		<Style xmlns="">DetailsFormTransaction</Style>
+		<Controls xmlns="" />
+	</Design>
+	<Parts />
+</AxForm>
+```
+
+**File Structure Created:**
+
+```
+K:\AosService\PackagesLocalDirectory\
+└── CustomCore\
+    └── CustomCore\
+        ├── AxClass\
+        │   └── MyHelperClass.xml  ← Created here
+        ├── AxTable\
+        │   └── MyCustomTable.xml
+        ├── AxEnum\
+        │   └── MyStatusEnum.xml
+        └── AxForm\
+            └── MyForm.xml
+```
+
+**Next Steps After File Creation:**
+
+### Without Project Integration (addToProject=false)
+
+1. **Add to Visual Studio Project**
+   - Right-click project in Solution Explorer
+   - Add → Existing Item
+   - Navigate to created XML file
+   - Select and add
+
+2. **Build Project**
+   - Build → Build Solution (Ctrl+Shift+B)
+   - This synchronizes the object to the database
+
+3. **Refresh AOT**
+   - View → Application Explorer
+   - Right-click → Refresh
+   - New object should appear
+
+### With Project Integration (addToProject=true)
+
+1. **Reload Project in Visual Studio**
+   - Close and reopen solution, OR
+   - Right-click project → Unload Project
+   - Right-click again → Reload Project
+
+2. **Verify File Was Added**
+   - Check Solution Explorer
+   - File should appear in appropriate folder (Classes\, Tables\, etc.)
+
+3. **Build Project**
+   - Build → Build Solution (Ctrl+Shift+B)
+   - This synchronizes the object to the database
+
+4. **Refresh AOT**
+   - View → Application Explorer
+   - Right-click → Refresh
+   - New object should appear
+
+**Error Handling:**
+
+If file already exists:
+```
+⚠️ File already exists: K:\...\MyHelperClass.xml
+
+Please choose a different name or delete the existing file first.
+```
+
+**Difference from `generate_code`:**
+
+| Tool | Purpose | Output |
+|------|---------|--------|
+| `generate_code` | Generate X++ code snippet | Returns text code only |
+| `create_d365fo_file` | Create physical XML file | Creates actual file on disk |
+
+**Best Practice Workflow:**
+
+```typescript
+// Step 1: Generate code structure
+code = generate_code(pattern="class", name="MyHelper")
+
+// Step 2: Create physical XML file with generated code
+create_d365fo_file(
+  objectType="class",
+  objectName="MyHelper",
+  modelName="CustomCore",
+  sourceCode=code
+)
+```
+
+---
+
+## �🔹 Workspace-Aware Features
 
 Some tools support searching in user's local workspace with priority over external metadata.
 

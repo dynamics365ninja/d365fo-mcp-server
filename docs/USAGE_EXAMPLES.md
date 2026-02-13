@@ -158,6 +158,68 @@ Create a batch job for processing open sales orders
 
 ---
 
+### Creating Physical D365FO Files
+
+**Scenario:** You need to create a new helper class as a physical XML file in the AOT structure.
+
+```
+Create a helper class file named MyDimensionHelper in CustomCore model
+```
+
+**Returns:** Creates XML file at `K:\AosService\PackagesLocalDirectory\CustomCore\CustomCore\AxClass\MyDimensionHelper.xml`
+
+**Advanced Example:** Create class with source code
+
+```
+Create a helper class MyDimensionHelper in CustomCore with the following code:
+public class MyDimensionHelper extends RunBaseBatch
+{
+    public void run()
+    {
+        // TODO: Implement dimension logic
+    }
+}
+```
+
+**Other Object Types:**
+
+```
+Create a table MyCustomTable in CustomCore model
+Create an enum MyStatusEnum in CustomCore model
+Create a form MyCustomForm in CustomCore model
+Create a data entity MyDataEntity in CustomCore model
+```
+
+**What Gets Created:**
+- ✅ Physical XML file with proper D365FO metadata structure
+- ✅ Saved in correct AOT location (AxClass, AxTable, AxEnum, etc.)
+- ✅ Ready to be added to Visual Studio project
+
+**🆕 Advanced: Automatic Project Integration**
+
+```
+Create a helper class MyDimensionHelper in CustomCore and add it to my project at K:\MyProjects\CustomCore\CustomCore.rnrproj
+```
+
+**What This Does:**
+- ✅ Creates physical XML file in AOT structure
+- ✅ Automatically adds file reference to .rnrproj
+- ✅ Creates folder structure in project (Classes\, Tables\, etc.)
+- ✅ Ready for immediate build (just reload project in VS)
+
+**Next Steps After Creation:**
+
+*Without Project Integration:*
+1. Add file to Visual Studio project (Right-click project → Add Existing Item)
+2. Build project to synchronize
+
+*With Project Integration (addToProject=true):*
+1. Reload project in Visual Studio (close/reopen or Unload/Reload project)
+2. Build project to synchronize
+3. Refresh AOT to see the object
+
+---
+
 ## Pattern Analysis & Intelligent Code Generation
 
 New intelligent tools that learn from your codebase to provide smart suggestions and pattern-based code generation.

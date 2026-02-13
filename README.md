@@ -117,6 +117,7 @@ This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O
 | **`get_table_info`** | Get detailed information about an X++ table including fields, indexes, and relations |
 | **`code_completion`** | IntelliSense-like code completion for methods and fields |
 | **`generate_code`** | Generate X++ code templates for common patterns |
+| **`create_d365fo_file`** | 🆕 Create physical D365FO XML files in correct AOT package structure |
 | **`analyze_code_patterns`** | 🆕 Analyze common code patterns and dependencies for specific scenarios |
 | **`suggest_method_implementation`** | 🆕 Suggest method implementations based on similar code in your codebase |
 | **`analyze_class_completeness`** | 🆕 Analyze a class and suggest missing methods based on common patterns |

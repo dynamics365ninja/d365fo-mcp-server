@@ -237,6 +237,50 @@ workspacePath and includeWorkspace parameters.`,
             required: ['apiName'],
           },
         },
+        {
+          name: 'create_d365fo_file',
+          description: 'Creates a physical D365FO XML file in the correct AOT package structure (K:\\AosService\\PackagesLocalDirectory\\ModelName\\ModelName\\AxClass). Generates complete XML metadata for classes, tables, enums, forms, etc. Can automatically add the file to Visual Studio project (.rnrproj) if addToProject is true.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              objectType: {
+                type: 'string',
+                enum: ['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity'],
+                description: 'Type of D365FO object to create'
+              },
+              objectName: {
+                type: 'string',
+                description: 'Name of the object (e.g., MyHelperClass, MyCustomTable)'
+              },
+              modelName: {
+                type: 'string',
+                description: 'Model name (e.g., CustomCore, ApplicationSuite)'
+              },
+              packagePath: {
+                type: 'string',
+                description: 'Base package path (default: K:\\AosService\\PackagesLocalDirectory)'
+              },
+              sourceCode: {
+                type: 'string',
+                description: 'X++ source code for the object (class declaration, methods, etc.)'
+              },
+              properties: {
+                type: 'object',
+                description: 'Additional properties (extends, implements, label, etc.)'
+              },
+              addToProject: {
+                type: 'boolean',
+                description: 'Whether to automatically add file to Visual Studio project (default: false)',
+                default: false
+              },
+              projectPath: {
+                type: 'string',
+                description: 'Path to .rnrproj file (required if addToProject is true)'
+              },
+            },
+            required: ['objectType', 'objectName', 'modelName'],
+          },
+        },
       ],
     };
   });
