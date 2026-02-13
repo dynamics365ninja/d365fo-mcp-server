@@ -952,25 +952,14 @@ The generated XML includes:
 <AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>MyCustomTable</Name>
 	<SourceCode>
-		<Declaration><![CDATA[
-public class MyCustomTable extends common
-{
-}
-]]></Declaration>
 		<Methods />
 	</SourceCode>
 	<Label>My Custom Table</Label>
 	<TableGroup>Transaction</TableGroup>
 	<TitleField1>RecId</TitleField1>
 	<TitleField2></TitleField2>
-	<CacheLookup>Found</CacheLookup>
 	<PrimaryIndex>RecIdIdx</PrimaryIndex>
-	<ClusteredIndex>RecIdIdx</ClusteredIndex>
 	<ReplacementKey>RecIdIdx</ReplacementKey>
-	<CreatedBy>Yes</CreatedBy>
-	<CreatedDateTime>Yes</CreatedDateTime>
-	<ModifiedBy>Yes</ModifiedBy>
-	<ModifiedDateTime>Yes</ModifiedDateTime>
 	<DeleteActions />
 	<FieldGroups />
 	<Fields />
@@ -980,6 +969,14 @@ public class MyCustomTable extends common
 	<StateMachines />
 </AxTable>
 ```
+
+**Note:** Real D365FO tables from Microsoft packages show:
+- `<SourceCode>` contains only `<Methods />` (no Declaration for tables)
+- System fields (CreatedBy, ModifiedBy, etc.) are NOT in XML - they're added by the platform
+- `<CacheLookup>` appears only if set explicitly (not in all tables)
+- `<ClusteredIndex>` is NOT present in actual XML files
+- Indentation uses **TABS**, not spaces (as seen in Microsoft's files)
+- Each field uses `<AxTableField xmlns="" i:type="AxTableFieldString">` format with proper type
 
 **Form XML structure example (based on real D365FO forms):**
 
@@ -1116,6 +1113,14 @@ create_d365fo_file(
   sourceCode=code
 )
 ```
+
+**Important:** The `create_d365fo_file` tool generates XML files that match Microsoft's D365FO format:
+- Uses **TABS** for indentation (not spaces) - as seen in all Microsoft D365FO packages
+- Follows exact XML structure from `K:\AosService\PackagesLocalDirectory\ApplicationSuite\Foundation\`
+- For classes: `<AxClass>` with `<SourceCode>`, `<Declaration>`, `<Methods>`
+- For tables: `<AxTable>` with `<SourceCode>` containing only `<Methods />` (no Declaration)
+- For forms: `<AxForm xmlns="Microsoft.Dynamics.AX.Metadata.V6">` with proper namespace
+- All CDATA sections properly formatted with `<![CDATA[...]]>`
 
 ---
 

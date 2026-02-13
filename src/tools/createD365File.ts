@@ -56,25 +56,25 @@ class XmlTemplateGenerator {
   ): string {
     const declaration = sourceCode || `public class ${className}\n{\n}`;
     const extendsAttr = properties?.extends
-      ? `  <Extends>${properties.extends}</Extends>\n`
+      ? `\t<Extends>${properties.extends}</Extends>\n`
       : '';
     const implementsAttr = properties?.implements
-      ? `  <Implements>${properties.implements}</Implements>\n`
+      ? `\t<Implements>${properties.implements}</Implements>\n`
       : '';
-    const isFinalAttr = properties?.isFinal ? `  <IsFinal>Yes</IsFinal>\n` : '';
+    const isFinalAttr = properties?.isFinal ? `\t<IsFinal>Yes</IsFinal>\n` : '';
     const isAbstractAttr = properties?.isAbstract
-      ? `  <IsAbstract>Yes</IsAbstract>\n`
+      ? `\t<IsAbstract>Yes</IsAbstract>\n`
       : '';
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-  <Name>${className}</Name>
-${extendsAttr}${implementsAttr}${isFinalAttr}${isAbstractAttr}  <SourceCode>
-    <Declaration><![CDATA[
+	<Name>${className}</Name>
+${extendsAttr}${implementsAttr}${isFinalAttr}${isAbstractAttr}	<SourceCode>
+		<Declaration><![CDATA[
 ${declaration}
-    ]]></Declaration>
-    <Methods />
-  </SourceCode>
+]]></Declaration>
+		<Methods />
+	</SourceCode>
 </AxClass>
 `;
   }
@@ -90,42 +90,36 @@ ${declaration}
     const tableGroup = properties?.tableGroup || 'Main';
     const titleField1 = properties?.titleField1 || '';
     const titleField2 = properties?.titleField2 || '';
-    const extendsFrom = properties?.extends || 'common';
     const configKey = properties?.configurationKey || '';
     const primaryIndex = properties?.primaryIndex || '';
-    const cacheLookup = properties?.cacheLookup || 'NotInTOS';
+    const cacheLookup = properties?.cacheLookup || '';
 
     // Build optional configuration key
     const configKeyXml = configKey
       ? `\t<ConfigurationKey>${configKey}</ConfigurationKey>\n`
       : '';
 
-    // Build optional primary/clustered index
+    // Build optional cache lookup (only if explicitly set)
+    const cacheLookupXml = cacheLookup
+      ? `\t<CacheLookup>${cacheLookup}</CacheLookup>\n`
+      : '';
+
+    // Build optional primary index (NOTE: ClusteredIndex is NOT in real D365FO files)
     const primaryIndexXml = primaryIndex
-      ? `\t<PrimaryIndex>${primaryIndex}</PrimaryIndex>\n\t<ClusteredIndex>${primaryIndex}</ClusteredIndex>\n\t<ReplacementKey>${primaryIndex}</ReplacementKey>\n`
+      ? `\t<PrimaryIndex>${primaryIndex}</PrimaryIndex>\n\t<ReplacementKey>${primaryIndex}</ReplacementKey>\n`
       : '';
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${tableName}</Name>
 \t<SourceCode>
-\t\t<Declaration><![CDATA[
-public class ${tableName} extends ${extendsFrom}
-{
-}
-]]></Declaration>
 \t\t<Methods />
 \t</SourceCode>
 ${configKeyXml}\t<Label>${label}</Label>
 \t<TableGroup>${tableGroup}</TableGroup>
 \t<TitleField1>${titleField1}</TitleField1>
 \t<TitleField2>${titleField2}</TitleField2>
-\t<CacheLookup>${cacheLookup}</CacheLookup>
-${primaryIndexXml}\t<CreatedBy>Yes</CreatedBy>
-\t<CreatedDateTime>Yes</CreatedDateTime>
-\t<ModifiedBy>Yes</ModifiedBy>
-\t<ModifiedDateTime>Yes</ModifiedDateTime>
-\t<DeleteActions />
+${cacheLookupXml}${primaryIndexXml}\t<DeleteActions />
 \t<FieldGroups />
 \t<Fields />
 \t<Indexes />
@@ -148,10 +142,10 @@ ${primaryIndexXml}\t<CreatedBy>Yes</CreatedBy>
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-  <Name>${enumName}</Name>
-  <Label>${label}</Label>
-  <UseEnumValue>${useEnumValue}</UseEnumValue>
-  <EnumValues />
+\t<Name>${enumName}</Name>
+\t<Label>${label}</Label>
+\t<UseEnumValue>${useEnumValue}</UseEnumValue>
+\t<EnumValues />
 </AxEnum>
 `;
   }
@@ -222,9 +216,9 @@ ${dataSourceXml}\t\t<Pattern xmlns="">${pattern}</Pattern>
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxQuery xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-  <Name>${queryName}</Name>
-  <Title>${title}</Title>
-  <DataSources />
+\t<Name>${queryName}</Name>
+\t<Title>${title}</Title>
+\t<DataSources />
 </AxQuery>
 `;
   }
@@ -240,12 +234,12 @@ ${dataSourceXml}\t\t<Pattern xmlns="">${pattern}</Pattern>
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-  <Name>${viewName}</Name>
-  <Label>${label}</Label>
-  <Fields />
-  <Mappings />
-  <Metadata />
-  <ViewMetadata />
+\t<Name>${viewName}</Name>
+\t<Label>${label}</Label>
+\t<Fields />
+\t<Mappings />
+\t<Metadata />
+\t<ViewMetadata />
 </AxView>
 `;
   }
@@ -264,20 +258,20 @@ ${dataSourceXml}\t\t<Pattern xmlns="">${pattern}</Pattern>
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-  <Name>${entityName}</Name>
-  <Label>${label}</Label>
-  <DataManagementEnabled>Yes</DataManagementEnabled>
-  <DataManagementStagingTable>${entityName}Staging</DataManagementStagingTable>
-  <EntityCategory>Transaction</EntityCategory>
-  <IsPublic>Yes</IsPublic>
-  <PublicCollectionName>${publicCollectionName}</PublicCollectionName>
-  <PublicEntityName>${publicEntityName}</PublicEntityName>
-  <Fields />
-  <Keys />
-  <Mappings />
-  <Ranges />
-  <Relations />
-  <ViewMetadata />
+\t<Name>${entityName}</Name>
+\t<Label>${label}</Label>
+\t<DataManagementEnabled>Yes</DataManagementEnabled>
+\t<DataManagementStagingTable>${entityName}Staging</DataManagementStagingTable>
+\t<EntityCategory>Transaction</EntityCategory>
+\t<IsPublic>Yes</IsPublic>
+\t<PublicCollectionName>${publicCollectionName}</PublicCollectionName>
+\t<PublicEntityName>${publicEntityName}</PublicEntityName>
+\t<Fields />
+\t<Keys />
+\t<Mappings />
+\t<Ranges />
+\t<Relations />
+\t<ViewMetadata />
 </AxDataEntityView>
 `;
   }
