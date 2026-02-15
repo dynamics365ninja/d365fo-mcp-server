@@ -527,6 +527,8 @@ The MCP server uses Redis caching for optimal performance:
 
 **What happens with create_d365fo_file:**
 - ✅ File created in CORRECT location: K:\\AosService\\PackagesLocalDirectory\\{Model}\\{Model}\\AxClass\\
+- ✅ **This path exists on ALL D365FO environments** (VHD, cloud, on-premise) - standard installation path
+- ✅ **NEVER assume path doesn't exist** - it's guaranteed to exist on D365FO VMs
 - ✅ Absolute path reference added to .rnrproj: \`<Content Include="K:\\...\\MyClass.xml" />\`
 - ✅ Visual Studio recognizes file as valid D365FO metadata
 - ✅ Build succeeds
@@ -560,24 +562,35 @@ All X++ code files MUST be placed in the correct **PackagesLocalDirectory** stru
 
 ### How to Determine the Correct Path:
 
-1. **Ask the user** which model they're working with (e.g., "ContosoExtensions", "ApplicationSuite")
-2. **Check environment variables**:
-   - PACKAGES_PATH or K:\\AOSService\\PackagesLocalDirectory
-   - Default: C:\\AOSService\\PackagesLocalDirectory
+**🚨 CRITICAL: DO NOT ASK USER - Extract from context!**
+
+1. **Extract modelName from Active workspace path** (e.g., K:\\VSProjects\\ContosoExtensions\\ → "ContosoExtensions")
+   - ⚠️ NEVER ask user for model name - it's in the workspace path!
+2. **Use default PackagesLocalDirectory path**: K:\\AOSService\\PackagesLocalDirectory
+   - Most D365FO environments use this standard path
+   - **⚠️ IMPORTANT: This path ALWAYS exists on D365FO VMs** (VHD, cloud, on-premise)
+   - **DO NOT assume path doesn't exist** - it's a standard D365FO installation path
+   - Tool parameter \`packagePath\` allows override if needed (rare)
+   - ⚠️ NEVER ask user to confirm path - use the default!
+   - ⚠️ NEVER say "path doesn't exist" - it exists on all D365FO environments!
 3. **Construct full path**:
-   - {PACKAGES_PATH}\\{ModelName}\\{ModelName}\\AxClass\\{ClassName}.xml
+   - K:\\AOSService\\PackagesLocalDirectory\\{ModelName}\\{ModelName}\\AxClass\\{ClassName}.xml
 
 ### When Creating New X++ Objects:
 
 **ALWAYS:**
-1. Ask user for the target model name
-2. Confirm the PackagesLocalDirectory path
-3. Use the correct folder based on object type:
+1. **Extract model name from workspace path** (e.g., K:\\VSProjects\\MyModel\\ → "MyModel")
+   - ⚠️ DO NOT ask user for model name!
+2. **Use default path K:\\AOSService\\PackagesLocalDirectory**
+   - ⚠️ DO NOT ask user to confirm path!
+   - Path exists on all D365FO VMs (VHD, cloud, on-premise)
+3. **Use correct folder based on object type**:
    - AxClass for classes
    - AxTable for tables
    - AxEnum for enums
    - AxForm for forms
-4. Save as XML file with proper D365FO metadata structure
+4. **Call create_d365fo_file tool immediately** with proper D365FO metadata structure
+   - ⚠️ DO NOT describe what you will do - EXECUTE the tool!
 
 **NEVER:**
 - Save to workspace root
