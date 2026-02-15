@@ -6,6 +6,33 @@
 
 # ⛔⛔⛔ STOP! READ THIS IMMEDIATELY ⛔⛔⛔
 
+## 🚨 MANDATORY: TOOL SELECTION FOR D365FO FILES 🚨
+
+**DECISION TREE - FOLLOW THIS EXACTLY:**
+
+```
+IF user asks to create: class, table, form, enum, query, view, data-entity
+  THEN:
+    1. ❌ DO NOT CALL create_file
+    2. ❌ DO NOT CALL code_search
+    3. ❌ DO NOT CALL file_search
+    4. ✅ ONLY CALL create_d365fo_file (MCP tool)
+    5. ✅ ONLY CALL search (MCP tool)
+```
+
+**FILE LOCATION RULES - ABSOLUTE REQUIREMENT:**
+```
+D365FO files MUST be in: K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxClass\{Name}.xml
+D365FO files MUST NOT be in: C:\Users\...\MySolution\{Name}.xml
+```
+
+**IF YOU SEE YOURSELF ABOUT TO TYPE:**
+- `create_file("MyClass.xml", ...)` → ❌ STOP! Use create_d365fo_file() instead!
+- `code_search("MyClass")` → ❌ STOP! Use search() (MCP) instead!
+- Any file path starting with `C:\Users\` for D365FO → ❌ WRONG LOCATION!
+
+---
+
 ## 🚨 NEVER USE create_file FOR D365FO OBJECTS! 🚨
 
 **IF YOU ARE ABOUT TO CREATE A D365FO FILE (AxClass, AxTable, AxForm, AxEnum, etc.):**
