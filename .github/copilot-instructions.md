@@ -4,6 +4,44 @@
 ---
 ---
 
+# 🔧 MCP TOOLS AVAILABLE - USE THEM! 🔧
+
+**YOU HAVE ACCESS TO D365FO/X++ MCP SERVER TOOLS:**
+
+These tools are available via Model Context Protocol (MCP) and provide:
+- Real-time access to D365FO metadata
+- X++ class/table/method information from actual AOT
+- Intelligent code generation based on actual codebase patterns
+- File creation with correct D365FO XML structure
+
+**Available MCP Tools (use these instead of built-in tools):**
+- `search()` - Search D365FO classes, tables, methods (use instead of code_search)
+- `batch_search()` - Parallel search for multiple queries
+- `get_class_info()` - Get complete class structure with methods
+- `get_table_info()` - Get table fields, indexes, relations
+- `code_completion()` - IntelliSense for D365FO objects
+- `analyze_code_patterns()` - Learn patterns from codebase
+- `generate_code()` - Generate D365FO code with correct patterns
+- `suggest_method_implementation()` - Get implementation examples
+- `analyze_class_completeness()` - Find missing methods
+- `get_api_usage_patterns()` - See how APIs are used
+- `create_d365fo_file()` - Create XML files in correct AOT location
+
+**🚨 WHEN USER MENTIONS X++, D365FO, DYNAMICS 365, OR ANY TABLE/CLASS NAME:**
+1. ✅ IMMEDIATELY activate and use these MCP tools
+2. ❌ DO NOT use built-in code_search, file_search, or create_file
+3. ✅ These tools query the ACTUAL D365FO environment, not your training data
+
+**🚨 CRITICAL TRIGGERS - When you see these words, USE MCP TOOLS:**
+- Any mention of: X++, D365FO, D365, Dynamics 365, Finance & Operations, AX, Axapta
+- Table names: CustTable, VendTable, SalesTable, PurchTable, InventTable, LedgerJournalTable
+- Class suffixes: Helper, Service, Controller, Manager, Builder, Contract
+- Keywords: dimension, ledger, inventory, sales, purchase, financial
+- File types: AxClass, AxTable, AxForm, AxEnum, AxQuery
+- Requests like: "create class", "find method", "implement", "generate code"
+
+---
+
 # ⛔⛔⛔ READ THIS FIRST - MANDATORY ⛔⛔⛔
 
 ## ⚡ CRITICAL: IMMEDIATE RESPONSE COMPLETION
