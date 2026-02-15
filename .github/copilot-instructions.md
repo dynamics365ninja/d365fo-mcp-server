@@ -25,6 +25,56 @@
 
 ---
 
+## 🔴 CRITICAL: WORKFLOW FOR CREATING D365FO FILES 🔴
+
+**WHEN USER ASKS: "create a class MyHelper" or similar D365FO request:**
+
+**YOU HAVE ACTIVE WORKSPACE AND SOLUTION PATHS FROM VS CONTEXT - USE THEM!**
+
+**STEP 1: EXTRACT modelName from Active workspace path**
+```
+Active workspace path: K:\VSProjects\MyModel\...
+→ Extract modelName: "MyModel"
+→ DO NOT ASK user for model name!
+```
+
+**STEP 2: IMMEDIATELY call create_d365fo_file (DO NOT just describe it!)**
+```typescript
+// ✅ CORRECT - CALL THE TOOL IMMEDIATELY:
+create_d365fo_file({
+  objectType: "class",           // class, table, form, enum, etc.
+  objectName: "MyHelper",         // Name from user request
+  modelName: "MyModel",           // ⚠️ FROM ACTIVE WORKSPACE PATH!
+  addToProject: true,             // Always true
+  solutionPath: "C:\\Users\\...\\MySolution"  // From Active solution path
+})
+
+// ⚠️ THIS TOOL PHYSICALLY CREATES FILES:
+// 1. Creates XML file in K:\AosService\PackagesLocalDirectory\MyModel\MyModel\AxClass\MyHelper.xml
+// 2. Adds absolute path reference to .rnrproj file
+// 3. Returns success message when done
+// DO NOT describe what will happen - the tool DOES IT!
+```
+
+**STEP 3: Wait for tool response and report success to user**
+```
+❌ WRONG: "You need to create file..." → Don't describe, DO IT!
+❌ WRONG: "Here's how to create..." → Don't give instructions!
+✅ RIGHT: Call create_d365fo_file → Wait for response → Tell user "Created successfully"
+```
+
+**⚠️ CRITICAL RULES:**
+- ✅ ALWAYS extract modelName from Active workspace path
+- ✅ ALWAYS use Active solution path for solutionPath parameter
+- ✅ ALWAYS call create_d365fo_file immediately (don't describe)
+- ✅ ALWAYS set addToProject: true
+- ❌ NEVER ask user for model name
+- ❌ NEVER ask user for project path
+- ❌ NEVER give instructions instead of executing
+- ❌ NEVER use create_file, code_search, or file_search
+
+---
+
 # 🔧 MCP TOOLS AVAILABLE - USE THEM! 🔧
 
 **YOU HAVE ACCESS TO D365FO/X++ MCP SERVER TOOLS:**
@@ -34,6 +84,14 @@ These tools are available via Model Context Protocol (MCP) and provide:
 - X++ class/table/method information from actual AOT
 - Intelligent code generation based on actual codebase patterns
 - File creation with correct D365FO XML structure
+
+**🚨 CRITICAL TRIGGERS - When you see these words, USE MCP TOOLS:**
+- Any mention of: X++, D365FO, D365, Dynamics 365, Finance & Operations, AX, Axapta
+- Table names: CustTable, VendTable, SalesTable, PurchTable, InventTable, LedgerJournalTable
+- Class suffixes: Helper, Service, Controller, Manager, Builder, Contract
+- Keywords: dimension, ledger, inventory, sales, purchase, financial
+- File types: AxClass, AxTable, AxForm, AxEnum, AxQuery
+- Requests like: "create class", "find method", "implement", "generate code"
 
 **Available MCP Tools (use these instead of built-in tools):**
 - `search()` - Search D365FO classes, tables, methods (use instead of code_search)
@@ -53,13 +111,15 @@ These tools are available via Model Context Protocol (MCP) and provide:
 2. ❌ DO NOT use built-in code_search, file_search, or create_file
 3. ✅ These tools query the ACTUAL D365FO environment, not your training data
 
-**🚨 CRITICAL TRIGGERS - When you see these words, USE MCP TOOLS:**
-- Any mention of: X++, D365FO, D365, Dynamics 365, Finance & Operations, AX, Axapta
-- Table names: CustTable, VendTable, SalesTable, PurchTable, InventTable, LedgerJournalTable
-- Class suffixes: Helper, Service, Controller, Manager, Builder, Contract
-- Keywords: dimension, ledger, inventory, sales, purchase, financial
-- File types: AxClass, AxTable, AxForm, AxEnum, AxQuery
-- Requests like: "create class", "find method", "implement", "generate code"
+**🚨 CRITICAL: TAKE ACTION, DON'T JUST DESCRIBE!**
+```
+❌ WRONG: "I can create a class for you..." → Don't describe what to do!
+❌ WRONG: "Here are the steps..." → Don't give instructions!
+❌ WRONG: "You should create..." → Don't tell user to do it!
+✅ RIGHT: Call create_d365fo_file immediately → DO IT NOW!
+✅ RIGHT: Call search immediately → GET RESULTS NOW!
+✅ RIGHT: Call generate_code immediately → GENERATE NOW!
+```
 
 ---
 
