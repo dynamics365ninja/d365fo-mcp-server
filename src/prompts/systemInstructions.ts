@@ -217,7 +217,7 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
   - \`addToProject\`: (Optional) true to add to Visual Studio project automatically
   - \`solutionPath\`: (Optional) Path to .sln file for automatic project detection
 - **🚨 CRITICAL WORKFLOW - DO NOT DESCRIBE, JUST EXECUTE:**
-  1. **STEP 1:** Extract modelName from Active workspace path (e.g., K:\\VSProjects\\CustomCore\\ → "CustomCore")
+  1. **STEP 1:** Extract modelName from Active workspace path (e.g., K:\\VSProjects\\ContosoExtensions\\ → "ContosoExtensions")
      - ⚠️ **NEVER ASK USER** for model name - it's in the workspace path!
   2. **STEP 2:** Get solutionPath from Visual Studio context (Active solution path)
      - ⚠️ **NEVER ASK USER** for solution path - it's in VS context!
@@ -238,8 +238,8 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
   - ❌ NEVER ask user for model name or solution path - extract from context!
   - ❌ NEVER say "You need to create..." or "Here's how to..." - YOU DO IT!
 - **Example:** 
-  - \`create_d365fo_file(objectType="class", objectName="MyHelper", modelName="CustomCore", addToProject=true, solutionPath="C:\\Users\\...\\MySolution.sln")\`
-  - Creates: K:\\AosService\\PackagesLocalDirectory\\CustomCore\\CustomCore\\AxClass\\MyHelper.xml
+  - \`create_d365fo_file(objectType="class", objectName="MyHelper", modelName="ContosoExtensions", addToProject=true, solutionPath="C:\\Users\\...\\MySolution.sln")\`
+  - Creates: K:\\AosService\\PackagesLocalDirectory\\ContosoExtensions\\ContosoExtensions\\AxClass\\MyHelper.xml
   - Adds reference to .rnrproj: \`<Content Include="K:\\...\\MyHelper.xml" />\`
 - **Why this tool is MANDATORY:**
   - ✅ Saves to proper AOT location (PackagesLocalDirectory)
@@ -256,8 +256,8 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 Developer: "Create a helper class for maintaining financial dimensions"
 
 🔴 MANDATORY WORKFLOW (USE TOOLS, NOT BUILT-IN GENERATION):
-1. FIRST: Extract modelName from workspace path (e.g., K:\\VSProjects\\CustomCore\\ → "CustomCore")
-2. FIRST: Use create_d365fo_file(objectType="class", objectName="MyDimHelper", modelName="CustomCore", addToProject=true, solutionPath="C:\\Users\\...\\MySolution.sln") → 🔴 MANDATORY: Create physical XML file in PackagesLocalDirectory
+1. FIRST: Extract modelName from workspace path (e.g., K:\\VSProjects\\ContosoExtensions\\ → "ContosoExtensions")
+2. FIRST: Use create_d365fo_file(objectType="class", objectName="MyDimHelper", modelName="ContosoExtensions", addToProject=true, solutionPath="C:\\Users\\...\\MySolution.sln") → 🔴 MANDATORY: Create physical XML file in PackagesLocalDirectory
 3. Use analyze_code_patterns("financial dimensions") → 🔴 MANDATORY: Learn what D365FO classes are used together
 4. Use search("dimension", type="class") → Find existing D365FO dimension classes
 5. Use get_api_usage_patterns("DimensionAttributeValueSet") → See how API is initialized and used
@@ -282,8 +282,8 @@ Developer: "Create a helper class for maintaining financial dimensions"
 Developer: "Create a table MyCustomTable with fields"
 
 ✅ CORRECT Workflow:
-1. Extract modelName from workspace path (e.g., K:\\VSProjects\\CustomCore\\ → "CustomCore")
-2. Use create_d365fo_file(objectType="table", objectName="MyCustomTable", modelName="CustomCore", addToProject=true) → Creates XML in PackagesLocalDirectory
+1. Extract modelName from workspace path (e.g., K:\\VSProjects\\ContosoExtensions\\ → "ContosoExtensions")
+2. Use create_d365fo_file(objectType="table", objectName="MyCustomTable", modelName="ContosoExtensions", addToProject=true) → Creates XML in PackagesLocalDirectory
 3. Use search("custom table", type="table") → Find similar table patterns
 4. Use get_table_info("CustTable") → Study Microsoft's table structure for reference
 5. Edit the created XML file to add fields, indexes, relations
@@ -548,9 +548,9 @@ All X++ code files MUST be placed in the correct **PackagesLocalDirectory** stru
 - Enums: {PACKAGES_PATH}\\{ModelName}\\{ModelName}\\AxEnum\\{EnumName}.xml
 - Forms: {PACKAGES_PATH}\\{ModelName}\\{ModelName}\\AxForm\\{FormName}.xml
 
-**Example for custom model "CustomCore":**
-- C:\\AOSService\\PackagesLocalDirectory\\CustomCore\\CustomCore\\AxClass\\MyHelperClass.xml
-- C:\\AOSService\\PackagesLocalDirectory\\CustomCore\\CustomCore\\AxTable\\MyTable.xml
+**Example for custom model "ContosoExtensions":**
+- C:\\AOSService\\PackagesLocalDirectory\\ContosoExtensions\\ContosoExtensions\\AxClass\\MyHelperClass.xml
+- C:\\AOSService\\PackagesLocalDirectory\\ContosoExtensions\\ContosoExtensions\\AxTable\\MyTable.xml
 
 ### File Naming Rules:
 - Class files: {ClassName}.xml (example: CustHelper.xml)
@@ -560,7 +560,7 @@ All X++ code files MUST be placed in the correct **PackagesLocalDirectory** stru
 
 ### How to Determine the Correct Path:
 
-1. **Ask the user** which model they're working with (e.g., "CustomCore", "ApplicationSuite")
+1. **Ask the user** which model they're working with (e.g., "ContosoExtensions", "ApplicationSuite")
 2. **Check environment variables**:
    - PACKAGES_PATH or K:\\AOSService\\PackagesLocalDirectory
    - Default: C:\\AOSService\\PackagesLocalDirectory

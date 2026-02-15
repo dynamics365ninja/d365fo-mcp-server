@@ -305,13 +305,13 @@ These tools are available via Model Context Protocol (MCP) and provide:
 **Example - User says "create a table MyCustomTable":**
 ```
 ❌ WRONG: create_file("MyCustomTable.xml", content="<AxTable>...")  ← Wrong tool!
-✅ RIGHT: create_d365fo_file(objectType="table", objectName="MyCustomTable", modelName="CustomCore")
+✅ RIGHT: create_d365fo_file(objectType="table", objectName="MyCustomTable", modelName="ContosoExtensions")
 ```
 
 **Example - User says "create a class MyHelper":**
 ```
 ❌ WRONG: create_file("MyHelper.xml", ...)  ← Wrong structure, spaces instead of tabs!
-✅ RIGHT: create_d365fo_file(objectType="class", objectName="MyHelper", modelName="CustomCore")
+✅ RIGHT: create_d365fo_file(objectType="class", objectName="MyHelper", modelName="ContosoExtensions")
 ```
 
 **Example - User asks to add class to project:**

@@ -18,7 +18,7 @@ const CreateD365FileArgsSchema = z.object({
     .describe('Name of the object (e.g., MyHelperClass, MyCustomTable)'),
   modelName: z
     .string()
-    .describe('Model name (e.g., CustomCore, ApplicationSuite)'),
+    .describe('Model name (e.g., ContosoExtensions, ApplicationSuite)'),
   packagePath: z
     .string()
     .optional()
