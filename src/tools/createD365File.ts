@@ -568,6 +568,24 @@ export async function handleCreateD365File(
     console.error(
       `[create_d365fo_file] Ensuring directory exists: ${directory}`
     );
+    
+    // Check if this looks like a Windows path on non-Windows system
+    if (process.platform !== 'win32' && /^[A-Z]:\\/.test(normalizedFullPath)) {
+      throw new Error(
+        `❌ Cannot create D365FO file on non-Windows system!\n\n` +
+        `Attempting to create: ${normalizedFullPath}\n` +
+        `Running on: ${process.platform}\n\n` +
+        `The create_d365fo_file tool requires:\n` +
+        `1. Running on Windows (local D365FO VM)\n` +
+        `2. Direct access to K:\\AosService\\PackagesLocalDirectory\n\n` +
+        `This tool CANNOT work through Azure MCP proxy (runs on Linux).\n\n` +
+        `Solutions:\n` +
+        `- Run MCP server locally on D365FO Windows VM\n` +
+        `- Use VS 2022 with local MCP stdio transport\n` +
+        `- DO NOT use Azure HTTP proxy for file creation\n`
+      );
+    }
+    
     try {
       await fs.mkdir(directory, { recursive: true });
       console.error(`[create_d365fo_file] Directory ready: ${directory}`);

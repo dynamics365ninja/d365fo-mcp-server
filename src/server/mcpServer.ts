@@ -239,7 +239,7 @@ workspacePath and includeWorkspace parameters.`,
         },
         {
           name: 'create_d365fo_file',
-          description: 'Creates a physical D365FO XML file in the correct AOT package structure (K:\\AosService\\PackagesLocalDirectory\\ModelName\\ModelName\\AxClass). Generates complete XML metadata for classes, tables, enums, forms, etc. Can automatically add the file to Visual Studio project (.rnrproj) if addToProject is true.',
+          description: '⚠️ WINDOWS ONLY: Creates a physical D365FO XML file in the correct AOT package structure (K:\\AosService\\PackagesLocalDirectory\\ModelName\\ModelName\\AxClass). Generates complete XML metadata for classes, tables, enums, forms, etc. Can automatically add the file to Visual Studio project (.rnrproj) if addToProject is true. IMPORTANT: This tool MUST run locally on Windows D365FO VM - it CANNOT work through Azure HTTP proxy (Linux).',
           inputSchema: {
             type: 'object',
             properties: {
