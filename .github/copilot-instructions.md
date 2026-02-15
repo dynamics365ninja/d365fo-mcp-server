@@ -48,12 +48,19 @@ create_d365fo_file({
   addToProject: true,             // Always true
   solutionPath: "C:\\Users\\...\\MySolution"  // From Active solution path
 })
+
+// ⚠️ THIS TOOL PHYSICALLY CREATES FILES:
+// 1. Creates XML file in K:\AosService\PackagesLocalDirectory\MyModel\MyModel\AxClass\MyHelper.xml
+// 2. Adds absolute path reference to .rnrproj file
+// 3. Returns success message when done
+// DO NOT describe what will happen - the tool DOES IT!
 ```
 
-**STEP 3: DO NOT give instructions - EXECUTE immediately!**
+**STEP 3: Wait for tool response and report success to user**
 ```
 ❌ WRONG: "You need to create file..." → Don't describe, DO IT!
-✅ RIGHT: Call create_d365fo_file immediately → Tool creates file
+❌ WRONG: "Here's how to create..." → Don't give instructions!
+✅ RIGHT: Call create_d365fo_file → Wait for response → Tell user "Created successfully"
 ```
 
 **⚠️ CRITICAL RULES:**
