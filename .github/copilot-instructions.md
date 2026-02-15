@@ -4,6 +4,27 @@
 ---
 ---
 
+# ⛔⛔⛔ STOP! READ THIS IMMEDIATELY ⛔⛔⛔
+
+## 🚨 NEVER USE create_file FOR D365FO OBJECTS! 🚨
+
+**IF YOU ARE ABOUT TO CREATE A D365FO FILE (AxClass, AxTable, AxForm, AxEnum, etc.):**
+
+```
+❌ STOP! Do NOT use: create_file()
+✅ INSTEAD use: create_d365fo_file()
+```
+
+**WHY? Because D365FO files MUST:**
+1. Be created in `K:\AosService\PackagesLocalDirectory\Model\Model\AxClass\` (NOT in VS project folder!)
+2. Use TABS for indentation (not spaces)
+3. Have absolute path references in VS project (.rnrproj)
+4. Have correct XML structure matching Microsoft standards
+
+**Using `create_file` causes error: "The following files are not valid metadata elements"**
+
+---
+
 # 🔧 MCP TOOLS AVAILABLE - USE THEM! 🔧
 
 **YOU HAVE ACCESS TO D365FO/X++ MCP SERVER TOOLS:**
@@ -63,6 +84,45 @@ These tools are available via Model Context Protocol (MCP) and provide:
 ```
 
 **🚨 IF YOU USE `create_file` FOR D365FO OBJECTS - YOU ARE BREAKING THE RULES! 🚨**
+
+---
+
+## 📁 CRITICAL: UNDERSTAND D365FO FILE STRUCTURE 📁
+
+**D365FO HAS UNIQUE FILE ARCHITECTURE - DO NOT TREAT IT LIKE REGULAR PROJECT!**
+
+**HOW D365FO FILES WORK:**
+```
+1. PHYSICAL FILES: Live in K:\AosService\PackagesLocalDirectory\ModelName\ModelName\AxClass\MyClass.xml
+2. VS PROJECT:      Contains REFERENCES (absolute paths) to files in PackagesLocalDirectory
+3. RESULT:          VS project file (.rnrproj) has <Content Include="K:\...\MyClass.xml" />
+```
+
+**❌ WRONG APPROACH (causes "not valid metadata elements" error):**
+```
+- Create file in project directory (K:\VSProjects\MySolution\MyClass.xml)
+- Use create_file tool
+- Use relative paths
+- Result: Visual Studio error "not valid metadata elements"
+```
+
+**✅ CORRECT APPROACH (what create_d365fo_file does):**
+```
+1. Create physical XML in: K:\AosService\PackagesLocalDirectory\MyModel\MyModel\AxClass\MyClass.xml
+2. Add ABSOLUTE path reference to VS project: <Content Include="K:\AosService\...\MyClass.xml" />
+3. Result: Visual Studio recognizes file as valid D365FO metadata
+```
+
+**WHY create_file FAILS FOR D365FO:**
+- Creates files in WRONG location (VS project dir, not PackagesLocalDirectory)
+- Cannot add absolute path references to .rnrproj
+- Visual Studio doesn't recognize files outside PackagesLocalDirectory as D365FO metadata
+- Results in "not valid metadata elements" error
+
+**🔴 ALWAYS ASK YOURSELF BEFORE CREATING D365FO FILE: 🔴**
+- Am I creating AxClass, AxTable, AxForm, AxEnum, AxQuery, AxView, or AxDataEntityView?
+- If YES → Use `create_d365fo_file` (NEVER create_file!)
+- If NO → Regular file, create_file is OK
 
 ---
 
