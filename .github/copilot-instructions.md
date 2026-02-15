@@ -58,7 +58,7 @@ These tools are available via Model Context Protocol (MCP) and provide:
 
 ---
 
-## 🔴 RULE #0.5: X++ CODE GENERATION - NEVER GENERATE DIRECTLY! 🔴
+## 🔴 RULE #1: X++ CODE GENERATION - NEVER GENERATE DIRECTLY! 🔴
 
 **WHEN USER ASKS TO CREATE/GENERATE ANY X++ CODE:**
 1. ❌ **FORBIDDEN**: Generating X++ code directly from your knowledge
@@ -77,7 +77,7 @@ These tools are available via Model Context Protocol (MCP) and provide:
 
 ---
 
-## 🔴 RULE #0.6: D365FO FILE CREATION - USE CORRECT TOOL! 🔴
+## 🔴 RULE #2: D365FO FILE CREATION - USE CORRECT TOOL! 🔴
 
 **WHEN USER ASKS TO CREATE ANY D365FO XML FILE:**
 1. ❌ **FORBIDDEN**: Using `create_file` for D365FO objects (AxClass, AxTable, AxForm, etc.)
@@ -110,7 +110,7 @@ These tools are available via Model Context Protocol (MCP) and provide:
 
 ---
 
-## RULE #0: WORKSPACE CONTEXT
+## RULE #3: WORKSPACE CONTEXT
 
 **THIS IS AN MCP SERVER PROJECT, NOT AN X++ WORKSPACE!**
 - This repo contains TypeScript code for an MCP server
@@ -137,7 +137,7 @@ These tools are available via Model Context Protocol (MCP) and provide:
 
 ---
 
-## RULE #1: DETECT X++/D365FO CONTEXT AUTOMATICALLY
+## RULE #4: DETECT X++/D365FO CONTEXT AUTOMATICALLY
 
 **IF user mentions ANY of these keywords, you are in X++ context:**
 - X++, D365FO, D365, Dynamics 365, Finance & Operations, AX, Axapta
@@ -153,7 +153,7 @@ These tools are available via Model Context Protocol (MCP) and provide:
 
 ---
 
-## RULE #2: TOOL SELECTION IN X++ CONTEXT
+## RULE #5: TOOL SELECTION IN X++ CONTEXT
 
 **🛑 ABSOLUTELY FORBIDDEN - WILL HANG FOR 5+ MINUTES:**
 
@@ -185,7 +185,7 @@ These tools are available via Model Context Protocol (MCP) and provide:
 
 ---
 
-## RULE #3: AUTOMATIC TOOL SELECTION
+## RULE #6: AUTOMATIC TOOL SELECTION
 
 **For ANY X++ request, use this decision tree:**
 
