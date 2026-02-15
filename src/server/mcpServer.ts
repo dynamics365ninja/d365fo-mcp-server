@@ -238,6 +238,37 @@ workspacePath and includeWorkspace parameters.`,
           },
         },
         {
+          name: 'generate_d365fo_xml',
+          description: '✅ CLOUD-READY: Generates D365FO XML content for classes, tables, enums, forms, queries, views, and data entities. Returns XML as text with instructions for file creation. Works remotely through Azure (no file system access needed). GitHub Copilot should then create the file using create_file tool with the recommended path.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              objectType: {
+                type: 'string',
+                enum: ['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity'],
+                description: 'Type of D365FO object to generate'
+              },
+              objectName: {
+                type: 'string',
+                description: 'Name of the object (e.g., MyHelperClass, MyCustomTable)'
+              },
+              modelName: {
+                type: 'string',
+                description: 'Model name (e.g., ContosoExtensions, ApplicationSuite)'
+              },
+              sourceCode: {
+                type: 'string',
+                description: 'X++ source code for the object (class declaration, methods, etc.)'
+              },
+              properties: {
+                type: 'object',
+                description: 'Additional properties (extends, implements, label, etc.)'
+              },
+            },
+            required: ['objectType', 'objectName', 'modelName'],
+          },
+        },
+        {
           name: 'create_d365fo_file',
           description: '⚠️ WINDOWS ONLY: Creates a physical D365FO XML file in the correct AOT package structure (K:\\AosService\\PackagesLocalDirectory\\ModelName\\ModelName\\AxClass). Generates complete XML metadata for classes, tables, enums, forms, etc. Can automatically add the file to Visual Studio project (.rnrproj) if addToProject is true. IMPORTANT: This tool MUST run locally on Windows D365FO VM - it CANNOT work through Azure HTTP proxy (Linux).',
           inputSchema: {

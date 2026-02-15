@@ -13,11 +13,12 @@
 ```
 IF user asks to create: class, table, form, enum, query, view, data-entity
   THEN:
-    1. ❌ DO NOT CALL create_file
+    1. ❌ DO NOT CALL create_file directly
     2. ❌ DO NOT CALL code_search
     3. ❌ DO NOT CALL file_search
-    4. ✅ ONLY CALL create_d365fo_file (MCP tool)
-    5. ✅ ONLY CALL search (MCP tool)
+    4. ✅ CALL generate_d365fo_xml (MCP tool) → Get XML content
+    5. ✅ THEN CALL create_file with K:\AosService\... path → Create physical file
+    6. ✅ CALL search (MCP tool) for patterns if needed
 ```
 
 **FILE LOCATION RULES - ABSOLUTE REQUIREMENT:**
@@ -33,16 +34,17 @@ D365FO files MUST NOT be in: C:\Users\...\MySolution\{Name}.xml
 
 ---
 
-## 🚨 NEVER USE create_file FOR D365FO OBJECTS! 🚨
+## 🚨 NEVER CREATE D365FO FILES DIRECTLY! 🚨
 
 **IF YOU ARE ABOUT TO CREATE A D365FO FILE (AxClass, AxTable, AxForm, AxEnum, etc.):**
 
 ```
-❌ STOP! Do NOT use: create_file()
-❌ STOP! Do NOT use: code_search()
-❌ STOP! Do NOT use: file_search()
-✅ INSTEAD use: create_d365fo_file()
-✅ INSTEAD use: search() (MCP)
+❌ STOP! Do NOT use create_file() directly without MCP tool!
+❌ STOP! Do NOT use code_search()
+❌ STOP! Do NOT use file_search()
+✅ INSTEAD use: generate_d365fo_xml() (MCP tool) → Get XML
+✅ THEN use: create_file() with K:\AosService\... path
+✅ INSTEAD use: search() (MCP) for patterns
 ```
 
 **WHY? Because D365FO files MUST:**
@@ -53,19 +55,20 @@ D365FO files MUST NOT be in: C:\Users\...\MySolution\{Name}.xml
 3. Use TABS for indentation (not spaces)
 4. Have correct XML structure matching Microsoft standards
 
-**What happens if you use create_file:**
-- ❌ File created in WRONG location (solution directory)
-- ❌ Visual Studio error: "The following files are not valid metadata elements"
-- ❌ File NOT recognized as D365FO object
-- ❌ Build fails
-
-**What happens when you use create_d365fo_file (MCP tool):**
+**What happens when you use generate_d365fo_xml + create_file (CORRECT):**
+- ✅ generate_d365fo_xml returns correct XML content with TABS
 - ✅ File created in CORRECT location: K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxClass\
 - ✅ **This path exists on ALL D365FO VMs** (VHD, cloud, on-premise)
 - ✅ **NEVER say "path doesn't exist"** - it's guaranteed to be present!
-- ✅ Absolute path reference added to .rnrproj: <Content Include="K:\...\MyClass.xml" />
+- ✅ You add absolute path reference to .rnrproj: <Content Include="K:\...\MyClass.xml" />
 - ✅ Visual Studio recognizes file as valid D365FO metadata
 - ✅ Build succeeds
+
+**What happens if you use create_file directly without generate_d365fo_xml:**
+- ❌ File created without correct XML structure (no TABS, wrong namespaces)
+- ❌ Visual Studio error: "The following files are not valid metadata elements"
+- ❌ File NOT recognized as D365FO object
+- ❌ Build fails
 
 ---
 
