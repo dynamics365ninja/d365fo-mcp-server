@@ -15,6 +15,11 @@ This document describes all available MCP server tools for working with D365 Fin
 
 ## 🔍 Core Search Tools
 
+> **📍 Cloud Deployment Note:** When MCP server runs in Azure (cloud), file creation tools work differently:
+> - ✅ `generate_d365fo_xml` - Works everywhere (returns XML content)
+> - ⚠️ `create_d365fo_file` - Works only on local Windows (direct file system access)
+> - 💡 **Recommended for cloud:** Use `generate_d365fo_xml` to get XML, then Copilot creates file with built-in `create_file`
+
 ### `search`
 
 **Purpose:** Search for X++ classes, tables, methods, fields, enums, and EDTs by name or keyword
@@ -700,9 +705,99 @@ Based on codebase analysis, the typical usage flow is:
 
 ## � File Creation Tools
 
-### `create_d365fo_file`
+> **IMPORTANT - Cloud vs Local Deployment:**
+> 
+> MCP server supports both cloud (Azure) and local (Windows) deployment:
+> - **Cloud (Azure/Linux):** Use `generate_d365fo_xml` to get XML content, then Copilot creates file with `create_file`
+> - **Local (Windows):** Use `create_d365fo_file` for full automation (creates file + adds to project)
+> 
+> **Recommended workflow for cloud deployment:**
+> 1. Call `generate_d365fo_xml(objectType, objectName, modelName)` to get XML
+> 2. Call `create_file(path, xmlContent)` to save file to `K:\AosService\PackagesLocalDirectory\...`
+
+---
+
+### `generate_d365fo_xml` - CLOUD-READY
+
+**Purpose:** Generates D365FO XML content without writing files (cloud-compatible)
+
+**When to use:**
+- MCP server runs in Azure/cloud (Linux) - cannot write to Windows paths
+- Need XML content for manual file creation
+- Want to review XML before creating file
+- Building CI/CD pipelines that generate D365FO files
+
+**What it does:**
+- Generates complete XML metadata content with proper D365FO structure
+- Returns XML as text with TABS indentation (Microsoft standard)
+- Returns recommended file path for saving
+- Returns instructions for creating file
+- **Does NOT write to file system** - works everywhere (Azure, local, any platform)
+
+**Deployment compatibility:**
+- Azure/cloud (Linux): **Works**
+- Local Windows: **Works**
+- Docker/containers: **Works**
+- CI/CD pipelines: **Works**
+
+**Parameters:**
+- `objectType` (enum, **required**): class, table, enum, form, query, view, data-entity
+- `objectName` (string, **required**): name of the object
+- `modelName` (string, **required**): model name
+- `sourceCode` (string, optional): X++ source code for classes
+- `properties` (object, optional): additional properties (same as `create_d365fo_file`)
+
+**Usage examples:**
+
+```typescript
+// Generate class XML (cloud-ready)
+generate_d365fo_xml({
+  objectType: "class",
+  objectName: "MyHelperClass",
+  modelName: "CustomCore"
+})
+// Returns: { xmlContent: "<?xml version...", recommendedPath: "K:\\AosService\\...", instructions: "..." }
+
+// Then create file with Copilot's create_file:
+create_file({
+  filePath: "K:\\AosService\\PackagesLocalDirectory\\CustomCore\\CustomCore\\AxClass\\MyHelperClass.xml",
+  content: xmlContent
+})
+```
+
+**Output structure:**
+```json
+{
+  "xmlContent": "<?xml version=\"1.0\" encoding=\"utf-8\"?>...",
+  "recommendedPath": "K:\\AosService\\PackagesLocalDirectory\\CustomCore\\CustomCore\\AxClass\\MyHelperClass.xml",
+  "instructions": "To create the file, call create_file with the returned XML content and recommended path."
+}
+```
+
+**Why use this tool:**
+- Works in Azure/cloud deployment (no file system access needed)
+- Correct XML structure with TABS (not spaces)
+- Proper D365FO namespaces and metadata
+- Same XML generation as `create_d365fo_file` but cloud-ready
+- Platform-agnostic (Windows, Linux, macOS)
+
+---
+
+### `create_d365fo_file` - LOCAL WINDOWS ONLY
 
 **Purpose:** Creates physical D365FO XML files in the correct AOT package structure
+
+**PLATFORM REQUIREMENT:** This tool works **ONLY on local Windows** where MCP server has direct file system access to `K:\AosService\PackagesLocalDirectory\`. **Does NOT work in Azure/cloud** deployment.
+
+**When to use:**
+- MCP server runs locally on Windows D365FO development VM
+- Need full automation (create file + add to Visual Studio project)
+- Want single-tool workflow without manual file creation
+
+**Deployment compatibility:**
+- Local Windows with K:\ drive: **Works**
+- Azure/cloud (Linux): **Does NOT work** (use `generate_d365fo_xml` instead)
+- Docker/containers: **Does NOT work**
 
 **When to use:**
 - Need to create new X++ class, table, enum, form, or other D365FO object

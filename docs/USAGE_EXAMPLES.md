@@ -366,6 +366,74 @@ Filters results to only your custom models - useful when you have 500+ standard 
 
 ---
 
+## File Creation
+
+### Cloud Deployment (Recommended for Azure)
+
+**Scenario:** MCP server runs in Azure (cloud) - need to create D365FO files remotely.
+
+**Workflow:**
+1. Generate XML content using `generate_d365fo_xml`
+2. GitHub Copilot creates file using built-in `create_file`
+
+```
+Create a helper class MyDimensionHelper in CustomCore model
+```
+
+**Behind the scenes:**
+```typescript
+// Step 1: Generate XML (cloud-ready)
+generate_d365fo_xml({
+  objectType: "class",
+  objectName: "MyDimensionHelper",
+  modelName: "CustomCore"
+})
+// Returns XML content with TABS
+
+// Step 2: Copilot creates file
+create_file({
+  filePath: "K:\\AosService\\PackagesLocalDirectory\\CustomCore\\CustomCore\\AxClass\\MyDimensionHelper.xml",
+  content: xmlContent
+})
+```
+
+**Why this workflow:**
+- Works when MCP server runs in Azure/cloud (Linux)
+- No file system access needed on server side
+- Copilot creates file on user's local Windows D365FO VM
+
+---
+
+### Local Deployment (Windows only)
+
+**Scenario:** MCP server runs locally on Windows D365FO development VM.
+
+**Workflow:**
+1. Single tool call - full automation
+
+```
+Create a table MyCustomTable in CustomCore model
+```
+
+**Behind the scenes:**
+```typescript
+// One-step automation (Windows only)
+create_d365fo_file({
+  objectType: "table",
+  objectName: "MyCustomTable",
+  modelName: "CustomCore",
+  addToProject: true,
+  projectPath: "C:\\D365\\MySolution\\MySolution.rnrproj"
+})
+// Creates file + adds to VS project automatically
+```
+
+**Platform requirements:**
+- Requires local Windows with K:\ drive access
+- Does NOT work in Azure/cloud deployment
+
+---
+
 ## Tips for Effective Use
 
 ### Be Specific

@@ -42,7 +42,12 @@ You are GitHub Copilot assisting with Microsoft Dynamics 365 Finance & Operation
 **❌ NEVER assume you know the current D365FO environment without querying.**
 **❌ NEVER use built-in Searching (code_search/file_search) for X++ objects - use MCP \`search\` tool instead.**
 **❌ NEVER use built-in Reading (read_file) for X++ metadata - use MCP \`get_class_info\` or \`get_table_info\` instead.**
-**❌ NEVER use built-in \`create_file\` for D365FO objects (AxClass, AxTable, AxForm, AxEnum, etc.) - use MCP \`create_d365fo_file\` instead.**
+**❌ NEVER create D365FO files directly - ALWAYS use MCP \`generate_d365fo_xml\` first to get correct XML structure, THEN use \`create_file\` with returned content.**
+
+### File Creation Workflow (Cloud-Ready):
+1. ✅ Call \`generate_d365fo_xml(objectType, objectName, modelName)\` → Get XML content
+2. ✅ Call \`create_file(path, xmlContent)\` → Save to K:\\AosService\\PackagesLocalDirectory\\
+3. ⚠️ Alternative: \`create_d365fo_file\` works only on local Windows (not Azure/cloud)
 
 ### Why This Policy Exists:
 - Your training data may contain **outdated or incorrect** D365FO code
