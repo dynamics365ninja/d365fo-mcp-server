@@ -25,6 +25,44 @@
 
 ---
 
+## 🔴 CRITICAL: WORKFLOW FOR CREATING D365FO FILES 🔴
+
+**WHEN USER ASKS: "create a class MyHelper" or similar D365FO request:**
+
+**STEP 1: ASK for modelName if not provided**
+```
+User didn't specify model → ASK: "Which model should I create this in?"
+DO NOT assume ApplicationSuite, FleetManagement, or any other model!
+```
+
+**STEP 2: Use ONLY MCP tool create_d365fo_file**
+```typescript
+// ✅ CORRECT - Full example:
+create_d365fo_file({
+  objectType: "class",           // class, table, form, enum, etc.
+  objectName: "MyHelper",         // Name of the object
+  modelName: "CustomCore",        // ⚠️ USE MODEL USER SPECIFIED!
+  addToProject: true,             // Add to VS project
+  solutionPath: "C:\\Users\\...\\MySolution"  // From VS context
+})
+```
+
+**STEP 3: NEVER use these tools for D365FO:**
+```
+❌ create_file       → WRONG! Causes "not valid metadata elements"
+❌ code_search       → WRONG! Use MCP search() instead
+❌ file_search       → WRONG! Use MCP search() instead
+```
+
+**⚠️ COMMON MISTAKES TO AVOID:**
+- ❌ Creating files in VS project directory
+- ❌ Using ApplicationSuite as default model
+- ❌ Using FleetManagement* models without user request
+- ❌ Not passing solutionPath when addToProject=true
+- ❌ Using built-in tools instead of MCP tools
+
+---
+
 # 🔧 MCP TOOLS AVAILABLE - USE THEM! 🔧
 
 **YOU HAVE ACCESS TO D365FO/X++ MCP SERVER TOOLS:**
@@ -34,6 +72,14 @@ These tools are available via Model Context Protocol (MCP) and provide:
 - X++ class/table/method information from actual AOT
 - Intelligent code generation based on actual codebase patterns
 - File creation with correct D365FO XML structure
+
+**🚨 CRITICAL TRIGGERS - When you see these words, USE MCP TOOLS:**
+- Any mention of: X++, D365FO, D365, Dynamics 365, Finance & Operations, AX, Axapta
+- Table names: CustTable, VendTable, SalesTable, PurchTable, InventTable, LedgerJournalTable
+- Class suffixes: Helper, Service, Controller, Manager, Builder, Contract
+- Keywords: dimension, ledger, inventory, sales, purchase, financial
+- File types: AxClass, AxTable, AxForm, AxEnum, AxQuery
+- Requests like: "create class", "find method", "implement", "generate code"
 
 **Available MCP Tools (use these instead of built-in tools):**
 - `search()` - Search D365FO classes, tables, methods (use instead of code_search)
@@ -52,14 +98,6 @@ These tools are available via Model Context Protocol (MCP) and provide:
 1. ✅ IMMEDIATELY activate and use these MCP tools
 2. ❌ DO NOT use built-in code_search, file_search, or create_file
 3. ✅ These tools query the ACTUAL D365FO environment, not your training data
-
-**🚨 CRITICAL TRIGGERS - When you see these words, USE MCP TOOLS:**
-- Any mention of: X++, D365FO, D365, Dynamics 365, Finance & Operations, AX, Axapta
-- Table names: CustTable, VendTable, SalesTable, PurchTable, InventTable, LedgerJournalTable
-- Class suffixes: Helper, Service, Controller, Manager, Builder, Contract
-- Keywords: dimension, ledger, inventory, sales, purchase, financial
-- File types: AxClass, AxTable, AxForm, AxEnum, AxQuery
-- Requests like: "create class", "find method", "implement", "generate code"
 
 ---
 
