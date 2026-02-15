@@ -29,37 +29,42 @@
 
 **WHEN USER ASKS: "create a class MyHelper" or similar D365FO request:**
 
-**STEP 1: ASK for modelName if not provided**
+**YOU HAVE ACTIVE WORKSPACE AND SOLUTION PATHS FROM VS CONTEXT - USE THEM!**
+
+**STEP 1: EXTRACT modelName from Active workspace path**
 ```
-User didn't specify model → ASK: "Which model should I create this in?"
-DO NOT assume ApplicationSuite, FleetManagement, or any other model!
+Active workspace path: K:\VSProjects\MyModel\...
+→ Extract modelName: "MyModel"
+→ DO NOT ASK user for model name!
 ```
 
-**STEP 2: Use ONLY MCP tool create_d365fo_file**
+**STEP 2: IMMEDIATELY call create_d365fo_file (DO NOT just describe it!)**
 ```typescript
-// ✅ CORRECT - Full example:
+// ✅ CORRECT - CALL THE TOOL IMMEDIATELY:
 create_d365fo_file({
   objectType: "class",           // class, table, form, enum, etc.
-  objectName: "MyHelper",         // Name of the object
-  modelName: "CustomCore",        // ⚠️ USE MODEL USER SPECIFIED!
-  addToProject: true,             // Add to VS project
-  solutionPath: "C:\\Users\\...\\MySolution"  // From VS context
+  objectName: "MyHelper",         // Name from user request
+  modelName: "MyModel",           // ⚠️ FROM ACTIVE WORKSPACE PATH!
+  addToProject: true,             // Always true
+  solutionPath: "C:\\Users\\...\\MySolution"  // From Active solution path
 })
 ```
 
-**STEP 3: NEVER use these tools for D365FO:**
+**STEP 3: DO NOT give instructions - EXECUTE immediately!**
 ```
-❌ create_file       → WRONG! Causes "not valid metadata elements"
-❌ code_search       → WRONG! Use MCP search() instead
-❌ file_search       → WRONG! Use MCP search() instead
+❌ WRONG: "You need to create file..." → Don't describe, DO IT!
+✅ RIGHT: Call create_d365fo_file immediately → Tool creates file
 ```
 
-**⚠️ COMMON MISTAKES TO AVOID:**
-- ❌ Creating files in VS project directory
-- ❌ Using ApplicationSuite as default model
-- ❌ Using FleetManagement* models without user request
-- ❌ Not passing solutionPath when addToProject=true
-- ❌ Using built-in tools instead of MCP tools
+**⚠️ CRITICAL RULES:**
+- ✅ ALWAYS extract modelName from Active workspace path
+- ✅ ALWAYS use Active solution path for solutionPath parameter
+- ✅ ALWAYS call create_d365fo_file immediately (don't describe)
+- ✅ ALWAYS set addToProject: true
+- ❌ NEVER ask user for model name
+- ❌ NEVER ask user for project path
+- ❌ NEVER give instructions instead of executing
+- ❌ NEVER use create_file, code_search, or file_search
 
 ---
 
@@ -98,6 +103,16 @@ These tools are available via Model Context Protocol (MCP) and provide:
 1. ✅ IMMEDIATELY activate and use these MCP tools
 2. ❌ DO NOT use built-in code_search, file_search, or create_file
 3. ✅ These tools query the ACTUAL D365FO environment, not your training data
+
+**🚨 CRITICAL: TAKE ACTION, DON'T JUST DESCRIBE!**
+```
+❌ WRONG: "I can create a class for you..." → Don't describe what to do!
+❌ WRONG: "Here are the steps..." → Don't give instructions!
+❌ WRONG: "You should create..." → Don't tell user to do it!
+✅ RIGHT: Call create_d365fo_file immediately → DO IT NOW!
+✅ RIGHT: Call search immediately → GET RESULTS NOW!
+✅ RIGHT: Call generate_code immediately → GENERATE NOW!
+```
 
 ---
 
