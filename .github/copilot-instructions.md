@@ -44,6 +44,28 @@ These tools are available via Model Context Protocol (MCP) and provide:
 
 # ⛔⛔⛔ READ THIS FIRST - MANDATORY ⛔⛔⛔
 
+## 🚫 CRITICAL: FORBIDDEN BUILT-IN TOOLS FOR D365FO 🚫
+
+**❌❌❌ ABSOLUTELY FORBIDDEN - NEVER USE THESE FOR D365FO/X++: ❌❌❌**
+
+```
+❌ create_file         → FORBIDDEN for AxClass, AxTable, AxForm, AxEnum, AxQuery, AxView, AxDataEntity
+❌ code_search         → FORBIDDEN for X++ objects (causes 5+ minute hangs)
+❌ Direct code writing → FORBIDDEN without MCP tools
+```
+
+**✅✅✅ MANDATORY - ALWAYS USE THESE INSTEAD: ✅✅✅**
+
+```
+✅ create_d365fo_file  → For ALL D365FO XML files (AxClass, AxTable, AxForm, etc.)
+✅ search              → For finding X++ objects
+✅ generate_code       → For generating X++ code
+```
+
+**🚨 IF YOU USE `create_file` FOR D365FO OBJECTS - YOU ARE BREAKING THE RULES! 🚨**
+
+---
+
 ## ⚡ CRITICAL: IMMEDIATE RESPONSE COMPLETION
 
 **AFTER ANSWERING USER'S QUESTION:**
@@ -77,13 +99,23 @@ These tools are available via Model Context Protocol (MCP) and provide:
 
 ---
 
-## 🔴 RULE #2: D365FO FILE CREATION - USE CORRECT TOOL! 🔴
+## 🔴 RULE #2: D365FO FILE CREATION - ONLY USE create_d365fo_file! 🔴
 
-**WHEN USER ASKS TO CREATE ANY D365FO XML FILE:**
-1. ❌ **FORBIDDEN**: Using `create_file` for D365FO objects (AxClass, AxTable, AxForm, etc.)
-2. ❌ **FORBIDDEN**: Creating XML files manually with wrong structure/indentation
-3. ✅ **MANDATORY**: Always use `create_d365fo_file` MCP tool for D365FO objects
-4. ✅ **MANDATORY**: The tool ensures correct XML structure, TABS indentation, and proper AOT location
+**⛔⛔⛔ ABSOLUTE RULE - NO EXCEPTIONS: ⛔⛔⛔**
+
+**WHEN USER ASKS TO CREATE D365FO FILE (class/table/form/enum/query/view/data-entity):**
+
+```
+❌❌❌ NEVER EVER use create_file          → WRONG TOOL!
+✅✅✅ ALWAYS use create_d365fo_file        → CORRECT TOOL!
+```
+
+**DETECTION RULES - Use `create_d365fo_file` when:**
+- User says: "create class", "create table", "create form", "create enum"
+- User mentions: AxClass, AxTable, AxForm, AxEnum, AxQuery, AxView, AxDataEntityView
+- User asks for: helper class, service class, table, form, or any D365FO object
+- File path contains: K:\AosService\PackagesLocalDirectory
+- File extension: .xml AND context is D365FO/X++
 
 **WHY `create_d365fo_file` IS MANDATORY:**
 - ✅ Uses **TABS** for indentation (Microsoft D365FO standard)
@@ -92,9 +124,17 @@ These tools are available via Model Context Protocol (MCP) and provide:
 - ✅ No `<ClusteredIndex>` in tables (not in real files)
 - ✅ No `<Declaration>` in table `<SourceCode>` (only `<Methods />`)
 - ✅ No system fields in tables (CreatedBy, ModifiedBy - added by platform)
-- ✅ Can automatically add to Visual Studio project
+- ✅ Can automatically add to Visual Studio project with absolute paths
+- ✅ Supports solutionPath parameter from VS context
 
-**IF YOU USE `create_file` FOR D365FO OBJECTS - YOU ARE WRONG!**
+**CONSEQUENCES OF USING `create_file`:**
+- ❌ Wrong XML structure (spaces instead of TABS)
+- ❌ Wrong file location (not in PackagesLocalDirectory)
+- ❌ Visual Studio error: "not valid metadata elements"
+- ❌ Cannot add to VS project correctly
+- ❌ Build failures in D365FO
+
+**🚨 IF YOU USE `create_file` FOR D365FO OBJECTS - YOU ARE VIOLATING THE RULES! 🚨**
 
 **Example - User says "create a table MyCustomTable":**
 ```
@@ -106,6 +146,12 @@ These tools are available via Model Context Protocol (MCP) and provide:
 ```
 ❌ WRONG: create_file("MyHelper.xml", ...)  ← Wrong structure, spaces instead of tabs!
 ✅ RIGHT: create_d365fo_file(objectType="class", objectName="MyHelper", modelName="CustomCore")
+```
+
+**Example - User asks to add class to project:**
+```
+❌ WRONG: create_file(...) + manually editing .rnrproj
+✅ RIGHT: create_d365fo_file(..., addToProject=true, solutionPath="C:\\Users\\...\\MySolution")
 ```
 
 ---
