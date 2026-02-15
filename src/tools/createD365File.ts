@@ -39,8 +39,75 @@ const CreateD365FileArgsSchema = z.object({
   projectPath: z
     .string()
     .optional()
-    .describe('Path to .rnrproj file (required if addToProject is true)'),
+    .describe('Path to .rnrproj file (if not specified, will try to find in solutionPath)'),
+  solutionPath: z
+    .string()
+    .optional()
+    .describe('Path to active VS solution directory (e.g., from GitHub Copilot context)'),
 });
+
+/**
+ * Project File Finder
+ * Finds .rnrproj files in solution directory or specific paths
+ */
+class ProjectFileFinder {
+  /**
+   * Find .rnrproj file in solution directory
+   * Recursively searches for .rnrproj files matching the model name
+   */
+  static async findProjectInSolution(
+    solutionPath: string,
+    modelName: string
+  ): Promise<string | null> {
+    try {
+      // Check if solution directory exists
+      try {
+        await fs.access(solutionPath);
+      } catch {
+        return null;
+      }
+
+      // Read all files in solution directory (non-recursive first)
+      const files = await fs.readdir(solutionPath);
+      
+      // Find .rnrproj files that might match the model
+      const projectFiles = files.filter(file => 
+        file.endsWith('.rnrproj') && 
+        (file.includes(modelName) || file === `${modelName}.rnrproj`)
+      );
+      
+      if (projectFiles.length > 0) {
+        return path.join(solutionPath, projectFiles[0]);
+      }
+
+      // If not found, try subdirectories (one level deep)
+      for (const file of files) {
+        const fullPath = path.join(solutionPath, file);
+        try {
+          const stat = await fs.stat(fullPath);
+          if (stat.isDirectory()) {
+            const subFiles = await fs.readdir(fullPath);
+            const subProjectFiles = subFiles.filter(subFile => 
+              subFile.endsWith('.rnrproj') && 
+              (subFile.includes(modelName) || subFile === `${modelName}.rnrproj`)
+            );
+            
+            if (subProjectFiles.length > 0) {
+              return path.join(fullPath, subProjectFiles[0]);
+            }
+          }
+        } catch {
+          // Skip inaccessible directories
+          continue;
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+}
 
 /**
  * XML Templates for different D365FO object types
@@ -343,12 +410,13 @@ class ProjectFileManager {
 
   /**
    * Add file reference to Visual Studio project
+   * D365FO projects use ABSOLUTE paths to XML files in PackagesLocalDirectory
    */
   async addToProject(
     projectPath: string,
     objectType: string,
     objectName: string,
-    relativeXmlPath: string
+    absoluteXmlPath: string
   ): Promise<void> {
     // Read project file
     const projectContent = await fs.readFile(projectPath, 'utf-8');
@@ -395,7 +463,7 @@ class ProjectFileManager {
       contentGroup.Content = contentGroup.Content ? [contentGroup.Content] : [];
     }
 
-    // Get folder name
+    // Get folder name for project organization
     const folderName = this.getFolderName(objectType);
 
     // Add folder if not exists
@@ -409,19 +477,26 @@ class ProjectFileManager {
       });
     }
 
-    // Check if file already in project
+    // Normalize path separators to backslash for Windows
+    const normalizedPath = absoluteXmlPath.replace(/\//g, '\\');
+
+    // Check if file already in project (check both normalized and original path)
     const fileExists = contentGroup.Content.some(
       (content: any) =>
-        content.$ && content.$.Include === relativeXmlPath
+        content.$ && (
+          content.$.Include === normalizedPath ||
+          content.$.Include === absoluteXmlPath
+        )
     );
 
     if (fileExists) {
       throw new Error(`File ${objectName} is already in the project`);
     }
 
-    // Add file reference
+    // Add file reference with ABSOLUTE path (D365FO standard)
+    // The Include attribute must contain the full path to the XML file
     contentGroup.Content.push({
-      $: { Include: relativeXmlPath },
+      $: { Include: normalizedPath },
       SubType: 'Content',
       Name: objectName,
       Link: `${folderName}\\${objectName}.xml`,
@@ -506,36 +581,50 @@ export async function handleCreateD365File(
     // Add to Visual Studio project if requested
     let projectMessage = '';
     if (args.addToProject) {
-      if (!args.projectPath) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `⚠️ Cannot add to project: projectPath parameter is required when addToProject is true.`,
-            },
-          ],
-        };
+      // Try to find project file if not explicitly specified
+      let projectPath = args.projectPath;
+      
+      if (!projectPath && args.solutionPath) {
+        // Try to find project in solution directory
+        const detectedPath = await ProjectFileFinder.findProjectInSolution(
+          args.solutionPath,
+          args.modelName
+        );
+        
+        if (!detectedPath) {
+          projectMessage = `\n⚠️ Could not find .rnrproj file for model '${args.modelName}' in solution directory.\n` +
+            `Searched in: ${args.solutionPath}\n` +
+            `Please specify projectPath parameter explicitly.\n`;
+        } else {
+          projectPath = detectedPath;
+        }
+      } else if (!projectPath) {
+        projectMessage = `\n⚠️ Cannot add to project: either projectPath or solutionPath must be specified.\n` +
+          `Tip: GitHub Copilot can provide solutionPath from active VS solution context.\n`;
       }
 
-      try {
-        // Validate project file exists
-        await fs.access(args.projectPath);
+      if (projectPath) {
+        try {
+          // Validate project file exists
+          await fs.access(projectPath);
 
-        // Calculate relative path from project file to XML
-        const relativeXmlPath = `${objectFolder}\\${fileName}`;
+          // D365FO projects expect ABSOLUTE paths to XML files, not relative
+          // The full path must point to the exact XML location in PackagesLocalDirectory
+          const absoluteXmlPath = fullPath;
 
-        // Add to project
-        const projectManager = new ProjectFileManager();
-        await projectManager.addToProject(
-          args.projectPath,
-          args.objectType,
-          args.objectName,
-          relativeXmlPath
-        );
+          // Add to project
+          const projectManager = new ProjectFileManager();
+          await projectManager.addToProject(
+            projectPath,
+            args.objectType,
+            args.objectName,
+            absoluteXmlPath
+          );
 
-        projectMessage = `\n✅ Successfully added to Visual Studio project:\n📋 Project: ${args.projectPath}\n`;
-      } catch (projectError) {
-        projectMessage = `\n⚠️ File created but failed to add to project:\n${projectError instanceof Error ? projectError.message : 'Unknown error'}\n`;
+          projectMessage = `\n✅ Successfully added to Visual Studio project:\n📋 Project: ${projectPath}\n`;
+        } catch (projectError) {
+          projectMessage = `\n⚠️ File created but failed to add to project:\n${projectError instanceof Error ? projectError.message : 'Unknown error'}\n`;
+        }
       }
     }
 
