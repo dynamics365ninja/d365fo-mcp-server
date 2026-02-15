@@ -4,18 +4,6 @@
 ---
 ---
 
-# ⚠️ IMPORTANT: MCP TOOLS REQUIRE VS CODE ⚠️
-
-**These instructions are for GitHub Copilot in VS Code with MCP support.**
-
-**If using Visual Studio 2022:**
-- Visual Studio 2022 does NOT support MCP (Model Context Protocol)
-- GitHub Copilot in VS 2022 cannot access MCP tools like `create_d365fo_file`
-- You must use VS Code with GitHub Copilot extension to use these tools
-- Alternative: Use standalone CLI tool or VS extension (contact maintainer)
-
----
-
 # ⛔⛔⛔ STOP! READ THIS IMMEDIATELY ⛔⛔⛔
 
 ## 🚨 MANDATORY: TOOL SELECTION FOR D365FO FILES 🚨
