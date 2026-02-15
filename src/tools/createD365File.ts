@@ -135,13 +135,13 @@ class XmlTemplateGenerator {
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-	<Name>${className}</Name>
-${extendsAttr}${implementsAttr}${isFinalAttr}${isAbstractAttr}	<SourceCode>
-		<Declaration><![CDATA[
+\t<Name>${className}</Name>
+${extendsAttr}${implementsAttr}${isFinalAttr}${isAbstractAttr}\t<SourceCode>
+\t\t<Declaration><![CDATA[
 ${declaration}
 ]]></Declaration>
-		<Methods />
-	</SourceCode>
+\t\t<Methods />
+\t</SourceCode>
 </AxClass>
 `;
   }
