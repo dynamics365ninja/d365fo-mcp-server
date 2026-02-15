@@ -1,4 +1,4 @@
-﻿# D365FO Code Intelligence Tools
+# D365FO Code Intelligence Tools
 
 **For GitHub Copilot Users in Visual Studio 2022**
 
@@ -8,7 +8,7 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 ---
 
-## ðŸ“š What Can You Do?
+## What Can You Do?
 
 1. [**Search for Code**](#search-for-code) - Find classes, tables, methods across D365FO
 2. [**Explore Objects**](#explore-objects) - View structure of classes and tables
@@ -32,14 +32,14 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Examples:**
 ```
-ðŸ’¬ "Find all classes containing 'dimension' in their name"
-â†’ Shows: DimensionAttributeValueSet, DimensionDefaultingService, DimensionHelper...
+Q: "Find all classes containing 'dimension' in their name"
+A: Shows: DimensionAttributeValueSet, DimensionDefaultingService, DimensionHelper...
 
-ðŸ’¬ "Search for tables related to sales orders"
-â†’ Shows: SalesTable, SalesLine, SalesFormLetter...
+Q: "Search for tables related to sales orders"
+A: Shows: SalesTable, SalesLine, SalesFormLetter...
 
-ðŸ’¬ "Find methods for validating customer credit"
-â†’ Shows: CustTable.validateCreditLimit(), CreditManagement.checkCredit()...
+Q: "Find methods for validating customer credit"
+A: Shows: CustTable.validateCreditLimit(), CreditManagement.checkCredit()...
 ```
 
 ---
@@ -54,9 +54,9 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Example:**
 ```
-ðŸ’¬ "Find dimension classes, ledger services, and posting controllers"
-â†’ Searches all three concepts simultaneously
-â†’ Returns results in under 50ms
+Q: "Find dimension classes, ledger services, and posting controllers"
+A: Searches all three concepts simultaneously
+A: Returns results in under 50ms
 ```
 
 ---
@@ -72,8 +72,8 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Example:**
 ```
-ðŸ’¬ "Find all my custom helper classes starting with ISV_"
-â†’ Shows only: ISV_SalesHelper, ISV_DimensionHelper, ISV_ValidationHelper...
+Q: "Find all my custom helper classes starting with ISV_"
+A: Shows only: ISV_SalesHelper, ISV_DimensionHelper, ISV_ValidationHelper...
 ```
 
 ---
@@ -91,9 +91,9 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Example:**
 ```
-ðŸ’¬ "Show me methods available on SalesTable"
+Q: "Show me methods available on SalesTable"
 
-â†’ Returns:
+A: Returns:
   - calcTotalAmount() - Calculates order total
   - validateWrite() - Validates before saving
   - insert() - Inserts new record
@@ -114,12 +114,12 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Example:**
 ```
-ðŸ’¬ "Show me CustTable structure"
+Q: "Show me CustTable structure"
 
-â†’ Returns:
+A: Returns:
   Fields (85): AccountNum, Name, Address, CreditLimit...
   Indexes: AccountIdx (primary), NameIdx...
-  Relations: â†’ SalesTable, â†’ CustTrans, â†’ CustGroup
+  Relations: -> SalesTable,  CustTrans,  CustGroup
   Primary Index: AccountIdx
 ```
 
@@ -136,9 +136,9 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Example:**
 ```
-ðŸ’¬ "Show me all 'calc' methods on SalesTable"
+Q: "Show me all 'calc' methods on SalesTable"
 
-â†’ Returns:
+A: Returns:
   - calcTotalAmount()
   - calcTax()
   - calcDiscount()
@@ -160,9 +160,9 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Example:**
 ```
-ðŸ’¬ "Analyze patterns for financial dimension handling"
+Q: "Analyze patterns for financial dimension handling"
 
-â†’ Copilot learns:
+ Copilot learns:
   - DimensionAttributeValueSet is used 150 times
   - Usually initialized with createForLedgerDimension()
   - Commonly paired with DimensionStorage
@@ -182,9 +182,9 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Example:**
 ```
-ðŸ’¬ "Create a helper class for dimension validation"
+Q: "Create a helper class for dimension validation"
 
-â†’ Copilot:
+A: Copilot:
   1. Analyzes dimension patterns in your code
   2. Finds similar helper classes (DimensionHelper, CustHelper...)
   3. Generates new class following your team's coding style
@@ -204,11 +204,11 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Example:**
 ```
-ðŸ’¬ "How do I implement validateWrite() for my custom table?"
+Q: "How do I implement validateWrite() for my custom table?"
 
-â†’ Copilot finds 50+ validateWrite() implementations
-â†’ Shows patterns from: CustTable, SalesTable, InventTable
-â†’ Generates code following your environment's style
+ Copilot finds 50+ validateWrite() implementations
+ Shows patterns from: CustTable, SalesTable, InventTable
+ Generates code following your environment's style
 ```
 
 ---
@@ -224,12 +224,12 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Example:**
 ```
-ðŸ’¬ "Check if MyCustomHelper is complete"
+Q: "Check if MyCustomHelper is complete"
 
-â†’ Analysis:
-  âœ… Has: construct(), validate()
-  âŒ Missing: find(), exist(), initFromTable()
-  ðŸ’¡ Suggestion: Helper classes typically have these methods
+A: Analysis:
+   Has: construct(), validate()
+   Missing: find(), exist(), initFromTable()
+   Suggestion: Helper classes typically have these methods
 ```
 
 ---
@@ -245,9 +245,9 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Example:**
 ```
-ðŸ’¬ "How do I use DimensionAttributeValueSet API?"
+Q: "How do I use DimensionAttributeValueSet API?"
 
-â†’ Shows:
+A: Shows:
   1. How to create instance
   2. Common initialization patterns
   3. Typical method call sequences
@@ -277,16 +277,16 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 3. You manually add file reference to Visual Studio project
 
 **What you get:**
-- âœ… Correct XML structure matching Microsoft standards
-- âœ… Proper namespaces and metadata
-- âœ… TABS for indentation (not spaces)
-- âœ… Ready to add to Visual Studio
+- [OK] Correct XML structure matching Microsoft standards
+- [OK] Proper namespaces and metadata
+- [OK] TABS for indentation (not spaces)
+- [OK] Ready to add to Visual Studio
 
 **Example:**
 ```
-ðŸ’¬ "Create a helper class MyDimensionHelper in CustomCore model"
+Q: "Create a helper class MyDimensionHelper in CustomCore model"
 
-â†’ Copilot:
+A: Copilot:
   1. Generates XML content (<?xml version...>)
   2. Creates file: K:\AosService\...\AxClass\MyDimensionHelper.xml
   3. Tells you to add: <Content Include="K:\AosService\...\MyDimensionHelper.xml" />
@@ -307,7 +307,7 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 **Requirements:**
 - MCP server must run on local Windows D365FO VM
-- Must have access to `K:\AosService\PackagesLocalDirectory\`
+- [!] Must have access to `K:\AosService\PackagesLocalDirectory\`
 
 ---
 
@@ -326,16 +326,16 @@ When you have a D365FO workspace open in Visual Studio, Copilot can analyze YOUR
 - Copilot searches your local X++ files first
 - Your workspace code is prioritized over external metadata
 - Patterns are learned from YOUR codebase
-- Results marked with ðŸ”¹ are from your workspace
+- Results marked with  are from your workspace
 
 **Example:**
 ```
-ðŸ’¬ "Find helper classes including my workspace"
+Q: "Find helper classes including my workspace"
 
-â†’ Results:
-  ðŸ”¹ MyCustomHelper (your workspace)
-  ðŸ“¦ DimensionHelper (standard D365FO)
-  ðŸ“¦ CustHelper (standard D365FO)
+ Results:
+   MyCustomHelper (your workspace)
+   DimensionHelper (standard D365FO)
+   CustHelper (standard D365FO)
 ```
 
 ---
@@ -343,21 +343,21 @@ When you have a D365FO workspace open in Visual Studio, Copilot can analyze YOUR
 ## Tips for Best Results
 
 ### Be Specific
-- âŒ "Find customer stuff"  
-- âœ… "Find methods on CustTable for updating credit limit"
+-  "Find customer stuff"  
+-  "Find methods on CustTable for updating credit limit"
 
 ### Use Exact Names
-- âŒ "sales table class"  
-- âœ… "Show me SalesTable class methods"
+-  "sales table class"  
+-  "Show me SalesTable class methods"
 
 ### Combine Queries
 ```
-ðŸ’¬ "Show me SalesTable relations and generate code to join with CustTable"
+Q: "Show me SalesTable relations and generate code to join with CustTable"
 ```
 
 ### Ask for Workspace Context
 ```
-ðŸ’¬ "Search for validation patterns in my workspace"
+Q: "Search for validation patterns in my workspace"
 ```
 
 ---
