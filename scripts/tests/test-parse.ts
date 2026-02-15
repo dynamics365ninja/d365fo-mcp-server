@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import * as fs from 'fs/promises';
-import { XppMetadataParser } from '../src/metadata/xmlParser.js';
+import { XppMetadataParser } from '../../src/metadata/xmlParser.js';
 
 const testFile = 'K:\\AOSService\\PackagesLocalDirectory\\ApplicationFoundation\\ApplicationFoundation\\AxClass\\AifChangeTrackingEntityMetadataUpdateEventHandler.xml';
 
