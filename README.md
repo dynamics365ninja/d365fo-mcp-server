@@ -109,19 +109,33 @@ This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O
 
 ### Core Capabilities
 
+#### Search & Discovery
+
 | Tool | Description |
 |------|-------------|
-| **`search`** | Search for X++ classes, tables, methods, and fields by name or keyword |
-| **`search_extensions`** | Search only in custom extensions/ISV models |
-| **`get_class_info`** | Get detailed information about an X++ class including its methods |
-| **`get_table_info`** | Get detailed information about an X++ table including fields, indexes, and relations |
-| **`code_completion`** | IntelliSense-like code completion for methods and fields |
-| **`generate_code`** | Generate X++ code templates for common patterns |
-| **`create_d365fo_file`** | 🆕 Create physical D365FO XML files in correct AOT package structure |
-| **`analyze_code_patterns`** | 🆕 Analyze common code patterns and dependencies for specific scenarios |
-| **`suggest_method_implementation`** | 🆕 Suggest method implementations based on similar code in your codebase |
-| **`analyze_class_completeness`** | 🆕 Analyze a class and suggest missing methods based on common patterns |
-| **`get_api_usage_patterns`** | 🆕 Show how to use specific APIs with initialization and usage examples |
+| **`search`** | Find X++ classes, tables, methods, and fields across all standard and custom modules |
+| **`search_extensions`** | Search only within your custom extensions and ISV models |
+| **`batch_search`** | Execute multiple searches in parallel for faster exploration |
+| **`get_class_info`** | View complete class structure: methods, properties, inheritance hierarchy |
+| **`get_table_info`** | View table schema: fields, indexes, relations, and configuration |
+| **`code_completion`** | Get method and field suggestions while typing (IntelliSense-style) |
+
+#### Intelligent Code Generation
+
+| Tool | Description |
+|------|-------------|
+| **`analyze_code_patterns`** | Learn common coding patterns from your actual D365FO codebase |
+| **`generate_code`** | Generate X++ code following patterns found in your environment |
+| **`suggest_method_implementation`** | Get implementation examples from similar methods in your code |
+| **`analyze_class_completeness`** | Check if a class is missing common methods (validate, find, etc.) |
+| **`get_api_usage_patterns`** | See real examples of how to initialize and use D365FO APIs |
+
+#### File Creation
+
+| Tool | Deployment | Description |
+|------|------------|-------------|
+| **`generate_d365fo_xml`** | ☁️ Cloud + 💻 Local | Generate D365FO XML files (classes, tables, forms, enums). Works everywhere - Azure, local, containers. Returns XML content for Copilot to create file. |
+| **`create_d365fo_file`** | 💻 Local only | Full automation: creates file + adds to Visual Studio project. Only works on local Windows D365FO VM with K:\ drive access. |
 
 ### 🔹 Workspace-Aware Features
 
@@ -200,6 +214,17 @@ Remember this for all queries in this session.
 ---
 
 ## 🚀 Quick Start
+
+### Deployment Options
+
+The MCP server supports two deployment modes:
+
+- **☁️ Cloud (Azure)** - Recommended for teams. Runs on Linux, provides XML generation only.
+- **💻 Local (Windows)** - Full automation including file creation. Requires D365FO VM.
+
+> **Note:** File creation tools work differently based on deployment:
+> - `generate_d365fo_xml` - Works in both cloud and local (generates XML, Copilot creates file)
+> - `create_d365fo_file` - Works only locally on Windows (full automation)
 
 ### Prerequisites
 
