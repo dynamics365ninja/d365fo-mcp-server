@@ -4,6 +4,27 @@
 ---
 ---
 
+# ⛔⛔⛔ STOP! READ THIS IMMEDIATELY ⛔⛔⛔
+
+## 🚨 NEVER USE create_file FOR D365FO OBJECTS! 🚨
+
+**IF YOU ARE ABOUT TO CREATE A D365FO FILE (AxClass, AxTable, AxForm, AxEnum, etc.):**
+
+```
+❌ STOP! Do NOT use: create_file()
+✅ INSTEAD use: create_d365fo_file()
+```
+
+**WHY? Because D365FO files MUST:**
+1. Be created in `K:\AosService\PackagesLocalDirectory\Model\Model\AxClass\` (NOT in VS project folder!)
+2. Use TABS for indentation (not spaces)
+3. Have absolute path references in VS project (.rnrproj)
+4. Have correct XML structure matching Microsoft standards
+
+**Using `create_file` causes error: "The following files are not valid metadata elements"**
+
+---
+
 # 🔧 MCP TOOLS AVAILABLE - USE THEM! 🔧
 
 **YOU HAVE ACCESS TO D365FO/X++ MCP SERVER TOOLS:**
@@ -44,6 +65,67 @@ These tools are available via Model Context Protocol (MCP) and provide:
 
 # ⛔⛔⛔ READ THIS FIRST - MANDATORY ⛔⛔⛔
 
+## 🚫 CRITICAL: FORBIDDEN BUILT-IN TOOLS FOR D365FO 🚫
+
+**❌❌❌ ABSOLUTELY FORBIDDEN - NEVER USE THESE FOR D365FO/X++: ❌❌❌**
+
+```
+❌ create_file         → FORBIDDEN for AxClass, AxTable, AxForm, AxEnum, AxQuery, AxView, AxDataEntity
+❌ code_search         → FORBIDDEN for X++ objects (causes 5+ minute hangs)
+❌ Direct code writing → FORBIDDEN without MCP tools
+```
+
+**✅✅✅ MANDATORY - ALWAYS USE THESE INSTEAD: ✅✅✅**
+
+```
+✅ create_d365fo_file  → For ALL D365FO XML files (AxClass, AxTable, AxForm, etc.)
+✅ search              → For finding X++ objects
+✅ generate_code       → For generating X++ code
+```
+
+**🚨 IF YOU USE `create_file` FOR D365FO OBJECTS - YOU ARE BREAKING THE RULES! 🚨**
+
+---
+
+## 📁 CRITICAL: UNDERSTAND D365FO FILE STRUCTURE 📁
+
+**D365FO HAS UNIQUE FILE ARCHITECTURE - DO NOT TREAT IT LIKE REGULAR PROJECT!**
+
+**HOW D365FO FILES WORK:**
+```
+1. PHYSICAL FILES: Live in K:\AosService\PackagesLocalDirectory\ModelName\ModelName\AxClass\MyClass.xml
+2. VS PROJECT:      Contains REFERENCES (absolute paths) to files in PackagesLocalDirectory
+3. RESULT:          VS project file (.rnrproj) has <Content Include="K:\...\MyClass.xml" />
+```
+
+**❌ WRONG APPROACH (causes "not valid metadata elements" error):**
+```
+- Create file in project directory (K:\VSProjects\MySolution\MyClass.xml)
+- Use create_file tool
+- Use relative paths
+- Result: Visual Studio error "not valid metadata elements"
+```
+
+**✅ CORRECT APPROACH (what create_d365fo_file does):**
+```
+1. Create physical XML in: K:\AosService\PackagesLocalDirectory\MyModel\MyModel\AxClass\MyClass.xml
+2. Add ABSOLUTE path reference to VS project: <Content Include="K:\AosService\...\MyClass.xml" />
+3. Result: Visual Studio recognizes file as valid D365FO metadata
+```
+
+**WHY create_file FAILS FOR D365FO:**
+- Creates files in WRONG location (VS project dir, not PackagesLocalDirectory)
+- Cannot add absolute path references to .rnrproj
+- Visual Studio doesn't recognize files outside PackagesLocalDirectory as D365FO metadata
+- Results in "not valid metadata elements" error
+
+**🔴 ALWAYS ASK YOURSELF BEFORE CREATING D365FO FILE: 🔴**
+- Am I creating AxClass, AxTable, AxForm, AxEnum, AxQuery, AxView, or AxDataEntityView?
+- If YES → Use `create_d365fo_file` (NEVER create_file!)
+- If NO → Regular file, create_file is OK
+
+---
+
 ## ⚡ CRITICAL: IMMEDIATE RESPONSE COMPLETION
 
 **AFTER ANSWERING USER'S QUESTION:**
@@ -77,13 +159,23 @@ These tools are available via Model Context Protocol (MCP) and provide:
 
 ---
 
-## 🔴 RULE #2: D365FO FILE CREATION - USE CORRECT TOOL! 🔴
+## 🔴 RULE #2: D365FO FILE CREATION - ONLY USE create_d365fo_file! 🔴
 
-**WHEN USER ASKS TO CREATE ANY D365FO XML FILE:**
-1. ❌ **FORBIDDEN**: Using `create_file` for D365FO objects (AxClass, AxTable, AxForm, etc.)
-2. ❌ **FORBIDDEN**: Creating XML files manually with wrong structure/indentation
-3. ✅ **MANDATORY**: Always use `create_d365fo_file` MCP tool for D365FO objects
-4. ✅ **MANDATORY**: The tool ensures correct XML structure, TABS indentation, and proper AOT location
+**⛔⛔⛔ ABSOLUTE RULE - NO EXCEPTIONS: ⛔⛔⛔**
+
+**WHEN USER ASKS TO CREATE D365FO FILE (class/table/form/enum/query/view/data-entity):**
+
+```
+❌❌❌ NEVER EVER use create_file          → WRONG TOOL!
+✅✅✅ ALWAYS use create_d365fo_file        → CORRECT TOOL!
+```
+
+**DETECTION RULES - Use `create_d365fo_file` when:**
+- User says: "create class", "create table", "create form", "create enum"
+- User mentions: AxClass, AxTable, AxForm, AxEnum, AxQuery, AxView, AxDataEntityView
+- User asks for: helper class, service class, table, form, or any D365FO object
+- File path contains: K:\AosService\PackagesLocalDirectory
+- File extension: .xml AND context is D365FO/X++
 
 **WHY `create_d365fo_file` IS MANDATORY:**
 - ✅ Uses **TABS** for indentation (Microsoft D365FO standard)
@@ -92,9 +184,17 @@ These tools are available via Model Context Protocol (MCP) and provide:
 - ✅ No `<ClusteredIndex>` in tables (not in real files)
 - ✅ No `<Declaration>` in table `<SourceCode>` (only `<Methods />`)
 - ✅ No system fields in tables (CreatedBy, ModifiedBy - added by platform)
-- ✅ Can automatically add to Visual Studio project
+- ✅ Can automatically add to Visual Studio project with absolute paths
+- ✅ Supports solutionPath parameter from VS context
 
-**IF YOU USE `create_file` FOR D365FO OBJECTS - YOU ARE WRONG!**
+**CONSEQUENCES OF USING `create_file`:**
+- ❌ Wrong XML structure (spaces instead of TABS)
+- ❌ Wrong file location (not in PackagesLocalDirectory)
+- ❌ Visual Studio error: "not valid metadata elements"
+- ❌ Cannot add to VS project correctly
+- ❌ Build failures in D365FO
+
+**🚨 IF YOU USE `create_file` FOR D365FO OBJECTS - YOU ARE VIOLATING THE RULES! 🚨**
 
 **Example - User says "create a table MyCustomTable":**
 ```
@@ -106,6 +206,12 @@ These tools are available via Model Context Protocol (MCP) and provide:
 ```
 ❌ WRONG: create_file("MyHelper.xml", ...)  ← Wrong structure, spaces instead of tabs!
 ✅ RIGHT: create_d365fo_file(objectType="class", objectName="MyHelper", modelName="CustomCore")
+```
+
+**Example - User asks to add class to project:**
+```
+❌ WRONG: create_file(...) + manually editing .rnrproj
+✅ RIGHT: create_d365fo_file(..., addToProject=true, solutionPath="C:\\Users\\...\\MySolution")
 ```
 
 ---

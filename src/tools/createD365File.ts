@@ -135,13 +135,13 @@ class XmlTemplateGenerator {
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-	<Name>${className}</Name>
-${extendsAttr}${implementsAttr}${isFinalAttr}${isAbstractAttr}	<SourceCode>
-		<Declaration><![CDATA[
+\t<Name>${className}</Name>
+${extendsAttr}${implementsAttr}${isFinalAttr}${isAbstractAttr}\t<SourceCode>
+\t\t<Declaration><![CDATA[
 ${declaration}
 ]]></Declaration>
-		<Methods />
-	</SourceCode>
+\t\t<Methods />
+\t</SourceCode>
 </AxClass>
 `;
   }
@@ -544,22 +544,25 @@ export async function handleCreateD365File(
     );
     const fileName = `${args.objectName}.xml`;
     const fullPath = path.join(modelPath, fileName);
+    
+    // Normalize path to Windows format (backslashes) for consistency
+    const normalizedFullPath = fullPath.replace(/\//g, '\\');
 
     // Check if directory exists, create if not
     try {
-      await fs.access(modelPath);
+      await fs.access(normalizedFullPath);
     } catch {
-      await fs.mkdir(modelPath, { recursive: true });
+      await fs.mkdir(path.dirname(normalizedFullPath), { recursive: true });
     }
 
     // Check if file already exists
     try {
-      await fs.access(fullPath);
+      await fs.access(normalizedFullPath);
       return {
         content: [
           {
             type: 'text',
-            text: `⚠️ File already exists: ${fullPath}\n\nPlease choose a different name or delete the existing file first.`,
+            text: `⚠️ File already exists: ${normalizedFullPath}\n\nPlease choose a different name or delete the existing file first.`,
           },
         ],
       };
@@ -576,7 +579,7 @@ export async function handleCreateD365File(
     );
 
     // Write file
-    await fs.writeFile(fullPath, xmlContent, 'utf-8');
+    await fs.writeFile(normalizedFullPath, xmlContent, 'utf-8');
 
     // Add to Visual Studio project if requested
     let projectMessage = '';
@@ -610,7 +613,8 @@ export async function handleCreateD365File(
 
           // D365FO projects expect ABSOLUTE paths to XML files, not relative
           // The full path must point to the exact XML location in PackagesLocalDirectory
-          const absoluteXmlPath = fullPath;
+          // Ensure Windows path format with backslashes
+          const absoluteXmlPath = normalizedFullPath;
 
           // Add to project
           const projectManager = new ProjectFileManager();
@@ -645,7 +649,7 @@ export async function handleCreateD365File(
         {
           type: 'text',
           text: `✅ Successfully created D365FO ${args.objectType} file:\n\n` +
-            `📁 Path: ${fullPath}\n` +
+            `📁 Path: ${normalizedFullPath}\n` +
             `📄 Object: ${args.objectName}\n` +
             `📦 Model: ${args.modelName}\n` +
             `🔧 Type: ${objectFolder}\n` +
