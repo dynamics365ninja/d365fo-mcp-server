@@ -47,6 +47,8 @@ D365FO files MUST NOT be in: C:\Users\...\MySolution\{Name}.xml
 
 **WHY? Because D365FO files MUST:**
 1. Be created in `K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxClass\` (NOT in VS solution folder!)
+   - **⚠️ This path ALWAYS exists on D365FO environments** - standard installation path
+   - **DO NOT assume it doesn't exist!**
 2. VS project contains only REFERENCES (absolute paths) to these files, NOT copies
 3. Use TABS for indentation (not spaces)
 4. Have correct XML structure matching Microsoft standards
@@ -59,6 +61,8 @@ D365FO files MUST NOT be in: C:\Users\...\MySolution\{Name}.xml
 
 **What happens when you use create_d365fo_file (MCP tool):**
 - ✅ File created in CORRECT location: K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxClass\
+- ✅ **This path exists on ALL D365FO VMs** (VHD, cloud, on-premise)
+- ✅ **NEVER say "path doesn't exist"** - it's guaranteed to be present!
 - ✅ Absolute path reference added to .rnrproj: <Content Include="K:\...\MyClass.xml" />
 - ✅ Visual Studio recognizes file as valid D365FO metadata
 - ✅ Build succeeds
@@ -305,13 +309,13 @@ These tools are available via Model Context Protocol (MCP) and provide:
 **Example - User says "create a table MyCustomTable":**
 ```
 ❌ WRONG: create_file("MyCustomTable.xml", content="<AxTable>...")  ← Wrong tool!
-✅ RIGHT: create_d365fo_file(objectType="table", objectName="MyCustomTable", modelName="CustomCore")
+✅ RIGHT: create_d365fo_file(objectType="table", objectName="MyCustomTable", modelName="ContosoExtensions")
 ```
 
 **Example - User says "create a class MyHelper":**
 ```
 ❌ WRONG: create_file("MyHelper.xml", ...)  ← Wrong structure, spaces instead of tabs!
-✅ RIGHT: create_d365fo_file(objectType="class", objectName="MyHelper", modelName="CustomCore")
+✅ RIGHT: create_d365fo_file(objectType="class", objectName="MyHelper", modelName="ContosoExtensions")
 ```
 
 **Example - User asks to add class to project:**

@@ -254,7 +254,7 @@ workspacePath and includeWorkspace parameters.`,
               },
               modelName: {
                 type: 'string',
-                description: 'Model name (e.g., CustomCore, ApplicationSuite)'
+                description: 'Model name (e.g., ContosoExtensions, ApplicationSuite)'
               },
               packagePath: {
                 type: 'string',

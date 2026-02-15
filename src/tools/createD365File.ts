@@ -18,7 +18,7 @@ const CreateD365FileArgsSchema = z.object({
     .describe('Name of the object (e.g., MyHelperClass, MyCustomTable)'),
   modelName: z
     .string()
-    .describe('Model name (e.g., CustomCore, ApplicationSuite)'),
+    .describe('Model name (e.g., ContosoExtensions, ApplicationSuite)'),
   packagePath: z
     .string()
     .optional()
@@ -563,11 +563,22 @@ export async function handleCreateD365File(
     // Normalize path to Windows format (backslashes) for consistency
     const normalizedFullPath = fullPath.replace(/\//g, '\\');
 
-    // Check if directory exists, create if not
+    // Ensure directory exists (create if needed)
+    const directory = path.dirname(normalizedFullPath);
+    console.error(
+      `[create_d365fo_file] Ensuring directory exists: ${directory}`
+    );
     try {
-      await fs.access(normalizedFullPath);
-    } catch {
-      await fs.mkdir(path.dirname(normalizedFullPath), { recursive: true });
+      await fs.mkdir(directory, { recursive: true });
+      console.error(`[create_d365fo_file] Directory ready: ${directory}`);
+    } catch (mkdirError) {
+      console.error(
+        `[create_d365fo_file] Failed to create directory:`,
+        mkdirError
+      );
+      throw new Error(
+        `Failed to create directory ${directory}: ${mkdirError instanceof Error ? mkdirError.message : 'Unknown error'}`
+      );
     }
 
     // Check if file already exists
@@ -602,7 +613,28 @@ export async function handleCreateD365File(
     );
 
     // Write file
-    await fs.writeFile(normalizedFullPath, xmlContent, 'utf-8');
+    try {
+      await fs.writeFile(normalizedFullPath, xmlContent, 'utf-8');
+      console.error(
+        `[create_d365fo_file] File written successfully: ${normalizedFullPath}`
+      );
+    } catch (writeError) {
+      console.error(`[create_d365fo_file] Failed to write file:`, writeError);
+      
+      // Check if it's a disk/path issue
+      const errorMessage = writeError instanceof Error ? writeError.message : String(writeError);
+      if (errorMessage.includes('EINVAL') || errorMessage.includes('ENOENT')) {
+        throw new Error(
+          `Failed to write file to ${normalizedFullPath}.\n\n` +
+          `Possible causes:\n` +
+          `1. Drive K:\\ does not exist (running on Linux/Mac? Use packagePath parameter to override)\n` +
+          `2. Directory ${path.dirname(normalizedFullPath)} is not accessible\n` +
+          `3. Insufficient permissions\n\n` +
+          `Original error: ${errorMessage}`
+        );
+      }
+      throw writeError;
+    }
 
     // Verify file was written
     const stats = await fs.stat(normalizedFullPath);
