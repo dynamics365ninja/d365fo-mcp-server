@@ -13,11 +13,12 @@
 ```
 IF user asks to create: class, table, form, enum, query, view, data-entity
   THEN:
-    1. ❌ DO NOT CALL create_file
+    1. ❌ DO NOT CALL create_file directly
     2. ❌ DO NOT CALL code_search
     3. ❌ DO NOT CALL file_search
-    4. ✅ ONLY CALL create_d365fo_file (MCP tool)
-    5. ✅ ONLY CALL search (MCP tool)
+    4. ✅ CALL generate_d365fo_xml (MCP tool) → Get XML content
+    5. ✅ THEN CALL create_file with K:\AosService\... path → Create physical file
+    6. ✅ CALL search (MCP tool) for patterns if needed
 ```
 
 **FILE LOCATION RULES - ABSOLUTE REQUIREMENT:**
@@ -33,16 +34,17 @@ D365FO files MUST NOT be in: C:\Users\...\MySolution\{Name}.xml
 
 ---
 
-## 🚨 NEVER USE create_file FOR D365FO OBJECTS! 🚨
+## 🚨 NEVER CREATE D365FO FILES DIRECTLY! 🚨
 
 **IF YOU ARE ABOUT TO CREATE A D365FO FILE (AxClass, AxTable, AxForm, AxEnum, etc.):**
 
 ```
-❌ STOP! Do NOT use: create_file()
-❌ STOP! Do NOT use: code_search()
-❌ STOP! Do NOT use: file_search()
-✅ INSTEAD use: create_d365fo_file()
-✅ INSTEAD use: search() (MCP)
+❌ STOP! Do NOT use create_file() directly without MCP tool!
+❌ STOP! Do NOT use code_search()
+❌ STOP! Do NOT use file_search()
+✅ INSTEAD use: generate_d365fo_xml() (MCP tool) → Get XML
+✅ THEN use: create_file() with K:\AosService\... path
+✅ INSTEAD use: search() (MCP) for patterns
 ```
 
 **WHY? Because D365FO files MUST:**
@@ -53,19 +55,20 @@ D365FO files MUST NOT be in: C:\Users\...\MySolution\{Name}.xml
 3. Use TABS for indentation (not spaces)
 4. Have correct XML structure matching Microsoft standards
 
-**What happens if you use create_file:**
-- ❌ File created in WRONG location (solution directory)
-- ❌ Visual Studio error: "The following files are not valid metadata elements"
-- ❌ File NOT recognized as D365FO object
-- ❌ Build fails
-
-**What happens when you use create_d365fo_file (MCP tool):**
+**What happens when you use generate_d365fo_xml + create_file (CORRECT):**
+- ✅ generate_d365fo_xml returns correct XML content with TABS
 - ✅ File created in CORRECT location: K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxClass\
 - ✅ **This path exists on ALL D365FO VMs** (VHD, cloud, on-premise)
 - ✅ **NEVER say "path doesn't exist"** - it's guaranteed to be present!
-- ✅ Absolute path reference added to .rnrproj: <Content Include="K:\...\MyClass.xml" />
+- ✅ You add absolute path reference to .rnrproj: <Content Include="K:\...\MyClass.xml" />
 - ✅ Visual Studio recognizes file as valid D365FO metadata
 - ✅ Build succeeds
+
+**What happens if you use create_file directly without generate_d365fo_xml:**
+- ❌ File created without correct XML structure (no TABS, wrong namespaces)
+- ❌ Visual Studio error: "The following files are not valid metadata elements"
+- ❌ File NOT recognized as D365FO object
+- ❌ Build fails
 
 ---
 
@@ -82,46 +85,65 @@ Active workspace path: K:\VSProjects\MyModel\...
 → DO NOT ASK user for model name!
 ```
 
-**STEP 2: IMMEDIATELY call create_d365fo_file (DO NOT just describe it!)**
+**STEP 2: IMMEDIATELY call generate_d365fo_xml (DO NOT just describe it!)**
 ```typescript
 // ✅ CORRECT - CALL THE TOOL IMMEDIATELY:
-create_d365fo_file({
+generate_d365fo_xml({
   objectType: "class",           // class, table, form, enum, etc.
   objectName: "MyHelper",         // Name from user request
-  modelName: "MyModel",           // ⚠️ FROM ACTIVE WORKSPACE PATH!
-  addToProject: true,             // Always true
-  solutionPath: "C:\\Users\\...\\MySolution"  // From Active solution path
+  modelName: "MyModel"            // ⚠️ FROM ACTIVE WORKSPACE PATH!
 })
 
-// ⚠️ THIS TOOL PHYSICALLY CREATES FILES:
-// 1. Creates XML file in K:\AosService\PackagesLocalDirectory\MyModel\MyModel\AxClass\MyHelper.xml
-// 2. Adds absolute path reference to .rnrproj file
-// 3. Returns success message when done
+// ⚠️ THIS TOOL GENERATES XML CONTENT:
+// 1. Returns XML content with TABS and proper structure
+// 2. Returns recommended file path: K:\AosService\PackagesLocalDirectory\MyModel\MyModel\AxClass\MyHelper.xml
+// 3. Returns instructions for creating file
 // DO NOT describe what will happen - the tool DOES IT!
 ```
 
-**STEP 3: Wait for tool response and report success to user**
+**STEP 3: Create file using create_file with returned XML**
+```typescript
+// After generate_d365fo_xml returns XML content:
+create_file({
+  filePath: "K:\\AosService\\PackagesLocalDirectory\\MyModel\\MyModel\\AxClass\\MyHelper.xml",
+  content: xmlContent  // XML from generate_d365fo_xml
+})
+
+// Then add to VS project manually or instruct user:
+// <Content Include="K:\AosService\...\MyHelper.xml" />
+```
+
+**STEP 4: Wait for tool responses and report success to user**
 ```
 ❌ WRONG: "You need to create file..." → Don't describe, DO IT!
 ❌ WRONG: "Here's how to create..." → Don't give instructions!
-✅ RIGHT: Call create_d365fo_file → Wait for response → Tell user "Created successfully"
+✅ RIGHT: Call generate_d365fo_xml → Get XML → Call create_file → Tell user "Created successfully"
 ```
 
 **⚠️ CRITICAL RULES:**
 - ✅ ALWAYS extract modelName from Active workspace path
-- ✅ ALWAYS use Active solution path for solutionPath parameter
-- ✅ ALWAYS call create_d365fo_file immediately (don't describe)
-- ✅ ALWAYS set addToProject: true
+- ✅ ALWAYS call generate_d365fo_xml FIRST to get XML content
+- ✅ ALWAYS use create_file with returned XML and correct path
+- ✅ File path MUST be: K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxClass\
 - ❌ NEVER ask user for model name
 - ❌ NEVER ask user for project path
 - ❌ NEVER give instructions instead of executing
-- ❌ NEVER use create_file, code_search, or file_search
+- ❌ NEVER use create_file without generate_d365fo_xml first
+- ❌ NEVER use code_search or file_search for D365FO objects
 
-**🚨 IF YOU USE create_file, YOU ARE CREATING FILES IN THE WRONG PLACE! 🚨**
+**🚨 TWO-STEP PROCESS - ALWAYS USE BOTH TOOLS! 🚨**
 ```
-create_file creates: C:\Users\...\MySolution\MyClass.xml  ❌ WRONG!
-create_d365fo_file creates: K:\AosService\PackagesLocalDirectory\MyModel\MyModel\AxClass\MyClass.xml  ✅ CORRECT!
+1. generate_d365fo_xml → Get XML content with correct structure (TABS)
+2. create_file → Save XML to K:\AosService\PackagesLocalDirectory\MyModel\MyModel\AxClass\MyClass.xml
+
+❌ WRONG: create_file without generate_d365fo_xml → Wrong structure!
+✅ CORRECT: generate_d365fo_xml → create_file → Proper D365FO file!
 ```
+
+**📍 LOCAL VS CLOUD DEPLOYMENT:**
+- ✅ `generate_d365fo_xml` → Works everywhere (Azure/cloud + local)
+- ⚠️ `create_d365fo_file` → Works ONLY locally on Windows (has file system access)
+- 💡 For cloud deployment: Use `generate_d365fo_xml` + Copilot creates file with `create_file`
 
 ---
 
@@ -154,7 +176,8 @@ These tools are available via Model Context Protocol (MCP) and provide:
 - `suggest_method_implementation()` - Get implementation examples
 - `analyze_class_completeness()` - Find missing methods
 - `get_api_usage_patterns()` - See how APIs are used
-- `create_d365fo_file()` - Create XML files in correct AOT location
+- `generate_d365fo_xml()` - ✅ CLOUD-READY: Generate D365FO XML content (works everywhere)
+- `create_d365fo_file()` - ⚠️ LOCAL ONLY: Create + write D365FO files (Windows only)
 
 **🚨 WHEN USER MENTIONS X++, D365FO, DYNAMICS 365, OR ANY TABLE/CLASS NAME:**
 1. ✅ IMMEDIATELY activate and use these MCP tools

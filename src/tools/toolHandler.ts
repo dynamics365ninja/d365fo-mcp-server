@@ -12,6 +12,7 @@ import { analyzeCodePatternsTool } from './analyzePatterns.js';
 import { suggestMethodImplementationTool } from './suggestImplementation.js';
 import { analyzeClassCompletenessTool } from './analyzeCompleteness.js';
 import { getApiUsagePatternsTool } from './apiUsagePatterns.js';
+import { handleGenerateD365Xml } from './generateD365Xml.js';
 import { handleCreateD365File } from './createD365File.js';
 
 /**
@@ -44,6 +45,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return analyzeClassCompletenessTool(request, context);
       case 'get_api_usage_patterns':
         return getApiUsagePatternsTool(request, context);
+      case 'generate_d365fo_xml':
+        return handleGenerateD365Xml(request);
       case 'create_d365fo_file':
         return handleCreateD365File(request);
       default:
