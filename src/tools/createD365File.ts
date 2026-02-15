@@ -418,9 +418,18 @@ class ProjectFileManager {
     objectName: string,
     absoluteXmlPath: string
   ): Promise<void> {
+    console.error(
+      `[ProjectFileManager] Adding to project: ${projectPath}, type: ${objectType}, name: ${objectName}`
+    );
+    console.error(`[ProjectFileManager] Absolute XML path: ${absoluteXmlPath}`);
+
     // Read project file
-    const projectContent = await fs.readFile(projectPath, 'utf-8');
-    const project = await this.parser.parseStringPromise(projectContent);
+    const projectXml = await fs.readFile(projectPath, 'utf-8');
+    const project = await this.parser.parseStringPromise(projectXml);
+
+    console.error(
+      `[ProjectFileManager] Parsed project, ItemGroup count: ${Array.isArray(project.Project.ItemGroup) ? project.Project.ItemGroup.length : 'single'}`
+    );
 
     // Ensure project structure exists
     if (!project.Project) {
@@ -502,9 +511,15 @@ class ProjectFileManager {
       Link: `${folderName}\\${objectName}.xml`,
     });
 
+    console.error(
+      `[ProjectFileManager] Added file reference to project, Content items: ${contentGroup.Content.length}`
+    );
+
     // Write back to project file
     const updatedXml = this.builder.buildObject(project);
     await fs.writeFile(projectPath, updatedXml, 'utf-8');
+
+    console.error(`[ProjectFileManager] Project file saved successfully`);
   }
 }
 
@@ -578,27 +593,54 @@ export async function handleCreateD365File(
       args.properties
     );
 
+    // Debug: Log XML content length
+    console.error(
+      `[create_d365fo_file] Generated XML content: ${xmlContent.length} bytes`
+    );
+    console.error(
+      `[create_d365fo_file] XML preview: ${xmlContent.substring(0, 200)}...`
+    );
+
     // Write file
     await fs.writeFile(normalizedFullPath, xmlContent, 'utf-8');
+
+    // Verify file was written
+    const stats = await fs.stat(normalizedFullPath);
+    console.error(
+      `[create_d365fo_file] File written: ${normalizedFullPath}, size: ${stats.size} bytes`
+    );
 
     // Add to Visual Studio project if requested
     let projectMessage = '';
     if (args.addToProject) {
+      console.error(
+        `[create_d365fo_file] addToProject requested, solutionPath: ${args.solutionPath}, projectPath: ${args.projectPath}`
+      );
+
       // Try to find project file if not explicitly specified
       let projectPath = args.projectPath;
       
       if (!projectPath && args.solutionPath) {
         // Try to find project in solution directory
+        console.error(
+          `[create_d365fo_file] Searching for .rnrproj in solution: ${args.solutionPath}, model: ${args.modelName}`
+        );
         const detectedPath = await ProjectFileFinder.findProjectInSolution(
           args.solutionPath,
           args.modelName
         );
-        
+
         if (!detectedPath) {
+          console.error(
+            `[create_d365fo_file] No .rnrproj found in solution directory`
+          );
           projectMessage = `\n⚠️ Could not find .rnrproj file for model '${args.modelName}' in solution directory.\n` +
             `Searched in: ${args.solutionPath}\n` +
             `Please specify projectPath parameter explicitly.\n`;
         } else {
+          console.error(
+            `[create_d365fo_file] Found project file: ${detectedPath}`
+          );
           projectPath = detectedPath;
         }
       } else if (!projectPath) {
@@ -608,6 +650,9 @@ export async function handleCreateD365File(
 
       if (projectPath) {
         try {
+          console.error(
+            `[create_d365fo_file] Adding to project: ${projectPath}`
+          );
           // Validate project file exists
           await fs.access(projectPath);
 
@@ -615,6 +660,10 @@ export async function handleCreateD365File(
           // The full path must point to the exact XML location in PackagesLocalDirectory
           // Ensure Windows path format with backslashes
           const absoluteXmlPath = normalizedFullPath;
+
+          console.error(
+            `[create_d365fo_file] Absolute XML path: ${absoluteXmlPath}`
+          );
 
           // Add to project
           const projectManager = new ProjectFileManager();
@@ -625,8 +674,13 @@ export async function handleCreateD365File(
             absoluteXmlPath
           );
 
+          console.error(`[create_d365fo_file] Successfully added to project`);
           projectMessage = `\n✅ Successfully added to Visual Studio project:\n📋 Project: ${projectPath}\n`;
         } catch (projectError) {
+          console.error(
+            `[create_d365fo_file] Failed to add to project:`,
+            projectError
+          );
           projectMessage = `\n⚠️ File created but failed to add to project:\n${projectError instanceof Error ? projectError.message : 'Unknown error'}\n`;
         }
       }
