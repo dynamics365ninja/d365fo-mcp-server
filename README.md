@@ -65,8 +65,6 @@ This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O
 
 ### ✅ ALWAYS USE (for X++ objects):
 - ✅ `search` (MCP tool) - 100x faster, indexed SQL, X++-aware
-- ✅ `get_class_info` - Get class structure instantly
-- ✅ `get_table_info` - Get table structure instantly
 
 **See [.github/copilot-instructions.md](.github/copilot-instructions.md) for complete guidelines.**
 
@@ -106,6 +104,12 @@ This MCP server provides GitHub Copilot with complete knowledge of your D365 F&O
 ---
 
 ## ✨ Features
+
+**20 MCP Tools Available** - Complete D365FO code intelligence suite:
+- 📦 7 Basic Discovery tools (search, class/table/form/query/view/enum info, completion)
+- 🧠 4 Intelligent Code Generation tools (pattern analysis, suggestions)
+- 📝 3 File Operations tools (generate, create, modify)
+- 🔗 1 Analysis tool (where-used references)
 
 ### Core Capabilities
 

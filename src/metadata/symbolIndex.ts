@@ -539,13 +539,11 @@ export class XppSymbolIndex {
   async indexMetadataDirectory(metadataPath: string, modelName?: string): Promise<void> {
     const models = modelName ? [modelName] : await this.getModelDirectories(metadataPath);
 
-    console.log(`   Processing ${models.length} model(s)...`);
     const startTime = Date.now();
 
     // PERFORMANCE BOOST: Disable FTS triggers during bulk insert
     // FTS5 triggers are the main bottleneck (3-5x slower than plain INSERT)
     // We'll rebuild FTS index at the end using 'rebuild'
-    console.log('   ⚡ Disabling FTS triggers for bulk insert...');
     this.db.exec('DROP TRIGGER IF EXISTS symbols_ai;');
     this.db.exec('DROP TRIGGER IF EXISTS symbols_au;');
     this.db.exec('DROP TRIGGER IF EXISTS symbols_ad;');
@@ -558,16 +556,7 @@ export class XppSymbolIndex {
       for (const model of models) {
         modelIndex++;
         const modelPath = path.join(metadataPath, model);
-        
-        // Log current model and progress percentage
-        const progressPercent = ((modelIndex / models.length) * 100).toFixed(1);
-        console.log(`   📦 [${progressPercent}%] Indexing: ${model}`);
-        
-        // Additional progress in CI every 50 models
-        if (isCI() && modelIndex % 50 === 0) {
-          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          console.log(`      ⏱️  ${modelIndex}/${models.length} models (${elapsed}s elapsed)`);
-        }
+        const modelStartTime = Date.now();
         
         // Index classes
         const classesPath = path.join(modelPath, 'classes');
@@ -604,6 +593,12 @@ export class XppSymbolIndex {
         if (fs.existsSync(enumsPath)) {
           this.indexEnums(enumsPath, model);
         }
+        
+        // Compact progress output: one line per model with time
+        const modelDuration = ((Date.now() - modelStartTime) / 1000).toFixed(1);
+        const progressPercent = ((modelIndex / models.length) * 100).toFixed(0);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        console.log(`   📦 [${progressPercent}%] ${model} - ${modelDuration}s (${elapsed}s total)`);
       }
     });
 
@@ -611,18 +606,17 @@ export class XppSymbolIndex {
     transaction();
     
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`   ✅ Indexed ${models.length} model(s) in ${duration}s`);
     
     // Rebuild FTS index from scratch (much faster than triggers)
-    console.log('   🔍 Rebuilding FTS index...');
     const ftsStartTime = Date.now();
     this.db.exec("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild');");
     const ftsDuration = ((Date.now() - ftsStartTime) / 1000).toFixed(1);
-    console.log(`   ✅ FTS index rebuilt in ${ftsDuration}s`);
     
     // Re-create FTS triggers for runtime updates
-    console.log('   🔧 Re-creating FTS triggers...');
     this.createFTSTriggers();
+    
+    // Summary: indexed X model(s) in Y.Ys (FTS rebuilt in Z.Zs)
+    console.log(`   ✅ Indexed ${models.length} model(s) in ${duration}s (FTS rebuilt in ${ftsDuration}s)`);
   }
 
   private async getModelDirectories(metadataPath: string): Promise<string[]> {

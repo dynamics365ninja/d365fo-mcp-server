@@ -312,6 +312,175 @@ workspacePath and includeWorkspace parameters.`,
             required: ['objectType', 'objectName', 'modelName'],
           },
         },
+        {
+          name: 'find_references',
+          description: 'Find all references (where-used analysis) to a class, method, field, table, or enum. Essential for impact analysis and understanding dependencies.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              targetName: {
+                type: 'string',
+                description: 'Name of the target (class name, method name, field name, etc.)'
+              },
+              targetType: {
+                type: 'string',
+                enum: ['class', 'method', 'field', 'table', 'enum', 'all'],
+                description: 'Type of the target to search for',
+                default: 'all'
+              },
+              limit: {
+                type: 'number',
+                description: 'Maximum number of references to return',
+                default: 50
+              },
+            },
+            required: ['targetName'],
+          },
+        },
+        {
+          name: 'modify_d365fo_file',
+          description: '⚠️ WINDOWS ONLY: Safely modifies an existing D365FO XML file (class, table, enum, etc.). Supports adding/updating/deleting methods, fields, and properties. Creates automatic backup (.bak) before changes and validates XML after modification. IMPORTANT: This tool MUST run locally on Windows D365FO VM - it CANNOT work through Azure HTTP proxy (Linux).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              filePath: {
+                type: 'string',
+                description: 'Full path to the D365FO XML file (e.g., K:\\AosService\\PackagesLocalDirectory\\Model\\Model\\AxClass\\MyClass.xml)'
+              },
+              operation: {
+                type: 'string',
+                enum: ['add_method', 'update_method', 'delete_method', 'add_field', 'update_property'],
+                description: 'Type of modification to perform'
+              },
+              methodName: {
+                type: 'string',
+                description: 'Method name (required for add_method, update_method, delete_method)'
+              },
+              methodCode: {
+                type: 'string',
+                description: 'Method source code (required for add_method, update_method)'
+              },
+              fieldName: {
+                type: 'string',
+                description: 'Field name (required for add_field)'
+              },
+              fieldType: {
+                type: 'string',
+                description: 'Field data type (required for add_field)'
+              },
+              propertyName: {
+                type: 'string',
+                description: 'Property name (required for update_property)'
+              },
+              propertyValue: {
+                type: 'string',
+                description: 'Property value (required for update_property)'
+              },
+            },
+            required: ['filePath', 'operation'],
+          },
+        },
+        {
+          name: 'get_method_signature',
+          description: 'Get the exact method signature for a class method, including parameters, return type, and modifiers. Essential for creating Chain of Command (CoC) extensions with correct signatures.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              className: {
+                type: 'string',
+                description: 'Name of the class containing the method'
+              },
+              methodName: {
+                type: 'string',
+                description: 'Name of the method to get signature for'
+              },
+            },
+            required: ['className', 'methodName'],
+          },
+        },
+        {
+          name: 'get_form_info',
+          description: 'Get detailed information about a D365FO form, including datasources, controls (buttons, grids, tabs), methods, and form structure. Essential for form customization and understanding form architecture.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              formName: {
+                type: 'string',
+                description: 'Name of the form (e.g., SalesTable, CustTable, InventTable)'
+              },
+              includeWorkspace: {
+                type: 'boolean',
+                description: 'Whether to include workspace files in search',
+                default: false
+              },
+              workspacePath: {
+                type: 'string',
+                description: 'Optional workspace path to search local files'
+              },
+            },
+            required: ['formName'],
+          },
+        },
+        {
+          name: 'get_query_info',
+          description: 'Get detailed information about a D365FO query, including datasources, ranges, joins, grouping, and query structure. Essential for understanding and extending queries.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              queryName: {
+                type: 'string',
+                description: 'Name of the query (e.g., CustTransOpenQuery, InventTransQuery)'
+              },
+              includeWorkspace: {
+                type: 'boolean',
+                description: 'Whether to include workspace files in search',
+                default: false
+              },
+              workspacePath: {
+                type: 'string',
+                description: 'Optional workspace path to search local files'
+              },
+            },
+            required: ['queryName'],
+          },
+        },
+        {
+          name: 'get_view_info',
+          description: 'Get detailed information about a D365FO view or data entity view, including mapped fields, computed columns, relations, methods, and view structure. Essential for data entity development and understanding view architecture.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              viewName: {
+                type: 'string',
+                description: 'Name of the view or data entity (e.g., GeneralJournalAccountEntryView, CustInvoiceJourView)'
+              },
+              includeWorkspace: {
+                type: 'boolean',
+                description: 'Whether to include workspace files in search',
+                default: false
+              },
+              workspacePath: {
+                type: 'string',
+                description: 'Optional workspace path to search local files'
+              },
+            },
+            required: ['viewName'],
+          },
+        },
+        {
+          name: 'get_enum_info',
+          description: 'Get detailed information about a D365FO enum (enumeration), including all enum values, labels, and properties. Essential for understanding enum values and creating extensions.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              enumName: {
+                type: 'string',
+                description: 'Name of the enum (e.g., CustAccountType, SalesStatus, NoYes)'
+              },
+            },
+            required: ['enumName'],
+          },
+        },
       ],
     };
   });

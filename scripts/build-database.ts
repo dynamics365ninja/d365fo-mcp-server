@@ -81,15 +81,11 @@ async function buildDatabase() {
     // Index specific models
     console.log(`📦 Indexing ${modelsToRebuild.length} model(s): ${modelsToRebuild.join(', ')}`);
     for (const modelName of modelsToRebuild) {
-      console.log(`   🔄 Starting indexing of ${modelName}...`);
       await symbolIndex.indexMetadataDirectory(INPUT_PATH, modelName);
-      console.log(`   ✅ Completed indexing of ${modelName}`);
     }
   } else {
     // Index all models in the directory
-    console.log(`   🔄 Starting full directory indexing...`);
     await symbolIndex.indexMetadataDirectory(INPUT_PATH);
-    console.log(`   ✅ Completed directory indexing`);
   }
   
   console.log(`\n📊 Indexing complete, now collecting statistics...`);

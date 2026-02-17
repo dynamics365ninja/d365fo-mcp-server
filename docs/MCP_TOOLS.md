@@ -8,6 +8,40 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 
 ---
 
+## Available Tools (20 Total)
+
+### 📦 Basic Discovery (7 tools)
+1. **search** - Search for X++ classes, tables, forms, queries, views, methods, and fields
+2. **batch_search** - Execute multiple searches in parallel (3x faster)
+3. **search_extensions** - Search for symbols in custom extensions/ISV models
+4. **get_class_info** - Get detailed class information
+5. **get_table_info** - Get detailed table information
+6. **code_completion** - Get method and field completions (IntelliSense)
+7. **generate_code** - Generate X++ code templates
+
+### 🧠 Intelligent Code Generation (4 tools)
+8. **analyze_code_patterns** - Analyze codebase for similar patterns
+9. **suggest_method_implementation** - Get implementation examples from codebase
+10. **analyze_class_completeness** - Find missing methods in classes
+11. **get_api_usage_patterns** - See how APIs are used in codebase
+
+### 🔍 Advanced Object Info (5 tools)
+12. **get_form_info** - Get form datasources, controls, and methods
+13. **get_query_info** - Get query datasources, ranges, and joins
+14. **get_view_info** - Get view/data entity fields and relations
+15. **get_enum_info** - Get enum values and properties
+16. **get_method_signature** - Get exact method signature for CoC
+
+### 📝 File Operations (3 tools)
+17. **generate_d365fo_xml** - Generate D365FO XML (cloud-ready)
+18. **create_d365fo_file** - Create D365FO file in AOT (Windows only)
+19. **modify_d365fo_file** - Safely modify existing D365FO files (Windows only)
+
+### 🔗 Analysis (1 tool)
+20. **find_references** - Find all usages (where-used analysis)
+
+---
+
 ## What Can You Do?
 
 1. [**Search for Code**](#search-for-code) - Find classes, tables, methods across D365FO
@@ -15,6 +49,8 @@ This guide describes what you can ask GitHub Copilot when working with Dynamics 
 3. [**Generate Code**](#generate-code) - Create new classes following D365FO patterns
 4. [**Create Files**](#create-files) - Generate D365FO XML files (classes, tables, forms)
 5. [**Learn Patterns**](#learn-patterns) - See how APIs are used in your codebase
+6. [**Analyze Dependencies**](#analyze-dependencies) - Find where code is used (where-used)
+7. [**Modify Files Safely**](#modify-files-safely) - Edit D365FO files with automatic backup
 
 ---
 

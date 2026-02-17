@@ -218,7 +218,7 @@ async function main() {
     const transport = new StdioServerTransport();
     await mcpServer.connect(transport);
     console.log('✅ Stdio transport connected');
-    console.log('🎯 Registered 10 X++ MCP tools (6 basic + 4 intelligent)');
+    console.log('🎯 Registered 20 X++ MCP tools (13 discovery/info + 4 intelligent + 3 file operations)');
     serverState.isReady = true;
     serverState.isHealthy = true;
     serverState.statusMessage = 'Ready';
@@ -279,20 +279,36 @@ async function main() {
         console.log('✅ Server is READY!');
         console.log(`📡 MCP endpoint: http://localhost:${PORT}/mcp`);
         console.log('');
-        console.log('🎯 Available tools:');
-        console.log('   Basic Discovery:');
+        console.log('🎯 Available tools (20 total):');
+        console.log('   📦 Basic Discovery (7):');
         console.log('   - search: Search for X++ classes, tables, forms, queries, views, methods, and fields');
+        console.log('   - batch_search: Execute multiple searches in parallel (3x faster)');
         console.log('   - search_extensions: Search for symbols in custom extensions/ISV models');
         console.log('   - get_class_info: Get detailed class information');
         console.log('   - get_table_info: Get detailed table information');
         console.log('   - code_completion: Get method and field completions (IntelliSense)');
         console.log('   - generate_code: Generate X++ code templates');
         console.log('');
-        console.log('   🧠 Intelligent Code Generation:');
+        console.log('   🧠 Intelligent Code Generation (4):');
         console.log('   - analyze_code_patterns: Analyze codebase for similar patterns');
         console.log('   - suggest_method_implementation: Get implementation examples from codebase');
         console.log('   - analyze_class_completeness: Find missing methods in classes');
         console.log('   - get_api_usage_patterns: See how APIs are used in codebase');
+        console.log('');
+        console.log('   🔍 Advanced Object Info (5):');
+        console.log('   - get_form_info: Get form datasources, controls, and methods');
+        console.log('   - get_query_info: Get query datasources, ranges, and joins');
+        console.log('   - get_view_info: Get view/data entity fields and relations');
+        console.log('   - get_enum_info: Get enum values and properties');
+        console.log('   - get_method_signature: Get exact method signature for CoC');
+        console.log('');
+        console.log('   📝 File Operations (3):');
+        console.log('   - generate_d365fo_xml: Generate D365FO XML (cloud-ready)');
+        console.log('   - create_d365fo_file: Create D365FO file in AOT (Windows only)');
+        console.log('   - modify_d365fo_file: Safely modify existing D365FO files (Windows only)');
+        console.log('');
+        console.log('   🔗 Analysis (1):');
+        console.log('   - find_references: Find all usages (where-used analysis)');
       })
       .catch((error) => {
         console.error('❌ Failed to initialize services:', error);
