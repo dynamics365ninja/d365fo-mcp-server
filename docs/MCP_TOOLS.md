@@ -563,38 +563,72 @@ A: Shows:
 
 ## Create Files
 
-> **Important:** File creation works differently based on where the MCP server runs:
-> - **Cloud (Azure):** Copilot generates XML content, then creates the file
-> - **Local (Windows):** Full automation - creates file and adds to Visual Studio project
+> **CRITICAL: Two Different Approaches Based on MCP Server Location**
 
-### Generate D365FO Files (Cloud-Ready)
+### Approach 1: MCP Server in Cloud/Azure (generate_d365fo_xml)
+
+**What it does:** Returns XML content as TEXT only - does NOT create physical file
 
 **Ask Copilot:**
-- "Create a class MyHelper in CustomCore model"
-- "Generate a table MyCustomTable"
-- "Create an enum MyStatus"
-- "Generate a form for customer management"
+- "Generate XML for class MyHelper in CustomCore model"
+- "Show me XML for a table MyCustomTable"
+- "Give me XML structure for enum MyStatus"
 
-**What happens (Cloud deployment):**
-1. Copilot generates proper D365FO XML structure with TABS indentation
-2. Copilot creates file in correct location: `K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxClass\`
-3. You manually add file reference to Visual Studio project
-
-**What you get:**
-- [OK] Correct XML structure matching Microsoft standards
-- [OK] Proper namespaces and metadata
-- [OK] TABS for indentation (not spaces)
-- [OK] Ready to add to Visual Studio
+**What happens:**
+1. MCP server generates D365FO XML content with proper TABS indentation
+2. Returns XML as TEXT in response
+3. **YOU or Copilot must create the file** using VS Code's create_file tool
 
 **Example:**
 ```
-Q: "Create a helper class MyDimensionHelper in CustomCore model"
+Q: "Generate XML for MyDimensionHelper class in CustomCore model"
 
 A: Copilot:
-  1. Generates XML content (<?xml version...>)
-  2. Creates file: K:\AosService\...\AxClass\MyDimensionHelper.xml
-  3. Tells you to add: <Content Include="K:\AosService\...\MyDimensionHelper.xml" />
+  1. Calls generate_d365fo_xml MCP tool
+  2. Receives XML text: <?xml version="1.0" encoding="utf-8"?>...
+  3. Uses VS Code create_file to write to:
+     K:\AosService\PackagesLocalDirectory\CustomCore\CustomCore\AxClass\MyDimensionHelper.xml
+  4. You manually add to .rnrproj:
+     <Content Include="K:\AosService\...\MyDimensionHelper.xml" />
 ```
+
+**When to use:** MCP server runs in Azure/cloud without file system access
+
+---
+
+### Approach 2: MCP Server on Local Windows (create_d365fo_file)
+
+**What it does:** Creates PHYSICAL file on disk and optionally adds to VS project
+
+**Ask Copilot:**
+- "Create a class MyHelper in CustomCore model"
+- "Create and add MyTable to my Visual Studio project"
+- "Generate MyEnum and add to solution"
+
+**What happens:**
+1. MCP server generates XML content
+2. **Writes physical file** to K:\AosService\PackagesLocalDirectory\{Model}\...
+3. Optionally adds reference to your .rnrproj automatically
+
+**Example:**
+```
+Q: "Create MyDimensionHelper class in CustomCore model and add to project"
+
+A: Copilot:
+  1. Calls create_d365fo_file MCP tool
+  2. Creates file: K:\AosService\PackagesLocalDirectory\CustomCore\CustomCore\AxClass\MyDimensionHelper.xml
+  3. Adds to .rnrproj automatically
+  4. Done - just build!
+```
+
+**When to use:** MCP server runs on local Windows D365FO VM with K:\ drive access
+
+**What you get (both approaches):**
+- ✅ Correct XML structure matching Microsoft standards
+- ✅ Proper namespaces and metadata
+- ✅ TABS for indentation (not spaces)
+- ✅ UTF-8 with BOM encoding
+- ✅ Ready for Visual Studio compilation
 
 ---
 

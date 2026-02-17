@@ -630,11 +630,13 @@ export async function handleCreateD365File(
       `[create_d365fo_file] XML preview: ${xmlContent.substring(0, 200)}...`
     );
 
-    // Write file
+    // Write file with UTF-8 BOM (required for D365FO XML files)
     try {
-      await fs.writeFile(normalizedFullPath, xmlContent, 'utf-8');
+      const utf8BOM = Buffer.from([0xEF, 0xBB, 0xBF]);
+      const xmlBuffer = Buffer.concat([utf8BOM, Buffer.from(xmlContent, 'utf-8')]);
+      await fs.writeFile(normalizedFullPath, xmlBuffer);
       console.error(
-        `[create_d365fo_file] File written successfully: ${normalizedFullPath}`
+        `[create_d365fo_file] File written successfully with UTF-8 BOM: ${normalizedFullPath}`
       );
     } catch (writeError) {
       console.error(`[create_d365fo_file] Failed to write file:`, writeError);
