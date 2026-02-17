@@ -53,38 +53,63 @@ interface FormInfo {
 export async function getFormInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = GetFormInfoArgsSchema.parse(request.params.arguments);
-    const { symbolIndex } = context;
+    const { symbolIndex, hybridSearch } = context;
     const { 
       formName, 
       modelName, 
       includeControls, 
       includeDataSources, 
-      includeMethods
+      includeMethods,
+      includeWorkspace,
+      workspacePath
     } = args;
 
-    // 1. Find the form
-    let stmt;
-    if (modelName) {
-      stmt = symbolIndex.db.prepare(`
-        SELECT file_path, model, name
-        FROM symbols
-        WHERE type = 'form' AND name = ? AND model = ?
-        LIMIT 1
-      `);
-      var formRow = stmt.get(formName, modelName) as any;
-    } else {
-      stmt = symbolIndex.db.prepare(`
-        SELECT file_path, model, name
-        FROM symbols
-        WHERE type = 'form' AND name = ?
-        ORDER BY model
-        LIMIT 1
-      `);
-      var formRow = stmt.get(formName) as any;
+    // 1. Find the form (with workspace support)
+    let formRow: any = null;
+    
+    // Try workspace first if requested
+    if (includeWorkspace && workspacePath && hybridSearch) {
+      const workspaceResults = await hybridSearch.search(formName, {
+        types: ['form'],
+        limit: 1,
+        workspacePath,
+        includeWorkspace: true,
+      });
+      
+      if (workspaceResults.length > 0 && workspaceResults[0].source === 'workspace' && workspaceResults[0].file) {
+        formRow = {
+          file_path: workspaceResults[0].file.path,
+          model: 'Workspace',
+          name: formName,
+        };
+      }
+    }
+    
+    // Fallback to database if not found in workspace
+    if (!formRow) {
+      let stmt;
+      if (modelName) {
+        stmt = symbolIndex.db.prepare(`
+          SELECT file_path, model, name
+          FROM symbols
+          WHERE type = 'form' AND name = ? AND model = ?
+          LIMIT 1
+        `);
+        formRow = stmt.get(formName, modelName) as any;
+      } else {
+        stmt = symbolIndex.db.prepare(`
+          SELECT file_path, model, name
+          FROM symbols
+          WHERE type = 'form' AND name = ?
+          ORDER BY model
+          LIMIT 1
+        `);
+        formRow = stmt.get(formName) as any;
+      }
     }
 
     if (!formRow) {
-      throw new Error(`Form "${formName}" not found. Make sure it's indexed.`);
+      throw new Error(`Form "${formName}" not found. Make sure it's indexed or provide workspacePath for local forms.`);
     }
 
     // 2. Parse XML

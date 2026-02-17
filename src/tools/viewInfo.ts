@@ -49,38 +49,63 @@ interface ViewInfo {
 export async function getViewInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = GetViewInfoArgsSchema.parse(request.params.arguments);
-    const { symbolIndex } = context;
+    const { symbolIndex, hybridSearch } = context;
     const { 
       viewName, 
       modelName, 
       includeFields, 
       includeRelations, 
-      includeMethods
+      includeMethods,
+      includeWorkspace,
+      workspacePath
     } = args;
 
-    // 1. Find the view
-    let stmt;
-    if (modelName) {
-      stmt = symbolIndex.db.prepare(`
-        SELECT file_path, model, name
-        FROM symbols
-        WHERE type = 'view' AND name = ? AND model = ?
-        LIMIT 1
-      `);
-      var viewRow = stmt.get(viewName, modelName) as any;
-    } else {
-      stmt = symbolIndex.db.prepare(`
-        SELECT file_path, model, name
-        FROM symbols
-        WHERE type = 'view' AND name = ?
-        ORDER BY model
-        LIMIT 1
-      `);
-      var viewRow = stmt.get(viewName) as any;
+    // 1. Find the view (with workspace support)
+    let viewRow: any = null;
+    
+    // Try workspace first if requested
+    if (includeWorkspace && workspacePath && hybridSearch) {
+      const workspaceResults = await hybridSearch.search(viewName, {
+        types: ['view'],
+        limit: 1,
+        workspacePath,
+        includeWorkspace: true,
+      });
+      
+      if (workspaceResults.length > 0 && workspaceResults[0].source === 'workspace' && workspaceResults[0].file) {
+        viewRow = {
+          file_path: workspaceResults[0].file.path,
+          model: 'Workspace',
+          name: viewName,
+        };
+      }
+    }
+    
+    // Fallback to database if not found in workspace
+    if (!viewRow) {
+      let stmt;
+      if (modelName) {
+        stmt = symbolIndex.db.prepare(`
+          SELECT file_path, model, name
+          FROM symbols
+          WHERE type = 'view' AND name = ? AND model = ?
+          LIMIT 1
+        `);
+        viewRow = stmt.get(viewName, modelName) as any;
+      } else {
+        stmt = symbolIndex.db.prepare(`
+          SELECT file_path, model, name
+          FROM symbols
+          WHERE type = 'view' AND name = ?
+          ORDER BY model
+          LIMIT 1
+        `);
+        viewRow = stmt.get(viewName) as any;
+      }
     }
 
     if (!viewRow) {
-      throw new Error(`View "${viewName}" not found. Make sure it's indexed.`);
+      throw new Error(`View "${viewName}" not found. Make sure it's indexed or provide workspacePath for local views.`);
     }
 
     // 2. Parse XML

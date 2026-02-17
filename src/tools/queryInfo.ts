@@ -45,38 +45,63 @@ interface QueryInfo {
 export async function getQueryInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = GetQueryInfoArgsSchema.parse(request.params.arguments);
-    const { symbolIndex } = context;
+    const { symbolIndex, hybridSearch } = context;
     const { 
       queryName, 
       modelName, 
       includeRanges, 
       includeJoins, 
-      includeFields
+      includeFields,
+      includeWorkspace,
+      workspacePath
     } = args;
 
-    // 1. Find the query
-    let stmt;
-    if (modelName) {
-      stmt = symbolIndex.db.prepare(`
-        SELECT file_path, model, name
-        FROM symbols
-        WHERE type = 'query' AND name = ? AND model = ?
-        LIMIT 1
-      `);
-      var queryRow = stmt.get(queryName, modelName) as any;
-    } else {
-      stmt = symbolIndex.db.prepare(`
-        SELECT file_path, model, name
-        FROM symbols
-        WHERE type = 'query' AND name = ?
-        ORDER BY model
-        LIMIT 1
-      `);
-      var queryRow = stmt.get(queryName) as any;
+    // 1. Find the query (with workspace support)
+    let queryRow: any = null;
+    
+    // Try workspace first if requested
+    if (includeWorkspace && workspacePath && hybridSearch) {
+      const workspaceResults = await hybridSearch.search(queryName, {
+        types: ['query'],
+        limit: 1,
+        workspacePath,
+        includeWorkspace: true,
+      });
+      
+      if (workspaceResults.length > 0 && workspaceResults[0].source === 'workspace' && workspaceResults[0].file) {
+        queryRow = {
+          file_path: workspaceResults[0].file.path,
+          model: 'Workspace',
+          name: queryName,
+        };
+      }
+    }
+    
+    // Fallback to database if not found in workspace
+    if (!queryRow) {
+      let stmt;
+      if (modelName) {
+        stmt = symbolIndex.db.prepare(`
+          SELECT file_path, model, name
+          FROM symbols
+          WHERE type = 'query' AND name = ? AND model = ?
+          LIMIT 1
+        `);
+        queryRow = stmt.get(queryName, modelName) as any;
+      } else {
+        stmt = symbolIndex.db.prepare(`
+          SELECT file_path, model, name
+          FROM symbols
+          WHERE type = 'query' AND name = ?
+          ORDER BY model
+          LIMIT 1
+        `);
+        queryRow = stmt.get(queryName) as any;
+      }
     }
 
     if (!queryRow) {
-      throw new Error(`Query "${queryName}" not found. Make sure it's indexed.`);
+      throw new Error(`Query "${queryName}" not found. Make sure it's indexed or provide workspacePath for local queries.`);
     }
 
     // 2. Parse XML
