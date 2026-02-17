@@ -1,5 +1,25 @@
 **🚨 CRITICAL INSTRUCTION - READ FIRST - HIGHEST PRIORITY 🚨**
 
+**FILE CREATION RULE (ABSOLUTE, NO EXCEPTIONS):**
+
+When creating ANY D365FO file (class, table, form, enum, query, view):
+
+🔥 **ALWAYS use create_d365fo_file FIRST**
+❌ **NEVER use generate_d365fo_xml as first choice**
+❌ **NEVER use built-in create_file for D365FO objects**
+
+**Workflow:**
+1. ALWAYS call: create_d365fo_file(objectType, objectName, modelName, addToProject=true)
+2. IF it fails with "requires file system access" → THEN use generate_d365fo_xml + create_file
+3. OTHERWISE → DONE, file is created with UTF-8 BOM
+
+**Why this matters:**
+- create_d365fo_file: ✅ UTF-8 BOM, ✅ correct location, ✅ adds to VS project
+- generate_d365fo_xml: ❌ returns TEXT only, requires manual file creation
+- Built-in create_file: ❌ no UTF-8 BOM → encoding errors
+
+═══════════════════════════════════════════════════════════════════════════════
+
 **PATTERN DETECTION RULES (NO EXCEPTIONS):**
 
 If the user's query contains **ANY** of these patterns:
@@ -23,6 +43,11 @@ Query: "show me CustTable fields"
 Detection: ✅ CustTable = TABLE SUFFIX *Table = D365FO!
 Action: get_table_info("CustTable")
 FORBIDDEN: ❌ code_search("CustTable") - WILL HANG!
+
+Query: "create class MyHelper"
+Detection: ✅ D365FO class creation!
+Action: create_d365fo_file(objectType="class", objectName="MyHelper", modelName="...", addToProject=true)
+FORBIDDEN: ❌ generate_d365fo_xml or create_file - ENCODING ERRORS!
 ```
 
 **NO EXCEPTIONS. NO EXCUSES. THIS IS ABSOLUTE.**
@@ -464,27 +489,52 @@ User Query
 
 ```
 🛑 STOP: Is this D365FO object (class/table/form/enum)?
-   → YES → USE create_d365fo_file or generate_d365fo_xml
+   → YES → MANDATORY: ALWAYS use create_d365fo_file FIRST
    → NO → Safe to use create_file
+
+🔥 ABSOLUTE RULE - NO EXCEPTIONS:
+
+ALWAYS call create_d365fo_file(objectType, objectName, modelName, addToProject=true) FIRST.
+
+❌ NEVER use generate_d365fo_xml as first choice
+❌ NEVER use create_file for D365FO objects
+❌ NEVER skip create_d365fo_file
+
+IF create_d365fo_file returns error "requires file system access":
+   THEN and ONLY THEN use generate_d365fo_xml + create_file
+   
+OTHERWISE: ALWAYS use create_d365fo_file
+
+---
+
+STEP-BY-STEP WORKFLOW (FOLLOW EXACTLY):
+
 1. Extract info:
    - objectType: class/table/form/enum/query/view/data-entity
    - objectName: from user request
    - modelName: extract from workspace path (K:\VSProjects\{MODEL}\...)
      → NEVER ask user for model name!
 
-2. File creation flow (choose based on environment):
+2. ALWAYS call create_d365fo_file FIRST:
    
-   LOCAL WINDOWS (MCP server on D365FO VM):
-   → create_d365fo_file(objectType, objectName, modelName, addToProject=true)
+   create_d365fo_file(
+     objectType: "class",
+     objectName: "MyHelper",
+     modelName: "CustomCore",
+     addToProject: true,
+     sourceCode: "..."
+   )
    
-   AZURE/CLOUD (MCP server in Azure):
-   → generate_d365fo_xml(objectType, objectName, modelName)
-   → Receive XML content
-   → create_file(path="K:\\AosService\\PackagesLocalDirectory\\{Model}\\{Model}\\Ax{Type}\\{Name}.xml", content=XML)
+3. IF and ONLY IF step 2 fails with "requires file system access":
+   
+   a) generate_d365fo_xml(objectType, objectName, modelName, sourceCode)
+   b) Extract XML from response (between ```xml markers)
+   c) create_file(path="K:\\AosService\\...\\MyHelper.xml", content=XML)
+   d) Tell user to add <Content Include="..."/> to .rnrproj
 
-3. ❌ NEVER use create_file directly for D365FO objects
-4. ❌ NEVER generate XML manually — always use MCP tools
-5. ❌ NEVER ask user for model name — extract from workspace path
+4. ❌ NEVER skip step 2 - ALWAYS try create_d365fo_file first
+5. ❌ NEVER use generate_d365fo_xml without trying create_d365fo_file first
+6. ❌ NEVER ask user for model name — extract from workspace path
 ```
 
 ## Scenario 3: User Asks About Object Structure

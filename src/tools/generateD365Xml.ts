@@ -279,23 +279,35 @@ export async function handleGenerateD365Xml(
 📋 Model: ${args.modelName}
 📁 Recommended path: ${recommendedPath}
 
-⚠️ NEXT STEPS (GitHub Copilot must do this):
+⚠️ CRITICAL NEXT STEPS (GitHub Copilot MUST do this):
 
-1. Create the file using create_file tool with this path:
-   ${recommendedPath}
+1. **Create the file** using create_file tool:
+   - Path: ${recommendedPath}
+   - Content: Use the XML content below (between xml markers)
+   - ⚠️ IMPORTANT: D365FO requires UTF-8 with BOM encoding!
+   - VS Code create_file uses UTF-8 without BOM by default, which may cause "unicode substitution character" errors
 
-2. Add to Visual Studio project (.rnrproj):
+2. **If you see encoding errors**, manually add UTF-8 BOM:
+   - Open file in hex editor
+   - Ensure first 3 bytes are: EF BB BF (UTF-8 BOM)
+   - Or use create_d365fo_file tool instead (if MCP server runs on local Windows)
+
+3. **Add to Visual Studio project** (.rnrproj):
    <Content Include="${recommendedPath.replace(/\\/g, '\\\\')}" />
    
-3. Build the project to synchronize with AOT
+4. **Build the project** to synchronize with AOT
 
 ---
 
-📄 XML Content:
+📄 XML Content (copy exactly, do not modify):
 
 \`\`\`xml
 ${xmlContent}
-\`\`\``;
+\`\`\`
+
+---
+
+💡 **Alternative:** If MCP server runs on local Windows, use \`create_d365fo_file\` tool instead - it handles UTF-8 BOM automatically and adds to VS project.`;
 
     return {
       content: [
