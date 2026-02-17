@@ -360,11 +360,13 @@
    - Show both event-based and direct override approaches
    - Use exact datasource name from get_form_info results
 
-6. Provide guidance to user:
-   - ❌ DO NOT use modify_d365fo_file automatically
-   - ❌ DO NOT use run_in_terminal to edit files
-   - ✅ ONLY provide generated code and explanation
-   - ✅ Let user decide how to implement (VS extension, XML edit, etc.)
+6. Modify form XML using standard workspace tools:
+   - ✅ USE replace_string_in_file or multi_replace_string_in_file to edit form XML
+   - ✅ Add method to correct DataSource section in XML
+   - ✅ Preserve TAB indentation (D365FO uses TABS, not spaces)
+   - ❌ NEVER use run_in_terminal with PowerShell to edit XML files
+   - ❌ NEVER use modify_d365fo_file tool (doesn't work in Azure - no file access)
+   - Standard tools work everywhere (Azure + local)
 ```
 
 **Complete Example Workflow:**
@@ -408,28 +410,54 @@ public void active()
     AddLineButton.enabled(SalesTable.RecId != 0);
 }
 
-// Step 4: Provide code and guidance (DO NOT modify files automatically!)
-"Here's how to add active() method to SalesTable datasource:
+// Step 4: Modify form datasource using VS Code tools
+// First, read the form XML to understand structure
+read_file("K:\\AosService\\PackagesLocalDirectory\\AslEnhancedDataSharing\\AslEnhancedDataSharing\\AxForm\\SalesTable.xml")
 
-RECOMMENDED APPROACH: Event-based extension (shown in code above)
-- Create new X++ class with [Form] attribute
-- No XML modification needed
-- Cleaner and more maintainable
+// Then use replace_string_in_file to add method to datasource
+replace_string_in_file(
+  filePath="K:\\AosService\\PackagesLocalDirectory\\AslEnhancedDataSharing\\AslEnhancedDataSharing\\AxForm\\SalesTable.xml",
+  oldString=`<AxFormDataSourceMethod>
+				<Name>init</Name>
+				...
+			</AxFormDataSourceMethod>
+		</Methods>
+	</AxFormDataSource>`,
+  newString=`<AxFormDataSourceMethod>
+				<Name>init</Name>
+				...
+			</AxFormDataSourceMethod>
+			<AxFormDataSourceMethod>
+				<Name>active</Name>
+				<Source><![CDATA[
+	public void active()
+	{
+		super();
+		
+		// Enable/disable button based on datasource state
+		FormButtonControl addLineButton = element.design().controlName(formControlStr(SalesTable, AddLine));
+		addLineButton.enabled(this.cursor().RecId != 0);
+	}
+				]]></Source>
+			</AxFormDataSourceMethod>
+		</Methods>
+	</AxFormDataSource>`
+)
 
-ALTERNATIVE: Direct datasource override
-- Requires manual XML editing in Visual Studio
-- User must add method to form datasource in AOT
-
-⚠️ IMPORTANT: Do not automatically modify files - provide code only!"
+// Tool automatically:
+// - Edits file in workspace (works in Azure)
+// - User can undo/redo changes
+// - Changes are tracked in git
 ```
 
 **Key Points for Form Datasource Methods:**
 - ✅ ALWAYS call get_form_info first to get datasource names
-- ✅ Generate extension code using exact datasource name from get_form_info
-- ✅ Show both event-based and direct override approaches
-- ❌ NEVER automatically modify files (no modify_d365fo_file, no run_in_terminal)
-- ❌ NEVER run PowerShell scripts to edit XML files
-- ✅ ONLY provide generated code and let user implement it
+- ✅ Use replace_string_in_file or multi_replace_string_in_file to edit form XML
+- ✅ Read form XML first to understand structure and find insertion point
+- ✅ Preserve TAB indentation (D365FO XML uses TABS, not spaces)
+- ❌ NEVER use run_in_terminal with PowerShell to edit XML
+- ❌ NEVER use modify_d365fo_file tool (doesn't work in Azure - no file access)
+- ✅ Standard tools work everywhere (Azure + local)
 
 ## Scenario 7: User Asks "Where Is This Used?"
 
@@ -551,32 +579,42 @@ ALTERNATIVE: Direct datasource override
 ✅ RIGHT: search("MyClass", type="class")
 ```
 
-### 6. ❌ NEVER Edit D365FO Files Automatically
-**Why:** User needs to decide implementation approach (VS extension vs XML edit)  
-**Instead:** Provide generated code and instructions, let user implement
+### 6. ❌ NEVER Use PowerShell/Terminal or modify_d365fo_file for File Operations
+**Why:** Azure MCP server has no access to user's workspace files; modify_d365fo_file tool fails with ENOENT  
+**Instead:** Use VS Code standard tools: `replace_string_in_file`, `multi_replace_string_in_file`
 
 **Example:**
 ```
-❌ WRONG: modify_d365fo_file(...) without asking
 ❌ WRONG: run_in_terminal with PowerShell to edit XML
-✅ RIGHT: Generate code + provide instructions → user implements
+❌ WRONG: "$xml = [xml](Get-Content $filePath); $xml.AxForm..."
+❌ WRONG: modify_d365fo_file(objectType="form", ...) - Doesn't work in Azure!
+✅ RIGHT: replace_string_in_file(filePath="K:\\...", oldString=..., newString=...)
 ```
 
 **For Form Datasource Methods:**
 ```
-❌ WRONG: "I'll add the method to the form XML using PowerShell..."
-✅ RIGHT: "Here's the extension code. You can implement it by:
-           Option A: Create X++ extension class (recommended)
-           Option B: Manually add to form XML in Visual Studio"
+❌ WRONG: "I'll add the method using PowerShell to parse XML..."
+❌ WRONG: modify_d365fo_file(operation="add_datasource_method", ...)
+✅ RIGHT: replace_string_in_file(
+            filePath="K:\\AosService\\...\\AxForm\\FormName.xml",
+            oldString="</Methods>\n\t</AxFormDataSource>",
+            newString="<AxFormDataSourceMethod>...method code...</AxFormDataSourceMethod>\n\t\t</Methods>\n\t</AxFormDataSource>"
+          )
 ```
 
-### 6. ❌ NEVER Edit D365FO Files Manually
+**Why standard tools work:**
+- Standard tools run in CLIENT (have access to user's workspace)
+- MCP server tools run in Azure (no file access, only database)
+- replace_string_in_file works everywhere (Azure + local)
+
+### 6. ❌ NEVER Edit Files Manually
 **Why:** Easy to break XML structure, lose TABS formatting  
 **Instead:** Use `modify_d365fo_file` for safe editing with backup
 
 **Example:**
 ```
 ❌ WRONG: "Edit the XML file at K:\AosService\..."
+❌ WRONG: "Run PowerShell command to modify XML..."
 ✅ RIGHT: modify_d365fo_file(
             filePath="K:\\AosService\\...\\MyClass.xml",
             operation="add_method",
