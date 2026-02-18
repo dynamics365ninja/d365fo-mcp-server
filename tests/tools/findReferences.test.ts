@@ -96,8 +96,8 @@ describe('find_references tool', () => {
       params: {
         name: 'find_references',
         arguments: {
-          symbolName: 'validate',
-          symbolType: 'method',
+          targetName: 'validate',
+          targetType: 'method',
           scope: 'all',
           limit: 50,
         },
@@ -118,8 +118,8 @@ describe('find_references tool', () => {
       params: {
         name: 'find_references',
         arguments: {
-          symbolName: 'TestHelper',
-          symbolType: 'class',
+          targetName: 'TestHelper',
+          targetType: 'class',
           scope: 'all',
           limit: 50,
         },
@@ -141,8 +141,8 @@ describe('find_references tool', () => {
       params: {
         name: 'find_references',
         arguments: {
-          symbolName: 'TestHelper',
-          symbolType: 'class',
+          targetName: 'TestHelper',
+          targetType: 'class',
           scope: 'all',
           limit: 50,
         },
@@ -164,8 +164,8 @@ describe('find_references tool', () => {
       params: {
         name: 'find_references',
         arguments: {
-          symbolName: 'NonExistentMethod',
-          symbolType: 'method',
+          targetName: 'NonExistentMethod',
+          targetType: 'method',
           scope: 'all',
           limit: 50,
         },
@@ -185,8 +185,8 @@ describe('find_references tool', () => {
       params: {
         name: 'find_references',
         arguments: {
-          symbolName: 'TestHelper',
-          symbolType: 'class',
+          targetName: 'TestHelper',
+          targetType: 'class',
           scope: 'all',
           limit: 50,
         },
@@ -207,8 +207,8 @@ describe('find_references tool', () => {
       params: {
         name: 'find_references',
         arguments: {
-          symbolName: 'TestHelper',
-          symbolType: 'class',
+          targetName: 'TestHelper',
+          targetType: 'class',
           scope: 'all',
           limit: 1,
         },
