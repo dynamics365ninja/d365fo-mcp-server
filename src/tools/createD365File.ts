@@ -395,19 +395,43 @@ class ProjectFileManager {
   }
 
   /**
-   * Get folder name for object type in project
+   * Get friendly display folder name for project (used in Folder Include and Link)
+   * e.g. class → Classes, enum → Base Enums
    */
   private getFolderName(objectType: string): string {
     const folderMap: Record<string, string> = {
       class: 'Classes',
       table: 'Tables',
-      enum: 'Enums',
+      enum: 'Base Enums',
       form: 'Forms',
       query: 'Queries',
       view: 'Views',
       'data-entity': 'Data Entities',
+      'table-extension': 'Table Extensions',
+      'form-extension': 'Form Extensions',
+      'data-entity-extension': 'Data Entity Extensions',
     };
     return folderMap[objectType] || 'Classes';
+  }
+
+  /**
+   * Get AOT folder prefix for Content Include path (no .xml extension)
+   * e.g. class → AxClass, enum → AxEnum, data-entity → AxDataEntityView
+   */
+  private getAxFolderPrefix(objectType: string): string {
+    const prefixMap: Record<string, string> = {
+      class: 'AxClass',
+      table: 'AxTable',
+      enum: 'AxEnum',
+      form: 'AxForm',
+      query: 'AxQuery',
+      view: 'AxView',
+      'data-entity': 'AxDataEntityView',
+      'table-extension': 'AxTableExtension',
+      'form-extension': 'AxFormExtension',
+      'data-entity-extension': 'AxDataEntityViewExtension',
+    };
+    return prefixMap[objectType] || 'AxClass';
   }
 
   /**
@@ -474,41 +498,43 @@ class ProjectFileManager {
       contentGroup.Content = contentGroup.Content ? [contentGroup.Content] : [];
     }
 
-    // Get folder name for project organization
-    const folderName = this.getFolderName(objectType);
+    // Get folder names for project organization
+    const displayFolderName = this.getFolderName(objectType);
+    const axFolderPrefix = this.getAxFolderPrefix(objectType);
 
-    // Add folder if not exists
+    // Add folder if not exists (uses friendly display name, e.g. "Classes\")
     const folderExists = folderGroup.Folder.some(
       (folder: any) =>
-        folder.$ && folder.$.Include === `${folderName}\\`
+        folder.$ && folder.$.Include === `${displayFolderName}\\`
     );
     if (!folderExists) {
       folderGroup.Folder.push({
-        $: { Include: `${folderName}\\` },
+        $: { Include: `${displayFolderName}\\` },
       });
     }
 
-    // D365FO .rnrproj standard: use RELATIVE path (e.g. AxClass\ObjectName.xml)
-    const relativePath = `${folderName}\\${objectName}.xml`;
+    // D365FO .rnrproj standard:
+    //   Content Include = AxClass\ObjectName  (Ax prefix, NO .xml extension)
+    //   Link            = Classes\ObjectName  (display name, NO .xml extension)
+    const contentInclude = `${axFolderPrefix}\\${objectName}`;
+    const linkPath = `${displayFolderName}\\${objectName}`;
 
     // Check if file already in project
     const fileExists = contentGroup.Content.some(
       (content: any) =>
-        content.$ && (
-          content.$.Include === relativePath ||
-          content.$.Include === absoluteXmlPath.replace(/\//g, '\\')
-        )
+        content.$ && content.$.Include === contentInclude
     );
 
     if (fileExists) {
       throw new Error(`File ${objectName} is already in the project`);
     }
 
-    // Add file reference with RELATIVE path (D365FO .rnrproj standard)
+    // Add file reference
     contentGroup.Content.push({
-      $: { Include: relativePath },
+      $: { Include: contentInclude },
       SubType: 'Content',
       Name: objectName,
+      Link: linkPath,
     });
 
     console.error(
