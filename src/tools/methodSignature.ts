@@ -9,7 +9,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
-import { readMethodMetadata, type ExtractedMethod } from '../utils/metadataResolver.js';
+import { readMethodMetadata, buildObjectTypeMismatchMessage, type ExtractedMethod } from '../utils/metadataResolver.js';
 
 
 const GetMethodSignatureArgsSchema = z.object({
@@ -61,7 +61,16 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
     }
 
     if (!classRow) {
-      throw new Error(`Class "${className}" not found. Make sure it's indexed.`);
+      const typeMismatch = buildObjectTypeMismatchMessage(symbolIndex.db, className);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ Class "${className}" not found. Make sure it's indexed.${typeMismatch}`,
+          },
+        ],
+        isError: true,
+      };
     }
 
     // 2. Find the method in database

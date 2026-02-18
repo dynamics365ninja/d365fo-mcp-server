@@ -7,6 +7,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { validateWorkspacePath } from '../workspace/workspaceUtils.js';
+import { buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';
 
 const ClassInfoArgsSchema = z.object({
   className: z.string().describe('Name of the X++ class'),
@@ -75,11 +76,12 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
     const classSymbol = symbolIndex.getSymbolByName(args.className, 'class');
 
     if (!classSymbol) {
+      const typeMismatch = buildObjectTypeMismatchMessage(symbolIndex.db, args.className);
       return {
         content: [
           {
             type: 'text',
-            text: `Class "${args.className}" not found in symbol index`,
+            text: `❌ Class "${args.className}" not found in symbol index.${typeMismatch}`,
           },
         ],
         isError: true,

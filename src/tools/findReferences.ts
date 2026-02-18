@@ -7,6 +7,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';
 
 const FindReferencesArgsSchema = z.object({
   targetName: z.string().describe('Name of the target (class name, method name, field name, etc.)'),
@@ -30,6 +31,18 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     const args = FindReferencesArgsSchema.parse(request.params.arguments);
     const { symbolIndex } = context;
     const { targetName, targetType, scope, limit, includeContext } = args;
+
+    // --- Parse dotted notation (e.g. "SalesLineCopy.copy()" or "SalesLineCopy.copy") ---
+    // Extract parent object name so we can cross-check its actual type in the DB
+    let parentObjectName: string | null = null;
+    const cleanTargetName = targetName.replace(/\(.*$/, '').trim(); // strip trailing parens
+    if (cleanTargetName.includes('.')) {
+      const parts = cleanTargetName.split('.');
+      parentObjectName = parts[0].trim() || null;
+    } else if (targetType === 'class' || targetType === 'method') {
+      // Also check the bare name itself when caller explicitly expects a class
+      parentObjectName = cleanTargetName;
+    }
 
     // Build search patterns
     const references: Reference[] = [];
@@ -81,12 +94,20 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     }
     output += `**Scope:** ${scope}\n\n`;
 
+    // Cross-type check: detect when the caller used a form/table/view name as if it were a class
+    const typeMismatchSection = parentObjectName
+      ? buildObjectTypeMismatchMessage(symbolIndex.db, parentObjectName)
+      : '';
+
     if (limitedReferences.length === 0) {
       output += `No references found for \`${targetName}\`.\n\n`;
       output += `**Possible reasons:**\n`;
       output += `- Symbol might be unused\n`;
       output += `- Symbol might be defined but not yet indexed\n`;
       output += `- Try search without targetType to broaden results\n`;
+      if (typeMismatchSection) {
+        output += `\n${typeMismatchSection}`;
+      }
     } else {
       // Group by reference type
       const byType = groupByReferenceType(limitedReferences);
@@ -118,6 +139,12 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
           output += `\n**Context:**\n\`\`\`xpp\n${ref.context}\n\`\`\`\n`;
         }
         output += `\n`;
+      }
+
+      // Show type mismatch hint even when some references were found
+      // (they might be false positives from fuzzy matching)
+      if (typeMismatchSection) {
+        output += `\n---\n\n${typeMismatchSection}`;
       }
     }
 

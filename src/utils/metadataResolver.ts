@@ -155,6 +155,90 @@ export async function readEnumRawXml(
 // Generic "not available" message for objects without extracted metadata
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Type-mismatch detection (shared across tools)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Query the symbol index DB to find what top-level types a given name exists as.
+ * Ignores 'method' and 'field' rows — those are children, not top-level objects.
+ *
+ * @param db - better-sqlite3 Database instance (symbolIndex.db)
+ * @param name - the object name to look up
+ */
+export function detectObjectTypeInDb(
+  db: any,
+  name: string
+): Array<{ type: string; model: string }> {
+  try {
+    const stmt = db.prepare(`
+      SELECT DISTINCT type, model
+      FROM symbols
+      WHERE name = ?
+        AND type NOT IN ('method', 'field')
+      ORDER BY type
+      LIMIT 10
+    `);
+    return stmt.all(name) as Array<{ type: string; model: string }>;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Build a Markdown warning section when an object was looked up as one type
+ * (e.g. 'class') but actually exists in the DB as a different type (form, table …).
+ *
+ * Returns an empty string when no mismatch is detected.
+ *
+ * @param db           - better-sqlite3 Database instance
+ * @param name         - the object name that was not found
+ * @param expectedType - the type that was searched for (default: 'class')
+ */
+export function buildObjectTypeMismatchMessage(
+  db: any,
+  name: string,
+  expectedType: string = 'class'
+): string {
+  const existingTypes = detectObjectTypeInDb(db, name);
+  if (existingTypes.length === 0) return '';
+
+  const expectedEntries = existingTypes.filter(t => t.type === expectedType);
+  const otherEntries = existingTypes.filter(t => t.type !== expectedType);
+
+  // Only emit a warning when the object does NOT exist as the expected type
+  if (expectedEntries.length > 0 || otherEntries.length === 0) return '';
+
+  let section = `\n\n⚠️ **Type Mismatch:** \`${name}\` is not a **${expectedType}** — it exists in the index as:\n\n`;
+  for (const entry of otherEntries) {
+    section += `- **${entry.type}** (model: ${entry.model})\n`;
+  }
+
+  const uniqueTypes = [...new Map(otherEntries.map(e => [e.type, e])).values()];
+  section += `\n💡 **Use the correct tool instead:**\n`;
+  for (const entry of uniqueTypes) {
+    switch (entry.type) {
+      case 'form':
+        section += `- \`get_form_info(formName="${name}")\` — inspect form datasources, controls, and methods\n`;
+        break;
+      case 'table':
+        section += `- \`get_table_info(tableName="${name}")\` — inspect table fields and methods\n`;
+        break;
+      case 'view':
+        section += `- \`get_view_info(viewName="${name}")\` — inspect view fields and methods\n`;
+        break;
+      case 'query':
+        section += `- \`get_query_info(queryName="${name}")\` — inspect query datasources\n`;
+        break;
+      case 'enum':
+        section += `- \`get_enum_info(enumName="${name}")\` — inspect enum values\n`;
+        break;
+    }
+  }
+
+  return section;
+}
+
 /**
  * Build a friendly error explaining that the XML for this object type
  * is not available in the current deployment (no D365FO installation).
