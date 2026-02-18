@@ -9,8 +9,8 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 
 const FindReferencesArgsSchema = z.object({
-  symbolName: z.string().describe('Name of the symbol to find references for'),
-  symbolType: z.enum(['method', 'class', 'table', 'field', 'enum']).optional().describe('Type of symbol (helps narrow search)'),
+  targetName: z.string().describe('Name of the target (class name, method name, field name, etc.)'),
+  targetType: z.enum(['method', 'class', 'table', 'field', 'enum', 'all']).optional().describe('Type of the target to search for'),
   scope: z.enum(['all', 'workspace', 'standard', 'custom']).optional().default('all').describe('Search scope'),
   limit: z.number().optional().default(50).describe('Maximum results to return'),
   includeContext: z.boolean().optional().default(true).describe('Include code context around reference'),
@@ -29,39 +29,39 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
   try {
     const args = FindReferencesArgsSchema.parse(request.params.arguments);
     const { symbolIndex } = context;
-    const { symbolName, symbolType, scope, limit, includeContext } = args;
+    const { targetName, targetType, scope, limit, includeContext } = args;
 
     // Build search patterns
     const references: Reference[] = [];
     let totalReferences = 0;
 
     // 1. Search for method calls
-    if (!symbolType || symbolType === 'method') {
-      const methodRefs = findMethodReferences(symbolIndex, symbolName, scope, limit);
+    if (!targetType || targetType === 'method' || targetType === 'all') {
+      const methodRefs = findMethodReferences(symbolIndex, targetName, scope, limit);
       references.push(...methodRefs);
     }
 
     // 2. Search for class references (extends, implements, instantiations)
-    if (!symbolType || symbolType === 'class') {
-      const classRefs = findClassReferences(symbolIndex, symbolName, scope, limit);
+    if (!targetType || targetType === 'class' || targetType === 'all') {
+      const classRefs = findClassReferences(symbolIndex, targetName, scope, limit);
       references.push(...classRefs);
     }
 
     // 3. Search for table references (select statements, table buffers)
-    if (!symbolType || symbolType === 'table') {
-      const tableRefs = findTableReferences(symbolIndex, symbolName, scope, limit);
+    if (!targetType || targetType === 'table' || targetType === 'all') {
+      const tableRefs = findTableReferences(symbolIndex, targetName, scope, limit);
       references.push(...tableRefs);
     }
 
     // 4. Search for field references
-    if (!symbolType || symbolType === 'field') {
-      const fieldRefs = findFieldReferences(symbolIndex, symbolName, scope, limit);
+    if (!targetType || targetType === 'field' || targetType === 'all') {
+      const fieldRefs = findFieldReferences(symbolIndex, targetName, scope, limit);
       references.push(...fieldRefs);
     }
 
     // 5. Search for enum references
-    if (!symbolType || symbolType === 'enum') {
-      const enumRefs = findEnumReferences(symbolIndex, symbolName, scope, limit);
+    if (!targetType || targetType === 'enum' || targetType === 'all') {
+      const enumRefs = findEnumReferences(symbolIndex, targetName, scope, limit);
       references.push(...enumRefs);
     }
 
@@ -73,20 +73,20 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     const summary = generateReferenceSummary(limitedReferences);
 
     // Format output
-    let output = `# References to \`${symbolName}\`\n\n`;
+    let output = `# References to \`${targetName}\`\n\n`;
     output += `**Total References Found:** ${totalReferences}\n`;
     output += `**Showing:** ${limitedReferences.length} results\n`;
-    if (symbolType) {
-      output += `**Symbol Type:** ${symbolType}\n`;
+    if (targetType) {
+      output += `**Target Type:** ${targetType}\n`;
     }
     output += `**Scope:** ${scope}\n\n`;
 
     if (limitedReferences.length === 0) {
-      output += `No references found for \`${symbolName}\`.\n\n`;
+      output += `No references found for \`${targetName}\`.\n\n`;
       output += `**Possible reasons:**\n`;
       output += `- Symbol might be unused\n`;
       output += `- Symbol might be defined but not yet indexed\n`;
-      output += `- Try search without symbolType to broaden results\n`;
+      output += `- Try search without targetType to broaden results\n`;
     } else {
       // Group by reference type
       const byType = groupByReferenceType(limitedReferences);

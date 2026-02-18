@@ -180,8 +180,8 @@ workspacePath and includeWorkspace parameters.`,
             properties: {
               pattern: { 
                 type: 'string', 
-                enum: ['class', 'runnable', 'form-handler', 'data-entity', 'batch-job'],
-                description: 'Code pattern to generate' 
+                enum: ['class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'table-extension'],
+                description: 'Code pattern to generate. Use table-extension for [ExtensionOf(tableStr(...))] CoC extensions.' 
               },
               name: { type: 'string', description: 'Name for the generated element' },
             },

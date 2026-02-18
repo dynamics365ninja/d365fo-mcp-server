@@ -1,763 +1,289 @@
-# D365FO Code Intelligence Tools
+# All Available Tools
 
-**For GitHub Copilot Users in Visual Studio 2022**
-
-This guide describes what you can ask GitHub Copilot when working with Dynamics 365 Finance & Operations. Simply type natural language questions in Copilot Chat, and it will use these tools automatically to search your D365FO environment and generate accurate code.
-
-> **You don't need to know technical details** - just ask questions in plain English. Copilot handles the tool calls for you.
+When you ask GitHub Copilot a question about D365FO code, it automatically calls one of these
+20 tools to look up the answer or generate code. You do not need to name the tools yourself —
+just ask in plain English.
 
 ---
 
-## Available Tools (20 Total)
+## Quick Reference
 
-### 📦 Basic Discovery (7 tools)
-1. **search** - Search for X++ classes, tables, forms, queries, views, methods, and fields
-2. **batch_search** - Execute multiple searches in parallel (3x faster)
-3. **search_extensions** - Search for symbols in custom extensions/ISV models
-4. **get_class_info** - Get detailed class information
-5. **get_table_info** - Get detailed table information
-6. **code_completion** - Get method and field completions (IntelliSense)
-7. **generate_code** - Generate X++ code templates
+### Search and Discovery (7 tools)
 
-### 🧠 Intelligent Code Generation (4 tools)
-8. **analyze_code_patterns** - Analyze codebase for similar patterns
-9. **suggest_method_implementation** - Get implementation examples from codebase
-10. **analyze_class_completeness** - Find missing methods in classes
-11. **get_api_usage_patterns** - See how APIs are used in codebase
+| Tool | What it does | Example prompt |
+|------|-------------|---------------|
+| **search** | Find any X++ symbol by name or keyword | "Find classes related to dimension posting" |
+| **batch_search** | Search multiple things at once (3× faster) | "Find SalesTable, CustTable, and InventTable" |
+| **search_extensions** | Search only in your custom/ISV code | "Find my custom extensions for CustTable" |
+| **get_class_info** | Full class details: methods, source code, inheritance | "Show me everything about SalesFormLetter" |
+| **get_table_info** | Full table schema: fields, indexes, relations | "Show me fields and relations on CustTable" |
+| **get_enum_info** | All enum values with integer values and labels | "What values does SalesStatus have?" |
+| **code_completion** | List methods/fields on a class or table | "What methods start with 'calc' on SalesTable?" |
 
-### 🔍 Advanced Object Info (5 tools)
-12. **get_form_info** - Get form datasources, controls, and methods
-13. **get_query_info** - Get query datasources, ranges, and joins
-14. **get_view_info** - Get view/data entity fields and relations
-15. **get_enum_info** - Get enum values and properties
-16. **get_method_signature** - Get exact method signature for CoC
+### Advanced Object Info (5 tools)
 
-### 📝 File Operations (3 tools)
-17. **generate_d365fo_xml** - Generate D365FO XML (cloud-ready)
-18. **create_d365fo_file** - Create D365FO file in AOT (Windows only)
-19. **modify_d365fo_file** - Safely modify existing D365FO files (Windows only)
+| Tool | What it does | Example prompt |
+|------|-------------|---------------|
+| **get_form_info** | Form structure: datasources, controls, methods | "Show me the datasources in SalesTable form" |
+| **get_query_info** | Query structure: datasources, joins, ranges | "Analyze CustTransOpenQuery" |
+| **get_view_info** | View/data entity: fields, relations, methods | "Show me GeneralJournalAccountEntryView" |
+| **get_method_signature** | Exact signature for CoC extensions | "Get signature of CustTable.validateWrite()" |
+| **find_references** | Where is this class/method/field used? | "Where is DimensionAttributeValueSet used?" |
 
-### 🔗 Analysis (1 tool)
-20. **find_references** - Find all usages (where-used analysis)
+### Intelligent Code Generation (4 tools)
+
+| Tool | What it does | Example prompt |
+|------|-------------|---------------|
+| **analyze_code_patterns** | Learn real patterns from your codebase | "Show me patterns for ledger journal creation" |
+| **suggest_method_implementation** | Real examples of how similar methods are written | "How do others implement validateWrite()?" |
+| **analyze_class_completeness** | Which standard methods is my class missing? | "Is MyHelper class complete?" |
+| **get_api_usage_patterns** | How is a specific API typically initialized and used? | "How do I use LedgerJournalEngine?" |
+
+### File Operations (3 tools)
+
+| Tool | Works where | What it does |
+|------|------------|-------------|
+| **generate_d365fo_xml** | Anywhere (cloud + local) | Returns XML content — Copilot then creates the file |
+| **create_d365fo_file** | Local Windows VM only | Creates the physical file and adds it to the VS project |
+| **modify_d365fo_file** | Local Windows VM only | Safely edits an existing file with automatic backup |
+
+### Analysis (1 tool)
+
+| Tool | What it does | Example prompt |
+|------|-------------|---------------|
+| **generate_code** | Generate X++ boilerplate (class, batch job, CoC, etc.) | "Generate a batch job class for order processing" |
 
 ---
 
-## What Can You Do?
+## Tool Details
 
-1. [**Search for Code**](#search-for-code) - Find classes, tables, methods across D365FO
-2. [**Explore Objects**](#explore-objects) - View structure of classes and tables
-3. [**Generate Code**](#generate-code) - Create new classes following D365FO patterns
-4. [**Create Files**](#create-files) - Generate D365FO XML files (classes, tables, forms)
-5. [**Learn Patterns**](#learn-patterns) - See how APIs are used in your codebase
-6. [**Analyze Dependencies**](#analyze-dependencies) - Find where code is used (where-used)
-7. [**Modify Files Safely**](#modify-files-safely) - Edit D365FO files with automatic backup
+### search
 
----
+Searches all 584 799+ D365FO symbols. Understands type filters so you can narrow results.
 
-## Search for Code
-
-### Find Classes, Tables, Forms, Queries, and Views
-
-**Ask Copilot:**
-- "Find all classes related to dimensions"
-- "Show me tables for customer management"
-- "Search for methods that calculate tax"
-- "Find enums for sales status"
-- "Find form AddFormEntityPair button"
-- "Search for forms with DataEntityGroup datasource"
-- "Find queries for customer transactions"
-- "Show me views related to ledger"
-
-**What happens:** Copilot searches through 500,000+ D365FO symbols instantly and shows you matching classes, tables, forms, queries, views, methods, or fields.
+**Supported types:** class, table, method, field, enum
 
 **Examples:**
 ```
-Q: "Find all classes containing 'dimension' in their name"
-A: Shows: DimensionAttributeValueSet, DimensionDefaultingService, DimensionHelper...
-
-Q: "Search for tables related to sales orders"
-A: Shows: SalesTable, SalesLine, SalesFormLetter...
-
-Q: "Find methods for validating customer credit"
-A: Shows: CustTable.validateCreditLimit(), CreditManagement.checkCredit()...
-
-Q: "Find forms with AddFormEntityPair button"
-A: Shows: Forms in workspace containing AddFormEntityPair control...
-
-Q: "Search for queries with customer datasource"
-A: Shows: CustTransOpenQuery, CustBalanceQuery, CustAgedBalanceQuery...
-
-Q: "Find views for ledger transactions"
-A: Shows: LedgerTransView, GeneralJournalAccountEntryView...
+Find classes related to sales invoice posting
+Search for tables used in customer management
+Find methods that calculate tax
+Find fields named Invoice across all tables
 ```
 
 ---
 
-### Search Multiple Things at Once
+### batch_search
 
-**Ask Copilot:**
-- "Find classes for dimension, ledger, and financial posting"
-- "Search for helper classes and validation methods"
+Runs multiple searches in a single call — about 3× faster than asking one by one.
+Use it when you need information about several unrelated things at once.
 
-**What happens:** Copilot searches all queries in parallel (3x faster than sequential).
-
-**Example:**
+**Examples:**
 ```
-Q: "Find dimension classes, ledger services, and posting controllers"
-A: Searches all three concepts simultaneously
-A: Returns results in under 50ms
+Find SalesTable, CustTable, and LedgerJournalTrans at the same time
+Search for dimension classes, ledger services, and posting controllers
 ```
 
 ---
 
-### Search Only Your Custom Code
+### search_extensions
 
-**Ask Copilot:**
-- "Find my custom extensions for CustTable"
-- "Search ISV_ classes for inventory management"
-- "Show me Asl extensions"
+Same as **search** but filters to only your custom/ISV code. Use this when you want to
+avoid noise from the 500 000+ standard Microsoft symbols.
 
-**What happens:** Copilot filters results to show only your custom/ISV code, not Microsoft standard code.
-
-**Example:**
+**Examples:**
 ```
-Q: "Find all my custom helper classes starting with ISV_"
-A: Shows only: ISV_SalesHelper, ISV_DimensionHelper, ISV_ValidationHelper...
+Find all my ISV_ classes
+Show me custom extensions for CustTable
+Search for AslCore helper classes
 ```
 
 ---
 
-## Explore Objects
+### get_class_info
 
-### View Class Details
+Returns the complete class definition: every method with its full signature and source code,
+the inheritance chain (extends/implements), and any attributes.
 
-**Ask Copilot:**
-- "Show me all methods on CustTable"
-- "What does DimensionAttributeValueSet class do?"
-- "Explain the SalesFormLetter class"
-
-**What happens:** Copilot retrieves complete class information including all methods with signatures, inheritance hierarchy, and source code.
-
-**Example:**
+**Examples:**
 ```
-Q: "Show me methods available on SalesTable"
-
-A: Returns:
-  - calcTotalAmount() - Calculates order total
-  - validateWrite() - Validates before saving
-  - insert() - Inserts new record
-  - update() - Updates existing record
-  ... all 45 methods with signatures
+Show me all methods on CustTable
+What does the SalesFormLetter class do?
+Show me the full source of DimensionAttributeValueSet
 ```
 
 ---
 
-### Get Method Signatures for Extensions
+### get_table_info
 
-**Ask Copilot:**
-- "Show me the signature of CustTable.validateWrite()"
-- "Get method signature for SalesTable.insert()"
-- "What's the signature of InventTable.calcQty()?"
+Returns the full table schema: every field with its data type and EDT, all indexes (including
+which is the primary key), and every foreign key relation.
 
-**What happens:** Copilot extracts the exact method signature you need for Chain of Command extensions, including parameters, return type, and modifiers.
-
-**Example:**
+**Examples:**
 ```
-Q: "Get signature for SalesTable.validateWrite()"
-
-A: Returns:
-  public boolean validateWrite(boolean _checkRelations = true)
-  
-  Use for CoC:
-  [ExtensionOf(tableStr(SalesTable))]
-  final class SalesTable_Extension
-  {
-      public boolean validateWrite(boolean _checkRelations = true)
-      {
-          boolean ret = next validateWrite(_checkRelations);
-          // Your custom logic
-          return ret;
-      }
-  }
+What fields does SalesLine have?
+Show me all relations on InventTable
+What is the primary key of CustTable?
 ```
 
 ---
 
-### View Table Structure
+### get_method_signature
 
-**Ask Copilot:**
-- "Show me fields on CustTable"
-- "What indexes does SalesTable have?"
-- "Show me relations for InventTable"
+Extracts the exact signature of a method including modifiers, return type, and all parameters
+with their default values. Essential before writing a Chain of Command extension — using the
+wrong signature always causes a compilation error.
 
-**What happens:** Copilot shows complete table schema including fields, indexes, relations, primary keys, and configuration.
-
-**Example:**
+**Examples:**
 ```
-Q: "Show me CustTable structure"
-
-A: Returns:
-  Fields (85): AccountNum, Name, Address, CreditLimit...
-  Indexes: AccountIdx (primary), NameIdx...
-  Relations: -> SalesTable,  CustTrans,  CustGroup
-  Primary Index: AccountIdx
+Get the signature of SalesTable.validateWrite()
+What parameters does InventTable.initFromTable() take?
 ```
 
 ---
 
-### View Enum Values and Properties
+### find_references
 
-**Ask Copilot:**
-- "Show me values in CustAccountType enum"
-- "What are the options in SalesStatus enum?"
-- "Get all values from InventTransType enum"
+Performs a where-used search across the entire codebase. Works for classes, methods, tables,
+fields, and enums.
 
-**What happens:** Copilot retrieves all enum values with their integer values, labels, and properties (extensible, base type for EDTs).
-
-**Example:**
+**Examples:**
 ```
-Q: "Show me CustAccountType enum values"
-
-A: Returns:
-  Enum: CustAccountType
-  Extensible: ✅
-  
-  Values:
-  - Customer = 0            (Regular customer)
-  - Prospect = 1            (Potential customer)
-  - Organization = 2        (Organization account)
-  - Person = 3             (Individual person)
+Where is DimensionAttributeValueSet used?
+Find all callers of CustTable.validateWrite()
+Which classes reference the SalesLine.RemainSalesPhysical field?
 ```
 
 ---
 
-### Find Where Code Is Used
+### get_form_info
 
-**Ask Copilot:**
-- "Find all usages of DimensionAttributeValueSet"
-- "Where is CustTable.validateWrite() called?"
-- "Find references to SalesLine.RemainSalesPhysical field"
-- "Show me where MyCustomMethod is used"
+Parses form XML and returns all datasources (with their fields and methods), the control
+hierarchy (buttons, grids, groups), and form-level methods.
 
-**What happens:** Copilot performs where-used analysis across your codebase, finding all references to classes, methods, tables, fields, or enums.
-
-**Example:**
+**Examples:**
 ```
-Q: "Find all usages of DimensionAttributeValueSet class"
-
-A: Returns:
-  Found in 150 locations:
-  
-  📦 LedgerJournalEngine.validateDimensions()
-     Line 245: dimValueSet = DimensionAttributeValueSet::find(...);
-  
-  📦 CustTable.setDefaultDimension()
-     Line 89: this.DefaultDimension = dimValueSet.save();
-  
-  ... showing top 50 results
+Show me the datasources in SalesTable form
+List all buttons on the CustTable form
+What methods does the SalesCreateOrder form have?
 ```
 
 ---
 
-### Get Method Suggestions
+### analyze_code_patterns
 
-**Ask Copilot:**
-- "What methods can I call on SalesTable?"
-- "Show me methods starting with 'calc' on InventTable"
-- "List validation methods on CustTable"
+Analyzes your actual codebase to find the most common classes, methods, and dependencies
+used in a given scenario. Use this before generating code to make sure Copilot follows
+your team's real patterns, not generic templates.
 
-**What happens:** Like IntelliSense, Copilot shows all available methods and fields you can use.
-
-**Example:**
+**Examples:**
 ```
-Q: "Show me all 'calc' methods on SalesTable"
-
-A: Returns:
-  - calcTotalAmount()
-  - calcTax()
-  - calcDiscount()
-  - calcNetAmount()
+Analyze patterns for ledger journal creation
+What are the common patterns for helper classes in my code?
+Show me patterns for financial dimension handling
 ```
 
 ---
 
-## Explore Forms, Queries, and Views
+### get_api_usage_patterns
 
-### Find Forms and Controls
+Shows how a specific API class or method is actually used in your codebase: typical
+initialization code, common method call sequences, and related APIs.
 
-**Ask Copilot:**
-- "Find form with DataEntityGroup datasource"
-- "Search for forms containing AddFormEntityPair button"
-- "Show me forms with customer table datasource"
-
-**What happens:** Copilot searches forms in both external metadata and your workspace, showing matching forms and their properties.
-
-**Example:**
+**Examples:**
 ```
-Q: "Find forms with AddFormEntityPair button"
-
-A: Returns:
-  🔹 WORKSPACE: MyCustomForm (your project)
-  📦 EXTERNAL: StandardForm (Microsoft)
-  
-  Controls: AddFormEntityPair, RemoveFormEntityPair...
-  DataSources: DataEntityGroup, MainTable...
+How do I correctly use DimensionAttributeValueSet?
+Show me how LedgerJournalEngine is typically initialized
+How is InventDim used in my code?
 ```
 
 ---
 
-### Find Queries
+### generate_code
 
-**Ask Copilot:**
-- "Find queries for customer transactions"
-- "Search for queries with ledger datasource"
-- "Show me inventory queries"
+Generates X++ boilerplate code for common patterns. Always call analyze_code_patterns first
+so the generated code matches your environment.
 
-**What happens:** Copilot finds queries matching your criteria, including their datasources and usage.
+**Supported patterns:**
 
-**Example:**
+| Pattern | Use it for |
+|---------|-----------|
+| `class` | Standard X++ class (also the base for CoC extensions) |
+| `runnable` | Class with `main()` for direct execution or one-off scripts |
+| `form-handler` | Form extension with `init()`, `close()`, and datasource events |
+| `data-entity` | Data entity class with `find()`, `exist()`, `validateWrite()` |
+| `batch-job` | SysOperationServiceController + service class with `process()` |
+| `table-extension` | Table extension with `validateWrite()`, `modifiedField()` |
+
+**Examples:**
 ```
-Q: "Find queries for customer transactions"
-
-A: Returns:
-  - CustTransOpenQuery - Open customer transactions
-  - CustBalanceQuery - Customer balance calculation
-  - CustAgedBalanceQuery - Aged balance report
-  - CustInvoiceQuery - Customer invoice selection
-```
-
----
-
-### Analyze Form Structure
-
-**Ask Copilot:**
-- "Show me the structure of SalesTable form"
-- "What datasources does CustTable form have?"
-- "List all controls on InventTable form"
-- "Show me methods on the SalesCreateOrder form"
-
-**What happens:** Copilot parses form XML and shows complete structure: datasources, controls (buttons, grids, groups), and methods.
-
-**Example:**
-```
-Q: "Analyze SalesTable form structure"
-
-A: Returns:
-  DataSources:
-  - SalesTable (main datasource)
-    - Fields: 45 fields
-    - Methods: validateWrite(), active(), executeQuery()
-  - SalesLine (detail datasource)
-    - Link: SalesId -> SalesTable.SalesId
-    
-  Controls:
-  - ButtonNew (FormButtonControl)
-  - ButtonDelete (FormButtonControl)  
-  - SalesLineGrid (FormGridControl)
-  - CustomerGroup (FormReferenceControl -> CustTable)
-  
-  Form Methods:
-  - init()
-  - run()
-  - closeOk()
+Generate a batch job class for inventory reconciliation
+Create a table extension for InventTable
+Generate a data entity for customer master data
 ```
 
 ---
 
-### Analyze Query Structure
+### create_d365fo_file
 
-**Ask Copilot:**
-- "Show me the structure of CustTransOpenQuery"
-- "What datasources are in SalesInvoiceQuery?"
-- "List all ranges on InventOnHandQuery"
+Creates a physical D365FO XML file in the correct AOT location on a local Windows VM.
+The server reads your `.rnrproj` to determine the model name automatically — so the file
+always ends up in your custom model, not a Microsoft standard model.
 
-**What happens:** Copilot parses query XML and shows datasources, joins, ranges, and grouping configuration.
+Optionally adds the file to your Visual Studio project in one step.
 
-**Example:**
+**Requires:** MCP server running on a local Windows machine with K:\ drive access.
+
+**Examples:**
 ```
-Q: "Analyze CustTransOpenQuery structure"
-
-A: Returns:
-  Primary DataSource: CustTrans
-  - Table: CustTrans
-  - Fetch Mode: 1:n (One-to-Many)
-  - Join Mode: InnerJoin
-  
-  Ranges:
-  - AccountNum (CustAccount field)
-  - TransDate (Date range field)
-  - AmountCur (Amount filter)
-  
-  Child DataSources:
-  - CustTable (parent join)
-    - Link: AccountNum -> CustTrans.AccountNum
+Create a class MyHelper and add it to my project
+Create a table extension for InventTable in my model
 ```
 
 ---
 
-### Analyze View Structure
+### generate_d365fo_xml
 
-**Ask Copilot:**
-- "Show me the structure of LedgerTransView"
-- "What fields does GeneralJournalAccountEntryView have?"
-- "List computed columns in CustBalanceView"
+Returns the D365FO XML content as text. Works everywhere — Azure, local, any OS.
+Copilot then writes the content to a file using VS Code's file tools.
 
-**What happens:** Copilot parses view/data entity XML and shows fields (mapped vs computed), relations, and methods.
+Use this when the MCP server is hosted in Azure and does not have local file system access.
 
-**Example:**
+---
+
+### modify_d365fo_file
+
+Edits an existing D365FO XML file safely:
+1. Creates a backup (`.bak`) before touching anything
+2. Makes the change (add/edit/remove a method or field)
+3. Validates that the XML is still well-formed
+4. Rolls back from the backup if anything goes wrong
+
+**Requires:** MCP server running on a local Windows machine with K:\ drive access.
+
+**Examples:**
 ```
-Q: "Analyze GeneralJournalAccountEntryView structure"
-
-A: Returns:
-  View: GeneralJournalAccountEntryView
-  Public: ✅
-  Read-Only: ✅
-  
-  Mapped Fields (15):
-  - RecId -> GeneralJournalEntry.RecId
-  - JournalNum -> GeneralJournalEntry.JournalNum
-  - AccountNum -> LedgerDimension.DisplayValue
-  
-  Computed Fields (3):
-  - BalanceAmount (calculated)
-  - CurrencyCode (derived)
-  
-  Relations:
-  - GeneralJournalEntry (1:1)
-  - LedgerDimension (n:1)
+Add a method calculateDiscount() to MyCustomHelper
+Add a field CreditStatus to MyCustomTable
 ```
 
 ---
 
-### Find Views and Data Entities
+## Tips
 
-**Ask Copilot:**
-- "Find views for ledger transactions"
-- "Search for data entity views with customer data"
-- "Show me financial reporting views"
+**You never need to name tools directly.** Just describe what you want:
 
-**What happens:** Copilot finds views and data entities, which are used for reporting and data integration.
+- "Show me..." → uses get_class_info or get_table_info
+- "Find..." → uses search or find_references
+- "Create..." → uses analyze_code_patterns + generate_code + create_d365fo_file
+- "Extend..." → uses get_method_signature + generate_code
 
-**Example:**
+**Be specific for best results:**
+- Vague: "Find customer stuff"
+- Better: "Find methods on CustTable for updating the credit limit"
+
+**For CoC extensions, always get the signature first:**
 ```
-Q: "Find views related to general ledger"
-
-A: Returns:
-  - LedgerTransView - Ledger transaction view
-  - GeneralJournalAccountEntryView - Journal entry view
-  - LedgerBalanceView - Ledger balance view
-  - GLBudgetView - Budget data view
+Get the signature of CustTable.validateWrite()
+Now create a CoC extension that adds credit limit validation
 ```
-
----
-
-## Generate Code
-
-### Learn From Your Codebase
-
-**Ask Copilot:**
-- "Analyze how financial dimensions are used in my code"
-- "Show me common patterns for helper classes"
-- "What's the typical structure of a service class?"
-
-**What happens:** Copilot analyzes your actual D365FO codebase to learn which classes, methods, and patterns are commonly used together.
-
-**Example:**
-```
-Q: "Analyze patterns for financial dimension handling"
-
- Copilot learns:
-  - DimensionAttributeValueSet is used 150 times
-  - Usually initialized with createForLedgerDimension()
-  - Commonly paired with DimensionStorage
-  - 15 similar implementations found in your code
-```
-
----
-
-### Create New Classes
-
-**Ask Copilot:**
-- "Create a helper class for customer validation"
-- "Generate a service class for inventory processing"
-- "Create a controller for sales order posting"
-
-**What happens:** Copilot generates X++ code following patterns found in your actual D365FO environment, not generic templates.
-
-**Example:**
-```
-Q: "Create a helper class for dimension validation"
-
-A: Copilot:
-  1. Analyzes dimension patterns in your code
-  2. Finds similar helper classes (DimensionHelper, CustHelper...)
-  3. Generates new class following your team's coding style
-  4. Includes common methods: validate(), find(), construct()
-```
-
----
-
-### Get Implementation Examples
-
-**Ask Copilot:**
-- "Show me how to implement validateWrite() for a table"
-- "How do other classes implement the construct() pattern?"
-- "Give me examples of init() methods"
-
-**What happens:** Copilot finds similar methods in your codebase and shows you real implementation examples.
-
-**Example:**
-```
-Q: "How do I implement validateWrite() for my custom table?"
-
- Copilot finds 50+ validateWrite() implementations
- Shows patterns from: CustTable, SalesTable, InventTable
- Generates code following your environment's style
-```
-
----
-
-### Check for Missing Methods
-
-**Ask Copilot:**
-- "What methods am I missing in MyCustomHelper class?"
-- "Is MyInventoryService class complete?"
-- "Check if MyTable has all standard methods"
-
-**What happens:** Copilot analyzes your class and compares it with similar classes to suggest missing methods.
-
-**Example:**
-```
-Q: "Check if MyCustomHelper is complete"
-
-A: Analysis:
-   Has: construct(), validate()
-   Missing: find(), exist(), initFromTable()
-   Suggestion: Helper classes typically have these methods
-```
-
----
-
-### Learn API Usage
-
-**Ask Copilot:**
-- "How do I use DimensionAttributeValueSet?"
-- "Show me examples of using LedgerJournalEngine"
-- "How to initialize InventDim correctly?"
-
-**What happens:** Copilot shows you real examples from your codebase of how to initialize and use specific APIs.
-
-**Example:**
-```
-Q: "How do I use DimensionAttributeValueSet API?"
-
-A: Shows:
-  1. How to create instance
-  2. Common initialization patterns
-  3. Typical method call sequences
-  4. Error handling examples
-  All from your actual D365FO code!
-```
-
----
-
-## Create Files
-
-> **CRITICAL: Two Different Approaches Based on MCP Server Location**
-
-### Approach 1: MCP Server in Cloud/Azure (generate_d365fo_xml)
-
-**What it does:** Returns XML content as TEXT only - does NOT create physical file
-
-**Ask Copilot:**
-- "Generate XML for class MyHelper in CustomCore model"
-- "Show me XML for a table MyCustomTable"
-- "Give me XML structure for enum MyStatus"
-
-**What happens:**
-1. MCP server generates D365FO XML content with proper TABS indentation
-2. Returns XML as TEXT in response
-3. **YOU or Copilot must create the file** using VS Code's create_file tool
-
-**Example:**
-```
-Q: "Generate XML for MyDimensionHelper class in CustomCore model"
-
-A: Copilot:
-  1. Calls generate_d365fo_xml MCP tool
-  2. Receives XML text: <?xml version="1.0" encoding="utf-8"?>...
-  3. Uses VS Code create_file to write to:
-     K:\AosService\PackagesLocalDirectory\CustomCore\CustomCore\AxClass\MyDimensionHelper.xml
-  4. You manually add to .rnrproj:
-     <Content Include="K:\AosService\...\MyDimensionHelper.xml" />
-```
-
-**When to use:** MCP server runs in Azure/cloud without file system access
-
----
-
-### Approach 2: MCP Server on Local Windows (create_d365fo_file)
-
-**What it does:** Creates PHYSICAL file on disk and optionally adds to VS project
-
-**Ask Copilot:**
-- "Create a class MyHelper in CustomCore model"
-- "Create and add MyTable to my Visual Studio project"
-- "Generate MyEnum and add to solution"
-
-**What happens:**
-1. MCP server generates XML content
-2. **Writes physical file** to K:\AosService\PackagesLocalDirectory\{Model}\...
-3. Optionally adds reference to your .rnrproj automatically
-
-**Example:**
-```
-Q: "Create MyDimensionHelper class in CustomCore model and add to project"
-
-A: Copilot:
-  1. Calls create_d365fo_file MCP tool
-  2. Creates file: K:\AosService\PackagesLocalDirectory\CustomCore\CustomCore\AxClass\MyDimensionHelper.xml
-  3. Adds to .rnrproj automatically
-  4. Done - just build!
-```
-
-**When to use:** MCP server runs on local Windows D365FO VM with K:\ drive access
-
-**What you get (both approaches):**
-- ✅ Correct XML structure matching Microsoft standards
-- ✅ Proper namespaces and metadata
-- ✅ TABS for indentation (not spaces)
-- ✅ UTF-8 with BOM encoding
-- ✅ Ready for Visual Studio compilation
-
----
-
-### Edit Existing D365FO Files
-
-**Ask Copilot:**
-- "Add a method validateCustomer() to MyCustomTable"
-- "Add a field CreditStatus to MyTable"
-- "Modify method calculateTotal() in MyHelper class"
-
-**What happens:** Copilot safely edits existing D365FO XML files with automatic backup.
-
-**Features:**
-- ✅ Automatic backup before editing (`.bak` file)
-- ✅ XML validation after changes
-- ✅ Atomic operations (all-or-nothing)
-- ✅ Preserves formatting (TABS, indentation)
-
-**Example:**
-```
-Q: "Add a new method calculateDiscount() to MyCustomHelper class"
-
-A: Copilot:
-  1. Backs up: MyCustomHelper.xml.bak
-  2. Parses XML structure
-  3. Adds method to <Methods> section
-  4. Validates XML is well-formed
-  5. Saves changes atomically
-  
-  If error occurs: restores from backup automatically
-```
-
-**Safety Features:**
-- Backup created before ANY modification
-- XML validation ensures file isn't corrupted
-- Rollback on any error
-- Reports what changed (added, modified, deleted)
-
----
-
-### Automated File Creation (Local Windows Only)
-
-**Ask Copilot (when MCP server runs locally):**
-- "Create MyHelper class and add to project"
-- "Generate MyTable and add to my solution"
-
-**What happens (Local deployment):**
-1. Creates physical XML file in correct AOT location
-2. Automatically adds file reference to your .rnrproj Visual Studio project
-3. Everything ready - just build!
-
-**Requirements:**
-- MCP server must run on local Windows D365FO VM
-- [!] Must have access to `K:\AosService\PackagesLocalDirectory\`
-
----
-
-## Learn Patterns
-
-### Workspace-Aware Features
-
-When you have a D365FO workspace open in Visual Studio, Copilot can analyze YOUR project files alongside standard D365FO code.
-
-**Ask Copilot:**
-- "Search for MyCustomClass in my workspace"
-- "Analyze patterns in my project"
-- "Show me methods on MyHelper from my workspace"
-
-**What happens:**
-- Copilot searches your local X++ files first
-- Your workspace code is prioritized over external metadata
-- Patterns are learned from YOUR codebase
-- Results marked with  are from your workspace
-
-**Example:**
-```
-Q: "Find helper classes including my workspace"
-
- Results:
-   MyCustomHelper (your workspace)
-   DimensionHelper (standard D365FO)
-   CustHelper (standard D365FO)
-```
-
----
-
-## Tips for Best Results
-
-### Be Specific
--  "Find customer stuff"  
--  "Find methods on CustTable for updating credit limit"
-
-### Use Exact Names
--  "sales table class"  
--  "Show me SalesTable class methods"
-
-### Combine Queries
-```
-Q: "Show me SalesTable relations and generate code to join with CustTable"
-```
-
-### Ask for Workspace Context
-```
-Q: "Search for validation patterns in my workspace"
-```
-
----
-
-## Common Questions
-
-**Q: Do I need to specify tool names?**  
-No! Just ask natural questions. Copilot calls the right tools automatically.
-
-**Q: How fast are searches?**  
-Under 50ms for most queries. Database has 500,000+ symbols indexed.
-
-**Q: Can I search my custom code separately?**  
-Yes! Say "search my custom extensions" or "find ISV_ classes".
-
-**Q: Does file creation work in Azure?**  
-Yes, but it generates XML content for you to create the file. Full automation requires local Windows.
-
-**Q: Can I see my workspace files?**  
-Yes! Mention "including my workspace" or "in my project" and Copilot will search your local files too.
-
----
-
-## Related Documentation
-
-- [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) - Practical examples
-- [SETUP.md](SETUP.md) - Installation guide
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Technical details

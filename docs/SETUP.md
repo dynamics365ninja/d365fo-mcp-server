@@ -1,113 +1,108 @@
-# D365FO MCP Server - Setup Guide
+# Setup Guide
 
-Complete guide for setting up and deploying the X++ MCP (Model Context Protocol) server for Dynamics 365 Finance & Operations.
+Complete guide for installing and deploying the D365 F&O MCP Server.
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Local Development Setup](#local-development-setup)
+- [What You Need](#what-you-need)
+- [Local Setup (Windows VM)](#local-setup-windows-vm)
 - [Azure Deployment](#azure-deployment)
-- [Azure DevOps Configuration](#azure-devops-configuration)
-- [Visual Studio Setup](#visual-studio-setup)
+- [Azure DevOps Pipelines](#azure-devops-pipelines)
+- [Visual Studio 2022 Configuration](#visual-studio-2022-configuration)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Prerequisites
+## What You Need
 
-### Required Software
-- **Node.js** 22.x or higher (LTS recommended)
-- **TypeScript** 5.7+
-- **Git** for version control
-- **Azure CLI** (for deployment)
-- **PowerShell** 7+ (optional, for Windows scripts)
+### Software
+- **Node.js** 22.x or later (LTS recommended)
+- **Git**
+- **Azure CLI** (for Azure deployment only)
 
-### Azure Resources
-- **Azure Blob Storage** account for storing metadata and database
-- **Azure App Service** (B1 or higher recommended, P0v3+ for production)
-- **Azure Cache for Redis** (optional, improves performance significantly)
+### Azure Resources (cloud deployment only)
+- **Azure Blob Storage** — stores the metadata database (~2 GB)
+- **Azure App Service** — B1 minimum, P0v3 recommended for production
+- **Azure Cache for Redis** — optional, speeds up repeated queries
 
 ### D365FO Access
-- Access to D365FO PackagesLocalDirectory or metadata packages
-- Development environment or metadata export
+- A D365FO development environment with PackagesLocalDirectory, or
+- A metadata export from your D365FO environment
 
 ---
 
-## Local Development Setup
+## Local Setup (Windows VM)
 
-### 1. Clone Repository
+### 1. Clone and Install
 
-```bash
+```powershell
 git clone https://github.com/dynamics365ninja/d365fo-mcp-server.git
 cd d365fo-mcp-server
-```
-
-### 2. Install Dependencies
-
-```bash
 npm install
 ```
 
-### 3. Configure Environment
+### 2. Configure Environment
 
-Create `.env` file in project root:
+Copy the example configuration file and fill in your values:
+
+```powershell
+copy .env.example .env
+```
+
+Key settings in `.env`:
 
 ```env
-# Metadata Configuration
-PACKAGES_PATH=C:/AOSService/PackagesLocalDirectory
-METADATA_PATH=./extracted-metadata
+# Path to your D365FO packages
+PACKAGES_PATH=C:/AosService/PackagesLocalDirectory
+
+# Your custom model names (comma-separated)
+CUSTOM_MODELS=YourModel1,YourModel2
+EXTENSION_PREFIX=YourCompanyPrefix
+
+# Where to store the database
 DB_PATH=./data/xpp-metadata.db
 
-# Custom Models (comma-separated)
-CUSTOM_MODELS=YourCustomModel1,YourCustomModel2
-EXTENSION_PREFIX=YourCompany
-
-# Azure Blob Storage
+# Azure Blob Storage (only needed for cloud sync)
 AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...
 BLOB_CONTAINER_NAME=xpp-metadata
 
-# Redis (optional)
-REDIS_URL=redis://localhost:6379
+# Redis (optional — leave disabled for local use)
 REDIS_ENABLED=false
-
-# Server Configuration
-PORT=8080
-NODE_ENV=development
 ```
 
-### 4. Extract Metadata
+### 3. Extract Metadata
 
-Extract metadata from your D365FO environment:
+Pull symbol information from your D365FO installation:
 
-```bash
-# Extract only custom models (fast)
+```powershell
+# Extract only your custom models (fast, a few minutes)
 npm run extract-metadata
 
-# Or extract all models
-EXTRACT_MODE=all npm run extract-metadata
+# Or extract everything including standard Microsoft models
+$env:EXTRACT_MODE="all"; npm run extract-metadata
 ```
 
-### 5. Build Database
+### 4. Build the Database
 
-Build SQLite database with FTS5 full-text search:
+Index all extracted symbols into the SQLite database:
 
-```bash
+```powershell
 npm run build-database
 ```
 
-### 6. Start Server
+This creates `data/xpp-metadata.db` (~2 GB for full extraction).
 
-```bash
-# Development mode with hot reload
+### 5. Start the Server
+
+```powershell
+# Development (auto-restarts on file changes)
 npm run dev
 
-# Production mode
+# Production
 npm start
 ```
 
-Server runs on `http://localhost:8080` with health check at `/health`.
-
-> **Note:** The default port is 8080. You can override this with the `PORT` environment variable in `.env`.
+The server runs at `http://localhost:8080`. Check `http://localhost:8080/health` to confirm it is up.
 
 ---
 
@@ -115,9 +110,8 @@ Server runs on `http://localhost:8080` with health check at `/health`.
 
 ### 1. Create Azure Resources
 
-#### Storage Account
-
 ```bash
+# Storage account (holds the metadata database)
 az storage account create \
   --name yourstorageaccount \
   --resource-group your-rg \
@@ -127,17 +121,15 @@ az storage account create \
 az storage container create \
   --name xpp-metadata \
   --account-name yourstorageaccount
-```
 
-#### App Service
-
-```bash
+# App Service plan
 az appservice plan create \
   --name xpp-mcp-plan \
   --resource-group your-rg \
-  --sku B1 \
+  --sku P0v3 \
   --is-linux
 
+# Web app
 az webapp create \
   --name xpp-mcp-server \
   --plan xpp-mcp-plan \
@@ -145,29 +137,9 @@ az webapp create \
   --runtime "NODE:22-lts"
 ```
 
-For production environments, use P0v3 or higher SKU:
-```bash
-az appservice plan create \
-  --name xpp-mcp-plan-prod \
-  --resource-group your-rg \
-  --sku P0v3 \
-  --is-linux
-```
+For a development/test server B1 SKU is sufficient. For production use P0v3 or higher.
 
-#### Redis Cache (Optional)
-
-```bash
-az redis create \
-  --name xpp-mcp-redis \
-  --resource-group your-rg \
-  --location westeurope \
-  --sku Basic \
-  --vm-size c0
-```
-
-### 2. Configure App Service
-
-Set environment variables:
+### 2. Configure App Settings
 
 ```bash
 az webapp config appsettings set \
@@ -177,31 +149,22 @@ az webapp config appsettings set \
     AZURE_STORAGE_CONNECTION_STRING="..." \
     BLOB_CONTAINER_NAME="xpp-metadata" \
     DB_PATH="./data/xpp-metadata.db" \
-    REDIS_URL="redis://..." \
     NODE_ENV="production"
 ```
 
-### 3. Deploy Application
+### 3. Deploy the Application
 
 ```bash
-# Build the application
 npm run build
+Compress-Archive -Path dist/* -DestinationPath deploy.zip
 
-# Create deployment package
-cd dist
-zip -r ../deploy.zip .
-cd ..
-
-# Deploy to Azure
 az webapp deployment source config-zip \
   --resource-group your-rg \
   --name xpp-mcp-server \
   --src deploy.zip
 ```
 
-Alternatively, use Azure DevOps pipelines for automated deployment (see [PIPELINES.md](PIPELINES.md)).
-
-### 4. Verify Deployment
+### 4. Verify
 
 ```bash
 curl https://xpp-mcp-server.azurewebsites.net/health
@@ -209,257 +172,123 @@ curl https://xpp-mcp-server.azurewebsites.net/health
 
 ---
 
-## Azure DevOps Configuration
+## Azure DevOps Pipelines
 
-### 1. Create Variable Group
+Three ready-to-use pipelines are in `.azure-pipelines/`:
 
-In Azure DevOps, create variable group `xpp-mcp-server-config`:
+| Pipeline | When to use | Duration |
+|----------|-------------|----------|
+| `d365fo-mcp-data-build-custom.yml` | After any change to your custom models | ~5–15 min |
+| `d365fo-mcp-data-build-standard.yml` | After a D365FO version upgrade or hotfix | ~30–45 min |
+| `d365fo-mcp-data-platform-upgrade.yml` | Full rebuild: standard + custom + database | ~1.5–2 h |
 
-| Variable | Value | Secret |
-|----------|-------|--------|
-| `AZURE_STORAGE_CONNECTION_STRING` | Your storage connection string | ✅ Yes |
-| `BLOB_CONTAINER_NAME` | `xpp-metadata` | No |
-| `CUSTOM_MODELS` | Your custom models (comma-separated) | No |
-| `AZURE_SUBSCRIPTION` | Azure service connection name | No |
-| `AZURE_APP_SERVICE_NAME` | Your App Service name | No |
-| `EXTENSION_PREFIX` | Your company prefix | No |
+### Required Variable Group
 
-### 2. Setup Service Connection
+Create a variable group named `xpp-mcp-server-config` in Azure DevOps with these variables:
 
-1. Go to **Project Settings** → **Service connections**
-2. Create **Azure Resource Manager** connection
-3. Name it (e.g., `Azure-Production`)
-4. Use this name in `AZURE_SUBSCRIPTION` variable
+| Variable | Secret | Example value |
+|----------|--------|--------------|
+| `AZURE_STORAGE_CONNECTION_STRING` | ✅ Yes | Connection string from Azure Portal |
+| `BLOB_CONTAINER_NAME` | No | `xpp-metadata` |
+| `CUSTOM_MODELS` | No | `AslCore,AslFinance` |
+| `AZURE_SUBSCRIPTION` | No | Name of your Azure service connection |
+| `AZURE_APP_SERVICE_NAME` | No | `xpp-mcp-server` |
 
-### 3. Configure Pipelines
+### Uploading Standard Packages
 
-Three pipelines are available in `.azure-pipelines/`:
+Before running the standard or platform upgrade pipelines, upload `PackagesLocalDirectory.zip`
+to your Blob Storage container named `packages`:
 
-#### **d365fo-mcp-data-build-custom.yml** - Custom Metadata Extraction
-- Triggers automatically on changes to `dev` branch (src/** or pipeline file)
-- Downloads standard metadata from Azure Blob Storage
-- Extracts custom models from Git repository
-- Builds database and uploads to blob
-- Restarts App Service to apply changes
-- Quick updates (~5-15 min)
-- Supports manual trigger with parameters (extraction mode, custom models)
+```powershell
+# From your D365FO VM
+Compress-Archive -Path "C:\AosService\PackagesLocalDirectory" -DestinationPath "PackagesLocalDirectory.zip"
 
-#### **d365fo-mcp-data-build-standard.yml** - Standard Metadata Extraction
-- Manual execution only
-- Downloads PackagesLocalDirectory.zip from Azure Blob Storage
-- Extracts standard D365FO models
-- Uploads extracted metadata to blob
-- Run after D365 version upgrades or hotfixes (few times per year)
-- Execution time: ~30-45 min
-
-#### **d365fo-mcp-data-platform-upgrade.yml** - Complete Platform Upgrade
-- Manual execution only
-- Single unified stage for complete metadata refresh
-- Downloads PackagesLocalDirectory.zip → Extracts standard → Extracts custom → Builds database → Uploads all
-- No intermediate blob operations (faster, more efficient)
-- Execution time: ~1.5-2 hours
-- Use after major D365 version updates or platform upgrades
-
-### 4. Upload Standard Packages to Azure Blob
-
-Before running the pipelines, you need to upload `PackagesLocalDirectory.zip` to Azure Blob Storage:
-
-**Option 1: From D365FO Development VM**
-```bash
-# Compress PackagesLocalDirectory folder
-Compress-Archive -Path "C:\AOSService\PackagesLocalDirectory" -DestinationPath "PackagesLocalDirectory.zip"
-
-# Upload to Azure Blob Storage using Azure CLI
 az storage blob upload \
-  --connection-string "$AZURE_STORAGE_CONNECTION_STRING" \
+  --connection-string $env:AZURE_STORAGE_CONNECTION_STRING \
   --container-name packages \
   --name PackagesLocalDirectory.zip \
   --file PackagesLocalDirectory.zip \
   --overwrite
 ```
 
-**Option 2: Download from LCS**
-1. Download Deployable Package from LCS (Lifecycle Services)
-2. Extract the package to get standard models
-3. Compress as `PackagesLocalDirectory.zip`
-4. Upload to Azure Blob Storage container named `packages`
-
-**Container Structure:**
-```
-Azure Blob Storage
-└── packages (container)
-    └── PackagesLocalDirectory.zip  (standard D365FO models)
-└── xpp-metadata (container)
-    └── metadata files (extracted by pipelines)
-    └── xpp-metadata.db (built by pipelines)
-```
-
 ---
 
-## Visual Studio 2022 Setup
+## Visual Studio 2022 Configuration
 
-### 1. Prerequisites
+### Requirements
 
-- **Visual Studio 2022** version 17.14 or later (with MCP support)
-- **GitHub Copilot** extension installed
-- GitHub account with Copilot subscription (required for agent mode)
-- **Enable Editor preview features** at https://github.com/settings/copilot/features
+| Component | Minimum version |
+|-----------|----------------|
+| Visual Studio 2022 | 17.14 |
+| GitHub Copilot extension | Latest |
 
-> **Note:** MCP integration in Visual Studio 2022 requires version 17.14 or newer. Earlier versions do not support MCP servers.
+### Steps
 
-### 2. Enable MCP Integration
+1. Enable *Editor Preview Features* at **https://github.com/settings/copilot/features**
 
-1. Open Visual Studio 2022
-2. Go to **Tools** → **Options**
-3. Navigate to **GitHub** → **Copilot**
-4. Enable **"Enable MCP server integration in agent mode"**
-5. Click **OK** to save
+2. In Visual Studio: **Tools → Options → GitHub → Copilot**
+   - Enable **"Enable MCP server integration in agent mode"**
 
-### 3. Configure MCP Server
-
-Create `.mcp.json` file in your D365FO solution root directory:
+3. Create `.mcp.json` in your solution root:
 
 ```json
 {
   "servers": {
-    "xpp-completion": {
-      "url": "https://your-app-name.azurewebsites.net/mcp/",
-      "description": "X++ Code Completion Server for D365 F&O"
+    "d365fo-code-intelligence": {
+      "url": "https://your-server.azurewebsites.net/mcp/"
+    },
+    "context": {
+      "workspacePath": "K:\\AosService\\PackagesLocalDirectory\\YourModel"
     }
   }
 }
 ```
 
-**For local development:**
-```json
-{
-  "servers": {
-    "xpp-completion": {
-      "url": "http://localhost:8080/mcp/",
-      "description": "X++ Code Completion Server (Local)"
-    }
-  }
-}
-```
+4. Copy `.github/copilot-instructions.md` from this repo into your D365FO solution workspace.
 
-### 4. Using MCP in GitHub Copilot
+5. Restart Visual Studio and open Copilot Chat in **Agent Mode**.
 
-1. Restart Visual Studio 2022 to apply changes
-2. Open your D365FO solution
-3. Open **Copilot Chat** window (View → GitHub Copilot Chat)
-4. Switch to **Agent Mode** in Copilot Chat
-5. Verify X++ MCP tools are loaded - you should see these 11 tools:
-   - `search` - Search X++ symbols
-   - `batch_search` - Parallel batch search
-   - `search_extensions` - Search custom extensions only
-   - `get_class_info` - Get class structure and methods
-   - `get_table_info` - Get table fields and relations
-   - `code_completion` - Discover methods and fields
-   - `generate_code` - Generate X++ code templates
-   - `analyze_code_patterns` - Analyze code patterns
-   - `suggest_method_implementation` - Get method implementation suggestions
-   - `analyze_class_completeness` - Check for missing methods
-   - `get_api_usage_patterns` - Get API usage examples
-
-### 5. Example Prompts
-
-After configuration, you can use natural language prompts in Copilot Chat:
-
-```
-Find all classes that extend SalesFormLetter
-Show me table structure for CustTable
-Generate X++ code for creating a sales order
-Review this X++ method for best practices
-Search for custom extensions with prefix ISV_
-```
-
-See [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) for more examples.
+See [MCP_CONFIG.md](MCP_CONFIG.md) for all configuration options.
 
 ---
 
 ## Troubleshooting
 
-### Database Build Fails
+### "fts5: syntax error" when searching
+Your search query contains special characters. The server now handles this automatically
+with a fallback to LIKE search. If you still see this error, update to the latest version.
 
-**Issue:** Database build fails with FTS5 not available
-
-**Solution:**
-```bash
-# Reinstall better-sqlite3 with native compilation
+### Database build fails with "FTS5 not available"
+Reinstall the native SQLite module:
+```powershell
 npm rebuild better-sqlite3
 ```
 
-### Azure Blob Connection Issues
+### No metadata found after extraction
+- Check that `PACKAGES_PATH` points to a directory containing XML model files
+- Check that your model names in `CUSTOM_MODELS` match the actual folder names exactly
+- Verify file permissions on PackagesLocalDirectory
 
-**Issue:** Cannot connect to Azure Blob Storage
+### Slow response times on Azure
+1. Enable Redis: set `REDIS_ENABLED=true` and configure `REDIS_URL`
+2. Scale up App Service to B2 or P1v3
+3. Check available memory — minimum 1.75 GB for B1, 3.5 GB for P0v3
 
-**Solutions:**
-1. Verify connection string format
-2. Check firewall rules on storage account
-3. Ensure container exists
-4. Test with Azure Storage Explorer
+### MCP tools not loading in Visual Studio
+- Confirm Visual Studio version is 17.14 or later
+- Confirm *Editor Preview Features* are enabled in your GitHub account
+- Confirm the `.mcp.json` file is in the solution root (same folder as the `.sln` file)
+- Check Copilot Chat is in **Agent Mode** (not Ask or Edit mode)
 
-### Metadata Extraction Issues
-
-**Issue:** Extraction finds no models
-
-**Solutions:**
-1. Verify `PACKAGES_PATH` points to correct directory
-2. Check that models contain XML files
-3. Verify model names in `CUSTOM_MODELS` match folder names
-4. Check file permissions
-
-### App Service Performance
-
-**Issue:** Slow response times or timeouts
-
-**Solutions:**
-1. Enable Redis caching (`REDIS_ENABLED=true`)
-2. Scale up App Service plan (B2 for dev, P1v3+ for production)
-3. Enable Application Insights for monitoring
-4. Verify database size (typically ~1.5GB for standard + custom models)
-5. Check if App Service has sufficient memory (minimum 1.75GB for B1, 3.5GB for P0v3)
-
-### Pipeline Failures
-
-**Issue:** Azure Pipeline fails
-
-**Common Causes:**
-1. Missing variable group
-2. Invalid service connection
-3. Insufficient agent permissions
-4. NuGet authentication issues (for standard extraction)
-
-**Debug Steps:**
-1. Check pipeline logs for specific error
-2. Verify all variables are set correctly
-3. Test scripts locally
-4. Validate Azure permissions
-
-### Redis Connection Issues
-
-**Issue:** Redis connection fails or times out
-
-**Solutions:**
-1. Verify Redis URL format: `redis://host:port`
-2. Check Redis firewall rules
-3. Set `REDIS_ENABLED=false` to disable if not needed
-4. Verify Redis instance is running
+### File created in wrong D365FO model
+Always provide a `workspacePath` in `.mcp.json` or let GitHub Copilot auto-detect
+the `.rnrproj` from the open workspace. See [WORKSPACE_DETECTION.md](WORKSPACE_DETECTION.md).
 
 ---
 
 ## Next Steps
 
-- Review [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) for practical examples
-- Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design details
-- See [PIPELINES.md](PIPELINES.md) for pipeline automation details
-- Read [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) for ISV configuration
-- See [README.md](../README.md) for workspace-aware features and usage
-
----
-
-## Support
-
-For issues and questions:
-- GitHub Issues: https://github.com/dynamics365ninja/d365fo-mcp-server/issues
-- Documentation: https://github.com/dynamics365ninja/d365fo-mcp-server/tree/main/docs
+- [MCP_CONFIG.md](MCP_CONFIG.md) — configure workspace paths
+- [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) — try example prompts
+- [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) — ISV and multi-model setups
+- [PIPELINES.md](PIPELINES.md) — automate metadata refresh

@@ -1,736 +1,287 @@
-# D365FO MCP Server - Usage Examples
+# Usage Examples
 
-Practical examples for X++ code completion and symbol lookup in Visual Studio Code with GitHub Copilot.
+Practical examples you can copy and paste directly into Copilot Chat.
 
 ## Table of Contents
 
-- [Code Completion](#code-completion)
-- [Symbol Search](#symbol-search)
-- [Class & Table Information](#class--table-information)
-- [Form, Query & View Analysis](#form-query--view-analysis)
-- [Method Signatures & References](#method-signatures--references)
-- [Extension Development](#extension-development)
-- [Code Generation](#code-generation)
-- [File Operations](#file-operations)
-- [Pattern Analysis & Intelligent Code Generation](#pattern-analysis--intelligent-code-generation)
-- [Configuration](#configuration)
+- [Searching for Code](#searching-for-code)
+- [Exploring Classes and Tables](#exploring-classes-and-tables)
+- [Chain of Command Extensions](#chain-of-command-extensions)
+- [Generating New Classes](#generating-new-classes)
+- [Creating Files](#creating-files)
+- [Where-Used Analysis](#where-used-analysis)
+- [Batch Jobs](#batch-jobs)
+- [Financial Dimensions](#financial-dimensions)
+- [Ledger Journals](#ledger-journals)
+- [Form Extensions](#form-extensions)
 
 ---
 
-## Code Completion
+## Searching for Code
 
-The primary purpose of this MCP server is to provide intelligent code completion for X++ development.
-
-### Finding Methods on a Class
-
-**Scenario:** You're working with `SalesTable` and need to find the right method.
-
+### Find a class by name or concept
 ```
-What methods are available on SalesTable that relate to totals?
+Find all classes related to sales invoice posting
 ```
+Returns: SalesInvoiceJournalPost, SalesInvoiceController, CustInvoiceJour...
 
-**Returns:** `updateSalesOrderTotals()`, `calcTotals()`, `initFromSalesLine()` with signatures and return types.
-
----
-
-### Getting Field Names for a Table
-
-**Scenario:** Writing a query and need exact field names.
-
+### Find classes, tables, and methods at once
 ```
-List all fields on CustTable
+Find the SalesTable class, SalesLine table, and any helper classes for sales processing
+```
+Runs three searches in parallel and combines the results.
+
+### Search only your custom code
+```
+Find my custom extensions for CustTable
+Show me all ISV_ helper classes
+Find classes in the AslCore model
 ```
 
-**Returns:** All 200+ fields with types (e.g., `AccountNum` (EDT: CustAccount, Mandatory: Yes))
-
----
-
-## Symbol Search
-
-Fast full-text search across all X++ symbols.
-
-### Finding Classes by Functionality
-
-**Scenario:** Need to find classes related to posting sales invoices.
-
+### Find a method across all classes
 ```
-Search for classes related to sales invoice posting
-```
-
-**Returns:** `SalesInvoiceJournalPost`, `SalesInvoiceController`, `CustInvoiceJour` (relevance-ranked)
-
----
-
-## Class & Table Information
-
-### Understanding Class Hierarchy
-
-**Scenario:** Before extending a class, you need to understand its inheritance.
-
-```
-Show me the inheritance hierarchy for SalesFormLetter
-```
-
-**Returns:**
-```
-SalesFormLetter → FormLetter → RunBase → Object
+Find all validateWrite methods in the codebase
+Search for methods that handle credit limit validation
 ```
 
 ---
 
-### Getting Table Relations
+## Exploring Classes and Tables
 
-**Scenario:** Understanding foreign keys before writing joins.
-
+### View all methods on a class
 ```
-Show me all relations on SalesLine
+Show me all methods on CustTable
+What methods does SalesFormLetter have?
 ```
 
-**Returns:** Relations to `SalesTable`, `InventTable`, `InventDim` with delete actions
+Returns each method with its full signature and a brief description.
 
----
-
-### Getting Enum Values
-
-**Scenario:** Need to know all possible values for a status field.
-
+### View table fields and relations
 ```
+Show me the fields and relations on SalesLine
+What is the primary key of CustTable?
+List all foreign keys on InventTable
+```
+
+### Explore a form's structure
+```
+Show me the datasources and buttons in the SalesTable form
+What methods does the CustTable form override?
+```
+
+### Look up enum values
+```
+What values does SalesStatus have?
 Show me all values in CustAccountType enum
 ```
 
-**Returns:**
+Returns each value with its integer value and label.
+
+### Find methods by prefix (IntelliSense-style)
 ```
-CustAccountType (Extensible: ✅)
-Values:
-- Customer = 0          (Regular customer account)
-- Prospect = 1          (Prospective customer)
-- Organization = 2      (Organization account)
-- Person = 3           (Individual person account)
+What methods on SalesTable start with "calc"?
+Show me all "find" methods on CustTable
+List methods starting with "init" on InventTable
 ```
 
 ---
 
-## Form, Query & View Analysis
+## Chain of Command Extensions
 
-### Analyzing Form Structure
-
-**Scenario:** You need to understand a form before extending it.
-
+### Get the exact method signature first
 ```
-Show me the structure of SalesTable form
+Get the signature of CustTable.validateWrite()
 ```
 
-**Returns:**
-```
-Form: SalesTable
-
-DataSources:
-- SalesTable (main)
-  - Fields: SalesId, CustAccount, SalesName, ...
-  - Methods: validateWrite(), active(), executeQuery()
-- SalesLine (detail)
-  - Link: SalesId -> SalesTable.SalesId
-  - Methods: validateWrite(), modified()
-
-Controls:
-- ButtonNew (FormButtonControl)
-- ButtonDelete (FormButtonControl)
-- SalesLineGrid (FormGridControl)
-- CustomerLookup (FormReferenceControl -> CustTable)
-
-Methods:
-- init() - Initialize form
-- run() - Execute form
-- closeOk() - Save and close
-```
-
-**Use Cases:**
-- Finding buttons to extend (CoC)
-- Understanding datasource relationships
-- Locating form methods for overriding
-
----
-
-### Analyzing Query Structure
-
-**Scenario:** You need to understand a query before modifying it.
-
-```
-Analyze structure of CustTransOpenQuery
-```
-
-**Returns:**
-```
-Query: CustTransOpenQuery
-
-Primary DataSource: CustTrans
-- Table: CustTrans
-- Fetch Mode: 1:n (One-to-Many)
-- Join Mode: InnerJoin
-
-Ranges:
-- AccountNum (field: AccountNum, EDT: CustAccount)
-- TransDate (field: TransDate, EDT: TransDate)
-- AmountCur (field: AmountCur, EDT: AmountCur)
-
-Child DataSources:
-- CustTable (parent link)
-  Link: AccountNum -> CustTrans.AccountNum
-  
-Total: 1 datasource, 3 ranges
-```
-
-**Use Cases:**
-- Understanding query filters before modification
-- Finding datasources to add/modify
-- Analyzing join relationships
-
----
-
-### Analyzing View/Data Entity Structure
-
-**Scenario:** You need to understand a data entity for OData integration.
-
-```
-Show me structure of GeneralJournalAccountEntryView
-```
-
-**Returns:**
-```
-View: GeneralJournalAccountEntryView
-Type: Data Entity View
-Public: ✅
-Read-Only: ✅
-
-Mapped Fields (15):
-- RecId -> GeneralJournalEntry.RecId
-- JournalNum -> GeneralJournalEntry.JournalNum
-- AccountNum -> LedgerDimension.DisplayValue
-- TransDate -> GeneralJournalEntry.TransDate
-
-Computed Fields (3):
-- BalanceAmount (calculated from DebitAmount - CreditAmount)
-- AccountType (derived from LedgerDimension)
-- CurrencyCode (derived from Company)
-
-Relations:
-- GeneralJournalEntry (1:1 relation)
-- LedgerDimension (n:1 relation)
-
-Methods:
-- init()
-- validateWrite()
-```
-
-**Use Cases:**
-- OData/integration development
-- Understanding computed vs mapped fields
-- Data migration planning
-
----
-
-## Method Signatures & References
-
-### Extracting Method Signatures for Extensions
-
-**Scenario:** You need the exact signature to create a Chain of Command extension.
-
-```
-Get method signature for SalesTable.validateWrite()
-```
-
-**Returns:**
-```
-public boolean validateWrite(boolean _checkRelations = true)
-
-Parameters:
-- _checkRelations (boolean, optional, default: true)
-
-Return Type: boolean
-
-Extension Template:
-[ExtensionOf(tableStr(SalesTable))]
-final class SalesTable_Extension
-{
-    public boolean validateWrite(boolean _checkRelations = true)
-    {
-        boolean ret = next validateWrite(_checkRelations);
-        // Your code here
-        return ret;
-    }
-}
-```
-
-**Use Cases:**
-- Creating CoC extensions with correct signatures
-- Understanding optional parameters
-- Ensuring type-safe method overrides
-
----
-
-### Finding Where Code Is Used
-
-**Scenario:** You need to know where a method is called before changing it.
-
-```
-Find all usages of DimensionAttributeValueSet.createForLedgerDimension()
-```
-
-**Returns:**
-```
-Found 45 usages in your codebase:
-
-📦 LedgerJournalEngine.validateDimensions()
-   Line 245: dimValueSet = DimensionAttributeValueSet::createForLedgerDimension(...);
-   
-📦 CustTable.setDefaultDimension()
-   Line 89: defaultDim = DimensionAttributeValueSet::createForLedgerDimension(recId);
-   
-📦 SalesTable.validateFinancialDimensions()
-   Line 156: dimSet = DimensionAttributeValueSet::createForLedgerDimension(this.DefaultDimension);
-   
-... (showing top 50 results)
-```
-
-**Another Example: Finding Field References**
-
-```
-Find references to SalesLine.RemainSalesPhysical field
-```
-
-**Returns:**
-```
-Found 23 field references:
-
-📦 SalesLineCopy.copy()
-   Line 78: salesLineCopy.RemainSalesPhysical = salesLine.RemainSalesPhysical;
-   
-📦 SalesQuantity.updateFromPacking()
-   Line 145: this.RemainSalesPhysical -= qtyPacked;
-```
-
-**Use Cases:**
-- Impact analysis before changes
-- Understanding dependencies
-- Refactoring safety checks
-- Finding deprecated code usage
-
----
-
-## Extension Development
-
-### Chain of Command Pattern
-
-**Scenario:** Need to extend the `insert` method on `CustTable`.
-
-```
-How do I use Chain of Command to extend CustTable.insert()?
-```
-
-**Returns:**
+Returns the exact signature you must match:
 ```xpp
-[ExtensionOf(tableStr(CustTable))]
-final class CustTable_Extension
-{
-    public void insert()
-    {
-        // Pre-logic
-        next insert();
-        // Post-logic
-    }
-}
+public boolean validateWrite()
+```
+
+### Create the extension
+```
+Create a CoC extension for CustTable.validateWrite() that checks credit limit
+```
+
+Copilot will:
+1. Call `get_method_signature` to get the exact signature
+2. Analyze similar validation patterns in your code
+3. Generate the complete extension class with `[ExtensionOf(tableStr(CustTable))]`
+
+### Table extension with modifiedField
+```
+Create a table extension for SalesLine that overrides modifiedField for the ItemId field
 ```
 
 ---
 
-### Event Handler Pattern
+## Generating New Classes
 
-**Scenario:** Need to react when a sales order is validated.
-
+### Helper class
 ```
-Show me how to create an event handler for SalesTable onValidatedWrite
-```
-
-**Returns:**
-```xpp
-public class SalesTable_EventHandler
-{
-    [DataEventHandler(tableStr(SalesTable), DataEventType::ValidatedWrite)]
-    public static void SalesTable_onValidatedWrite(Common sender, DataEventArgs e)
-    {
-        SalesTable salesTable = sender as SalesTable;
-        // Your logic here
-    }
-}
+Create a helper class for validating vendor transactions
 ```
 
----
+Copilot will:
+1. Analyze helper class patterns in your codebase
+2. Find similar helper classes (e.g., CustHelper, VendHelper)
+3. Generate a new class following your team's style
 
-## Code Generation
-
-### Runnable Class
-
+### Service class
 ```
-Generate a runnable class for customer data cleanup
-```
-
-**Returns:** Complete runnable class with `main()`, `run()`, dialog parameters, and info logging.
-
----
-
-### Batch Job with SysOperation
-
-```
-Create a batch job for processing open sales orders
+Create a service class for processing inventory adjustments
 ```
 
-**Returns:** Controller class, Service class, Data contract class, and Batch job registration.
-
----
-
-### Creating Physical D365FO Files
-
-**Scenario:** You need to create a new helper class as a physical XML file in the AOT structure.
-
+### Class with custom logic
 ```
-Create a helper class file named MyDimensionHelper in CustomCore model
-```
-
-**Returns:** Creates XML file at `K:\AosService\PackagesLocalDirectory\CustomCore\CustomCore\AxClass\MyDimensionHelper.xml`
-
-**Advanced Example:** Create class with source code
-
-```
-Create a helper class MyDimensionHelper in CustomCore with the following code:
-public class MyDimensionHelper extends RunBaseBatch
-{
-    public void run()
-    {
-        // TODO: Implement dimension logic
-    }
-}
-```
-
-**Other Object Types:**
-
-```
-Create a table MyCustomTable in CustomCore model
-Create an enum MyStatusEnum in CustomCore model
-Create a form MyCustomForm in CustomCore model
-Create a data entity MyDataEntity in CustomCore model
-```
-
-**What Gets Created:**
-- ✅ Physical XML file with proper D365FO metadata structure
-- ✅ Saved in correct AOT location (AxClass, AxTable, AxEnum, etc.)
-- ✅ Ready to be added to Visual Studio project
-
-**🆕 Advanced: Automatic Project Integration**
-
-```
-Create a helper class MyDimensionHelper in CustomCore and add it to my project at K:\MyProjects\CustomCore\CustomCore.rnrproj
-```
-
-**What This Does:**
-- ✅ Creates physical XML file in AOT structure
-- ✅ Automatically adds file reference to .rnrproj
-- ✅ Creates folder structure in project (Classes\, Tables\, etc.)
-- ✅ Ready for immediate build (just reload project in VS)
-
-**Next Steps After Creation:**
-
-*Without Project Integration:*
-1. Add file to Visual Studio project (Right-click project → Add Existing Item)
-2. Build project to synchronize
-
-*With Project Integration (addToProject=true):*
-1. Reload project in Visual Studio (close/reopen or Unload/Reload project)
-2. Build project to synchronize
-3. Refresh AOT to see the object
-
----
-
-### Editing Existing D365FO Files
-
-**Scenario:** You need to add a method to an existing class without manually editing XML.
-
-```
-Add method calculateDiscount() to MyCustomHelper class in file K:\AosService\PackagesLocalDirectory\CustomCore\CustomCore\AxClass\MyCustomHelper.xml
-```
-
-**What Happens:**
-- ✅ Automatic backup created (MyCustomHelper.xml.bak)
-- ✅ XML parsed and validated
-- ✅ New method added to `<Methods>` section
-- ✅ XML validated after changes
-- ✅ File saved atomically
-
-**Returns:**
-```
-✅ Backup created: MyCustomHelper.xml.bak
-✅ Added method: calculateDiscount()
-✅ XML validated successfully
-✅ Changes saved
-
-Summary:
-- 1 method added
-- 0 fields modified
-- File size: 2.3 KB -> 2.5 KB
-```
-
-**Another Example: Adding a Field to Table**
-
-```
-Add field CreditStatus (EDT: CustCreditStatus) to MyCustomTable in K:\AosService\...\AxTable\MyCustomTable.xml
-```
-
-**Safety Features:**
-- Automatic `.bak` backup before any change
-- XML validation ensures no corruption
-- Automatic rollback on error
-- Reports what changed (added, modified, deleted)
-
-**Use Cases:**
-- Adding methods to existing classes
-- Adding fields to tables
-- Modifying properties atomically
-- Safe batch modifications with rollback
-
----
-
-## Pattern Analysis & Intelligent Code Generation
-
-New intelligent tools that learn from your codebase to provide smart suggestions and pattern-based code generation.
-
-### Analyzing Code Patterns
-
-**Scenario:** You need to implement financial dimension handling but don't know which classes and patterns to use.
-
-```
-Analyze code patterns for financial dimensions
-```
-
-**Returns:**
-- Common classes used together (DimensionAttributeValueSet, DimensionStorage, etc.)
-- Typical dependencies and relationships
-- Frequency analysis showing most-used patterns
-- Example code snippets from your codebase
-
----
-
-### Getting Implementation Suggestions
-
-**Scenario:** You're creating a helper class and need to implement a `validate()` method.
-
-```
-Suggest implementation for validate method in my DimensionHelper class
-```
-
-**Returns:**
-- Similar validate methods from your codebase
-- Implementation patterns (error handling, parameter validation, etc.)
-- Complete code examples with complexity analysis
-
-**Common Method Patterns:**
-- `validate*` - Returns boolean, includes error handling
-- `find*` - Query patterns with null checks
-- `create*` - Initialization and insertion patterns with tts
-- `update*` - Modification patterns with ttsbegin/ttscommit
-- `delete*` - Cleanup patterns with cascade logic
-
----
-
-### Analyzing Class Completeness
-
-**Scenario:** You created a new `CustTableHelper` class and want to ensure it follows common patterns.
-
-```
-Analyze my CustTableHelper class for completeness
-```
-
-**Returns:**
-- List of existing methods in your class
-- Suggested missing methods based on similar Helper classes
-- Importance ranking (🔴 Very common, 🟠 Common, 🟡 Somewhat common)
-
-**Example Output:**
-```
-🔴 validate: Found in 85% of similar classes (17/20)
-🟠 checkMandatoryFields: Found in 65% of similar classes (13/20)
-🟡 copyToClipboard: Found in 35% of similar classes (7/20)
+Analyze patterns for customer credit management, then create a helper class
+that validates credit limits and blocks orders when the limit is exceeded
 ```
 
 ---
 
-### Getting API Usage Patterns
+## Creating Files
 
-**Scenario:** You need to use `DimensionAttributeValueSet` but don't know the correct initialization sequence.
-
+### Create a class and add it to the project (local VM)
 ```
-Show me how to use DimensionAttributeValueSet API
+Create a class MyInventoryHelper and add it to my Visual Studio project
 ```
 
-**Returns:**
-- Common initialization patterns
-- Typical method call sequences
-- Complete working examples from your codebase
-- Related APIs often used together
+The server automatically:
+- Detects the model from your open `.rnrproj`
+- Creates the XML in the correct AOT path
+- Adds the file to the project
 
-**Example Output:**
-```xpp
-// Typical initialization
-DimensionAttributeValueSet valueSet;
-DimensionAttribute attribute;
+### Create a table extension (local VM)
+```
+Create a table extension for InventTable with a custom field VendorCategory
+```
 
-attribute = DimensionAttribute::findByName('Department');
-valueSet = DimensionAttributeValueSet::construct();
+### Generate XML only (Azure/cloud server)
+```
+Generate the XML for a class MyHelper in the AslCore model
+```
 
-// Common method sequence
-valueSet.addDimension(attribute, dimensionValue);
-valueSet.save();
+Returns the XML content. Copilot then creates the file in your workspace.
+
+---
+
+## Where-Used Analysis
+
+### Find all usages of a class
+```
+Where is DimensionAttributeValueSet used in the codebase?
+```
+
+Returns file paths, method names, and code snippets for each usage.
+
+### Find all callers of a method
+```
+Find all places where CustTable.validateWrite() is called
+Which classes call SalesTable.insert()?
+```
+
+### Find usages of a field
+```
+Where is SalesLine.RemainSalesPhysical accessed?
+Find all references to CustTable.CreditLimit
 ```
 
 ---
 
-### Combining Intelligent Tools - Complete Workflow
+## Batch Jobs
 
-**Example:** Creating a new posting service
-
-1. **Analyze patterns:** `Analyze code patterns for inventory posting`  
-   → Identifies `InventMovement`, `InventUpd_*`, `TmpInventTransMark`
-
-2. **Check completeness:** `Analyze my InventPostingService class for completeness`  
-   → Suggests: `validateBeforePost`, `createJournal`, `updateInventory`
-
-3. **Get implementation:** `Suggest implementation for validateBeforePost`  
-   → Shows similar validation methods with error handling
-
-4. **Learn API usage:** `Show me how to use InventMovement API`  
-   → Provides initialization patterns and method sequences
-
----
-
-## Configuration
-
-### MCP Client Setup (`.mcp.json`)
-
-```json
-{
-  "servers": {
-    "xpp-completion": {
-      "url": "https://your-app.azurewebsites.net/mcp/",
-      "description": "X++ Code Completion Server"
-    }
-  }
-}
+### Generate a complete batch job
+```
+Create a batch job that processes all open customer invoices older than 30 days
+and sends them to a collection agency
 ```
 
-### Extension Prefix Configuration (`.env`)
+Copilot will:
+1. Analyze batch job patterns in your codebase
+2. Generate a controller class (SysOperationServiceController)
+3. Generate a service class with the `process()` method
+4. Include standard patterns: error handling, progress reporting, ttsbegin/ttscommit
 
-```env
-# Your custom model prefixes for filtering
-EXTENSION_PREFIX=ISV_
-CUSTOM_MODELS=ISV_Sales,ISV_Inventory
-EXTRACT_MODE=custom
+### Based on existing patterns
 ```
-
-### Searching Custom Extensions Only
-
-```
-Search my custom ISV_ extensions for sales modifications
-```
-
-Filters results to only your custom models - useful when you have 500+ standard models indexed.
-
----
-
-## File Creation
-
-### Cloud Deployment (Recommended for Azure)
-
-**Scenario:** MCP server runs in Azure (cloud) - need to create D365FO files remotely.
-
-**Workflow:**
-1. Generate XML content using `generate_d365fo_xml`
-2. GitHub Copilot creates file using built-in `create_file`
-
-```
-Create a helper class MyDimensionHelper in CustomCore model
-```
-
-**Behind the scenes:**
-```typescript
-// Step 1: Generate XML (cloud-ready)
-generate_d365fo_xml({
-  objectType: "class",
-  objectName: "MyDimensionHelper",
-  modelName: "CustomCore"
-})
-// Returns XML content with TABS
-
-// Step 2: Copilot creates file
-create_file({
-  filePath: "K:\\AosService\\PackagesLocalDirectory\\CustomCore\\CustomCore\\AxClass\\MyDimensionHelper.xml",
-  content: xmlContent
-})
-```
-
-**Why this workflow:**
-- Works when MCP server runs in Azure/cloud (Linux)
-- No file system access needed on server side
-- Copilot creates file on user's local Windows D365FO VM
-
----
-
-### Local Deployment (Windows only)
-
-**Scenario:** MCP server runs locally on Windows D365FO development VM.
-
-**Workflow:**
-1. Single tool call - full automation
-
-```
-Create a table MyCustomTable in CustomCore model
-```
-
-**Behind the scenes:**
-```typescript
-// One-step automation (Windows only)
-create_d365fo_file({
-  objectType: "table",
-  objectName: "MyCustomTable",
-  modelName: "CustomCore",
-  addToProject: true,
-  projectPath: "C:\\D365\\MySolution\\MySolution.rnrproj"
-})
-// Creates file + adds to VS project automatically
-```
-
-**Platform requirements:**
-- Requires local Windows with K:\ drive access
-- Does NOT work in Azure/cloud deployment
-
----
-
-## Tips for Effective Use
-
-### Be Specific
-- ❌ `Find customer stuff`  
-- ✅ `Find methods on CustTable for updating credit limit`
-
-### Use Exact Names When Known
-- ❌ `sales table class`  
-- ✅ `SalesTable` or `SalesFormLetter`
-
-### Combine Queries
-```
-Show me SalesTable relations and generate a query to join with CustTable
+Analyze batch job patterns in my code, then create a batch job for
+recalculating inventory costs
 ```
 
 ---
 
-## Related Documentation
+## Financial Dimensions
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System design
-- [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) - ISV configuration
-- [SETUP.md](SETUP.md) - Installation guide
+### Understand how dimensions work
+```
+How is DimensionAttributeValueSet typically initialized and used?
+Show me how financial dimensions are stored on ledger transactions
+```
+
+### Generate dimension handling code
+```
+Analyze dimension handling patterns in my code, then create a helper
+method that copies default dimensions from CustTable to a ledger journal line
+```
+
+---
+
+## Ledger Journals
+
+### Understand the structure
+```
+Show me the structure of LedgerJournalTable and LedgerJournalTrans
+How is LedgerJournalCheckPost used in the codebase?
+```
+
+### Generate journal creation code
+```
+Analyze ledger journal creation patterns, then create methods to:
+1. Create a general ledger journal header
+2. Add one journal line with an account and offset account
+3. Post the journal
+```
+
+---
+
+## Form Extensions
+
+### Understand the form first
+```
+Show me the structure of the SalesTable form: datasources, buttons, and methods
+```
+
+### Create a form extension
+```
+Create a form extension for SalesTable that adds a custom button
+called "Send to approval" and shows a message when clicked
+```
+
+### Add a datasource method
+```
+Show me the SalesTable form datasource methods, then create an
+extension that overrides the active() method to filter records
+```
+
+---
+
+## Common Questions
+
+**Do I need to say which tool to use?**
+No. Just describe what you want and Copilot picks the right tool automatically.
+
+**How fast are the searches?**
+Under 50 ms for most queries. The database has 584 799+ symbols fully indexed.
+
+**Can I search only my own code?**
+Yes. Say "search my custom extensions" or "find ISV_ classes" and the search will
+exclude all standard Microsoft symbols.
+
+**Does file creation work when the server is on Azure?**
+The server generates the XML content and Copilot creates the file using VS Code's
+file tools. Full automation (write + add to project) requires the server running locally.
+
+**What if Copilot generates the wrong model name?**
+Add a `workspacePath` to your `.mcp.json` or check that your solution is open
+in Visual Studio. See [WORKSPACE_DETECTION.md](WORKSPACE_DETECTION.md).

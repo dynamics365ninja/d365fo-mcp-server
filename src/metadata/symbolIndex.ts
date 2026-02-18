@@ -263,9 +263,26 @@ export class XppSymbolIndex {
   }
 
   /**
+   * Sanitize a user query for FTS5 to prevent syntax errors.
+   * FTS5 operators (AND, OR, NOT, NEAR, quotes, parens, *) can crash the engine
+   * when they appear in raw user input. Wraps each token as a quoted prefix term.
+   */
+  private sanitizeFtsQuery(query: string): string {
+    const trimmed = query.trim();
+    if (!trimmed) return '""';
+    // Strip FTS5 special characters – keep alphanumeric, underscore and spaces
+    const cleaned = trimmed.replace(/[^\w\s]/g, ' ').trim();
+    const tokens = cleaned.split(/\s+/).filter(t => t.length > 0);
+    if (tokens.length === 0) return `"${trimmed}"`;
+    // "token"* gives prefix-match semantics inside FTS5
+    return tokens.map(t => `"${t}"*`).join(' ');
+  }
+
+  /**
    * Search symbols by query with full-text search
    */
   searchSymbols(query: string, limit: number = 20, types?: string[]): XppSymbol[] {
+    const ftsQuery = this.sanitizeFtsQuery(query);
     let sql = `
       SELECT s.*
       FROM symbols_fts fts
@@ -273,19 +290,33 @@ export class XppSymbolIndex {
       WHERE symbols_fts MATCH ?
     `;
 
-    const params: any[] = [query];
+    const params: any[] = [ftsQuery];
 
     if (types && types.length > 0) {
-      sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
+      sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;  
       params.push(...types);
     }
 
     sql += ` ORDER BY rank LIMIT ?`;
     params.push(limit);
 
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params) as any[];
-    return rows.map(row => this.rowToSymbol(row));
+    try {
+      const stmt = this.db.prepare(sql);
+      const rows = stmt.all(...params) as any[];
+      return rows.map(row => this.rowToSymbol(row));
+    } catch {
+      // FTS5 syntax error (e.g. user typed *, ", (, ), -) — fall back to LIKE contains search
+      let fallbackSql = `SELECT s.* FROM symbols s WHERE s.name LIKE ?`;
+      const fallbackParams: any[] = [`%${query.replace(/[%_]/g, '\\$&')}%`];
+      if (types && types.length > 0) {
+        fallbackSql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
+        fallbackParams.push(...types);
+      }
+      fallbackSql += ` ORDER BY s.name LIMIT ?`;
+      fallbackParams.push(limit);
+      const fallbackStmt = this.db.prepare(fallbackSql);
+      return (fallbackStmt.all(...fallbackParams) as any[]).map(r => this.rowToSymbol(r));
+    }
   }
 
   /**
@@ -317,17 +348,13 @@ export class XppSymbolIndex {
    * Get a specific symbol by name and type
    */
   getSymbolByName(name: string, type: string): XppSymbol | null {
-    const stmt = this.db.prepare(`
-      SELECT *
-      FROM symbols
-      WHERE name = ? AND type = ?
-      LIMIT 1
-    `);
-
+    let stmt = this.stmtCache.get('getSymbolByName');
+    if (!stmt) {
+      stmt = this.db.prepare(`SELECT * FROM symbols WHERE name = ? AND type = ? LIMIT 1`);
+      this.stmtCache.set('getSymbolByName', stmt);
+    }
     const row = stmt.get(name, type) as any;
-    if (!row) return null;
-
-    return this.rowToSymbol(row);
+    return row ? this.rowToSymbol(row) : null;
   }
 
   /**
@@ -853,39 +880,42 @@ export class XppSymbolIndex {
    * Get class methods for autocomplete
    */
   getClassMethods(className: string): XppSymbol[] {
-    const stmt = this.db.prepare(`
-      SELECT *
-      FROM symbols
-      WHERE parent_name = ? AND type = 'method'
-      ORDER BY name
-    `);
-
-    const rows = stmt.all(className) as any[];
-    return rows.map(row => this.rowToSymbol(row));
+    let stmt = this.stmtCache.get('getClassMethods');
+    if (!stmt) {
+      stmt = this.db.prepare(`SELECT * FROM symbols WHERE parent_name = ? AND type = 'method' ORDER BY name`);
+      this.stmtCache.set('getClassMethods', stmt);
+    }
+    return (stmt.all(className) as any[]).map(row => this.rowToSymbol(row));
   }
 
   /**
    * Get table fields for autocomplete
    */
   getTableFields(tableName: string): XppSymbol[] {
-    const stmt = this.db.prepare(`
-      SELECT *
-      FROM symbols
-      WHERE parent_name = ? AND type = 'field'
-      ORDER BY name
-    `);
-
-    const rows = stmt.all(tableName) as any[];
-    return rows.map(row => this.rowToSymbol(row));
+    let stmt = this.stmtCache.get('getTableFields');
+    if (!stmt) {
+      stmt = this.db.prepare(`SELECT * FROM symbols WHERE parent_name = ? AND type = 'field' ORDER BY name`);
+      this.stmtCache.set('getTableFields', stmt);
+    }
+    return (stmt.all(tableName) as any[]).map(row => this.rowToSymbol(row));
   }
 
   /**
    * Get completions for a class or table
    */
   getCompletions(objectName: string, prefix?: string): any[] {
-    const methods = this.getClassMethods(objectName);
-    const fields = this.getTableFields(objectName);
-    const allMembers = [...methods, ...fields];
+    // Single query instead of two separate calls for methods + fields
+    let stmt = this.stmtCache.get('getCompletions');
+    if (!stmt) {
+      stmt = this.db.prepare(
+        `SELECT name, type, signature FROM symbols
+         WHERE parent_name = ? AND type IN ('method', 'field')
+         ORDER BY type DESC, name`  // methods before fields
+      );
+      this.stmtCache.set('getCompletions', stmt);
+    }
+
+    const allMembers = stmt.all(objectName) as Array<{ name: string; type: string; signature: string | null }>;
 
     const filtered = prefix
       ? allMembers.filter(m => m.name.toLowerCase().startsWith(prefix.toLowerCase()))
@@ -894,7 +924,7 @@ export class XppSymbolIndex {
     return filtered.map(m => ({
       label: m.name,
       kind: m.type === 'method' ? 'Method' : 'Field',
-      detail: m.signature,
+      detail: m.signature ?? undefined,
       documentation: undefined,
     }));
   }
@@ -1005,24 +1035,26 @@ export class XppSymbolIndex {
     const dependencyFrequency: Record<string, number> = {};
     const exampleClasses: string[] = [];
     
+    // Collect example class names and count dependency frequencies (data already in classes)
     for (const cls of classes) {
       exampleClasses.push(cls.name);
-      
-      // Count method frequencies
-      const methods = this.getClassMethods(cls.name);
-      for (const method of methods) {
-        methodFrequency[method.name] = (methodFrequency[method.name] || 0) + 1;
-      }
-      
-      // Count dependency frequencies
       if (cls.used_types) {
-        const types = cls.used_types.split(',');
-        for (const type of types) {
-          const cleaned = type.trim();
-          if (cleaned) {
-            dependencyFrequency[cleaned] = (dependencyFrequency[cleaned] || 0) + 1;
-          }
+        for (const rawType of cls.used_types.split(',')) {
+          const cleaned = rawType.trim();
+          if (cleaned) dependencyFrequency[cleaned] = (dependencyFrequency[cleaned] || 0) + 1;
         }
+      }
+    }
+
+    // Single bulk query instead of N+1 (one getClassMethods() call per class)
+    if (classes.length > 0) {
+      const classNames = classes.map((c: any) => c.name);
+      const placeholders = classNames.map(() => '?').join(',');
+      const allMethods = this.db.prepare(
+        `SELECT name FROM symbols WHERE type = 'method' AND parent_name IN (${placeholders})`
+      ).all(...classNames) as Array<{ name: string }>;
+      for (const method of allMethods) {
+        methodFrequency[method.name] = (methodFrequency[method.name] || 0) + 1;
       }
     }
     
@@ -1088,17 +1120,19 @@ export class XppSymbolIndex {
    * Find similar methods based on name and context
    */
   findSimilarMethods(methodName: string, _contextClass?: string, limit: number = 10): any[] {
-    const sql = `
-      SELECT s.*, parent.name as class_name, parent.pattern_type
-      FROM symbols s
-      LEFT JOIN symbols parent ON s.parent_name = parent.name AND parent.type = 'class'
-      WHERE s.type = 'method' 
-        AND s.name LIKE ?
-      ORDER BY s.complexity ASC, s.name
-      LIMIT ?
-    `;
-    
-    const stmt = this.db.prepare(sql);
+    let stmt = this.stmtCache.get('findSimilarMethods');
+    if (!stmt) {
+      stmt = this.db.prepare(`
+        SELECT s.*, parent.name as class_name, parent.pattern_type
+        FROM symbols s
+        LEFT JOIN symbols parent ON s.parent_name = parent.name AND parent.type = 'class'
+        WHERE s.type = 'method'
+          AND s.name LIKE ?
+        ORDER BY s.complexity ASC, s.name
+        LIMIT ?
+      `);
+      this.stmtCache.set('findSimilarMethods', stmt);
+    }
     const methods = stmt.all(`%${methodName}%`, limit) as any[];
     
     return methods.map(m => ({
@@ -1115,58 +1149,50 @@ export class XppSymbolIndex {
   /**
    * Get API usage patterns for a class
    */
-  getApiUsagePatterns(className: string): any {
-    // Find all places where this class is used
-    const sql = `
-      SELECT * FROM symbols
-      WHERE type = 'method'
-        AND used_types LIKE ?
-      LIMIT 50
-    `;
-    
-    const stmt = this.db.prepare(sql);
-    const methods = stmt.all(`%${className}%`) as any[];
-    
-    if (methods.length === 0) {
-      return {
-        className,
-        usageCount: 0,
-        commonPatterns: [],
-        initPatterns: [],
-        methodCallSequences: []
-      };
+  getApiUsagePatterns(className: string): any[] {
+    // Find all methods that reference this class in their used_types
+    let stmt = this.stmtCache.get('getApiUsagePatterns');
+    if (!stmt) {
+      stmt = this.db.prepare(`SELECT * FROM symbols WHERE type = 'method' AND used_types LIKE ? LIMIT 50`);
+      this.stmtCache.set('getApiUsagePatterns', stmt);
     }
-    
+    const methods = stmt.all(`%${className}%`) as any[];
+
+    if (methods.length === 0) {
+      return [];
+    }
+
     const methodCallPatterns: Record<string, number> = {};
     const initPatterns: string[] = [];
-    
+
     for (const method of methods) {
       if (method.method_calls) {
-        const calls = method.method_calls.split(',').map((c: string) => c.trim());
-        for (const call of calls) {
-          methodCallPatterns[call] = (methodCallPatterns[call] || 0) + 1;
+        for (const call of (method.method_calls as string).split(',')) {
+          const c = call.trim();
+          if (c) methodCallPatterns[c] = (methodCallPatterns[c] || 0) + 1;
         }
       }
-      
-      // Detect initialization patterns
-      if (method.source_snippet && method.source_snippet.includes('new ' + className)) {
-        const snippetLines = method.source_snippet.split('\n').slice(0, 5);
-        initPatterns.push(snippetLines.join('\n'));
+
+      // Collect initialization snippets
+      if (method.source_snippet && (method.source_snippet as string).includes('new ' + className)) {
+        const snippet = (method.source_snippet as string).split('\n').slice(0, 5).join('\n');
+        if (!initPatterns.includes(snippet)) initPatterns.push(snippet);
       }
     }
-    
+
     const commonMethodCalls = Object.entries(methodCallPatterns)
       .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([name, count]) => ({ method: name, frequency: count }));
-    
-    return {
-      className,
+      .slice(0, 10);
+
+    // Return an array so formatPatterns() can iterate with .length and index access
+    return [{
+      patternType: 'General Usage',
       usageCount: methods.length,
-      commonMethodCalls,
-      initPatterns: initPatterns.slice(0, 5),
-      usedInClasses: methods.map((m: any) => m.parent_name).filter(Boolean).slice(0, 10)
-    };
+      classes: methods.map((m: any) => m.parent_name as string).filter(Boolean).slice(0, 10),
+      initialization: initPatterns.slice(0, 3),
+      methodSequence: commonMethodCalls.map(([name, count]) => `${name}  // called ${count}×`),
+      relatedApis: commonMethodCalls.slice(0, 5).map(([name]) => name),
+    }];
   }
 
   /**
@@ -1201,18 +1227,28 @@ export class XppSymbolIndex {
     const stmt = this.db.prepare(sql);
     const similarClasses = stmt.all(`%${patternType}`, className) as any[];
     
-    // Count method occurrences in similar classes
+    // Single GROUP BY query instead of N+1 getClassMethods() calls per similar class
     const methodFrequency: Record<string, number> = {};
-    
-    for (const row of similarClasses) {
-      const methods = this.getClassMethods(row.parent_name);
-      for (const method of methods) {
-        if (!existingMethodNames.has(method.name)) {
-          methodFrequency[method.name] = (methodFrequency[method.name] || 0) + 1;
+
+    if (similarClasses.length > 0) {
+      const classNames = similarClasses.map((r: any) => r.parent_name);
+      const placeholders = classNames.map(() => '?').join(',');
+      const methodCounts = this.db.prepare(
+        `SELECT name, COUNT(DISTINCT parent_name) AS class_count
+         FROM symbols
+         WHERE type = 'method' AND parent_name IN (${placeholders})
+         GROUP BY name
+         ORDER BY class_count DESC
+         LIMIT 50`
+      ).all(...classNames) as Array<{ name: string; class_count: number }>;
+
+      for (const row of methodCounts) {
+        if (!existingMethodNames.has(row.name)) {
+          methodFrequency[row.name] = row.class_count;
         }
       }
     }
-    
+
     // Return top missing methods
     return Object.entries(methodFrequency)
       .sort(([, a], [, b]) => b - a)

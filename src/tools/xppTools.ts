@@ -697,13 +697,12 @@ export function createAnalyzeClassCompletenessTool(symbolIndex: XppSymbolIndex) 
 export function createGetApiUsagePatternsTool(symbolIndex: XppSymbolIndex) {
   return async (args: z.infer<typeof GetApiUsagePatternsSchema>): Promise<ToolResult> => {
     const { className } = args;
-    
+
     const patterns = symbolIndex.getApiUsagePatterns(className);
-    
+
     let output = `# API Usage Patterns: ${className}\n\n`;
-    output += `**Usage Count:** ${patterns.usageCount} places in codebase\n\n`;
-    
-    if (patterns.usageCount === 0) {
+
+    if (patterns.length === 0) {
       output += `No usage found for ${className}. This might be:\n`;
       output += `- A new class not yet used\n`;
       output += `- An internal/private class\n`;
@@ -712,40 +711,43 @@ export function createGetApiUsagePatternsTool(symbolIndex: XppSymbolIndex) {
         content: [{ type: 'text', text: output }]
       };
     }
-    
-    if (patterns.commonMethodCalls && patterns.commonMethodCalls.length > 0) {
+
+    const p = patterns[0]; // primary pattern
+    output += `**Usage Count:** ${p.usageCount} places in codebase\n\n`;
+
+    if (p.methodSequence && p.methodSequence.length > 0) {
       output += `## Most Common Method Calls\n\n`;
-      for (const call of patterns.commonMethodCalls) {
-        output += `- **${call.method}**: called ${call.frequency} times\n`;
+      for (const call of p.methodSequence) {
+        output += `- ${call}\n`;
       }
       output += '\n';
     }
-    
-    if (patterns.initPatterns && patterns.initPatterns.length > 0) {
+
+    if (p.initialization && p.initialization.length > 0) {
       output += `## Common Initialization Patterns\n\n`;
-      for (let i = 0; i < patterns.initPatterns.length; i++) {
+      for (let i = 0; i < p.initialization.length; i++) {
         output += `### Pattern ${i + 1}\n\n`;
-        output += `\`\`\`xpp\n${patterns.initPatterns[i]}\n\`\`\`\n\n`;
+        output += `\`\`\`xpp\n${p.initialization[i]}\n\`\`\`\n\n`;
       }
     }
-    
-    if (patterns.usedInClasses && patterns.usedInClasses.length > 0) {
+
+    if (p.classes && p.classes.length > 0) {
       output += `## Used In Classes\n\n`;
-      for (const cls of patterns.usedInClasses) {
+      for (const cls of p.classes) {
         output += `- ${cls}\n`;
       }
       output += '\n';
     }
-    
+
     output += `## Usage Recommendation\n\n`;
     output += `Based on codebase analysis, the typical usage flow is:\n`;
-    if (patterns.commonMethodCalls && patterns.commonMethodCalls.length > 0) {
+    if (p.relatedApis && p.relatedApis.length > 0) {
       output += `1. Initialize ${className}\n`;
-      for (let i = 0; i < Math.min(3, patterns.commonMethodCalls.length); i++) {
-        output += `${i + 2}. Call ${patterns.commonMethodCalls[i].method}()\n`;
+      for (let i = 0; i < Math.min(3, p.relatedApis.length); i++) {
+        output += `${i + 2}. Call ${p.relatedApis[i]}()\n`;
       }
     }
-    
+
     return {
       content: [{ type: 'text', text: output }]
     };
