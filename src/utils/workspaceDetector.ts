@@ -7,9 +7,13 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 export interface D365ProjectInfo {
-  projectPath: string;
+  /** Path to the .rnrproj file. May be undefined when model was detected from PackagesLocalDirectory path. */
+  projectPath?: string;
   modelName: string;
-  solutionPath: string;
+  /** Path to the VS solution folder. May be undefined when model was detected from PackagesLocalDirectory path. */
+  solutionPath?: string;
+  /** Base PackagesLocalDirectory path, if known */
+  packagePath?: string;
 }
 
 /**
@@ -152,6 +156,25 @@ export async function autoDetectD365Project(
     console.error(`[WorkspaceDetector] Trying WORKSPACE_PATH env var: ${envWorkspace}`);
     const envResult = await detectD365Project(envWorkspace);
     if (envResult) return envResult;
+  }
+
+  // Priority 4: Extract model name directly from a PackagesLocalDirectory path
+  // e.g. K:\AOSService\PackagesLocalDirectory\AslEnhancedDataSharing → modelName: "AslEnhancedDataSharing"
+  if (explicitWorkspacePath) {
+    const normalized = path.normalize(explicitWorkspacePath);
+    const match = normalized.match(/^(.+[\\]PackagesLocalDirectory)[\\]([^\\]+)\\?$/i);
+    if (match) {
+      const packagePath = match[1];
+      const modelName = match[2];
+      console.error(`[WorkspaceDetector] ✅ Extracted model name from PackagesLocalDirectory path: ${modelName}`);
+      console.error(`[WorkspaceDetector]    Package path: ${packagePath}`);
+      console.error(`[WorkspaceDetector]    Note: projectPath unknown — addToProject=true requires projectPath in .mcp.json`);
+      return {
+        modelName,
+        packagePath,
+        // projectPath and solutionPath intentionally omitted — not derivable from PackagesLocalDirectory path
+      };
+    }
   }
 
   console.error('[WorkspaceDetector] ⚠️ Could not auto-detect D365FO project from any source');

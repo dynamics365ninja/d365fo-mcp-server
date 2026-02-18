@@ -181,6 +181,11 @@ class ConfigManager {
       }
     }
 
+    // Fallback: check if auto-detection already ran and found packagePath
+    if (this.autoDetectedProject?.packagePath) {
+      return this.autoDetectedProject.packagePath;
+    }
+
     return null;
   }
 
