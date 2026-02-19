@@ -1,0 +1,126 @@
+# Azure Pipeline — Deploy MCP Server Application to App Service
+#
+# Compiles better-sqlite3 on ubuntu-latest (same Linux base as App Service)
+# with the same Node.js version as the App Service runtime.
+# Ships pre-built node_modules so no compilation is needed on the server.
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'startup.sh'
+      - 'tsconfig.json'
+      - '.azure-pipelines/d365fo-mcp-app-deploy.yml'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: xpp-mcp-server-config
+  - name: nodeVersion
+    value: '24.x'
+
+stages:
+  - stage: Build
+    displayName: 'Build'
+    jobs:
+      - job: BuildJob
+        displayName: 'Compile and package'
+        steps:
+          - checkout: self
+            displayName: 'Checkout'
+            clean: true
+
+          - task: NodeTool@0
+            displayName: 'Use Node.js $(nodeVersion)'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          # npm ci compiles better-sqlite3 from source on ubuntu-latest.
+          # ubuntu-latest uses the same glibc as App Service Linux, so the
+          # resulting binary works at runtime without any rebuild step.
+          - script: npm ci
+            displayName: 'npm ci (compiles native addons for Node 24 / Linux)'
+
+          - script: npm run build
+            displayName: 'TypeScript compile → dist/'
+
+          # Archive everything the server needs to run.
+          # node_modules ARE included (pre-built for Node 24 / Linux).
+          # Source files, tests, and build tooling are excluded to keep zip small.
+          - task: ArchiveFiles@2
+            displayName: 'Create deployment zip'
+            inputs:
+              rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: '$(Build.ArtifactStagingDirectory)/app.zip'
+              replaceExistingArchive: true
+              exclude: |
+                .git/**
+                .azure-pipelines/**
+                scripts/**
+                tests/**
+                test-data/**
+                coverage/**
+                src/**
+                docs/**
+                infrastructure/**
+                data/**
+                metadata/**
+                database/**
+                *.md
+                tsconfig.json
+                vitest.config.ts
+                .env*
+                .mcp.json*
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish artifact'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/app.zip'
+              ArtifactName: 'app'
+              publishLocation: Container
+
+  - stage: Deploy
+    displayName: 'Deploy to App Service'
+    dependsOn: Build
+    jobs:
+      - deployment: DeployJob
+        displayName: 'Deploy'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                # Pre-built node_modules are shipped in the zip — disable Oryx
+                # so it does not run a second npm ci on the server.
+                - task: AzureAppServiceSettings@1
+                  displayName: 'Set SCM_DO_BUILD_DURING_DEPLOYMENT=false'
+                  inputs:
+                    azureSubscription: '$(AZURE_SUBSCRIPTION)'
+                    appName: '$(AZURE_APP_SERVICE_NAME)'
+                    appSettings: |
+                      [
+                        { "name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "false" },
+                        { "name": "WEBSITE_NODE_DEFAULT_VERSION", "value": "~24" }
+                      ]
+
+                - task: AzureRmWebAppDeployment@4
+                  displayName: 'Deploy zip to App Service'
+                  inputs:
+                    ConnectionType: AzureRM
+                    azureSubscription: '$(AZURE_SUBSCRIPTION)'
+                    appType: webAppLinux
+                    WebAppName: '$(AZURE_APP_SERVICE_NAME)'
+                    packageForLinux: '$(Pipeline.Workspace)/app/app.zip'
+                    RuntimeStack: 'NODE|24-lts'
+                    StartupCommand: 'bash startup.sh'
+                    deployToSlotOrASE: false
+                    enableCustomDeployment: true
+                    DeploymentType: zipDeploy
