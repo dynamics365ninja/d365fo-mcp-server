@@ -15,7 +15,7 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
 | `get_symbols_by_name` | `search()` or specific tools like `get_class_info()` | MCP tools understand D365FO object hierarchy and inheritance |
 | `get_file` | `get_class_info()`, `get_table_info()`, `get_form_info()`, etc. | Source code is embedded in metadata; MCP tools extract it correctly |
 | `edit_file` | `modify_d365fo_file()` | Editing XML manually breaks structure; MCP tool validates and backs up |
-| `create_file` | `create_d365fo_file()` or `generate_d365fo_xml()` | D365FO files require specific XML schema and AOT structure |
+| `create_file` | `create_d365fo_file()` with optional `generate_d365fo_xml()` first | D365FO files require specific XML schema and AOT structure |
 | `apply_patch` | `modify_d365fo_file()` | Patches on XML corrupt metadata; use structured operations instead |
 
 ### Non-Negotiable Rules
@@ -37,8 +37,9 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
    - Incorrect signatures cause compilation errors
 
 5. **NEVER call `create_file` for D365FO objects**
-   - Use `create_d365fo_file()` (local file system with project integration)
-   - Or use `generate_d365fo_xml()` (returns XML content for any environment)
+   - **ONLY use `create_d365fo_file()`** for creating D365FO files (classes, tables, forms, enums, etc.)
+   - Optional: call `generate_d365fo_xml()` first to get XML content, then pass it to `create_d365fo_file()`
+   - `create_file` will corrupt D365FO metadata and break project integration
 
 6. **Use specific tools for specific object types**
    - For forms: use `get_form_info()`, not `search(type="form")`
@@ -91,8 +92,8 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
 
 | Tool | Replaces Built-in | Description | When to Use |
 |------|-------------------|-------------|-------------|
-| `generate_d365fo_xml(objectType, objectName, ...)` | None | Returns D365FO XML content as text that you can write using `create_file` | Cloud environments, Azure hosting, any OS |
-| `create_d365fo_file(objectType, objectName, modelName, addToProject?)` | `create_file` | Creates physical file in correct AOT location and optionally adds to Visual Studio project. Auto-detects model from .rnrproj | Local Windows VM with K:\ drive access |
+| `generate_d365fo_xml(objectType, objectName, ...)` | None | Returns D365FO XML content as text. Use with `create_d365fo_file()` for file creation, or alone for inspection/review | Get XML content before creating file, or inspect XML structure |
+| `create_d365fo_file(objectType, objectName, modelName, addToProject?)` | `create_file` | **ONLY tool for creating D365FO files.** Creates physical file in correct AOT location and optionally adds to Visual Studio project. Auto-detects model from .rnrproj. Can accept XML content from `generate_d365fo_xml()` | Creating ANY D365FO object (class, table, form, enum, etc.) |
 | `modify_d365fo_file(objectType, objectName, operation, ...)` | `edit_file`, `apply_patch`, `replace_string_in_file` | Safely edits D365FO XML with automatic backup (.bak), validation, and rollback on error. Supports: add-method, remove-method, add-field, remove-field, modify-property | Local Windows VM with K:\ drive access |
 
 ## Common Workflows
@@ -102,9 +103,11 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
 **Best Practice Workflow:**
 1. Call `analyze_code_patterns("description of what you're building")` — learn from existing patterns
 2. Call `generate_code(pattern, name)` or get related examples
-3. Call `create_d365fo_file(objectType, objectName, modelName, addToProject=true)` — creates file and adds to project
+3. **ALWAYS call `create_d365fo_file(objectType, objectName, modelName, addToProject=true)`** — creates file and adds to project
    - The tool auto-detects the correct model from .rnrproj in the workspace
-   - On Azure/cloud: use `generate_d365fo_xml()` + `create_file()` fallback
+   - Works in all environments (local, cloud, Azure)
+   - Optional: call `generate_d365fo_xml()` first, then pass XML to `create_d365fo_file()`
+   - **NEVER use `create_file()` for D365FO objects - always use `create_d365fo_file()`**
 
 **Example:**
 ```
@@ -143,7 +146,7 @@ modify_d365fo_file(
 2. Call `get_method_signature(className, methodName)` — **REQUIRED: get exact signature**
 3. Call `suggest_method_implementation(className, methodName)` — see real examples
 4. Call `generate_code(pattern="class", name="YourExtensionClassName")` with extension pattern
-5. Call `create_d365fo_file()` or `generate_d365fo_xml()`
+5. **Call `create_d365fo_file()` only** — optionally use `generate_d365fo_xml()` + `create_d365fo_file()`
 
 **Why get_method_signature is required:**
 - Incorrect signatures cause compilation errors
@@ -200,7 +203,8 @@ Step 4: Create extension with exact signature from step 2
 - Never use built-in file tools (`get_file`, `edit_file`, etc.) on .xml or .xpp files
 - Never guess method signatures — always look them up
 - Never use `replace_string_in_file` on D365FO XML — it corrupts metadata
-- Never create D365FO files with generic `create_file` — use specialized tools
+- **Never create D365FO files with generic `create_file` — ONLY use `create_d365fo_file()`**
+- **Never combine `generate_d365fo_xml()` + `create_file()` — use `generate_d365fo_xml()` + `create_d365fo_file()` instead**
 - Don't use vague search terms — be specific about what you're looking for
 - Don't call `search()` after you already have the complete object from `get_class_info()`
 
