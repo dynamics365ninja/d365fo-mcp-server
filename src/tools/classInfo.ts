@@ -9,10 +9,13 @@ import type { XppServerContext } from '../types/context.js';
 import { validateWorkspacePath } from '../workspace/workspaceUtils.js';
 import { buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';
 
+const METHOD_PAGE_SIZE = 25;
+
 const ClassInfoArgsSchema = z.object({
   className: z.string().describe('Name of the X++ class'),
   includeWorkspace: z.boolean().optional().default(false).describe('Whether to search in workspace first'),
   workspacePath: z.string().optional().describe('Workspace path to search for class'),
+  methodOffset: z.number().optional().default(0).describe('Offset for paginating methods (use multiples of 25)'),
 });
 
 export async function classInfoTool(request: CallToolRequest, context: XppServerContext) {
@@ -141,9 +144,18 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
 
     output += `## Declaration\n\`\`\`xpp\n${cls.declaration}\n\`\`\`\n\n`;
 
-    output += `## Methods (${cls.methods.length})\n\n`;
+    const methodOffset = args.methodOffset ?? 0;
+    const pagedMethods = cls.methods.slice(methodOffset, methodOffset + METHOD_PAGE_SIZE);
+    const totalMethods = cls.methods.length;
+    const hasMore = methodOffset + METHOD_PAGE_SIZE < totalMethods;
 
-    for (const method of cls.methods) {
+    output += `## Methods (${totalMethods} total`;
+    if (totalMethods > METHOD_PAGE_SIZE) {
+      output += `, showing ${methodOffset + 1}–${Math.min(methodOffset + METHOD_PAGE_SIZE, totalMethods)}`;
+    }
+    output += `)\n\n`;
+
+    for (const method of pagedMethods) {
       const params = method.parameters.map((p: { type: string; name: string }) => `${p.type} ${p.name}`).join(', ');
       output += `### ${method.name}\n\n`;
       output += `- **Visibility:** ${method.visibility}\n`;
@@ -156,6 +168,10 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
       }
       
       output += `\`\`\`xpp\n${method.source.substring(0, 500)}${method.source.length > 500 ? '...' : ''}\n\`\`\`\n\n`;
+    }
+
+    if (hasMore) {
+      output += `> ⚠️ **${totalMethods - methodOffset - METHOD_PAGE_SIZE} more methods not shown.** Call again with \`methodOffset: ${methodOffset + METHOD_PAGE_SIZE}\` to see the next page.\n\n`;
     }
 
     // Write to cache for 24 hours (normalize to shape expected by cache-hit path)

@@ -121,6 +121,32 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
       }
     }
 
+    if (table.methods.length > 0) {
+      const TABLE_METHOD_PAGE_SIZE = 25;
+      const visibleMethods = table.methods.slice(0, TABLE_METHOD_PAGE_SIZE);
+      const hasMoreMethods = table.methods.length > TABLE_METHOD_PAGE_SIZE;
+
+      output += `\n## Methods (${table.methods.length})\n\n`;
+      for (const method of visibleMethods) {
+        const params = method.parameters.map((p: { type: string; name: string }) => `${p.type} ${p.name}`).join(', ');
+        output += `### ${method.name}\n\n`;
+        output += `- **Visibility:** ${method.visibility}\n`;
+        output += `- **Returns:** ${method.returnType}\n`;
+        output += `- **Static:** ${method.isStatic ? 'Yes' : 'No'}\n`;
+        output += `- **Signature:** \`${method.returnType} ${method.name}(${params})\`\n\n`;
+
+        if (method.documentation) {
+          output += `**Documentation:**\n${method.documentation}\n\n`;
+        }
+
+        output += `\`\`\`xpp\n${method.source.substring(0, 500)}${method.source.length > 500 ? '...' : ''}\n\`\`\`\n\n`;
+      }
+
+      if (hasMoreMethods) {
+        output += `> ⚠️ **${table.methods.length - TABLE_METHOD_PAGE_SIZE} more methods not shown.** Use \`get_class_info\` for full method browsing with pagination.\n\n`;
+      }
+    }
+
     // Write to cache for 24 hours (normalize to shape expected by cache-hit path)
     await cache.setClassInfo(cacheKey, {
       name: table.name,
