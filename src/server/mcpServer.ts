@@ -880,6 +880,34 @@ Examples:
           },
         },
         {
+          name: 'get_edt_info',
+          description: `📊 Get complete Extended Data Type (EDT) definition including base type, labels, reference table, and EDT properties.
+
+Returns:
+- Core EDT properties (Extends, EnumType, ReferenceTable, StringSize, DisplayLength, etc.)
+- Label/help/configuration metadata
+- Additional raw EDT properties when present
+
+Use WHEN:
+- You need to inspect an EDT before using it on table fields
+- You need reference table / relation metadata from AxEdt
+- You need to validate EDT inheritance (Extends) and display constraints`,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              edtName: {
+                type: 'string',
+                description: 'Name of the Extended Data Type (EDT)'
+              },
+              modelName: {
+                type: 'string',
+                description: 'Model name (optional, auto-detected if not provided)'
+              },
+            },
+            required: ['edtName'],
+          },
+        },
+        {
           name: 'search_labels',
           description: `🏷️ Full-text search across indexed D365FO AxLabelFile labels. Search by text, label ID or comment to find existing labels before creating new ones.
 

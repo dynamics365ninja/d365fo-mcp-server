@@ -15,14 +15,12 @@ describe('get_enum_info tool', () => {
   let context: XppServerContext;
   let tempDbPath: string;
   let tempEnumFile: string;
-  let tempEdtFile: string;
 
   beforeAll(async () => {
     // Create temp database and files for testing
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'enum-info-test-'));
     tempDbPath = path.join(tempDir, 'test.db');
     tempEnumFile = path.join(tempDir, 'TestEnum.xml');
-    tempEdtFile = path.join(tempDir, 'TestEdt.xml');
 
     // Create test enum XML
     const enumXml = `<?xml version="1.0" encoding="utf-8"?>
@@ -49,18 +47,7 @@ describe('get_enum_info tool', () => {
 \t</EnumValues>
 </AxEnum>`;
 
-    // Create test EDT XML
-    const edtXml = `<?xml version="1.0" encoding="utf-8"?>
-<AxEdt xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>TestEdt</Name>
-\t<Extends>String</Extends>
-\t<StringSize>20</StringSize>
-\t<Label>Test EDT</Label>
-\t<HelpText>Test extended data type</HelpText>
-</AxEdt>`;
-
     await fs.writeFile(tempEnumFile, enumXml, 'utf-8');
-    await fs.writeFile(tempEdtFile, edtXml, 'utf-8');
 
     const db = new Database(tempDbPath);
     
@@ -102,9 +89,8 @@ describe('get_enum_info tool', () => {
       VALUES (?, ?, ?, ?, ?)
     `);
 
-    // Insert test enum and EDT
+    // Insert test enum
     insert.run('TestEnum', 'enum', null, tempEnumFile, 'TestModel');
-    insert.run('TestEdt', 'edt', null, tempEdtFile, 'TestModel');
 
     const symbolIndex = new XppSymbolIndex(tempDbPath);
 
@@ -235,55 +221,7 @@ describe('get_enum_info tool', () => {
     expect(text).toContain('if (myEnum == TestEnum::');
   });
 
-  it('should extract EDT properties', async () => {
-    const request = {
-      method: 'tools/call',
-      params: {
-        name: 'get_enum_info',
-        arguments: {
-          enumName: 'TestEdt',
-        },
-      },
-    };
-
-    const result = await getEnumInfoTool(request as any, context);
-
-    expect(result.content).toBeDefined();
-    expect(result.content[0].type).toBe('text');
-    const text = result.content[0].text;
-    
-    expect(text).toContain('Extended Data Type: `TestEdt`');
-    expect(text).toContain('**Base Type:** `String`');
-    expect(text).toContain('Properties');
-    expect(text).toContain('StringSize');
-    expect(text).toContain('20');
-    expect(text).toContain('Label');
-    expect(text).toContain('Test EDT');
-    expect(text).toContain('HelpText');
-  });
-
-  it('should show usage example for EDT', async () => {
-    const request = {
-      method: 'tools/call',
-      params: {
-        name: 'get_enum_info',
-        arguments: {
-          enumName: 'TestEdt',
-        },
-      },
-    };
-
-    const result = await getEnumInfoTool(request as any, context);
-
-    expect(result.content).toBeDefined();
-    expect(result.content[0].type).toBe('text');
-    const text = result.content[0].text;
-    
-    expect(text).toContain('Usage Example');
-    expect(text).toContain('TestEdt myValue;');
-  });
-
-  it('should handle non-existent enum or EDT', async () => {
+  it('should handle non-existent enum', async () => {
     const request = {
       method: 'tools/call',
       params: {

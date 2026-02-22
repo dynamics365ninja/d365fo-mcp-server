@@ -62,6 +62,7 @@ interface ExtractionStats {
   views: number;
   dataEntities: number;
   enums: number;
+  edts: number;
   errors: number;
 }
 
@@ -115,6 +116,7 @@ async function countModelXmlFiles(modelPath: string): Promise<number> {
     'AxView', 'axview',
     'AxDataEntityView', 'axdataentityview',
     'AxEnum', 'axenum',
+    'AxEdt', 'axedt',
   ];
 
   for (const sourceDir of sourceDirs) {
@@ -167,6 +169,7 @@ async function extractMetadata() {
     views: 0,
     dataEntities: 0,
     enums: 0,
+    edts: 0,
     errors: 0,
   };
 
@@ -280,12 +283,14 @@ async function extractMetadata() {
         .catch(() => fs.access(path.join(modelPath, 'axtable')).then(() => true).catch(() => false));
       const hasAxEnum = await fs.access(path.join(modelPath, 'AxEnum')).then(() => true)
         .catch(() => fs.access(path.join(modelPath, 'axenum')).then(() => true).catch(() => false));
+      const hasAxEdt = await fs.access(path.join(modelPath, 'AxEdt')).then(() => true)
+        .catch(() => fs.access(path.join(modelPath, 'axedt')).then(() => true).catch(() => false));
       const hasAxView = await fs.access(path.join(modelPath, 'AxView')).then(() => true)
         .catch(() => fs.access(path.join(modelPath, 'axview')).then(() => true).catch(() => false));
       const hasAxDataEntityView = await fs.access(path.join(modelPath, 'AxDataEntityView')).then(() => true)
         .catch(() => fs.access(path.join(modelPath, 'axdataentityview')).then(() => true).catch(() => false));
 
-      if (!hasAxClass && !hasAxTable && !hasAxEnum && !hasAxView && !hasAxDataEntityView) {
+      if (!hasAxClass && !hasAxTable && !hasAxEnum && !hasAxEdt && !hasAxView && !hasAxDataEntityView) {
         // Skip directories that don't contain X++ metadata
         continue;
       }
@@ -331,6 +336,9 @@ async function extractMetadata() {
     // Extract enums
     await extractEnums(parser, modelItem.modelPath, modelItem.modelName, stats);
 
+    // Extract EDTs
+    await extractEdts(parser, modelItem.modelPath, modelItem.modelName, stats);
+
     const modelDuration = Date.now() - modelStart;
     cumulativeModelDuration += modelDuration;
     processedModels++;
@@ -357,6 +365,7 @@ async function extractMetadata() {
   console.log(`   Views: ${formatCount(stats.views)}`);
   console.log(`   Data entities: ${formatCount(stats.dataEntities)}`);
   console.log(`   Enums: ${formatCount(stats.enums)}`);
+  console.log(`   EDTs: ${formatCount(stats.edts)}`);
   console.log(`   Errors: ${formatCount(stats.errors)}`);
 }
 
@@ -674,6 +683,54 @@ async function extractEnums(
       await fs.writeFile(outputFile, JSON.stringify({ raw: content }, null, 2));
 
       stats.enums++;
+    } catch (error) {
+      console.error(`   ❌ Error parsing ${file}:`, error);
+      stats.errors++;
+    }
+  }
+
+}
+
+async function extractEdts(
+  parser: XppMetadataParser,
+  modelPath: string,
+  modelName: string,
+  stats: ExtractionStats
+) {
+  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
+  let edtsPath = path.join(modelPath, 'AxEdt');
+
+  try {
+    await fs.access(edtsPath);
+  } catch {
+    // Try lowercase
+    edtsPath = path.join(modelPath, 'axedt');
+    try {
+      await fs.access(edtsPath);
+    } catch {
+      return; // No EDTs in this model
+    }
+  }
+
+  const files = await fs.readdir(edtsPath);
+  const xmlFiles = files.filter(f => f.endsWith('.xml'));
+
+  console.log(`   EDTs: ${formatCount(xmlFiles.length)} files`);
+
+  for (const file of xmlFiles) {
+    const filePath = path.join(edtsPath, file);
+    stats.totalFiles++;
+
+    try {
+      // Store raw XML (same approach as enums)
+      const content = await fs.readFile(filePath, 'utf-8');
+      const edtName = path.basename(file, '.xml');
+      const outputDir = path.join(OUTPUT_PATH, modelName, 'edts');
+      await fs.mkdir(outputDir, { recursive: true });
+      const outputFile = path.join(outputDir, `${edtName}.json`);
+      await fs.writeFile(outputFile, JSON.stringify({ name: edtName, sourcePath: filePath, raw: content }, null, 2));
+
+      stats.edts++;
     } catch (error) {
       console.error(`   ❌ Error parsing ${file}:`, error);
       stats.errors++;

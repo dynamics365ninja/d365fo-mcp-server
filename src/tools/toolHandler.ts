@@ -64,6 +64,7 @@ import { getFormInfoTool } from './formInfo.js';
 import { getQueryInfoTool } from './queryInfo.js';
 import { getViewInfoTool } from './viewInfo.js';
 import { getEnumInfoTool } from './enumInfo.js';
+import { getEdtInfoTool } from './edtInfo.js';
 import { searchLabelsTool } from './searchLabels.js';
 import { getLabelInfoTool } from './getLabelInfo.js';
 import { createLabelTool } from './createLabel.js';
@@ -122,6 +123,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return getViewInfoTool(request, context);
       case 'get_enum_info':
         return getEnumInfoTool(request, context);
+      case 'get_edt_info':
+        return getEdtInfoTool(request, context);
       case 'search_labels':
         return searchLabelsTool(request, context);
       case 'get_label_info':

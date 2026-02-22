@@ -13,6 +13,7 @@ import { getFormInfoToolDefinition } from './formInfo.js';
 import { getQueryInfoToolDefinition } from './queryInfo.js';
 import { getViewInfoToolDefinition } from './viewInfo.js';
 import { getEnumInfoToolDefinition } from './enumInfo.js';
+import { getEdtInfoToolDefinition } from './edtInfo.js';
 
 // ============================================
 // Tool Input Schemas
@@ -821,5 +822,6 @@ export const toolDefinitions: ToolDefinition[] = [
   getFormInfoToolDefinition,
   getQueryInfoToolDefinition,
   getViewInfoToolDefinition,
-  getEnumInfoToolDefinition
+  getEnumInfoToolDefinition,
+  getEdtInfoToolDefinition
 ];

@@ -1,7 +1,7 @@
 /**
  * Get Enum Info Tool
- * Extract enum values and Extended Data Type (EDT) properties
- * Returns enum values with labels, EDT configuration
+ * Extract enum values and enum properties
+ * Returns enum values with labels and numeric values
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -12,7 +12,7 @@ import { parseStringPromise } from 'xml2js';
 import { readEnumRawXml, buildXmlNotAvailableMessage } from '../utils/metadataResolver.js';
 
 const GetEnumInfoArgsSchema = z.object({
-  enumName: z.string().describe('Name of the enum or EDT'),
+  enumName: z.string().describe('Name of the enum'),
   modelName: z.string().optional().describe('Model name (auto-detected if not provided)'),
   includeLabels: z.boolean().optional().default(true).describe('Include enum value labels'),
   includeWorkspace: z.boolean().optional().default(false).describe('Include workspace files'),
@@ -28,12 +28,10 @@ interface EnumValue {
 interface EnumInfo {
   name: string;
   model: string;
-  type: 'enum' | 'edt';
+  type: 'enum';
   isExtensible: boolean;
   useEnumValue: boolean;
   values: EnumValue[];
-  baseType?: string;
-  edtProperties?: Record<string, string>;
 }
 
 export async function getEnumInfoTool(request: CallToolRequest, context: XppServerContext) {
@@ -46,13 +44,13 @@ export async function getEnumInfoTool(request: CallToolRequest, context: XppServ
       includeLabels
     } = args;
 
-    // 1. Try to find as enum first
+    // 1. Find enum in index
     let stmt;
     if (modelName) {
       stmt = symbolIndex.db.prepare(`
         SELECT file_path, model, name, type
         FROM symbols
-        WHERE (type = 'enum' OR type = 'edt') AND name = ? AND model = ?
+        WHERE type = 'enum' AND name = ? AND model = ?
         LIMIT 1
       `);
       var enumRow = stmt.get(enumName, modelName) as any;
@@ -60,7 +58,7 @@ export async function getEnumInfoTool(request: CallToolRequest, context: XppServ
       stmt = symbolIndex.db.prepare(`
         SELECT file_path, model, name, type
         FROM symbols
-        WHERE (type = 'enum' OR type = 'edt') AND name = ?
+        WHERE type = 'enum' AND name = ?
         ORDER BY model
         LIMIT 1
       `);
@@ -68,7 +66,7 @@ export async function getEnumInfoTool(request: CallToolRequest, context: XppServ
     }
 
     if (!enumRow) {
-      throw new Error(`Enum or EDT "${enumName}" not found. Make sure it's indexed.`);
+      throw new Error(`Enum "${enumName}" not found. Make sure it's indexed.`);
     }
 
     // 2. Get raw XML — try extracted-metadata JSON first, then XML file at DB path
@@ -95,26 +93,21 @@ export async function getEnumInfoTool(request: CallToolRequest, context: XppServ
 
     const xmlObj = await parseStringPromise(rawXml);
 
-    // 3. Extract enum/EDT info
+    // 3. Extract enum info
     const enumInfo: EnumInfo = {
       name: enumName,
       model: enumRow.model,
-      type: enumRow.type === 'edt' ? 'edt' : 'enum',
+      type: 'enum',
       isExtensible: false,
       useEnumValue: false,
       values: [],
     };
 
-    // Check if it's an enum
-    if (xmlObj.AxEnum) {
-      extractEnumInfo(xmlObj.AxEnum, enumInfo, includeLabels);
+    if (!xmlObj.AxEnum) {
+      throw new Error('Invalid enum XML structure');
     }
-    // Check if it's an EDT
-    else if (xmlObj.AxEdt) {
-      extractEdtInfo(xmlObj.AxEdt, enumInfo);
-    } else {
-      throw new Error('Invalid enum or EDT XML structure');
-    }
+
+    extractEnumInfo(xmlObj.AxEnum, enumInfo, includeLabels);
 
     // 4. Format output
     return formatEnumOutput(enumInfo, includeLabels);
@@ -163,110 +156,40 @@ function extractEnumInfo(axEnum: any, enumInfo: EnumInfo, includeLabels: boolean
 }
 
 /**
- * Extract EDT information
- */
-function extractEdtInfo(axEdt: any, enumInfo: EnumInfo): void {
-  enumInfo.edtProperties = {};
-
-  // Extract base type
-  if (axEdt.Extends) {
-    enumInfo.baseType = axEdt.Extends[0];
-  }
-
-  // Extract common EDT properties
-  const edtProps = [
-    'StringSize',
-    'DisplayLength',
-    'Label',
-    'HelpText',
-    'FormHelp',
-    'Alignment',
-    'DecimalSeparator',
-    'SignDisplay',
-    'NoOfDecimals',
-    'EnumType',
-  ];
-
-  for (const prop of edtProps) {
-    if (axEdt[prop]) {
-      enumInfo.edtProperties[prop] = axEdt[prop][0];
-    }
-  }
-
-  // If EDT is based on enum, get enum reference
-  if (axEdt.EnumType) {
-    enumInfo.baseType = axEdt.EnumType[0];
-  }
-}
-
-/**
  * Format enum output
  */
 function formatEnumOutput(enumInfo: EnumInfo, includeLabels: boolean): any {
-  let output = `# ${enumInfo.type === 'edt' ? 'Extended Data Type' : 'Enum'}: \`${enumInfo.name}\`\n\n`;
+  let output = `# Enum: \`${enumInfo.name}\`\n\n`;
   output += `**Model:** ${enumInfo.model}\n`;
+  output += `**Extensible:** ${enumInfo.isExtensible ? '✅' : '❌'}\n`;
+  output += `**Use Enum Value:** ${enumInfo.useEnumValue ? '✅' : '❌'}\n`;
+  output += `\n`;
 
-  if (enumInfo.type === 'enum') {
-    output += `**Extensible:** ${enumInfo.isExtensible ? '✅' : '❌'}\n`;
-    output += `**Use Enum Value:** ${enumInfo.useEnumValue ? '✅' : '❌'}\n`;
-    output += `\n`;
+  if (enumInfo.values.length > 0) {
+    output += `## 📋 Enum Values (${enumInfo.values.length})\n\n`;
+    output += `| Name | Value${includeLabels ? ' | Label' : ''} |\n`;
+    output += `|------|-------${includeLabels ? '|-------' : ''}|\n`;
 
-    // Enum values
-    if (enumInfo.values.length > 0) {
-      output += `## 📋 Enum Values (${enumInfo.values.length})\n\n`;
-      output += `| Name | Value${includeLabels ? ' | Label' : ''} |\n`;
-      output += `|------|-------${includeLabels ? '|-------' : ''}|\n`;
-
-      for (const value of enumInfo.values) {
-        output += `| ${value.name} | ${value.value}`;
-        if (includeLabels) {
-          output += ` | ${value.label || '-'}`;
-        }
-        output += ` |\n`;
+    for (const value of enumInfo.values) {
+      output += `| ${value.name} | ${value.value}`;
+      if (includeLabels) {
+        output += ` | ${value.label || '-'}`;
       }
-      output += `\n`;
+      output += ` |\n`;
     }
-
-    // Usage example
-    output += `## 💡 Usage Example\n\n`;
-    output += `\`\`\`xpp\n`;
-    output += `// Assign enum value\n`;
-    output += `${enumInfo.name} myEnum = ${enumInfo.name}::${enumInfo.values[0]?.name || 'Value'};\n\n`;
-    output += `// Compare enum value\n`;
-    output += `if (myEnum == ${enumInfo.name}::${enumInfo.values[0]?.name || 'Value'})\n`;
-    output += `{\n`;
-    output += `    // Do something\n`;
-    output += `}\n`;
-    output += `\`\`\`\n`;
-
-  } else {
-    // EDT
     output += `\n`;
-
-    if (enumInfo.baseType) {
-      output += `**Base Type:** \`${enumInfo.baseType}\`\n\n`;
-    }
-
-    if (enumInfo.edtProperties && Object.keys(enumInfo.edtProperties).length > 0) {
-      output += `## 🔧 Properties\n\n`;
-      output += `| Property | Value |\n`;
-      output += `|----------|-------|\n`;
-
-      for (const [key, value] of Object.entries(enumInfo.edtProperties)) {
-        output += `| ${key} | ${value} |\n`;
-      }
-      output += `\n`;
-    }
-
-    // Usage example
-    output += `## 💡 Usage Example\n\n`;
-    output += `\`\`\`xpp\n`;
-    output += `// Declare variable\n`;
-    output += `${enumInfo.name} myValue;\n\n`;
-    output += `// Assign value\n`;
-    output += `myValue = "example";\n`;
-    output += `\`\`\`\n`;
   }
+
+  output += `## 💡 Usage Example\n\n`;
+  output += `\`\`\`xpp\n`;
+  output += `// Assign enum value\n`;
+  output += `${enumInfo.name} myEnum = ${enumInfo.name}::${enumInfo.values[0]?.name || 'Value'};\n\n`;
+  output += `// Compare enum value\n`;
+  output += `if (myEnum == ${enumInfo.name}::${enumInfo.values[0]?.name || 'Value'})\n`;
+  output += `{\n`;
+  output += `    // Do something\n`;
+  output += `}\n`;
+  output += `\`\`\`\n`;
 
   return {
     content: [
@@ -280,6 +203,6 @@ function formatEnumOutput(enumInfo: EnumInfo, includeLabels: boolean): any {
 
 export const getEnumInfoToolDefinition = {
   name: 'get_enum_info',
-  description: '🏷️ Extract enum values and Extended Data Type (EDT) properties. Returns enum values with labels and numeric values, or EDT configuration (StringSize, Label, etc.). Essential for understanding enum options and EDT constraints.',
+  description: '🏷️ Extract enum values with labels and numeric values. Essential for understanding available enum options.',
   inputSchema: GetEnumInfoArgsSchema,
 };

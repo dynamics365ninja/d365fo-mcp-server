@@ -53,12 +53,14 @@ describe('XppMetadataParser parseViewFile', () => {
       </Fields>
     </AxDataEntityViewRelation>
   </Relations>
-  <Methods>
-    <Method>
-      <Name>computeDisplayName</Name>
-      <Source><![CDATA[public str computeDisplayName() { return ''; }]]></Source>
-    </Method>
-  </Methods>
+  <SourceCode>
+    <Methods>
+      <Method>
+        <Name>computeDisplayName</Name>
+        <Source><![CDATA[public str computeDisplayName() { return ''; }]]></Source>
+      </Method>
+    </Methods>
+  </SourceCode>
 </AxDataEntityView>`;
 
     await fs.writeFile(xmlPath, xml, 'utf-8');

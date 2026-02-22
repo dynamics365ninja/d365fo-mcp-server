@@ -322,7 +322,7 @@ async function main() {
         console.log('✅ Server is READY!');
         console.log(`📡 MCP endpoint: http://localhost:${PORT}/mcp`);
         console.log('');
-        console.log('🎯 Available tools (23 total):');
+        console.log('🎯 Available tools (24 total):');
         console.log('   🔍 Search & Discovery (7):');
         console.log('   - search              Search 584K+ D365FO symbols by name or keyword');
         console.log('   - batch_search        Execute multiple searches in parallel (3x faster)');
@@ -342,6 +342,7 @@ async function main() {
         console.log('   - get_query_info      Query datasources, joins, field lists, and ranges');
         console.log('   - get_view_info       View/data entity fields, relations, computed columns');
         console.log('   - get_enum_info       Enum values with integer values and labels');
+        console.log('   - get_edt_info        EDT base type, relations, and properties');
         console.log('   - get_method_signature  Exact method signature (required before CoC extensions)');
         console.log('');
         console.log('   🧠 Intelligent Code Generation (4):');

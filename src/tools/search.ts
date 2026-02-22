@@ -20,7 +20,7 @@ import {
 
 const SearchArgsSchema = z.object({
   query: z.string().describe('Search query (class name, method name, etc.)'),
-  type: z.enum(['class', 'table', 'form', 'field', 'method', 'enum', 'query', 'view', 'all']).optional().default('all').describe('Filter by object type (class=AxClass, table=AxTable, form=AxForm, query=AxQuery, view=AxView, enum=AxEnum, all=no filter)'),
+  type: z.enum(['class', 'table', 'form', 'field', 'method', 'enum', 'edt', 'query', 'view', 'all']).optional().default('all').describe('Filter by object type (class=AxClass, table=AxTable, form=AxForm, query=AxQuery, view=AxView, enum=AxEnum, edt=AxEdt, all=no filter)'),
   limit: z.number().optional().default(20).describe('Maximum results to return'),
   workspacePath: z.string().optional().describe('Optional workspace path to search local project files in addition to external metadata'),
   includeWorkspace: z.boolean().optional().default(false).describe('Whether to include workspace files in search results (workspace-aware search)'),

@@ -797,6 +797,9 @@ export class XppSymbolIndex {
         const enumsPath = path.join(modelPath, 'enums');
         if (fs.existsSync(enumsPath)) this.indexEnums(enumsPath, model);
 
+        const edtsPath = path.join(modelPath, 'edts');
+        if (fs.existsSync(edtsPath)) this.indexEdts(edtsPath, model);
+
         // Mark model as done atomically with its data (same transaction)
         markProgress?.run(model, Date.now());
       });
@@ -831,7 +834,7 @@ export class XppSymbolIndex {
    * so the most data is committed to disk before any CI pipeline timeout.
    */
   private sortModelsBySize(metadataPath: string, models: string[]): string[] {
-    const subdirs = ['classes', 'tables', 'forms', 'queries', 'views', 'enums'];
+    const subdirs = ['classes', 'tables', 'forms', 'queries', 'views', 'enums', 'edts'];
     const sized = models.map(model => {
       let count = 0;
       const modelPath = path.join(metadataPath, model);
@@ -1024,6 +1027,38 @@ export class XppSymbolIndex {
       } catch (error) {
         // Only log errors, don't stop processing
         console.error(`      ⚠️  Skipped enum ${file}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+  }
+
+  private indexEdts(edtsPath: string, model: string): void {
+    const files = fs.readdirSync(edtsPath).filter(f => f.endsWith('.json'));
+
+    for (const file of files) {
+      try {
+        const filePath = path.join(edtsPath, file);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const edtData = JSON.parse(content);
+
+        const sourceFilePath = edtData.sourcePath || filePath;
+        const edtName = edtData.name || path.basename(file, '.json');
+
+        let signature: string | undefined;
+        if (typeof edtData.raw === 'string') {
+          const extendsMatch = edtData.raw.match(/<Extends>([^<]+)<\/Extends>/i);
+          const enumTypeMatch = edtData.raw.match(/<EnumType>([^<]+)<\/EnumType>/i);
+          signature = extendsMatch?.[1]?.trim() || enumTypeMatch?.[1]?.trim();
+        }
+
+        this.addSymbol({
+          name: edtName,
+          type: 'edt',
+          signature,
+          filePath: sourceFilePath,
+          model,
+        });
+      } catch (error) {
+        console.error(`      ⚠️  Skipped edt ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }

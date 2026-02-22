@@ -20,7 +20,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTRACTED_METADATA_BASE = path.resolve(__dirname, '../../extracted-metadata');
 
-export type ExtractedObjectType = 'classes' | 'enums' | 'tables' | 'views';
+export type ExtractedObjectType = 'classes' | 'enums' | 'edts' | 'tables' | 'views';
 
 export interface ExtractedViewField {
   name: string;
@@ -188,6 +188,26 @@ export async function readEnumRawXml(
   }
 }
 
+/**
+ * Read the raw XML string from an extracted-metadata EDT JSON file.
+ * Returns null if not available.
+ */
+export async function readEdtRawXml(
+  model: string,
+  edtName: string
+): Promise<string | null> {
+  const filePath = await resolveMetadataJsonPath(model, 'edts', edtName);
+  if (!filePath) return null;
+
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const data = JSON.parse(raw);
+    return typeof data.raw === 'string' ? data.raw : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function readViewMetadata(
   model: string,
   viewName: string
@@ -308,6 +328,6 @@ export function buildXmlNotAvailableMessage(
     `To use this tool you need either:\n` +
     `1. Run the MCP server locally on a D365FO Windows VM where that path exists, OR\n` +
     `2. Ensure the ${objectType} XML files are accessible at the path above.\n\n` +
-    `Note: ${objectType}s are not included in the pre-extracted JSON metadata (classes/tables/enums, and now views when extraction is run with latest parser).`
+    `Note: ${objectType}s are not included in the pre-extracted JSON metadata in older builds. Current extraction supports classes, tables, enums, EDTs, and views.`
   );
 }

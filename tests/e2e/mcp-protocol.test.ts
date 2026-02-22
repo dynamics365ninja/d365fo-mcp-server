@@ -225,6 +225,44 @@ describe('MCP Protocol E2E Tests', () => {
       });
     });
 
+    describe('Scenario 2b: Get EDT info over MCP', () => {
+      it('should call get_edt_info and return core EDT properties', async (ctx) => {
+        if (!hasData) ctx.skip();
+
+        const edtRow = symbolIndex.db
+          .prepare(`SELECT name, model FROM symbols WHERE type = 'edt' ORDER BY model, name LIMIT 1`)
+          .get() as { name: string; model: string } | undefined;
+
+        if (!edtRow) {
+          ctx.skip();
+          return;
+        }
+
+        const response = await request
+          .post('/mcp')
+          .send({
+            jsonrpc: '2.0',
+            id: 250,
+            method: 'tools/call',
+            params: {
+              name: 'get_edt_info',
+              arguments: {
+                edtName: edtRow.name,
+                modelName: edtRow.model,
+              },
+            },
+          })
+          .expect(200);
+
+        expect(response.body.result).toBeDefined();
+        const text = response.body.result.content[0].text;
+        expect(text).toContain('# Extended Data Type:');
+        expect(text).toContain(`**Model:** ${edtRow.model}`);
+        expect(text).toContain('## 🔧 Core Properties');
+        expect(text).toContain('| Property | Value |');
+      });
+    });
+
     describe('Scenario 3: Code generation workflow', () => {
       it('should generate class code', async () => {
         const response = await request
