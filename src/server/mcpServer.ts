@@ -18,7 +18,7 @@ export type { XppServerContext };
 export function createXppMcpServer(context: XppServerContext): Server {
   const server = new Server(
     {
-      name: 'xpp-code-completion-server',
+      name: 'd365fo-mcp-server',
       version: '1.0.0',
     },
     {
@@ -44,34 +44,6 @@ export function createXppMcpServer(context: XppServerContext): Server {
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
       tools: [
-        // ⚠️ CRITICAL WARNING FOR FILE CREATION
-        {
-          name: '⚠️_IMPORTANT_READ_FIRST_⚠️',
-          description: `🚨 CRITICAL: NEVER USE BUILT-IN create_file FOR D365FO OBJECTS! 🚨
-
-FOR D365FO FILES (.xml, .xpp) - MUST USE create_d365fo_file:
-❌ NEVER: create_file() → Will CORRUPT metadata, break project integration, wrong XML structure
-✅ ALWAYS: create_d365fo_file() → Correct AOT structure, UTF-8 BOM, auto-adds to VS project
-
-CREATING D365FO OBJECTS (classes, tables, enums, forms):
-1. generate_code(pattern, name) → Get X++ source code
-2. create_d365fo_file(objectType, objectName, sourceCode, addToProject=true) → Create file
-
-Keywords that mean "use create_d365fo_file":
-- "vytvoř" / "create" / "build" / "implement" + class/table/enum/form
-- "dávková úloha" = batch-job class
-- "pomocná třída" = helper class
-- ANY D365FO object creation
-
-This is NOT a callable tool - it's a reminder to use the correct tool!`,
-          inputSchema: {
-            type: 'object',
-            properties: {
-              reminder: { type: 'string', description: 'This tool cannot be called - use create_d365fo_file instead' }
-            },
-            required: []
-          }
-        },
         {
           name: 'search',
           description: `🔍 Search 584,799+ pre-indexed D365FO objects by exact name (e.g., "CustTable", "SalesFormLetter") or keywords (e.g., "dimension helper", "validation table"). Returns basic info: name, type, model.
@@ -234,26 +206,33 @@ Examples:
         },
         {
           name: 'get_table_info',
-          description: `📊 Get complete table schema with all fields (types/EDTs), indexes (primary key, unique), foreign key relations, and table methods. Essential for understanding data structure before querying or extending tables.
+          description: `📊 PRIMARY TOOL for ALL table queries! Get complete table schema with all fields, indexes, relations, AND table methods.
+
+⭐ USE THIS for ANY question about table methods, fields, or structure!
 
 Returns:
+- All table METHODS with signatures and source code (calcAmount, validateWrite, etc.)
 - All fields with Extended Data Types (EDT) or base types (int, str, real, etc.)
 - Indexes: primary key, unique indexes, clustered indexes
 - Relations: foreign keys to other tables with cardinality
 - Table properties: caching strategy, TableGroup, SaveDataPerCompany, etc.
-- Table methods: validateWrite(), insert(), update(), delete(), find() methods
 
-Use WHEN:
-- Understanding table structure before writing X++ queries
-- Creating table extensions with new fields
-- Understanding data relationships (foreign keys, navigation)
-- Before writing data migration or integration scripts
-- Analyzing table methods and validation logic
+Use WHEN (includes all table-related queries):
+- ✅ "What methods are on SalesTable?" → get_table_info("SalesTable")
+- ✅ "Methods related to totals on SalesTable" → get_table_info("SalesTable")
+- ✅ "Show me calc methods on CustTable" → get_table_info("CustTable")
+- ✅ Understanding table structure before writing X++ queries
+- ✅ Creating table extensions with new fields
+- ✅ Understanding data relationships (foreign keys, navigation)
+- ✅ Before writing data migration or integration scripts
+- ✅ Analyzing table methods and validation logic
+
+DO NOT USE code_completion() for tables - it doesn't work!
 
 Examples:
-- get_table_info("CustTable") → 100+ fields, relations to DirParty/LogisticsPostalAddress, indexes
-- get_table_info("SalesTable") → order header fields, relation to CustTable, SalesStatus field
-- get_table_info("InventTable") → product master fields, relations to EcoResProduct`,
+- get_table_info("SalesTable") → ALL methods (calcAmount, validateWrite, etc.) + fields + relations
+- get_table_info("CustTable") → 100+ fields, methods, relations to DirParty/LogisticsPostalAddress
+- get_table_info("InventTable") → product master fields, methods, relations to EcoResProduct`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -264,7 +243,9 @@ Examples:
         },
         {
           name: 'code_completion',
-          description: `⚡ Get IntelliSense-like method and field name completions WITHOUT source code. Faster than get_class_info() when you only need member names, not implementations.
+          description: `⚡ Get IntelliSense-like method and field name completions for CLASSES only. Faster than get_class_info() when you only need member names, not implementations.
+
+⚠️ CLASSES ONLY - For TABLES use get_table_info() instead!
 
 Returns:
 - Method names with basic signatures (parameters, return types)
@@ -272,20 +253,25 @@ Returns:
 - Filtered by prefix if specified (e.g., "calc*" finds calcAmount, calcDiscount)
 
 Use WHEN:
-- Writing code and need to see available methods/fields quickly
-- You know the class name but not which methods/fields it has
+- Working with X++ CLASSES (not tables)
+- Writing code and need to see available methods quickly
 - You want to filter by prefix for faster discovery
 - You don't need to see method source code
+
+DO NOT USE for TABLES:
+- ❌ code_completion("SalesTable") → Use get_table_info("SalesTable") instead
+- ❌ code_completion("CustTable") → Use get_table_info("CustTable") instead
+- ❌ For ANY table, always use get_table_info()
 
 Use get_class_info() INSTEAD when:
 - You need to see method SOURCE CODE implementations
 - You need to understand HOW methods work internally
 - Creating Chain of Command extensions (need full method body)
 
-Examples:
-- code_completion("SalesTable") → lists ~200 methods/fields (names only)
-- code_completion("SalesTable", prefix="calc") → calcAmount, calcDiscount, etc.
-- code_completion("CustTable", prefix="validate") → validateWrite, validateField, validateDelete`,
+Examples (CLASSES only):
+- code_completion("SalesFormLetter") → lists methods/fields of the CLASS
+- code_completion("NumberSeq", prefix="get") → getNum, getVoucher, etc.
+- code_completion("DimensionHelper", prefix="validate") → validation methods`,
           inputSchema: {
             type: 'object',
             properties: {

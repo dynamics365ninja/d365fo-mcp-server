@@ -340,10 +340,33 @@ export class XppSymbolIndex {
   private sanitizeFtsQuery(query: string): string {
     const trimmed = query.trim();
     if (!trimmed) return '""';
+    
+    // Minimal stop words - only the most common query keywords
+    const stopWords = new Set([
+      // Common query verbs (Czech)
+      'vyhledej', 'najdi', 'zobraz', 'ukaž', 'související', 'proces', 'procesy',
+      // Common query verbs (English)  
+      'find', 'search', 'show', 'get', 'list', 'related', 'process', 'processes',
+      // Object type keywords (already in type parameter)
+      'method', 'methods', 'class', 'classes', 'table', 'tables', 'třídy', 'třída'
+    ]);
+    
     // Strip FTS5 special characters – keep alphanumeric, underscore and spaces
     const cleaned = trimmed.replace(/[^\w\s]/g, ' ').trim();
-    const tokens = cleaned.split(/\s+/).filter(t => t.length > 0);
-    const baseQuery = tokens.length === 0 ? `"${trimmed}"` : tokens.map(t => `"${t}"*`).join(' ');
+    const tokens = cleaned
+      .split(/\s+/)
+      .filter(t => t.length > 0)
+      .map(t => t.toLowerCase())
+      .filter(t => !stopWords.has(t) && t.length > 1); // Filter stop words and single chars
+    
+    // If no tokens remain after filtering, use original query in quotes
+    if (tokens.length === 0) {
+      return `{name type parent_name signature description tags} : "${trimmed}"`;
+    }
+    
+    // Create FTS query with prefix matching
+    const baseQuery = tokens.map(t => `"${t}"*`).join(' ');
+    
     // Column-set filter: FTS5 searches only these columns, skipping source_snippet
     // and inline_comments. This is valid FTS5 syntax and uses the same index.
     return `{name type parent_name signature description tags} : ${baseQuery}`;

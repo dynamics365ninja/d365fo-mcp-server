@@ -4,9 +4,9 @@
  */
 {
   "servers": {
-    "xpp-completion": {
+    "d365fo-mcp-server": {
       "url": "https://your-app-name.azurewebsites.net/mcp/",
-      "description": "X++ Code Completion Server for D365 F&O"
+      "description": "D365FO MCP Server for X++ Code Completion"
     },
     "context": {
       "workspacePath": "K:\\AOSService\\PackagesLocalDirectory\\YourModelName",
