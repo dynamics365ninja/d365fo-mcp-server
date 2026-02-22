@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { XppSymbolIndex } from '../src/metadata/symbolIndex';
 import { existsSync, mkdirSync, rmSync } from 'fs';
+import { promises as fs } from 'fs';
+import os from 'os';
 import { join } from 'path';
 
 describe('XppSymbolIndex', () => {
@@ -132,5 +134,44 @@ describe('XppSymbolIndex', () => {
     expect(methods[0].name).toBe('TestMethod');
 
     symbolIndex.close();
+  });
+
+  it('should index data entity/view fields from extracted metadata', async () => {
+    const symbolIndex = new XppSymbolIndex(testDbPath);
+    const metadataRoot = await fs.mkdtemp(join(os.tmpdir(), 'extracted-metadata-view-'));
+    const modelDir = join(metadataRoot, 'TestModel', 'views');
+
+    await fs.mkdir(modelDir, { recursive: true });
+    await fs.writeFile(
+      join(modelDir, 'TestDataEntity.json'),
+      JSON.stringify(
+        {
+          name: 'TestDataEntity',
+          model: 'TestModel',
+          sourcePath: '/test/TestDataEntity.xml',
+          type: 'data-entity',
+          fields: [
+            { name: 'AccountNum', dataSource: 'CustTable', dataField: 'AccountNum', isComputed: false },
+            { name: 'DisplayName', dataMethod: 'computeDisplayName', isComputed: true },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    await symbolIndex.indexMetadataDirectory(metadataRoot, 'TestModel');
+
+    const view = symbolIndex.getSymbolByName('TestDataEntity', 'view');
+    expect(view).toBeDefined();
+
+    const fields = symbolIndex.getTableFields('TestDataEntity');
+    expect(fields.length).toBe(2);
+    expect(fields.some(f => f.name === 'AccountNum')).toBe(true);
+    expect(fields.some(f => f.name === 'DisplayName')).toBe(true);
+
+    symbolIndex.close();
+    await fs.rm(metadataRoot, { recursive: true, force: true });
   });
 });

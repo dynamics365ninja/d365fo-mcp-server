@@ -9,11 +9,14 @@ import type {
   XppParseResult,
   XppClassInfo,
   XppTableInfo,
+  XppViewInfo,
   XppMethodInfo,
   XppParameterInfo,
   XppFieldInfo,
   XppIndexInfo,
   XppRelationInfo,
+  XppViewFieldInfo,
+  XppViewRelationInfo,
 } from './types.js';
 import { EnhancedXppParser } from './enhancedParser.js';
 
@@ -135,6 +138,45 @@ export class XppMetadataParser {
     }
   }
 
+  /**
+   * Parse an X++ view/data entity file (AxView or AxDataEntityView XML)
+   */
+  async parseViewFile(filePath: string, model?: string): Promise<XppParseResult<XppViewInfo>> {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      const parsed = await this.parser.parseStringPromise(content);
+
+      const axView = parsed.AxDataEntityView || parsed.AxView;
+      if (!axView) {
+        return { success: false, error: 'Not a valid AxView/AxDataEntityView file' };
+      }
+
+      const isDataEntity = !!parsed.AxDataEntityView;
+      const viewName = axView.Name || 'UnknownView';
+
+      const viewInfo: XppViewInfo = {
+        name: viewName,
+        model: model || 'Unknown',
+        sourcePath: filePath,
+        type: isDataEntity ? 'data-entity' : 'view',
+        label: axView.Label || undefined,
+        isPublic: axView.IsPublic === 'Yes' || axView.IsPublic === 'true',
+        isReadOnly: axView.IsReadOnly === 'Yes' || axView.IsReadOnly === 'true',
+        primaryKey: axView.PrimaryKey || undefined,
+        fields: this.parseViewFields(axView.Fields),
+        relations: this.parseViewRelations(axView.Relations),
+        methods: this.parseMethods(axView.Methods?.Method, viewName),
+      };
+
+      return { success: true, data: viewInfo };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
   private parseImplements(implementsStr?: string | any): string[] {
     if (!implementsStr) return [];
     if (typeof implementsStr !== 'string') return [];
@@ -241,6 +283,42 @@ export class XppMetadataParser {
       field: c.Field || '',
       relatedField: c.RelatedField || '',
     }));
+  }
+
+  private parseViewFields(fieldsData: any): XppViewFieldInfo[] {
+    if (!fieldsData) return [];
+
+    const entityFields = this.ensureArray(fieldsData.AxDataEntityViewField);
+    const viewFields = this.ensureArray(fieldsData.AxViewField);
+    const allFields = [...entityFields, ...viewFields];
+
+    return allFields.map((field: any) => ({
+      name: field.Name || 'unknown',
+      dataSource: field.DataSource || undefined,
+      dataField: field.DataField || undefined,
+      dataMethod: field.DataMethod || undefined,
+      isComputed: !!field.DataMethod,
+    }));
+  }
+
+  private parseViewRelations(relationsData: any): XppViewRelationInfo[] {
+    if (!relationsData) return [];
+
+    const entityRelations = this.ensureArray(relationsData.AxDataEntityViewRelation);
+    const viewRelations = this.ensureArray(relationsData.AxViewRelation);
+    const allRelations = [...entityRelations, ...viewRelations];
+
+    return allRelations.map((relation: any) => ({
+      name: relation.Name || 'unknown',
+      relatedTable: relation.RelatedDataEntity || relation.RelatedTable || 'unknown',
+      relationType: relation.RelationType || 'Unknown',
+      cardinality: relation.Cardinality || 'Unknown',
+    }));
+  }
+
+  private ensureArray<T>(value: T | T[] | undefined): T[] {
+    if (!value) return [];
+    return Array.isArray(value) ? value : [value];
   }
 
   /**

@@ -60,6 +60,7 @@ interface ExtractionStats {
   forms: number;
   queries: number;
   views: number;
+  dataEntities: number;
   enums: number;
   errors: number;
 }
@@ -104,6 +105,7 @@ async function extractMetadata() {
     forms: 0,
     queries: 0,
     views: 0,
+    dataEntities: 0,
     enums: 0,
     errors: 0,
   };
@@ -218,8 +220,12 @@ async function extractMetadata() {
         .catch(() => fs.access(path.join(modelPath, 'axtable')).then(() => true).catch(() => false));
       const hasAxEnum = await fs.access(path.join(modelPath, 'AxEnum')).then(() => true)
         .catch(() => fs.access(path.join(modelPath, 'axenum')).then(() => true).catch(() => false));
+      const hasAxView = await fs.access(path.join(modelPath, 'AxView')).then(() => true)
+        .catch(() => fs.access(path.join(modelPath, 'axview')).then(() => true).catch(() => false));
+      const hasAxDataEntityView = await fs.access(path.join(modelPath, 'AxDataEntityView')).then(() => true)
+        .catch(() => fs.access(path.join(modelPath, 'axdataentityview')).then(() => true).catch(() => false));
 
-      if (!hasAxClass && !hasAxTable && !hasAxEnum) {
+      if (!hasAxClass && !hasAxTable && !hasAxEnum && !hasAxView && !hasAxDataEntityView) {
         // Skip directories that don't contain X++ metadata
         continue;
       }
@@ -254,6 +260,7 @@ async function extractMetadata() {
   console.log(`   Forms: ${stats.forms}`);
   console.log(`   Queries: ${stats.queries}`);
   console.log(`   Views: ${stats.views}`);
+  console.log(`   Data entities: ${stats.dataEntities}`);
   console.log(`   Enums: ${stats.enums}`);
   console.log(`   Errors: ${stats.errors}`);
 }
@@ -476,51 +483,57 @@ async function extractViews(
   modelName: string,
   stats: ExtractionStats
 ) {
-  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
-  let viewsPath = path.join(modelPath, 'AxView');
-  
-  try {
-    await fs.access(viewsPath);
-  } catch {
-    // Try lowercase
-    viewsPath = path.join(modelPath, 'axview');
-    try {
-      await fs.access(viewsPath);
-    } catch {
-      return; // No views in this model
+  const sourceDirs: string[] = [];
+
+  for (const dirName of ['AxView', 'axview', 'AxDataEntityView', 'axdataentityview']) {
+    const candidate = path.join(modelPath, dirName);
+    if (fsSync.existsSync(candidate)) {
+      sourceDirs.push(candidate);
     }
   }
 
-  const files = await fs.readdir(viewsPath);
-  const xmlFiles = files.filter(f => f.endsWith('.xml'));
+  if (sourceDirs.length === 0) {
+    return;
+  }
 
-  console.log(`   Views: ${xmlFiles.length} files`);
+  let totalXmlFiles = 0;
 
-  for (const file of xmlFiles) {
-    const filePath = path.join(viewsPath, file);
-    stats.totalFiles++;
+  for (const sourceDir of sourceDirs) {
+    const files = await fs.readdir(sourceDir);
+    const xmlFiles = files.filter(f => f.endsWith('.xml'));
+    totalXmlFiles += xmlFiles.length;
 
-    try {
-      // Basic view parsing (name extraction)
-      const viewName = path.basename(file, '.xml');
-      const viewInfo = {
-        name: viewName,
-        model: modelName,
-        sourcePath: filePath,
-        type: 'view'
-      };
-      
-      const outputDir = path.join(OUTPUT_PATH, modelName, 'views');
-      await fs.mkdir(outputDir, { recursive: true });
-      const outputFile = path.join(outputDir, `${viewName}.json`);
-      await fs.writeFile(outputFile, JSON.stringify(viewInfo, null, 2));
+    for (const file of xmlFiles) {
+      const filePath = path.join(sourceDir, file);
+      stats.totalFiles++;
 
-      stats.views++;
-    } catch (error) {
-      console.error(`   ❌ Error parsing ${file}:`, error);
-      stats.errors++;
+      try {
+        const viewInfo = await parser.parseViewFile(filePath, modelName);
+
+        if (!viewInfo.success || !viewInfo.data) {
+          console.error(`   ⚠️  Failed to parse ${file}: ${viewInfo.error || 'Unknown error'}`);
+          stats.errors++;
+          continue;
+        }
+
+        const outputDir = path.join(OUTPUT_PATH, modelName, 'views');
+        await fs.mkdir(outputDir, { recursive: true });
+        const outputFile = path.join(outputDir, `${viewInfo.data.name}.json`);
+        await fs.writeFile(outputFile, JSON.stringify(viewInfo.data, null, 2));
+
+        if (viewInfo.data.type === 'data-entity') {
+          stats.dataEntities++;
+        } else {
+          stats.views++;
+        }
+      } catch (error) {
+        console.error(`   ❌ Error parsing ${file}:`, error);
+        stats.errors++;
+      }
     }
   }
+
+  console.log(`   Views/Data entities: ${totalXmlFiles} files`);
 }
 
 async function extractEnums(

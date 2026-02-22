@@ -1103,10 +1103,25 @@ export class XppSymbolIndex {
         this.addSymbol({
           name: viewName,
           type: 'view',
+          signature: viewData.type || undefined,
           filePath: sourceFilePath,
           model,
-          description: viewData.label,
+          description: viewData.label || viewData.type,
         });
+
+        // Add field symbols (same pattern as tables)
+        if (viewData.fields && Array.isArray(viewData.fields)) {
+          for (const field of viewData.fields) {
+            this.addSymbol({
+              name: field.name,
+              type: 'field',
+              parentName: viewName,
+              signature: field.dataMethod || field.dataField || undefined,
+              filePath: sourceFilePath,
+              model,
+            });
+          }
+        }
       
       } catch (error) {
         // Only log errors, don't stop processing

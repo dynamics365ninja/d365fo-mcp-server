@@ -25,7 +25,8 @@ describe('get_view_info tool', () => {
     // Create test view XML
     const viewXml = `<?xml version="1.0" encoding="utf-8"?>
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>TestDataEntity</Name>
+	<Name>TestDataEntity</Name>
+	<Label>@TestModel:TestDataEntityLabel</Label>
 \t<IsPublic>Yes</IsPublic>
 \t<IsReadOnly>No</IsReadOnly>
 \t<PrimaryKey>Key1</PrimaryKey>
@@ -141,6 +142,7 @@ describe('get_view_info tool', () => {
     const text = result.content[0].text;
     
     expect(text).toContain('TestDataEntity');
+    expect(text).toContain('**Label:** @TestModel:TestDataEntityLabel');
     expect(text).toContain('**Public:** ✅');
     expect(text).toContain('**Read-Only:** ❌');
     expect(text).toContain('**Primary Key:** Key1');
@@ -345,5 +347,71 @@ describe('get_view_info tool', () => {
     const text = result.content[0].text;
     
     expect(text).toContain('Fields (3)');
+  });
+
+  it('should fallback to extracted metadata JSON when XML is not accessible', async () => {
+    const fallbackViewName = 'FallbackDataEntity';
+    const extractedDir = path.join(process.cwd(), 'extracted-metadata', 'TestModel', 'views');
+    const extractedPath = path.join(extractedDir, `${fallbackViewName}.json`);
+
+    await fs.mkdir(extractedDir, { recursive: true });
+    await fs.writeFile(
+      extractedPath,
+      JSON.stringify(
+        {
+          name: fallbackViewName,
+          model: 'TestModel',
+          sourcePath: 'C:/inaccessible/path.xml',
+          type: 'data-entity',
+          label: '@TestModel:FallbackDataEntityLabel',
+          isPublic: true,
+          isReadOnly: false,
+          primaryKey: 'RecId',
+          fields: [
+            {
+              name: 'AccountNum',
+              dataSource: 'CustTable',
+              dataField: 'AccountNum',
+              isComputed: false,
+            },
+          ],
+          relations: [],
+          methods: [{ name: 'computeSomething' }],
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    const insert = context.symbolIndex.db.prepare(`
+      INSERT INTO symbols (name, type, parent_name, file_path, model)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    insert.run(fallbackViewName, 'view', null, 'C:/inaccessible/path.xml', 'TestModel');
+
+    const request = {
+      method: 'tools/call',
+      params: {
+        name: 'get_view_info',
+        arguments: {
+          viewName: fallbackViewName,
+          includeFields: true,
+          includeRelations: false,
+          includeMethods: true,
+        },
+      },
+    };
+
+    const result = await getViewInfoTool(request as any, context);
+    const text = result.content[0].text;
+
+    expect(result.isError).not.toBe(true);
+    expect(text).toContain(fallbackViewName);
+    expect(text).toContain('**Label:** @TestModel:FallbackDataEntityLabel');
+    expect(text).toContain('AccountNum');
+    expect(text).toContain('computeSomething');
+
+    await fs.rm(extractedPath, { force: true });
   });
 });

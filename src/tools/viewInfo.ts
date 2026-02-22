@@ -9,7 +9,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
-import { buildXmlNotAvailableMessage } from '../utils/metadataResolver.js';
+import { buildXmlNotAvailableMessage, readViewMetadata } from '../utils/metadataResolver.js';
 
 const GetViewInfoArgsSchema = z.object({
   viewName: z.string().describe('Name of the view or data entity'),
@@ -39,6 +39,7 @@ interface ViewRelation {
 interface ViewInfo {
   name: string;
   model: string;
+  label?: string;
   isPublic: boolean;
   isReadOnly: boolean;
   primaryKey?: string;
@@ -114,6 +115,36 @@ export async function getViewInfoTool(request: CallToolRequest, context: XppServ
     try {
       xmlContent = await fs.readFile(viewRow.file_path, 'utf-8');
     } catch {
+      if (viewRow.model && viewRow.model !== 'Workspace') {
+        const extracted = await readViewMetadata(viewRow.model, viewName);
+        if (extracted) {
+          const fallbackInfo: ViewInfo = {
+            name: extracted.name,
+            model: extracted.model,
+            label: extracted.label,
+            isPublic: !!extracted.isPublic,
+            isReadOnly: !!extracted.isReadOnly,
+            primaryKey: extracted.primaryKey,
+            fields: (extracted.fields || []).map((field: any) => ({
+              name: field.name,
+              dataSource: field.dataSource,
+              dataField: field.dataField,
+              dataMethod: field.dataMethod,
+              isComputed: !!field.isComputed,
+            })),
+            relations: (extracted.relations || []).map((relation: any) => ({
+              name: relation.name,
+              relatedTable: relation.relatedTable,
+              relationType: relation.relationType,
+              cardinality: relation.cardinality,
+            })),
+            methods: (extracted.methods || []).map((method: any) => (typeof method === 'string' ? method : method.name || 'Unknown')),
+          };
+
+          return formatViewOutput(fallbackInfo, includeFields, includeRelations, includeMethods);
+        }
+      }
+
       return {
         content: [{ type: 'text', text: buildXmlNotAvailableMessage('view', viewName, viewRow.file_path) }],
         isError: true,
@@ -125,6 +156,7 @@ export async function getViewInfoTool(request: CallToolRequest, context: XppServ
     const viewInfo: ViewInfo = {
       name: viewName,
       model: viewRow.model,
+      label: undefined,
       isPublic: false,
       isReadOnly: false,
       fields: [],
@@ -148,6 +180,10 @@ export async function getViewInfoTool(request: CallToolRequest, context: XppServ
 
     if (axView.PrimaryKey) {
       viewInfo.primaryKey = axView.PrimaryKey[0];
+    }
+
+    if (axView.Label) {
+      viewInfo.label = axView.Label[0];
     }
 
     // Extract fields
@@ -270,6 +306,9 @@ function formatViewOutput(
 ): any {
   let output = `# View: \`${viewInfo.name}\`\n\n`;
   output += `**Model:** ${viewInfo.model}\n`;
+  if (viewInfo.label) {
+    output += `**Label:** ${viewInfo.label}\n`;
+  }
   output += `**Public:** ${viewInfo.isPublic ? '✅' : '❌'}\n`;
   output += `**Read-Only:** ${viewInfo.isReadOnly ? '✅' : '❌'}\n`;
   
