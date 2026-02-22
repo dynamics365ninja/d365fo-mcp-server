@@ -163,6 +163,37 @@ export class XppSymbolIndex {
       );
     `);
 
+    // Migrate existing symbols table: add any columns that may be missing
+    // (needed when opening a DB built with an older schema)
+    {
+      const existingCols = new Set(
+        (this.db.pragma('table_info(symbols)') as Array<{ name: string }>).map(r => r.name)
+      );
+      const newCols: Array<[string, string]> = [
+        ['description', 'TEXT'],
+        ['tags', 'TEXT'],
+        ['source_snippet', 'TEXT'],
+        ['complexity', 'INTEGER'],
+        ['used_types', 'TEXT'],
+        ['method_calls', 'TEXT'],
+        ['inline_comments', 'TEXT'],
+        ['extends_class', 'TEXT'],
+        ['implements_interfaces', 'TEXT'],
+        ['usage_example', 'TEXT'],
+        ['usage_frequency', 'INTEGER DEFAULT 0'],
+        ['pattern_type', 'TEXT'],
+        ['typical_usages', 'TEXT'],
+        ['called_by_count', 'INTEGER DEFAULT 0'],
+        ['related_methods', 'TEXT'],
+        ['api_patterns', 'TEXT'],
+      ];
+      for (const [col, def] of newCols) {
+        if (!existingCols.has(col)) {
+          this.db.exec(`ALTER TABLE symbols ADD COLUMN ${col} ${def};`);
+        }
+      }
+    }
+
     // Create FTS5 virtual table for full-text search with enhanced fields
     this.db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
