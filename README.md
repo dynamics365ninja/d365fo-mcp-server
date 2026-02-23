@@ -37,14 +37,15 @@ writing code.
 
 ## What It Does
 
-You get **23 tools** for D365FO code intelligence. You ask Copilot in plain English; it picks
+You get **24 tools** for D365FO code intelligence. You ask Copilot in plain English; it picks
 the right tool automatically.
 
 ### Finding and Exploring Code
-- Search classes, tables, methods, fields, enums across 584 799+ symbols
+- Search classes, tables, methods, fields, enums, EDTs across 584 799+ symbols
 - View a complete class structure: all methods, inheritance chain, source code
 - View a table schema: fields with types, indexes, foreign key relations
-- Browse forms, queries, and views
+- View enum values with labels or Extended Data Type (EDT) properties
+- Browse forms, queries, views, and data entities
 - Find everywhere a class, method, or field is used (where-used analysis)
 
 ### Generating Code
@@ -217,7 +218,7 @@ Full setup instructions in [docs/SETUP.md](docs/SETUP.md).
 | [docs/SETUP.md](docs/SETUP.md) | Installation, environment config, Azure deployment |
 | [docs/MCP_CONFIG.md](docs/MCP_CONFIG.md) | The `.mcp.json` file — workspace paths and project settings |
 | [docs/WORKSPACE_DETECTION.md](docs/WORKSPACE_DETECTION.md) | How the server auto-detects your model from `.rnrproj` |
-| [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) | All 23 tools explained with example prompts |
+| [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) | All 24 tools explained with example prompts |
 | [docs/USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md) | Practical examples: searching, code generation, CoC extensions |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical architecture, dual-database design, performance optimization |
 | [docs/CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md) | ISV partner and custom model configuration |

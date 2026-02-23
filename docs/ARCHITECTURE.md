@@ -125,6 +125,7 @@ graph LR
         QUERY[queryInfo.ts<br/>get_query_info Tool]
         VIEW[viewInfo.ts<br/>get_view_info Tool]
         ENUM[enumInfo.ts<br/>get_enum_info Tool]
+        EDT[edtInfo.ts<br/>get_edt_info Tool]
         COMP[completion.ts<br/>code_completion Tool]
         SIGNATURE[methodSignature.ts<br/>get_method_signature Tool]
         REFS[findReferences.ts<br/>find_references Tool]
@@ -497,7 +498,7 @@ graph LR
     subgraph "MCP Protocol Methods"
         INIT[initialize<br/>Server Capabilities]
         NOTIFY[notifications/initialized<br/>Handshake Complete]
-        TOOLS_LIST[tools/list<br/>22 Available Tools]
+        TOOLS_LIST[tools/list<br/>24 Available Tools]
         TOOLS_CALL[tools/call<br/>Execute Tool]
         RES_LIST[resources/list<br/>Empty]
         RES_TMPL[resources/templates/list<br/>Empty]
@@ -506,7 +507,7 @@ graph LR
     end
 
     INIT -.-> CAPS[Capabilities:<br/>tools, resources, prompts]
-    TOOLS_LIST -.-> TOOL_DEFS[Tool Definitions:<br/>search, batch_search,<br/>get_class_info, get_table_info,<br/>get_form_info, get_query_info,<br/>get_view_info, get_enum_info,<br/>code_completion, get_method_signature,<br/>find_references, generate_code,<br/>generate_d365fo_xml, create_d365fo_file,<br/>modify_d365fo_file, search_extensions,<br/>analyze_code_patterns,<br/>suggest_method_implementation,<br/>analyze_class_completeness,<br/>get_api_usage_patterns]
+    TOOLS_LIST -.-> TOOL_DEFS[Tool Definitions:<br/>search, batch_search,<br/>get_class_info, get_table_info,<br/>get_form_info, get_query_info,<br/>get_view_info, get_enum_info, get_edt_info,<br/>code_completion, get_method_signature,<br/>find_references, generate_code,<br/>generate_d365fo_xml, create_d365fo_file,<br/>modify_d365fo_file, search_extensions,<br/>analyze_code_patterns,<br/>suggest_method_implementation,<br/>analyze_class_completeness,<br/>get_api_usage_patterns,<br/>search_labels, get_label_info, create_label]
     TOOLS_CALL -.-> EXEC[Tool Execution:<br/>search DB, parse XML,<br/>return results]
     
     style INIT fill:#4CAF50,color:#fff
@@ -688,7 +689,18 @@ Found 5 matches:
 
 **Output:** Enum values with integer values, labels, and properties (extensible, base type)
 
-#### 16. get_method_signature
+#### 16. get_edt_info
+**Input:**
+```json
+{
+  "edtName": "CustAccount",
+  "modelName": "ApplicationSuite"
+}
+```
+
+**Output:** Extended Data Type properties including base type (Extends), enum type, reference table, string/number constraints, labels, and help text
+
+#### 17. get_method_signature
 **Input:**
 ```json
 {
@@ -699,7 +711,7 @@ Found 5 matches:
 
 **Output:** Exact method signature with parameters, return type, and CoC extension template
 
-#### 17. find_references
+#### 18. find_references
 **Input:**
 ```json
 {
@@ -711,7 +723,7 @@ Found 5 matches:
 
 **Output:** All usages of class/method/field/enum across codebase with code snippets
 
-#### 18. generate_d365fo_xml
+#### 19. generate_d365fo_xml
 **Input:**
 ```json
 {
@@ -723,7 +735,7 @@ Found 5 matches:
 
 **Output:** D365FO XML content with proper structure and TABS indentation (cloud-ready)
 
-#### 19. create_d365fo_file
+#### 20. create_d365fo_file
 **Input:**
 ```json
 {
@@ -737,7 +749,7 @@ Found 5 matches:
 
 **Output:** Creates physical D365FO XML file and optionally adds to VS project (local only)
 
-#### 20. modify_d365fo_file
+#### 21. modify_d365fo_file
 **Input:**
 ```json
 {

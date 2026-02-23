@@ -8,7 +8,7 @@ just ask in plain English.
 
 ## Quick Reference
 
-### Search and Discovery (7 tools)
+### Search and Discovery (8 tools)
 
 | Tool | What it does | Example prompt |
 |------|-------------|---------------|
@@ -18,6 +18,7 @@ just ask in plain English.
 | **get_class_info** | Full class details: methods, source code, inheritance | "Show me everything about SalesFormLetter" |
 | **get_table_info** | Full table schema: fields, indexes, relations | "Show me fields and relations on CustTable" |
 | **get_enum_info** | All enum values with integer values and labels | "What values does SalesStatus have?" |
+| **get_edt_info** | Extended Data Type definition: base type, labels, properties | "Show me EDT properties for CustAccount" |
 | **code_completion** | List methods/fields on a class or table | "What methods start with 'calc' on SalesTable?" |
 
 ### Advanced Object Info (5 tools)
@@ -69,7 +70,7 @@ just ask in plain English.
 
 Searches all 584 799+ D365FO symbols. Understands type filters so you can narrow results.
 
-**Supported types:** class, table, method, field, enum
+**Supported types:** class, table, method, field, enum, edt
 
 **Examples:**
 ```
@@ -77,6 +78,7 @@ Find classes related to sales invoice posting
 Search for tables used in customer management
 Find methods that calculate tax
 Find fields named Invoice across all tables
+Find EDT for ItemId
 ```
 
 ---
@@ -136,6 +138,42 @@ What is the primary key of CustTable?
 
 ---
 
+### get_enum_info
+
+Returns all values of an enum with their integer values and labels. Use this for enums only.
+For Extended Data Types (EDT), use **get_edt_info** instead.
+
+**Examples:**
+```
+What values does SalesStatus have?
+Show me all NoYes enum values
+List values of InventTransType
+```
+
+---
+
+### get_edt_info
+
+Returns the complete Extended Data Type (EDT) definition including base type (Extends), enum type,
+reference table, string/number constraints, labels, and all EDT properties from AxEdt metadata.
+
+**Use this when you need:**
+- Base type inheritance chain (which EDT extends which)
+- Reference table and relation type
+- String size, display length, number of decimals
+- Label, help text, and form help references
+- Configuration keys and other EDT properties
+
+**Examples:**
+```
+Show me EDT properties for CustAccount
+What is the base type of ItemId?
+Show me the reference table for RecId EDT
+What is the string size of Name EDT?
+```
+
+---
+
 ### get_method_signature
 
 Extracts the exact signature of a method including modifiers, return type, and all parameters
@@ -160,6 +198,33 @@ fields, and enums.
 Where is DimensionAttributeValueSet used?
 Find all callers of CustTable.validateWrite()
 Which classes reference the SalesLine.RemainSalesPhysical field?
+```
+
+---
+
+### get_query_info
+
+Returns the complete query structure: all datasources, joins, field lists, and range definitions.
+
+**Examples:**
+```
+Analyze CustTransOpenQuery
+Show me joins in LedgerJournalTrans query
+What ranges does InventOnHand query have?
+```
+
+---
+
+### get_view_info
+
+Returns view or data entity structure including fields (mapped and computed), relations,
+primary key, and methods. Works for both AxView and AxDataEntityView objects.
+
+**Examples:**
+```
+Show me GeneralJournalAccountEntryView structure
+List fields and relations on CustomerV3Entity
+What is the primary key of VendorV2Entity?
 ```
 
 ---

@@ -261,7 +261,7 @@ async function main() {
     const transport = new StdioServerTransport();
     await mcpServer.connect(transport);
     console.log('✅ Stdio transport connected');
-    console.log('🎯 Registered 23 X++ MCP tools (7 discovery + 3 labels + 5 object-info + 4 intelligent + 3 file-ops + 1 analysis)');
+    console.log('🎯 Registered 24 X++ MCP tools (8 discovery + 3 labels + 5 object-info + 4 intelligent + 3 file-ops + 1 analysis)');
     serverState.isReady = true;
     serverState.isHealthy = true;
     serverState.statusMessage = 'Ready';
@@ -323,14 +323,15 @@ async function main() {
         console.log(`📡 MCP endpoint: http://localhost:${PORT}/mcp`);
         console.log('');
         console.log('🎯 Available tools (24 total):');
-        console.log('   🔍 Search & Discovery (7):');
+        console.log('   🔍 Search & Discovery (8):');
         console.log('   - search              Search 584K+ D365FO symbols by name or keyword');
         console.log('   - batch_search        Execute multiple searches in parallel (3x faster)');
         console.log('   - search_extensions   Search only custom/ISV models (filters out standard code)');
         console.log('   - get_class_info      Full class: all methods with source, inheritance, attributes');
         console.log('   - get_table_info      Full table: fields, indexes, relations, methods');
+        console.log('   - get_enum_info       Enum values with integer values and labels');
+        console.log('   - get_edt_info        Extended Data Type: base type, labels, properties');
         console.log('   - code_completion     IntelliSense-style method/field listing on any object');
-        console.log('   - generate_code       Generate X++ boilerplate (class, batch-job, data-entity, …)');
         console.log('');
         console.log('   🏷️  Label Management (3):');
         console.log('   - search_labels       Full-text search across all AxLabelFile labels');
@@ -341,9 +342,8 @@ async function main() {
         console.log('   - get_form_info       Form datasources, control hierarchy, and methods');
         console.log('   - get_query_info      Query datasources, joins, field lists, and ranges');
         console.log('   - get_view_info       View/data entity fields, relations, computed columns');
-        console.log('   - get_enum_info       Enum values with integer values and labels');
-        console.log('   - get_edt_info        EDT base type, relations, and properties');
         console.log('   - get_method_signature  Exact method signature (required before CoC extensions)');
+        console.log('   - find_references     Where-used analysis across the entire codebase');
         console.log('');
         console.log('   🧠 Intelligent Code Generation (4):');
         console.log('   - analyze_code_patterns         Find common patterns used in a scenario');
@@ -356,8 +356,8 @@ async function main() {
         console.log('   - create_d365fo_file   Create D365FO file in correct AOT location (Windows)');
         console.log('   - modify_d365fo_file   Safely edit D365FO XML with backup & rollback (Windows)');
         console.log('');
-        console.log('   🔗 Analysis (1):');
-        console.log('   - find_references     Where-used analysis across the entire codebase');
+        console.log('   🔗 Code Generation (1):');
+        console.log('   - generate_code       Generate X++ boilerplate (class, batch-job, data-entity, …)');
       })
       .catch((error) => {
         console.error('❌ Failed to initialize services:', error);

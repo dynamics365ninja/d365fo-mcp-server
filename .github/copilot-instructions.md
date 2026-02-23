@@ -62,16 +62,17 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
 
 ## Available MCP Tools
 
-### 🔍 Search and Discovery (7 tools)
+### 🔍 Search and Discovery (8 tools)
 
 | Tool | Replaces Built-in | Description | Example Usage |
 |------|-------------------|-------------|---------------|
-| `search(query, type?)` | `code_search`, `file_search`, `get_symbols_by_name` | Searches 584,799+ pre-indexed D365FO symbols by name or keyword. Supports type filters: class, table, method, field, enum, form, query | "Find classes that handle dimension posting" |
+| `search(query, type?)` | `code_search`, `file_search`, `get_symbols_by_name` | Searches 584,799+ pre-indexed D365FO symbols by name or keyword. Supports type filters: class, table, method, field, enum, edt, form, query | "Find classes that handle dimension posting" |
 | `batch_search(queries[])` | Multiple `code_search` calls | Executes multiple searches in parallel (3× faster than sequential). Use when you need information about several unrelated objects | "Find SalesTable, CustTable, and InventTable" |
 | `search_extensions(query)` | `code_search` with ISV filter | Searches only custom/ISV code, filtering out 500K+ Microsoft standard objects | "Find my custom extensions for CustTable" |
 | `get_class_info(className)` | `get_file` + `get_symbols_by_name` | Returns complete class definition: all methods with signatures and source code, inheritance chain (extends/implements), and attributes | "Show me everything about SalesFormLetter" |
-| `get_table_info(tableName)` | `get_file` + `get_symbols_by_name` | Returns full table schema: all fields with EDT/data types, indexes (including primary key), foreign key relations, and methods | "Show me fields and relations on CustTable" |
-| `get_enum_info(enumName)` | `get_symbols_by_name` | Returns all enum values with their integer values and labels | "What values does SalesStatus have?" |
+| `get_table_info(tableName)` | `get_file` + `get_symbols_by_name` | Returns full table schema: all fields with EDT/data types (with explicit EDT marker when present), indexes (including primary key), foreign key relations, and methods | "Show me fields and relations on CustTable" |
+| `get_enum_info(enumName)` | `get_symbols_by_name` | Returns all enum values with their integer values and labels. **Note:** For Extended Data Types (EDT), use `get_edt_info()` instead | "What values does SalesStatus have?" |
+| `get_edt_info(edtName, modelName?)` | `get_symbols_by_name` | Returns complete EDT definition: base type (Extends), enum type, reference table, string/number constraints, labels, help text, and all EDT properties. **Use this for all EDT queries, not get_enum_info** | "Show me EDT properties for CustAccount" |
 | `code_completion(symbolName)` | None (new capability) | Lists available methods and fields on a class or table, with IntelliSense-like filtering | "What methods start with 'calc' on SalesTable?" |
 
 ### 🏷️ Label Management (3 tools)
@@ -88,7 +89,7 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
 |------|-------------------|-------------|---------------|
 | `get_form_info(formName)` | `get_file` | Parses form XML and returns datasource structure (fields, methods), control hierarchy (buttons, grids, groups), and form-level methods | "Show me datasources in SalesTable form" |
 | `get_query_info(queryName)` | `get_file` | Returns query structure: all datasources, joins, field lists, and range definitions | "Analyze CustTransOpenQuery" |
-| `get_view_info(viewName)` | `get_file` | Returns view/data entity structure: fields, relations, computed columns, and methods | "Show me GeneralJournalAccountEntryView" |
+| `get_view_info(viewName)` | `get_file` | Returns view/data entity structure: fields (mapped and computed), relations, primary key, computed columns, and methods. Works for both AxView and AxDataEntityView objects. **Use for data entities** | "Show me GeneralJournalAccountEntryView or CustomerV3Entity" |
 | `get_method_signature(className, methodName)` | `get_symbols_by_name` | Extracts exact method signature including modifiers, return type, and parameters with default values. **Essential before Chain of Command extensions** | "Get signature of CustTable.validateWrite()" |
 | `find_references(targetName, targetType?)` | None (new capability) | Performs where-used analysis across entire codebase. Works for classes, methods, tables, fields, and enums | "Where is DimensionAttributeValueSet used?" |
 
@@ -222,10 +223,13 @@ Step 4: Create extension with exact signature from step 2
 | "Does a class named X exist?" | `search("X", type="class")` |
 | "Show me all methods on class X" | `get_class_info("X")` |
 | "What fields does table X have?" | `get_table_info("X")` |
+| "What are the enum values for X?" | `get_enum_info("X")` |
+| "What are the EDT properties for X?" | `get_edt_info("X")` |
 | "Where is class/method X used?" | `find_references("X")` |
 | "Find multiple objects at once" | `batch_search([{query: "CustTable"}, {query: "SalesTable"}])` |
 | "Find only my custom code" | `search_extensions("MyPrefix")` |
 | "What datasources does form X have?" | `get_form_info("X")` |
+| "What is the structure of data entity X?" | `get_view_info("X")` |
 | "How is API X typically used?" | `get_api_usage_patterns("X")` |
 | "Find label for text X" | `search_labels("X")` |
 | "Get all translations for label X" | `get_label_info("X")` |
@@ -322,6 +326,7 @@ K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxView\{Name}.xml
 - Use `search_extensions()` to filter out Microsoft standard code
 - Use `modify_d365fo_file()` with automatic backups for safe editing
 - Be specific in search queries (include context like "sales", "ledger", "inventory")
+- **Use `get_edt_info()` for Extended Data Types** — `get_enum_info()` is for enums only
 - **Call `search_labels()` before `create_label()`** — always reuse existing labels when possible
 - Provide translations for ALL languages the model supports when calling `create_label()`
 
@@ -332,6 +337,7 @@ K:\AosService\PackagesLocalDirectory\{Model}\{Model}\AxView\{Name}.xml
 - **Never create D365FO files with generic `create_file` — ONLY use `create_d365fo_file()`**
 - **Never combine `generate_d365fo_xml()` + `create_file()` — use `generate_d365fo_xml()` + `create_d365fo_file()` instead**
 - **Never call `create_d365fo_file()` without `projectPath` or `solutionPath`** — without them `modelName` is used AS-IS and the file may end up in a Microsoft standard model!
+- **Never use `get_enum_info()` for EDT** — it only works for enums; use `get_edt_info()` for Extended Data Types
 - Don't use vague search terms — be specific about what you're looking for
 - Don't call `search()` after you already have the complete object from `get_class_info()`
 - **Never edit .label.txt files with `edit_file` or `replace_string_in_file`** — use `create_label()` which maintains sort order and updates the index

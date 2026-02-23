@@ -33,6 +33,10 @@ extracted-metadata/
 /metadata/
 tmp/
 
+# Test artifacts
+test-workspace/
+test-model-tags*/
+
 # IDE
 .vscode/
 .idea/

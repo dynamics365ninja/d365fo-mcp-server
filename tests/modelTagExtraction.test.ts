@@ -8,7 +8,13 @@ import * as path from 'path';
 import { detectD365Project } from '../src/utils/workspaceDetector.js';
 
 describe('Model Tag Extraction', () => {
-  const testDir = path.join(process.cwd(), 'test-model-tags');
+  let testDir: string;
+  
+  beforeEach(async () => {
+    // Create unique test directory for each test to avoid race conditions
+    testDir = path.join(process.cwd(), `test-model-tags-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+    await fs.mkdir(testDir, { recursive: true });
+  });
   
   afterEach(async () => {
     // Clean up test directory
