@@ -71,6 +71,9 @@ describe('classInfoTool', () => {
         setClassInfo: vi.fn(async () => {}),
         generateClassKey: vi.fn((className: string) => `class:${className}`),
       } as any,
+      workspaceScanner: {} as any,
+      hybridSearch: {} as any,
+      termRelationshipGraph: {} as any,
     };
   });
 

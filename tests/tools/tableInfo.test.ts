@@ -68,6 +68,9 @@ describe('tableInfoTool', () => {
         setClassInfo: vi.fn(async () => {}),
         generateTableKey: vi.fn((tableName: string) => `table:${tableName}`),
       } as any,
+      workspaceScanner: {} as any,
+      hybridSearch: {} as any,
+      termRelationshipGraph: {} as any,
     };
   });
 
@@ -146,5 +149,51 @@ describe('tableInfoTool', () => {
 
     expect(result.content[0].type).toBe('text');
     expect(result.content[0].text).toContain('Error');
+  });
+
+  it('should paginate table methods using methodOffset', async () => {
+    const methods = Array.from({ length: 30 }, (_, index) => ({
+      name: `method${index + 1}`,
+      parameters: [],
+      returnType: 'void',
+      modifiers: ['public'],
+      visibility: 'public' as const,
+      isStatic: false,
+      documentation: '',
+      source: `public void method${index + 1}() { }`,
+    }));
+
+    mockParser.parseTableFile = vi.fn(async () => ({
+      success: true,
+      data: {
+        name: 'CustTable',
+        model: 'ApplicationSuite',
+        sourcePath: '/Tables/CustTable.xml',
+        fields: [],
+        indexes: [],
+        relations: [],
+        label: 'Customer table',
+        tableGroup: 'Main',
+        methods,
+      },
+      error: undefined,
+    }));
+
+    const request = {
+      method: 'tools/call',
+      params: {
+        name: 'get_table_info',
+        arguments: { tableName: 'CustTable', methodOffset: 25 }
+      }
+    } as CallToolRequest;
+
+    const result = await tableInfoTool(request, mockContext);
+    const text = result.content[0].text;
+
+    expect(text).toContain('## Methods (30 total, showing 26–30)');
+    expect(text).toContain('### method26');
+    expect(text).toContain('### method30');
+    expect(text).not.toContain('### method25');
+    expect(text).not.toContain('more methods not shown');
   });
 });

@@ -7,8 +7,11 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 
+const METHOD_PAGE_SIZE = 25;
+
 const TableInfoArgsSchema = z.object({
   tableName: z.string().describe('Name of the X++ table'),
+  methodOffset: z.number().optional().default(0).describe('Offset for paginating methods (use multiples of 25)'),
 });
 
 export async function tableInfoTool(request: CallToolRequest, context: XppServerContext) {
@@ -128,11 +131,16 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
     }
 
     if (table.methods.length > 0) {
-      const TABLE_METHOD_PAGE_SIZE = 25;
-      const visibleMethods = table.methods.slice(0, TABLE_METHOD_PAGE_SIZE);
-      const hasMoreMethods = table.methods.length > TABLE_METHOD_PAGE_SIZE;
+      const methodOffset = args.methodOffset ?? 0;
+      const visibleMethods = table.methods.slice(methodOffset, methodOffset + METHOD_PAGE_SIZE);
+      const totalMethods = table.methods.length;
+      const hasMoreMethods = methodOffset + METHOD_PAGE_SIZE < totalMethods;
 
-      output += `\n## Methods (${table.methods.length})\n\n`;
+      output += `\n## Methods (${totalMethods} total`;
+      if (totalMethods > METHOD_PAGE_SIZE) {
+        output += `, showing ${methodOffset + 1}–${Math.min(methodOffset + METHOD_PAGE_SIZE, totalMethods)}`;
+      }
+      output += `)\n\n`;
       for (const method of visibleMethods) {
         const params = method.parameters.map((p: { type: string; name: string }) => `${p.type} ${p.name}`).join(', ');
         output += `### ${method.name}\n\n`;
@@ -149,7 +157,7 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
       }
 
       if (hasMoreMethods) {
-        output += `> ⚠️ **${table.methods.length - TABLE_METHOD_PAGE_SIZE} more methods not shown.** Use \`get_class_info\` for full method browsing with pagination.\n\n`;
+        output += `> ⚠️ **${totalMethods - methodOffset - METHOD_PAGE_SIZE} more methods not shown.** Call again with \`methodOffset: ${methodOffset + METHOD_PAGE_SIZE}\` to see the next page.\n\n`;
       }
     }
 
