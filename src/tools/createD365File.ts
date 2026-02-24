@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { Parser, Builder } from 'xml2js';
 import { getConfigManager } from '../utils/configManager.js';
 import { registerCustomModel } from '../utils/modelClassifier.js';
+import { PackageResolver } from '../utils/packageResolver.js';
 
 const CreateD365FileArgsSchema = z.object({
   objectType: z
@@ -21,6 +22,10 @@ const CreateD365FileArgsSchema = z.object({
   modelName: z
     .string()
     .describe('Model name (e.g., ContosoExtensions, ApplicationSuite)'),
+  packageName: z
+    .string()
+    .optional()
+    .describe('Package name (e.g., CustomExtensions, ApplicationSuite). Auto-resolved from model name if omitted.'),
   packagePath: z
     .string()
     .optional()
@@ -771,25 +776,59 @@ export async function handleCreateD365File(
       throw new Error(`Unsupported object type: ${args.objectType}`);
     }
 
-    // Construct full path using actualModelName
-    // Try to get package path from .mcp.json config first
+    // Construct full path - resolve package name
+    // Package name can differ from model name in any environment (not just UDE).
     const configManager = getConfigManager();
     const configPackagePath = configManager.getPackagePath();
-    
-    const basePath =
-      args.packagePath || 
-      configPackagePath || 
-      'K:\\AosService\\PackagesLocalDirectory';
-    
+    const envType = await configManager.getDevEnvironmentType();
+
+    let basePath: string;
+    let resolvedPackageName: string;
+
+    if (args.packageName) {
+      // Explicit packageName always wins, regardless of environment type
+      resolvedPackageName = args.packageName;
+      if (envType === 'ude') {
+        const customPath = await configManager.getCustomPackagesPath();
+        basePath = customPath || args.packagePath || configPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+      } else {
+        basePath = args.packagePath || configPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+      }
+    } else if (envType === 'ude') {
+      // UDE mode: auto-resolve package name via descriptor scan
+      const customPath = await configManager.getCustomPackagesPath();
+      const msPath = await configManager.getMicrosoftPackagesPath();
+      const roots = [customPath, msPath].filter(Boolean) as string[];
+
+      const resolver = new PackageResolver(roots);
+      const resolved = await resolver.resolve(actualModelName);
+
+      if (resolved) {
+        resolvedPackageName = resolved.packageName;
+        basePath = resolved.rootPath;
+      } else {
+        // Fallback: assume package == model (common case)
+        resolvedPackageName = actualModelName;
+        basePath = customPath || args.packagePath || configPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+      }
+    } else {
+      // Traditional mode without explicit packageName: assume package == model
+      resolvedPackageName = actualModelName;
+      basePath =
+        args.packagePath ||
+        configPackagePath ||
+        'K:\\AosService\\PackagesLocalDirectory';
+    }
+
     console.error(
-      `[create_d365fo_file] Using package path: ${basePath}${configPackagePath ? ' (from .mcp.json config)' : args.packagePath ? ' (from args)' : ' (default)'}`
+      `[create_d365fo_file] Environment: ${envType}, Package: ${resolvedPackageName}, Model: ${actualModelName}`,
     );
-    
+
     const modelPath = path.join(
       basePath,
+      resolvedPackageName,
       actualModelName,
-      actualModelName,
-      objectFolder
+      objectFolder,
     );
     const fileName = `${args.objectName}.xml`;
     const fullPath = path.join(modelPath, fileName);

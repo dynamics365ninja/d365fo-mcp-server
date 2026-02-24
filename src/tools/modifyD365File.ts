@@ -35,6 +35,7 @@ const ModifyD365FileArgsSchema = z.object({
   // Options
   createBackup: z.boolean().optional().default(true).describe('Create backup before modification'),
   modelName: z.string().optional().describe('Model name (auto-detected if not provided)'),
+  packageName: z.string().optional().describe('Package name. Auto-resolved if omitted.'),
   workspacePath: z.string().optional().describe('Path to workspace for finding file'),
 });
 

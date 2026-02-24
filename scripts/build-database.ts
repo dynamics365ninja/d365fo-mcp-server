@@ -15,6 +15,7 @@ const __dirname = path.dirname(__filename);
 
 import { isCustomModel, isStandardModel, getCustomModels } from '../src/utils/modelClassifier.js';
 import { indexAllLabels } from '../src/metadata/labelParser.js';
+import { XppConfigProvider } from '../src/utils/xppConfigProvider.js';
 
 const INPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
 const OUTPUT_DB = process.env.DB_PATH || './data/xpp-metadata.db';
@@ -168,26 +169,63 @@ async function buildDatabase() {
   if (SKIP_FTS) {
     console.log('\n⏭️  Skipping label indexing (SKIP_FTS=true) — will be indexed by build-fts step');
   } else if (INCLUDE_LABELS) {
-    console.log(`\n🏷️  Indexing AxLabelFile labels from: ${PACKAGES_PATH}/{Model}/{Model}/AxLabelFile/...`);
-    if (!fsSync.existsSync(PACKAGES_PATH)) {
-      console.log(`   ⚠️  PackagesLocalDirectory not found at "${PACKAGES_PATH}" — skipping labels.`);
-      console.log(`   ℹ️  Set PACKAGES_PATH env var to the correct path, or INCLUDE_LABELS=false to suppress this message.`);
+    // Build list of package root paths to scan for labels.
+    // Priority: XPP config auto-detection > PACKAGES_PATH fallback
+    const labelRootPaths: string[] = [];
+    const devEnvType = process.env.DEV_ENVIRONMENT_TYPE || 'auto';
+    if (devEnvType !== 'traditional') {
+      const xppProvider = new XppConfigProvider();
+      const configName = process.env.XPP_CONFIG_NAME || undefined;
+      const xppConfig = await xppProvider.getActiveConfig(configName);
+      if (xppConfig) {
+        console.log(`   [UDE] XPP config: ${xppConfig.configName} v${xppConfig.version}`);
+        labelRootPaths.push(xppConfig.customPackagesPath);
+        labelRootPaths.push(xppConfig.microsoftPackagesPath);
+      }
+    }
+    // Fallback: traditional single path
+    if (labelRootPaths.length === 0) {
+      labelRootPaths.push(PACKAGES_PATH);
+    }
+
+    console.log(`\n🏷️  Indexing AxLabelFile labels from ${labelRootPaths.length} package root(s):`);
+    for (const p of labelRootPaths) {
+      console.log(`   📂 ${p}`);
+    }
+
+    // Filter out roots that don't exist on disk
+    const validRoots = labelRootPaths.filter(p => {
+      if (!fsSync.existsSync(p)) {
+        console.log(`   ⚠️  PackagesLocalDirectory not found at "${p}" — skipping.`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validRoots.length === 0) {
+      console.log(`   ⚠️  No valid package roots found — skipping labels.`);
+      console.log(`   ℹ️  Set PACKAGES_PATH env var (or configure XPP_CONFIG_NAME for UDE), or INCLUDE_LABELS=false to suppress this message.`);
     } else {
       const labelStart = Date.now();
 
       // For incremental builds of specific custom models, clear and re-index only those models' labels
       // For full standard rebuild, index all standard model labels (not limited to modelsToRebuild)
       const isIncrementalCustomBuild = modelsToRebuild.length > 0 && EXTRACT_MODE === 'custom';
-      
+
+      let grandTotalLabels = 0;
+      let grandTotalModels = 0;
+
       if (isIncrementalCustomBuild) {
         symbolIndex.clearLabelsForModels(modelsToRebuild);
-        const { totalLabels, modelsIndexed } = await indexAllLabels(
-          symbolIndex,
-          PACKAGES_PATH,
-          (modelName) => modelsToRebuild.includes(modelName),
-        );
-        const labelDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
-        console.log(`   ✅ ${totalLabels} label entries indexed across ${modelsIndexed} models in ${labelDuration}s`);
+        for (const rootPath of validRoots) {
+          const { totalLabels, modelsIndexed } = await indexAllLabels(
+            symbolIndex,
+            rootPath,
+            (modelName) => modelsToRebuild.includes(modelName),
+          );
+          grandTotalLabels += totalLabels;
+          grandTotalModels += modelsIndexed;
+        }
       } else {
         // Full rebuild — determine model filter based on EXTRACT_MODE
         let labelModelFilter: ((m: string) => boolean) | undefined;
@@ -198,14 +236,19 @@ async function buildDatabase() {
         }
         // else: no filter — index all models
 
-        const { totalLabels, modelsIndexed } = await indexAllLabels(
-          symbolIndex,
-          PACKAGES_PATH,
-          labelModelFilter,
-        );
-        const labelDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
-        console.log(`   ✅ ${totalLabels} label entries indexed across ${modelsIndexed} models in ${labelDuration}s`);
+        for (const rootPath of validRoots) {
+          const { totalLabels, modelsIndexed } = await indexAllLabels(
+            symbolIndex,
+            rootPath,
+            labelModelFilter,
+          );
+          grandTotalLabels += totalLabels;
+          grandTotalModels += modelsIndexed;
+        }
       }
+
+      const labelDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
+      console.log(`   ✅ ${grandTotalLabels} label entries indexed across ${grandTotalModels} models in ${labelDuration}s`);
 
       const labelCount = symbolIndex.getLabelCount();
       console.log(`   📊 Total labels in database: ${labelCount}`);

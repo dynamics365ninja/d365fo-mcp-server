@@ -14,7 +14,8 @@
     "build-database": "node --max-old-space-size=6144 --import tsx/esm scripts/build-database.ts",
     "build-fts": "node --max-old-space-size=6144 --import tsx/esm scripts/build-fts.ts",
     "index-metadata": "tsx scripts/extract-metadata.ts && node --max-old-space-size=6144 --import tsx/esm scripts/build-database.ts",
-    "blob-manager": "tsx scripts/azure-blob-manager.ts"
+    "blob-manager": "tsx scripts/azure-blob-manager.ts",
+    "select-config": "powershell -ExecutionPolicy Bypass -File scripts/select-xpp-config.ps1"
   },
   "keywords": [
     "mcp",

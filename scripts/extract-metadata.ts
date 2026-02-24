@@ -10,6 +10,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { XppMetadataParser } from '../src/metadata/xmlParser.js';
 import { isCustomModel as checkIsCustomModel, getCustomModels } from '../src/utils/modelClassifier.js';
+import { XppConfigProvider } from '../src/utils/xppConfigProvider.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -129,7 +130,31 @@ async function countModelXmlFiles(modelPath: string): Promise<number> {
 async function extractMetadata() {
   const extractionStart = Date.now();
   console.log('🔍 X++ Metadata Extraction');
-  console.log(`📂 Source: ${PACKAGES_PATH}`);
+
+  // Build list of metadata root paths to scan
+  // Priority: XPP config auto-detection > PACKAGES_PATH fallback
+  const metadataRoots: string[] = [];
+  let customRoot: string | null = null; // UDE: path whose models are all "custom"
+  const devEnvType = process.env.DEV_ENVIRONMENT_TYPE || 'auto';
+  if (devEnvType !== 'traditional') {
+    const xppProvider = new XppConfigProvider();
+    const configName = process.env.XPP_CONFIG_NAME || undefined;
+    const xppConfig = await xppProvider.getActiveConfig(configName);
+    if (xppConfig) {
+      console.log(`[UDE] XPP config: ${xppConfig.configName} v${xppConfig.version}`);
+      customRoot = xppConfig.customPackagesPath;
+      metadataRoots.push(xppConfig.customPackagesPath);
+      console.log(`[UDE] Custom packages path: ${xppConfig.customPackagesPath}`);
+      metadataRoots.push(xppConfig.microsoftPackagesPath);
+      console.log(`[UDE] Microsoft packages path: ${xppConfig.microsoftPackagesPath}`);
+    }
+  }
+  // Fallback: traditional single path
+  if (metadataRoots.length === 0) {
+    metadataRoots.push(PACKAGES_PATH);
+  }
+
+  console.log(`📂 Source: ${metadataRoots.join(', ')}`);
   console.log(`📁 Output: ${OUTPUT_PATH}`);
   console.log(`🎯 Extract Mode: ${EXTRACT_MODE}`);
   
@@ -203,47 +228,81 @@ async function extractMetadata() {
     }
   }
 
-  // Determine which packages to process
-  let packagesToProcess: string[] = [];
-  
+  // Determine which packages to process (with their root paths)
+  // Each entry maps package name -> root path it was found in
+  const packageRootMap: Map<string, string> = new Map();
+
   if (MODELS_TO_EXTRACT.length > 0) {
-    // Explicit list provided - resolve to actual names (case-insensitive)
+    // Explicit list provided - resolve to actual names (case-insensitive) across all roots
+    for (const root of metadataRoots) {
+      for (const modelName of MODELS_TO_EXTRACT) {
+        const actualName = await findActualDirectoryName(root, modelName);
+        if (actualName && !packageRootMap.has(actualName)) {
+          packageRootMap.set(actualName, root);
+        }
+      }
+    }
+    // Warn about models not found in any root
     for (const modelName of MODELS_TO_EXTRACT) {
-      const actualName = await findActualDirectoryName(PACKAGES_PATH, modelName);
-      if (actualName) {
-        packagesToProcess.push(actualName);
-      } else {
+      const found = [...packageRootMap.keys()].some(
+        pkg => pkg.toLowerCase() === modelName.toLowerCase()
+      );
+      if (!found) {
         console.warn(`⚠️  Model not found: ${modelName}`);
       }
     }
   } else {
-    // Scan all packages (including symbolic links)
-    const allPackages = await fs.readdir(PACKAGES_PATH, { withFileTypes: true });
-    const allPackageNames = allPackages
-      .filter(e => e.isDirectory() || e.isSymbolicLink())
-      .map(e => e.name);
-    
-    // Apply filtering based on mode
+    // Scan all packages (including symbolic links) across all roots
+    let totalAllPackageNames = 0;
+    for (const root of metadataRoots) {
+      const allPackages = await fs.readdir(root, { withFileTypes: true });
+      const allPackageNames = allPackages
+        .filter(e => e.isDirectory() || e.isSymbolicLink())
+        .map(e => e.name);
+      totalAllPackageNames += allPackageNames.length;
+
+      // Apply filtering based on mode
+      // In UDE mode, use path-based detection: customRoot = custom, everything else = standard
+      // Falls back to CUSTOM_MODELS / EXTENSION_PREFIX for traditional environments
+      let filteredPackages: string[];
+      if (FILTER_MODE === 'custom-only') {
+        if (customRoot) {
+          filteredPackages = root === customRoot ? allPackageNames : [];
+        } else {
+          filteredPackages = allPackageNames.filter(pkg => isCustomModel(pkg));
+        }
+      } else if (FILTER_MODE === 'standard-only') {
+        if (customRoot) {
+          filteredPackages = root === customRoot ? [] : allPackageNames;
+        } else {
+          filteredPackages = allPackageNames.filter(pkg => !isCustomModel(pkg));
+        }
+      } else {
+        filteredPackages = allPackageNames;
+      }
+
+      for (const pkg of filteredPackages) {
+        if (!packageRootMap.has(pkg)) {
+          packageRootMap.set(pkg, root);
+        }
+      }
+    }
+
+    const packagesToProcessCount = packageRootMap.size;
     if (FILTER_MODE === 'custom-only') {
-      // Keep only custom models (defined in CUSTOM_MODELS or with EXTENSION_PREFIX)
-      packagesToProcess = allPackageNames.filter(pkg => isCustomModel(pkg));
-      console.log(`📦 Found ${formatCount(packagesToProcess.length)} custom packages to process (${formatCount(allPackageNames.length - packagesToProcess.length)} standard models excluded)`);
+      console.log(`📦 Found ${formatCount(packagesToProcessCount)} custom packages to process (${formatCount(totalAllPackageNames - packagesToProcessCount)} standard models excluded)`);
     } else if (FILTER_MODE === 'standard-only') {
-      // Keep only standard models (exclude custom)
-      packagesToProcess = allPackageNames.filter(pkg => !isCustomModel(pkg));
-      console.log(`📦 Found ${formatCount(packagesToProcess.length)} standard packages to process (${formatCount(allPackageNames.length - packagesToProcess.length)} custom models excluded)`);
+      console.log(`📦 Found ${formatCount(packagesToProcessCount)} standard packages to process (${formatCount(totalAllPackageNames - packagesToProcessCount)} custom models excluded)`);
     } else {
-      // Process all packages
-      packagesToProcess = allPackageNames;
-      console.log(`📦 Found ${formatCount(packagesToProcess.length)} packages to process`);
+      console.log(`📦 Found ${formatCount(packagesToProcessCount)} packages to process`);
     }
   }
 
   const modelWorkItems: ModelWorkItem[] = [];
 
   // Build model worklist first to enable accurate progress percentages
-  for (const packageName of packagesToProcess) {
-    const packagePath = path.join(PACKAGES_PATH, packageName);
+  for (const [packageName, rootPath] of packageRootMap) {
+    const packagePath = path.join(rootPath, packageName);
 
     try {
       await fs.access(packagePath);

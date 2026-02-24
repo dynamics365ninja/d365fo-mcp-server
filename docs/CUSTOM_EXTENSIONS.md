@@ -4,6 +4,8 @@ This guide explains how to extract and index custom X++ extensions/ISV models.
 
 ## Configuration
 
+### Traditional
+
 Add to your `.env` file:
 
 ```env
@@ -21,6 +23,10 @@ EXTRACT_MODE=all
 ```
 
 **Note**: Custom models are defined in `CUSTOM_MODELS` environment variable. All other models are automatically considered Microsoft standard models. This approach automatically adapts to new D365 versions without maintaining a static list.
+
+### UDE (Unified Developer Experience)
+
+In UDE environments, custom models are **auto-detected** from the custom packages path (`ModelStoreFolder` in your XPP config). You do not need to set `CUSTOM_MODELS` — everything under the custom root is treated as custom, everything under the Microsoft root is standard.
 
 ## Extract Custom Extensions Only
 

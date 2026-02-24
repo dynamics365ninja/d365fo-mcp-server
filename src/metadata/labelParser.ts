@@ -264,95 +264,84 @@ export async function indexAllLabels(
   const verboseDebug = process.env.DEBUG_LABELS === 'true';
   let processedModels = 0;
 
-  for (const model of models) {
-    if (modelFilter && !modelFilter(model)) {
+  for (const packageOrModel of models) {
+    if (modelFilter && !modelFilter(packageOrModel)) {
       skippedByFilter++;
       continue;
     }
 
-    // Try multiple possible structures:
-    // 1. AOT nested structure: {packagesPath}/{lowercase-package}/{ProperCase-Model}/AxLabelFile
-    //    Example: PackagesLocalDirectory/accountspayablemobile/AccountsPayableMobile/AxLabelFile
-    // 2. Legacy nested structure: {packagesPath}/{Model}/{Model}/AxLabelFile
-    // 3. Git source structure: {packagesPath}/{Model}/AxLabelFile
-    
-    let modelDir: string | null = null;
-    let usedNestedStructure = false;
-    
-    // First try: Look for ProperCase model folder inside lowercase package folder
-    const packageDir = path.join(packagesPath, model);
+    const packageDir = path.join(packagesPath, packageOrModel);
+
+    // Find all model subdirectories that contain AxLabelFile.
+    // In UDE, a package (top-level dir) can contain multiple model subdirectories,
+    // each with its own AxLabelFile directory.
+    const modelDirs: { modelDir: string; modelName: string }[] = [];
+
     try {
       const subDirs = fsSync.readdirSync(packageDir, { withFileTypes: true })
         .filter(e => e.isDirectory() || e.isSymbolicLink())
-        .map(e => e.name);
-      
-      // Find subdirectory that matches model name (case-insensitive)
-      const properCaseModel = subDirs.find(d => d.toLowerCase() === model.toLowerCase());
-      if (properCaseModel) {
-        const candidateDir = path.join(packageDir, properCaseModel);
-        // Verify AxLabelFile exists (case-insensitive)
+        .map(e => e.name)
+        .filter(n => n !== 'Descriptor' && n !== 'bin' && !n.startsWith('.'));
+
+      for (const subDir of subDirs) {
+        const candidateDir = path.join(packageDir, subDir);
         const axLabelDirOriginal = path.join(candidateDir, 'AxLabelFile');
         const axLabelDirLower = path.join(candidateDir, 'axlabelfile');
         if (fsSync.existsSync(axLabelDirOriginal) || fsSync.existsSync(axLabelDirLower)) {
-          modelDir = candidateDir;
-          usedNestedStructure = true;
+          modelDirs.push({ modelDir: candidateDir, modelName: subDir });
         }
       }
     } catch {
-      // Directory not readable, try other structures
+      // Directory not readable
     }
-    
-    // Second try: Legacy structure {Model}/{Model}
-    if (!modelDir) {
-      const legacyDir = path.join(packagesPath, model, model);
-      if (fsSync.existsSync(legacyDir)) {
-        modelDir = legacyDir;
-        usedNestedStructure = true;
+
+    // Fallback: flat structure (no model subdirectory with AxLabelFile found)
+    // This covers the Git source structure where AxLabelFile is directly in the top-level dir
+    if (modelDirs.length === 0) {
+      const flatAxLabel = path.join(packageDir, 'AxLabelFile');
+      const flatAxLabelLower = path.join(packageDir, 'axlabelfile');
+      if (fsSync.existsSync(flatAxLabel) || fsSync.existsSync(flatAxLabelLower)) {
+        modelDirs.push({ modelDir: packageDir, modelName: packageOrModel });
       }
     }
-    
-    // Third try: Flat structure (Git source)
-    if (!modelDir) {
-      const flatDir = path.join(packagesPath, model);
-      if (fsSync.existsSync(flatDir)) {
-        modelDir = flatDir;
-        usedNestedStructure = false;
-      }
-    }
-    
-    if (!modelDir) {
+
+    if (modelDirs.length === 0) {
       skippedMissingDir++;
       continue;
     }
 
-    processedModels++;
-    // Enable verbose for first 3 models or when DEBUG_LABELS=true
-    const enableVerbose = verboseDebug || processedModels <= 3;
-    
-    if (enableVerbose && processedModels === 1) {
-      console.log(`   📁 Using ${usedNestedStructure ? 'nested' : 'flat'} structure`);
-      // Show which case was detected
-      const axLabelOriginal = path.join(modelDir, 'AxLabelFile');
-      const axLabelLower = path.join(modelDir, 'axlabelfile');
-      if (fsSync.existsSync(axLabelOriginal)) {
-        console.log(`   📁 Case: Windows (AxLabelFile with capital letters)`);
-      } else if (fsSync.existsSync(axLabelLower)) {
-        console.log(`   📁 Case: Linux (axlabelfile lowercase) - using case-insensitive matching`);
-      }
-    }
+    // Process each model directory found within this package
+    for (const { modelDir, modelName } of modelDirs) {
+      processedModels++;
+      // Enable verbose for first 3 models or when DEBUG_LABELS=true
+      const enableVerbose = verboseDebug || processedModels <= 3;
 
-    // Skip per-model FTS rebuild; do a single rebuild after all models are indexed
-    const count = await indexModelLabels(symbolIndex, modelDir, model, { skipFtsRebuild: true, verbose: enableVerbose });
-    if (count > 0) {
-      totalLabels += count;
-      modelsIndexed++;
-      if (enableVerbose) {
-        console.log(`      ✓ ${model}: ${count} labels`);
+      if (enableVerbose && processedModels === 1) {
+        const isNested = modelDirs.length > 1 || modelName !== packageOrModel;
+        console.log(`   📁 Using ${isNested ? 'nested' : 'flat'} structure`);
+        // Show which case was detected
+        const axLabelOriginal = path.join(modelDir, 'AxLabelFile');
+        const axLabelLower = path.join(modelDir, 'axlabelfile');
+        if (fsSync.existsSync(axLabelOriginal)) {
+          console.log(`   📁 Case: Windows (AxLabelFile with capital letters)`);
+        } else if (fsSync.existsSync(axLabelLower)) {
+          console.log(`   📁 Case: Linux (axlabelfile lowercase) - using case-insensitive matching`);
+        }
       }
-    } else {
-      skippedNoLabels++;
-      if (enableVerbose) {
-        console.log(`      ✗ ${model}: no labels found`);
+
+      // Skip per-model FTS rebuild; do a single rebuild after all models are indexed
+      const count = await indexModelLabels(symbolIndex, modelDir, modelName, { skipFtsRebuild: true, verbose: enableVerbose });
+      if (count > 0) {
+        totalLabels += count;
+        modelsIndexed++;
+        if (enableVerbose) {
+          console.log(`      ✓ ${modelName}: ${count} labels`);
+        }
+      } else {
+        skippedNoLabels++;
+        if (enableVerbose) {
+          console.log(`      ✗ ${modelName}: no labels found`);
+        }
       }
     }
   }

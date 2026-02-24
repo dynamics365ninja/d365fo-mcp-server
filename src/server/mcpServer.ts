@@ -495,6 +495,10 @@ EXAMPLES:
                 type: 'string',
                 description: 'Model name (e.g., ContosoExtensions, ApplicationSuite)'
               },
+              packageName: {
+                type: 'string',
+                description: 'Package name (e.g., CustomExtensions, ApplicationSuite). Auto-resolved from model name if omitted. Required when package name differs from model name.',
+              },
               packagePath: {
                 type: 'string',
                 description: 'Base package path (default: K:\\AosService\\PackagesLocalDirectory)'
@@ -667,6 +671,10 @@ Examples:
               modelName: {
                 type: 'string',
                 description: 'Model name (auto-detected if not provided)'
+              },
+              packageName: {
+                type: 'string',
+                description: 'Package name. Auto-resolved if omitted.',
               },
               workspacePath: {
                 type: 'string',
@@ -1031,6 +1039,10 @@ Examples:
                 type: 'string',
                 description: 'Model name that owns the label file (e.g. AslCore)',
               },
+              packageName: {
+                type: 'string',
+                description: 'Package name for the model. Auto-resolved if omitted.',
+              },
               translations: {
                 type: 'array',
                 description: 'Translations for each language. Provide at least en-US.',
@@ -1050,7 +1062,7 @@ Examples:
               },
               packagePath: {
                 type: 'string',
-                description: 'PackagesLocalDirectory path (default: K:\\AosService\\PackagesLocalDirectory)',
+                description: 'Root packages path. Auto-detected from environment config if omitted.',
               },
               createLabelFileIfMissing: {
                 type: 'boolean',

@@ -7,12 +7,16 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { autoDetectD365Project, type D365ProjectInfo } from './workspaceDetector.js';
 import { registerCustomModel } from './modelClassifier.js';
+import { XppConfigProvider, type XppEnvironmentConfig } from './xppConfigProvider.js';
 
 export interface McpContext {
   workspacePath?: string;
   packagePath?: string;
+  customPackagesPath?: string;      // UDE: custom X++ root (ModelStoreFolder)
+  microsoftPackagesPath?: string;   // UDE: Microsoft X++ root (FrameworkDirectory)
   projectPath?: string;
   solutionPath?: string;
+  devEnvironmentType?: 'auto' | 'traditional' | 'ude';
 }
 
 export interface McpConfig {
@@ -30,6 +34,9 @@ class ConfigManager {
   private autoDetectionAttempted: boolean = false;
   // Cache auto-detection results per workspace path (PERFORMANCE FIX)
   private autoDetectionCache = new Map<string, D365ProjectInfo | null>();
+  private xppConfigProvider: XppConfigProvider | null = null;
+  private xppConfig: XppEnvironmentConfig | null = null;
+  private xppConfigLoaded: boolean = false;
 
   constructor(configPath?: string) {
     // Default to .mcp.json in current directory or parent directories
@@ -306,6 +313,59 @@ class ConfigManager {
     }
 
     return this.autoDetectedProject?.modelName || null;
+  }
+
+  /**
+   * Get the resolved dev environment type.
+   * Priority: 1) Explicit env var 2) .mcp.json context 3) Auto-detect
+   */
+  async getDevEnvironmentType(): Promise<'traditional' | 'ude'> {
+    const explicit = process.env.DEV_ENVIRONMENT_TYPE || this.getContext()?.devEnvironmentType;
+    if (explicit === 'ude') return 'ude';
+    if (explicit === 'traditional') return 'traditional';
+
+    // Auto-detect: check if XPP configs exist
+    await this.ensureXppConfig();
+    return this.xppConfig ? 'ude' : 'traditional';
+  }
+
+  /**
+   * Get the custom packages path (UDE: ModelStoreFolder).
+   */
+  async getCustomPackagesPath(): Promise<string | null> {
+    // Priority 1: .mcp.json context
+    const ctx = this.getContext();
+    if (ctx?.customPackagesPath) return ctx.customPackagesPath;
+    // Priority 2: XPP config auto-detection
+    await this.ensureXppConfig();
+    return this.xppConfig?.customPackagesPath || null;
+  }
+
+  /**
+   * Get the Microsoft packages path (UDE: FrameworkDirectory).
+   */
+  async getMicrosoftPackagesPath(): Promise<string | null> {
+    // Priority 1: .mcp.json context
+    const ctx = this.getContext();
+    if (ctx?.microsoftPackagesPath) return ctx.microsoftPackagesPath;
+    // Priority 2: XPP config auto-detection
+    await this.ensureXppConfig();
+    return this.xppConfig?.microsoftPackagesPath || null;
+  }
+
+  private async ensureXppConfig(): Promise<void> {
+    if (this.xppConfigLoaded) return;
+    this.xppConfigLoaded = true;
+
+    this.xppConfigProvider = new XppConfigProvider();
+    const configName = process.env.XPP_CONFIG_NAME || undefined;
+    this.xppConfig = await this.xppConfigProvider.getActiveConfig(configName);
+
+    if (this.xppConfig) {
+      console.error(`[ConfigManager] XPP config loaded: ${this.xppConfig.configName} v${this.xppConfig.version}`);
+      console.error(`   Custom packages: ${this.xppConfig.customPackagesPath}`);
+      console.error(`   Microsoft packages: ${this.xppConfig.microsoftPackagesPath}`);
+    }
   }
 }
 

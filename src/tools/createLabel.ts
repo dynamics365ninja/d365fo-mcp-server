@@ -18,6 +18,8 @@ import type { XppServerContext } from '../types/context.js';
 import type { XppSymbolIndex } from '../metadata/symbolIndex.js';
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import { getConfigManager } from '../utils/configManager.js';
+import { PackageResolver } from '../utils/packageResolver.js';
 
 // ── Input schema ─────────────────────────────────────────────────────────────
 
@@ -40,6 +42,10 @@ const CreateLabelArgsSchema = z.object({
   model: z
     .string()
     .describe('Model name that owns the label file (e.g. AslCore, MyExtensions)'),
+  packageName: z
+    .string()
+    .optional()
+    .describe('Package name for the model. Auto-resolved if omitted.'),
   translations: z
     .array(TranslationSchema)
     .min(1)
@@ -54,8 +60,7 @@ const CreateLabelArgsSchema = z.object({
   packagePath: z
     .string()
     .optional()
-    .default('K:\\AosService\\PackagesLocalDirectory')
-    .describe('Root packages path (default: K:\\AosService\\PackagesLocalDirectory)'),
+    .describe('Root packages path. Auto-detected from environment config if omitted.'),
   createLabelFileIfMissing: z
     .boolean()
     .optional()
@@ -151,7 +156,41 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     const { symbolIndex } = context;
 
     // 1. Resolve model directory
-    const modelDir = path.join(packagePath, model, model);
+    // Package name can differ from model name in any environment (not just UDE).
+    const configManager = getConfigManager();
+    const envType = await configManager.getDevEnvironmentType();
+
+    let resolvedPackagePath: string;
+    let resolvedPackageName: string;
+
+    if (args.packageName) {
+      // Explicit packageName always wins, regardless of environment type
+      resolvedPackageName = args.packageName;
+      if (envType === 'ude') {
+        const customPath = await configManager.getCustomPackagesPath();
+        resolvedPackagePath = packagePath || customPath || configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+      } else {
+        resolvedPackagePath = packagePath || configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+      }
+    } else if (envType === 'ude') {
+      // UDE mode: auto-resolve package name via descriptor scan
+      const customPath = await configManager.getCustomPackagesPath();
+      const msPath = await configManager.getMicrosoftPackagesPath();
+      const roots = [customPath, msPath].filter(Boolean) as string[];
+
+      resolvedPackagePath = packagePath || customPath || 'K:\\AosService\\PackagesLocalDirectory';
+
+      const resolver = new PackageResolver(roots);
+      const resolved = await resolver.resolve(model);
+      resolvedPackageName = resolved?.packageName || model;
+      if (resolved?.rootPath) resolvedPackagePath = resolved.rootPath;
+    } else {
+      // Traditional mode without explicit packageName: assume package == model
+      resolvedPackagePath = packagePath || configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+      resolvedPackageName = model;
+    }
+
+    const modelDir = path.join(resolvedPackagePath, resolvedPackageName, model);
     const axLabelDir = path.join(modelDir, 'AxLabelFile');
     const labelResourcesDir = path.join(axLabelDir, 'LabelResources');
 

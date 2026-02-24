@@ -103,6 +103,7 @@ export class XppSymbolIndex {
       signature: row.signature || undefined,
       filePath: row.file_path,
       model: row.model,
+      packageName: row.package_name || row.model,
       description: row.description || undefined,
       tags: row.tags || undefined,
       sourceSnippet: row.source_snippet || undefined,
@@ -144,6 +145,7 @@ export class XppSymbolIndex {
         signature TEXT,
         file_path TEXT NOT NULL,
         model TEXT NOT NULL,
+        package_name TEXT,
         description TEXT,
         tags TEXT,
         source_snippet TEXT,
@@ -170,6 +172,7 @@ export class XppSymbolIndex {
         (this.db.pragma('table_info(symbols)') as Array<{ name: string }>).map(r => r.name)
       );
       const newCols: Array<[string, string]> = [
+        ['package_name', 'TEXT'],
         ['description', 'TEXT'],
         ['tags', 'TEXT'],
         ['source_snippet', 'TEXT'],
@@ -348,12 +351,12 @@ export class XppSymbolIndex {
     if (!stmt) {
       stmt = this.db.prepare(`
         INSERT OR REPLACE INTO symbols (
-          name, type, parent_name, signature, file_path, model,
+          name, type, parent_name, signature, file_path, model, package_name,
           description, tags, source_snippet, complexity, used_types, method_calls,
           inline_comments, extends_class, implements_interfaces, usage_example,
           usage_frequency, pattern_type, typical_usages, called_by_count, related_methods, api_patterns
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       this.stmtCache.set('addSymbol', stmt);
     }
@@ -365,6 +368,7 @@ export class XppSymbolIndex {
       symbol.signature || null,
       symbol.filePath,
       symbol.model,
+      symbol.packageName || symbol.model,
       symbol.description || null,
       symbol.tags || null,
       symbol.sourceSnippet || null,

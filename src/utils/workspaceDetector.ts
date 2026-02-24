@@ -14,6 +14,7 @@ export interface D365ProjectInfo {
   solutionPath?: string;
   /** Base PackagesLocalDirectory path, if known */
   packagePath?: string;
+  packageName?: string;     // Package containing this model (may differ from model name in UDE)
 }
 
 /**
@@ -185,6 +186,22 @@ export async function autoDetectD365Project(
   // e.g. K:\AOSService\PackagesLocalDirectory\AslEnhancedDataSharing → modelName: "AslEnhancedDataSharing"
   if (explicitWorkspacePath) {
     const normalized = path.normalize(explicitWorkspacePath);
+
+    // Also try: K:\...\PackagesLocalDirectory\PackageName\ModelName
+    const twoLevelMatch = normalized.match(
+      /^(.+[\\\/]PackagesLocalDirectory)[\\\/]([^\\\/]+)[\\\/]([^\\\/]+)\\?\/?$/i
+    );
+    if (twoLevelMatch) {
+      const packagePath = twoLevelMatch[1];
+      const packageName = twoLevelMatch[2];
+      const modelName = twoLevelMatch[3];
+      return {
+        modelName,
+        packageName,
+        packagePath,
+      };
+    }
+
     const match = normalized.match(/^(.+[\\]PackagesLocalDirectory)[\\]([^\\]+)\\?$/i);
     if (match) {
       const packagePath = match[1];

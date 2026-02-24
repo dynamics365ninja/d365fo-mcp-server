@@ -26,7 +26,9 @@ Complete guide for installing and deploying the D365 F&O MCP Server.
 - **Azure Cache for Redis** — optional, speeds up repeated queries
 
 ### D365FO Access
-- A D365FO development environment with PackagesLocalDirectory, or
+
+- A D365FO development environment with PackagesLocalDirectory (traditional), or
+- A UDE environment with Power Platform Tools in VS2022 (custom + Microsoft metadata roots), or
 - A metadata export from your D365FO environment
 
 ---
@@ -52,28 +54,26 @@ copy .env.example .env
 Key settings in `.env`:
 
 ```env
-# Path to your D365FO packages
+# Environment type: auto (default), traditional, ude
+DEV_ENVIRONMENT_TYPE=auto
+
+# --- Traditional ---
 PACKAGES_PATH=C:/AosService/PackagesLocalDirectory
-
-# Your custom model names (comma-separated)
 CUSTOM_MODELS=YourModel1,YourModel2
-EXTENSION_PREFIX=YourCompanyPrefix
 
-# Where to store the databases (dual-database architecture)
-DB_PATH=./data/xpp-metadata.db                 # Symbols database (~1-1.5 GB)
-LABELS_DB_PATH=./data/xpp-metadata-labels.db   # Labels database (~500 MB for 4 languages, up to 8 GB for all 70)
+# --- UDE (Unified Developer Experience) ---
+# Leave XPP_CONFIG_NAME empty to auto-select newest config
+# Tip: run  npm run select-config  to pick interactively
+# XPP_CONFIG_NAME=
 
-# Languages to index from AxLabelFile (reduces labels DB size)
-# Default: en-US,cs,sk,de (4 languages)
-# Use 'all' for all 70+ languages (database will be 8+ GB)
-LABEL_LANGUAGES=en-US,cs,sk,de
+# --- Database ---
+DB_PATH=./data/xpp-metadata.db                 # Symbols (~1-1.5 GB)
+LABELS_DB_PATH=./data/xpp-metadata-labels.db   # Labels (~500 MB for 4 languages)
+LABEL_LANGUAGES=en-US,cs,sk,de                 # Reduce with fewer languages
 
-# Azure Blob Storage (only needed for cloud sync)
-AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...
-BLOB_CONTAINER_NAME=xpp-metadata
-
-# Redis (optional — leave disabled for local use)
-REDIS_ENABLED=false
+# --- Cloud (optional) ---
+# AZURE_STORAGE_CONNECTION_STRING=...
+# REDIS_ENABLED=false
 ```
 
 ### 3. Extract Metadata
@@ -285,9 +285,10 @@ npm rebuild better-sqlite3
 ```
 
 ### No metadata found after extraction
-- Check that `PACKAGES_PATH` points to a directory containing XML model files
-- Check that your model names in `CUSTOM_MODELS` match the actual folder names exactly
-- Verify file permissions on PackagesLocalDirectory
+
+- **Traditional:** Check that `PACKAGES_PATH` points to a directory containing XML model files and that `CUSTOM_MODELS` matches the actual folder names exactly
+- **UDE:** Run `npm run select-config` to verify the correct XPP config is active and that the custom/Microsoft package paths exist
+- Verify file permissions on the packages directory
 
 ### Slow response times on Azure
 1. Enable Redis: set `REDIS_ENABLED=true` and configure `REDIS_URL`

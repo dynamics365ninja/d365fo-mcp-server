@@ -131,6 +131,7 @@ export interface XppSymbol {
   signature?: string;
   filePath: string;
   model: string;
+  packageName?: string;            // Package that contains this model (may differ from model)
   // Enhanced metadata for better Copilot integration
   description?: string;         // Human-readable description
   tags?: string;                // Comma-separated tags (stored as TEXT in SQLite)

@@ -59,6 +59,9 @@ Thumbs.db
 coverage/
 .nyc_output/
 
+# Internal planning docs
+docs/plans/
+
 # Misc
 .cache/
 deployment.zip

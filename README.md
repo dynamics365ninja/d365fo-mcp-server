@@ -93,6 +93,7 @@ npm install
 # 3. Configure environment variables
 copy .env.example .env
 # Edit .env with your paths and settings
+# UDE users: run  npm run select-config  to pick your XPP config
 
 # 4. Extract D365FO metadata
 npm run extract-metadata

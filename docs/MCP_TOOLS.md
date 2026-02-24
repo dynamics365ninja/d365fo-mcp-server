@@ -305,12 +305,17 @@ always ends up in your custom model, not a Microsoft standard model.
 
 Optionally adds the file to your Visual Studio project in one step.
 
-**Requires:** MCP server running on a local Windows machine with K:\ drive access.
+When the package name differs from the model name, pass `packageName` explicitly
+(e.g., `CustomExtensions`). In UDE environments, the server resolves it automatically
+from descriptor XML files. In traditional environments, it defaults to the model name.
+
+**Requires:** MCP server running on a local Windows machine with file system access.
 
 **Examples:**
 ```
 Create a class MyHelper and add it to my project
 Create a table extension for InventTable in my model
+Create a class in the CustomExtensions package, Contoso Utilities model
 ```
 
 ---
@@ -327,12 +332,17 @@ Use this when the MCP server is hosted in Azure and does not have local file sys
 ### modify_d365fo_file
 
 Edits an existing D365FO XML file safely:
+
 1. Creates a backup (`.bak`) before touching anything
 2. Makes the change (add/edit/remove a method or field)
 3. Validates that the XML is still well-formed
 4. Rolls back from the backup if anything goes wrong
 
-**Requires:** MCP server running on a local Windows machine with K:\ drive access.
+Supports `packageName` parameter for when the package name differs from the model name.
+In UDE environments this is auto-resolved; in traditional environments it defaults to
+the model name.
+
+**Requires:** MCP server running on a local Windows machine with file system access.
 
 **Examples:**
 ```
@@ -403,7 +413,8 @@ is immediately searchable.
 - `translations` — array of `{ language, text }` objects (required); provide all supported
   languages
 - `defaultComment` — developer comment added to each translation
-- `packagePath` — override K: drive path (default: env `PACKAGES_PATH`)
+- `packageName` — package name for label file location; auto-resolved from model if omitted
+- `packagePath` — override base path (default: auto-detected from environment)
 - `createLabelFileIfMissing` — create AxLabelFile structure from scratch if needed
 - `updateIndex` — immediately update the MCP index (default: `true`)
 
