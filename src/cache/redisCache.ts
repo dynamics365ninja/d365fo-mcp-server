@@ -1,4 +1,4 @@
-import { Redis } from 'ioredis';
+import { Redis, Cluster } from 'ioredis';
 import {
   normalizeQuery,
   extractQueryFromKey,
@@ -18,7 +18,7 @@ import {
  * - Query normalization
  */
 export class RedisCacheService {
-  private client: Redis | null = null;
+  private client: Redis | Cluster | null = null;
   private enabled: boolean = false;
   private defaultTTL: number = 3600; // 1 hour default
   private connectionPromise: Promise<void> | null = null;
@@ -38,20 +38,53 @@ export class RedisCacheService {
 
     if (redisEnabled && redisUrl) {
       try {
-        this.client = new Redis(redisUrl, {
-          retryStrategy: (times: number) => {
-            const delay = Math.min(times * 50, 2000);
-            return delay;
-          },
-          maxRetriesPerRequest: 3,
-          lazyConnect: true, // Don't auto-connect, we'll connect explicitly
-          connectTimeout: 10000, // 10 seconds
-          tls: {
-            rejectUnauthorized: true, // Verify server certificate for production
-          },
-          enableReadyCheck: true,
-          enableOfflineQueue: true,
-        });
+        // REDIS_CLUSTER_MODE=true enables ioredis Cluster client which handles MOVED
+        // redirections automatically. Required for Azure Managed Redis (cluster tier).
+        const clusterMode = process.env.REDIS_CLUSTER_MODE === 'true';
+
+        if (clusterMode) {
+          // Parse the Redis URL to extract connection details for Cluster client
+          const parsed = new URL(redisUrl);
+          const host = parsed.hostname;
+          const port = parseInt(parsed.port || '6380', 10);
+          const password = parsed.password ? decodeURIComponent(parsed.password) : undefined;
+          const useTls = parsed.protocol === 'rediss:';
+
+          console.log(`🔧 Connecting to Redis Cluster at ${host}:${port} (TLS: ${useTls})`);
+
+          this.client = new Cluster(
+            [{ host, port }],
+            {
+              lazyConnect: true,
+              enableReadyCheck: true,
+              slotsRefreshTimeout: 5000,
+              redisOptions: {
+                password,
+                connectTimeout: 10000,
+                maxRetriesPerRequest: 3,
+                enableReadyCheck: true,
+                ...(useTls ? { tls: { rejectUnauthorized: true } } : {}),
+              },
+              retryDelayOnMoved: 100,     // retry after MOVED with 100ms delay
+              retryDelayOnClusterDown: 300,
+            }
+          );
+        } else {
+          this.client = new Redis(redisUrl, {
+            retryStrategy: (times: number) => {
+              const delay = Math.min(times * 50, 2000);
+              return delay;
+            },
+            maxRetriesPerRequest: 3,
+            lazyConnect: true,
+            connectTimeout: 10000,
+            tls: {
+              rejectUnauthorized: true,
+            },
+            enableReadyCheck: true,
+            enableOfflineQueue: true,
+          });
+        }
 
         this.client.on('error', (err: Error) => {
           console.error('Redis connection error:', err);
@@ -64,7 +97,7 @@ export class RedisCacheService {
         });
 
         // Store connection promise
-        this.connectionPromise = this.client.connect().catch((err: Error) => {
+        this.connectionPromise = (this.client as Redis).connect().catch((err: Error) => {
           console.warn('Failed to connect to Redis, caching disabled:', err.message);
           this.enabled = false;
         });

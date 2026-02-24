@@ -113,6 +113,7 @@ rediss://:YOUR_ACCESS_KEY_HERE@d365fo-mcp-cache.redis.cache.windows.net:6380
 ```bash
 REDIS_URL=rediss://:<access-key>@d365fo-mcp-cache.redis.cache.windows.net:6380
 REDIS_ENABLED=true
+REDIS_CLUSTER_MODE=true   # Required for Azure Managed Redis (Enterprise/cluster tier)
 CACHE_TTL=3600
 ```
 
@@ -121,6 +122,7 @@ CACHE_TTL=3600
 2. Add/Update:
    - Name: `REDIS_URL`, Value: `rediss://:<access-key>@d365fo-mcp-cache.redis.cache.windows.net:6380`
    - Name: `REDIS_ENABLED`, Value: `true`
+   - Name: `REDIS_CLUSTER_MODE`, Value: `true`  ← **required if you see `MOVED` errors in logs**
    - Name: `CACHE_TTL`, Value: `3600`
 3. Click **Save**
 4. Restart App Service
@@ -130,6 +132,7 @@ CACHE_TTL=3600
 2. Add/Update in `xpp-mcp-server-config`:
    - `REDIS_URL`: `rediss://:<access-key>@...`
    - `REDIS_ENABLED`: `true`
+   - `REDIS_CLUSTER_MODE`: `true`
 
 ### 5. Test Connection
 
