@@ -1303,8 +1303,12 @@ Examples:
     // Apply server mode filter
     if (SERVER_MODE === 'read-only') {
       allTools.tools = allTools.tools.filter(t => !WRITE_TOOLS.has(t.name));
+      console.error(`[MCP Server] Tool list filtered for read-only mode: ${allTools.tools.length} tools (write tools excluded)`);
     } else if (SERVER_MODE === 'write-only') {
       allTools.tools = allTools.tools.filter(t => WRITE_TOOLS.has(t.name));
+      console.error(`[MCP Server] Tool list filtered for write-only mode: ${allTools.tools.length} tools (${Array.from(WRITE_TOOLS).join(', ')})`);
+    } else {
+      console.error(`[MCP Server] Tool list in full mode: ${allTools.tools.length} tools (no filtering)`);
     }
 
     return allTools;

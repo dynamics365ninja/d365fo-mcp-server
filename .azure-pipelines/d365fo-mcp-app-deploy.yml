@@ -128,7 +128,8 @@ stages:
                     appSettings: |
                       [
                         { "name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "false" },
-                        { "name": "WEBSITE_NODE_DEFAULT_VERSION", "value": "~24" }
+                        { "name": "WEBSITE_NODE_DEFAULT_VERSION", "value": "~24" },
+                        { "name": "MCP_SERVER_MODE", "value": "read-only" }
                       ]
 
                 - task: AzureRmWebAppDeployment@4

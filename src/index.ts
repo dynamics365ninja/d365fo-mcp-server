@@ -70,6 +70,7 @@ const serverState: ServerState = {
 
 async function initializeServices() {
   console.log('🚀 Starting X++ MCP Code Completion Server...');
+  console.log(`🔧 Server mode: ${SERVER_MODE} (from env: ${process.env.MCP_SERVER_MODE || 'not set, defaulting to full'})`);
 
   // -----------------------------------------------------------------------
   // write-only mode: skip all database/symbol work — file-operation tools
@@ -297,6 +298,7 @@ async function main() {
   }
 
   console.log(`📡 Mode: ${isStdioMode ? 'STDIO' : 'HTTP'}`);
+  console.log(`🔧 Server mode: ${SERVER_MODE}`);
 
   if (isStdioMode) {
     // STDIO mode - initialize synchronously before connecting
@@ -305,7 +307,14 @@ async function main() {
     const transport = new StdioServerTransport();
     await mcpServer.connect(transport);
     console.log('✅ Stdio transport connected');
-    console.log('🎯 Registered 29 X++ MCP tools (8 discovery + 3 labels + 5 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis)');
+    
+    // Log actual tool count based on server mode
+    const toolCount = SERVER_MODE === 'write-only' ? 3 : 
+                     SERVER_MODE === 'read-only' ? 26 : 29;
+    const toolDesc = SERVER_MODE === 'write-only' ? '(create_d365fo_file, modify_d365fo_file, create_label)' :
+                    SERVER_MODE === 'read-only' ? '(all except write tools)' :
+                    '(8 discovery + 3 labels + 5 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis)';
+    console.log(`🎯 Registered ${toolCount} X++ MCP tools ${toolDesc}`);
     serverState.isReady = true;
     serverState.isHealthy = true;
     serverState.statusMessage = 'Ready';
@@ -349,6 +358,7 @@ async function main() {
     app.listen(PORT, host, () => {
       console.log(`✅ D365 F&O MCP Server listening on ${host}:${PORT}`);
       console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+      console.log(`🔧 Server mode: ${SERVER_MODE}`);
       console.log('⏳ Initializing services asynchronously...');
     });
 

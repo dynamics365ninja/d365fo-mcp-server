@@ -204,12 +204,41 @@ GitHub Copilot connects to both servers at the same time and selects the right o
 4. When Copilot calls `create_d365fo_file`, it goes to the local server which has K:\ access
 5. When Copilot calls `search`, it goes to the Azure server with the full metadata database
 
+### Verifying the tool filtering
+
+When the server starts, it logs the detected mode and tool count:
+
+**Write-only mode (local companion):**
+```
+🔧 Server mode: write-only (from env: write-only)
+🎯 Registered 3 X++ MCP tools (create_d365fo_file, modify_d365fo_file, create_label)
+[MCP Server] Tool list filtered for write-only mode: 3 tools (create_d365fo_file, modify_d365fo_file, create_label)
+```
+
+**Read-only mode (Azure server):**
+```
+🔧 Server mode: read-only (from env: read-only)
+🎯 Registered 26 X++ MCP tools (all except write tools)
+[MCP Server] Tool list filtered for read-only mode: 26 tools (write tools excluded)
+```
+
+**Full mode (local development):**
+```
+🔧 Server mode: full (from env: not set, defaulting to full)
+🎯 Registered 29 X++ MCP tools (8 discovery + 3 labels + 5 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis)
+[MCP Server] Tool list in full mode: 29 tools (no filtering)
+```
+
 > **Note:** The local server in `write-only` mode still needs access to the metadata database
 > (for path resolution and model detection), but it doesn't need Redis or Azure Blob Storage.
 
 ### Azure App Service settings for read-only mode
 
-In your Azure App Service configuration, add:
+The `MCP_SERVER_MODE=read-only` environment variable is **automatically set** when deploying via:
+- The Bicep infrastructure template (`infrastructure/main.bicep`)
+- The Azure DevOps deployment pipeline (`.azure-pipelines/d365fo-mcp-app-deploy.yml`)
+
+If you're deploying manually or through a different method, ensure you add this setting in your Azure App Service configuration:
 
 ```
 MCP_SERVER_MODE=read-only
