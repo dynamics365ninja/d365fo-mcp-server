@@ -15,7 +15,7 @@ import { WorkspaceScanner } from './workspace/workspaceScanner.js';
 import { HybridSearch } from './workspace/hybridSearch.js';
 import { initializeDatabase } from './database/download.js';
 import { initializeConfig } from './utils/configManager.js';
-import { SERVER_MODE } from './server/serverMode.js';
+import { SERVER_MODE, WRITE_TOOLS } from './server/serverMode.js';
 import * as fs from 'fs/promises';
 
 // Filter debug logs unless DEBUG_LOGGING is enabled
@@ -309,9 +309,11 @@ async function main() {
     console.log('✅ Stdio transport connected');
     
     // Log actual tool count based on server mode
-    const toolCount = SERVER_MODE === 'write-only' ? 3 : 
-                     SERVER_MODE === 'read-only' ? 26 : 29;
-    const toolDesc = SERVER_MODE === 'write-only' ? '(create_d365fo_file, modify_d365fo_file, create_label)' :
+    const totalTools = 29;
+    const writeToolCount = WRITE_TOOLS.size;
+    const toolCount = SERVER_MODE === 'write-only' ? writeToolCount :
+                     SERVER_MODE === 'read-only' ? totalTools - writeToolCount : totalTools;
+    const toolDesc = SERVER_MODE === 'write-only' ? `(${Array.from(WRITE_TOOLS).join(', ')})` :
                     SERVER_MODE === 'read-only' ? '(all except write tools)' :
                     '(8 discovery + 3 labels + 5 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis)';
     console.log(`🎯 Registered ${toolCount} X++ MCP tools ${toolDesc}`);
@@ -363,49 +365,74 @@ async function main() {
       console.log(`🏥 Health check: http://localhost:${PORT}/health`);
       console.log(`🔧 Server mode: ${SERVER_MODE}`);
       console.log('');
-      console.log('🎯 Available tools (29 total):');
-      console.log('   🔍 Search & Discovery (8):');
-      console.log('   - search              Search 584K+ D365FO symbols by name or keyword');
-      console.log('   - batch_search        Execute multiple searches in parallel (3x faster)');
-      console.log('   - search_extensions   Search only custom/ISV models (filters out standard code)');
-      console.log('   - get_class_info      Full class: all methods with source, inheritance, attributes');
-      console.log('   - get_table_info      Full table: fields, indexes, relations, methods');
-      console.log('   - get_enum_info       Enum values with integer values and labels');
-      console.log('   - get_edt_info        Extended Data Type: base type, labels, properties');
-      console.log('   - code_completion     IntelliSense-style method/field listing on any object');
-      console.log('');
-      console.log('   🏷️  Label Management (3):');
-      console.log('   - search_labels       Full-text search across all AxLabelFile labels');
-      console.log('   - get_label_info      Get all language translations for a label ID');
-      console.log('   - create_label        Add new label to all language files in a model');
-      console.log('');
-      console.log('   📊 Advanced Object Info (5):');
-      console.log('   - get_form_info       Form datasources, control hierarchy, and methods');
-      console.log('   - get_query_info      Query datasources, joins, field lists, and ranges');
-      console.log('   - get_view_info       View/data entity fields, relations, computed columns');
-      console.log('   - get_method_signature  Exact method signature (required before CoC extensions)');
-      console.log('   - find_references     Where-used analysis across the entire codebase');
-      console.log('');
-      console.log('   🧠 Intelligent Code Generation (4):');
-      console.log('   - analyze_code_patterns         Find common patterns used in a scenario');
-      console.log('   - suggest_method_implementation Real examples of similar method implementations');
-      console.log('   - analyze_class_completeness    Find missing standard methods on a class');
-      console.log('   - get_api_usage_patterns        Show how an API is initialized and called');
-      console.log('');
-      console.log('   🎨 Smart Object Generation (3):');
-      console.log('   - generate_smart_table  AI-driven table generation with pattern analysis');
-      console.log('   - generate_smart_form   AI-driven form generation with pattern analysis');
-      console.log('   - suggest_edt           Suggest EDT for field name using fuzzy matching');
-      console.log('');
-      console.log('   📝 File & Metadata Operations (3):');
-      console.log('   - generate_d365fo_xml  Generate D365FO XML content (preview / cloud-ready)');
-      console.log('   - create_d365fo_file   Create D365FO file in correct AOT location (Windows)');
-      console.log('   - modify_d365fo_file   Safely edit D365FO XML with backup & rollback (Windows)');
-      console.log('');
-      console.log('   📈 Pattern Analysis (3):');
-      console.log('   - get_table_patterns   Analyze common field/index patterns for table groups');
-      console.log('   - get_form_patterns    Analyze common datasource/control patterns for forms');
-      console.log('   - generate_code        Generate X++ boilerplate (class, batch-job, data-entity, …)');
+
+      const toolCatalog = [
+        { icon: '🔍', category: 'Search & Discovery', tools: [
+          { name: 'search',                       desc: 'Search 584K+ D365FO symbols by name or keyword' },
+          { name: 'batch_search',                 desc: 'Execute multiple searches in parallel (3x faster)' },
+          { name: 'search_extensions',            desc: 'Search only custom/ISV models (filters out standard code)' },
+          { name: 'get_class_info',               desc: 'Full class: all methods with source, inheritance, attributes' },
+          { name: 'get_table_info',               desc: 'Full table: fields, indexes, relations, methods' },
+          { name: 'get_enum_info',                desc: 'Enum values with integer values and labels' },
+          { name: 'get_edt_info',                 desc: 'Extended Data Type: base type, labels, properties' },
+          { name: 'code_completion',              desc: 'IntelliSense-style method/field listing on any object' },
+        ]},
+        { icon: '🏷️ ', category: 'Label Management', tools: [
+          { name: 'search_labels',                desc: 'Full-text search across all AxLabelFile labels' },
+          { name: 'get_label_info',               desc: 'Get all language translations for a label ID' },
+          { name: 'create_label',                 desc: 'Add new label to all language files in a model' },
+        ]},
+        { icon: '📊', category: 'Advanced Object Info', tools: [
+          { name: 'get_form_info',                desc: 'Form datasources, control hierarchy, and methods' },
+          { name: 'get_query_info',               desc: 'Query datasources, joins, field lists, and ranges' },
+          { name: 'get_view_info',                desc: 'View/data entity fields, relations, computed columns' },
+          { name: 'get_method_signature',         desc: 'Exact method signature (required before CoC extensions)' },
+          { name: 'find_references',              desc: 'Where-used analysis across the entire codebase' },
+        ]},
+        { icon: '🧠', category: 'Intelligent Code Generation', tools: [
+          { name: 'analyze_code_patterns',        desc: 'Find common patterns used in a scenario' },
+          { name: 'suggest_method_implementation',desc: 'Real examples of similar method implementations' },
+          { name: 'analyze_class_completeness',   desc: 'Find missing standard methods on a class' },
+          { name: 'get_api_usage_patterns',       desc: 'Show how an API is initialized and called' },
+        ]},
+        { icon: '🎨', category: 'Smart Object Generation', tools: [
+          { name: 'generate_smart_table',         desc: 'AI-driven table generation with pattern analysis' },
+          { name: 'generate_smart_form',          desc: 'AI-driven form generation with pattern analysis' },
+          { name: 'suggest_edt',                  desc: 'Suggest EDT for field name using fuzzy matching' },
+        ]},
+        { icon: '📝', category: 'File & Metadata Operations', tools: [
+          { name: 'generate_d365fo_xml',          desc: 'Generate D365FO XML content (preview / cloud-ready)' },
+          { name: 'create_d365fo_file',           desc: 'Create D365FO file in correct AOT location (Windows)' },
+          { name: 'modify_d365fo_file',           desc: 'Safely edit D365FO XML with backup & rollback (Windows)' },
+        ]},
+        { icon: '📈', category: 'Pattern Analysis', tools: [
+          { name: 'get_table_patterns',           desc: 'Analyze common field/index patterns for table groups' },
+          { name: 'get_form_patterns',            desc: 'Analyze common datasource/control patterns for forms' },
+          { name: 'generate_code',                desc: 'Generate X++ boilerplate (class, batch-job, data-entity, …)' },
+        ]},
+      ];
+
+      const filteredCatalog = toolCatalog
+        .map(cat => ({
+          ...cat,
+          tools: cat.tools.filter(t => {
+            if (SERVER_MODE === 'read-only') return !WRITE_TOOLS.has(t.name);
+            if (SERVER_MODE === 'write-only') return WRITE_TOOLS.has(t.name);
+            return true;
+          }),
+        }))
+        .filter(cat => cat.tools.length > 0);
+
+      const totalTools = filteredCatalog.reduce((sum, cat) => sum + cat.tools.length, 0);
+
+      console.log(`🎯 Available tools (${totalTools} total):`);
+      for (const cat of filteredCatalog) {
+        console.log(`   ${cat.icon} ${cat.category} (${cat.tools.length}):`);
+        for (const t of cat.tools) {
+          console.log(`   - ${t.name.padEnd(28)} ${t.desc}`);
+        }
+        console.log('');
+      }
     });
   }
 }
