@@ -330,6 +330,29 @@ async function main() {
     
     app.use(express.json());
 
+    // Register /mcp immediately so MCP clients don't get 404 during startup.
+    // While server is initializing, return JSON-RPC 503 so the client retries
+    // instead of treating it as a permanent "method not found" failure.
+    app.use('/mcp', (req, res, next) => {
+      if (!serverState.isReady) {
+        // Only gate POST requests (actual tool calls); let the transport handle
+        // other methods (GET for SSE etc.) once registered.
+        if (req.method === 'POST') {
+          const id = (req.body as any)?.id ?? null;
+          res.status(503).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: `Server is starting up (${serverState.statusMessage}). Please retry in a few seconds.`,
+            },
+            id,
+          });
+          return;
+        }
+      }
+      next();
+    });
+
     // Health check endpoint - responds immediately with current state
     app.get('/health', (_req, res) => {
       if (!serverState.isReady) {
