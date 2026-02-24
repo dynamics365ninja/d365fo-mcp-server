@@ -157,3 +157,61 @@ extract the correct model name from the `.rnrproj` in your workspace automatical
 
 **Backslashes on Windows**
 In JSON, backslashes must be doubled: `K:\\AosService\\` not `K:\AosService\`.
+---
+
+## Hybrid Setup (Azure + Local)
+
+When the MCP server is deployed to Azure, `create_d365fo_file`, `modify_d365fo_file`, and
+`create_label` cannot write to the local Windows VM file system. The **hybrid setup** solves
+this by running two servers simultaneously:
+
+| Instance | Runs on | `MCP_SERVER_MODE` | Tools |
+|----------|---------|-------------------|-------|
+| `d365fo-azure` | Azure App Service | `read-only` | All 25 search & analysis tools |
+| `d365fo-local` | Windows VM (stdio) | `write-only` | `create_d365fo_file`, `modify_d365fo_file`, `create_label` |
+
+GitHub Copilot connects to both servers at the same time and selects the right one automatically.
+
+### .mcp.json for hybrid setup
+
+```json
+{
+  "servers": {
+    "d365fo-azure": {
+      "url": "https://your-server.azurewebsites.net/mcp/"
+    },
+    "d365fo-local": {
+      "command": "node",
+      "args": ["K:\\d365fo-mcp-server\\dist\\index.js", "--stdio"],
+      "env": {
+        "MCP_SERVER_MODE": "write-only",
+        "DB_PATH": "K:\\d365fo-mcp-server\\data\\xpp-metadata.db"
+      }
+    },
+    "context": {
+      "projectPath": "K:\\VSProjects\\MySolution\\MyProject\\MyProject.rnrproj"
+    }
+  }
+}
+```
+
+### How it works
+
+1. `d365fo-azure` starts with `MCP_SERVER_MODE=read-only` → only exposes search/analysis tools
+2. `d365fo-local` starts with `MCP_SERVER_MODE=write-only` → only exposes file-operation tools
+3. GitHub Copilot aggregates both tool lists — from Copilot's perspective it sees all 28 tools
+4. When Copilot calls `create_d365fo_file`, it goes to the local server which has K:\ access
+5. When Copilot calls `search`, it goes to the Azure server with the full metadata database
+
+> **Note:** The local server in `write-only` mode still needs access to the metadata database
+> (for path resolution and model detection), but it doesn't need Redis or Azure Blob Storage.
+
+### Azure App Service settings for read-only mode
+
+In your Azure App Service configuration, add:
+
+```
+MCP_SERVER_MODE=read-only
+```
+
+This ensures write tools are never advertised over the public URL, even if someone calls them directly.

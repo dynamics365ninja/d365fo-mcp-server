@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
+import { SERVER_MODE, WRITE_TOOLS } from '../server/serverMode.js';
 import { searchTool } from './search.js';
 
 /**
@@ -86,6 +87,20 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     // Having it here ensures it also works when transport-level extraction missed it.
     extractAndApplyWorkspaceFromMeta((request as any).params?._meta);
     extractAndApplyWorkspaceFromMeta((request.params as any)._meta);
+
+    // Enforce server mode: block write tools in read-only mode, block read tools in write-only mode
+    if (SERVER_MODE === 'read-only' && WRITE_TOOLS.has(toolName)) {
+      return {
+        content: [{ type: 'text', text: `⚠️ Tool '${toolName}' requires local Windows VM file system access and is not available in read-only mode.\n\nThis MCP server is running in read-only mode (Azure deployment).\nTo use file operations, configure a local MCP server with MCP_SERVER_MODE=write-only in your .mcp.json.\n\nSee: https://github.com/dynamics365ninja/d365fo-mcp-server/blob/main/docs/MCP_CONFIG.md` }],
+        isError: true,
+      };
+    }
+    if (SERVER_MODE === 'write-only' && !WRITE_TOOLS.has(toolName)) {
+      return {
+        content: [{ type: 'text', text: `⚠️ Tool '${toolName}' is not available in write-only mode.\n\nThis local MCP server only handles file operations. Search and analysis tools are provided by the Azure MCP server.` }],
+        isError: true,
+      };
+    }
 
     switch (toolName) {
       case 'search':

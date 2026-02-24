@@ -130,7 +130,8 @@ The following built-in tools **MUST NOT** be used on D365FO metadata files (.xml
 2. Call `generate_code(pattern, name)` or get related examples
 3. **ALWAYS call `create_d365fo_file(objectType, objectName, modelName, addToProject=true)`** — creates file and adds to project
    - The tool auto-detects the correct model from `.rnrproj` in the workspace
-   - Works in all environments (local, cloud, Azure)
+   - **Requires local Windows VM file system access (K:\ drive)** — not available when MCP server is deployed to Azure
+   - In a **hybrid setup** (Azure read-only + local write-only), this tool is served by the local MCP companion — GitHub Copilot selects it automatically
    - Optional: call `generate_d365fo_xml()` first, then pass XML to `create_d365fo_file()`
    - **NEVER use `create_file()` for D365FO objects - always use `create_d365fo_file()`**
 

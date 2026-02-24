@@ -12,13 +12,17 @@ import { registerClassResource } from '../resources/classResource.js';
 import { registerWorkspaceResources } from '../resources/workspaceResource.js';
 import { registerCodeReviewPrompt } from '../prompts/codeReview.js';
 import type { XppServerContext } from '../types/context.js';
+import { SERVER_MODE, WRITE_TOOLS } from './serverMode.js';
 
 export type { XppServerContext };
+export { SERVER_MODE, WRITE_TOOLS } from './serverMode.js';
+export type { ServerMode } from './serverMode.js';
 
 export function createXppMcpServer(context: XppServerContext): Server {
+  const serverNameSuffix = SERVER_MODE !== 'full' ? ` (${SERVER_MODE})` : '';
   const server = new Server(
     {
-      name: 'd365fo-mcp-server',
+      name: `d365fo-mcp-server${serverNameSuffix}`,
       version: '1.0.0',
     },
     {
@@ -42,7 +46,7 @@ export function createXppMcpServer(context: XppServerContext): Server {
 
   // List available tools
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
+    const allTools = {
       tools: [
         {
           name: 'search',
@@ -1295,6 +1299,15 @@ Examples:
         },
       ],
     };
+
+    // Apply server mode filter
+    if (SERVER_MODE === 'read-only') {
+      allTools.tools = allTools.tools.filter(t => !WRITE_TOOLS.has(t.name));
+    } else if (SERVER_MODE === 'write-only') {
+      allTools.tools = allTools.tools.filter(t => WRITE_TOOLS.has(t.name));
+    }
+
+    return allTools;
   });
 
   return server;

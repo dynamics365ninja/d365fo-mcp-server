@@ -114,6 +114,19 @@ npm start
 
 The server runs at `http://localhost:8080`. Check `http://localhost:8080/health` to confirm it is up.
 
+### Startup behaviour by configuration
+
+The server automatically decides whether to download the database on startup based on your environment variables.
+
+| Scenario | Required settings | What happens on startup |
+|----------|-------------------|------------------------|
+| **Local dev — database from Azure** | `AZURE_STORAGE_CONNECTION_STRING` + `BLOB_CONTAINER_NAME` | Downloads `xpp-metadata.db` (~1–1.5 GB) and `xpp-metadata-labels.db` (~500 MB) from Blob Storage if missing or outdated. Validates integrity before use. |
+| **Local dev — database built locally** | `PACKAGES_PATH` + run `npm run build-database` once | No download. Opens `data/xpp-metadata.db` directly. If it doesn't exist the server warns and starts with an empty index. |
+| **Azure App Service** (read-only mode) | `MCP_SERVER_MODE=read-only` + `AZURE_STORAGE_CONNECTION_STRING` | Downloads the latest database on each cold start. Only search and analysis tools are exposed — file-operation tools are hidden. |
+| **Local hybrid companion** (write-only mode) | `MCP_SERVER_MODE=write-only` | Skips all database work entirely. Starts in under one second. Only exposes `create_d365fo_file`, `modify_d365fo_file`, and `create_label`. |
+
+> **Hybrid setup:** When the Azure server runs in `read-only` mode and the local companion runs in `write-only` mode, GitHub Copilot connects to both simultaneously and routes each tool call to the correct instance automatically. See [MCP_CONFIG.md](MCP_CONFIG.md#hybrid-setup-azure--local) for the `.mcp.json` configuration.
+
 ---
 
 ## Azure Deployment

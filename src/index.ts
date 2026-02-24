@@ -15,6 +15,7 @@ import { WorkspaceScanner } from './workspace/workspaceScanner.js';
 import { HybridSearch } from './workspace/hybridSearch.js';
 import { initializeDatabase } from './database/download.js';
 import { initializeConfig } from './utils/configManager.js';
+import { SERVER_MODE } from './server/serverMode.js';
 import * as fs from 'fs/promises';
 
 // Filter debug logs unless DEBUG_LOGGING is enabled
@@ -70,6 +71,49 @@ const serverState: ServerState = {
 async function initializeServices() {
   console.log('🚀 Starting X++ MCP Code Completion Server...');
 
+  // -----------------------------------------------------------------------
+  // write-only mode: skip all database/symbol work — file-operation tools
+  // (create_d365fo_file, modify_d365fo_file, create_label) only need the
+  // config manager for path resolution, not the 1.5 GB symbol database.
+  // -----------------------------------------------------------------------
+  if (SERVER_MODE === 'write-only') {
+    console.log('✏️  Mode: write-only (local file-operations companion)');
+    console.log('⏭️  Skipping database download and symbol index — not needed in write-only mode');
+
+    console.log('⚙️  Loading .mcp.json configuration...');
+    const config = await initializeConfig();
+    if (config?.servers.context) {
+      console.log('✅ Configuration loaded from .mcp.json');
+      if (config.servers.context.workspacePath) {
+        console.log(`   Workspace path: ${config.servers.context.workspacePath}`);
+      }
+    } else {
+      console.log('ℹ️  No .mcp.json configuration found, using defaults');
+    }
+
+    const cache = new RedisCacheService();
+    // Don't wait for Redis in write-only mode — it's not used
+    cache.waitForConnection().catch(() => {});
+
+    const symbolIndex = new XppSymbolIndex(':memory:', ':memory:');
+    const parser = new XppMetadataParser();
+    const workspaceScanner = new WorkspaceScanner();
+    const hybridSearch = new HybridSearch(symbolIndex, workspaceScanner);
+    const { TermRelationshipGraph } = await import('./utils/suggestionEngine.js');
+    const termRelationshipGraph = new TermRelationshipGraph();
+
+    serverState.symbolIndex = symbolIndex;
+    serverState.parser = parser;
+    serverState.cache = cache;
+
+    const mcpServer = createXppMcpServer({ symbolIndex, parser, cache, workspaceScanner, hybridSearch, termRelationshipGraph });
+    console.log('✅ MCP Server initialized (write-only mode)');
+    return { mcpServer, symbolIndex, parser, cache, workspaceScanner, hybridSearch, termRelationshipGraph };
+  }
+
+  // -----------------------------------------------------------------------
+  // full / read-only mode: full initialization with database
+  // -----------------------------------------------------------------------
   try {
     // Load .mcp.json configuration
     console.log('⚙️  Loading .mcp.json configuration...');
