@@ -398,6 +398,11 @@ function extractModelFromProject(projectPath: string): string | null {
  * Find .rnrproj file in solution directory
  */
 function findProjectInSolution(solutionPath: string): string | null {
+  // Windows paths (K:\...) are not accessible on non-Windows — skip silently
+  if (process.platform !== 'win32' && /^[A-Z]:\\/i.test(solutionPath)) {
+    console.warn(`[generateSmartForm] Skipping solution scan on non-Windows: ${solutionPath}`);
+    return null;
+  }
   try {
     const files = fs.readdirSync(solutionPath, { recursive: true }) as string[];
     const projectFile = files.find(f => f.endsWith('.rnrproj'));

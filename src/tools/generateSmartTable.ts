@@ -237,24 +237,37 @@ export async function handleGenerateSmartTable(
     console.log(`[generateSmartTable] Added ${hintFields.length} fields from hints`);
   }
 
-  // Fallback: Add RecId if no fields generated
+  // Fallback: Generate sensible defaults when no fields were provided at all
   if (fields.length === 0) {
-    console.log(`[generateSmartTable] No fields generated, adding default RecId`);
-    fields.push({
-      name: 'RecId',
-      edt: 'RecId',
-      mandatory: true,
-    });
+    console.warn(`[generateSmartTable] No fieldsHint provided — generating default fields. Pass fieldsHint for accurate results.`);
+    const nameLower = name.toLowerCase();
+    // Derive reasonable defaults from table name and group
+    if (nameLower.includes('account') || tableGroup === 'Main') {
+      fields.push({ name: 'AccountNum', edt: 'CustAccount', mandatory: true });
+      fields.push({ name: 'Name', edt: 'Name' });
+      fields.push({ name: 'Description', edt: 'Description' });
+    } else if (tableGroup === 'Transaction') {
+      fields.push({ name: 'AccountNum', edt: 'LedgerAccount', mandatory: true });
+      fields.push({ name: 'TransDate', edt: 'TransDate' });
+      fields.push({ name: 'Amount', edt: 'AmountMST' });
+    } else if (tableGroup === 'Parameter') {
+      fields.push({ name: 'Key', edt: 'String255', mandatory: true });
+      fields.push({ name: 'Value', edt: 'String255' });
+    } else {
+      // Generic fallback
+      fields.push({ name: 'RecId', edt: 'RecId', mandatory: true });
+    }
   }
 
   // Ensure primary key index exists
-  const hasRecIdIndex = indexes.some(idx => 
-    idx.fields.includes('RecId') || idx.name.toLowerCase().includes('recid')
-  );
-  
-  if (!hasRecIdIndex && fields.some(f => f.name === 'RecId')) {
-    indexes.unshift(builder.buildPrimaryKeyIndex(name, ['RecId']));
-    console.log(`[generateSmartTable] Added primary key index on RecId`);
+  const hasAnyUniqueIndex = indexes.some(idx => idx.unique || idx.clustered);
+  if (!hasAnyUniqueIndex && fields.length > 0) {
+    // Prefer first mandatory non-RecId field, fall back to RecId
+    const pkField = fields.find(f => f.mandatory && f.name !== 'RecId')?.name
+      ?? fields.find(f => f.name === 'RecId')?.name
+      ?? fields[0].name;
+    indexes.unshift(builder.buildPrimaryKeyIndex(name, [pkField]));
+    console.log(`[generateSmartTable] Added primary key index on ${pkField}`);
   }
 
   // Determine package path
@@ -405,7 +418,7 @@ export async function handleGenerateSmartTable(
   if (isNonWindows) {
     const noModelNote = resolvedModel
       ? ''
-      : `\n> ⚠️  No model resolved — XML generated without prefix. Pass \`modelName\` (e.g. \`"AslCore"\`) for correct object naming.`;
+      : `\n> ⚠️  No model resolved — XML generated without prefix. Pass \`modelName\` (e.g. \`"AslCore"\`) for correct object naming.\n> 🚨 **IMPORTANT**: Do NOT add a prefix to the \`name\` parameter when calling this tool — the tool applies the prefix automatically from \`modelName\`. If you pass e.g. \`name="AslAccountTable"\`, the result will be double-prefixed as \`"AslAslAccountTable"\`.`;
     const nextStep = [
       ``,
       `**✅ MANDATORY NEXT STEP — immediately call \`create_d365fo_file\` with the XML below:**`,
@@ -503,11 +516,21 @@ function suggestEdtFromFieldName(fieldName: string): string {
 
   // Common patterns
   if (nameLower === 'recid') return 'RecId';
+  if (nameLower === 'accountnum' || nameLower === 'accountnumber') return 'CustAccount';
+  if (nameLower.includes('custaccount') || nameLower.includes('customeraccount')) return 'CustAccount';
+  if (nameLower.includes('vendaccount') || (nameLower.includes('vendor') && nameLower.includes('account'))) return 'VendAccount';
+  if (nameLower === 'name') return 'Name';
   if (nameLower.includes('name')) return 'Name';
-  if (nameLower.includes('description')) return 'Description';
+  if (nameLower === 'description') return 'Description';
+  if (nameLower.includes('description') || nameLower === 'desc') return 'Description';
   if (nameLower.includes('amount')) return 'AmountMST';
   if (nameLower.includes('quantity') || nameLower.includes('qty')) return 'Qty';
   if (nameLower.includes('price')) return 'PriceUnit';
+  // ValidFrom / ValidTo — D365FO date effectivity pattern
+  if (nameLower === 'validfrom' || nameLower === 'fromdate' || nameLower === 'datefrom' || nameLower === 'platnostod') return 'ValidFromDateTime';
+  if (nameLower === 'validto' || nameLower === 'todate' || nameLower === 'dateto' || nameLower === 'platnostdo') return 'ValidToDateTime';
+  if (nameLower.includes('validfrom') || nameLower.includes('fromdate')) return 'ValidFromDateTime';
+  if (nameLower.includes('validto') || nameLower.includes('todate')) return 'ValidToDateTime';
   if (nameLower.includes('date')) return 'TransDate';
   if (nameLower.includes('time') || nameLower.includes('datetime')) return 'TransDateTime';
   if (nameLower.includes('account')) return 'LedgerAccount';
@@ -516,7 +539,7 @@ function suggestEdtFromFieldName(fieldName: string): string {
   if (nameLower.includes('item')) return 'ItemId';
   if (nameLower.includes('percent') || nameLower.includes('pct')) return 'Percent';
   if (nameLower.includes('status')) return 'NoYesId';
-  if (nameLower.includes('enabled')) return 'NoYesId';
+  if (nameLower.includes('enabled') || nameLower.includes('active') || nameLower.includes('flag')) return 'NoYesId';
   if (nameLower.includes('id') && !nameLower.includes('recid')) return 'RefRecId';
 
   // Default to string
@@ -550,6 +573,11 @@ function extractModelFromProject(projectPath: string): string | null {
  * Find .rnrproj file in solution directory
  */
 function findProjectInSolution(solutionPath: string): string | null {
+  // Windows paths (K:\...) are not accessible on non-Windows — skip silently
+  if (process.platform !== 'win32' && /^[A-Z]:\\/i.test(solutionPath)) {
+    console.warn(`[generateSmartTable] Skipping solution scan on non-Windows: ${solutionPath}`);
+    return null;
+  }
   try {
     const files = fs.readdirSync(solutionPath, { recursive: true }) as string[];
     const projectFile = files.find(f => f.endsWith('.rnrproj'));
