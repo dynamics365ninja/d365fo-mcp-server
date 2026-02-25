@@ -277,18 +277,27 @@ export async function handleGenerateSmartTable(
     }
   }
 
+  const isNonWindows = process.platform !== 'win32';
+
   if (!resolvedModel) {
-    throw new Error(
-      'Could not resolve model name. Provide modelName, projectPath, or solutionPath, ' +
-      'or configure projectPath/solutionPath in .mcp.json.'
-    );
+    if (isNonWindows) {
+      // Azure/Linux: model resolution requires .rnrproj which is only on the Windows VM.
+      // Use modelName arg as-is for prefix resolution (caller may pass e.g. "AslCore").
+      // If not provided either, generate XML without prefix and return it as text.
+      resolvedModel = modelName || undefined;
+    } else {
+      throw new Error(
+        'Could not resolve model name. Provide modelName, projectPath, or solutionPath, ' +
+        'or configure projectPath/solutionPath in .mcp.json.'
+      );
+    }
   }
 
-  console.log(`[generateSmartTable] Using model: ${resolvedModel}`);
+  console.log(`[generateSmartTable] Using model: ${resolvedModel ?? '(none — no prefix)'}`);
 
-  // Apply extension prefix to table name
-  const objectPrefix = resolveObjectPrefix(resolvedModel);
-  const finalName = applyObjectPrefix(name, objectPrefix);
+  // Apply extension prefix to table name (skip when model unknown)
+  const objectPrefix = resolvedModel ? resolveObjectPrefix(resolvedModel) : '';
+  const finalName = objectPrefix ? applyObjectPrefix(name, objectPrefix) : name;
   if (finalName !== name) {
     console.log(`[generateSmartTable] Applied prefix "${objectPrefix}": ${name} → ${finalName}`);
   }
@@ -305,8 +314,21 @@ export async function handleGenerateSmartTable(
 
   console.log(`[generateSmartTable] Generated XML (${xml.length} bytes)`);
 
+  // On non-Windows (Azure/Linux): return XML as text — cannot write to K:\ drive
+  if (isNonWindows) {
+    const warning = resolvedModel
+      ? `> **Note**: Running on non-Windows. XML returned as text — file was not written to disk.\n> To write to the AOT, run the MCP server on the D365FO Windows VM.\n\n`
+      : `> **Note**: Running on non-Windows and no model name resolved. XML returned without prefix.\n> Provide \`modelName\` (e.g. \`"AslCore"\`) to get correct object naming.\n\n`;
+    return {
+      content: [{
+        type: 'text',
+        text: `${warning}\`\`\`xml\n${xml}\n\`\`\``,
+      }],
+    };
+  }
+
   // Write to file
-  const targetPath = path.join(packagePath, resolvedModel, resolvedModel, 'AxTable', `${finalName}.xml`);
+  const targetPath = path.join(packagePath, resolvedModel!, resolvedModel!, 'AxTable', `${finalName}.xml`);
 
   // Normalize path to Windows format (backslashes) for consistency
   const normalizedPath = targetPath.replace(/\//g, '\\');

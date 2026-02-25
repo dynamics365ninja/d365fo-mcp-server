@@ -247,18 +247,24 @@ export async function handleGenerateSmartForm(
     }
   }
 
+  const isNonWindows = process.platform !== 'win32';
+
   if (!resolvedModel) {
-    throw new Error(
-      'Could not resolve model name. Provide modelName, projectPath, or solutionPath, ' +
-      'or configure projectPath/solutionPath in .mcp.json.'
-    );
+    if (isNonWindows) {
+      resolvedModel = modelName || undefined;
+    } else {
+      throw new Error(
+        'Could not resolve model name. Provide modelName, projectPath, or solutionPath, ' +
+        'or configure projectPath/solutionPath in .mcp.json.'
+      );
+    }
   }
 
-  console.log(`[generateSmartForm] Using model: ${resolvedModel}`);
+  console.log(`[generateSmartForm] Using model: ${resolvedModel ?? '(none — no prefix)'}`);
 
-  // Apply extension prefix to form name
-  const objectPrefix = resolveObjectPrefix(resolvedModel);
-  const finalName = applyObjectPrefix(name, objectPrefix);
+  // Apply extension prefix to form name (skip when model unknown)
+  const objectPrefix = resolvedModel ? resolveObjectPrefix(resolvedModel) : '';
+  const finalName = objectPrefix ? applyObjectPrefix(name, objectPrefix) : name;
   if (finalName !== name) {
     console.log(`[generateSmartForm] Applied prefix "${objectPrefix}": ${name} → ${finalName}`);
   }
@@ -274,24 +280,35 @@ export async function handleGenerateSmartForm(
 
   console.log(`[generateSmartForm] Generated XML (${xml.length} bytes)`);
 
-  // Write to file
-  const targetPath = path.join(packagePath, resolvedModel, resolvedModel, 'AxForm', `${finalName}.xml`);
-
-  // Normalize path to Windows format (backslashes) for consistency
-  const normalizedPath = targetPath.replace(/\//g, '\\');
-
-  // Reject Windows paths when running on non-Windows (e.g. Linux Azure proxy)
-  if (process.platform !== 'win32' && /^[A-Z]:\\/.test(normalizedPath)) {
-    throw new Error(
-      `❌ Cannot create D365FO file on non-Windows system!\n\n` +
-      `Attempting to create: ${normalizedPath}\n` +
-      `Running on: ${process.platform}\n\n` +
-      `The generate_smart_form tool requires direct access to the D365FO Windows VM.\n` +
-      `Run the MCP server locally on the D365FO Windows VM.`
-    );
+  // On non-Windows (Azure/Linux) — return XML as text, no file write possible.
+  if (isNonWindows) {
+    console.log(`[generateSmartForm] Non-Windows environment — returning XML as text (no file write)`);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: [
+            `✅ Generated form XML for **${finalName}**`,
+            resolvedModel ? `   Model: ${resolvedModel}` : `   ℹ️  No model resolved — no prefix applied. Pass modelName to set prefix.`,
+            `   DataSources: ${dataSources.length}, Controls: ${controls.length}`,
+            ``,
+            `⚠️  Running on Azure/Linux — file was NOT written to disk.`,
+            `   To create the physical file, call create_d365fo_file with the XML below on your local Windows VM.`,
+            ``,
+            `\`\`\`xml`,
+            xml,
+            `\`\`\``,
+          ].join('\n'),
+        },
+      ],
+    };
   }
 
-  // Verify drive/root exists before attempting recursive mkdir
+  // Windows — write to file
+  const targetPath = path.join(packagePath, resolvedModel!, resolvedModel!, 'AxForm', `${finalName}.xml`);
+  const normalizedPath = targetPath.replace(/\//g, '\\');
+
+  // Verify drive/root exists
   const driveOrRoot = path.parse(normalizedPath).root;
   if (driveOrRoot && !fs.existsSync(driveOrRoot)) {
     throw new Error(
@@ -301,13 +318,11 @@ export async function handleGenerateSmartForm(
     );
   }
 
-  // Create directory if needed
   const dir = path.dirname(normalizedPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  // Write file
   fs.writeFileSync(normalizedPath, xml, 'utf-8');
   console.log(`[generateSmartForm] Created file: ${normalizedPath}`);
 
