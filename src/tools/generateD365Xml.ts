@@ -89,14 +89,43 @@ ${declaration}
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${tableName}</Name>
-\t<Label>${label}</Label>
-\t<TableGroup>${tableGroup}</TableGroup>
-${titleField1Xml}${titleField2Xml}\t<Fields />
-\t<Indexes />
-\t<Relations />
 \t<SourceCode>
+\t\t<Declaration><![CDATA[
+public class ${tableName} extends common
+{
+}
+]]></Declaration>
 \t\t<Methods />
 \t</SourceCode>
+\t<Label>${label}</Label>
+\t<TableGroup>${tableGroup}</TableGroup>
+${titleField1Xml}${titleField2Xml}\t<DeleteActions />
+\t<FieldGroups>
+\t\t<AxTableFieldGroup>
+\t\t\t<Name>AutoReport</Name>
+\t\t\t<Fields />
+\t\t</AxTableFieldGroup>
+\t\t<AxTableFieldGroup>
+\t\t\t<Name>AutoLookup</Name>
+\t\t\t<Fields />
+\t\t</AxTableFieldGroup>
+\t\t<AxTableFieldGroup>
+\t\t\t<Name>AutoIdentification</Name>
+\t\t\t<AutoPopulate>Yes</AutoPopulate>
+\t\t\t<Fields />
+\t\t</AxTableFieldGroup>
+\t\t<AxTableFieldGroup>
+\t\t\t<Name>AutoSummary</Name>
+\t\t\t<Fields />
+\t\t</AxTableFieldGroup>
+\t\t<AxTableFieldGroup>
+\t\t\t<Name>AutoBrowse</Name>
+\t\t\t<Fields />
+\t\t</AxTableFieldGroup>
+\t</FieldGroups>
+\t<Fields />
+\t<Indexes />
+\t<Relations />
 </AxTable>
 `;
   }

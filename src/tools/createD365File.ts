@@ -199,6 +199,11 @@ ${declaration}
 <AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${tableName}</Name>
 \t<SourceCode>
+\t\t<Declaration><![CDATA[
+public class ${tableName} extends common
+{
+}
+]]></Declaration>
 \t\t<Methods />
 \t</SourceCode>
 ${configKeyXml}\t<Label>${label}</Label>
@@ -206,7 +211,29 @@ ${configKeyXml}\t<Label>${label}</Label>
 \t<TitleField1>${titleField1}</TitleField1>
 \t<TitleField2>${titleField2}</TitleField2>
 ${cacheLookupXml}${primaryIndexXml}\t<DeleteActions />
-\t<FieldGroups />
+\t<FieldGroups>
+\t\t<AxTableFieldGroup>
+\t\t\t<Name>AutoReport</Name>
+\t\t\t<Fields />
+\t\t</AxTableFieldGroup>
+\t\t<AxTableFieldGroup>
+\t\t\t<Name>AutoLookup</Name>
+\t\t\t<Fields />
+\t\t</AxTableFieldGroup>
+\t\t<AxTableFieldGroup>
+\t\t\t<Name>AutoIdentification</Name>
+\t\t\t<AutoPopulate>Yes</AutoPopulate>
+\t\t\t<Fields />
+\t\t</AxTableFieldGroup>
+\t\t<AxTableFieldGroup>
+\t\t\t<Name>AutoSummary</Name>
+\t\t\t<Fields />
+\t\t</AxTableFieldGroup>
+\t\t<AxTableFieldGroup>
+\t\t\t<Name>AutoBrowse</Name>
+\t\t\t<Fields />
+\t\t</AxTableFieldGroup>
+\t</FieldGroups>
 \t<Fields />
 \t<Indexes />
 \t<Mappings />
