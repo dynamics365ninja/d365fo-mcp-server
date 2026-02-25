@@ -1576,20 +1576,40 @@ export class XppSymbolIndex {
    * Find similar methods based on name and context
    */
   findSimilarMethods(methodName: string, _contextClass?: string, limit: number = 10): any[] {
-    let stmt = this.stmtCache.get('findSimilarMethods');
-    if (!stmt) {
-      stmt = this.db.prepare(`
-        SELECT s.*, parent.name as class_name, parent.pattern_type
+    // Try exact-name match first (fast) — falls back to LIKE only when nothing found
+    const stmtKeyExact = 'findSimilarMethods:exact';
+    let stmtExact = this.stmtCache.get(stmtKeyExact);
+    if (!stmtExact) {
+      stmtExact = this.db.prepare(`
+        SELECT s.name, s.parent_name, s.signature, s.source_snippet, s.complexity, s.tags,
+               parent.pattern_type
         FROM symbols s
         LEFT JOIN symbols parent ON s.parent_name = parent.name AND parent.type = 'class'
-        WHERE s.type = 'method'
-          AND s.name LIKE ?
-        ORDER BY s.complexity ASC, s.name
+        WHERE s.type = 'method' AND s.name = ?
+        ORDER BY s.complexity ASC
         LIMIT ?
       `);
-      this.stmtCache.set('findSimilarMethods', stmt);
+      this.stmtCache.set(stmtKeyExact, stmtExact);
     }
-    const methods = stmt.all(`%${methodName}%`, limit) as any[];
+    let methods = stmtExact.all(methodName, limit) as any[];
+
+    // Fall back to suffix/prefix LIKE only when exact produced nothing, but cap at limit
+    if (methods.length === 0) {
+      let stmtLike = this.stmtCache.get('findSimilarMethods:like');
+      if (!stmtLike) {
+        stmtLike = this.db.prepare(`
+          SELECT s.name, s.parent_name, s.signature, s.source_snippet, s.complexity, s.tags,
+                 parent.pattern_type
+          FROM symbols s
+          LEFT JOIN symbols parent ON s.parent_name = parent.name AND parent.type = 'class'
+          WHERE s.type = 'method' AND s.name LIKE ?
+          ORDER BY s.complexity ASC, s.name
+          LIMIT ?
+        `);
+        this.stmtCache.set('findSimilarMethods:like', stmtLike);
+      }
+      methods = stmtLike.all(`%${methodName}%`, limit) as any[];
+    }
     
     return methods.map(m => ({
       className: m.class_name || m.parent_name,
@@ -1601,15 +1621,17 @@ export class XppSymbolIndex {
       patternType: m.pattern_type
     }));
   }
-
-  /**
-   * Get API usage patterns for a class
-   */
   getApiUsagePatterns(className: string): any[] {
-    // Find all methods that reference this class in their used_types
+    // Find all methods that reference this class in their used_types.
+    // Cap at 20 rows — fetching source_snippet for 50+ rows on a 584K-row table causes timeout.
     let stmt = this.stmtCache.get('getApiUsagePatterns');
     if (!stmt) {
-      stmt = this.db.prepare(`SELECT * FROM symbols WHERE type = 'method' AND used_types LIKE ? LIMIT 50`);
+      stmt = this.db.prepare(
+        `SELECT name, parent_name, method_calls, source_snippet
+           FROM symbols
+          WHERE type = 'method' AND used_types LIKE ?
+          LIMIT 20`
+      );
       this.stmtCache.set('getApiUsagePatterns', stmt);
     }
     const methods = stmt.all(`%${className}%`) as any[];

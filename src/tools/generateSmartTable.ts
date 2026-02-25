@@ -241,10 +241,21 @@ export async function handleGenerateSmartTable(
 
       // Try to suggest EDT based on name
       const edt = suggestEdtFromFieldName(hint);
+      const hintLower = hint.toLowerCase();
+      // Mark as mandatory only when the field name IS an identifier (ends with 'Id',
+      // equals 'RecId', or exactly 'AccountNum'/'CustAccount' patterns).
+      // Do NOT match fields that merely CONTAIN 'id' mid-word (e.g. ValidFrom, Description).
+      const isMandatory =
+        hintLower === 'recid' ||
+        /id$/.test(hintLower) ||          // SalesId, CustId, AccountId …
+        hintLower === 'accountnum' ||      // D365FO conventional PK fields
+        hintLower === 'accountnumber' ||
+        hintLower === 'num' ||
+        hintLower === 'code';
       fields.push({
         name: hint,
         edt,
-        mandatory: hint.toLowerCase().includes('recid') || hint.toLowerCase().includes('id'),
+        mandatory: isMandatory,
       });
     }
 
@@ -467,6 +478,7 @@ export async function handleGenerateSmartTable(
       `\`\`\``,
       `⛔ NEVER use \`create_file\`, PowerShell scripts, or any built-in file tool — they corrupt D365FO metadata and break VS project integration.`,
       `⛔ NEVER call \`modify_d365fo_file\` to add methods — the \`methods\` parameter in \`generate_smart_table\` already embedded them in the XML above.`,
+      `⛔ NEVER call \`suggest_method_implementation\` or \`get_api_usage_patterns\` between this step and \`create_d365fo_file\` — those tools are expensive and their result is not needed for file creation. Call them AFTER the file is created if the user explicitly asks.`,
     ].join('\n');
     return {
       content: [{
