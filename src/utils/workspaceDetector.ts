@@ -143,7 +143,8 @@ export async function detectD365Project(workspacePath: string, maxDepth: number 
  * 1. Explicitly provided workspacePath parameter
  * 2. Current working directory (process.cwd())
  * 3. Environment variable WORKSPACE_PATH
- * 4. PackagesLocalDirectory path regex extraction (last resort, no .rnrproj)
+ * 4. Well-known VS project directories (K:\VSProjects, C:\VSProjects, %USERPROFILE%\source\repos)
+ * 5. PackagesLocalDirectory path regex extraction (last resort, no .rnrproj)
  */
 export async function autoDetectD365Project(
   explicitWorkspacePath?: string
@@ -169,7 +170,45 @@ export async function autoDetectD365Project(
     if (envResult) return envResult;
   }
 
-  // Priority 4: Extract model name directly from a PackagesLocalDirectory path
+  // Priority 4: Well-known VS project directories (Windows only)
+  // .rnrproj files live in VS solution folders, NOT in PackagesLocalDirectory
+  if (process.platform === 'win32') {
+    const userProfile = process.env.USERPROFILE || `C:\\Users\\${process.env.USERNAME}`;
+    const wellKnownPaths = [
+      'K:\\VSProjects',
+      'C:\\VSProjects',
+      `${userProfile}\\source\\repos`,
+      `${userProfile}\\Documents\\Visual Studio 2022\\Projects`,
+    ];
+    for (const searchRoot of wellKnownPaths) {
+      try {
+        const files = await findProjectFiles(searchRoot);
+        if (files.length > 0) {
+          console.error(`[WorkspaceDetector] Found ${files.length} .rnrproj file(s) in ${searchRoot}`);
+          const projectPath = files[0]; // take first (most likely the user's project)
+          const modelName = await extractModelNameFromProject(projectPath);
+          if (modelName) {
+            const solutionPath = path.dirname(path.dirname(projectPath));
+            const packagePath = explicitWorkspacePath
+              ? path.normalize(explicitWorkspacePath).match(/^(.+[\\\/]PackagesLocalDirectory)(?:[\\\/]|$)/i)?.[1] || null
+              : null;
+            console.error(`[WorkspaceDetector] ✅ Found project via well-known path: ${projectPath}`);
+            console.error(`[WorkspaceDetector]    ModelName: ${modelName}`);
+            return {
+              modelName,
+              projectPath,
+              solutionPath,
+              packagePath: packagePath || undefined,
+            };
+          }
+        }
+      } catch {
+        // directory doesn't exist or not accessible — skip silently
+      }
+    }
+  }
+
+  // Priority 5: Extract model name directly from a PackagesLocalDirectory path
   // e.g. K:\AOSService\PackagesLocalDirectory\MyEnhancedDataSharing → modelName: "MyEnhancedDataSharing"
   if (explicitWorkspacePath) {
     const normalized = path.normalize(explicitWorkspacePath);
