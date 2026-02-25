@@ -130,13 +130,32 @@ ${titleField1Xml}${titleField2Xml}\t<Fields />
   ): string {
     const label = properties?.label || formName;
 
+    // D365FO forms require xmlns="Microsoft.Dynamics.AX.Metadata.V6" and SourceCode first
     return `<?xml version="1.0" encoding="utf-8"?>
-<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
 \t<Name>${formName}</Name>
+\t<SourceCode>
+\t\t<Methods xmlns="">
+\t\t\t<Method>
+\t\t\t\t<Name>classDeclaration</Name>
+\t\t\t\t<Source><!\[CDATA[
+    [Form]
+    public class ${formName} extends FormRun
+    {
+    }
+]]></Source>
+\t\t\t</Method>
+\t\t</Methods>
+\t\t<DataSources xmlns="" />
+\t\t<DataControls xmlns="" />
+\t\t<Members xmlns="" />
+\t</SourceCode>
 \t<Label>${label}</Label>
-\t<Design />
 \t<DataSources />
-\t<Methods />
+\t<Design>
+\t\t<Controls xmlns="" />
+\t</Design>
+\t<Parts />
 </AxForm>
 `;
   }

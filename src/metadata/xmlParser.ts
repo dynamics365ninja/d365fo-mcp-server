@@ -229,17 +229,27 @@ export class XppMetadataParser {
     return 'public';
   }
 
+  /**
+   * Parse table fields from <AxTableField xmlns="" i:type="AxTableFieldString"> nodes.
+   * xml2js (explicitArray:false) groups all <AxTableField> children under the AxTableField key.
+   * The field type is carried in the i:type XML attribute → field.$['i:type'].
+   */
   private parseFields(fieldsData: any): XppFieldInfo[] {
     if (!fieldsData) return [];
 
     const fields = Array.isArray(fieldsData) ? fieldsData : [fieldsData];
-    return fields.map(field => ({
-      name: field.Name || 'unknown',
-      type: field.Type || 'String',
-      extendedDataType: field.ExtendedDataType || undefined,
-      mandatory: field.Mandatory === 'Yes' || field.Mandatory === 'true',
-      label: field.Label || undefined,
-    }));
+    return fields.map(field => {
+      // i:type attribute value e.g. 'AxTableFieldString' → strip prefix to get 'String'
+      const rawType: string = field.$?.['i:type'] || 'AxTableFieldString';
+      const xppType = rawType.replace('AxTableField', '') || 'String';
+      return {
+        name: field.Name || 'unknown',
+        type: xppType,
+        extendedDataType: field.ExtendedDataType || undefined,
+        mandatory: field.Mandatory === 'Yes' || field.Mandatory === 'true',
+        label: field.Label || undefined,
+      };
+    });
   }
 
   private parseIndexes(indexesData: any): XppIndexInfo[] {
@@ -249,8 +259,9 @@ export class XppMetadataParser {
     return indexes.map(index => ({
       name: index.Name || 'unknown',
       fields: this.parseIndexFields(index.Fields),
-      unique: index.AllowDuplicates === 'No' || index.AllowDuplicates === 'false',
-      clustered: index.AlternateKey === 'Yes' || index.AlternateKey === 'true',
+      // D365FO uses <AlternateKey>Yes</AlternateKey> to mark unique indexes (NOT AllowDuplicates)
+      unique: index.AlternateKey === 'Yes' || index.AlternateKey === 'true',
+      clustered: index.IsClustered === 'Yes' || index.IsClustered === 'true',
     }));
   }
 

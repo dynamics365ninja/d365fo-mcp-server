@@ -236,16 +236,13 @@ async function addMethod(xmlObj: any, objectType: string, args: any): Promise<bo
     throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
   }
 
-  // For classes, methods are under SourceCode > Methods; for tables/forms, under Methods
+  // Methods are always under SourceCode > Methods for all D365FO object types
+  // (AxClass, AxTable, AxForm all use <SourceCode><Methods>...</Methods></SourceCode>)
   let methodsContainer: any;
-  if (objectType === 'class') {
-    if (!root.SourceCode) {
-      root.SourceCode = [{ Methods: [{ $: { xmlns: '' }, Method: [] }] }];
-    }
-    methodsContainer = root.SourceCode[0];
-  } else {
-    methodsContainer = root;
+  if (!root.SourceCode) {
+    root.SourceCode = [{ Methods: [{ Method: [] }] }];
   }
+  methodsContainer = root.SourceCode[0];
 
   let methodsNode = methodsContainer.Methods;
   if (!methodsNode) {
@@ -285,8 +282,8 @@ async function removeMethod(xmlObj: any, objectType: string, args: any): Promise
     throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
   }
 
-  // For classes, methods are under SourceCode > Methods
-  const methodsContainer = objectType === 'class' ? root.SourceCode?.[0] : root;
+  // Methods are always under SourceCode > Methods for all D365FO object types
+  const methodsContainer = root.SourceCode?.[0];
   if (!methodsContainer?.Methods?.[0]?.Method) {
     throw new Error('No methods found in object');
   }
@@ -327,21 +324,24 @@ async function addField(xmlObj: any, objectType: string, args: any): Promise<boo
     throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
   }
 
-  let fieldsNode = root.Fields;
-  if (!fieldsNode) {
-    root.Fields = [{ $: {}, AxTableField: [] }];
-    fieldsNode = root.Fields;
+  // Ensure Fields container exists
+  if (!root.Fields || root.Fields === '') {
+    root.Fields = [{ AxTableField: [] }];
+  }
+  const fieldsContainer = Array.isArray(root.Fields) ? root.Fields[0] : root.Fields;
+
+  // xml2js with explicitArray:false may store single AxTableField as object, not array
+  if (!fieldsContainer.AxTableField) {
+    fieldsContainer.AxTableField = [];
+  } else if (!Array.isArray(fieldsContainer.AxTableField)) {
+    fieldsContainer.AxTableField = [fieldsContainer.AxTableField];
   }
 
-  if (!fieldsNode[0].AxTableField) {
-    fieldsNode[0].AxTableField = [];
-  }
-
-  // Determine field type node name (AxTableFieldString, AxTableFieldInt, etc.)
-  const fieldNodeName = getFieldNodeName(fieldType);
-
-  // Create field node
+  // D365FO field XML format: <AxTableField xmlns="" i:type="AxTableFieldString">
+  // xml2js represents this as { '$': { xmlns: '', 'i:type': 'AxTableFieldString' }, Name: [...] }
+  const iType = getFieldNodeName(fieldType);
   const newField: any = {
+    '$': { xmlns: '', 'i:type': iType },
     Name: [fieldName],
     ExtendedDataType: [fieldType],
   };
@@ -354,11 +354,7 @@ async function addField(xmlObj: any, objectType: string, args: any): Promise<boo
     newField.Mandatory = [fieldMandatory ? 'Yes' : 'No'];
   }
 
-  // Wrap in appropriate type node
-  const fieldWrapper: any = {};
-  fieldWrapper[fieldNodeName] = [newField];
-
-  fieldsNode[0].AxTableField.push(fieldWrapper);
+  fieldsContainer.AxTableField.push(newField);
 
   return true;
 }
