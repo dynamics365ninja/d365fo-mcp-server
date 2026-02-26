@@ -411,6 +411,7 @@ describe('User Scenario Tests', () => {
         filePath: '/Classes/SalesFormLetter.xml',
         model: 'ApplicationSuite',
         parentName: 'FormLetter',
+        extendsClass: 'FormLetter',
       }));
       
       mockSymbolIndex.getClassMethods = vi.fn(() => []);

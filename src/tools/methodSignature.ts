@@ -445,7 +445,7 @@ function formatOutput(
   }
 
   if (includeCocTemplate) {
-    output += `\n## CoC Template\n\`\`\`xpp\n${signature.cocTemplate}\`\`\`\n`;
+    output += `\n## Chain of Command Template\n\`\`\`xpp\n${signature.cocTemplate}\`\`\`\n`;
     output += `Replace \`OriginalClassName\` with \`${className}\`.\n`;
   } else {
     output += `\n> 💡 Pass \`includeCocTemplate: true\` to get the CoC extension template.\n`;
