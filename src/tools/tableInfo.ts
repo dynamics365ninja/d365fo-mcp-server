@@ -3,9 +3,11 @@
  * Get detailed information about an X++ table including fields, indexes, and relations
  */
 
+import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { findD365FileOnDisk } from './modifyD365File.js';
 
 const METHOD_PAGE_SIZE = 25;
 
@@ -49,11 +51,36 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
     const tableSymbol = symbolIndex.getSymbolByName(args.tableName, 'table');
 
     if (!tableSymbol) {
+      // Table not yet indexed (e.g. just created by generate_smart_table / create_d365fo_file).
+      // Try to locate the live XML file on disk via the package path.
+      const diskPath = await findD365FileOnDisk('table', args.tableName);
+      if (diskPath) {
+        const model = path.basename(path.dirname(path.dirname(diskPath)));
+        const diskInfo = await parser.parseTableFile(diskPath, model);
+        if (diskInfo.success && diskInfo.data) {
+          const table = diskInfo.data;
+          let out = `# Table: ${table.name}\n\n`;
+          out += `**Label:** ${table.label}\n`;
+          out += `**Table Group:** ${table.tableGroup}\n`;
+          out += `**Model:** ${model}\n`;
+          out += `> ⚠️ _Not yet in symbol index — reading live file: ${diskPath}_\n\n`;
+          out += `## Fields (${table.fields.length})\n\n`;
+          for (const field of table.fields) {
+            const required = field.mandatory ? ' **(required)**' : '';
+            const label = field.label ? ` - ${field.label}` : '';
+            const typeInfo = field.extendedDataType
+              ? `EDT: ${field.extendedDataType} (base: ${field.type})`
+              : `Type: ${field.type}`;
+            out += `- **${field.name}**: ${typeInfo}${required}${label}\n`;
+          }
+          return { content: [{ type: 'text', text: out }] };
+        }
+      }
       return {
         content: [
           {
             type: 'text',
-            text: `Table "${args.tableName}" not found in symbol index`,
+            text: `Table "${args.tableName}" not found in symbol index and could not be located on disk.\n\nIf this is a newly created table, ensure .mcp.json has the correct modelName/projectPath so the server can locate it.`,
           },
         ],
         isError: true,

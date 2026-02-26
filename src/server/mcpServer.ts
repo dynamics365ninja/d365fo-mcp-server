@@ -159,6 +159,10 @@ Use WHEN:
 - Avoiding confusion between Microsoft standard code and your modifications
 - You only want to see custom/ISV classes, not the 500K+ Microsoft objects
 
+⚠️ READ-ONLY REFERENCE TOOL: Results show WHERE existing objects live. The model names in results are SOURCE models of those existing objects. They are NOT suggestions for where to create new objects.
+❌ NEVER use a model name from search_extensions results as the target for create_d365fo_file, create_label, or modify_d365fo_file.
+✅ The target model for ALL create/modify operations is ALWAYS from .mcp.json (modelName/projectPath).
+
 Examples:
 - "CustTable" → finds only YourCompany_CustTable_Extension (NOT Microsoft's CustTable)
 - "sales" with prefix="Contoso" → finds ContosoSalesHelper, ContosoSalesValidator
@@ -493,11 +497,11 @@ EXAMPLES:
               },
               objectName: {
                 type: 'string',
-                description: 'Name of the object (e.g., MyHelperClass, MyCustomTable)'
+                description: 'Base name WITHOUT model prefix (e.g., "InventoryByZones", "ProcessOrdersBatch"). The tool auto-prepends the prefix derived from modelName: modelName="MyModel" → prefix="MyModel" → final="MyModelInventoryByZones". The prefix is NOT hardcoded — it always comes from modelName. Double-prefix prevention: if you already include the prefix ("MyModelMyTable" + modelName="MyModel"), tool detects it and uses name as-is. NEVER bypass this tool to work around prefix handling.'
               },
               modelName: {
                 type: 'string',
-                description: 'Model name (e.g., ContosoExtensions, ApplicationSuite)'
+                description: 'Model name from .mcp.json — this also determines the object name prefix. Pass the exact model name configured in .mcp.json (e.g., "MyModel"). DO NOT use model names from search results — those are source models of existing objects, not your target model.'
               },
               packageName: {
                 type: 'string',
@@ -545,11 +549,11 @@ EXAMPLES:
               },
               objectName: {
                 type: 'string',
-                description: 'Name of the object (e.g., MyHelperClass, MyCustomTable)'
+                description: 'Base name WITHOUT model prefix. Prefix is auto-applied from modelName. See create_d365fo_file for details.'
               },
               modelName: {
                 type: 'string',
-                description: 'Model name (e.g., ContosoExtensions, ApplicationSuite)'
+                description: 'Model name from .mcp.json (determines prefix). DO NOT use model names from search results.'
               },
               sourceCode: {
                 type: 'string',
@@ -609,7 +613,7 @@ Examples:
         },
         {
           name: 'modify_d365fo_file',
-          description: '⚠️ WINDOWS ONLY: Safely modifies an existing D365FO XML file (class, table, enum, form, query, view). Supports adding/removing methods and fields, modifying properties. Creates automatic backup (.bak) before changes and validates XML after modification. IMPORTANT: This tool MUST run locally on Windows D365FO VM - it CANNOT work through Azure HTTP proxy (Linux).',
+          description: '⚠️ WINDOWS ONLY: Safely modifies an existing D365FO XML file (class, table, enum, form, query, view). Supports adding/removing/modifying methods and fields, modifying properties. Creates automatic backup (.bak) before changes and validates XML after modification. IMPORTANT: This tool MUST run locally on Windows D365FO VM - it CANNOT work through Azure HTTP proxy (Linux).',
           inputSchema: {
             type: 'object',
             properties: {
@@ -624,8 +628,8 @@ Examples:
               },
               operation: {
                 type: 'string',
-                enum: ['add-method', 'add-field', 'modify-property', 'remove-method', 'remove-field'],
-                description: 'Type of modification to perform'
+                enum: ['add-method', 'add-field', 'modify-field', 'modify-property', 'remove-method', 'remove-field'],
+                description: 'Type of modification to perform. Use modify-field to change EDT/mandatory/label of an existing field.'
               },
               methodName: {
                 type: 'string',
@@ -649,19 +653,19 @@ Examples:
               },
               fieldName: {
                 type: 'string',
-                description: 'Field name (required for add-field, remove-field)'
+                description: 'Field name (required for add-field, modify-field, remove-field)'
               },
               fieldType: {
                 type: 'string',
-                description: 'Extended data type or base type (required for add-field)'
+                description: 'Extended data type or base type (required for add-field; optional for modify-field to change EDT)'
               },
               fieldMandatory: {
                 type: 'boolean',
-                description: 'Is field mandatory (for add-field)'
+                description: 'Is field mandatory (for add-field and modify-field)'
               },
               fieldLabel: {
                 type: 'string',
-                description: 'Field label (for add-field)'
+                description: 'Field label (for add-field and modify-field)'
               },
               propertyPath: {
                 type: 'string',

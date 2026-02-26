@@ -47,7 +47,7 @@ export async function extensionSearchTool(request: CallToolRequest, context: Xpp
       const customModels = symbolIndex.getCustomModels();
       const modelsInfo =
         customModels.length > 0
-          ? `\n\nAvailable custom models: ${customModels.join(', ')}`
+          ? `\n\n⚠️ Available Custom Models (READ-ONLY reference — SOURCE models of existing objects. Do NOT use as target model for new objects. Use model from .mcp.json): ${customModels.join(', ')}`
           : '';
 
       return {
@@ -104,7 +104,7 @@ export async function extensionSearchTool(request: CallToolRequest, context: Xpp
     // List available custom models
     const customModels = symbolIndex.getCustomModels();
     if (customModels.length > 0) {
-      output += `\n📦 Available Custom Models: ${customModels.join(', ')}`;
+      output += `\n\u26a0\ufe0f Available Custom Models (READ-ONLY reference \u2014 these are SOURCE models of existing objects. Do NOT use these as the target model for new objects. Always use the model from .mcp.json): ${customModels.join(', ')}`;
     }
 
     return {

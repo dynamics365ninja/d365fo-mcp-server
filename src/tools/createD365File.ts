@@ -129,6 +129,24 @@ class ProjectFileFinder {
 }
 
 /**
+ * Map a D365FO base type name to the XML i:type attribute used in <AxTableField>.
+ */
+function fieldTypeToAxType(fieldType: string): string {
+  const typeMap: Record<string, string> = {
+    String:   'AxTableFieldString',
+    Integer:  'AxTableFieldInt',
+    Int64:    'AxTableFieldInt64',
+    Real:     'AxTableFieldReal',
+    Date:     'AxTableFieldDate',
+    DateTime: 'AxTableFieldDateTime',
+    Enum:     'AxTableFieldEnum',
+    GUID:     'AxTableFieldGuid',
+    Container:'AxTableFieldContainer',
+  };
+  return typeMap[fieldType] || 'AxTableFieldString';
+}
+
+/**
  * XML Templates for different D365FO object types
  */
 class XmlTemplateGenerator {
@@ -195,6 +213,29 @@ ${declaration}
       ? `\t<PrimaryIndex>${primaryIndex}</PrimaryIndex>\n\t<ReplacementKey>${primaryIndex}</ReplacementKey>\n`
       : '';
 
+    // Build <Fields> block from properties.fields array (TableFieldSpec[]).
+    // Copilot may pass field definitions via properties.fields or via sourceCode JSON —
+    // both paths merge into properties before calling here (see generate()).
+    const fieldSpecs: Array<{ name: string; edt?: string; type?: string; mandatory?: boolean; label?: string }> =
+      Array.isArray(properties?.fields) ? properties.fields : [];
+
+    let fieldsXml: string;
+    if (fieldSpecs.length === 0) {
+      fieldsXml = '\t<Fields />\n';
+    } else {
+      fieldsXml = '\t<Fields>\n';
+      for (const f of fieldSpecs) {
+        const iType = f.edt ? 'AxTableFieldString' : fieldTypeToAxType(f.type || 'String');
+        fieldsXml += `\t\t<AxTableField xmlns="" i:type="${iType}">\n`;
+        fieldsXml += `\t\t\t<Name>${f.name}</Name>\n`;
+        if (f.edt)       fieldsXml += `\t\t\t<ExtendedDataType>${f.edt}</ExtendedDataType>\n`;
+        if (f.mandatory) fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
+        if (f.label)     fieldsXml += `\t\t\t<Label>${f.label}</Label>\n`;
+        fieldsXml += `\t\t</AxTableField>\n`;
+      }
+      fieldsXml += '\t</Fields>\n';
+    }
+
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${tableName}</Name>
@@ -234,8 +275,7 @@ ${cacheLookupXml}${primaryIndexXml}\t<DeleteActions />
 \t\t\t<Fields />
 \t\t</AxTableFieldGroup>
 \t</FieldGroups>
-\t<Fields />
-\t<Indexes />
+${fieldsXml}\t<Indexes />
 \t<Mappings />
 \t<Relations />
 \t<StateMachines />
@@ -401,8 +441,23 @@ ${dataSourceXml}\t\t<Pattern xmlns="">${pattern}</Pattern>
     switch (objectType) {
       case 'class':
         return this.generateAxClassXml(objectName, sourceCode, properties);
-      case 'table':
-        return this.generateAxTableXml(objectName, properties);
+      case 'table': {
+        // sourceCode is not used for tables directly, but Copilot may pass field
+        // definitions as a JSON string in sourceCode. Try to parse and merge into properties.
+        let mergedProperties = properties;
+        if (sourceCode && sourceCode.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(sourceCode);
+            if (parsed && (Array.isArray(parsed.fields) || parsed.label || parsed.tableGroup)) {
+              mergedProperties = { ...parsed, ...properties }; // explicit properties win
+              console.error('[create_d365fo_file] Parsed table field definitions from sourceCode JSON');
+            }
+          } catch {
+            // Not valid JSON — ignore
+          }
+        }
+        return this.generateAxTableXml(objectName, mergedProperties);
+      }
       case 'enum':
         return this.generateAxEnumXml(objectName, properties);
       case 'form':

@@ -70,6 +70,7 @@ For any D365FO request, **start with MCP tools  never** `code_search`, `grep_sea
 8. **ALWAYS** pass `methods=["find","exist"]` to `generate_smart_table()` when user requests those methods  never add them via `modify_d365fo_file` afterwards
 9. **NEVER** include model prefix in `name` param of `generate_smart_table`/`generate_smart_form`  prefix is applied automatically (causes double-prefix)
 10. **NEVER** use `get_enum_info()` for EDTs  use `get_edt_info()` instead
+11. **NEVER** infer the target model from search results or object names — the `model` field in search/get_table_info results is the SOURCE model of that existing object, NOT where you should create new objects. The target model for ALL create/modify operations is ALWAYS from `.mcp.json` (projectPath/modelName). Example of WRONG reasoning: task involves a report → search returns objects from "AslReports" → ❌ DO NOT use "AslReports". Use the configured model.
 
 ### generate_smart_table / generate_smart_form  TWO success cases
 
@@ -80,6 +81,14 @@ For any D365FO request, **start with MCP tools  never** `code_search`, `grep_sea
 **Case B  Windows direct-write** (response contains ` DO NOT call create_d365fo_file`):
 - File already written to disk  STOP, tell user to reload VS project
 -  NEVER call `create_d365fo_file` again
+
+### ⚠️ NEVER bypass create_d365fo_file to "work around" prefix handling
+
+The `create_d365fo_file` tool derives the object name prefix from the `modelName` parameter — it is NOT hardcoded to any value (not "Asl", not anything else). If modelName is "MyModel", the prefix is "MyModel".
+- Pass the base name WITHOUT prefix: `objectName="InventoryByZones"`, `modelName="MyModel"` → tool creates `MyModelInventoryByZones`
+- Double-prefix is prevented automatically: `objectName="MyModelInventoryByZones"` + `modelName="MyModel"` → tool detects prefix already present → uses name as-is
+- ❌ NEVER write XML files directly with `create_file` or PowerShell because you think the prefix logic is wrong
+- ❌ NEVER edit .rnrproj manually — `create_d365fo_file` with `addToProject=true` handles it
 
 ## Available MCP Tools
 
@@ -148,7 +157,7 @@ AOT path: `C:\AOSService\PackagesLocalDirectory\{Model}\{Model}\Ax{Type}\{Name}.
 {
   "servers": {
     "context": {
-      "modelName": "AcGaston",
+      "modelName": "MyModel",
       "packagePath": "C:\\AOSService\\PackagesLocalDirectory",
       "projectPath": "C:\\repos\\MySolution\\MyProject\\MyProject.rnrproj"
     }
