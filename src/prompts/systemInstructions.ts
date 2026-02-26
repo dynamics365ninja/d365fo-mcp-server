@@ -87,9 +87,15 @@ Use this guide to select the correct tool:
 - ❌ NEVER use \`create_file\` - creates in wrong location with spaces, causes "not valid metadata elements" error
 
 **Extract context automatically:**
-- Model name: From workspace path (K:\\VSProjects\\**MyModel**\\ → "MyModel")
-- Solution path: From VS context
-- **DO NOT ask user** - extract automatically and call tool immediately
+- Model name: from .mcp.json (servers.context.modelName) \u2014 configured by user once, never scan filesystem
+- Solution path: from .mcp.json (servers.context.projectPath or solutionPath)
+- **DO NOT ask user** \u2014 and **DO NOT** use Get-ChildItem, dir, ls, find or any shell command to search for project files. The MCP server resolves paths automatically from .mcp.json.
+
+**⚠️ CRITICAL \u2014 Never infer the target model from search results or object names:**
+- The symbol database contains objects from ALL models (Microsoft + ISV + custom). Search results will include objects from models like AslReports, AslCore, ApplicationSuite, etc.
+- The model name returned in search/get_table_info/get_class_info results is the SOURCE model of that object \u2014 it is NOT the model where you should create new objects.
+- The target model for ALL file creation (create_d365fo_file, create_label, modify_d365fo_file) is ALWAYS the one from .mcp.json (modelName/projectPath), regardless of what the task is about or what model names appear in search results.
+- Example of WRONG reasoning: task involves a report → search returns objects from "AslReports" → ❌ DO NOT use "AslReports" as the model. Use the configured model from .mcp.json.
 
 ### 2. Method Signatures
 **Before creating Chain of Command extensions:**

@@ -171,14 +171,15 @@ export async function autoDetectD365Project(
   }
 
   // Priority 4: Well-known VS project directories (Windows only)
+  // ONLY reached when Priority 1-3 all failed to find a .rnrproj
   // .rnrproj files live in VS solution folders, NOT in PackagesLocalDirectory
   if (process.platform === 'win32') {
     const userProfile = process.env.USERPROFILE || `C:\\Users\\${process.env.USERNAME}`;
     const wellKnownPaths = [
-      'K:\\VSProjects',
-      'C:\\VSProjects',
       `${userProfile}\\source\\repos`,
       `${userProfile}\\Documents\\Visual Studio 2022\\Projects`,
+      // K:\VSProjects and C:\VSProjects removed — scanning them causes 24+ Get-ChildItem calls.
+      // If users keep projects there, they should set projectPath in .mcp.json instead.
     ];
     for (const searchRoot of wellKnownPaths) {
       try {

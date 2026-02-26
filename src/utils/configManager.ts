@@ -416,9 +416,16 @@ class ConfigManager {
 
   /**
    * Get auto-detected model name
-   * Returns the model name discovered through auto-detection
+   * Returns the model name discovered through auto-detection.
+   * Skips the scan when modelName is already configured — avoids needless filesystem traversal.
    */
   async getAutoDetectedModelName(): Promise<string | null> {
+    // Short-circuit: if .mcp.json / env already provides a model name, skip the disk scan entirely.
+    const alreadyKnown = this.getModelName();
+    if (alreadyKnown) {
+      return alreadyKnown;
+    }
+
     if (!this.autoDetectionAttempted) {
       const context = this.config?.servers.context;
       await this.autoDetectProject(this.runtimeContext.workspacePath || context?.workspacePath);

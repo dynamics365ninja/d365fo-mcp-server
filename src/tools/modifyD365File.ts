@@ -16,7 +16,7 @@ import { PackageResolver } from '../utils/packageResolver.js';
 const ModifyD365FileArgsSchema = z.object({
   objectType: z.enum(['class', 'table', 'form', 'enum', 'query', 'view']).describe('Type of D365FO object'),
   objectName: z.string().describe('Name of the object to modify'),
-  operation: z.enum(['add-method', 'add-field', 'modify-property', 'remove-method', 'remove-field']).describe('Operation to perform'),
+  operation: z.enum(['add-method', 'add-field', 'modify-field', 'modify-property', 'remove-method', 'remove-field']).describe('Operation to perform'),
   
   // For add-method
   methodName: z.string().optional().describe('Name of method to add/remove'),
@@ -25,9 +25,9 @@ const ModifyD365FileArgsSchema = z.object({
   methodReturnType: z.string().optional().describe('Return type of method'),
   methodParameters: z.string().optional().describe('Method parameters (e.g., "str _param1, int _param2")'),
   
-  // For add-field (tables)
-  fieldName: z.string().optional().describe('Name of field to add/remove'),
-  fieldType: z.string().optional().describe('Extended data type or base type'),
+  // For add-field / modify-field (tables)
+  fieldName: z.string().optional().describe('Name of field to add/remove/modify'),
+  fieldType: z.string().optional().describe('Extended data type or base type (for add-field: required; for modify-field: new EDT to set)'),
   fieldMandatory: z.boolean().optional().describe('Is field mandatory'),
   fieldLabel: z.string().optional().describe('Field label'),
   
@@ -110,6 +110,11 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       case 'add-field':
         modified = await addField(xmlObj, objectType, args);
         message = `Added field "${args.fieldName}" to ${objectType} "${objectName}"`;
+        break;
+      
+      case 'modify-field':
+        modified = await modifyField(xmlObj, objectType, args);
+        message = `Modified field "${args.fieldName}" in ${objectType} "${objectName}"`;
         break;
       
       case 'remove-field':
@@ -224,7 +229,7 @@ async function findD365File(
  * Constructs the expected AOT file path from config/env and checks if it exists on disk.
  * This handles objects that were just created and are not yet indexed in the symbol database.
  */
-async function findD365FileOnDisk(
+export async function findD365FileOnDisk(
   objectType: string,
   objectName: string,
   modelName?: string
@@ -462,8 +467,15 @@ async function addField(xmlObj: any, objectType: string, args: any): Promise<boo
     throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
   }
 
-  // Ensure Fields container exists
-  if (!root.Fields || root.Fields === '') {
+  // Ensure Fields container exists.
+  // xml2js parses <Fields/> or <Fields></Fields> as [''] (array with empty string),
+  // and a completely missing <Fields> as undefined. Both need to be replaced.
+  const rawFields = root.Fields;
+  const fieldsEmpty =
+    !rawFields ||
+    rawFields === '' ||
+    (Array.isArray(rawFields) && (rawFields.length === 0 || rawFields[0] === '' || rawFields[0] == null));
+  if (fieldsEmpty) {
     root.Fields = [{ AxTableField: [] }];
   }
   const fieldsContainer = Array.isArray(root.Fields) ? root.Fields[0] : root.Fields;
@@ -493,6 +505,73 @@ async function addField(xmlObj: any, objectType: string, args: any): Promise<boo
   }
 
   fieldsContainer.AxTableField.push(newField);
+
+  return true;
+}
+
+/**
+ * Modify an existing field on a table (change EDT, mandatory, label).
+ * At least one of fieldType / fieldMandatory / fieldLabel must be provided.
+ */
+async function modifyField(xmlObj: any, objectType: string, args: any): Promise<boolean> {
+  const { fieldName, fieldType, fieldMandatory, fieldLabel } = args;
+
+  if (!fieldName) {
+    throw new Error('fieldName is required for modify-field operation');
+  }
+
+  if (fieldType === undefined && fieldMandatory === undefined && fieldLabel === undefined) {
+    throw new Error('At least one of fieldType, fieldMandatory or fieldLabel is required for modify-field');
+  }
+
+  if (objectType !== 'table') {
+    throw new Error('modify-field operation is only supported for tables');
+  }
+
+  const rootKey = getRootKey(objectType);
+  const root = xmlObj[rootKey];
+
+  if (!root) {
+    throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
+  }
+
+  const rawFields = root.Fields;
+  const fieldsEmpty =
+    !rawFields ||
+    rawFields === '' ||
+    (Array.isArray(rawFields) && (rawFields.length === 0 || rawFields[0] === '' || rawFields[0] == null));
+  if (fieldsEmpty) {
+    throw new Error(`Table has no fields — cannot modify field "${fieldName}"`);
+  }
+
+  const fieldsContainer = Array.isArray(root.Fields) ? root.Fields[0] : root.Fields;
+  if (!Array.isArray(fieldsContainer.AxTableField)) {
+    fieldsContainer.AxTableField = fieldsContainer.AxTableField ? [fieldsContainer.AxTableField] : [];
+  }
+
+  const field = fieldsContainer.AxTableField.find((f: any) => {
+    return Array.isArray(f.Name) ? f.Name[0] === fieldName : f.Name === fieldName;
+  });
+
+  if (!field) {
+    throw new Error(`Field "${fieldName}" not found in table`);
+  }
+
+  // Update EDT (ExtendedDataType) and i:type attribute
+  if (fieldType !== undefined) {
+    const iType = getFieldNodeName(fieldType);
+    if (!field['$']) field['$'] = {};
+    field['$']['i:type'] = iType;
+    field.ExtendedDataType = [fieldType];
+  }
+
+  if (fieldMandatory !== undefined) {
+    field.Mandatory = [fieldMandatory ? 'Yes' : 'No'];
+  }
+
+  if (fieldLabel !== undefined) {
+    field.Label = [fieldLabel];
+  }
 
   return true;
 }
