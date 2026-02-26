@@ -154,6 +154,7 @@ describe('get_method_signature tool', () => {
         arguments: {
           className: 'TestClass',
           methodName: 'calculateTotal',
+          includeCocTemplate: true,
         },
       },
     };
@@ -190,7 +191,7 @@ describe('get_method_signature tool', () => {
     expect(text).toContain('TestClass.validate');
     expect(text).toContain('protected');
     expect(text).toContain('boolean');
-    expect(text).toContain('**Parameters:** 0');
+    expect(text).toContain('validate()'); // no parameters — empty parens
   });
 
   it('should handle non-existent class', async () => {

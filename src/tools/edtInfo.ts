@@ -66,8 +66,47 @@ export async function getEdtInfoTool(request: CallToolRequest, context: XppServe
       `).get(edtName);
     }
 
+    // ── Fallback: if not in edt_metadata, try symbols table + XML directly ──
     if (!edtDbRow) {
-      throw new Error(`EDT "${edtName}" not found. Make sure EDT metadata is extracted and indexed.`);
+      const symRow = symbolIndex.db.prepare(`
+        SELECT name, model, file_path FROM symbols WHERE type = 'edt' AND name = ?
+        ORDER BY model LIMIT 1
+      `).get(edtName) as { name: string; model: string; file_path: string } | undefined;
+
+      if (!symRow) {
+        throw new Error(`EDT "${edtName}" not found. Make sure EDT metadata is extracted and indexed.`);
+      }
+
+      // Minimal DB row from symbols so the rest of the flow can continue
+      edtDbRow = { edt_name: symRow.name, model: symRow.model };
+
+      let xmlFromSym: string | null = null;
+      if (symRow.file_path) {
+        try {
+          xmlFromSym = await fs.readFile(symRow.file_path, 'utf-8');
+        } catch {
+          // File not accessible on this machine — build minimal output from symbols row
+        }
+      }
+      if (!xmlFromSym) {
+        xmlFromSym = await readEdtRawXml(symRow.model, edtName);
+      }
+
+      if (xmlFromSym) {
+        const xmlObj = await parseStringPromise(xmlFromSym);
+        if (!xmlObj.AxEdt) throw new Error('Invalid EDT XML structure (AxEdt root not found)');
+        const edtInfo = extractEdtInfo(xmlObj.AxEdt, edtName, symRow.model);
+        return { content: [{ type: 'text', text: formatEdtOutput(edtInfo) }] };
+      }
+
+      // Last resort: return minimal info from symbols
+      const minimal: EdtInfo = {
+        name: symRow.name,
+        model: symRow.model,
+        additionalProperties: {},
+        _fromDb: true,
+      };
+      return { content: [{ type: 'text', text: formatEdtOutput(minimal) }] };
     }
 
     // ── Step 2: try to enrich with full XML (may not be available) ───────────

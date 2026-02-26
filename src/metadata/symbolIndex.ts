@@ -1179,8 +1179,9 @@ export class XppSymbolIndex {
           model,
         });
 
-        // Add extended EDT metadata to new table
-        if (edtData.extends || edtData.enumType || edtData.referenceTable) {
+        // Add extended EDT metadata to new table — always insert when any property is present
+        if (edtData.extends || edtData.enumType || edtData.referenceTable ||
+            edtData.stringSize || edtData.displayLength || edtData.label) {
           const stmt = this.db.prepare(`
             INSERT OR REPLACE INTO edt_metadata (
               edt_name, extends, enum_type, reference_table, relation_type,
@@ -1436,12 +1437,26 @@ export class XppSymbolIndex {
       .split(/\s+/)
       .filter(w => w.length > 3 && !['with', 'which', 'will', 'that', 'this', 'from', 'have'].includes(w));
     
-    let sql: string;
-    const params: any[] = [];
-    
+    // Build LIKE-only fallback SQL (always safe)
+    const buildLikeSql = () => {
+      const likeSql = keywords.length > 0
+        ? `SELECT DISTINCT s.* FROM symbols s WHERE s.type = 'class' AND (${
+            keywords.map(() => 's.name LIKE ? OR s.tags LIKE ? OR s.description LIKE ?').join(' OR ')
+          })`
+        : `SELECT DISTINCT s.* FROM symbols s WHERE s.type = 'class' AND (s.name LIKE ? OR s.tags LIKE ? OR s.description LIKE ?)`;
+      const likeParams: any[] = keywords.length > 0
+        ? keywords.flatMap(kw => [`%${kw}%`, `%${kw}%`, `%${kw}%`])
+        : [`%${scenario}%`, `%${scenario}%`, `%${scenario}%`];
+      return { likeSql, likeParams };
+    };
+
+    let classes: any[];
+
     if (keywords.length > 0) {
-      // Use FTS5 for better text search
-      sql = `
+      // Use FTS5 for better text search; double-quote terms to prevent FTS5 syntax errors
+      // (e.g. keywords like "select" or ones containing ":" would break MATCH otherwise)
+      const safeFtsTerms = keywords.map(kw => `"${kw.replace(/"/g, '')}"`);
+      let sql = `
         SELECT DISTINCT s.* 
         FROM symbols s
         WHERE s.type = 'class'
@@ -1449,7 +1464,7 @@ export class XppSymbolIndex {
             s.id IN (
               SELECT rowid FROM symbols_fts WHERE symbols_fts MATCH ?
             )
-            ${keywords.slice(1).map(() => `
+            ${safeFtsTerms.slice(1).map(() => `
             OR s.id IN (
               SELECT rowid FROM symbols_fts WHERE symbols_fts MATCH ?
             )`).join('')}
@@ -1457,34 +1472,47 @@ export class XppSymbolIndex {
           )
       `;
       
-      // Add FTS match parameters
-      for (const keyword of keywords) {
-        params.push(keyword);
-      }
-      // Add LIKE parameters
+      const params: any[] = [];
+      params.push(...safeFtsTerms);
       for (const keyword of keywords) {
         params.push(`%${keyword}%`, `%${keyword}%`);
       }
+
+      if (classPattern) {
+        sql += ` AND s.name LIKE ?`;
+        params.push(`%${classPattern}%`);
+      }
+      sql += ` LIMIT ?`;
+      params.push(limit);
+
+      try {
+        classes = this.db.prepare(sql).all(...params) as any[];
+      } catch {
+        // FTS5 query failed (e.g. reserved word, missing virtual table) — fall back to LIKE
+        const { likeSql, likeParams } = buildLikeSql();
+        let fallback = likeSql;
+        const fallbackParams = [...likeParams];
+        if (classPattern) {
+          fallback += ` AND s.name LIKE ?`;
+          fallbackParams.push(`%${classPattern}%`);
+        }
+        fallback += ` LIMIT ?`;
+        fallbackParams.push(limit);
+        classes = this.db.prepare(fallback).all(...fallbackParams) as any[];
+      }
     } else {
       // Fallback to simple search
-      sql = `
-        SELECT * FROM symbols
-        WHERE type = 'class'
-          AND (name LIKE ? OR tags LIKE ? OR description LIKE ?)
-      `;
-      params.push(`%${scenario}%`, `%${scenario}%`, `%${scenario}%`);
+      const { likeSql, likeParams } = buildLikeSql();
+      let fallback = likeSql;
+      const fallbackParams = [...likeParams];
+      if (classPattern) {
+        fallback += ` AND s.name LIKE ?`;
+        fallbackParams.push(`%${classPattern}%`);
+      }
+      fallback += ` LIMIT ?`;
+      fallbackParams.push(limit);
+      classes = this.db.prepare(fallback).all(...fallbackParams) as any[];
     }
-    
-    if (classPattern) {
-      sql += ` AND name LIKE ?`;
-      params.push(`%${classPattern}`);
-    }
-    
-    sql += ` LIMIT ?`;
-    params.push(limit);
-    
-    const stmt = this.db.prepare(sql);
-    const classes = stmt.all(...params) as any[];
     
     // Analyze common patterns
     const methodFrequency: Record<string, number> = {};

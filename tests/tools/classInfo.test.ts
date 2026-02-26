@@ -78,11 +78,12 @@ describe('classInfoTool', () => {
   });
 
   it('should return class information from XML', async () => {
+    // compact: false forces XML parsing path
     const request = {
       method: 'tools/call',
       params: {
         name: 'get_class_info',
-        arguments: { className: 'TestClass' }
+        arguments: { className: 'TestClass', compact: false }
       }
     } as CallToolRequest;
 
@@ -102,11 +103,12 @@ describe('classInfoTool', () => {
       error: 'XML parsing error',
     }));
 
+    // compact: false triggers XML parse attempt, which fails -> DB fallback
     const request = {
       method: 'tools/call',
       params: {
         name: 'get_class_info',
-        arguments: { className: 'TestClass' }
+        arguments: { className: 'TestClass', compact: false }
       }
     } as CallToolRequest;
 
@@ -114,7 +116,7 @@ describe('classInfoTool', () => {
 
     expect(result).toBeDefined();
     expect(result.content[0].text).toContain('TestClass');
-    expect(result.content[0].text).toContain('symbol index data');
+    expect(result.content[0].text).toContain('get_method_signature');
     expect(mockSymbolIndex.getClassMethods).toHaveBeenCalledWith('TestClass');
   });
 

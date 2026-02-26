@@ -18,6 +18,7 @@ const GetMethodSignatureArgsSchema = z.object({
   modelName: z.string().optional().describe('Model name (auto-detected if not provided)'),
   includeWorkspace: z.boolean().optional().default(false).describe('Include workspace files'),
   workspacePath: z.string().optional().describe('Path to workspace'),
+  includeCocTemplate: z.boolean().optional().default(false).describe('Include CoC extension template (default false to save tokens — set true only when about to write a CoC extension)'),
 });
 
 interface MethodSignature {
@@ -98,9 +99,11 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
 
     // 3a. PRIMARY: extracted-metadata JSON (always available, no file path issues)
     const extractedMethod = await readMethodMetadata(classRow.model, className, methodName);
+    const includeCoc = args.includeCocTemplate ?? false;
+
     if (extractedMethod) {
       const jsonSignature = buildSignatureFromExtractedMethod(extractedMethod);
-      const result = formatOutput(className, methodName, jsonSignature, classRow.model);
+      const result = formatOutput(className, methodName, jsonSignature, classRow.model, includeCoc);
       await cache.setClassInfo(cacheKey, result);
       return result;
     }
@@ -116,14 +119,14 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
     }
 
     if (methodSignature) {
-      const result = formatOutput(className, methodName, methodSignature, classRow.model);
+      const result = formatOutput(className, methodName, methodSignature, classRow.model, includeCoc);
       await cache.setClassInfo(cacheKey, result);
       return result;
     }
 
     // 3c. FALLBACK: reconstruct from DB signature column
     const fallbackSignature = buildFallbackSignature(methodRow as any);
-    const result = formatOutput(className, methodName, fallbackSignature, classRow.model);
+    const result = formatOutput(className, methodName, fallbackSignature, classRow.model, includeCoc);
     await cache.setClassInfo(cacheKey, result);
     return result;
 
@@ -430,36 +433,23 @@ function formatOutput(
   className: string,
   methodName: string,
   signature: MethodSignature,
-  modelName: string
+  modelName: string,
+  includeCocTemplate: boolean = false
 ): any {
-  let output = `# Method Signature: \`${className}.${methodName}\`\n\n`;
-  output += `**Model:** ${modelName}\n\n`;
-
-  output += `## 📝 Signature\n\n`;
-  output += `\`\`\`xpp\n${signature.signature}\n\`\`\`\n\n`;
-
-  output += `## 🔧 Details\n\n`;
-  output += `**Modifiers:** ${signature.modifiers.join(', ') || 'none'}\n`;
-  output += `**Return Type:** ${signature.returnType}\n`;
-  output += `**Parameters:** ${signature.parameters.length}\n\n`;
+  let output = `# Method: \`${className}.${methodName}\`\n`;
+  output += `**Model:** ${modelName}  **Returns:** ${signature.returnType}  **Modifiers:** ${signature.modifiers.join(', ') || 'none'}\n\n`;
+  output += `\`\`\`xpp\n${signature.signature}\n\`\`\`\n`;
 
   if (signature.parameters.length > 0) {
-    output += `### Parameters:\n\n`;
-    for (const param of signature.parameters) {
-      output += `- **${param.name}**: ${param.type}`;
-      if (param.defaultValue) {
-        output += ` = ${param.defaultValue}`;
-      }
-      output += '\n';
-    }
-    output += '\n';
+    output += `\n**Parameters:** ${signature.parameters.map(p => `${p.type} ${p.name}${p.defaultValue ? ` = ${p.defaultValue}` : ''}`).join(', ')}\n`;
   }
 
-  output += `## 🔗 Chain of Command Template\n\n`;
-  output += `Use this template to extend the method:\n\n`;
-  output += `\`\`\`xpp\n${signature.cocTemplate}\`\`\`\n\n`;
-
-  output += `**Note:** Replace \`OriginalClassName\` with \`${className}\` in the template.\n`;
+  if (includeCocTemplate) {
+    output += `\n## Chain of Command Template\n\`\`\`xpp\n${signature.cocTemplate}\`\`\`\n`;
+    output += `Replace \`OriginalClassName\` with \`${className}\`.\n`;
+  } else {
+    output += `\n> 💡 Pass \`includeCocTemplate: true\` to get the CoC extension template.\n`;
+  }
 
   return {
     content: [

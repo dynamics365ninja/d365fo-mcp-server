@@ -78,6 +78,30 @@ import { handleSuggestEdt } from './suggestEdt.js';
 /**
  * Centralized tool handler that dispatches to individual tool implementations
  */
+
+/** Tools whose output must never be truncated (XML blobs, file writes) */
+const UNCAPPED_TOOLS = new Set([
+  'generate_smart_table', 'generate_smart_form',
+  'create_d365fo_file', 'generate_d365fo_xml',
+]);
+
+/** Hard limit on text returned to Copilot per tool call to stay under 64k context budget */
+const MAX_TOOL_RESPONSE_CHARS = 3500;
+
+function capToolResponse(toolName: string, result: any): any {
+  if (UNCAPPED_TOOLS.has(toolName) || !result?.content) return result;
+  const content = result.content.map((item: any) => {
+    if (item.type !== 'text' || typeof item.text !== 'string') return item;
+    if (item.text.length <= MAX_TOOL_RESPONSE_CHARS) return item;
+    return {
+      ...item,
+      text: item.text.slice(0, MAX_TOOL_RESPONSE_CHARS) +
+        `\n\n> ✂️ Response truncated at ${MAX_TOOL_RESPONSE_CHARS} chars. Use more specific parameters (e.g. methodOffset, compact=false for one class) to get remaining content.`,
+    };
+  });
+  return { ...result, content };
+}
+
 export function registerToolHandler(server: Server, context: XppServerContext): void {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const toolName = request.params.name;
@@ -102,7 +126,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       };
     }
 
-    switch (toolName) {
+    const result = await (async () => { switch (toolName) {
       case 'search':
         return searchTool(request, context);
       case 'batch_search':
@@ -196,6 +220,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           ],
           isError: true,
         };
-    }
+    } })();
+
+    return capToolResponse(toolName, result);
   });
 }

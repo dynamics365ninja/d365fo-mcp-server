@@ -4,7 +4,9 @@
  */
 
 import * as fs from 'fs/promises';
+import { existsSync } from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { autoDetectD365Project, detectD365Project, type D365ProjectInfo } from './workspaceDetector.js';
 import { registerCustomModel } from './modelClassifier.js';
 import { XppConfigProvider, type XppEnvironmentConfig } from './xppConfigProvider.js';
@@ -162,6 +164,13 @@ class ConfigManager {
    * 3. Current directory (fallback)
    */
   private findConfigFile(): string {
+    // Step 0: Explicit override via MCP_CONFIG_PATH env var
+    const envConfigPath = process.env.MCP_CONFIG_PATH;
+    if (envConfigPath && existsSync(envConfigPath)) {
+      console.error(`[ConfigManager] Using MCP_CONFIG_PATH: ${envConfigPath}`);
+      return envConfigPath;
+    }
+
     // Step 1: Search in current directory and parent directories
     let currentDir = process.cwd();
     const maxDepth = 5;
@@ -170,8 +179,7 @@ class ConfigManager {
     while (depth < maxDepth) {
       const configPath = path.join(currentDir, '.mcp.json');
       try {
-        // Synchronous check for simplicity
-        if (require('fs').existsSync(configPath)) {
+        if (existsSync(configPath)) {
           return configPath;
         }
       } catch {
@@ -186,12 +194,13 @@ class ConfigManager {
       depth++;
     }
 
-    // Step 2: Search in user home directory (global config)
-    const homeDir = process.env.USERPROFILE || process.env.HOME;
+    // Step 2: User home directory — use os.homedir() which is reliable
+    // even when USERPROFILE / HOME env vars are not set in the server process.
+    const homeDir = os.homedir();
     if (homeDir) {
       const homeConfigPath = path.join(homeDir, '.mcp.json');
       try {
-        if (require('fs').existsSync(homeConfigPath)) {
+        if (existsSync(homeConfigPath)) {
           console.error(`[ConfigManager] Using global config from home directory: ${homeConfigPath}`);
           return homeConfigPath;
         }
@@ -200,14 +209,19 @@ class ConfigManager {
       }
     }
 
-    // Step 3: Fallback to current directory
+    // Step 3: Fallback to current directory (file may not exist yet)
     return path.join(process.cwd(), '.mcp.json');
   }
 
   /**
-   * Load configuration from .mcp.json file
+   * Load configuration from .mcp.json file.
+   * Idempotent — skips re-reading if config is already loaded.
+   * Call ensureLoaded() for lazy initialization.
    */
   async load(): Promise<McpConfig | null> {
+    if (this.config) {
+      return this.config; // Already loaded — skip
+    }
     try {
       console.error(`[ConfigManager] Loading config from: ${this.configPath}`);
       const content = await fs.readFile(this.configPath, 'utf-8');
@@ -223,6 +237,14 @@ class ConfigManager {
       }
       return null;
     }
+  }
+
+  /**
+   * Ensure config is loaded — lazy initializer.
+   * Safe to call multiple times; loads only once.
+   */
+  async ensureLoaded(): Promise<void> {
+    await this.load();
   }
 
   /**
