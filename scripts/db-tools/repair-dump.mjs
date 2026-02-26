@@ -4,7 +4,7 @@
  * Preserves code_patterns and _build_progress tables too.
  *
  * Usage: node scripts/repair-dump.mjs
- * After: npm run build-database  (re-adds Asl* models + rebuilds FTS)
+ * After: npm run build-database  (re-indexes custom models + rebuilds FTS)
  */
 import { createRequire } from 'module';
 import { renameSync, existsSync, unlinkSync } from 'fs';
@@ -137,4 +137,4 @@ renameSync(NEW_PATH, DB_PATH);
 console.log(`   ✅ ${DB_PATH} replaced (backup: ${BACKUP_PATH})`);
 
 console.log('\n✅ Repair complete!');
-console.log('   Next: npm run build-database  (re-indexes Asl* models)');
+console.log('   Next: npm run build-database  (re-indexes custom models)');
