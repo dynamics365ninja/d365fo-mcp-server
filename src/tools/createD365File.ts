@@ -158,7 +158,7 @@ function fieldTypeToAxType(fieldType: string): string {
 /**
  * XML Templates for different D365FO object types
  */
-class XmlTemplateGenerator {
+export class XmlTemplateGenerator {
   /**
    * Generate AxClass XML structure
    */
@@ -557,6 +557,50 @@ ${fieldsXml}
       default:
         throw new Error(`Unsupported object type: ${objectType}`);
     }
+  }
+
+  /**
+   * Sanitize AxReport XML to guarantee the structural elements required by the D365FO
+   * Visual Studio Designer metadata loader, regardless of whether the XML was generated
+   * by the template or supplied verbatim by a caller via the xmlContent parameter.
+   *
+   * Required invariants:
+   *  1. xmlns="Microsoft.Dynamics.AX.Metadata.V2" on <AxReport> root
+   *  2. <DataMethods /> directly after <Name>…</Name>
+   *  3. xmlns="" on every <AxReportDataSet> child element (namespace reset)
+   *  4. </AxReport> closing tag present (guard against truncated XML)
+   */
+  static sanitizeReportXml(xml: string): string {
+    // 1. Ensure xmlns="Microsoft.Dynamics.AX.Metadata.V2" on <AxReport> opening tag
+    if (!xml.includes('xmlns="Microsoft.Dynamics.AX.Metadata.V2"')) {
+      xml = xml.replace(/<AxReport(\s[^>]*)?>/, (match) => {
+        // Insert the namespace attribute before the closing > of the tag
+        return match.slice(0, -1) + ' xmlns="Microsoft.Dynamics.AX.Metadata.V2">';
+      });
+      console.error('[sanitizeReportXml] Added xmlns="Microsoft.Dynamics.AX.Metadata.V2" to <AxReport>');
+    }
+
+    // 2. Ensure <DataMethods /> exists directly after the top-level <Name>
+    if (!xml.includes('<DataMethods')) {
+      // Match only the first <Name>…</Name> (the report's own name, not nested ones)
+      xml = xml.replace(/(<Name>[^<]*<\/Name>)/, '$1\n\t<DataMethods />');
+      console.error('[sanitizeReportXml] Inserted missing <DataMethods />');
+    }
+
+    // 3. Ensure xmlns="" on each <AxReportDataSet> (bare tag without the attribute)
+    if (xml.includes('<AxReportDataSet>')) {
+      xml = xml.replace(/<AxReportDataSet>/g, '<AxReportDataSet xmlns="">');
+      console.error('[sanitizeReportXml] Added xmlns="" to <AxReportDataSet> elements');
+    }
+
+    // 4. Ensure </AxReport> closing tag is present (guard against truncated XML)
+    const trimmed = xml.trimEnd();
+    if (!trimmed.endsWith('</AxReport>')) {
+      xml = trimmed + '\n</AxReport>';
+      console.error('[sanitizeReportXml] Appended missing </AxReport> closing tag');
+    }
+
+    return xml;
   }
 }
 
@@ -1176,6 +1220,12 @@ export async function handleCreateD365File(
         );
         xmlContent = replacedContent;
       }
+    }
+
+    // Sanitize AxReport XML structure — ensures required D365FO VS Designer elements
+    // are always present, regardless of whether xmlContent came from the template or a caller.
+    if (args.objectType === 'report') {
+      xmlContent = XmlTemplateGenerator.sanitizeReportXml(xmlContent);
     }
 
     // Debug: Log XML content length
