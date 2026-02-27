@@ -309,13 +309,13 @@ async function main() {
     console.log('✅ Stdio transport connected');
     
     // Log actual tool count based on server mode
-    const totalTools = 29;
+    const totalTools = 30;
     const writeToolCount = WRITE_TOOLS.size;
     const toolCount = SERVER_MODE === 'write-only' ? writeToolCount :
                      SERVER_MODE === 'read-only' ? totalTools - writeToolCount : totalTools;
     const toolDesc = SERVER_MODE === 'write-only' ? `(${Array.from(WRITE_TOOLS).join(', ')})` :
                     SERVER_MODE === 'read-only' ? '(all except write tools)' :
-                    '(8 discovery + 3 labels + 5 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis)';
+                    '(8 discovery + 3 labels + 6 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis)';
     console.log(`🎯 Registered ${toolCount} X++ MCP tools ${toolDesc}`);
     serverState.isReady = true;
     serverState.isHealthy = true;
@@ -387,6 +387,7 @@ async function main() {
           { name: 'get_form_info',                desc: 'Form datasources, control hierarchy, and methods' },
           { name: 'get_query_info',               desc: 'Query datasources, joins, field lists, and ranges' },
           { name: 'get_view_info',                desc: 'View/data entity fields, relations, computed columns' },
+          { name: 'get_report_info',              desc: 'AxReport datasets, fields, designs and RDL summary' },
           { name: 'get_method_signature',         desc: 'Exact method signature (required before CoC extensions)' },
           { name: 'find_references',              desc: 'Where-used analysis across the entire codebase' },
         ]},
