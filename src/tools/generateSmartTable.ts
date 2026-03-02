@@ -343,7 +343,10 @@ export async function handleGenerateSmartTable(
   }
 
   // Determine package path
+  // Ensure .mcp.json is loaded before reading packagePath — getPackagePath() is synchronous
+  // and may miss packagePath from config if ensureLoaded() was not yet called.
   const configManager = getConfigManager();
+  await configManager.ensureLoaded();
   const resolvedPackagePath = argPackagePath || configManager.getPackagePath();
   // getPackagePath() already probes C:\ and K:\ well-known locations before returning null,
   // so reaching here with null means neither location exists on this machine.
