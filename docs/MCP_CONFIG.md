@@ -225,8 +225,8 @@ When the server starts, it logs the detected mode and tool count:
 **Full mode (local development):**
 ```
 🔧 Server mode: full (from env: not set, defaulting to full)
-🎯 Registered 29 X++ MCP tools (8 discovery + 3 labels + 5 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis)
-[MCP Server] Tool list in full mode: 29 tools (no filtering)
+🎯 Registered 40 X++ MCP tools (8 discovery + 4 labels + 6 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis + 9 security-extensions)
+[MCP Server] Tool list in full mode: 40 tools (no filtering)
 ```
 
 > **Note:** The local server in `write-only` mode still needs access to the metadata database

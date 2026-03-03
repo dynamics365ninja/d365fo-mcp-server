@@ -10,16 +10,24 @@ import { getConfigManager } from '../utils/configManager.js';
 
 const CodeGenArgsSchema = z.object({
   pattern: z
-    .enum(['class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'table-extension'])
+    .enum(['class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'table-extension',
+           'sysoperation', 'event-handler', 'security-privilege', 'menu-item'])
     .describe('Code pattern to generate'),
   name: z.string().describe(
-    'For NEW objects (class, runnable, data-entity, batch-job): the object name WITHOUT prefix — prefix is auto-applied from EXTENSION_PREFIX env var or modelName. ' +
-    'For EXTENSIONS (table-extension, form-handler): the BASE element name to extend (e.g. "CustTable", "SalesTable").'
+    'For NEW objects (class, runnable, data-entity, batch-job, sysoperation): the object name WITHOUT prefix — prefix is auto-applied from EXTENSION_PREFIX env var or modelName. ' +
+    'For EXTENSIONS (table-extension, form-handler, event-handler): the BASE element name to extend (e.g. "CustTable", "SalesTable"). ' +
+    'For XML patterns (security-privilege, menu-item): the name for the generated XML object.'
   ),
   modelName: z.string().optional().describe(
     'Model/solution prefix used to derive the naming infix when EXTENSION_PREFIX is not set (e.g. "MyModel"). ' +
     'Required for extension patterns when EXTENSION_PREFIX is not configured.'
   ),
+  menuItemType: z.enum(['display', 'action', 'output']).optional()
+    .describe('For menu-item pattern: type of menu item (display=form, action=class, output=report)'),
+  baseName: z.string().optional()
+    .describe('For event-handler pattern: base class or table name whose events to handle'),
+  targetObject: z.string().optional()
+    .describe('For menu-item pattern: target form/class/report name'),
 });
 
 // Templates for NEW elements: (name already includes prefix)
@@ -163,6 +171,7 @@ class ${name}Service extends SysOperationServiceBase
         info(strFmt("${name} completed successfully"));
     }
 }`,
+  sysoperation: sysOperationTemplate,
 };
 
 // Templates for EXTENSION elements: (baseName = element being extended, prefix = model/ISV infix)
@@ -262,9 +271,163 @@ final class ${className}
 const extensionTemplates: Record<string, (baseName: string, prefix: string) => string> = {
   'form-handler': formHandlerTemplate,
   'table-extension': tableExtensionTemplate,
+  'event-handler': eventHandlerTemplate,
 };
 
-const EXTENSION_PATTERNS = new Set(['table-extension', 'form-handler']);
+// ── SysOperation pattern (3 classes: DataContract + Controller + Service) ──
+function sysOperationTemplate(name: string): string {
+  return `
+// ── 1. DataContract ─────────────────────────────────────────────────────
+[DataContractAttribute]
+public final class ${name}DataContract
+{
+    TransDate   transDate;
+
+    [DataMemberAttribute('TransDate'),
+     SysOperationLabelAttribute(literalStr("Transaction date"))]
+    public TransDate parmTransDate(TransDate _transDate = transDate)
+    {
+        transDate = _transDate;
+        return transDate;
+    }
+}
+
+// ── 2. Controller ────────────────────────────────────────────────────────
+class ${name}Controller extends SysOperationServiceController
+{
+    protected ClassDescription defaultCaption()
+    {
+        return "${name}";
+    }
+
+    public static void main(Args _args)
+    {
+        ${name}Controller controller = new ${name}Controller(
+            classStr(${name}Service),
+            methodStr(${name}Service, process${name}),
+            SysOperationExecutionMode::Synchronous);
+        controller.startOperation();
+    }
+}
+
+// ── 3. Service ───────────────────────────────────────────────────────────
+class ${name}Service extends SysOperationServiceBase
+{
+    [SysEntryPointAttribute(true)]
+    public void process${name}(${name}DataContract _contract)
+    {
+        TransDate transDate = _contract.parmTransDate();
+
+        // TODO: Implement business logic
+        ttsbegin;
+
+        ttscommit;
+    }
+}`;
+}
+
+// ── Event handler pattern (class with SubscribesTo handlers) ─────────────
+function eventHandlerTemplate(baseName: string, _prefix: string): string {
+  return `
+/// <summary>
+/// Event handler class for ${baseName} events.
+/// </summary>
+public final class ${baseName}EventHandler
+{
+    /// <summary>
+    /// Handles the onInserted event of ${baseName}.
+    /// </summary>
+    [SubscribesTo(tableStr(${baseName}),
+                  delegateStr(${baseName}, onInserted))]
+    public static void ${baseName}_onInserted(Common _sender, InsertEventArgs _e)
+    {
+        ${baseName} record = _sender;
+
+        // TODO: Add event handling logic
+    }
+
+    /// <summary>
+    /// Handles the onValidatedWrite event of ${baseName}.
+    /// </summary>
+    [SubscribesTo(tableStr(${baseName}),
+                  delegateStr(${baseName}, onValidatedWrite))]
+    public static void ${baseName}_onValidatedWrite(Common _sender, ValidateEventArgs _e)
+    {
+        ${baseName} record    = _sender;
+        boolean   result     = _e.parmValidateResult();
+
+        if (result)
+        {
+            // TODO: Add validation logic
+        }
+
+        _e.result(result);
+    }
+}`;
+}
+
+// ── Security privilege XML pattern ──────────────────────────────────────
+function securityPrivilegeXmlTemplate(name: string, targetMenuItemName: string): string {
+  const viewName = name.endsWith('View') ? name : `${name}View`;
+  const maintainName = name.endsWith('Maintain') ? name : `${name}Maintain`;
+  return `<!-- ${viewName} (Read access) -->
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>${viewName}</Name>
+  <Label>@TODO:LabelId_View</Label>
+  <EntryPoints>
+    <AxSecurityEntryPointReference>
+      <Name>${targetMenuItemName}</Name>
+      <ObjectType>MenuItemDisplay</ObjectType>
+      <Grant>Read</Grant>
+    </AxSecurityEntryPointReference>
+  </EntryPoints>
+</AxSecurityPrivilege>
+
+<!-- ${maintainName} (Update/Create/Delete access) -->
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>${maintainName}</Name>
+  <Label>@TODO:LabelId_Maintain</Label>
+  <EntryPoints>
+    <AxSecurityEntryPointReference>
+      <Name>${targetMenuItemName}</Name>
+      <ObjectType>MenuItemDisplay</ObjectType>
+      <Grant>Update</Grant>
+    </AxSecurityEntryPointReference>
+    <AxSecurityEntryPointReference>
+      <Name>${targetMenuItemName}</Name>
+      <ObjectType>MenuItemDisplay</ObjectType>
+      <Grant>Create</Grant>
+    </AxSecurityEntryPointReference>
+    <AxSecurityEntryPointReference>
+      <Name>${targetMenuItemName}</Name>
+      <ObjectType>MenuItemDisplay</ObjectType>
+      <Grant>Delete</Grant>
+    </AxSecurityEntryPointReference>
+  </EntryPoints>
+</AxSecurityPrivilege>`;
+}
+
+// ── Menu item XML pattern ────────────────────────────────────────────────
+function menuItemXmlTemplate(name: string, itemType: string, targetObject: string): string {
+  const elemName = itemType === 'action' ? 'AxMenuItemAction'
+    : itemType === 'output' ? 'AxMenuItemOutput'
+    : 'AxMenuItemDisplay';
+  const objType = itemType === 'action' ? 'Class'
+    : itemType === 'output' ? 'Report'
+    : 'Form';
+  return `<?xml version="1.0" encoding="utf-8"?>
+<${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>${name}</Name>
+  <Label>@TODO:LabelId</Label>
+  <Object>${targetObject}</Object>
+  <ObjectType>${objType}</ObjectType>
+</${elemName}>`;
+}
+
+const EXTENSION_PATTERNS = new Set(['table-extension', 'form-handler', 'event-handler']);
+const XML_PATTERNS = new Set(['security-privilege', 'menu-item']);
 
 export async function codeGenTool(request: CallToolRequest) {
   try {
@@ -278,8 +441,43 @@ export async function codeGenTool(request: CallToolRequest) {
     let displayName: string;
     let namingNote: string;
 
-    if (EXTENSION_PATTERNS.has(args.pattern)) {
+    if (XML_PATTERNS.has(args.pattern)) {
+      // XML generation patterns (security-privilege, menu-item)
+      let xml: string;
+      let xmlNote: string;
+
+      if (args.pattern === 'security-privilege') {
+        const targetMenuItem = args.targetObject || args.name;
+        xml = securityPrivilegeXmlTemplate(args.name, targetMenuItem);
+        xmlNote = `📌 Creates two privilege objects: ${args.name}View (Read) and ${args.name}Maintain (Update/Create/Delete)\n` +
+          `  Linked to entry point: ${targetMenuItem}\n\n` +
+          `💡 Next steps:\n` +
+          `1. Replace @TODO:LabelId_View and @TODO:LabelId_Maintain with actual label IDs\n` +
+          `2. Create a duty referencing both privileges\n` +
+          `3. Assign the duty to an appropriate role`;
+      } else {
+        // menu-item
+        const targetObject = args.targetObject || args.name;
+        const itemType = args.menuItemType || 'display';
+        xml = menuItemXmlTemplate(args.name, itemType, targetObject);
+        xmlNote = `📌 Creates AxMenuItem${itemType === 'action' ? 'Action' : itemType === 'output' ? 'Output' : 'Display'}: ${args.name}\n` +
+          `  Target ${itemType === 'action' ? 'class' : itemType === 'output' ? 'report' : 'form'}: ${targetObject}\n\n` +
+          `💡 Next steps:\n` +
+          `1. Replace @TODO:LabelId with actual label ID\n` +
+          `2. Create security privilege referencing this menu item\n` +
+          `3. Add menu item to the appropriate menu`;
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: `Generated ${args.pattern} XML for "${args.name}":\n\n` +
+            `\`\`\`xml\n${xml}\n\`\`\`\n\n---\n\n${xmlNote}`,
+        }],
+      };
+    } else if (EXTENSION_PATTERNS.has(args.pattern)) {
       // Extension pattern — args.name is the BASE element; prefix becomes the infix
+      const baseName = args.pattern === 'event-handler' ? (args.baseName || args.name) : args.name;
       const extTemplate = extensionTemplates[args.pattern];
       if (!extTemplate) {
         return {
@@ -287,15 +485,22 @@ export async function codeGenTool(request: CallToolRequest) {
           isError: true,
         };
       }
-      code = extTemplate(args.name, prefix);
-      displayName = args.name;
-      const exampleClass =
-        args.pattern === 'table-extension'
-          ? `${args.name}${prefix}_Extension`
-          : `${args.name}${prefix}Form_Extension`;
-      namingNote = prefix
-        ? `📌 **Naming (MS guidelines):** Generated class: \`${exampleClass}\`\n  Base element: \`${args.name}\`, Prefix infix: \`${prefix}\``
-        : `⚠️ **No prefix resolved** — set \`EXTENSION_PREFIX\` env var or pass \`modelName\` argument.\n  Generated bare name without prefix infix (e.g. \`${args.name}_Extension\`) which is **not MS-compliant**.`;
+      code = extTemplate(baseName, prefix);
+      displayName = baseName;
+
+      if (args.pattern === 'event-handler') {
+        namingNote = `📌 **Generated class:** \`${baseName}EventHandler\`\n` +
+          `  Handles onInserted and onValidatedWrite events of \`${baseName}\`\n` +
+          `  Add more handlers by repeating the [SubscribesTo] pattern.`;
+      } else {
+        const exampleClass =
+          args.pattern === 'table-extension'
+            ? `${baseName}${prefix}_Extension`
+            : `${baseName}${prefix}Form_Extension`;
+        namingNote = prefix
+          ? `📌 **Naming (MS guidelines):** Generated class: \`${exampleClass}\`\n  Base element: \`${baseName}\`, Prefix infix: \`${prefix}\``
+          : `⚠️ **No prefix resolved** — set \`EXTENSION_PREFIX\` env var or pass \`modelName\` argument.\n  Generated bare name without prefix infix (e.g. \`${baseName}_Extension\`) which is **not MS-compliant**.`;
+      }
     } else {
       // New element pattern — apply prefix to the name
       const newTemplate = newElementTemplates[args.pattern];

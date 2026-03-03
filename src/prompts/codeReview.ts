@@ -52,6 +52,44 @@ export function registerCodeReviewPrompt(server: Server, context: XppServerConte
             },
           ],
         },
+        {
+          name: 'xpp_extension_guide',
+          description: 'Complete guide for CoC (Chain of Command) extensions and event handlers in D365FO',
+          arguments: [],
+        },
+        {
+          name: 'xpp_security_guide',
+          description: 'D365FO security model creation guide: privilege, duty, role, and menu item workflow',
+          arguments: [
+            {
+              name: 'featureName',
+              description: 'Feature or object name for context (optional)',
+              required: false,
+            },
+          ],
+        },
+        {
+          name: 'xpp_sysoperation_guide',
+          description: 'SysOperation framework reference: DataContract + Controller + Service pattern for batch operations',
+          arguments: [
+            {
+              name: 'operationDescription',
+              description: 'Description of the operation to implement (optional)',
+              required: false,
+            },
+          ],
+        },
+        {
+          name: 'xpp_data_entity_guide',
+          description: 'Data entity development guide: OData, DMF, staging tables, computed columns',
+          arguments: [
+            {
+              name: 'entityCategory',
+              description: 'Entity category: parameter, reference, master, document, or transaction (optional)',
+              required: false,
+            },
+          ],
+        },
       ],
     };
   });
@@ -175,6 +213,374 @@ Class source:
 \`\`\`xpp
 ${classSource}
 \`\`\``,
+            },
+          },
+        ],
+      };
+    }
+
+    if (promptName === 'xpp_extension_guide') {
+      return {
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: `# D365FO Extension Guide: CoC and Event Handlers
+
+## Chain of Command (CoC) Extensions
+
+Use CoC when you need to wrap or augment an existing method's logic.
+
+### Prerequisites
+1. Call \`get_method_signature\` to get exact parameter types and return type
+2. Call \`find_coc_extensions\` to check if the method is already wrapped
+3. Call \`analyze_extension_points\` to verify the method is CoC-eligible (not \`final\` / \`[Hookable(false)]\`)
+
+### Class rule
+\`\`\`xpp
+[ExtensionOf(classStr(SalesFormLetter))]
+final class SalesFormLetterWHS_Extension
+{
+    public void run()
+    {
+        // Pre-processing (optional)
+        next run();     // ALWAYS call next — never skip it
+        // Post-processing (optional)
+    }
+}
+\`\`\`
+
+### Naming
+- Class extensions:  \`{Base}{Prefix}_Extension\`   e.g. \`SalesFormLetterWHS_Extension\`
+- Table/form/enum:   \`{Base}.{Prefix}Extension\`    e.g. \`SalesTable.WHSExtension\` (AOT name)
+
+### Rules
+- ALWAYS call \`next methodName(...)\` with ALL original parameters preserved
+- Place \`next\` at the START for pre-processing, END for post-processing, or BOTH for wrapping
+- Use \`generate_code pattern='table-extension'\` or \`'form-handler'\` for the skeleton
+
+---
+
+## Event Handler Pattern (SubscribesTo)
+
+Use event handlers for loosely-coupled reactions to table/class/form events.
+
+### When to use
+- Need to react to standard table events (onInserted, onUpdated, onDeleted, onValidatedWrite …)
+- Avoid tight coupling — no need to wrap a method
+
+### Workflow
+1. Call \`analyze_extension_points\` with the target class/table to see available events
+2. Call \`find_event_handlers\` to check if the event already has handlers (avoid duplicates)
+3. Use \`generate_code pattern='event-handler' name='{BaseName}EventHandler' baseName='{BaseName}'\`
+
+### Template
+\`\`\`xpp
+public final class CustTableEventHandler
+{
+    [SubscribesTo(tableStr(CustTable),
+                  delegateStr(CustTable, onInserted))]
+    public static void CustTable_onInserted(Common _sender, InsertEventArgs _e)
+    {
+        CustTable record = _sender;
+        // Logic here
+    }
+}
+\`\`\`
+
+### Rules
+- Handler methods MUST be \`static public void\`
+- Table events → use \`tableStr()\`; class events → \`classStr()\`; form events → \`formStr()\`
+- Standard table events: onInserted, onUpdated, onDeleted, onValidatedWrite, onValidatedInsert, onValidatedDelete, onInitialized, onInitValue
+
+---
+
+## When to use CoC vs Event Handlers
+
+| Scenario | Use |
+|---|---|
+| Modify return value of a method | CoC |
+| Add logic before/after a specific method | CoC |
+| React to a data change across the codebase | Event Handler |
+| Avoid dependency on a specific class | Event Handler |
+| Method is \`final\` or \`[Hookable(false)]\` | Neither — use delegate or different approach |
+`,
+            },
+          },
+        ],
+      };
+    }
+
+    if (promptName === 'xpp_security_guide') {
+      const featureName = (request.params.arguments as any)?.featureName || '';
+      return {
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: `# D365FO Security Model Creation Guide${featureName ? ` — ${featureName}` : ''}
+
+## Security Hierarchy
+\`\`\`
+Role (e.g. AccountsReceivableClerk)
+  └── Duty  (e.g. CustTableMaintain)
+        └── Privilege  (e.g. CustTableView, CustTableFullControl)
+              └── Entry Point (e.g. MenuItemDisplay: CustTable)
+\`\`\`
+
+## Step-by-Step Workflow
+
+### 1. Check existing coverage first
+\`\`\`
+get_security_coverage_for_object(objectName: "CustTable", objectType: "form")
+\`\`\`
+
+### 2. Create menu item XML
+\`\`\`
+generate_code(pattern: "menu-item", name: "MyFeature", menuItemType: "display", targetObject: "MyFeatureForm")
+\`\`\`
+
+### 3. Create privilege XML (always create BOTH View + Maintain)
+\`\`\`
+generate_code(pattern: "security-privilege", name: "MyFeature", targetObject: "MyFeature")
+\`\`\`
+
+This generates:
+- **MyFeatureView** — Read access (for inquiry roles)
+- **MyFeatureMaintain** — Update/Create/Delete access (for operational roles)
+
+### 4. Create duty referencing both privileges
+\`\`\`xml
+<AxSecurityDuty>
+  <Name>MyFeatureMaintainDuty</Name>
+  <Label>@LabelId</Label>
+  <Privileges>
+    <AxSecurityRolePermissionSet><Name>MyFeatureView</Name></AxSecurityRolePermissionSet>
+    <AxSecurityRolePermissionSet><Name>MyFeatureMaintain</Name></AxSecurityRolePermissionSet>
+  </Privileges>
+</AxSecurityDuty>
+\`\`\`
+
+### 5. Assign duty to an existing role
+\`\`\`
+get_security_artifact_info(name: "AccountsReceivableClerk", artifactType: "role")
+\`\`\`
+Then add the duty to that role's XML.
+
+## Naming Conventions
+
+| Object | Pattern | Example |
+|---|---|---|
+| Privilege (view) | \`{Object}View\` | \`CustTableView\` |
+| Privilege (maintain) | \`{Object}Maintain\` | \`CustTableMaintain\` |
+| Duty | \`{Object}{Action}Duty\` | \`CustTableMaintainDuty\` |
+| Menu item | Match form/class name | \`CustTable\` |
+
+## Segregation of Duties
+- View and Maintain privileges should be in SEPARATE duties when SoD rules apply
+- Never grant Delete access in the same privilege as Create without business justification
+- Use \`get_security_artifact_info\` to verify existing duty assignments before creating new ones
+`,
+            },
+          },
+        ],
+      };
+    }
+
+    if (promptName === 'xpp_sysoperation_guide') {
+      const operationDescription = (request.params.arguments as any)?.operationDescription || '';
+      return {
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: `# D365FO SysOperation Framework Guide${operationDescription ? `\nOperation: ${operationDescription}` : ''}
+
+## Overview
+SysOperation is the **modern replacement for RunBaseBatch**. Always use SysOperation for new batch/dialog operations.
+Generate the full scaffold with: \`generate_code(pattern: "sysoperation", name: "MyOperation")\`
+
+## Three Classes
+
+### 1. DataContract — stores parameters
+\`\`\`xpp
+[DataContractAttribute]
+public final class MyOperationDataContract
+{
+    TransDate   transDate;
+
+    [DataMemberAttribute('TransDate'),
+     SysOperationLabelAttribute(literalStr("Transaction date"))]
+    public TransDate parmTransDate(TransDate _transDate = transDate)
+    {
+        transDate = _transDate;
+        return transDate;
+    }
+}
+\`\`\`
+
+**Rules:**
+- Each parameter = one field + one \`parmXxx\` method
+- \`[DataMemberAttribute('FieldName')]\` maps to dialog/DMF field name
+- NEVER use \`pack()\`/\`unpack()\` — that's the old RunBase pattern
+
+### 2. Controller — entry point and execution mode
+\`\`\`xpp
+class MyOperationController extends SysOperationServiceController
+{
+    protected ClassDescription defaultCaption()
+    {
+        return "My Operation";
+    }
+
+    public static void main(Args _args)
+    {
+        MyOperationController controller = new MyOperationController(
+            classStr(MyOperationService),
+            methodStr(MyOperationService, processMyOperation),
+            SysOperationExecutionMode::Synchronous);  // or Asynchronous / ScheduledBatch
+        controller.startOperation();
+    }
+}
+\`\`\`
+
+**Execution modes:**
+| Mode | Use case |
+|---|---|
+| \`Synchronous\` | Fast operations, immediate result needed |
+| \`Asynchronous\` | Long-running but user waits |
+| \`ScheduledBatch\` | Background batch processing |
+
+### 3. Service — business logic
+\`\`\`xpp
+class MyOperationService extends SysOperationServiceBase
+{
+    [SysEntryPointAttribute(true)]   // required for security
+    public void processMyOperation(MyOperationDataContract _contract)
+    {
+        TransDate transDate = _contract.parmTransDate();
+
+        ttsbegin;
+        // Business logic here
+        ttscommit;
+    }
+}
+\`\`\`
+
+**Rules:**
+- Service method MUST be marked \`[SysEntryPointAttribute(true)]\`
+- Use \`ttsbegin/ttscommit\` for all database writes
+- Never catch exceptions inside tts block — let the framework roll back
+
+## Error Handling
+\`\`\`xpp
+try
+{
+    ttsbegin;
+    // logic
+    ttscommit;
+}
+catch (Exception::Error)
+{
+    // tts is automatically rolled back
+    error("Operation failed");
+}
+\`\`\`
+
+## Testing
+\`\`\`xpp
+// Programmatic invocation (unit tests / runnable class)
+MyOperationController::main(new Args());
+\`\`\`
+`,
+            },
+          },
+        ],
+      };
+    }
+
+    if (promptName === 'xpp_data_entity_guide') {
+      const entityCategory = (request.params.arguments as any)?.entityCategory || '';
+      return {
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: `# D365FO Data Entity Development Guide${entityCategory ? `\nCategory: ${entityCategory}` : ''}
+
+## Entity Categories
+
+| Category | Purpose | Example |
+|---|---|---|
+| \`parameter\` | System/module configuration | LedgerParameters |
+| \`reference\` | Lookup/master data without transactions | Currency |
+| \`master\` | Core business objects | Customer, Vendor |
+| \`document\` | Business transactions with header/lines | SalesOrder |
+| \`transaction\` | Posted/immutable records | GeneralJournalEntry |
+
+## Checking Existing Entities
+\`\`\`
+get_data_entity_info(entityName: "CustCustomerV3Entity")
+\`\`\`
+
+## Structure Pattern
+\`\`\`xpp
+[DataEntityViewAttribute,
+ SysOperationContractAttribute,
+ PublicCollectionNameAttribute('Customers'),
+ PublicEntityNameAttribute('Customer')]
+public class CustCustomerV3Entity extends common
+{
+    // Root table datasource fields mapped directly
+    // Cross-datasource fields via computedColumn methods
+}
+\`\`\`
+
+## Key Properties (set in XML)
+| Property | Description |
+|---|---|
+| \`PublicEntityName\` | OData resource name (singular, PascalCase) |
+| \`PublicCollectionName\` | OData collection name (plural) |
+| \`IsPublic\` | Expose via OData endpoint |
+| \`DataManagementEnabled\` | Enable for DMF import/export |
+| \`EntityCategory\` | One of the 5 categories above |
+| \`StagingTable\` | Auto-generated staging table for DMF |
+
+## OData vs DMF Considerations
+- **OData**: Set \`IsPublic = Yes\`, use \`PublicEntityName\` for the resource name
+- **DMF (Data Management)**: Set \`DataManagementEnabled = Yes\` and define a staging table
+- Both can be enabled simultaneously
+
+## Computed Columns
+For fields that come from complex joins or expressions:
+\`\`\`xpp
+private static server str computePartyName()
+{
+    // Return SQL expression as a string
+    return SysComputedColumn::returnField(tableStr(DirPartyTable), identifierStr(Name));
+}
+\`\`\`
+
+## Keys and Indexes
+- Every entity needs at least one **natural key** (for OData upsert and DMF deduplication)
+- Key fields should be the business identifier (AccountNum, ItemId, etc.) — NOT RecId
+
+## Common Pitfalls
+- After adding fields, run **Refresh entity list** in Data Management workspace
+- Computed columns must return a valid SQL expression string, not an X++ value
+- Mandatory fields on staging table must have defaults or be mapped from source
+- Use \`get_view_info\` to inspect the current entity's data sources and fields
+
+## Workflow
+1. \`get_data_entity_info(entityName: "...")\` — check if entity already exists
+2. \`generate_smart_table\` — for the staging table if needed
+3. \`create_d365fo_file(objectType: "view", ...)\` — create the entity file
+4. After deployment: refresh entity list in Data Management
+`,
             },
           },
         ],

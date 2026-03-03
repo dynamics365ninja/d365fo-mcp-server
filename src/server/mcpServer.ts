@@ -74,8 +74,13 @@ Examples:
               query: { type: 'string', description: 'Search query (class name, method name, table name, etc.)' },
               type: { 
                 type: 'string', 
-                enum: ['class', 'table', 'field', 'method', 'enum', 'edt', 'form', 'query', 'view', 'report', 'all'],
-                description: 'Filter by object type (class=AxClass, table=AxTable, enum=AxEnum, edt=AxEdt, form=AxForm, query=AxQuery, view=AxView, report=AxReport, all=no filter)',
+                enum: ['class', 'table', 'field', 'method', 'enum', 'edt', 'form', 'query', 'view', 'report',
+                  'security-privilege', 'security-duty', 'security-role',
+                  'menu-item-display', 'menu-item-action', 'menu-item-output',
+                  'table-extension', 'class-extension', 'form-extension',
+                  'enum-extension', 'edt-extension', 'data-entity-extension',
+                  'all'],
+                description: 'Filter by object type (class=AxClass, table=AxTable, enum=AxEnum, edt=AxEdt, form=AxForm, query=AxQuery, view=AxView, report=AxReport, security-privilege/duty/role=security objects, menu-item-display/action/output=menu items, table/class/form/enum/edt-extension=extensions, data-entity-extension=DE extensions, all=no filter)',
                 default: 'all'
               },
               limit: { type: 'number', description: 'Maximum results to return', default: 20 },
@@ -118,9 +123,14 @@ workspacePath and includeWorkspace parameters.`,
                     },
                     type: {
                       type: 'string',
-                      enum: ['class', 'table', 'field', 'method', 'enum', 'edt', 'form', 'query', 'view', 'report', 'all'],
+                      enum: ['class', 'table', 'field', 'method', 'enum', 'edt', 'form', 'query', 'view', 'report',
+                        'security-privilege', 'security-duty', 'security-role',
+                        'menu-item-display', 'menu-item-action', 'menu-item-output',
+                        'table-extension', 'class-extension', 'form-extension',
+                        'enum-extension', 'edt-extension', 'data-entity-extension',
+                        'all'],
                       default: 'all',
-                      description: 'Filter by object type',
+                      description: 'Filter by object type. Omit to inherit globalTypeFilter or default to "all"',
                     },
                     limit: {
                       type: 'number',
@@ -139,6 +149,31 @@ workspacePath and includeWorkspace parameters.`,
                   },
                   required: ['query'],
                 },
+              },
+              globalTypeFilter: {
+                type: 'array',
+                maxItems: 5,
+                description:
+                  'Default type filter for queries without an explicit per-query type. ' +
+                  'E.g. ["class"] restricts all untyped queries to classes. ' +
+                  'Multiple values fan out each untyped query into one search per type.',
+                items: {
+                  type: 'string',
+                  enum: [
+                    'class', 'table', 'form', 'field', 'method', 'enum', 'edt', 'query', 'view', 'report',
+                    'security-privilege', 'security-duty', 'security-role',
+                    'menu-item-display', 'menu-item-action', 'menu-item-output',
+                    'table-extension', 'class-extension', 'form-extension',
+                    'enum-extension', 'edt-extension', 'data-entity-extension',
+                  ],
+                },
+              },
+              deduplicate: {
+                type: 'boolean',
+                default: true,
+                description:
+                  'When true, symbols appearing in multiple query results are collapsed. ' +
+                  'Later occurrences are replaced with a reference to the query where they first appeared.',
               },
             },
             required: ['queries'],
@@ -299,36 +334,60 @@ WHEN TO USE (keywords):
 - "create" / "build" / "implement" / "add new" / "generate" / "make"
 - "batch job" = batch-job, "helper class" = helper class, "runnable" = runnable class
 - ANY request to create NEW D365FO class, batch job, form handler, data entity
+- "SysOperation" / "DataContract" / "event handler" / "security privilege" / "menu item"
 
 WORKFLOW (ALWAYS follow):
 1. Call analyze_code_patterns("description") → learn from existing code patterns
 2. Call generate_code(pattern, name) → get X++ source code template
 3. Call create_d365fo_file(objectType="class", objectName=name, sourceCode=<from step 2>, addToProject=true)
 
-PATTERNS:
+PATTERNS (X++ code):
 - "batch-job" → Batch job (extends RunBaseBatch) with dialog, pack/unpack, contract class
 - "class" → Standard helper/utility class
 - "runnable" → Runnable class with main() method
 - "form-handler" → Form event handler (datasource/control event subscribers)
 - "data-entity" → Data entity with staging table
 - "table-extension" → Table extension [ExtensionOf(tableStr(TableName))]
+- "sysoperation" → Full SysOperation: DataContract + Controller + Service (3 classes)
+- "event-handler" → Class with [SubscribesTo] handlers for table/class events
+
+PATTERNS (XML output — use for AOT XML files):
+- "security-privilege" → AxSecurityPrivilege XML (generates View + Maintain privilege pair)
+- "menu-item" → AxMenuItemDisplay/Action/Output XML
 
 EXAMPLES:
-- "Create batch job for processing orders"
-  → generate_code(pattern="batch-job", name="ProcessOpenOrdersBatch")
-- "Create helper class for sales calculations"
-  → generate_code(pattern="class", name="SalesCalculationHelper")
-- "Make runnable class for testing"
-  → generate_code(pattern="runnable", name="MyTestRunnable")`,
+- "Create SysOperation for processing orders"
+  → generate_code(pattern="sysoperation", name="ProcessOrders")
+- "Create event handler for CustTable"
+  → generate_code(pattern="event-handler", name="CustTable")
+- "Create security privilege for CustTable form"
+  → generate_code(pattern="security-privilege", name="CustTable", targetObject="CustTable")
+- "Create menu item for CustTable form"
+  → generate_code(pattern="menu-item", name="CustTable", menuItemType="display", targetObject="CustTable")`,
           inputSchema: {
             type: 'object',
             properties: {
-              pattern: { 
-                type: 'string', 
-                enum: ['class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'table-extension'],
-                description: 'Code pattern to generate. Use table-extension for [ExtensionOf(tableStr(...))] CoC extensions.' 
+              pattern: {
+                type: 'string',
+                enum: ['class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'table-extension',
+                       'sysoperation', 'event-handler', 'security-privilege', 'menu-item'],
+                description: 'Code pattern to generate.',
               },
-              name: { type: 'string', description: 'Name for the generated element' },
+              name: { type: 'string', description: 'Name for the generated element. For extensions: base element name.' },
+              modelName: { type: 'string', description: 'Model/solution prefix (auto-detected from EXTENSION_PREFIX env var if omitted).' },
+              menuItemType: {
+                type: 'string',
+                enum: ['display', 'action', 'output'],
+                description: 'For menu-item pattern: type of menu item (display=form, action=class, output=report)',
+              },
+              baseName: {
+                type: 'string',
+                description: 'For event-handler pattern: base class or table name whose events to handle',
+              },
+              targetObject: {
+                type: 'string',
+                description: 'For menu-item and security-privilege patterns: target form/class/report name',
+              },
             },
             required: ['pattern', 'name'],
           },
@@ -1047,6 +1106,12 @@ Examples:
                 type: 'string',
                 description: 'Model name (optional). CAUTION: If EDT not found with specific modelName, omit this and retry - EDT names are globally unique'
               },
+              mode: {
+                type: 'string',
+                enum: ['standard', 'hierarchy'],
+                description: 'standard=normal EDT details (default), hierarchy=show full ancestor chain + direct children + field usages',
+                default: 'standard',
+              },
             },
             required: ['edtName'],
           },
@@ -1526,7 +1591,251 @@ Examples:
             required: ['name'],
           },
         },
-      ],
+      // ── New tools: security, menu items, extensions ──────────────────────────────
+      {
+        name: 'get_security_artifact_info',
+        description: `Get detailed info for a D365FO security privilege, duty, or role.
+Walks the full hierarchy: Role → Duties → Privileges → Entry Points.
+
+Use for:
+- Auditing what a role or duty grants access to
+- Finding which roles cover a specific privilege
+- Understanding the entry-point/access-level details of a privilege
+
+Examples:
+  { name: "CustTableFullControl", artifactType: "privilege" }
+  { name: "CustTableMaintain", artifactType: "duty", includeChain: true }
+  { name: "AccountsReceivableClerk", artifactType: "role" }`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Name of the security privilege, duty, or role' },
+            artifactType: {
+              type: 'string',
+              enum: ['privilege', 'duty', 'role'],
+              description: 'Type of security artifact to look up',
+            },
+            includeChain: { type: 'boolean', description: 'Walk the full hierarchy (default: true)', default: true },
+          },
+          required: ['name', 'artifactType'],
+        },
+      },
+      {
+        name: 'get_menu_item_info',
+        description: `Get details for a D365FO menu item including target object and full security chain.
+
+Shows the privilege → duty → role chain that grants access to this menu item.
+
+Examples:
+  { name: "CustTable", itemType: "display" }
+  { name: "LedgerJournalTable", itemType: "any" }`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Name of the menu item' },
+            itemType: {
+              type: 'string',
+              enum: ['display', 'action', 'output', 'any'],
+              description: 'Menu item type filter (default: any)',
+              default: 'any',
+            },
+          },
+          required: ['name'],
+        },
+      },
+      {
+        name: 'find_coc_extensions',
+        description: `Find all Chain of Command (CoC) extensions for a D365FO class or table method.
+
+Also shows event handler subscriptions (SubscribesTo) for the target class/table.
+
+Use this before writing a CoC extension to:
+1. Check if the method is already wrapped
+2. Understand which models extend this class
+3. Find potential conflicts
+
+Examples:
+  { className: "SalesFormLetter" }
+  { className: "SalesLine", methodName: "validateWrite" }
+  { className: "CustTable", includeEventHandlers: true }`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            className: { type: 'string', description: 'Base class or table name being extended' },
+            methodName: { type: 'string', description: 'Optional: filter to a specific method name' },
+            includeEventHandlers: {
+              type: 'boolean',
+              description: 'Also find static event subscriptions (SubscribesTo) (default: true)',
+              default: true,
+            },
+          },
+          required: ['className'],
+        },
+      },
+      {
+        name: 'get_table_extension_info',
+        description: `Get all extensions for a D365FO table and show the effective merged schema.
+
+Lists every extension across all models that add fields, indexes, or methods to the table.
+
+Examples:
+  { tableName: "CustTable" }
+  { tableName: "SalesLine", includeEffectiveSchema: true }`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            tableName: { type: 'string', description: 'Base table name whose extensions to find' },
+            includeEffectiveSchema: {
+              type: 'boolean',
+              description: 'Merge base + extension counts (default: true)',
+              default: true,
+            },
+          },
+          required: ['tableName'],
+        },
+      },
+      {
+        name: 'get_data_entity_info',
+        description: `Get D365FO-specific metadata for a data entity (AxDataEntityView).
+
+Shows OData settings, DMF configuration, staging table, data sources, and keys.
+Use instead of get_view_info when working with entities for OData/DMF integrations.
+
+Examples:
+  { entityName: "CustCustomerV3Entity" }
+  { entityName: "SalesOrderHeaderV2Entity" }`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entityName: { type: 'string', description: 'Name of the data entity (AxDataEntityView name)' },
+          },
+          required: ['entityName'],
+        },
+      },
+      {
+        name: 'find_event_handlers',
+        description: `Find all event handler subscriptions for a D365FO class or table.
+
+Searches for static SubscribesTo handlers and delegate += subscriptions.
+Use before adding event handlers to check for duplicates.
+
+Examples:
+  { targetTable: "CustTable" }
+  { targetClass: "SalesFormLetter", eventName: "onPostRun" }
+  { targetTable: "SalesLine", eventName: "onValidatedWrite" }`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            targetClass: { type: 'string', description: 'Class whose events to find handlers for' },
+            targetTable: { type: 'string', description: 'Table whose events to find handlers for' },
+            eventName: { type: 'string', description: 'Filter to a specific event name (e.g. onInserted)' },
+            handlerType: {
+              type: 'string',
+              enum: ['static', 'delegate', 'all'],
+              description: 'Filter by handler type (default: all)',
+              default: 'all',
+            },
+          },
+        },
+      },
+      {
+        name: 'get_security_coverage_for_object',
+        description: `Show what security privileges, duties, and roles cover a D365FO object.
+
+Traces the reverse chain: object → menu items → privileges → duties → roles.
+
+Examples:
+  { objectName: "CustTable" }
+  { objectName: "LedgerJournalTable", objectType: "form" }
+  { objectName: "CustTableListPage", objectType: "menu-item" }`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            objectName: { type: 'string', description: 'Name of the form, table, class, or menu item' },
+            objectType: {
+              type: 'string',
+              enum: ['form', 'table', 'class', 'menu-item', 'auto'],
+              description: 'Type of the object (default: auto-detect)',
+              default: 'auto',
+            },
+          },
+          required: ['objectName'],
+        },
+      },
+      {
+        name: 'analyze_extension_points',
+        description: `Analyze available extension points for a D365FO class, table, or form.
+
+For classes: CoC-eligible methods, replaceable methods, delegates, and blocked methods.
+For tables: 8 standard table events + custom delegates.
+For forms: data sources and form methods.
+Shows which extension points are already used by existing extensions.
+
+Use this before writing any extension.
+
+Examples:
+  { objectName: "SalesLine", objectType: "table" }
+  { objectName: "SalesFormLetter", objectType: "class" }
+  { objectName: "CustTable", showExistingExtensions: true }`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            objectName: { type: 'string', description: 'Class, table, or form name to analyze' },
+            objectType: {
+              type: 'string',
+              enum: ['class', 'table', 'form', 'auto'],
+              description: 'Object type (default: auto-detect)',
+              default: 'auto',
+            },
+            showExistingExtensions: {
+              type: 'boolean',
+              description: 'Show which extension points are already extended (default: true)',
+              default: true,
+            },
+          },
+          required: ['objectName'],
+        },
+      },
+      {
+        name: 'validate_object_naming',
+        description: `Validate a proposed D365FO object name against naming conventions.
+
+Checks:
+1. Extension naming rules: {Base}{Prefix}_Extension (class) or {Base}.{Prefix}Extension (AOT)
+2. Prefix requirements: custom objects must use ISV/model prefix
+3. Type-specific rules: privilege → View/Maintain suffix, data entity → Entity suffix
+4. Conflict detection: exact match + similar names against the symbol index
+
+Use before creating any new D365FO object to ensure correct naming.
+
+Examples:
+  { proposedName: "SalesTableExtension", objectType: "class-extension", baseObjectName: "SalesTable" }
+  { proposedName: "WHSSalesTable_Extension", objectType: "class-extension", baseObjectName: "SalesTable", modelPrefix: "WHS" }
+  { proposedName: "CustTableFullControl", objectType: "security-privilege" }`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            proposedName: { type: 'string', description: 'The proposed object name to validate' },
+            objectType: {
+              type: 'string',
+              enum: ['class', 'table', 'form', 'enum', 'edt', 'query', 'view',
+                'table-extension', 'class-extension', 'form-extension', 'enum-extension', 'edt-extension',
+                'menu-item', 'security-privilege', 'security-duty', 'security-role', 'data-entity'],
+              description: 'Type of the D365FO object',
+            },
+            baseObjectName: {
+              type: 'string',
+              description: 'Required for extension types: name of the object being extended',
+            },
+            modelPrefix: {
+              type: 'string',
+              description: 'Expected ISV/model prefix (2-4 uppercase letters, e.g. "WHS"). Auto-detected if omitted.',
+            },
+          },
+          required: ['proposedName', 'objectType'],
+        },
+      },
+    ],
     };
 
     // Apply server mode filter

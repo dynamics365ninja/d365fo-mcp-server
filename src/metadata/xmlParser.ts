@@ -808,4 +808,231 @@ export class XppMetadataParser {
       };
     }
   }
+
+  async parseSecurityPrivilegeFile(filePath: string): Promise<XppParseResult<{
+    name: string;
+    label?: string;
+    sourcePath: string;
+    entryPoints: Array<{ name: string; objectType: string; accessLevel: string }>;
+  }>> {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      const parsed = await this.parser.parseStringPromise(content);
+      const root = parsed?.AxSecurityPrivilege;
+      if (!root) return { success: false, error: 'Not an AxSecurityPrivilege file' };
+
+      const name: string = root.Name || '';
+      const label: string | undefined = root.Label || undefined;
+
+      const rawEps = root.EntryPoints?.AxSecurityEntryPointReference;
+      const epArray = rawEps ? (Array.isArray(rawEps) ? rawEps : [rawEps]) : [];
+      const entryPoints = epArray.map((ep: any) => ({
+        name: ep.Name || '',
+        objectType: ep.ObjectType || '',
+        accessLevel: ep.Grant || ep.Access || '',
+      })).filter((ep: any) => ep.name);
+
+      return { success: true, data: { name, label, sourcePath: filePath, entryPoints } };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async parseSecurityDutyFile(filePath: string): Promise<XppParseResult<{
+    name: string;
+    label?: string;
+    sourcePath: string;
+    privileges: string[];
+  }>> {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      const parsed = await this.parser.parseStringPromise(content);
+      const root = parsed?.AxSecurityDuty;
+      if (!root) return { success: false, error: 'Not an AxSecurityDuty file' };
+
+      const name: string = root.Name || '';
+      const label: string | undefined = root.Label || undefined;
+
+      const rawPrivs = root.Privileges?.AxSecurityRolePermissionSet ??
+                       root.Privileges?.AxSecurityPrivilegePermissionSet;
+      const privArray = rawPrivs ? (Array.isArray(rawPrivs) ? rawPrivs : [rawPrivs]) : [];
+      const privileges: string[] = privArray
+        .map((p: any) => (typeof p === 'string' ? p : p.Name || ''))
+        .filter(Boolean);
+
+      return { success: true, data: { name, label, sourcePath: filePath, privileges } };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async parseSecurityRoleFile(filePath: string): Promise<XppParseResult<{
+    name: string;
+    label?: string;
+    description?: string;
+    sourcePath: string;
+    duties: string[];
+  }>> {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      const parsed = await this.parser.parseStringPromise(content);
+      const root = parsed?.AxSecurityRole;
+      if (!root) return { success: false, error: 'Not an AxSecurityRole file' };
+
+      const name: string = root.Name || '';
+      const label: string | undefined = root.Label || undefined;
+      const description: string | undefined = root.Description || undefined;
+
+      const rawDuties = root.Duties?.AxSecurityRoleDutyPermission ??
+                        root.Duties?.AxSecurityDutyPermission;
+      const dutyArray = rawDuties ? (Array.isArray(rawDuties) ? rawDuties : [rawDuties]) : [];
+      const duties: string[] = dutyArray
+        .map((d: any) => (typeof d === 'string' ? d : d.Name || ''))
+        .filter(Boolean);
+
+      return { success: true, data: { name, label, description, sourcePath: filePath, duties } };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async parseMenuItemFile(
+    filePath: string,
+    itemType: 'display' | 'action' | 'output',
+  ): Promise<XppParseResult<{
+    name: string;
+    label?: string;
+    targetObject?: string;
+    targetType?: string;
+    securityPrivilege?: string;
+    sourcePath: string;
+  }>> {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      const parsed = await this.parser.parseStringPromise(content);
+      const rootKey = itemType === 'display'
+        ? 'AxMenuItemDisplay'
+        : itemType === 'action'
+          ? 'AxMenuItemAction'
+          : 'AxMenuItemOutput';
+      const root = parsed?.[rootKey];
+      if (!root) return { success: false, error: `Not an ${rootKey} file` };
+
+      return {
+        success: true,
+        data: {
+          name: root.Name || '',
+          label: root.Label || undefined,
+          targetObject: root.Object || undefined,
+          targetType: root.ObjectType || undefined,
+          securityPrivilege: root.SecurityPrivilege || undefined,
+          sourcePath: filePath,
+        },
+      };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async parseExtensionFile(
+    filePath: string,
+    extensionType: string,
+  ): Promise<XppParseResult<{
+    name: string;
+    baseObjectName: string;
+    sourcePath: string;
+    addedFields: string[];
+    addedMethods: string[];
+    addedIndexes: string[];
+    cocMethods: string[];
+    eventSubscriptions: string[];
+  }>> {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      const parsed = await this.parser.parseStringPromise(content);
+
+      // Determine XML root element by extensionType
+      const rootKeyMap: Record<string, string> = {
+        'table-extension':       'AxTableExtension',
+        'class-extension':       'AxClassExtension',
+        'form-extension':        'AxFormExtension',
+        'enum-extension':        'AxEnumExtension',
+        'edt-extension':         'AxEdtExtension',
+        'data-entity-extension': 'AxDataEntityViewExtension',
+      };
+      const rootKey = rootKeyMap[extensionType] || Object.keys(parsed || {})[0] || '';
+      const root = parsed?.[rootKey];
+      if (!root) return { success: false, error: `Cannot parse extension type: ${extensionType}` };
+
+      const name: string = root.Name || '';
+      const extendsValue: string = root.Extends || root.BaseObject || '';
+
+      // For class extensions, base object name is inferred from Extends or the name itself
+      // Class extension names follow the pattern "BaseClass.Suffix" or "BaseClass_Suffix_Extension"
+      let baseObjectName = extendsValue;
+      if (!baseObjectName && extensionType === 'class-extension') {
+        // Try to parse from declaration: [ExtensionOf(classStr(BaseName))]
+        const decl: string = root.SourceCode?.Declaration || '';
+        const match = decl.match(/ExtensionOf\s*\(\s*classStr\s*\(\s*(\w+)\s*\)/i)
+          ?? decl.match(/ExtensionOf\s*\(\s*tableStr\s*\(\s*(\w+)\s*\)/i)
+          ?? decl.match(/ExtensionOf\s*\(\s*formStr\s*\(\s*(\w+)\s*\)/i);
+        baseObjectName = match?.[1] || '';
+      }
+
+      // Extract added fields
+      const rawFields = root.Fields?.AxTableField ?? root.Fields?.AxEdtField ?? [];
+      const fieldArr = Array.isArray(rawFields) ? rawFields : rawFields ? [rawFields] : [];
+      const addedFields: string[] = fieldArr.map((f: any) => f.Name || '').filter(Boolean);
+
+      // Extract added indexes
+      const rawIndexes = root.Indexes?.AxTableIndex ?? [];
+      const indexArr = Array.isArray(rawIndexes) ? rawIndexes : rawIndexes ? [rawIndexes] : [];
+      const addedIndexes: string[] = indexArr.map((i: any) => i.Name || '').filter(Boolean);
+
+      // Extract methods + detect CoC and event subscriptions
+      const rawMethods = root.SourceCode?.Methods?.Method ?? root.Methods?.Method ?? [];
+      const methodArr = Array.isArray(rawMethods) ? rawMethods : rawMethods ? [rawMethods] : [];
+
+      const addedMethods: string[] = [];
+      const cocMethods: string[] = [];
+      const eventSubscriptions: string[] = [];
+
+      for (const m of methodArr) {
+        const methodName: string = m.Name || '';
+        const source: string = typeof m.Source === 'string' ? m.Source : (m._ || '');
+        if (!methodName) continue;
+
+        addedMethods.push(methodName);
+
+        // CoC detection: method source calls "next methodName"
+        if (/\bnext\s+\w+\s*\(/i.test(source)) {
+          cocMethods.push(methodName);
+        }
+
+        // Event handler detection: [SubscribesTo(...)]
+        const subMatch = source.match(/\[SubscribesTo\s*\(/i);
+        if (subMatch) {
+          // Extract the subscribes-to target for storage
+          const target = source.match(/\[SubscribesTo\s*\([^)]+\)/)?.[0] || methodName;
+          eventSubscriptions.push(target);
+        }
+      }
+
+      return {
+        success: true,
+        data: {
+          name,
+          baseObjectName,
+          sourcePath: filePath,
+          addedFields,
+          addedMethods,
+          addedIndexes,
+          cocMethods,
+          eventSubscriptions,
+        },
+      };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
 }

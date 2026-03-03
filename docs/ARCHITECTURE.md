@@ -35,7 +35,7 @@ graph TB
     subgraph "MCP Server Components"
         HTTP[HTTP Transport Layer - Express + Rate Limiting]
         PROTO[MCP Protocol Handler - JSON-RPC 2.0]
-        TOOLS[Tool Handlers - 29 MCP Tools]
+        TOOLS[Tool Handlers - 40 MCP Tools]
         DB[(Symbols Database - FTS5, 584K+ symbols)]
         LDB[(Labels Database - FTS5, 19M+ labels, 70 languages)]
         CACHE[Redis Cache - Optional]
@@ -82,7 +82,7 @@ sequenceDiagram
     alt Initialize
         MCP-->>IDE: Server Capabilities
     else Tools List
-        MCP-->>IDE: 29 Tool Definitions
+        MCP-->>IDE: 40 Tool Definitions
     else Tool Call
         MCP->>Handler: Route to Handler
         Handler->>Tool: Execute Tool
@@ -521,7 +521,7 @@ graph LR
     subgraph "MCP Protocol Methods"
         INIT[initialize - Server Capabilities]
         NOTIFY[notifications/initialized - Handshake Complete]
-        TOOLS_LIST[tools/list - 29 Available Tools]
+        TOOLS_LIST[tools/list - 40 Available Tools]
         TOOLS_CALL[tools/call - Execute Tool]
         RES_LIST[resources/list - Empty]
         RES_TMPL[resources/templates/list - Empty]
@@ -530,7 +530,7 @@ graph LR
     end
 
     INIT -.-> CAPS[Capabilities: tools, resources, prompts]
-    TOOLS_LIST -.-> TOOL_DEFS["29 tools: search, batch_search, search_extensions, get_class_info, get_table_info, code_completion, get_method_signature, find_references, get_form_info, get_query_info, get_view_info, get_enum_info, get_edt_info, generate_code, analyze_code_patterns, suggest_method_implementation, analyze_class_completeness, get_api_usage_patterns, generate_d365fo_xml, create_d365fo_file, modify_d365fo_file, search_labels, get_label_info, create_label, get_table_patterns, get_form_patterns, generate_smart_table, generate_smart_form, suggest_edt"]
+    TOOLS_LIST -.-> TOOL_DEFS["40 tools: search, batch_search, search_extensions, get_class_info, get_table_info, code_completion, get_method_signature, find_references, get_form_info, get_query_info, get_view_info, get_enum_info, get_edt_info, get_report_info, generate_code, analyze_code_patterns, suggest_method_implementation, analyze_class_completeness, get_api_usage_patterns, generate_d365fo_xml, create_d365fo_file, modify_d365fo_file, search_labels, get_label_info, create_label, rename_label, get_table_patterns, get_form_patterns, generate_smart_table, generate_smart_form, suggest_edt, get_security_artifact_info, get_security_coverage_for_object, get_menu_item_info, find_coc_extensions, find_event_handlers, get_table_extension_info, get_data_entity_info, analyze_extension_points, validate_object_naming"]
     TOOLS_CALL -.-> EXEC[Tool Execution: search DB, parse XML, return results]
     style INIT fill:#4CAF50,color:#fff
     style TOOLS_CALL fill:#2196F3,color:#fff

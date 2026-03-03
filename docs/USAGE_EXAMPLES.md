@@ -10,11 +10,12 @@ Practical examples you can copy and paste directly into Copilot Chat.
 - [Generating New Classes](#generating-new-classes)
 - [Creating Files](#creating-files)
 - [Where-Used Analysis](#where-used-analysis)
-- [Batch Jobs](#batch-jobs)
+- [Batch Jobs (SysOperation)](#batch-jobs-sysoperation)
 - [Financial Dimensions](#financial-dimensions)
 - [Ledger Journals](#ledger-journals)
 - [Form Extensions](#form-extensions)
 - [Working with Labels](#working-with-labels)
+- [Security and Extensions](#security-and-extensions)
 
 ---
 
@@ -404,3 +405,132 @@ Search for labels containing "dávk" in Czech (cs) language
 
 Use the `language` parameter in `search_labels` to restrict results to a
 specific locale.
+
+---
+
+## Security and Extensions
+
+### Trace the security chain for a form
+
+```
+What roles have access to the CustTable form?
+```
+
+Copilot calls `get_security_coverage_for_object` and returns the complete chain:
+form → menu items → privileges → duties → roles. No AOT browsing required.
+
+```
+Who has access to the SalesTable form?
+Which roles can open the VendTable form?
+```
+
+### Inspect a security privilege
+
+```
+Show me everything in the CustTableFullControl privilege
+What entry points does the CustTableView privilege require?
+```
+
+Copilot calls `get_security_artifact_info` with `artifactType: privilege` and returns
+the privilege label, every entry point name, object type, and access level granted.
+
+### Trace a duty and its privileges
+
+```
+Show me the full privilege chain for the CustTableMaintain duty
+Which privileges are in the AccountsPayableInquire duty?
+```
+
+With `includeChain: true` (the default), Copilot walks: Duty → Privileges → EntryPoints
+and returns the full three-level breakdown in one response.
+
+### Check what CoC extensions already exist
+
+Before you write a new Chain of Command extension, check whether the method is already
+wrapped — avoids duplicating logic or breaking existing wrappers.
+
+```
+Does CustTable.validateWrite have any CoC extensions?
+Are there any CoC wrappers for SalesFormLetter.run()?
+```
+
+Copilot calls `find_coc_extensions` and lists every extension class that wraps the method,
+which model it belongs to, and whether it calls `next`.
+
+### Find event handlers for a table
+
+```
+Who handles the onInserted event of SalesLine?
+Are there any event handlers subscribed to CustTable events?
+```
+
+Copilot calls `find_event_handlers` and lists all `[SubscribesTo]` static methods
+for the table, grouped by event name (onInserted, onUpdated, onValidatedWrite, …).
+
+### See what a table extension adds
+
+```
+What extra fields has any ISV added to CustTable?
+Show me all extensions of the InventTable table
+```
+
+Copilot calls `get_table_extension_info` and returns each extension's model, added fields,
+added indexes, and added methods — plus an effective schema that merges base + extensions.
+
+### Inspect a data entity
+
+```
+Show me the CustCustomerV3Entity data entity
+Is CustCustomerV3Entity available via OData?
+What tables does SalesOrderHeaderV2Entity read from?
+```
+
+Copilot calls `get_data_entity_info` and returns: entity category, `PublicEntityName` (OData
+resource name), whether OData and DMF are enabled, data sources, field-to-table mapping,
+and entity keys.
+
+### Discover what you can extend on an object
+
+Before writing an extension you want to know: which methods are CoC-eligible, which are
+blocked with `final`, and whether any events are already subscribed.
+
+```
+What can I extend on SalesLine?
+What CoC-eligible methods does SalesFormLetter have?
+Are any methods on CustTable blocked from CoC?
+```
+
+Copilot calls `analyze_extension_points`, returns a categorised list: CoC-eligible, final
+(blocked), delegate hooks, table events, and any already-extended points.
+
+### Validate an extension name before you create it
+
+```
+Is SalesTableExtension a valid name for a class extension of SalesTable?
+Validate the name SalesTable.WHSExtension as a table extension
+Is MyOrderTableMaintain a valid security privilege name?
+```
+
+Copilot calls `validate_object_naming`, checks D365FO naming conventions
+(e.g. `{Base}{Prefix}_Extension` for class extensions, `{Base}.{Prefix}Extension` for AOT
+extensions), detects conflicts against the 584K+ symbol index, and suggests the correct name.
+
+### Create a SysOperation batch job
+
+```
+Create a SysOperation batch job for nightly invoice calculation
+Generate a SysOperation DataContract + Controller + Service for vendor aging report processing
+```
+
+Copilot calls `generate_code` with `pattern: sysoperation` and produces all three classes:
+`DataContract`, `Controller`, and `Service` — ready to paste into Visual Studio.
+
+### Create event handlers for a table
+
+```
+Create an event handler class for SalesLine that handles onInserted and onValidatedWrite
+Generate a [SubscribesTo] event handler for CustTable.onInserted
+```
+
+Copilot calls `generate_code` with `pattern: event-handler` and generates a static handler
+class with correctly typed sender arguments and `delegateStr()` references.

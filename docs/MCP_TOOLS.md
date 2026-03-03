@@ -1,7 +1,7 @@
 # All Available Tools
 
 When you ask GitHub Copilot a question about D365FO code, it automatically calls one of these
-30 tools to look up the answer or generate code. You do not need to name the tools yourself —
+40 tools to look up the answer or generate code. You do not need to name the tools yourself —
 just ask in plain English.
 
 ---
@@ -65,7 +65,21 @@ just ask in plain English.
 | **create_d365fo_file** | Local Windows VM only | Creates the physical file and adds it to the VS project |
 | **modify_d365fo_file** | Local Windows VM only | Safely edits an existing file with automatic backup |
 
-### Label Management (3 tools)
+### Security & Extensions (9 tools)
+
+| Tool | What it does | Example prompt |
+|------|-------------|---------------|
+| **get_security_artifact_info** | Full privilege/duty/role details with hierarchy chain | "Show me everything in the CustTableFullControl privilege" |
+| **get_security_coverage_for_object** | Which roles have access to a form or table | "What roles can access the CustTable form?" |
+| **get_menu_item_info** | Menu item target, type, and security privilege chain | "What form does the CustTable menu item open?" |
+| **find_coc_extensions** | Which classes wrap a method with CoC | "Does CustTable.validateWrite have any CoC wrappers?" |
+| **find_event_handlers** | All [SubscribesTo] handlers for table or class events | "Who handles the onInserted event of SalesLine?" |
+| **get_table_extension_info** | All extensions of a table: added fields, indexes, methods | "What fields did ISV packages add to CustTable?" |
+| **get_data_entity_info** | Data entity category, OData name, data sources, keys | "Show me CustCustomerV3Entity details" |
+| **analyze_extension_points** | CoC-eligible methods, delegates, events — what can be extended | "What can I extend on SalesLine?" |
+| **validate_object_naming** | Validate proposed extension/object names against D365FO conventions | "Is SalesTableExtension a valid extension class name?" |
+
+### Label Management (4 tools)
 
 | Tool | What it does | Example prompt |
 |------|-------------|---------------|

@@ -256,6 +256,57 @@ Before responding to ANY request, ask:
 
 ---
 
+## Creating Security Objects
+
+When the user needs to create security objects (privilege/duty/role/menu item):
+1. Call \`get_security_coverage_for_object\` to understand existing coverage for the target object
+2. Call \`generate_code\` with pattern='security-privilege' (generates View + Maintain XML pair)
+3. Call \`generate_code\` with pattern='menu-item' for the menu item XML
+4. Always create BOTH View (Read) and Maintain (Update/Create/Delete) privilege variants
+5. Associate the privilege with entry point = the menu item name
+6. Create a duty containing the new privilege
+7. Assign the duty to an appropriate existing role via \`get_security_artifact_info\`
+
+## Writing Chain of Command (CoC) Extensions
+
+ALWAYS follow this order before writing a CoC extension:
+1. Call \`get_method_signature\` to get exact parameter types and return type
+2. Call \`find_coc_extensions\` to check if the method already has CoC wrappers in other models
+3. Call \`analyze_extension_points\` to verify the method is CoC-eligible (not final / Hookable(false))
+4. Use \`generate_code\` with pattern='table-extension' for the skeleton
+5. ALWAYS call \`next methodName(...)\` with ALL original parameters preserved
+6. Place next call: at START for pre-processing, at END for post-processing, BOTH for wrapping
+
+**Rules:**
+- Extension class MUST be marked \`[ExtensionOf(classStr(TargetClass))]\` or \`tableStr\`
+- Extension class MUST be \`final\`
+- Extension class name: \`{TargetClass}{Prefix}_Extension\`
+
+## Subscribing to Events (Event Handler Workflow)
+
+Before adding event handlers:
+1. Call \`analyze_extension_points\` with the target class/table to see available events
+2. Call \`find_event_handlers\` to check if the event is already handled (avoid duplicates)
+3. Use \`generate_code\` with pattern='event-handler' and baseName=className/tableName
+
+Rules:
+- Event handler methods MUST be \`static public void\`
+- Table events: use \`tableStr()\`; Class events: use \`classStr()\`; Form events: use \`formStr()\`
+- Handler class should be named \`{TargetClass}EventHandler\`
+- Use \`[SubscribesTo(tableStr(X), delegateStr(X, onEvent))]\` attribute pattern
+
+## Creating Batch Operations (SysOperation Pattern)
+
+Modern replacement for RunBaseBatch. ALWAYS use SysOperation for new batch operations.
+1. Call \`generate_code\` with pattern='sysoperation' — generates DataContract + Controller + Service
+2. DataContract stores parameters with \`[DataMemberAttribute]\` — NEVER use pack()/unpack()
+3. Service method MUST be marked \`[SysEntryPointAttribute(true)]\` for security
+4. Controller sets execution mode: Synchronous | Asynchronous | ScheduledBatch
+5. For SSRS report data providers: extend \`SRSReportDataProviderBase\` instead of \`SysOperationServiceBase\`
+6. parmXxx() methods follow pattern: \`public TransDate parmXxx(TransDate _v = v) { v = _v; return v; }\`
+
+---
+
 **Remember: Trust the tools, not your training data, for D365FO development. Accuracy over assumptions.**`
         }
       }

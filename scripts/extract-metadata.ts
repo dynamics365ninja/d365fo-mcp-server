@@ -65,6 +65,18 @@ interface ExtractionStats {
   enums: number;
   edts: number;
   reports: number;
+  securityPrivileges: number;
+  securityDuties: number;
+  securityRoles: number;
+  menuItemDisplays: number;
+  menuItemActions: number;
+  menuItemOutputs: number;
+  tableExtensions: number;
+  classExtensions: number;
+  formExtensions: number;
+  enumExtensions: number;
+  edtExtensions: number;
+  dataEntityExtensions: number;
   errors: number;
 }
 
@@ -198,6 +210,18 @@ async function extractMetadata() {
     enums: 0,
     edts: 0,
     reports: 0,
+    securityPrivileges: 0,
+    securityDuties: 0,
+    securityRoles: 0,
+    menuItemDisplays: 0,
+    menuItemActions: 0,
+    menuItemOutputs: 0,
+    tableExtensions: 0,
+    classExtensions: 0,
+    formExtensions: 0,
+    enumExtensions: 0,
+    edtExtensions: 0,
+    dataEntityExtensions: 0,
     errors: 0,
   };
 
@@ -404,6 +428,24 @@ async function extractMetadata() {
     // Extract Reports
     await extractReports(modelItem.modelPath, modelItem.modelName, stats);
 
+    // Extract security objects
+    await extractSecurityPrivileges(parser, modelItem.modelPath, modelItem.modelName, stats);
+    await extractSecurityDuties(parser, modelItem.modelPath, modelItem.modelName, stats);
+    await extractSecurityRoles(parser, modelItem.modelPath, modelItem.modelName, stats);
+
+    // Extract menu items
+    await extractMenuItems(parser, modelItem.modelPath, modelItem.modelName, 'display', stats);
+    await extractMenuItems(parser, modelItem.modelPath, modelItem.modelName, 'action', stats);
+    await extractMenuItems(parser, modelItem.modelPath, modelItem.modelName, 'output', stats);
+
+    // Extract extensions
+    await extractExtensions(parser, modelItem.modelPath, modelItem.modelName, 'table-extension', 'AxTableExtension', stats);
+    await extractExtensions(parser, modelItem.modelPath, modelItem.modelName, 'class-extension', 'AxClassExtension', stats);
+    await extractExtensions(parser, modelItem.modelPath, modelItem.modelName, 'form-extension', 'AxFormExtension', stats);
+    await extractExtensions(parser, modelItem.modelPath, modelItem.modelName, 'enum-extension', 'AxEnumExtension', stats);
+    await extractExtensions(parser, modelItem.modelPath, modelItem.modelName, 'edt-extension', 'AxEdtExtension', stats);
+    await extractExtensions(parser, modelItem.modelPath, modelItem.modelName, 'data-entity-extension', 'AxDataEntityViewExtension', stats);
+
     const modelDuration = Date.now() - modelStart;
     cumulativeModelDuration += modelDuration;
     processedModels++;
@@ -432,6 +474,18 @@ async function extractMetadata() {
   console.log(`   Enums: ${formatCount(stats.enums)}`);
   console.log(`   EDTs: ${formatCount(stats.edts)}`);
   console.log(`   Reports: ${formatCount(stats.reports)}`);
+  console.log(`   Security privileges: ${formatCount(stats.securityPrivileges)}`);
+  console.log(`   Security duties: ${formatCount(stats.securityDuties)}`);
+  console.log(`   Security roles: ${formatCount(stats.securityRoles)}`);
+  console.log(`   Menu items (display): ${formatCount(stats.menuItemDisplays)}`);
+  console.log(`   Menu items (action): ${formatCount(stats.menuItemActions)}`);
+  console.log(`   Menu items (output): ${formatCount(stats.menuItemOutputs)}`);
+  console.log(`   Table extensions: ${formatCount(stats.tableExtensions)}`);
+  console.log(`   Class extensions: ${formatCount(stats.classExtensions)}`);
+  console.log(`   Form extensions: ${formatCount(stats.formExtensions)}`);
+  console.log(`   Enum extensions: ${formatCount(stats.enumExtensions)}`);
+  console.log(`   EDT extensions: ${formatCount(stats.edtExtensions)}`);
+  console.log(`   Data entity extensions: ${formatCount(stats.dataEntityExtensions)}`);
   console.log(`   Errors: ${formatCount(stats.errors)}`);
 }
 
@@ -870,6 +924,186 @@ async function extractReports(
       stats.reports++;
     } catch (error) {
       console.error(`   ❌ Error extracting report ${file}:`, error);
+      stats.errors++;
+    }
+  }
+}
+
+async function extractSecurityPrivileges(
+  parser: XppMetadataParser,
+  modelPath: string,
+  modelName: string,
+  stats: ExtractionStats
+) {
+  let dirPath = path.join(modelPath, 'AxSecurityPrivilege');
+  try { await fs.access(dirPath); } catch {
+    dirPath = path.join(modelPath, 'axsecurityprivilege');
+    try { await fs.access(dirPath); } catch { return; }
+  }
+  const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
+  if (files.length === 0) return;
+  console.log(`   Security privileges: ${formatCount(files.length)} files`);
+  const outputDir = path.join(OUTPUT_PATH, modelName, 'security-privileges');
+  await fs.mkdir(outputDir, { recursive: true });
+  for (const file of files) {
+    const filePath = path.join(dirPath, file);
+    stats.totalFiles++;
+    try {
+      const result = await parser.parseSecurityPrivilegeFile(filePath);
+      if (!result.success || !result.data) { stats.errors++; continue; }
+      const outputFile = path.join(outputDir, `${result.data.name}.json`);
+      await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: 'security-privilege' }, null, 2));
+      stats.securityPrivileges++;
+    } catch (error) {
+      console.error(`   ❌ Error extracting security privilege ${file}:`, error);
+      stats.errors++;
+    }
+  }
+}
+
+async function extractSecurityDuties(
+  parser: XppMetadataParser,
+  modelPath: string,
+  modelName: string,
+  stats: ExtractionStats
+) {
+  let dirPath = path.join(modelPath, 'AxSecurityDuty');
+  try { await fs.access(dirPath); } catch {
+    dirPath = path.join(modelPath, 'axsecurityduty');
+    try { await fs.access(dirPath); } catch { return; }
+  }
+  const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
+  if (files.length === 0) return;
+  console.log(`   Security duties: ${formatCount(files.length)} files`);
+  const outputDir = path.join(OUTPUT_PATH, modelName, 'security-duties');
+  await fs.mkdir(outputDir, { recursive: true });
+  for (const file of files) {
+    const filePath = path.join(dirPath, file);
+    stats.totalFiles++;
+    try {
+      const result = await parser.parseSecurityDutyFile(filePath);
+      if (!result.success || !result.data) { stats.errors++; continue; }
+      const outputFile = path.join(outputDir, `${result.data.name}.json`);
+      await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: 'security-duty' }, null, 2));
+      stats.securityDuties++;
+    } catch (error) {
+      console.error(`   ❌ Error extracting security duty ${file}:`, error);
+      stats.errors++;
+    }
+  }
+}
+
+async function extractSecurityRoles(
+  parser: XppMetadataParser,
+  modelPath: string,
+  modelName: string,
+  stats: ExtractionStats
+) {
+  let dirPath = path.join(modelPath, 'AxSecurityRole');
+  try { await fs.access(dirPath); } catch {
+    dirPath = path.join(modelPath, 'axsecurityrole');
+    try { await fs.access(dirPath); } catch { return; }
+  }
+  const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
+  if (files.length === 0) return;
+  console.log(`   Security roles: ${formatCount(files.length)} files`);
+  const outputDir = path.join(OUTPUT_PATH, modelName, 'security-roles');
+  await fs.mkdir(outputDir, { recursive: true });
+  for (const file of files) {
+    const filePath = path.join(dirPath, file);
+    stats.totalFiles++;
+    try {
+      const result = await parser.parseSecurityRoleFile(filePath);
+      if (!result.success || !result.data) { stats.errors++; continue; }
+      const outputFile = path.join(outputDir, `${result.data.name}.json`);
+      await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: 'security-role' }, null, 2));
+      stats.securityRoles++;
+    } catch (error) {
+      console.error(`   ❌ Error extracting security role ${file}:`, error);
+      stats.errors++;
+    }
+  }
+}
+
+async function extractMenuItems(
+  parser: XppMetadataParser,
+  modelPath: string,
+  modelName: string,
+  itemType: 'display' | 'action' | 'output',
+  stats: ExtractionStats
+) {
+  const dirName = itemType === 'display' ? 'AxMenuItemDisplay'
+    : itemType === 'action' ? 'AxMenuItemAction' : 'AxMenuItemOutput';
+  const outDirName = `menu-item-${itemType}s`;
+  const statKey = itemType === 'display' ? 'menuItemDisplays'
+    : itemType === 'action' ? 'menuItemActions' : 'menuItemOutputs';
+
+  let dirPath = path.join(modelPath, dirName);
+  try { await fs.access(dirPath); } catch {
+    dirPath = path.join(modelPath, dirName.toLowerCase());
+    try { await fs.access(dirPath); } catch { return; }
+  }
+  const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
+  if (files.length === 0) return;
+  console.log(`   Menu items (${itemType}): ${formatCount(files.length)} files`);
+  const outputDir = path.join(OUTPUT_PATH, modelName, outDirName);
+  await fs.mkdir(outputDir, { recursive: true });
+  for (const file of files) {
+    const filePath = path.join(dirPath, file);
+    stats.totalFiles++;
+    try {
+      const result = await parser.parseMenuItemFile(filePath, itemType);
+      if (!result.success || !result.data) { stats.errors++; continue; }
+      const outputFile = path.join(outputDir, `${result.data.name}.json`);
+      await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: `menu-item-${itemType}` }, null, 2));
+      (stats as any)[statKey]++;
+    } catch (error) {
+      console.error(`   ❌ Error extracting menu item (${itemType}) ${file}:`, error);
+      stats.errors++;
+    }
+  }
+}
+
+async function extractExtensions(
+  parser: XppMetadataParser,
+  modelPath: string,
+  modelName: string,
+  extensionType: string,
+  axDirName: string,
+  stats: ExtractionStats
+) {
+  const outDirName = extensionType + 's'; // table-extensions, class-extensions, etc.
+  const statKeyMap: Record<string, string> = {
+    'table-extension': 'tableExtensions',
+    'class-extension': 'classExtensions',
+    'form-extension': 'formExtensions',
+    'enum-extension': 'enumExtensions',
+    'edt-extension': 'edtExtensions',
+    'data-entity-extension': 'dataEntityExtensions',
+  };
+
+  let dirPath = path.join(modelPath, axDirName);
+  try { await fs.access(dirPath); } catch {
+    dirPath = path.join(modelPath, axDirName.toLowerCase());
+    try { await fs.access(dirPath); } catch { return; }
+  }
+  const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
+  if (files.length === 0) return;
+  console.log(`   ${extensionType}s: ${formatCount(files.length)} files`);
+  const outputDir = path.join(OUTPUT_PATH, modelName, outDirName);
+  await fs.mkdir(outputDir, { recursive: true });
+  for (const file of files) {
+    const filePath = path.join(dirPath, file);
+    stats.totalFiles++;
+    try {
+      const result = await parser.parseExtensionFile(filePath, extensionType);
+      if (!result.success || !result.data) { stats.errors++; continue; }
+      const outputFile = path.join(outputDir, `${result.data.name}.json`);
+      await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: extensionType }, null, 2));
+      const statKey = statKeyMap[extensionType];
+      if (statKey) (stats as any)[statKey]++;
+    } catch (error) {
+      console.error(`   ❌ Error extracting ${extensionType} ${file}:`, error);
       stats.errors++;
     }
   }

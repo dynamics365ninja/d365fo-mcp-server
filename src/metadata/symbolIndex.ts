@@ -373,6 +373,88 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_edt_metadata_model ON edt_metadata(model);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_edt_metadata_unique ON edt_metadata(edt_name, model);
     `);
+
+    // ── Security Tables ──────────────────────────────────────────────────────
+
+    // Security Privilege Entry Points
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS security_privilege_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        privilege_name TEXT NOT NULL,
+        entry_point_name TEXT NOT NULL,
+        object_type TEXT NOT NULL,
+        access_level TEXT NOT NULL,
+        model TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_spe_privilege ON security_privilege_entries(privilege_name);
+      CREATE INDEX IF NOT EXISTS idx_spe_entry ON security_privilege_entries(entry_point_name);
+      CREATE INDEX IF NOT EXISTS idx_spe_model ON security_privilege_entries(model);
+    `);
+
+    // Security Duty → Privilege references
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS security_duty_privileges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        duty_name TEXT NOT NULL,
+        privilege_name TEXT NOT NULL,
+        model TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_sdp_duty ON security_duty_privileges(duty_name);
+      CREATE INDEX IF NOT EXISTS idx_sdp_privilege ON security_duty_privileges(privilege_name);
+      CREATE INDEX IF NOT EXISTS idx_sdp_model ON security_duty_privileges(model);
+    `);
+
+    // Security Role → Duty references
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS security_role_duties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role_name TEXT NOT NULL,
+        duty_name TEXT NOT NULL,
+        model TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_srd_role ON security_role_duties(role_name);
+      CREATE INDEX IF NOT EXISTS idx_srd_duty ON security_role_duties(duty_name);
+      CREATE INDEX IF NOT EXISTS idx_srd_model ON security_role_duties(model);
+    `);
+
+    // ── Menu Item Targets ─────────────────────────────────────────────────────
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS menu_item_targets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        menu_item_name TEXT NOT NULL,
+        menu_item_type TEXT NOT NULL,
+        target_object TEXT,
+        target_type TEXT,
+        security_privilege TEXT,
+        label TEXT,
+        model TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_mit_name ON menu_item_targets(menu_item_name);
+      CREATE INDEX IF NOT EXISTS idx_mit_target ON menu_item_targets(target_object);
+      CREATE INDEX IF NOT EXISTS idx_mit_model ON menu_item_targets(model);
+    `);
+
+    // ── Extension Metadata ───────────────────────────────────────────────────
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS extension_metadata (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        extension_name TEXT NOT NULL,
+        extension_type TEXT NOT NULL,
+        base_object_name TEXT NOT NULL,
+        added_fields TEXT,
+        added_methods TEXT,
+        added_indexes TEXT,
+        coc_methods TEXT,
+        event_subscriptions TEXT,
+        model TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_em_base ON extension_metadata(base_object_name);
+      CREATE INDEX IF NOT EXISTS idx_em_type ON extension_metadata(extension_type);
+      CREATE INDEX IF NOT EXISTS idx_em_name ON extension_metadata(extension_name);
+      CREATE INDEX IF NOT EXISTS idx_em_model ON extension_metadata(model);
+    `);
   }
 
   /**
@@ -874,6 +956,45 @@ export class XppSymbolIndex {
         const reportsPath = path.join(modelPath, 'reports');
         if (fs.existsSync(reportsPath)) this.indexReports(reportsPath, model);
 
+        // Security artifacts
+        const secPrivPath = path.join(modelPath, 'security-privileges');
+        if (fs.existsSync(secPrivPath)) this.indexSecurityPrivileges(secPrivPath, model);
+
+        const secDutyPath = path.join(modelPath, 'security-duties');
+        if (fs.existsSync(secDutyPath)) this.indexSecurityDuties(secDutyPath, model);
+
+        const secRolePath = path.join(modelPath, 'security-roles');
+        if (fs.existsSync(secRolePath)) this.indexSecurityRoles(secRolePath, model);
+
+        // Menu items
+        const menuDisplayPath = path.join(modelPath, 'menu-item-displays');
+        if (fs.existsSync(menuDisplayPath)) this.indexMenuItems(menuDisplayPath, model, 'display');
+
+        const menuActionPath = path.join(modelPath, 'menu-item-actions');
+        if (fs.existsSync(menuActionPath)) this.indexMenuItems(menuActionPath, model, 'action');
+
+        const menuOutputPath = path.join(modelPath, 'menu-item-outputs');
+        if (fs.existsSync(menuOutputPath)) this.indexMenuItems(menuOutputPath, model, 'output');
+
+        // Extensions
+        const tableExtPath = path.join(modelPath, 'table-extensions');
+        if (fs.existsSync(tableExtPath)) this.indexExtensions(tableExtPath, model, 'table-extension');
+
+        const classExtPath = path.join(modelPath, 'class-extensions');
+        if (fs.existsSync(classExtPath)) this.indexExtensions(classExtPath, model, 'class-extension');
+
+        const formExtPath = path.join(modelPath, 'form-extensions');
+        if (fs.existsSync(formExtPath)) this.indexExtensions(formExtPath, model, 'form-extension');
+
+        const enumExtPath = path.join(modelPath, 'enum-extensions');
+        if (fs.existsSync(enumExtPath)) this.indexExtensions(enumExtPath, model, 'enum-extension');
+
+        const edtExtPath = path.join(modelPath, 'edt-extensions');
+        if (fs.existsSync(edtExtPath)) this.indexExtensions(edtExtPath, model, 'edt-extension');
+
+        const deExtPath = path.join(modelPath, 'data-entity-extensions');
+        if (fs.existsSync(deExtPath)) this.indexExtensions(deExtPath, model, 'data-entity-extension');
+
         // Mark model as done atomically with its data (same transaction)
         markProgress?.run(model, Date.now());
       });
@@ -924,7 +1045,13 @@ export class XppSymbolIndex {
    * so the most data is committed to disk before any CI pipeline timeout.
    */
   private sortModelsBySize(metadataPath: string, models: string[]): string[] {
-    const subdirs = ['classes', 'tables', 'forms', 'queries', 'views', 'enums', 'edts', 'reports'];
+    const subdirs = [
+      'classes', 'tables', 'forms', 'queries', 'views', 'enums', 'edts', 'reports',
+      'security-privileges', 'security-duties', 'security-roles',
+      'menu-item-displays', 'menu-item-actions', 'menu-item-outputs',
+      'table-extensions', 'class-extensions', 'form-extensions',
+      'enum-extensions', 'edt-extensions', 'data-entity-extensions',
+    ];
     const sized = models.map(model => {
       let count = 0;
       const modelPath = path.join(metadataPath, model);
@@ -1357,6 +1484,191 @@ export class XppSymbolIndex {
       } catch (error) {
         // Only log errors, don't stop processing
         console.error(`      ⚠️  Skipped view ${file}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+  }
+
+  private indexSecurityPrivileges(dirPath: string, model: string): void {
+    const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.json'));
+    const insertEntry = this.db.prepare(`
+      INSERT OR IGNORE INTO security_privilege_entries
+        (privilege_name, entry_point_name, object_type, access_level, model)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    for (const file of files) {
+      try {
+        const filePath = path.join(dirPath, file);
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const sourceFilePath = data.sourcePath || filePath;
+        const name = data.name || path.basename(file, '.json');
+        const entryPoints: Array<{ name: string; objectType: string; accessLevel: string }> =
+          data.entryPoints || [];
+
+        this.addSymbol({
+          name,
+          type: 'security-privilege',
+          filePath: sourceFilePath,
+          model,
+          description: data.label || undefined,
+          signature: entryPoints.length > 0 ? `${entryPoints.length} entry point(s)` : undefined,
+        });
+
+        for (const ep of entryPoints) {
+          insertEntry.run(name, ep.name, ep.objectType, ep.accessLevel, model);
+        }
+      } catch (error) {
+        console.error(`      ⚠️  Skipped security-privilege ${file}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+  }
+
+  private indexSecurityDuties(dirPath: string, model: string): void {
+    const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.json'));
+    const insertPriv = this.db.prepare(`
+      INSERT OR IGNORE INTO security_duty_privileges (duty_name, privilege_name, model)
+      VALUES (?, ?, ?)
+    `);
+
+    for (const file of files) {
+      try {
+        const filePath = path.join(dirPath, file);
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const sourceFilePath = data.sourcePath || filePath;
+        const name = data.name || path.basename(file, '.json');
+        const privileges: string[] = data.privileges || [];
+
+        this.addSymbol({
+          name,
+          type: 'security-duty',
+          filePath: sourceFilePath,
+          model,
+          description: data.label || undefined,
+          signature: privileges.length > 0 ? `${privileges.length} privilege(s)` : undefined,
+        });
+
+        for (const priv of privileges) {
+          insertPriv.run(name, priv, model);
+        }
+      } catch (error) {
+        console.error(`      ⚠️  Skipped security-duty ${file}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+  }
+
+  private indexSecurityRoles(dirPath: string, model: string): void {
+    const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.json'));
+    const insertDuty = this.db.prepare(`
+      INSERT OR IGNORE INTO security_role_duties (role_name, duty_name, model)
+      VALUES (?, ?, ?)
+    `);
+
+    for (const file of files) {
+      try {
+        const filePath = path.join(dirPath, file);
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const sourceFilePath = data.sourcePath || filePath;
+        const name = data.name || path.basename(file, '.json');
+        const duties: string[] = data.duties || [];
+
+        this.addSymbol({
+          name,
+          type: 'security-role',
+          filePath: sourceFilePath,
+          model,
+          description: data.description || data.label || undefined,
+          signature: duties.length > 0 ? `${duties.length} duty(ies)` : undefined,
+        });
+
+        for (const duty of duties) {
+          insertDuty.run(name, duty, model);
+        }
+      } catch (error) {
+        console.error(`      ⚠️  Skipped security-role ${file}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+  }
+
+  private indexMenuItems(dirPath: string, model: string, menuItemType: 'display' | 'action' | 'output'): void {
+    const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.json'));
+    const symbolType = `menu-item-${menuItemType}` as const;
+    const insertTarget = this.db.prepare(`
+      INSERT OR REPLACE INTO menu_item_targets
+        (menu_item_name, menu_item_type, target_object, target_type, security_privilege, label, model)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const file of files) {
+      try {
+        const filePath = path.join(dirPath, file);
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const sourceFilePath = data.sourcePath || filePath;
+        const name = data.name || path.basename(file, '.json');
+
+        this.addSymbol({
+          name,
+          type: symbolType,
+          filePath: sourceFilePath,
+          model,
+          description: data.label || undefined,
+          signature: data.targetObject || data.object || undefined,
+        });
+
+        insertTarget.run(
+          name,
+          menuItemType,
+          data.targetObject || data.object || null,
+          data.targetType || data.objectType || null,
+          data.securityPrivilege || null,
+          data.label || null,
+          model
+        );
+      } catch (error) {
+        console.error(`      ⚠️  Skipped menu-item-${menuItemType} ${file}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+  }
+
+  private indexExtensions(dirPath: string, model: string, extensionType: string): void {
+    const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.json'));
+    const insertMeta = this.db.prepare(`
+      INSERT OR REPLACE INTO extension_metadata
+        (extension_name, extension_type, base_object_name, added_fields, added_methods,
+         added_indexes, coc_methods, event_subscriptions, model)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const file of files) {
+      try {
+        const filePath = path.join(dirPath, file);
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const sourceFilePath = data.sourcePath || filePath;
+        const name = data.name || path.basename(file, '.json');
+        const baseObjectName = data.baseObjectName || data.extends || '';
+
+        this.addSymbol({
+          name,
+          type: extensionType as any,
+          filePath: sourceFilePath,
+          model,
+          parentName: baseObjectName || undefined,
+          extendsClass: baseObjectName || undefined,
+          signature: baseObjectName || undefined,
+        });
+
+        insertMeta.run(
+          name,
+          extensionType,
+          baseObjectName,
+          data.addedFields ? JSON.stringify(data.addedFields) : null,
+          data.addedMethods ? JSON.stringify(data.addedMethods) : null,
+          data.addedIndexes ? JSON.stringify(data.addedIndexes) : null,
+          data.cocMethods ? JSON.stringify(data.cocMethods) : null,
+          data.eventSubscriptions ? JSON.stringify(data.eventSubscriptions) : null,
+          model
+        );
+      } catch (error) {
+        console.error(`      ⚠️  Skipped ${extensionType} ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -1803,6 +2115,11 @@ export class XppSymbolIndex {
     this.db.exec('DELETE FROM table_relations');
     this.db.exec('DELETE FROM form_datasources');
     this.db.exec('DELETE FROM edt_metadata');
+    this.db.exec('DELETE FROM security_privilege_entries');
+    this.db.exec('DELETE FROM security_duty_privileges');
+    this.db.exec('DELETE FROM security_role_duties');
+    this.db.exec('DELETE FROM menu_item_targets');
+    this.db.exec('DELETE FROM extension_metadata');
     this.vacuum();
   }
 
@@ -1829,7 +2146,13 @@ export class XppSymbolIndex {
     
     const stmtEdt = this.db.prepare(`DELETE FROM edt_metadata WHERE model IN (${placeholders})`);
     stmtEdt.run(...modelNames);
-    
+
+    this.db.prepare(`DELETE FROM security_privilege_entries WHERE model IN (${placeholders})`).run(...modelNames);
+    this.db.prepare(`DELETE FROM security_duty_privileges WHERE model IN (${placeholders})`).run(...modelNames);
+    this.db.prepare(`DELETE FROM security_role_duties WHERE model IN (${placeholders})`).run(...modelNames);
+    this.db.prepare(`DELETE FROM menu_item_targets WHERE model IN (${placeholders})`).run(...modelNames);
+    this.db.prepare(`DELETE FROM extension_metadata WHERE model IN (${placeholders})`).run(...modelNames);
+
     console.log(`🗑️  Cleared symbols for models: ${modelNames.join(', ')}`);
     
     if (shouldVacuum) {

@@ -76,30 +76,57 @@ import { handleGetFormPatterns } from './getFormPatterns.js';
 import { handleGenerateSmartTable } from './generateSmartTable.js';
 import { handleGenerateSmartForm } from './generateSmartForm.js';
 import { handleSuggestEdt } from './suggestEdt.js';
+import { securityArtifactInfoTool } from './securityArtifactInfo.js';
+import { menuItemInfoTool } from './menuItemInfo.js';
+import { findCocExtensionsTool } from './findCocExtensions.js';
+import { tableExtensionInfoTool } from './tableExtensionInfo.js';
+import { dataEntityInfoTool } from './dataEntityInfo.js';
+import { findEventHandlersTool } from './findEventHandlers.js';
+import { securityCoverageInfoTool } from './securityCoverageInfo.js';
+import { analyzeExtensionPointsTool } from './analyzeExtensionPoints.js';
+import { validateObjectNamingTool } from './validateObjectNaming.js';
 
 /**
  * Centralized tool handler that dispatches to individual tool implementations
  */
 
-/** Tools whose output must never be truncated (XML blobs, file writes) */
-const UNCAPPED_TOOLS = new Set([
-  'generate_smart_table', 'generate_smart_form',
-  'create_d365fo_file', 'generate_d365fo_xml',
-  'get_report_info',  // report XML + optional full RDL can exceed 3.5k chars
-]);
+/** Per-tool response cap sizes. 'uncapped' = no truncation. */
+const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
+  // Uncapped — XML generation, file writes, or long structured output
+  generate_smart_table:             'uncapped',
+  generate_smart_form:              'uncapped',
+  create_d365fo_file:               'uncapped',
+  generate_d365fo_xml:              'uncapped',
+  get_report_info:                  'uncapped',
+  // New tools with longer output
+  get_security_artifact_info:       8000,
+  get_security_coverage_for_object: 8000,
+  get_table_extension_info:         6000,
+  analyze_extension_points:         6000,
+  find_coc_extensions:              5000,
+  find_event_handlers:              5000,
+  get_data_entity_info:             5000,
+  get_class_info:                   6000,
+  get_table_info:                   6000,
+  get_form_info:                    5000,
+  // Default for everything else
+  default:                          3500,
+};
 
-/** Hard limit on text returned to Copilot per tool call to stay under 64k context budget */
-const MAX_TOOL_RESPONSE_CHARS = 3500;
+function getCapForTool(toolName: string): number | 'uncapped' {
+  return TOOL_CAP_SIZES[toolName] ?? TOOL_CAP_SIZES['default'];
+}
 
 function capToolResponse(toolName: string, result: any): any {
-  if (UNCAPPED_TOOLS.has(toolName) || !result?.content) return result;
+  const cap = getCapForTool(toolName);
+  if (cap === 'uncapped' || !result?.content) return result;
   const content = result.content.map((item: any) => {
     if (item.type !== 'text' || typeof item.text !== 'string') return item;
-    if (item.text.length <= MAX_TOOL_RESPONSE_CHARS) return item;
+    if (item.text.length <= (cap as number)) return item;
     return {
       ...item,
-      text: item.text.slice(0, MAX_TOOL_RESPONSE_CHARS) +
-        `\n\n> ✂️ Response truncated at ${MAX_TOOL_RESPONSE_CHARS} chars. Use more specific parameters (e.g. methodOffset, compact=false for one class) to get remaining content.`,
+      text: item.text.slice(0, cap as number) +
+        `\n\n> ✂️ Response truncated at ${cap} chars. Use more specific parameters (e.g. methodOffset, compact=false for one class) to get remaining content.`,
     };
   });
   return { ...result, content };
@@ -217,6 +244,24 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         );
         return { content: r?.content ?? [{ type: 'text', text: 'No results returned' }] };
       }
+      case 'get_security_artifact_info':
+        return securityArtifactInfoTool(request, context);
+      case 'get_menu_item_info':
+        return menuItemInfoTool(request, context);
+      case 'find_coc_extensions':
+        return findCocExtensionsTool(request, context);
+      case 'get_table_extension_info':
+        return tableExtensionInfoTool(request, context);
+      case 'get_data_entity_info':
+        return dataEntityInfoTool(request, context);
+      case 'find_event_handlers':
+        return findEventHandlersTool(request, context);
+      case 'get_security_coverage_for_object':
+        return securityCoverageInfoTool(request, context);
+      case 'analyze_extension_points':
+        return analyzeExtensionPointsTool(request, context);
+      case 'validate_object_naming':
+        return validateObjectNamingTool(request, context);
       default:
         return {
           content: [

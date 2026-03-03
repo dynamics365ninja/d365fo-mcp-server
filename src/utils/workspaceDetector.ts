@@ -45,7 +45,7 @@ async function findProjectFiles(
         'AxDataEntityView', 'AxTableExtension', 'AxFormExtension',
         'AxMenuItemAction', 'AxMenuItemDisplay', 'AxMenuItemOutput',
         'AxMenu', 'AxSecurityRole', 'AxSecurityDuty', 'AxSecurityPrivilege',
-        'AxLabel', 'AxResource', 'AxReport', 'AxWorkflowType',
+        'AxLabel', 'AxResource', 'AxReport',
         'AxEdt', 'AxExtendedDataType',
       ];
       if (entry.isDirectory() && skipDirs.includes(entry.name)) {

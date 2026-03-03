@@ -309,13 +309,13 @@ async function main() {
     console.log('✅ Stdio transport connected');
     
     // Log actual tool count based on server mode
-    const totalTools = 30;
+    const totalTools = 40;
     const writeToolCount = WRITE_TOOLS.size;
     const toolCount = SERVER_MODE === 'write-only' ? writeToolCount :
                      SERVER_MODE === 'read-only' ? totalTools - writeToolCount : totalTools;
     const toolDesc = SERVER_MODE === 'write-only' ? `(${Array.from(WRITE_TOOLS).join(', ')})` :
                     SERVER_MODE === 'read-only' ? '(all except write tools)' :
-                    '(8 discovery + 3 labels + 6 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis)';
+                    '(8 discovery + 4 labels + 6 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis + 9 security-extensions)';
     console.log(`🎯 Registered ${toolCount} X++ MCP tools ${toolDesc}`);
     serverState.isReady = true;
     serverState.isHealthy = true;
@@ -410,7 +410,18 @@ async function main() {
         { icon: '📈', category: 'Pattern Analysis', tools: [
           { name: 'get_table_patterns',           desc: 'Analyze common field/index patterns for table groups' },
           { name: 'get_form_patterns',            desc: 'Analyze common datasource/control patterns for forms' },
-          { name: 'generate_code',                desc: 'Generate X++ boilerplate (class, batch-job, data-entity, …)' },
+          { name: 'generate_code',                desc: 'Generate X++ boilerplate (class, SysOperation, CoC, event-handler, …)' },
+        ]},
+        { icon: '🔐', category: 'Security & Extensions', tools: [
+          { name: 'get_security_artifact_info',   desc: 'Privilege/Duty/Role details and full hierarchy chain' },
+          { name: 'get_security_coverage_for_object', desc: 'Which roles can access a form/table/class?' },
+          { name: 'get_menu_item_info',           desc: 'Menu item target, type, and security privilege chain' },
+          { name: 'find_coc_extensions',          desc: 'Which classes use CoC to wrap a given method?' },
+          { name: 'find_event_handlers',          desc: 'Find all [SubscribesTo] handlers for a table or class event' },
+          { name: 'get_table_extension_info',     desc: 'All extensions of a table: added fields, indexes, methods' },
+          { name: 'get_data_entity_info',         desc: 'Data entity: category, OData settings, data sources, keys' },
+          { name: 'analyze_extension_points',     desc: 'CoC-eligible methods, delegates, events — what can be extended?' },
+          { name: 'validate_object_naming',       desc: 'Validate proposed extensions and object names against D365FO conventions' },
         ]},
       ];
 

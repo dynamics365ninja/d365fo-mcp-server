@@ -126,7 +126,11 @@ export interface XppViewInfo {
 
 export interface XppSymbol {
   name: string;
-  type: 'class' | 'table' | 'form' | 'query' | 'view' | 'method' | 'field' | 'enum' | 'edt' | 'report';
+  type: 'class' | 'table' | 'form' | 'query' | 'view' | 'method' | 'field' | 'enum' | 'edt' | 'report'
+      | 'security-privilege' | 'security-duty' | 'security-role'
+      | 'menu-item-display' | 'menu-item-action' | 'menu-item-output'
+      | 'table-extension' | 'class-extension' | 'form-extension'
+      | 'enum-extension' | 'edt-extension' | 'data-entity-extension';
   parentName?: string;
   signature?: string;
   filePath: string;
@@ -217,4 +221,68 @@ export interface CodePattern {
   frequency: number;            // How many classes follow this pattern
   domain?: string;              // Customer, Inventory, Sales, etc.
   characteristics?: string[];   // Distinguishing features
+}
+
+/**
+ * Security artifact types
+ */
+export interface XppSecurityEntryPoint {
+  name: string;
+  objectType: string;     // MenuItemDisplay / MenuItemAction / MenuItemOutput / WebActionItem
+  accessLevel: string;    // Read / Update / Create / Delete / Correct / Invoke
+}
+
+export interface XppSecurityPrivilegeInfo {
+  name: string;
+  model: string;
+  sourcePath: string;
+  label?: string;
+  entryPoints: XppSecurityEntryPoint[];
+}
+
+export interface XppSecurityDutyInfo {
+  name: string;
+  model: string;
+  sourcePath: string;
+  label?: string;
+  privileges: string[];   // Privilege names
+}
+
+export interface XppSecurityRoleInfo {
+  name: string;
+  model: string;
+  sourcePath: string;
+  label?: string;
+  description?: string;
+  duties: string[];       // Duty names
+}
+
+/**
+ * Menu item types
+ */
+export interface XppMenuItemInfo {
+  name: string;
+  model: string;
+  sourcePath: string;
+  label?: string;
+  menuItemType: 'display' | 'action' | 'output';
+  targetObject?: string;
+  targetType?: string;    // Form / Class / Query / Report
+  securityPrivilege?: string;
+}
+
+/**
+ * Extension metadata types
+ */
+export interface XppExtensionInfo {
+  name: string;
+  model: string;
+  sourcePath: string;
+  extensionType: string;        // table-extension / class-extension / etc.
+  baseObjectName: string;       // The object being extended
+  addedFields?: string[];       // Field names added by this extension
+  addedMethods?: string[];      // Method names added by this extension
+  addedIndexes?: string[];      // Index names added by this extension
+  cocMethods?: string[];        // Methods wrapped via CoC (call next)
+  eventSubscriptions?: string[];// Events subscribed to via [SubscribesTo]
 }
