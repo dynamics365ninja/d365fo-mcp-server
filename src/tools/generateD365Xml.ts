@@ -884,7 +884,7 @@ ${defaultParamGroupXml}
     const targetObject = properties?.targetObject || properties?.object || name;
     const label = properties?.label || '@TODO:LabelId';
     return `<?xml version="1.0" encoding="utf-8"?>
-<${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+<${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
 \t<Name>${name}</Name>
 \t<Label>${label}</Label>
 \t<Object>${targetObject}</Object>

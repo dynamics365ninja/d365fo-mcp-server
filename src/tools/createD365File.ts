@@ -1925,12 +1925,28 @@ ${defaultParamGroupXml}
     const targetObject = properties?.targetObject || properties?.object || name;
     const label = properties?.label || '@TODO:LabelId';
     return `<?xml version="1.0" encoding="utf-8"?>
-<${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+<${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
 \t<Name>${name}</Name>
 \t<Label>${label}</Label>
 \t<Object>${targetObject}</Object>
 \t<ObjectType>${objType}</ObjectType>
 </${elemName}>`;
+  }
+
+  /**
+   * Ensure AxMenuItemAction/Display/Output XML always has the required
+   * xmlns="Microsoft.Dynamics.AX.Metadata.V1" namespace on the root element.
+   * D365FO metadata deserializer rejects the file without it.
+   */
+  static sanitizeMenuItemXml(xml: string): string {
+    return xml.replace(
+      /<(AxMenuItem(?:Action|Display|Output))(\s[^>]*)?>/,
+      (match, tag: string, attrs: string | undefined) => {
+        const current = attrs || '';
+        if (current.includes('xmlns="Microsoft.Dynamics.AX.Metadata.V1"')) return match;
+        return `<${tag}${current} xmlns="Microsoft.Dynamics.AX.Metadata.V1">`;
+      }
+    );
   }
 }
 
@@ -2609,6 +2625,14 @@ export async function handleCreateD365File(
       // sanitizeReportXml operates on CDATA internally; this final step converts
       // the output so that D365FO VS Designer renders the design correctly.
       xmlContent = XmlTemplateGenerator.encodeReportTextElement(xmlContent);
+    }
+
+    // Sanitize menu item XML — D365FO metadata deserializer requires
+    // xmlns="Microsoft.Dynamics.AX.Metadata.V1" on the root element.
+    if (args.objectType === 'menu-item-display' ||
+        args.objectType === 'menu-item-action' ||
+        args.objectType === 'menu-item-output') {
+      xmlContent = XmlTemplateGenerator.sanitizeMenuItemXml(xmlContent);
     }
 
     // Debug: Log XML content length

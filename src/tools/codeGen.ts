@@ -418,11 +418,11 @@ function menuItemXmlTemplate(name: string, itemType: string, targetObject: strin
     : itemType === 'output' ? 'Report'
     : 'Form';
   return `<?xml version="1.0" encoding="utf-8"?>
-<${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-  <Name>${name}</Name>
-  <Label>@TODO:LabelId</Label>
-  <Object>${targetObject}</Object>
-  <ObjectType>${objType}</ObjectType>
+<${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+\t<Name>${name}</Name>
+\t<Label>@TODO:LabelId</Label>
+\t<Object>${targetObject}</Object>
+\t<ObjectType>${objType}</ObjectType>
 </${elemName}>`;
 }
 
