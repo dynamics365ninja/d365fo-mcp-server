@@ -9,6 +9,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { getConfigManager } from '../utils/configManager.js';
 import { ensureXppDocComment } from '../utils/xppDocGen.js';
+import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 
 const GenerateD365XmlArgsSchema = z.object({
   objectType: z
@@ -258,7 +259,9 @@ class XmlTemplateGenerator {
     sourceCode?: string,
     properties?: Record<string, any>
   ): string {
-    const rawSource = sourceCode || `public class ${className}\n{\n}`;
+    // Decode XML entities that AI models may introduce when copying from SSRS report
+    // entity-encoded <Text> blocks (e.g. &lt;summary&gt; → <summary>).
+    const rawSource = decodeXmlEntitiesFromXppSource(sourceCode || `public class ${className}\n{\n}`);
 
     // Split full X++ source into Declaration (class header + fields) and Methods.
     // D365FO XML requires member variable declarations in <Declaration> and
@@ -946,10 +949,7 @@ ${rdlParamLayoutXml}
     const rdl = (rdlContent || buildRdlSkeleton())
       .replace(/<Header>/g, '<TablixHeader>')
       .replace(/<\/Header>/g, '</TablixHeader>');
-    // D365FO Designer requires entity-encoded <Text> (not CDATA) to render the design.
-    const encodeForText = (s: string) =>
-      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const textElement = `\n\t\t\t<Text>${encodeForText(rdl)}</Text>`;
+    const textElement = `\n\t\t\t<Text><![CDATA[${rdl}]]></Text>`;
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxReport xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V2">

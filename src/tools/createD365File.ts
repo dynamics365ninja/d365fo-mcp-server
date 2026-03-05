@@ -12,6 +12,7 @@ import { getConfigManager } from '../utils/configManager.js';
 import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { ensureXppDocComment } from '../utils/xppDocGen.js';
+import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 
 const CreateD365FileArgsSchema = z.object({
   objectType: z
@@ -454,7 +455,9 @@ export class XmlTemplateGenerator {
     sourceCode?: string,
     properties?: Record<string, any>
   ): string {
-    const rawSource = sourceCode || `public class ${className}\n{\n}`;
+    // Decode XML entities that AI models may introduce when copying from SSRS report
+    // entity-encoded <Text> blocks (e.g. &lt;summary&gt; → <summary>).
+    const rawSource = decodeXmlEntitiesFromXppSource(sourceCode || `public class ${className}\n{\n}`);
 
     // Split full X++ source into Declaration (class header + fields) and Methods.
     // D365FO XML requires member variable declarations in <Declaration> and

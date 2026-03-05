@@ -15,6 +15,28 @@ import { getConfigManager } from '../utils/configManager.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 
 /**
+ * Decode XML entities from X++ source code.
+ *
+ * X++ source should never contain entity-encoded characters — `/// <summary>`
+ * doc comments, generic types like `List<str>`, and comparison operators like
+ * `x < y` all use literal `<` and `>`.  When an AI model copies code from an
+ * SSRS report's entity-encoded <Text> block and passes it as `methodCode`, the
+ * entities would otherwise survive into the CDATA section and corrupt the source.
+ *
+ * This function decodes the 5 standard XML entities so that source code always
+ * contains proper characters before it is stored in the XML object.
+ */
+export function decodeXmlEntitiesFromXppSource(source: string): string {
+  return source
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&#xD;/g, '');
+}
+
+/**
  * Re-wrap a specific XML element's text content in <![CDATA[...]]>.
  *
  * xml2js strips CDATA wrappers when parsing and entity-encodes < > & when
@@ -499,6 +521,97 @@ async function createFileBackup(filePath: string): Promise<void> {
 }
 
 /**
+ * Infer a meaningful default method body for well-known D365FO override methods.
+ *
+ * Mirrors the approach used in xppDocGen.ts for doc comments: common D365FO
+ * method names map to standard X++ patterns (super() calls, parm accessor
+ * pattern, typed return values) so generated code compiles immediately without
+ * requiring the developer to fill in boilerplate.
+ */
+function inferDefaultMethodBody(methodName: string, returnType: string, params: string): string {
+  const n = methodName.toLowerCase();
+  const ret = (returnType || 'void').toLowerCase();
+
+  // Extract positional parameter names (strip type, default value) for super() forwarding.
+  // e.g. "FieldId _fieldId, boolean _showError = true" → "_fieldId, _showError"
+  const paramNames = params
+    ? params.split(',').map(p => {
+        const noDefault = p.indexOf('=') !== -1 ? p.substring(0, p.indexOf('=')).trim() : p.trim();
+        const parts = noDefault.split(/\s+/).filter(Boolean);
+        return parts[parts.length - 1] ?? '';
+      }).filter(Boolean).join(', ')
+    : '';
+
+  const superCall    = paramNames ? `super(${paramNames});`        : 'super();';
+  const superReturn  = paramNames ? `return super(${paramNames});` : 'return super();';
+
+  // ── D365FO table / form override methods ─────────────────────────────────
+  switch (n) {
+    // Void overrides — call super and return nothing
+    case 'initvalue':
+    case 'insert':
+    case 'doinsert':
+    case 'update':
+    case 'doupdate':
+    case 'delete':
+    case 'dodelete':
+    case 'postload':
+    case 'reread':
+    case 'clear':
+    case 'init':
+    case 'close':
+    case 'run':
+    case 'modifiedfield':
+    case 'modifiedfieldvalue':
+    case 'aosvalidateinsert':
+    case 'aosvalidateupdate':
+    case 'aosvalidatedelete':
+      return superCall;
+
+    // Boolean overrides — return super()
+    case 'validatewrite':
+    case 'validatedelete':
+    case 'validatefield':
+    case 'validatefieldvalue':
+    case 'cansubmittoworkflow':
+      return superReturn;
+
+    // main() — entry point; super() is never called
+    case 'main':
+      return `${methodName} obj = ${methodName}::construct();\nobj.run();`;
+
+    // construct() — factory method returning a new instance
+    case 'construct':
+      return `return new ${methodName}();`;
+  }
+
+  // ── parm accessor pattern ─────────────────────────────────────────────────
+  // parmMyField(str _myField = myField) → { myField = _myField; return myField; }
+  if (n.startsWith('parm') && paramNames) {
+    const fieldName = methodName.substring(4);
+    const fieldVar  = fieldName.charAt(0).toLowerCase() + fieldName.substring(1);
+    return `${fieldVar} = ${paramNames};\n    return ${fieldVar};`;
+  }
+
+  // ── Return-type based defaults ────────────────────────────────────────────
+  switch (ret) {
+    case 'boolean': return 'return true;';
+    case 'str':
+    case 'string':  return 'return "";';
+    case 'int':
+    case 'integer':
+    case 'int64':   return 'return 0;';
+    case 'real':    return 'return 0.0;';
+    case 'date':    return 'return dateNull();';
+    case 'utcdatetime': return 'return DateTimeUtil::minValue();';
+    case 'container': return 'return conNull();';
+  }
+
+  // Fallback for unknown void methods
+  return `// TODO: Implement ${methodName}`;
+}
+
+/**
  * Add method to class/table/form
  */
 async function addMethod(xmlObj: any, objectType: string, args: any): Promise<boolean> {
@@ -522,7 +635,7 @@ async function addMethod(xmlObj: any, objectType: string, args: any): Promise<bo
     if (!root.SourceCode || typeof root.SourceCode[0] !== 'object') {
       root.SourceCode = [{}];
     }
-    root.SourceCode[0].Declaration = [ensureXppDocComment(methodCode || '')];
+    root.SourceCode[0].Declaration = [ensureXppDocComment(decodeXmlEntitiesFromXppSource(methodCode || ''))];
     return true;
   }
 
@@ -557,15 +670,19 @@ async function addMethod(xmlObj: any, objectType: string, args: any): Promise<bo
 
   // Build full method source — if methodCode already contains the signature use it directly,
   // otherwise assemble from methodModifiers / methodReturnType / methodParameters.
+  // Decode any XML entities first: AI models may copy entity-encoded text from SSRS report
+  // <Text> blocks (e.g. &lt;summary&gt;) and pass it as methodCode. Those entities must be
+  // decoded to proper characters so the CDATA section is not corrupted.
+  const decodedMethodCode = methodCode ? decodeXmlEntitiesFromXppSource(methodCode) : undefined;
   let fullSource: string;
-  if (methodCode && methodCode.includes('(')) {
+  if (decodedMethodCode && decodedMethodCode.includes('(')) {
     // Caller passed a complete method (signature + body)
-    fullSource = methodCode;
+    fullSource = decodedMethodCode;
   } else {
     const modifiers  = methodModifiers  || 'public';
     const retType    = methodReturnType || 'void';
     const params     = methodParameters || '';
-    const bodyLines  = methodCode || `// TODO: Implement ${methodName}`;
+    const bodyLines  = decodedMethodCode || inferDefaultMethodBody(methodName, retType, params);
     fullSource = `${modifiers} ${retType} ${methodName}(${params})\n{\n    ${bodyLines}\n}`;
   }
 
