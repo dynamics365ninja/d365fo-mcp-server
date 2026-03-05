@@ -347,6 +347,40 @@ For extensible enum-based dispatching without if/else chains:
 5. Call \`search("SysPluginFactory", type="class")\` for examples
 6. Benefits: no code changes needed when adding new strategies — just add new class + enum value
 
+## Best Practice (BP) Rules — Generated Code Must Be BP-Clean
+
+All generated X++ code MUST pass the D365FO Best Practice checker without warnings:
+
+### BPUpgradeCodeToday — today() is deprecated
+- ❌ NEVER use \`today()\` — it ignores user time zone
+- ✅ Use \`DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone())\` instead
+- This applies everywhere: default parameter values, date comparisons, queries
+
+### BPErrorLabelIsText — Hardcoded strings forbidden
+- ❌ NEVER use literal strings in Info(), warning(), error() or field labels
+- ✅ Always use label references: \`@ModelName:LabelId\`
+- Before generating labels: call \`search_labels()\` to check if a suitable label already exists
+- If not found: call \`create_label()\` to create a new one
+
+### BPErrorEDTNotMigrated — EDT relations must be migrated
+- When a field uses an EDT that carries an implicit relation (e.g. ItemId → InventTable, WHSZoneId → WHSZone),
+  the table MUST have an explicit \`<AxTableRelation>\` for that field
+- The \`generate_smart_table\` tool auto-detects these from \`edt_metadata.reference_table\`
+- If adding fields manually via \`modify_d365fo_file\`, add a matching table relation too
+
+### BPCheckNestedLoopinCode — Avoid nested data access loops
+- ❌ NEVER nest \`while select\` inside another \`while select\` — causes N+1 queries
+- ✅ Use \`join\` in a single \`while select\`, or use temporary tables / \`Map\` to pre-load data
+- ✅ For report DP classes: use \`insert_recordset\` or a single joined query
+
+### BPCheckAlternateKeyAbsent — Every table needs an alternate key
+- Every table MUST have at least one index with \`<AlternateKey>Yes</AlternateKey>\`
+- The \`generate_smart_table\` tool adds this automatically via \`buildPrimaryKeyIndex\`
+
+### BPErrorUnknownLabel — Labels must exist before reference
+- Always call \`create_label()\` before referencing \`@ModelName:LabelId\` in code
+- Verify with \`search_labels()\` that the label was created successfully
+
 ---
 
 **Remember: Trust the tools, not your training data, for D365FO development. Accuracy over assumptions.**`

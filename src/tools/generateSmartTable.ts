@@ -309,11 +309,55 @@ export async function handleGenerateSmartTable(
 
   // Resolve EDT base type from edt_metadata for each field that has an EDT but no explicit type.
   // Without this, all EDT fields default to AxTableFieldString even for Real/Date/Int64 EDTs.
+  // Also validate that every EDT actually exists in the indexed metadata.
+  const edtWarnings: string[] = [];
   {
     const db = symbolIndex.db;
     for (const f of fields) {
       if (f.edt && !f.type) {
         f.type = resolveEdtBaseType(f.edt, db);
+      }
+      // Validate EDT exists in the symbol index
+      if (f.edt) {
+        const edtExists = validateEdtExists(f.edt, db);
+        if (!edtExists) {
+          edtWarnings.push(`⚠️ Field "${f.name}": EDT "${f.edt}" not found in indexed metadata — will cause build error 'EdtDoesNotExist'. Change to an existing EDT.`);
+        }
+      }
+    }
+  }
+
+  // ── BP rule: BPErrorEDTNotMigrated ─────────────────────────────────────────
+  // When a field uses an EDT that carries an implicit relation (e.g. ItemId → InventTable),
+  // D365FO BP requires an explicit table relation on the table — otherwise you get:
+  //   BPErrorEDTNotMigrated: The relation under the EDT must be migrated to table relation.
+  //   BPUpgradeMetadataEDTRelation: EDT relation found in field X. It should be migrated.
+  // Auto-detect from edt_metadata.reference_table and generate matching relations.
+  {
+    const db = symbolIndex.db;
+    for (const f of fields) {
+      if (!f.edt) continue;
+      // Skip if a relation for this field already exists
+      if (relations.some(r => r.constraints.some(c => c.field === f.name))) continue;
+
+      try {
+        const edtRow = db.prepare(
+          `SELECT reference_table FROM edt_metadata WHERE edt_name = ? AND reference_table IS NOT NULL AND reference_table != '' LIMIT 1`
+        ).get(f.edt) as { reference_table: string } | undefined;
+
+        if (edtRow?.reference_table) {
+          // Determine the related field — typically the EDT name itself is the PK field on the target table
+          // e.g. ItemId EDT → InventTable.ItemId, WHSZoneId → WHSZone.WHSZoneId
+          const relatedField = f.edt;  // The EDT name is the canonical field name on the target table
+          relations.push({
+            name: f.name,
+            targetTable: edtRow.reference_table,
+            constraints: [{ field: f.name, relatedField }],
+          });
+          console.log(`[generateSmartTable] Auto-migrated EDT relation: ${f.name} (${f.edt}) → ${edtRow.reference_table}.${relatedField}`);
+        }
+      } catch {
+        // Skip if edt_metadata query fails
       }
     }
   }
@@ -574,12 +618,16 @@ export async function handleGenerateSmartTable(
       `⛔ NEVER call \`modify_d365fo_file\` to add methods — the \`methods\` parameter in \`generate_smart_table\` already embedded them in the XML above.`,
       `⛔ NEVER call \`suggest_method_implementation\` or \`get_api_usage_patterns\` between this step and \`create_d365fo_file\` — those tools are expensive and their result is not needed for file creation. Call them AFTER the file is created if the user explicitly asks.`,
     ].join('\n');
+    const edtWarningBlock = edtWarnings.length > 0
+      ? `\n### ⚠️ EDT Validation Warnings\n${edtWarnings.join('\n')}\n`
+      : '';
     return {
       content: [{
         type: 'text',
         text: [
           `✅ Table XML generated for **${finalName}**` + (resolvedModel ? ` (model: ${resolvedModel})` : ''),
           `   Fields: ${fields.length}, Indexes: ${indexes.length}, Relations: ${relations.length}`,
+          edtWarningBlock,
           noModelNote,
           ``,
           `ℹ️  MCP server is running on Azure/Linux — file writing is handled by the local Windows companion. This is the expected hybrid workflow.`,
@@ -657,6 +705,10 @@ export async function handleGenerateSmartTable(
     projectMessage = `\n⚠️ addToProject skipped — no projectPath found in .mcp.json or tool args.`;
   }
 
+  const edtWarningBlock = edtWarnings.length > 0
+    ? `\n### ⚠️ EDT Validation Warnings\n${edtWarnings.join('\n')}\n`
+    : '';
+
   return {
     content: [
       {
@@ -667,6 +719,7 @@ export async function handleGenerateSmartTable(
           `📁 File: ${normalizedPath}`,
           `📦 Model: ${resolvedModel}`,
           `📊 Fields: ${fields.length}, Indexes: ${indexes.length}, Relations: ${relations.length}`,
+          edtWarningBlock,
           projectMessage,
           ``,
           `⛔ DO NOT call \`create_d365fo_file\` — the file is already written to disk.`,
@@ -714,6 +767,37 @@ function resolveEdtBaseType(edtName: string, db: any, depth = 0): string {
     return resolveEdtBaseType(row.extends, db, depth + 1);
   } catch {
     return 'String';
+  }
+}
+
+/**
+ * Check whether an EDT exists in the indexed edt_metadata.
+ * Falls back to checking the symbols table for EDT type entries.
+ */
+function validateEdtExists(edtName: string, db: any): boolean {
+  // Skip validation for well-known D365FO primitive/system EDTs that may not be in our index
+  const SYSTEM_EDTS = new Set([
+    'RecId', 'String255', 'Name', 'Description', 'NoYesId', 'RefRecId',
+  ]);
+  if (SYSTEM_EDTS.has(edtName)) return true;
+
+  try {
+    // Check edt_metadata first (most reliable)
+    const edtRow = db.prepare(
+      `SELECT 1 FROM edt_metadata WHERE edt_name = ? LIMIT 1`
+    ).get(edtName);
+    if (edtRow) return true;
+
+    // Fallback: check symbols table for EDT type entries
+    const symRow = db.prepare(
+      `SELECT 1 FROM symbols WHERE name = ? AND type = 'edt' LIMIT 1`
+    ).get(edtName);
+    if (symRow) return true;
+
+    return false;
+  } catch {
+    // If DB query fails, don't block generation — just skip validation
+    return true;
   }
 }
 

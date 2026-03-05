@@ -165,6 +165,9 @@ You: create_d365fo_file({
 5. Error handling patterns
 6. Naming conventions
 7. Code structure and organization
+8. Deprecated API usage (today() → DateTimeUtil::getToday, RunBase → SysOperation)
+9. Hardcoded strings — must use label references @ModelName:LabelId
+10. Nested data access loops (while select inside while select → use joins)
 
 Code to review:
 \`\`\`xpp

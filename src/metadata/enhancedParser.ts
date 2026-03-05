@@ -238,7 +238,7 @@ export class EnhancedXppParser {
       if (p.type.toLowerCase().includes('int')) return '0';
       if (p.type.toLowerCase().includes('str')) return '""';
       if (p.type.toLowerCase().includes('bool')) return 'false';
-      if (p.type.toLowerCase().includes('date')) return 'today()';
+      if (p.type.toLowerCase().includes('date')) return 'DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone())';
       return `${p.name}Value`;
     }).join(', ');
     
@@ -393,7 +393,7 @@ export class EnhancedXppParser {
     if (lower.includes('int') || lower.includes('recid')) return '0';
     if (lower.includes('str') || lower.includes('string')) return '""';
     if (lower.includes('bool')) return 'false';
-    if (lower.includes('date')) return 'today()';
+    if (lower.includes('date')) return 'DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone())';
     if (lower.includes('datetime')) return 'DateTimeUtil::utcNow()';
     if (lower.includes('real')) return '0.0';
     if (lower.includes('guid')) return 'newGuid()';

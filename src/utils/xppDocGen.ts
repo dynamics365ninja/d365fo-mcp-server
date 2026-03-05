@@ -81,11 +81,16 @@ function parseSig(sigLine: string): {
  * unchanged. Private / internal methods are left as-is per D365FO convention.
  */
 export function ensureXppDocComment(source: string): string {
-  const lines = source.split('\n');
+  // Strip leading blank lines — prevents gap at top of <Declaration>
+  const cleanSource = source.replace(/^\n+/, '');
+  const lines = cleanSource.split('\n');
 
   // Already documented?
   const firstNonEmpty = lines.find(l => l.trim().length > 0);
-  if (firstNonEmpty?.trim().startsWith('///')) return source;
+  if (firstNonEmpty?.trim().startsWith('///')) {
+    // Remove blank lines between /// doc-comment block and the next code line
+    return stripDocCommentGap(cleanSource);
+  }
 
   // Find the first "real" signature line (skip blanks, doc comments, attributes)
   let sigLine = '';
@@ -97,10 +102,10 @@ export function ensureXppDocComment(source: string): string {
     sigLine = t;
     break;
   }
-  if (!sigLine) return source;
+  if (!sigLine) return cleanSource;
 
   const parsed = parseSig(sigLine);
-  if (!parsed) return source;
+  if (!parsed) return cleanSource;
 
   // Detect indentation from the signature line so doc comments align with the code
   const sigLineRaw = lines.find(l => l.trim() === sigLine) ?? '';
@@ -125,5 +130,16 @@ export function ensureXppDocComment(source: string): string {
     }
   }
 
-  return doc.join('\n') + '\n' + source;
+  return doc.join('\n') + '\n' + cleanSource;
+}
+
+/**
+ * Remove blank lines between the last /// doc-comment line and the next
+ * non-blank code line (attribute or class/method keyword).
+ *
+ * D365FO convention: no gap between doc block and the declaration it documents.
+ */
+function stripDocCommentGap(source: string): string {
+  // Match a /// line followed by one or more blank lines, then a non-blank line
+  return source.replace(/(\/\/\/[^\n]*\n)(\s*\n)+(?=\s*\S)/g, '$1');
 }
