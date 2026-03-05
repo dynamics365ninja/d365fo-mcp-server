@@ -39,7 +39,9 @@ export function rewrapXmlTagAsCdata(tag: string, xml: string): string {
         .replace(/&gt;/g, '>')
         .replace(/&amp;/g, '&')
         .replace(/&apos;/g, "'")
-        .replace(/&quot;/g, '"');
+        .replace(/&quot;/g, '"')
+        // xml2js Builder escapes \r as &#xD; — strip it to normalise to LF-only line endings
+        .replace(/&#xD;/g, '');
       // Normalise: strip leading/trailing newlines
       const content = decoded.replace(/^\n+/, '').replace(/\n+$/, '');
       // D365FO convention: <![CDATA[\n...content...\n\n]]>
