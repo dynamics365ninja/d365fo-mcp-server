@@ -41,6 +41,16 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
     const name = args.proposedName;
     const isExtension = EXTENSION_TYPES.has(args.objectType);
 
+    // ── Max name length check — D365FO has a hard 81-character limit on AOT names ──
+    // Exceeding this causes build error: "Object name exceeds maximum length"
+    const MAX_NAME_LENGTH = 81;
+    if (name.length > MAX_NAME_LENGTH) {
+      errors.push(`Name "${name}" is ${name.length} characters — exceeds the D365FO AOT maximum of ${MAX_NAME_LENGTH} characters. This will cause a build error.`);
+      suggestions.push(`Shortened name (${MAX_NAME_LENGTH} chars max): ${name.slice(0, MAX_NAME_LENGTH)}`);
+    } else if (name.length > 70) {
+      warnings.push(`Name is ${name.length} characters — approaching the ${MAX_NAME_LENGTH}-char AOT limit. Consider a shorter name to leave room for extensions.`);
+    }
+
     // ── Auto-detect model prefix from existing symbols if not provided ─────
     let prefix = args.modelPrefix?.toUpperCase() || '';
     if (!prefix) {

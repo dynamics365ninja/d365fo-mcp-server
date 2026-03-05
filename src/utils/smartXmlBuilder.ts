@@ -81,7 +81,27 @@ export class SmartXmlBuilder {
     if (label) {
       xml += `\t<Label>${this.escapeXml(label)}</Label>\n`;
     }
-    xml += `\t<TableGroup>${tableGroup || 'Main'}</TableGroup>\n`;
+
+    // BP rule: CacheLookup — set based on TableGroup to avoid BP warning "CacheLookup should be set"
+    const effectiveTableGroup = tableGroup || 'Main';
+    const cacheLookupMap: Record<string, string> = {
+      Parameter:    'Found',
+      Group:        'Found',
+      Main:         'Found',
+      Transaction:  'None',
+      WorksheetHeader: 'None',
+      WorksheetLine:   'None',
+      Miscellaneous:   'NotInTTS',
+      Framework:       'Found',
+    };
+    const cacheLookup = cacheLookupMap[effectiveTableGroup] || 'Found';
+    xml += `\t<CacheLookup>${cacheLookup}</CacheLookup>\n`;
+
+    // BP rule: SaveDataPerCompany — Yes by default (most tables are company-specific)
+    // Parameter and Group tables are always per-company; shared tables need explicit No
+    xml += `\t<SaveDataPerCompany>Yes</SaveDataPerCompany>\n`;
+
+    xml += `\t<TableGroup>${effectiveTableGroup}</TableGroup>\n`;
 
     // TitleField1/TitleField2: first two non-RecId fields
     const titleCandidates = fields.filter(f => f.name !== 'RecId').slice(0, 2);
@@ -95,18 +115,67 @@ export class SmartXmlBuilder {
       xml += `\t<ReplacementKey>${uniqueIdx.name}</ReplacementKey>\n`;
     }
 
-    // Required D365FO sections — must all be present
-    xml += `\t<DeleteActions />\n`;
+    // BP rule: ClusteredIndex — prevents "Table has no clustered index" warning
+    // Use the explicitly marked clustered index, or fall back to the primary unique index
+    const clusteredIdx = indexes?.find(i => i.clustered) || uniqueIdx;
+    if (clusteredIdx) {
+      xml += `\t<ClusteredIndex>${clusteredIdx.name}</ClusteredIndex>\n`;
+    }
+
+    // BP rule: DeleteActions — generate Cascade actions for each relation target
+    // Prevents BP warning "Table has relations but no corresponding DeleteActions"
+    if (relations && relations.length > 0) {
+      xml += `\t<DeleteActions>\n`;
+      for (const rel of relations) {
+        xml += `\t\t<AxTableDeleteAction>\n`;
+        xml += `\t\t\t<Name>${rel.targetTable}</Name>\n`;
+        xml += `\t\t\t<Table>${rel.targetTable}</Table>\n`;
+        xml += `\t\t\t<DeleteAction>Restricted</DeleteAction>\n`;
+        xml += `\t\t</AxTableDeleteAction>\n`;
+      }
+      xml += `\t</DeleteActions>\n`;
+    } else {
+      xml += `\t<DeleteActions />\n`;
+    }
 
     // 5 standard FieldGroups required by VS D365FO project system
     // Order matches real D365FO AOT: AutoReport, AutoLookup, AutoIdentification, AutoSummary, AutoBrowse
+    // BP rule: AutoReport field group must not be empty — populate with first 5 non-RecId fields
+    const autoReportFields = fields.filter(f => f.name !== 'RecId').slice(0, 5);
     xml += `\t<FieldGroups>\n`;
-    for (const groupName of ['AutoReport', 'AutoLookup']) {
-      xml += `\t\t<AxTableFieldGroup>\n`;
-      xml += `\t\t\t<Name>${groupName}</Name>\n`;
+
+    // AutoReport — BP requires at least one field
+    xml += `\t\t<AxTableFieldGroup>\n`;
+    xml += `\t\t\t<Name>AutoReport</Name>\n`;
+    if (autoReportFields.length > 0) {
+      xml += `\t\t\t<Fields>\n`;
+      for (const f of autoReportFields) {
+        xml += `\t\t\t\t<AxTableFieldGroupField>\n`;
+        xml += `\t\t\t\t\t<DataField>${f.name}</DataField>\n`;
+        xml += `\t\t\t\t</AxTableFieldGroupField>\n`;
+      }
+      xml += `\t\t\t</Fields>\n`;
+    } else {
       xml += `\t\t\t<Fields />\n`;
-      xml += `\t\t</AxTableFieldGroup>\n`;
     }
+    xml += `\t\t</AxTableFieldGroup>\n`;
+
+    // AutoLookup — populate with first 3 fields (key identifier fields)
+    const autoLookupFields = fields.filter(f => f.name !== 'RecId').slice(0, 3);
+    xml += `\t\t<AxTableFieldGroup>\n`;
+    xml += `\t\t\t<Name>AutoLookup</Name>\n`;
+    if (autoLookupFields.length > 0) {
+      xml += `\t\t\t<Fields>\n`;
+      for (const f of autoLookupFields) {
+        xml += `\t\t\t\t<AxTableFieldGroupField>\n`;
+        xml += `\t\t\t\t\t<DataField>${f.name}</DataField>\n`;
+        xml += `\t\t\t\t</AxTableFieldGroupField>\n`;
+      }
+      xml += `\t\t\t</Fields>\n`;
+    } else {
+      xml += `\t\t\t<Fields />\n`;
+    }
+    xml += `\t\t</AxTableFieldGroup>\n`;
     // AutoIdentification is 3rd (requires AutoPopulate=Yes)
     xml += `\t\t<AxTableFieldGroup>\n`;
     xml += `\t\t\t<Name>AutoIdentification</Name>\n`;
@@ -312,6 +381,8 @@ export class SmartXmlBuilder {
     if (unique) {
       // AlternateKey=Yes marks the index as a unique surrogate/alternate key
       xml += `\t\t\t<AlternateKey>Yes</AlternateKey>\n`;
+      // BP rule: AllowDuplicates must be No for unique indexes (prevents BP warning)
+      xml += `\t\t\t<AllowDuplicates>No</AllowDuplicates>\n`;
     }
     xml += `\t\t\t<Fields>\n`;
     for (const fieldName of fields) {

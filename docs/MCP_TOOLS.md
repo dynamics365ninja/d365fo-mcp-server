@@ -46,7 +46,7 @@ just ask in plain English.
 | Tool | What it does | Example prompt |
 |------|-------------|---------------|
 | **generate_smart_table** | AI-driven table generation with pattern analysis | "Generate a transaction table with common fields" |
-| **generate_smart_form** | AI-driven form generation with pattern analysis | "Create a SimpleList form for MyTable" |
+| **generate_smart_form** | AI-driven form generation with pattern analysis (SimpleList, DetailsMaster, ListPage, etc.) | "Create a SimpleList form for MyTable" |
 | **suggest_edt** | Suggest EDT for field name using fuzzy matching | "What EDT should I use for CustomerAccount field?" |
 
 ### Pattern Analysis (3 tools)
@@ -344,9 +344,13 @@ so the generated code matches your environment.
 | `class` | Standard X++ class (also the base for CoC extensions) |
 | `runnable` | Class with `main()` for direct execution or one-off scripts |
 | `form-handler` | Form extension with `init()`, `close()`, and datasource events |
-| `data-entity` | Data entity class with `find()`, `exist()`, `validateWrite()` |
+| `data-entity` | Data entity guidance (entities are AxDataEntityView XML, not classes) |
 | `batch-job` | SysOperationServiceController + service class with `process()` |
 | `table-extension` | Table extension with `validateWrite()`, `modifiedField()` |
+| `sysoperation` | Full SysOperation scaffold: DataContract + Controller + Service |
+| `event-handler` | Event handler class with `[DataEventHandler]` for standard table events |
+| `security-privilege` | Security privilege XML (View + Maintain pair) |
+| `menu-item` | Menu item XML (display, action, or output) |
 
 **Examples:**
 ```
@@ -665,7 +669,7 @@ indexed metadata patterns. Generates complete AxForm XML ready for file creation
 - `label` — optional label for the form
 - `caption` — optional caption/title
 - `dataSource` — optional: table name for primary datasource (auto-generates grid)
-- `formPattern` — optional: form pattern (SimpleList, DetailsTransaction, etc.)
+- `formPattern` — optional: form pattern (SimpleList, SimpleListDetails, DetailsMaster, DetailsTransaction, Dialog, TableOfContents, Lookup, ListPage)
 - `copyFrom` — optional: copy structure from existing form name
 - `generateControls` — if true, auto-generate grid controls for datasource fields
 - `modelName` — model name (auto-detected from projectPath)
@@ -683,7 +687,7 @@ Generate MyOrderForm with datasource and controls for displaying orders
 - Complete AxForm XML with:
   - Datasource configuration (table, allow edit/create/delete)
   - Control hierarchy (grids, buttons, groups)
-  - Form pattern application (SimpleList, DetailsTransaction, etc.)
+  - Form pattern application (SimpleList, SimpleListDetails, DetailsMaster, DetailsTransaction, Dialog, TableOfContents, Lookup, ListPage)
   - Common action buttons (New, Delete, Refresh)
 
 ---

@@ -426,6 +426,7 @@ public final class MyOperationDataContract
 - Each parameter = one field + one \`parmXxx\` method
 - \`[DataMemberAttribute('FieldName')]\` maps to dialog/DMF field name
 - NEVER use \`pack()\`/\`unpack()\` — that's the old RunBase pattern
+- For grouped parameters, use sub-contracts: \`[DataMemberAttribute] public SubContract parmSub(...)\`
 
 ### 2. Controller — entry point and execution mode
 \`\`\`xpp
@@ -474,6 +475,48 @@ class MyOperationService extends SysOperationServiceBase
 - Service method MUST be marked \`[SysEntryPointAttribute(true)]\`
 - Use \`ttsbegin/ttscommit\` for all database writes
 - Never catch exceptions inside tts block — let the framework roll back
+
+## UIBuilder (Advanced Dialog Customization)
+
+Use \`SysOperationAutomaticUIBuilder\` to customize the dialog beyond DataContract defaults:
+
+\`\`\`xpp
+[DataContractAttribute,
+ SysOperationContractProcessingAttribute(classStr(MyOperationUIBuilder))]
+public final class MyOperationDataContract
+{
+    // ... parm methods as above
+}
+
+class MyOperationUIBuilder extends SysOperationAutomaticUIBuilder
+{
+    protected void postBuild()
+    {
+        super();
+        // Access and customize dialog controls after they're auto-built
+        DialogField dateField = this.bindInfo().getDialogField(
+            this.dataContractObject(), methodStr(MyOperationDataContract, parmTransDate));
+        dateField.lookupButton(FormLookupButton::Always);
+    }
+
+    protected void postRun()
+    {
+        super();
+        // Register event handlers for dialog controls (e.g. lookup, modified)
+    }
+}
+\`\`\`
+
+## SysOperation vs RunBase Decision
+
+| Feature | SysOperation ✅ | RunBase ❌ (deprecated) |
+|---|---|---|
+| Serialization | Automatic via DataContract | Manual pack()/unpack() |
+| Dialog | Auto-generated from parm methods | Manual dialogFields |
+| Batch support | Built-in | Manual canGoBatch() |
+| Security | \`[SysEntryPointAttribute]\` | Manual authorization |
+| Extensibility | CoC on service/controller | Hard to extend |
+| State management | Framework-managed | Manual container |
 
 ## Error Handling
 \`\`\`xpp

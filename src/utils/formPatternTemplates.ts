@@ -41,7 +41,8 @@ export type FormPattern =
   | 'DetailsTransaction'
   | 'Dialog'
   | 'TableOfContents'
-  | 'Lookup';
+  | 'Lookup'
+  | 'ListPage';
 
 export class FormPatternTemplates {
 
@@ -1094,6 +1095,177 @@ ${fieldControls}\t\t\t\t</Controls>
   }
 
   // ---------------------------------------------------------------------------
+  // ListPage  (v1.1)
+  // Use: workspace/area page with rich filtering, typically backed by a query.
+  // The user navigates from the ListPage to a DetailsMaster form for editing.
+  // Reference: SalesTableListPage, CustTableListPage
+  // Structure: ActionPane (with action pane tabs → button groups)
+  //            CustomFilterGroup → QuickFilterControl
+  //            Grid (Style = Tabular, ShowRowLabels = No, AllowEdit = No)
+  // ---------------------------------------------------------------------------
+  static buildListPage(opt: FormTemplateOptions): string {
+    const { formName, dsName = formName, dsTable = dsName, caption, gridFields = [] } = opt;
+    const captionXml = caption
+      ? `\t\t<Caption xmlns="">${caption}</Caption>\n`
+      : '';
+    const defaultCol = gridFields.length > 0 ? `Grid_${gridFields[0]}` : `Grid_${dsName}`;
+
+    const fieldControls = gridFields.map(f =>
+      `\t\t\t\t\t<AxFormControl xmlns=""\n` +
+      `\t\t\t\t\t\t\ti:type="AxFormStringControl">\n` +
+      `\t\t\t\t\t\t<Name>Grid_${f}</Name>\n` +
+      `\t\t\t\t\t\t<Type>String</Type>\n` +
+      `\t\t\t\t\t\t<FormControlExtension\n\t\t\t\t\t\t\ti:nil="true" />\n` +
+      `\t\t\t\t\t\t<DataField>${f}</DataField>\n` +
+      `\t\t\t\t\t\t<DataSource>${dsName}</DataSource>\n` +
+      `\t\t\t\t\t</AxFormControl>\n`
+    ).join('');
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>${formName}</Name>
+\t<SourceCode>
+\t\t<Methods xmlns="">
+\t\t\t<Method>
+\t\t\t\t<Name>classDeclaration</Name>
+\t\t\t\t<Source><![CDATA[
+[Form]
+public class ${formName} extends FormRun
+{
+}
+
+]]></Source>
+\t\t\t</Method>
+\t\t</Methods>
+\t\t<DataSources xmlns="" />
+\t\t<DataControls xmlns="" />
+\t\t<Members xmlns="" />
+\t</SourceCode>
+\t<DataSources>
+\t\t<AxFormDataSource xmlns="">
+\t\t\t<Name>${dsName}</Name>
+\t\t\t<Table>${dsTable}</Table>
+\t\t\t<Fields />
+\t\t\t<ReferencedDataSources />
+\t\t\t<AllowCreate>No</AllowCreate>
+\t\t\t<AllowEdit>No</AllowEdit>
+\t\t\t<AllowDelete>No</AllowDelete>
+\t\t\t<InsertIfEmpty>No</InsertIfEmpty>
+\t\t\t<DataSourceLinks />
+\t\t\t<DerivedDataSources />
+\t\t</AxFormDataSource>
+\t</DataSources>
+\t<Design>
+${captionXml}\t\t<DataSource xmlns="">${dsName}</DataSource>
+\t\t<Pattern xmlns="">ListPage</Pattern>
+\t\t<PatternVersion xmlns="">1.1</PatternVersion>
+\t\t<Style xmlns="">ListPage</Style>
+\t\t<TitleDataSource xmlns="">${dsName}</TitleDataSource>
+\t\t<Controls xmlns="">
+\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\ti:type="AxFormActionPaneControl">
+\t\t\t\t<Name>ActionPane</Name>
+\t\t\t\t<ElementPosition>134217727</ElementPosition>
+\t\t\t\t<FilterExpression>%1</FilterExpression>
+\t\t\t\t<Type>ActionPane</Type>
+\t\t\t\t<VerticalSpacing>-1</VerticalSpacing>
+\t\t\t\t<FormControlExtension
+\t\t\t\t\ti:nil="true" />
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\t\t\ti:type="AxFormActionPaneTabControl">
+\t\t\t\t\t\t<Name>ActionPaneTab</Name>
+\t\t\t\t\t\t<Type>ActionPaneTab</Type>
+\t\t\t\t\t\t<FormControlExtension
+\t\t\t\t\t\t\ti:nil="true" />
+\t\t\t\t\t\t<Controls>
+\t\t\t\t\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\t\t\t\t\ti:type="AxFormButtonGroupControl">
+\t\t\t\t\t\t\t\t<Name>NewButtonGroup</Name>
+\t\t\t\t\t\t\t\t<Type>ButtonGroup</Type>
+\t\t\t\t\t\t\t\t<FormControlExtension
+\t\t\t\t\t\t\t\t\ti:nil="true" />
+\t\t\t\t\t\t\t\t<Controls />
+\t\t\t\t\t\t\t</AxFormControl>
+\t\t\t\t\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\t\t\t\t\ti:type="AxFormButtonGroupControl">
+\t\t\t\t\t\t\t\t<Name>MaintainButtonGroup</Name>
+\t\t\t\t\t\t\t\t<Type>ButtonGroup</Type>
+\t\t\t\t\t\t\t\t<FormControlExtension
+\t\t\t\t\t\t\t\t\ti:nil="true" />
+\t\t\t\t\t\t\t\t<Controls />
+\t\t\t\t\t\t\t</AxFormControl>
+\t\t\t\t\t\t</Controls>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t</Controls>
+\t\t\t\t<AlignChild>No</AlignChild>
+\t\t\t\t<AlignChildren>No</AlignChildren>
+\t\t\t\t<ArrangeMethod>Vertical</ArrangeMethod>
+\t\t\t</AxFormControl>
+\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\ti:type="AxFormGroupControl">
+\t\t\t\t<Name>CustomFilterGroup</Name>
+\t\t\t\t<Pattern>CustomAndQuickFilters</Pattern>
+\t\t\t\t<PatternVersion>1.1</PatternVersion>
+\t\t\t\t<Type>Group</Type>
+\t\t\t\t<WidthMode>SizeToAvailable</WidthMode>
+\t\t\t\t<FormControlExtension
+\t\t\t\t\ti:nil="true" />
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormControl>
+\t\t\t\t\t\t<Name>QuickFilterControl</Name>
+\t\t\t\t\t\t<FormControlExtension>
+\t\t\t\t\t\t\t<Name>QuickFilterControl</Name>
+\t\t\t\t\t\t\t<ExtensionComponents />
+\t\t\t\t\t\t\t<ExtensionProperties>
+\t\t\t\t\t\t\t\t<AxFormControlExtensionProperty>
+\t\t\t\t\t\t\t\t\t<Name>targetControlName</Name>
+\t\t\t\t\t\t\t\t\t<Type>String</Type>
+\t\t\t\t\t\t\t\t\t<Value>Grid</Value>
+\t\t\t\t\t\t\t\t</AxFormControlExtensionProperty>
+\t\t\t\t\t\t\t\t<AxFormControlExtensionProperty>
+\t\t\t\t\t\t\t\t\t<Name>defaultColumnName</Name>
+\t\t\t\t\t\t\t\t\t<Type>String</Type>
+\t\t\t\t\t\t\t\t\t<Value>${defaultCol}</Value>
+\t\t\t\t\t\t\t\t</AxFormControlExtensionProperty>
+\t\t\t\t\t\t\t\t<AxFormControlExtensionProperty>
+\t\t\t\t\t\t\t\t\t<Name>placeholderText</Name>
+\t\t\t\t\t\t\t\t\t<Type>String</Type>
+\t\t\t\t\t\t\t\t</AxFormControlExtensionProperty>
+\t\t\t\t\t\t\t</ExtensionProperties>
+\t\t\t\t\t\t</FormControlExtension>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t</Controls>
+\t\t\t\t<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+\t\t\t\t<FrameType>None</FrameType>
+\t\t\t\t<Style>CustomFilter</Style>
+\t\t\t\t<ViewEditMode>Edit</ViewEditMode>
+\t\t\t</AxFormControl>
+\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\ti:type="AxFormGridControl">
+\t\t\t\t<Name>Grid</Name>
+\t\t\t\t<ElementPosition>1431655764</ElementPosition>
+\t\t\t\t<FilterExpression>%1</FilterExpression>
+\t\t\t\t<Type>Grid</Type>
+\t\t\t\t<VerticalSpacing>-1</VerticalSpacing>
+\t\t\t\t<FormControlExtension
+\t\t\t\t\ti:nil="true" />
+\t\t\t\t<Controls>
+${fieldControls}\t\t\t\t</Controls>
+\t\t\t\t<AlternateRowShading>No</AlternateRowShading>
+\t\t\t\t<DataSource>${dsName}</DataSource>
+\t\t\t\t<MultiSelect>Yes</MultiSelect>
+\t\t\t\t<ShowRowLabels>No</ShowRowLabels>
+\t\t\t\t<Style>Tabular</Style>
+\t\t\t</AxFormControl>
+\t\t</Controls>
+\t</Design>
+\t<Parts />
+</AxForm>
+`;
+  }
+
+  // ---------------------------------------------------------------------------
   // Dispatcher — pick the right pattern builder
   // ---------------------------------------------------------------------------
   static build(pattern: FormPattern, opt: FormTemplateOptions): string {
@@ -1105,6 +1277,7 @@ ${fieldControls}\t\t\t\t</Controls>
       case 'Dialog':             return this.buildDialog(opt);
       case 'TableOfContents':    return this.buildTableOfContents(opt);
       case 'Lookup':             return this.buildLookup(opt);
+      case 'ListPage':           return this.buildListPage(opt);
       default:                   return this.buildSimpleList(opt);
     }
   }
@@ -1117,6 +1290,7 @@ ${fieldControls}\t\t\t\t</Controls>
     const s = raw.toLowerCase().replace(/[^a-z]/g, '');
     if (s.includes('simplelist') && s.includes('detail')) return 'SimpleListDetails';
     if (s.includes('simplelist'))                           return 'SimpleList';
+    if (s.includes('listpage'))                             return 'ListPage';
     if (s.includes('detailmaster') || s.includes('detailsmaster'))     return 'DetailsMaster';
     if (s.includes('detailtransaction') || s.includes('detailstransaction')) return 'DetailsTransaction';
     if (s.includes('dialog') || s.includes('dropdialog')) return 'Dialog';

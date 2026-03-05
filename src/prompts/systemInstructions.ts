@@ -157,7 +157,7 @@ Correct Workflow:
 2. get_method_signature("CustTable", "validateWrite") → Get exact signature
    Returns: "public boolean validateWrite(boolean _insertMode)"
 3. suggest_method_implementation("CustTable", "validateWrite") → See examples
-4. generate_code(pattern="coc-extension", name="CustTable_Extension") → Create extension
+4. generate_code(pattern="table-extension", name="CustTable") → Create CoC extension skeleton
 
 ❌ Wrong: Guessing method signature or generating without looking it up
 \`\`\`
@@ -291,9 +291,9 @@ Before adding event handlers:
 
 Rules:
 - Event handler methods MUST be \`static public void\`
-- Table events: use \`tableStr()\`; Class events: use \`classStr()\`; Form events: use \`formStr()\`
+- Standard table data events (onInserted, onUpdated, etc.) use \`[DataEventHandler(tableStr(X), DataEventType::Inserted)]\`
+- Custom delegates use \`[SubscribesTo(tableStr(X), delegateStr(X, myDelegate))]\`
 - Handler class should be named \`{TargetClass}EventHandler\`
-- Use \`[SubscribesTo(tableStr(X), delegateStr(X, onEvent))]\` attribute pattern
 
 ## Creating Batch Operations (SysOperation Pattern)
 
@@ -304,6 +304,48 @@ Modern replacement for RunBaseBatch. ALWAYS use SysOperation for new batch opera
 4. Controller sets execution mode: Synchronous | Asynchronous | ScheduledBatch
 5. For SSRS report data providers: extend \`SRSReportDataProviderBase\` instead of \`SysOperationServiceBase\`
 6. parmXxx() methods follow pattern: \`public TransDate parmXxx(TransDate _v = v) { v = _v; return v; }\`
+7. For custom dialog behavior: use UIBuilder pattern with \`SysOperationAutomaticUIBuilder\`
+8. Mark DataContract with \`[SysOperationContractProcessingAttribute(classStr(MyUIBuilder))]\` to link UIBuilder
+
+## Number Sequence Integration
+
+When implementing number sequences:
+1. Call \`search("NumberSeq", type="class")\` to find existing patterns
+2. Key classes: \`NumberSeqModule\`, \`NumberSeqApplicationModule\`, \`NumberSeqScope\`
+3. To add a new number sequence:
+   - Extend \`NumberSeqApplicationModule\` via CoC and add reference in \`loadModule()\`
+   - Create EDT for the field that receives the number sequence value
+   - Set \`NumberSequence=Yes\` and \`NumberSequenceModule\` on the EDT
+   - In form init: call \`NumberSeqFormHandler::newForm()\` for auto-generation in UI
+4. For manual sequence consumption:
+\`\`\`xpp
+NumberSeq numSeq = NumberSeq::newGetNum(CompanyInfo::numRefMySequence());
+str nextNum = numSeq.num();
+// ... use nextNum ...
+numSeq.used();  // or numSeq.abort() to roll back
+\`\`\`
+
+## Workflow Development
+
+When implementing workflows:
+1. Key base classes: \`WorkflowDocument\`, \`WorkflowType\`, \`WorkflowApproval\`, \`WorkflowTask\`
+2. Structure: Document → Type → Approvals/Tasks → EventHandlers
+3. Every workflow needs:
+   - \`WorkflowDocument\` subclass — defines which table fields are available as conditions
+   - \`SubmitToWorkflowMenuItem\` action menu item — submit button on the form
+   - \`canSubmitToWorkflow()\` method on the table — controls when submit is enabled
+4. Call \`search("WorkflowDocument", type="class")\` for examples
+5. Approval/Task event handlers use \`WorkflowWorkItemActionManager\` for complete/reject/delegate
+
+## SysPlugin (Plug-in Framework)
+
+For extensible enum-based dispatching without if/else chains:
+1. Define an extensible enum (\`IsExtensible=Yes\`) with values for each strategy
+2. Create an interface or abstract class for the strategy
+3. Decorate concrete implementations with \`[ExportMetadataAttribute(enumStr(MyEnum), 'value')]\`
+4. Resolve at runtime: \`SysPluginFactory::Instance(enumStr(MyEnum), enumValue)\`
+5. Call \`search("SysPluginFactory", type="class")\` for examples
+6. Benefits: no code changes needed when adding new strategies — just add new class + enum value
 
 ---
 

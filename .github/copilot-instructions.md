@@ -210,23 +210,33 @@ The `create_d365fo_file` tool derives the object name prefix from the `modelName
                                  operation="add-field" / "add-method", ...)
 ```
 
-### Event handler (SubscribesTo)
+### Event handler (DataEventHandler / SubscribesTo)
 
 ```
 1. Check existing handlers:    find_event_handlers("TargetTable")
-                               → shows all [SubscribesTo] handlers across models
+                               → shows all event handlers across models
 
-2. Read event signature:       get_method_signature("TargetTable", "onInserted")
-                               → exact delegate signature to match
+2. Check available events:     analyze_extension_points("TargetTable")
+                               → shows data events and custom delegates
 
 3. Create handler class:       create_d365fo_file(objectType="class",
                                  objectName="TargetTableEventHandler", ...)
 
-4. Add handler method:         modify_d365fo_file(operation="add-method",
+4a. Standard data events:      modify_d365fo_file(operation="add-method",
+      (onInserted, etc.)         sourceCode="[DataEventHandler(tableStr(TargetTable),
+                                   DataEventType::Inserted)]
+                                 public static void onInserted_handler(
+                                   Common _sender, DataEventArgs _e) { ... }")
+
+4b. Custom delegates:          modify_d365fo_file(operation="add-method",
                                  sourceCode="[SubscribesTo(tableStr(TargetTable),
-                                   eventStr(Inserted))]
-                                 public static void onInserted_handler(...) { ... }")
+                                   delegateStr(TargetTable, myCustomDelegate))]
+                                 public static void myCustomDelegate_handler(...) { ... }")
 ```
+
+**Rule:** Standard table events (onInserted, onUpdated, onDeleted, onValidatedWrite, etc.)
+use `[DataEventHandler]` — NOT `[SubscribesTo + delegateStr]`. The `delegateStr` form
+is only for **custom delegates** defined with the `delegate` keyword.
 
 ---
 
@@ -306,7 +316,7 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 | `suggest_method_implementation(className, methodName)` | Real implementation examples |
 | `analyze_class_completeness(className)` | Missing standard methods |
 | `get_api_usage_patterns(apiName)` | Typical initialization & usage |
-| `generate_code(pattern, name)` | Boilerplate: `class`, `runnable`, `form-handler`, `data-entity`, `batch-job`, `table-extension`, `event-handler` |
+| `generate_code(pattern, name)` | Boilerplate: `class`, `runnable`, `form-handler`, `data-entity`, `batch-job`, `table-extension`, `sysoperation`, `event-handler` |
 
 ### Smart Object Generation
 | Tool | Use for |
@@ -315,7 +325,7 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 | `get_form_patterns(formPattern?, tableName?)` | Analyze patterns before creating form |
 | `suggest_edt(fieldName, context?)` | Suggest correct EDT for field |
 | `generate_smart_table(name, fieldsHint?, primaryKeyFields?, methods?, ...)` | AI table generation |
-| `generate_smart_form(name, dataSource?, formPattern?, ...)` | AI form generation |
+| `generate_smart_form(name, dataSource?, formPattern?, ...)` | AI form generation (patterns: SimpleList, SimpleListDetails, DetailsMaster, DetailsTransaction, Dialog, TableOfContents, Lookup, ListPage) |
 
 ### File Operations
 | Tool | Use for |

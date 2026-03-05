@@ -4,48 +4,6 @@ import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { SERVER_MODE, WRITE_TOOLS } from '../server/serverMode.js';
 import { searchTool } from './search.js';
-
-/**
- * Extract workspace path from GitHub Copilot _meta and apply it to ConfigManager.
- * Called before every tool dispatch so workspace is always up-to-date.
- */
-function extractAndApplyWorkspaceFromMeta(meta: any): void {
-  if (!meta) return;
-
-  let rawUri: string | undefined;
-
-  // workspaceFolders / workspaceFolderUris / roots — array of { uri } or strings
-  for (const key of ['workspaceFolders', 'workspaceFolderUris', 'roots']) {
-    const arr = meta[key];
-    if (Array.isArray(arr) && arr.length > 0) {
-      rawUri = typeof arr[0] === 'string' ? arr[0] : arr[0]?.uri;
-      break;
-    }
-  }
-
-  // Single-string fallbacks
-  if (!rawUri) {
-    for (const key of ['workspaceFolderUri', 'workspaceFolder', 'workspacePath']) {
-      if (typeof meta[key] === 'string') {
-        rawUri = meta[key];
-        break;
-      }
-    }
-  }
-
-  if (!rawUri) return;
-
-  // Convert file:// URI → local path
-  let localPath = rawUri;
-  if (rawUri.startsWith('file:///')) {
-    localPath = decodeURIComponent(rawUri.slice('file:///'.length)).replace(/\//g, '\\');
-  } else if (rawUri.startsWith('file://')) {
-    localPath = decodeURIComponent(rawUri.slice('file://'.length)).replace(/\//g, '\\');
-  }
-
-  // Apply workspace context (debug logging removed for performance)
-  getConfigManager().setRuntimeContext({ workspacePath: localPath });
-}
 import { batchSearchTool } from './batchSearch.js';
 import { classInfoTool } from './classInfo.js';
 import { tableInfoTool } from './tableInfo.js';
@@ -88,6 +46,48 @@ import { validateObjectNamingTool } from './validateObjectNaming.js';
 import { verifyD365ProjectTool } from './verifyD365Project.js';
 
 /**
+ * Extract workspace path from GitHub Copilot _meta and apply it to ConfigManager.
+ * Called before every tool dispatch so workspace is always up-to-date.
+ */
+function extractAndApplyWorkspaceFromMeta(meta: any): void {
+  if (!meta) return;
+
+  let rawUri: string | undefined;
+
+  // workspaceFolders / workspaceFolderUris / roots — array of { uri } or strings
+  for (const key of ['workspaceFolders', 'workspaceFolderUris', 'roots']) {
+    const arr = meta[key];
+    if (Array.isArray(arr) && arr.length > 0) {
+      rawUri = typeof arr[0] === 'string' ? arr[0] : arr[0]?.uri;
+      break;
+    }
+  }
+
+  // Single-string fallbacks
+  if (!rawUri) {
+    for (const key of ['workspaceFolderUri', 'workspaceFolder', 'workspacePath']) {
+      if (typeof meta[key] === 'string') {
+        rawUri = meta[key];
+        break;
+      }
+    }
+  }
+
+  if (!rawUri) return;
+
+  // Convert file:// URI → local path
+  let localPath = rawUri;
+  if (rawUri.startsWith('file:///')) {
+    localPath = decodeURIComponent(rawUri.slice('file:///'.length)).replace(/\//g, '\\');
+  } else if (rawUri.startsWith('file://')) {
+    localPath = decodeURIComponent(rawUri.slice('file://'.length)).replace(/\//g, '\\');
+  }
+
+  // Apply workspace context (debug logging removed for performance)
+  getConfigManager().setRuntimeContext({ workspacePath: localPath });
+}
+
+/**
  * Centralized tool handler that dispatches to individual tool implementations
  */
 
@@ -111,7 +111,7 @@ const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
   get_table_info:                   6000,
   get_form_info:                    5000,
   // Default for everything else
-  default:                          3500,
+  default:                          5000,
 };
 
 function getCapForTool(toolName: string): number | 'uncapped' {

@@ -70,42 +70,37 @@ internal final class ${name}
 }`,
 
   'data-entity': (name) => `
-/// <summary>
-/// Data entity for ${name}
-/// </summary>
-public class ${name}Entity extends common
-{
-    /// <summary>
-    /// Find entity by RecId
-    /// </summary>
-    /// <param name="_recId">Record ID</param>
-    /// <param name="_forUpdate">Select for update</param>
-    /// <returns>Entity instance</returns>
-    public static ${name}Entity find(RecId _recId, boolean _forUpdate = false)
-    {
-        ${name}Entity entity;
-
-        entity.selectForUpdate(_forUpdate);
-
-        select firstonly entity
-            where entity.RecId == _recId;
-
-        return entity;
-    }
-
-    /// <summary>
-    /// Validate entity
-    /// </summary>
-    /// <returns>True if valid</returns>
-    public boolean validateWrite()
-    {
-        boolean ret = super();
-
-        // TODO: Add custom validation
-
-        return ret;
-    }
-}`,
+// ══════════════════════════════════════════════════════════════════
+// D365FO Data Entity: ${name}Entity
+// ══════════════════════════════════════════════════════════════════
+// Data entities are AxDataEntityView XML objects (NOT X++ classes).
+// Use create_d365fo_file(objectType="view") or the VS designer.
+//
+// Key properties to set in XML:
+//   PublicEntityName:       "${name}"  (OData singular name)
+//   PublicCollectionName:   "${name}s" (OData plural name)
+//   IsPublic:               Yes  (expose via OData)
+//   DataManagementEnabled:  Yes  (enable DMF import/export)
+//   EntityCategory:         Master | Transaction | Document | Reference | Parameter
+//   PrimaryKey:             EntityKey (natural key index, NOT RecId)
+//
+// Datasource config:
+//   Root datasource:  ${name} table (IsReadOnly = No for read-write entity)
+//   Join datasources: Additional tables via inner/outer joins
+//
+// Example computed column (for cross-datasource or calculated fields):
+//   private static server str computeDisplayName()
+//   {
+//       return SysComputedColumn::returnField(
+//           tableStr(DirPartyTable), identifierStr(Name));
+//   }
+//
+// Workflow:
+//   1. get_data_entity_info("similar entity")  → study structure
+//   2. generate_d365fo_xml(objectType="data-entity", ...)  → preview XML
+//   3. create_d365fo_file(objectType="view", ...)  → create file
+//   4. After deployment: refresh entity list in Data Management workspace
+`,
 
   'batch-job': (name) => `
 /// <summary>
@@ -125,29 +120,14 @@ class ${name}Controller extends SysOperationServiceController
     }
 
     /// <summary>
-    /// Constructor
+    /// Constructor — wires up the service class and method.
+    /// SysOperationServiceController handles pack/unpack automatically via DataContract.
     /// </summary>
     protected void new()
     {
         super();
         this.parmClassName(classStr(${name}Service));
         this.parmMethodName(methodStr(${name}Service, process));
-    }
-
-    /// <summary>
-    /// Pack settings
-    /// </summary>
-    public container pack()
-    {
-        return [#CurrentVersion, #CurrentList];
-    }
-
-    /// <summary>
-    /// Unpack settings
-    /// </summary>
-    public boolean unpack(container _packedClass)
-    {
-        return true;
     }
 }
 
@@ -330,16 +310,17 @@ class ${name}Service extends SysOperationServiceBase
 function eventHandlerTemplate(baseName: string, _prefix: string): string {
   return `
 /// <summary>
-/// Event handler class for ${baseName} events.
+/// Event handler class for ${baseName} data events.
+/// Uses [DataEventHandler] for standard table events (onInserted, onValidatedWrite, etc.).
+/// For custom delegates, use [SubscribesTo(tableStr(X), delegateStr(X, myDelegate))] instead.
 /// </summary>
 public final class ${baseName}EventHandler
 {
     /// <summary>
-    /// Handles the onInserted event of ${baseName}.
+    /// Handles the onInserted data event of ${baseName}.
     /// </summary>
-    [SubscribesTo(tableStr(${baseName}),
-                  delegateStr(${baseName}, onInserted))]
-    public static void ${baseName}_onInserted(Common _sender, InsertEventArgs _e)
+    [DataEventHandler(tableStr(${baseName}), DataEventType::Inserted)]
+    public static void ${baseName}_onInserted(Common _sender, DataEventArgs _e)
     {
         ${baseName} record = _sender;
 
@@ -347,21 +328,21 @@ public final class ${baseName}EventHandler
     }
 
     /// <summary>
-    /// Handles the onValidatedWrite event of ${baseName}.
+    /// Handles the onValidatedWrite data event of ${baseName}.
     /// </summary>
-    [SubscribesTo(tableStr(${baseName}),
-                  delegateStr(${baseName}, onValidatedWrite))]
-    public static void ${baseName}_onValidatedWrite(Common _sender, ValidateEventArgs _e)
+    [DataEventHandler(tableStr(${baseName}), DataEventType::ValidatedWrite)]
+    public static void ${baseName}_onValidatedWrite(Common _sender, DataEventArgs _e)
     {
-        ${baseName} record    = _sender;
-        boolean   result     = _e.parmValidateResult();
+        ${baseName} record = _sender;
+        ValidateEventArgs validateArgs = _e;
+        boolean result = validateArgs.parmValidateResult();
 
         if (result)
         {
             // TODO: Add validation logic
         }
 
-        _e.result(result);
+        validateArgs.parmValidateResult(result);
     }
 }`;
 }
