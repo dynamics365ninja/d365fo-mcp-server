@@ -15,6 +15,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { getConfigManager } from './configManager.js';
 
 // Resolve path relative to this file, not to process.cwd()
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -227,6 +228,50 @@ export async function readViewMetadata(
     return JSON.parse(raw) as ExtractedViewMetadata;
   } catch {
     return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Build-agent path → local path resolver
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Attempt to remap a build-agent file path to the locally configured packages path.
+ *
+ * The SQLite index stores paths from the Azure DevOps CI build agent:
+ *   Linux:   /home/vsts/work/1/PackagesLocalDirectory/applicationsuite/Foundation/AxForm/CustTable.xml
+ *   Windows: C:\home\vsts\work\1\PackagesLocalDirectory\applicationsuite\Foundation\AxForm\CustTable.xml
+ *
+ * We extract the relative part after "PackagesLocalDirectory" and combine it with
+ * the locally configured packagePath (from .mcp.json / env).  This allows
+ * get_form_info and other tools to read standard Microsoft model XML on a local
+ * D365FO installation even though the DB path points to a non-existent CI machine.
+ *
+ * Returns null when the path cannot be remapped or the remapped file does not exist.
+ */
+export async function resolveDbPathLocally(dbFilePath: string): Promise<string | null> {
+  // Normalise separators so the regex works on both Linux and Windows DB paths
+  const normalised = dbFilePath.replace(/\\/g, '/');
+
+  // Extract the segment that follows "PackagesLocalDirectory/"
+  const match = normalised.match(/PackagesLocalDirectory\/(.+)$/i);
+  if (!match) return null;
+
+  const relativePart = match[1]; // e.g. "applicationsuite/Foundation/AxForm/CustTable.xml"
+
+  const configManager = getConfigManager();
+  await configManager.ensureLoaded();
+  const localPackagePath =
+    configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+
+  // Convert forward slashes back to the OS separator
+  const localPath = path.join(localPackagePath, ...relativePart.split('/'));
+
+  try {
+    await fs.access(localPath);
+    return localPath;
+  } catch {
+    return null; // File does not exist locally
   }
 }
 

@@ -9,7 +9,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
-import { buildXmlNotAvailableMessage } from '../utils/metadataResolver.js';
+import { buildXmlNotAvailableMessage, resolveDbPathLocally } from '../utils/metadataResolver.js';
 
 const GetQueryInfoArgsSchema = z.object({
   queryName: z.string().describe('Name of the query'),
@@ -106,10 +106,22 @@ export async function getQueryInfoTool(request: CallToolRequest, context: XppSer
     }
 
     // 2. Parse XML (file_path may point to build-agent path — not accessible on this server)
-    let xmlContent: string;
+    let xmlContent: string | null = null;
     try {
       xmlContent = await fs.readFile(queryRow.file_path, 'utf-8');
     } catch {
+      // Build-agent path not accessible — try to remap to local PackagesLocalDirectory
+      const remappedPath = await resolveDbPathLocally(queryRow.file_path);
+      if (remappedPath) {
+        try {
+          xmlContent = await fs.readFile(remappedPath, 'utf-8');
+        } catch {
+          // Remapped path also not readable
+        }
+      }
+    }
+
+    if (!xmlContent) {
       return {
         content: [{ type: 'text', text: buildXmlNotAvailableMessage('query', queryName, queryRow.file_path) }],
         isError: true,

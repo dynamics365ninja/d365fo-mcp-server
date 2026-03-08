@@ -9,7 +9,8 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
-import { buildXmlNotAvailableMessage } from '../utils/metadataResolver.js';
+import { buildXmlNotAvailableMessage, resolveDbPathLocally } from '../utils/metadataResolver.js';
+import { findD365FileOnDisk } from './modifyD365File.js';
 
 const GetFormInfoArgsSchema = z.object({
   formName: z.string().describe('Name of the form'),
@@ -134,6 +135,31 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       }
     } catch {
       // file_path not accessible
+    }
+
+    // Fallback: DB path is from build agent (e.g. /home/vsts/work/...) — try local disk
+    if (!xmlContent) {
+      // Strategy 1: remap build-agent path to local PackagesLocalDirectory (works for any model)
+      const remappedPath = await resolveDbPathLocally(formRow.file_path);
+      if (remappedPath) {
+        try {
+          xmlContent = await fs.readFile(remappedPath, 'utf-8');
+        } catch {
+          // Remapped path not readable
+        }
+      }
+    }
+
+    if (!xmlContent) {
+      // Strategy 2: filesystem lookup via configured model path (works for custom models)
+      const diskPath = await findD365FileOnDisk('form', formName, formRow.model);
+      if (diskPath) {
+        try {
+          xmlContent = await fs.readFile(diskPath, 'utf-8');
+        } catch {
+          // Local path also not accessible
+        }
+      }
     }
 
     if (!xmlContent) {
