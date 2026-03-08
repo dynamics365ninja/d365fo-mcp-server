@@ -268,6 +268,27 @@ function inferReturnDescription(returnType: string, methodName: string): string 
 }
 
 /**
+ * Ensures there is exactly one blank line between the last member-variable
+ * declaration and the closing `}` of the class body in an X++ class declaration.
+ *
+ * D365FO convention (visible in all Microsoft standard classes):
+ *   public class MyClass
+ *   {
+ *       TransDate fromDate;
+ *       str       selectedZoneIds;
+ *                                    ← blank line here
+ *   }
+ *
+ * Idempotent: already-correct declarations (and empty class bodies) are returned
+ * unchanged.
+ */
+export function ensureBlankLineBeforeClosingBrace(declaration: string): string {
+  // Match a `;`-terminated line followed immediately by the lone closing `}` (no
+  // blank line between them). Only fires when there is NO blank line already.
+  return declaration.replace(/;([ \t]*)\n([ \t]*\}[ \t]*)$/, ';\n\n$2');
+}
+
+/**
  * Ensures every public or protected X++ method / class declaration has a
  * leading XML doc-comment block (/// <summary> … </summary>).
  *

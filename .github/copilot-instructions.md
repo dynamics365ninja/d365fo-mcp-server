@@ -4,6 +4,36 @@ This workspace contains D365FO code. **Always use the specialized MCP tools** �
 
 ---
 
+> ## 🔌 MANDATORY FIRST CHECK — MCP SERVER + WORKSPACE CONFIGURATION
+>
+> **Before doing ANYTHING in this workspace, call `get_workspace_info()` with no arguments.**
+>
+> Read the response carefully:
+>
+> **Case 1 — tool call FAILS (MCP server not connected):**
+> - STOP immediately. Tell the user:
+>   > ⚠️ **MCP server is not connected.** The d365fo-mcp-server must be running for safe D365FO development.
+>   > Without it I cannot read the symbol database, detect the correct model name, or safely create/modify files.
+>   >
+>   > Options:
+>   > - **Option A (recommended):** Start the MCP server (VS Code MCP panel → restart, or `npm start` in the server repo), then retry.
+>   > - **Option B:** Continue with built-in tools only — no symbol index, no model auto-detection, file operations may corrupt your project.
+>   >
+>   > Which option do you prefer?
+> - **Wait for the user's answer** — do NOT proceed until explicitly told to.
+>
+> **Case 2 — response contains `⛔ CONFIGURATION PROBLEM`:**
+> - STOP immediately. The model name is a placeholder (`MyModel`, `MyPackage`, etc.).
+> - Tell the user the exact message from the tool response.
+> - **Wait for the user's answer** — do NOT proceed until explicitly told to.
+>
+> **Case 3 — response contains `✅ Configuration looks valid`:**
+> - Note the model name from the response (e.g. `ContosoExtensions`, `ApplicationSuite`).
+> - Use that model name for ALL subsequent `create_d365fo_file` / `create_label` / `modify_d365fo_file` calls.
+> - Proceed normally.
+>
+> **If you detect `MyModel`, `MyPackage`, or any placeholder mid-task** (e.g. in a tool response, or because you were about to pass it as a parameter) — STOP and notify the user before continuing.
+
 > ##  MANDATORY RULE — EDITING D365FO FILES
 >
 > **After analysis, you MUST use `modify_d365fo_file()` to apply any changes.**
@@ -81,6 +111,7 @@ For any D365FO request, **start with MCP tools — never** `code_search`, `grep_
 | What does menu item X open? Security chain? | `get_menu_item_info(name)` |
 | Create SSRS report | See **SSRS Report Workflow** section below |
 | Create CoC extension | See **CoC / Extension Workflows** section below |
+| What is the exact tab/group/control name in form X? | `get_form_info(formName, searchControl="General")` |
 
 ## Critical Rules
 
@@ -93,9 +124,11 @@ For any D365FO request, **start with MCP tools — never** `code_search`, `grep_
 | `edit_file`, `apply_patch`, `replace_string_in_file` | `modify_d365fo_file()` |
 | `create_file` for D365FO objects | `create_d365fo_file()` |
 | PowerShell `ls`, `Test-Path`, `Get-Item` to check D365FO files | `verify_d365fo_project()` |
+| PowerShell `Get-Content` / `Select-String` to find tab/control names in form XML | `get_form_info(formName, searchControl="General")` |
 
 ### Non-Negotiable Rules
 
+0. **ALWAYS** call `get_workspace_info()` at the start of every session (see **MANDATORY FIRST CHECK** above). If it fails OR returns `⛔ CONFIGURATION PROBLEM` — **STOP and inform the user** before proceeding. Never infer the model name from label file names or search results.
 1. **NEVER** use built-in file/edit tools on D365FO .xml or .xpp files
 2. **NEVER** guess method signatures — call `get_method_signature(className, methodName)` before CoC extensions
 3. **NEVER** use `create_file` for D365FO objects — use `create_d365fo_file()`
@@ -207,13 +240,63 @@ The `create_d365fo_file` tool derives the object name prefix from the `modelName
 3. Generate boilerplate:       generate_code("table-extension", "TargetTable_Extension",
                                  "TargetTable")
 
-4. Create extension file:      create_d365fo_file(objectType="tableExtension",
-                                 objectName="TargetTable_Extension", addToProject=true)
+4. Create extension file:      create_d365fo_file(objectType="table-extension",
+                                 objectName="TargetTable.PrefixExtension", addToProject=true)
 
-5. Add fields/methods:         modify_d365fo_file(objectType="tableExtension",
-                                 objectName="TargetTable_Extension",
+5. Add fields/methods:         modify_d365fo_file(objectType="table-extension",
+                                 objectName="TargetTable.PrefixExtension",
                                  operation="add-field" / "add-method", ...)
 ```
+
+### Form extension
+
+```
+1. Find exact control names:   get_form_info("TargetForm", searchControl="General")
+                               → returns matching controls with full hierarchy path and parent names
+                               ❌ NEVER use PowerShell Get-Content or grep on form XML
+
+2. Create extension file:      create_d365fo_file(objectType="form-extension",
+                                 objectName="TargetForm.AslExtension", addToProject=true)
+                               → creates the AxFormExtension XML (empty — controls/overrides added next)
+
+3. Add field control to tab:   modify_d365fo_file(objectType="form-extension",
+                                 objectName="TargetForm.AslExtension",
+                                 operation="add-control",
+                                 controlName="AslCustPriorityTier",
+                                 parentControl="TabGeneral",
+                                 controlDataSource="CustTable",
+                                 controlDataField="AslCustPriorityTier",
+                                 controlType="String")
+                               ❌ NEVER use PowerShell to edit form extension XML to add controls
+
+   Optional positioning:        positionType="AfterItem", previousSibling="ExistingControlName"
+   Control types:               String (default), Integer, Real, CheckBox (NoYes/bool),
+                                ComboBox (enum), Date, DateTime, Int64, Group, Button
+
+4. Add display/override method: modify_d365fo_file(objectType="form-extension",
+                                 objectName="TargetForm.AslExtension",
+                                 operation="add-method", sourceCode="...")
+```
+
+**Form extension class (CoC for form methods):**
+```
+4. Create extension class:     create_d365fo_file(objectType="class",
+                                 objectName="TargetForm_Extension", ...)
+
+5. Add form method CoC:        get_method_signature("FormRun subclass OR form", "methodName",
+                                 includeCocTemplate: true)
+                               → use returned CoC skeleton
+
+6. Apply:                      modify_d365fo_file(objectType="class",
+                                 objectName="TargetFormAsl_Extension",
+                                 operation="add-method", sourceCode="<CoC skeleton>")
+```
+
+**Key rules for form extensions:**
+- The form extension XML file (`TargetForm.AslExtension`) holds metadata modifications (tab/control moves, visibility overrides, new controls)
+- The form extension CLASS (`TargetFormAsl_Extension`) holds logic CoC (`[ExtensionOf(formStr(TargetForm))]`)
+- ALWAYS look up the exact control name with `get_form_info(searchControl="...")` BEFORE writing the extension
+- ❌ NEVER modify the original form — ALWAYS create/modify the extension file
 
 ### Event handler (DataEventHandler / SubscribesTo)
 
@@ -279,6 +362,11 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 
 ## Available MCP Tools
 
+### Workspace Configuration
+| Tool | Use for |
+|------|------|
+| `get_workspace_info()` | **ALWAYS call first.** Returns model name, package path, project path, **EXTENSION_PREFIX** value, and effective object prefix. Flags placeholder names, warns if EXTENSION_PREFIX is missing, and shows auto-detected real model from `.rnrproj`. |
+
 ### Search & Discovery
 | Tool | Use for |
 |------|---------|
@@ -294,7 +382,7 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 ### Object Info
 | Tool | Use for |
 |------|----------|
-| `get_form_info(formName)` | Datasources, controls, methods |
+| `get_form_info(formName, searchControl?)` | Datasources, controls, methods. Pass `searchControl="General"` to find tab/group exact names for form extensions — **NEVER** use PowerShell for this |
 | `get_query_info(queryName)` | Datasources, joins, ranges |
 | `get_view_info(viewName)` | View / data entity structure |
 | `get_data_entity_info(entityName)` | Data entity: category, OData settings, datasources, keys, field mappings |
@@ -347,6 +435,8 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 | `get_label_info(labelId?, model?)` | Get translations, list label files |
 | `create_label(labelId, labelFileId, model, translations[])` | Create new label |
 | `rename_label(oldLabelId, newLabelId, labelFileId, model)` | Rename label ID in .label.txt, X++ source, and XML metadata |
+
+> **Label file creation:** When calling `create_label` for the first time in a model (label file does not exist yet), **always** pass `createLabelFileIfMissing: true`. Without it the tool returns an error. Pass translations for all required languages (e.g. `en-US`, `cs`, `de`) — the tool creates the directory structure and XML descriptors for each language automatically. If you provide a translation for a language that does not yet have a folder (e.g. cs), set `createLabelFileIfMissing: true` so the folder and descriptor are created.
 
 ## File Paths & Model Name
 

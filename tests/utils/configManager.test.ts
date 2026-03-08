@@ -5,7 +5,7 @@
  *         UDE path resolution, McpContext merging.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getConfigManager } from '../../src/utils/configManager';
 
 // Prevent real file I/O during unit tests
@@ -198,6 +198,15 @@ describe('setRuntimeContext', () => {
 // ─── UDE context ─────────────────────────────────────────────────────────────
 
 describe('UDE context (customPackagesPath / microsoftPackagesPath)', () => {
+  beforeEach(() => {
+    // Clear DEV_ENVIRONMENT_TYPE so the real env var doesn't override test context values.
+    vi.stubEnv('DEV_ENVIRONMENT_TYPE', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('returns customPackagesPath from mcp context', async () => {
     const mgr = makeManager({
       customPackagesPath: 'C:\\CustomXppCode',

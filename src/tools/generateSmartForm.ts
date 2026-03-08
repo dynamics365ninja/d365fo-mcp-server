@@ -311,7 +311,7 @@ export async function handleGenerateSmartForm(
     console.log(`[generateSmartForm] Non-Windows environment — returning XML as text (no file write)`);
     const noModelNote = resolvedModel
       ? ''
-      : `\n> ⚠️  No model resolved — XML generated without prefix. Pass \`modelName\` with the actual model name from .mcp.json (e.g. \`"FmMcp"\`) for correct object naming.`;
+      : `\n> ⚠️  No model resolved — XML generated without prefix. Pass \`modelName\` with the actual model name from .mcp.json (e.g. \`"ContosoExt"\`) for correct object naming.`;
     const nextStep = [
       ``,
       `**✅ MANDATORY NEXT STEP — immediately call \`create_d365fo_file\` with the XML below:**`,

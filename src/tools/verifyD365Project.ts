@@ -70,7 +70,7 @@ const VerifyD365ProjectArgsSchema = z.object({
   modelName: z
     .string()
     .optional()
-    .describe('Model name (e.g., fm-mcp). Auto-detected from mcp.json if omitted.'),
+    .describe('Model name (e.g., ContosoExt). Auto-detected from mcp.json if omitted.'),
   packageName: z
     .string()
     .optional()

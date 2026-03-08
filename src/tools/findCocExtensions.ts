@@ -6,6 +6,8 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { getConfigManager } from '../utils/configManager.js';
+import { scanFsExtensions } from '../utils/fsExtensionScanner.js';
 
 const FindCocExtensionsArgsSchema = z.object({
   className: z.string().describe('Base class or table name being extended'),
@@ -82,6 +84,60 @@ export async function findCocExtensionsTool(request: CallToolRequest, context: X
 
     if (filtered.length === 0) {
       output += `No class extensions found for: ${className}\n`;
+
+      // ── Filesystem fallback ────────────────────────────────────────────────
+      // Class extensions live in AxClass/ as `ClassName_Extension.xml` (or
+      // `ClassName_ModelExtension.xml`). When the DB index is stale these won't
+      // appear via symbol queries — scan the filesystem directly.
+      if (process.platform === 'win32') {
+        const configManager = getConfigManager();
+        const packagePath = configManager.getPackagePath();
+        if (packagePath) {
+          output += `Scanning filesystem for unindexed class extensions (${packagePath})…\n`;
+          try {
+            const fsExts = await scanFsExtensions(className, 'class-extension', packagePath);
+            // Apply methodName filter the same way we do for DB results
+            const filtered2 = methodName
+              ? fsExts.filter(e =>
+                  e.cocMethods.some(m => m.toLowerCase() === methodName.toLowerCase()) ||
+                  e.addedMethods.some(m => m.toLowerCase() === methodName.toLowerCase()) ||
+                  e.cocMethods.length === 0
+                )
+              : fsExts;
+
+            if (filtered2.length > 0) {
+              output += `\nFound ${filtered2.length} class extension(s) on disk (not yet in index):\n\n`;
+              for (let i = 0; i < filtered2.length; i++) {
+                const ext = filtered2[i];
+                output += `[${i + 1}] ${ext.name} (${ext.model})\n`;
+                output += `    File: ${ext.filePath}\n`;
+
+                if (ext.cocMethods.length > 0) {
+                  const displayMethods = methodName
+                    ? ext.cocMethods.filter(m => m.toLowerCase() === methodName.toLowerCase())
+                    : ext.cocMethods;
+                  if (displayMethods.length > 0) {
+                    output += `    Wraps methods: ${displayMethods.join(', ')}\n`;
+                    output += `    Uses 'next' keyword: ✓\n`;
+                  }
+                }
+
+                const newMethods = ext.addedMethods.filter(m =>
+                  !ext.cocMethods.some(c => c.toLowerCase() === m.toLowerCase())
+                );
+                if (newMethods.length > 0) {
+                  output += `    Added methods: ${newMethods.slice(0, 5).join(', ')}${newMethods.length > 5 ? ` (+${newMethods.length - 5} more)` : ''}\n`;
+                }
+              }
+              output += `\n⚠️ Data sourced from disk — run extract-metadata + build-database to persist to index.\n`;
+            } else {
+              output += `No class extension files found on disk for "${className}" either.\n`;
+            }
+          } catch { /* non-fatal */ }
+        }
+      } else {
+        output += `Tip: Run extract-metadata and build-database to index class extensions.\n`;
+      }
     } else {
       output += `Found ${filtered.length} extension class(es):\n\n`;
       for (let i = 0; i < filtered.length; i++) {

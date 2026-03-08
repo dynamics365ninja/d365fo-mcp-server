@@ -19,7 +19,7 @@ const CodeGenArgsSchema = z.object({
     'For XML patterns (security-privilege, menu-item): the name for the generated XML object.'
   ),
   modelName: z.string().optional().describe(
-    'Actual model name from .mcp.json — used to derive the naming infix when EXTENSION_PREFIX env var is not set (e.g. "FmMcp", "WHSExt", "ContosoExt"). ' +
+    'Actual model name from .mcp.json — used to derive the naming infix when EXTENSION_PREFIX env var is not set (e.g. "ContosoExt", "WHSExt", "ApplicationSuite"). ' +
     'Required for extension patterns when EXTENSION_PREFIX is not configured. ' +
     'NEVER pass generic placeholders like "MyModel" — always use the real model name from .mcp.json.'
   ),

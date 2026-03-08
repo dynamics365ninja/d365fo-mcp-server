@@ -103,11 +103,26 @@ export function applyObjectPrefix(objectName: string, prefix: string): string {
   // Capitalize first letter of prefix (e.g. "whs" → "Whs", "WHS" stays "WHS", "contoso" → "Contoso")
   const normalizedPrefix = prefix.charAt(0).toUpperCase() + prefix.slice(1);
   
-  // SPECIAL CASE: Extension classes — prefix goes as SUFFIX before "_Extension"
+  // SPECIAL CASE A: Dot-notation extension elements — BaseElement.PrefixExtension
+  // For table/form/EDT/enum/menu-item extensions: "CustTable.AslExtension", "HCMWorker.ContosoExtension"
+  // The suffix after the dot is always {Prefix}Extension. Replace any stale prefix with the correct one.
+  // Example: "CustTable.MyModelExtension" + prefix "Asl" → "CustTable.AslExtension"
+  if (objectName.includes('.') && objectName.toLowerCase().endsWith('extension')) {
+    const dotIdx = objectName.lastIndexOf('.');
+    const basePart = objectName.slice(0, dotIdx);    // e.g., "CustTable"
+    const suffixPart = objectName.slice(dotIdx + 1); // e.g., "MyModelExtension"
+    const correctSuffix = `${normalizedPrefix}Extension`;
+    if (suffixPart.toLowerCase() === correctSuffix.toLowerCase()) {
+      return objectName; // Already has the correct prefix suffix, return as-is
+    }
+    return `${basePart}.${correctSuffix}`;
+  }
+
+  // SPECIAL CASE B: Extension classes — prefix goes as SUFFIX before "_Extension"
   // Example: SalesFormLetter + Contoso → SalesFormLetterContoso_Extension
   //
   // IMPORTANT: objectName MUST be the BASE class name + "_Extension" WITHOUT any prefix infix.
-  // E.g. "SalesFormLetter_Extension", NOT "SalesFormLetterFmMcp_Extension".
+  // E.g. "SalesFormLetter_Extension", NOT "SalesFormLetterContoso_Extension".
   // Callers (e.g. createD365File) are responsible for stripping any stale model-name infix
   // before calling this function when EXTENSION_PREFIX differs from modelName.
   if (objectName.endsWith('_Extension')) {

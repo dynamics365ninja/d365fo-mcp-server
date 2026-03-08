@@ -449,6 +449,20 @@ class ConfigManager {
   }
 
   /**
+   * Returns ONLY the model name found by scanning .rnrproj files on disk,
+   * ignoring whatever is written in .mcp.json / env vars.
+   * Useful when the configured modelName is a placeholder and we want to suggest
+   * the real model to the user.
+   */
+  async getRawAutoDetectedModelName(): Promise<string | null> {
+    if (!this.autoDetectionAttempted) {
+      const context = this.config?.servers.context;
+      await this.autoDetectProject(this.runtimeContext.workspacePath || context?.workspacePath);
+    }
+    return this.autoDetectedProject?.modelName || null;
+  }
+
+  /**
    * Get auto-detected model name
    * Returns the model name discovered through auto-detection.
    * Skips the scan when modelName is already configured — avoids needless filesystem traversal.

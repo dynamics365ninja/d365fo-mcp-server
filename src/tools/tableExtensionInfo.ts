@@ -1,11 +1,19 @@
 /**
  * Table Extension Info Tool
- * Retrieve all extensions for a D365FO table, with effective schema merging
+ * Retrieve all extensions for a D365FO table, with effective schema merging.
+ *
+ * Data sources (in priority order):
+ *  1. extension_metadata table in SQLite — rich data (fields, methods, CoC, events)
+ *  2. symbols table — lightweight fallback when extension_metadata is empty
+ *  3. Filesystem scan of AxTableExtension XML files — final fallback for custom models
+ *     that haven't been re-indexed yet. Eliminates the need for the AI to run PowerShell.
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { getConfigManager } from '../utils/configManager.js';
+import { scanFsExtensions } from '../utils/fsExtensionScanner.js';
 
 const TableExtensionInfoArgsSchema = z.object({
   tableName: z.string().describe('Base table name whose extensions to find'),
@@ -82,8 +90,45 @@ export async function tableExtensionInfoTool(request: CallToolRequest, context: 
     }
 
     if (allExtensions.length === 0) {
-      output += `No table extensions found.\n`;
-      output += `Tip: Run extract-metadata and build-database to index table extensions.\n`;
+      output += `No table extensions found in index.\n`;
+
+      // ── Filesystem fallback ─────────────────────────────────────────────
+      // When the DB has no data (custom model not yet re-indexed), scan the
+      // AxTableExtension folders directly — avoids the AI running PowerShell.
+      if (process.platform === 'win32') {
+        const configManager = getConfigManager();
+        const packagePath = configManager.getPackagePath();
+        if (packagePath) {
+          output += `Scanning filesystem for unindexed extensions (${packagePath})…\n`;
+          const fsExts = await scanFsExtensions(tableName, 'table-extension', packagePath);
+          if (fsExts.length > 0) {
+            output += `\nFound ${fsExts.length} extension(s) on disk (not yet in index):\n\n`;
+            for (let i = 0; i < fsExts.length; i++) {
+              const ext = fsExts[i];
+              output += `[${i + 1}] ${ext.name} (${ext.model})\n`;
+              output += `    File: ${ext.filePath}\n`;
+              if (ext.addedFields.length > 0) {
+                output += `    Added Fields (${ext.addedFields.length}): ${ext.addedFields.join(', ')}\n`;
+              }
+              if (ext.addedIndexes.length > 0) {
+                output += `    Added Indexes (${ext.addedIndexes.length}): ${ext.addedIndexes.join(', ')}\n`;
+              }
+              if (ext.cocMethods.length > 0) {
+                output += `    Wraps Methods (CoC) (${ext.cocMethods.length}): ${ext.cocMethods.join(', ')}\n`;
+              }
+              const newMethods = ext.addedMethods.filter(m => !ext.cocMethods.some(c => c.toLowerCase() === m.toLowerCase()));
+              if (newMethods.length > 0) {
+                output += `    Added Methods (${newMethods.length}): ${newMethods.join(', ')}\n`;
+              }
+            }
+            output += `\n⚠️ Data sourced from disk — run extract-metadata + build-database to persist to index.\n`;
+          } else {
+            output += `No AxTableExtension files found on disk for "${tableName}" either.\n`;
+          }
+        }
+      } else {
+        output += `Tip: Run extract-metadata and build-database to index table extensions.\n`;
+      }
     } else {
       for (let i = 0; i < allExtensions.length; i++) {
         const ext = allExtensions[i];

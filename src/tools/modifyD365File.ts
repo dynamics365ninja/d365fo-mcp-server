@@ -85,7 +85,38 @@ const ModifyD365FileArgsSchema = z.object({
     'security-privilege', 'security-duty', 'security-role',
   ]).describe('Type of D365FO object'),
   objectName: z.string().describe('Name of the object to modify'),
-  operation: z.enum(['add-method', 'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'modify-property', 'remove-method', 'remove-field']).describe('Operation to perform'),
+  operation: z.enum(['add-method', 'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'modify-property', 'remove-method', 'remove-field', 'add-control']).describe('Operation to perform'),
+
+  // For add-control (form-extension only)
+  controlName: z.string().optional().describe(
+    'Name of the new form control to add inside the form extension. ' +
+    'e.g. "AslCustPriorityTier". Used as <Name> inside <FormControl>.'
+  ),
+  parentControl: z.string().optional().describe(
+    'Name of the existing parent control/tab/group in the base form to insert into. ' +
+    'e.g. "TabGeneral", "HeaderGroup", "TabPageSales". ' +
+    'Becomes the <Parent> element of the AxFormExtensionControl wrapper.'
+  ),
+  controlDataSource: z.string().optional().describe(
+    'Data source name for the new control binding (e.g. "CustTable"). ' +
+    'Required when controlDataField is provided.'
+  ),
+  controlDataField: z.string().optional().describe(
+    'Data field name for the new control binding (e.g. "AslCustPriorityTier"). ' +
+    'The field must already exist in the table (extension) before adding the UI control.'
+  ),
+  controlType: z.string().optional().describe(
+    'Form control type (default: String). Determines i:type and <Type> in the XML. ' +
+    'Supported values: String, Integer, Real, CheckBox, ComboBox, Date, DateTime, Int64, Group, Button, CommandButton, MenuFunctionButton. ' +
+    'Use CheckBox for NoYes/boolean fields. Use ComboBox for enum fields. ' +
+    'If omitted the tool auto-picks based on the EDT base type if controlDataField is provided.'
+  ),
+  positionType: z.string().optional().describe(
+    'Optional positioning: AfterItem | BeforeItem. Omit to append at the end of the parent.'
+  ),
+  previousSibling: z.string().optional().describe(
+    'Name of the sibling control to position after (used with positionType=AfterItem).'
+  ),
   
   // For add-method
   methodName: z.string().optional().describe('Name of method to add/remove'),
@@ -248,6 +279,11 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         modified = await modifyProperty(xmlObj, objectType, args);
         message = `Modified property "${args.propertyPath}" in ${objectType} "${objectName}"`;
         break;
+
+      case 'add-control':
+        modified = await addControl(xmlObj, objectType, args);
+        message = `Added control "${args.controlName}" to ${objectType} "${objectName}" (parent: "${args.parentControl}")`;
+        break;
       
       default:
         throw new Error(`Unsupported operation: ${operation}`);
@@ -358,7 +394,7 @@ async function findD365File(
 
     // Only trust the DB path when it is an absolute path that actually exists on disk.
     // The DB file_path column stores paths from the CI build agent (e.g. C:\home\vsts\work\...)
-    // which are never accessible at runtime.  Relative paths (e.g. "fm-mcp/fm-mcp/AxClass/Foo.xml")
+    // which are never accessible at runtime.  Relative paths (e.g. "ContosoExt/ContosoExt/AxClass/Foo.xml")
     // also come from this source and cannot be used directly.
     // Fall through to findD365FileOnDisk which builds the correct absolute path from config.
     if (dbResult && path.isAbsolute(dbResult)) {
@@ -1151,6 +1187,112 @@ async function modifyProperty(xmlObj: any, objectType: string, args: any): Promi
   }
   current[lastPart][0] = propertyValue;
 
+  return true;
+}
+
+/**
+ * Control type → { iType, xmlType } mapping.
+ * iType   = value for i:type attribute on <FormControl>
+ * xmlType = value for <Type> element inside <FormControl>
+ */
+function resolveControlTypeAttrs(controlType: string): { iType: string; xmlType: string } {
+  const t = controlType.trim();
+  // Allow passing the full i:type value like "AxFormStringControl"
+  const stripped = t.startsWith('AxForm') && t.endsWith('Control')
+    ? t.slice('AxForm'.length, -'Control'.length)
+    : t;
+  const map: Record<string, { iType: string; xmlType: string }> = {
+    String:            { iType: 'AxFormStringControl',          xmlType: 'String' },
+    Integer:           { iType: 'AxFormIntControl',             xmlType: 'Integer' },
+    Int:               { iType: 'AxFormIntControl',             xmlType: 'Integer' },
+    Int64:             { iType: 'AxFormInt64Control',           xmlType: 'Int64' },
+    Real:              { iType: 'AxFormRealControl',            xmlType: 'Real' },
+    CheckBox:          { iType: 'AxFormCheckBoxControl',        xmlType: 'CheckBox' },
+    ComboBox:          { iType: 'AxFormComboBoxControl',        xmlType: 'ComboBox' },
+    Date:              { iType: 'AxFormDateControl',            xmlType: 'Date' },
+    DateTime:          { iType: 'AxFormDateTimeControl',        xmlType: 'DateTime' },
+    UtcDateTime:       { iType: 'AxFormDateTimeControl',        xmlType: 'DateTime' },
+    Group:             { iType: 'AxFormGroupControl',           xmlType: 'Group' },
+    Button:            { iType: 'AxFormButtonControl',          xmlType: 'Button' },
+    CommandButton:     { iType: 'AxFormCommandButtonControl',   xmlType: 'CommandButton' },
+    MenuFunctionButton:{ iType: 'AxFormMenuFunctionButtonControl', xmlType: 'MenuFunctionButton' },
+    ButtonGroup:       { iType: 'AxFormButtonGroupControl',     xmlType: 'ButtonGroup' },
+    Tab:               { iType: 'AxFormTabControl',             xmlType: 'Tab' },
+    TabPage:           { iType: 'AxFormTabPageControl',         xmlType: 'TabPage' },
+    Grid:              { iType: 'AxFormGridControl',            xmlType: 'Grid' },
+  };
+  return map[stripped] ?? { iType: `AxForm${stripped}Control`, xmlType: stripped };
+}
+
+/**
+ * Add a UI control to a form extension (AxFormExtension only).
+ * Creates an <AxFormExtensionControl> entry with the new <FormControl> nested inside
+ * and <Parent> pointing to the existing parent control in the base form.
+ */
+async function addControl(xmlObj: any, objectType: string, args: any): Promise<boolean> {
+  if (objectType !== 'form-extension') {
+    throw new Error('add-control is only supported for form-extension objects');
+  }
+
+  const { controlName, parentControl, controlDataSource, controlDataField,
+          controlType, positionType, previousSibling } = args;
+
+  if (!controlName) throw new Error('controlName is required for add-control operation');
+  if (!parentControl) throw new Error('parentControl is required for add-control operation');
+
+  // Resolve control type attributes
+  const typeStr = controlType || 'String';
+  const { iType, xmlType } = resolveControlTypeAttrs(typeStr);
+
+  const root = xmlObj['AxFormExtension'];
+  if (!root) throw new Error('Invalid XML structure: root element <AxFormExtension> not found');
+
+  // Ensure <Controls> container exists
+  const rawControls = root.Controls;
+  const controlsEmpty =
+    !rawControls ||
+    rawControls === '' ||
+    (Array.isArray(rawControls) && (rawControls.length === 0 || rawControls[0] === '' || rawControls[0] == null));
+  if (controlsEmpty) {
+    root.Controls = [{ AxFormExtensionControl: [] }];
+  }
+  const controlsContainer = Array.isArray(root.Controls) ? root.Controls[0] : root.Controls;
+
+  if (!controlsContainer.AxFormExtensionControl) {
+    controlsContainer.AxFormExtensionControl = [];
+  } else if (!Array.isArray(controlsContainer.AxFormExtensionControl)) {
+    controlsContainer.AxFormExtensionControl = [controlsContainer.AxFormExtensionControl];
+  }
+
+  // Build the inner <FormControl> object.
+  // D365FO requires xmlns="" and i:type on the FormControl element.
+  const formControl: any = {
+    '$': { xmlns: '', 'i:type': iType },
+    Name: [controlName],
+    FilterExpression: ['%1'],
+    Type: [xmlType],
+    VerticalSpacing: ['-1'],
+    FormControlExtension: [{ '$': { 'i:nil': 'true' } }],
+  };
+
+  if (controlDataField) formControl.DataField = [controlDataField];
+  if (controlDataSource) formControl.DataSource = [controlDataSource];
+
+  // Build the generated wrapper name (unique per control)
+  const wrapperName = `FormExtensionControl${controlName}1`;
+
+  // Build the AxFormExtensionControl wrapper
+  const wrapper: any = {
+    '$': { xmlns: '' },
+    Name: [wrapperName],
+    FormControl: [formControl],
+    Parent: [parentControl],
+  };
+
+  if (positionType) wrapper.PositionType = [positionType];
+  if (previousSibling) wrapper.PreviousSibling = [previousSibling];
+
+  controlsContainer.AxFormExtensionControl.push(wrapper);
   return true;
 }
 

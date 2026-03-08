@@ -7,6 +7,8 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { getConfigManager } from '../utils/configManager.js';
+import { scanFsExtensions, EXTENSION_FOLDER_CONFIG } from '../utils/fsExtensionScanner.js';
 
 // Standard D365FO table events available for subscription
 const TABLE_STANDARD_EVENTS = [
@@ -63,7 +65,38 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
         // extension_metadata table may not exist in older databases — non-fatal
         if (process.env.DEBUG_LOGGING === 'true') console.warn('[analyzeExtensionPoints] extension_metadata query failed:', e);
       }
+
+      // ── Filesystem fallback ──────────────────────────────────────────────
+      // When the DB index has no extension_metadata for this object (e.g. a
+      // custom model that hasn't been re-indexed yet), scan Ax*Extension XML
+      // files directly so the caller sees real data without running PowerShell.
+      if (existingExtensions.length === 0 && resolvedType !== 'auto' && process.platform === 'win32') {
+        const extTypeName = `${resolvedType}-extension`;
+        if (EXTENSION_FOLDER_CONFIG[extTypeName]) {
+          try {
+            const configManager = getConfigManager();
+            const packagePath = configManager.getPackagePath();
+            if (packagePath) {
+              const fsExts = await scanFsExtensions(objName, extTypeName, packagePath);
+              if (fsExts.length > 0) {
+                // Convert to the shape that the map-building code below expects
+                existingExtensions = fsExts.map(e => ({
+                  extension_name: e.name,
+                  model: e.model,
+                  coc_methods: JSON.stringify(e.cocMethods),
+                  event_subscriptions: '[]',
+                  added_methods: JSON.stringify(e.addedMethods),
+                  _fromFs: true,
+                }));
+              }
+            }
+          } catch { /* non-fatal */ }
+        }
+      }
     }
+
+    // ── Flag whether the extension list came from the filesystem ──────────
+    const extensionsFromFs = existingExtensions.some((e: any) => e._fromFs);
 
     // Build maps of already-extended methods and subscribed events
     const alreadyWrapped = new Map<string, string[]>(); // methodName → [extName, ...]
@@ -261,9 +294,15 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
 
     // ── Summary of existing extensions ──
     if (args.showExistingExtensions && existingExtensions.length > 0) {
-      output += `\nExisting extensions (${existingExtensions.length}):\n`;
+      const sourceLabel = extensionsFromFs
+        ? ' (sourced from disk — not yet in index)'
+        : '';
+      output += `\nExisting extensions (${existingExtensions.length})${sourceLabel}:\n`;
       for (const ext of existingExtensions) {
         output += `  ${ext.extension_name} [${ext.model}]\n`;
+      }
+      if (extensionsFromFs) {
+        output += `\n⚠️ Data sourced from disk — run extract-metadata + build-database to persist to index.\n`;
       }
     }
 

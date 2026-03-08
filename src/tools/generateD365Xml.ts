@@ -8,7 +8,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { getConfigManager } from '../utils/configManager.js';
-import { ensureXppDocComment } from '../utils/xppDocGen.js';
+import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 
 const GenerateD365XmlArgsSchema = z.object({
@@ -95,7 +95,7 @@ class XmlTemplateGenerator {
         .filter(l => { const t = l.trim(); return t.endsWith(';') && !t.includes('('); });
       if (varLines.length > 0) {
         const injected = varLines.map(l => '    ' + l.trim()).join('\n');
-        declaration = declaration.replace(/}(\s*)$/, `\n${injected}\n}`);
+        declaration = declaration.replace(/}(\s*)$/, `\n${injected}\n\n}`);
       }
     }
 
@@ -242,7 +242,7 @@ class XmlTemplateGenerator {
 
     const classHeader = classDeclaration.substring(0, classOpenIdx + 1);
     const memberVarsXpp = memberVarLines.length > 0
-      ? '\n' + memberVarLines.map(v => '    ' + v).join('\n') + '\n'
+      ? '\n' + memberVarLines.map(v => '    ' + v).join('\n') + '\n\n'
       : '\n';
 
     return {
@@ -298,7 +298,7 @@ class XmlTemplateGenerator {
 \t<Name>${className}</Name>
 ${extendsAttr}${implementsAttr}${isFinalAttr}${isAbstractAttr}\t<SourceCode>
 \t\t<Declaration><![CDATA[
-${ensureXppDocComment(declaration)}
+${ensureBlankLineBeforeClosingBrace(ensureXppDocComment(declaration))}
 ]]></Declaration>
 ${methodsXml}\t</SourceCode>
 </AxClass>
@@ -376,15 +376,40 @@ ${titleField1Xml}${titleField2Xml}\t<DeleteActions />
     properties?: Record<string, any>
   ): string {
     const label = properties?.label || enumName;
-    const isExtensible = properties?.isExtensible ? 'Yes' : 'No';
+
+    // Build <EnumValues> block from properties.enumValues array
+    // Each entry: { name: string; value?: number; label?: string; helpText?: string }
+    const enumValueSpecs: Array<{ name: string; value?: number; label?: string; helpText?: string }> =
+      Array.isArray(properties?.enumValues) ? properties.enumValues : [];
+
+    let enumValuesXml: string;
+    if (enumValueSpecs.length === 0) {
+      enumValuesXml = '\t<EnumValues />\n';
+    } else {
+      enumValuesXml = '\t<EnumValues>\n';
+      let autoValue = 0;
+      for (const v of enumValueSpecs) {
+        const intValue = v.value ?? autoValue;
+        autoValue = intValue + 1;
+        enumValuesXml += `\t\t<AxEnumValue>\n`;
+        enumValuesXml += `\t\t\t<Name>${v.name}</Name>\n`;
+        if (v.label) enumValuesXml += `\t\t\t<Label>${v.label}</Label>\n`;
+        if (v.helpText) enumValuesXml += `\t\t\t<HelpText>${v.helpText}</HelpText>\n`;
+        // D365FO convention: omit <Value> for 0 (implicit default)
+        if (intValue !== 0) enumValuesXml += `\t\t\t<Value>${intValue}</Value>\n`;
+        enumValuesXml += `\t\t</AxEnumValue>\n`;
+      }
+      enumValuesXml += '\t</EnumValues>\n';
+    }
+
+    // IsExtensible goes after EnumValues; value is lowercase true/false
+    const isExtensibleXml = properties?.isExtensible ? '\t<IsExtensible>true</IsExtensible>\n' : '';
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${enumName}</Name>
 \t<Label>${label}</Label>
-\t<IsExtensible>${isExtensible}</IsExtensible>
-\t<EnumValues />
-</AxEnum>
+${enumValuesXml}${isExtensibleXml}</AxEnum>
 `;
   }
 
@@ -1001,7 +1026,7 @@ ${defaultParamGroupXml}
       case 'edt':
         return this.generateAxEdtXml(objectName, properties);
       case 'table-extension':
-        return this.generateAxTableExtensionXml(objectName);
+        return this.generateAxTableExtensionXml(objectName, properties);
       case 'form-extension':
         return this.generateAxFormExtensionXml(objectName);
       case 'edt-extension':
@@ -1060,14 +1085,45 @@ ${defaultParamGroupXml}
 </${rootElement}>`;
   }
 
-  static generateAxTableExtensionXml(name: string): string {
+  static generateAxTableExtensionXml(name: string, properties?: Record<string, any>): string {
+    // Build <Fields> block — extension fields use <AxTableField xmlns="" i:type="...">
+    // Field spec: { name, edt?, enumType?, label?, mandatory?, fieldType? }
+    // fieldType overrides auto-detection; enumType implies AxTableFieldEnum
+    const fieldSpecs: Array<{
+      name: string;
+      edt?: string;
+      enumType?: string;
+      label?: string;
+      mandatory?: boolean;
+      fieldType?: string;
+    }> = Array.isArray(properties?.fields) ? properties.fields : [];
+
+    let fieldsXml: string;
+    if (fieldSpecs.length === 0) {
+      fieldsXml = '\t<Fields />';
+    } else {
+      fieldsXml = '\t<Fields>\n';
+      for (const f of fieldSpecs) {
+        // Determine i:type: explicit fieldType wins; enum implied by enumType; default String
+        const iType = f.fieldType ?? (f.enumType ? 'AxTableFieldEnum' : 'AxTableFieldString');
+        fieldsXml += `\t\t<AxTableField xmlns=""\n\t\t\ti:type="${iType}">\n`;
+        fieldsXml += `\t\t\t<Name>${f.name}</Name>\n`;
+        if (f.edt)        fieldsXml += `\t\t\t<ExtendedDataType>${f.edt}</ExtendedDataType>\n`;
+        if (f.label)      fieldsXml += `\t\t\t<Label>${f.label}</Label>\n`;
+        if (f.mandatory)  fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
+        if (f.enumType)   fieldsXml += `\t\t\t<EnumType>${f.enumType}</EnumType>\n`;
+        fieldsXml += `\t\t</AxTableField>\n`;
+      }
+      fieldsXml += '\t</Fields>';
+    }
+
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxTableExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
 \t<FieldGroupExtensions />
 \t<FieldGroups />
 \t<FieldModifications />
-\t<Fields />
+${fieldsXml}
 \t<FullTextIndexes />
 \t<Indexes />
 \t<Mappings />

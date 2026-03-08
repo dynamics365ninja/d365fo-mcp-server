@@ -1,12 +1,18 @@
 # All Available Tools
 
 When you ask GitHub Copilot a question about D365FO code, it automatically calls one of these
-41 tools to look up the answer or generate code. You do not need to name the tools yourself —
+42 tools to look up the answer or generate code. You do not need to name the tools yourself —
 just ask in plain English.
 
 ---
 
 ## Quick Reference
+
+### Workspace Configuration (1 tool)
+
+| Tool | What it does | Example prompt |
+|------|-------------|---------------|
+| **get_workspace_info** | Verify model name, package path, project path — ⚠️ call this FIRST | "Check my workspace configuration" |
 
 ### Search and Discovery (8 tools)
 
@@ -65,7 +71,7 @@ just ask in plain English.
 | **create_d365fo_file** | Local Windows VM only | Creates the physical file and adds it to the VS project |
 | **modify_d365fo_file** | Local Windows VM only | Safely edits an existing file with automatic backup |
 
-### Security & Extensions (9 tools)
+### Security & Extensions (10 tools)
 
 | Tool | What it does | Example prompt |
 |------|-------------|---------------|
@@ -294,9 +300,24 @@ Find reports related to fixed assets
 Parses form XML and returns all datasources (with their fields and methods), the control
 hierarchy (buttons, grids, groups), and form-level methods.
 
+When you need to find the **exact name** of a tab, group, or field to use in a form extension,
+pass `searchControl` with a case-insensitive substring (e.g. `searchControl="General"`).
+The tool returns matching controls with their full path, parent name, and children — so you
+know exactly where to place new controls without resorting to PowerShell.
+
+> ❌ **Never use PowerShell `Get-Content` / `Select-String` to search form XML.**
+> ✅ **Always use `get_form_info(formName, searchControl="...")` instead.**
+
+**Parameters:**
+- `formName` — form name (required)
+- `searchControl` — substring to find controls by name; returns path + parent + children
+- `includeControls` / `includeDataSources` / `includeMethods` — toggle sections (default: all on)
+
 **Examples:**
 ```
 Show me the datasources in SalesTable form
+Find the exact name of the General tab in CustTable form
+What controls are inside the LineView tab of SalesTable?
 List all buttons on the CustTable form
 What methods does the SalesCreateOrder form have?
 ```
@@ -729,6 +750,34 @@ Verifies that D365FO objects exist on disk at the correct AOT path and are refer
 ### Summary
 - Checked: 3   On disk ✅: 2   Missing from disk ❌: 1
 - In project ✅: 3   Missing from project ❌: 0
+```
+
+---
+
+### get_workspace_info
+
+Returns the currently configured model name, package path, project path, and environment type.
+Explicitly flags whether the model name looks like a placeholder (`MyModel`, `MyPackage`, etc.).
+
+When a placeholder is detected, the tool auto-reads the `.rnrproj` file and shows the real
+auto-detected model name as a concrete fix suggestion.
+
+> ⚠️ **Always call this at the start of every D365FO session.** If it reports a placeholder,
+> stop and fix `.mcp.json` before creating any files — without the correct model name, new
+> objects will land in the wrong model.
+
+**Takes no parameters.**
+
+**Returns:**
+- Model name (from `.mcp.json`) and whether it is a placeholder
+- Package path and project path
+- Environment type (`ude`, `traditional`, or `azure`)
+- If placeholder: the real model name auto-detected from `.rnrproj` + exact fix instruction
+
+**Example:**
+```
+Check my D365FO workspace configuration
+What model am I working in?
 ```
 
 ---

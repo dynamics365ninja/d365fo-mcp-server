@@ -287,8 +287,8 @@ describe('create_d365fo_file', () => {
       req('create_d365fo_file', {
         objectType: 'class',
         objectName: 'MyNewClass',
-        modelName: 'MyModel',
-        packageName: 'MyPackage',
+        modelName: 'FmMcp',
+        packageName: 'FmMcp',
         packagePath: 'K:\\PackagesLocalDirectory',
         addToProject: false,
       }),
@@ -302,8 +302,8 @@ describe('create_d365fo_file', () => {
       req('create_d365fo_file', {
         objectType: 'table-extension',
         objectName: 'CustTable.MY_Extension',
-        modelName: 'MyModel',
-        packageName: 'MyPackage',
+        modelName: 'FmMcp',
+        packageName: 'FmMcp',
         packagePath: 'K:\\PackagesLocalDirectory',
         addToProject: false,
       }),
@@ -317,8 +317,8 @@ describe('create_d365fo_file', () => {
       req('create_d365fo_file', {
         objectType: 'class',
         objectName: 'MyHybridClass',
-        modelName: 'MyModel',
-        packageName: 'MyPackage',
+        modelName: 'FmMcp',
+        packageName: 'FmMcp',
         packagePath: 'K:\\PackagesLocalDirectory',
         xmlContent: xml,
         addToProject: false,

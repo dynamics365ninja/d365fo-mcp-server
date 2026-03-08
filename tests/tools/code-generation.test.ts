@@ -213,7 +213,18 @@ describe('generate_d365fo_xml', () => {
 describe('generate_smart_table', () => {
   let ctx: XppServerContext;
 
-  beforeEach(() => { ctx = buildContext(); });
+  beforeEach(() => {
+    ctx = buildContext();
+    // Force non-Windows code path so tools return XML as text instead of writing to disk.
+    // Also clear EXTENSION_PREFIX so generated names stay unprefixed and match test assertions.
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    vi.stubEnv('EXTENSION_PREFIX', '');
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    vi.unstubAllEnvs();
+  });
 
   it('generates table XML from field definitions', async () => {
     const result = await handleGenerateSmartTable(
@@ -247,7 +258,16 @@ describe('generate_smart_table', () => {
 describe('generate_smart_form', () => {
   let ctx: XppServerContext;
 
-  beforeEach(() => { ctx = buildContext(); });
+  beforeEach(() => {
+    ctx = buildContext();
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    vi.stubEnv('EXTENSION_PREFIX', '');
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    vi.unstubAllEnvs();
+  });
 
   it('generates form XML from a table datasource', async () => {
     const result = await handleGenerateSmartForm(

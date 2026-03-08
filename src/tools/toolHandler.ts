@@ -44,6 +44,7 @@ import { securityCoverageInfoTool } from './securityCoverageInfo.js';
 import { analyzeExtensionPointsTool } from './analyzeExtensionPoints.js';
 import { validateObjectNamingTool } from './validateObjectNaming.js';
 import { verifyD365ProjectTool } from './verifyD365Project.js';
+import { resolveObjectPrefix } from '../utils/modelClassifier.js';
 
 /**
  * Extract workspace path from GitHub Copilot _meta and apply it to ConfigManager.
@@ -265,6 +266,75 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return validateObjectNamingTool(request, context);
       case 'verify_d365fo_project':
         return verifyD365ProjectTool(request, context);
+      case 'get_workspace_info': {
+        const configManager = getConfigManager();
+        await configManager.ensureLoaded();
+        const modelName = configManager.getModelName() ?? null;
+        const packagePath = configManager.getPackagePath() ?? null;
+        const projectPath = await configManager.getProjectPath() ?? null;
+        const envType = await configManager.getDevEnvironmentType();
+        // getRawAutoDetectedModelName() returns what was found in .rnrproj regardless of config.
+        // autoDetectProject() was already executed above (triggered by getProjectPath()), so this is free.
+        const rawDetectedModel = await configManager.getRawAutoDetectedModelName();
+
+        // Prefix diagnostics
+        const extensionPrefixEnv = process.env.EXTENSION_PREFIX?.trim() || null;
+        const effectivePrefix = resolveObjectPrefix(modelName ?? '');
+
+        const PLACEHOLDER_NAMES = new Set([
+          'mymodel', 'mypackage', 'model', 'package', 'modelname', 'packagename',
+          'yourmodel', 'yourpackage', 'custommodel', 'custompackage',
+          'testmodel', 'testpackage', 'samplemodel', 'samplepackage',
+        ]);
+        const isPlaceholder = !modelName || PLACEHOLDER_NAMES.has(modelName.toLowerCase());
+
+        const lines: string[] = [
+          `## D365FO Workspace Configuration`,
+          ``,
+          `Model name      : ${modelName ?? '(not configured)'}`,
+          `Package path    : ${packagePath ?? '(not configured)'}`,
+          `Project path    : ${projectPath ?? '(not detected)'}`,
+          `Env type        : ${envType}`,
+          ``,
+          `## Prefix Configuration`,
+          ``,
+          `EXTENSION_PREFIX: ${extensionPrefixEnv ?? '(not set — falling back to model name)'}`,
+          `Effective prefix: ${effectivePrefix || '(none)'}`,
+          extensionPrefixEnv
+            ? `✅ EXTENSION_PREFIX is set — all new objects will use prefix "${effectivePrefix}".`
+            : `⚠️  EXTENSION_PREFIX is not set in the server environment. The model name "${modelName}" will be used as prefix. Add EXTENSION_PREFIX=Asl (or your prefix) to the .env file and restart the server.`,
+          ``,
+        ];
+
+        if (isPlaceholder) {
+          const detectedHint = rawDetectedModel
+            ? `> ✅ Auto-detected from .rnrproj: **${rawDetectedModel}**\n` +
+              `> Update your .mcp.json: set \`modelName\` to \`"${rawDetectedModel}"\``
+            : `> ⚠️ No .rnrproj was found — make sure the MCP server is running in the right directory.`;
+          lines.push(
+            `⛔ CONFIGURATION PROBLEM — model name "${modelName}" is a placeholder, not a real D365FO model.`,
+            ``,
+            `**YOU MUST STOP** and tell the user:`,
+            `> The configured model name "${modelName}" is a placeholder.`,
+            detectedHint,
+            `>`,
+            `> Please check that:`,
+            `> 1. The MCP server is running in the correct workspace directory`,
+            `> 2. The .mcp.json / mcp.json file has the correct modelName`,
+            `> 3. The projectPath points to a valid .rnrproj file`,
+            `>`,
+            `> Do you want to fix the configuration first, or continue with built-in tools (limited functionality)?`,
+          );
+        } else {
+          lines.push(`✅ Configuration looks valid. Proceed with D365FO operations using model "${modelName}".`);
+          const customModels = context.symbolIndex.getCustomModels?.() ?? [];
+          if (customModels.length > 0) {
+            lines.push(`Custom models in index: ${customModels.join(', ')}`);
+          }
+        }
+
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      }
       default:
         return {
           content: [

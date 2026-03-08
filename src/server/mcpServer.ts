@@ -534,10 +534,22 @@ WHAT IT DOES:
 - Generates proper XML structure with UTF-8 BOM encoding
 
 REQUIRED PARAMETERS:
-- objectType: class, table, enum, form, query, view, data-entity, report
+- objectType: NEW objects → class, table, enum, form, query, view, data-entity, report
+             EXTENSIONS → table-extension, form-extension, enum-extension, edt-extension,
+                          data-entity-extension, menu-item-display-extension,
+                          menu-item-action-extension, menu-item-output-extension, menu-extension
+  ⚠️ EXTENSION RULE: Extending an EXISTING standard object? ALWAYS use the -extension variant:
+     "table-extension" → AxTableExtension folder, objectName = "BaseTable.PrefixExtension"
+     "form-extension"  → AxFormExtension folder,  objectName = "BaseForm.PrefixExtension"
+     NEVER use objectType="table" to create a table extension — wrong folder, broken AOT!
 - objectName: Name of the new object (e.g., "ProcessOpenOrdersBatch" for batch job)
+  For extensions: "BaseElement.PrefixExtension" (e.g., "CustTable.ContosoExtension")
 - modelName: Any value (auto-corrected from .rnrproj)
 - addToProject: true (to automatically add to VS project)
+
+IF A FILE WAS CREATED WITH WRONG objectType (e.g. "table" instead of "table-extension"):
+❌ NEVER use PowerShell Move-Item / Rename-Item / Copy-Item to fix it
+✅ Call create_d365fo_file again with the CORRECT objectType and overwrite=true
 
 WORKFLOW:
 1. generate_code(pattern="batch-job", name="MyBatch") → Get X++ code
@@ -575,16 +587,21 @@ EXAMPLES:
             properties: {
               objectType: {
                 type: 'string',
-                enum: ['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report'],
+                enum: [
+                  'class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report',
+                  'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
+                  'data-entity-extension', 'menu-item-display-extension',
+                  'menu-item-action-extension', 'menu-item-output-extension', 'menu-extension'
+                ],
                 description: 'Type of D365FO object to create'
               },
               objectName: {
                 type: 'string',
-                description: 'Base name WITHOUT model prefix (e.g., "InventoryByZones", "ProcessOrdersBatch"). The tool auto-prepends the prefix derived from modelName or EXTENSION_PREFIX env var. Double-prefix prevention: if you already include the prefix, the tool detects it and uses name as-is. EXTENSION_PREFIX always has priority over modelName for prefix resolution. FOR EXTENSION CLASSES (ending with "_Extension"): pass only the BASE class name + "_Extension" without ANY prefix infix — e.g. "SalesFormLetter_Extension" NOT "SalesFormLetterFmMcp_Extension". The tool injects the correct prefix infix automatically: "SalesFormLetterContoso_Extension". NEVER bypass this tool to work around prefix handling.'
+                description: 'Base name WITHOUT model prefix (e.g., "InventoryByZones", "ProcessOrdersBatch"). The tool auto-prepends the prefix derived from EXTENSION_PREFIX env var (or modelName as fallback). Double-prefix prevention: if you already include the prefix, the tool detects it and uses name as-is. EXTENSION_PREFIX always has priority over modelName for prefix resolution. FOR EXTENSION CLASSES (ending with "_Extension"): pass only the BASE class name + "_Extension" without ANY prefix infix — e.g. "SalesFormLetter_Extension" (not "SalesFormLetterSomePrefix_Extension"). The tool injects the correct prefix infix automatically, e.g. "SalesFormLetterAsl_Extension". NEVER bypass this tool to work around prefix handling.'
               },
               modelName: {
                 type: 'string',
-                description: 'Actual model name from .mcp.json (e.g., "FmMcp", "WHSExt", "ContosoExt") — determines the object naming prefix. ALWAYS read this from .mcp.json or workspace context. NEVER guess or use generic placeholders like "MyModel" or "MyPackage". DO NOT use model names from search results — those are source models of existing objects, not your target model.'
+                description: 'Actual model name from .mcp.json (e.g., "ContosoExt", "WHSExt", "ApplicationSuite") — determines the object naming prefix. ALWAYS read this from get_workspace_info() or workspace context. NEVER guess or use generic placeholders like "MyModel" or "MyPackage". DO NOT use model names from search results — those are source models of existing objects, not your target model.'
               },
               packageName: {
                 type: 'string',
@@ -600,7 +617,18 @@ EXAMPLES:
               },
               properties: {
                 type: 'object',
-                description: 'Additional properties (extends, implements, label, etc.)'
+                description:
+                  'Additional properties for the object being created. Supported keys by objectType:\n' +
+                  '• class:           extends, implements, isFinal, isAbstract\n' +
+                  '• table:           label, tableGroup, tableType, titleField1, titleField2, fields[]\n' +
+                  '• enum:            label, isExtensible, enumValues[{name,value?,label?,helpText?}]\n' +
+                  '• table-extension: fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — fieldType defaults to AxTableFieldString; use AxTableFieldEnum for enum-based fields (also set enumType)\n' +
+                  '• edt:             label, extends, edtType, stringSize\n' +
+                  '• form:            caption, formTemplate, dataSource\n' +
+                  '• menu-item-*:     label, object, objectType\n' +
+                  'Example enum: properties={"label":"@ContosoExt:Status","enumValues":[{"name":"Open","label":"@ContosoExt:Open"},{"name":"Closed","label":"@ContosoExt:Closed"}]}\n' +
+                  'Example table-extension (string EDT field): properties={"fields":[{"name":"ContosoField","edt":"CustAccount","label":"@Contoso:Customer"}]}\n' +
+                  'Example table-extension (enum field): properties={"fields":[{"name":"ContosoStatus","enumType":"NoYes","fieldType":"AxTableFieldEnum","label":"@Contoso:Status"}]}'
               },
               addToProject: {
                 type: 'boolean',
@@ -643,7 +671,11 @@ EXAMPLES:
             properties: {
               objectType: {
                 type: 'string',
-                enum: ['class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report'],
+                enum: [
+                  'class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report',
+                  'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
+                  'data-entity-extension'
+                ],
                 description: 'Type of D365FO object to generate'
               },
               objectName: {
@@ -663,6 +695,8 @@ EXAMPLES:
                 description: `Additional properties depending on objectType:
 - class/form/query/view: extends, implements, label
 - table: label, tableGroup, fields[]
+- enum: label, isExtensible, enumValues[{name,value?,label?,helpText?}]
+- table-extension: fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — fieldType defaults to AxTableFieldString; use AxTableFieldEnum for enum-based fields (also set enumType)
 - report (ALL REQUIRED for correct XML):
     dpClassName   {string}  Data Provider class name (e.g. "ContosoInventByZoneDP")
     tmpTableName  {string}  TempDB table name        (e.g. "ContosoInventByZoneTmp")
@@ -848,6 +882,46 @@ Examples:
                 type: 'string',
                 description: 'New property value (required for modify-property)'
               },
+              controlName: {
+                type: 'string',
+                description:
+                  '[add-control only] Name of the new form control. ' +
+                  'e.g. "AslCustPriorityTier". Becomes <Name> inside <FormControl>. ' +
+                  'MUST match the field name in the table extension so the binding works.'
+              },
+              parentControl: {
+                type: 'string',
+                description:
+                  '[add-control only] Name of the existing parent tab/group in the base form. ' +
+                  'e.g. "TabGeneral", "TabPageSales", "HeaderGroup". ' +
+                  'Use get_form_info(formName, searchControl="General") to find the exact name.'
+              },
+              controlDataSource: {
+                type: 'string',
+                description: '[add-control only] Data source name for the control binding (e.g. "CustTable").'
+              },
+              controlDataField: {
+                type: 'string',
+                description:
+                  '[add-control only] Data field name for the control binding (e.g. "AslCustPriorityTier"). ' +
+                  'The field must already exist in the table or table extension before binding it here.'
+              },
+              controlType: {
+                type: 'string',
+                description:
+                  '[add-control only] Form control type (default: String). ' +
+                  'Values: String, Integer, Real, CheckBox, ComboBox, Date, DateTime, Int64, Group, Button, CommandButton, MenuFunctionButton. ' +
+                  'Use CheckBox for NoYes/boolean. Use ComboBox for enum fields. ' +
+                  'When omitted defaults to String (correct for most EDT-bound fields).'
+              },
+              positionType: {
+                type: 'string',
+                description: '[add-control only] Optional: AfterItem | BeforeItem. Omit to append at the end of the parent.'
+              },
+              previousSibling: {
+                type: 'string',
+                description: '[add-control only] Name of the sibling control to position after (used with positionType=AfterItem).'
+              },
               createBackup: {
                 type: 'boolean',
                 description: 'Create backup before modification (default: false)',
@@ -928,16 +1002,29 @@ Use WHEN:
 - Analyzing datasource relationships
 - Creating form event handlers
 
+⚡ FAST CONTROL LOOKUP — use searchControl parameter:
+  get_form_info("SalesTable", searchControl="General") returns only controls whose
+  name contains "General", with path, parent name, and children.
+  ❌ NEVER use PowerShell Get-Content or grep to find tab names in form XML.
+  ✅ ALWAYS use searchControl instead.
+
 Examples:
-- get_form_info("SalesTable") → SalesTable/SalesLine datasources, Overview/LineView grids, header/line fields
-- get_form_info("CustTable") → CustTable datasource, addresses grid, contact info tabs
-- get_form_info("PurchTable") → purchase order form structure with header/lines`,
+- get_form_info("SalesTable") → full structure with datasources, grids, tab hierarchy
+- get_form_info("CustTable", searchControl="General") → find the General tab exact name
+- get_form_info("PurchTable", searchControl="LineView") → find the LineView grid name`,
           inputSchema: {
             type: 'object',
             properties: {
               formName: {
                 type: 'string',
                 description: 'Name of the form (e.g., SalesTable, CustTable, InventTable)'
+              },
+              searchControl: {
+                type: 'string',
+                description: 'Case-insensitive substring to search for in control names. ' +
+                  'Returns matching controls with path, parent name, and children. ' +
+                  'Use this to find exact tab/group names for form extensions. ' +
+                  'NEVER use PowerShell to search form XML — use this instead.',
               },
               includeWorkspace: {
                 type: 'boolean',
@@ -1833,6 +1920,26 @@ Examples:
             },
           },
           required: ['proposedName', 'objectType'],
+        },
+      },
+      {
+        name: 'get_workspace_info',
+        description: `🔌 ALWAYS call this FIRST at the start of every D365FO session to verify the workspace configuration.
+
+Returns the configured model name, package path, project path, environment type, EXTENSION_PREFIX value, and effective object prefix.
+Explicitly flags whether the model name is a placeholder (MyModel, MyPackage, etc.) — if so, STOP and inform the user before doing anything else.
+Also warns when EXTENSION_PREFIX is not set in the server environment (prefix will fall back to model name, which may be wrong for models with hyphens like "fm-mcp").
+
+When the configured modelName IS a placeholder, this tool auto-detects the real model name
+from the .rnrproj file and shows it as a concrete fix suggestion, so the user knows exactly
+what value to put in .mcp.json.
+
+Use this instead of get_label_info or search to detect the correct model — those tools return
+SOURCE models of existing objects, not the TARGET model for new objects.`,
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          required: [],
         },
       },
       {

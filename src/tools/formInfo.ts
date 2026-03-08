@@ -9,7 +9,8 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
-import { buildXmlNotAvailableMessage } from '../utils/metadataResolver.js';
+import { buildXmlNotAvailableMessage, resolveDbPathLocally } from '../utils/metadataResolver.js';
+import { findD365FileOnDisk } from './modifyD365File.js';
 
 const GetFormInfoArgsSchema = z.object({
   formName: z.string().describe('Name of the form'),
@@ -19,6 +20,12 @@ const GetFormInfoArgsSchema = z.object({
   includeMethods: z.boolean().optional().default(true).describe('Include form methods'),
   includeWorkspace: z.boolean().optional().default(false).describe('Include workspace files'),
   workspacePath: z.string().optional().describe('Path to workspace'),
+  searchControl: z.string().optional().describe(
+    'Case-insensitive substring search for a control by name. ' +
+    'Returns matching controls with their full path, parent name, and immediate children. ' +
+    'Use this to find the exact name of a tab, group, or field (e.g. searchControl="General"). ' +
+    'NEVER use PowerShell Get-Content to search form XML — use this parameter instead.'
+  ),
 });
 
 interface FormControl {
@@ -62,7 +69,8 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       includeDataSources, 
       includeMethods,
       includeWorkspace,
-      workspacePath
+      workspacePath,
+      searchControl,
     } = args;
 
     // 1. Find the form (with workspace support)
@@ -136,6 +144,31 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       // file_path not accessible
     }
 
+    // Fallback: DB path is from build agent (e.g. /home/vsts/work/...) — try local disk
+    if (!xmlContent) {
+      // Strategy 1: remap build-agent path to local PackagesLocalDirectory (works for any model)
+      const remappedPath = await resolveDbPathLocally(formRow.file_path);
+      if (remappedPath) {
+        try {
+          xmlContent = await fs.readFile(remappedPath, 'utf-8');
+        } catch {
+          // Remapped path not readable
+        }
+      }
+    }
+
+    if (!xmlContent) {
+      // Strategy 2: filesystem lookup via configured model path (works for custom models)
+      const diskPath = await findD365FileOnDisk('form', formName, formRow.model);
+      if (diskPath) {
+        try {
+          xmlContent = await fs.readFile(diskPath, 'utf-8');
+        } catch {
+          // Local path also not accessible
+        }
+      }
+    }
+
     if (!xmlContent) {
       return {
         content: [{ type: 'text', text: buildXmlNotAvailableMessage('form', formName, formRow.file_path) }],
@@ -174,7 +207,15 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       formInfo.methods = extractMethods(axForm.SourceCode[0].Methods[0]);
     }
 
-    // 4. Format output
+    // 4. If searchControl provided, return search results instead of full output
+    if (searchControl) {
+      const matches = searchControlsInHierarchy(formInfo.design, searchControl);
+      return {
+        content: [{ type: 'text', text: formatControlSearchResults(formInfo.name, formInfo.model, matches, searchControl) }],
+      };
+    }
+
+    // 5. Format output
     return formatFormOutput(formInfo, includeControls, includeDataSources, includeMethods);
 
   } catch (error) {
@@ -188,6 +229,104 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       isError: true,
     };
   }
+}
+
+// ── Control search helpers ───────────────────────────────────────────────────
+
+interface ControlSearchResult {
+  control: FormControl;
+  /** Full name path from root, e.g. ['Design', 'Tab', 'TabPageGeneral'] */
+  path: string[];
+  /** Direct parent control name, or null if top-level */
+  parentName: string | null;
+}
+
+/**
+ * Walk the control hierarchy recursively and collect all controls whose name
+ * contains `query` (case-insensitive).
+ */
+function searchControlsInHierarchy(
+  controls: FormControl[],
+  query: string,
+  path: string[] = [],
+  parentName: string | null = null,
+): ControlSearchResult[] {
+  const results: ControlSearchResult[] = [];
+  const lowerQuery = query.toLowerCase();
+
+  for (const ctrl of controls) {
+    const currentPath = [...path, ctrl.name];
+    if (ctrl.name.toLowerCase().includes(lowerQuery)) {
+      results.push({ control: ctrl, path: currentPath, parentName });
+    }
+    // Always recurse regardless of whether this node matched
+    results.push(...searchControlsInHierarchy(ctrl.children, query, currentPath, ctrl.name));
+  }
+
+  return results;
+}
+
+/**
+ * Format the search results in a way that gives the AI exactly what it needs
+ * to write a form extension: exact control name, path, parent, and children.
+ */
+function formatControlSearchResults(
+  formName: string,
+  modelName: string,
+  results: ControlSearchResult[],
+  query: string,
+): string {
+  let out = `# Form: \`${formName}\` (${modelName}) — control search: "${query}"\n\n`;
+
+  if (results.length === 0) {
+    out += `No controls found matching "${query}".\n\n`;
+    out += `Tip: call get_form_info without searchControl to browse the full control hierarchy.\n`;
+    return out;
+  }
+
+  out += `Found **${results.length}** control(s):\n\n`;
+
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    out += `---\n`;
+    out += `**[${i + 1}] ${r.control.name}** (${r.control.type})\n`;
+    out += `Path: \`${r.path.join(' › ')}\`\n`;
+    if (r.parentName) {
+      out += `Parent: \`${r.parentName}\`\n`;
+    }
+
+    // Key properties
+    const propPairs = Object.entries(r.control.properties);
+    if (propPairs.length > 0) {
+      out += `Properties: ${propPairs.map(([k, v]) => `${k}=${v}`).join(' | ')}\n`;
+    }
+
+    // Children list (for knowing what's already inside)
+    if (r.control.children.length > 0) {
+      out += `\nChildren (${r.control.children.length}):\n`;
+      const shown = r.control.children.slice(0, 15);
+      for (const child of shown) {
+        const extras: string[] = [];
+        if (child.properties.DataSource) extras.push(`DS: ${child.properties.DataSource}`);
+        if (child.properties.DataField) extras.push(`Field: ${child.properties.DataField}`);
+        if (child.properties.Caption) extras.push(`Caption: ${child.properties.Caption}`);
+        const extStr = extras.length > 0 ? `  [${extras.join(', ')}]` : '';
+        out += `  • \`${child.name}\` (${child.type})${extStr}\n`;
+      }
+      if (r.control.children.length > 15) {
+        out += `  … and ${r.control.children.length - 15} more\n`;
+      }
+    }
+
+    out += `\n💡 **Form extension usage:**\n`;
+    out += `  • Add a control **inside** \`${r.control.name}\`: set \`parent="${r.control.name}"\`\n`;
+    if (r.parentName) {
+      out += `  • Add a control **after** \`${r.control.name}\`: set \`parent="${r.parentName}", after="${r.control.name}"\`\n`;
+    }
+    out += `\n`;
+  }
+
+  return out;
 }
 
 /**

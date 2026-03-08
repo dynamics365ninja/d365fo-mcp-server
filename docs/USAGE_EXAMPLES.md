@@ -26,9 +26,10 @@ after the base call completes, and create the file in my project.
 2. `analyze_extension_points` — shows CoC-eligible methods, `final` blocks, and delegate hooks on `SalesFormLetter`
 3. `get_method_signature` — returns the exact return type and parameters to match
 4. `generate_code` with `pattern: coc-extension` — produces the complete extension class
-5. `validate_object_naming` — confirms the generated class name (e.g. `SalesFormLetterContoso_Extension`) follows D365FO naming conventions and has no collision in the symbol index
-6. `create_d365fo_file` — writes the XML to the model's `AxClass\` folder and adds it to the `.rnrproj`
-7. `verify_d365fo_project` — confirms the file is on disk and in the project
+5. `search_labels` — checks whether labels needed for audit record fields already exist in the model's label file
+6. `validate_object_naming` — confirms the generated class name (e.g. `SalesFormLetterContoso_Extension`) follows D365FO naming conventions and has no collision in the symbol index
+7. `create_d365fo_file` — writes the XML to the model's `AxClass\` folder and adds it to the `.rnrproj`
+8. `verify_d365fo_project` — confirms the file is on disk and in the project
 
 **Why this matters:** Calling `find_coc_extensions` first prevents creating a duplicate wrapper
 that would shadow an existing ISV extension and cause a build conflict.
