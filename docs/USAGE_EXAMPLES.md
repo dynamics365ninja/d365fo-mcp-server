@@ -90,18 +90,25 @@ to CustTable in my MyPackage\MyModel model. Steps:
 ```
 
 **Tools Copilot chains:**
-1. `search_labels` — checks if a matching label already exists (avoids duplication)
-2. `create_label` — creates `CustPriorityTier` in en-US, cs, and de across all label files
-3. `get_method_signature` / `get_edt_info` — looks up the correct base EDT to extend for the enum
-4. `create_d365fo_file` — creates the `AxEnum` XML
-5. `get_table_info` — reads `CustTable` fields and relations to choose the right field group
-6. `create_d365fo_file` — creates the table extension XML with the field and label reference
-7. `get_form_info` — reads `CustTable` form datasources, tabs, and field groups
-8. `create_d365fo_file` — creates the form extension that adds the field to the General tab
-9. `verify_d365fo_project` — checks all four objects (label, enum, table extension, form extension) are on disk and in the project
+1. `get_workspace_info` — reads model name, package path, effective object prefix, and EXTENSION_PREFIX; mandatory first call
+2. `search_labels` — checks if a label matching "Customer priority tier" already exists in the model's label file
+3. `get_label_info` — inspects the label file to confirm which languages are already covered and what the label file ID is
+4. `batch_search` — parallel lookup of `CustPriorityTier` (enum candidate), `CustTable` (table info), and existing table extensions in one call
+5. `get_form_info` — reads `CustTable` form datasources, tab hierarchy, and control names to confirm the exact name of the General tab before touching the form extension
+6. `search_labels` — second search for any closely related labels that could be reused for the enum value captions
+7. `create_label` — creates the missing `CustPriorityTier` label in en-US, cs, and de
+8. `search_labels` — confirms the newly created label is resolvable before referencing it in XML
+9. `create_d365fo_file` — creates the `AxEnum` XML with value labels
+10. `create_d365fo_file` — creates the table extension `CustTable.MyModel_Extension` with the new field bound to the label
+11. `create_d365fo_file` — creates the empty form extension `CustTable.MyModel_Extension` (controls are added in the next step)
+12. `modify_d365fo_file` with `operation: add-control` — adds the `AslCustPriorityTier` field control inside the `TabGeneral` group in the form extension (no PowerShell needed)
+13. `verify_d365fo_project` — confirms all objects (enum, table extension, form extension) are on disk and registered in the `.rnrproj`
 
-**Why this matters:** Searching for the label first is always safer — duplicate labels waste
-translation budget and cause merge conflicts in label files.
+**Why this matters:** Calling `get_form_info` before touching the form extension — and using
+`modify_d365fo_file add-control` instead of PowerShell — ensures the control is added with
+the correct parent tab name and proper XML structure, without risk of corrupting the extension file.
+The double `search_labels` pattern (before and after `create_label`) catches the edge case
+where the label already existed under a slightly different ID.
 
 ---
 
