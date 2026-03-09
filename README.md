@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**41 AI tools that know every X++ class, table, method, and EDT in your D365FO codebase**
+**42 AI tools that know every X++ class, table, method, and EDT in your D365FO codebase**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen.svg)](https://nodejs.org/)
@@ -18,7 +18,7 @@
 
 GitHub Copilot is great at C#, Python, and JavaScript. It struggles with X++ because it doesn't know your D365FO codebase: method signatures, field types, which CoC extensions already exist, or how your custom ISV code is structured.
 
-This MCP server pre-indexes your entire D365FO installation — 584,799+ symbols — and makes it available to Copilot as 41 specialized tools. Copilot stops guessing and starts generating code that compiles on the first try.
+This MCP server pre-indexes your entire D365FO installation — 584,799+ symbols — and makes it available to Copilot as 42 specialized tools. Copilot stops guessing and starts generating code that compiles on the first try.
 
 ```
 ┌─────────────────────────┐   MCP / HTTP    ┌────────────────────────────────────┐
