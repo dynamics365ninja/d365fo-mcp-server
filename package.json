@@ -33,7 +33,7 @@
     "better-sqlite3": "^12.6.2",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.2.1",
+    "express-rate-limit": "^8.3.1",
     "fast-xml-parser": "^5.4.2",
     "glob": "^13.0.6",
     "ioredis": "^5.10.0",
