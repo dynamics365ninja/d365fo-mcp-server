@@ -813,7 +813,7 @@ export class XppMetadataParser {
     name: string;
     label?: string;
     sourcePath: string;
-    entryPoints: Array<{ name: string; objectType: string; accessLevel: string }>;
+    entryPoints: Array<{ name: string; objectName: string; objectType: string; accessLevel: string }>;
   }>> {
     try {
       const content = await fs.readFile(filePath, 'utf-8');
@@ -842,7 +842,7 @@ export class XppMetadataParser {
         } else {
           accessLevel = String(rawAccess);
         }
-        return { name: ep.Name || '', objectType: ep.ObjectType || '', accessLevel };
+        return { name: ep.Name || '', objectName: ep.ObjectName || ep.Name || '', objectType: ep.ObjectType || '', accessLevel };
       }).filter((ep: any) => ep.name);
 
       return { success: true, data: { name, label, sourcePath: filePath, entryPoints } };

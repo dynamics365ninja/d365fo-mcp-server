@@ -746,6 +746,7 @@ EXAMPLES:
                   '• table-extension: fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — fieldType defaults to AxTableFieldString; use AxTableFieldEnum for enum-based fields (also set enumType)\n' +
                   '• edt:             label, extends, edtType, stringSize\n' +
                   '• form:            caption, formTemplate, dataSource\n' +
+                  '• security-privilege: label, targetObject (menu item ObjectName), objectType (MenuItemDisplay|MenuItemAction|MenuItemOutput, default: MenuItemDisplay), accessLevel (view=Read only | maintain=Read+Update+Create+Delete, default: view)\n' +
                   '• menu-item-*:     label, object, objectType\n' +
                   'Example enum: properties={"label":"@ContosoExt:Status","enumValues":[{"name":"Open","label":"@ContosoExt:Open"},{"name":"Closed","label":"@ContosoExt:Closed"}]}\n' +
                   'Example table-extension (string EDT field): properties={"fields":[{"name":"ContosoField","edt":"CustAccount","label":"@Contoso:Customer"}]}\n' +

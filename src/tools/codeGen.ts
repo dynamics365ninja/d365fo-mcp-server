@@ -352,43 +352,50 @@ public final class ${baseName}EventHandler
 function securityPrivilegeXmlTemplate(name: string, targetMenuItemName: string): string {
   const viewName = name.endsWith('View') ? name : `${name}View`;
   const maintainName = name.endsWith('Maintain') ? name : `${name}Maintain`;
-  return `<!-- ${viewName} (Read access) -->
-<?xml version="1.0" encoding="utf-8"?>
+  // File 1: ViewName.xml
+  const viewXml = `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-  <Name>${viewName}</Name>
-  <Label>@TODO:LabelId_View</Label>
-  <EntryPoints>
-    <AxSecurityEntryPointReference>
-      <Name>${targetMenuItemName}</Name>
-      <ObjectType>MenuItemDisplay</ObjectType>
-      <Grant>Read</Grant>
-    </AxSecurityEntryPointReference>
-  </EntryPoints>
-</AxSecurityPrivilege>
-
-<!-- ${maintainName} (Update/Create/Delete access) -->
-<?xml version="1.0" encoding="utf-8"?>
-<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-  <Name>${maintainName}</Name>
-  <Label>@TODO:LabelId_Maintain</Label>
-  <EntryPoints>
-    <AxSecurityEntryPointReference>
-      <Name>${targetMenuItemName}</Name>
-      <ObjectType>MenuItemDisplay</ObjectType>
-      <Grant>Update</Grant>
-    </AxSecurityEntryPointReference>
-    <AxSecurityEntryPointReference>
-      <Name>${targetMenuItemName}</Name>
-      <ObjectType>MenuItemDisplay</ObjectType>
-      <Grant>Create</Grant>
-    </AxSecurityEntryPointReference>
-    <AxSecurityEntryPointReference>
-      <Name>${targetMenuItemName}</Name>
-      <ObjectType>MenuItemDisplay</ObjectType>
-      <Grant>Delete</Grant>
-    </AxSecurityEntryPointReference>
-  </EntryPoints>
+\t<Name>${viewName}</Name>
+\t<Label>@TODO:LabelId_View</Label>
+\t<DataEntityPermissions />
+\t<DirectAccessPermissions />
+\t<EntryPoints>
+\t\t<AxSecurityEntryPointReference>
+\t\t\t<Name>${targetMenuItemName}</Name>
+\t\t\t<Grant>
+\t\t\t\t<Read>Allow</Read>
+\t\t\t</Grant>
+\t\t\t<ObjectName>${targetMenuItemName}</ObjectName>
+\t\t\t<ObjectType>MenuItemDisplay</ObjectType>
+\t\t\t<Forms />
+\t\t</AxSecurityEntryPointReference>
+\t</EntryPoints>
+\t<FormControlOverrides />
 </AxSecurityPrivilege>`;
+  // File 2: MaintainName.xml
+  const maintainXml = `<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>${maintainName}</Name>
+\t<Label>@TODO:LabelId_Maintain</Label>
+\t<DataEntityPermissions />
+\t<DirectAccessPermissions />
+\t<EntryPoints>
+\t\t<AxSecurityEntryPointReference>
+\t\t\t<Name>${targetMenuItemName}</Name>
+\t\t\t<Grant>
+\t\t\t\t<Read>Allow</Read>
+\t\t\t\t<Update>Allow</Update>
+\t\t\t\t<Create>Allow</Create>
+\t\t\t\t<Delete>Allow</Delete>
+\t\t\t</Grant>
+\t\t\t<ObjectName>${targetMenuItemName}</ObjectName>
+\t\t\t<ObjectType>MenuItemDisplay</ObjectType>
+\t\t\t<Forms />
+\t\t</AxSecurityEntryPointReference>
+\t</EntryPoints>
+\t<FormControlOverrides />
+</AxSecurityPrivilege>`;
+  return `<!-- FILE 1: ${viewName}.xml (Read access) -->\n${viewXml}\n\n<!-- FILE 2: ${maintainName}.xml (Update/Create/Delete access) -->\n${maintainXml}`;
 }
 
 // ── Menu item XML pattern ────────────────────────────────────────────────

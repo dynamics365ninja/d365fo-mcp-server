@@ -1229,13 +1229,27 @@ ${fieldsXml}
 
   static generateAxSecurityPrivilegeXml(name: string, properties?: Record<string, any>): string {
     const label = properties?.label || '@TODO:LabelId';
+    const targetObject: string | undefined = properties?.targetObject;
+    const objType: string = properties?.objectType || 'MenuItemDisplay';
+
+    let entryPointsXml: string;
+    if (targetObject) {
+      const al = (properties?.accessLevel || 'view').toLowerCase();
+      const grantXml = al === 'maintain'
+        ? '\t\t\t\t<Read>Allow</Read>\n\t\t\t\t<Update>Allow</Update>\n\t\t\t\t<Create>Allow</Create>\n\t\t\t\t<Delete>Allow</Delete>'
+        : '\t\t\t\t<Read>Allow</Read>';
+      entryPointsXml = `\n\t\t<AxSecurityEntryPointReference>\n\t\t\t<Name>${targetObject}</Name>\n\t\t\t<Grant>\n${grantXml}\n\t\t\t</Grant>\n\t\t\t<ObjectName>${targetObject}</ObjectName>\n\t\t\t<ObjectType>${objType}</ObjectType>\n\t\t\t<Forms />\n\t\t</AxSecurityEntryPointReference>\n\t`;
+    } else {
+      entryPointsXml = '';
+    }
+
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
 \t<Label>${label}</Label>
 \t<DataEntityPermissions />
 \t<DirectAccessPermissions />
-\t<EntryPoints />
+\t<EntryPoints>${entryPointsXml}</EntryPoints>
 \t<FormControlOverrides />
 </AxSecurityPrivilege>`;
   }
