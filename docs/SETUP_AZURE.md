@@ -48,7 +48,7 @@ Developer's Windows VM
 | Azure Blob Storage | Stores `xpp-metadata.db` (~1–1.5 GB) and labels database (~500 MB) | Standard LRS |
 | Azure App Service Plan | Hosts the Node.js server | B3 (dev/test), P0v3 (production) |
 | Azure App Service (Web App) | Runs the MCP server | Linux, Node 24 LTS |
-| Azure Cache for Redis | Optional — speeds up repeated queries | B0 Basic or higher |
+| Azure Managed Redis | Optional — speeds up repeated queries | B0 Basic or higher |
 
 ---
 
@@ -59,9 +59,7 @@ In the **Azure Portal**:
 1. Create a **Resource Group** in your chosen region.
 
 2. Create a **Storage Account** (Standard LRS, StorageV2):
-   - Disable blob public access
-   - Minimum TLS: 1.2
-   - Inside the storage account, create two **Blob Containers** (Private access):
+   - Inside the storage account, create two **Blob Containers**:
      - `xpp-metadata` — receives the built metadata databases
      - `packages` — receives the raw `PackagesLocalDirectory.zip` used by CI pipelines
 
@@ -69,21 +67,18 @@ In the **Azure Portal**:
    - OS: Linux
    - SKU: **P0v3** (production) or **B3** (dev/test)
 
-4. Create a **Web App** on that plan:
+4. Create a **Web App (App Service)** on that plan:
    - Runtime stack: **Node 24 LTS**
    - Enable **HTTPS only**
 
 5. Enable **System-assigned managed identity** on the Web App
-   (Web App → Identity → System assigned → On)
-
-6. Grant the managed identity **Storage Blob Data Contributor** on the Storage Account
-   (Storage Account → Access Control (IAM) → Add role assignment)
+   (Web App → Settings → Identity → System assigned → On)
 
 ---
 
 ## Step 2 — Configure App Settings
 
-In the Azure Portal, go to the Web App → **Configuration** → **Application settings** and add:
+In the Azure Portal, go to the App Service → **Settings** → **Environment variables** and add:
 
 | Setting | Value | Notes |
 |---------|-------|-------|
@@ -98,22 +93,15 @@ In the Azure Portal, go to the Web App → **Configuration** → **Application s
 | `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` | Oryx runs `npm ci` on deploy |
 | `WEBSITE_NODE_DEFAULT_VERSION` | `~24` | |
 
-**Optional — Application Insights:**
-
-| Setting | Value |
-|---------|-------|
-| `APPINSIGHTS_INSTRUMENTATIONKEY` | Instrumentation key from Application Insights resource |
-
 **Optional — Redis (recommended for teams):**
 
 | Setting | Value |
 |---------|-------|
 | `REDIS_ENABLED` | `true` |
 | `REDIS_URL` | Connection URL from Azure Cache for Redis |
-| `REDIS_PASSWORD` | Access key |
 | `REDIS_CLUSTER_MODE` | `true` if using Azure Managed Redis (Enterprise/cluster tier) |
 
-Set the **Startup command** under **Configuration → General settings**:
+Set the **Startup Command** under **Settings → Configuration**:
 
 ```
 bash startup.sh

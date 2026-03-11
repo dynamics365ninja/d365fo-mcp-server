@@ -144,11 +144,10 @@ export function applyObjectPrefix(objectName: string, prefix: string): string {
   if (objectName.includes('.') && objectName.toLowerCase().endsWith('extension')) {
     const dotIdx = objectName.lastIndexOf('.');
     const basePart = objectName.slice(0, dotIdx);    // e.g., "CustTable"
-    const suffixPart = objectName.slice(dotIdx + 1); // e.g., "MyModelExtension"
     const correctSuffix = `${extensionInfix}Extension`;
-    if (suffixPart.toLowerCase() === correctSuffix.toLowerCase()) {
-      return objectName; // Already has the correct extension suffix, return as-is
-    }
+    // Always return the correctly-cased suffix — never preserve the original casing.
+    // Without this, "VendTrans.ASLExtension" with EXTENSION_PREFIX=ASL_ would not be
+    // normalized to "VendTrans.AslExtension".
     return `${basePart}.${correctSuffix}`;
   }
 
