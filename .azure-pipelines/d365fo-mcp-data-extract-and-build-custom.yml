@@ -1,13 +1,9 @@
-# Simplified Azure Pipeline for Daily Custom Metadata Updates
-# This pipeline is optimized for quick updates of custom models only
-# Triggers automatically on changes to dev branch (no periodic runs)
+# Azure Pipeline for Custom D365FO Metadata Updates
+# This pipeline updates custom models from the Azure DevOps Git repository
+# Use this after any change to custom models
 
-trigger: none
+trigger: none  # Manual execution only
 
-# Note: No scheduled runs - pipeline runs only when changes are detected
-# To force a run, use manual trigger with parameters below
-
-# Manual trigger with parameters
 parameters:
   - name: extractionMode
     displayName: 'Extraction Mode'
@@ -44,7 +40,7 @@ variables:
   - name: LABELS_DB_PATH
     value: './database/xpp-metadata-labels.db'
   - name: PACKAGES_PATH
-    value: '$(Build.SourcesDirectory)/Metadata'  # Path to D365FO metadata in Git (adjust based on your repo structure)
+    value: '$(Build.SourcesDirectory)/Metadata'
   - name: MCP_SERVER_PATH
     value: '$(Pipeline.Workspace)/mcp-server'
 
@@ -62,11 +58,13 @@ stages:
           - checkout: self
             displayName: 'Checkout D365FO source code'
             clean: true
-          
+
           # ========== Checkout MCP Server code from GitHub ==========
           - checkout: mcpServer
             displayName: 'Checkout MCP Server code from GitHub'
             path: mcp-server
+
+          # ========== Step 1: Install Node.js and Dependencies ==========
 
           - task: NodeTool@0
             displayName: 'Install Node.js'
@@ -74,13 +72,12 @@ stages:
               versionSpec: $(nodeVersion)
 
           - script: npm ci
-            displayName: 'Install dependencies'
+            displayName: 'Install NPM dependencies'
             workingDirectory: '$(MCP_SERVER_PATH)'
 
-          # ========== Custom Mode Steps (default) ==========
-          # In custom mode, we only update custom models while preserving standard models in the database
-          
-          # Download existing database (contains standard models)
+          # ========== Step 2: Download Existing Data ==========
+
+          # Custom mode: download existing DB to preserve standard models
           - script: npm run blob-manager download-database
             displayName: 'Download existing database'
             condition: eq('${{ parameters.extractionMode }}', 'custom')
@@ -90,7 +87,7 @@ stages:
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               DB_PATH: $(DB_PATH)
 
-          # Download standard metadata (only for standard/all modes, not for custom)
+          # Standard/all mode: download cached standard metadata from blob
           - script: npm run blob-manager download-standard
             displayName: 'Download standard metadata (cached)'
             condition: ne('${{ parameters.extractionMode }}', 'custom')
@@ -100,7 +97,8 @@ stages:
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               METADATA_PATH: $(METADATA_PATH)
 
-          # Delete old custom metadata from blob
+          # ========== Step 3: Delete Old Custom Metadata ==========
+
           - script: |
               if [ -n "${{ parameters.customModels }}" ] && [ "${{ parameters.customModels }}" != "all" ]; then
                 npm run blob-manager delete-custom "${{ parameters.customModels }}"
@@ -114,14 +112,15 @@ stages:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
 
-          # Extract custom models from Git source
+          # ========== Step 4: Extract Models from Git Source ==========
+
           - script: |
               if [ "${{ parameters.customModels }}" != "all" ]; then
                 export CUSTOM_MODELS="${{ parameters.customModels }}"
               fi
-              # For 'all' mode, extract only custom models (standard are already downloaded from blob)
-              # For 'custom' mode, extract only custom models
-              # For 'standard' mode, extract only standard models (but Git usually contains only custom)
+              # 'all' mode: extract only custom (standard already downloaded from blob)
+              # 'custom' mode: extract only custom models
+              # 'standard' mode: extract only standard models
               if [ "${{ parameters.extractionMode }}" = "all" ]; then
                 export EXTRACT_MODE="custom"
               else
@@ -135,12 +134,9 @@ stages:
               METADATA_PATH: $(METADATA_PATH)
               EXTENSION_PREFIX: $(EXTENSION_PREFIX)
 
-          # ========== Common Steps for All Modes ==========
-          
-          # Build database (custom mode: only replaces custom models, standard mode: replaces standard models, all mode: full rebuild)
-          # CRITICAL: Do NOT set CUSTOM_MODELS env var - build-database will use ALL models from METADATA_PATH (already filtered by extract-metadata)
-          - script: |
-              npm run build-database
+          # ========== Step 5: Build Database ==========
+
+          - script: npm run build-database
             displayName: 'Build database (incremental update of custom models)'
             workingDirectory: '$(MCP_SERVER_PATH)'
             timeoutInMinutes: 90
@@ -148,16 +144,16 @@ stages:
               METADATA_PATH: $(METADATA_PATH)
               DB_PATH: $(DB_PATH)
               LABELS_DB_PATH: $(LABELS_DB_PATH)
-              PACKAGES_PATH: $(PACKAGES_PATH)  # Path to PackagesLocalDirectory for label indexing (Git source) - adjust PACKAGES_PATH variable if labels are not being indexed
+              PACKAGES_PATH: $(PACKAGES_PATH)
               EXTRACT_MODE: '${{ parameters.extractionMode }}'
-              INCLUDE_LABELS: 'true'  # Index AxLabelFile labels from PackagesLocalDirectory
-              LABEL_LANGUAGES: 'en-US,cs,sk,de'  # Languages to index (or 'all' for all languages)
-              DEBUG_LABELS: 'true'  # Enable verbose label indexing diagnostics (set to 'false' after verification)
-              COMPUTE_STATS: 'true'  # Enable usage statistics computation
+              INCLUDE_LABELS: 'true'
+              LABEL_LANGUAGES: $(LABEL_LANGUAGES)
+              COMPUTE_STATS: 'true'
               ENABLE_SEARCH_SUGGESTIONS: 'false'  # Disable suggestions in CI/CD to reduce memory usage
-              NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'  # Increase heap to 4GB for single-transaction indexing
+              NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'
 
-          # Upload metadata based on mode
+          # ========== Step 6: Upload Custom Metadata ==========
+
           - script: |
               if [ "${{ parameters.customModels }}" != "all" ]; then
                 export CUSTOM_MODELS="${{ parameters.customModels }}"
@@ -171,25 +167,47 @@ stages:
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               METADATA_PATH: $(METADATA_PATH)
 
-          # Upload databases
-          - script: npm run blob-manager upload-database $(DB_PATH)
-            displayName: 'Upload main database'
+          # ========== Step 7: Upload Databases to Blob Storage ==========
+
+          - script: npm run blob-manager upload-database
+            displayName: 'Upload symbols database to Azure Blob'
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              DB_PATH: $(DB_PATH)
 
-          - script: npm run blob-manager upload-database $(LABELS_DB_PATH)
-            displayName: 'Upload labels database'
+          - script: npm run blob-manager upload-database
+            displayName: 'Upload labels database to Azure Blob'
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              DB_PATH: $(LABELS_DB_PATH)
 
-          # Restart App Service
+          # ========== Step 8: Restart App Service ==========
+
           - task: AzureAppServiceManage@0
             displayName: 'Restart App Service'
             inputs:
               azureSubscription: '$(AZURE_SUBSCRIPTION)'
               action: 'Restart Azure App Service'
               webAppName: '$(AZURE_APP_SERVICE_NAME)'
+
+          # ========== Step 9: Log Completion ==========
+
+          - script: |
+              echo ""
+              echo "============================================"
+              echo "Custom metadata update completed!"
+              echo "============================================"
+              echo ""
+              echo "✅ Custom metadata extracted"
+              echo "✅ Custom metadata uploaded to blob"
+              echo "✅ Database built (incremental update)"
+              echo "✅ Databases uploaded to Azure Blob"
+              echo "✅ App Service restarted"
+              echo ""
+              echo "Your MCP server is now running with the latest custom models"
+              echo "============================================"
+            displayName: 'Log completion summary'

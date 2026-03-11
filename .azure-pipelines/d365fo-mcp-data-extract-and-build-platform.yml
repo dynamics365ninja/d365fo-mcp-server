@@ -33,7 +33,7 @@ variables:
     value: 'packages'
   - name: MCP_SERVER_PATH
     value: '$(Pipeline.Workspace)/mcp-server'
-
+  
 stages:
   # ============================================================================
   # Single Stage: Download, Extract, Build Database with Labels, and Upload
@@ -115,21 +115,29 @@ stages:
           - script: npm run build-database
             displayName: 'Build database from standard metadata'
             workingDirectory: '$(MCP_SERVER_PATH)'
-            timeoutInMinutes: 120  # Increase timeout to 2 hours for 350+ models
+            timeoutInMinutes: 120
             env:
               METADATA_PATH: $(METADATA_PATH)
               DB_PATH: $(DB_PATH)
               LABELS_DB_PATH: $(LABELS_DB_PATH)
-              PACKAGES_PATH: $(Pipeline.Workspace)/$(PACKAGES_DIR_NAME)  # Path to PackagesLocalDirectory for label indexing
+              PACKAGES_PATH: $(Pipeline.Workspace)/$(PACKAGES_DIR_NAME)
               EXTRACT_MODE: 'standard'
-              INCLUDE_LABELS: 'true'  # Index AxLabelFile labels from PackagesLocalDirectory
-              LABEL_LANGUAGES: 'en-US,cs,sk,de'  # Languages to index (or 'all' for all languages)
-              COMPUTE_STATS: 'true'  # Enable usage statistics computation
+              INCLUDE_LABELS: 'true'
+              LABEL_LANGUAGES: $(LABEL_LANGUAGES)
+              COMPUTE_STATS: 'true'
               ENABLE_SEARCH_SUGGESTIONS: 'false'  # Disable suggestions in CI/CD to reduce memory usage
-              NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'  # 4GB heap for single-transaction indexing
+              NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'
 
-          # ========== Step 7: Upload Database to Blob Storage ==========
-          
+          # ========== Step 7: Upload Databases to Blob Storage ==========
+
+          - script: npm run blob-manager upload-database
+            displayName: 'Upload symbols database to Azure Blob'
+            workingDirectory: '$(MCP_SERVER_PATH)'
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+              DB_PATH: $(DB_PATH)
+
           - script: npm run blob-manager upload-database
             displayName: 'Upload labels database to Azure Blob'
             workingDirectory: '$(MCP_SERVER_PATH)'
@@ -138,7 +146,8 @@ stages:
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               DB_PATH: $(LABELS_DB_PATH)
 
-          # Restart App Service
+          # ========== Step 8: Restart App Service ==========
+
           - task: AzureAppServiceManage@0
             displayName: 'Restart App Service'
             inputs:
@@ -146,8 +155,8 @@ stages:
               action: 'Restart Azure App Service'
               webAppName: '$(AZURE_APP_SERVICE_NAME)'
 
-          # ========== Step 8: Log Completion ==========
-          
+          # ========== Step 9: Log Completion ==========
+
           - script: |
               echo ""
               echo "============================================"
@@ -155,11 +164,11 @@ stages:
               echo "============================================"
               echo ""
               echo "✅ $(PACKAGES_DIR_NAME).zip downloaded from Azure Blob"
-              echo "✅ Package extracted"
-              echo "✅ Metadata extracted"
-              echo "✅ Metadata uploaded to: metadata/standard/"
+              echo "✅ Standard metadata extracted"
+              echo "✅ Standard metadata uploaded to blob"
               echo "✅ Database built"
-              echo "✅ Database uploaded to Azure Blob"
+              echo "✅ Databases uploaded to Azure Blob"
+              echo "✅ App Service restarted"
               echo ""
               echo "Next step: Run custom pipeline to update custom models"
               echo "============================================"

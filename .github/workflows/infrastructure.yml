@@ -1,0 +1,68 @@
+name: Deploy Azure Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infrastructure/main.bicep'
+  workflow_dispatch:
+    inputs:
+      resourceGroup:
+        description: 'Resource group name (d365fo-mcp-server-<customer>)'
+        required: true
+      appServiceSku:
+        description: 'App Service SKU'
+        required: false
+        default: 'B3'
+        type: choice
+        options: [B1, B2, B3, P0v3, P1v3, P2v3]
+      labelLanguages:
+        description: 'Label languages (comma-separated, e.g. en-US,cs,de)'
+        required: false
+        default: 'en-US,cs,sk,de'
+
+jobs:
+  deploy-infrastructure:
+    name: Deploy Bicep to Azure
+    runs-on: ubuntu-latest
+
+    env:
+      RESOURCE_GROUP: ${{ github.event.inputs.resourceGroup || vars.AZURE_RESOURCE_GROUP }}
+      APP_SERVICE_SKU: ${{ github.event.inputs.appServiceSku || 'B3' }}
+      LABEL_LANGUAGES: ${{ github.event.inputs.labelLanguages || 'en-US,cs,sk,de' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create parameters file
+        run: |
+          cat > infrastructure/params.json << EOF
+          {
+            "\$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+              "appServiceSku":  { "value": "$APP_SERVICE_SKU" },
+              "labelLanguages": { "value": "$LABEL_LANGUAGES" }
+            }
+          }
+          EOF
+
+      - name: Deploy Bicep template
+        uses: azure/arm-deploy@v2
+        with:
+          scope: resourcegroup
+          resourceGroupName: ${{ env.RESOURCE_GROUP }}
+          template: infrastructure/main.bicep
+          parameters: infrastructure/params.json
+          failOnStdErr: false
+
+      - name: Logout from Azure
+        run: az logout
+        if: always()

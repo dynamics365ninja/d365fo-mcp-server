@@ -16,7 +16,6 @@ If you are a developer who only wants to **use** an existing server, see [SETUP.
 - [Step 4 — Build and Upload the Metadata Database](#step-4--build-and-upload-the-metadata-database)
 - [Step 5 — Verify](#step-5--verify)
 - [Azure DevOps Pipelines](#azure-devops-pipelines)
-- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -47,9 +46,9 @@ Developer's Windows VM
 | Resource | Purpose | Minimum SKU |
 |----------|---------|------------|
 | Azure Blob Storage | Stores `xpp-metadata.db` (~1–1.5 GB) and labels database (~500 MB) | Standard LRS |
-| Azure App Service Plan | Hosts the Node.js server | B1 (dev/test), P0v3 (production) |
+| Azure App Service Plan | Hosts the Node.js server | B3 (dev/test), P0v3 (production) |
 | Azure App Service (Web App) | Runs the MCP server | Linux, Node 24 LTS |
-| Azure Cache for Redis | Optional — speeds up repeated queries | C0 Basic or higher |
+| Azure Cache for Redis | Optional — speeds up repeated queries | B0 Basic or higher |
 
 ---
 
@@ -68,9 +67,7 @@ In the **Azure Portal**:
 
 3. Create an **App Service Plan**:
    - OS: Linux
-   - SKU: **P0v3** (production) or **B1** (dev/test)
-   - P0v3 provides 1 vCPU / 4 GB RAM — minimum for the full metadata database
-   - B1 (1.75 GB RAM) is sufficient for a personal dev server with a reduced label set
+   - SKU: **P0v3** (production) or **B3** (dev/test)
 
 4. Create a **Web App** on that plan:
    - Runtime stack: **Node 24 LTS**
@@ -218,31 +215,3 @@ The `d365fo-mcp-data-build-standard.yml` pipeline needs the raw `PackagesLocalDi
 On your D365FO VM, compress `K:\AosService\PackagesLocalDirectory` and upload the resulting zip as `PackagesLocalDirectory.zip` to the `packages` container using **Azure Storage Explorer**.
 
 This only needs to be re-uploaded after a D365FO version upgrade or hotfix rollup.
-
----
-
-## Troubleshooting
-
-### "Module did not self-register" on startup
-Windows-compiled `node_modules` were deployed instead of letting Oryx build them.
-Redeploy without `node_modules` and confirm `SCM_DO_BUILD_DURING_DEPLOYMENT=true` is set.
-
-### Database build fails with "FTS5 not available"
-The SQLite installation lacks FTS5. Reinstall the native module:
-```powershell
-npm rebuild better-sqlite3
-```
-
-### No metadata found after extraction
-- Check that `PACKAGES_PATH` points to the directory containing XML model files
-- Check that `CUSTOM_MODELS` matches the actual folder names exactly (case-sensitive on Linux)
-- Verify file permissions on the packages directory
-
-### Slow response times
-1. Enable Redis: set `REDIS_ENABLED=true` and configure `REDIS_URL` and `REDIS_PASSWORD`
-2. Scale up the App Service Plan to B2 or P1v3
-3. Check available memory — minimum 1.75 GB for B1, 3.5 GB for P0v3
-
-### Server starts but returns no tools
-Confirm `MCP_SERVER_MODE=read-only` is set. If it is not set, the server defaults to `full`
-mode but on Azure the file-write tools will fail since there is no local D365FO filesystem.
