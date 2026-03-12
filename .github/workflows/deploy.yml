@@ -10,6 +10,7 @@ on:
 env:
   AZURE_WEBAPP_NAME: d365fo-mcp-server  # Replace with your app name
   NODE_VERSION: '24.x'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
