@@ -90,7 +90,7 @@ In the Azure Portal, go to the App Service → **Settings** → **Environment va
 | `LABEL_LANGUAGES` | e.g. `en-US,cs,de` | Comma-separated; each language adds ~125 MB |
 | `MCP_SERVER_MODE` | `read-only` | Hides file-creation tools; use local companion for writes |
 | `NODE_ENV` | `production` | |
-| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `true` | Oryx runs `npm ci` on deploy |
+| `SCM_DO_BUILD_DURING_DEPLOYMENT` | `false` | Pre-built `node_modules` are shipped in the deploy zip — Oryx must NOT run `npm ci` (no gcc/make on App Service Linux) |
 | `WEBSITE_NODE_DEFAULT_VERSION` | `~24` | |
 
 **Optional — Redis (recommended for teams):**
@@ -122,14 +122,17 @@ For a **manual one-time deploy** (from your Windows machine):
    cd d365fo-mcp-server
    npm install
    npm run build
-   # Do NOT include node_modules — Oryx rebuilds them on App Service for Linux
-   Compress-Archive -Path dist, package.json, package-lock.json, startup.sh `
+   # Include node_modules — must be compiled for Linux (native better-sqlite3 addon)
+   # If building on Windows, use WSL2 or a Linux Docker container for npm install
+   Compress-Archive -Path dist, node_modules, package.json, package-lock.json, startup.sh `
      -DestinationPath deploy.zip
    ```
 
 2. Upload via the Portal: Web App → **Deployment Center** → **Deploy** → upload `deploy.zip`.
 
-> The `better-sqlite3` addon is a native module. Including Windows-compiled `node_modules` breaks the server on Linux. With `SCM_DO_BUILD_DURING_DEPLOYMENT=true`, Oryx runs `npm ci` after unpacking and compiles for Linux.
+> **Important:** `better-sqlite3` is a native module that must be compiled for Linux. `node_modules` built on Windows will crash the server.
+> Use the **Azure DevOps pipeline** (recommended) — it builds on `ubuntu-latest`, which shares the same glibc as App Service Linux, so the compiled binaries are compatible.
+> `SCM_DO_BUILD_DURING_DEPLOYMENT` is set to `false` because App Service Linux has no gcc/make to rebuild native addons.
 
 ---
 
