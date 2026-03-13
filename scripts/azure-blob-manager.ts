@@ -21,9 +21,10 @@ const LOCAL_METADATA_PATH = process.env.METADATA_PATH || './extracted-metadata';
 console.log(`📦 Container: ${BLOB_CONTAINER}`);
 console.log(`📁 Local path: ${LOCAL_METADATA_PATH}`);
 
-// Concurrency limit — keep low to avoid ECONNREFUSED / throttling from Azure Blob Storage
+// Concurrency limit for uploads — keep low to avoid ECONNREFUSED / throttling
 const MAX_CONCURRENT_UPLOADS = 5;
-const MAX_CONCURRENT_DOWNLOADS = 10;
+// Downloads can go higher — Azure Blob Storage handles parallel GETs well
+const MAX_CONCURRENT_DOWNLOADS = 64;
 
 // Retry settings for transient network errors (ECONNREFUSED, ETIMEDOUT, 503, 500)
 const MAX_RETRIES = 4;

@@ -1,8 +1,17 @@
 # Azure Pipeline for Standard D365FO Metadata Extraction from Azure Blob Storage
 # This pipeline downloads and extracts standard D365 models from PackagesLocalDirectory.zip
 # Runs: Few times per year (D365 upgrade, hotfix) or manual trigger
+#
+# Parameter skipExtraction=true: skip steps 1-4 (download zip, extract, extract metadata,
+# upload metadata) and only download already-extracted metadata from blob, then rebuild DB.
 
 trigger: none  # Manual execution only
+
+parameters:
+  - name: skipExtraction
+    displayName: 'Skip extraction (rebuild DB from existing blob metadata)'
+    type: boolean
+    default: false
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -33,7 +42,7 @@ variables:
     value: 'packages'
   - name: MCP_SERVER_PATH
     value: '$(Pipeline.Workspace)/mcp-server'
-  
+
 stages:
   # ============================================================================
   # Single Stage: Download, Extract, Build Database with Labels, and Upload
@@ -52,7 +61,7 @@ stages:
             path: mcp-server
 
           # ========== Step 1: Install Node.js and Dependencies ==========
-          
+
           - task: NodeTool@0
             displayName: 'Install Node.js'
             inputs:
@@ -63,7 +72,8 @@ stages:
             workingDirectory: '$(MCP_SERVER_PATH)'
 
           # ========== Step 2: Download PackagesLocalDirectory.zip from Azure Blob ==========
-          
+          # Skipped when skipExtraction=true
+
           - script: |
               echo "Downloading $(PACKAGES_DIR_NAME).zip from Azure Blob Storage..."
               az storage blob download \
@@ -72,28 +82,33 @@ stages:
                 --name $(PACKAGES_DIR_NAME).zip \
                 --file $(PACKAGES_ZIP_PATH) \
                 --output table
-              
+
               echo "Download completed successfully"
               ls -lh $(PACKAGES_ZIP_PATH)
             displayName: 'Download $(PACKAGES_DIR_NAME).zip from Azure Blob'
+            condition: eq('${{ parameters.skipExtraction }}', false)
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
 
           # ========== Step 3: Extract PackagesLocalDirectory.zip ==========
-          
+          # Skipped when skipExtraction=true
+
           - script: |
               echo "Extracting $(PACKAGES_DIR_NAME).zip..."
               unzip -q $(PACKAGES_ZIP_PATH) -d $(Pipeline.Workspace)
-              
+
               echo "Extraction completed successfully"
               echo "Contents of extracted directory:"
               ls -la $(Pipeline.Workspace)/$(PACKAGES_DIR_NAME)
             displayName: 'Extract $(PACKAGES_DIR_NAME).zip'
+            condition: eq('${{ parameters.skipExtraction }}', false)
 
           # ========== Step 4: Extract Metadata ==========
-          
+          # Skipped when skipExtraction=true
+
           - script: npm run extract-metadata
             displayName: 'Extract standard metadata from packages'
+            condition: eq('${{ parameters.skipExtraction }}', false)
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               PACKAGES_PATH: $(Pipeline.Workspace)/$(PACKAGES_DIR_NAME)
@@ -101,17 +116,74 @@ stages:
               EXTRACT_MODE: 'standard'
 
           # ========== Step 5: Upload Metadata to Blob Storage ==========
-          
+          # Skipped when skipExtraction=true (metadata already in blob)
+
           - script: npm run blob-manager upload-standard
             displayName: 'Upload standard metadata to Azure Blob'
+            condition: eq('${{ parameters.skipExtraction }}', false)
             workingDirectory: '$(MCP_SERVER_PATH)'
             env:
               AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
               BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
               METADATA_PATH: $(METADATA_PATH)
-          
+
+          # ========== Step 5b: Download Metadata from Blob (skipExtraction only) ==========
+          # When skipExtraction=true, download existing metadata instead of extracting.
+          # Uses azcopy (pre-installed on ubuntu-latest) — massively parallel, much faster
+          # than the Node.js SDK for hundreds of thousands of small XML files.
+
+          - script: |
+              # Extract storage account name and key from connection string
+              ACCOUNT_NAME=$(echo "$AZURE_STORAGE_CONNECTION_STRING" | grep -oP 'AccountName=\K[^;]+')
+              ACCOUNT_KEY=$(echo "$AZURE_STORAGE_CONNECTION_STRING" | grep -oP 'AccountKey=\K[^;]+')
+
+              # Generate SAS token valid for 4 hours (read + list)
+              EXPIRY=$(date -u -d '+4 hours' '+%Y-%m-%dT%H:%MZ')
+              SAS_TOKEN=$(az storage container generate-sas \
+                --account-name "$ACCOUNT_NAME" \
+                --account-key "$ACCOUNT_KEY" \
+                --name "$(BLOB_CONTAINER_NAME)" \
+                --permissions rl \
+                --expiry "$EXPIRY" \
+                --output tsv)
+
+              # azcopy copies blob prefix metadata/standard/ into dest/standard/ModelName/...
+              # so we download into a temp dir and then move to the correct METADATA_PATH
+              TEMP_DIR="$(MCP_SERVER_PATH)/_azcopy_tmp"
+              DEST_DIR="$(MCP_SERVER_PATH)/metadata"
+              SOURCE_URL="https://${ACCOUNT_NAME}.blob.core.windows.net/$(BLOB_CONTAINER_NAME)/metadata/standard/?${SAS_TOKEN}"
+
+              echo "Downloading standard metadata via azcopy..."
+              echo "  Source: https://${ACCOUNT_NAME}.blob.core.windows.net/$(BLOB_CONTAINER_NAME)/metadata/standard/"
+              echo "  Destination: ${DEST_DIR}"
+
+              mkdir -p "$TEMP_DIR" "$DEST_DIR"
+              azcopy copy "$SOURCE_URL" "$TEMP_DIR/" \
+                --recursive \
+                --parallel-level 64 \
+                --log-level WARNING
+
+              # Move contents of standard/ up one level to match expected METADATA_PATH structure
+              # blob: metadata/standard/ModelName/... → local: metadata/ModelName/...
+              if [ -d "$TEMP_DIR/standard" ]; then
+                mv "$TEMP_DIR/standard/"* "$DEST_DIR/"
+              else
+                # fallback: azcopy may have stripped the prefix already
+                mv "$TEMP_DIR/"* "$DEST_DIR/" 2>/dev/null || true
+              fi
+              rm -rf "$TEMP_DIR"
+
+              echo "Download complete."
+              echo "Models in metadata: $(ls -1 "$DEST_DIR" | wc -l)"
+              echo "Total files: $(find "$DEST_DIR" -type f | wc -l)"
+            displayName: 'Download standard metadata from Azure Blob via azcopy (skipExtraction mode)'
+            condition: eq('${{ parameters.skipExtraction }}', true)
+            env:
+              AZURE_STORAGE_CONNECTION_STRING: $(AZURE_STORAGE_CONNECTION_STRING)
+              BLOB_CONTAINER_NAME: $(BLOB_CONTAINER_NAME)
+
           # ========== Step 6: Build Database ==========
-          
+
           - script: npm run build-database
             displayName: 'Build database from standard metadata'
             workingDirectory: '$(MCP_SERVER_PATH)'
@@ -160,12 +232,20 @@ stages:
           - script: |
               echo ""
               echo "============================================"
-              echo "Standard metadata extraction completed!"
+              if [ "${{ parameters.skipExtraction }}" = "True" ]; then
+                echo "Database rebuild completed! (metadata from blob)"
+              else
+                echo "Standard metadata extraction completed!"
+              fi
               echo "============================================"
               echo ""
-              echo "✅ $(PACKAGES_DIR_NAME).zip downloaded from Azure Blob"
-              echo "✅ Standard metadata extracted"
-              echo "✅ Standard metadata uploaded to blob"
+              if [ "${{ parameters.skipExtraction }}" = "True" ]; then
+                echo "⏭️  Extraction skipped — used existing blob metadata"
+              else
+                echo "✅ $(PACKAGES_DIR_NAME).zip downloaded from Azure Blob"
+                echo "✅ Standard metadata extracted"
+                echo "✅ Standard metadata uploaded to blob"
+              fi
               echo "✅ Database built"
               echo "✅ Databases uploaded to Azure Blob"
               echo "✅ App Service restarted"
