@@ -568,13 +568,13 @@ async function main() {
     });
 
     // Log tool count immediately (transport is already connected)
-    const totalTools = 42;
+    const totalTools = 43;
     const localToolCount = LOCAL_TOOLS.size;
     const toolCount = SERVER_MODE === 'write-only' ? localToolCount :
                      SERVER_MODE === 'read-only' ? totalTools - localToolCount : totalTools;
     const toolDesc = SERVER_MODE === 'write-only' ? `(${Array.from(LOCAL_TOOLS).join(', ')})` :
                     SERVER_MODE === 'read-only' ? '(all except local tools)' :
-                    '(1 workspace-config + 8 discovery + 4 labels + 6 object-info + 4 intelligent + 3 smart-generation + 4 file-ops + 3 pattern-analysis + 9 security-extensions)';
+                    '(1 workspace-config + 8 discovery + 4 labels + 7 object-info + 4 intelligent + 3 smart-generation + 4 file-ops + 3 pattern-analysis + 9 security-extensions)';
     console.log(`🎯 Registered ${toolCount} X++ MCP tools ${toolDesc}`);
     serverState.isReady = true;
     serverState.isHealthy = true;
@@ -654,6 +654,7 @@ async function main() {
           { name: 'get_view_info',                desc: 'View/data entity fields, relations, computed columns' },
           { name: 'get_report_info',              desc: 'AxReport datasets, fields, designs and RDL summary' },
           { name: 'get_method_signature',         desc: 'Exact method signature (required before CoC extensions)' },
+          { name: 'get_method_source',            desc: 'Full X++ source code of a method (complete business logic)' },
           { name: 'find_references',              desc: 'Where-used analysis across the entire codebase' },
         ]},
         { icon: '🧠', category: 'Intelligent Code Generation', tools: [

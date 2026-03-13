@@ -1107,6 +1107,40 @@ Examples:
           },
         },
         {
+          name: 'get_method_source',
+          description: `📄 Get the full X++ source code of a specific method. Use this when you need to understand the complete implementation — business logic, conditions, loops, error handling — not just the signature.
+
+Returns:
+- Complete method body as X++ code
+- Method signature
+- Model name
+
+Use WHEN:
+- Analysing what a method actually does (not just its signature)
+- Understanding business logic before writing an extension
+- Reviewing validation rules, posting logic, or workflow steps
+- Comparing implementations across classes
+
+Examples:
+- get_method_source("SalesTable", "validateWrite") → full validation logic
+- get_method_source("CustTable", "insert") → complete insert implementation
+- get_method_source("InventUpd_Reservation", "updateReservation") → full reservation logic`,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              className: {
+                type: 'string',
+                description: 'Name of the class containing the method',
+              },
+              methodName: {
+                type: 'string',
+                description: 'Name of the method to retrieve source code for',
+              },
+            },
+            required: ['className', 'methodName'],
+          },
+        },
+        {
           name: 'get_form_info',
           description: `📋 Get complete D365FO form structure including datasources, control hierarchy (buttons, grids, tabs, groups), methods, and form architecture. Essential for form customization and extensions.
 

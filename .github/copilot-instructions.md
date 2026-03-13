@@ -76,7 +76,8 @@ This workspace contains D365FO code. **Always use the specialized MCP tools** �
 > **Pattern:**
 > ```
 > 1. get_class_info("MyClass")                       analyze (compact=true by default)
-> 2. get_method_signature(class, method)             only if you need a body
+> 2. get_method_source(class, method)               to read the full body
+>    get_method_signature(class, method)            only if you need exact signature for CoC
 > 3. modify_d365fo_file()                            apply
 >    NOT: replace_string_in_file                       FORBIDDEN
 >    NOT: PowerShell script                            FORBIDDEN
@@ -85,7 +86,7 @@ This workspace contains D365FO code. **Always use the specialized MCP tools** �
 > ## ⚡ TOKEN BUDGET — READ BEFORE EVERY CALL
 >
 > - `get_class_info` returns **signatures only** by default (`compact=true`) — do NOT pass `compact=false` unless you need to read a body
-> - **NEVER call `get_class_info` more than 2× per turn** — use `get_method_signature(class, method)` for individual method bodies
+> - **NEVER call `get_class_info` more than 2× per turn** — use `get_method_source(class, method)` for individual method bodies (full source); use `get_method_signature(class, method)` only when you need the exact signature for CoC
 > - `search_extensions` can return large results — use at most once per turn
 
 ---
@@ -231,8 +232,9 @@ When the user asks to **refactor**, **improve**, **clean up**, **optimize**, or 
                            → e.g. "validation", "query pattern", "error handling"
                            → shows how standard D365FO code solves the same problem
 
-4. Read specific bodies:   get_method_signature("ClassName", "methodName")
+4. Read specific bodies:   get_method_source("ClassName", "methodName")
                            → use for EACH method you intend to change
+                           → returns the FULL source code (not just the signature)
                            → NEVER guess the body from the signature
 
 5. Find usages:            find_references("ClassName")  or  find_references("methodName")
@@ -433,7 +435,8 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 | `get_view_info(viewName)` | View / data entity structure |
 | `get_data_entity_info(entityName)` | Data entity: category, OData settings, datasources, keys, field mappings |
 | `get_report_info(reportName)` | **Read AxReport structure** — datasets, fields, designs, RDL summary. Use INSTEAD of PowerShell Get-Content |
-| `get_method_signature(className, methodName, includeCocTemplate?)` | **Preferred way to get a full method body** — required before CoC. Pass `includeCocTemplate: true` only when writing a CoC extension |
+| `get_method_source(className, methodName)` | **Full X++ source code** — use when you need to understand what the method does (complete business logic, conditions, loops) |
+| `get_method_signature(className, methodName, includeCocTemplate?)` | **Exact signature** — required before CoC. Pass `includeCocTemplate: true` only when writing a CoC extension |
 | `find_references(targetName, targetType?)` | Where-used analysis |
 
 ### Security & Extensions

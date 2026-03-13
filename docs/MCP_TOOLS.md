@@ -32,7 +32,7 @@ just ask in plain English.
 | **get_edt_info** | Extended Data Type definition: base type, labels, properties | "Show me EDT properties for CustAccount" |
 | **code_completion** | List methods/fields on a class or table | "What methods start with 'calc' on SalesTable?" |
 
-### Advanced Object Info (6 tools)
+### Advanced Object Info (7 tools)
 
 | Tool | What it does | Example prompt |
 |------|-------------|---------------|
@@ -41,6 +41,7 @@ just ask in plain English.
 | **get_view_info** | View/data entity: fields, relations, methods | "Show me GeneralJournalAccountEntryView" |
 | **get_report_info** | AxReport structure: datasets, fields, designs, RDL summary | "Show me the dataset fields of InventValue report" |
 | **get_method_signature** | Exact signature for CoC extensions | "Get signature of CustTable.validateWrite()" |
+| **get_method_source** | Full X++ source code of a method | "Show me the full implementation of SalesTable.validateWrite()" |
 | **find_references** | Where is this class/method/field used? | "Where is DimensionAttributeValueSet used?" |
 
 ### Intelligent Code Generation (4 tools)
@@ -227,6 +228,24 @@ wrong signature always causes a compilation error.
 ```
 Get the signature of SalesTable.validateWrite()
 What parameters does InventTable.initFromTable() take?
+```
+
+---
+
+### get_method_source
+
+Returns the complete X++ source code of a method — the full implementation including all
+conditions, loops, transaction handling, and error logic. Use this when the signature alone is
+not enough and you need to understand what the method actually does.
+
+The database stores the full body alongside the snippet, so no file I/O is needed at query time.
+Falls back to the extracted JSON metadata when the database was built before this feature was added.
+
+**Examples:**
+```
+Show me the full implementation of SalesTable.validateWrite()
+What does InventUpd_Reservation.updateReservation() actually do?
+Show me the posting logic in SalesInvoiceJournalPost.run()
 ```
 
 ---

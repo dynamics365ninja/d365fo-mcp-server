@@ -149,6 +149,7 @@ export class XppSymbolIndex {
         description TEXT,
         tags TEXT,
         source_snippet TEXT,
+        source TEXT,
         complexity INTEGER,
         used_types TEXT,
         method_calls TEXT,
@@ -176,6 +177,7 @@ export class XppSymbolIndex {
         ['description', 'TEXT'],
         ['tags', 'TEXT'],
         ['source_snippet', 'TEXT'],
+        ['source', 'TEXT'],
         ['complexity', 'INTEGER'],
         ['used_types', 'TEXT'],
         ['method_calls', 'TEXT'],
@@ -509,11 +511,11 @@ export class XppSymbolIndex {
       stmt = this.db.prepare(`
         INSERT OR REPLACE INTO symbols (
           name, type, parent_name, signature, file_path, model, package_name,
-          description, tags, source_snippet, complexity, used_types, method_calls,
+          description, tags, source_snippet, source, complexity, used_types, method_calls,
           inline_comments, extends_class, implements_interfaces, usage_example,
           usage_frequency, pattern_type, typical_usages, called_by_count, related_methods, api_patterns
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       this.stmtCache.set('addSymbol', stmt);
     }
@@ -529,6 +531,7 @@ export class XppSymbolIndex {
       symbol.description || null,
       symbol.tags || null,
       symbol.sourceSnippet || null,
+      symbol.source || null,
       symbol.complexity || null,
       symbol.usedTypes || null,
       symbol.methodCalls || null,
@@ -1167,6 +1170,7 @@ export class XppSymbolIndex {
               description: method.documentation,
               tags: method.tags?.join(', '),
               sourceSnippet: method.sourceSnippet,
+              source: method.source,
               complexity: method.complexity,
               usedTypes: method.usedTypes?.join(', '),
               methodCalls: method.methodCalls?.join(', '),

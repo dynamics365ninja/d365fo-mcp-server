@@ -140,6 +140,7 @@ export interface XppSymbol {
   description?: string;         // Human-readable description
   tags?: string;                // Comma-separated tags (stored as TEXT in SQLite)
   sourceSnippet?: string;       // First 10 lines for preview
+  source?: string;              // Full method source code
   complexity?: number;          // Complexity score (0-100)
   usedTypes?: string;           // Comma-separated types used
   methodCalls?: string;         // Comma-separated method calls

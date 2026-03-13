@@ -19,6 +19,7 @@ import { handleCreateD365File } from './createD365File.js';
 import { findReferencesTool } from './findReferences.js';
 import { modifyD365FileTool } from './modifyD365File.js';
 import { getMethodSignatureTool } from './methodSignature.js';
+import { getMethodSourceTool } from './getMethodSource.js';
 import { getFormInfoTool } from './formInfo.js';
 import { getQueryInfoTool } from './queryInfo.js';
 import { getViewInfoTool } from './viewInfo.js';
@@ -209,6 +210,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return modifyD365FileTool(request, context);
       case 'get_method_signature':
         return getMethodSignatureTool(request, context);
+      case 'get_method_source':
+        return getMethodSourceTool(request, context);
       case 'get_form_info':
         return getFormInfoTool(request, context);
       case 'get_query_info':
