@@ -44,7 +44,15 @@ This workspace contains D365FO code. **Always use the specialized MCP tools** �
 > - `create_file` on an existing object
 >
 >  **ALWAYS** use:
-> - `modify_d365fo_file()` — edit existing classes, tables, EDTs, forms, enums (add-method, add-field, modify-field, modify-property, remove-method, remove-field)
+> - `modify_d365fo_file()` — edit existing classes, tables, EDTs, forms, enums:
+>   - Methods: `add-method`, `remove-method`
+>   - Fields: `add-field`, `modify-field`, `rename-field`, `replace-all-fields`, `remove-field` (table + table-extension)
+>   - Indexes: `add-index`, `remove-index` (table + table-extension)
+>   - Relations: `add-relation`, `remove-relation` (table + table-extension)
+>   - Field groups: `add-field-group`, `remove-field-group`, `add-field-to-field-group` (table + table-extension)
+>   - Table-extension: `add-field-modification` (override base-table field label/mandatory)
+>   - Form-extension: `add-control`, `add-data-source`
+>   - Any object: `modify-property`
 > - `create_d365fo_file()` — create new objects
 >
 > **modify-property covers ALL table/EDT/class-level properties — NEVER use PowerShell for these:**
@@ -291,9 +299,12 @@ When the user asks to **refactor**, **improve**, **clean up**, **optimize**, or 
 4. Create extension file:      create_d365fo_file(objectType="table-extension",
                                  objectName="TargetTable.PrefixExtension", addToProject=true)
 
-5. Add fields/methods:         modify_d365fo_file(objectType="table-extension",
+5. Add fields/methods/etc:     modify_d365fo_file(objectType="table-extension",
                                  objectName="TargetTable.PrefixExtension",
-                                 operation="add-field" / "add-method", ...)
+                                 operation="add-field" / "add-method" /
+                                           "add-index" / "add-relation" /
+                                           "add-field-group" / "add-field-to-field-group" /
+                                           "add-field-modification", ...)
 ```
 
 ### Form extension
@@ -474,7 +485,7 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 |------|---------|
 | `generate_d365fo_xml(objectType, objectName)` | Preview XML before creating (supports: class, table, enum, form, query, view, data-entity, report) |
 | `create_d365fo_file(objectType, objectName, modelName, projectPath?, xmlContent?, addToProject?, overwrite?)` | Create new D365FO file — or overwrite existing with `overwrite=true` + `xmlContent` |
-| `modify_d365fo_file(objectType, objectName, operation, ...)` | Edit existing (add-method, add-field, **modify-field**, **rename-field**, **replace-all-fields**, modify-property, remove-method, remove-field) |
+| `modify_d365fo_file(objectType, objectName, operation, ...)` | Edit existing: methods (add/remove), fields (add/modify/rename/replace-all/remove), indexes (add/remove), relations (add/remove), field-groups (add/remove/add-field-to), add-field-modification, add-data-source, add-control, modify-property |
 | `verify_d365fo_project(objects, projectPath?, modelName?)` | Verify objects exist on disk and in .rnrproj — use INSTEAD OF PowerShell after `create_d365fo_file` |
 
 ### Labels
