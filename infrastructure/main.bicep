@@ -151,6 +151,10 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
           name: 'WEBSITE_NODE_DEFAULT_VERSION'
           value: '~24'
         }
+        {
+          name: 'WEBSITES_PORT'
+          value: '8080'
+        }
       ]
     }
   }

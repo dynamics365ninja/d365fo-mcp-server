@@ -447,6 +447,10 @@ async function main() {
     console.log = (...args: any[]) => process.stderr.write(args.join(' ') + '\n');
     console.info = (...args: any[]) => process.stderr.write(args.join(' ') + '\n');
     console.warn = (...args: any[]) => process.stderr.write('[WARN] ' + args.join(' ') + '\n');
+  } else {
+    // HTTP mode (Azure App Service): redirect console.warn to stdout so Azure
+    // Log Stream shows red ONLY for console.error (real errors), not warnings.
+    console.warn = (...args: any[]) => process.stdout.write('[WARN] ' + args.join(' ') + '\n');
   }
 
   console.log(`📡 Mode: ${isStdioMode ? 'STDIO' : 'HTTP'}`);
@@ -576,13 +580,11 @@ async function main() {
     serverState.isHealthy = true;
     serverState.statusMessage = 'Loading database...';
   } else {
-    // HTTP mode - initialize fully BEFORE opening the port.
-    // VS Copilot's MCP client does not retry on 503/404, so the port must only
-    // become available once the server is completely ready to handle requests.
+    // HTTP mode — bind the port immediately so Azure App Service does not kill
+    // the process during the (potentially long) database initialisation phase.
+    // The health endpoint returns 503 while the server is starting and 200 once
+    // fully ready.  MCP routes are registered dynamically after initializeServices().
     console.log('📡 Using HTTP transport for standalone server');
-
-    const { mcpServer, symbolIndex, parser, cache, workspaceScanner, hybridSearch, termRelationshipGraph } =
-      await initializeServices();
 
     // Create Express app
     const app = express();
@@ -592,27 +594,35 @@ async function main() {
 
     app.use(express.json());
 
-    // Register MCP transport (all /mcp routes)
-    createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache, workspaceScanner, hybridSearch, termRelationshipGraph });
-
-    serverState.isReady = true;
-    serverState.isHealthy = true;
-    serverState.statusMessage = 'Ready';
-
-    // Health check endpoint
+    // Health check endpoint — dynamic: reflects serverState at request time
     app.get('/health', (_req, res) => {
-      return res.json({
-        status: 'healthy',
-        ready: true,
+      const ready = serverState.isReady;
+      return res.status(ready ? 200 : 503).json({
+        status: ready ? 'healthy' : 'starting',
+        ready,
         service: 'd365fo-mcp-server',
         version: '1.0.0',
+        message: serverState.statusMessage,
         symbols: serverState.symbolIndex?.getSymbolCount() || 0,
       });
     });
 
-    // Start listening — server is fully initialised at this point
+    // Bind port immediately — Azure requires the port to be open within ~230 s
     const host = process.env.HOST || '0.0.0.0';
-    app.listen(PORT, host, () => {
+    await new Promise<void>(resolve => app.listen(PORT, host, () => {
+      console.log(`🔌 HTTP server bound to ${host}:${PORT} — waiting for initialisation...`);
+      resolve();
+    }));
+
+    // Initialise services in the background; register MCP routes once ready
+    initializeServices().then(({ mcpServer, symbolIndex, parser, cache, workspaceScanner, hybridSearch, termRelationshipGraph }) => {
+      // Register MCP transport (Express supports dynamic route registration)
+      createStreamableHttpTransport(mcpServer, app, { symbolIndex, parser, cache, workspaceScanner, hybridSearch, termRelationshipGraph });
+
+      serverState.isReady = true;
+      serverState.isHealthy = true;
+      serverState.statusMessage = 'Ready';
+
       console.log('');
       console.log('✅ Server is READY!');
       console.log(`✅ D365 F&O MCP Server listening on ${host}:${PORT}`);
@@ -702,6 +712,10 @@ async function main() {
         }
         console.log('');
       }
+    }).catch((err) => {
+      console.error('❌ Initialisation failed:', err);
+      serverState.isHealthy = false;
+      serverState.statusMessage = `Initialisation failed: ${err}`;
     });
   }
 }
