@@ -74,6 +74,10 @@ In the **Azure Portal**:
 5. Enable **System-assigned managed identity** on the Web App
    (Web App → Settings → Identity → System assigned → On)
 
+For a one-click deployment that also includes the app settings and startup command from step 2, use this Azure Deploy button (note: this will not include the optional Redis resource).
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdynamics365ninja%2Fd365fo-mcp-server%2Frefs%2Fheads%2Fmain%2Finfrastructure%2Fazuredeploy.json)
+
 ---
 
 ## Step 2 — Configure App Settings
