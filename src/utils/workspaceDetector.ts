@@ -158,7 +158,7 @@ export async function detectD365Project(workspacePath: string, maxDepth: number 
  * 1. Explicitly provided workspacePath parameter
  * 2. Current working directory (process.cwd())
  * 3. Environment variable WORKSPACE_PATH
- * 4. Well-known VS project directories (K:\VSProjects, C:\VSProjects, %USERPROFILE%\source\repos)
+ * 4. Well-known VS project directories (%USERPROFILE%\Documents\VS 2022\Projects, K:\VSProjects, K:\Projects, K:\repos, C:\VSProjects, C:\Projects)
  * 5. PackagesLocalDirectory path regex extraction (last resort, no .rnrproj)
  */
 export async function autoDetectD365Project(
@@ -210,6 +210,12 @@ export async function autoDetectD365Project(
     const userProfile = process.env.USERPROFILE || `C:\\Users\\${process.env.USERNAME}`;
     const wellKnownPaths = [
       `${userProfile}\\Documents\\Visual Studio 2022\\Projects`,
+      // Common D365FO VM layouts — K: is the data drive in most LCS-provisioned VMs
+      `K:\\VSProjects`,
+      `K:\\Projects`,
+      `K:\\repos`,
+      `C:\\VSProjects`,
+      `C:\\Projects`,
     ];
     for (const searchRoot of wellKnownPaths) {
       try {

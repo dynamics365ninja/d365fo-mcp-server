@@ -33,6 +33,13 @@ This MCP server pre-indexes your entire D365FO installation — 584,799+ symbols
 
 ## Quick Start
 
+**Prerequisites** — install [d365fo.tools](https://github.com/d365collaborative/d365fo.tools) if not already present:
+
+```powershell
+Install-Module -Name d365fo.tools -AllowClobber -Scope CurrentUser  # first time
+Update-Module -Name d365fo.tools                                     # or update existing
+```
+
 ```powershell
 git clone https://github.com/dynamics365ninja/d365fo-mcp-server.git
 cd d365fo-mcp-server
