@@ -24,7 +24,7 @@ graph TB
 
     subgraph "Azure Cloud"
         subgraph "App Service"
-            MCP[MCP Server - Node.js 22 LTS, Express 5.x HTTP]
+            MCP[MCP Server - Node.js 24 LTS, Express 5.x HTTP]
         end
         
         subgraph "Storage"
@@ -35,7 +35,7 @@ graph TB
     subgraph "MCP Server Components"
         HTTP[HTTP Transport Layer - Express + Rate Limiting]
         PROTO[MCP Protocol Handler - JSON-RPC 2.0]
-        TOOLS[Tool Handlers - 40 MCP Tools]
+        TOOLS[Tool Handlers - 43 MCP Tools]
         DB[(Symbols Database - FTS5, 584K+ symbols)]
         LDB[(Labels Database - FTS5, 19M+ labels, 70 languages)]
         CACHE[Redis Cache - Optional]
@@ -82,7 +82,7 @@ sequenceDiagram
     alt Initialize
         MCP-->>IDE: Server Capabilities
     else Tools List
-        MCP-->>IDE: 40 Tool Definitions
+        MCP-->>IDE: 43 Tool Definitions
     else Tool Call
         MCP->>Handler: Route to Handler
         Handler->>Tool: Execute Tool
@@ -348,7 +348,7 @@ graph TB
 
     subgraph "Azure Resources"
         subgraph "Resource Group: rg-xpp-mcp"
-            APP[App Service - app-xpp-mcp - Linux P0v3, Node.js 22-lts]
+            APP[App Service - app-xpp-mcp - Linux P0v3, Node.js 24-lts]
             STORAGE[Storage Account - st-xpp-mcp - StorageV2, Hot, LRS]
         end
     end
@@ -521,7 +521,7 @@ graph LR
     subgraph "MCP Protocol Methods"
         INIT[initialize - Server Capabilities]
         NOTIFY[notifications/initialized - Handshake Complete]
-        TOOLS_LIST[tools/list - 40 Available Tools]
+        TOOLS_LIST[tools/list - 43 Available Tools]
         TOOLS_CALL[tools/call - Execute Tool]
         RES_LIST[resources/list - Empty]
         RES_TMPL[resources/templates/list - Empty]
@@ -992,17 +992,17 @@ graph TB
 ```mermaid
 graph TB
     subgraph "Runtime"
-        NODE[Node.js 22 LTS]
-        TS[TypeScript 5.7]
+        NODE[Node.js 24 LTS]
+        TS[TypeScript 5.9]
     end
 
     subgraph "Web Framework"
         EXPRESS[Express 5.2]
-        RATE_LIM[express-rate-limit 8.2]
+        RATE_LIM[express-rate-limit 8.3]
     end
 
     subgraph "MCP Protocol"
-        SDK[MCP SDK 1.0 - modelcontextprotocol/sdk]
+        SDK[MCP SDK 1.27 - modelcontextprotocol/sdk]
         JSONRPC[JSON-RPC 2.0]
     end
 
@@ -1017,8 +1017,8 @@ graph TB
     end
 
     subgraph "Caching"
-        REDIS[ioredis 5.9]
-        FAST_XML[fast-xml-parser 5.3]
+        REDIS[ioredis 5.10]
+        FAST_XML[fast-xml-parser 5.4]
     end
 
     subgraph "Azure"
