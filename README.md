@@ -33,11 +33,10 @@ This MCP server pre-indexes your entire D365FO installation — 584,799+ symbols
 
 ## Quick Start
 
-**Prerequisites** — install [d365fo.tools](https://github.com/d365collaborative/d365fo.tools) if not already present:
+**Prerequisites** — install required software via [d365fo.tools](https://github.com/d365collaborative/d365fo.tools):
 
 ```powershell
-Install-Module -Name d365fo.tools -AllowClobber -Scope CurrentUser  # first time
-Update-Module -Name d365fo.tools                                     # or update existing
+Install-D365SupportingSoftware -Name vscode,python,node.js
 ```
 
 ```powershell
