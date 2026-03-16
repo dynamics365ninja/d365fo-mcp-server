@@ -11,9 +11,9 @@
   "parameters": {
     "location": {
       "type": "string",
-      "defaultValue": "[resourceGroup().location]",
+      "defaultValue": "",
       "metadata": {
-        "description": "Azure region for resources"
+        "description": "Azure region for resources. Leave empty to use the resource group's location."
       }
     },
     "appServiceSku": {
@@ -59,6 +59,7 @@
   },
   "variables": {
     "appName": "[resourceGroup().name]",
+    "resolvedLocation": "[if(empty(parameters('location')), resourceGroup().location, parameters('location'))]",
     "appServicePlanName": "[format('{0}-plan', variables('appName'))]",
     "appServiceName": "[variables('appName')]",
     "storageAccountName": "[replace(variables('appName'), '-', '')]",
@@ -69,7 +70,7 @@
       "type": "Microsoft.Storage/storageAccounts",
       "apiVersion": "2023-01-01",
       "name": "[variables('storageAccountName')]",
-      "location": "[parameters('location')]",
+      "location": "[variables('resolvedLocation')]",
       "sku": {
         "name": "[parameters('storageSku')]"
       },
@@ -115,7 +116,7 @@
       "type": "Microsoft.Web/serverfarms",
       "apiVersion": "2023-01-01",
       "name": "[variables('appServicePlanName')]",
-      "location": "[parameters('location')]",
+      "location": "[variables('resolvedLocation')]",
       "sku": {
         "name": "[parameters('appServiceSku')]",
         "tier": "[variables('appServiceTier')]",
@@ -130,7 +131,7 @@
       "type": "Microsoft.Web/sites",
       "apiVersion": "2023-01-01",
       "name": "[variables('appServiceName')]",
-      "location": "[parameters('location')]",
+      "location": "[variables('resolvedLocation')]",
       "kind": "app,linux",
       "identity": {
         "type": "SystemAssigned"

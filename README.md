@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**43 AI tools that know every X++ class, table, method, and EDT in your D365FO codebase**
+**44 AI tools that know every X++ class, table, method, and EDT in your D365FO codebase**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen.svg)](https://nodejs.org/)
@@ -135,8 +135,7 @@ Copy-Item -Path ".github" -Destination "C:\source\repos\" -Recurse
 | Ask Copilot | Tool used |
 |-------------|-----------|
 | `Generate a transaction table with common fields` | `generate_smart_table` |
-| `Create a SimpleList form for MyOrderTable` | `generate_smart_form` |
-| `Create a security privilege + duty for our new form` | `generate_code` (security-privilege pattern) |
+| `Create a SimpleList form for MyOrderTable` | `generate_smart_form` || `Create an SSRS report for inventory by zones` | `generate_smart_report` || `Create a security privilege + duty for our new form` | `generate_code` (security-privilege pattern) |
 | `Add a new field TransQty (EDT: InventQty) to my table` | `modify_d365fo_file` |
 | `Create a new class and add it to the VS project` | `create_d365fo_file` |
 | `Check that all created objects exist on disk and in the project` | `verify_d365fo_project` |
@@ -187,7 +186,7 @@ Setup guide: [docs/SETUP.md](docs/SETUP.md) · CI/CD pipeline: [docs/PIPELINES.m
 |------|---------|
 | [docs/SETUP.md](docs/SETUP.md) | Installation, configuration, Azure deployment |
 | [docs/MCP_CONFIG.md](docs/MCP_CONFIG.md) | `.mcp.json` reference — workspace paths, UDE, project settings |
-| [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) | All 43 tools with parameters and example prompts |
+| [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) | All 44 tools with parameters and example prompts |
 | [docs/USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md) | Practical examples: search, CoC, SysOperation, security |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical architecture, dual-database design |
 | [docs/CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md) | ISV / custom model configuration |

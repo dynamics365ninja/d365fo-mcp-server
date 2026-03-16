@@ -1,7 +1,7 @@
 # All Available Tools
 
 When you ask GitHub Copilot a question about D365FO code, it automatically calls one of these
-43 tools to look up the answer or generate code. You do not need to name the tools yourself —
+44 tools to look up the answer or generate code. You do not need to name the tools yourself —
 just ask in plain English.
 
 ---
@@ -53,12 +53,13 @@ just ask in plain English.
 | **analyze_class_completeness** | Which standard methods is my class missing? | "Is MyHelper class complete?" |
 | **get_api_usage_patterns** | How is a specific API typically initialized and used? | "How do I use LedgerJournalEngine?" |
 
-### Smart Object Generation (3 tools)
+### Smart Object Generation (4 tools)
 
 | Tool | What it does | Example prompt |
 |------|-------------|---------------|
 | **generate_smart_table** | AI-driven table generation with pattern analysis | "Generate a transaction table with common fields" |
 | **generate_smart_form** | AI-driven form generation with pattern analysis (SimpleList, DetailsMaster, ListPage, etc.) | "Create a SimpleList form for MyTable" |
+| **generate_smart_report** | AI-driven SSRS report generation — creates TmpTable + Contract + DP + Controller + AxReport in one call | "Create an SSRS report for inventory by zones" |
 | **suggest_edt** | Suggest EDT for field name using fuzzy matching | "What EDT should I use for CustomerAccount field?" |
 
 ### Pattern Analysis (3 tools)
@@ -742,7 +743,61 @@ Generate MyOrderForm with datasource and controls for displaying orders
 
 ---
 
-### verify_d365fo_project
+### generate_smart_report
+
+AI-driven SSRS report generation that creates up to **5 D365FO objects in a single call**:
+
+1. **TmpTable** (AxTable, TableType=TempDB) — report data storage
+2. **Contract class** (DataContractAttribute) — dialog parameters with `[DataMemberAttribute]` parm methods
+3. **DP class** (SrsReportDataProviderBase) — `processReport()` + `get<TmpTable>()` getter
+4. **Controller class** (SrsReportRunController) — `main(Args)` entry point + `prePromptModifyContract()`
+5. **AxReport XML + RDL** — dataset bound to DP/TmpTable, detail tablix, hidden AX system parameters
+
+**Strategies:**
+1. **Field hints** — `fieldsHint` with comma-separated field names; EDTs auto-suggested from names
+2. **Structured fields** — `fields` array with explicit `edt` and `.NET dataType` per field
+3. **Copy structure** — `copyFrom` reads the existing report's TmpTable fields from the symbol index
+4. **Contract parameters** — `contractParams` generates complete parm methods with `SysOperationLabelAttribute`
+
+**Parameters:**
+- `name` — base report name WITHOUT model prefix (required), e.g. `"InventByZones"`
+- `caption` — human-readable title (e.g. `"Inventory by Zones"`)
+- `fieldsHint` — comma-separated field names (e.g. `"ItemId, ItemName, Qty, Zone"`)
+- `fields` — structured field specs `[{name, edt?, dataType?, label?}]`
+- `contractParams` — dialog parameters `[{name, type?, label?, mandatory?}]`
+- `generateController` — whether to generate a Controller class (default: `true`)
+- `designStyle` — `"SimpleList"` (default) or `"GroupedWithTotals"`
+- `copyFrom` — copy field structure from an existing report name
+- `modelName` — model name (auto-detected from projectPath)
+- `projectPath` — path to `.rnrproj` file
+- `solutionPath` — path to solution directory
+
+**Examples:**
+```
+Create an SSRS report for inventory by zones with fields ItemId, ItemName, Qty, Zone
+Generate a customer balance report with FromDate and ToDate dialog parameters
+Create a SalesReport copying fields from SalesInvoice report
+```
+
+**Returns (Azure/Linux):**
+- Up to 5 XML/source blocks — one per object
+- Mandatory next step: call `create_d365fo_file` for **each** block in order
+- ⛔ NEVER skip any of the create calls — all objects are required for the report to build
+
+**Returns (Windows VM):**
+- Files written directly to disk + added to VS project
+- ⛔ DO NOT call `create_d365fo_file` — task is already complete
+
+**Object naming convention:**
+| Object | Name pattern | Example |
+|--------|-------------|--------|
+| TmpTable | `{FinalName}Tmp` | `ContosoInventByZonesTmp` |
+| Contract | `{FinalName}Contract` | `ContosoInventByZonesContract` |
+| DP class | `{FinalName}DP` | `ContosoInventByZonesDP` |
+| Controller | `{FinalName}Controller` | `ContosoInventByZonesController` |
+| Report | `{FinalName}` | `ContosoInventByZones` |
+
+---
 
 Verifies that D365FO objects exist on disk at the correct AOT path and are referenced in the Visual Studio project file. Use this instead of PowerShell after `create_d365fo_file` to confirm that files were created and registered correctly.
 
@@ -820,6 +875,8 @@ What model am I working in?
 - "Create..." → uses analyze_code_patterns + generate_code + create_d365fo_file
 - "Extend..." → uses get_method_signature + generate_code
 - "Generate a table..." → uses get_table_patterns + generate_smart_table
+- "Generate a form..." → uses get_form_patterns + generate_smart_form
+- "Create an SSRS report..." → uses get_report_info + generate_smart_report
 
 **Be specific for best results:**
 - Vague: "Find customer stuff"

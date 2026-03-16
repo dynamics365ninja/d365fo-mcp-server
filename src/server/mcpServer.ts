@@ -1884,6 +1884,108 @@ Examples:
             required: ['name'],
           },
         },
+        {
+          name: 'generate_smart_report',
+          description: `🎨 AI-driven SSRS report generation — creates up to 5 D365FO objects in one call.
+
+Generates:
+1. TmpTable (TempDB) — report data storage
+2. Contract class (DataContractAttribute) — dialog parameters
+3. DP class (SrsReportDataProviderBase) — data processing
+4. Controller class (SrsReportRunController) — menu item entry point (optional)
+5. AxReport XML + RDL design — dataset + tablix bound to DP/TmpTable
+
+Strategies:
+- fieldsHint: comma-separated field names → auto-suggest EDTs, build TmpTable + report fields
+- fields: structured field specs with explicit EDTs and .NET data types
+- contractParams: dialog parameters → Contract class with parm methods
+- copyFrom: copy field structure from existing report's TmpTable
+- designStyle: SimpleList (default) or GroupedWithTotals
+
+⛔ NEVER call generate_smart_report without fieldsHint, fields, or copyFrom — no fields = no XML.
+⛔ NEVER add model prefix to the name parameter — prefix is applied automatically.
+⛔ On Azure/Linux: call create_d365fo_file for EACH returned object block, in order.
+⛔ On Windows: DO NOT call create_d365fo_file — files are written directly.
+
+Examples:
+- generate_smart_report(name="InventByZones", fieldsHint="ItemId, ItemName, Qty, Zone", caption="Inventory by Zones")
+- generate_smart_report(name="CustBalance", fieldsHint="CustAccount, Name, Balance", contractParams=[{name:"FromDate",type:"TransDate"},{name:"ToDate",type:"TransDate"}])
+- generate_smart_report(name="SalesReport", copyFrom="SalesInvoice")`,
+          inputSchema: {
+            type: 'object',
+            properties: {
+              name: {
+                type: 'string',
+                description: 'Base report name WITHOUT model prefix (e.g. "InventByZones"). Prefix applied automatically.',
+              },
+              caption: {
+                type: 'string',
+                description: 'Human-readable caption/title for the report (e.g. "Inventory by Zones").',
+              },
+              fieldsHint: {
+                type: 'string',
+                description: 'Comma-separated field names for the TmpTable (e.g. "ItemId, ItemName, Qty, Zone"). EDTs auto-suggested.',
+              },
+              fields: {
+                type: 'array',
+                description: 'Structured field specs. Takes priority over fieldsHint.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    edt: { type: 'string' },
+                    dataType: { type: 'string', description: '.NET type, e.g. "System.Double"' },
+                    label: { type: 'string' },
+                  },
+                  required: ['name'],
+                },
+              },
+              contractParams: {
+                type: 'array',
+                description: 'Dialog parameters for the Contract class.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    type: { type: 'string', description: 'X++ type — EDT or primitive (e.g. "TransDate", "CustAccount")' },
+                    label: { type: 'string' },
+                    mandatory: { type: 'boolean' },
+                  },
+                  required: ['name'],
+                },
+              },
+              generateController: {
+                type: 'boolean',
+                description: 'Generate Controller class (default: true)',
+              },
+              designStyle: {
+                type: 'string',
+                description: 'RDL design pattern: "SimpleList" (default) or "GroupedWithTotals"',
+              },
+              copyFrom: {
+                type: 'string',
+                description: 'Copy field structure from existing report name',
+              },
+              modelName: {
+                type: 'string',
+                description: 'Model name (auto-detected from projectPath)',
+              },
+              projectPath: {
+                type: 'string',
+                description: 'Path to .rnrproj file',
+              },
+              solutionPath: {
+                type: 'string',
+                description: 'Path to solution directory',
+              },
+              packagePath: {
+                type: 'string',
+                description: 'Base packages directory path',
+              },
+            },
+            required: ['name'],
+          },
+        },
       // ── New tools: security, menu items, extensions ──────────────────────────────
       {
         name: 'get_security_artifact_info',

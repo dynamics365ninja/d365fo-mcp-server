@@ -207,3 +207,44 @@ for inventory revaluation. I've never worked with ledger journals before.
 - `get_method_signature` is called 7× (steps 6–7) because Copilot must know the exact parameter order for `JournalTransData.create(doInsert, initVoucherList)` and `LedgerDimensionFacade.createLedgerDimension` before writing a single line of service code — guessing these produces uncompilable X++.
 - Studying an existing `My*` service class (`MyBankSett_LedgerJournalTransAutoSettleService`) via `get_class_info` + `get_method_signature` gives a proven structural template in the same model, avoiding the need to invent a pattern from scratch.
 - `search_labels` before `create_label` ensures no duplicate label IDs are created — the 4 found labels guided the naming of the 3 new ones.
+
+---
+
+## Scenario 6 — Create a Complete SSRS Report from Scratch
+
+**Goal:** Create a full SSRS report for inventory by storage zones — including TmpTable,
+Contract, DP, Controller, and AxReport XML — in a single conversation.
+
+**Prompt:**
+```
+Create an SSRS report "InventByZones" that shows inventory by warehouse zones.
+Fields: ItemId, ItemName, InventLocationId, WHSZoneId, OnHandQty, ReservedQty, AvailableQty.
+Dialog parameters: InventLocationId (mandatory), FromDate, ToDate.
+The report should have a Controller class so we can attach a menu item.
+```
+
+**Tools Copilot chains:**
+1. `get_workspace_info` — workspace config check (model name, prefix, paths); mandatory first call
+2. `get_report_info("InventOnHand")` — study an existing inventory report to understand the DP/TmpTable/Contract naming conventions and dataset structure used in this codebase
+3. `search_labels` ×2 — check whether labels for "Inventory by zones", "Warehouse", "Zone" already exist; re-use to avoid duplicates
+4. `create_label` ×3 — create labels for caption, InventLocationId prompt, and report header
+5. `generate_smart_report` — one call generates all 5 objects:
+   - `InventByZonesTmp` (TempDB table, 7 fields with auto-suggested EDTs: `ItemId`, `Name`, `InventLocationId`, `WHSZoneId`, `InventQty` ×3)
+   - `ContosoInventByZonesContract` (`[DataContractAttribute]` with `parmInventLocationId`, `parmFromDate`, `parmToDate` — `InventLocationId` marked mandatory)
+   - `ContosoInventByZonesDP` (`extends SrsReportDataProviderBase`, `processReport()` skeleton, `getContosoInventByZonesTmp()` getter)
+   - `ContosoInventByZonesController` (`main(Args)`, `prePromptModifyContract()`)
+   - `ContosoInventByZones.xml` (AxReport + full RDL with Tablix for 7 fields, all AX system hidden parameters, DynamicParameter)
+6. `create_d365fo_file` ×5 — one call per returned XML block: TmpTable → Contract → DP → Controller → Report (in this order, Azure/Linux path)
+7. `verify_d365fo_project` — confirms all 5 files exist on disk and are in the `.rnrproj`  ✅
+
+**After generation — implement the DP logic:**
+8. `get_table_info("InventSum")` — check fields and relations on InventSum (on-hand quantities)
+9. `get_table_info("WHSZone")` — check WHSZone fields and join conditions
+10. `modify_d365fo_file` — add the actual `processReport()` body to the DP class using a `join` query on `InventSum`, `WHSLocation`, `WHSZone`
+
+**Why this matters:**
+- `generate_smart_report` replaces what previously required 15+ tool calls (separate table, 3 class creations, report XML assembly, RDL generation) with a single call that returns all 5 object blocks.
+- The order in step 6 matters: TmpTable must be created before the DP class so the `[SRSReportDataSetAttribute(tableStr(...))]` reference resolves at build time.
+- `processReport()` is intentionally a skeleton — the actual query logic (join InventSum + WHSLocation + WHSZone) requires understanding the source tables first (steps 8–9), which is why the tool generates a `// TODO` placeholder rather than guessing the query.
+- On a Windows VM, step 6 is skipped entirely — `generate_smart_report` writes all files directly; Copilot only needs to confirm with `verify_d365fo_project`.
+
