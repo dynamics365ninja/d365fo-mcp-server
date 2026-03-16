@@ -7,7 +7,7 @@ import * as fs from 'fs/promises';
 import { existsSync, realpathSync } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { autoDetectD365Project, detectD365Project, scanAllD365Projects, extractModelNameFromProject, detectGitBranch, type D365ProjectInfo } from './workspaceDetector.js';
+import { autoDetectD365Project, detectD365Project, scanAllD365Projects, extractModelNameFromProject, detectGitBranch, isMicrosoftDemoModel, type D365ProjectInfo } from './workspaceDetector.js';
 import { registerCustomModel } from './modelClassifier.js';
 import { XppConfigProvider, type XppEnvironmentConfig } from './xppConfigProvider.js';
 
@@ -222,10 +222,21 @@ class ConfigManager {
       // Re-check staleness: time has passed since the initial check above.
       const isNowStale = generation !== undefined && generation < this.detectionGeneration;
       // Use first found as primary if workspace detection yielded nothing and scan is current.
+      // Skip Microsoft demo/tutorial model names (e.g. FleetManagement) — these appear when
+      // a developer creates a new VS project and leaves the default model name unchanged.
+      // Prefer the first custom (non-demo) model; only fall back to demo models when that
+      // is ALL that was found (unusual, but possible in purely tutorial repos).
       if (all.length > 0 && !this.autoDetectedProject && !isNowStale) {
-        this.autoDetectedProject = all[0];
-        registerCustomModel(all[0].modelName);
-        console.error(`[ConfigManager] ✅ Using first found project as primary: ${all[0].modelName}`);
+        const primary = all.find(p => !isMicrosoftDemoModel(p.modelName)) ?? all[0];
+        if (isMicrosoftDemoModel(primary.modelName)) {
+          console.error(
+            `[ConfigManager] ⚠️ All detected projects are Microsoft demo models — using "${primary.modelName}" as fallback.`,
+            `This usually means the VS project wizard default model was not changed.`,
+          );
+        }
+        this.autoDetectedProject = primary;
+        registerCustomModel(primary.modelName);
+        console.error(`[ConfigManager] ✅ Using first found project as primary: ${primary.modelName}`);
       }
     }
   }

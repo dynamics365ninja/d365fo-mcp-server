@@ -130,10 +130,22 @@ const ModifyD365FileArgsSchema = z.object({
   
   // For add-method
   methodName: z.string().optional().describe('Name of method to add/remove'),
-  methodCode: z.string().optional().describe('X++ code for the method body'),
+  methodCode: z.string().optional().describe(
+    'X++ code for the method — either the FULL source (access modifiers + return type + name + params + body) ' +
+    'or just the method body. When the full source is provided (first real code line contains an access ' +
+    'modifier and the method name followed by "("), it is used as-is. When only a body is provided, ' +
+    'the signature is assembled from methodModifiers, methodReturnType, methodName, and methodParameters. ' +
+    'Alias: sourceCode (preferred when passing a complete CoC skeleton or full method source).'
+  ),
+  sourceCode: z.string().optional().describe(
+    'Alias for methodCode — pass the FULL X++ method source including access modifiers, return type, ' +
+    'method name, parameters, attributes (e.g. [ExtensionOf(...)]), and body. ' +
+    'This is the preferred parameter when passing a complete CoC skeleton. ' +
+    'Either methodCode or sourceCode may be used; sourceCode takes precedence if both are supplied.'
+  ),
   methodModifiers: z.string().optional().describe('Method modifiers (e.g., "public static")'),
   methodReturnType: z.string().optional().describe('Return type of method'),
-  methodParameters: z.string().optional().describe('Method parameters (e.g., "str _param1, int _param2")'),
+  methodParameters: z.string().optional().describe('Method parameters (e.g., "str _param1, int _param2")'),  
   
   // For add-field / modify-field (tables)
   fieldName: z.string().optional().describe('Name of field to add/remove/modify/rename'),
@@ -199,13 +211,21 @@ const ModifyD365FileArgsSchema = z.object({
 
   // For modify-property
   propertyPath: z.string().optional().describe(
-    'Top-level property name to set. For tables: TableGroup, TitleField1, TitleField2, TableType (TempDB/RegularTable/InMemory), ' +
-    'CacheLookup, ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends. ' +
+    'Property name to set. ' +
+    'For tables (AxTable): TableGroup, TitleField1, TitleField2, TableType (TempDB/RegularTable/InMemory), ' +
+    'CacheLookup, ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends, SystemTable. ' +
+    'For table-extensions (AxTableExtension): properties are stored inside <PropertyModifications> as ' +
+    '<AxPropertyModification> entries. Supported: Label, HelpText, TableGroup, CacheLookup, TitleField1, TitleField2, ' +
+    'ClusteredIndex, PrimaryIndex, SaveDataPerCompany, TableType, SystemTable, ' +
+    'ModifiedDateTime (Yes/No), CreatedDateTime (Yes/No), ModifiedBy (Yes/No), CreatedBy (Yes/No), ' +
+    'CountryRegionCodes (comma-separated, e.g. "CZ,SK"). ' +
     'For EDTs: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField. ' +
     'For classes: Extends, Abstract, Final, Label. ' +
     'For nested properties use dot notation, e.g. "Fields.AxTableField.Name" (rare). ' +
     'Examples: propertyPath="TableGroup" propertyValue="Group"; propertyPath="TitleField1" propertyValue="ItemId"; ' +
-    'propertyPath="TableType" propertyValue="TempDB"; propertyPath="Extends" propertyValue="WHSZoneId"'
+    'propertyPath="TableType" propertyValue="TempDB"; propertyPath="Extends" propertyValue="WHSZoneId"; ' +
+    'propertyPath="ModifiedDateTime" propertyValue="Yes" (table-extension); ' +
+    'propertyPath="CountryRegionCodes" propertyValue="CZ,SK" (table-extension)'
   ),
   propertyValue: z.string().optional().describe('New property value'),
   
@@ -744,10 +764,35 @@ function inferDefaultMethodBody(methodName: string, returnType: string, params: 
 }
 
 /**
- * Add method to class/table/form
+ * Determines whether `code` starts with a complete X++ method signature rather than
+ * just a method body.
+ *
+ * A complete signature has its first real code line (skipping blank lines, doc-comment
+ * lines, and attribute lines starting with `[`) containing BOTH:
+ *   - an X++ access/type modifier keyword (public, protected, private, static, …)
+ *   - the method name immediately followed by `(`
+ *
+ * This is more reliable than a bare `includes('(')` check, which would also match any
+ * function call inside the method body (e.g. `myHelper.compute(value)`) and cause the
+ * signature to be omitted from the stored XML.
  */
+function hasMethodSignatureLine(code: string, methodName: string): boolean {
+  const MODIFIER_RE = /\b(public|protected|private|static|final|abstract|virtual|override|server|client|display|edit)\b/;
+  for (const line of code.split('\n')) {
+    const t = line.trim();
+    // Skip blank lines, comments (// /// /* *), and attribute lines [...]
+    if (!t || t.startsWith('//') || t.startsWith('/*') || t.startsWith('*') || t.startsWith('[')) continue;
+    // First real code line: must contain an access modifier AND methodName followed by '('
+    return MODIFIER_RE.test(t) && t.includes(`${methodName}(`);
+  }
+  return false;
+}
+
 async function addMethod(xmlObj: any, objectType: string, args: any): Promise<boolean> {
-  const { methodName, methodCode, methodModifiers, methodReturnType, methodParameters } = args;
+  // sourceCode is the canonical parameter name used in copilot instructions;
+  // methodCode is the legacy name — accept either, with sourceCode taking precedence.
+  const effectiveMethodCode: string | undefined = args.sourceCode ?? args.methodCode;
+  const { methodName, methodModifiers, methodReturnType, methodParameters } = args;
 
   if (!methodName) {
     throw new Error('methodName is required for add-method operation');
@@ -767,7 +812,7 @@ async function addMethod(xmlObj: any, objectType: string, args: any): Promise<bo
     if (!root.SourceCode || typeof root.SourceCode[0] !== 'object') {
       root.SourceCode = [{}];
     }
-    root.SourceCode[0].Declaration = [ensureXppDocComment(decodeXmlEntitiesFromXppSource(methodCode || ''))];
+    root.SourceCode[0].Declaration = [ensureXppDocComment(decodeXmlEntitiesFromXppSource(effectiveMethodCode || ''))];
     return true;
   }
 
@@ -800,15 +845,19 @@ async function addMethod(xmlObj: any, objectType: string, args: any): Promise<bo
     methodsNode[0].Method = [methodsNode[0].Method];
   }
 
-  // Build full method source — if methodCode already contains the signature use it directly,
-  // otherwise assemble from methodModifiers / methodReturnType / methodParameters.
+  // Build full method source — if the effective code already contains the signature use it
+  // directly, otherwise assemble from methodModifiers / methodReturnType / methodParameters.
   // Decode any XML entities first: AI models may copy entity-encoded text from SSRS report
-  // <Text> blocks (e.g. &lt;summary&gt;) and pass it as methodCode. Those entities must be
-  // decoded to proper characters so the CDATA section is not corrupted.
-  const decodedMethodCode = methodCode ? decodeXmlEntitiesFromXppSource(methodCode) : undefined;
+  // <Text> blocks (e.g. &lt;summary&gt;) and pass it as the code argument. Those entities
+  // must be decoded to proper characters so the CDATA section is not corrupted.
+  const decodedMethodCode = effectiveMethodCode ? decodeXmlEntitiesFromXppSource(effectiveMethodCode) : undefined;
   let fullSource: string;
-  if (decodedMethodCode && decodedMethodCode.includes('(')) {
-    // Caller passed a complete method (signature + body)
+  if (decodedMethodCode && hasMethodSignatureLine(decodedMethodCode, methodName)) {
+    // Caller passed a complete method (signature + body) — use as-is.
+    // hasMethodSignatureLine checks that the first real code line (skipping comments/attributes)
+    // contains both an access modifier keyword AND the method name followed by '('.
+    // This is more reliable than a bare includes('(') check, which would also match function
+    // calls inside the body (e.g. myHelper.compute(value)) and silently omit the signature.
     fullSource = decodedMethodCode;
   } else {
     const modifiers  = methodModifiers  || 'public';
@@ -1318,6 +1367,64 @@ async function modifyProperty(xmlObj: any, objectType: string, args: any): Promi
 
   if (propertyValue === undefined) {
     throw new Error('propertyValue is required for modify-property operation');
+  }
+
+  // ── table-extension: properties live inside <PropertyModifications> ───────────────────────────
+  // AxTableExtension does NOT expose top-level property elements like AxTable does.
+  // Instead all table-level overrides are stored as:
+  //   <PropertyModifications>
+  //     <AxPropertyModification>
+  //       <Name>Label</Name>
+  //       <Value>@MyModel:MyLabel</Value>
+  //     </AxPropertyModification>
+  //   </PropertyModifications>
+  //
+  // Supported property names (case-sensitive, matching AOT XML exactly):
+  //   Label, HelpText, TableGroup, CacheLookup, TitleField1, TitleField2,
+  //   ClusteredIndex, PrimaryIndex, SaveDataPerCompany, TableType, SystemTable,
+  //   ModifiedDateTime, CreatedDateTime, ModifiedBy, CreatedBy, CountryRegionCodes
+  if (objectType === 'table-extension') {
+    const rootKey = getRootKey(objectType); // 'AxTableExtension'
+    const root = xmlObj[rootKey];
+    if (!root) {
+      throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
+    }
+
+    // Ensure <PropertyModifications> container exists.
+    // xml2js parses <PropertyModifications /> as [''] — must treat as empty.
+    const rawPM = root.PropertyModifications;
+    const pmEmpty =
+      !rawPM ||
+      rawPM === '' ||
+      (Array.isArray(rawPM) && (rawPM.length === 0 || rawPM[0] === '' || rawPM[0] == null));
+    if (pmEmpty) {
+      root.PropertyModifications = [{ AxPropertyModification: [] }];
+    }
+    const pmContainer = Array.isArray(root.PropertyModifications)
+      ? root.PropertyModifications[0]
+      : root.PropertyModifications;
+
+    if (!pmContainer.AxPropertyModification) {
+      pmContainer.AxPropertyModification = [];
+    } else if (!Array.isArray(pmContainer.AxPropertyModification)) {
+      // Single existing entry parsed as object, not 1-element array
+      pmContainer.AxPropertyModification = [pmContainer.AxPropertyModification];
+    }
+
+    // Update existing entry or append a new one
+    const existing = (pmContainer.AxPropertyModification as any[]).find(
+      (m: any) => m.Name && m.Name[0] === propertyPath
+    );
+    if (existing) {
+      existing.Value = [propertyValue];
+    } else {
+      pmContainer.AxPropertyModification.push({
+        Name: [propertyPath],
+        Value: [propertyValue],
+      });
+    }
+
+    return true;
   }
 
   // Special case: changing the base type of an EDT (i:type XML attribute on the root element).

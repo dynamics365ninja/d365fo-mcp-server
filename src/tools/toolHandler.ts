@@ -330,8 +330,20 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           'mymodel', 'mypackage', 'model', 'package', 'modelname', 'packagename',
           'yourmodel', 'yourpackage', 'custommodel', 'custompackage',
           'testmodel', 'testpackage', 'samplemodel', 'samplepackage',
+          // Microsoft tutorial / demo models — these are shipped as sample code with D365FO
+          // and should never be the target model for a new custom project.
+          // If auto-detection lands on one of these it almost always means the developer
+          // forgot to change the default model in the VS new-project wizard.
+          'fleetmanagement', 'fleetmanagementextension',
+          'fleetmanagementunittests', 'tutorial',
         ]);
         const isPlaceholder = !modelName || PLACEHOLDER_NAMES.has(modelName.toLowerCase());
+        // Also flag when auto-detection found a Microsoft standard model name
+        // that isn't in the PLACEHOLDER_NAMES set but is not a custom model.
+        const { isCustomModel } = await import('../utils/modelClassifier.js');
+        const isStandardMsModel = modelName
+          ? !isCustomModel(modelName) && !isPlaceholder
+          : false;
 
         const lines: string[] = [
           `## D365FO Workspace Configuration`,
@@ -372,6 +384,32 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
             `> 3. The projectPath points to a valid .rnrproj file`,
             `>`,
             `> Do you want to fix the configuration first, or continue with built-in tools (limited functionality)?`,
+          );
+        } else if (isStandardMsModel) {
+          // Model was auto-detected from a .rnrproj whose <Model> tag points to a Microsoft
+          // standard model. This almost always means the developer created a new VS project
+          // and forgot to change the default model name in the project wizard (D365FO VS
+          // extension defaults to "FleetManagement" in new-project dialogs).
+          const allProj = configManager.getAllDetectedProjects();
+          const customCandidates = allProj.filter(p => isCustomModel(p.modelName));
+          const hint = customCandidates.length > 0
+            ? `Available custom models: ${customCandidates.map(p => p.modelName).join(', ')}\n` +
+              `Switch with: get_workspace_info(projectName="<model>")`
+            : `No custom models found under D365FO_SOLUTIONS_PATH. Check your project configuration.`;
+          lines.push(
+            `⛔ CONFIGURATION PROBLEM — model name "${modelName}" is a Microsoft standard/demo model, not a custom model.`,
+            ``,
+            `**YOU MUST STOP** and tell the user:`,
+            `> The auto-detected model "${modelName}" is a Microsoft standard model.`,
+            `> This usually happens when a new VS project was created and the default model`,
+            `> in the project wizard ("FleetManagement") was not changed to the correct custom model.`,
+            `>`,
+            `> How to fix:`,
+            `> 1. In Visual Studio, open the .rnrproj file and change <Model>FleetManagement</Model>`,
+            `>    to the correct model name (e.g. <Model>AslCore</Model>).`,
+            `> 2. OR explicitly switch to a known project:`,
+            `>    ${hint}`,
+            `> 3. OR add the correct modelName to .mcp.json.`,
           );
         } else {
           lines.push(`✅ Configuration looks valid. Proceed with D365FO operations using model "${modelName}".`);

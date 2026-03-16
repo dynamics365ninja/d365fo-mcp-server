@@ -67,6 +67,25 @@ This workspace contains D365FO code. **Always use the specialized MCP tools** �
 > Label/HelpText → modify-property  propertyPath="Label" propertyValue="@MyModel:MyLabel"
 > ```
 >
+> **Table-extension properties (objectType="table-extension") — stored in `<PropertyModifications>`, NEVER use PowerShell:**
+> ```
+> Label             → modify-property  objectType="table-extension"  propertyPath="Label"             propertyValue="@MyModel:MyLabel"
+> HelpText          → modify-property  objectType="table-extension"  propertyPath="HelpText"           propertyValue="@MyModel:MyHelpText"
+> TableGroup        → modify-property  objectType="table-extension"  propertyPath="TableGroup"         propertyValue="Group"
+> CacheLookup       → modify-property  objectType="table-extension"  propertyPath="CacheLookup"        propertyValue="Found"
+> TitleField1/2     → modify-property  objectType="table-extension"  propertyPath="TitleField1"        propertyValue="ItemId"
+> ClusteredIndex    → modify-property  objectType="table-extension"  propertyPath="ClusteredIndex"     propertyValue="MyIdx"
+> PrimaryIndex      → modify-property  objectType="table-extension"  propertyPath="PrimaryIndex"       propertyValue="MyIdx"
+> SaveDataPerCompany→ modify-property  objectType="table-extension"  propertyPath="SaveDataPerCompany" propertyValue="No"
+> TableType         → modify-property  objectType="table-extension"  propertyPath="TableType"          propertyValue="TempDB"
+> SystemTable       → modify-property  objectType="table-extension"  propertyPath="SystemTable"        propertyValue="Yes"
+> ModifiedDateTime  → modify-property  objectType="table-extension"  propertyPath="ModifiedDateTime"   propertyValue="Yes"
+> CreatedDateTime   → modify-property  objectType="table-extension"  propertyPath="CreatedDateTime"    propertyValue="Yes"
+> ModifiedBy        → modify-property  objectType="table-extension"  propertyPath="ModifiedBy"         propertyValue="Yes"
+> CreatedBy         → modify-property  objectType="table-extension"  propertyPath="CreatedBy"          propertyValue="Yes"
+> CountryRegionCode → modify-property  objectType="table-extension"  propertyPath="CountryRegionCodes" propertyValue="CZ,SK"
+> ```
+>
 > **Field rename / bulk field rewrite — NEVER use PowerShell for these:**
 > ```
 > Rename one field   → rename-field        fieldName="OldName"  fieldNewName="NewName"
@@ -121,7 +140,6 @@ For any D365FO request, **start with MCP tools — never** `code_search`, `grep_
 | Create SSRS report | See **SSRS Report Workflow** section below |
 | Create CoC extension | See **CoC / Extension Workflows** section below |
 | What is the exact tab/group/control name in form X? | `get_form_info(formName, searchControl="General")` |
-
 ## Critical Rules
 
 ### Forbidden built-in tools on D365FO files
@@ -134,6 +152,21 @@ For any D365FO request, **start with MCP tools — never** `code_search`, `grep_
 | `create_file` for D365FO objects | `create_d365fo_file()` |
 | PowerShell `ls`, `Test-Path`, `Get-Item` to check D365FO files | `verify_d365fo_project()` |
 | PowerShell `Get-Content` / `Select-String` to find tab/control names in form XML | `get_form_info(formName, searchControl="General")` |
+
+> ### ⚠️ CRITICAL — `get_form_info` WORKS for ALL D365FO forms
+>
+> `get_form_info` can read BOTH standard Microsoft forms (CustTable, SalesTable, …) **and** custom model forms.
+>
+> **NEVER say or assume "form metadata is not available through MCP".**
+>
+> If `get_form_info` returns a ⚠️ warning saying the file could not be read from disk, the response
+> already contains a ready-to-use retry command with `filePath=` filled in. Copy it and retry — DO NOT fall back to PowerShell.
+>
+> ```
+> ✅ CORRECT:  get_form_info(formName="CustTable", searchControl="General")
+> ✅ RETRY:    get_form_info(formName="CustTable", filePath="K:\\AOSService\\...\\AxForm\\CustTable.xml", searchControl="General")
+> ❌ FORBIDDEN: PowerShell Get-Content / read_file on form XML
+> ```
 
 ### Non-Negotiable Rules
 

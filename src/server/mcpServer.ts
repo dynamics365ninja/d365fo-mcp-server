@@ -113,6 +113,13 @@ export function createXppMcpServer(context: XppServerContext): Server {
     process.stderr.write(
       `[mcpServer ${new Date().toISOString().slice(11, 23)}] ⚡ 'initialized' notification received — requesting roots/list\n`
     );
+    // Only stdio clients (VS Code, VS 2022) advertise the roots capability.
+    // HTTP / Azure clients do not — skipping the call avoids a -32001 timeout
+    // that would otherwise be logged as a spurious warning in Azure Monitor.
+    if (!server.getClientCapabilities()?.roots) {
+      process.stderr.write(`[mcpServer] ℹ️  Client has no roots capability — skipping roots/list\n`);
+      return;
+    }
     try {
       const result = await server.request(
         { method: 'roots/list', params: {} },
@@ -120,9 +127,9 @@ export function createXppMcpServer(context: XppServerContext): Server {
       );
       applyRootsToConfig(result.roots ?? []);
     } catch (e) {
-      // Client doesn't support roots/list — workspace already seeded from
-      // process.cwd() or env vars in index.ts stdio startup.
-      process.stderr.write(`[mcpServer] ⚠️  roots/list not supported by client: ${e}\n`);
+      // Unlikely now that we checked capabilities first, but still guard
+      // against network errors or other unexpected failures.
+      process.stderr.write(`[mcpServer] ⚠️  roots/list failed: ${e}\n`);
     }
   });
 
@@ -131,6 +138,9 @@ export function createXppMcpServer(context: XppServerContext): Server {
     process.stderr.write(
       `[mcpServer ${new Date().toISOString().slice(11, 23)}] 🔄 'roots/list_changed' notification — re-requesting roots/list\n`
     );
+    if (!server.getClientCapabilities()?.roots) {
+      return;
+    }
     try {
       const result = await server.request(
         { method: 'roots/list', params: {} },
@@ -906,9 +916,25 @@ Examples:
                 type: 'string',
                 description: 'Method name (required for add-method, remove-method)'
               },
+              sourceCode: {
+                type: 'string',
+                description:
+                  '[add-method] PREFERRED parameter — pass the FULL X++ method source: ' +
+                  'access modifiers + return type + method name + parameters + body + optional attributes. ' +
+                  'Example: "public void myMethod(str _param)\\n{\\n    next myMethod(_param);\\n}". ' +
+                  'The tool detects that the first real code line contains an access modifier and the method ' +
+                  'name followed by "(" and stores the source as-is without adding an extra signature. ' +
+                  'Alias of methodCode \u2014 use this when passing a complete CoC skeleton or any full method.'
+              },
               methodCode: {
                 type: 'string',
-                description: 'X++ code for the method body (required for add-method)'
+                description:
+                  '[add-method] X++ source for the method. Accepts either the FULL method source ' +
+                  '(access modifiers + return type + name + params + body) or just the body. ' +
+                  'When a full source is supplied the signature is preserved as-is. ' +
+                  'When only a body is supplied the signature is assembled from methodModifiers, ' +
+                  'methodReturnType, methodName, and methodParameters. ' +
+                  'Alias: sourceCode (preferred \u2014 pass sourceCode instead for clarity).'
               },
               methodModifiers: {
                 type: 'string',
@@ -988,17 +1014,28 @@ Examples:
               propertyPath: {
                 type: 'string',
                 description:
-                  'Top-level property name to set on the object root. ' +
-                  'Table properties: TableGroup (Group/Parameter/Main/…), TitleField1, TitleField2, ' +
-                  'TableType (TempDB / InMemory / RegularTable), CacheLookup, ClusteredIndex, ' +
-                  'PrimaryIndex, SaveDataPerCompany (Yes/No), Label, HelpText, Extends. ' +
-                  'EDT properties: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField. ' +
-                  'Class properties: Extends, Abstract (true/false), Final (true/false), Label. ' +
-                  'Use dot notation only for truly nested XML nodes (rare). ' +
-                  'Examples: propertyPath="TableGroup" propertyValue="Group" | ' +
+                  'Property name to set on the object.\n\n' +
+                  'For **AxTable** (objectType="table"): direct child XML element — ' +
+                  'TableGroup (Group/Parameter/Main/WorksheetHeader/WorksheetLine/Miscellaneous/Framework), ' +
+                  'TitleField1, TitleField2, TableType (TempDB/InMemory/RegularTable), CacheLookup, ' +
+                  'ClusteredIndex, PrimaryIndex, SaveDataPerCompany (Yes/No), Label, HelpText, Extends, SystemTable (Yes/No).\n\n' +
+                  'For **AxTableExtension** (objectType="table-extension"): properties are stored in ' +
+                  '<PropertyModifications>/<AxPropertyModification> — NOT as direct elements. ' +
+                  'Supported names: Label, HelpText, TableGroup, CacheLookup, TitleField1, TitleField2, ' +
+                  'ClusteredIndex, PrimaryIndex, SaveDataPerCompany, TableType, SystemTable, ' +
+                  'ModifiedDateTime (Yes/No), CreatedDateTime (Yes/No), ModifiedBy (Yes/No), CreatedBy (Yes/No), ' +
+                  'CountryRegionCodes (comma-separated ISO codes, e.g. "CZ,SK").\n\n' +
+                  'For **AxEdt** (objectType="edt"): Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField.\n\n' +
+                  'For **AxClass** (objectType="class"): Extends, Abstract (true/false), Final (true/false), Label.\n\n' +
+                  'Examples: ' +
+                  'propertyPath="Label" propertyValue="@MyModel:MyLabel" | ' +
+                  'propertyPath="HelpText" propertyValue="@MyModel:MyHelpText" | ' +
+                  'propertyPath="TableGroup" propertyValue="Group" | ' +
                   'propertyPath="TitleField1" propertyValue="ItemId" | ' +
                   'propertyPath="TableType" propertyValue="TempDB" | ' +
-                  'propertyPath="Extends" propertyValue="WHSZoneId" (on an EDT)'
+                  'propertyPath="ModifiedDateTime" propertyValue="Yes" (table-extension) | ' +
+                  'propertyPath="CountryRegionCodes" propertyValue="CZ,SK" (table-extension) | ' +
+                  'propertyPath="Extends" propertyValue="WHSZoneId" (EDT)'
               },
               propertyValue: {
                 type: 'string',
@@ -1162,12 +1199,17 @@ Use WHEN:
   get_form_info("SalesTable", searchControl="General") returns only controls whose
   name contains "General", with path, parent name, and children.
   ❌ NEVER use PowerShell Get-Content or grep to find tab names in form XML.
-  ✅ ALWAYS use searchControl instead.
+  ✅ ALWAYS use searchControl instead — this tool CAN read ALL D365FO forms.
+
+⚠️ If you receive a "could not be read from disk" warning, the response will include
+  a ready-to-use retry command with filePath= already filled in.
+  ❌ NEVER fall back to PowerShell when this happens — just retry with filePath.
 
 Examples:
 - get_form_info("SalesTable") → full structure with datasources, grids, tab hierarchy
 - get_form_info("CustTable", searchControl="General") → find the General tab exact name
-- get_form_info("PurchTable", searchControl="LineView") → find the LineView grid name`,
+- get_form_info("PurchTable", searchControl="LineView") → find the LineView grid name
+- get_form_info("MyForm", filePath="K:\\\\AOSService\\\\...\\\\AxForm\\\\MyForm.xml") → bypass DB lookup`,
           inputSchema: {
             type: 'object',
             properties: {
@@ -1175,12 +1217,20 @@ Examples:
                 type: 'string',
                 description: 'Name of the form (e.g., SalesTable, CustTable, InventTable)'
               },
+              filePath: {
+                type: 'string',
+                description:
+                  'Absolute path to the form XML file. Use this when get_form_info returned a ' +
+                  '"could not be read from disk" warning \u2014 the warning includes the exact path to pass here. ' +
+                  'Bypasses the DB path lookup entirely. ' +
+                  'Example: "K:\\\\AOSService\\\\PackagesLocalDirectory\\\\AslCore\\\\AslCore\\\\AxForm\\\\MyForm.xml"',
+              },
               searchControl: {
                 type: 'string',
                 description: 'Case-insensitive substring to search for in control names. ' +
                   'Returns matching controls with path, parent name, and children. ' +
                   'Use this to find exact tab/group names for form extensions. ' +
-                  'NEVER use PowerShell to search form XML — use this instead.',
+                  'NEVER use PowerShell to search form XML \u2014 use this instead.',
               },
               includeWorkspace: {
                 type: 'boolean',

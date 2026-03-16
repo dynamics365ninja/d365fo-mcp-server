@@ -19,6 +19,27 @@ export interface D365ProjectInfo {
 }
 
 /**
+ * Microsoft tutorial / demo model names that ship with D365FO.
+ * A new VS project's <Model> tag defaults to "FleetManagement" when the developer
+ * forgets to change it in the project wizard. These model names must never be
+ * auto-selected as the target custom model for create/modify operations.
+ */
+const MICROSOFT_DEMO_MODELS = new Set([
+  'fleetmanagement',
+  'fleetmanagementextension',
+  'fleetmanagementunittests',
+  'tutorial',
+]);
+
+/**
+ * Returns true when the model name is a well-known Microsoft tutorial/demo model
+ * that should never be auto-selected as a custom project target.
+ */
+export function isMicrosoftDemoModel(modelName: string): boolean {
+  return MICROSOFT_DEMO_MODELS.has(modelName.toLowerCase());
+}
+
+/**
  * Find all .rnrproj files in a directory (recursive search)
  * Limited to reasonable depth to avoid performance issues
  */
@@ -125,7 +146,23 @@ export async function detectD365Project(workspacePath: string, maxDepth: number 
         console.error(`[WorkspaceDetector] Solution-name match → ${path.basename(nameMatch)}`);
       }
     }
+
+    // Read ALL candidate model names in parallel so we can prefer non-demo models
+    // when the initially selected primaryProject has a Microsoft demo model name
+    // (e.g. FleetManagement — the VS new-project wizard default).
     const modelName = await extractModelNameFromProject(primaryProject);
+    if (modelName && isMicrosoftDemoModel(modelName) && projectFiles.length > 1) {
+      console.error(`[WorkspaceDetector] Primary .rnrproj has MS demo model "${modelName}" — looking for better candidate`);
+      for (const pf of projectFiles) {
+        if (pf === primaryProject) continue;
+        const altModel = await extractModelNameFromProject(pf);
+        if (altModel && !isMicrosoftDemoModel(altModel)) {
+          console.error(`[WorkspaceDetector] Skipping demo model "${modelName}", using "${altModel}" from ${path.basename(pf)}`);
+          primaryProject = pf;
+          break;
+        }
+      }
+    }
 
     if (!modelName) {
       console.error('[WorkspaceDetector] Could not extract ModelName from .rnrproj');

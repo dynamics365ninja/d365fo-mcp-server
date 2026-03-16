@@ -9,12 +9,20 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
-import { buildXmlNotAvailableMessage, resolveDbPathLocally } from '../utils/metadataResolver.js';
+import { resolveDbPathLocally } from '../utils/metadataResolver.js';
 import { findD365FileOnDisk } from './modifyD365File.js';
+import { getConfigManager } from '../utils/configManager.js';
+import path from 'path';
 
 const GetFormInfoArgsSchema = z.object({
   formName: z.string().describe('Name of the form'),
   modelName: z.string().optional().describe('Model name (auto-detected if not provided)'),
+  filePath: z.string().optional().describe(
+    'Absolute path to the form XML file on disk. ' +
+    'Use this when get_form_info previously returned a "could not be read from disk" warning with a guessed path. ' +
+    'Bypasses the DB path lookup entirely. ' +
+    'Example: filePath="K:\\AOSService\\PackagesLocalDirectory\\AslCore\\AslCore\\AxForm\\MyForm.xml"'
+  ),
   includeControls: z.boolean().optional().default(true).describe('Include control hierarchy'),
   includeDataSources: z.boolean().optional().default(true).describe('Include datasource information'),
   includeMethods: z.boolean().optional().default(true).describe('Include form methods'),
@@ -64,7 +72,8 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
     const { symbolIndex, hybridSearch } = context;
     const { 
       formName, 
-      modelName, 
+      modelName,
+      filePath: explicitFilePath,
       includeControls, 
       includeDataSources, 
       includeMethods,
@@ -72,6 +81,25 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       workspacePath,
       searchControl,
     } = args;
+
+    // 0. If an explicit filePath is provided, skip the DB lookup entirely.
+    // This is the retry path when Strategy A–D failed and the caller supplies the path directly.
+    if (explicitFilePath) {
+      let xmlContent: string | null = null;
+      try {
+        xmlContent = await fs.readFile(explicitFilePath, 'utf-8');
+      } catch (e) {
+        return {
+          content: [{ type: 'text', text:
+            `❌ get_form_info: cannot read form XML at explicit filePath="${explicitFilePath}": ` +
+            `${e instanceof Error ? e.message : String(e)}\n\n` +
+            `Check the path is correct and accessible. DO NOT use PowerShell — fix the filePath parameter.`,
+          }],
+          isError: true,
+        };
+      }
+      return await parseAndFormatForm(formName, 'Unknown', xmlContent, includeControls, includeDataSources, includeMethods, searchControl);
+    }
 
     // 1. Find the form (with workspace support)
     let formRow: any = null;
@@ -121,8 +149,10 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       throw new Error(`Form "${formName}" not found. Make sure it's indexed or provide workspacePath for local forms.`);
     }
 
-    // 2. Read the form XML
-    // file_path may point to: (a) actual XML on disk, or (b) JSON metadata with sourcePath
+    // 2. Read the form XML — four strategies, most specific to most generic
+    //
+    // Strategy A: read the DB-stored path directly (works for absolute Windows paths from
+    //             a locally indexed DB, e.g. K:\AOSService\PackagesLocalDirectory\...\AxForm\SalesTable.xml)
     let xmlContent: string | null = null;
     try {
       const fileContent = await fs.readFile(formRow.file_path, 'utf-8');
@@ -141,12 +171,26 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
         xmlContent = fileContent;
       }
     } catch {
-      // file_path not accessible
+      // file_path not accessible — try fallbacks below
     }
 
-    // Fallback: DB path is from build agent (e.g. /home/vsts/work/...) — try local disk
+    // Strategy B: DB stores a RELATIVE path (e.g. "AslCore/AslCore/AxForm/MyForm.xml").
+    // Join it with the configured packages path to get the absolute path on this machine.
+    if (!xmlContent && !path.isAbsolute(formRow.file_path)) {
+      const cm = getConfigManager();
+      await cm.ensureLoaded();
+      const pkgPath = cm.getPackagePath() || 'K:\\AOSService\\PackagesLocalDirectory';
+      const absolutePath = path.join(pkgPath, formRow.file_path);
+      try {
+        xmlContent = await fs.readFile(absolutePath, 'utf-8');
+      } catch {
+        // Not accessible at this packages path
+      }
+    }
+
+    // Strategy C: build-agent path (e.g. /home/vsts/work/.../PackagesLocalDirectory/...) —
+    // remap to local PackagesLocalDirectory.
     if (!xmlContent) {
-      // Strategy 1: remap build-agent path to local PackagesLocalDirectory (works for any model)
       const remappedPath = await resolveDbPathLocally(formRow.file_path);
       if (remappedPath) {
         try {
@@ -157,8 +201,10 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       }
     }
 
+    // Strategy D: scan the configured packages directory for the form XML using the model
+    // name from the DB row (handles cases where Strategy B fails because the configured
+    // packages path differs from the default, or UDE layout is used).
     if (!xmlContent) {
-      // Strategy 2: filesystem lookup via configured model path (works for custom models)
       const diskPath = await findD365FileOnDisk('form', formName, formRow.model);
       if (diskPath) {
         try {
@@ -170,53 +216,32 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
     }
 
     if (!xmlContent) {
+      // Build a list of paths we tried so the human/AI can diagnose and retry
+      const cm = getConfigManager();
+      await cm.ensureLoaded();
+      const pkgPath = cm.getPackagePath() || 'K:\\AOSService\\PackagesLocalDirectory';
+      const guessedAbsPath = path.isAbsolute(formRow.file_path)
+        ? formRow.file_path
+        : path.join(pkgPath, formRow.file_path);
+
       return {
-        content: [{ type: 'text', text: buildXmlNotAvailableMessage('form', formName, formRow.file_path) }],
-        isError: true,
+        content: [{
+          type: 'text',
+          text:
+            `⚠️ get_form_info: form XML for "${formName}" (model: ${formRow.model}) could not be read from disk.\n\n` +
+            `**DO NOT use PowerShell or read_file to work around this — retry get_form_info with the filePath parameter instead.**\n\n` +
+            `Tried path (from DB): \`${formRow.file_path}\`\n` +
+            `Guessed absolute path: \`${guessedAbsPath}\`\n\n` +
+            `✅ **Retry with explicit filePath:**\n` +
+            `  get_form_info(formName="${formName}", filePath="${guessedAbsPath}")\n\n` +
+            `If the path above is wrong, locate the form at:\n` +
+            `  \`{packagePath}\\${formRow.model}\\${formRow.model}\\AxForm\\${formName}.xml\`\n` +
+            `and pass it via the filePath parameter.`,
+        }],
       };
     }
 
-    const xmlObj = await parseStringPromise(xmlContent);
-
-    // 3. Extract form info
-    const formInfo: FormInfo = {
-      name: formName,
-      model: formRow.model,
-      design: [],
-      dataSources: [],
-      methods: [],
-    };
-
-    const axForm = xmlObj.AxForm;
-    if (!axForm) {
-      throw new Error('Invalid AxForm XML structure');
-    }
-
-    // Extract data sources
-    if (includeDataSources && axForm.DataSources) {
-      formInfo.dataSources = extractDataSources(axForm.DataSources[0]);
-    }
-
-    // Extract design (controls)
-    if (includeControls && axForm.Design) {
-      formInfo.design = extractControls(axForm.Design[0]);
-    }
-
-    // Extract methods (form methods are under SourceCode > Methods, not top-level)
-    if (includeMethods && axForm.SourceCode && axForm.SourceCode[0] && axForm.SourceCode[0].Methods) {
-      formInfo.methods = extractMethods(axForm.SourceCode[0].Methods[0]);
-    }
-
-    // 4. If searchControl provided, return search results instead of full output
-    if (searchControl) {
-      const matches = searchControlsInHierarchy(formInfo.design, searchControl);
-      return {
-        content: [{ type: 'text', text: formatControlSearchResults(formInfo.name, formInfo.model, matches, searchControl) }],
-      };
-    }
-
-    // 5. Format output
-    return formatFormOutput(formInfo, includeControls, includeDataSources, includeMethods);
+    return await parseAndFormatForm(formName, formRow.model, xmlContent, includeControls, includeDataSources, includeMethods, searchControl);
 
   } catch (error) {
     return {
@@ -229,6 +254,56 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       isError: true,
     };
   }
+}
+
+// ── Shared XML parse + format helper ────────────────────────────────────────
+
+/**
+ * Parse form XML and return the formatted tool response.
+ * Shared by both the normal DB-lookup path and the explicit filePath bypass.
+ */
+async function parseAndFormatForm(
+  formName: string,
+  modelName: string,
+  xmlContent: string,
+  includeControls: boolean,
+  includeDataSources: boolean,
+  includeMethods: boolean,
+  searchControl?: string,
+) {
+  const xmlObj = await parseStringPromise(xmlContent);
+
+  const formInfo: FormInfo = {
+    name: formName,
+    model: modelName,
+    design: [],
+    dataSources: [],
+    methods: [],
+  };
+
+  const axForm = xmlObj.AxForm;
+  if (!axForm) {
+    throw new Error('Invalid AxForm XML structure');
+  }
+
+  if (includeDataSources && axForm.DataSources) {
+    formInfo.dataSources = extractDataSources(axForm.DataSources[0]);
+  }
+  if (includeControls && axForm.Design) {
+    formInfo.design = extractControls(axForm.Design[0]);
+  }
+  if (includeMethods && axForm.SourceCode && axForm.SourceCode[0] && axForm.SourceCode[0].Methods) {
+    formInfo.methods = extractMethods(axForm.SourceCode[0].Methods[0]);
+  }
+
+  if (searchControl) {
+    const matches = searchControlsInHierarchy(formInfo.design, searchControl);
+    return {
+      content: [{ type: 'text', text: formatControlSearchResults(formInfo.name, formInfo.model, matches, searchControl) }],
+    };
+  }
+
+  return formatFormOutput(formInfo, includeControls, includeDataSources, includeMethods);
 }
 
 // ── Control search helpers ───────────────────────────────────────────────────
