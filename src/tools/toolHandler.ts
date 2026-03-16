@@ -34,6 +34,7 @@ import { handleGetTablePatterns } from './getTablePatterns.js';
 import { handleGetFormPatterns } from './getFormPatterns.js';
 import { handleGenerateSmartTable } from './generateSmartTable.js';
 import { handleGenerateSmartForm } from './generateSmartForm.js';
+import { handleGenerateSmartReport } from './generateSmartReport.js';
 import { handleSuggestEdt } from './suggestEdt.js';
 import { securityArtifactInfoTool } from './securityArtifactInfo.js';
 import { menuItemInfoTool } from './menuItemInfo.js';
@@ -99,6 +100,7 @@ const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
   // Uncapped — XML generation, file writes, or long structured output
   generate_smart_table:             'uncapped',
   generate_smart_form:              'uncapped',
+  generate_smart_report:            'uncapped',
   create_d365fo_file:               'uncapped',
   generate_d365fo_xml:              'uncapped',
   get_report_info:                  'uncapped',
@@ -255,6 +257,13 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       }
       case 'generate_smart_form': {
         const r = await handleGenerateSmartForm(
+          request.params.arguments as any,
+          context.symbolIndex
+        );
+        return { content: r?.content ?? [{ type: 'text', text: 'No results returned' }] };
+      }
+      case 'generate_smart_report': {
+        const r = await handleGenerateSmartReport(
           request.params.arguments as any,
           context.symbolIndex
         );

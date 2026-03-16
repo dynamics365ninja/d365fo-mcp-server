@@ -137,7 +137,7 @@ For any D365FO request, **start with MCP tools — never** `code_search`, `grep_
 | What security covers form/table/menu item X? | `get_security_coverage_for_object(objectName)` |
 | What does privilege/duty/role X contain? | `get_security_artifact_info(name)` |
 | What does menu item X open? Security chain? | `get_menu_item_info(name)` |
-| Create SSRS report | See **SSRS Report Workflow** section below |
+| Create SSRS report | `generate_smart_report` → See **SSRS Report Workflow** section below |
 | Create CoC extension | See **CoC / Extension Workflows** section below |
 | What is the exact tab/group/control name in form X? | `get_form_info(formName, searchControl="General")` |
 ## Critical Rules
@@ -422,6 +422,28 @@ is only for **custom delegates** defined with the `delegate` keyword.
 
 ## SSRS Report Workflow (report / sestava / výkaz)
 
+### ✅ PREFERRED: One-shot generation with `generate_smart_report`
+
+Generates all 5 D365FO objects (TmpTable, Contract, DP, Controller, Report) in a single call:
+
+```
+generate_smart_report(
+  name="InventByZones",
+  fieldsHint="ItemId, ItemName, Qty, Zone",
+  caption="Inventory by Zones",
+  contractParams=[{name:"FromDate", type:"TransDate"}, {name:"ToDate", type:"TransDate"}]
+)
+```
+
+**Rules for `generate_smart_report`:**
+- ⛔ NEVER pass model prefix in `name` — prefix applied automatically
+- ⛔ NEVER call without `fieldsHint`, `fields`, or `copyFrom` — no fields = ❌ error returned
+- ✅ On Azure/Linux: tool returns XML blocks → call `create_d365fo_file` for each object in order
+- ✅ On Windows (VM): tool writes all files directly → DO NOT call `create_d365fo_file`
+- ✅ Use `copyFrom="ExistingReport"` to copy field structure from an existing report's TmpTable
+
+### Manual approach (when fine-grained control is needed)
+
 An SSRS report in D365FO consists of **5 objects** — create them in this order:
 
 ```
@@ -432,7 +454,7 @@ An SSRS report in D365FO consists of **5 objects** — create them in this order
 5. Report       objectType="report"  AxReport XML with DataSet + Design (RDL)
 ```
 
-**Step-by-step for the AxReport file:**
+**Step-by-step for the AxReport file (manual):**
 ```
 a) Study existing similar report:    get_report_info("InventValue")   ← ALWAYS use this, NEVER PowerShell Get-Content
 b) Generate skeleton:                generate_d365fo_xml(objectType="report", objectName="MyReport",
@@ -512,6 +534,7 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 | `suggest_edt(fieldName, context?)` | Suggest correct EDT for field |
 | `generate_smart_table(name, fieldsHint?, primaryKeyFields?, methods?, ...)` | AI table generation |
 | `generate_smart_form(name, dataSource?, formPattern?, ...)` | AI form generation (patterns: SimpleList, SimpleListDetails, DetailsMaster, DetailsTransaction, Dialog, TableOfContents, Lookup, ListPage) |
+| `generate_smart_report(name, fieldsHint?, contractParams?, copyFrom?, ...)` | AI SSRS report generation — creates TmpTable + Contract + DP + Controller + AxReport in one call |
 
 ### File Operations
 | Tool | Use for |
