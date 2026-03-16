@@ -1,13 +1,13 @@
 # Automatic Workspace Detection
 
-When you open a D365FO project in Visual Studio 2022 or VS Code, the MCP server automatically
+When you open a D365FO project in Visual Studio 2022 or 2026, the MCP server automatically
 figures out which model you are working in — **no manual configuration required**.
 
 ---
 
 ## How It Works
 
-### stdio transport (recommended — VS 2022 + VS Code)
+### stdio transport (recommended — VS 2022 + VS 2026)
 
 When the server is launched as a stdio subprocess via `command:` in `.mcp.json`:
 
@@ -17,7 +17,7 @@ When the server is launched as a stdio subprocess via `command:` in `.mcp.json`:
 4. All file operations (create, modify) use that model automatically.
 
 Fallback chain when `roots/list` is not available:
-- `VSCODE_WORKSPACE_FOLDER_PATHS` environment variable (VS Code sets this)
+- `VSCODE_WORKSPACE_FOLDER_PATHS` environment variable (VS Code / VS 2026 set this)
 - `process.cwd()` — used only when it is **not** a Node.js project directory
 
 ```

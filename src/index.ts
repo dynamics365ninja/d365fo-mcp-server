@@ -666,6 +666,7 @@ async function main() {
         { icon: '🎨', category: 'Smart Object Generation', tools: [
           { name: 'generate_smart_table',         desc: 'AI-driven table generation with pattern analysis' },
           { name: 'generate_smart_form',          desc: 'AI-driven form generation with pattern analysis' },
+          { name: 'generate_smart_report',        desc: 'AI-driven SSRS report generation (TmpTable + Contract + DP + Controller + AxReport)' },
           { name: 'suggest_edt',                  desc: 'Suggest EDT for field name using fuzzy matching' },
         ]},
         { icon: '📝', category: 'File & Metadata Operations', tools: [

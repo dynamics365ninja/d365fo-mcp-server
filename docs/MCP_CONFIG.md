@@ -41,7 +41,7 @@ The server will also:
 ### stdio (recommended for local / single-developer setup)
 
 The server is launched directly by the MCP client as a subprocess. No HTTP server, no port.
-VS 2022 and VS Code both support this via the `command:` key.
+VS 2022 and VS 2026 both support this via the `command:` key.
 
 ```json
 {
@@ -294,7 +294,7 @@ GitHub Copilot connects to both servers at the same time and selects the right o
 
 1. `d365fo-azure` starts with `MCP_SERVER_MODE=read-only` → only exposes search/analysis tools
 2. `d365fo-local` starts with `MCP_SERVER_MODE=write-only` → only exposes file-operation tools
-3. GitHub Copilot aggregates both tool lists — from Copilot's perspective it sees all 43 tools
+3. GitHub Copilot aggregates both tool lists — from Copilot's perspective it sees all 44 tools
 4. When Copilot calls `create_d365fo_file`, it goes to the local server which has K:\ access
 5. When Copilot calls `search`, it goes to the Azure server with the full metadata database
 
@@ -312,15 +312,15 @@ When the server starts, it logs the detected mode and tool count:
 **Read-only mode (Azure server):**
 ```
 🔧 Server mode: read-only (from env: read-only)
-🎯 Registered 37 X++ MCP tools (all except local tools)
-[MCP Server] Tool list filtered for read-only mode: 37 tools (local tools excluded)
+🎯 Registered 38 X++ MCP tools (all except local tools)
+[MCP Server] Tool list filtered for read-only mode: 38 tools (local tools excluded)
 ```
 
 **Full mode (local development):**
 ```
 🔧 Server mode: full (from env: not set, defaulting to full)
-🎯 Registered 43 X++ MCP tools (8 search + 4 labels + 7 object-info + 4 intelligent + 3 smart-generation + 3 file-ops + 3 pattern-analysis + 11 security-extensions)
-[MCP Server] Tool list in full mode: 43 tools (no filtering)
+🎯 Registered 44 X++ MCP tools (8 search + 4 labels + 7 object-info + 4 intelligent + 4 smart-generation + 3 file-ops + 3 pattern-analysis + 11 security-extensions)
+[MCP Server] Tool list in full mode: 44 tools (no filtering)
 ```
 
 > **Note:** The local server in `write-only` mode skips database download and the symbol

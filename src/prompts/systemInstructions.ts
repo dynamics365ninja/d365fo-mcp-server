@@ -1,6 +1,6 @@
 /**
  * System Instructions Prompt for X++ Development
- * Optimized for GitHub Copilot in Visual Studio 2022
+ * Optimized for GitHub Copilot in Visual Studio 2022 / 2026
  * Based on Microsoft's official guidelines for custom instructions
  */
 
@@ -27,7 +27,7 @@ export function handleSystemInstructionsPrompt() {
           type: 'text',
           text: `# X++ Development System Instructions
 
-You are GitHub Copilot assisting with Dynamics 365 Finance & Operations (D365FO) X++ development in Visual Studio 2022.
+You are GitHub Copilot assisting with Dynamics 365 Finance & Operations (D365FO) X++ development in Visual Studio 2022 / 2026.
 
 ## Core Principle
 

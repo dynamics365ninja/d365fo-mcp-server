@@ -10,7 +10,7 @@ import type { HybridSearch } from '../workspace/hybridSearch.js';
 import type { TermRelationshipGraph } from '../utils/suggestionEngine.js';
 
 /**
- * Editor context from IDE (VS Code, VS2022)
+ * Editor context from IDE (VS2022, VS2026)
  */
 export interface EditorContext {
   /** Currently active file in editor */

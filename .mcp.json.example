@@ -1,5 +1,5 @@
 /**
- * Example .mcp.json configuration for Visual Studio 2022 / VS Code
+ * Example .mcp.json configuration for Visual Studio 2022 / 2026
  * Place this file in your solution root directory or in %USERPROFILE%\.mcp.json
  *
  * Four deployment variants are shown below — uncomment the one that fits your setup:

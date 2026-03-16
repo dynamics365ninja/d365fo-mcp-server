@@ -19,7 +19,7 @@ This document provides visual diagrams and detailed explanations of the D365 F&O
 graph TB
     subgraph "Client Layer"
         VS[Visual Studio 2022 17.14+ GitHub Copilot Agent Mode]
-        VSCODE[VS Code GitHub Copilot Extension]
+        VS2026[Visual Studio 2026 GitHub Copilot Agent Mode]
     end
 
     subgraph "Azure Cloud"
@@ -35,14 +35,14 @@ graph TB
     subgraph "MCP Server Components"
         HTTP[HTTP Transport Layer - Express + Rate Limiting]
         PROTO[MCP Protocol Handler - JSON-RPC 2.0]
-        TOOLS[Tool Handlers - 43 MCP Tools]
+        TOOLS[Tool Handlers - 44 MCP Tools]
         DB[(Symbols Database - FTS5, 584K+ symbols)]
         LDB[(Labels Database - FTS5, 19M+ labels, 70 languages)]
         CACHE[Redis Cache - Optional]
     end
 
     VS -->|"Streamable HTTP, OAuth 2.0"| MCP
-    VSCODE -->|"Streamable HTTP, OAuth 2.0"| MCP
+    VS2026 -->|"Streamable HTTP, OAuth 2.0"| MCP
     MCP -->|"Download on startup"| BLOB
     MCP --> HTTP
     HTTP --> PROTO
@@ -52,7 +52,7 @@ graph TB
     TOOLS -.->|"Optional"| CACHE
     
     style VS fill:#68217A,color:#fff
-    style VSCODE fill:#0078D4,color:#fff
+    style VS2026 fill:#0078D4,color:#fff
     style MCP fill:#00A4EF,color:#fff
     style BLOB fill:#FF6C00,color:#fff
     style DB fill:#4CAF50,color:#fff
@@ -66,7 +66,7 @@ graph TB
 
 ```mermaid
 sequenceDiagram
-    participant IDE as Visual Studio 2022 / VS Code
+    participant IDE as Visual Studio 2022 / 2026
     participant HTTP as HTTP Transport
     participant MCP as MCP Protocol
     participant Handler as Tool Handler
@@ -82,7 +82,7 @@ sequenceDiagram
     alt Initialize
         MCP-->>IDE: Server Capabilities
     else Tools List
-        MCP-->>IDE: 43 Tool Definitions
+        MCP-->>IDE: 44 Tool Definitions
     else Tool Call
         MCP->>Handler: Route to Handler
         Handler->>Tool: Execute Tool
@@ -117,35 +117,64 @@ graph LR
     end
 
     subgraph "Tool Layer"
-        SEARCH[search.ts - search]
-        BATCH[batchSearch.ts - batch_search]
-        CLASS[classInfo.ts - get_class_info]
-        TABLE[tableInfo.ts - get_table_info]
-        FORM[formInfo.ts - get_form_info]
-        QUERY[queryInfo.ts - get_query_info]
-        VIEW[viewInfo.ts - get_view_info]
-        ENUM[enumInfo.ts - get_enum_info]
-        EDT[edtInfo.ts - get_edt_info]
-        COMP[completion.ts - code_completion]
-        SIGNATURE[methodSignature.ts - get_method_signature]
-        REFS[findReferences.ts - find_references]
-        GEN[codeGen.ts - generate_code]
-        GENXML[generateD365Xml.ts - generate_d365fo_xml]
-        CREATE[createD365File.ts - create_d365fo_file]
-        MODIFY[modifyD365File.ts - modify_d365fo_file]
-        EXT[extensionSearch.ts - search_extensions]
-        PATTERN[analyzePatterns.ts - analyze_code_patterns]
-        SUGGEST[suggestImplementation.ts - suggest_method_implementation]
-        COMPLETE[analyzeCompleteness.ts - analyze_class_completeness]
-        API[apiUsagePatterns.ts - get_api_usage_patterns]
-        SLABELS[searchLabels.ts - search_labels]
-        GLABEL[getLabelInfo.ts - get_label_info]
-        CLABEL[createLabel.ts - create_label]
-        TPAT[getTablePatterns.ts - get_table_patterns]
-        FPAT[getFormPatterns.ts - get_form_patterns]
-        SMTABLE[generateSmartTable.ts - generate_smart_table]
-        SMFORM[generateSmartForm.ts - generate_smart_form]
-        SEDT[suggestEdt.ts - suggest_edt]
+        subgraph "Search & Discovery"
+            SEARCH[search.ts - search]
+            BATCH[batchSearch.ts - batch_search]
+            EXT[extensionSearch.ts - search_extensions]
+            REFS[findReferences.ts - find_references]
+            COMP[completion.ts - code_completion]
+        end
+        subgraph "Object Info"
+            CLASS[classInfo.ts - get_class_info]
+            TABLE[tableInfo.ts - get_table_info]
+            FORM[formInfo.ts - get_form_info]
+            QUERY[queryInfo.ts - get_query_info]
+            VIEW[viewInfo.ts - get_view_info]
+            ENUM[enumInfo.ts - get_enum_info]
+            EDT[edtInfo.ts - get_edt_info]
+            REPORT[reportInfo.ts - get_report_info]
+            ENTITY[dataEntityInfo.ts - get_data_entity_info]
+            SIGNATURE[methodSignature.ts - get_method_signature]
+            MSRC[getMethodSource.ts - get_method_source]
+        end
+        subgraph "Extensions & Security"
+            COCEXT[findCocExtensions.ts - find_coc_extensions]
+            EVTHDL[findEventHandlers.ts - find_event_handlers]
+            TBLEXT[tableExtensionInfo.ts - get_table_extension_info]
+            EXTPTS[analyzeExtensionPoints.ts - analyze_extension_points]
+            SECART[securityArtifactInfo.ts - get_security_artifact_info]
+            SECCOV[securityCoverageInfo.ts - get_security_coverage_for_object]
+            MENU[menuItemInfo.ts - get_menu_item_info]
+        end
+        subgraph "Code Generation"
+            GEN[codeGen.ts - generate_code]
+            GENXML[generateD365Xml.ts - generate_d365fo_xml]
+            CREATE[createD365File.ts - create_d365fo_file]
+            MODIFY[modifyD365File.ts - modify_d365fo_file]
+            SMTABLE[generateSmartTable.ts - generate_smart_table]
+            SMFORM[generateSmartForm.ts - generate_smart_form]
+            SMRPT[generateSmartReport.ts - generate_smart_report]
+        end
+        subgraph "Analysis & Patterns"
+            PATTERN[analyzePatterns.ts - analyze_code_patterns]
+            SUGGEST[suggestImplementation.ts - suggest_method_implementation]
+            COMPLETE[analyzeCompleteness.ts - analyze_class_completeness]
+            API[apiUsagePatterns.ts - get_api_usage_patterns]
+            TPAT[getTablePatterns.ts - get_table_patterns]
+            FPAT[getFormPatterns.ts - get_form_patterns]
+            SEDT[suggestEdt.ts - suggest_edt]
+        end
+        subgraph "Labels"
+            SLABELS[searchLabels.ts - search_labels]
+            GLABEL[getLabelInfo.ts - get_label_info]
+            CLABEL[createLabel.ts - create_label]
+            RLABEL[renameLabel.ts - rename_label]
+        end
+        subgraph "Workspace"
+            WSINFO[xppTools.ts - get_workspace_info]
+            VERIFYD[verifyD365Project.ts - verify_d365fo_project]
+            VALNAME[validateObjectNaming.ts - validate_object_naming]
+        end
     end
 
     subgraph "Metadata Layer"
@@ -169,35 +198,54 @@ graph LR
     SERVER --> HANDLER
     HANDLER --> SEARCH
     HANDLER --> BATCH
+    HANDLER --> EXT
+    HANDLER --> REFS
+    HANDLER --> COMP
     HANDLER --> CLASS
     HANDLER --> TABLE
     HANDLER --> FORM
     HANDLER --> QUERY
     HANDLER --> VIEW
     HANDLER --> ENUM
-    HANDLER --> COMP
+    HANDLER --> EDT
+    HANDLER --> REPORT
+    HANDLER --> ENTITY
     HANDLER --> SIGNATURE
-    HANDLER --> REFS
+    HANDLER --> MSRC
+    HANDLER --> COCEXT
+    HANDLER --> EVTHDL
+    HANDLER --> TBLEXT
+    HANDLER --> EXTPTS
+    HANDLER --> SECART
+    HANDLER --> SECCOV
+    HANDLER --> MENU
     HANDLER --> GEN
     HANDLER --> GENXML
     HANDLER --> CREATE
     HANDLER --> MODIFY
-    HANDLER --> EXT
+    HANDLER --> SMTABLE
+    HANDLER --> SMFORM
+    HANDLER --> SMRPT
     HANDLER --> PATTERN
     HANDLER --> SUGGEST
     HANDLER --> COMPLETE
     HANDLER --> API
+    HANDLER --> TPAT
+    HANDLER --> FPAT
+    HANDLER --> SEDT
     HANDLER --> SLABELS
     HANDLER --> GLABEL
     HANDLER --> CLABEL
-    HANDLER --> TPAT
-    HANDLER --> FPAT
-    HANDLER --> SMTABLE
-    HANDLER --> SMFORM
-    HANDLER --> SEDT
+    HANDLER --> RLABEL
+    HANDLER --> WSINFO
+    HANDLER --> VERIFYD
+    HANDLER --> VALNAME
 
     SEARCH --> SYMBOL
     BATCH --> SYMBOL
+    EXT --> SYMBOL
+    REFS --> SYMBOL
+    COMP --> SYMBOL
     CLASS --> SYMBOL
     CLASS --> PARSER
     TABLE --> SYMBOL
@@ -210,22 +258,37 @@ graph LR
     VIEW --> PARSER
     ENUM --> SYMBOL
     ENUM --> PARSER
-    COMP --> SYMBOL
+    EDT --> SYMBOL
+    EDT --> PARSER
+    REPORT --> SYMBOL
+    REPORT --> PARSER
+    ENTITY --> SYMBOL
+    ENTITY --> PARSER
     SIGNATURE --> SYMBOL
     SIGNATURE --> PARSER
-    REFS --> SYMBOL
-    EXT --> SYMBOL
+    MSRC --> SYMBOL
+    MSRC --> PARSER
+    COCEXT --> SYMBOL
+    EVTHDL --> SYMBOL
+    TBLEXT --> SYMBOL
+    EXTPTS --> SYMBOL
+    SECART --> SYMBOL
+    SECART --> PARSER
+    SECCOV --> SYMBOL
+    MENU --> SYMBOL
     PATTERN --> SYMBOL
     SUGGEST --> SYMBOL
     COMPLETE --> SYMBOL
     API --> SYMBOL
-    SLABELS --> SYMBOL
-    GLABEL --> SYMBOL
     TPAT --> SYMBOL
     FPAT --> SYMBOL
     SMTABLE --> SYMBOL
     SMFORM --> SYMBOL
+    SMRPT --> SYMBOL
     SEDT --> SYMBOL
+    SLABELS --> SYMBOL
+    GLABEL --> SYMBOL
+    VALNAME --> SYMBOL
 
     SEARCH -.-> CACHE_SVC
     BATCH -.-> CACHE_SVC
@@ -521,7 +584,7 @@ graph LR
     subgraph "MCP Protocol Methods"
         INIT[initialize - Server Capabilities]
         NOTIFY[notifications/initialized - Handshake Complete]
-        TOOLS_LIST[tools/list - 43 Available Tools]
+        TOOLS_LIST[tools/list - 44 Available Tools]
         TOOLS_CALL[tools/call - Execute Tool]
         RES_LIST[resources/list - Empty]
         RES_TMPL[resources/templates/list - Empty]
@@ -530,7 +593,7 @@ graph LR
     end
 
     INIT -.-> CAPS[Capabilities: tools, resources, prompts]
-    TOOLS_LIST -.-> TOOL_DEFS["43 tools: search, batch_search, search_extensions, get_class_info, get_table_info, code_completion, get_method_signature, get_method_source, find_references, get_form_info, get_query_info, get_view_info, get_enum_info, get_edt_info, get_report_info, generate_code, analyze_code_patterns, suggest_method_implementation, analyze_class_completeness, get_api_usage_patterns, generate_d365fo_xml, create_d365fo_file, modify_d365fo_file, search_labels, get_label_info, create_label, rename_label, get_table_patterns, get_form_patterns, generate_smart_table, generate_smart_form, suggest_edt, get_security_artifact_info, get_security_coverage_for_object, get_menu_item_info, find_coc_extensions, find_event_handlers, get_table_extension_info, get_data_entity_info, analyze_extension_points, validate_object_naming, get_workspace_info, verify_d365fo_project"]
+    TOOLS_LIST -.-> TOOL_DEFS["44 tools: search, batch_search, search_extensions, get_class_info, get_table_info, code_completion, get_method_signature, get_method_source, find_references, get_form_info, get_query_info, get_view_info, get_enum_info, get_edt_info, get_report_info, generate_code, analyze_code_patterns, suggest_method_implementation, analyze_class_completeness, get_api_usage_patterns, generate_d365fo_xml, create_d365fo_file, modify_d365fo_file, search_labels, get_label_info, create_label, rename_label, get_table_patterns, get_form_patterns, generate_smart_table, generate_smart_form, generate_smart_report, suggest_edt, get_security_artifact_info, get_security_coverage_for_object, get_menu_item_info, find_coc_extensions, find_event_handlers, get_table_extension_info, get_data_entity_info, analyze_extension_points, validate_object_naming, get_workspace_info, verify_d365fo_project"]
     TOOLS_CALL -.-> EXEC[Tool Execution: search DB, parse XML, return results]
     style INIT fill:#4CAF50,color:#fff
     style TOOLS_CALL fill:#2196F3,color:#fff
@@ -1057,7 +1120,7 @@ graph LR
     end
 
     subgraph "Developer Experience"
-        D1[VS Code Extension - Direct integration]
+        D1[Visual Studio 2026 Extension - Direct integration]
         D2[CLI Tool - Local development]
         D3[REST API - Non-MCP clients]
     end

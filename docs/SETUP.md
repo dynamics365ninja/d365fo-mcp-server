@@ -1,7 +1,7 @@
 # Setup Guide — Client Configuration
 
 This guide covers everything a **developer** needs to start using the D365 F&O MCP Server
-with GitHub Copilot in Visual Studio 2022.
+with GitHub Copilot in Visual Studio 2022 and 2026.
 
 If you are responsible for deploying the server infrastructure to Azure, see [SETUP_AZURE.md](SETUP_AZURE.md).
 
@@ -28,6 +28,7 @@ If you are responsible for deploying the server infrastructure to Azure, see [SE
 | Component | Minimum version | Notes |
 |-----------|----------------|-------|
 | Visual Studio 2022 | 17.14 | Earlier versions do not support MCP |
+| Visual Studio 2026 | Any | Fully supported |
 | GitHub Copilot extension | Latest | Requires an active Copilot subscription |
 | Node.js | 24.x LTS | Required for hybrid setup only |
 | Python | 3.x | Required for hybrid setup only — used by `node-gyp` to compile native SQLite addon |
