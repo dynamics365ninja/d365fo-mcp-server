@@ -120,6 +120,14 @@ export function createXppMcpServer(context: XppServerContext): Server {
       process.stderr.write(`[mcpServer] ℹ️  Client has no roots capability — skipping roots/list\n`);
       return;
     }
+    // HTTP transports (Azure App Service, MCP_FORCE_HTTP) are request-response only —
+    // the server cannot initiate requests back to the client. Even if the client
+    // declares `roots` capability, calling roots/list would always time out (-32001).
+    const isHttpMode = !!process.env.WEBSITES_PORT || process.env.MCP_FORCE_HTTP === 'true';
+    if (isHttpMode) {
+      process.stderr.write(`[mcpServer] ℹ️  HTTP mode — skipping roots/list (transport is request-response only)\n`);
+      return;
+    }
     try {
       const result = await server.request(
         { method: 'roots/list', params: {} },
@@ -138,7 +146,8 @@ export function createXppMcpServer(context: XppServerContext): Server {
     process.stderr.write(
       `[mcpServer ${new Date().toISOString().slice(11, 23)}] 🔄 'roots/list_changed' notification — re-requesting roots/list\n`
     );
-    if (!server.getClientCapabilities()?.roots) {
+    const isHttpMode = !!process.env.WEBSITES_PORT || process.env.MCP_FORCE_HTTP === 'true';
+    if (!server.getClientCapabilities()?.roots || isHttpMode) {
       return;
     }
     try {

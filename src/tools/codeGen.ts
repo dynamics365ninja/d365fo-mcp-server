@@ -11,7 +11,7 @@ import { getConfigManager } from '../utils/configManager.js';
 const CodeGenArgsSchema = z.object({
   pattern: z
     .enum(['class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'table-extension',
-           'sysoperation', 'event-handler', 'security-privilege', 'menu-item'])
+           'sysoperation', 'event-handler', 'security-privilege', 'menu-item', 'class-extension'])
     .describe('Code pattern to generate'),
   name: z.string().describe(
     'For NEW objects (class, runnable, data-entity, batch-job, sysoperation): the object name WITHOUT prefix — prefix is auto-applied from EXTENSION_PREFIX env var or modelName. ' +
@@ -249,10 +249,44 @@ final class ${className}
 }`;
 }
 
+function classExtensionTemplate(baseName: string, prefix: string): string {
+  // Class name: {BaseClass}{Prefix}_Extension per MS naming guidelines
+  const className = baseName + prefix + '_Extension';
+  return `
+/// <summary>
+/// Extension class for ${baseName} (prefix: ${prefix})
+/// Naming: {BaseClass}{Prefix}_Extension per MS naming guidelines
+/// </summary>
+[ExtensionOf(classStr(${baseName}))]
+final class ${className}
+{
+    // ⚠️  DO NOT add CoC methods before checking the original signature:
+    //     get_method_signature("${baseName}", "methodName")
+    //
+    // X++ does NOT support method overloading — two methods with the same name
+    // will always cause a compile error, even with different signatures.
+    //
+    // Instance method CoC template:
+    //   public ReturnType methodName(ParamType _param)
+    //   {
+    //       ReturnType result = next methodName(_param);
+    //       return result;
+    //   }
+    //
+    // Static method CoC template:
+    //   public static ReturnType methodName(ParamType _param)
+    //   {
+    //       ReturnType result = next methodName(_param);
+    //       return result;
+    //   }
+}`;
+}
+
 const extensionTemplates: Record<string, (baseName: string, prefix: string) => string> = {
   'form-handler': formHandlerTemplate,
   'table-extension': tableExtensionTemplate,
   'event-handler': eventHandlerTemplate,
+  'class-extension': classExtensionTemplate,
 };
 
 // ── SysOperation pattern (3 classes: DataContract + Controller + Service) ──
@@ -424,7 +458,7 @@ function menuItemXmlTemplate(name: string, itemType: string, targetObject: strin
 </${elemName}>`;
 }
 
-const EXTENSION_PATTERNS = new Set(['table-extension', 'form-handler', 'event-handler']);
+const EXTENSION_PATTERNS = new Set(['table-extension', 'form-handler', 'event-handler', 'class-extension']);
 const XML_PATTERNS = new Set(['security-privilege', 'menu-item']);
 
 export async function codeGenTool(request: CallToolRequest) {
@@ -492,6 +526,17 @@ export async function codeGenTool(request: CallToolRequest) {
         namingNote = `📌 **Generated class:** \`${baseName}EventHandler\`\n` +
           `  Handles onInserted and onValidatedWrite events of \`${baseName}\`\n` +
           `  Add more handlers by repeating the [SubscribesTo] pattern.`;
+      } else if (args.pattern === 'class-extension') {
+        const exampleClass = `${baseName}${extensionInfix}_Extension`;
+        const namingLine = extensionInfix
+          ? `📌 **Naming (MS guidelines):** Generated class: \`${exampleClass}\`\n  Base class: \`${baseName}\`, Prefix infix: \`${extensionInfix}\``
+          : `⚠️ **No prefix resolved** — set \`EXTENSION_PREFIX\` env var or pass \`modelName\` argument.\n  Generated bare name without prefix infix (e.g. \`${baseName}_Extension\`) which is **not MS-compliant**.`;
+        namingNote = namingLine + '\n\n' +
+          `🚨 **REQUIRED before adding CoC methods:**\n` +
+          `   Call \`get_method_signature("${baseName}", "methodName")\` for EACH method you want to wrap.\n` +
+          `   X++ does NOT support method overloading — adding both \`public boolean foo()\` and \`public static boolean foo()\`\n` +
+          `   in the same class will always cause a compile error.\n` +
+          `   The signature tool tells you whether the original is \`static\` or instance, so you generate exactly ONE CoC method.`;
       } else {
         const exampleClass =
           args.pattern === 'table-extension'
@@ -527,12 +572,19 @@ export async function codeGenTool(request: CallToolRequest) {
             `\`\`\`xpp${code}\n\`\`\`\n\n` +
             `---\n\n` +
             `${namingNote}\n\n` +
-            `💡 **Next Steps for Better Code Quality:**\n\n` +
-            `1. ✅ Use \`analyze_code_patterns("<scenario>")\` - Learn what D365FO classes are commonly used together\n` +
-            `2. ✅ Use \`suggest_method_implementation("${displayName}", "<methodName>")\` - Get real implementation examples\n` +
-            `3. ✅ Use \`analyze_class_completeness("${displayName}")\` - Check for missing common methods\n` +
-            `4. ✅ Use \`get_api_usage_patterns("<ClassName>")\` - See how to use D365FO APIs correctly\n\n` +
-            `These tools provide patterns from the actual codebase, not generic templates.`,
+            (args.pattern === 'class-extension'
+              ? `💡 **Next Steps (class-extension CoC workflow):**\n\n` +
+                `1. 🚨 Use \`get_method_signature("${displayName}", "<methodName>")\` — **REQUIRED** to get the exact signature (static vs instance, return type, parameters) before writing any CoC method\n` +
+                `2. ✅ Use \`find_coc_extensions("${displayName}", "<methodName>")\` - See existing CoC wrappers for reference\n` +
+                `3. ✅ Use \`suggest_method_implementation("${displayName}", "<methodName>")\` - Get real implementation examples\n` +
+                `4. ✅ Use \`get_api_usage_patterns("<ClassName>")\` - See how to use D365FO APIs correctly\n\n` +
+                `⚠️ Never guess static vs instance — always use get_method_signature first.`
+              : `💡 **Next Steps for Better Code Quality:**\n\n` +
+                `1. ✅ Use \`analyze_code_patterns("<scenario>")\` - Learn what D365FO classes are commonly used together\n` +
+                `2. ✅ Use \`suggest_method_implementation("${displayName}", "<methodName>")\` - Get real implementation examples\n` +
+                `3. ✅ Use \`analyze_class_completeness("${displayName}")\` - Check for missing common methods\n` +
+                `4. ✅ Use \`get_api_usage_patterns("<ClassName>")\` - See how to use D365FO APIs correctly\n\n` +
+                `These tools provide patterns from the actual codebase, not generic templates.`),
         },
       ],
     };
