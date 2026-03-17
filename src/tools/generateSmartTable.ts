@@ -17,6 +17,15 @@ interface GenerateSmartTableArgs {
   name: string;
   label?: string;
   tableGroup?: string;
+  /**
+   * Table storage type. Defined by the TableType property (source: MSDN).
+   *   Regular / RegularTable — DEFAULT. Permanent table stored in the main database.
+   *   TempDB                 — Temporary table in SQL Server TempDB. Dropped when no longer used
+   *                            by the current method. Joins/set operations are efficient.
+   *   InMemory               — Temporary ISAM file on AOS/client tier. SQL Server has no connection.
+   *                            Joins/set operations are usually INEFFICIENT. Same as old AX 2009 "Temporary".
+   */
+  tableType?: string;
   copyFrom?: string;
   fieldsHint?: string;
   primaryKeyFields?: string[];
@@ -49,7 +58,31 @@ export const generateSmartTableTool: Tool = {
       },
       tableGroup: {
         type: 'string',
-        description: 'Table group (e.g., "Main", "Parameter", "Group", "Transaction")',
+        description:
+          'Table group (business role). Defined by the system enum TableGroup (source: MSDN). ' +
+          'Valid values: ' +
+          '"Miscellaneous" = DEFAULT for new tables, does not fit other categories (e.g. TableExpImpDef); ' +
+          '"Main" = principal/master table for a central business object, static base data (e.g. CustTable, VendTable); ' +
+          '"Transaction" = transaction data, usually not edited directly (e.g. CustTrans, VendTrans); ' +
+          '"Parameter" = setup/parameter data for a Main table, typically one record per company (e.g. CustParameters); ' +
+          '"Group" = categorisation for a Main table, one-to-many with Main (e.g. CustGroup, VendGroup); ' +
+          '"WorksheetHeader" = worksheet header that categorises WorksheetLine rows (e.g. SalesTable); ' +
+          '"WorksheetLine" = lines to be validated and turned into transactions, may be deleted safely (e.g. SalesLine); ' +
+          '"Reference" = shared reference/lookup data across modules; ' +
+          '"Framework" = internal Microsoft framework/infrastructure tables. ' +
+          '⛔ NEVER pass "TempDB" or "InMemory" here — those are TableType values, NOT TableGroup values. ' +
+          'For temporary tables use tableType="TempDB" and keep tableGroup as "Main" (typical choice for Tmp tables).',
+      },
+      tableType: {
+        type: 'string',
+        description:
+          'Table storage type (TableType property, source: MSDN). Valid values: ' +
+          '"Regular" / "RegularTable" = DEFAULT, permanent table in main database — omit for regular tables; ' +
+          '"TempDB" = temporary table in SQL Server TempDB, dropped when no longer used by current method, ' +
+          'joins and set operations are EFFICIENT — use for SSRS report tmp tables and session-scoped data; ' +
+          '"InMemory" = temporary ISAM file on AOS/client tier, SQL Server has no connection to it, ' +
+          'joins and set operations are usually INEFFICIENT — equivalent to old AX 2009 "Temporary" property. ' +
+          '⛔ NEVER pass this value as tableGroup — they are completely separate properties.',
       },
       copyFrom: {
         type: 'string',
@@ -126,6 +159,7 @@ export async function handleGenerateSmartTable(
     name,
     label,
     tableGroup = 'Main',
+    tableType,
     copyFrom,
     fieldsHint,
     primaryKeyFields,
@@ -137,8 +171,49 @@ export async function handleGenerateSmartTable(
     methods: requestedMethods,
   } = args;
 
-  console.log(`[generateSmartTable] Generating table: ${name}, tableGroup=${tableGroup}, copyFrom=${copyFrom}`);
+  // Guard: 'TempDB' and 'InMemory' are NOT valid TableGroup values.
+  if (tableGroup === 'TempDB' || tableGroup === 'InMemory') {
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `❌ **Invalid parameter: tableGroup="${tableGroup}"**`,
+          ``,
+          `'${tableGroup}' is a **TableType** value, NOT a **TableGroup** value.`,
+          `These are two completely different D365FO table properties:`,
+          ``,
+          `| Property | Purpose | Valid values |`,
+          `|----------|---------|--------------|`,
+          `| **TableType** | Storage type | RegularTable, TempDB, InMemory |`,
+          `| **TableGroup** | Business role | Miscellaneous (default), Main, Transaction, Parameter, Group, WorksheetHeader, WorksheetLine, Reference, Framework |`,
+          ``,
+          `TableGroup meanings (source: MSDN / system enum TableGroup):`,
+          `  Miscellaneous   — DEFAULT for new tables; does not fit any other category`,
+          `  Main            — master/base object table, static data (e.g. CustTable, VendTable)`,
+          `  Transaction     — transaction data, not edited directly (e.g. CustTrans, VendTrans)`,
+          `  Parameter       — setup data for a Main table, usually one record/company (e.g. CustParameters)`,
+          `  Group           — categorisation for a Main table, one-to-many with Main (e.g. CustGroup)`,
+          `  WorksheetHeader — worksheet header, one-to-many with WorksheetLine (e.g. SalesTable)`,
+          `  WorksheetLine   — lines to validate → transactions, may be deleted safely (e.g. SalesLine)`,
+          `  Reference       — shared reference/lookup data across modules`,
+          `  Framework       — internal Microsoft framework/infrastructure tables`,
+          ``,
+          `🔄 **Call generate_smart_table again** with the corrected parameters:`,
+          `\`\`\``,
+          `generate_smart_table(`,
+          `  name="${name}",`,
+          `  tableType="${tableGroup}",       ← move here`,
+          `  tableGroup="Main",               ← use a valid TableGroup value`,
+          `  fieldsHint="...",`,
+          `)`,
+          `\`\`\``,
+        ].join('\n'),
+      }],
+      isError: true,
+    };
+  }
 
+  console.log(`[generateSmartTable] Generating table: ${name}, tableGroup=${tableGroup}, tableType=${tableType ?? 'Regular'}, copyFrom=${copyFrom}`);
   const builder = new SmartXmlBuilder();
   let fields: TableFieldSpec[] = [];
   let indexes: TableIndexSpec[] = [];
@@ -590,6 +665,7 @@ export async function handleGenerateSmartTable(
     name: finalName,
     label: label || finalName,
     tableGroup,
+    tableType,
     fields,
     indexes,
     relations,

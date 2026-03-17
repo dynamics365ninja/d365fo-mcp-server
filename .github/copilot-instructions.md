@@ -67,6 +67,42 @@ This workspace contains D365FO code. **Always use the specialized MCP tools** �
 > Label/HelpText → modify-property  propertyPath="Label" propertyValue="@MyModel:MyLabel"
 > ```
 >
+> **⚠️ TableGroup vs TableType — CRITICAL DISTINCTION:**
+> ```
+> TableGroup  = business role of the table (system enum TableGroup, source: MSDN).
+>   Valid values and meanings:
+>     Miscellaneous   — DEFAULT for new tables; does not fit any other category (e.g. TableExpImpDef)
+>     Main            — principal master table for a central business object, static base data
+>                       (e.g. CustTable, VendTable)
+>     Transaction     — transaction/journal data, typically not edited directly
+>                       (e.g. CustTrans, VendTrans)
+>     Parameter       — setup/parameter data for a Main table, usually 1 record per company
+>                       (e.g. CustParameters, VendParameters)
+>     Group           — categorisation for a Main table, one-to-many: Group → Main
+>                       (e.g. CustGroup, VendGroup)
+>     WorksheetHeader — worksheet header that categorises WorksheetLine rows
+>                       one-to-many: WorksheetHeader → WorksheetLine (e.g. SalesTable)
+>     WorksheetLine   — lines to be validated and turned into transactions;
+>                       may be deleted without affecting system stability (e.g. SalesLine)
+>     Reference       — shared reference/lookup data across modules
+>     Framework       — internal Microsoft framework/infrastructure tables
+>   ⛔ NEVER use "TempDB" or "InMemory" as a TableGroup value — those are TableType values!
+>
+> TableType   = storage type of the table (source: MSDN).
+>   Valid values: RegularTable (default, omit from XML) | TempDB | InMemory
+>     RegularTable — DEFAULT. Permanent table stored in the main database. Omit from XML entirely.
+>     TempDB       — Temporary table in SQL Server TempDB. Dropped when no longer used by the current
+>                    method. Joins and set operations are EFFICIENT. Use for SSRS report tmp tables
+>                    and session-scoped data.
+>     InMemory     — Temporary ISAM file on the AOS/client tier. SQL Server has no connection to it.
+>                    Joins and set operations are usually INEFFICIENT. Equivalent to the old
+>                    "Temporary" property from AX 2009.
+>
+> For a new TempDB table:
+>   generate_smart_table(tableType="TempDB", tableGroup="Main", ...)   ← CORRECT
+>   generate_smart_table(tableGroup="TempDB", ...)                     ← ❌ WRONG
+> ```
+>
 > **Table-extension properties (objectType="table-extension") — stored in `<PropertyModifications>`, NEVER use PowerShell:**
 > ```
 > Label             → modify-property  objectType="table-extension"  propertyPath="Label"             propertyValue="@MyModel:MyLabel"
@@ -194,6 +230,7 @@ For any D365FO request, **start with MCP tools — never** `code_search`, `grep_
 17. **NEVER** nest `while select` inside another `while select` — use `join` in a single select, or pre-load into `Map`/temp table. Nested data-access loops trigger BPCheckNestedLoopinCode.
 18. **ALWAYS** call `create_label()` for every new label ID before referencing it in code — uncreated labels cause BPErrorUnknownLabel at build time.
 19. **ALWAYS** write meaningful `/// <summary>` doc comments on every public/protected class and method — the text must describe what the code does, not just echo the name. `/// MyClass class.` or `/// run.` is NEVER acceptable (BPXmlDocNoDocumentationComments).
+20. **NEVER** pass `tableGroup="TempDB"` or `tableGroup="InMemory"` to `generate_smart_table` — `TempDB`/`InMemory` are **TableType** values, not **TableGroup** values. For a TempDB table use `tableType="TempDB"` and keep `tableGroup="Main"` (or another valid group). Valid `TableGroup` values (system enum TableGroup, source: MSDN): `Miscellaneous` (default for new tables) | `Main` | `Transaction` | `Parameter` | `Group` | `WorksheetHeader` | `WorksheetLine` | `Reference` | `Framework`.
 
 ### AxClass sourceCode Format — Member Variables in Declaration
 
@@ -551,6 +588,12 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 | `get_label_info(labelId?, model?)` | Get translations, list label files |
 | `create_label(labelId, labelFileId, model, translations[])` | Create new label |
 | `rename_label(oldLabelId, newLabelId, labelFileId, model)` | Rename label ID in .label.txt, X++ source, and XML metadata |
+
+> **Label ID naming — NO prefix!**
+> Label IDs describe the **meaning of the text**, not the owning object or model.
+> ✅ CORRECT: `CustomerName`, `InvoiceDate`, `ErrorAmountNegative`, `FieldAccountNum`
+> ❌ WRONG (prefixed like an object): `AslCoreCustomerName`, `ContosoExtInvoiceDate`
+> The label *file* (e.g. `@AslCore:CustomerName`) already identifies the owning model — the ID itself needs no prefix.
 
 > **Label file creation:** When calling `create_label` for the first time in a model (label file does not exist yet), **always** pass `createLabelFileIfMissing: true`. Without it the tool returns an error. Pass translations for all required languages (e.g. `en-US`, `cs`, `de`) — the tool creates the directory structure and XML descriptors for each language automatically. If you provide a translation for a language that does not yet have a folder (e.g. cs), set `createLabelFileIfMissing: true` so the folder and descriptor are created.
 

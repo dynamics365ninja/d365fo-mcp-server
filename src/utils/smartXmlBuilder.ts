@@ -53,12 +53,24 @@ export class SmartXmlBuilder {
     name: string;
     label?: string;
     tableGroup?: string;
+    /**
+     * Table storage type. Defined by the TableType property (source: MSDN).
+     *   Regular / RegularTable — DEFAULT. Permanent table stored in the main database. Omit from XML (it is the default).
+     *   TempDB                 — Temporary table in SQL Server's TempDB database. Dropped when no longer used
+     *                            by the current method. Joins and set operations are efficient.
+     *   InMemory               — Temporary ISAM file on the AOS/client tier; SQL Server has no connection to it.
+     *                            Joins and set operations are usually INEFFICIENT. Equivalent to the old
+     *                            "Temporary" property from AX 2009.
+     * ⚠️ NEVER pass 'TempDB' or 'InMemory' as the `tableGroup` parameter —
+     *    those are NOT valid TableGroup values. Use `tableType` instead.
+     */
+    tableType?: string;
     fields: TableFieldSpec[];
     indexes?: TableIndexSpec[];
     relations?: TableRelationSpec[];
     methods?: Array<{ name: string; source: string }>;
   }): string {
-    const { name, label, tableGroup, fields, indexes, relations, methods } = spec;
+    const { name, label, tableGroup, tableType, fields, indexes, relations, methods } = spec;
 
     let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
     xml += `<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n`;
@@ -83,26 +95,63 @@ export class SmartXmlBuilder {
       xml += `\t<Label>${this.escapeXml(label)}</Label>\n`;
     }
 
-    // BP rule: CacheLookup — set based on TableGroup to avoid BP warning "CacheLookup should be set"
-    const effectiveTableGroup = tableGroup || 'Main';
-    const cacheLookupMap: Record<string, string> = {
-      Parameter:    'Found',
-      Group:        'Found',
-      Main:         'Found',
-      Transaction:  'None',
-      WorksheetHeader: 'None',
-      WorksheetLine:   'None',
-      Miscellaneous:   'NotInTTS',
-      Framework:       'Found',
-    };
-    const cacheLookup = cacheLookupMap[effectiveTableGroup] || 'Found';
-    xml += `\t<CacheLookup>${cacheLookup}</CacheLookup>\n`;
+    // Normalise tableType — 'RegularTable' is the default and is omitted from XML.
+    const normalizedTableType = tableType && tableType.toLowerCase() !== 'regulartable' ? tableType : '';
+    const isTempTable = normalizedTableType === 'TempDB' || normalizedTableType === 'InMemory';
 
-    // BP rule: SaveDataPerCompany — Yes by default (most tables are company-specific)
-    // Parameter and Group tables are always per-company; shared tables need explicit No
-    xml += `\t<SaveDataPerCompany>Yes</SaveDataPerCompany>\n`;
+    // Guard: 'TempDB' and 'InMemory' are NOT valid TableGroup values — they belong to TableType.
+    if (tableGroup === 'TempDB' || tableGroup === 'InMemory') {
+      throw new Error(
+        `❌ Invalid TableGroup value "${tableGroup}". ` +
+        `'TempDB' and 'InMemory' are values for the TableType property, NOT for TableGroup. ` +
+        `Valid TableGroup values: Main | Transaction | Parameter | Group | Reference | ` +
+        `Miscellaneous | WorksheetHeader | WorksheetLine | Framework. ` +
+        `To create a temporary table pass tableType="${tableGroup}" and keep tableGroup empty or set it to 'Main'.`
+      );
+    }
+
+    // Valid TableGroup values — system enum TableGroup (source: MSDN / D365FO AOT):
+    //   Miscellaneous   — DEFAULT for new tables; does not fit any other category (e.g. TableExpImpDef)
+    //   Main            — principal master table for a central business object (static base data)
+    //   Transaction     — transaction/journal data, typically not edited directly
+    //   Parameter       — setup/parameter data for a Main table (usually 1 record per company)
+    //   Group           — categorisation for a Main table (one-to-many: Group → Main)
+    //   WorksheetHeader — worksheet header rows; one-to-many with WorksheetLine
+    //   WorksheetLine   — lines to validate → transactions; may be deleted without affecting stability
+    //   Reference       — shared reference/lookup data across modules
+    //   Framework       — internal Microsoft framework / infrastructure tables
+    // For TempDB/InMemory tables the group is typically 'Main' (matches real D365FO Tmp tables).
+    const effectiveTableGroup = tableGroup || 'Main';
+
+    // BP rule: CacheLookup — set based on TableGroup to avoid BP warning "CacheLookup should be set".
+    // TempDB tables reside in SQL TempDB and are session-scoped → CacheLookup=None (never cache).
+    // InMemory tables are ISAM files on AOS tier, not in SQL Server → CacheLookup=None.
+    if (isTempTable) {
+      xml += `\t<CacheLookup>None</CacheLookup>\n`;
+    } else {
+      const cacheLookupMap: Record<string, string> = {
+        Parameter:       'Found',
+        Group:           'Found',
+        Main:            'Found',
+        Transaction:     'None',
+        WorksheetHeader: 'None',
+        WorksheetLine:   'None',
+        Miscellaneous:   'NotInTTS',
+        Framework:       'Found',
+      };
+      const cacheLookup = cacheLookupMap[effectiveTableGroup] || 'Found';
+      xml += `\t<CacheLookup>${cacheLookup}</CacheLookup>\n`;
+    }
+
+    // BP rule: SaveDataPerCompany — TempDB/InMemory tables are session-scoped, not company-scoped.
+    xml += `\t<SaveDataPerCompany>${isTempTable ? 'No' : 'Yes'}</SaveDataPerCompany>\n`;
 
     xml += `\t<TableGroup>${effectiveTableGroup}</TableGroup>\n`;
+
+    // Inject TableType element for non-regular tables (TempDB / InMemory).
+    if (normalizedTableType) {
+      xml += `\t<TableType>${normalizedTableType}</TableType>\n`;
+    }
 
     // TitleField1/TitleField2: first two non-RecId fields
     const titleCandidates = fields.filter(f => f.name !== 'RecId').slice(0, 2);

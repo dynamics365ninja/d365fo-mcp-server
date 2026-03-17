@@ -486,22 +486,17 @@ export async function handleGenerateSmartReport(
   const tmpTableXml = builder.buildTableXml({
     name: tmpTableName,
     label: `${reportCaption} (temp)`,
-    tableGroup: 'Framework',
+    tableGroup: 'Main',
+    tableType: 'TempDB',
     fields: tableFields,
     indexes: [builder.buildPrimaryKeyIndex(tmpTableName, [tableFields[0]?.name || 'RecId'])],
   });
-  // Inject TempDB table type — SmartXmlBuilder doesn't have a tableType param,
-  // so we insert it right after <TableGroup>
-  const tmpTableXmlFinal = tmpTableXml.replace(
-    '</AxTable>',
-    '\t<TableType>TempDB</TableType>\n</AxTable>'
-  );
 
   generatedObjects.push({
     objectType: 'table',
     objectName: tmpTableName,
     aotFolder: 'AxTable',
-    content: tmpTableXmlFinal,
+    content: tmpTableXml,
   });
   log(`Generated TmpTable: ${tmpTableName} (${tableFields.length} fields)`);
 
@@ -514,7 +509,8 @@ export async function handleGenerateSmartReport(
     const dsTblXml = builder.buildTableXml({
       name: ds.tmpTableName,
       label: `${reportCaption} - ${ds.name} (temp)`,
-      tableGroup: 'Framework',
+      tableGroup: 'Main',
+      tableType: 'TempDB',
       fields: ds.tableFields,
       indexes: [builder.buildPrimaryKeyIndex(ds.tmpTableName, [ds.tableFields[0]?.name || 'RecId'])],
     });
@@ -522,7 +518,7 @@ export async function handleGenerateSmartReport(
       objectType: 'table',
       objectName: ds.tmpTableName,
       aotFolder: 'AxTable',
-      content: dsTblXml.replace('</AxTable>', '\t<TableType>TempDB</TableType>\n</AxTable>'),
+      content: dsTblXml,
     });
     log(`Generated extra TmpTable: ${ds.tmpTableName} (${ds.tableFields.length} fields)`);
   }

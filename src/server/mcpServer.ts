@@ -1570,7 +1570,11 @@ Examples:
             properties: {
               labelId: {
                 type: 'string',
-                description: 'Unique label identifier (alphanumeric), e.g. MyNewField',
+                description:
+                  'Unique label identifier (alphanumeric). ' +
+                  '⛔ NEVER add a model/object prefix — label IDs describe meaning, not ownership. ' +
+                  'Good: "CustomerName", "InvoiceDate", "ErrorAmountNegative". ' +
+                  'Bad (prefixed): "AslCoreCustomerName", "ContosoExtInvoiceDate".',
               },
               labelFileId: {
                 type: 'string',
@@ -1800,7 +1804,28 @@ Examples:
               },
               tableGroup: {
                 type: 'string',
-                description: 'Table group (Main, Transaction, Parameter, etc.)',
+                description:
+                  'Table group (business role). Defined by the system enum TableGroup (source: MSDN). ' +
+                  'Valid values: ' +
+                  '"Miscellaneous" = DEFAULT for new tables (e.g. TableExpImpDef); ' +
+                  '"Main" = master table for a central business object (e.g. CustTable, VendTable); ' +
+                  '"Transaction" = transaction data, not edited directly (e.g. CustTrans, VendTrans); ' +
+                  '"Parameter" = setup data for a Main table, one record/company (e.g. CustParameters); ' +
+                  '"Group" = categorisation for a Main table, one-to-many with Main (e.g. CustGroup); ' +
+                  '"WorksheetHeader" = worksheet header, one-to-many with WorksheetLine (e.g. SalesTable); ' +
+                  '"WorksheetLine" = lines to validate → transactions, may be deleted safely (e.g. SalesLine); ' +
+                  '"Reference" = shared reference/lookup data; ' +
+                  '"Framework" = internal Microsoft framework tables. ' +
+                  '⛔ NEVER pass "TempDB" or "InMemory" here — use tableType instead.',
+              },
+              tableType: {
+                type: 'string',
+                description:
+                  'Table storage type (TableType property, source: MSDN). Valid values: ' +
+                  '"Regular"/"RegularTable" = DEFAULT, permanent — omit for regular tables; ' +
+                  '"TempDB" = temporary table in SQL TempDB, dropped after use, joins are EFFICIENT; ' +
+                  '"InMemory" = temporary ISAM file on AOS tier, joins are INEFFICIENT (= old AX2009 Temporary). ' +
+                  '⛔ NEVER pass this value as tableGroup.',
               },
               copyFrom: {
                 type: 'string',

@@ -37,7 +37,11 @@ const CreateLabelArgsSchema = z.object({
     .string()
     .regex(/^[A-Za-z][A-Za-z0-9_]*$/, 'Label ID must be alphanumeric (no spaces)')
     .describe(
-      'Label identifier — must be unique within the label file, e.g. MyNewField or MyFeature',
+      'Label identifier — must be unique within the label file. ' +
+      '⛔ NEVER add a model/object prefix to label IDs. ' +
+      'Label IDs describe the meaning of the text, NOT the owning object. ' +
+      'Good examples: "CustomerName", "InvoiceDate", "ErrorAmountNegative". ' +
+      'Bad examples (with prefix): "AslCoreCustomerName", "ContosoExtInvoiceDate".',
     ),
   labelFileId: z
     .string()
