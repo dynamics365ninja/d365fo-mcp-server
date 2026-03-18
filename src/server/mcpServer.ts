@@ -2369,9 +2369,9 @@ Examples:
         inputSchema: {
           type: 'object',
           properties: {
-            projectPath: { type: 'string', description: 'Absolute path to the .rnrproj file (e.g. K:\\\\repos\\\\MySolution\\\\MyProject\\\\MyProject.rnrproj)' },
+            projectPath: { type: 'string', description: 'Absolute path to the .rnrproj file (e.g. K:\\\\repos\\\\MySolution\\\\MyProject\\\\MyProject.rnrproj). Auto-detected from .mcp.json if omitted.' },
           },
-          required: ['projectPath'],
+          required: [],
         },
       },
       {
@@ -2382,6 +2382,7 @@ Examples:
           properties: {
             modelName: { type: 'string', description: 'The name of the model to sync (e.g. "ContosoExtensions")' },
             tableName: { type: 'string', description: 'Optional: sync only this specific table instead of the whole model' },
+            packagePath: { type: 'string', description: 'PackagesLocalDirectory root path. Auto-detected from .mcp.json if omitted.' },
           },
           required: ['modelName'],
         },
@@ -2392,20 +2393,24 @@ Examples:
         inputSchema: {
           type: 'object',
           properties: {
-            projectPath: { type: 'string', description: 'Absolute path to the .rnrproj file to analyze' },
+            projectPath: { type: 'string', description: 'Absolute path to the .rnrproj file to analyze. Auto-detected from .mcp.json if omitted.' },
             targetFilter: { type: 'string', description: 'Optional: filter results to a specific class, table, or object name' },
+            modelName: { type: 'string', description: 'Model name to check. Auto-detected from .mcp.json if omitted.' },
+            packagePath: { type: 'string', description: 'PackagesLocalDirectory root path. Auto-detected from .mcp.json if omitted.' },
           },
-          required: ['projectPath'],
+          required: [],
         },
       },
       {
         name: 'run_systest_class',
-        description: 'Execute a D365FO unit test class using SysTestRunner.exe. Returns pass/fail results for each test method.',
+        description: 'Execute a D365FO unit test class using SysTestRunner.exe or xppbp.exe. Returns pass/fail results for each test method.',
         inputSchema: {
           type: 'object',
           properties: {
             className: { type: 'string', description: 'The name of the SysTest class to run (e.g. "MyModuleTest")' },
             modelName: { type: 'string', description: 'The model containing the test class. Auto-detected from .mcp.json if omitted.' },
+            packagePath: { type: 'string', description: 'PackagesLocalDirectory root path. Auto-detected from .mcp.json if omitted.' },
+            testMethod: { type: 'string', description: 'Optional: run only this specific test method within the class (e.g. "testValidation").' },
           },
           required: ['className'],
         },

@@ -189,6 +189,17 @@ For any D365FO request, **start with MCP tools — never** `code_search`, `grep_
   | PowerShell `run_in_terminal` or scripts to edit files | **FORBIDDEN. ALWAYS USE MCP TOOLS INSTEAD! PowerShell hangs in this workspace.** |
 | PowerShell `ls`, `Test-Path`, `Get-Item` to check D365FO files | `verify_d365fo_project()` |
 | PowerShell `Get-Content` / `Select-String` to find tab/control names in form XML | `get_form_info(formName, searchControl="General")` |
+| PowerShell / `run_in_terminal` to run BP check (xppbp.exe) | `run_bp_check()` — auto-detects model and packagePath from .mcp.json |
+| PowerShell / `run_in_terminal` to compile/build the project | `build_d365fo_project()` — auto-detects projectPath from .mcp.json |
+| PowerShell / `run_in_terminal` to run DB sync (SyncEngine.exe) | `trigger_db_sync()` |
+| PowerShell / `run_in_terminal` to run unit tests | `run_systest_class()` |
+
+> ### ⚠️ SDLC Tools — NEVER fall back to PowerShell or review_workspace_changes
+>
+> `run_bp_check`, `build_d365fo_project`, `trigger_db_sync`, and `run_systest_class` call the real D365FO CLI binaries (xppbp.exe, MSBuild, SyncEngine.exe).
+> - All parameters are **optional** — model name and packagePath are auto-detected from `.mcp.json`.
+> - If `run_bp_check` returns an error about a missing binary, it means `packagePath` in `.mcp.json` is wrong — fix the config, do NOT switch to PowerShell or `review_workspace_changes`.
+> - `review_workspace_changes` is for **git diff code review only** — it is NOT a substitute for BP check.
 
 > ### ⚠️ CRITICAL — `get_form_info` WORKS for ALL D365FO forms
 >
@@ -232,6 +243,7 @@ For any D365FO request, **start with MCP tools — never** `code_search`, `grep_
 18. **ALWAYS** call `create_label()` for every new label ID before referencing it in code — uncreated labels cause BPErrorUnknownLabel at build time.
 19. **ALWAYS** write meaningful `/// <summary>` doc comments on every public/protected class and method — the text must describe what the code does, not just echo the name. `/// MyClass class.` or `/// run.` is NEVER acceptable (BPXmlDocNoDocumentationComments).
 20. **NEVER** pass `tableGroup="TempDB"` or `tableGroup="InMemory"` to `generate_smart_table` — `TempDB`/`InMemory` are **TableType** values, not **TableGroup** values. For a TempDB table use `tableType="TempDB"` and keep `tableGroup="Main"` (or another valid group). Valid `TableGroup` values (system enum TableGroup, source: MSDN): `Miscellaneous` (default for new tables) | `Main` | `Transaction` | `Parameter` | `Group` | `WorksheetHeader` | `WorksheetLine` | `Reference` | `Framework`.
+21. **NEVER** use PowerShell / `run_in_terminal` to run BP checks, builds, or DB sync — ALWAYS use `run_bp_check()`, `build_d365fo_project()`, `trigger_db_sync()`, `run_systest_class()`. All parameters (model, packagePath, projectPath) are **optional** and auto-detected from `.mcp.json`. If one of these tools returns an error about a missing binary or path, inform the user to fix `.mcp.json` — do NOT fall back to PowerShell. Do NOT use `review_workspace_changes` as a substitute for `run_bp_check` — they serve different purposes.
 
 ### AxClass sourceCode Format — Member Variables in Declaration
 
