@@ -400,5 +400,5 @@ function normalizeDocBlockIndent(source: string): string {
  */
 function stripDocCommentGap(source: string): string {
   // Match a /// line followed by one or more blank lines, then a non-blank line
-  return source.replace(/(\/\/\/[^\n]*\n)(\s*\n)+(?=\s*\S)/g, '$1');
+  return source.replace(/(\/\/\/[^\n]*\n)\s*\n(?:\s*\n)+(?=\s*\S)/g, '$1');
 }
