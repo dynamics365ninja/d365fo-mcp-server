@@ -561,7 +561,7 @@ ${methodsXml}\t</SourceCode>
         // Determine i:type: use explicit type if provided, otherwise derive from EDT name heuristics.
         // NEVER default to AxTableFieldString blindly when an EDT is present — EDT base type matters!
         const iType = fieldTypeToAxType(f.type || 'String', f.edt);
-        fieldsXml += `\t\t<AxTableField xmlns="" i:type="${iType}">\n`;
+        fieldsXml += `\t\t<AxTableField xmlns=""\n\t\t\ti:type="${iType}">\n`;
         fieldsXml += `\t\t\t<Name>${f.name}</Name>\n`;
         if (f.edt)       fieldsXml += `\t\t\t<ExtendedDataType>${f.edt}</ExtendedDataType>\n`;
         if (f.mandatory) fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
@@ -1419,7 +1419,8 @@ ${defaultParamGroupXml}
    * Sanitize AxTable XML to ensure correct D365FO field element format.
    *
    * D365FO requires fields as:
-   *   <AxTableField xmlns="" i:type="AxTableFieldString"> ... </AxTableField>
+   *   <AxTableField xmlns=""
+   *     i:type="AxTableFieldString"> ... </AxTableField>
    *
    * AI generators often emit the shorter form:
    *   <AxTableFieldString> ... </AxTableFieldString>
@@ -1439,7 +1440,7 @@ ${defaultParamGroupXml}
       const openRe = new RegExp(`<${ft}(\\s[^>]*)?>`, 'g');
       xml = xml.replace(openRe, (_match, attrs: string | undefined) => {
         const extra = attrs ? attrs : '';
-        return `<AxTableField xmlns="" i:type="${ft}"${extra}>`;
+        return `<AxTableField xmlns=""\n\t\t\ti:type="${ft}"${extra}>`;
       });
       // Closing tag
       xml = xml.replace(new RegExp(`<\\/${ft}>`, 'g'), '</AxTableField>');
