@@ -421,4 +421,57 @@ describe('modify_d365fo_file', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/cannot read|error|file/i);
   });
+
+  it('replace-code replaces a snippet inside an existing method', async () => {
+    const fsMod = await import('fs/promises');
+    (fsMod.readFile as any).mockResolvedValueOnce(
+      `<?xml version="1.0"?><AxClass><Name>MyClass</Name><SourceCode>` +
+      `<Declaration><![CDATA[public class MyClass {}]]></Declaration>` +
+      `<Methods><Method><Name>run</Name><Source><![CDATA[public void run()\n{\n    return false;\n}]]></Source></Method></Methods>` +
+      `</SourceCode></AxClass>`,
+    );
+    (fsMod.writeFile as any).mockResolvedValueOnce(undefined);
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'class',
+        objectName: 'MyClass',
+        operation: 'replace-code',
+        methodName: 'run',
+        oldCode: 'return false;',
+        newCode: 'return true;',
+        filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxClass\\MyClass.xml',
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    const written = (fsMod.writeFile as any).mock.calls.at(-1)[1] as Buffer;
+    expect(written.toString('utf-8')).toContain('return true;');
+    expect(written.toString('utf-8')).not.toContain('return false;');
+  });
+
+  it('replace-code returns error when oldCode is not found', async () => {
+    const fsMod = await import('fs/promises');
+    (fsMod.readFile as any).mockResolvedValueOnce(
+      `<?xml version="1.0"?><AxClass><Name>MyClass</Name><SourceCode>` +
+      `<Declaration><![CDATA[public class MyClass {}]]></Declaration>` +
+      `<Methods><Method><Name>run</Name><Source><![CDATA[public void run()\n{\n    ttsbegin;\n    ttscommit;\n}]]></Source></Method></Methods>` +
+      `</SourceCode></AxClass>`,
+    );
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'class',
+        objectName: 'MyClass',
+        operation: 'replace-code',
+        methodName: 'run',
+        oldCode: 'return false;',
+        newCode: 'return true;',
+        filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxClass\\MyClass.xml',
+      }),
+      ctx,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/oldCode not found/i);
+  });
 });

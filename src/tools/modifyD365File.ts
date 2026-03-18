@@ -86,7 +86,7 @@ const ModifyD365FileArgsSchema = z.object({
   ]).describe('Type of D365FO object'),
   objectName: z.string().describe('Name of the object to modify'),
   operation: z.enum([
-    'add-method', 'remove-method',
+    'add-method', 'remove-method', 'replace-code',
     'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'remove-field',
     'add-index', 'remove-index',
     'add-relation', 'remove-relation',
@@ -142,6 +142,16 @@ const ModifyD365FileArgsSchema = z.object({
     'method name, parameters, attributes (e.g. [ExtensionOf(...)]), and body. ' +
     'This is the preferred parameter when passing a complete CoC skeleton. ' +
     'Either methodCode or sourceCode may be used; sourceCode takes precedence if both are supplied.'
+  ),
+  // For replace-code
+  oldCode: z.string().optional().describe(
+    'Exact existing X++ code snippet to find and replace. Used with operation="replace-code". ' +
+    'Must match the source text exactly (leading/trailing whitespace is trimmed for matching). ' +
+    'If methodName is also provided the search is scoped to that method\'s Source block only.'
+  ),
+  newCode: z.string().optional().describe(
+    'Replacement X++ code snippet. Used with operation="replace-code". ' +
+    'Replaces the first occurrence of oldCode in the target source block.'
   ),
   methodModifiers: z.string().optional().describe('Method modifiers (e.g., "public static")'),
   methodReturnType: z.string().optional().describe('Return type of method'),
@@ -311,6 +321,13 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         modified = await addMethod(xmlObj, objectType, args);
         message = `Added method "${args.methodName}" to ${objectType} "${objectName}"`;
         break;
+
+      case 'replace-code': {
+        const scope = args.methodName ? ` in method "${args.methodName}"` : '';
+        modified = await replaceCode(xmlObj, objectType, args);
+        message = `Replaced code snippet${scope} in ${objectType} "${objectName}"`;
+        break;
+      }
       
       case 'remove-method':
         modified = await removeMethod(xmlObj, objectType, args);
@@ -786,6 +803,113 @@ function hasMethodSignatureLine(code: string, methodName: string): boolean {
     return MODIFIER_RE.test(t) && t.includes(`${methodName}(`);
   }
   return false;
+}
+
+/**
+ * Replace a specific X++ code snippet inside a method Source block or the class Declaration.
+ *
+ * Finds the first occurrence of `oldCode` in:
+ *   – the named method's <Source> block (when methodName is provided), or
+ *   – the classDeclaration <Declaration> block (when methodName="classDeclaration"), or
+ *   – every Source block in order (Declaration first, then Methods) until one matches.
+ *
+ * Behaviour mirrors replace_string_in_file: the surrounding code is preserved and
+ * the match position is maintained — only the matched text is overwritten.
+ */
+async function replaceCode(xmlObj: any, objectType: string, args: any): Promise<boolean> {
+  const { methodName, oldCode, newCode } = args;
+
+  if (!oldCode) {
+    throw new Error('oldCode is required for replace-code operation');
+  }
+  if (newCode === undefined || newCode === null) {
+    throw new Error('newCode is required for replace-code operation (pass "" to delete)');
+  }
+
+  // Decode XML entities so that AI-provided snippets (e.g. &lt;summary&gt;) match the
+  // decoded source text that is stored in the CDATA block after the initial xml2js parse.
+  const decodedOld = decodeXmlEntitiesFromXppSource(oldCode);
+  const decodedNew = decodeXmlEntitiesFromXppSource(newCode);
+
+  const rootKey = getRootKey(objectType);
+  const root = xmlObj[rootKey];
+  if (!root) {
+    throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
+  }
+
+  const sourceCodeEl = Array.isArray(root.SourceCode) ? root.SourceCode[0] : root.SourceCode;
+  if (!sourceCodeEl || typeof sourceCodeEl !== 'object') {
+    throw new Error('No <SourceCode> block found in object');
+  }
+
+  // ── Helper: replace first occurrence, return true on success ────────────
+  function replaceIn(container: any, prop: string): boolean {
+    const val: string = container[prop]?.[0] ?? '';
+    if (!val.includes(decodedOld)) return false;
+    container[prop][0] = val.replace(decodedOld, decodedNew);
+    return true;
+  }
+
+  // ── Scoped to a specific method / classDeclaration ───────────────────────
+  if (methodName) {
+    if (methodName === 'classDeclaration') {
+      if (!sourceCodeEl.Declaration?.[0]) {
+        throw new Error('No <Declaration> block found');
+      }
+      if (!replaceIn(sourceCodeEl, 'Declaration')) {
+        throw new Error(
+          `oldCode not found in classDeclaration.\n` +
+          `Searched for:\n${decodedOld}\n\n` +
+          `Use get_method_source(className, "classDeclaration") to see the current source.`
+        );
+      }
+      return true;
+    }
+
+    const methodsNode = sourceCodeEl.Methods?.[0];
+    if (!methodsNode?.Method) {
+      throw new Error(`No methods found in object`);
+    }
+    const methods: any[] = Array.isArray(methodsNode.Method)
+      ? methodsNode.Method
+      : [methodsNode.Method];
+    const method = methods.find((m: any) => m.Name?.[0] === methodName);
+    if (!method) {
+      throw new Error(
+        `Method "${methodName}" not found. ` +
+        `Use get_class_info() to list available methods.`
+      );
+    }
+    if (!replaceIn(method, 'Source')) {
+      throw new Error(
+        `oldCode not found in method "${methodName}".\n` +
+        `Searched for:\n${decodedOld}\n\n` +
+        `Use get_method_source(className, "${methodName}") to see the current source.`
+      );
+    }
+    return true;
+  }
+
+  // ── No scope — search Declaration then all Method Sources ────────────────
+  if (sourceCodeEl.Declaration?.[0] && replaceIn(sourceCodeEl, 'Declaration')) {
+    return true;
+  }
+
+  const methodsNode = sourceCodeEl.Methods?.[0];
+  if (methodsNode?.Method) {
+    const methods: any[] = Array.isArray(methodsNode.Method)
+      ? methodsNode.Method
+      : [methodsNode.Method];
+    for (const method of methods) {
+      if (replaceIn(method, 'Source')) return true;
+    }
+  }
+
+  throw new Error(
+    `oldCode not found in any Source or Declaration block.\n` +
+    `Searched for:\n${decodedOld}\n\n` +
+    `Tip: provide methodName to scope the search, or use get_method_source() to inspect current content.`
+  );
 }
 
 async function addMethod(xmlObj: any, objectType: string, args: any): Promise<boolean> {
