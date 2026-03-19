@@ -1,4 +1,4 @@
-﻿# Azure Pipelines - Automation Guide
+# Azure Pipelines - Automation Guide
 
 Complete guide for Azure DevOps pipeline automation of D365FO metadata extraction and deployment.
 
@@ -26,20 +26,20 @@ Manual metadata extraction and database builds are time-consuming:
 
 ### Solution
 
-Four automated pipelines covering the full lifecycle â€” from application deployment to metadata extraction:
+Four automated pipelines covering the full lifecycle — from application deployment to metadata extraction:
 
-1. **d365fo-mcp-app-deploy** â€” Deploy MCP Server app to Azure App Service (auto-trigger on `main`)
-2. **d365fo-mcp-data-extract-and-build-custom** â€” Custom model updates from Git source (~15-30 min, manual)
-3. **d365fo-mcp-data-extract-and-build-platform** â€” Standard metadata from PackagesLocalDirectory.zip (~60-120 min, manual)
-4. **d365fo-mcp-data-platform-upgrade** â€” Complete D365 version upgrade: standard + custom + labels (~90-120 min, manual)
+1. **d365fo-mcp-app-deploy** — Deploy MCP Server app to Azure App Service (auto-trigger on `main`)
+2. **d365fo-mcp-data-extract-and-build-custom** — Custom model updates from Git source (~15-30 min, manual)
+3. **d365fo-mcp-data-extract-and-build-platform** — Standard metadata from PackagesLocalDirectory.zip (~60-120 min, manual)
+4. **d365fo-mcp-data-platform-upgrade** — Complete D365 version upgrade: standard + custom + labels (~90-120 min, manual)
 
 ### Benefits
 
-- âšˇ **Fast custom updates** â€” Custom models in 15-30 minutes (vs 2-3 hours full extraction)
-- đź“Š **Separation of concerns** â€” Standard vs custom metadata, app code vs data
-- đź’° **Cost optimization** â€” Pay only for what you update
-- đź›ˇď¸Ź **Reliable** â€” Consistent, repeatable automated process
-- đźŽŻ **Flexible** â€” `skipExtraction` parameter lets you rebuild DB without re-extracting
+- ⚡ **Fast custom updates** — Custom models in 15-30 minutes (vs 2-3 hours full extraction)
+- 📊 **Separation of concerns** — Standard vs custom metadata, app code vs data
+- 💰 **Cost optimization** — Pay only for what you update
+- 🛡️ **Reliable** — Consistent, repeatable automated process
+- 🎯 **Flexible** — `skipExtraction` parameter lets you rebuild DB without re-extracting
 
 ---
 
@@ -51,68 +51,68 @@ Azure Blob Storage hierarchy:
 
 ```
 xpp-metadata/
-â”śâ”€â”€ metadata/
-â”‚   â”śâ”€â”€ standard/           # Microsoft models (quarterly updates)
-â”‚   â”‚   â”śâ”€â”€ ApplicationCommon/
-â”‚   â”‚   â”śâ”€â”€ ApplicationPlatform/
-â”‚   â”‚   â”śâ”€â”€ ApplicationSuite/
-â”‚   â”‚   â””â”€â”€ ... (350+ models)
-â”‚   â””â”€â”€ custom/             # Your models (updated on demand)
-â”‚       â”śâ”€â”€ YourModel1/
-â”‚       â”śâ”€â”€ YourModel2/
-â”‚       â””â”€â”€ ...
-â””â”€â”€ database/
-    â”śâ”€â”€ xpp-metadata.db          # Symbols database (~2â€“3 GB without/with UnitTest models)
-    â””â”€â”€ xpp-metadata-labels.db   # Labels database (~500 MB for 4 languages)
+├── metadata/
+│   ├── standard/           # Microsoft models (quarterly updates)
+│   │   ├── ApplicationCommon/
+│   │   ├── ApplicationPlatform/
+│   │   ├── ApplicationSuite/
+│   │   └── ... (350+ models)
+│   └── custom/             # Your models (updated on demand)
+│       ├── YourModel1/
+│       ├── YourModel2/
+│       └── ...
+└── database/
+    ├── xpp-metadata.db          # Symbols database (~2–3 GB without/with UnitTest models)
+    └── xpp-metadata-labels.db   # Labels database (~500 MB for 4 languages)
 ```
 
 ### Pipeline Flow
 
 ```
-â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚  d365fo-mcp-app-deploy                                        â”‚
-â”‚  Auto-trigger: push to main (src/**, package.json, â€¦)        â”‚
-â”‚  â†’ TypeScript compile â†’ zip with node_modules â†’ App Service  â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+┌──────────────────────────────────────────────────────────────┐
+│  d365fo-mcp-app-deploy                                        │
+│  Auto-trigger: push to main (src/**, package.json, …)        │
+│  → TypeScript compile → zip with node_modules → App Service  │
+└──────────────────────────────────────────────────────────────┘
 
-â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚  d365fo-mcp-data-extract-and-build-custom  (manual)          â”‚
-â”‚  1. Checkout D365FO source (Azure DevOps)                    â”‚
-â”‚  2. Checkout MCP Server (GitHub)                             â”‚
-â”‚  3. Download existing DB (custom mode) OR std metadata       â”‚
-â”‚  4. Extract custom models from Git source                    â”‚
-â”‚  5. Build database (incremental â€” standard already indexed)  â”‚
-â”‚  6. Upload metadata + symbols DB + labels DB                 â”‚
-â”‚  7. Restart App Service                                      â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+┌──────────────────────────────────────────────────────────────┐
+│  d365fo-mcp-data-extract-and-build-custom  (manual)          │
+│  1. Checkout D365FO source (Azure DevOps)                    │
+│  2. Checkout MCP Server (GitHub)                             │
+│  3. Download existing DB (custom mode) OR std metadata       │
+│  4. Extract custom models from Git source                    │
+│  5. Build database (incremental — standard already indexed)  │
+│  6. Upload metadata + symbols DB + labels DB                 │
+│  7. Restart App Service                                      │
+└──────────────────────────────────────────────────────────────┘
 
-â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚  d365fo-mcp-data-extract-and-build-platform  (manual)        â”‚
-â”‚  1. Download PackagesLocalDirectory.zip from Blob            â”‚
-â”‚  2. Extract zip â†’ extract standard metadata                  â”‚
-â”‚  3. Upload standard metadata to blob                         â”‚
-â”‚  4. Build database (standard only, with labels)              â”‚
-â”‚  5. Upload symbols DB + labels DB                            â”‚
-â”‚  6. Restart App Service                                      â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+┌──────────────────────────────────────────────────────────────┐
+│  d365fo-mcp-data-extract-and-build-platform  (manual)        │
+│  1. Download PackagesLocalDirectory.zip from Blob            │
+│  2. Extract zip → extract standard metadata                  │
+│  3. Upload standard metadata to blob                         │
+│  4. Build database (standard only, with labels)              │
+│  5. Upload symbols DB + labels DB                            │
+│  6. Restart App Service                                      │
+└──────────────────────────────────────────────────────────────┘
 
-â”Śâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-â”‚  d365fo-mcp-data-platform-upgrade  (manual)                  â”‚
-â”‚  1. Download PackagesLocalDirectory.zip from Blob            â”‚
-â”‚  2. Extract zip â†’ extract standard metadata â†’ upload blob    â”‚
-â”‚  3. Download custom metadata from blob                       â”‚
-â”‚  4. Build DB (symbols + labels, SKIP_FTS=true)               â”‚
-â”‚  5. Rebuild FTS index separately                             â”‚
-â”‚  6. Upload symbols DB + labels DB                            â”‚
-â”‚  7. Restart App Service                                      â”‚
-â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+┌──────────────────────────────────────────────────────────────┐
+│  d365fo-mcp-data-platform-upgrade  (manual)                  │
+│  1. Download PackagesLocalDirectory.zip from Blob            │
+│  2. Extract zip → extract standard metadata → upload blob    │
+│  3. Download custom metadata from blob                       │
+│  4. Build DB (symbols + labels, SKIP_FTS=true)               │
+│  5. Rebuild FTS index separately                             │
+│  6. Upload symbols DB + labels DB                            │
+│  7. Restart App Service                                      │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Pipeline Configurations
 
-### 1. d365fo-mcp-app-deploy.yml â€” Deploy Application
+### 1. d365fo-mcp-app-deploy.yml — Deploy Application
 
 **Purpose:** Compile TypeScript, package the application, and deploy to Azure App Service.
 
@@ -126,16 +126,16 @@ xpp-metadata/
 **Process:**
 1. Checkout MCP Server from GitHub
 2. Install Node.js 24.x
-3. `npm ci` â€” compiles `better-sqlite3` native addon for Node 24 / Linux (ubuntu-latest matches App Service glibc)
-4. `npm run build` â€” TypeScript compile â†’ `dist/`
+3. `npm ci` — compiles `better-sqlite3` native addon for Node 24 / Linux (ubuntu-latest matches App Service glibc)
+4. `npm run build` — TypeScript compile → `dist/`
 5. Archive everything (including pre-built `node_modules`) into `app.zip`
 6. Publish artifact
 7. Set App Service settings (`SCM_DO_BUILD_DURING_DEPLOYMENT=false`, `MCP_SERVER_MODE=read-only`)
 8. Deploy zip via Zip Deploy
-9. Poll `/health` every 15 s for up to 10 minutes until HTTP 200 (app downloads DB from Blob on cold start â€” typically 2â€“5 min)
+9. Poll `/health` every 15 s for up to 10 minutes until HTTP 200 (app downloads DB from Blob on cold start — typically 2–5 min)
 
 **When to Use:**
-- Every merge to `main` â€” triggered automatically
+- Every merge to `main` — triggered automatically
 - Manual re-deploy after infrastructure changes
 
 **Execution Time:** ~5-10 minutes
@@ -144,7 +144,7 @@ xpp-metadata/
 
 ---
 
-### 2. d365fo-mcp-data-extract-and-build-custom.yml â€” Custom Metadata Update
+### 2. d365fo-mcp-data-extract-and-build-custom.yml — Custom Metadata Update
 
 **Purpose:** Fast updates of custom models from the Azure DevOps Git repository.
 
@@ -159,11 +159,11 @@ xpp-metadata/
 | `skipExtraction` | boolean | `false` | `true` = rebuild DB from existing blob metadata without Git extraction |
 
 **Source Code Checkouts:**
-1. D365FO source code from Azure DevOps (`checkout: self`) â€” location: `$(Build.SourcesDirectory)`
+1. D365FO source code from Azure DevOps (`checkout: self`) — location: `$(Build.SourcesDirectory)`
    - Contains D365FO metadata at the path configured in `PACKAGES_PATH` pipeline variable
-2. MCP Server from GitHub (`dynamics365ninja/d365fo-mcp-server`) â€” location: `$(Pipeline.Workspace)/mcp-server`
+2. MCP Server from GitHub (`dynamics365ninja/d365fo-mcp-server`) — location: `$(Pipeline.Workspace)/mcp-server`
 
-**Process (custom mode, skipExtraction=false â€” default):**
+**Process (custom mode, skipExtraction=false — default):**
 1. Checkout D365FO source + MCP Server
 2. Install Node.js 24.x + `npm ci`
 3. Download existing symbols DB from blob (preserves already-indexed standard models)
@@ -175,7 +175,7 @@ xpp-metadata/
 9. Restart App Service
 
 **Process (skipExtraction=true):**
-- Skips steps 4â€“5 (delete blob, Git extraction) and step 7 (upload metadata)
+- Skips steps 4–5 (delete blob, Git extraction) and step 7 (upload metadata)
 - Downloads standard metadata from blob via **azcopy** (massively parallel)
 - Downloads custom metadata from blob via **azcopy**
 - Downloads existing labels DB from blob (no `PACKAGES_PATH` available)
@@ -203,7 +203,7 @@ ENABLE_SEARCH_SUGGESTIONS: 'false'
 
 ---
 
-### 3. d365fo-mcp-data-extract-and-build-platform.yml â€” Standard Metadata Extraction
+### 3. d365fo-mcp-data-extract-and-build-platform.yml — Standard Metadata Extraction
 
 **Purpose:** Extract Microsoft standard models from `PackagesLocalDirectory.zip` and build the standard database (symbols + labels).
 
@@ -215,7 +215,7 @@ ENABLE_SEARCH_SUGGESTIONS: 'false'
 |-----------|------|---------|-------------|
 | `skipExtraction` | boolean | `false` | `true` = skip zip download/extraction, rebuild DB from existing blob metadata |
 
-**Process (skipExtraction=false â€” default):**
+**Process (skipExtraction=false — default):**
 1. Checkout MCP Server from GitHub
 2. Install Node.js 24.x + `npm ci`
 3. Download `PackagesLocalDirectory.zip` from blob (container: `packages`)
@@ -227,7 +227,7 @@ ENABLE_SEARCH_SUGGESTIONS: 'false'
 9. Restart App Service
 
 **Process (skipExtraction=true):**
-- Skips steps 3â€“6
+- Skips steps 3–6
 - Downloads standard metadata from blob via **azcopy**
 - Downloads existing labels DB from blob
 - Rebuilds database without re-extracting
@@ -250,9 +250,9 @@ COMPUTE_STATS: 'true'
 
 ---
 
-### 4. d365fo-mcp-data-platform-upgrade.yml â€” Complete Platform Upgrade
+### 4. d365fo-mcp-data-platform-upgrade.yml — Complete Platform Upgrade
 
-**Purpose:** Full D365 version upgrade â€” standard + custom metadata + FTS index, all in one run with service restart.
+**Purpose:** Full D365 version upgrade — standard + custom metadata + FTS index, all in one run with service restart.
 
 **Trigger:** Manual only (`trigger: none`)
 
@@ -266,7 +266,7 @@ COMPUTE_STATS: 'true'
 5. Extract standard metadata
 6. Upload standard metadata to blob (`metadata/standard/`)
 7. Download custom metadata from blob (`metadata/custom/`)
-8. Build database â€” symbols + labels (`SKIP_FTS: true`, `INCLUDE_LABELS: true`, 4 GB heap)
+8. Build database — symbols + labels (`SKIP_FTS: true`, `INCLUDE_LABELS: true`, 4 GB heap)
 9. Rebuild FTS index separately (`npm run build-fts`)
 10. Upload symbols DB + labels DB to blob
 11. Restart App Service
@@ -287,7 +287,7 @@ INCLUDE_LABELS: 'false'
 
 **Key Notes:**
 - Requires pre-existing custom metadata in blob (run custom pipeline first if needed)
-- Restarts App Service â€” brief production impact (~30 sec)
+- Restarts App Service — brief production impact (~30 sec)
 - Custom metadata is downloaded from blob, **not** re-extracted from Git source
 
 **When to Use:**
@@ -308,7 +308,7 @@ INCLUDE_LABELS: 'false'
 
 **Pipeline:** `d365fo-mcp-data-extract-and-build-custom`
 
-1. Navigate to Pipelines â†’ `d365fo-mcp-data-extract-and-build-custom`
+1. Navigate to Pipelines → `d365fo-mcp-data-extract-and-build-custom`
 2. Click **Run pipeline**
 3. Keep defaults: `extractionMode: custom`, `customModels: all`, `skipExtraction: false`
 4. Wait ~15-30 minutes
@@ -356,7 +356,7 @@ INCLUDE_LABELS: 'false'
 **Alternative (Complete Upgrade in One Run):**
 1. Upload `PackagesLocalDirectory.zip` to blob
 2. Run `d365fo-mcp-data-extract-and-build-custom` first if custom models changed
-3. Run `d365fo-mcp-data-platform-upgrade` (~90-120 min) â€” standard + custom + FTS in one step
+3. Run `d365fo-mcp-data-platform-upgrade` (~90-120 min) — standard + custom + FTS in one step
 
 **Result:** Latest Microsoft metadata + your custom models deployed to production.
 
@@ -371,7 +371,7 @@ INCLUDE_LABELS: 'false'
 3. Run `d365fo-mcp-data-extract-and-build-platform` for standard models (~60-120 min)
 4. Run `d365fo-mcp-data-extract-and-build-custom` for initial custom extraction (~15-30 min)
 5. Run `d365fo-mcp-data-platform-upgrade` to combine and deploy complete database (~90-120 min)
-6. Push a commit to `main` â€” `d365fo-mcp-app-deploy` auto-deploys the app
+6. Push a commit to `main` — `d365fo-mcp-app-deploy` auto-deploys the app
 
 **Result:** Complete setup with all metadata and database deployed.
 
@@ -381,7 +381,7 @@ INCLUDE_LABELS: 'false'
 
 **Situation:** You changed MCP Server TypeScript code (e.g. fixed a bug, added a tool).
 
-**Pipeline:** `d365fo-mcp-app-deploy` â€” **triggers automatically** on push to `main`.
+**Pipeline:** `d365fo-mcp-app-deploy` — **triggers automatically** on push to `main`.
 
 No manual action needed. Monitor the pipeline run and the `/health` poll step at the end.
 
@@ -392,7 +392,7 @@ No manual action needed. Monitor the pipeline run and the `/health` poll step at
 ### Pipeline Monitoring
 
 **Azure DevOps Portal:**
-1. Navigate to **Pipelines** â†’ **All pipelines**
+1. Navigate to **Pipelines** → **All pipelines**
 2. Check last run status and execution time trends
 3. Set up email notifications for failures
 
@@ -411,16 +411,16 @@ All data pipelines use memory-optimized settings:
 
 ```yaml
 NODE_OPTIONS: '--max-old-space-size=4096 --expose-gc'  # 4 GB heap
-ENABLE_SEARCH_SUGGESTIONS: 'false'   # saves ~800 MBâ€“1.5 GB during build
+ENABLE_SEARCH_SUGGESTIONS: 'false'   # saves ~800 MB–1.5 GB during build
 ```
 
 **Settings Explanation:**
-- `ENABLE_SEARCH_SUGGESTIONS=false` â€” disables term relationship graph during build; not needed in CI/CD
-- `--max-old-space-size=4096` â€” 4 GB heap (hosted agents have 14 GB RAM)
-- `--expose-gc` â€” enables manual GC calls during large object processing
+- `ENABLE_SEARCH_SUGGESTIONS=false` — disables term relationship graph during build; not needed in CI/CD
+- `--max-old-space-size=4096` — 4 GB heap (hosted agents have 14 GB RAM)
+- `--expose-gc` — enables manual GC calls during large object processing
 - Platform upgrade splits DB build into two steps (symbols+labels first, FTS second) to avoid peak memory spikes
 
-**âš ď¸Ź If Pipeline Fails with "heap out of memory":**
+**⚠️ If Pipeline Fails with "heap out of memory":**
 1. Confirm `ENABLE_SEARCH_SUGGESTIONS=false` is set
 2. Confirm `NODE_OPTIONS` contains `--max-old-space-size=4096`
 3. For platform upgrade: confirm FTS rebuild is in a separate step (already the case)
@@ -438,11 +438,11 @@ ENABLE_SEARCH_SUGGESTIONS: 'false'   # saves ~800 MBâ€“1.5 GB during build
 | d365fo-mcp-data-platform-upgrade | Manual | ~1-4/year | ~110 min | ~$1-2/year |
 
 **Storage Costs:**
-- Standard metadata: ~2-3 GB â†’ ~$0.04/month
-- Custom metadata: <1 GB â†’ ~$0.01/month
-- Symbols DB: ~2-3 GB â†’ ~$0.04/month
-- Labels DB: ~500 MB â†’ ~$0.01/month
-- `PackagesLocalDirectory.zip`: ~5-10 GB â†’ ~$0.10-0.20/month
+- Standard metadata: ~2-3 GB → ~$0.04/month
+- Custom metadata: <1 GB → ~$0.01/month
+- Symbols DB: ~2-3 GB → ~$0.04/month
+- Labels DB: ~500 MB → ~$0.01/month
+- `PackagesLocalDirectory.zip`: ~5-10 GB → ~$0.10-0.20/month
 - **Total: ~$0.20-0.30/month**
 
 **Optimization Tips:**
@@ -454,30 +454,30 @@ ENABLE_SEARCH_SUGGESTIONS: 'false'   # saves ~800 MBâ€“1.5 GB during build
 ### Maintenance Tasks
 
 #### Weekly
-- âś… Check pipeline success rate
-- âś… Review execution times for anomalies
+- ✅ Check pipeline success rate
+- ✅ Review execution times for anomalies
 
 #### Monthly
-- âś… Verify database size (~2.5â€“3.5 GB total: ~2â€“3 GB symbols + ~500 MB labels)
-- âś… Check blob storage usage
-- âś… Review App Service metrics
+- ✅ Verify database size (~2.5–3.5 GB total: ~2–3 GB symbols + ~500 MB labels)
+- ✅ Check blob storage usage
+- ✅ Review App Service metrics
 
 #### Quarterly
-- âś… Verify `PackagesLocalDirectory.zip` is current in blob storage
-- âś… Run `d365fo-mcp-data-extract-and-build-platform` after D365 updates
-- âś… Review and optimize custom models list
+- ✅ Verify `PackagesLocalDirectory.zip` is current in blob storage
+- ✅ Run `d365fo-mcp-data-extract-and-build-platform` after D365 updates
+- ✅ Review and optimize custom models list
 
 #### Yearly
-- âś… Audit Azure costs
-- âś… Review pipeline configurations
-- âś… Update Node.js version in pipeline YAML if needed (currently: `24.x`)
+- ✅ Audit Azure costs
+- ✅ Review pipeline configurations
+- ✅ Update Node.js version in pipeline YAML if needed (currently: `24.x`)
 
 ### Troubleshooting
 
 #### Pipeline Fails: "Cannot find variable group"
 
 ```
-1. Go to Pipelines â†’ Library
+1. Go to Pipelines → Library
 2. Check "xpp-mcp-server-config" group exists
 3. Verify it is linked to the pipeline security settings
 ```
@@ -502,7 +502,7 @@ ENABLE_SEARCH_SUGGESTIONS: 'false'   # saves ~800 MBâ€“1.5 GB during build
 
 ```
 1. Check App Service logs: az webapp log tail --name <app-name> --resource-group <rg>
-2. App downloads DB from blob on cold start â€” can take 2â€“5 min; 10 min timeout is intentional
+2. App downloads DB from blob on cold start — can take 2–5 min; 10 min timeout is intentional
 3. Verify AZURE_STORAGE_CONNECTION_STRING and BLOB_CONTAINER_NAME in App Service config
 4. Check /health endpoint manually in browser
 ```
