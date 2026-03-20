@@ -52,44 +52,34 @@ export class XppMetadataParser {
       // Methods are nested in SourceCode.Methods.Method
       const methodsData = axClass.SourceCode?.Methods?.Method || axClass.Methods?.Method;
 
-      // Extract class metadata
-      const classInfo: XppClassInfo = {
+      // Parse once — reused for both classInfo.methods and extractClassDependencies
+      const parsedMethods = this.parseMethods(methodsData, className);
+      const parsedImplements = this.parseImplements(axClass.Implements);
+      const parsedDeclaration = this.extractClassDeclaration(axClass);
+      const isAbstract = axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true';
+      const isFinal = axClass.IsFinal === 'Yes' || axClass.IsFinal === 'true';
+      const extendsClass = axClass.Extends || undefined;
+
+      const classInfoBase = {
         name: className,
         model: model || 'Unknown',
-        sourcePath: filePath,  // Store original XML file path
-        extends: axClass.Extends || undefined,
-        implements: this.parseImplements(axClass.Implements),
-        isAbstract: axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true',
-        isFinal: axClass.IsFinal === 'Yes' || axClass.IsFinal === 'true',
-        declaration: this.extractClassDeclaration(axClass),
-        methods: this.parseMethods(methodsData, className),
+        sourcePath: filePath,
+        extends: extendsClass,
+        implements: parsedImplements,
+        isAbstract,
+        isFinal,
+        declaration: parsedDeclaration,
+        methods: parsedMethods,
         documentation: axClass.DeveloperDocumentation || undefined,
-        // Enhanced metadata
-        tags: this.enhancedParser.generateClassTags({
-          name: className,
-          model: model || 'Unknown',
-          sourcePath: filePath,
-          extends: axClass.Extends || undefined,
-          implements: this.parseImplements(axClass.Implements),
-          isAbstract: axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true',
-          isFinal: axClass.IsFinal === 'Yes' || axClass.IsFinal === 'true',
-          declaration: this.extractClassDeclaration(axClass),
-          methods: [],
-          documentation: axClass.DeveloperDocumentation || undefined,
-        }),
-        usedTypes: this.enhancedParser.extractClassDependencies({
-          name: className,
-          model: model || 'Unknown',
-          sourcePath: filePath,
-          extends: axClass.Extends || undefined,
-          implements: this.parseImplements(axClass.Implements),
-          isAbstract: axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true',
-          isFinal: axClass.IsFinal === 'Yes' || axClass.IsFinal === 'true',
-          declaration: this.extractClassDeclaration(axClass),
-          methods: this.parseMethods(methodsData, className),
-          documentation: axClass.DeveloperDocumentation || undefined,
-        }),
-        description: axClass.DeveloperDocumentation || `${className} class${axClass.Extends ? ` extending ${axClass.Extends}` : ''}`,
+      };
+
+      // Extract class metadata
+      const classInfo: XppClassInfo = {
+        ...classInfoBase,
+        // Enhanced metadata — reuse already-parsed methods to avoid double work
+        tags: this.enhancedParser.generateClassTags({ ...classInfoBase, methods: [] }),
+        usedTypes: this.enhancedParser.extractClassDependencies(classInfoBase),
+        description: axClass.DeveloperDocumentation || `${className} class${extendsClass ? ` extending ${extendsClass}` : ''}`,
       };
 
       return { success: true, data: classInfo };
