@@ -131,15 +131,19 @@ export function createSearchTool(symbolIndex: XppSymbolIndex) {
       };
     }
 
-    const formatted = results.map((s: { parentName?: string; name: string; type: string; signature?: string }) => {
+    const formatted = results.map((s: { parentName?: string; name: string; type: string; signature?: string; model?: string }) => {
       const qualified = s.parentName ? `${s.parentName}.${s.name}` : s.name;
-      return `[${s.type.toUpperCase()}] ${qualified}${s.signature ? ` - ${s.signature}` : ''}`;
+      const modelTag = s.model ? ` [${s.model}]` : '';
+      return `[${s.type.toUpperCase()}] ${qualified}${modelTag}${s.signature ? ` - ${s.signature}` : ''}`;
     }).join('\n');
 
+    const models = [...new Set(results.map((s: any) => s.model).filter(Boolean))];
+    const modelSummary = models.length > 0 ? ` across ${models.length} model(s): ${models.join(', ')}` : '';
+
     return {
-      content: [{ 
-        type: 'text', 
-        text: `Found ${results.length} matches:\n\n${formatted}` 
+      content: [{
+        type: 'text',
+        text: `Found ${results.length} matches${modelSummary}:\n\n${formatted}`
       }]
     };
   };
