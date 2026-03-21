@@ -153,7 +153,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
   // Start periodic metrics logging (every 5 min to stderr)
   startMetricsLogging();
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const toolName = request.params.name;
 
     // Extract workspace path from _meta (GitHub Copilot injects workspace context here)
@@ -195,18 +195,46 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
     const finishMetrics = recordToolStart(toolName);
     const result = await (async () => {
-      // Send a progress/status message to the IDE chat so users can see what's happening.
-      // Uses MCP notifications/message (requires logging capability declared in mcpServer.ts).
-      // Silently ignored in HTTP mode (transport drops server-initiated notifications).
+      // Build the progress description for this tool call.
       const args = request.params.arguments as Record<string, any> | undefined;
+      const progressMsg = buildProgressMessage(toolName, args);
+
+      // ── Channel 1: notifications/progress (request-scoped) ──────────────────
+      // If the client sent a progressToken in _meta, it supports in-band progress
+      // notifications (MCP spec §Progress). We send one immediately so the client
+      // can show a spinner / status text while the tool runs.
+      // GitHub Copilot / VS2026 will render this as inline progress once they
+      // implement the spec — the server side is already ready.
+      const progressToken = (extra._meta as any)?.progressToken;
+      if (progressToken !== undefined && progressToken !== null) {
+        try {
+          await extra.sendNotification({
+            method: 'notifications/progress',
+            params: {
+              progressToken,
+              progress: 0,
+              total: 1,
+              message: progressMsg,
+            } as any,
+          });
+        } catch {
+          // Non-fatal — client may not support progress notifications
+        }
+      }
+
+      // ── Channel 2: notifications/message (logging) ───────────────────────────
+      // Fallback for clients that do not send progressToken but do consume log
+      // notifications (e.g. MCP Inspector, Claude Desktop). Requires logging
+      // capability declared in mcpServer.ts. Silently ignored in HTTP mode.
       try {
         await server.sendLoggingMessage({
           level: 'info',
-          data: buildProgressMessage(toolName, args),
+          data: progressMsg,
         });
       } catch {
         // Non-fatal — logging is best-effort, never block the tool
       }
+
       return (async () => { switch (toolName) {
       case 'search':
         return searchTool(request, context);
