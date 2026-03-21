@@ -147,6 +147,27 @@ export async function handleSuggestEdt(
 
   console.log(`[suggestEdt] Returning ${topSuggestions.length} suggestions`);
 
+  // Fallback: no suggestions found — recommend a new EDT configuration
+  if (topSuggestions.length === 0) {
+    const recommended = recommendNewEdt(fieldName, context);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            fieldName,
+            context,
+            suggestions: [],
+            fallback: {
+              message: 'No suitable existing EDT found in the symbol index. Recommended configuration for a new EDT:',
+              recommendedNewEdt: recommended,
+            },
+          }, null, 2),
+        },
+      ],
+    };
+  }
+
   return {
     content: [
       {
@@ -158,6 +179,106 @@ export async function handleSuggestEdt(
         }, null, 2),
       },
     ],
+  };
+}
+
+/**
+ * Recommend a new EDT configuration when no existing EDT is found
+ */
+function recommendNewEdt(fieldName: string, _context?: string): {
+  name: string;
+  extends: string;
+  label: string;
+  stringSize?: number;
+  properties: Record<string, string>;
+  note: string;
+} {
+  const nameLower = fieldName.toLowerCase();
+
+  // Infer base type from field name pattern
+  if (/amount|price|cost|value|sum/i.test(nameLower)) {
+    return {
+      name: fieldName,
+      extends: 'Amount',
+      label: `@MyModel:${fieldName}`,
+      properties: { Extends: 'Amount', NoOfDecimals: '2' },
+      note: 'Extends Amount (Real) — suitable for monetary values. Adjust NoOfDecimals as needed.',
+    };
+  }
+  if (/qty|quantity/i.test(nameLower)) {
+    return {
+      name: fieldName,
+      extends: 'Qty',
+      label: `@MyModel:${fieldName}`,
+      properties: { Extends: 'Qty', NoOfDecimals: '2' },
+      note: 'Extends Qty (Real) — suitable for inventory quantities.',
+    };
+  }
+  if (/date$/i.test(nameLower)) {
+    return {
+      name: fieldName,
+      extends: 'Date',
+      label: `@MyModel:${fieldName}`,
+      properties: { Extends: 'Date' },
+      note: 'Extends Date — suitable for calendar date fields.',
+    };
+  }
+  if (/datetime/i.test(nameLower)) {
+    return {
+      name: fieldName,
+      extends: 'TransDateTime',
+      label: `@MyModel:${fieldName}`,
+      properties: { Extends: 'TransDateTime' },
+      note: 'Extends TransDateTime (UtcDateTime) — suitable for timestamp fields.',
+    };
+  }
+  if (/id$/i.test(nameLower) || /num$/i.test(nameLower)) {
+    return {
+      name: fieldName,
+      extends: 'SysGroup',
+      label: `@MyModel:${fieldName}`,
+      stringSize: 20,
+      properties: { Extends: 'SysGroup', StringSize: '20' },
+      note: 'Extends SysGroup (String 10) — suitable for ID/number fields. Adjust StringSize.',
+    };
+  }
+  if (/description|desc|name|text|remark|comment|note/i.test(nameLower)) {
+    return {
+      name: fieldName,
+      extends: 'Description',
+      label: `@MyModel:${fieldName}`,
+      stringSize: 60,
+      properties: { Extends: 'Description', StringSize: '60' },
+      note: 'Extends Description (String 60) — suitable for text/name fields. Adjust StringSize.',
+    };
+  }
+  if (/percent|pct/i.test(nameLower)) {
+    return {
+      name: fieldName,
+      extends: 'Percent',
+      label: `@MyModel:${fieldName}`,
+      properties: { Extends: 'Percent', NoOfDecimals: '2' },
+      note: 'Extends Percent (Real) — suitable for percentage fields.',
+    };
+  }
+  if (/flag|enabled|active|status|bool/i.test(nameLower)) {
+    return {
+      name: fieldName,
+      extends: 'NoYesId',
+      label: `@MyModel:${fieldName}`,
+      properties: { Extends: 'NoYesId' },
+      note: 'Extends NoYesId (Integer) — suitable for boolean/flag fields.',
+    };
+  }
+
+  // Generic fallback: string EDT
+  return {
+    name: fieldName,
+    extends: 'SysGroup',
+    label: `@MyModel:${fieldName}`,
+    stringSize: 30,
+    properties: { Extends: 'SysGroup', StringSize: '30' },
+    note: 'Generic string EDT. Review the base type (Extends) and StringSize for your specific use case.',
   };
 }
 

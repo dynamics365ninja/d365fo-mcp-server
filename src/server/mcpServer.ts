@@ -494,11 +494,31 @@ EXAMPLES:
             properties: {
               pattern: {
                 type: 'string',
-                enum: ['class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'table-extension',
-                       'sysoperation', 'event-handler', 'security-privilege', 'menu-item'],
-                description: 'Code pattern to generate.',
+                enum: [
+                  'class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'table-extension',
+                  'sysoperation', 'event-handler', 'security-privilege', 'menu-item',
+                  'class-extension', 'ssrs-report-full', 'lookup-form',
+                  'dialog-box', 'dimension-controller', 'number-seq-handler',
+                  'display-menu-controller', 'data-entity-staging', 'service-class-ais',
+                  'form-datasource-extension', 'form-control-extension', 'map-extension',
+                ],
+                description: 'Code pattern to generate. ' +
+                  'class-extension: [ExtensionOf(classStr(...))] CoC class skeleton. ' +
+                  'table-extension: [ExtensionOf(tableStr(...))] with validateWrite/insert/update. ' +
+                  'form-handler: [ExtensionOf(formStr(...))] wrapping form-level methods (init, close). ' +
+                  'form-datasource-extension: [ExtensionOf(formDataSourceStr(Form, DS))] — wraps DS methods (init, executeQuery, active, write, validateWrite). Pass name=FormName, baseName=DataSourceName. ' +
+                  'form-control-extension: [ExtensionOf(formControlStr(Form, Control))] — wraps control methods (modified, validate, lookup). Pass name=FormName, baseName=ControlName. ' +
+                  'map-extension: [ExtensionOf(mapStr(...))] for X++ maps. ' +
+                  'ssrs-report-full: DataContract + DP + Controller trio. ' +
+                  'lookup-form: SysTableLookup static method. ' +
+                  'dialog-box: Dialog class with prompt()/parm* methods. ' +
+                  'dimension-controller: DimensionDefaultingController with form hooks. ' +
+                  'number-seq-handler: NumberSeqFormHandler + CoC on loadModule() + CompanyInfo extension. ' +
+                  'display-menu-controller: MenuFunction::main routing class. ' +
+                  'data-entity-staging: copyCustomStagingToTarget() + DMFTransferStatus. ' +
+                  'service-class-ais: CRUD service class + DataContract with [SysEntryPointAttribute].',
               },
-              name: { type: 'string', description: 'Name for the generated element. For extensions: base element name.' },
+              name: { type: 'string', description: 'Name for the generated element. For extensions: base element name. For form-datasource-extension / form-control-extension: the FORM name.' },
               modelName: { type: 'string', description: 'Actual model name from .mcp.json (auto-detected from EXTENSION_PREFIX env var if omitted). NEVER use generic placeholders like "MyModel".' },
               menuItemType: {
                 type: 'string',
@@ -507,7 +527,9 @@ EXAMPLES:
               },
               baseName: {
                 type: 'string',
-                description: 'For event-handler pattern: base class or table name whose events to handle',
+                description: 'For event-handler: base class or table name. ' +
+                  'For form-datasource-extension: data source name within the form (defaults to form name if omitted). ' +
+                  'For form-control-extension: exact control name — use get_form_info() to find the correct name.',
               },
               targetObject: {
                 type: 'string',
@@ -722,18 +744,23 @@ EXAMPLES:
                 type: 'string',
                 enum: [
                   'class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report', 'edt',
-                  'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
+                  'table-extension', 'class-extension', 'form-extension', 'enum-extension', 'edt-extension',
                   'data-entity-extension', 'menu-item-display-extension',
                   'menu-item-action-extension', 'menu-item-output-extension', 'menu-extension',
                   'menu-item-display', 'menu-item-action', 'menu-item-output', 'menu',
                   'security-privilege', 'security-duty', 'security-role',
+                  'business-event', 'tile', 'kpi',
                 ],
                 description:
                   'Type of D365FO object to create. ' +
+                  'class-extension: [ExtensionOf(classStr(...))] final class skeleton. ' +
                   'Security types: security-privilege → AxSecurityPrivilege, ' +
                   'security-duty → AxSecurityDuty, security-role → AxSecurityRole. ' +
                   'NEVER use security-privilege for a duty or role — each maps to its own AOT folder. ' +
-                  'Menu items: menu-item-display/action/output → AxMenuItemDisplay/Action/Output.'
+                  'Menu items: menu-item-display/action/output → AxMenuItemDisplay/Action/Output. ' +
+                  'business-event: BusinessEventsBase class + companion BusinessEventsContract. ' +
+                  'tile: AxTile XML (TileType, MenuItemName, Size, RefreshFrequency). ' +
+                  'kpi: AxKPI XML (Measure, MeasureDimension, Goal, GoalType).'
               },
               objectName: {
                 type: 'string',
@@ -913,13 +940,40 @@ Examples:
               },
               operation: {
                 type: 'string',
-                enum: ['add-method', 'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'modify-property', 'remove-method', 'remove-field'],
+                enum: [
+                  'add-method', 'remove-method', 'replace-code',
+                  'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'remove-field',
+                  'add-display-method', 'add-table-method',
+                  'add-index', 'remove-index',
+                  'add-relation', 'remove-relation',
+                  'add-field-group', 'remove-field-group', 'add-field-to-field-group',
+                  'add-field-modification',
+                  'add-data-source', 'add-control',
+                  'add-enum-value', 'modify-enum-value', 'remove-enum-value',
+                  'add-menu-item-to-menu',
+                  'modify-property',
+                ],
                 description:
-                  'Type of modification to perform. ' +
-                  'Use modify-field to change EDT/mandatory/label of an existing field. ' +
-                  'Use rename-field to rename a field (also fixes index + TitleField refs). ' +
-                  'Use replace-all-fields to atomically rewrite ALL fields at once (e.g. when field names are corrupted / have spaces). ' +
-                  'Use modify-property for table/EDT/class-level properties (TableGroup, TitleField1, TableType, Extends, …).'
+                  'Type of modification to perform.\n' +
+                  'add-method: add a new method (or CoC method) to a class/table/form.\n' +
+                  'remove-method: remove a method by name.\n' +
+                  'replace-code: surgical in-place replacement (oldCode → newCode) inside a method body or class declaration.\n' +
+                  'add-field: add a field to a table or table-extension.\n' +
+                  'modify-field: change EDT/mandatory/label of an existing field.\n' +
+                  'rename-field: rename a field (also fixes index DataField refs and TitleField1/2 automatically).\n' +
+                  'replace-all-fields: atomically rewrite ALL fields (use when field names are corrupted).\n' +
+                  'remove-field: remove a field by name.\n' +
+                  'add-display-method: add a display method with [SysClientCacheDataMethodAttribute].\n' +
+                  'add-table-method: generate canonical boilerplate for find/exist/findByRecId/validateWrite/validateDelete/initValue.\n' +
+                  'add-index / remove-index: manage table indexes.\n' +
+                  'add-relation / remove-relation: manage table relations.\n' +
+                  'add-field-group / remove-field-group / add-field-to-field-group: manage field groups.\n' +
+                  'add-field-modification: override base-table field label/mandatory in a table-extension.\n' +
+                  'add-data-source: add a data source to a form or form-extension.\n' +
+                  'add-control: add a UI control to a form-extension.\n' +
+                  'add-enum-value / modify-enum-value / remove-enum-value: manage enum values.\n' +
+                  'add-menu-item-to-menu: add a typed menu item entry to a menu or menu-extension.\n' +
+                  'modify-property: change any table/EDT/class-level property (TableGroup, TitleField1, TableType, Extends, …).'
               },
               methodName: {
                 type: 'string',
@@ -2378,15 +2432,25 @@ Examples:
       },
       {
         name: 'trigger_db_sync',
-        description: 'Run a database synchronization for the current model or a specific table to apply schema changes. Use after adding or modifying table fields.',
+        description: 'Run a D365FO database sync (SyncEngine.exe). ' +
+          'Supports partial sync of specific tables — much faster than full-model sync. ' +
+          'Use partial sync after adding/renaming fields or indexes on known tables. ' +
+          'Use full sync after creating new tables or when unsure what changed.',
         inputSchema: {
           type: 'object',
           properties: {
-            modelName: { type: 'string', description: 'The name of the model to sync (e.g. "ContosoExtensions")' },
-            tableName: { type: 'string', description: 'Optional: sync only this specific table instead of the whole model' },
-            packagePath: { type: 'string', description: 'PackagesLocalDirectory root path. Auto-detected from .mcp.json if omitted.' },
+            modelName: { type: 'string', description: 'Model to sync. Auto-detected from .mcp.json if omitted.' },
+            tables: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Partial sync: sync only these tables (faster). Example: ["CustTable", "MyNewTable"]. Omit for full-model sync.',
+            },
+            tableName: { type: 'string', description: 'Single-table shorthand — equivalent to tables=["tableName"]. Kept for backwards compatibility.' },
+            syncViews: { type: 'boolean', description: 'Also sync views and data entities. Required after creating/modifying data entities. Default: false.' },
+            connectionString: { type: 'string', description: 'SQL Server connection string. Default: "Data Source=localhost;Initial Catalog=AxDB;Integrated Security=True".' },
+            packagePath: { type: 'string', description: 'PackagesLocalDirectory root. Auto-detected from .mcp.json if omitted.' },
           },
-          required: ['modelName'],
+          required: [],
         },
       },
       {
@@ -2438,6 +2502,30 @@ Examples:
             filePath: { type: 'string', description: 'Absolute path to the file to revert or delete' },
           },
           required: ['filePath'],
+        },
+      },
+      {
+        name: 'get_d365fo_error_help',
+        description:
+          'Diagnose D365FO / X++ compiler and runtime errors. ' +
+          'Provide an error message or error code and receive a structured explanation, ' +
+          'root-cause analysis, step-by-step fix instructions, and an X++ code example. ' +
+          'Covers: TTS level mismatch, UpdateConflict (OCC), CSUV1 illegal assignment, ' +
+          'SYS10028 missing next call, overlayering not allowed, BPUpgradeCodeToday (today() deprecated), ' +
+          'forupdate missing, record not found, number sequence not configured, and more.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            errorText: {
+              type: 'string',
+              description: 'Full error message text as displayed in the X++ compiler or event log',
+            },
+            errorCode: {
+              type: 'string',
+              description: 'Optional error code (e.g. SYS10028, CSUV1, BPUpgradeCodeToday)',
+            },
+          },
+          required: ['errorText'],
         },
       },
       {

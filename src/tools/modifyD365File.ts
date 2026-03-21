@@ -102,7 +102,53 @@ const ModifyD365FileArgsSchema = z.object({
     'add-data-source',
     'modify-property',
     'add-control',
+    'add-enum-value', 'modify-enum-value', 'remove-enum-value',
+    'add-display-method', 'add-table-method', 'add-menu-item-to-menu',
   ]).describe('Operation to perform'),
+
+  // For add-enum-value / modify-enum-value / remove-enum-value
+  enumValueName: z.string().optional().describe(
+    'Enum value name for add-enum-value / modify-enum-value / remove-enum-value. ' +
+    'E.g. "Approved", "Pending", "Rejected".'
+  ),
+  enumValueLabel: z.string().optional().describe(
+    'Label reference for the enum value (e.g. "@MyModel:Approved"). ' +
+    'Used with add-enum-value and modify-enum-value.'
+  ),
+  enumValueHelpText: z.string().optional().describe(
+    'Help text reference for the enum value (e.g. "@MyModel:ApprovedHelp"). Optional.'
+  ),
+  enumValueInt: z.number().optional().describe(
+    'Explicit integer value for the enum value. ' +
+    'If omitted for add-enum-value, the next available value is assigned automatically. ' +
+    'Use with modify-enum-value to change the integer value (rare — may break existing data).'
+  ),
+
+  // For add-display-method
+  displayMethodReturnEdt: z.string().optional().describe(
+    'EDT or type name the display method returns, e.g. "Name", "AmountMST", "SalesStatus". ' +
+    'Used with add-display-method to set the return type automatically.'
+  ),
+
+  // For add-table-method
+  tableMethodType: z.enum(['find', 'exist', 'findByRecId', 'validateWrite', 'validateDelete', 'initValue']).optional().describe(
+    'Standard table method pattern to generate. Used with add-table-method. ' +
+    'find: returns a single record by key field. exist: returns true/false. ' +
+    'findByRecId: returns record by RecId. validateWrite/validateDelete/initValue: standard overrides.'
+  ),
+  tableKeyField: z.string().optional().describe(
+    'Name of the primary key field for find/exist patterns (e.g. "ItemId", "SalesId"). ' +
+    'Used with add-table-method when tableMethodType is find or exist.'
+  ),
+
+  // For add-menu-item-to-menu
+  menuItemToAdd: z.string().optional().describe(
+    'Name of the menu item to add (e.g. "MyCustomForm"). Used with add-menu-item-to-menu.'
+  ),
+  menuItemToAddType: z.enum(['display', 'action', 'output']).optional().describe(
+    'Type of menu item to add: display (form), action (class), output (report). ' +
+    'Used with add-menu-item-to-menu. Defaults to display.'
+  ),
 
   // For add-control (form-extension only)
   controlName: z.string().optional().describe(
@@ -593,6 +639,36 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       case 'add-data-source':
         modified = await addDataSource(xmlObj, objectType, args);
         message = `Added data source reference "${args.dataSourceName}" to ${objectType} "${objectName}"`;
+        break;
+
+      case 'add-enum-value':
+        modified = await addEnumValue(xmlObj, args);
+        message = `Added enum value "${args.enumValueName}" to ${objectType} "${objectName}"`;
+        break;
+
+      case 'modify-enum-value':
+        modified = await modifyEnumValue(xmlObj, args);
+        message = `Modified enum value "${args.enumValueName}" in ${objectType} "${objectName}"`;
+        break;
+
+      case 'remove-enum-value':
+        modified = await removeEnumValue(xmlObj, args);
+        message = `Removed enum value "${args.enumValueName}" from ${objectType} "${objectName}"`;
+        break;
+
+      case 'add-display-method':
+        modified = await addDisplayMethod(xmlObj, objectType, args);
+        message = `Added display method "${args.methodName}" to ${objectType} "${objectName}"`;
+        break;
+
+      case 'add-table-method':
+        modified = await addTableMethod(xmlObj, args);
+        message = `Added table method "${args.tableMethodType ?? args.methodName}" to table "${objectName}"`;
+        break;
+
+      case 'add-menu-item-to-menu':
+        modified = await addMenuItemToMenu(xmlObj, objectType, args);
+        message = `Added menu item "${args.menuItemToAdd}" to ${objectType} "${objectName}"`;
         break;
 
       default:
@@ -2488,6 +2564,303 @@ async function addDataSource(xmlObj: any, objectType: string, args: any): Promis
 /**
  * Get root key for object type
  */
+/**
+ * Add a new value to an AxEnum.
+ * Supported object types: enum, enum-extension.
+ */
+async function addEnumValue(xmlObj: any, args: any): Promise<boolean> {
+  const { enumValueName, enumValueLabel, enumValueHelpText, enumValueInt } = args;
+  if (!enumValueName) throw new Error('enumValueName is required for add-enum-value');
+
+  // Resolve root — AxEnum or AxEnumExtension
+  const root = xmlObj['AxEnum'] || xmlObj['AxEnumExtension'];
+  if (!root) throw new Error('Invalid XML structure: root element <AxEnum> or <AxEnumExtension> not found');
+
+  // Normalise EnumValues to array container
+  const container = ensureArrayContainer(root, 'EnumValues', 'AxEnumValue');
+
+  // Check for duplicate name
+  if (container.AxEnumValue.some((v: any) => v.Name === enumValueName)) {
+    throw new Error(`Enum value "${enumValueName}" already exists`);
+  }
+
+  // Determine the integer value: explicit or max + 1
+  let intValue: number;
+  if (typeof enumValueInt === 'number') {
+    intValue = enumValueInt;
+  } else {
+    const existing: number[] = container.AxEnumValue
+      .map((v: any) => parseInt(v.Value ?? '0', 10))
+      .filter((n: number) => !isNaN(n));
+    intValue = existing.length > 0 ? Math.max(...existing) + 1 : 0;
+  }
+
+  const newValue: any = { Name: enumValueName };
+  if (enumValueLabel)    newValue.Label    = enumValueLabel;
+  if (enumValueHelpText) newValue.HelpText = enumValueHelpText;
+  // D365FO convention: omit <Value> for 0
+  if (intValue !== 0) newValue.Value = String(intValue);
+
+  container.AxEnumValue.push(newValue);
+  return true;
+}
+
+/**
+ * Modify an existing enum value (label, helpText, integer value).
+ * Supported object types: enum, enum-extension.
+ */
+async function modifyEnumValue(xmlObj: any, args: any): Promise<boolean> {
+  const { enumValueName, enumValueLabel, enumValueHelpText, enumValueInt } = args;
+  if (!enumValueName) throw new Error('enumValueName is required for modify-enum-value');
+
+  const root = xmlObj['AxEnum'] || xmlObj['AxEnumExtension'];
+  if (!root) throw new Error('Invalid XML structure: root element <AxEnum> or <AxEnumExtension> not found');
+
+  const container = ensureArrayContainer(root, 'EnumValues', 'AxEnumValue');
+  const found = container.AxEnumValue.find((v: any) => v.Name === enumValueName);
+  if (!found) throw new Error(`Enum value "${enumValueName}" not found`);
+
+  if (enumValueLabel    !== undefined) found.Label    = enumValueLabel;
+  if (enumValueHelpText !== undefined) found.HelpText = enumValueHelpText;
+  if (typeof enumValueInt === 'number') {
+    found.Value = enumValueInt === 0 ? undefined : String(enumValueInt);
+  }
+  return true;
+}
+
+/**
+ * Remove an existing enum value.
+ * Supported object types: enum, enum-extension.
+ */
+async function removeEnumValue(xmlObj: any, args: any): Promise<boolean> {
+  const { enumValueName } = args;
+  if (!enumValueName) throw new Error('enumValueName is required for remove-enum-value');
+
+  const root = xmlObj['AxEnum'] || xmlObj['AxEnumExtension'];
+  if (!root) throw new Error('Invalid XML structure: root element <AxEnum> or <AxEnumExtension> not found');
+
+  const container = ensureArrayContainer(root, 'EnumValues', 'AxEnumValue');
+  const before = container.AxEnumValue.length;
+  container.AxEnumValue = container.AxEnumValue.filter((v: any) => v.Name !== enumValueName);
+
+  if (container.AxEnumValue.length === before) {
+    throw new Error(`Enum value "${enumValueName}" not found`);
+  }
+  return true;
+}
+
+/**
+ * Add a display method to a table.
+ * Automatically prepends [SysClientCacheDataMethodAttribute(true)] if not already present.
+ */
+async function addDisplayMethod(xmlObj: any, objectType: string, args: any): Promise<boolean> {
+  if (objectType !== 'table' && objectType !== 'table-extension' && objectType !== 'form') {
+    throw new Error('add-display-method is only supported for table, table-extension, and form');
+  }
+  if (!args.methodName) throw new Error('methodName is required for add-display-method');
+
+  const returnType = args.displayMethodReturnEdt || args.methodReturnType || 'str';
+  const body = args.sourceCode
+    ? decodeXmlEntitiesFromXppSource(args.sourceCode)
+    : `    // TODO: compute and return the display value\n    return '';`;
+
+  // Build display method source — prepend attribute if caller didn't include it
+  let fullSource = body;
+  if (!fullSource.includes('SysClientCacheDataMethodAttribute') &&
+      !fullSource.includes('display ')) {
+    const params = args.methodParameters || '';
+    fullSource =
+      `[SysClientCacheDataMethodAttribute(true)]\n` +
+      `public display ${returnType} ${args.methodName}(${params})\n{\n${body}\n}`;
+  }
+
+  const newArgs = { ...args, sourceCode: fullSource };
+  return addMethod(xmlObj, objectType, newArgs);
+}
+
+/**
+ * Add a standard table method (find, exist, findByRecId, validateWrite, validateDelete, initValue).
+ * Generates the canonical boilerplate for each pattern.
+ */
+async function addTableMethod(xmlObj: any, args: any): Promise<boolean> {
+  const methodType = args.tableMethodType;
+  const tableName  = args.objectName as string;
+  const keyField   = args.tableKeyField || `${tableName}Id`;
+
+  if (!methodType && !args.methodName) {
+    throw new Error('tableMethodType or methodName is required for add-table-method');
+  }
+
+  let fullSource: string;
+  switch (methodType) {
+    case 'find':
+      fullSource =
+`/// <summary>Finds a ${tableName} record by its primary key.</summary>
+/// <param name="_id">The key value to look up.</param>
+/// <param name="_forUpdate">Set to true to lock the record for update (forupdate).</param>
+/// <returns>The found record, or an empty buffer if not found.</returns>
+public static ${tableName} find(${keyField} _id, boolean _forUpdate = false)
+{
+    ${tableName} record;
+
+    if (_id)
+    {
+        if (_forUpdate)
+        {
+            record.selectForUpdate(true);
+        }
+
+        select firstonly record
+            where record.${keyField} == _id;
+    }
+
+    return record;
+}`;
+      break;
+
+    case 'exist':
+      fullSource =
+`/// <summary>Checks whether a ${tableName} record with the given key exists.</summary>
+/// <param name="_id">The key value to check.</param>
+/// <returns>True if a record exists, false otherwise.</returns>
+public static boolean exist(${keyField} _id)
+{
+    return _id && (select firstonly RecId from ${tableName}
+                   where ${tableName}.${keyField} == _id).RecId != 0;
+}`;
+      break;
+
+    case 'findByRecId':
+      fullSource =
+`/// <summary>Finds a ${tableName} record by its RecId.</summary>
+/// <param name="_recId">The RecId to look up.</param>
+/// <param name="_forUpdate">Set to true to lock the record for update.</param>
+/// <returns>The found record, or an empty buffer if not found.</returns>
+public static ${tableName} findByRecId(RecId _recId, boolean _forUpdate = false)
+{
+    ${tableName} record;
+
+    if (_recId)
+    {
+        if (_forUpdate)
+        {
+            record.selectForUpdate(true);
+        }
+
+        select firstonly record
+            where record.RecId == _recId;
+    }
+
+    return record;
+}`;
+      break;
+
+    case 'validateWrite':
+      fullSource =
+`/// <summary>Validates the record before it is written to the database.</summary>
+/// <returns>True if validation passes, false otherwise.</returns>
+public boolean validateWrite()
+{
+    boolean ret = super();
+
+    // Add custom validation rules
+    if (ret)
+    {
+        if (!this.${keyField})
+        {
+            ret = checkFailed(strFmt("@SYS53447", fieldPName(${tableName}, ${keyField})));
+        }
+    }
+
+    return ret;
+}`;
+      break;
+
+    case 'validateDelete':
+      fullSource =
+`/// <summary>Validates that the record can be safely deleted.</summary>
+/// <returns>True if deletion is allowed, false otherwise.</returns>
+public boolean validateDelete()
+{
+    boolean ret = super();
+
+    // Add custom deletion guards here
+    // Example: prevent deletion if referenced by another table
+    // if (AnotherTable::existFor${tableName}(this.RecId))
+    // {
+    //     ret = checkFailed("@MyModel:CannotDeleteReferenced");
+    // }
+
+    return ret;
+}`;
+      break;
+
+    case 'initValue':
+      fullSource =
+`/// <summary>Initialises default field values when a new record is created.</summary>
+public void initValue()
+{
+    super();
+
+    // Set default values for new records
+    // this.Status = ${tableName}Status::Open;
+}`;
+      break;
+
+    default:
+      // Fallback: just delegate to addMethod with the provided args
+      return addMethod(xmlObj, 'table', args);
+  }
+
+  const newArgs = { ...args, sourceCode: fullSource };
+  return addMethod(xmlObj, 'table', newArgs);
+}
+
+/**
+ * Add a menu item reference to an existing menu or menu-extension XML.
+ */
+async function addMenuItemToMenu(xmlObj: any, objectType: string, args: any): Promise<boolean> {
+  if (objectType !== 'menu' && objectType !== 'menu-extension') {
+    throw new Error('add-menu-item-to-menu is only supported for menu and menu-extension');
+  }
+  if (!args.menuItemToAdd) throw new Error('menuItemToAdd is required for add-menu-item-to-menu');
+
+  const rootKey = getRootKey(objectType);
+  const root = xmlObj[rootKey];
+  if (!root) throw new Error(`Invalid XML structure: root element <${rootKey}> not found`);
+
+  const itemType    = args.menuItemToAddType || 'display';
+  const nodeTypeMap: Record<string, string> = {
+    display: 'AxMenuItemDisplay',
+    action:  'AxMenuItemAction',
+    output:  'AxMenuItemOutput',
+  };
+  const nodeType = nodeTypeMap[itemType] || 'AxMenuItemDisplay';
+
+  // Ensure MenuItems container exists
+  if (!root.MenuItems || (Array.isArray(root.MenuItems) && typeof root.MenuItems[0] !== 'object')) {
+    root.MenuItems = [{}];
+  }
+  const menuItemsContainer = Array.isArray(root.MenuItems) ? root.MenuItems[0] : root.MenuItems;
+
+  // Ensure array for the node type
+  if (!menuItemsContainer[nodeType]) {
+    menuItemsContainer[nodeType] = [];
+  } else if (!Array.isArray(menuItemsContainer[nodeType])) {
+    menuItemsContainer[nodeType] = [menuItemsContainer[nodeType]];
+  }
+
+  // Check for duplicate
+  const existing = menuItemsContainer[nodeType].find((item: any) => item.Name === args.menuItemToAdd);
+  if (existing) {
+    throw new Error(`Menu item "${args.menuItemToAdd}" already exists in this menu`);
+  }
+
+  // Add the menu item reference
+  menuItemsContainer[nodeType].push({ Name: args.menuItemToAdd });
+  return true;
+}
+
 function getRootKey(objectType: string): string {
   const keyMap: Record<string, string> = {
     class: 'AxClass',

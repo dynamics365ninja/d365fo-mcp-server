@@ -23,7 +23,12 @@ import { xppKnowledgeToolDefinition } from './xppKnowledge.js';
 
 export const SearchSchema = z.object({
   query: z.string().describe('Search query (class name, method name, table name, etc.)'),
-  types: z.array(z.enum(['class', 'table', 'method', 'field', 'enum', 'edt']))
+  types: z.array(z.enum([
+    'class', 'table', 'method', 'field', 'enum', 'edt',
+    'form', 'query', 'view', 'report',
+    'menu-item', 'security-privilege', 'security-duty', 'security-role',
+    'extension', 'data-entity',
+  ]))
     .optional()
     .describe('Filter by symbol types'),
   limit: z.number().optional().default(20).describe('Maximum results to return')
@@ -52,23 +57,27 @@ export const CompleteMethodSchema = z.object({
   workspacePath: z.string().optional().describe('Workspace path to search')
 });
 
+/**
+ * Input schema for the generate_code tool (toolDefinitions entry).
+ * The actual dispatch goes through toolHandler.ts → codeGenTool (codeGen.ts).
+ */
 export const GenerateCodeSchema = z.object({
   pattern: z.enum([
-    'class',
-    'runnable',
-    'form-handler',
-    'data-entity',
-    'batch-job',
-    'coc-extension',
-    'event-handler',
-    'service-class'
-  ]).describe('Code pattern to generate'),
+    'class', 'runnable', 'form-handler', 'data-entity', 'batch-job',
+    'table-extension', 'sysoperation', 'event-handler', 'security-privilege', 'menu-item',
+    'class-extension', 'ssrs-report-full', 'lookup-form',
+    'dialog-box', 'dimension-controller', 'number-seq-handler',
+    'display-menu-controller', 'data-entity-staging', 'service-class-ais',
+    'form-datasource-extension', 'form-control-extension', 'map-extension',
+  ]).describe('Code pattern to generate — see generate_code tool for full documentation'),
   name: z.string().describe('Name for the generated element'),
+  modelName: z.string().optional().describe('Model name for prefix resolution'),
+  baseName: z.string().optional().describe('For form-datasource-extension: DS name. For form-control-extension: control name.'),
   options: z.object({
     baseClass: z.string().optional(),
     tableName: z.string().optional(),
     formName: z.string().optional()
-  }).optional().describe('Additional options for code generation')
+  }).optional().describe('Additional options (legacy)')
 });
 
 export const AnalyzeCodePatternsSchema = z.object({
@@ -279,251 +288,6 @@ export function createCompleteMethodTool(symbolIndex: XppSymbolIndex) {
       content: [{ 
         type: 'text', 
         text: `## Completions for ${className}${prefix ? `.${prefix}*` : ''}\n\n\`\`\`json\n${JSON.stringify(formatted, null, 2)}\n\`\`\`` 
-      }]
-    };
-  };
-}
-
-export function createGenerateCodeTool() {
-  return async (args: z.infer<typeof GenerateCodeSchema>): Promise<ToolResult> => {
-    const { pattern, name, options = {} } = args;
-
-    const templates: Record<string, string> = {
-      'class': `/// <summary>
-/// ${name} class
-/// </summary>
-public class ${name}${options.baseClass ? ` extends ${options.baseClass}` : ''}
-{
-    /// <summary>
-    /// Main entry point
-    /// </summary>
-    public void run()
-    {
-        // TODO: Implement
-    }
-}`,
-
-      'runnable': `/// <summary>
-/// Runnable class ${name}
-/// </summary>
-internal final class ${name}
-{
-    /// <summary>
-    /// Main entry point for the runnable class
-    /// </summary>
-    /// <param name="_args">Arguments passed to the class</param>
-    public static void main(Args _args)
-    {
-        ${name} instance = new ${name}();
-        instance.run();
-    }
-
-    /// <summary>
-    /// Executes the business logic
-    /// </summary>
-    public void run()
-    {
-        // TODO: Implement business logic
-        info("${name} executed successfully");
-    }
-}`,
-
-      'form-handler': `/// <summary>
-/// Form extension for ${options.formName || name}
-/// </summary>
-[ExtensionOf(formStr(${options.formName || name}))]
-final class ${name}Form_Extension
-{
-    /// <summary>
-    /// Form initialization
-    /// </summary>
-    public void init()
-    {
-        next init();
-        // TODO: Add initialization logic
-    }
-
-    /// <summary>
-    /// Form close handler
-    /// </summary>
-    public void close()
-    {
-        // TODO: Add cleanup logic
-        next close();
-    }
-}`,
-
-      'data-entity': `/// <summary>
-/// Data entity for ${options.tableName || name}
-/// </summary>
-public class ${name}Entity extends common
-{
-    /// <summary>
-    /// Finds a record by RecId
-    /// </summary>
-    /// <param name="_recId">Record ID to find</param>
-    /// <param name="_forUpdate">Select for update flag</param>
-    /// <returns>The found entity record</returns>
-    public static ${name}Entity find(RecId _recId, boolean _forUpdate = false)
-    {
-        ${name}Entity entity;
-        
-        entity.selectForUpdate(_forUpdate);
-        
-        select firstonly entity
-            where entity.RecId == _recId;
-            
-        return entity;
-    }
-
-    /// <summary>
-    /// Checks if record exists
-    /// </summary>
-    /// <param name="_recId">Record ID to check</param>
-    /// <returns>True if exists</returns>
-    public static boolean exist(RecId _recId)
-    {
-        return _recId && (select firstonly RecId from ${name}Entity
-            where ${name}Entity.RecId == _recId).RecId != 0;
-    }
-}`,
-
-      'batch-job': `/// <summary>
-/// Batch job ${name}
-/// </summary>
-class ${name} extends SysOperationServiceController
-{
-    /// <summary>
-    /// Main entry point
-    /// </summary>
-    /// <param name="_args">Arguments</param>
-    public static void main(Args _args)
-    {
-        ${name} controller = new ${name}();
-        controller.parmArgs(_args);
-        controller.startOperation();
-    }
-
-    /// <summary>
-    /// Constructor
-    /// </summary>
-    protected void new()
-    {
-        super();
-        this.parmClassName(classStr(${name}Service));
-        this.parmMethodName(methodStr(${name}Service, process));
-        this.parmDialogCaption("${name}");
-    }
-
-    /// <summary>
-    /// Provides description for batch job
-    /// </summary>
-    /// <returns>Description string</returns>
-    public ClassDescription defaultCaption()
-    {
-        return "${name}";
-    }
-}`,
-
-      'coc-extension': `/// <summary>
-/// Chain of Command extension for ${options.baseClass || 'TargetClass'}
-/// </summary>
-[ExtensionOf(classStr(${options.baseClass || 'TargetClass'}))]
-final class ${name}_Extension
-{
-    /// <summary>
-    /// Extended method implementation
-    /// </summary>
-    public void methodName()
-    {
-        // Pre-processing logic
-        
-        next methodName();
-        
-        // Post-processing logic
-    }
-}`,
-
-      'event-handler': `/// <summary>
-/// Event handler class for ${name}
-/// </summary>
-public class ${name}EventHandler
-{
-    /// <summary>
-    /// Handles the onValidating event
-    /// </summary>
-    /// <param name="_sender">Event sender</param>
-    /// <param name="_e">Event arguments</param>
-    [DataEventHandler(tableStr(${options.tableName || 'TargetTable'}), DataEventType::Inserting)]
-    public static void onInserting(Common _sender, DataEventArgs _e)
-    {
-        ${options.tableName || 'TargetTable'} record = _sender as ${options.tableName || 'TargetTable'};
-        
-        // TODO: Implement event handling logic
-    }
-
-    /// <summary>
-    /// Post-event handler
-    /// </summary>
-    [PostHandlerFor(classStr(${options.baseClass || 'TargetClass'}), methodStr(${options.baseClass || 'TargetClass'}, targetMethod))]
-    public static void postTargetMethod(XppPrePostArgs _args)
-    {
-        // TODO: Implement post-event logic
-    }
-}`,
-
-      'service-class': `/// <summary>
-/// Service class ${name}
-/// </summary>
-class ${name}Service extends SysOperationServiceBase
-{
-    /// <summary>
-    /// Main processing method
-    /// </summary>
-    /// <param name="_contract">Data contract with parameters</param>
-    public void process(${name}Contract _contract)
-    {
-        ttsbegin;
-        
-        try
-        {
-            this.processInternal(_contract);
-        }
-        catch (Exception::Error)
-        {
-            error("An error occurred during processing");
-            throw Exception::Error;
-        }
-        
-        ttscommit;
-        
-        info("Processing completed successfully");
-    }
-
-    /// <summary>
-    /// Internal processing logic
-    /// </summary>
-    /// <param name="_contract">Data contract</param>
-    private void processInternal(${name}Contract _contract)
-    {
-        // TODO: Implement business logic
-    }
-}`
-    };
-
-    const code = templates[pattern];
-    
-    if (!code) {
-      return {
-        content: [{ type: 'text', text: `Unknown pattern: ${pattern}` }],
-        isError: true
-      };
-    }
-
-    return {
-      content: [{ 
-        type: 'text', 
-        text: `## Generated X++ Code: ${pattern}\n\n\`\`\`xpp\n${code}\n\`\`\`` 
       }]
     };
   };

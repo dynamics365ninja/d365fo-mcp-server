@@ -1,7 +1,7 @@
 # All Available Tools
 
 When you ask GitHub Copilot a question about D365FO code, it automatically calls one of these
-51 tools to look up the answer or generate code. You do not need to name the tools yourself —
+53 tools to look up the answer or generate code. You do not need to name the tools yourself —
 just ask in plain English.
 
 ---
@@ -49,6 +49,7 @@ just ask in plain English.
 | Tool | What it does | Example prompt |
 |------|-------------|---------------|
 | **get_xpp_knowledge** | Queryable X++ knowledge base — D365FO patterns, best practices, AX2012→D365FO migration | "How to create a batch job in D365FO?" |
+| **get_d365fo_error_help** | Diagnose compiler errors, BP warnings, and runtime exceptions | "What does BPUpgradeCodeToday mean?" |
 | **analyze_code_patterns** | Learn real patterns from your codebase | "Show me patterns for ledger journal creation" |
 | **suggest_method_implementation** | Real examples of how similar methods are written | "How do others implement validateWrite()" |
 | **analyze_class_completeness** | Which standard methods is my class missing? | "Is MyHelper class complete?" |
@@ -369,6 +370,35 @@ What methods does the SalesCreateOrder form have?
 
 ---
 
+### get_d365fo_error_help
+
+Diagnoses D365FO X++ compiler errors, BP warnings, and runtime exceptions. Returns a
+plain-language explanation plus a corrective action — no symbol-index access needed, so
+it works in both Azure read-only and local modes.
+
+**When to call:** Whenever the compiler Output window, Error List, or runtime infolog shows
+an unfamiliar error. Rule 22 in `copilot-instructions.md` mandates calling this tool
+**before guessing a fix.**
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `errorText` | Yes | Full error text — paste from Error List, Output window, or infolog |
+| `errorCode` | No | Error code prefix, e.g. `CSUV1`, `SYS10028`, `BPError` — improves matching |
+| `context` | No | X++ code snippet where the error occurs — produces a more targeted suggestion |
+
+**Covered error families:** CSUV\*/CSU\*, SYS\*, BP\* warnings, TTS-level errors,
+OCC (UpdateConflict), type-cast errors, "must call next", "not valid metadata element", and more.
+
+**Examples:**
+```
+get_d365fo_error_help(errorText="CSUV1 The field CustAccount cannot be assigned", errorCode="CSUV1")
+get_d365fo_error_help(errorText="BPUpgradeCodeToday")
+get_d365fo_error_help(errorText="TTS level is not 0", context="ttsbegin; ... ttscommit;")
+```
+
+---
+
 ### get_xpp_knowledge
 
 Queryable knowledge base of D365FO X++ patterns, best practices, and AX2012→D365FO migration
@@ -444,6 +474,20 @@ so the generated code matches your environment.
 | `event-handler` | Event handler class with `[DataEventHandler]` for standard table events |
 | `security-privilege` | Security privilege XML (View + Maintain pair) |
 | `menu-item` | Menu item XML (display, action, or output) |
+| `class-extension` | `[ExtensionOf(classStr(...))]` CoC extension class skeleton |
+| `table-extension` | `[ExtensionOf(tableStr(...))]` with `validateWrite`, `insert`, `update` |
+| `form-handler` | `[ExtensionOf(formStr(...))]` wrapping form-level methods (`init`, `close`) |
+| `form-datasource-extension` | `[ExtensionOf(formDataSourceStr(Form, DS))]` wrapping data source methods (`init`, `executeQuery`, `active`, `write`, `validateWrite`). Pass `name`=FormName, `baseName`=DataSourceName. |
+| `form-control-extension` | `[ExtensionOf(formControlStr(Form, Control))]` wrapping control methods (`modified`, `validate`, `lookup`). Pass `name`=FormName, `baseName`=ControlName (use `get_form_info` to find the exact name). |
+| `map-extension` | `[ExtensionOf(mapStr(...))]` for X++ maps (`InventItemOrdered`, `LogisticsPostalAddress`, …) |
+| `ssrs-report-full` | Generates DataContract + DP + Controller trio for an SSRS report |
+| `lookup-form` | `SysTableLookup` static method boilerplate |
+| `dialog-box` | Dialog class with `prompt()`, `parmDate()`, `parmDescription()` |
+| `dimension-controller` | `DimensionDefaultingController::constructInTabWithValues` with `datasourceActive()`, `formClosing()` |
+| `number-seq-handler` | `NumberSeqFormHandler::newForm` + CoC on `NumberSeqApplicationModule.loadModule()` + CompanyInfo extension with numRef method |
+| `display-menu-controller` | `MenuFunction::main(Args)` routing controller with `canRun()` |
+| `data-entity-staging` | `copyCustomStagingToTarget()`, `DMFTransferStatus`, `UpdateConflict` retry loop |
+| `service-class-ais` | CRUD AIF/AIS service class + `DataContract` with `[SysEntryPointAttribute]` |
 
 **Examples:**
 ```
@@ -466,7 +510,39 @@ When the package name differs from the model name, pass `packageName` explicitly
 (e.g., `CustomExtensions`). In UDE environments, the server resolves it automatically
 from descriptor XML files. In traditional environments, it defaults to the model name.
 
-**Supported object types:** class, table, form, query, view, data-entity, enum, edt, **report**
+**Supported object types:**
+
+| Type | AOT folder | Notes |
+|------|-----------|-------|
+| `class` | `AxClass` | Regular X++ class |
+| `class-extension` | `AxClass` | `[ExtensionOf(classStr(...))] final class` skeleton |
+| `table` | `AxTable` | Regular table |
+| `table-extension` | `AxTableExtension` | |
+| `form` | `AxForm` | |
+| `form-extension` | `AxFormExtension` | |
+| `query` | `AxQuery` | |
+| `view` | `AxView` | |
+| `data-entity` | `AxDataEntityView` | |
+| `data-entity-extension` | `AxDataEntityViewExtension` | |
+| `enum` | `AxEnum` | |
+| `enum-extension` | `AxEnumExtension` | |
+| `edt` | `AxEdt` | |
+| `edt-extension` | `AxEdtExtension` | |
+| `report` | `AxReport` | SSRS report XML; requires UTF-8 BOM — use this tool, never `create_file` |
+| `menu-item-display` | `AxMenuItemDisplay` | |
+| `menu-item-action` | `AxMenuItemAction` | |
+| `menu-item-output` | `AxMenuItemOutput` | |
+| `menu-item-display-extension` | `AxMenuItemDisplayExtension` | |
+| `menu-item-action-extension` | `AxMenuItemActionExtension` | |
+| `menu-item-output-extension` | `AxMenuItemOutputExtension` | |
+| `menu` | `AxMenu` | |
+| `menu-extension` | `AxMenuExtension` | |
+| `security-privilege` | `AxSecurityPrivilege` | NEVER use for duties/roles |
+| `security-duty` | `AxSecurityDuty` | |
+| `security-role` | `AxSecurityRole` | |
+| `business-event` | `AxClass` | Generates `BusinessEventsBase` class + companion `BusinessEventsContract` |
+| `tile` | `AxTile` | AxTile XML (TileType, MenuItemName, Size, RefreshFrequency) |
+| `kpi` | `AxKPI` | AxKPI XML (Measure, MeasureDimension, Goal, GoalType) |
 
 **Requires:** MCP server running on a local Windows machine with file system access.
 
@@ -505,12 +581,43 @@ Supports `packageName` parameter for when the package name differs from the mode
 In UDE environments this is auto-resolved; in traditional environments it defaults to
 the model name.
 
+**Supported operations:**
+
+| Operation | Applies to | Description |
+|-----------|-----------|-------------|
+| `add-method` | class, table, form, extension | Add a new method (or CoC method). Pass full X++ source via `sourceCode`. |
+| `remove-method` | class, table | Remove a method by name. |
+| `replace-code` | class, table | Surgical in-place replacement: `oldCode` → `newCode` inside a method body or classDeclaration. |
+| `add-display-method` | table, table-extension | Add a `display` method with `[SysClientCacheDataMethodAttribute(true)]`. |
+| `add-table-method` | table, table-extension | Generate canonical boilerplate for `find`/`exist`/`findByRecId`/`validateWrite`/`validateDelete`/`initValue`. |
+| `add-field` | table, table-extension | Add a field. |
+| `modify-field` | table, table-extension | Change EDT, mandatory, or label of an existing field. |
+| `rename-field` | table | Rename a field (also fixes index DataField refs and TitleField1/2 automatically). |
+| `replace-all-fields` | table | Atomically rewrite ALL fields (use when field names are corrupted or have spaces). |
+| `remove-field` | table, table-extension | Remove a field by name. |
+| `add-field-modification` | table-extension | Override a base-table field's label or mandatory setting. |
+| `add-index` / `remove-index` | table, table-extension | Manage table indexes. |
+| `add-relation` / `remove-relation` | table, table-extension | Manage table relations. |
+| `add-field-group` | table, table-extension | Add a field group. |
+| `remove-field-group` | table, table-extension | Remove a field group. |
+| `add-field-to-field-group` | table, table-extension | Add a field to an existing field group. |
+| `add-data-source` | form, form-extension | Add a data source. |
+| `add-control` | form-extension | Add a UI control to a tab/group (with optional positioning). |
+| `add-enum-value` | enum, enum-extension | Add a new enum value. |
+| `modify-enum-value` | enum | Change label or value of an existing enum entry. |
+| `remove-enum-value` | enum | Remove an enum value. |
+| `add-menu-item-to-menu` | menu, menu-extension | Add a typed menu item entry (display/action/output). |
+| `modify-property` | any | Change any object-level property (TableGroup, TitleField1, TableType, Extends, Label, …). |
+
 **Requires:** MCP server running on a local Windows machine with file system access.
 
 **Examples:**
 ```
 Add a method calculateDiscount() to MyCustomHelper
 Add a field CreditStatus to MyCustomTable
+Add a find() method to MyTable
+Add a display method getCustomerName() returning CustName to MyTable
+Add a menu item ContosoMyForm to the ContosoMenu extension
 ```
 
 ---

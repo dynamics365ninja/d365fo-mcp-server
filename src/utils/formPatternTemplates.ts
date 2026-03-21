@@ -42,7 +42,8 @@ export type FormPattern =
   | 'Dialog'
   | 'TableOfContents'
   | 'Lookup'
-  | 'ListPage';
+  | 'ListPage'
+  | 'Workspace';
 
 export class FormPatternTemplates {
 
@@ -1266,6 +1267,195 @@ ${fieldControls}\t\t\t\t</Controls>
   }
 
   // ---------------------------------------------------------------------------
+  // Workspace  (v1.0)
+  // Use: Operational workspace — KPI summary tiles + tabbed list sections.
+  // Reference: VendPaymentWorkspace, LedgerJournalWorkspace
+  // Structure: ActionPane
+  //            PanoramaBody (Tab, Style=Panorama)
+  //              SummarySection (TabPage) → TileSection (Group) → KPI tile buttons
+  //              ListSection(s) (TabPage) → CustomFilterGroup + Grid per section
+  // ---------------------------------------------------------------------------
+  static buildWorkspace(opt: FormTemplateOptions): string {
+    const { formName, dsName = formName, dsTable = dsName, caption, sections = [] } = opt;
+    const captionXml = caption
+      ? `\t\t<Caption xmlns="">${caption}</Caption>\n`
+      : '';
+
+    // Generate extra panorama list sections from the `sections` option
+    const listSections = sections.map((sec, idx) =>
+      `\t\t\t\t\t<AxFormControl xmlns=""\n` +
+      `\t\t\t\t\t\t\ti:type="AxFormTabPageControl">\n` +
+      `\t\t\t\t\t\t<Name>${sec.name}Section</Name>\n` +
+      `\t\t\t\t\t\t<Caption>${sec.caption}</Caption>\n` +
+      `\t\t\t\t\t\t<ElementPosition>${536870912 * (idx + 2)}</ElementPosition>\n` +
+      `\t\t\t\t\t\t<Type>TabPage</Type>\n` +
+      `\t\t\t\t\t\t<FormControlExtension\n\t\t\t\t\t\t\ti:nil="true" />\n` +
+      `\t\t\t\t\t\t<Controls>\n` +
+      `\t\t\t\t\t\t\t<AxFormControl xmlns=""\n` +
+      `\t\t\t\t\t\t\t\t\ti:type="AxFormGroupControl">\n` +
+      `\t\t\t\t\t\t\t\t<Name>${sec.name}CustomFilterGroup</Name>\n` +
+      `\t\t\t\t\t\t\t\t<Pattern>CustomAndQuickFilters</Pattern>\n` +
+      `\t\t\t\t\t\t\t\t<PatternVersion>1.1</PatternVersion>\n` +
+      `\t\t\t\t\t\t\t\t<Type>Group</Type>\n` +
+      `\t\t\t\t\t\t\t\t<WidthMode>SizeToAvailable</WidthMode>\n` +
+      `\t\t\t\t\t\t\t\t<FormControlExtension\n\t\t\t\t\t\t\t\t\ti:nil="true" />\n` +
+      `\t\t\t\t\t\t\t\t<Controls />\n` +
+      `\t\t\t\t\t\t\t\t<ArrangeMethod>HorizontalLeft</ArrangeMethod>\n` +
+      `\t\t\t\t\t\t\t\t<FrameType>None</FrameType>\n` +
+      `\t\t\t\t\t\t\t\t<Style>CustomFilter</Style>\n` +
+      `\t\t\t\t\t\t\t</AxFormControl>\n` +
+      `\t\t\t\t\t\t\t<AxFormControl xmlns=""\n` +
+      `\t\t\t\t\t\t\t\t\ti:type="AxFormGridControl">\n` +
+      `\t\t\t\t\t\t\t\t<Name>${sec.name}Grid</Name>\n` +
+      `\t\t\t\t\t\t\t\t<Type>Grid</Type>\n` +
+      `\t\t\t\t\t\t\t\t<WidthMode>SizeToAvailable</WidthMode>\n` +
+      `\t\t\t\t\t\t\t\t<FormControlExtension\n\t\t\t\t\t\t\t\t\ti:nil="true" />\n` +
+      `\t\t\t\t\t\t\t\t<Controls />\n` +
+      `\t\t\t\t\t\t\t\t<DataSource>${dsName}</DataSource>\n` +
+      `\t\t\t\t\t\t\t\t<ShowRowLabels>No</ShowRowLabels>\n` +
+      `\t\t\t\t\t\t\t\t<Style>Tabular</Style>\n` +
+      `\t\t\t\t\t\t\t</AxFormControl>\n` +
+      `\t\t\t\t\t\t</Controls>\n` +
+      `\t\t\t\t\t\t<FrameType>None</FrameType>\n` +
+      `\t\t\t\t\t</AxFormControl>\n`
+    ).join('');
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>${formName}</Name>
+\t<SourceCode>
+\t\t<Methods xmlns="">
+\t\t\t<Method>
+\t\t\t\t<Name>classDeclaration</Name>
+\t\t\t\t<Source><![CDATA[
+[Form]
+public class ${formName} extends FormRun
+{
+}
+
+]]></Source>
+\t\t\t</Method>
+\t\t</Methods>
+\t\t<DataSources xmlns="" />
+\t\t<DataControls xmlns="" />
+\t\t<Members xmlns="" />
+\t</SourceCode>
+\t<DataSources>
+\t\t<AxFormDataSource xmlns="">
+\t\t\t<Name>${dsName}</Name>
+\t\t\t<Table>${dsTable}</Table>
+\t\t\t<Fields />
+\t\t\t<ReferencedDataSources />
+\t\t\t<AllowCreate>No</AllowCreate>
+\t\t\t<AllowEdit>No</AllowEdit>
+\t\t\t<AllowDelete>No</AllowDelete>
+\t\t\t<InsertIfEmpty>No</InsertIfEmpty>
+\t\t\t<DataSourceLinks />
+\t\t\t<DerivedDataSources />
+\t\t</AxFormDataSource>
+\t</DataSources>
+\t<Design>
+${captionXml}\t\t<Pattern xmlns="">Workspace</Pattern>
+\t\t<PatternVersion xmlns="">1.0</PatternVersion>
+\t\t<Style xmlns="">Workspace</Style>
+\t\t<Controls xmlns="">
+\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\ti:type="AxFormActionPaneControl">
+\t\t\t\t<Name>ActionPane</Name>
+\t\t\t\t<ElementPosition>134217727</ElementPosition>
+\t\t\t\t<FilterExpression>%1</FilterExpression>
+\t\t\t\t<Type>ActionPane</Type>
+\t\t\t\t<VerticalSpacing>-1</VerticalSpacing>
+\t\t\t\t<FormControlExtension
+\t\t\t\t\ti:nil="true" />
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\t\t\ti:type="AxFormActionPaneTabControl">
+\t\t\t\t\t\t<Name>ActionPaneTab</Name>
+\t\t\t\t\t\t<Type>ActionPaneTab</Type>
+\t\t\t\t\t\t<FormControlExtension
+\t\t\t\t\t\t\ti:nil="true" />
+\t\t\t\t\t\t<Controls>
+\t\t\t\t\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\t\t\t\t\ti:type="AxFormButtonGroupControl">
+\t\t\t\t\t\t\t\t<Name>NewButtonGroup</Name>
+\t\t\t\t\t\t\t\t<Type>ButtonGroup</Type>
+\t\t\t\t\t\t\t\t<FormControlExtension
+\t\t\t\t\t\t\t\t\ti:nil="true" />
+\t\t\t\t\t\t\t\t<Controls />
+\t\t\t\t\t\t\t</AxFormControl>
+\t\t\t\t\t\t</Controls>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t</Controls>
+\t\t\t\t<AlignChild>No</AlignChild>
+\t\t\t\t<AlignChildren>No</AlignChildren>
+\t\t\t\t<ArrangeMethod>Vertical</ArrangeMethod>
+\t\t\t</AxFormControl>
+\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\ti:type="AxFormTabControl">
+\t\t\t\t<Name>PanoramaBody</Name>
+\t\t\t\t<ElementPosition>268435455</ElementPosition>
+\t\t\t\t<Type>Tab</Type>
+\t\t\t\t<WidthMode>SizeToAvailable</WidthMode>
+\t\t\t\t<HeightMode>SizeToAvailable</HeightMode>
+\t\t\t\t<FormControlExtension
+\t\t\t\t\ti:nil="true" />
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\t\t\ti:type="AxFormTabPageControl">
+\t\t\t\t\t\t<Name>SummarySection</Name>
+\t\t\t\t\t\t<Caption>Summary</Caption>
+\t\t\t\t\t\t<ElementPosition>536870911</ElementPosition>
+\t\t\t\t\t\t<Type>TabPage</Type>
+\t\t\t\t\t\t<FormControlExtension
+\t\t\t\t\t\t\ti:nil="true" />
+\t\t\t\t\t\t<Controls>
+\t\t\t\t\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\t\t\t\t\ti:type="AxFormGroupControl">
+\t\t\t\t\t\t\t\t<Name>TileSection</Name>
+\t\t\t\t\t\t\t\t<Pattern>Workspace_SummaryNumbers_UnboundFields</Pattern>
+\t\t\t\t\t\t\t\t<PatternVersion>1.0</PatternVersion>
+\t\t\t\t\t\t\t\t<Type>Group</Type>
+\t\t\t\t\t\t\t\t<WidthMode>SizeToAvailable</WidthMode>
+\t\t\t\t\t\t\t\t<FormControlExtension
+\t\t\t\t\t\t\t\t\ti:nil="true" />
+\t\t\t\t\t\t\t\t<Controls>
+\t\t\t\t\t\t\t\t\t<!-- Add AxFormControlButtonControl tiles here -->
+\t\t\t\t\t\t\t\t\t<!-- Example: <AxFormControl i:type="AxFormButtonControl"><Name>Tile1</Name><Style>TileButton</Style>... -->
+\t\t\t\t\t\t\t\t</Controls>
+\t\t\t\t\t\t\t\t<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+\t\t\t\t\t\t\t\t<FrameType>None</FrameType>
+\t\t\t\t\t\t\t\t<Style>TileSection</Style>
+\t\t\t\t\t\t\t</AxFormControl>
+\t\t\t\t\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\t\t\t\t\ti:type="AxFormGroupControl">
+\t\t\t\t\t\t\t\t<Name>ChartSection</Name>
+\t\t\t\t\t\t\t\t<Type>Group</Type>
+\t\t\t\t\t\t\t\t<WidthMode>SizeToAvailable</WidthMode>
+\t\t\t\t\t\t\t\t<FormControlExtension
+\t\t\t\t\t\t\t\t\ti:nil="true" />
+\t\t\t\t\t\t\t\t<Controls>
+\t\t\t\t\t\t\t\t\t<!-- Add FormPart references for charts/KPIs here -->
+\t\t\t\t\t\t\t\t</Controls>
+\t\t\t\t\t\t\t\t<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+\t\t\t\t\t\t\t\t<FrameType>None</FrameType>
+\t\t\t\t\t\t\t</AxFormControl>
+\t\t\t\t\t\t</Controls>
+\t\t\t\t\t\t<FrameType>None</FrameType>
+\t\t\t\t\t</AxFormControl>
+${listSections}\t\t\t\t</Controls>
+\t\t\t\t<AlignChild>No</AlignChild>
+\t\t\t\t<ShowTabs>No</ShowTabs>
+\t\t\t\t<Style>Panorama</Style>
+\t\t\t</AxFormControl>
+\t\t</Controls>
+\t</Design>
+\t<Parts />
+</AxForm>
+`;
+  }
+
+  // ---------------------------------------------------------------------------
   // Dispatcher — pick the right pattern builder
   // ---------------------------------------------------------------------------
   static build(pattern: FormPattern, opt: FormTemplateOptions): string {
@@ -1278,6 +1468,7 @@ ${fieldControls}\t\t\t\t</Controls>
       case 'TableOfContents':    return this.buildTableOfContents(opt);
       case 'Lookup':             return this.buildLookup(opt);
       case 'ListPage':           return this.buildListPage(opt);
+      case 'Workspace':          return this.buildWorkspace(opt);
       default:                   return this.buildSimpleList(opt);
     }
   }
@@ -1296,6 +1487,7 @@ ${fieldControls}\t\t\t\t</Controls>
     if (s.includes('dialog') || s.includes('dropdialog')) return 'Dialog';
     if (s.includes('tableofcontents') || s.includes('toc') || s.includes('parameter')) return 'TableOfContents';
     if (s.includes('lookup'))                              return 'Lookup';
+    if (s.includes('workspace') || s.includes('panorama') || s.includes('operational')) return 'Workspace';
     return 'SimpleList'; // default — most common for new setup tables
   }
 }

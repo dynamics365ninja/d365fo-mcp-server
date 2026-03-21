@@ -173,6 +173,44 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     } = args;
     const { symbolIndex } = context;
 
+    // 0. Cross-label-file collision check — warn when the same labelId exists in
+    //    another label file (especially Microsoft's standard label files).
+    const MICROSOFT_LABEL_FILES = new Set([
+      'SYS', 'SYP', 'CAM', 'ACC', 'GLS', 'PRJ', 'PDS', 'PUR', 'BANK', 'TAX',
+      'FMT', 'WHSMobile', 'RET', 'RETAIL', 'MCR', 'WMS', 'TMS', 'HRM', 'PSA',
+      'PROD', 'KAN', 'PCL', 'PROD', 'PLMT', 'EWH',
+    ]);
+    let collisionWarning = '';
+    try {
+      const existing = symbolIndex.labelsDb
+        .prepare(
+          `SELECT label_id, label_file_id, model, text FROM labels
+           WHERE label_id = ? AND language = 'en-US' AND label_file_id != ?
+           LIMIT 10`,
+        )
+        .all(labelId, labelFileId) as Array<{ label_id: string; label_file_id: string; model: string; text: string }>;
+
+      if (existing.length > 0) {
+        const msCollisions = existing.filter(r => MICROSOFT_LABEL_FILES.has(r.label_file_id.toUpperCase()));
+        const lines: string[] = [
+          `⚠️ Label ID "${labelId}" already exists in ${existing.length} other label file(s):`,
+        ];
+        for (const r of existing) {
+          const flag = MICROSOFT_LABEL_FILES.has(r.label_file_id.toUpperCase()) ? ' ← Microsoft standard' : '';
+          lines.push(`  @${r.label_file_id}:${labelId}  [${r.model}]  "${r.text}"${flag}`);
+        }
+        if (msCollisions.length > 0) {
+          lines.push('');
+          lines.push(
+            '  ⛔ Collision with Microsoft standard label file detected! ' +
+            'Consider reusing the existing label instead of creating a new one, ' +
+            'or use a more specific ID to avoid naming conflicts.',
+          );
+        }
+        collisionWarning = lines.join('\n') + '\n\n';
+      }
+    } catch { /* labelsDb may not have the label yet — not fatal */ }
+
     // 1. Resolve model directory
     // Package name can differ from model name in any environment (not just UDE).
     const configManager = getConfigManager();
@@ -361,6 +399,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
 
     const ref = `@${labelFileId}:${labelId}`;
     const lines: string[] = [
+      ...(collisionWarning ? [collisionWarning] : []),
       `✅ Label "${ref}" created successfully!`,
       '',
       `Label ID   : ${labelId}`,

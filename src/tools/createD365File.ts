@@ -17,13 +17,14 @@ import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 const CreateD365FileArgsSchema = z.object({
   objectType: z
     .enum([
-      'class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report',
+      'class', 'class-extension', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report',
       'edt', 'edt-extension',
       'table-extension', 'form-extension', 'data-entity-extension', 'enum-extension',
       'menu-item-display', 'menu-item-action', 'menu-item-output',
       'menu-item-display-extension', 'menu-item-action-extension', 'menu-item-output-extension',
       'menu', 'menu-extension',
       'security-privilege', 'security-duty', 'security-role',
+      'business-event', 'tile', 'kpi',
     ])
     .describe('Type of D365FO object to create'),
   objectName: z
@@ -508,6 +509,27 @@ ${ensureBlankLineBeforeClosingBrace(ensureXppDocComment(declaration))}
 ${methodsXml}\t</SourceCode>
 </AxClass>
 `;
+  }
+
+  /**
+   * Generate AxClass XML structure for a Chain of Command (class-extension).
+   * The XML format is identical to a regular AxClass — the distinction is purely
+   * in the X++ source code ([ExtensionOf(classStr(...))] + final modifier).
+   *
+   * properties.baseClass   — name of the class being extended (required)
+   * properties.modelInfix  — naming infix, e.g. "ContosoExt" → BaseClass_ContosoExt_Extension
+   */
+  static generateAxClassExtensionXml(
+    extensionName: string,
+    sourceCode?: string,
+    properties?: Record<string, any>
+  ): string {
+    const baseClass = properties?.baseClass || extensionName.replace(/_[^_]+_Extension$/, '');
+
+    const defaultSource = sourceCode ||
+      `[ExtensionOf(classStr(${baseClass}))]\nfinal class ${extensionName}\n{\n    // ⚠️  ALWAYS call next <methodName>() — verify exact signature with:\n    //     get_method_signature("${baseClass}", "methodName")\n    //\n    // Template for wrapping a method:\n    //   public ReturnType methodName(ParamType _param)\n    //   {\n    //       ReturnType result = next methodName(_param);\n    //       return result;\n    //   }\n}`;
+
+    return XmlTemplateGenerator.generateAxClassXml(extensionName, defaultSource, { isFinal: true, ...properties });
   }
 
   /**
@@ -1315,6 +1337,8 @@ ${defaultParamGroupXml}
     switch (objectType) {
       case 'class':
         return this.generateAxClassXml(objectName, sourceCode, properties);
+      case 'class-extension':
+        return this.generateAxClassExtensionXml(objectName, sourceCode, properties);
       case 'table': {
         // sourceCode is not used for tables directly, but Copilot may pass field
         // definitions as a JSON string in sourceCode. Try to parse and merge into properties.
@@ -1376,6 +1400,12 @@ ${defaultParamGroupXml}
         return this.generateAxSecurityDutyXml(objectName, properties);
       case 'security-role':
         return this.generateAxSecurityRoleXml(objectName, properties);
+      case 'business-event':
+        return XmlTemplateGenerator.generateBusinessEventXml(objectName, properties);
+      case 'tile':
+        return XmlTemplateGenerator.generateAxTileXml(objectName, properties);
+      case 'kpi':
+        return XmlTemplateGenerator.generateAxKpiXml(objectName, properties);
       default:
         throw new Error(`Unsupported object type: ${objectType}`);
     }
@@ -2474,6 +2504,98 @@ ${relationsXml}
   }
 
   /**
+   * Generate BusinessEventsContract class XML (AxClass) for a Business Event.
+   * The class extends BusinessEventsBase and includes a companion contract class.
+   */
+  static generateBusinessEventXml(name: string, properties?: Record<string, any>): string {
+    const label      = properties?.label     || `@TODO:${name}Label`;
+    const helpText   = properties?.helpText  || `@TODO:${name}HelpText`;
+    const module     = properties?.module    || 'ModuleAxapta::Other';
+    const contractName = `${name}Contract`;
+
+    const source =
+`[BusinessEvents(classStr(${contractName}),
+    '${name}',
+    '${name}',
+    ${module})]
+public final class ${name} extends BusinessEventsBase
+{
+    private ${contractName} contract;
+
+    public static ${name} newFromContract(${contractName} _contract)
+    {
+        ${name} event = new ${name}();
+        event.contract = _contract;
+        return event;
+    }
+
+    [Hookable(false)]
+    public BusinessEventsContract buildContract()
+    {
+        return contract;
+    }
+}
+
+// ── Contract class ──────────────────────────────────────────────────────────
+[DataContractAttribute]
+public final class ${contractName} extends BusinessEventsContract
+{
+    // TODO: add private fields and parmXxx() methods for the event payload
+
+    public static ${contractName} newDefault()
+    {
+        ${contractName} c = new ${contractName}();
+        return c;
+    }
+}`;
+
+    return XmlTemplateGenerator.generateAxClassXml(name, source, { label, helpText, isFinal: true });
+  }
+
+  /**
+   * Generate Workspace Tile XML (AxTile).
+   * Tiles appear in workspace panorama sections as KPI / navigation tiles.
+   */
+  static generateAxTileXml(name: string, properties?: Record<string, any>): string {
+    const label      = properties?.label     || `@TODO:${name}Label`;
+    const helpText   = properties?.helpText  || `@TODO:${name}HelpText`;
+    const tileType   = properties?.tileType  || 'Count';       // Count | Link | Summary
+    const menuItem   = properties?.menuItem  || '';
+    const query      = properties?.query     || '';
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxTile xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>${name}</Name>
+\t<Label>${label}</Label>
+\t<HelpText>${helpText}</HelpText>
+\t<TileType>${tileType}</TileType>${menuItem ? `\n\t<MenuItemName>${menuItem}</MenuItemName>\n\t<MenuItemType>Display</MenuItemType>` : ''}${query ? `\n\t<Query>${query}</Query>` : ''}
+\t<Size>Wide</Size>
+\t<RefreshFrequency>600</RefreshFrequency>
+</AxTile>`;
+  }
+
+  /**
+   * Generate KPI XML (AxKPI).
+   * KPIs appear in workspace summary sections.
+   */
+  static generateAxKpiXml(name: string, properties?: Record<string, any>): string {
+    const label      = properties?.label     || `@TODO:${name}Label`;
+    const helpText   = properties?.helpText  || `@TODO:${name}HelpText`;
+    const measure    = properties?.measure   || '';
+    const dimension  = properties?.dimension || '';
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxKPI xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>${name}</Name>
+\t<Label>${label}</Label>
+\t<HelpText>${helpText}</HelpText>${measure ? `\n\t<Measure>${measure}</Measure>` : ''}${dimension ? `\n\t<MeasureDimension>${dimension}</MeasureDimension>` : ''}
+\t<Goal>0</Goal>
+\t<GoalType>None</GoalType>
+\t<Trend>None</Trend>
+</AxKPI>`;
+  }
+
+  /**
    * Generate AxMenu XML.
    */
   static generateAxMenuXml(name: string, properties?: Record<string, any>): string {
@@ -2619,6 +2741,7 @@ export class ProjectFileManager {
   private getFolderName(objectType: string): string {
     const folderMap: Record<string, string> = {
       class: 'Classes',
+      'class-extension': 'Classes',
       table: 'Tables',
       enum: 'Base Enums',
       form: 'Forms',
@@ -2643,6 +2766,9 @@ export class ProjectFileManager {
       'security-privilege': 'Security Privileges',
       'security-duty': 'Security Duties',
       'security-role': 'Security Roles',
+      'business-event': 'Classes',
+      tile: 'Tiles',
+      kpi: 'KPIs',
     };
     return folderMap[objectType] || 'Classes';
   }
@@ -2654,6 +2780,7 @@ export class ProjectFileManager {
   private getAxFolderPrefix(objectType: string): string {
     const prefixMap: Record<string, string> = {
       class: 'AxClass',
+      'class-extension': 'AxClass',
       table: 'AxTable',
       enum: 'AxEnum',
       form: 'AxForm',
@@ -2678,6 +2805,9 @@ export class ProjectFileManager {
       'security-privilege': 'AxSecurityPrivilege',
       'security-duty': 'AxSecurityDuty',
       'security-role': 'AxSecurityRole',
+      'business-event': 'AxClass',
+      tile: 'AxTile',
+      kpi: 'AxKPI',
     };
     return prefixMap[objectType] || 'AxClass';
   }
@@ -3099,6 +3229,7 @@ export async function handleCreateD365File(
     // Determine object folder based on type
     const objectFolderMap: Record<string, string> = {
       class: 'AxClass',
+      'class-extension': 'AxClass',
       table: 'AxTable',
       enum: 'AxEnum',
       form: 'AxForm',
@@ -3123,6 +3254,9 @@ export async function handleCreateD365File(
       'security-privilege': 'AxSecurityPrivilege',
       'security-duty': 'AxSecurityDuty',
       'security-role': 'AxSecurityRole',
+      'business-event': 'AxClass',
+      tile: 'AxTile',
+      kpi: 'AxKPI',
     };
 
     const objectFolder = objectFolderMap[args.objectType];

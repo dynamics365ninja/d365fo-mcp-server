@@ -59,6 +59,11 @@ export const BatchSearchArgsSchema = z.object({
       'Remove symbols that appear in more than one query result. ' +
       'Duplicate entries in later queries are replaced with a reference to the query where they first appeared.'
     ),
+  crossReference: z.boolean().optional().default(true)
+    .describe(
+      'Append a cross-reference summary at the end listing symbols that appeared in multiple queries. ' +
+      'Useful for identifying the most relevant / commonly matched objects across all searches.'
+    ),
 });
 
 // ── Regex to extract [TYPE] SymbolName from search result lines ──
@@ -93,6 +98,18 @@ function annotateDuplicates(
   }
 
   return { text: out.join('\n'), dupCount };
+}
+
+/**
+ * Extract all [TYPE] SymbolName keys from a result text block.
+ */
+function extractSymbolKeys(text: string): string[] {
+  const keys: string[] = [];
+  for (const line of text.split('\n')) {
+    const m = line.match(RESULT_LINE_RE);
+    if (m) keys.push(`${m[1]}:${m[2]}`);
+  }
+  return keys;
 }
 
 // ── Internal result type ─────────────────────────────────────────────────────
@@ -201,6 +218,20 @@ export async function batchSearchTool(request: CallToolRequest, context: XppServ
       };
     });
 
+    // ── Build cross-reference map (before dedup annotation changes the text) ──
+    // Maps symbolKey → Set of 1-based query indices where it appears
+    const crossRefMap = new Map<string, Set<number>>();
+    if (args.crossReference) {
+      for (let i = 0; i < mergedResults.length; i++) {
+        const text = mergedResults[i].result?.content?.[0]?.text;
+        if (!text) continue;
+        for (const key of extractSymbolKeys(text)) {
+          if (!crossRefMap.has(key)) crossRefMap.set(key, new Set());
+          crossRefMap.get(key)!.add(i + 1);
+        }
+      }
+    }
+
     // ── Deduplication ─────────────────────────────────────────────────────────
     let dedupStats = { total: 0 };
     if (args.deduplicate) {
@@ -223,13 +254,19 @@ export async function batchSearchTool(request: CallToolRequest, context: XppServ
       }
     }
 
+    // Cross-reference entries = symbols found in 2+ queries
+    const crossRefEntries = args.crossReference
+      ? [...crossRefMap.entries()].filter(([, qs]) => qs.size > 1)
+      : [];
+
     const executionTime = Date.now() - startTime;
     const output = formatBatchResults(
       mergedResults,
       executionTime,
       args.queries.length,
       validGlobalTypes,
-      args.deduplicate ? dedupStats.total : -1
+      args.deduplicate ? dedupStats.total : -1,
+      crossRefEntries
     );
 
     return { content: [{ type: 'text', text: output }] };
@@ -254,7 +291,8 @@ function formatBatchResults(
   executionTime: number,
   totalQueries: number,
   globalTypeFilter: string[],
-  dedupCount: number  // -1 = dedup disabled
+  dedupCount: number,  // -1 = dedup disabled
+  crossRefEntries: Array<[string, Set<number>]> = []
 ): string {
   let output = `# Batch Search Results\n\n`;
   output += `Executed: ${totalQueries} parallel ${totalQueries === 1 ? 'query' : 'queries'}`;
@@ -283,6 +321,20 @@ function formatBatchResults(
 
     output += `\n\n---\n\n`;
   });
+
+  // Cross-reference summary
+  if (crossRefEntries.length > 0) {
+    // Sort by number of queries (descending) then by key name
+    const sorted = [...crossRefEntries].sort(([, a], [, b]) => b.size - a.size);
+    output += `## Cross-Reference Summary\n\n`;
+    output += `Symbols found in multiple queries (${crossRefEntries.length} total):\n\n`;
+    for (const [key, querySet] of sorted) {
+      const [type, name] = key.split(':');
+      const queryList = [...querySet].sort((a, b) => a - b).join(', ');
+      output += `- **${name}** [${type}] → queries: ${queryList}\n`;
+    }
+    output += `\n---\n\n`;
+  }
 
   // Performance note
   output += `\n💡 Performance Note: ${totalQueries} searches in ${executionTime}ms (parallel execution). `;
@@ -391,6 +443,14 @@ workspacePath and includeWorkspace parameters.`,
         description:
           'When true, symbols appearing in multiple query results are collapsed: ' +
           'later occurrences are replaced with a reference to the query where they first appeared.',
+      },
+      crossReference: {
+        type: 'boolean',
+        default: true,
+        description:
+          'When true (default), appends a cross-reference summary listing symbols that appeared ' +
+          'in 2 or more queries — sorted by frequency. Helps identify the most relevant objects ' +
+          'across all parallel searches.',
       },
     },
     required: ['queries'],

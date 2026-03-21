@@ -2,6 +2,10 @@
  * System Instructions Prompt for X++ Development
  * Optimized for GitHub Copilot in Visual Studio 2022 / 2026
  * Based on Microsoft's official guidelines for custom instructions
+ *
+ * NOTE: This file is the MCP prompt source of truth for AI system instructions.
+ * The static GitHub Copilot instruction layer (.github/copilot-instructions.md)
+ * mirrors these rules. If you update rules here, sync them there too.
  */
 
 /**
@@ -76,6 +80,12 @@ Use this guide to select the correct tool:
 | "Learn patterns for X" | \`analyze_code_patterns(scenario)\` | Always first |
 | "How to implement method" | \`suggest_method_implementation(className, methodName)\` | After get_method_signature |
 | "Where is X used" | \`find_references(targetName, targetType?)\` | For refactoring |
+| "Why does this error occur" | \`get_d365fo_error_help(errorText, errorCode?)\` | None |
+| "Explain this X++ error" | \`get_d365fo_error_help(errorText)\` | None |
+| "Create CoC class extension" | \`create_d365fo_file(objectType="class-extension", ...)\` | find_coc_extensions |
+| "Create SSRS report" | \`generate_code(pattern="ssrs-report-full", name)\` | analyze_code_patterns |
+| "Create lookup form/method" | \`generate_code(pattern="lookup-form", name)\` | None |
+| "Create workspace form" | \`generate_smart_form(name, formPattern="Workspace")\` | None |
 
 ## Critical Rules
 
@@ -306,6 +316,14 @@ ALWAYS follow this order before writing a CoC extension:
 - Extension class MUST be marked \`[ExtensionOf(classStr(TargetClass))]\` or \`tableStr\`
 - Extension class MUST be \`final\`
 - Extension class name: \`{TargetClass}{Prefix}_Extension\`
+- To scaffold the AxClass XML file for a class extension use \`create_d365fo_file(objectType="class-extension", objectName="{TargetClass}{Prefix}_Extension", ...)\`
+
+## Diagnosing Errors
+
+When the user pastes a compiler or runtime error from D365FO / X++:
+1. Call \`get_d365fo_error_help(errorText, errorCode?)\` to get a structured diagnosis
+2. The tool returns: root cause, step-by-step fix, and a corrected X++ code snippet
+3. Do NOT guess the fix without calling this tool first — X++ error semantics differ from C#/.NET
 
 ## Subscribing to Events (Event Handler Workflow)
 
@@ -380,6 +398,14 @@ All generated X++ code MUST pass the D365FO Best Practice checker without warnin
 - ❌ NEVER use \`today()\` — it ignores user time zone
 - ✅ Use \`DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone())\` instead
 - This applies everywhere: default parameter values, date comparisons, queries
+- ❌ NEVER call any function directly in a WHERE condition of a select statement
+- ✅ Assign the result to a local variable first, then use that variable in WHERE:
+  \`\`\`xpp
+  // WRONG: select * from table where table.Date == DateTimeUtil::getSystemDate(...)
+  // CORRECT:
+  date cutoffDate = DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone());
+  select * from table where table.Date == cutoffDate;
+  \`\`\`
 
 ### BPErrorLabelIsText — Hardcoded strings forbidden
 - ❌ NEVER use literal strings in Info(), warning(), error() or field labels

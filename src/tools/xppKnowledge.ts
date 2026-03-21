@@ -285,6 +285,7 @@ insertList.insertDatabase();`,
       'Use exists join (not inner join) when you only need to check existence from the joined table',
       'Use notexists join for "does not exist" conditions',
       'Avoid nested while-select loops — use joins in a single select instead',
+      'NEVER call functions directly in WHERE conditions — assign to a variable first (performance + readability)',
       'crosscompany keyword: use for cross-company queries, pass container of companies',
       'forceplaceholders: use in batch operations to get parameterized SQL plans',
       'forceselectorder: use only when you know the optimizer picks a wrong plan',
@@ -297,11 +298,13 @@ insertList.insertDatabase();`,
         label: 'exists join',
         code: `CustTable custTable;
 CustTrans custTrans;
+// ✅ Assign to variable before WHERE — never call functions directly in WHERE conditions
+TransDate cutoffDate = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) - 30;
 
 while select AccountNum, Name from custTable
     exists join custTrans
         where custTrans.AccountNum == custTable.AccountNum
-           && custTrans.TransDate  >= today() - 30
+           && custTrans.TransDate  >= cutoffDate
 {
     info(strFmt('%1 - %2', custTable.AccountNum, custTable.Name));
 }`,
@@ -591,7 +594,8 @@ class MyReportDP extends SRSReportDataProviderBase
     summary:
       'D365FO deprecates many AX2012 APIs. Using deprecated APIs triggers BP warnings/errors.',
     rules: [
-      'today() → DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()) — BPUpgradeCodeToday',
+      'today() → DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) — BPUpgradeCodeToday; NEVER use today() in new code',
+      'NEVER call today() or any function directly in a WHERE condition — assign to a variable first',
       'curext() → use Ledger::primaryForLegalEntity(CompanyInfo::findDataArea(curext()).RecId)',
       'AIF services → Data entities + OData',
       'RunBase → SysOperation framework',
@@ -745,6 +749,702 @@ class MyHelperTest extends SysTestCase
       },
     ],
     related: ['sysoperation'],
+  },
+
+  // ── Financial Dimensions ────────────────────────────────────────────────
+  {
+    id: 'financial-dimensions',
+    title: 'Financial Dimensions (DimensionAttributeValueSet)',
+    keywords: ['dimension', 'financial dimension', 'ledgerdimension', 'dimensionattributevalueset', 'dimensionattribute', 'defaultdimension', 'ledgerdimensionfacade', 'displayvalue', 'dimensiondefaultingcontroller'],
+    summary:
+      'Financial dimensions in D365FO are multi-part keys stored as RecId references to DimensionAttributeValueSet. ' +
+      'Never work with dimension strings directly — always use the LedgerDimensionFacade or DimensionAttributeValueSetStorage APIs.',
+    rules: [
+      'DefaultDimension field (Int64): RecId pointing to DimensionAttributeValueSet — stores the account structure combination',
+      'LedgerDimension field (Int64): RecId pointing to DimensionAttributeValue — full main account + dimensions combined',
+      'To read dimension values: use DimensionAttributeValue::find() and DimensionAttributeValueSetStorage',
+      'To create/update default dimensions: use DimensionDefaultingService or DimensionAttributeValueSetStorage',
+      'To merge two dimension sets: DimensionAttributeValueSetStorage.mergeValues()',
+      'To get the display string of a DefaultDimension: use DimensionAttributeValueSetStorage.toString()',
+      'To get the display string of a LedgerDimension: use DimensionAttributeValue::find(recId).getValue()',
+      'NEVER store dimension strings in custom fields — always use DefaultDimension (Int64 EDT) referencing DimensionAttributeValueSet',
+      'DimensionDefaultingController: use on forms to render the Financial Dimensions FastTab automatically',
+      'LedgerDimensionFacade: helper class for building/parsing ledger dimension combinations',
+      'For CoC on dimension defaulting: override dimensionDefaultingController() or ledgerDimensionDefaultingController()',
+      'Dimension attribute names are configurable per company — never hardcode names like "CostCenter", use DimensionAttribute::findByName()',
+    ],
+    examples: [
+      {
+        label: 'Read dimension value from DefaultDimension',
+        code: `// Get all dimension values from a DefaultDimension RecId
+DimensionAttributeValueSetStorage dimStorage =
+    DimensionAttributeValueSetStorage::find(myTable.DefaultDimension);
+
+int dimCount = dimStorage.elements();
+for (int i = 1; i <= dimCount; i++)
+{
+    DimensionAttribute    dimAttr  = DimensionAttribute::find(dimStorage.getAttributeRecId(i));
+    DimensionAttributeValue dimVal = DimensionAttributeValue::find(dimStorage.getValueRecId(i));
+
+    info(strFmt('%1 = %2', dimAttr.Name, dimVal.getValue()));
+}`,
+      },
+      {
+        label: 'Set a DefaultDimension value (merge pattern)',
+        code: `// Build a new dimension set with CostCenter = "100"
+DimensionAttribute dimAttr = DimensionAttribute::findByName('CostCenter');
+if (dimAttr.RecId)
+{
+    DimensionAttributeValue dimAttrValue =
+        DimensionAttributeValue::findByDimensionAttributeAndValue(dimAttr, '100', false, true);
+
+    DimensionAttributeValueSetStorage dimStorage =
+        DimensionAttributeValueSetStorage::find(myTable.DefaultDimension);
+    dimStorage.addItem(dimAttrValue);
+
+    ttsbegin;
+    myTable.DefaultDimension = dimStorage.save();
+    myTable.update();
+    ttscommit;
+}`,
+      },
+      {
+        label: 'DimensionDefaultingController on a form (CoC)',
+        code: `[ExtensionOf(formStr(MyForm))]
+final class MyForm_MyModel_Extension
+{
+    DimensionDefaultingController dimensionDefaultingController;
+
+    public void init()
+    {
+        next init();
+        // Initialise the Financial Dimensions FastTab
+        dimensionDefaultingController =
+            DimensionDefaultingController::constructInTabWithValues(
+                true,                         // allow editing
+                true,                         // show mandatory asterisk
+                true,                         // validate on save
+                0,                            // host field group (0 = default)
+                this,                         // form run
+                MyTable::defaultDimensionField());
+    }
+
+    public void close()
+    {
+        if (dimensionDefaultingController)
+        {
+            dimensionDefaultingController.pageClose();
+        }
+        next close();
+    }
+}`,
+      },
+    ],
+    related: ['coc', 'event-handlers'],
+  },
+
+  // ── Posting Engine ──────────────────────────────────────────────────────
+  {
+    id: 'posting-engine',
+    title: 'Posting Engine (LedgerVoucher / SubledgerJournalizer)',
+    keywords: ['posting', 'ledger', 'voucher', 'ledgervoucher', 'subledgerjournalizer', 'journalizer', 'accounting', 'ledgerpostingtype', 'axbc', 'subledger'],
+    summary:
+      'D365FO posting uses SubledgerJournalizer to create subledger entries that are transferred to General Ledger via the Accounting Framework. ' +
+      'Never write to LedgerTrans directly — always use the posting framework.',
+    rules: [
+      'NEVER write to LedgerTrans directly — use SubledgerJournalizer or LedgerVoucher API',
+      'SubledgerJournalizer: modern API for creating accounting entries (replaces LedgerVoucher in new modules)',
+      'LedgerVoucher: legacy but still valid for most standard modules (SalesOrder, PurchOrder posting)',
+      'AccountingEvent: groups voucher lines by posting type for a single business event',
+      'AxBC classes (AxSalesLine, AxPurchLine, etc.): business component wrappers for posting — extend via CoC, not direct modification',
+      'LedgerPostingType: must be registered in your module\'s LedgerPostingTypeHelper extension',
+      'For custom vouchers: extend LedgerVoucher_Extension and override getVoucherType()',
+      'Subledger journal: created by SubledgerJournalizerProjectEntry (or similar), transferred async to GL',
+      'Always use ledgerDimension (not defaultDimension) for posting — combines main account + dimensions',
+      'Posting validation: override validate() in AxBC class via CoC — return error() to stop posting',
+    ],
+    examples: [
+      {
+        label: 'Create custom voucher with LedgerVoucher',
+        code: `LedgerVoucher ledgerVoucher = LedgerVoucher::newLedgerVoucher(LedgerTransType::None);
+LedgerVoucherObject voucherObj = LedgerVoucherObject::newLedgerVoucherObject(
+    LedgerTransType::None,
+    CompanyInfo::findDataArea(curExt()));
+
+// Debit line
+LedgerVoucherTransObject debit = LedgerVoucherTransObject::newTransObject(
+    voucherObj,
+    LedgerVoucherType::Normal);
+debit.parmAccount(myLedgerDimension);
+debit.parmAmountCur(amount);
+debit.parmTransDate(transDate);
+debit.parmTransTxt('My posting');
+
+// Credit line
+LedgerVoucherTransObject credit = LedgerVoucherTransObject::newTransObject(
+    voucherObj,
+    LedgerVoucherType::Normal);
+credit.parmAccount(offsetLedgerDimension);
+credit.parmAmountCur(-amount);
+credit.parmTransDate(transDate);
+credit.parmTransTxt('My posting offset');
+
+voucherObj.add(debit);
+voucherObj.add(credit);
+ledgerVoucher.add(voucherObj);
+
+ttsbegin;
+ledgerVoucher.post();
+ttscommit;`,
+      },
+    ],
+    related: ['transactions', 'financial-dimensions'],
+  },
+
+  // ── Multi-company ───────────────────────────────────────────────────────
+  {
+    id: 'multi-company',
+    title: 'Multi-company Queries & changeCompany()',
+    keywords: ['multi-company', 'crosscompany', 'changecompany', 'dataareaid', 'legalentity', 'virtualcompany', 'companyinfo', 'systemsequences'],
+    summary:
+      'D365FO supports cross-company data access via changeCompany() and crosscompany select. ' +
+      'Every table has DataAreaId — always consider company isolation in queries.',
+    rules: [
+      'Tables with SaveDataPerCompany=Yes: have DataAreaId field, data is company-specific (default)',
+      'Tables with SaveDataPerCompany=No: shared across all companies (e.g. DirPartyTable, RefRecId tables)',
+      'changeCompany("DAT") { ... }: switch company context for a code block — closes and re-opens connection',
+      'crosscompany select: use when querying data across multiple companies in one query',
+      'crosscompany containers: pass specific companies, e.g. while select crosscompany [co1, co2] from myTable',
+      'NEVER hardcode DataAreaId — always use curExt() or CompanyInfo::current().DataArea',
+      'changeCompany is expensive — avoid inside loops; batch operations cross-company instead',
+      'For reporting: use crosscompany select with a list of company IDs from a parameter',
+      'Inter-company transactions: use InterCompanyTradingRelationship — do not write cross-company manually',
+    ],
+    examples: [
+      {
+        label: 'changeCompany block',
+        code: `// ✅ Change company for a code block
+CustTable custTable;
+changeCompany("DAT")
+{
+    select firstonly custTable
+        where custTable.AccountNum == '1001';
+}
+info(custTable.Name); // data from DAT company`,
+      },
+      {
+        label: 'crosscompany select',
+        code: `CustTable custTable;
+container companies = ["DAT", "USMF", "DEMF"];
+
+// ✅ Query across multiple companies
+while select crosscompany : companies
+    AccountNum, Name, DataAreaId from custTable
+    where custTable.CustGroup == 'DOM'
+{
+    info(strFmt('%1 | %2 | %3',
+        custTable.DataAreaId,
+        custTable.AccountNum,
+        custTable.Name));
+}`,
+      },
+    ],
+    related: ['query-patterns', 'transactions'],
+  },
+
+  // ── Print Management ───────────────────────────────────────────────────
+  {
+    id: 'print-management',
+    title: 'Print Management (SrsPrintMgmtController)',
+    keywords: ['print management', 'printmgmt', 'srsprintmgmt', 'srsprintmgmtcontroller', 'printmgmtdoctype', 'printmgmtdocumenttype', 'printmgmtsettings', 'original copy'],
+    summary:
+      'Print management in D365FO controls report destinations (screen, printer, email, archive) per document type. ' +
+      'Use SrsPrintMgmtController for reports that integrate with the Print management setup form.',
+    rules: [
+      'Extend SrsPrintMgmtController (not SrsReportRunController) when the report supports Print management',
+      'Register the document type in PrintMgmtDocType enum extension',
+      'Override getDocumentName() and getDocumentTitle() in the controller class',
+      'Override getOriginalPrintMgmtPrintSettingDetail() for the default print settings',
+      'PrintMgmtDocumentType class: register your document type (link to module, table, report)',
+      'To open the Print management setup: go to Accounts receivable → Setup → Print management',
+      'For new document types: also add an entry in PrintMgmtReportFormat (links document type to report design)',
+      'Reprint: same controller, pass PrintCopyType::Reprint via parmPrintCopyType()',
+    ],
+    related: ['ssrs-reports'],
+  },
+
+  // ── Unit Testing ─────────────────────────────────────────────────────────
+  {
+    id: 'unit-testing',
+    title: 'X++ Unit Testing (SysTestCase / SysTestSuite)',
+    keywords: ['unit test', 'systestcase', 'systestsuite', 'test', 'assert', 'testmethod', 'mock', 'stub', 'systestcasestub', 'testautomation'],
+    summary:
+      'X++ unit tests extend SysTestCase. They run in a fresh database transaction that is always rolled back, ' +
+      'ensuring tests are isolated. Run in Visual Studio → Test Explorer or via SysTestSuite.',
+    rules: [
+      'Test class: extends SysTestCase, must be in the same model as the code under test (or a test model)',
+      'Test methods: public void testXxx() — method name MUST start with "test" (case-insensitive)',
+      'Setup/teardown: override setUp() and tearDown() — called before/after EACH test method',
+      'Assertions: assertEquals, assertNotNull, assertNull, assertTrue, assertFalse, fail()',
+      'SysTestSuite: groups multiple SysTestCase classes for batch execution',
+      'Transaction rollback: all DML in a test is rolled back after each test — no cleanup needed for DB state',
+      'For methods that call ttsbegin internally: wrap test in try/catch and expect a clean state',
+      'Mock dependencies: use delegation pattern or extract interfaces — X++ has no built-in mocking framework',
+      'Naming convention: <ClassName>_Test (e.g. MyServiceClass_Test)',
+      'Attributes: [SysTestMethodAttribute] optional — but helps categorize tests',
+      'Run tests: Visual Studio → Test → Run All Tests, or SysTestSuite.run() in a batch job',
+    ],
+    examples: [
+      {
+        label: 'Basic SysTestCase',
+        code: `/// <summary>
+/// Unit tests for MyService.
+/// </summary>
+class MyService_Test extends SysTestCase
+{
+    MyService service;
+
+    public void setUp()
+    {
+        super();
+        service = new MyService();
+    }
+
+    public void testCalculateDiscount_Zero()
+    {
+        // Arrange
+        AmountMST amount = 1000;
+
+        // Act
+        AmountMST discount = service.calculateDiscount(amount, 0);
+
+        // Assert
+        this.assertEquals(0, discount,
+            'Discount should be 0 when rate is 0');
+    }
+
+    public void testCalculateDiscount_TenPercent()
+    {
+        AmountMST discount = service.calculateDiscount(1000, 10);
+        this.assertEquals(100, discount, '10% of 1000 = 100');
+    }
+
+    public void testCalculateDiscount_NegativeAmount()
+    {
+        // Negative amount should throw an exception
+        try
+        {
+            service.calculateDiscount(-100, 10);
+            this.fail('Expected an exception for negative amount');
+        }
+        catch (Exception::Error)
+        {
+            // Expected — test passes
+        }
+    }
+}`,
+      },
+    ],
+    related: ['transactions', 'error-handling'],
+  },
+
+  // ── Telemetry & Logging ─────────────────────────────────────────────────
+  {
+    id: 'telemetry',
+    title: 'Telemetry, Logging & SysInfoLog',
+    keywords: ['telemetry', 'logging', 'sysinfolog', 'infolog', 'info', 'warning', 'error', 'checkfailed', 'eventlog', 'application insights', 'syscustomattribute'],
+    summary:
+      'D365FO uses SysInfoLog for user-visible messages and Application Insights telemetry for monitoring. ' +
+      'Structure log output carefully — Copilot and users read infolog messages to diagnose issues.',
+    rules: [
+      'info("message"): informational message shown to user in infolog',
+      'warning("message"): amber warning — operation completed but user should be aware',
+      'error("message"): red error — operation failed, return false from validate methods',
+      'checkFailed("message"): same as error() but returns false — use in validateWrite()',
+      'Global::error/warning/info: same as bare functions (Global:: prefix is valid but redundant)',
+      'SysInfoLogScope: use to capture infolog output programmatically (for testing or logging)',
+      'NEVER use print statement — it only shows in job output, not infolog',
+      'For Azure Application Insights telemetry: use Microsoft.ApplicationInsights NuGet — not available in standard X++ without NuGet reference',
+      'Structured telemetry: use SysTelemetry class (available in platform update 20+)',
+      'Batch job logging: use this.BatchHeader.addRuntimeTask() for progress feedback',
+      'Infolog messages in batch: saved to BatchHistory — accessible via Batch jobs > History',
+      'NEVER log sensitive data (passwords, connection strings, PII) — use masked/hashed values',
+    ],
+    examples: [
+      {
+        label: 'SysInfoLogScope — capture infolog to string',
+        code: `SysInfoLogScope infoLogScope = SysInfoLogScope::startScope();
+try
+{
+    myService.doSomething();
+}
+finally
+{
+    SysInfoLogEnumerator enumerator = SysInfoLogEnumerator::newData(infoLogScope.infoLogData());
+    while (enumerator.moveNext())
+    {
+        SysInfologMessageStruct msgStruct =
+            SysInfologMessageStruct::construct(enumerator.current());
+        str message = msgStruct.message();
+        SysInfologLevel level = enumerator.currentException();
+        // level: SysInfologLevel::Info, Warning, Error
+        info(strFmt('[%1] %2', enum2Str(level), message));
+    }
+}`,
+      },
+    ],
+    related: ['error-handling', 'sysoperation'],
+  },
+
+  // ── Global Address Book (GAB) ───────────────────────────────────────────
+  {
+    id: 'global-address-book',
+    title: 'Global Address Book (GAB) — DirPartyTable, DirPartyPostalAddress',
+    keywords: ['gab', 'global address book', 'dirpartytable', 'dirperson', 'dirorganization', 'dirpartypostaladdress', 'logisticspostaladdress', 'dirpartylocation', 'address', 'party', 'contact'],
+    summary:
+      'D365FO manages all parties (persons, organizations) through DirPartyTable. Every customer, vendor, worker etc. ' +
+      'links to a DirPartyTable record via a Party field (RecId). Do NOT store addresses directly on your custom table — ' +
+      'always use GAB APIs.',
+    rules: [
+      'Every entity with a real-world address (customer, vendor, worker) has a DirPartyTable record via a Party field',
+      'To read postal address: use LogisticsPostalAddress joined through DirPartyLocation',
+      'To read contact info (email, phone): use LogisticsElectronicAddress joined through DirPartyLocation',
+      'DirPartyType enum: Person | Organization | Team — use dirPartyType() method to check',
+      'To create a Party: use DirPartyTable::createNew(DirPartyType::Organization) or DirPersonName for persons',
+      'NEVER insert into DirPartyTable directly — always use the DirPartyTable static helper methods',
+      'To link your custom table to GAB: add a Party field (EDT: DirPartyRecId), set RefTableId, RefRecId',
+      'DirPartyPostalAddressView is a convenient view for reading the primary address',
+      'GlobalAddressBookHelper and DirPartyService provide high-level create/update APIs',
+    ],
+    examples: [
+      {
+        label: 'Read primary postal address for a party',
+        code: `// Read primary postal address via DirPartyPostalAddressView
+DirPartyRecId       partyRecId = custTable.Party;
+DirPartyPostalAddressView addrView;
+
+select firstonly addrView
+    where addrView.Party    == partyRecId
+       && addrView.IsPrimary == NoYes::Yes;
+
+str street  = addrView.Street;
+str city    = addrView.City;
+str country = addrView.CountryRegionId;`,
+      },
+      {
+        label: 'Read primary email address',
+        code: `// Read primary email using LogisticsElectronicAddress
+DirPartyRecId               partyRecId = vendTable.Party;
+LogisticsElectronicAddress  email;
+
+select firstonly email
+    join DirPartyLocation
+    where DirPartyLocation.Party       == partyRecId
+       && DirPartyLocation.IsPrimary   == NoYes::Yes
+    && email.Location == DirPartyLocation.Location
+       && email.Type    == LogisticsElectronicAddressMethodType::Email;
+
+str emailAddr = email.Locator;`,
+      },
+    ],
+    related: ['data-entities', 'number-sequences'],
+  },
+
+  // ── SysExtension Framework ──────────────────────────────────────────────
+  {
+    id: 'sysextension',
+    title: 'SysExtension Framework — plug-in pattern without if/else chains',
+    keywords: ['sysextension', 'sysextensionappsuite', 'exportmetadata', 'iclassextension', 'plugin', 'plug-in', 'factory', 'decorator', 'extensible enum', 'sysplugin'],
+    summary:
+      'SysExtension allows registering and resolving implementations keyed by an extensible enum without modifying ' +
+      'the base code. Replaces if/switch chains. Consists of: interface, enum, concrete classes decorated with ' +
+      '[ExportMetadataAttribute], and a factory call via SysExtensionAppSuiteDecoratorForward or SysPluginFactory.',
+    rules: [
+      'Define an interface (or abstract class) for the strategy: interface IMyStrategy { void execute(); }',
+      'Create an extensible enum (IsExtensible=Yes) with one value per strategy',
+      'Decorate each concrete class: [ExportMetadataAttribute(enumStr(MyEnum), MyEnum::Value)]',
+      'Resolve at runtime: SysExtensionAppSuiteDecoratorForward::construct(classStr(IMyStrategy), myEnumValue)',
+      'Alternatively use SysPluginFactory::Instance(enumStr(MyEnum), myEnumValue)',
+      'Adding a new strategy = new class + new enum value, ZERO changes to base code',
+      'Use classStr() / enumStr() — never string literals — for refactor-safety',
+      'Works for both class and table contexts; interface must be implemented on the class',
+      'NEVER use this pattern for a single implementation — only when multiple strategies needed',
+    ],
+    examples: [
+      {
+        label: 'SysExtension plug-in pattern',
+        code: `// 1. Extensible enum (IsExtensible = Yes in XML)
+// enum MyProcessorType { Standard, Express, Overnight }
+
+// 2. Interface
+interface IMyProcessor
+{
+    void process(MyTable _record);
+}
+
+// 3. Concrete implementation decorated with enum value
+[ExportMetadataAttribute(enumStr(MyProcessorType), MyProcessorType::Express)]
+public class MyExpressProcessor implements IMyProcessor
+{
+    public void process(MyTable _record)
+    {
+        // Express processing logic
+    }
+}
+
+// 4. Factory resolution — no if/switch needed
+public static void runProcessor(MyTable _record, MyProcessorType _type)
+{
+    IMyProcessor processor = SysExtensionAppSuiteDecoratorForward::construct(
+        classStr(IMyProcessor), _type) as IMyProcessor;
+
+    if (processor)
+    {
+        processor.process(_record);
+    }
+}`,
+      },
+    ],
+    related: ['coc-extensions', 'batch-jobs'],
+  },
+
+  // ── Currency / Exchange Rates ───────────────────────────────────────────
+  {
+    id: 'currency-exchange-rates',
+    title: 'Currency & Exchange Rates — ExchangeRateHelper, CurrencyExchangeHelper',
+    keywords: ['currency', 'exchange rate', 'exchangeratehelper', 'currencyexchangehelper', 'amount', 'convert', 'amountcur', 'amountmst', 'ledgercurrency', 'transactioncurrency', 'accountingcurrency'],
+    summary:
+      'D365FO manages currency conversion through ExchangeRateHelper and CurrencyExchangeHelper. ' +
+      'Never calculate exchange rates manually — always use the framework APIs to respect ' +
+      'company exchange rate configuration.',
+    rules: [
+      'Use ExchangeRateHelper::getExchangeRate() to get the rate between two currencies on a date',
+      'Use CurrencyExchangeHelper::newExchangeDate() factory for converting amounts',
+      'Transaction currency (AmountCur) → Accounting currency (AmountMST): use CurrencyExchangeHelper',
+      'Accounting currency is defined per legal entity: CompanyInfo::find().CurrencyCode',
+      'Exchange rate types: Default, Budget, Cost accounting — always use the type from Ledger setup',
+      'NEVER hard-code exchange rates or calculate manually',
+      'For subledger transactions: use LedgerCurrencyConverter, not manual arithmetic',
+      'ExchangeRateType table holds the types; ExchangeRate table holds the actual rates',
+      'When inserting subledger lines, let SubledgerJournalizer handle the currency conversion',
+    ],
+    examples: [
+      {
+        label: 'Convert transaction currency amount to accounting currency',
+        code: `// Convert an amount from transaction currency to accounting currency
+CurrencyCode        fromCurrency = salesLine.CurrencyCode;
+CurrencyCode        toCurrency   = Ledger::accountingCurrency(CompanyInfo::current());
+TransDate           rateDate     = systemDateGet();
+ExchangeRateValue   rate;
+
+// Get exchange rate
+rate = ExchangeRateHelper::getExchangeRate(
+    ExchangeRateType::find(Ledger::exchangeRateType(CompanyInfo::current())).RecId,
+    fromCurrency,
+    toCurrency,
+    rateDate);
+
+// Convert amount
+AmountMST amountMST = CurrencyExchangeHelper::newExchangeDate(
+    fromCurrency,
+    rateDate,
+    Ledger::current())
+    .calculateAmount(salesLine.LineAmount);`,
+      },
+    ],
+    related: ['posting-engine', 'financial-dimensions'],
+  },
+
+  // ── Alerts / Business Events ────────────────────────────────────────────
+  {
+    id: 'alerts-business-events',
+    title: 'Alerts & Business Events — BusinessEventsContract, AlertRuleTable',
+    keywords: ['alert', 'business event', 'businesseventscontract', 'businesseventscatalog', 'alertrule', 'eventbuscontract', 'notification', 'businessevent', 'businesseventsbase'],
+    summary:
+      'D365FO supports two notification mechanisms: (1) Classic Alerts (user-defined rules on table changes) ' +
+      'and (2) Business Events (developer-defined, publishable to Azure Service Bus / Logic Apps / Power Automate). ' +
+      'Use Business Events for integration scenarios, Alerts for user-defined notifications.',
+    rules: [
+      'Business Events: create a class extending BusinessEventsBase with [BusinessEvents] attribute',
+      'BusinessEventsContract: data contract class with [DataContract] + parm methods for payload',
+      'Register in BusinessEventsCatalog.addBusinessEventsToCatalog() via CoC extension',
+      'Trigger the event: new MyBusinessEvent(contract).send()',
+      'Classic Alerts: driven by EventRule and EventJobTable — users configure in UI, no code needed',
+      'Business Events are visible in System administration > Business events catalog',
+      'Enable/disable per legal entity in the catalog; endpoint configured there (Service Bus, etc.)',
+      'For unit testing: use BusinessEventsTestHelper to mock the event bus',
+      'NEVER use direct REST calls for integration — always prefer Business Events for D365FO outbound',
+    ],
+    examples: [
+      {
+        label: 'Define and send a Business Event',
+        code: `// 1. Contract class
+[DataContractAttribute]
+public final class MyBusinessEventContract extends BusinessEventsContract
+{
+    private SalesId salesId;
+    private AmountMST totalAmount;
+
+    public static MyBusinessEventContract newFromSalesTable(SalesTable _salesTable)
+    {
+        MyBusinessEventContract contract = new MyBusinessEventContract();
+        contract.initialize(_salesTable);
+        return contract;
+    }
+
+    private void initialize(SalesTable _salesTable)
+    {
+        salesId     = _salesTable.SalesId;
+        totalAmount = _salesTable.SalesBalance;
+    }
+
+    [DataMemberAttribute('SalesId')]
+    public SalesId parmSalesId(SalesId _salesId = salesId)
+    {
+        salesId = _salesId;
+        return salesId;
+    }
+}
+
+// 2. Business event class
+[BusinessEvents(classStr(MyBusinessEventContract),
+    'My Sales Confirmed Event',
+    'Raised when a sales order is confirmed',
+    ModuleAxapta::SalesOrder)]
+public final class MySalesConfirmedBusinessEvent extends BusinessEventsBase
+{
+    private MyBusinessEventContract contract;
+
+    public static MySalesConfirmedBusinessEvent newFromContract(
+        MyBusinessEventContract _contract)
+    {
+        MySalesConfirmedBusinessEvent event = new MySalesConfirmedBusinessEvent();
+        event.contract = _contract;
+        return event;
+    }
+
+    [Hookable(false)]
+    public BusinessEventsContract buildContract()
+    {
+        return contract;
+    }
+}
+
+// 3. Send the event (e.g. in postConfirm())
+MyBusinessEventContract contract = MyBusinessEventContract::newFromSalesTable(salesTable);
+MySalesConfirmedBusinessEvent::newFromContract(contract).send();`,
+      },
+    ],
+    related: ['coc-extensions', 'batch-jobs'],
+  },
+
+  // ── Electronic Reporting (ER) ───────────────────────────────────────────
+  {
+    id: 'electronic-reporting',
+    title: 'Electronic Reporting (ER) — ERModelMapping, ERFormatMapping, X++ integration',
+    keywords: ['er', 'electronic reporting', 'ermodelmapping', 'erformat', 'erformatmapping', 'erformatmappingrun', 'erconfiguration', 'er format', 'er model', 'data model', 'format mapping'],
+    summary:
+      'Electronic Reporting (ER) is the D365FO framework for configurable business document generation ' +
+      '(invoices, SEPA, VAT files). From X++ you can: (1) run an ER format programmatically, ' +
+      '(2) extend an ER model mapping via CoC, (3) pass data from X++ to ER via a custom ER data source.',
+    rules: [
+      'Run ER format from X++: use ERObjectsFactory to get IERFormatMappingRun, call run()',
+      'Pass parameters to ER: use ERModelDefinitionParamsAction to set user-input field values',
+      'NEVER modify ER configurations in code — use ER designer in D365FO UI or import from LCS',
+      'ER configurations are stored in ERSolutionTable / ERVendorTable — do NOT touch DB directly',
+      'To extend ER model mapping: implement IERModelMappingExtension on your class (CoC not possible for ER)',
+      'For custom data sources: create a class implementing ERIDataSourceProvider and register it',
+      'ER format file path: System administration > Electronic reporting > Reporting configurations',
+      'For testing: use ERObjectsFactory::createFormatMappingRunByFormatMappingId()',
+      'Country-specific ER formats loaded via localization features — check ERSolutionRepositoryTable',
+    ],
+    examples: [
+      {
+        label: 'Run an ER format from X++ code',
+        code: `// Run an ER format programmatically and return the output as a file
+using Microsoft.Dynamics365.LocalizationFramework;
+
+public static void runErFormat(ERFormatMappingId _formatMappingId, FilePath _outputPath)
+{
+    IERFormatMappingRun formatRun = ERObjectsFactory::createFormatMappingRunByFormatMappingId(
+        _formatMappingId);
+
+    if (formatRun.parmShowPromptDialog(false))
+    {
+        // Optionally pass parameters
+        ERModelDefinitionParamsAction paramsAction = new ERModelDefinitionParamsAction();
+        formatRun.withParameter(paramsAction);
+    }
+
+    // Run and get output
+    formatRun.run();
+}`,
+      },
+    ],
+    related: ['ssrs-reports', 'print-management'],
+  },
+
+  // ── Security: Privileges / Duties granularity ───────────────────────────
+  {
+    id: 'security-privileges-duties',
+    title: 'Security: Privileges, Duties, Roles — granular security chain',
+    keywords: ['security', 'privilege', 'duty', 'role', 'securityprivilege', 'securityduty', 'securityrole', 'entrypoint', 'permission', 'access level', 'securyobject', 'hasappliedmenuitem', 'menuitem'],
+    summary:
+      'D365FO security follows a 3-tier hierarchy: Role → Duty → Privilege → Entry Point (menu item/service/form). ' +
+      'Always create BOTH View (read-only) and Maintain (full-access) privilege variants. ' +
+      'Duties group related privileges by business function. Roles group duties by job function.',
+    rules: [
+      'Hierarchy: Role (job function) → Duty (business function) → Privilege (single operation) → Entry Point',
+      'Always create two privilege variants: ViewMyObject (Read) and MaintainMyObject (Update+Create+Delete)',
+      'Entry point on privilege = menu item name; access level: Read | Create | Update | Delete | Correct | View | NoAccess',
+      'Duty: groups related privileges for a business task (e.g. "Maintain customer invoices")',
+      'Role: assigned to user; groups duties for a complete job function (e.g. "Accounts receivable clerk")',
+      'Use generate_code(pattern="security-privilege") to generate both View and Maintain XML pairs',
+      'Privilege XML: AxSecurityPrivilege folder; Duty XML: AxSecurityDuty; Role XML: AxSecurityRole',
+      'NEVER use objectType="security-privilege" for duties — each maps to a different AOT folder',
+      'To check user access in code: SecurityRights::hasMenuItemAccess(menuItemStr(X), MenuItemType::Display)',
+      'For table-level security: use XDS (Extensible Data Security) policies — AxSecurityPolicy XML',
+      'Table permissions on privilege define column-level access; use Field Permissions for column masking',
+    ],
+    examples: [
+      {
+        label: 'Check security access in X++',
+        code: `// Check if current user has access to a menu item
+if (SecurityRights::hasMenuItemAccess(
+        menuItemStr(MyCustomForm),
+        MenuItemType::Display))
+{
+    // User has access
+    element.design().visible(true);
+}
+else
+{
+    element.design().visible(false);
+}
+
+// Check table-level access (read permission)
+if (SecurityRights::hasTableAccess(tableNum(MyCustomTable), AccessType::Read))
+{
+    // Has at least read access to MyCustomTable
+}`,
+      },
+      {
+        label: 'Privilege XML structure (View variant)',
+        code: `<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="...">
+  <Name>ViewMyCustomTable</Name>
+  <Label>@MyModel:ViewMyCustomTable</Label>
+  <EntryPoints>
+    <AxSecurityEntryPointReference>
+      <EntryPointName>MyCustomFormMenuItem</EntryPointName>
+      <EntryPointType>MenuItemDisplay</EntryPointType>
+      <PermissionGroup>Read</PermissionGroup>
+    </AxSecurityEntryPointReference>
+  </EntryPoints>
+</AxSecurityPrivilege>`,
+      },
+    ],
+    related: ['coc-extensions', 'data-entities'],
   },
 
   // ── SSRS Reports ────────────────────────────────────────────────────────

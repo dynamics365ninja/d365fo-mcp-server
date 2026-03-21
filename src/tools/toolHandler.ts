@@ -56,6 +56,8 @@ import { sysTestRunnerTool } from './sysTestRunner.js';
 import { reviewWorkspaceChangesTool } from './reviewWorkspaceChanges.js';
 import { undoLastModificationTool } from './undoLastModification.js';
 import { xppKnowledgeTool } from './xppKnowledge.js';
+import { d365foErrorHelpTool } from './d365foErrorHelp.js';
+import { recordToolStart, startMetricsLogging } from '../utils/toolMetrics.js';
 
 
 
@@ -149,6 +151,9 @@ function capToolResponse(toolName: string, result: any): any {
 }
 
 export function registerToolHandler(server: Server, context: XppServerContext): void {
+  // Start periodic metrics logging (every 5 min to stderr)
+  startMetricsLogging();
+
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const toolName = request.params.name;
 
@@ -189,6 +194,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       };
     }
 
+    const finishMetrics = recordToolStart(toolName);
     const result = await (async () => { switch (toolName) {
       case 'search':
         return searchTool(request, context);
@@ -321,6 +327,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return await reviewWorkspaceChangesTool(request.params.arguments as any, context);
       case 'undo_last_modification':
         return await undoLastModificationTool(request.params.arguments as any, context);
+      case 'get_d365fo_error_help':
+        return d365foErrorHelpTool(request);
       case 'get_xpp_knowledge':
         return xppKnowledgeTool(request);
       case 'get_workspace_info': {
@@ -523,6 +531,11 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         };
     } })();
 
-    return capToolResponse(toolName, result);
+    const capped = capToolResponse(toolName, result);
+    // Record metrics: detect empty result (no content or first text item is empty)
+    const firstText = capped?.content?.[0]?.text;
+    const isEmpty = !firstText || firstText.trim().length === 0 || firstText === 'No results returned';
+    finishMetrics(isEmpty);
+    return capped;
   });
 }

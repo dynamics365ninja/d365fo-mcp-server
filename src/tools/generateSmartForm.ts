@@ -30,7 +30,7 @@ interface GenerateSmartFormArgs {
 
 export const generateSmartFormTool: Tool = {
   name: 'generate_smart_form',
-  description: 'Generate AxForm XML using D365FO pattern-aware templates. Supported patterns: SimpleList | SimpleListDetails | DetailsMaster | DetailsTransaction | Dialog | TableOfContents | Lookup. Can copy structure from existing forms or auto-generate grid from table fields.',
+  description: 'Generate AxForm XML using D365FO pattern-aware templates. Supported patterns: SimpleList | SimpleListDetails | DetailsMaster | DetailsTransaction | Dialog | TableOfContents | Lookup | Workspace. Can copy structure from existing forms or auto-generate grid from table fields.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -52,7 +52,7 @@ export const generateSmartFormTool: Tool = {
       },
       formPattern: {
         type: 'string',
-        description: 'Optional: D365FO form pattern. Valid values: SimpleList (default, for setup/config lists), SimpleListDetails (list + detail panel), DetailsMaster (full master record), DetailsTransaction (header+lines, e.g. orders), Dialog (popup dialog), TableOfContents (tabbed settings page), Lookup (dropdown lookup). Aliases like "list", "master", "transaction", "dialog" are also accepted.',
+        description: 'Optional: D365FO form pattern. Valid values: SimpleList (default, for setup/config lists), SimpleListDetails (list + detail panel), DetailsMaster (full master record), DetailsTransaction (header+lines, e.g. orders), Dialog (popup dialog), TableOfContents (tabbed settings page), Lookup (dropdown lookup), Workspace (operational workspace with KPI tiles and panorama sections). Aliases like "list", "master", "transaction", "dialog", "workspace", "panorama" are also accepted.',
       },
       copyFrom: {
         type: 'string',

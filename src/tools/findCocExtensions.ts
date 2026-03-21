@@ -95,7 +95,13 @@ export async function findCocExtensionsTool(request: CallToolRequest, context: X
         if (packagePath) {
           output += `Scanning filesystem for unindexed class extensions (${packagePath})…\n`;
           try {
-            const fsExts = await scanFsExtensions(className, 'class-extension', packagePath);
+            // Wrap filesystem scan in a 5-second timeout to prevent blocking the MCP response
+            const FS_SCAN_TIMEOUT_MS = 5000;
+            const scanPromise = scanFsExtensions(className, 'class-extension', packagePath);
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('filesystem scan timeout')), FS_SCAN_TIMEOUT_MS)
+            );
+            const fsExts = await Promise.race([scanPromise, timeoutPromise]);
             // Apply methodName filter the same way we do for DB results
             const filtered2 = methodName
               ? fsExts.filter(e =>
@@ -133,7 +139,14 @@ export async function findCocExtensionsTool(request: CallToolRequest, context: X
             } else {
               output += `No class extension files found on disk for "${className}" either.\n`;
             }
-          } catch { /* non-fatal */ }
+          } catch (scanErr) {
+            const msg = scanErr instanceof Error ? scanErr.message : String(scanErr);
+            if (msg.includes('timeout')) {
+              output += `⏱️ Filesystem scan timed out (>5s) — index may cover too many packages.\n` +
+                `Run extract-metadata + build-database to update the symbol index.\n`;
+            }
+            /* other errors are non-fatal */
+          }
         }
       } else {
         output += `Tip: Run extract-metadata and build-database to index class extensions.\n`;
