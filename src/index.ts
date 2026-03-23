@@ -546,6 +546,40 @@ async function main() {
     await new Promise<void>(resolve => setImmediate(resolve));
     process.stderr.write(`[stdio ${diagTs()}] setImmediate fired — roots/list exchange should be done\n`);
 
+    // Step 3b: Initialize C# bridge in parallel with DB load (non-blocking)
+    // The bridge provides live metadata from Microsoft's IMetadataProvider API
+    // and cross-reference queries — only available on Windows VMs with D365FO.
+    void (async () => {
+      try {
+        const { createBridgeClient } = await import('./bridge/bridgeClient.js');
+        const configMgr = getConfigManager();
+        const packagesPath = configMgr.getPackagePath() ?? undefined;
+        // UDE mode: MS framework DLLs live under microsoftPackagesPath,
+        // not under the main packagesPath.
+        const devEnvType = await configMgr.getDevEnvironmentType();
+        let binPath: string | undefined;
+        if (devEnvType === 'ude') {
+          const msPath = await configMgr.getMicrosoftPackagesPath();
+          if (msPath) {
+            const { existsSync } = await import('fs');
+            const { join } = await import('path');
+            const candidate = join(msPath, 'bin');
+            if (existsSync(candidate)) binPath = candidate;
+          }
+        }
+        const bridge = await createBridgeClient({
+          packagesPath,
+          binPath,
+        });
+        if (bridge) {
+          stubContext.bridge = bridge;
+          console.log(`✅ C# bridge connected (${devEnvType}): metadata=${bridge.metadataAvailable}, xref=${bridge.xrefAvailable}`);
+        }
+      } catch (err) {
+        console.log(`ℹ️  C# bridge not available: ${err}`);
+      }
+    })();
+
     // Step 4: load real database in the background
     const dbLoadStart = Date.now();
     initializeServices().then(({ symbolIndex, parser, cache, workspaceScanner, hybridSearch, termRelationshipGraph }) => {

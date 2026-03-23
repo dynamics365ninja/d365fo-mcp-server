@@ -8,6 +8,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';
+import { tryBridgeReferences } from '../bridge/bridgeAdapter.js';
 
 const FindReferencesArgsSchema = z.object({
   targetName: z.string().describe('Name of the target (class name, method name, field name, etc.)'),
@@ -38,6 +39,10 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     if (cachedResult) {
       return cachedResult;
     }
+
+    // Try C# bridge first (DYNAMICSXREFDB — live cross-references)
+    const bridgeResult = await tryBridgeReferences(context.bridge, targetName, limit);
+    if (bridgeResult) return bridgeResult;
 
     // --- Parse dotted notation (e.g. "SalesLineCopy.copy()" or "SalesLineCopy.copy") ---
     // Extract parent object name so we can cross-check its actual type in the DB

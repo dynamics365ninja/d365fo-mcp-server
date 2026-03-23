@@ -10,6 +10,7 @@ import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
 import { readEnumRawXml, buildXmlNotAvailableMessage } from '../utils/metadataResolver.js';
+import { tryBridgeEnum } from '../bridge/bridgeAdapter.js';
 
 const GetEnumInfoArgsSchema = z.object({
   enumName: z.string().describe('Name of the enum'),
@@ -43,6 +44,10 @@ export async function getEnumInfoTool(request: CallToolRequest, context: XppServ
       modelName, 
       includeLabels
     } = args;
+
+    // Try C# bridge first (IMetadataProvider — live D365FO metadata)
+    const bridgeResult = await tryBridgeEnum(context.bridge, enumName);
+    if (bridgeResult) return bridgeResult;
 
     // 1. Find enum in index
     let stmt;

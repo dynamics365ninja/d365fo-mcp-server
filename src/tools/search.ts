@@ -17,6 +17,7 @@ import {
   generateSearchSuggestions,
   formatSuggestions
 } from '../utils/suggestionEngine.js';
+import { tryBridgeSearch } from '../bridge/bridgeAdapter.js';
 
 const SearchArgsSchema = z.object({
   query: z.string().describe('Search query (class name, method name, etc.)'),
@@ -41,6 +42,10 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
     if (args.includeWorkspace && args.workspacePath) {
       return await performHybridSearch(args, context);
     }
+
+    // Try C# bridge first (IMetadataProvider — live D365FO metadata)
+    const bridgeResult = await tryBridgeSearch(context.bridge, args.query, args.type === 'all' ? undefined : args.type, args.limit);
+    if (bridgeResult) return bridgeResult;
 
     // Standard external metadata search
     return await performExternalSearch(args, symbolIndex, cache);

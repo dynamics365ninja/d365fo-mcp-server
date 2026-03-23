@@ -8,6 +8,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { findD365FileOnDisk } from './modifyD365File.js';
+import { tryBridgeTable } from '../bridge/bridgeAdapter.js';
 
 const METHOD_PAGE_SIZE = 25;
 
@@ -46,6 +47,10 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
         ],
       };
     }
+
+    // Try C# bridge first (IMetadataProvider — live D365FO metadata)
+    const bridgeResult = await tryBridgeTable(context.bridge, args.tableName, args.methodOffset);
+    if (bridgeResult) return bridgeResult;
 
     // Query database and parse
     const tableSymbol = symbolIndex.getSymbolByName(args.tableName, 'table');

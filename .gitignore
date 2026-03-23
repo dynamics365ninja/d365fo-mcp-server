@@ -62,6 +62,21 @@ coverage/
 # Internal planning docs
 docs/plans/
 
+# C# Bridge build artifacts
+bridge/D365MetadataBridge/bin/
+bridge/D365MetadataBridge/obj/
+
+# Bridge scratch/debug files
+bridge/inspect-*.ps1
+bridge/stderr*.log
+bridge/D365MetadataBridge/bridge-stderr.log
+
+# Visual Studio solution user files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
 # Misc
 .cache/
 deployment.zip

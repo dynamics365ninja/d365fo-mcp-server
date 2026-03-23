@@ -9,6 +9,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { readMethodMetadata } from '../utils/metadataResolver.js';
+import { tryBridgeMethodSource } from '../bridge/bridgeAdapter.js';
 
 const GetMethodSourceArgsSchema = z.object({
   className: z.string().describe('Name of the class containing the method'),
@@ -20,6 +21,10 @@ export async function getMethodSourceTool(request: CallToolRequest, context: Xpp
     const args = GetMethodSourceArgsSchema.parse(request.params.arguments);
     const { symbolIndex } = context;
     const { className, methodName } = args;
+
+    // Try C# bridge first (IMetadataProvider — live D365FO metadata)
+    const bridgeResult = await tryBridgeMethodSource(context.bridge, className, methodName);
+    if (bridgeResult) return bridgeResult;
 
     // 1. Look up the symbol row to get model + source
     const row = symbolIndex.db.prepare(`

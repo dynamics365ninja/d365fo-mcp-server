@@ -8,6 +8,7 @@ import type { RedisCacheService } from '../cache/redisCache.js';
 import type { WorkspaceScanner } from '../workspace/workspaceScanner.js';
 import type { HybridSearch } from '../workspace/hybridSearch.js';
 import type { TermRelationshipGraph } from '../utils/suggestionEngine.js';
+import type { BridgeClient } from '../bridge/bridgeClient.js';
 
 /**
  * Editor context from IDE (VS2022, VS2026)
@@ -38,6 +39,13 @@ export interface XppServerContext {
   hybridSearch: HybridSearch;
   termRelationshipGraph: TermRelationshipGraph;
   editorContext?: EditorContext;
+  /**
+   * C# bridge to Microsoft's Dev Tools API (IMetadataProvider + DYNAMICSXREFDB).
+   * Available only on Windows VMs with D365FO installed.
+   * When present, tools can use it for live metadata reads and cross-references
+   * instead of the SQLite symbol index.
+   */
+  bridge?: BridgeClient;
   /**
    * Resolves when the real symbol database has been loaded.
    * Present only in stdio mode when the stub pattern is active.

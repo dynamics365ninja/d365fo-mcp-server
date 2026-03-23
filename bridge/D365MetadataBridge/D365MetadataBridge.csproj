@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>D365MetadataBridge</RootNamespace>
+    <AssemblyName>D365MetadataBridge</AssemblyName>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <!--
+    D365FO bin directory — contains all Microsoft.Dynamics.*.dll assemblies.
+    Every D365FO development desktop has this directory available.
+
+    Traditional VM:  K:\AosService\PackagesLocalDirectory\bin
+    Cloud-hosted:    C:\AosService\PackagesLocalDirectory\bin
+    UDE (Unified Developer Experience): path from .mcp.json microsoftPackagesPath/bin
+
+    Override per-machine via:
+      dotnet build -p:D365BinPath="C:\path\to\bin"
+    or in a local Directory.Build.props (not committed to source control).
+  -->
+  <PropertyGroup>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('K:\AosService\PackagesLocalDirectory\bin')">K:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('C:\AosService\PackagesLocalDirectory\bin')">C:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+  </PropertyGroup>
+
+  <!-- NuGet packages -->
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!--
+    D365FO assemblies: auto-referenced from $(D365BinPath) via glob.
+    At runtime, Program.cs dynamically loads them via AppDomain.AssemblyResolve
+    from the - -packages-path argument, so Private=false (don't copy to output).
+  -->
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(D365BinPath)' != ''">
+    <Reference Include="$(D365BinPath)\Microsoft.Dynamics.*.dll">
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="$(D365BinPath)\Microsoft.Dynamics.Framework.Tools.MetaModel.Core.dll">
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

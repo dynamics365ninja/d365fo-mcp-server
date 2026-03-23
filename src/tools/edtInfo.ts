@@ -9,6 +9,7 @@ import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
 import { readEdtRawXml } from '../utils/metadataResolver.js';
+import { tryBridgeEdt } from '../bridge/bridgeAdapter.js';
 
 const GetEdtInfoArgsSchema = z.object({
   edtName: z.string().describe('Name of the Extended Data Type (EDT)'),
@@ -50,6 +51,10 @@ export async function getEdtInfoTool(request: CallToolRequest, context: XppServe
     if (args.mode === 'hierarchy') {
       return getEdtHierarchy(symbolIndex.db, edtName, modelName);
     }
+
+    // Try C# bridge first (IMetadataProvider — live D365FO metadata, standard mode only)
+    const bridgeResult = await tryBridgeEdt(context.bridge, edtName);
+    if (bridgeResult) return bridgeResult;
 
     // ── Step 1: query edt_metadata (rich columns, always present in DB) ──────
     let edtDbRow: any;

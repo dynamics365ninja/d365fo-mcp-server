@@ -12,6 +12,7 @@ import { parseStringPromise } from 'xml2js';
 import { resolveDbPathLocally } from '../utils/metadataResolver.js';
 import { findD365FileOnDisk } from './modifyD365File.js';
 import { getConfigManager } from '../utils/configManager.js';
+import { tryBridgeForm } from '../bridge/bridgeAdapter.js';
 import path from 'path';
 
 const GetFormInfoArgsSchema = z.object({
@@ -100,6 +101,10 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       }
       return await parseAndFormatForm(formName, 'Unknown', xmlContent, includeControls, includeDataSources, includeMethods, searchControl);
     }
+
+    // Try C# bridge first (IMetadataProvider — live D365FO metadata)
+    const bridgeResult = await tryBridgeForm(context.bridge, formName);
+    if (bridgeResult) return bridgeResult;
 
     // 1. Find the form (with workspace support)
     let formRow: any = null;

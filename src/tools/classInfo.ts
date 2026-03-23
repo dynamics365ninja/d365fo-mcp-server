@@ -8,6 +8,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { validateWorkspacePath } from '../workspace/workspaceUtils.js';
 import { buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';
+import { tryBridgeClass } from '../bridge/bridgeAdapter.js';
 
 const METHOD_PAGE_SIZE = 15;
 
@@ -82,6 +83,10 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
         content: [{ type: 'text', text }],
       };
     }
+
+    // Try C# bridge first (IMetadataProvider — live D365FO metadata)
+    const bridgeResult = await tryBridgeClass(context.bridge, args.className, args.compact !== false, args.methodOffset ?? 0);
+    if (bridgeResult) return bridgeResult;
 
     // Query database and parse
     const classSymbol = symbolIndex.getSymbolByName(args.className, 'class');
