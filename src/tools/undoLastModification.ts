@@ -43,8 +43,10 @@ export const undoLastModificationTool = async (params: any, _context: any) => {
       };
     }
 
-    const absolutePath = path.resolve(filePath);
-    const cwd = path.dirname(absolutePath);
+    // Use filePath as-is (already absolute); path.resolve() would add a Windows drive letter
+    // to POSIX-style paths like /repo/src/a.ts → C:\repo\src\a.ts
+    const absolutePath = filePath;
+    const cwd = path.posix.dirname(filePath.replace(/\\/g, '/'));
 
     let repoRoot = '';
     try {

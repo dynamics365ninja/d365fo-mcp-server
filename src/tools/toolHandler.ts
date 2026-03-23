@@ -46,7 +46,7 @@ import { securityCoverageInfoTool } from './securityCoverageInfo.js';
 import { analyzeExtensionPointsTool } from './analyzeExtensionPoints.js';
 import { validateObjectNamingTool } from './validateObjectNaming.js';
 import { verifyD365ProjectTool } from './verifyD365Project.js';
-import { resolveObjectPrefix } from '../utils/modelClassifier.js';
+import { resolveObjectPrefix, isCustomModel } from '../utils/modelClassifier.js';
 import { getStdioSessionInfo } from '../utils/stdioSessionInfo.js';
 import { updateSymbolIndexTool } from './updateSymbolIndex.js';
 import { buildProjectTool } from './buildProject.js';
@@ -436,7 +436,6 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         const isPlaceholder = !modelName || PLACEHOLDER_NAMES.has(modelName.toLowerCase());
         // Also flag when auto-detection found a Microsoft standard model name
         // that isn't in the PLACEHOLDER_NAMES set but is not a custom model.
-        const { isCustomModel } = await import('../utils/modelClassifier.js');
         const isStandardMsModel = modelName
           ? !isCustomModel(modelName) && !isPlaceholder
           : false;
