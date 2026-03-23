@@ -32,7 +32,8 @@ function extractChangedFiles(diff: string, repoRoot: string): string[] {
     if (line.startsWith('+++ b/')) {
       const rel = line.slice(6); // strip "+++ b/"
       if (rel === '/dev/null') continue;
-      const abs = path.resolve(repoRoot, rel);
+      // Use posix.join to avoid path.resolve() adding a Windows drive letter to POSIX-style paths
+      const abs = path.posix.join(repoRoot.replace(/\\/g, '/'), rel);
       if (!seen.has(abs)) {
         seen.add(abs);
         paths.push(abs);
