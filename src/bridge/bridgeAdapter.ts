@@ -20,6 +20,9 @@ import type {
   BridgeViewInfo,
   BridgeDataEntityInfo,
   BridgeReportInfo,
+  BridgeEdtInfo,
+  BridgeFormInfo,
+  BridgeFormControl,
 } from './bridgeTypes.js';
 
 /** Standard MCP tool response shape */
@@ -272,23 +275,37 @@ export async function tryBridgeEdt(
   try {
     const edt = await bridge.readEdt(edtName);
     if (!edt) return null;
-
-    let out = `# EDT: ${edt.name}\n\n`;
-    if (edt.baseType) out += `**Base Type:** ${edt.baseType}\n`;
-    if (edt.extends) out += `**Extends:** ${edt.extends}\n`;
-    if (edt.label) out += `**Label:** ${edt.label}\n`;
-    if (edt.helpText) out += `**Help Text:** ${edt.helpText}\n`;
-    if (edt.stringSize) out += `**String Size:** ${edt.stringSize}\n`;
-    if (edt.enumType) out += `**Enum Type:** ${edt.enumType}\n`;
-    if (edt.referenceTable) out += `**Reference Table:** ${edt.referenceTable}\n`;
-    if (edt.model) out += `**Model:** ${edt.model}\n`;
-    out += `_Source: C# bridge (IMetadataProvider)_\n`;
-
-    return { content: [{ type: 'text', text: out }] };
+    return { content: [{ type: 'text', text: formatEdt(edt) }] };
   } catch (e) {
     console.error(`[BridgeAdapter] readEdt(${edtName}) failed: ${e}`);
     return null;
   }
+}
+
+function formatEdt(edt: BridgeEdtInfo): string {
+  let out = `# Extended Data Type: ${edt.name}\n\n`;
+  if (edt.model) out += `**Model:** ${edt.model}\n`;
+  out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
+
+  // Core properties table
+  out += `## 🔧 Core Properties\n\n`;
+  out += `| Property | Value |\n|---|---|\n`;
+  out += `| Base Type | ${edt.baseType ?? '—'}${edt.extends ? ` (Extends: ${edt.extends})` : ''} |\n`;
+  if (edt.enumType) out += `| Enum Type | ${edt.enumType} |\n`;
+  if (edt.referenceTable) out += `| Reference Table | ${edt.referenceTable} |\n`;
+  if (edt.relationType) out += `| Relation Type | ${edt.relationType} |\n`;
+  if (edt.stringSize) out += `| String Size | ${edt.stringSize} |\n`;
+  if (edt.displayLength) out += `| Display Length | ${edt.displayLength} |\n`;
+  if (edt.label) out += `| Label | ${edt.label} |\n`;
+  if (edt.helpText) out += `| Help Text | ${edt.helpText} |\n`;
+  if (edt.formHelp) out += `| Form Help | ${edt.formHelp} |\n`;
+  if (edt.configurationKey) out += `| Configuration Key | ${edt.configurationKey} |\n`;
+  if (edt.alignment) out += `| Alignment | ${edt.alignment} |\n`;
+  if (edt.noOfDecimals != null) out += `| No. of Decimals | ${edt.noOfDecimals} |\n`;
+  if (edt.decimalSeparator) out += `| Decimal Separator | ${edt.decimalSeparator} |\n`;
+  if (edt.signDisplay) out += `| Sign Display | ${edt.signDisplay} |\n`;
+
+  return out;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -303,45 +320,89 @@ export async function tryBridgeForm(
   try {
     const form = await bridge.readForm(formName);
     if (!form) return null;
-
-    let out = `# Form: ${form.name}\n\n`;
-    if (form.model) out += `**Model:** ${form.model}\n`;
-    out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
-
-    out += `## Data Sources (${form.dataSources.length})\n\n`;
-    for (const ds of form.dataSources) {
-      const join = ds.joinSource ? ` (join: ${ds.joinSource})` : '';
-      out += `- **${ds.name}** → ${ds.table}${join}\n`;
-    }
-
-    out += `\n## Controls (${form.controls.length} top-level)\n\n`;
-    formatControlTree(form.controls, out, 0);
-    // formatControlTree appends to a local — rebuild via helper
-    out += buildControlTree(form.controls, 0);
-
-    return { content: [{ type: 'text', text: out }] };
+    return { content: [{ type: 'text', text: formatForm(form) }] };
   } catch (e) {
     console.error(`[BridgeAdapter] readForm(${formName}) failed: ${e}`);
     return null;
   }
 }
 
-function buildControlTree(controls: Array<{ name: string; controlType: string; dataSource?: string; dataField?: string; children?: any[] }>, depth: number): string {
+function formatForm(form: BridgeFormInfo): string {
+  let out = `# Form: ${form.name}\n\n`;
+  if (form.model) out += `**Model:** ${form.model}\n`;
+  if (form.formPattern) out += `**Pattern:** ${form.formPattern}\n`;
+  out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
+
+  // Data Sources with permissions
+  out += `## 📊 Data Sources (${form.dataSources.length})\n\n`;
+  for (const ds of form.dataSources) {
+    const join = ds.joinSource ? ` (join: ${ds.joinSource})` : '';
+    const link = ds.linkType ? ` [LinkType: ${ds.linkType}]` : '';
+    out += `### ${ds.name}\n`;
+    out += `  Table: ${ds.table}${join}${link}\n`;
+    const perms: string[] = [];
+    if (ds.allowEdit) perms.push(`Edit: ${ds.allowEdit}`);
+    if (ds.allowCreate) perms.push(`Create: ${ds.allowCreate}`);
+    if (ds.allowDelete) perms.push(`Delete: ${ds.allowDelete}`);
+    if (perms.length > 0) out += `  Permissions: ${perms.join(', ')}\n`;
+    out += '\n';
+  }
+
+  // Controls tree with extra properties
+  out += `## 🎨 Controls (${form.controls.length} top-level)\n\n`;
+  out += buildControlTreeV2(form.controls, 0);
+
+  // Methods
+  if (form.methods && form.methods.length > 0) {
+    out += `\n## 🔧 Form Methods (${form.methods.length})\n\n`;
+    for (const m of form.methods) {
+      out += `### ${m.name}\n`;
+      if (m.source) {
+        const preview = m.source.substring(0, 400);
+        out += `\`\`\`xpp\n${preview}${m.source.length > 400 ? '\n// ...' : ''}\n\`\`\`\n`;
+      }
+      out += '\n';
+    }
+  }
+
+  // Summary
+  const totalControls = countControls(form.controls);
+  out += `\n## 📈 Summary\n`;
+  out += `Data Sources: ${form.dataSources.length} | Controls: ${totalControls} | Methods: ${form.methods?.length ?? 0}\n`;
+
+  return out;
+}
+
+function buildControlTreeV2(controls: BridgeFormControl[], depth: number): string {
   if (!controls || depth > 10) return '';
   let out = '';
   const indent = '  '.repeat(depth);
   for (const c of controls) {
     const binding = c.dataSource && c.dataField ? ` [${c.dataSource}.${c.dataField}]` : '';
-    out += `${indent}- **${c.name}** (${c.controlType})${binding}\n`;
+    const method = c.dataMethod ? ` (method: ${c.dataMethod})` : '';
+    out += `${indent}- **${c.name}** (${c.controlType})${binding}${method}`;
+    // Show important properties inline
+    const props: string[] = [];
+    if (c.caption) props.push(`Caption: ${c.caption}`);
+    if (c.visible && c.visible !== 'Yes') props.push(`Visible: ${c.visible}`);
+    if (c.enabled && c.enabled !== 'Yes') props.push(`Enabled: ${c.enabled}`);
+    if (c.label) props.push(`Label: ${c.label}`);
+    if (props.length > 0) out += `\n${indent}  _${props.join(', ')}_`;
+    out += '\n';
     if (c.children?.length) {
-      out += buildControlTree(c.children, depth + 1);
+      out += buildControlTreeV2(c.children, depth + 1);
     }
   }
   return out;
 }
 
-function formatControlTree(_controls: any[], _out: string, _depth: number): void {
-  // no-op — buildControlTree handles this
+function countControls(controls: BridgeFormControl[]): number {
+  let count = 0;
+  for (const c of controls) {
+    count++;
+    if (c.children) count += countControls(c.children);
+  }
+  return count;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -432,22 +493,54 @@ export async function tryBridgeQuery(
 function formatQuery(q: BridgeQueryInfo): string {
   let out = `# Query: ${q.name}\n\n`;
   if (q.model) out += `**Model:** ${q.model}\n`;
+  if (q.description) out += `**Description:** ${q.description}\n`;
   out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
 
   if (q.dataSources.length > 0) {
     out += `## Data Sources (${q.dataSources.length})\n\n`;
+    let totalRanges = 0;
     for (const ds of q.dataSources) {
       out += formatQueryDataSource(ds, 0);
+      totalRanges += countRanges(ds);
+    }
+    if (totalRanges > 0) {
+      out += `\n## 📈 Summary\nData Sources: ${q.dataSources.length} | Total Ranges: ${totalRanges}\n`;
     }
   }
 
   return out;
 }
 
+function countRanges(ds: BridgeQueryDataSource): number {
+  let count = ds.ranges?.length ?? 0;
+  if (ds.childDataSources) {
+    for (const child of ds.childDataSources) count += countRanges(child);
+  }
+  return count;
+}
+
 function formatQueryDataSource(ds: BridgeQueryDataSource, depth: number): string {
   const indent = '  '.repeat(depth);
   const join = ds.joinMode ? ` (${ds.joinMode})` : '';
-  let out = `${indent}- **${ds.name}** → ${ds.table}${join}\n`;
+  const fetch = ds.fetchMode ? ` [FetchMode: ${ds.fetchMode}]` : '';
+  let out = `${indent}- **${ds.name}** → ${ds.table}${join}${fetch}\n`;
+
+  // Ranges
+  if (ds.ranges && ds.ranges.length > 0) {
+    out += `${indent}  **Ranges:**\n`;
+    for (const r of ds.ranges) {
+      const status = r.status ? ` (${r.status})` : '';
+      out += `${indent}    - ${r.field}: ${r.value ?? '(any)'}${status}\n`;
+    }
+  }
+
+  // Fields
+  if (ds.fields && ds.fields.length > 0) {
+    const shown = ds.fields.slice(0, 10);
+    const more = ds.fields.length > 10 ? ` ... (+${ds.fields.length - 10} more)` : '';
+    out += `${indent}  **Fields (${ds.fields.length}):** ${shown.join(', ')}${more}\n`;
+  }
+
   if (ds.childDataSources?.length) {
     for (const child of ds.childDataSources) {
       out += formatQueryDataSource(child, depth + 1);
@@ -480,12 +573,65 @@ function formatView(v: BridgeViewInfo): string {
   if (v.label) out += `**Label:** ${v.label}\n`;
   if (v.model) out += `**Model:** ${v.model}\n`;
   if (v.query) out += `**Query:** ${v.query}\n`;
+  if (v.isPublic != null) out += `**Public:** ${v.isPublic ? 'Yes' : 'No'}\n`;
+  if (v.isReadOnly != null) out += `**Read-Only:** ${v.isReadOnly ? 'Yes' : 'No'}\n`;
+  if (v.primaryKey) out += `**Primary Key:** ${v.primaryKey}\n`;
   out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
 
+  // DataSources
+  if (v.dataSources && v.dataSources.length > 0) {
+    out += `## Data Sources (${v.dataSources.length})\n\n`;
+    for (const ds of v.dataSources) {
+      out += `- **${ds.name}** → ${ds.table}\n`;
+    }
+    out += '\n';
+  }
+
+  // Fields — split mapped vs computed
   if (v.fields.length > 0) {
-    out += `## Fields (${v.fields.length})\n\n`;
-    for (const f of v.fields) {
-      out += `- **${f.name}**: ${f.fieldType}\n`;
+    const mapped = v.fields.filter(f => !f.isComputed);
+    const computed = v.fields.filter(f => f.isComputed);
+
+    out += `## 📊 Fields (${v.fields.length})\n\n`;
+
+    if (mapped.length > 0) {
+      out += `### Mapped Fields (${mapped.length})\n\n`;
+      out += `| Field Name | Data Source | Data Field | Type |\n|---|---|---|---|\n`;
+      for (const f of mapped) {
+        out += `| ${f.name} | ${f.dataSource ?? '—'} | ${f.dataField ?? '—'} | ${f.fieldType} |\n`;
+      }
+      out += '\n';
+    }
+
+    if (computed.length > 0) {
+      out += `### Computed Fields (${computed.length})\n\n`;
+      out += `| Field Name | Data Method | Type |\n|---|---|---|\n`;
+      for (const f of computed) {
+        out += `| ${f.name} | ${f.dataMethod ?? '—'} | ${f.fieldType} |\n`;
+      }
+      out += '\n';
+    }
+  }
+
+  // Relations
+  if (v.relations && v.relations.length > 0) {
+    out += `## 🔗 Relations (${v.relations.length})\n\n`;
+    for (const rel of v.relations) {
+      out += `- **${rel.name}** → ${rel.relatedTable}`;
+      if (rel.cardinality) out += ` (${rel.cardinality})`;
+      out += '\n';
+      for (const c of rel.constraints) {
+        if (c.field && c.relatedField) out += `  - ${c.field} = ${c.relatedField}\n`;
+      }
+    }
+    out += '\n';
+  }
+
+  // Methods
+  if (v.methods && v.methods.length > 0) {
+    out += `## 🔧 Methods (${v.methods.length})\n\n`;
+    for (const m of v.methods) {
+      out += `- ${m.name}\n`;
     }
   }
 
@@ -516,9 +662,13 @@ function formatDataEntity(e: BridgeDataEntityInfo): string {
   if (e.model) out += `Model: ${e.model}\n`;
   if (e.label) out += `Label: ${e.label}\n`;
   out += `Type: Data Entity (AxDataEntityView)\n`;
+  if (e.entityCategory) out += `Category: ${e.entityCategory}\n`;
   if (e.publicEntityName) out += `Public Name: ${e.publicEntityName} (OData resource name)\n`;
   if (e.publicCollectionName) out += `Collection: ${e.publicCollectionName}\n`;
   out += `OData Enabled: ${e.isPublic ? 'Yes' : 'No'}\n`;
+  if (e.isReadOnly != null) out += `Read-Only: ${e.isReadOnly ? 'Yes' : 'No'}\n`;
+  if (e.dataManagementEnabled != null) out += `Data Management (DMF): ${e.dataManagementEnabled ? 'Yes' : 'No'}\n`;
+  if (e.stagingTable) out += `Staging Table: ${e.stagingTable}\n`;
   out += `_Source: C# bridge (IMetadataProvider)_\n`;
 
   if (e.dataSources.length > 0) {
@@ -531,6 +681,25 @@ function formatDataEntity(e: BridgeDataEntityInfo): string {
     out += fieldNames.join(', ');
     if (e.fields.length > 8) out += ` ... (+${e.fields.length - 8} more)`;
     out += '\n';
+  }
+
+  // Field mappings
+  if (e.fieldMappings && e.fieldMappings.length > 0) {
+    out += `\nField Mappings (${e.fieldMappings.length}):\n`;
+    for (const fm of e.fieldMappings.slice(0, 20)) {
+      out += `  ${fm.fieldName} → ${fm.dataSource ?? '?'}.${fm.dataField ?? '?'}\n`;
+    }
+    if (e.fieldMappings.length > 20) out += `  ... (+${e.fieldMappings.length - 20} more)\n`;
+  }
+
+  // Computed columns
+  if (e.computedColumns && e.computedColumns.length > 0) {
+    out += `\nComputed/Virtual Columns (${e.computedColumns.length}): ${e.computedColumns.join(', ')}\n`;
+  }
+
+  // Keys
+  if (e.keys && e.keys.length > 0) {
+    out += `\nKeys: ${e.keys.map(k => k.name).join(', ')}\n`;
   }
 
   return out;
@@ -558,19 +727,37 @@ export async function tryBridgeReport(
 function formatReport(r: BridgeReportInfo): string {
   let out = `# Report: ${r.name}\n\n`;
   if (r.model) out += `**Model:** ${r.model}\n`;
-  out += `_Source: C# bridge (IMetadataProvider) — summary only_\n\n`;
+  out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
 
   if (r.dataSets.length > 0) {
-    out += `## Data Sets (${r.dataSets.length})\n\n`;
+    out += `## 📊 Data Sets (${r.dataSets.length})\n\n`;
     for (const ds of r.dataSets) {
-      out += `- ${ds}\n`;
+      out += `### DataSet: ${ds.name}\n`;
+      if (ds.dataSourceType) out += `  DataSourceType: ${ds.dataSourceType}\n`;
+      if (ds.query) out += `  Query: ${ds.query}\n`;
+      if (ds.fields && ds.fields.length > 0) {
+        out += `\n  | Name | Data Field | Data Type |\n  |---|---|---|\n`;
+        for (const f of ds.fields) {
+          out += `  | ${f.name} | ${f.dataField ?? '—'} | ${f.dataType ?? '—'} |\n`;
+        }
+      }
+      out += '\n';
     }
   } else {
-    out += `_No data set information available from the metadata API._\n`;
+    out += `_No data set information available from the metadata API._\n\n`;
   }
 
-  out += `\n> 💡 The bridge provides a metadata summary. For full details (fields, designs, RDL), ` +
-    `ensure the report XML file is accessible on disk.\n`;
+  if (r.designs && r.designs.length > 0) {
+    out += `## 🎨 Designs (${r.designs.length})\n\n`;
+    for (const d of r.designs) {
+      out += `### Design: ${d.name}\n`;
+      if (d.caption) out += `  Caption: ${d.caption}\n`;
+      if (d.style) out += `  Style: ${d.style}\n`;
+      out += `  Embedded RDL: ${d.hasRdl ? '✅' : '❌'}\n\n`;
+    }
+  }
+
+  out += `> 💡 For full RDL content, ensure the report XML file is accessible on disk.\n`;
 
   return out;
 }

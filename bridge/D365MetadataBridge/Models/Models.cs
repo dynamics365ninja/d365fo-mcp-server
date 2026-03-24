@@ -269,6 +269,33 @@ namespace D365MetadataBridge.Models
 
         [JsonPropertyName("model")]
         public string? Model { get; set; }
+
+        // --- New gap-fill properties ---
+
+        [JsonPropertyName("formHelp")]
+        public string? FormHelp { get; set; }
+
+        [JsonPropertyName("configurationKey")]
+        public string? ConfigurationKey { get; set; }
+
+        [JsonPropertyName("alignment")]
+        public string? Alignment { get; set; }
+
+        [JsonPropertyName("displayLength")]
+        public int? DisplayLength { get; set; }
+
+        [JsonPropertyName("relationType")]
+        public string? RelationType { get; set; }
+
+        // AxEdtReal specific
+        [JsonPropertyName("noOfDecimals")]
+        public int? NoOfDecimals { get; set; }
+
+        [JsonPropertyName("decimalSeparator")]
+        public string? DecimalSeparator { get; set; }
+
+        [JsonPropertyName("signDisplay")]
+        public string? SignDisplay { get; set; }
     }
 
     // ========================
@@ -309,6 +336,17 @@ namespace D365MetadataBridge.Models
 
         [JsonPropertyName("linkType")]
         public string? LinkType { get; set; }
+
+        // --- New gap-fill properties ---
+
+        [JsonPropertyName("allowEdit")]
+        public string? AllowEdit { get; set; }
+
+        [JsonPropertyName("allowCreate")]
+        public string? AllowCreate { get; set; }
+
+        [JsonPropertyName("allowDelete")]
+        public string? AllowDelete { get; set; }
     }
 
     public class FormControlModel
@@ -327,6 +365,29 @@ namespace D365MetadataBridge.Models
 
         [JsonPropertyName("children")]
         public List<FormControlModel>? Children { get; set; }
+
+        // --- New gap-fill properties ---
+
+        [JsonPropertyName("caption")]
+        public string? Caption { get; set; }
+
+        [JsonPropertyName("label")]
+        public string? Label { get; set; }
+
+        [JsonPropertyName("helpText")]
+        public string? HelpText { get; set; }
+
+        [JsonPropertyName("visible")]
+        public string? Visible { get; set; }
+
+        [JsonPropertyName("enabled")]
+        public string? Enabled { get; set; }
+
+        [JsonPropertyName("dataMethod")]
+        public string? DataMethod { get; set; }
+
+        [JsonPropertyName("autoDeclaration")]
+        public string? AutoDeclaration { get; set; }
     }
 
     // ========================
@@ -340,6 +401,9 @@ namespace D365MetadataBridge.Models
 
         [JsonPropertyName("model")]
         public string? Model { get; set; }
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
 
         [JsonPropertyName("dataSources")]
         public List<QueryDataSourceModel> DataSources { get; set; } = new List<QueryDataSourceModel>();
@@ -356,8 +420,29 @@ namespace D365MetadataBridge.Models
         [JsonPropertyName("joinMode")]
         public string? JoinMode { get; set; }
 
+        [JsonPropertyName("fetchMode")]
+        public string? FetchMode { get; set; }
+
         [JsonPropertyName("childDataSources")]
         public List<QueryDataSourceModel>? ChildDataSources { get; set; }
+
+        [JsonPropertyName("ranges")]
+        public List<QueryRangeModel>? Ranges { get; set; }
+
+        [JsonPropertyName("fields")]
+        public List<string>? Fields { get; set; }
+    }
+
+    public class QueryRangeModel
+    {
+        [JsonPropertyName("field")]
+        public string Field { get; set; } = "";
+
+        [JsonPropertyName("value")]
+        public string? Value { get; set; }
+
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
     }
 
     public class ViewInfoModel
@@ -374,8 +459,50 @@ namespace D365MetadataBridge.Models
         [JsonPropertyName("query")]
         public string? Query { get; set; }
 
+        [JsonPropertyName("isPublic")]
+        public bool IsPublic { get; set; }
+
+        [JsonPropertyName("isReadOnly")]
+        public bool IsReadOnly { get; set; }
+
+        [JsonPropertyName("primaryKey")]
+        public string? PrimaryKey { get; set; }
+
         [JsonPropertyName("fields")]
-        public List<FieldInfoModel> Fields { get; set; } = new List<FieldInfoModel>();
+        public List<ViewFieldModel> Fields { get; set; } = new List<ViewFieldModel>();
+
+        [JsonPropertyName("relations")]
+        public List<RelationInfoModel> Relations { get; set; } = new List<RelationInfoModel>();
+
+        [JsonPropertyName("methods")]
+        public List<MethodInfoModel> Methods { get; set; } = new List<MethodInfoModel>();
+
+        [JsonPropertyName("dataSources")]
+        public List<FormDataSourceModel> DataSources { get; set; } = new List<FormDataSourceModel>();
+    }
+
+    public class ViewFieldModel
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("fieldType")]
+        public string FieldType { get; set; } = "";
+
+        [JsonPropertyName("dataSource")]
+        public string? DataSource { get; set; }
+
+        [JsonPropertyName("dataField")]
+        public string? DataField { get; set; }
+
+        [JsonPropertyName("dataMethod")]
+        public string? DataMethod { get; set; }
+
+        [JsonPropertyName("label")]
+        public string? Label { get; set; }
+
+        [JsonPropertyName("isComputed")]
+        public bool IsComputed { get; set; }
     }
 
     public class DataEntityInfoModel
@@ -403,6 +530,41 @@ namespace D365MetadataBridge.Models
 
         [JsonPropertyName("fields")]
         public List<FieldInfoModel> Fields { get; set; } = new List<FieldInfoModel>();
+
+        // --- New gap-fill properties ---
+
+        [JsonPropertyName("isReadOnly")]
+        public bool IsReadOnly { get; set; }
+
+        [JsonPropertyName("entityCategory")]
+        public string? EntityCategory { get; set; }
+
+        [JsonPropertyName("dataManagementEnabled")]
+        public bool DataManagementEnabled { get; set; }
+
+        [JsonPropertyName("stagingTable")]
+        public string? StagingTable { get; set; }
+
+        [JsonPropertyName("keys")]
+        public List<IndexInfoModel> Keys { get; set; } = new List<IndexInfoModel>();
+
+        [JsonPropertyName("fieldMappings")]
+        public List<DataEntityFieldMappingModel> FieldMappings { get; set; } = new List<DataEntityFieldMappingModel>();
+
+        [JsonPropertyName("computedColumns")]
+        public List<string> ComputedColumns { get; set; } = new List<string>();
+    }
+
+    public class DataEntityFieldMappingModel
+    {
+        [JsonPropertyName("fieldName")]
+        public string FieldName { get; set; } = "";
+
+        [JsonPropertyName("dataSource")]
+        public string? DataSource { get; set; }
+
+        [JsonPropertyName("dataField")]
+        public string? DataField { get; set; }
     }
 
     public class ReportInfoModel
@@ -414,7 +576,52 @@ namespace D365MetadataBridge.Models
         public string? Model { get; set; }
 
         [JsonPropertyName("dataSets")]
-        public List<string> DataSets { get; set; } = new List<string>();
+        public List<ReportDataSetModel> DataSets { get; set; } = new List<ReportDataSetModel>();
+
+        [JsonPropertyName("designs")]
+        public List<ReportDesignModel> Designs { get; set; } = new List<ReportDesignModel>();
+    }
+
+    public class ReportDataSetModel
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("dataSourceType")]
+        public string? DataSourceType { get; set; }
+
+        [JsonPropertyName("query")]
+        public string? Query { get; set; }
+
+        [JsonPropertyName("fields")]
+        public List<ReportDataSetFieldModel> Fields { get; set; } = new List<ReportDataSetFieldModel>();
+    }
+
+    public class ReportDataSetFieldModel
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("dataField")]
+        public string? DataField { get; set; }
+
+        [JsonPropertyName("dataType")]
+        public string? DataType { get; set; }
+    }
+
+    public class ReportDesignModel
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("caption")]
+        public string? Caption { get; set; }
+
+        [JsonPropertyName("style")]
+        public string? Style { get; set; }
+
+        [JsonPropertyName("hasRdl")]
+        public bool HasRdl { get; set; }
     }
 
     // ========================

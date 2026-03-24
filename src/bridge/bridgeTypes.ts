@@ -150,6 +150,15 @@ export interface BridgeEdtInfo {
   enumType?: string;
   referenceTable?: string;
   model?: string;
+  // Gap-fill properties
+  formHelp?: string;
+  configurationKey?: string;
+  alignment?: string;
+  displayLength?: number;
+  relationType?: string;
+  noOfDecimals?: number;
+  decimalSeparator?: string;
+  signDisplay?: string;
 }
 
 // ===========================
@@ -159,14 +168,20 @@ export interface BridgeEdtInfo {
 export interface BridgeFormInfo {
   name: string;
   model?: string;
+  formPattern?: string;
   dataSources: BridgeFormDataSource[];
   controls: BridgeFormControl[];
+  methods?: BridgeMethodInfo[];
 }
 
 export interface BridgeFormDataSource {
   name: string;
   table: string;
   joinSource?: string;
+  linkType?: string;
+  allowEdit?: string;
+  allowCreate?: string;
+  allowDelete?: string;
 }
 
 export interface BridgeFormControl {
@@ -175,6 +190,13 @@ export interface BridgeFormControl {
   dataSource?: string;
   dataField?: string;
   children?: BridgeFormControl[];
+  caption?: string;
+  label?: string;
+  helpText?: string;
+  visible?: string;
+  enabled?: string;
+  dataMethod?: string;
+  autoDeclaration?: string;
 }
 
 // ===========================
@@ -184,6 +206,7 @@ export interface BridgeFormControl {
 export interface BridgeQueryInfo {
   name: string;
   model?: string;
+  description?: string;
   dataSources: BridgeQueryDataSource[];
 }
 
@@ -191,7 +214,16 @@ export interface BridgeQueryDataSource {
   name: string;
   table: string;
   joinMode?: string;
+  fetchMode?: string;
   childDataSources?: BridgeQueryDataSource[];
+  ranges?: BridgeQueryRange[];
+  fields?: string[];
+}
+
+export interface BridgeQueryRange {
+  field: string;
+  value?: string;
+  status?: string;
 }
 
 // ===========================
@@ -203,13 +235,23 @@ export interface BridgeViewInfo {
   label?: string;
   model?: string;
   query?: string;
+  isPublic?: boolean;
+  isReadOnly?: boolean;
+  primaryKey?: string;
   fields: BridgeViewField[];
+  relations?: BridgeRelationInfo[];
+  methods?: BridgeMethodInfo[];
+  dataSources?: BridgeDataEntityDataSource[];
 }
 
 export interface BridgeViewField {
   name: string;
   fieldType: string;
-  mandatory: boolean;
+  dataSource?: string;
+  dataField?: string;
+  dataMethod?: string;
+  label?: string;
+  isComputed?: boolean;
 }
 
 // ===========================
@@ -225,8 +267,14 @@ export interface BridgeDataEntityInfo {
   model?: string;
   dataSources: BridgeDataEntityDataSource[];
   fields: BridgeFieldInfo[];
+  // Gap-fill properties
+  isReadOnly?: boolean;
+  entityCategory?: string;
+  dataManagementEnabled?: boolean;
+  stagingTable?: string;
   keys?: BridgeDataEntityKey[];
   fieldMappings?: BridgeDataEntityFieldMapping[];
+  computedColumns?: string[];
 }
 
 export interface BridgeDataEntityDataSource {
@@ -252,8 +300,28 @@ export interface BridgeDataEntityFieldMapping {
 export interface BridgeReportInfo {
   name: string;
   model?: string;
-  dataSets: string[];
-  designs?: string[];
+  dataSets: BridgeReportDataSet[];
+  designs?: BridgeReportDesign[];
+}
+
+export interface BridgeReportDataSet {
+  name: string;
+  dataSourceType?: string;
+  query?: string;
+  fields?: BridgeReportDataSetField[];
+}
+
+export interface BridgeReportDataSetField {
+  name: string;
+  dataField?: string;
+  dataType?: string;
+}
+
+export interface BridgeReportDesign {
+  name: string;
+  caption?: string;
+  style?: string;
+  hasRdl?: boolean;
 }
 
 // ===========================

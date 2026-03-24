@@ -413,6 +413,21 @@ namespace D365MetadataBridge.Services
             if (edt is AxEdtEnum en) result.EnumType = Safe(() => en.EnumType);
             try { result.ReferenceTable = Safe(() => ((dynamic)edt).ReferenceTable?.Table); } catch { }
 
+            // Gap-fill: additional properties
+            try { result.FormHelp = Safe(() => edt.FormHelp); } catch { }
+            try { result.ConfigurationKey = Safe(() => ((dynamic)edt).ConfigurationKey); } catch { }
+            try { result.Alignment = Safe(() => ((dynamic)edt).Alignment?.ToString()); } catch { }
+            try { result.DisplayLength = SafeInt(() => ((dynamic)edt).DisplayLength, 0); if (result.DisplayLength == 0) result.DisplayLength = null; } catch { }
+            try { result.RelationType = Safe(() => ((dynamic)edt).RelationType?.ToString()); } catch { }
+
+            // AxEdtReal specific
+            if (edt is AxEdtReal r2)
+            {
+                try { result.NoOfDecimals = SafeInt(() => r2.NoOfDecimals, -1); if (result.NoOfDecimals == -1) result.NoOfDecimals = null; } catch { }
+                try { result.DecimalSeparator = Safe(() => ((dynamic)r2).DecimalSeparator?.ToString()); } catch { }
+                try { result.SignDisplay = Safe(() => ((dynamic)r2).SignDisplay?.ToString()); } catch { }
+            }
+
             return result;
         }
 
@@ -428,8 +443,46 @@ namespace D365MetadataBridge.Services
             var result = new FormInfoModel { Name = form.Name };
             try { var mi = _provider.Forms.GetModelInfo(formName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }
 
-            try { if (form.DataSources != null) foreach (var ds in form.DataSources) result.DataSources.Add(new FormDataSourceModel { Name = ds.Name, Table = Safe(() => ds.Table) ?? "", JoinSource = Safe(() => ds.JoinSource) }); } catch (Exception ex) { Warn("datasources", formName, ex); }
+            // Form pattern / style
+            try { result.FormPattern = Safe(() => ((dynamic)form).Design?.Pattern) ?? Safe(() => ((dynamic)form).Design?.Style?.ToString()); } catch { }
+
+            // Data sources with permissions
+            try
+            {
+                if (form.DataSources != null)
+                    foreach (var ds in form.DataSources)
+                    {
+                        var dsModel = new FormDataSourceModel
+                        {
+                            Name = ds.Name,
+                            Table = Safe(() => ds.Table) ?? "",
+                            JoinSource = Safe(() => ds.JoinSource),
+                        };
+                        try { dsModel.LinkType = Safe(() => ((dynamic)ds).LinkType?.ToString()); } catch { }
+                        try { dsModel.AllowEdit = Safe(() => ((dynamic)ds).AllowEdit?.ToString()); } catch { }
+                        try { dsModel.AllowCreate = Safe(() => ((dynamic)ds).AllowCreate?.ToString()); } catch { }
+                        try { dsModel.AllowDelete = Safe(() => ((dynamic)ds).AllowDelete?.ToString()); } catch { }
+                        result.DataSources.Add(dsModel);
+                    }
+            }
+            catch (Exception ex) { Warn("datasources", formName, ex); }
+
+            // Controls with extra properties
             try { if (form.Design?.Controls != null) MapControls(form.Design.Controls, result.Controls, 0); } catch (Exception ex) { Warn("controls", formName, ex); }
+
+            // Methods
+            try
+            {
+                dynamic dForm = form;
+                if (dForm.SourceCode?.Methods != null)
+                    foreach (dynamic m in dForm.SourceCode.Methods)
+                    {
+                        var mi = new MethodInfoModel { Name = Safe(() => (string)m.Name) ?? "" };
+                        try { mi.Source = Safe(() => (string)m.Source); } catch { }
+                        result.Methods.Add(mi);
+                    }
+            }
+            catch (Exception ex) { Warn("methods", formName, ex); }
 
             return result;
         }
@@ -445,6 +498,14 @@ namespace D365MetadataBridge.Services
                     {
                         var cm = new FormControlModel { Name = Safe(() => (string)c.Name) ?? "", ControlType = ((object)c).GetType().Name.Replace("AxFormControl", "") };
                         try { cm.DataSource = Safe(() => (string)c.DataSource); cm.DataField = Safe(() => (string)c.DataField); } catch { }
+                        // Gap-fill: additional control properties
+                        try { cm.Caption = Safe(() => (string)((dynamic)c).Caption); } catch { }
+                        try { cm.Label = Safe(() => (string)((dynamic)c).Label); } catch { }
+                        try { cm.HelpText = Safe(() => (string)((dynamic)c).HelpText); } catch { }
+                        try { cm.Visible = Safe(() => ((dynamic)c).Visible?.ToString()); } catch { }
+                        try { cm.Enabled = Safe(() => ((dynamic)c).Enabled?.ToString()); } catch { }
+                        try { cm.DataMethod = Safe(() => (string)((dynamic)c).DataMethod); } catch { }
+                        try { cm.AutoDeclaration = Safe(() => ((dynamic)c).AutoDeclaration?.ToString()); } catch { }
                         try { if (c.Controls != null) { cm.Children = new List<FormControlModel>(); MapControls(c.Controls, cm.Children, depth + 1); if (cm.Children.Count == 0) cm.Children = null; } } catch { }
                         target.Add(cm);
                     }
@@ -464,6 +525,7 @@ namespace D365MetadataBridge.Services
             if (q == null) return null;
             var result = new QueryInfoModel { Name = q.Name };
             try { var mi = _provider.Queries.GetModelInfo(queryName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }
+            try { result.Description = Safe(() => ((dynamic)q).Description); } catch { }
             try { dynamic dq = q; if (dq.DataSources != null) foreach (dynamic ds in dq.DataSources) result.DataSources.Add(MapQueryDataSource(ds)); } catch (Exception ex) { Warn("dataSources", queryName, ex); }
             return result;
         }
@@ -475,7 +537,109 @@ namespace D365MetadataBridge.Services
             if (v == null) return null;
             var result = new ViewInfoModel { Name = v.Name, Label = Safe(() => v.Label), Query = Safe(() => v.Query) };
             try { var mi = _provider.Views.GetModelInfo(viewName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }
-            try { if (v.Fields != null) foreach (var f in v.Fields) result.Fields.Add(new FieldInfoModel { Name = f.Name, FieldType = f.GetType().Name.Replace("AxViewField", "") }); } catch { }
+
+            // Gap-fill: isPublic, isReadOnly, PK
+            try { result.IsPublic = IsYes(() => ((dynamic)v).IsPublic); } catch { }
+            try { result.IsReadOnly = IsYes(() => ((dynamic)v).IsReadOnly); } catch { }
+            try { if (!result.IsReadOnly) result.IsReadOnly = IsYes(() => ((dynamic)v).ViewMetadata.IsReadOnly); } catch { }
+            try
+            {
+                dynamic dv = v;
+                if (dv.Indexes != null)
+                    foreach (dynamic idx in dv.Indexes)
+                    {
+                        try
+                        {
+                            bool isAk = false;
+                            try { isAk = idx.AlternateKey?.ToString() == "Yes"; } catch { }
+                            if (isAk || result.PrimaryKey == null)
+                                result.PrimaryKey = Safe(() => (string)idx.Name);
+                        }
+                        catch { }
+                    }
+            }
+            catch { }
+
+            // Fields with data source / data field / data method
+            try
+            {
+                if (v.Fields != null)
+                    foreach (var f in v.Fields)
+                    {
+                        var vf = new ViewFieldModel { Name = f.Name, FieldType = f.GetType().Name.Replace("AxViewField", "") };
+                        try { vf.DataSource = Safe(() => ((dynamic)f).DataSource); } catch { }
+                        try { vf.DataField = Safe(() => ((dynamic)f).DataField); } catch { }
+                        try { vf.DataMethod = Safe(() => ((dynamic)f).DataMethod); } catch { }
+                        try { vf.Label = Safe(() => ((dynamic)f).Label); } catch { }
+                        vf.IsComputed = !string.IsNullOrEmpty(vf.DataMethod) && string.IsNullOrEmpty(vf.DataField);
+                        result.Fields.Add(vf);
+                    }
+            }
+            catch { }
+
+            // Relations
+            try
+            {
+                dynamic dv2 = v;
+                if (dv2.Relations != null)
+                    foreach (dynamic rel in dv2.Relations)
+                    {
+                        var ri = new RelationInfoModel
+                        {
+                            Name = Safe(() => (string)rel.Name) ?? "",
+                            RelatedTable = Safe(() => (string)rel.RelatedTable) ?? "",
+                        };
+                        try { ri.Cardinality = Safe(() => rel.Cardinality?.ToString()); } catch { }
+                        try { ri.RelatedTableCardinality = Safe(() => rel.RelatedTableCardinality?.ToString()); } catch { }
+                        try
+                        {
+                            if (rel.Constraints != null)
+                                foreach (dynamic c in rel.Constraints)
+                                {
+                                    ri.Constraints.Add(new RelationConstraintModel
+                                    {
+                                        Field = Safe(() => (string)c.Field),
+                                        RelatedField = Safe(() => (string)c.RelatedField),
+                                    });
+                                }
+                        }
+                        catch { }
+                        result.Relations.Add(ri);
+                    }
+            }
+            catch { }
+
+            // Methods
+            try
+            {
+                dynamic dv3 = v;
+                if (dv3.SourceCode?.Methods != null)
+                    foreach (dynamic m in dv3.SourceCode.Methods)
+                    {
+                        var mi2 = new MethodInfoModel { Name = Safe(() => (string)m.Name) ?? "" };
+                        try { mi2.Source = Safe(() => (string)m.Source); } catch { }
+                        result.Methods.Add(mi2);
+                    }
+            }
+            catch { }
+
+            // DataSources (from the view's query)
+            try
+            {
+                dynamic dv4 = v;
+                if (dv4.ViewMetadata?.DataSources != null)
+                    foreach (dynamic ds in dv4.ViewMetadata.DataSources)
+                    {
+                        result.DataSources.Add(new FormDataSourceModel
+                        {
+                            Name = Safe(() => (string)ds.Name) ?? "",
+                            Table = Safe(() => (string)ds.Table) ?? "",
+                            JoinSource = Safe(() => (string)ds.JoinSource),
+                        });
+                    }
+            }
+            catch { }
+
             return result;
         }
 
@@ -486,8 +650,68 @@ namespace D365MetadataBridge.Services
             if (e == null) return null;
             var result = new DataEntityInfoModel { Name = e.Name, Label = Safe(() => e.Label), PublicEntityName = Safe(() => e.PublicEntityName), PublicCollectionName = Safe(() => e.PublicCollectionName), IsPublic = IsYes(() => e.IsPublic) };
             try { var mi = _provider.DataEntityViews.GetModelInfo(entityName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }
-            try { if (e.Fields != null) foreach (var f in e.Fields) result.Fields.Add(new FieldInfoModel { Name = f.Name, FieldType = f.GetType().Name }); } catch { }
+
+            // Gap-fill: isReadOnly, entityCategory, DMF, stagingTable
+            try { result.IsReadOnly = IsYes(() => ((dynamic)e).IsReadOnly); } catch { }
+            try { result.EntityCategory = Safe(() => ((dynamic)e).EntityCategory?.ToString()); } catch { }
+            try { result.DataManagementEnabled = IsYes(() => ((dynamic)e).DataManagementEnabled); } catch { }
+            try { result.StagingTable = Safe(() => ((dynamic)e).DataManagementStagingTable); } catch { }
+
+            // Fields with extended info
+            try
+            {
+                if (e.Fields != null)
+                    foreach (var f in e.Fields)
+                    {
+                        var fi = new FieldInfoModel { Name = f.Name, FieldType = f.GetType().Name.Replace("AxDataEntityViewField", "").Replace("AxViewField", "") };
+                        try { fi.Label = Safe(() => ((dynamic)f).Label); } catch { }
+                        result.Fields.Add(fi);
+
+                        // Field mappings
+                        try
+                        {
+                            string? ds = Safe(() => ((dynamic)f).DataSource);
+                            string? df = Safe(() => ((dynamic)f).DataField);
+                            if (!string.IsNullOrEmpty(ds) || !string.IsNullOrEmpty(df))
+                                result.FieldMappings.Add(new DataEntityFieldMappingModel { FieldName = f.Name, DataSource = ds, DataField = df });
+                            else
+                            {
+                                // Computed column: has DataMethod but no DataField
+                                string? dm = Safe(() => ((dynamic)f).DataMethod);
+                                if (!string.IsNullOrEmpty(dm))
+                                    result.ComputedColumns.Add(f.Name);
+                            }
+                        }
+                        catch { }
+                    }
+            }
+            catch { }
+
+            // Data sources
             try { dynamic de = e; if (de.DataSources != null) foreach (dynamic ds in de.DataSources) result.DataSources.Add(new FormDataSourceModel { Name = Safe(() => (string)ds.Name) ?? "", Table = Safe(() => (string)ds.Table) ?? "" }); } catch (Exception ex) { Warn("dataSources", entityName, ex); }
+
+            // Keys / indexes
+            try
+            {
+                dynamic de2 = e;
+                if (de2.Indexes != null)
+                    foreach (dynamic idx in de2.Indexes)
+                    {
+                        var ki = new IndexInfoModel { Name = Safe(() => (string)idx.Name) ?? "" };
+                        try { ki.AllowDuplicates = idx.AllowDuplicates?.ToString() == "Yes"; } catch { }
+                        try { ki.AlternateKey = idx.AlternateKey?.ToString() == "Yes"; } catch { }
+                        try
+                        {
+                            if (idx.Fields != null)
+                                foreach (dynamic fld in idx.Fields)
+                                    ki.Fields.Add(new IndexFieldModel { DataField = Safe(() => (string)fld.DataField) ?? "" });
+                        }
+                        catch { }
+                        result.Keys.Add(ki);
+                    }
+            }
+            catch { }
+
             return result;
         }
 
@@ -500,7 +724,51 @@ namespace D365MetadataBridge.Services
                 if (r == null) return null;
                 var result = new ReportInfoModel { Name = r.Name };
                 try { var mi = _provider.Reports.GetModelInfo(reportName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }
-                try { if (r.DataSets != null) foreach (dynamic ds in r.DataSets) result.DataSets.Add(Safe(() => (string)ds.Name) ?? "Unknown"); } catch { }
+
+                // DataSets with fields and type info
+                try
+                {
+                    if (r.DataSets != null)
+                        foreach (dynamic ds in r.DataSets)
+                        {
+                            var dsModel = new ReportDataSetModel { Name = Safe(() => (string)ds.Name) ?? "Unknown" };
+                            try { dsModel.DataSourceType = Safe(() => ds.DataSourceType?.ToString()); } catch { }
+                            try { dsModel.Query = Safe(() => (string)ds.Query); } catch { }
+                            try
+                            {
+                                if (ds.Fields != null)
+                                    foreach (dynamic f in ds.Fields)
+                                    {
+                                        dsModel.Fields.Add(new ReportDataSetFieldModel
+                                        {
+                                            Name = Safe(() => (string)f.Name) ?? "",
+                                            DataField = Safe(() => (string)f.DataField),
+                                            DataType = Safe(() => f.DataType?.ToString()),
+                                        });
+                                    }
+                            }
+                            catch { }
+                            result.DataSets.Add(dsModel);
+                        }
+                }
+                catch { }
+
+                // Designs
+                try
+                {
+                    dynamic dr = r;
+                    if (dr.Designs != null)
+                        foreach (dynamic d in dr.Designs)
+                        {
+                            var dm = new ReportDesignModel { Name = Safe(() => (string)d.Name) ?? "" };
+                            try { dm.Caption = Safe(() => (string)d.Caption); } catch { }
+                            try { dm.Style = Safe(() => (string)d.Style); } catch { }
+                            try { dm.HasRdl = !string.IsNullOrEmpty(Safe(() => (string)d.Text)); } catch { }
+                            result.Designs.Add(dm);
+                        }
+                }
+                catch { }
+
                 return result;
             }
             catch { return null; }
@@ -510,6 +778,45 @@ namespace D365MetadataBridge.Services
         {
             var model = new QueryDataSourceModel { Name = Safe(() => (string)ds.Name) ?? "", Table = Safe(() => (string)ds.Table) ?? "" };
             try { model.JoinMode = Safe(() => ds.JoinMode?.ToString()); } catch { }
+            try { model.FetchMode = Safe(() => ds.FetchMode?.ToString()); } catch { }
+
+            // Ranges
+            try
+            {
+                if (ds.Ranges != null)
+                {
+                    model.Ranges = new List<QueryRangeModel>();
+                    foreach (dynamic range in ds.Ranges)
+                    {
+                        model.Ranges.Add(new QueryRangeModel
+                        {
+                            Field = Safe(() => (string)range.Field) ?? "",
+                            Value = Safe(() => (string)range.Value),
+                            Status = Safe(() => range.Status?.ToString()),
+                        });
+                    }
+                    if (model.Ranges.Count == 0) model.Ranges = null;
+                }
+            }
+            catch { }
+
+            // Fields
+            try
+            {
+                if (ds.Fields?.Dynamic?.ToString() != "Yes" && ds.Fields != null)
+                {
+                    model.Fields = new List<string>();
+                    foreach (dynamic f in ds.Fields)
+                    {
+                        string? fn = Safe(() => (string)f.Field);
+                        if (!string.IsNullOrEmpty(fn)) model.Fields.Add(fn!);
+                    }
+                    if (model.Fields.Count == 0) model.Fields = null;
+                }
+            }
+            catch { }
+
+            // Child data sources
             try
             {
                 if (ds.DataSources != null)
