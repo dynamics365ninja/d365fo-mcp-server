@@ -14,6 +14,7 @@ import { parseStringPromise, Builder } from 'xml2js';
 import { getConfigManager } from '../utils/configManager.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { resolveDbPathLocally } from '../utils/metadataResolver.js';
+import { bridgeValidateAfterWrite, canBridgeModify, bridgeAddMethod, bridgeAddField, bridgeSetProperty, bridgeReplaceCode } from '../bridge/index.js';
 import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
 
 /**
@@ -549,6 +550,106 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     if (createBackup && !dryRun) {
       await createFileBackup(actualFilePath);
     }
+
+    // ── Phase 4: Bridge-first modify via IMetadataProvider.Update() ──────────
+    // For supported operations (add-method, add-field, modify-property, replace-code)
+    // on supported types (class, table, enum, edt): try C# bridge first.
+    // The bridge reads/modifies/writes via the official API — no xml2js needed.
+    // Skip for dry-run (bridge writes directly, cannot preview diff).
+    if (!dryRun && context?.bridge && canBridgeModify(objectType, operation)) {
+      try {
+        let bridgeResult: { success: boolean; message: string } | null = null;
+
+        switch (operation) {
+          case 'add-method': {
+            if (args.methodName && args.sourceCode) {
+              bridgeResult = await bridgeAddMethod(
+                context.bridge,
+                objectType,
+                objectName,
+                args.methodName,
+                args.sourceCode,
+              );
+            }
+            break;
+          }
+          case 'add-field': {
+            if (args.fieldName && args.fieldType) {
+              bridgeResult = await bridgeAddField(
+                context.bridge,
+                objectName,
+                args.fieldName,
+                args.fieldType,
+                (args as any).edt,
+                (args as any).mandatory,
+                (args as any).label,
+              );
+            }
+            break;
+          }
+          case 'modify-property': {
+            if (args.propertyPath && args.propertyValue !== undefined) {
+              bridgeResult = await bridgeSetProperty(
+                context.bridge,
+                objectType,
+                objectName,
+                args.propertyPath,
+                args.propertyValue,
+              );
+            }
+            break;
+          }
+          case 'replace-code': {
+            if (args.oldCode && args.newCode) {
+              bridgeResult = await bridgeReplaceCode(
+                context.bridge,
+                objectType,
+                objectName,
+                args.methodName,
+                args.oldCode,
+                args.newCode,
+              );
+            }
+            break;
+          }
+        }
+
+        if (bridgeResult?.success) {
+          console.error(`[modify_d365fo_file] ✅ Bridge ${operation}: ${bridgeResult.message}`);
+
+          // Post-write validation (best-effort)
+          let bridgeValidation = '';
+          try {
+            const validationMsg = await bridgeValidateAfterWrite(
+              context.bridge,
+              objectType,
+              objectName,
+            );
+            if (validationMsg) bridgeValidation = `\n${validationMsg}`;
+          } catch (_e) { /* skip */ }
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text:
+                  `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()\n\n` +
+                  `**File:** ${actualFilePath}${addControlNote}${bridgeValidation}\n` +
+                  `🔧 API: ${bridgeResult.message}\n\n` +
+                  `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
+              },
+            ],
+          };
+        }
+        // bridgeResult is null or success=false → fall through to xml2js path
+        if (bridgeResult) {
+          console.error(`[modify_d365fo_file] Bridge ${operation} returned success=false — falling back to xml2js`);
+        }
+      } catch (bridgeErr) {
+        console.error(`[modify_d365fo_file] Bridge ${operation} failed, falling back to xml2js: ${bridgeErr}`);
+      }
+    }
+
     const xmlObj = await parseStringPromise(xmlContent);
 
     // 4. Perform operation
@@ -747,6 +848,22 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     const xmlBuffer = Buffer.concat([utf8BOM, Buffer.from(newXml, 'utf-8')]);
     await fs.writeFile(actualFilePath, xmlBuffer);
 
+    // 6a2. Post-write validation via C# bridge (best-effort)
+    let bridgeValidation = '';
+    try {
+      const validationMsg = await bridgeValidateAfterWrite(
+        context.bridge,
+        objectType,
+        objectName,
+      );
+      if (validationMsg) {
+        bridgeValidation = `\n${validationMsg}`;
+        console.error(`[modify_d365fo_file] Bridge validation: ${validationMsg}`);
+      }
+    } catch (e) {
+      console.error(`[modify_d365fo_file] Bridge validation skipped: ${e}`);
+    }
+
     // 6b. Optionally add the file to the Visual Studio project
     let projectMessage = '';
     if (args.addToProject) {
@@ -795,7 +912,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           type: 'text',
           text:
             `✅ ${message}\n\n` +
-            `**File:** ${actualFilePath}${addControlNote}${projectMessage}\n\n` +
+            `**File:** ${actualFilePath}${addControlNote}${bridgeValidation}${projectMessage}\n\n` +
             `### Applied changes\n\n` +
             `\`\`\`diff\n${appliedDiff}\n\`\`\`\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate\n- Commit changes to source control`,

@@ -43,6 +43,8 @@ graph TB
 
     subgraph "C# Metadata Bridge — Windows only"
         BRIDGE_EXE[D365MetadataBridge.exe - .NET 4.8 child process]
+        READ_SVC[MetadataReadService - Read operations]
+        WRITE_SVC[MetadataWriteService - Create/Modify via API]
         IMETA[IMetadataProvider - Live D365FO metadata]
         XREF[(DYNAMICSXREFDB - Cross-reference database)]
     end
@@ -56,8 +58,11 @@ graph TB
     TOOLS --> DB
     TOOLS --> LDB
     TOOLS -.->|"Optional"| CACHE
-    TOOLS -.->|"Try first on Windows"| BRIDGE_EXE
-    BRIDGE_EXE --> IMETA
+    TOOLS -.->|"Read/Write via bridge"| BRIDGE_EXE
+    BRIDGE_EXE --> READ_SVC
+    BRIDGE_EXE --> WRITE_SVC
+    READ_SVC --> IMETA
+    WRITE_SVC -->|"Create / Update"| IMETA
     BRIDGE_EXE --> XREF
     
     style VS fill:#68217A,color:#fff
@@ -68,6 +73,8 @@ graph TB
     style LDB fill:#4CAF50,color:#fff
     style CACHE fill:#DC382D,color:#fff
     style BRIDGE_EXE fill:#512BD4,color:#fff
+    style READ_SVC fill:#512BD4,color:#fff
+    style WRITE_SVC fill:#E65100,color:#fff
     style IMETA fill:#512BD4,color:#fff
 ```
 
@@ -98,18 +105,31 @@ sequenceDiagram
     else Tool Call
         MCP->>Handler: Route to Handler
         Handler->>Tool: Execute Tool
-        Tool->>Bridge: tryBridge*() — try live metadata first
-        alt Bridge Available & Object Found
-            Bridge-->>Tool: Live Metadata Result
-        else Bridge Unavailable or Miss
-            Tool->>Cache: Check Cache
-            alt Cache Hit
-                Cache-->>Tool: Cached Result
-            else Cache Miss
-                Tool->>DB: FTS5 Query
-                DB-->>Tool: Symbol Results
-                Tool->>Cache: Store Result
+        alt Read Operation (get_table_info, get_class_info, ...)
+            Tool->>Bridge: tryBridge*() — bridge-primary (10 tools)
+            alt Bridge Available & Object Found
+                Bridge-->>Tool: Live Metadata Result
+            else Bridge Unavailable
+                Tool->>Cache: Check Cache
+                alt Cache Hit
+                    Cache-->>Tool: Cached Result
+                else Cache Miss
+                    Tool->>DB: FTS5 Query
+                    DB-->>Tool: Symbol Results
+                    Tool->>Cache: Store Result
+                end
             end
+        else Write Operation (create_d365fo_file, modify_d365fo_file)
+            Tool->>Bridge: bridge*() — 12 create types, 10 modify types
+            alt Bridge Available & Type Supported
+                Bridge-->>Tool: Write Result (file path)
+            else Bridge Unavailable or Unsupported Type
+                Tool->>Tool: TypeScript XML generation / xml2js modify
+            end
+        else Index Maintenance (update_symbol_index, undo_last_modification)
+            Tool->>DB: Remove stale symbols + labels from SQLite
+            Tool->>Cache: Invalidate Redis cache entries
+            Tool->>Bridge: Refresh provider state
         end
         Tool-->>Handler: Tool Result
         Handler-->>MCP: Formatted Response
@@ -209,8 +229,8 @@ graph LR
 
     subgraph "C# Metadata Bridge — Windows only"
         BCLIENT[bridgeClient.ts - JSON-RPC child process]
-        BADAPT[bridgeAdapter.ts - 12 tryBridge* formatters]
-        BTYPES[bridgeTypes.ts - Response types]
+        BADAPT[bridgeAdapter.ts - 12 tryBridge* read + 11 bridge* write]
+        BTYPES[bridgeTypes.ts - Response types incl. BridgeWriteResult, BridgeDeleteResult, BridgeCapabilities]
     end
 
     INDEX --> SERVER
@@ -933,7 +953,11 @@ Executes specific SysTest objects routing testing outputs to text blocks readabl
 Uses local git diff HEAD --unified=3 combined with standard D365FO knowledge to provide a fully integrated AI code review directly into the active Copilot stream.
 
 #### 27. undo_last_modification
-Intelligently handles reversing git commits via git checkout HEAD or explicitly unlinking untracked items dynamically.
+Intelligently handles reversing uncommitted changes via `git checkout HEAD` (tracked files) or
+`fs.unlinkSync` (untracked files). After reverting or deleting a file, performs full index cleanup:
+removes stale symbols and labels from SQLite, invalidates Redis cache entries for all affected
+objects, refreshes the C# bridge provider state, and (for tracked files) re-indexes the restored
+file to reflect its reverted content.
 
 
 ### Local SDLC Execution
@@ -1010,6 +1034,24 @@ graph TD
 | Table Info | 1 hour | Static AOT metadata |
 | Completions | 30 min | Frequently accessed |
 | Extension Search | 30 min | Less frequent updates |
+
+### Cache Invalidation
+
+Redis cache entries are **actively invalidated** when the underlying data changes — write
+operations do not rely on TTL expiry alone. This prevents stale metadata from being served
+after files are created, modified, deleted, or reverted.
+
+| Trigger | What is invalidated |
+|---------|---------------------|
+| `update_symbol_index` (file exists) | Re-indexes SQLite, then clears: `xpp:class:{name}`, `xpp:table:{name}`, `xpp:method-sig:{name}:*`, `xpp:complete:{name}:*`, `xpp:search:*` |
+| `update_symbol_index` (file deleted) | Removes symbols + labels from SQLite, clears same Redis patterns, refreshes C# bridge |
+| `undo_last_modification` (revert) | Removes stale SQLite entries, clears Redis, refreshes bridge, then re-indexes restored file |
+| `undo_last_modification` (delete) | Removes stale SQLite entries, clears Redis, refreshes bridge |
+| `create_d365fo_file` / `modify_d365fo_file` | Calls `update_symbol_index` which triggers the invalidation above |
+
+The `invalidateCache()` helper in `updateSymbolIndex.ts` clears entries for all top-level
+object names found in the file (classes, tables, enums, EDTs) plus wildcard patterns for
+method signatures, completions, and search results.
 
 ### Rate Limits
 

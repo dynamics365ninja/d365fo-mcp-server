@@ -35,6 +35,15 @@ import type {
   BridgeSearchResult,
   BridgeMethodSource,
   BridgeListResult,
+  BridgeValidateResult,
+  BridgeResolveResult,
+  BridgeRefreshResult,
+  BridgeWriteResult,
+  BridgeDeleteResult,
+  BridgeBatchOperationRequest,
+  BridgeBatchOperationResult,
+  BridgeCapabilities,
+  BridgeFormPatternDiscoveryResult,
 } from './bridgeTypes.js';
 
 // Re-export types for convenience
@@ -338,6 +347,94 @@ export class BridgeClient extends EventEmitter {
 
   async getInfo(): Promise<BridgeInfoPayload> {
     return this.call<BridgeInfoPayload>('getInfo');
+  }
+
+  // ========================================
+  // Write-support methods (Phase 3)
+  // ========================================
+
+  /** Re-create the DiskProvider so newly written files are picked up. */
+  async refreshProvider(): Promise<BridgeRefreshResult> {
+    return this.call<BridgeRefreshResult>('refreshProvider');
+  }
+
+  /** Ask IMetadataProvider to read back an object — validates the XML is consumable. */
+  async validateObject(objectType: string, objectName: string): Promise<BridgeValidateResult> {
+    return this.call<BridgeValidateResult>('validateObject', { objectType, objectName });
+  }
+
+  /** Check if an object exists in IMetadataProvider and return its model. */
+  async resolveObjectInfo(objectType: string, objectName: string): Promise<BridgeResolveResult | null> {
+    return this.call<BridgeResolveResult | null>('resolveObjectInfo', { objectType, objectName });
+  }
+
+  // ========================================
+  // Write operations (Phase 4)
+  // ========================================
+
+  /** Create a D365FO object via IMetadataProvider.Create() */
+  async createObject(params: {
+    objectType: string;
+    objectName: string;
+    modelName: string;
+    declaration?: string;
+    methods?: { name: string; source?: string }[];
+    fields?: Record<string, unknown>[];
+    fieldGroups?: Record<string, unknown>[];
+    indexes?: Record<string, unknown>[];
+    relations?: Record<string, unknown>[];
+    values?: Record<string, unknown>[];
+    properties?: Record<string, string>;
+  }): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('createObject', params);
+  }
+
+  /** Add or replace a method on a class or table via IMetadataProvider.Update() */
+  async addMethod(objectType: string, objectName: string, methodName: string, sourceCode: string): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addMethod', { objectType, objectName, methodName, sourceCode });
+  }
+
+  /** Add a field to a table via IMetadataProvider.Update() */
+  async addField(objectName: string, fieldName: string, fieldType: string, edt?: string, mandatory?: boolean, label?: string): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addField', { objectName, fieldName, fieldType, edt, mandatory, label });
+  }
+
+  /** Set a property on any object via IMetadataProvider.Update() */
+  async setProperty(objectType: string, objectName: string, propertyPath: string, propertyValue: string): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('setProperty', { objectType, objectName, propertyPath, propertyValue });
+  }
+
+  /** Replace code within a method via IMetadataProvider.Update() */
+  async replaceCode(objectType: string, objectName: string, methodName: string | undefined, oldCode: string, newCode: string): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('replaceCode', { objectType, objectName, methodName, oldCode, newCode });
+  }
+
+  // ========================================
+  // Delete, Batch, Capabilities, Pattern Discovery
+  // ========================================
+
+  /** Delete a D365FO object by removing its file from disk */
+  async deleteObject(objectType: string, objectName: string): Promise<BridgeDeleteResult> {
+    return this.call<BridgeDeleteResult>('deleteObject', { objectType, objectName });
+  }
+
+  /** Execute multiple write operations on a single object in one call */
+  async batchModify(
+    objectType: string,
+    objectName: string,
+    operations: BridgeBatchOperationRequest[]
+  ): Promise<BridgeBatchOperationResult> {
+    return this.call<BridgeBatchOperationResult>('batchModify', { objectType, objectName, operations });
+  }
+
+  /** Get structured capabilities map — lists available operations per object type */
+  async getCapabilities(): Promise<BridgeCapabilities> {
+    return this.call<BridgeCapabilities>('getCapabilities', {});
+  }
+
+  /** Discover available D365FO form patterns (runtime DLL or hardcoded fallback) */
+  async discoverFormPatterns(): Promise<BridgeFormPatternDiscoveryResult> {
+    return this.call<BridgeFormPatternDiscoveryResult>('discoverFormPatterns', {});
   }
 
   // ========================================

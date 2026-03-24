@@ -1,15 +1,14 @@
 /**
  * Get Enum Info Tool
- * Extract enum values and enum properties
- * Returns enum values with labels and numeric values
+ * Extract enum values and enum properties.
+ *
+ * PRIMARY: C# bridge (IMetadataProvider) — 100% reliable, always available on VM.
+ * No SQLite / XML fallback needed — bridge returns complete enum metadata.
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { promises as fs } from 'fs';
-import { parseStringPromise } from 'xml2js';
-import { readEnumRawXml, buildXmlNotAvailableMessage } from '../utils/metadataResolver.js';
 import { tryBridgeEnum } from '../bridge/bridgeAdapter.js';
 
 const GetEnumInfoArgsSchema = z.object({
@@ -20,199 +19,30 @@ const GetEnumInfoArgsSchema = z.object({
   workspacePath: z.string().optional().describe('Path to workspace'),
 });
 
-interface EnumValue {
-  name: string;
-  value: number;
-  label?: string;
-}
-
-interface EnumInfo {
-  name: string;
-  model: string;
-  type: 'enum';
-  isExtensible: boolean;
-  useEnumValue: boolean;
-  values: EnumValue[];
-}
-
 export async function getEnumInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = GetEnumInfoArgsSchema.parse(request.params.arguments);
-    const { symbolIndex } = context;
-    const { 
-      enumName, 
-      modelName, 
-      includeLabels
-    } = args;
 
-    // Try C# bridge first (IMetadataProvider — live D365FO metadata)
-    const bridgeResult = await tryBridgeEnum(context.bridge, enumName);
+    // C# bridge (IMetadataProvider — live D365FO metadata, always available)
+    const bridgeResult = await tryBridgeEnum(context.bridge, args.enumName);
     if (bridgeResult) return bridgeResult;
 
-    // 1. Find enum in index
-    let stmt;
-    if (modelName) {
-      stmt = symbolIndex.db.prepare(`
-        SELECT file_path, model, name, type
-        FROM symbols
-        WHERE type = 'enum' AND name = ? AND model = ?
-        LIMIT 1
-      `);
-      var enumRow = stmt.get(enumName, modelName) as any;
-    } else {
-      stmt = symbolIndex.db.prepare(`
-        SELECT file_path, model, name, type
-        FROM symbols
-        WHERE type = 'enum' AND name = ?
-        ORDER BY model
-        LIMIT 1
-      `);
-      var enumRow = stmt.get(enumName) as any;
-    }
-
-    if (!enumRow) {
-      throw new Error(`Enum "${enumName}" not found. Make sure it's indexed.`);
-    }
-
-    // 2. Get raw XML — try extracted-metadata JSON first, then XML file at DB path
-    let rawXml: string | null = null;
-
-    // Primary: extracted-metadata JSON (always available, no file-path issues)
-    rawXml = await readEnumRawXml(enumRow.model, enumName);
-
-    // Secondary: file at DB path (may be XML on D365FO VM, or JSON metadata)
-    if (!rawXml) {
-      try {
-        const fileContent = await fs.readFile(enumRow.file_path, 'utf-8');
-        const trimmed = fileContent.trimStart();
-        if (trimmed.startsWith('{')) {
-          // JSON file (metadata dir) — extract raw XML from it
-          const data = JSON.parse(fileContent);
-          rawXml = typeof data.raw === 'string' ? data.raw : null;
-        } else {
-          // Actual XML file
-          rawXml = fileContent;
-        }
-      } catch {
-        // Path not accessible
-      }
-    }
-
-    if (!rawXml) {
-      return {
-        content: [{ type: 'text', text: buildXmlNotAvailableMessage('enum', enumName, enumRow.file_path) }],
-        isError: true,
-      };
-    }
-
-    const xmlObj = await parseStringPromise(rawXml);
-
-    // 3. Extract enum info
-    const enumInfo: EnumInfo = {
-      name: enumName,
-      model: enumRow.model,
-      type: 'enum',
-      isExtensible: false,
-      useEnumValue: false,
-      values: [],
+    return {
+      content: [{
+        type: 'text',
+        text: `Enum "${args.enumName}" not found. Bridge returned no data — ensure the enum exists in D365FO metadata.`,
+      }],
+      isError: true,
     };
-
-    if (!xmlObj.AxEnum) {
-      throw new Error('Invalid enum XML structure');
-    }
-
-    extractEnumInfo(xmlObj.AxEnum, enumInfo, includeLabels);
-
-    // 4. Format output
-    return formatEnumOutput(enumInfo, includeLabels);
-
   } catch (error) {
     return {
-      content: [
-        {
-          type: 'text',
-          text: `❌ Error getting enum info: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        },
-      ],
+      content: [{
+        type: 'text',
+        text: `❌ Error getting enum info: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      }],
       isError: true,
     };
   }
-}
-
-/**
- * Extract enum information
- */
-function extractEnumInfo(axEnum: any, enumInfo: EnumInfo, includeLabels: boolean): void {
-  // Extract properties
-  if (axEnum.IsExtensible) {
-    enumInfo.isExtensible = axEnum.IsExtensible[0] === 'Yes';
-  }
-
-  if (axEnum.UseEnumValue) {
-    enumInfo.useEnumValue = axEnum.UseEnumValue[0] === 'Yes';
-  }
-
-  // Extract enum values
-  if (axEnum.EnumValues && axEnum.EnumValues[0] && axEnum.EnumValues[0].AxEnumValue) {
-    for (const valueNode of axEnum.EnumValues[0].AxEnumValue) {
-      const value: EnumValue = {
-        name: valueNode.Name ? valueNode.Name[0] : 'Unknown',
-        value: valueNode.Value ? parseInt(valueNode.Value[0], 10) : 0,
-      };
-
-      if (includeLabels && valueNode.Label) {
-        value.label = valueNode.Label[0];
-      }
-
-      enumInfo.values.push(value);
-    }
-  }
-}
-
-/**
- * Format enum output
- */
-function formatEnumOutput(enumInfo: EnumInfo, includeLabels: boolean): any {
-  let output = `# Enum: \`${enumInfo.name}\`\n\n`;
-  output += `**Model:** ${enumInfo.model}\n`;
-  output += `**Extensible:** ${enumInfo.isExtensible ? '✅' : '❌'}\n`;
-  output += `**Use Enum Value:** ${enumInfo.useEnumValue ? '✅' : '❌'}\n`;
-  output += `\n`;
-
-  if (enumInfo.values.length > 0) {
-    output += `## 📋 Enum Values (${enumInfo.values.length})\n\n`;
-    output += `| Name | Value${includeLabels ? ' | Label' : ''} |\n`;
-    output += `|------|-------${includeLabels ? '|-------' : ''}|\n`;
-
-    for (const value of enumInfo.values) {
-      output += `| ${value.name} | ${value.value}`;
-      if (includeLabels) {
-        output += ` | ${value.label || '-'}`;
-      }
-      output += ` |\n`;
-    }
-    output += `\n`;
-  }
-
-  output += `## 💡 Usage Example\n\n`;
-  output += `\`\`\`xpp\n`;
-  output += `// Assign enum value\n`;
-  output += `${enumInfo.name} myEnum = ${enumInfo.name}::${enumInfo.values[0]?.name || 'Value'};\n\n`;
-  output += `// Compare enum value\n`;
-  output += `if (myEnum == ${enumInfo.name}::${enumInfo.values[0]?.name || 'Value'})\n`;
-  output += `{\n`;
-  output += `    // Do something\n`;
-  output += `}\n`;
-  output += `\`\`\`\n`;
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: output,
-      },
-    ],
-  };
 }
 
 export const getEnumInfoToolDefinition = {

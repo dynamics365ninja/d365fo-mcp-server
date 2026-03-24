@@ -1,7 +1,10 @@
 /**
  * Get Report Info Tool
- * Reads an AxReport XML from disk and returns structured information:
+ * Reads an AxReport and returns structured information:
  * datasets (fields, query), designs (RDL summary or full RDL), data methods.
+ *
+ * PRIMARY: C# bridge (IMetadataProvider) — 100% reliable, always available on VM.
+ * FALLBACK: explicit XML file path for newly-created reports not yet in bridge.
  *
  * Eliminates the need for Copilot to run PowerShell Get-Content on report XML files.
  */
@@ -10,14 +13,16 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
-import path from 'path';
 import { parseStringPromise } from 'xml2js';
-import { getConfigManager } from '../utils/configManager.js';
 import { tryBridgeReport } from '../bridge/bridgeAdapter.js';
 
 const GetReportInfoArgsSchema = z.object({
   reportName: z.string().describe('Name of the AxReport object (without .xml extension)'),
   modelName: z.string().optional().describe('Model name — auto-detected from .mcp.json if not provided'),
+  filePath: z.string().optional().describe(
+    'Absolute path to the AxReport XML file on disk. ' +
+    'Use this for newly-created reports not yet in bridge metadata.'
+  ),
   includeFields: z.boolean().optional().default(true).describe('Include AxReportDataSetField entries per dataset'),
   includeRdl: z.boolean().optional().default(false).describe('Include full embedded RDL content inside <Text><![CDATA[…]]> — can be large, default false'),
 });
@@ -64,96 +69,69 @@ interface ReportInfo {
 export async function getReportInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = GetReportInfoArgsSchema.parse(request.params.arguments);
-    const { reportName, modelName, includeFields, includeRdl } = args;
-    // context is kept in signature for future use (e.g. telemetry)
-    void context;
+    const { reportName, filePath: explicitFilePath, includeFields, includeRdl } = args;
 
-    console.error(`[reportInfo] Looking up report "${reportName}"${modelName ? ` in model "${modelName}"` : ''}...`);
+    console.error(`[reportInfo] Looking up report "${reportName}"...`);
 
-    // Locate the file via cross-package filesystem scan.
-    // After re-indexing, reports WILL be in the symbol DB (type 'report').
-    // However, we use a direct filesystem scan here because:
-    //   a) it works even before re-indexing, and
-    //   b) the sourcePath in report stubs already points to the live XML.
-    // The scan tries the configured model first (fast path) then all packages.
-    const found = await findReportOnDisk(reportName, modelName);
+    // 1. C# bridge (IMetadataProvider — live D365FO metadata, always available)
+    const bridgeResult = await tryBridgeReport(context.bridge, reportName);
+    if (bridgeResult) return bridgeResult;
 
-    if (!found) {
-      // Try bridge as fallback (provides basic metadata even without XML on disk)
-      const bridgeResult = await tryBridgeReport(context.bridge, reportName);
-      if (bridgeResult) return bridgeResult;
-
-      console.error(`[reportInfo] Report "${reportName}" not found in any package under packagePath.`);
-      return {
-        content: [{
-          type: 'text',
-          text: `❌ Report "${reportName}" not found on disk.\n\n` +
-            `Searched all packages under the configured \`packagePath\`.\n` +
-            `Make sure the .mcp.json is configured with the correct \`packagePath\` and that the AxReport XML exists.`,
-        }],
-        isError: true,
-      };
-    }
-
-    const { filePath, resolvedModel } = found;
-    console.error(`[reportInfo] Found "${reportName}" at: ${filePath} (model: ${resolvedModel})`);
-
-    // 2. Read the XML — handle JSON metadata wrapper (same pattern as formInfo.ts)
-    let xmlContent: string | null = null;
-    try {
-      const raw = await fs.readFile(filePath, 'utf-8');
-      const trimmed = raw.trimStart();
-      if (trimmed.startsWith('{')) {
-        const meta = JSON.parse(raw);
-        if (meta.sourcePath) {
-          try { xmlContent = await fs.readFile(meta.sourcePath, 'utf-8'); } catch { /* not accessible */ }
+    // 2. Explicit file path fallback for newly-created reports
+    if (explicitFilePath) {
+      let xmlContent: string | null = null;
+      try {
+        const raw = await fs.readFile(explicitFilePath, 'utf-8');
+        const trimmed = raw.trimStart();
+        if (trimmed.startsWith('{')) {
+          const meta = JSON.parse(raw);
+          if (meta.sourcePath) {
+            try { xmlContent = await fs.readFile(meta.sourcePath, 'utf-8'); } catch { /* not accessible */ }
+          }
+        } else {
+          xmlContent = raw;
         }
-      } else {
-        xmlContent = raw;
+      } catch { /* file not readable */ }
+
+      if (!xmlContent) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ File at \`${explicitFilePath}\` could not be read.`,
+          }],
+          isError: true,
+        };
       }
-    } catch {
-      /* file not readable */
-    }
 
-    if (!xmlContent) {
-      return {
-        content: [{
-          type: 'text',
-          text: `❌ File found at \`${filePath}\` but could not be read.\n` +
-            `This may be an Azure deployment without local file system access.`,
-        }],
-        isError: true,
+      // Parse XML from explicit path
+      const xmlObj = await parseStringPromise(xmlContent, { explicitArray: true, mergeAttrs: false, trim: true });
+      const axReport = xmlObj?.AxReport;
+      if (!axReport) {
+        return { content: [{ type: 'text', text: `❌ File does not contain a valid <AxReport> root element.` }], isError: true };
+      }
+
+      const info: ReportInfo = {
+        name:                first(axReport.Name) ?? reportName,
+        model:               'Unknown',
+        filePath:            explicitFilePath,
+        hasDataMethods:      !!axReport.DataMethods && axReport.DataMethods[0] !== '',
+        embeddedImageCount:  countItems(axReport.EmbeddedImages?.[0], 'AxReportEmbeddedImage'),
+        dataSets:            extractDataSets(axReport, includeFields ?? true),
+        designs:             extractDesigns(axReport, includeRdl ?? false),
       };
+
+      return formatOutput(info, includeFields ?? true, includeRdl ?? false);
     }
 
-    // 3. Parse XML
-    const xmlObj = await parseStringPromise(xmlContent, {
-      explicitArray: true,
-      mergeAttrs: false,
-      trim: true,
-    });
-
-    const axReport = xmlObj?.AxReport;
-    if (!axReport) {
-      return {
-        content: [{ type: 'text', text: `❌ File does not contain a valid <AxReport> root element.` }],
-        isError: true,
-      };
-    }
-
-    // 4. Extract structured info
-    const info: ReportInfo = {
-      name:                first(axReport.Name) ?? reportName,
-      model:               resolvedModel,
-      filePath,
-      hasDataMethods:      !!axReport.DataMethods && axReport.DataMethods[0] !== '',
-      embeddedImageCount:  countItems(axReport.EmbeddedImages?.[0], 'AxReportEmbeddedImage'),
-      dataSets:            extractDataSets(axReport, includeFields ?? true),
-      designs:             extractDesigns(axReport, includeRdl ?? false),
+    return {
+      content: [{
+        type: 'text',
+        text: `❌ Report "${reportName}" not found via bridge.\n\n` +
+          `If this is a newly-created report, pass the explicit \`filePath\` parameter:\n` +
+          `  get_report_info(reportName="${reportName}", filePath="<absolute path to .xml>")`,
+      }],
+      isError: true,
     };
-
-    return formatOutput(info, includeFields ?? true, includeRdl ?? false);
-
   } catch (error) {
     return {
       content: [{
@@ -163,80 +141,6 @@ export async function getReportInfoTool(request: CallToolRequest, context: XppSe
       isError: true,
     };
   }
-}
-
-// ─── Cross-package report locator ─────────────────────────────────────────────
-
-/**
- * Scan PackagesLocalDirectory for an AxReport XML file by name.
- *
- * Search order:
- *   1. If modelName is provided — try <pkg>/<modelName>/AxReport/<name>.xml first (fast path).
- *   2. Scan ALL packages — each subdirectory of packagePath that itself contains a
- *      subdirectory with an AxReport folder.  This finds standard reports like InventValue
- *      that live in ApplicationSuite, not the custom model.
- */
-async function findReportOnDisk(
-  reportName: string,
-  modelName?: string,
-): Promise<{ filePath: string; resolvedModel: string } | null> {
-
-  const configManager = getConfigManager();
-  await configManager.ensureLoaded();
-
-  const packagePath = configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
-  const fileName = `${reportName}.xml`;
-
-  // ── Fast path: configured / provided model ────────────────────────────────
-  const preferredModels: string[] = [];
-  if (modelName && modelName !== 'any') preferredModels.push(modelName);
-  const cfgModel = configManager.getModelName();
-  if (cfgModel && !preferredModels.includes(cfgModel)) preferredModels.push(cfgModel);
-
-  for (const model of preferredModels) {
-    // Conventional layout: <packagePath>/<pkg>/<model>/AxReport/<name>.xml
-    // where pkg == model in the most common case.
-    const candidateSameDir = path.join(packagePath, model, model, 'AxReport', fileName);
-    try {
-      await fs.access(candidateSameDir);
-      console.error(`[reportInfo] Fast-path hit: ${candidateSameDir}`);
-      return { filePath: candidateSameDir, resolvedModel: model };
-    } catch { /* keep searching */ }
-  }
-
-  // ── Full scan: enumerate packages ────────────────────────────────────────
-  let pkgEntries: string[];
-  try {
-    pkgEntries = await fs.readdir(packagePath);
-  } catch {
-    console.error(`[reportInfo] Cannot enumerate packagePath "${packagePath}"`);
-    return null;
-  }
-
-  for (const pkg of pkgEntries) {
-    const pkgDir = path.join(packagePath, pkg);
-    // Each package dir may contain one or more model subdirs
-    let modelEntries: string[];
-    try {
-      const stat = await fs.stat(pkgDir);
-      if (!stat.isDirectory()) continue;
-      modelEntries = await fs.readdir(pkgDir);
-    } catch { continue; }
-
-    for (const mdl of modelEntries) {
-      // Skip already-checked preferred models at this pkg (fast-path covers pkg==mdl)
-      const candidate = path.join(pkgDir, mdl, 'AxReport', fileName);
-      try {
-        await fs.access(candidate);
-        // Derive model name from the inner folder name
-        const derivedModel = mdl;
-        console.error(`[reportInfo] Full-scan hit: ${candidate} (model: ${derivedModel})`);
-        return { filePath: candidate, resolvedModel: derivedModel };
-      } catch { /* keep searching */ }
-    }
-  }
-
-  return null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────

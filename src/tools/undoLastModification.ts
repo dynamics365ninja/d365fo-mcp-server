@@ -4,6 +4,8 @@ import util from 'util';
 import fs from 'fs';
 import { promises as fsp } from 'fs';
 import path from 'path';
+import type { XppServerContext } from '../types/context.js';
+import { bridgeRefreshProvider } from '../bridge/index.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -33,7 +35,7 @@ export const undoLastModificationToolDefinition = {
   })
 };
 
-export const undoLastModificationTool = async (params: any, _context: any) => {
+export const undoLastModificationTool = async (params: any, context: XppServerContext) => {
   const { filePath } = params;
   try {
     if (!filePath || typeof filePath !== 'string') {
@@ -83,8 +85,10 @@ export const undoLastModificationTool = async (params: any, _context: any) => {
 
     if (tracked) {
       await git(['checkout', 'HEAD', '--', relativePath], repoRoot);
+      // Re-index the reverted file so the symbol index reflects the restored version
+      await cleanupIndexAfterUndo(context, absolutePath, 'reverted');
       return {
-        content: [{ type: 'text', text: 'Successfully reverted tracked file modification: ' + absolutePath }],
+        content: [{ type: 'text', text: 'Successfully reverted tracked file modification: ' + absolutePath + '\nSymbol index updated to reflect the reverted state.' }],
       };
     }
 
@@ -118,8 +122,10 @@ export const undoLastModificationTool = async (params: any, _context: any) => {
     }
 
     fs.unlinkSync(absolutePath);
+    // Clean up stale index entries for the deleted file
+    await cleanupIndexAfterUndo(context, absolutePath, 'deleted');
     return {
-      content: [{ type: 'text', text: 'Successfully undid file creation (deleted untracked file): ' + absolutePath }],
+      content: [{ type: 'text', text: 'Successfully undid file creation (deleted untracked file): ' + absolutePath + '\nStale index entries cleaned up.' }],
     };
   } catch (error: any) {
     return {
@@ -128,3 +134,59 @@ export const undoLastModificationTool = async (params: any, _context: any) => {
     };
   }
 };
+
+// ── Index cleanup after undo ───────────────────────────────────────────────
+
+/**
+ * Clean up the symbol index, label index, Redis cache, and bridge after
+ * a file is reverted or deleted by undo_last_modification.
+ *
+ * - For DELETED files: remove all stale symbols + labels, invalidate cache.
+ * - For REVERTED files: re-index from the restored file content.
+ */
+async function cleanupIndexAfterUndo(
+  context: XppServerContext,
+  filePath: string,
+  action: 'deleted' | 'reverted',
+): Promise<void> {
+  const { symbolIndex, cache } = context;
+
+  try {
+    // 1. Remove stale symbols from SQLite
+    const { deletedCount, objectNames } = symbolIndex.removeSymbolsByFile(filePath);
+    console.error(`[undo] Removed ${deletedCount} stale symbol(s) for ${path.basename(filePath)}`);
+
+    // 2. Remove stale labels (label .txt files have the same path pattern)
+    const labelCount = symbolIndex.removeLabelsByFile(filePath);
+    if (labelCount > 0) {
+      console.error(`[undo] Removed ${labelCount} stale label(s) for ${path.basename(filePath)}`);
+    }
+
+    // 3. Invalidate Redis cache for affected objects
+    const primaryName = path.parse(filePath).name;
+    try {
+      for (const name of objectNames) {
+        await cache.delete(cache.generateClassKey(name));
+        await cache.delete(cache.generateTableKey(name));
+      }
+      await cache.deletePattern(`xpp:method-sig:${primaryName}:*`);
+      await cache.deletePattern(`xpp:complete:${primaryName}:*`);
+      await cache.deletePattern('xpp:search:*');
+    } catch { /* Redis not available */ }
+
+    // 4. Refresh bridge metadata provider
+    try {
+      await bridgeRefreshProvider(context.bridge);
+    } catch { /* bridge not available */ }
+
+    // 5. For reverted files: re-index the restored content
+    if (action === 'reverted' && fs.existsSync(filePath)) {
+      // Import dynamically to avoid circular dependency
+      const { updateSymbolIndexTool } = await import('./updateSymbolIndex.js');
+      await updateSymbolIndexTool({ filePath }, context);
+      console.error(`[undo] Re-indexed reverted file: ${path.basename(filePath)}`);
+    }
+  } catch (e) {
+    console.error(`[undo] Index cleanup failed (non-fatal): ${e}`);
+  }
+}

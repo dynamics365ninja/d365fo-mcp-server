@@ -2,6 +2,10 @@
  * Get Form Info Tool
  * Extract form structure: controls, datasources, methods
  * Returns control hierarchy, datasource configuration, form methods
+ *
+ * PRIMARY: C# bridge (IMetadataProvider) — 100% reliable, always available on VM.
+ * FALLBACK: explicitFilePath bypass for newly-created forms not yet in bridge.
+ * XML parsing helpers are shared by both paths for searchControl filtering.
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -9,11 +13,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
-import { resolveDbPathLocally } from '../utils/metadataResolver.js';
-import { findD365FileOnDisk } from './modifyD365File.js';
-import { getConfigManager } from '../utils/configManager.js';
 import { tryBridgeForm } from '../bridge/bridgeAdapter.js';
-import path from 'path';
 
 const GetFormInfoArgsSchema = z.object({
   formName: z.string().describe('Name of the form'),
@@ -70,21 +70,17 @@ interface FormInfo {
 export async function getFormInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = GetFormInfoArgsSchema.parse(request.params.arguments);
-    const { symbolIndex, hybridSearch } = context;
     const { 
       formName, 
-      modelName,
       filePath: explicitFilePath,
       includeControls, 
       includeDataSources, 
       includeMethods,
-      includeWorkspace,
-      workspacePath,
       searchControl,
     } = args;
 
-    // 0. If an explicit filePath is provided, skip the DB lookup entirely.
-    // This is the retry path when Strategy A–D failed and the caller supplies the path directly.
+    // 0. If an explicit filePath is provided, skip bridge entirely.
+    // This is the retry path for newly-created forms not yet in bridge metadata.
     if (explicitFilePath) {
       let xmlContent: string | null = null;
       try {
@@ -102,152 +98,19 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       return await parseAndFormatForm(formName, 'Unknown', xmlContent, includeControls, includeDataSources, includeMethods, searchControl);
     }
 
-    // Try C# bridge first (IMetadataProvider — live D365FO metadata)
+    // 1. C# bridge (IMetadataProvider — live D365FO metadata, always available)
     const bridgeResult = await tryBridgeForm(context.bridge, formName);
     if (bridgeResult) return bridgeResult;
 
-    // 1. Find the form (with workspace support)
-    let formRow: any = null;
-    
-    // Try workspace first if requested
-    if (includeWorkspace && workspacePath && hybridSearch) {
-      const workspaceResults = await hybridSearch.search(formName, {
-        types: ['form'],
-        limit: 1,
-        workspacePath,
-        includeWorkspace: true,
-      });
-      
-      if (workspaceResults.length > 0 && workspaceResults[0].source === 'workspace' && workspaceResults[0].file) {
-        formRow = {
-          file_path: workspaceResults[0].file.path,
-          model: 'Workspace',
-          name: formName,
-        };
-      }
-    }
-    
-    // Fallback to database if not found in workspace
-    if (!formRow) {
-      let stmt;
-      if (modelName) {
-        stmt = symbolIndex.db.prepare(`
-          SELECT file_path, model, name
-          FROM symbols
-          WHERE type = 'form' AND name = ? AND model = ?
-          LIMIT 1
-        `);
-        formRow = stmt.get(formName, modelName) as any;
-      } else {
-        stmt = symbolIndex.db.prepare(`
-          SELECT file_path, model, name
-          FROM symbols
-          WHERE type = 'form' AND name = ?
-          ORDER BY model
-          LIMIT 1
-        `);
-        formRow = stmt.get(formName) as any;
-      }
-    }
-
-    if (!formRow) {
-      throw new Error(`Form "${formName}" not found. Make sure it's indexed or provide workspacePath for local forms.`);
-    }
-
-    // 2. Read the form XML — four strategies, most specific to most generic
-    //
-    // Strategy A: read the DB-stored path directly (works for absolute Windows paths from
-    //             a locally indexed DB, e.g. K:\AOSService\PackagesLocalDirectory\...\AxForm\SalesTable.xml)
-    let xmlContent: string | null = null;
-    try {
-      const fileContent = await fs.readFile(formRow.file_path, 'utf-8');
-      const trimmed = fileContent.trimStart();
-      if (trimmed.startsWith('{')) {
-        // JSON metadata — extract sourcePath and read actual XML from there
-        const data = JSON.parse(fileContent);
-        if (data.sourcePath) {
-          try {
-            xmlContent = await fs.readFile(data.sourcePath, 'utf-8');
-          } catch {
-            // sourcePath not accessible
-          }
-        }
-      } else {
-        xmlContent = fileContent;
-      }
-    } catch {
-      // file_path not accessible — try fallbacks below
-    }
-
-    // Strategy B: DB stores a RELATIVE path (e.g. "AslCore/AslCore/AxForm/MyForm.xml").
-    // Join it with the configured packages path to get the absolute path on this machine.
-    if (!xmlContent && !path.isAbsolute(formRow.file_path)) {
-      const cm = getConfigManager();
-      await cm.ensureLoaded();
-      const pkgPath = cm.getPackagePath() || 'K:\\AOSService\\PackagesLocalDirectory';
-      const absolutePath = path.join(pkgPath, formRow.file_path);
-      try {
-        xmlContent = await fs.readFile(absolutePath, 'utf-8');
-      } catch {
-        // Not accessible at this packages path
-      }
-    }
-
-    // Strategy C: build-agent path (e.g. /home/vsts/work/.../PackagesLocalDirectory/...) —
-    // remap to local PackagesLocalDirectory.
-    if (!xmlContent) {
-      const remappedPath = await resolveDbPathLocally(formRow.file_path);
-      if (remappedPath) {
-        try {
-          xmlContent = await fs.readFile(remappedPath, 'utf-8');
-        } catch {
-          // Remapped path not readable
-        }
-      }
-    }
-
-    // Strategy D: scan the configured packages directory for the form XML using the model
-    // name from the DB row (handles cases where Strategy B fails because the configured
-    // packages path differs from the default, or UDE layout is used).
-    if (!xmlContent) {
-      const diskPath = await findD365FileOnDisk('form', formName, formRow.model);
-      if (diskPath) {
-        try {
-          xmlContent = await fs.readFile(diskPath, 'utf-8');
-        } catch {
-          // Local path also not accessible
-        }
-      }
-    }
-
-    if (!xmlContent) {
-      // Build a list of paths we tried so the human/AI can diagnose and retry
-      const cm = getConfigManager();
-      await cm.ensureLoaded();
-      const pkgPath = cm.getPackagePath() || 'K:\\AOSService\\PackagesLocalDirectory';
-      const guessedAbsPath = path.isAbsolute(formRow.file_path)
-        ? formRow.file_path
-        : path.join(pkgPath, formRow.file_path);
-
-      return {
-        content: [{
-          type: 'text',
-          text:
-            `⚠️ get_form_info: form XML for "${formName}" (model: ${formRow.model}) could not be read from disk.\n\n` +
-            `**DO NOT use PowerShell or read_file to work around this — retry get_form_info with the filePath parameter instead.**\n\n` +
-            `Tried path (from DB): \`${formRow.file_path}\`\n` +
-            `Guessed absolute path: \`${guessedAbsPath}\`\n\n` +
-            `✅ **Retry with explicit filePath:**\n` +
-            `  get_form_info(formName="${formName}", filePath="${guessedAbsPath}")\n\n` +
-            `If the path above is wrong, locate the form at:\n` +
-            `  \`{packagePath}\\${formRow.model}\\${formRow.model}\\AxForm\\${formName}.xml\`\n` +
-            `and pass it via the filePath parameter.`,
-        }],
-      };
-    }
-
-    return await parseAndFormatForm(formName, formRow.model, xmlContent, includeControls, includeDataSources, includeMethods, searchControl);
-
+    return {
+      content: [{
+        type: 'text',
+        text: `Form "${formName}" not found. Bridge returned no data — ensure the form exists in D365FO metadata.\n\n` +
+          `If this is a newly-created form, pass the explicit filePath parameter:\n` +
+          `  get_form_info(formName="${formName}", filePath="<absolute path to .xml>")`,
+      }],
+      isError: true,
+    };
   } catch (error) {
     return {
       content: [

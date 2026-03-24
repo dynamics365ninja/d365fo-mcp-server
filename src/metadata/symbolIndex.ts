@@ -657,6 +657,44 @@ export class XppSymbolIndex {
   }
 
   /**
+   * Remove all symbols for a given file path from both the main table and FTS index.
+   * Returns the names of top-level objects that were removed (for cache invalidation).
+   */
+  removeSymbolsByFile(filePath: string): { deletedCount: number; objectNames: string[] } {
+    // Collect object names BEFORE deletion (for cache invalidation)
+    const rows = this.db.prepare(
+      `SELECT DISTINCT name FROM symbols WHERE file_path = ? AND parent_name IS NULL`
+    ).all(filePath) as Array<{ name: string }>;
+    const objectNames = rows.map(r => r.name);
+
+    // The FTS trigger (symbols_fts AFTER DELETE) handles FTS cleanup automatically
+    const result = this.db.prepare(`DELETE FROM symbols WHERE file_path = ?`).run(filePath);
+    return { deletedCount: result.changes, objectNames };
+  }
+
+  /**
+   * Remove all labels for a given file path from the labels DB.
+   * Also cleans up the labels FTS index.
+   * Returns the count of deleted label rows.
+   */
+  removeLabelsByFile(filePath: string): number {
+    // The labels_ad trigger handles FTS cleanup for en-US rows
+    const result = this.labelsDb.prepare(`DELETE FROM labels WHERE file_path = ?`).run(filePath);
+    return result.changes;
+  }
+
+  /**
+   * Remove all labels matching a specific label_id + model combination.
+   * Used when a label is known to have been deleted/reverted.
+   */
+  removeLabelById(labelId: string, model: string): number {
+    const result = this.labelsDb.prepare(
+      `DELETE FROM labels WHERE label_id = ? AND model = ?`
+    ).run(labelId, model);
+    return result.changes;
+  }
+
+  /**
    * Sanitize a user query for FTS5 to prevent syntax errors.
    * FTS5 operators (AND, OR, NOT, NEAR, quotes, parens, *) can crash the engine
    * when they appear in raw user input. Wraps each token as a quoted prefix term.

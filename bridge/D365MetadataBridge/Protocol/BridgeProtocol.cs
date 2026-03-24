@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -59,6 +60,43 @@ namespace D365MetadataBridge.Protocol
                 return prop.GetBoolean();
 
             return null;
+        }
+
+        /// <summary>
+        /// Helper to deserialize a complex parameter (array or object) from Params.
+        /// Returns default(T) if parameter is missing or null.
+        /// </summary>
+        public T? GetParam<T>(string name) where T : class
+        {
+            if (Params == null || Params.Value.ValueKind != JsonValueKind.Object)
+                return null;
+
+            if (!Params.Value.TryGetProperty(name, out var prop))
+                return null;
+
+            if (prop.ValueKind == JsonValueKind.Null)
+                return null;
+
+            return JsonSerializer.Deserialize<T>(prop.GetRawText(), JsonOptions.Default);
+        }
+
+        /// <summary>
+        /// Helper to extract a Dictionary&lt;string,string&gt; from a JSON object parameter.
+        /// </summary>
+        public Dictionary<string, string>? GetDictParam(string name)
+        {
+            if (Params == null || Params.Value.ValueKind != JsonValueKind.Object)
+                return null;
+
+            if (!Params.Value.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.Object)
+                return null;
+
+            var dict = new Dictionary<string, string>();
+            foreach (var kv in prop.EnumerateObject())
+            {
+                dict[kv.Name] = kv.Value.GetString() ?? kv.Value.GetRawText();
+            }
+            return dict;
         }
     }
 

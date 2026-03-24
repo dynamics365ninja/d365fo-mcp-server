@@ -17,11 +17,13 @@ zero behavioral change.
 - [Architecture](#architecture)
 - [Process Lifecycle](#process-lifecycle)
 - [Integration into Tool Handlers](#integration-into-tool-handlers)
+- [Write Operations (Phase 4)](#write-operations-phase-4)
 - [Request Flow — End to End](#request-flow--end-to-end)
 - [JSON-RPC Protocol](#json-rpc-protocol)
 - [C# Components](#c-components)
 - [TypeScript Components](#typescript-components)
 - [Supported Endpoints](#supported-endpoints)
+- [Index Lifecycle & Cache Invalidation](#index-lifecycle--cache-invalidation)
 - [Data Source Comparison](#data-source-comparison)
 - [Deployment Scenarios](#deployment-scenarios)
 - [Configuration](#configuration)
@@ -55,7 +57,8 @@ graph TB
     subgraph "Node.js Process"
         MCP[MCP Server]
         TH[Tool Handlers<br/>tableInfo, classInfo, ...]
-        BA[bridgeAdapter.ts<br/>tryBridge* functions]
+        WH[Write Handlers<br/>createD365File, modifyD365File]
+        BA[bridgeAdapter.ts<br/>tryBridge* + bridge*Write]
         BC[bridgeClient.ts<br/>BridgeClient class]
         SI[(SQLite DB<br/>584K+ symbols)]
         PARSER[XML Parser]
@@ -64,27 +67,34 @@ graph TB
     subgraph "C# Child Process (.NET 4.8)"
         RD[RequestDispatcher]
         MRS[MetadataReadService]
+        MWS[MetadataWriteService]
         XRS[CrossReferenceService]
         IMP[IMetadataProvider<br/>Microsoft Dev Tools API]
         XREF[(DYNAMICSXREFDB<br/>SQL Server)]
     end
 
     MCP --> TH
-    TH -->|"1. try bridge"| BA
+    MCP --> WH
+    TH -->|"1. try bridge read"| BA
+    WH -->|"1. try bridge write"| BA
     BA --> BC
     BC -->|"stdin: JSON-RPC"| RD
     RD --> MRS
+    RD --> MWS
     RD --> XRS
     MRS --> IMP
+    MWS -->|"Create / Update"| IMP
     XRS --> XREF
     RD -->|"stdout: JSON-RPC"| BC
 
     TH -->|"2. fallback"| SI
     TH -->|"2. fallback"| PARSER
+    WH -->|"2. fallback"| PARSER
 
     style BA fill:#4CAF50,color:#fff
     style BC fill:#4CAF50,color:#fff
     style MRS fill:#0078D4,color:#fff
+    style MWS fill:#E65100,color:#fff
     style XRS fill:#0078D4,color:#fff
     style IMP fill:#68217A,color:#fff
     style XREF fill:#DC382D,color:#fff
@@ -182,14 +192,139 @@ In all of these cases, the existing logic runs as if the bridge didn't exist.
 | `find_references` | `tryBridgeReferences()` | `DYNAMICSXREFDB` |
 | `search` | `tryBridgeSearch()` | `IMetadataProvider` (multi-type) |
 
+### Write Tool Handlers (Phase 4)
+
+`create_d365fo_file` and `modify_d365fo_file` now use the bridge as **primary write
+path** for supported object types. The bridge writes via `IMetadataProvider.Create()`
+and `IMetadataProvider.Update()` — the official D365FO API — guaranteeing correct XML
+structure, encoding, and AOT path.
+
+| Tool | Adapter Function | Supported Types | Bridge API |
+|---|---|---|---|
+| `create_d365fo_file` | `bridgeCreateObject()` | class, table, enum, edt, query, view, menu-item-action/display/output, security-privilege/duty/role | `IMetaXxxProvider.Create()` |
+| `modify_d365fo_file` | `bridgeAddMethod()` | class, table, enum, edt, form, query, view | Read → Modify → `Update()` |
+| `modify_d365fo_file` | `bridgeAddField()` | table | Read → Modify → `Update()` |
+| `modify_d365fo_file` | `bridgeSetProperty()` | class, table, enum, edt, form, query, view, menu-item-action/display/output | Read → Modify → `Update()` |
+| `modify_d365fo_file` | `bridgeReplaceCode()` | class, table, enum, edt, form, query, view | Read → Modify → `Update()` |
+| (internal) | `bridgeDeleteObject()` | class, table, enum, edt | `IMetaXxxProvider.Delete()` |
+| (internal) | `bridgeBatchModify()` | class, table, enum, edt | Multiple operations in one call |
+| (internal) | `bridgeGetCapabilities()` | — | Reports supported types + operations |
+| (internal) | `bridgeDiscoverFormPatterns()` | form | Analyzes form design patterns |
+
+The pattern is identical to reads — **try bridge first, fall back to TypeScript**:
+
+```typescript
+// In createD365File.ts — for class, table, enum, edt:
+if (!args.xmlContent && context?.bridge && canBridgeCreate(args.objectType)) {
+  const result = await bridgeCreateObject(context.bridge, { objectType, objectName, modelName, ... });
+  if (result?.success) return result;   // ✅ Bridge wrote the file
+}
+// Fall through to TypeScript XML generation (forms, reports, extensions, ...)
+```
+
+```typescript
+// In modifyD365File.ts — for supported operations:
+if (!dryRun && context?.bridge && canBridgeModify(objectType, operation)) {
+  const result = await bridgeAddMethod(context.bridge, objectType, objectName, ...);
+  if (result?.success) return result;   // ✅ Bridge modified the file
+}
+// Fall through to xml2js-based modification
+```
+
+> **Note:** `dryRun` mode always uses the TypeScript xml2js path because the bridge
+> writes directly to disk via `IMetadataProvider.Update()` — it cannot produce a
+> diff preview without making changes.
+
 ### Tools NOT Using the Bridge
 
-These tools perform write operations or use specialized logic that doesn't benefit from the bridge:
+These tools use specialized logic that doesn't benefit from the bridge:
 
-- `create_d365fo_file`, `modify_d365fo_file` — file write operations
-- `generate_smart_table`, `generate_smart_form`, `generate_smart_report` — code generation
+- `generate_smart_table`, `generate_smart_form`, `generate_smart_report` — AI code generation
 - `analyze_extension_points`, `recommend_extension_strategy` — analysis heuristics
 - `find_coc_extensions`, `find_event_handlers` — SQLite FTS pattern matching
+- `create_d365fo_file` for forms, reports, extensions — remain in TypeScript
+- `modify_d365fo_file` for add-index, add-relation, add-field-group, add-control, rename-field — remain in xml2js
+- `update_symbol_index` — SQLite + Redis cache invalidation (bridge is refreshed but not used for indexing)
+- `undo_last_modification` — git operations + index cleanup (uses bridge refresh only)
+
+---
+
+## Write Operations (Phase 4)
+
+Phase 4 moved create and modify logic from manual TypeScript XML generation to the
+official `IMetadataProvider.Create()` / `Update()` API via the C# bridge. This
+eliminates an entire class of XML formatting bugs (wrong encoding, missing CDATA
+wrappers, incorrect AOT paths, etc.).
+
+### Discovery: DiskProvider Supports Writes
+
+The D365FO `DiskProvider` (implementation of `IMetadataProvider`) was initially assumed
+to be read-only. Probing revealed that `Create()`, `Update()`, and `Delete()` are all
+functional — they are simply **explicit interface implementations**, which is why
+dynamic dispatch fails:
+
+```csharp
+// ❌ Dynamic fails — RuntimeBinderException (explicit interface implementation)
+dynamic classes = provider.Classes;
+classes.Create(axClass, modelSaveInfo);
+
+// ✅ Interface cast works — file written to disk
+var typed = provider.Classes as IMetaClassProvider;
+typed.Create(axClass, modelSaveInfo);
+```
+
+### Supported Object Types
+
+| Object Type | Create | Modify (add-method, add-field, set-property, replace-code) |
+|---|---|---|
+| Class | ✅ `IMetaClassProvider.Create()` | ✅ Read → Modify → `Update()` |
+| Table | ✅ `IMetaTableProvider.Create()` | ✅ Read → Modify → `Update()` |
+| Enum | ✅ `IMetaEnumProvider.Create()` | ✅ Read → Modify → `Update()` |
+| EDT | ✅ `IMetaEdtProvider.Create()` | ✅ Read → Modify → `Update()` |
+| Query | ✅ `IMetaQueryProvider.Create()` | ✅ Read → Modify → `Update()` |
+| View | ✅ `IMetaViewProvider.Create()` | ✅ Read → Modify → `Update()` |
+| Menu Item (Action) | ✅ `IMetaMenuItemActionProvider.Create()` | ✅ set-property via `Update()` |
+| Menu Item (Display) | ✅ `IMetaMenuItemDisplayProvider.Create()` | ✅ set-property via `Update()` |
+| Menu Item (Output) | ✅ `IMetaMenuItemOutputProvider.Create()` | ✅ set-property via `Update()` |
+| Security Privilege | ✅ `IMetaSecurityPrivilegeProvider.Create()` | — (xml2js) |
+| Security Duty | ✅ `IMetaSecurityDutyProvider.Create()` | — (xml2js) |
+| Security Role | ✅ `IMetaSecurityRoleProvider.Create()` | — (xml2js) |
+| Form | — (TypeScript XML) | ✅ add-method, set-property, replace-code via `Update()` |
+| Report | — (TypeScript XML) | — (xml2js) |
+| Extensions | — (TypeScript XML) | — (xml2js) |
+
+### ModelSaveInfo Resolution
+
+Both `Create()` and `Update()` require a `ModelSaveInfo` with valid `Id` and `Layer`.
+The `MetadataWriteService.ResolveModelSaveInfo(modelName)` method obtains these by
+scanning model descriptor XML files at:
+
+```
+{packagesPath}/{packageName}/Descriptor/{modelName}.xml
+```
+
+It parses the `<Id>` and `<Layer>` elements from the descriptor. The resolved info is
+cached for subsequent calls.
+
+### Fallback Strategy
+
+The bridge-first write path is **non-destructive**: if the bridge is unavailable,
+returns an error, or doesn't support the object type, the existing TypeScript code
+path runs exactly as before:
+
+```
+create_d365fo_file("class", "MyClass", ...)
+  ├─ canBridgeCreate("class") → true
+  ├─ bridgeCreateObject(bridge, params)
+  │   ├─ Bridge available? → yes
+  │   ├─ C#: IMetaClassProvider.Create(axClass, modelSaveInfo)
+  │   └─ ✅ Return { success: true, filePath: "..." }
+  └─ Early return with bridge result
+
+create_d365fo_file("form", "MyForm", ...)
+  ├─ canBridgeCreate("form") → false
+  └─ Skip bridge → TypeScript XmlTemplateGenerator.generate(...)
+```
 
 ---
 
@@ -319,10 +454,11 @@ D365MetadataBridge/
 ├── Program.cs                      Entry point — arg parsing, DLL loading, process loop
 ├── D365MetadataBridge.csproj       .NET Framework 4.8 project
 ├── Protocol/
-│   ├── BridgeProtocol.cs           Request/Response/Error JSON models
-│   └── RequestDispatcher.cs        Routes methods to service handlers
+│   ├── BridgeProtocol.cs           Request/Response/Error JSON models + GetParam<T> helpers
+│   └── RequestDispatcher.cs        Routes methods to read/write service handlers
 ├── Services/
-│   ├── MetadataReadService.cs      IMetadataProvider wrapper (tables, classes, enums, ...)
+│   ├── MetadataReadService.cs      IMetadataProvider wrapper — read operations
+│   ├── MetadataWriteService.cs     IMetadataProvider wrapper — create/modify operations (Phase 4)
 │   └── CrossReferenceService.cs    DYNAMICSXREFDB SQL queries
 └── Models/
     └── Models.cs                   C# POCOs matching TypeScript bridge types
@@ -347,6 +483,53 @@ read methods:
 | `GetMethodSource(class, method)` | `provider.Classes.Read(class)` | Full X++ source of one method |
 | `SearchObjects(type, query, max)` | Iterates `provider.*.GetPrimaryKeys()` | Matching object names |
 | `ListObjects(type)` | `provider.*.GetPrimaryKeys()` | All object names of a type |
+
+### MetadataWriteService (Phase 4)
+
+Wraps `IMetadataProvider` for **write operations** — creating new objects and modifying
+existing ones. Uses the same provider instance as `MetadataReadService` via the
+`OnProviderRefreshed` callback mechanism.
+
+**Key design decisions:**
+
+1. **Explicit interface casts** — DiskProvider implements `Create()`/`Update()` as
+   explicit interface members. The service casts to `IMetaClassProvider`,
+   `IMetaTableProvider`, `IMetaEnumProvider`, `IMetaEdtProvider` to access them.
+
+2. **ModelSaveInfo resolution** — `ResolveModelSaveInfo(modelName)` scans model
+   descriptor XML files at `{packagesPath}/{pkg}/Descriptor/{model}.xml` to obtain
+   a valid `Id` + `Layer` required by `Create()`/`Update()`.
+
+3. **AxEdt is abstract** — EDT creation selects the concrete subtype (`AxEdtString`,
+   `AxEdtInt`, `AxEdtReal`, `AxEdtDate`, etc.) based on the `BaseType` property.
+
+4. **Read→Modify→Update pattern** — For modify operations (`AddMethod`, `AddField`,
+   `SetProperty`, `ReplaceCode`), the service reads the current object via
+   `provider.Xxx.Read(name)`, mutates the in-memory object, then calls
+   `((IMetaXxxProvider)provider.Xxx).Update(obj, modelSaveInfo)` to persist.
+
+| Method | Objects | API Used |
+|---|---|---|
+| `CreateClass(name, model, declaration, methods)` | AxClass | `IMetaClassProvider.Create()` |
+| `CreateTable(name, model, fields, indexes, ...)` | AxTable | `IMetaTableProvider.Create()` |
+| `CreateEnum(name, model, values, properties)` | AxEnum | `IMetaEnumProvider.Create()` |
+| `CreateEdt(name, model, baseType, properties)` | AxEdt* | `IMetaEdtProvider.Create()` |
+| `CreateQuery(name, model, ...)` | AxQuery | `IMetaQueryProvider.Create()` |
+| `CreateView(name, model, ...)` | AxView | `IMetaViewProvider.Create()` |
+| `CreateMenuItemAction(name, model, ...)` | AxMenuItemAction | `IMetaMenuItemActionProvider.Create()` |
+| `CreateMenuItemDisplay(name, model, ...)` | AxMenuItemDisplay | `IMetaMenuItemDisplayProvider.Create()` |
+| `CreateMenuItemOutput(name, model, ...)` | AxMenuItemOutput | `IMetaMenuItemOutputProvider.Create()` |
+| `CreateSecurityPrivilege(name, model, ...)` | AxSecurityPrivilege | `IMetaSecurityPrivilegeProvider.Create()` |
+| `CreateSecurityDuty(name, model, ...)` | AxSecurityDuty | `IMetaSecurityDutyProvider.Create()` |
+| `CreateSecurityRole(name, model, ...)` | AxSecurityRole | `IMetaSecurityRoleProvider.Create()` |
+| `AddMethod(type, name, methodName, source)` | class/table/form/query/view | Read → `Update()` |
+| `AddField(tableName, fieldName, fieldType, ...)` | table | Read → `Update()` |
+| `SetProperty(type, name, path, value)` | class/table/enum/edt/form/query/view/menu-items | Read → `Update()` |
+| `ReplaceCode(type, name, method, old, new)` | class/table/form/query/view | Read → `Update()` |
+| `DeleteObject(type, name, model)` | class/table/enum/edt | `IMetaXxxProvider.Delete()` |
+| `BatchModify(operations[])` | class/table/enum/edt | Multiple Read → `Update()` |
+| `GetCapabilities()` | — | Reports supported types + operations |
+| `DiscoverFormPatterns(formName)` | form | Analyzes form design patterns |
 
 ### CrossReferenceService
 
@@ -386,8 +569,8 @@ Located in `src/bridge/`:
 src/bridge/
 ├── index.ts              Barrel exports for all bridge types and functions
 ├── bridgeClient.ts       BridgeClient class — spawn, JSON-RPC, typed methods
-├── bridgeTypes.ts        ~35 TypeScript interfaces matching C# models
-└── bridgeAdapter.ts      12 tryBridge*() adapter functions for tool handlers
+├── bridgeTypes.ts        ~50 TypeScript interfaces matching C# models (incl. write, delete, batch, capabilities types)
+└── bridgeAdapter.ts      12 tryBridge*() read adapters + 11 bridge*() write adapters (create/modify/delete/batch/capabilities/patterns)
 ```
 
 ### BridgeClient (`bridgeClient.ts`)
@@ -397,7 +580,8 @@ Singleton class managing the child process lifecycle:
 - **`initialize()`** — Spawns the `.exe`, waits for the `"ready"` JSON message (30s timeout)
 - **`call<T>(method, params)`** — Sends JSON-RPC request, returns typed promise (60s timeout)
 - **`dispose()`** — Gracefully shuts down the child process
-- **14 typed convenience methods** — `readTable()`, `readClass()`, `findReferences()`, etc.
+- **14 typed read methods** — `readTable()`, `readClass()`, `findReferences()`, etc.
+- **9 typed write methods** — `createObject()`, `addMethod()`, `addField()`, `setProperty()`, `replaceCode()`, `deleteObject()`, `batchModify()`, `getCapabilities()`, `discoverFormPatterns()`
 
 Properties:
 - `isReady` — Process is running and initialized
@@ -424,7 +608,7 @@ interface BridgeTableInfo {
 
 ### Bridge Adapter (`bridgeAdapter.ts`)
 
-Twelve `tryBridge*()` functions, one per tool handler. Each:
+Twelve `tryBridge*()` read functions plus eleven `bridge*()` write functions. Each:
 
 1. Checks `bridge?.isReady` (and `bridge.metadataAvailable` or `bridge.xrefAvailable`)
 2. Calls the appropriate bridge method
@@ -456,6 +640,8 @@ so the AI client can distinguish it from SQLite-sourced data.
 
 ## Supported Endpoints
 
+### Read Endpoints
+
 | Method | Parameters | Response Type | Source |
 |---|---|---|---|
 | `ping` | — | `"pong"` | Health |
@@ -475,6 +661,71 @@ so the AI client can distinguish it from SQLite-sourced data.
 | `findReferences` | `targetName` / `objectPath` | `BridgeReferenceResult` | DYNAMICSXREFDB |
 | `getXrefSchema` | — | Schema info | DYNAMICSXREFDB |
 | `sampleXrefRows` | `tableName?` | Sample data | DYNAMICSXREFDB |
+
+### Write Endpoints (Phase 4+)
+
+| Method | Parameters | Response Type | API |
+|---|---|---|---|
+| `createObject` | `objectType`, `objectName`, `modelName`, `declaration?`, `methods?`, `fields?`, `values?`, `properties?` | `BridgeWriteResult` | `IMetaXxxProvider.Create()` |
+| `addMethod` | `objectType`, `objectName`, `methodName`, `sourceCode` | `BridgeWriteResult` | Read → `Update()` |
+| `addField` | `objectName`, `fieldName`, `fieldType`, `edt?`, `mandatory?`, `label?` | `BridgeWriteResult` | Read → `Update()` |
+| `setProperty` | `objectType`, `objectName`, `propertyPath`, `propertyValue` | `BridgeWriteResult` | Read → `Update()` |
+| `replaceCode` | `objectType`, `objectName`, `methodName?`, `oldCode`, `newCode` | `BridgeWriteResult` | Read → `Update()` |
+| `deleteObject` | `objectType`, `objectName`, `modelName` | `BridgeDeleteResult` | `IMetaXxxProvider.Delete()` |
+| `batchModify` | `operations[]` (array of modify requests) | `BridgeBatchOperationResult` | Multiple Read → `Update()` |
+| `getCapabilities` | — | `BridgeCapabilities` | Reports supported types + ops |
+| `discoverFormPatterns` | `formName` | `BridgeFormPatternDiscoveryResult` | Analyzes form design |
+
+---
+
+## Index Lifecycle & Cache Invalidation
+
+When files are created, modified, or deleted, the MCP server keeps the SQLite symbol
+index, labels database, and Redis cache in sync via a coordinated cleanup pipeline:
+
+```mermaid
+graph TD
+    CREATE([create_d365fo_file]) --> USI[update_symbol_index]
+    MODIFY([modify_d365fo_file]) --> USI
+    DELETE([undo_last_modification<br/>delete untracked]) --> CLEANUP[cleanupIndexAfterUndo]
+    REVERT([undo_last_modification<br/>revert tracked]) --> CLEANUP
+
+    USI --> EXIST{File exists?}
+    EXIST -->|Yes| REINDEX[Re-parse XML → update SQLite symbols + labels]
+    EXIST -->|No| REMOVE[Remove stale symbols + labels from SQLite]
+    
+    REINDEX --> INVALIDATE[Invalidate Redis cache entries]
+    REMOVE --> INVALIDATE
+    INVALIDATE --> REFRESH[Refresh C# bridge provider]
+    
+    CLEANUP --> REMOVE2[Remove stale symbols + labels from SQLite]
+    REMOVE2 --> INVALIDATE2[Invalidate Redis cache entries]
+    INVALIDATE2 --> REFRESH2[Refresh C# bridge provider]
+    REFRESH2 --> REVERT_CHECK{Was it a revert?}
+    REVERT_CHECK -->|Yes| REINDEX2[Re-index restored file]
+    REVERT_CHECK -->|No| DONE2([Done])
+    REINDEX2 --> DONE2
+    
+    REFRESH --> DONE([Done])
+
+    style CREATE fill:#4CAF50,color:#fff
+    style MODIFY fill:#4CAF50,color:#fff
+    style DELETE fill:#DC382D,color:#fff
+    style REVERT fill:#FF9800,color:#fff
+    style INVALIDATE fill:#DC382D,color:#fff
+    style INVALIDATE2 fill:#DC382D,color:#fff
+```
+
+**Redis patterns cleared on invalidation:**
+- `xpp:class:{Name}` / `xpp:table:{Name}` — direct object cache
+- `xpp:method-sig:{Name}:*` — method signature cache
+- `xpp:complete:{Name}:*` — code completion cache
+- `xpp:search:*` — all search result cache (full flush)
+
+**SQLite cleanup methods** (in `symbolIndex.ts`):
+- `removeSymbolsByFile(filePath)` — removes all symbols for a file, returns affected object names
+- `removeLabelsByFile(filePath)` — removes all labels for a file (FTS trigger handles cascade)
+- `removeLabelById(labelId, model)` — targeted label removal
 
 ---
 

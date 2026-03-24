@@ -24,6 +24,38 @@ vi.mock('../../src/tools/modifyD365File', async (orig) => {
   return { ...actual, findD365FileOnDisk: vi.fn(async () => null) };
 });
 
+// Mock bridgeAdapter — the simplified tools rely on bridge as the primary/sole data source.
+// Individual tests override return values via mockResolvedValueOnce.
+// vi.hoisted ensures these variables exist when vi.mock factory runs (hoisted).
+const {
+  mockTryBridgeEnum,
+  mockTryBridgeEdt,
+  mockTryBridgeForm,
+  mockTryBridgeQuery,
+  mockTryBridgeView,
+  mockTryBridgeReport,
+  mockTryBridgeTable,
+} = vi.hoisted(() => ({
+  mockTryBridgeEnum: vi.fn(async () => null),
+  mockTryBridgeEdt: vi.fn(async () => null),
+  mockTryBridgeForm: vi.fn(async () => null),
+  mockTryBridgeQuery: vi.fn(async () => null),
+  mockTryBridgeView: vi.fn(async () => null),
+  mockTryBridgeReport: vi.fn(async () => null),
+  mockTryBridgeTable: vi.fn(async () => null),
+}));
+vi.mock('../../src/bridge/bridgeAdapter', () => ({
+  tryBridgeTable: mockTryBridgeTable,
+  tryBridgeClass: vi.fn(async () => null),
+  tryBridgeEnum: mockTryBridgeEnum,
+  tryBridgeEdt: mockTryBridgeEdt,
+  tryBridgeForm: mockTryBridgeForm,
+  tryBridgeQuery: mockTryBridgeQuery,
+  tryBridgeView: mockTryBridgeView,
+  tryBridgeReport: mockTryBridgeReport,
+  tryBridgeMethodSource: vi.fn(async () => null),
+}));
+
 // Mock metadataResolver so enum/edt/view tools can return data without disk access
 vi.mock('../../src/utils/metadataResolver', async (orig) => {
   const actual = await orig<typeof import('../../src/utils/metadataResolver')>();
@@ -188,21 +220,9 @@ describe('get_table_info', () => {
   beforeEach(() => { ctx = buildContext(); });
 
   it('returns table fields and relations on success', async () => {
-    (ctx.symbolIndex.getSymbolByName as any).mockReturnValue(
-      makeSymbol({ name: 'SalesLine', type: 'table', filePath: '/Tables/SalesLine.xml' }),
-    );
-    (ctx.symbolIndex.getTableFields as any).mockReturnValue([
-      makeSymbol({ id: 2, name: 'ItemId', type: 'field', parentName: 'SalesLine', signature: 'str ItemId' }),
-    ]);
-    (ctx.parser.parseTableFile as any).mockResolvedValue({
-      success: true,
-      data: {
-        name: 'SalesLine', model: 'ApplicationSuite', sourcePath: '/Tables/SalesLine.xml',
-        fields: [{ name: 'ItemId', type: 'String', extendedDataType: 'ItemId', mandatory: false }],
-        indexes: [{ name: 'SalesIdx', fields: ['SalesId', 'LineNum'], unique: true }],
-        relations: [{ name: 'SalesTable', relatedTable: 'SalesTable', role: 'SalesLine', type: 'inner', constraints: [] }],
-        label: 'Sales line', tableGroup: 'Transaction', methods: [],
-      },
+    // Bridge-first: mock bridge to return table info
+    mockTryBridgeTable.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '# Table: `SalesLine`\n\n**Model:** ApplicationSuite\n\n## Fields\n\nItemId: EDT: ItemId\n' }],
     });
 
     const result = await tableInfoTool(req('get_table_info', { tableName: 'SalesLine' }), ctx);
@@ -233,8 +253,8 @@ describe('get_method_signature', () => {
   beforeEach(() => { ctx = buildContext(); });
 
   it('returns exact method signature from index', async () => {
-    // methodSignature uses db.prepare().get() to find class, then method
-    const classRow = { file_path: '/Classes/CustTable.xml', model: 'ApplicationSuite', name: 'CustTable' };
+    // methodSignature uses db.prepare().get() to find class, then method (SQLite gate)
+    const classRow = { file_path: '/Classes/CustTable.xml', model: 'ApplicationSuite', name: 'CustTable', type: 'class' };
     const methodRow = { name: 'validateWrite', signature: 'public boolean validateWrite()', parent_name: 'CustTable', file_path: '/Classes/CustTable.xml' };
     const stmt = {
       get: vi.fn()
@@ -244,6 +264,16 @@ describe('get_method_signature', () => {
       run: vi.fn(),
     };
     ctx.symbolIndex.db.prepare = vi.fn(() => stmt) as any;
+
+    // Bridge returns source for signature parsing
+    ctx.bridge = {
+      isReady: true,
+      metadataAvailable: true,
+      getMethodSource: vi.fn(async () => ({
+        found: true,
+        source: 'public boolean validateWrite()\n{\n    return true;\n}',
+      })),
+    } as any;
 
     const result = await getMethodSignatureTool(
       req('get_method_signature', { className: 'CustTable', methodName: 'validateWrite' }),
@@ -279,9 +309,10 @@ describe('get_form_info', () => {
   beforeEach(() => { ctx = buildContext(); });
 
   it('returns form info on success', async () => {
-    const formRow = { file_path: '/Forms/SalesTable.xml', model: 'ApplicationSuite', name: 'SalesTable' };
-    const stmt = { get: vi.fn(() => formRow), all: vi.fn(() => []), run: vi.fn() };
-    ctx.symbolIndex.db.prepare = vi.fn(() => stmt) as any;
+    // Bridge-first: mock bridge to return form info
+    mockTryBridgeForm.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '# Form: `SalesTable`\n\n**Model:** ApplicationSuite\n' }],
+    });
 
     const result = await getFormInfoTool(req('get_form_info', { formName: 'SalesTable' }), ctx);
     expect(result.isError).toBeFalsy();
@@ -311,9 +342,10 @@ describe('get_query_info', () => {
   beforeEach(() => { ctx = buildContext(); });
 
   it('returns query info on success', async () => {
-    const queryRow = { file_path: '/Queries/SalesTableListPage.xml', model: 'ApplicationSuite', name: 'SalesTableListPage' };
-    const stmt = { get: vi.fn(() => queryRow), all: vi.fn(() => []), run: vi.fn() };
-    ctx.symbolIndex.db.prepare = vi.fn(() => stmt) as any;
+    // Bridge-first: mock bridge to return query info
+    mockTryBridgeQuery.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '# Query: `SalesTableListPage`\n\n**Model:** ApplicationSuite\n' }],
+    });
 
     const result = await getQueryInfoTool(req('get_query_info', { queryName: 'SalesTableListPage' }), ctx);
     expect(result.isError).toBeFalsy();
@@ -343,12 +375,13 @@ describe('get_view_info', () => {
   beforeEach(() => { ctx = buildContext(); });
 
   it('returns view info on success', async () => {
-    const viewRow = { file_path: '/Views/SalesOrderView.xml', model: 'ApplicationSuite', name: 'SalesOrderView' };
-    const stmt = { get: vi.fn(() => viewRow), all: vi.fn(() => []), run: vi.fn() };
-    ctx.symbolIndex.db.prepare = vi.fn(() => stmt) as any;
+    // Bridge-first: mock bridge to return view info
+    mockTryBridgeView.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '# View: `SalesOrderView`\n\n**Model:** ApplicationSuite\n' }],
+    });
 
     const result = await getViewInfoTool(req('get_view_info', { viewName: 'SalesOrderView' }), ctx);
-    // readViewMetadata returns null (mocked), so falls back to XML read path
+    // Bridge returned data — success
     expect(result.content[0].text).toContain('SalesOrderView');
   });
 
@@ -375,9 +408,10 @@ describe('get_enum_info', () => {
   beforeEach(() => { ctx = buildContext(); });
 
   it('returns enum values on success', async () => {
-    const enumRow = { file_path: '/Enums/SalesStatus.xml', model: 'ApplicationSuite', name: 'SalesStatus' };
-    const stmt = { get: vi.fn(() => enumRow), all: vi.fn(() => []), run: vi.fn() };
-    ctx.symbolIndex.db.prepare = vi.fn(() => stmt) as any;
+    // Bridge-first: mock bridge to return enum info
+    mockTryBridgeEnum.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '# Enum: `SalesStatus`\n\nInvoiced\n' }],
+    });
 
     const result = await getEnumInfoTool(req('get_enum_info', { enumName: 'SalesStatus' }), ctx);
     expect(result.isError).toBeFalsy();
@@ -409,9 +443,10 @@ describe('get_edt_info', () => {
   beforeEach(() => { ctx = buildContext(); });
 
   it('returns EDT properties on success', async () => {
-    const edtRow = { file_path: '/DataTypes/CustAccount.xml', model: 'ApplicationSuite', name: 'CustAccount' };
-    const stmt = { get: vi.fn(() => edtRow), all: vi.fn(() => []), run: vi.fn() };
-    ctx.symbolIndex.db.prepare = vi.fn(() => stmt) as any;
+    // Bridge-first: mock bridge to return EDT info
+    mockTryBridgeEdt.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '# EDT: `CustAccount`\n\n**Extends:** AccountNum\n' }],
+    });
 
     const result = await getEdtInfoTool(req('get_edt_info', { edtName: 'CustAccount' }), ctx);
     expect(result.isError).toBeFalsy();

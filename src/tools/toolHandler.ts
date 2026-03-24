@@ -272,7 +272,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       case 'generate_d365fo_xml':
         return handleGenerateD365Xml(request);
       case 'create_d365fo_file':
-        return handleCreateD365File(request);
+        return handleCreateD365File(request, context);
       case 'find_references':
         return findReferencesTool(request, context);
       case 'modify_d365fo_file':

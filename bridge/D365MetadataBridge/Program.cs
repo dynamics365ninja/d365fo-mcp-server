@@ -98,8 +98,25 @@ namespace D365MetadataBridge
                 // Non-fatal — cross-references are optional
             }
 
+            // Create write service (shares the same provider as read service)
+            MetadataWriteService? writeService = null;
+            if (metadataService != null)
+            {
+                try
+                {
+                    writeService = new MetadataWriteService(metadataService.Provider, _packagesPath);
+                    // Keep write service provider in sync when read service refreshes
+                    metadataService.OnProviderRefreshed = (newProvider) => writeService.UpdateProvider(newProvider);
+                    Log.WriteLine("[INFO] MetadataWriteService initialized");
+                }
+                catch (Exception ex)
+                {
+                    Log.WriteLine($"[WARN] Failed to initialize MetadataWriteService: {ex.Message}");
+                }
+            }
+
             // Create request dispatcher
-            var dispatcher = new RequestDispatcher(metadataService, xrefService);
+            var dispatcher = new RequestDispatcher(metadataService, writeService, xrefService);
 
             // Send ready signal
             var readyResponse = new BridgeResponse

@@ -236,11 +236,24 @@ Tests run automatically in GitHub Actions on:
 | `configManager` | `vi.mock('../../src/utils/configManager', ...)` returning fixed paths |
 | `packageResolver` | `vi.mock('../../src/utils/packageResolver', ...)` returning fixed `K:\PackagesLocalDirectory` |
 | `modelClassifier` | `vi.mock('../../src/utils/modelClassifier', ...)` with no-op prefix application |
-| `BridgeClient` | `context.bridge` set to `undefined` in `buildContext()` — bridge is absent, all `tryBridge*()` calls return `null` instantly |
+| `BridgeClient` | `context.bridge` set to `undefined` in `buildContext()` — bridge is absent, all `tryBridge*()` calls return `null` instantly. For tools that import bridge functions directly, tests use `vi.hoisted()` to create bridge mocks that are hoisted above `vi.mock()` calls, ensuring consistent behavior. |
 | Cache | `{ get, getFuzzy, set, generateSearchKey, generateExtensionSearchKey }` as `vi.fn()` |
 | Parser / WorkspaceScanner | Empty object `{} as any` when not exercised by the test |
 
 Mocks reset automatically between test files. Use `beforeEach` with a fresh `buildContext()` call to reset per-test state.
+
+### Index Lifecycle Testing
+
+The stale-index fix (update_symbol_index + undo_last_modification) is verified via the
+existing mock infrastructure:
+
+- **update_symbol_index** — tests confirm that when a file does not exist on disk, stale
+  symbol and label entries are removed from SQLite and Redis cache is invalidated
+- **undo_last_modification** — tests verify that after reverting a tracked file or deleting
+  an untracked file, the `cleanupIndexAfterUndo()` helper removes stale entries and
+  triggers re-indexing for reverts
+- **Bridge refresh** — `bridgeRefreshProvider()` is called after every index cleanup to
+  ensure the C# bridge reflects the current state
 
 ---
 

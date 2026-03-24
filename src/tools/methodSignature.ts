@@ -2,14 +2,16 @@
  * Get Method Signature Tool
  * Extract exact method signature for Chain of Command (CoC) extensions
  * Returns method modifiers, return type, parameters with types
+ *
+ * PRIMARY: C# bridge (IMetadataProvider) via tryBridgeMethodSignature.
+ * SQLite is used only as a gate (verify class/method exists) and for cache.
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { promises as fs } from 'fs';
-import { parseStringPromise } from 'xml2js';
-import { readMethodMetadata, buildObjectTypeMismatchMessage, type ExtractedMethod } from '../utils/metadataResolver.js';
+import { buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';
+import type { BridgeClient } from '../bridge/bridgeClient.js';
 
 
 const GetMethodSignatureArgsSchema = z.object({
@@ -97,46 +99,23 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
       throw new Error(`Method "${methodName}" not found in ${classRow.type} "${className}".`);
     }
 
-    // 3a. PRIMARY: extracted-metadata JSON (always available, no file path issues)
-    const extractedMethod = await readMethodMetadata(classRow.model, className, methodName);
+    // 3. C# bridge (IMetadataProvider — live source, always current)
+    // Bridge returns full source → parse signature locally + detect obsolete.
+    // This is the sole data path — eliminates JSON file I/O and XML parsing.
     const includeCoc = args.includeCocTemplate ?? false;
+    const bridgeSignature = await tryBridgeMethodSignature(
+      context.bridge, className, methodName, classRow.model, includeCoc, cache, cacheKey,
+    );
+    if (bridgeSignature) return bridgeSignature;
 
-    if (extractedMethod) {
-      const jsonSignature = buildSignatureFromExtractedMethod(extractedMethod);
-      const obsoleteWarning = detectObsolete(extractedMethod.source ?? '');
-      const result = formatOutput(className, methodName, jsonSignature, classRow.model, includeCoc, obsoleteWarning);
-      await cache.setClassInfo(cacheKey, result);
-      return result;
-    }
-
-    // 3b. SECONDARY: XML file (only works when running on D365FO VM with correct paths)
-    let methodSignature: MethodSignature | null = null;
-    let xmlSource = '';
-    try {
-      const xmlContent = await fs.readFile(classRow.file_path, 'utf-8');
-      const xmlObj = await parseStringPromise(xmlContent);
-      methodSignature = extractMethodSignature(xmlObj, methodName);
-      // Grab raw source for obsolete detection
-      const axClass = xmlObj?.AxClass;
-      const methods = axClass?.Methods?.[0]?.Method ?? [];
-      const mNode = methods.find((m: any) => m.Name?.[0] === methodName);
-      xmlSource = mNode?.Source?.[0] ?? '';
-    } catch {
-      // File not accessible (build-agent path) — fall through to DB fallback
-    }
-
-    if (methodSignature) {
-      const obsoleteWarning = detectObsolete(xmlSource);
-      const result = formatOutput(className, methodName, methodSignature, classRow.model, includeCoc, obsoleteWarning);
-      await cache.setClassInfo(cacheKey, result);
-      return result;
-    }
-
-    // 3c. FALLBACK: reconstruct from DB signature column
-    const fallbackSignature = buildFallbackSignature(methodRow as any);
-    const result = formatOutput(className, methodName, fallbackSignature, classRow.model, includeCoc);
-    await cache.setClassInfo(cacheKey, result);
-    return result;
+    return {
+      content: [{
+        type: 'text',
+        text: `❌ Method "${methodName}" found in index for ${classRow.type} "${className}" but bridge returned no source.\n` +
+          `Ensure the C# bridge is running and has access to D365FO metadata.`,
+      }],
+      isError: true,
+    };
 
   } catch (error) {
     return {
@@ -152,52 +131,35 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
 }
 
 /**
- * Build a MethodSignature from an ExtractedMethod (JSON metadata).
- * This is the most accurate source — structured data, no regex parsing.
+ * Try C# bridge for method signature.
+ * Bridge returns full source → parse signature locally + detect obsolete.
+ * This is the fastest path on Windows VMs (one IPC call, no JSON/XML file I/O).
+ * Returns null to signal fallback when bridge is unavailable.
  */
-function buildSignatureFromExtractedMethod(method: ExtractedMethod): MethodSignature {
-  const modifiers: string[] = [];
-  if (method.visibility && method.visibility !== 'public') modifiers.push(method.visibility);
-  else if (method.visibility === 'public') modifiers.push('public');
-  if (method.isStatic) modifiers.push('static');
-
-  const returnType = method.returnType || 'void';
-  const parameters = method.parameters.map(p => ({
-    type: p.type,
-    name: p.name,
-    ...(p.defaultValue ? { defaultValue: p.defaultValue } : {}),
-  }));
-
-  const signature = buildSignatureString(modifiers, returnType, method.name, parameters);
-  const cocTemplate = buildCoCTemplate(modifiers, returnType, method.name, parameters);
-
-  return { modifiers, returnType, methodName: method.name, parameters, signature, cocTemplate };
-}
-
-/**
- * Extract method signature from parsed XML
- */
-function extractMethodSignature(xmlObj: any, methodName: string): MethodSignature | null {
+async function tryBridgeMethodSignature(
+  bridge: BridgeClient | undefined,
+  className: string,
+  methodName: string,
+  modelName: string,
+  includeCoc: boolean,
+  cache: any,
+  cacheKey: string,
+): Promise<any | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
-    const axClass = xmlObj.AxClass;
-    if (!axClass || !axClass.Methods || !axClass.Methods[0] || !axClass.Methods[0].Method) {
-      return null;
-    }
+    const ms = await bridge.getMethodSource(className, methodName);
+    if (!ms.found || !ms.source) return null;
 
-    const methods = axClass.Methods[0].Method;
-    const method = methods.find((m: any) => m.Name && m.Name[0] === methodName);
+    // Parse signature from full source — same function used by the XML path
+    const signature = parseMethodSignature(ms.source, methodName);
+    if (!signature) return null;
 
-    if (!method) {
-      return null;
-    }
-
-    // Parse method source to extract signature
-    const source = method.Source ? method.Source[0] : '';
-    const signature = parseMethodSignature(source, methodName);
-
-    return signature;
-
-  } catch (error) {
+    const obsoleteWarning = detectObsolete(ms.source);
+    const result = formatOutput(className, methodName, signature, modelName, includeCoc, obsoleteWarning);
+    await cache.setClassInfo(cacheKey, result);
+    return result;
+  } catch (e) {
+    console.error(`[methodSignature] Bridge getMethodSource(${className}, ${methodName}) failed: ${e}`);
     return null;
   }
 }
@@ -375,68 +337,6 @@ function buildCoCTemplate(
   return template;
 }
 
-/**
- * Build fallback signature from database row
- */
-function buildFallbackSignature(methodRow: any): MethodSignature {
-  // Parse modifiers and return type from signature if available
-  const signature = methodRow.signature || '';
-  
-  // Parse modifiers from signature
-  const modifiers: string[] = [];
-  const keywords = ['public', 'private', 'protected', 'static', 'final', 'display', 'edit', 'client', 'server'];
-  for (const keyword of keywords) {
-    if (signature.toLowerCase().includes(keyword.toLowerCase())) {
-      modifiers.push(keyword);
-    }
-  }
-  
-  // Parse return type - find word before method name in signature
-  let returnType = 'void';
-  const signatureMatch = signature.match(/\b(\w+)\s+\w+\s*\(/);
-  if (signatureMatch) {
-    returnType = signatureMatch[1];
-  }
-  
-  const methodName = methodRow.name;
-  
-  // Parse parameters from signature
-  const parametersMatch = signature.match(/\((.*?)\)/);
-  const parameters: Array<{ type: string; name: string }> = [];
-
-  if (parametersMatch && parametersMatch[1].trim()) {
-    const paramString = parametersMatch[1];
-    const paramParts = paramString.split(',');
-
-    for (const part of paramParts) {
-      const trimmed = part.trim();
-      const paramMatch = trimmed.match(/(\w+)\s+(_?\w+)/);
-      
-      if (paramMatch) {
-        parameters.push({
-          type: paramMatch[1],
-          name: paramMatch[2],
-        });
-      }
-    }
-  }
-
-  const fullSignature = buildSignatureString(modifiers, returnType, methodName, parameters);
-  const cocTemplate = buildCoCTemplate(modifiers, returnType, methodName, parameters);
-
-  return {
-    modifiers,
-    returnType,
-    methodName,
-    parameters,
-    signature: fullSignature,
-    cocTemplate,
-  };
-}
-
-/**
- * Format output
- */
 /**
  * Detect [SysObsolete] or [Obsolete] attribute in X++ source and return a warning string.
  * Returns an empty string when no obsolete marker is found.
