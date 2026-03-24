@@ -7,6 +7,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { tryBridgeEventHandlers } from '../bridge/index.js';
 
 const FindEventHandlersArgsSchema = z.object({
   targetClass: z.string().optional().describe('Class whose events to find handlers for'),
@@ -20,7 +21,6 @@ const FindEventHandlersArgsSchema = z.object({
 export async function findEventHandlersTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = FindEventHandlersArgsSchema.parse(request.params.arguments);
-    const db = context.symbolIndex.db;
 
     if (!args.targetClass && !args.targetTable) {
       return {
@@ -30,6 +30,16 @@ export async function findEventHandlersTool(request: CallToolRequest, context: X
     }
 
     const targetName = args.targetClass || args.targetTable!;
+
+    // ── Bridge fast-path (DYNAMICSXREFDB) ──
+    // When no specific eventName or handlerType filter is used, xref is a good source
+    if (!args.eventName && args.handlerType === 'all') {
+      const bridgeResult = await tryBridgeEventHandlers(context.bridge, targetName);
+      if (bridgeResult) return bridgeResult;
+    }
+
+    // ── Fallback: SQLite index ──
+    const db = context.symbolIndex.db;
     const isTable = !!args.targetTable;
 
     let output = `Event Handlers for: ${targetName} (${isTable ? 'table' : 'class'} events)\n`;

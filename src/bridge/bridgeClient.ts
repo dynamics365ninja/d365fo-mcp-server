@@ -44,6 +44,14 @@ import type {
   BridgeBatchOperationResult,
   BridgeCapabilities,
   BridgeFormPatternDiscoveryResult,
+  BridgeSecurityPrivilegeResult,
+  BridgeSecurityDutyResult,
+  BridgeSecurityRoleResult,
+  BridgeMenuItemResult,
+  BridgeTableExtensionListResult,
+  BridgeCompletionResult,
+  BridgeExtensionClassResult,
+  BridgeEventSubscriberResult,
 } from './bridgeTypes.js';
 
 // Re-export types for convenience
@@ -343,6 +351,44 @@ export class BridgeClient extends EventEmitter {
     const params: Record<string, unknown> = { targetName };
     if (targetType) params.targetType = targetType;
     return this.call<BridgeReferenceResult>('findReferences', params);
+  }
+
+  // ========================================
+  // Phase 6 — Security, Menu Items, Table Extensions, Completion, Xref
+  // ========================================
+
+  async readSecurityPrivilege(name: string): Promise<BridgeSecurityPrivilegeResult | null> {
+    return this.call<BridgeSecurityPrivilegeResult | null>('readSecurityPrivilege', { name });
+  }
+
+  async readSecurityDuty(name: string): Promise<BridgeSecurityDutyResult | null> {
+    return this.call<BridgeSecurityDutyResult | null>('readSecurityDuty', { name });
+  }
+
+  async readSecurityRole(name: string): Promise<BridgeSecurityRoleResult | null> {
+    return this.call<BridgeSecurityRoleResult | null>('readSecurityRole', { name });
+  }
+
+  async readMenuItem(name: string, itemType?: string): Promise<BridgeMenuItemResult | null> {
+    const params: Record<string, unknown> = { name };
+    if (itemType) params.itemType = itemType;
+    return this.call<BridgeMenuItemResult | null>('readMenuItem', params);
+  }
+
+  async readTableExtensions(baseTableName: string): Promise<BridgeTableExtensionListResult | null> {
+    return this.call<BridgeTableExtensionListResult | null>('readTableExtensions', { baseTableName });
+  }
+
+  async getCompletionMembers(symbolName: string): Promise<BridgeCompletionResult | null> {
+    return this.call<BridgeCompletionResult | null>('getCompletionMembers', { symbolName });
+  }
+
+  async findExtensionClasses(baseClassName: string): Promise<BridgeExtensionClassResult | null> {
+    return this.call<BridgeExtensionClassResult | null>('findExtensionClasses', { baseClassName });
+  }
+
+  async findEventSubscribers(targetName: string): Promise<BridgeEventSubscriberResult | null> {
+    return this.call<BridgeEventSubscriberResult | null>('findEventSubscribers', { targetName });
   }
 
   async getInfo(): Promise<BridgeInfoPayload> {

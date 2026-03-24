@@ -6,6 +6,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { tryBridgeMenuItem } from '../bridge/index.js';
 
 const MenuItemInfoArgsSchema = z.object({
   name: z.string().describe('Name of the menu item'),
@@ -16,6 +17,12 @@ const MenuItemInfoArgsSchema = z.object({
 export async function menuItemInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = MenuItemInfoArgsSchema.parse(request.params.arguments);
+
+    // ── Bridge fast-path (C# IMetadataProvider) ──
+    const bridgeResult = await tryBridgeMenuItem(context.bridge, args.name, args.itemType);
+    if (bridgeResult) return bridgeResult;
+
+    // ── Fallback: SQLite index ──
     const db = context.symbolIndex.db;
 
     // Build type filter

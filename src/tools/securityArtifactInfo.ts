@@ -6,6 +6,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { tryBridgeSecurityArtifact } from '../bridge/index.js';
 
 const SecurityArtifactInfoArgsSchema = z.object({
   name: z.string().describe('Name of the security privilege, duty, or role'),
@@ -19,6 +20,14 @@ export async function securityArtifactInfoTool(
 ): Promise<{ content: { type: string; text: string }[]; isError?: boolean }> {
   try {
     const args = SecurityArtifactInfoArgsSchema.parse(request.params.arguments);
+
+    // ── Bridge fast-path (C# IMetadataProvider) ──
+    const bridgeResult = await tryBridgeSecurityArtifact(
+      context.bridge, args.name, args.artifactType, args.includeChain ?? true,
+    );
+    if (bridgeResult) return bridgeResult;
+
+    // ── Fallback: SQLite index ──
     const db = context.symbolIndex.db;
 
     if (args.artifactType === 'privilege') {

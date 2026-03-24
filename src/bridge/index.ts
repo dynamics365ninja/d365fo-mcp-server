@@ -64,4 +64,10 @@ export {
   bridgeBatchModify,
   bridgeGetCapabilities,
   bridgeDiscoverFormPatterns,
+  tryBridgeSecurityArtifact,
+  tryBridgeMenuItem,
+  tryBridgeTableExtensions,
+  tryBridgeCompletion,
+  tryBridgeCocExtensions,
+  tryBridgeEventHandlers,
 } from './bridgeAdapter.js';

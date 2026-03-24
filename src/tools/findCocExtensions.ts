@@ -8,6 +8,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { scanFsExtensions } from '../utils/fsExtensionScanner.js';
+import { tryBridgeCocExtensions } from '../bridge/index.js';
 
 const FindCocExtensionsArgsSchema = z.object({
   className: z.string().describe('Base class or table name being extended'),
@@ -22,6 +23,14 @@ export async function findCocExtensionsTool(request: CallToolRequest, context: X
     const db = context.symbolIndex.db;
     const className = args.className;
     const methodName = args.methodName;
+
+    // ── Bridge fast-path (DYNAMICSXREFDB) ──
+    // Note: xref gives us extension class names but not method-level detail.
+    // Use as supplementary source, not a full replacement, when methodName is specified.
+    if (!methodName) {
+      const bridgeResult = await tryBridgeCocExtensions(context.bridge, className);
+      if (bridgeResult) return bridgeResult;
+    }
 
     let output = `CoC Extensions of: ${className}\n`;
     if (methodName) output += `Filtering by method: ${methodName}\n`;

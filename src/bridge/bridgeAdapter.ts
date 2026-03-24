@@ -23,6 +23,14 @@ import type {
   BridgeEdtInfo,
   BridgeFormInfo,
   BridgeFormControl,
+  BridgeSecurityPrivilegeResult,
+  BridgeSecurityDutyResult,
+  BridgeSecurityRoleResult,
+  BridgeMenuItemResult,
+  BridgeTableExtensionListResult,
+  BridgeCompletionResult,
+  BridgeExtensionClassResult,
+  BridgeEventSubscriberResult,
 } from './bridgeTypes.js';
 
 /** Standard MCP tool response shape */
@@ -1659,4 +1667,351 @@ export async function bridgeDiscoverFormPatterns(
     console.error(`[BridgeAdapter] discoverFormPatterns() failed: ${e}`);
     return null;
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// SECURITY ARTIFACT (Phase 6)
+// ════════════════════════════════════════════════════════════════════════
+
+export async function tryBridgeSecurityArtifact(
+  bridge: BridgeClient | undefined,
+  name: string,
+  artifactType: 'privilege' | 'duty' | 'role',
+  includeChain: boolean,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    if (artifactType === 'privilege') {
+      const priv = await bridge.readSecurityPrivilege(name);
+      if (!priv) return null;
+      return { content: [{ type: 'text', text: formatSecurityPrivilege(priv, includeChain) }] };
+    } else if (artifactType === 'duty') {
+      const duty = await bridge.readSecurityDuty(name);
+      if (!duty) return null;
+      return { content: [{ type: 'text', text: formatSecurityDuty(duty, includeChain) }] };
+    } else {
+      const role = await bridge.readSecurityRole(name);
+      if (!role) return null;
+      return { content: [{ type: 'text', text: formatSecurityRole(role, includeChain) }] };
+    }
+  } catch (e) {
+    console.error(`[BridgeAdapter] readSecurity${artifactType}(${name}) failed: ${e}`);
+    return null;
+  }
+}
+
+function formatSecurityPrivilege(priv: BridgeSecurityPrivilegeResult, _includeChain: boolean): string {
+  let out = `SecurityPrivilege: ${priv.name}\n`;
+  if (priv.label) out += `Label: ${priv.label}\n`;
+  if (priv.description) out += `Description: ${priv.description}\n`;
+  if (priv.model) out += `Model: ${priv.model}\n`;
+  out += `_Source: C# bridge (IMetadataProvider)_\n`;
+
+  if (priv.entryPoints.length > 0) {
+    out += `\nEntry Points (${priv.entryPoints.length}):\n`;
+    for (const ep of priv.entryPoints) {
+      out += `  ✓ ${ep.objectName ?? '(unnamed)'} [${ep.objectType ?? '?'}]  → ${ep.accessLevel ?? '?'} access\n`;
+    }
+  } else {
+    out += `\nEntry Points: none\n`;
+  }
+
+  if (priv.parentDuties.length > 0) {
+    out += `\nUsed in Duties (${priv.parentDuties.length}):\n`;
+    out += `  ${priv.parentDuties.map(d => d.name).join(', ')}\n`;
+  }
+
+  return out;
+}
+
+function formatSecurityDuty(duty: BridgeSecurityDutyResult, _includeChain: boolean): string {
+  let out = `SecurityDuty: ${duty.name}\n`;
+  if (duty.label) out += `Label: ${duty.label}\n`;
+  if (duty.description) out += `Description: ${duty.description}\n`;
+  if (duty.model) out += `Model: ${duty.model}\n`;
+  out += `_Source: C# bridge (IMetadataProvider)_\n`;
+
+  if (duty.childPrivileges.length > 0) {
+    out += `\nPrivileges (${duty.childPrivileges.length}):\n`;
+    for (const p of duty.childPrivileges) {
+      out += `  • ${p.name}\n`;
+    }
+  }
+
+  if (duty.subDuties.length > 0) {
+    out += `\nSub-Duties (${duty.subDuties.length}):\n`;
+    for (const d of duty.subDuties) {
+      out += `  • ${d.name}\n`;
+    }
+  }
+
+  if (duty.parentRoles.length > 0) {
+    out += `\nAssigned to Roles (${duty.parentRoles.length}):\n`;
+    out += `  ${duty.parentRoles.map(r => r.name).join(', ')}\n`;
+  }
+
+  return out;
+}
+
+function formatSecurityRole(role: BridgeSecurityRoleResult, _includeChain: boolean): string {
+  let out = `SecurityRole: ${role.name}\n`;
+  if (role.label) out += `Label: ${role.label}\n`;
+  if (role.description) out += `Description: ${role.description}\n`;
+  if (role.model) out += `Model: ${role.model}\n`;
+  out += `_Source: C# bridge (IMetadataProvider)_\n`;
+
+  if (role.childDuties.length > 0) {
+    out += `\nDuties (${role.childDuties.length}):\n`;
+    for (const d of role.childDuties) {
+      out += `  • ${d.name}\n`;
+    }
+  }
+
+  if (role.childPrivileges.length > 0) {
+    out += `\nDirect Privileges (${role.childPrivileges.length}):\n`;
+    for (const p of role.childPrivileges) {
+      out += `  • ${p.name}\n`;
+    }
+  }
+
+  if (role.subRoles.length > 0) {
+    out += `\nSub-Roles (${role.subRoles.length}):\n`;
+    for (const sr of role.subRoles) {
+      out += `  • ${sr.name}\n`;
+    }
+  }
+
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// MENU ITEM (Phase 6)
+// ════════════════════════════════════════════════════════════════════════
+
+export async function tryBridgeMenuItem(
+  bridge: BridgeClient | undefined,
+  name: string,
+  itemType?: string,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const mi = await bridge.readMenuItem(name, itemType);
+    if (!mi) return null;
+    return { content: [{ type: 'text', text: formatMenuItem(mi) }] };
+  } catch (e) {
+    console.error(`[BridgeAdapter] readMenuItem(${name}) failed: ${e}`);
+    return null;
+  }
+}
+
+function formatMenuItem(mi: BridgeMenuItemResult): string {
+  const typeLabel = mi.menuItemType === 'display' ? 'MenuItemDisplay'
+    : mi.menuItemType === 'action' ? 'MenuItemAction'
+    : 'MenuItemOutput';
+
+  let out = `${typeLabel}: ${mi.name}\n`;
+  if (mi.label) out += `Label: ${mi.label}\n`;
+  if (mi.model) out += `Model: ${mi.model}\n`;
+  out += `_Source: C# bridge (IMetadataProvider)_\n`;
+
+  if (mi.object) {
+    out += `Target: ${mi.object}`;
+    if (mi.objectType) out += ` (${mi.objectType})`;
+    out += '\n';
+  }
+  if (mi.openMode && mi.openMode !== 'Auto') out += `Open Mode: ${mi.openMode}\n`;
+  if (mi.linkedPermissionObject) {
+    out += `Security Privilege: ${mi.linkedPermissionObject}`;
+    if (mi.linkedPermissionType) out += ` [${mi.linkedPermissionType}]`;
+    out += '\n';
+  }
+  if (mi.helpText) out += `Help: ${mi.helpText}\n`;
+
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// TABLE EXTENSIONS (Phase 6)
+// ════════════════════════════════════════════════════════════════════════
+
+export async function tryBridgeTableExtensions(
+  bridge: BridgeClient | undefined,
+  baseTableName: string,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const result = await bridge.readTableExtensions(baseTableName);
+    if (!result) return null;
+    return { content: [{ type: 'text', text: formatTableExtensions(result) }] };
+  } catch (e) {
+    console.error(`[BridgeAdapter] readTableExtensions(${baseTableName}) failed: ${e}`);
+    return null;
+  }
+}
+
+function formatTableExtensions(r: BridgeTableExtensionListResult): string {
+  let out = `Table Extensions of: ${r.baseTable}\n`;
+  out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
+
+  if (r.extensionCount === 0) {
+    out += `No table extensions found.\n`;
+    return out;
+  }
+
+  out += `Found ${r.extensionCount} extension(s):\n\n`;
+  for (let i = 0; i < r.extensions.length; i++) {
+    const ext = r.extensions[i];
+    out += `[${i + 1}] ${ext.extensionName} (${ext.model ?? 'unknown'})\n`;
+    if (ext.addedFields.length > 0) {
+      out += `    Added Fields (${ext.addedFields.length}): ${ext.addedFields.join(', ')}\n`;
+    }
+    if (ext.addedIndexes.length > 0) {
+      out += `    Added Indexes (${ext.addedIndexes.length}): ${ext.addedIndexes.join(', ')}\n`;
+    }
+    if (ext.addedFieldGroups.length > 0) {
+      out += `    Added Field Groups (${ext.addedFieldGroups.length}): ${ext.addedFieldGroups.join(', ')}\n`;
+    }
+    if (ext.addedRelations.length > 0) {
+      out += `    Added Relations (${ext.addedRelations.length}): ${ext.addedRelations.join(', ')}\n`;
+    }
+  }
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// CODE COMPLETION (Phase 6)
+// ════════════════════════════════════════════════════════════════════════
+
+export async function tryBridgeCompletion(
+  bridge: BridgeClient | undefined,
+  symbolName: string,
+  prefix?: string,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const result = await bridge.getCompletionMembers(symbolName);
+    if (!result || !result.members || result.members.length === 0) return null;
+    return { content: [{ type: 'text', text: formatCompletion(result, prefix) }] };
+  } catch (e) {
+    console.error(`[BridgeAdapter] getCompletionMembers(${symbolName}) failed: ${e}`);
+    return null;
+  }
+}
+
+function formatCompletion(r: BridgeCompletionResult, prefix?: string): string {
+  let members = r.members;
+  if (prefix) {
+    const lowerPrefix = prefix.toLowerCase();
+    members = members.filter(m => m.name.toLowerCase().startsWith(lowerPrefix));
+  }
+
+  let out = `# Code Completion: ${r.symbolName} (${r.symbolType})\n`;
+  if (r.model) out += `**Model:** ${r.model}\n`;
+  out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
+
+  if (members.length === 0) {
+    out += `No members found${prefix ? ` matching prefix "${prefix}"` : ''}.\n`;
+    return out;
+  }
+
+  out += `**${members.length} member(s)${prefix ? ` matching "${prefix}"` : ''}:**\n\n`;
+
+  const methodMembers = members.filter(m => m.kind === 'method');
+  const fieldMembers = members.filter(m => m.kind === 'field');
+
+  if (methodMembers.length > 0) {
+    out += `## Methods (${methodMembers.length})\n`;
+    for (const m of methodMembers) {
+      out += m.signature ? `- \`${m.signature}\`\n` : `- ${m.name}\n`;
+    }
+  }
+
+  if (fieldMembers.length > 0) {
+    out += `\n## Fields (${fieldMembers.length})\n`;
+    for (const f of fieldMembers) {
+      out += f.signature ? `- \`${f.signature}\`\n` : `- ${f.name}\n`;
+    }
+  }
+
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// FIND COC EXTENSIONS via XREF (Phase 6)
+// ════════════════════════════════════════════════════════════════════════
+
+export async function tryBridgeCocExtensions(
+  bridge: BridgeClient | undefined,
+  baseClassName: string,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.xrefAvailable) return null;
+  try {
+    const result = await bridge.findExtensionClasses(baseClassName);
+    if (!result) return null;
+    return { content: [{ type: 'text', text: formatCocExtensions(result) }] };
+  } catch (e) {
+    console.error(`[BridgeAdapter] findExtensionClasses(${baseClassName}) failed: ${e}`);
+    return null;
+  }
+}
+
+function formatCocExtensions(r: BridgeExtensionClassResult): string {
+  let out = `CoC Extensions of: ${r.baseClassName}\n`;
+  out += `_Source: C# bridge (DYNAMICSXREFDB)_\n\n`;
+
+  if (r.count === 0) {
+    out += `No class extensions found via cross-reference database.\n`;
+    return out;
+  }
+
+  out += `Found ${r.count} extension class(es):\n\n`;
+  const seen = new Set<string>();
+  for (const ext of r.extensions) {
+    if (seen.has(ext.className)) continue;
+    seen.add(ext.className);
+    out += `- **${ext.className}**`;
+    if (ext.module) out += ` (${ext.module})`;
+    out += `\n`;
+  }
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// FIND EVENT HANDLERS via XREF (Phase 6)
+// ════════════════════════════════════════════════════════════════════════
+
+export async function tryBridgeEventHandlers(
+  bridge: BridgeClient | undefined,
+  targetName: string,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.xrefAvailable) return null;
+  try {
+    const result = await bridge.findEventSubscribers(targetName);
+    if (!result) return null;
+    return { content: [{ type: 'text', text: formatEventHandlers(result) }] };
+  } catch (e) {
+    console.error(`[BridgeAdapter] findEventSubscribers(${targetName}) failed: ${e}`);
+    return null;
+  }
+}
+
+function formatEventHandlers(r: BridgeEventSubscriberResult): string {
+  let out = `Event Handlers for: ${r.targetName}\n`;
+  out += `_Source: C# bridge (DYNAMICSXREFDB)_\n\n`;
+
+  if (r.count === 0) {
+    out += `No event handlers found via cross-reference database.\n`;
+    return out;
+  }
+
+  out += `Found ${r.count} handler class(es):\n\n`;
+  for (const h of r.handlers) {
+    out += `- **${h.className}**`;
+    if (h.module) out += ` (${h.module})`;
+    if (h.methods.length > 0) {
+      out += ` — methods: ${h.methods.join(', ')}`;
+    }
+    out += `\n`;
+  }
+  return out;
 }

@@ -7,6 +7,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { validateWorkspacePath } from '../workspace/workspaceUtils.js';
+import { tryBridgeCompletion } from '../bridge/index.js';
 
 const CompletionArgsSchema = z.object({
   className: z.string().describe('Class or table name'),
@@ -19,6 +20,11 @@ export async function completionTool(request: CallToolRequest, context: XppServe
   try {
     const args = CompletionArgsSchema.parse(request.params.arguments);
     const { symbolIndex, cache, workspaceScanner } = context;
+
+    // ── Bridge fast-path (C# IMetadataProvider) ──
+    // Try bridge BEFORE the table guard — bridge handles both classes and tables
+    const bridgeResult = await tryBridgeCompletion(context.bridge, args.className, args.prefix || undefined);
+    if (bridgeResult) return bridgeResult;
     
     // ⚠️ EARLY CHECK: Is this a table? If yes, reject immediately!
     // Use exact-name lookup (not FTS search which does prefix matching and can false-positive)

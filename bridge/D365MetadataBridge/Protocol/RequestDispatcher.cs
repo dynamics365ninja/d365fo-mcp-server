@@ -135,6 +135,59 @@ namespace D365MetadataBridge.Protocol
                             return _metadataService!.ListObjects(type);
                         });
 
+                    // === Security Artifacts (Phase 6) ===
+                    case "readsecurityprivilege":
+                        return HandleMetadata(request, () =>
+                        {
+                            var name = request.GetStringParam("name")
+                                ?? throw new ArgumentException("Missing parameter: name");
+                            return _metadataService!.ReadSecurityPrivilege(name);
+                        });
+
+                    case "readsecurityduty":
+                        return HandleMetadata(request, () =>
+                        {
+                            var name = request.GetStringParam("name")
+                                ?? throw new ArgumentException("Missing parameter: name");
+                            return _metadataService!.ReadSecurityDuty(name);
+                        });
+
+                    case "readsecurityrole":
+                        return HandleMetadata(request, () =>
+                        {
+                            var name = request.GetStringParam("name")
+                                ?? throw new ArgumentException("Missing parameter: name");
+                            return _metadataService!.ReadSecurityRole(name);
+                        });
+
+                    // === Menu Items (Phase 6) ===
+                    case "readmenuitem":
+                        return HandleMetadata(request, () =>
+                        {
+                            var name = request.GetStringParam("name")
+                                ?? throw new ArgumentException("Missing parameter: name");
+                            var itemType = request.GetStringParam("itemType") ?? "any";
+                            return _metadataService!.ReadMenuItem(name, itemType);
+                        });
+
+                    // === Table Extensions (Phase 6) ===
+                    case "readtableextensions":
+                        return HandleMetadata(request, () =>
+                        {
+                            var baseTableName = request.GetStringParam("baseTableName")
+                                ?? throw new ArgumentException("Missing parameter: baseTableName");
+                            return _metadataService!.ReadTableExtensions(baseTableName);
+                        });
+
+                    // === Code Completion (Phase 6) ===
+                    case "getcompletionmembers":
+                        return HandleMetadata(request, () =>
+                        {
+                            var symbolName = request.GetStringParam("symbolName")
+                                ?? throw new ArgumentException("Missing parameter: symbolName");
+                            return _metadataService!.GetCompletionMembers(symbolName);
+                        });
+
                     // === Cross-References ===
                     case "findreferences":
                         return HandleXref(request, () =>
@@ -156,6 +209,23 @@ namespace D365MetadataBridge.Protocol
                         {
                             var tableName = request.GetStringParam("tableName") ?? "References";
                             return _xrefService!.SampleRows(tableName);
+                        });
+
+                    // === Extension / Event xref queries (Phase 6) ===
+                    case "findextensionclasses":
+                        return HandleXref(request, () =>
+                        {
+                            var baseClassName = request.GetStringParam("baseClassName")
+                                ?? throw new ArgumentException("Missing parameter: baseClassName");
+                            return _xrefService!.FindExtensionClasses(baseClassName);
+                        });
+
+                    case "findeventsubscribers":
+                        return HandleXref(request, () =>
+                        {
+                            var targetName = request.GetStringParam("targetName")
+                                ?? throw new ArgumentException("Missing parameter: targetName");
+                            return _xrefService!.FindEventSubscribers(targetName);
                         });
 
                     // === Delete ===

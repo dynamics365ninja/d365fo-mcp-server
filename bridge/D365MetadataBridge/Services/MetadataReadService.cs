@@ -1134,6 +1134,454 @@ namespace D365MetadataBridge.Services
             return result;
         }
 
+        // ========================
+        // SECURITY ARTIFACTS (Phase 6 — bridge read)
+        // ========================
+
+        /// <summary>
+        /// Read a security privilege via IMetadataProvider, including entry points and parent duties.
+        /// </summary>
+        public object? ReadSecurityPrivilege(string name)
+        {
+            try
+            {
+                dynamic providerDynamic = _provider;
+                dynamic privileges = providerDynamic.SecurityPrivileges;
+                dynamic axObj = privileges.Read(name);
+                if (axObj == null) return null;
+
+                string? model = null;
+                try { var mi = privileges.GetModelInfo(name); if (mi?.Count > 0) model = ((IEnumerable<dynamic>)mi).First().Name; } catch { }
+
+                var entryPoints = new List<object>();
+                try
+                {
+                    foreach (var ep in axObj.EntryPoints)
+                    {
+                        entryPoints.Add(new
+                        {
+                            objectType = Safe(() => (string)ep.ObjectType.ToString()),
+                            objectName = Safe(() => (string)ep.ObjectName),
+                            accessLevel = Safe(() => (string)ep.Grant.ToString()),
+                        });
+                    }
+                }
+                catch { }
+
+                // Find parent duties that contain this privilege
+                var parentDuties = new List<object>();
+                try
+                {
+                    foreach (var dutyName in providerDynamic.SecurityDuties.GetPrimaryKeys())
+                    {
+                        try
+                        {
+                            dynamic duty = providerDynamic.SecurityDuties.Read((string)dutyName);
+                            if (duty?.Privileges == null) continue;
+                            foreach (var p in duty.Privileges)
+                            {
+                                if ((string)p.Name == name)
+                                {
+                                    parentDuties.Add(new { name = (string)dutyName });
+                                    break;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+
+                return new
+                {
+                    artifactType = "privilege",
+                    name = (string)axObj.Name,
+                    label = Safe(() => (string)axObj.Label),
+                    description = Safe(() => (string)axObj.Description),
+                    model,
+                    entryPoints,
+                    parentDuties,
+                    _source = "C# bridge (IMetadataProvider)"
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WARN] ReadSecurityPrivilege({name}): {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Read a security duty via IMetadataProvider, including child privileges and parent roles.
+        /// </summary>
+        public object? ReadSecurityDuty(string name)
+        {
+            try
+            {
+                dynamic providerDynamic = _provider;
+                dynamic duties = providerDynamic.SecurityDuties;
+                dynamic axObj = duties.Read(name);
+                if (axObj == null) return null;
+
+                string? model = null;
+                try { var mi = duties.GetModelInfo(name); if (mi?.Count > 0) model = ((IEnumerable<dynamic>)mi).First().Name; } catch { }
+
+                var childPrivileges = new List<object>();
+                try
+                {
+                    foreach (var p in axObj.Privileges)
+                    {
+                        childPrivileges.Add(new { name = Safe(() => (string)p.Name) });
+                    }
+                }
+                catch { }
+
+                var subDuties = new List<object>();
+                try
+                {
+                    foreach (var d in axObj.SubDuties)
+                    {
+                        subDuties.Add(new { name = Safe(() => (string)d.Name) });
+                    }
+                }
+                catch { }
+
+                // Find parent roles that contain this duty
+                var parentRoles = new List<object>();
+                try
+                {
+                    foreach (var roleName in providerDynamic.SecurityRoles.GetPrimaryKeys())
+                    {
+                        try
+                        {
+                            dynamic role = providerDynamic.SecurityRoles.Read((string)roleName);
+                            if (role?.Duties == null) continue;
+                            foreach (var d in role.Duties)
+                            {
+                                if ((string)d.Name == name)
+                                {
+                                    parentRoles.Add(new { name = (string)roleName });
+                                    break;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+
+                return new
+                {
+                    artifactType = "duty",
+                    name = (string)axObj.Name,
+                    label = Safe(() => (string)axObj.Label),
+                    description = Safe(() => (string)axObj.Description),
+                    model,
+                    childPrivileges,
+                    subDuties,
+                    parentRoles,
+                    _source = "C# bridge (IMetadataProvider)"
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WARN] ReadSecurityDuty({name}): {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Read a security role via IMetadataProvider, including child duties and privileges.
+        /// </summary>
+        public object? ReadSecurityRole(string name)
+        {
+            try
+            {
+                dynamic providerDynamic = _provider;
+                dynamic roles = providerDynamic.SecurityRoles;
+                dynamic axObj = roles.Read(name);
+                if (axObj == null) return null;
+
+                string? model = null;
+                try { var mi = roles.GetModelInfo(name); if (mi?.Count > 0) model = ((IEnumerable<dynamic>)mi).First().Name; } catch { }
+
+                var childDuties = new List<object>();
+                try
+                {
+                    foreach (var d in axObj.Duties)
+                    {
+                        childDuties.Add(new { name = Safe(() => (string)d.Name) });
+                    }
+                }
+                catch { }
+
+                var childPrivileges = new List<object>();
+                try
+                {
+                    foreach (var p in axObj.Privileges)
+                    {
+                        childPrivileges.Add(new { name = Safe(() => (string)p.Name) });
+                    }
+                }
+                catch { }
+
+                var subRoles = new List<object>();
+                try
+                {
+                    foreach (var sr in axObj.SubRoles)
+                    {
+                        subRoles.Add(new { name = Safe(() => (string)sr.Name) });
+                    }
+                }
+                catch { }
+
+                return new
+                {
+                    artifactType = "role",
+                    name = (string)axObj.Name,
+                    label = Safe(() => (string)axObj.Label),
+                    description = Safe(() => (string)axObj.Description),
+                    model,
+                    childDuties,
+                    childPrivileges,
+                    subRoles,
+                    _source = "C# bridge (IMetadataProvider)"
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WARN] ReadSecurityRole({name}): {ex.Message}");
+                return null;
+            }
+        }
+
+        // ========================
+        // MENU ITEM (Phase 6 — bridge read)
+        // ========================
+
+        /// <summary>
+        /// Read a menu item (display/action/output) via IMetadataProvider.
+        /// Tries all 3 types if itemType is "any".
+        /// </summary>
+        public object? ReadMenuItem(string name, string itemType = "any")
+        {
+            try
+            {
+                dynamic providerDynamic = _provider;
+                var tryTypes = itemType.ToLowerInvariant() switch
+                {
+                    "display" => new[] { "display" },
+                    "action" => new[] { "action" },
+                    "output" => new[] { "output" },
+                    _ => new[] { "display", "action", "output" }
+                };
+
+                foreach (var tryType in tryTypes)
+                {
+                    try
+                    {
+                        dynamic items = tryType switch
+                        {
+                            "display" => providerDynamic.MenuItemDisplays,
+                            "action" => providerDynamic.MenuItemActions,
+                            "output" => providerDynamic.MenuItemOutputs,
+                            _ => throw new InvalidOperationException()
+                        };
+
+                        dynamic axObj = items.Read(name);
+                        if (axObj == null) continue;
+
+                        string? model = null;
+                        try { var mi = items.GetModelInfo(name); if (mi?.Count > 0) model = ((IEnumerable<dynamic>)mi).First().Name; } catch { }
+
+                        return new
+                        {
+                            name = (string)axObj.Name,
+                            menuItemType = tryType,
+                            label = Safe(() => (string)axObj.Label),
+                            helpText = Safe(() => (string)axObj.HelpText),
+                            objectType = Safe(() => (string)axObj.ObjectType.ToString()),
+                            @object = Safe(() => (string)axObj.Object),
+                            openMode = Safe(() => (string)axObj.OpenMode.ToString()),
+                            linkedPermissionType = Safe(() => (string)axObj.LinkedPermissionType.ToString()),
+                            linkedPermissionObject = Safe(() => (string)axObj.LinkedPermissionObject),
+                            model,
+                            _source = "C# bridge (IMetadataProvider)"
+                        };
+                    }
+                    catch { }
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WARN] ReadMenuItem({name}, {itemType}): {ex.Message}");
+                return null;
+            }
+        }
+
+        // ========================
+        // TABLE EXTENSIONS (Phase 6 — bridge read)
+        // ========================
+
+        /// <summary>
+        /// List all table extensions for a given base table by enumerating TableExtensions
+        /// whose name starts with "{baseTable}." (D365FO naming convention).
+        /// </summary>
+        public object? ReadTableExtensions(string baseTableName)
+        {
+            try
+            {
+                var prefix = $"{baseTableName}.";
+                var extensions = new List<object>();
+
+                var allExtKeys = _provider.TableExtensions.GetPrimaryKeys();
+                foreach (var extName in allExtKeys)
+                {
+                    if (!extName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    try
+                    {
+                        var ext = _provider.TableExtensions.Read(extName);
+                        if (ext == null) continue;
+
+                        string? model = null;
+                        try { var mi = _provider.TableExtensions.GetModelInfo(extName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+
+                        var addedFields = new List<string>();
+                        try { foreach (var f in ext.Fields) addedFields.Add(f.Name); } catch { }
+
+                        var addedIndexes = new List<string>();
+                        try { foreach (var i in ext.Indexes) addedIndexes.Add(i.Name); } catch { }
+
+                        var addedFieldGroups = new List<string>();
+                        try { foreach (var g in ext.FieldGroups) addedFieldGroups.Add(g.Name); } catch { }
+
+                        var addedRelations = new List<string>();
+                        try { foreach (var r in ext.Relations) addedRelations.Add(r.Name); } catch { }
+
+                        extensions.Add(new
+                        {
+                            extensionName = extName,
+                            model,
+                            addedFields,
+                            addedIndexes,
+                            addedFieldGroups,
+                            addedRelations,
+                        });
+                    }
+                    catch { }
+                }
+
+                return new
+                {
+                    baseTable = baseTableName,
+                    extensionCount = extensions.Count,
+                    extensions,
+                    _source = "C# bridge (IMetadataProvider)"
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WARN] ReadTableExtensions({baseTableName}): {ex.Message}");
+                return null;
+            }
+        }
+
+        // ========================
+        // CODE COMPLETION (Phase 6 — bridge read)
+        // ========================
+
+        /// <summary>
+        /// Returns method/field members for a class or table, suitable for code completion.
+        /// For classes: methods from SourceCode/Methods.
+        /// For tables: fields + methods.
+        /// </summary>
+        public object? GetCompletionMembers(string symbolName)
+        {
+            try
+            {
+                // Try as class first
+                if (_provider.Classes.Exists(symbolName))
+                {
+                    var cls = _provider.Classes.Read(symbolName);
+                    if (cls == null) return null;
+
+                    var methods = new List<object>();
+                    try
+                    {
+                        foreach (var m in cls.Methods)
+                        {
+                            // Extract first line of Source as signature
+                            string? sig = null;
+                            try
+                            {
+                                var src = m.Source;
+                                if (!string.IsNullOrEmpty(src))
+                                {
+                                    // Find the first non-comment, non-attribute, non-blank line
+                                    foreach (var line in src.Split('\n'))
+                                    {
+                                        var trimmed = line.Trim();
+                                        if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("//") ||
+                                            trimmed.StartsWith("/*") || trimmed.StartsWith("*") ||
+                                            trimmed.StartsWith("[") || trimmed == "{") continue;
+                                        sig = trimmed.TrimEnd('{').Trim();
+                                        break;
+                                    }
+                                }
+                            }
+                            catch { }
+                            methods.Add(new { name = m.Name, signature = sig, kind = "method" });
+                        }
+                    }
+                    catch { }
+
+                    string? model = null;
+                    try { var mi = _provider.Classes.GetModelInfo(symbolName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+
+                    return new
+                    {
+                        symbolName,
+                        symbolType = "class",
+                        model,
+                        members = methods,
+                        _source = "C# bridge (IMetadataProvider)"
+                    };
+                }
+
+                // Try as table
+                if (_provider.Tables.Exists(symbolName))
+                {
+                    var tbl = _provider.Tables.Read(symbolName);
+                    if (tbl == null) return null;
+
+                    var members = new List<object>();
+                    try { foreach (var f in tbl.Fields) members.Add(new { name = f.Name, signature = $"{f.Name} : {f.GetType().Name.Replace("AxTableField", "")}", kind = "field" }); } catch { }
+                    try { foreach (var m in tbl.Methods) members.Add(new { name = m.Name, signature = (string?)null, kind = "method" }); } catch { }
+
+                    string? model = null;
+                    try { var mi = _provider.Tables.GetModelInfo(symbolName); if (mi?.Count > 0) model = mi.First().Name; } catch { }
+
+                    return new
+                    {
+                        symbolName,
+                        symbolType = "table",
+                        model,
+                        members,
+                        _source = "C# bridge (IMetadataProvider)"
+                    };
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WARN] GetCompletionMembers({symbolName}): {ex.Message}");
+                return null;
+            }
+        }
+
         public object ListObjects(string type)
         {
             IList<string> keys = type.ToLowerInvariant() switch

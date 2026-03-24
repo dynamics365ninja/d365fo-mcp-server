@@ -14,6 +14,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { scanFsExtensions } from '../utils/fsExtensionScanner.js';
+import { tryBridgeTableExtensions } from '../bridge/index.js';
 
 const TableExtensionInfoArgsSchema = z.object({
   tableName: z.string().describe('Base table name whose extensions to find'),
@@ -24,6 +25,12 @@ const TableExtensionInfoArgsSchema = z.object({
 export async function tableExtensionInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = TableExtensionInfoArgsSchema.parse(request.params.arguments);
+
+    // ── Bridge fast-path (C# IMetadataProvider) ──
+    const bridgeResult = await tryBridgeTableExtensions(context.bridge, args.tableName);
+    if (bridgeResult) return bridgeResult;
+
+    // ── Fallback: SQLite index + filesystem ──
     const db = context.symbolIndex.db;
     const tableName = args.tableName;
 

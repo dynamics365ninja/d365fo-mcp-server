@@ -533,3 +533,138 @@ export interface BridgeFormPatternDiscoveryResult {
   count: number;
   source: string;
 }
+
+// ===========================
+// Security artifact types (Phase 6)
+// ===========================
+
+export interface BridgeSecurityEntryPoint {
+  objectType?: string;
+  objectName?: string;
+  accessLevel?: string;
+}
+
+export interface BridgeSecurityPrivilegeResult {
+  artifactType: 'privilege';
+  name: string;
+  label?: string;
+  description?: string;
+  model?: string;
+  entryPoints: BridgeSecurityEntryPoint[];
+  parentDuties: Array<{ name: string }>;
+  _source: string;
+}
+
+export interface BridgeSecurityDutyResult {
+  artifactType: 'duty';
+  name: string;
+  label?: string;
+  description?: string;
+  model?: string;
+  childPrivileges: Array<{ name: string }>;
+  subDuties: Array<{ name: string }>;
+  parentRoles: Array<{ name: string }>;
+  _source: string;
+}
+
+export interface BridgeSecurityRoleResult {
+  artifactType: 'role';
+  name: string;
+  label?: string;
+  description?: string;
+  model?: string;
+  childDuties: Array<{ name: string }>;
+  childPrivileges: Array<{ name: string }>;
+  subRoles: Array<{ name: string }>;
+  _source: string;
+}
+
+// ===========================
+// Menu item types (Phase 6)
+// ===========================
+
+export interface BridgeMenuItemResult {
+  name: string;
+  menuItemType: string;
+  label?: string;
+  helpText?: string;
+  objectType?: string;
+  object?: string;
+  openMode?: string;
+  linkedPermissionType?: string;
+  linkedPermissionObject?: string;
+  model?: string;
+  _source: string;
+}
+
+// ===========================
+// Table extension list types (Phase 6)
+// ===========================
+
+export interface BridgeTableExtensionEntry {
+  extensionName: string;
+  model?: string;
+  addedFields: string[];
+  addedIndexes: string[];
+  addedFieldGroups: string[];
+  addedRelations: string[];
+}
+
+export interface BridgeTableExtensionListResult {
+  baseTable: string;
+  extensionCount: number;
+  extensions: BridgeTableExtensionEntry[];
+  _source: string;
+}
+
+// ===========================
+// Code completion types (Phase 6)
+// ===========================
+
+export interface BridgeCompletionMember {
+  name: string;
+  signature?: string;
+  kind: string;
+}
+
+export interface BridgeCompletionResult {
+  symbolName: string;
+  symbolType: string;
+  model?: string;
+  members: BridgeCompletionMember[];
+  _source: string;
+}
+
+// ===========================
+// Extension class xref types (Phase 6)
+// ===========================
+
+export interface BridgeExtensionClassEntry {
+  className: string;
+  path: string;
+  module?: string;
+}
+
+export interface BridgeExtensionClassResult {
+  baseClassName: string;
+  count: number;
+  extensions: BridgeExtensionClassEntry[];
+  _source: string;
+}
+
+// ===========================
+// Event subscriber xref types (Phase 6)
+// ===========================
+
+export interface BridgeEventSubscriberEntry {
+  className: string;
+  module?: string;
+  methods: string[];
+}
+
+export interface BridgeEventSubscriberResult {
+  targetName: string;
+  count: number;
+  handlers: BridgeEventSubscriberEntry[];
+  _source: string;
+}
