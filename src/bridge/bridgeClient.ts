@@ -39,6 +39,11 @@ import type {
   BridgeResolveResult,
   BridgeRefreshResult,
   BridgeWriteResult,
+  BridgeDeleteResult,
+  BridgeBatchOperationRequest,
+  BridgeBatchOperationResult,
+  BridgeCapabilities,
+  BridgeFormPatternDiscoveryResult,
 } from './bridgeTypes.js';
 
 // Re-export types for convenience
@@ -402,6 +407,34 @@ export class BridgeClient extends EventEmitter {
   /** Replace code within a method via IMetadataProvider.Update() */
   async replaceCode(objectType: string, objectName: string, methodName: string | undefined, oldCode: string, newCode: string): Promise<BridgeWriteResult> {
     return this.call<BridgeWriteResult>('replaceCode', { objectType, objectName, methodName, oldCode, newCode });
+  }
+
+  // ========================================
+  // Delete, Batch, Capabilities, Pattern Discovery
+  // ========================================
+
+  /** Delete a D365FO object by removing its file from disk */
+  async deleteObject(objectType: string, objectName: string): Promise<BridgeDeleteResult> {
+    return this.call<BridgeDeleteResult>('deleteObject', { objectType, objectName });
+  }
+
+  /** Execute multiple write operations on a single object in one call */
+  async batchModify(
+    objectType: string,
+    objectName: string,
+    operations: BridgeBatchOperationRequest[]
+  ): Promise<BridgeBatchOperationResult> {
+    return this.call<BridgeBatchOperationResult>('batchModify', { objectType, objectName, operations });
+  }
+
+  /** Get structured capabilities map — lists available operations per object type */
+  async getCapabilities(): Promise<BridgeCapabilities> {
+    return this.call<BridgeCapabilities>('getCapabilities', {});
+  }
+
+  /** Discover available D365FO form patterns (runtime DLL or hardcoded fallback) */
+  async discoverFormPatterns(): Promise<BridgeFormPatternDiscoveryResult> {
+    return this.call<BridgeFormPatternDiscoveryResult>('discoverFormPatterns', {});
   }
 
   // ========================================

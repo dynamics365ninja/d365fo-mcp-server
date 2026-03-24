@@ -3542,6 +3542,12 @@ export async function handleCreateD365File(
           if (props.values) bridgeParams.values = props.values as Record<string, unknown>[];
         }
 
+        // For views: pass fields from properties
+        if (args.objectType === 'view' && args.properties) {
+          const props = args.properties as Record<string, unknown>;
+          if (props.fields) bridgeParams.fields = props.fields as Record<string, unknown>[];
+        }
+
         const bridgeResult = await bridgeCreateObject(context.bridge, bridgeParams);
         if (bridgeResult?.success && bridgeResult.filePath) {
           console.error(`[create_d365fo_file] ✅ Created via C# bridge: ${bridgeResult.filePath}`);

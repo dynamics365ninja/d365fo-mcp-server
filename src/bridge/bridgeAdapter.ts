@@ -840,10 +840,15 @@ export async function bridgeResolveObject(
 
 /**
  * Supported object types for bridge-based creation.
- * Other types (forms, queries, reports, security, menu items, extensions)
- * continue using the TypeScript XML generation.
+ * Covers core types + menu items + security objects + query/view.
+ * Forms and reports continue using TypeScript XML generation (complex nested designs).
  */
-const BRIDGE_CREATE_TYPES = new Set(['class', 'table', 'enum', 'edt']);
+const BRIDGE_CREATE_TYPES = new Set([
+  'class', 'table', 'enum', 'edt',
+  'query', 'view',
+  'menu-item-action', 'menu-item-display', 'menu-item-output',
+  'security-privilege', 'security-duty', 'security-role',
+]);
 
 /**
  * Supported operations for bridge-based modification.
@@ -854,8 +859,14 @@ const BRIDGE_MODIFY_OPS = new Set(['add-method', 'add-field', 'modify-property',
 
 /**
  * Supported object types for bridge-based modification.
+ * Covers core types + query/view/form (add-method, modify-property, replace-code)
+ * + menu items and security (modify-property only).
  */
-const BRIDGE_MODIFY_TYPES = new Set(['class', 'table', 'enum', 'edt']);
+const BRIDGE_MODIFY_TYPES = new Set([
+  'class', 'table', 'enum', 'edt',
+  'form', 'query', 'view',
+  'menu-item-action', 'menu-item-display', 'menu-item-output',
+]);
 
 /**
  * Checks if bridge can handle this create operation.
@@ -1017,6 +1028,145 @@ export async function bridgeReplaceCode(
     };
   } catch (e) {
     console.error(`[BridgeAdapter] replaceCode(${objectType}, ${objectName}) failed: ${e}`);
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// DELETE OBJECT
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Deletes a D365FO object via the C# bridge.
+ * Returns a formatted ToolResult or null if bridge unavailable.
+ */
+export async function bridgeDeleteObject(
+  bridge: BridgeClient | undefined,
+  objectType: string,
+  objectName: string,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+
+  try {
+    const result = await bridge.deleteObject(objectType, objectName);
+    if (result.success) {
+      let text = `✅ **Deleted** ${objectType} \`${objectName}\`\n`;
+      if (result.model) text += `- **Model:** ${result.model}\n`;
+      if (result.filePath) text += `- **File:** ${result.filePath}\n`;
+      return { content: [{ type: 'text', text }] };
+    } else {
+      const text = `❌ **Delete failed** for ${objectType} \`${objectName}\`\n- Error: ${result.error ?? 'Unknown error'}`;
+      return { content: [{ type: 'text', text }], isError: true };
+    }
+  } catch (e) {
+    console.error(`[BridgeAdapter] deleteObject(${objectType}, ${objectName}) failed: ${e}`);
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// BATCH MODIFY
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Executes multiple write operations on a single object in one bridge call.
+ * Returns a formatted ToolResult or null if bridge unavailable.
+ */
+export async function bridgeBatchModify(
+  bridge: BridgeClient | undefined,
+  objectType: string,
+  objectName: string,
+  operations: Array<{ operation: string; params?: Record<string, unknown> }>,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+
+  try {
+    const result = await bridge.batchModify(objectType, objectName, operations);
+    let text = `## Batch Modify: ${objectType} \`${objectName}\`\n\n`;
+    text += `- **Total:** ${result.totalOperations}\n`;
+    text += `- **Success:** ${result.successCount}\n`;
+    text += `- **Failed:** ${result.failureCount}\n\n`;
+
+    if (result.operations.length > 0) {
+      text += `### Operations\n\n`;
+      for (const op of result.operations) {
+        const icon = op.success ? '✅' : '❌';
+        text += `${icon} **${op.operation}** (${op.elapsedMs}ms)`;
+        if (op.error) text += ` — ${op.error}`;
+        text += `\n`;
+      }
+    }
+
+    return {
+      content: [{ type: 'text', text }],
+      isError: result.failureCount > 0,
+    };
+  } catch (e) {
+    console.error(`[BridgeAdapter] batchModify(${objectType}, ${objectName}) failed: ${e}`);
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// CAPABILITIES
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Retrieves the structured capabilities map from the C# bridge.
+ * Returns a formatted ToolResult or null if bridge unavailable.
+ */
+export async function bridgeGetCapabilities(
+  bridge: BridgeClient | undefined,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+
+  try {
+    const caps = await bridge.getCapabilities();
+    let text = `# Bridge Capabilities (v${caps.version})\n\n`;
+
+    for (const [objType, operations] of Object.entries(caps.objectTypes)) {
+      text += `## ${objType}\n`;
+      for (const op of operations) {
+        text += `- \`${op}\`\n`;
+      }
+      text += `\n`;
+    }
+
+    return { content: [{ type: 'text', text }] };
+  } catch (e) {
+    console.error(`[BridgeAdapter] getCapabilities() failed: ${e}`);
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// FORM PATTERN DISCOVERY
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * Discovers available D365FO form patterns from the Patterns DLL or fallback list.
+ * Returns a formatted ToolResult or null if bridge unavailable.
+ */
+export async function bridgeDiscoverFormPatterns(
+  bridge: BridgeClient | undefined,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+
+  try {
+    const result = await bridge.discoverFormPatterns();
+    let text = `# D365FO Form Patterns (${result.count})\n`;
+    text += `_Source: ${result.source}_\n\n`;
+
+    for (const p of result.patterns) {
+      text += `- **${p.name}**`;
+      if (p.version) text += ` (v${p.version})`;
+      if (p.description) text += ` — ${p.description}`;
+      text += `\n`;
+    }
+
+    return { content: [{ type: 'text', text }] };
+  } catch (e) {
+    console.error(`[BridgeAdapter] discoverFormPatterns() failed: ${e}`);
     return null;
   }
 }

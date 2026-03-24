@@ -470,3 +470,66 @@ export interface BridgeEnumValueParam {
   value: number;
   label?: string;
 }
+
+// ===========================
+// Delete result
+// ===========================
+
+export interface BridgeDeleteResult {
+  success: boolean;
+  objectType: string;
+  objectName: string;
+  model?: string;
+  filePath?: string;
+  error?: string;
+}
+
+// ===========================
+// Batch modify types
+// ===========================
+
+export interface BridgeBatchOperationRequest {
+  operation: string;
+  params?: Record<string, unknown>;
+}
+
+export interface BridgeBatchOperationItemResult {
+  operation: string;
+  success: boolean;
+  error?: string;
+  elapsedMs: number;
+}
+
+export interface BridgeBatchOperationResult {
+  objectType: string;
+  objectName: string;
+  totalOperations: number;
+  successCount: number;
+  failureCount: number;
+  operations: BridgeBatchOperationItemResult[];
+}
+
+// ===========================
+// Capabilities
+// ===========================
+
+export interface BridgeCapabilities {
+  objectTypes: Record<string, string[]>;
+  version: string;
+}
+
+// ===========================
+// Form pattern discovery
+// ===========================
+
+export interface BridgeFormPattern {
+  name: string;
+  version?: string;
+  description?: string;
+}
+
+export interface BridgeFormPatternDiscoveryResult {
+  patterns: BridgeFormPattern[];
+  count: number;
+  source: string;
+}

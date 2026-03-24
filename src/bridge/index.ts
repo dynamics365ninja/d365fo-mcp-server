@@ -41,4 +41,8 @@ export {
   bridgeAddField,
   bridgeSetProperty,
   bridgeReplaceCode,
+  bridgeDeleteObject,
+  bridgeBatchModify,
+  bridgeGetCapabilities,
+  bridgeDiscoverFormPatterns,
 } from './bridgeAdapter.js';
