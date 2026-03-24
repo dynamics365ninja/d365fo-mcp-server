@@ -8,6 +8,13 @@
     <RootNamespace>D365MetadataBridge</RootNamespace>
     <AssemblyName>D365MetadataBridge</AssemblyName>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Resolve transitive assembly version conflicts in D365FO bin (e.g. SCDP 7.0.0 vs 7.0.4) -->
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+    <!-- MSB3277: version conflict between Microsoft-shipped SCDP.dll (7.0.0) and
+         SCDPBundling.dll (depends on 7.0.4) in PackagesLocalDirectory\bin.
+         We don't control these DLLs and the bridge doesn't use SCDP at all — safe to suppress. -->
+    <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>
   </PropertyGroup>
 
   <!--

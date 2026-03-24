@@ -295,7 +295,7 @@ namespace D365MetadataBridge.Services
             if (q == null) return null;
             var result = new QueryInfoModel { Name = q.Name };
             try { var mi = _provider.Queries.GetModelInfo(queryName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }
-            try { if (q.DataSources != null) foreach (dynamic ds in q.DataSources) result.DataSources.Add(MapQueryDataSource(ds)); } catch (Exception ex) { Warn("dataSources", queryName, ex); }
+            try { dynamic dq = q; if (dq.DataSources != null) foreach (dynamic ds in dq.DataSources) result.DataSources.Add(MapQueryDataSource(ds)); } catch (Exception ex) { Warn("dataSources", queryName, ex); }
             return result;
         }
 
@@ -318,7 +318,7 @@ namespace D365MetadataBridge.Services
             var result = new DataEntityInfoModel { Name = e.Name, Label = Safe(() => e.Label), PublicEntityName = Safe(() => e.PublicEntityName), PublicCollectionName = Safe(() => e.PublicCollectionName), IsPublic = IsYes(() => e.IsPublic) };
             try { var mi = _provider.DataEntityViews.GetModelInfo(entityName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }
             try { if (e.Fields != null) foreach (var f in e.Fields) result.Fields.Add(new FieldInfoModel { Name = f.Name, FieldType = f.GetType().Name }); } catch { }
-            try { if (e.DataSources != null) foreach (dynamic ds in e.DataSources) result.DataSources.Add(new FormDataSourceModel { Name = Safe(() => (string)ds.Name) ?? "", Table = Safe(() => (string)ds.Table) ?? "" }); } catch (Exception ex) { Warn("dataSources", entityName, ex); }
+            try { dynamic de = e; if (de.DataSources != null) foreach (dynamic ds in de.DataSources) result.DataSources.Add(new FormDataSourceModel { Name = Safe(() => (string)ds.Name) ?? "", Table = Safe(() => (string)ds.Table) ?? "" }); } catch (Exception ex) { Warn("dataSources", entityName, ex); }
             return result;
         }
 
