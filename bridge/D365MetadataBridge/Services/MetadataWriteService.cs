@@ -640,11 +640,11 @@ namespace D365MetadataBridge.Services
                 }
             }
 
-            // Add methods
+            // Add methods (AxTableExtension doesn't expose Methods statically — use dynamic)
             if (methods != null)
             {
                 foreach (var m in methods)
-                    axExt.Methods.Add(new AxMethod { Name = m.Name, Source = m.Source ?? "" });
+                    ((dynamic)axExt).Methods.Add(new AxMethod { Name = m.Name, Source = m.Source ?? "" });
             }
 
             var provider = _provider.TableExtensions as IMetaTableExtensionProvider
@@ -670,7 +670,7 @@ namespace D365MetadataBridge.Services
             if (methods != null)
             {
                 foreach (var m in methods)
-                    axExt.Methods.Add(new AxMethod { Name = m.Name, Source = m.Source ?? "" });
+                    ((dynamic)axExt).Methods.Add(new AxMethod { Name = m.Name, Source = m.Source ?? "" });
             }
 
             var provider = _provider.FormExtensions as IMetaFormExtensionProvider
@@ -697,7 +697,7 @@ namespace D365MetadataBridge.Services
             {
                 foreach (var v in values)
                 {
-                    var axVal = new AxEnumExtensionValue { Name = v.Name, Value = v.Value };
+                    var axVal = new AxEnumValue { Name = v.Name, Value = v.Value };
                     if (!string.IsNullOrEmpty(v.Label)) axVal.Label = v.Label;
                     axExt.EnumValues.Add(axVal);
                 }
@@ -1545,9 +1545,18 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Form '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Forms, objectName);
 
-                    var ds = new AxFormDataSourceItem { Name = dsName, Table = table };
+                    // AxFormDataSource hierarchy is abstract — find concrete type via reflection
+                    // (same pattern as CreateFormControl for abstract AxFormControl types)
+                    var assembly = typeof(AxClass).Assembly;
+                    var dsType = assembly.GetTypes()
+                        .FirstOrDefault(t => typeof(AxFormDataSourceConcrete).IsAssignableFrom(t) && !t.IsAbstract)
+                        ?? throw new InvalidOperationException(
+                            "No concrete AxFormDataSource type found in metadata assembly — use xmlContent fallback");
+                    dynamic ds = Activator.CreateInstance(dsType)!;
+                    ds.Name = dsName;
+                    ds.Table = table;
                     if (!string.IsNullOrEmpty(joinSource)) ds.JoinSource = joinSource;
-                    axForm.AddDataSource(ds);
+                    axForm.AddDataSource((AxFormDataSourceConcrete)ds);
 
                     ((IMetaFormProvider)_provider.Forms).Update(axForm, msi);
                     return new { success = true, operation = "add-data-source", objectType, objectName, dsName, table, api = "IMetaFormProvider.Update" };
