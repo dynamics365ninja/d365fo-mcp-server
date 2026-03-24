@@ -32,6 +32,10 @@ param storageSku string = 'Standard_LRS'
 @description('Comma-separated label languages to index. Each language adds ~125 MB. Examples: en-US,cs,de  or  en-US')
 param labelLanguages string = 'en-US,cs,sk,de'
 
+@description('API key for authenticating MCP requests. When set, clients must send X-Api-Key header. Leave empty to disable auth.')
+@secure()
+param apiKey string = ''
+
 var appServicePlanName = '${appName}-plan'
 var appServiceName = appName
 var storageAccountName = replace(appName, '-', '')
@@ -154,6 +158,10 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
         {
           name: 'WEBSITES_PORT'
           value: '8080'
+        }
+        {
+          name: 'API_KEY'
+          value: apiKey
         }
       ]
     }

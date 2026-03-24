@@ -97,6 +97,12 @@ In the Azure Portal, go to the App Service → **Settings** → **Environment va
 | `SCM_DO_BUILD_DURING_DEPLOYMENT` | `false` | Pre-built `node_modules` are shipped in the deploy zip — Oryx must NOT run `npm ci` (no gcc/make on App Service Linux) |
 | `WEBSITE_NODE_DEFAULT_VERSION` | `~24` | |
 
+**Optional — Authentication (recommended for private projects):**
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| `API_KEY` | e.g. `my-secret-key-here` | When set, all `/mcp` requests must include `X-Api-Key` header. `/health` is always public. Generate a strong random key (e.g. `openssl rand -hex 32`). Leave empty to disable. |
+
 **Optional — Redis (recommended for teams):**
 
 | Setting | Value |

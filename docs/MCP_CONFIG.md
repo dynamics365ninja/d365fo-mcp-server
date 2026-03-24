@@ -105,6 +105,24 @@ The server listens on a TCP port. Used for Azure deployments and for local `npm 
 }
 ```
 
+If the server has `API_KEY` authentication enabled, add a `headers` block:
+
+```json
+{
+  "servers": {
+    "d365fo-mcp-tools": {
+      "url": "https://your-server.azurewebsites.net/mcp/",
+      "headers": {
+        "X-Api-Key": "your-api-key-here"
+      }
+    },
+    "context": {
+      "workspacePath": "K:\\AosService\\PackagesLocalDirectory\\YourPackageName\\YourModelName"
+    }
+  }
+}
+```
+
 Note: VS 2022 HTTP transport does **not** send workspace headers. Use `workspacePath` or
 `projectPath` in the `context` block, or switch to stdio.
 

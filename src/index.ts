@@ -33,6 +33,7 @@ import { HybridSearch } from './workspace/hybridSearch.js';
 import { initializeDatabase } from './database/download.js';
 import { initializeConfig, getConfigManager } from './utils/configManager.js';
 import { SERVER_MODE, LOCAL_TOOLS } from './server/serverMode.js';
+import { apiKeyAuth } from './middleware/apiKeyAuth.js';
 import { setInitializeParams } from './utils/stdioSessionInfo.js';
 import * as fs from 'fs/promises';
 import * as fsSync from 'node:fs';
@@ -632,6 +633,11 @@ async function main() {
     app.use(compression());
 
     app.use(express.json());
+
+    // API key authentication — enforced when API_KEY env var is set.
+    // Must be after express.json() but before route handlers.
+    // /health is excluded so Azure health probes still work unauthenticated.
+    app.use(apiKeyAuth);
 
     // Health check endpoint — dynamic: reflects serverState at request time
     app.get('/health', (_req, res) => {

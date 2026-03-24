@@ -55,6 +55,13 @@
       "metadata": {
         "description": "Comma-separated label languages to index. Each language adds ~125 MB. Examples: en-US,cs,de  or  en-US"
       }
+    },
+    "apiKey": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "API key for authenticating MCP requests. When set, clients must send X-Api-Key header. Leave empty to disable auth."
+      }
     }
   },
   "variables": {
@@ -190,6 +197,10 @@
             {
               "name": "WEBSITES_PORT",
               "value": "8080"
+            },
+            {
+              "name": "API_KEY",
+              "value": "[parameters('apiKey')]"
             }
           ]
         }
