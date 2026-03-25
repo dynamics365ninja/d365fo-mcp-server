@@ -15,7 +15,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { getConfigManager } from './configManager.js';
+import { getConfigManager, fallbackPackagePath } from './configManager.js';
 
 // Resolve path relative to this file, not to process.cwd()
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -262,7 +262,7 @@ export async function resolveDbPathLocally(dbFilePath: string): Promise<string |
   const configManager = getConfigManager();
   await configManager.ensureLoaded();
   const localPackagePath =
-    configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+    configManager.getPackagePath() || fallbackPackagePath();
 
   // Convert forward slashes back to the OS separator
   const localPath = path.join(localPackagePath, ...relativePart.split('/'));

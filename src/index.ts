@@ -554,6 +554,7 @@ async function main() {
       try {
         const { createBridgeClient } = await import('./bridge/bridgeClient.js');
         const configMgr = getConfigManager();
+        await configMgr.ensureLoaded();
         const packagesPath = configMgr.getPackagePath() ?? undefined;
         // UDE mode: MS framework DLLs live under microsoftPackagesPath,
         // not under the main packagesPath.

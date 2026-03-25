@@ -11,7 +11,8 @@ import * as fs from 'fs/promises';
 
 import path from 'path';
 import { parseStringPromise } from 'xml2js';
-import { getConfigManager } from '../utils/configManager.js';
+import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../utils/configManager.js';
+import { isStandardModel } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { resolveDbPathLocally } from '../utils/metadataResolver.js';
 import {
@@ -369,6 +370,27 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         `  2. Pass filePath="K:\\\\AosService\\\\PackagesLocalDirectory\\\\<pkg>\\\\<model>\\\\${objectName}.xml" — bypasses all lookup.\n` +
         `  3. If the object was just created, re-run create_d365fo_file first and use the returned path as filePath.`
       );
+    }
+
+    // 1b. Model-ownership guard: refuse to modify objects in standard Microsoft models.
+    // This prevents accidental writes to ApplicationSuite, ApplicationFoundation, etc.
+    const resolvedModelFromPath = extractModelFromFilePath(filePath);
+    if (resolvedModelFromPath && isStandardModel(resolvedModelFromPath)) {
+      const configManager = getConfigManager();
+      const configuredModel = modelName || configManager.getModelName();
+      // Only block if the resolved model differs from the user's explicitly configured model.
+      // If user explicitly set modelName=ApplicationSuite, they know what they're doing.
+      if (!modelName || modelName !== resolvedModelFromPath) {
+        throw new Error(
+          `⛔ Refusing to modify "${objectName}" — the resolved file belongs to standard Microsoft model "${resolvedModelFromPath}".\n\n` +
+          `Your configured model is "${configuredModel || '(not set)'}".\n` +
+          `Modifying standard objects is not permitted — it can corrupt the base application.\n\n` +
+          `To extend a standard object, create an extension instead:\n` +
+          `  • Table: create_d365fo_file(objectType="table-extension", objectName="${objectName}.${configuredModel || 'YourModel'}Extension")\n` +
+          `  • Class: create_d365fo_file(objectType="class-extension", objectName="${objectName}_Extension")\n` +
+          `  • Form:  create_d365fo_file(objectType="form-extension", objectName="${objectName}.${configuredModel || 'YourModel'}Extension")`
+        );
+      }
     }
 
     // 2. Resolve actual XML file path (DB may store JSON metadata with sourcePath)
@@ -839,15 +861,31 @@ async function findD365File(
       const row = stmt.get(symbolType, objectName, modelName);
       dbResult = row ? row.file_path : null;
     } else {
-      const stmt = rdb.prepare(`
-        SELECT file_path
-        FROM symbols
-        WHERE type = ? AND name = ?
-        ORDER BY model
-        LIMIT 1
-      `);
-      const row = stmt.get(symbolType, objectName);
-      dbResult = row ? row.file_path : null;
+      // No modelName specified — prefer the user's configured model to avoid
+      // accidentally resolving to a standard Microsoft model (issue #369).
+      const configuredModel = getConfigManager().getModelName();
+      if (configuredModel) {
+        const stmtPref = rdb.prepare(`
+          SELECT file_path
+          FROM symbols
+          WHERE type = ? AND name = ? AND model = ?
+          LIMIT 1
+        `);
+        const prefRow = stmtPref.get(symbolType, objectName, configuredModel);
+        dbResult = prefRow ? prefRow.file_path : null;
+      }
+      if (!dbResult) {
+        // Fallback: any model (still guarded by the standard-model check after findD365File)
+        const stmt = rdb.prepare(`
+          SELECT file_path
+          FROM symbols
+          WHERE type = ? AND name = ?
+          ORDER BY model
+          LIMIT 1
+        `);
+        const row = stmt.get(symbolType, objectName);
+        dbResult = row ? row.file_path : null;
+      }
     }
 
     // Only trust the DB path when it is an absolute path that actually exists on disk.
@@ -940,7 +978,7 @@ export async function findD365FileOnDisk(
   }
 
   const configPackagePath =
-    configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+    configManager.getPackagePath() || fallbackPackagePath();
 
   // Traditional mode: package name == model name (most common case)
   const candidatePath = path.join(
@@ -1120,7 +1158,7 @@ async function findBaseFormXml(baseFormName: string, symbolIndex: any): Promise<
     if (!path.isAbsolute(dbFilePath)) {
       const cm = getConfigManager();
       await cm.ensureLoaded();
-      const pkgPath = cm.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+      const pkgPath = cm.getPackagePath() || fallbackPackagePath();
       const abs = await tryRead(path.join(pkgPath, dbFilePath));
       if (abs) return abs;
     }

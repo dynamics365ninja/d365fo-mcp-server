@@ -701,10 +701,10 @@ export async function createBridgeClient(options: {
 
 function detectPackagesPath(): string | null {
   const candidates = [
-    'K:\\AosService\\PackagesLocalDirectory',
+    process.env.PackagesPath ?? '',
     'C:\\AosService\\PackagesLocalDirectory',
     'J:\\AosService\\PackagesLocalDirectory',
-    process.env.PackagesPath ?? '',
+    'K:\\AosService\\PackagesLocalDirectory',
   ].filter(Boolean);
 
   for (const p of candidates) {

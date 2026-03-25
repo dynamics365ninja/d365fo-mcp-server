@@ -42,6 +42,8 @@ vi.mock('../../src/utils/configManager', () => ({
     getCustomPackagesPath: vi.fn(async () => null),
     getMicrosoftPackagesPath: vi.fn(async () => null),
   })),
+  fallbackPackagePath: vi.fn(() => 'C:\\AosService\\PackagesLocalDirectory'),
+  extractModelFromFilePath: vi.fn(() => null),
 }));
 
 vi.mock('../../src/utils/packageResolver', () => ({
@@ -62,6 +64,7 @@ vi.mock('../../src/utils/modelClassifier', () => ({
   resolveObjectPrefix: vi.fn(() => ''),
   applyObjectPrefix: vi.fn((name: string) => name),
   isCustomModel: vi.fn(() => true),
+  isStandardModel: vi.fn(() => false),
 }));
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

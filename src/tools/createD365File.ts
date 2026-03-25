@@ -8,7 +8,7 @@ import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { Parser, Builder } from 'xml2js';
-import { getConfigManager } from '../utils/configManager.js';
+import { getConfigManager, fallbackPackagePath } from '../utils/configManager.js';
 import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
@@ -69,7 +69,7 @@ const CreateD365FileArgsSchema = z.object({
   packagePath: z
     .string()
     .optional()
-    .describe('Base package path (default: K:\\AosService\\PackagesLocalDirectory)'),
+    .describe('Base package path (default: auto-detected from .mcp.json or well-known locations: C:\\, J:\\, K:\\AosService\\PackagesLocalDirectory)'),
   sourceCode: z
     .string()
     .optional()
@@ -3380,9 +3380,9 @@ export async function handleCreateD365File(
       resolvedPackageName = args.packageName;
       if (envType === 'ude') {
         const customPath = await configManager.getCustomPackagesPath();
-        basePath = customPath || args.packagePath || configPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+        basePath = customPath || args.packagePath || configPackagePath || fallbackPackagePath();
       } else {
-        basePath = args.packagePath || configPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+        basePath = args.packagePath || configPackagePath || fallbackPackagePath();
       }
     } else if (envType === 'ude') {
       // UDE mode: auto-resolve package name via descriptor scan
@@ -3399,7 +3399,7 @@ export async function handleCreateD365File(
       } else {
         // Fallback: assume package == model (common case)
         resolvedPackageName = actualModelName;
-        basePath = customPath || args.packagePath || configPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+        basePath = customPath || args.packagePath || configPackagePath || fallbackPackagePath();
       }
     } else {
       // Traditional mode without explicit packageName: assume package == model
@@ -3407,7 +3407,7 @@ export async function handleCreateD365File(
       basePath =
         args.packagePath ||
         configPackagePath ||
-        'K:\\AosService\\PackagesLocalDirectory';
+        fallbackPackagePath();
     }
 
     console.error(

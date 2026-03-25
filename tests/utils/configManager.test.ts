@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getConfigManager } from '../../src/utils/configManager';
+import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../../src/utils/configManager';
 
 // Prevent real file I/O during unit tests
 vi.mock('fs/promises', () => ({
@@ -274,5 +274,44 @@ describe('kebab-case path rejection', () => {
     // Hyphen in name → skip, fall back to env or null
     delete process.env.D365FO_MODEL_NAME;
     expect(mgr.getModelName()).toBeNull();
+  });
+});
+
+// ─── fallbackPackagePath ─────────────────────────────────────────────────────
+
+describe('fallbackPackagePath', () => {
+  it('returns a valid C: path string', () => {
+    const result = fallbackPackagePath();
+    expect(result).toBe('C:\\AosService\\PackagesLocalDirectory');
+  });
+});
+
+// ─── extractModelFromFilePath (issue #369) ───────────────────────────────────
+
+describe('extractModelFromFilePath', () => {
+  it('extracts package name from standard AOT path', () => {
+    expect(extractModelFromFilePath(
+      'K:\\AosService\\PackagesLocalDirectory\\ApplicationSuite\\Foundation\\AxTable\\CustTable.xml'
+    )).toBe('ApplicationSuite');
+  });
+
+  it('extracts package name when package == model', () => {
+    expect(extractModelFromFilePath(
+      'K:\\AosService\\PackagesLocalDirectory\\ContosoExt\\ContosoExt\\AxClass\\MyClass.xml'
+    )).toBe('ContosoExt');
+  });
+
+  it('handles forward slashes', () => {
+    expect(extractModelFromFilePath(
+      'K:/AosService/PackagesLocalDirectory/AppSuite/Foundation/AxForm/CustTable.xml'
+    )).toBe('AppSuite');
+  });
+
+  it('returns null for non-AOT paths', () => {
+    expect(extractModelFromFilePath('/home/vsts/work/1/s/foo.xml')).toBeNull();
+  });
+
+  it('returns null for empty string', () => {
+    expect(extractModelFromFilePath('')).toBeNull();
   });
 });
