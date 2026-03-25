@@ -1,10 +1,10 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Tasks;
 using D365MetadataBridge.Protocol;
-using D365MetadataBridge.Services;
 
 namespace D365MetadataBridge
 {
@@ -17,6 +17,15 @@ namespace D365MetadataBridge
     /// This bridge is spawned by the Node.js MCP server as a child process.
     /// All JSON messages are newline-delimited on stdout.
     /// All diagnostic/log messages go to stderr (never stdout).
+    /// 
+    /// IMPORTANT: Main() must NOT reference any D365FO-dependent types
+    /// (MetadataReadService, MetadataWriteService, CrossReferenceService) even as
+    /// local variables.  The CLR JIT-compiles the entire async state machine for
+    /// Main before the first instruction executes — which means it tries to load
+    /// Microsoft.Dynamics.AX.Metadata.dll before SetupAssemblyResolution has been
+    /// called.  All D365FO-dependent code lives in RunBridge(), which is marked
+    /// [MethodImpl(NoInlining)] so the JIT defers its compilation until after
+    /// the AssemblyResolve handler is registered.
     /// </summary>
     static class Program
     {
@@ -28,7 +37,7 @@ namespace D365MetadataBridge
 
         static async Task<int> Main(string[] args)
         {
-            // Parse command-line arguments
+            // Parse command-line arguments — NO D365FO type references allowed here!
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -51,7 +60,7 @@ namespace D365MetadataBridge
                 }
             }
 
-            // Setup assembly resolution for D365FO DLLs.
+            // Setup assembly resolution for D365FO DLLs BEFORE any D365FO type is touched.
             // Traditional: {packagesPath}/bin
             // UDE: --bin-path points to microsoftPackagesPath/bin (MS framework DLLs)
             //      while --packages-path points to the custom packages root for metadata.
@@ -69,42 +78,29 @@ namespace D365MetadataBridge
             if (fallbackBinPath != null && Directory.Exists(fallbackBinPath))
                 Log.WriteLine($"[INFO] Additional assembly search path: {fallbackBinPath}");
 
-            // Initialize services
-            MetadataReadService? metadataService = null;
-            CrossReferenceService? xrefService = null;
+            // Delegate to RunBridge — a separate method whose JIT compilation is
+            // deferred (NoInlining) until AFTER AssemblyResolve is registered.
+            return await RunBridge();
+        }
 
-            try
-            {
-                Log.WriteLine($"[INFO] Initializing MetadataProvider from: {_packagesPath}");
-                metadataService = new MetadataReadService(_packagesPath);
-                Log.WriteLine("[INFO] MetadataProvider initialized successfully");
-            }
-            catch (Exception ex)
-            {
-                Log.WriteLine($"[ERROR] Failed to initialize MetadataProvider: {ex.Message}");
-                Log.WriteLine($"[ERROR] Stack: {ex.StackTrace}");
-                // Continue — we'll report errors for metadata calls but xref might still work
-            }
-
-            try
-            {
-                Log.WriteLine($"[INFO] Initializing CrossReferenceProvider: {_xrefServer}\\{_xrefDatabase}");
-                xrefService = new CrossReferenceService(_xrefServer, _xrefDatabase);
-                Log.WriteLine("[INFO] CrossReferenceProvider initialized successfully");
-            }
-            catch (Exception ex)
-            {
-                Log.WriteLine($"[WARN] Failed to initialize CrossReferenceProvider: {ex.Message}");
-                // Non-fatal — cross-references are optional
-            }
+        /// <summary>
+        /// All D365FO-dependent code lives here so the JIT doesn't try to resolve
+        /// Microsoft.Dynamics.AX.Metadata types during Main's state machine compilation.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static async Task<int> RunBridge()
+        {
+            // Late-import: Services namespace references D365FO assemblies
+            var metadataService = InitMetadataService();
+            var xrefService = InitCrossReferenceService();
 
             // Create write service (shares the same provider as read service)
-            MetadataWriteService? writeService = null;
+            Services.MetadataWriteService? writeService = null;
             if (metadataService != null)
             {
                 try
                 {
-                    writeService = new MetadataWriteService(metadataService.Provider, _packagesPath);
+                    writeService = new Services.MetadataWriteService(metadataService.Provider, _packagesPath);
                     // Keep write service provider in sync when read service refreshes
                     metadataService.OnProviderRefreshed = (newProvider) => writeService.UpdateProvider(newProvider);
                     Log.WriteLine("[INFO] MetadataWriteService initialized");
@@ -137,6 +133,41 @@ namespace D365MetadataBridge
 
             // Enter stdin/stdout loop
             return await RunStdioLoop(dispatcher);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static Services.MetadataReadService? InitMetadataService()
+        {
+            try
+            {
+                Log.WriteLine($"[INFO] Initializing MetadataProvider from: {_packagesPath}");
+                var svc = new Services.MetadataReadService(_packagesPath);
+                Log.WriteLine("[INFO] MetadataProvider initialized successfully");
+                return svc;
+            }
+            catch (Exception ex)
+            {
+                Log.WriteLine($"[ERROR] Failed to initialize MetadataProvider: {ex.Message}");
+                Log.WriteLine($"[ERROR] Stack: {ex.StackTrace}");
+                return null;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static Services.CrossReferenceService? InitCrossReferenceService()
+        {
+            try
+            {
+                Log.WriteLine($"[INFO] Initializing CrossReferenceProvider: {_xrefServer}\\{_xrefDatabase}");
+                var svc = new Services.CrossReferenceService(_xrefServer, _xrefDatabase);
+                Log.WriteLine("[INFO] CrossReferenceProvider initialized successfully");
+                return svc;
+            }
+            catch (Exception ex)
+            {
+                Log.WriteLine($"[WARN] Failed to initialize CrossReferenceProvider: {ex.Message}");
+                return null;
+            }
         }
 
         private static async Task<int> RunStdioLoop(RequestDispatcher dispatcher)
