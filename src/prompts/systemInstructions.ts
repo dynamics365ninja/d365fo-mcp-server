@@ -114,6 +114,7 @@ Use this guide to select the correct tool:
 - The model name returned in search/get_table_info/get_class_info results is the SOURCE model of that object \u2014 it is NOT the model where you should create new objects.
 - The target model for ALL file creation (create_d365fo_file, create_label, modify_d365fo_file) is ALWAYS the one from .mcp.json (modelName/projectPath), regardless of what the task is about or what model names appear in search results.
 - Example of WRONG reasoning: task involves a report → search returns objects from "ContosoReports" → ❌ DO NOT use "ContosoReports" as the model. Use the configured model from .mcp.json.
+- **NEVER switch projects autonomously.** The MCP server auto-detects the correct project from the VS 2022 workspace. Do NOT call get_workspace_info(projectName=...) because you think the task belongs to a different model \u2014 the user decides which solution to open; you work within it. If you believe a different model is needed, ASK the user first.
 
 ### 2. Method Signatures
 **Before creating Chain of Command extensions:**
