@@ -60,6 +60,14 @@ const CreateLabelArgsSchema = z.object({
       'Label text for each language. At minimum provide en-US. ' +
         'For languages without a translation the en-US text is used as fallback.',
     ),
+  description: z
+    .string()
+    .optional()
+    .describe(
+      'Label description written as the comment line in .label.txt. ' +
+      'Defaults to the VS project name (from .rnrproj) when omitted. ' +
+      'Per-translation comment and defaultComment take priority over this.',
+    ),
   defaultComment: z
     .string()
     .optional()
@@ -166,11 +174,18 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       labelFileId,
       model,
       translations,
+      description,
       defaultComment,
       packagePath,
       createLabelFileIfMissing,
       updateIndex,
     } = args;
+
+    // Description fallback: explicit description → project name → model name
+    const configManager = getConfigManager();
+    const projectPath = await configManager.getProjectPath();
+    const projectName = projectPath ? path.parse(projectPath).name : null;
+    const effectiveDescription = description ?? projectName ?? model;
     const { symbolIndex } = context;
 
     // 0. Cross-label-file collision check — warn when the same labelId exists in
@@ -213,7 +228,6 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
 
     // 1. Resolve model directory
     // Package name can differ from model name in any environment (not just UDE).
-    const configManager = getConfigManager();
     const envType = await configManager.getDevEnvironmentType();
 
     let resolvedPackagePath: string;
@@ -253,7 +267,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     // Build a quick lookup: language → translation entry
     const translationMap = new Map<string, { text: string; comment?: string }>();
     for (const tr of translations) {
-      translationMap.set(tr.language, { text: tr.text, comment: tr.comment ?? defaultComment });
+      translationMap.set(tr.language, { text: tr.text, comment: tr.comment ?? defaultComment ?? effectiveDescription });
     }
     const enUsText = translationMap.get('en-US')?.text ?? translations[0].text;
 
@@ -344,7 +358,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       }
 
       // Determine text for this language
-      const entry = translationMap.get(lang) ?? { text: enUsText, comment: defaultComment };
+      const entry = translationMap.get(lang) ?? { text: enUsText, comment: defaultComment ?? effectiveDescription };
       labelMap.set(labelId, entry);
 
       // Ensure the directory exists
@@ -468,6 +482,10 @@ export const createLabelToolDefinition = {
       defaultComment: {
         type: 'string',
         description: 'Developer comment for languages without an explicit comment',
+      },
+      description: {
+        type: 'string',
+        description: 'Label description (comment line in .label.txt). Defaults to the VS project name when omitted. Per-translation comment and defaultComment take priority.',
       },
       packagePath: {
         type: 'string',

@@ -27,17 +27,18 @@ vi.mock('fs', async (orig) => {
   };
 });
 
+const mockConfigMgr = {
+  ensureLoaded: vi.fn(async () => {}),
+  getPackagePath: vi.fn(() => 'K:\\PackagesLocalDirectory'),
+  getModelName: vi.fn(() => 'MyModel'),
+  getPackageNameFromWorkspacePath: vi.fn(() => 'MyPackage'),
+  getProjectPath: vi.fn(async () => 'K:\\repos\\MySolution\\MyProject\\MyProject.rnrproj'),
+  getDevEnvironmentType: vi.fn(async () => 'traditional'),
+  getCustomPackagesPath: vi.fn(async () => null),
+  getMicrosoftPackagesPath: vi.fn(async () => null),
+};
 vi.mock('../../src/utils/configManager', () => ({
-  getConfigManager: vi.fn(() => ({
-    ensureLoaded: vi.fn(async () => {}),
-    getPackagePath: vi.fn(() => 'K:\\PackagesLocalDirectory'),
-    getModelName: vi.fn(() => 'MyModel'),
-    getPackageNameFromWorkspacePath: vi.fn(() => 'MyPackage'),
-    getProjectPath: vi.fn(async () => null),
-    getDevEnvironmentType: vi.fn(async () => 'traditional'),
-    getCustomPackagesPath: vi.fn(async () => null),
-    getMicrosoftPackagesPath: vi.fn(async () => null),
-  })),
+  getConfigManager: vi.fn(() => mockConfigMgr),
 }));
 
 vi.mock('../../src/utils/packageResolver', () => ({
@@ -254,6 +255,109 @@ describe('create_label', () => {
   it('returns error when required fields are missing', async () => {
     const result = await createLabelTool(req('create_label', { labelId: 'Foo' }), ctx);
     expect(result.isError).toBe(true);
+  });
+
+  it('defaults description to VS project name when no comment is provided', async () => {
+    const fsMock = await import('fs');
+    const writeCalls: string[] = [];
+    (fsMock.promises.writeFile as any).mockImplementation(async (_p: string, content: string) => {
+      writeCalls.push(content);
+    });
+    (fsMock.promises.readdir as any).mockResolvedValueOnce(['en-US']);
+    (fsMock.promises.readFile as any).mockResolvedValueOnce('\uFEFF');
+
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'TestDesc',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        updateIndex: false,
+        translations: [{ language: 'en-US', text: 'Test label' }],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    // The written content should contain the project name (from .rnrproj path) as comment
+    const labelWrite = writeCalls.find(c => c.includes('TestDesc='));
+    expect(labelWrite).toContain(' ;MyProject');
+  });
+
+  it('falls back to model name when no project path is available', async () => {
+    const fsMock = await import('fs');
+    const writeCalls: string[] = [];
+    (fsMock.promises.writeFile as any).mockImplementation(async (_p: string, content: string) => {
+      writeCalls.push(content);
+    });
+    (fsMock.promises.readdir as any).mockResolvedValueOnce(['en-US']);
+    (fsMock.promises.readFile as any).mockResolvedValueOnce('\uFEFF');
+
+    // Override getProjectPath to return null for this test
+    mockConfigMgr.getProjectPath.mockResolvedValueOnce(null);
+
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'TestDescFallback',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        updateIndex: false,
+        translations: [{ language: 'en-US', text: 'Fallback label' }],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    const labelWrite = writeCalls.find(c => c.includes('TestDescFallback='));
+    expect(labelWrite).toContain(' ;MyModel');
+  });
+
+  it('uses explicit description over model name default', async () => {
+    const fsMock = await import('fs');
+    const writeCalls: string[] = [];
+    (fsMock.promises.writeFile as any).mockImplementation(async (_p: string, content: string) => {
+      writeCalls.push(content);
+    });
+    (fsMock.promises.readdir as any).mockResolvedValueOnce(['en-US']);
+    (fsMock.promises.readFile as any).mockResolvedValueOnce('\uFEFF');
+
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'TestDesc2',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        description: 'Custom project description',
+        updateIndex: false,
+        translations: [{ language: 'en-US', text: 'Test label 2' }],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    const labelWrite = writeCalls.find(c => c.includes('TestDesc2='));
+    expect(labelWrite).toContain(' ;Custom project description');
+  });
+
+  it('per-translation comment takes priority over description', async () => {
+    const fsMock = await import('fs');
+    const writeCalls: string[] = [];
+    (fsMock.promises.writeFile as any).mockImplementation(async (_p: string, content: string) => {
+      writeCalls.push(content);
+    });
+    (fsMock.promises.readdir as any).mockResolvedValueOnce(['en-US']);
+    (fsMock.promises.readFile as any).mockResolvedValueOnce('\uFEFF');
+
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'TestDesc3',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        description: 'Should be overridden',
+        updateIndex: false,
+        translations: [{ language: 'en-US', text: 'Test label 3', comment: 'Explicit comment' }],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    const labelWrite = writeCalls.find(c => c.includes('TestDesc3='));
+    expect(labelWrite).toContain(' ;Explicit comment');
+    expect(labelWrite).not.toContain('Should be overridden');
   });
 });
 
