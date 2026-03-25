@@ -20,7 +20,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { getConfigManager } from '../utils/configManager.js';
 import { PackageResolver } from '../utils/packageResolver.js';
-import { ProjectFileManager } from './createD365File.js';
+import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
 
 // UTF-8 BOM (Byte Order Mark)
 const UTF8_BOM = '\uFEFF';
@@ -77,6 +77,19 @@ const CreateLabelArgsSchema = z.object({
     .string()
     .optional()
     .describe('Root packages path. Auto-detected from environment config if omitted.'),
+  projectPath: z
+    .string()
+    .optional()
+    .describe('Path to the .rnrproj project file. Auto-detected from .mcp.json if omitted.'),
+  solutionPath: z
+    .string()
+    .optional()
+    .describe('Path to the .sln solution directory. Used as fallback to find .rnrproj if projectPath is not set.'),
+  addToProject: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Add label file XML descriptors to the VS project (.rnrproj) so builds detect them (default: true)'),
   createLabelFileIfMissing: z
     .boolean()
     .optional()
@@ -399,8 +412,20 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
 
     // 5b. Add label file descriptors to VS project (.rnrproj) so builds detect them
     const addedToProject: string[] = [];
-    if (written.length > 0) {
-      const projectPath = await configManager.getProjectPath();
+    let projectWarning = '';
+    if (args.addToProject && (written.length > 0 || existingLanguages.length > 0)) {
+      // Resolve projectPath with the same fallback chain as create_d365fo_file:
+      // 1. Explicit arg  2. configManager  3. solutionPath + ProjectFileFinder scan
+      let projectPath = args.projectPath || await configManager.getProjectPath() || null;
+
+      if (!projectPath) {
+        const solutionPath = args.solutionPath || await configManager.getSolutionPath() || null;
+        if (solutionPath) {
+          console.error(`[create_label] projectPath not found, scanning solution: ${solutionPath}`);
+          projectPath = await ProjectFileFinder.findProjectInSolution(solutionPath, model);
+        }
+      }
+
       if (projectPath) {
         const pfm = new ProjectFileManager();
         // Collect all languages that have an XML descriptor
@@ -410,8 +435,16 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
           try {
             const added = await pfm.addToProject(projectPath, 'label-file', descriptorName, '');
             if (added) addedToProject.push(descriptorName);
-          } catch { /* non-fatal — project file may be locked by VS */ }
+          } catch (projErr: any) {
+            console.error(`[create_label] Failed to add ${descriptorName} to project: ${projErr.message}`);
+          }
         }
+      } else {
+        console.error('[create_label] projectPath is null — label descriptors will NOT be added to .rnrproj.');
+        projectWarning =
+          '\n⚠️ Could not add label descriptors to VS project — projectPath not resolved.\n' +
+          'Add projectPath to .mcp.json, pass it as a tool argument, or set solutionPath.\n' +
+          'Example: { "servers": { "context": { "projectPath": "K:\\\\VSProjects\\\\MyModel\\\\MyModel.rnrproj" } } }\n';
       }
     }
 
@@ -450,6 +483,9 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       lines.push('');
       lines.push('Added to VS project:');
       lines.push(...addedToProject.map(n => `  ✔ ${n}`));
+    }
+    if (projectWarning) {
+      lines.push(projectWarning);
     }
     lines.push('');
     lines.push('Use in X++:');
@@ -514,6 +550,18 @@ export const createLabelToolDefinition = {
       packagePath: {
         type: 'string',
         description: 'Root PackagesLocalDirectory path (default: K:\\AosService\\PackagesLocalDirectory)',
+      },
+      projectPath: {
+        type: 'string',
+        description: 'Path to the .rnrproj project file. Auto-detected from .mcp.json if omitted.',
+      },
+      solutionPath: {
+        type: 'string',
+        description: 'Path to the .sln solution directory. Fallback to find .rnrproj if projectPath is not set.',
+      },
+      addToProject: {
+        type: 'boolean',
+        description: 'Add label file XML descriptors to the VS project (default: true)',
       },
       createLabelFileIfMissing: {
         type: 'boolean',

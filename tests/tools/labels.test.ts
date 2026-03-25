@@ -28,10 +28,14 @@ vi.mock('fs', async (orig) => {
 });
 
 const mockAddToProject = vi.fn(async () => true);
+const mockFindProjectInSolution = vi.fn(async (_sol: string, _model: string): Promise<string | null> => null);
 vi.mock('../../src/tools/createD365File', () => ({
   ProjectFileManager: vi.fn().mockImplementation(function(this: any) {
     this.addToProject = mockAddToProject;
   }),
+  ProjectFileFinder: {
+    findProjectInSolution: (solutionPath: string, modelName: string) => mockFindProjectInSolution(solutionPath, modelName),
+  },
 }));
 
 const mockConfigMgr = {
@@ -40,6 +44,7 @@ const mockConfigMgr = {
   getModelName: vi.fn(() => 'MyModel'),
   getPackageNameFromWorkspacePath: vi.fn(() => 'MyPackage'),
   getProjectPath: vi.fn(async () => null as string | null),
+  getSolutionPath: vi.fn(async () => null as string | null),
   getDevEnvironmentType: vi.fn(async () => 'traditional'),
   getCustomPackagesPath: vi.fn(async () => null),
   getMicrosoftPackagesPath: vi.fn(async () => null),
@@ -276,6 +281,112 @@ describe('create_label', () => {
     expect(descriptorNames).toContain('MyModel_cs');
     // Summary should mention project addition
     expect(result.content[0].text).toContain('Added to VS project');
+  });
+
+  it('uses explicit projectPath arg over configManager', async () => {
+    mockAddToProject.mockClear();
+    // configManager.getProjectPath returns null, but explicit arg is provided
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'ExplicitPathTest',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        projectPath: 'K:\\repos\\Explicit\\Explicit.rnrproj',
+        createLabelFileIfMissing: true,
+        updateIndex: false,
+        translations: [
+          { language: 'en-US', text: 'Explicit path test' },
+        ],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    expect(mockAddToProject).toHaveBeenCalled();
+    // Verify the explicit path was used (not the null from configManager)
+    expect(mockAddToProject.mock.calls.length).toBeGreaterThan(0);
+    expect((mockAddToProject.mock.calls as any[][])[0][0]).toBe('K:\\repos\\Explicit\\Explicit.rnrproj');
+    expect(result.content[0].text).toContain('Added to VS project');
+  });
+
+  it('skips addToProject when addToProject=false', async () => {
+    mockAddToProject.mockClear();
+    // projectPath doesn't matter — addToProject=false should skip the entire block
+
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'NoProjectTest',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        addToProject: false,
+        createLabelFileIfMissing: true,
+        updateIndex: false,
+        translations: [
+          { language: 'en-US', text: 'No project test' },
+        ],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    expect(mockAddToProject).not.toHaveBeenCalled();
+    expect(result.content[0].text).not.toContain('Added to VS project');
+  });
+
+  it('falls back to solutionPath when projectPath is null', async () => {
+    mockAddToProject.mockClear();
+    mockFindProjectInSolution.mockClear();
+    mockConfigMgr.getProjectPath.mockReset();
+    mockConfigMgr.getSolutionPath.mockReset();
+    // projectPath returns null, solutionPath returns a path, finder resolves .rnrproj
+    mockConfigMgr.getProjectPath.mockResolvedValue(null);
+    mockFindProjectInSolution.mockResolvedValueOnce('K:\\repos\\Found\\Found.rnrproj');
+    mockConfigMgr.getSolutionPath.mockResolvedValueOnce('K:\\repos\\Found');
+
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'SolutionFallbackTest',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        createLabelFileIfMissing: true,
+        updateIndex: false,
+        translations: [
+          { language: 'en-US', text: 'Solution fallback test' },
+        ],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    // ProjectFileFinder should have been called with the solution path and model
+    expect(mockFindProjectInSolution).toHaveBeenCalledWith('K:\\repos\\Found', 'MyModel');
+    // addToProject should have been called with the found project path
+    expect(mockAddToProject).toHaveBeenCalled();
+    expect((mockAddToProject.mock.calls as any[][])[0][0]).toBe('K:\\repos\\Found\\Found.rnrproj');
+    expect(result.content[0].text).toContain('Added to VS project');
+  });
+
+  it('shows warning when projectPath cannot be resolved', async () => {
+    mockAddToProject.mockClear();
+    mockFindProjectInSolution.mockClear();
+    mockConfigMgr.getProjectPath.mockReset();
+    mockConfigMgr.getSolutionPath.mockReset();
+    // All resolution paths return null
+    mockConfigMgr.getProjectPath.mockResolvedValue(null);
+    mockConfigMgr.getSolutionPath.mockResolvedValue(null);
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'NoPathTest',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        createLabelFileIfMissing: true,
+        updateIndex: false,
+        translations: [
+          { language: 'en-US', text: 'No path test' },
+        ],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    expect(mockAddToProject).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain('projectPath not resolved');
   });
 
   it('returns error when labelId contains invalid characters', async () => {

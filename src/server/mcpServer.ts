@@ -1680,6 +1680,18 @@ Examples:
                 type: 'string',
                 description: 'Root packages path. Auto-detected from environment config if omitted.',
               },
+              projectPath: {
+                type: 'string',
+                description: 'Path to the .rnrproj project file. Auto-detected from .mcp.json if omitted.',
+              },
+              solutionPath: {
+                type: 'string',
+                description: 'Path to the .sln solution directory. Fallback to find .rnrproj if projectPath is not set.',
+              },
+              addToProject: {
+                type: 'boolean',
+                description: 'Add label file XML descriptors to the VS project (default: true)',
+              },
               createLabelFileIfMissing: {
                 type: 'boolean',
                 description: 'Create AxLabelFile structure if missing (default: false)',

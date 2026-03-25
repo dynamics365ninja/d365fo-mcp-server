@@ -135,6 +135,7 @@ describe('ProjectFileManager', () => {
         ['security-privilege', 'AxSecurityPrivilege', 'Security Privileges'],
         ['security-duty', 'AxSecurityDuty', 'Security Duties'],
         ['security-role', 'AxSecurityRole', 'Security Roles'],
+        ['label-file', 'AxLabelFile', 'Label Files'],
       ];
 
       for (const [objType, axPrefix, displayFolder] of types) {
