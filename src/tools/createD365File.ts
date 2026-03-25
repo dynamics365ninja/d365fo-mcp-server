@@ -2895,8 +2895,10 @@ export class ProjectFileManager {
       }
     }
     // Strip UTF-8 BOM if present (VS writes BOM; Node fs.readFile keeps it)
+    let hadBom = false;
     if (projectXml.charCodeAt(0) === 0xFEFF) {
       projectXml = projectXml.slice(1);
+      hadBom = true;
     }
     const project = await this.parser.parseStringPromise(projectXml);
 
@@ -2905,9 +2907,14 @@ export class ProjectFileManager {
       throw new Error('Invalid .rnrproj file structure');
     }
 
-    // Initialize ItemGroup if not exists
+    // Initialize ItemGroup if not exists — insert BEFORE Import elements
+    // so MSBuild/VS sees items before targets (xml2js preserves JS key order)
     if (!project.Project.ItemGroup) {
-      project.Project.ItemGroup = [{ Folder: [] }, { Content: [] }];
+      const { Import, ...rest } = project.Project;
+      project.Project = { ...rest, ItemGroup: [{ Folder: [] }, { Content: [] }] };
+      if (Import) {
+        project.Project.Import = Import;
+      }
     }
 
     // Convert to array if single ItemGroup
@@ -2989,9 +2996,11 @@ export class ProjectFileManager {
 
     // Write back to project file (with retry for transient VS file locks)
     const updatedXml = this.builder.buildObject(project);
+    // Restore UTF-8 BOM if the original file had one (VS 2022 writes .rnrproj with BOM)
+    const output = hadBom ? '\uFEFF' + updatedXml : updatedXml;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        await fs.writeFile(projectPath, updatedXml, 'utf-8');
+        await fs.writeFile(projectPath, output, 'utf-8');
         break;
       } catch (err: any) {
         if ((err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') && attempt < 4) {
@@ -3017,7 +3026,11 @@ export class ProjectFileManager {
       );
 
       // Read project file
-      const projectXml = await fs.readFile(projectPath, 'utf-8');
+      let projectXml = await fs.readFile(projectPath, 'utf-8');
+      // Strip UTF-8 BOM if present
+      if (projectXml.charCodeAt(0) === 0xFEFF) {
+        projectXml = projectXml.slice(1);
+      }
       const project = await this.parser.parseStringPromise(projectXml);
 
       // Look for PropertyGroup with Model or ModelName

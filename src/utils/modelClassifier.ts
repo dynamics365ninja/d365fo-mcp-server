@@ -146,8 +146,8 @@ export function applyObjectPrefix(objectName: string, prefix: string): string {
     const basePart = objectName.slice(0, dotIdx);    // e.g., "CustTable"
     const correctSuffix = `${extensionInfix}Extension`;
     // Always return the correctly-cased suffix — never preserve the original casing.
-    // Without this, "VendTrans.ASLExtension" with EXTENSION_PREFIX=ASL_ would not be
-    // normalized to "VendTrans.AslExtension".
+    // Without this, "VendTrans.CTSOExtension" with EXTENSION_PREFIX=CTSO_ would not be
+    // normalized to "VendTrans.CtsoExtension".
     return `${basePart}.${correctSuffix}`;
   }
 

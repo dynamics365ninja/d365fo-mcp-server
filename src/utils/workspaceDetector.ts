@@ -132,8 +132,8 @@ export async function detectD365Project(workspacePath: string, maxDepth: number 
 
     // D365FO convention: in a multi-project solution folder the "primary" project
     // usually has the SAME NAME as the solution folder (workspace base name).
-    // e.g. workspace "AslCore - FeatureManagement/" → prefer the .rnrproj whose
-    // own folder is also named "AslCore - FeatureManagement".
+    // e.g. workspace "ContosoCore - FeatureManagement/" → prefer the .rnrproj whose
+    // own folder is also named "ContosoCore - FeatureManagement".
     // Falls back to the first file found (alphabetically) when no name match.
     let primaryProject = projectFiles[0];
     if (projectFiles.length > 1) {

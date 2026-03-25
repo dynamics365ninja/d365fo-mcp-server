@@ -41,7 +41,7 @@ const CreateLabelArgsSchema = z.object({
       '⛔ NEVER add a model/object prefix to label IDs. ' +
       'Label IDs describe the meaning of the text, NOT the owning object. ' +
       'Good examples: "CustomerName", "InvoiceDate", "ErrorAmountNegative". ' +
-      'Bad examples (with prefix): "AslCoreCustomerName", "ContosoExtInvoiceDate".',
+      'Bad examples (with prefix): "MyModelCustomerName", "ContosoExtInvoiceDate".',
     ),
   labelFileId: z
     .string()

@@ -22,7 +22,7 @@ const GetFormInfoArgsSchema = z.object({
     'Absolute path to the form XML file on disk. ' +
     'Use this when get_form_info previously returned a "could not be read from disk" warning with a guessed path. ' +
     'Bypasses the DB path lookup entirely. ' +
-    'Example: filePath="K:\\AOSService\\PackagesLocalDirectory\\AslCore\\AslCore\\AxForm\\MyForm.xml"'
+    'Example: filePath="K:\\AOSService\\PackagesLocalDirectory\\ContosoCore\\ContosoCore\\AxForm\\MyForm.xml"'
   ),
   includeControls: z.boolean().optional().default(true).describe('Include control hierarchy'),
   includeDataSources: z.boolean().optional().default(true).describe('Include datasource information'),

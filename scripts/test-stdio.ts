@@ -7,8 +7,8 @@
  *
  * Usage:
  *   npx tsx scripts/test-stdio.ts
- *   npx tsx scripts/test-stdio.ts --path "K:\repos\ASL\src\d365fo\projects\AslCore\AslCore.rnrproj"
- *   npx tsx scripts/test-stdio.ts --workspace "K:\repos\ASL\src\d365fo\projects"
+ *   npx tsx scripts/test-stdio.ts --path "K:\repos\Contoso\src\d365fo\projects\ContosoCore\ContosoCore.rnrproj"
+ *   npx tsx scripts/test-stdio.ts --workspace "K:\repos\Contoso\src\d365fo\projects"
  *
  * Options:
  *   --path        Path to a .rnrproj file OR a workspace folder.
@@ -19,7 +19,7 @@
  *   --switch      After first get_workspace_info, send roots/list_changed with
  *                 a second path to test solution-switch detection.
  *                 Accepts a .rnrproj file or a workspace folder.
- *                 e.g. --switch "K:\repos\ASL\src\d365fo\projects\AslFinCZ\..."
+ *                 e.g. --switch "K:\repos\Contoso\src\d365fo\projects\ContosoFinCZ\..."
  */
 
 import { Client }               from '@modelcontextprotocol/sdk/client/index.js';
@@ -42,8 +42,8 @@ function getArg(name: string): string | null {
  * parent directory (the project folder).  This gives the most specific folder
  * that still contains the relevant project, regardless of nesting depth:
  *
- *   build/Solutions/AslCore/AslCore.rnrproj        → build/Solutions/AslCore/
- *   projects/AslCore - FM/AslCore - FM/AslCore.rnrproj → projects/AslCore - FM/AslCore - FM/
+ *   build/Solutions/ContosoCore/ContosoCore.rnrproj        → build/Solutions/ContosoCore/
+ *   projects/ContosoCore - FM/ContosoCore - FM/ContosoCore.rnrproj → projects/ContosoCore - FM/ContosoCore - FM/
  *
  * Note: VS 2022 may send the solution folder (one level higher) for multi-project
  * solutions.  The server handles that case via name-match detection and git branch

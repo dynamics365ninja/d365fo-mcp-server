@@ -475,8 +475,8 @@ class ConfigManager {
     if (children.length > 1) {
       // Priority C: D365FO convention — the "primary" project in a solution folder
       // usually has the SAME NAME as the solution folder itself.
-      // e.g. VS 2022 sends root "AslCore - FeatureManagement/" which contains
-      // AslAuditReports - FeatureManagement/, AslCore - FeatureManagement/, …
+      // e.g. VS 2022 sends root "ContosoCore - FeatureManagement/" which contains
+      // ContosoReports - FeatureManagement/, ContosoCore - FeatureManagement/, …
       // → prefer the project whose own folder name matches the workspace base name.
       const wpBase = path.basename(workspacePath).toLowerCase();
       const nameMatch = children.find(p => {
@@ -743,8 +743,8 @@ class ConfigManager {
    *   1) Explicit modelName in mcp.json context
    *   2) Last segment of workspacePath — ONLY when path contains PackagesLocalDirectory
    *      (AOT paths like K:\AosService\PackagesLocalDirectory\MyModel).
-   *      Skipped for solution/repo paths like K:\repos\ASL — those would wrongly
-   *      return "ASL" instead of the real model name from the .rnrproj file.
+   *      Skipped for solution/repo paths like K:\repos\Contoso — those would wrongly
+   *      return "Contoso" instead of the real model name from the .rnrproj file.
    *   3) Auto-detected model name from .rnrproj scan
    *   4) D365FO_MODEL_NAME env var
    */

@@ -502,7 +502,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
             `>`,
             `> How to fix:`,
             `> 1. In Visual Studio, open the .rnrproj file and change <Model>FleetManagement</Model>`,
-            `>    to the correct model name (e.g. <Model>AslCore</Model>).`,
+            `>    to the correct model name (e.g. <Model>ContosoCore</Model>).`,
             `> 2. OR explicitly switch to a known project:`,
             `>    ${hint}`,
             `> 3. OR add the correct modelName to .mcp.json.`,
