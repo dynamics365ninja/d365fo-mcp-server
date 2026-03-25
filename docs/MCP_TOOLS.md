@@ -5,18 +5,21 @@ When you ask GitHub Copilot a question about D365FO code, it automatically calls
 just ask in plain English.
 
 > **C# Metadata Bridge (Windows D365FO VMs only):** On a Windows VM with D365FO installed,
-> 12 read-only tools automatically try the C# metadata bridge first — providing always-fresh,
-> runtime-resolved metadata via `IMetadataProvider`. If the bridge is unavailable (Azure, Linux,
-> CI) or the object is not found, the tools transparently fall back to the SQLite database.
-> Bridge-sourced results include a `_Source: C# bridge (IMetadataProvider)_` marker.
+> 20 tools automatically try the C# metadata bridge first — providing always-fresh,
+> runtime-resolved metadata via `IMetadataProvider` and compiler-resolved cross-references
+> via `DYNAMICSXREFDB`. If the bridge is unavailable (Azure, Linux, CI) or the object is
+> not found, the tools transparently fall back to the SQLite database.
+> Bridge-sourced results include a `_Source: C# bridge_` marker.
 >
-> **Write operations** are now fully bridged: 18 create types (class, class-extension,
-> table, enum, edt, query, view, form, menu, 3 menu items, 3 security objects,
-> table/form/enum-extension) and **all 25 modify operations** use
-> `IMetadataProvider.Create()` / `Update()` as the sole write path.
+> **Cross-reference enrichment (P1-P5):** `find_references` returns categorized reference
+> types (call/extends/field-access) and caller details. `find_coc_extensions` shows which
+> methods each extension class wraps. `find_event_handlers` supports eventName/handlerType
+> filtering. `get_api_usage_patterns` returns compiler-resolved callers grouped by class.
+>
+> **Write operations** are fully bridged: 18 create types and **all 25 modify operations**
+> use `IMetadataProvider.Create()` / `Update()` as the sole write path.
 > The bridge is required for all modify operations (no xml2js fallback).
 > Complex create types (report, data-entity) remain in TypeScript XML generation.
-> The bridge is Windows-only (file operations are local-only on Windows VM).
 > See [BRIDGE.md](BRIDGE.md) for details.
 
 ---
@@ -70,7 +73,7 @@ just ask in plain English.
 | **analyze_code_patterns** | Learn real patterns from your codebase | "Show me patterns for ledger journal creation" |
 | **suggest_method_implementation** | Real examples of how similar methods are written | "How do others implement validateWrite()" |
 | **analyze_class_completeness** | Which standard methods is my class missing? | "Is MyHelper class complete?" |
-| **get_api_usage_patterns** | How is a specific API typically initialized and used? | "How do I use LedgerJournalEngine?" |
+| **get_api_usage_patterns** † | How is a specific API typically initialized and used? (bridge-first: compiler-resolved callers) | "How do I use LedgerJournalEngine?" |
 
 ### Smart Object Generation (4 tools)
 
@@ -124,11 +127,11 @@ The following tools empower Copilot to trigger X++ compilation, testing, and db 
 | **get_security_artifact_info** | Full privilege/duty/role details with hierarchy chain | "Show me everything in the CustTableFullControl privilege" |
 | **get_security_coverage_for_object** | Which roles have access to a form or table | "What roles can access the CustTable form?" |
 | **get_menu_item_info** | Menu item target, type, and security privilege chain | "What form does the CustTable menu item open?" |
-| **find_coc_extensions** | Which classes wrap a method with CoC | "Does CustTable.validateWrite have any CoC wrappers?" |
-| **find_event_handlers** | All [SubscribesTo] handlers for table or class events | "Who handles the onInserted event of SalesLine?" |
+| **find_coc_extensions** † | Which classes wrap a method with CoC — shows wrapped methods per extension | "Does CustTable.validateWrite have any CoC wrappers?" |
+| **find_event_handlers** † | All event handlers with type classification and event filtering | "Who handles the onInserted event of SalesLine?" |
 | **get_table_extension_info** | All extensions of a table: added fields, indexes, methods | "What fields did ISV packages add to CustTable?" |
 | **get_data_entity_info** † | Data entity category, OData name, data sources, keys | "Show me CustCustomerV3Entity details" |
-| **analyze_extension_points** | CoC-eligible methods, delegates, events — what can be extended | "What can I extend on SalesLine?" |
+| **analyze_extension_points** † | CoC-eligible methods, delegates, events — what can be extended (bridge enrichment for existing extensions) | "What can I extend on SalesLine?" |
 | **recommend_extension_strategy** | Recommends the best extensibility mechanism for a scenario — prevents wrong choices (CoC vs event vs Business Event vs data entity) | "Should I use CoC or Business Event to notify an external system?" |
 | **validate_object_naming** | Validate proposed extension/object names against D365FO conventions | "Is SalesTableExtension a valid extension class name?" |
 
@@ -463,6 +466,11 @@ Show me patterns for financial dimension handling
 
 Shows how a specific API class or method is actually used in your codebase: typical
 initialization code, common method call sequences, and related APIs.
+
+> **Bridge-first (P5):** When the C# bridge is connected, this tool queries
+> `DYNAMICSXREFDB` for compiler-resolved callers of the API, grouped by class with
+> method list and call count. Falls back to SQLite pattern analysis when the bridge
+> is unavailable.
 
 **Examples:**
 ```

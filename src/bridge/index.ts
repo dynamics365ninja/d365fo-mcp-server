@@ -37,6 +37,7 @@ export {
   canBridgeCreate,
   canBridgeModify,
   bridgeCreateObject,
+  bridgeCreateSmartTable,
   bridgeAddMethod,
   bridgeRemoveMethod,
   bridgeAddField,
@@ -70,4 +71,5 @@ export {
   tryBridgeCompletion,
   tryBridgeCocExtensions,
   tryBridgeEventHandlers,
+  tryBridgeApiUsageCallers,
 } from './bridgeAdapter.js';

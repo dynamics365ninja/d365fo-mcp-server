@@ -31,6 +31,8 @@ import type {
   BridgeCompletionResult,
   BridgeExtensionClassResult,
   BridgeEventSubscriberResult,
+  BridgeSmartTableResult,
+  BridgeApiUsageCallersResult,
 } from './bridgeTypes.js';
 
 /** Standard MCP tool response shape */
@@ -431,11 +433,50 @@ export async function tryBridgeReferences(
     out += `**Total:** ${refs.count} reference(s) found\n`;
     out += `_Source: C# bridge (DYNAMICSXREFDB)_\n\n`;
 
+    // Group by reference type for summary
+    const byType = new Map<string, number>();
+    const topCallers = new Map<string, number>();
+    for (const r of refs.references) {
+      const rt = r.referenceType || 'reference';
+      byType.set(rt, (byType.get(rt) || 0) + 1);
+      const caller = r.callerClass
+        ? (r.callerMethod ? `${r.callerClass}.${r.callerMethod}` : r.callerClass)
+        : r.sourcePath;
+      topCallers.set(caller, (topCallers.get(caller) || 0) + 1);
+    }
+
+    // Summary by type
+    out += `## 📊 Summary by Type\n\n`;
+    for (const [type, count] of byType) {
+      out += `- **${type}**: ${count} reference(s)\n`;
+    }
+    out += `\n`;
+
+    // Top callers
+    const sortedCallers = [...topCallers.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+    if (sortedCallers.length > 0) {
+      out += `## 🔝 Top Callers\n\n`;
+      for (const [caller, count] of sortedCallers) {
+        out += `- **${caller}** (${count} call(s))\n`;
+      }
+      out += `\n`;
+    }
+
+    // Detailed references
+    out += `## 📍 References\n\n`;
     const visible = refs.references.slice(0, limit);
     for (const r of visible) {
       const module = r.sourceModule ? ` [${r.sourceModule}]` : '';
       const loc = r.line > 0 ? `:${r.line}` : '';
-      out += `- **${r.sourcePath}**${loc}${module}\n`;
+      const refType = r.referenceType ? ` (${r.referenceType})` : '';
+      const caller = r.callerClass
+        ? (r.callerMethod ? `${r.callerClass}.${r.callerMethod}` : r.callerClass)
+        : null;
+      if (caller) {
+        out += `- **${caller}**${loc}${module}${refType}\n`;
+      } else {
+        out += `- **${r.sourcePath}**${loc}${module}${refType}\n`;
+      }
     }
 
     if (refs.count > limit) {
@@ -941,6 +982,44 @@ export async function bridgeCreateObject(
   } catch (e) {
     console.error(`[BridgeAdapter] createObject(${params.objectType}, ${params.objectName}) failed: ${e}`);
     return null; // Signal to caller: fall back to XML generation
+  }
+}
+
+/**
+ * Creates a smart table via the C# bridge with all BP-smart defaults
+ * (CacheLookup, FieldGroups, DeleteActions, TitleField, PrimaryIndex) auto-set.
+ * Returns { success, filePath, bpDefaults } or null if bridge unavailable.
+ */
+export async function bridgeCreateSmartTable(
+  bridge: BridgeClient | undefined,
+  params: {
+    objectName: string;
+    modelName: string;
+    tableGroup?: string;
+    tableType?: string;
+    label?: string;
+    fields?: Record<string, unknown>[];
+    extraFieldGroups?: Record<string, unknown>[];
+    indexes?: Record<string, unknown>[];
+    relations?: Record<string, unknown>[];
+    methods?: { name: string; source?: string }[];
+    extraProperties?: Record<string, string>;
+  },
+): Promise<BridgeSmartTableResult | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+
+  try {
+    const result = await bridge.createSmartTable(params);
+    if (result.success) {
+      console.error(`[BridgeAdapter] ✅ Smart table created: ${result.filePath} (${result.api})`);
+      return result;
+    } else {
+      console.error(`[BridgeAdapter] createSmartTable returned success=false`);
+      return null;
+    }
+  } catch (e) {
+    console.error(`[BridgeAdapter] createSmartTable(${params.objectName}) failed: ${e}`);
+    return null; // Signal to caller: fall back to SmartXmlBuilder
   }
 }
 
@@ -1943,19 +2022,20 @@ function formatCompletion(r: BridgeCompletionResult, prefix?: string): string {
 export async function tryBridgeCocExtensions(
   bridge: BridgeClient | undefined,
   baseClassName: string,
+  methodName?: string,
 ): Promise<ToolResult | null> {
   if (!bridge?.isReady || !bridge.xrefAvailable) return null;
   try {
     const result = await bridge.findExtensionClasses(baseClassName);
     if (!result) return null;
-    return { content: [{ type: 'text', text: formatCocExtensions(result) }] };
+    return { content: [{ type: 'text', text: formatCocExtensions(result, methodName) }] };
   } catch (e) {
     console.error(`[BridgeAdapter] findExtensionClasses(${baseClassName}) failed: ${e}`);
     return null;
   }
 }
 
-function formatCocExtensions(r: BridgeExtensionClassResult): string {
+function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter?: string): string {
   let out = `CoC Extensions of: ${r.baseClassName}\n`;
   out += `_Source: C# bridge (DYNAMICSXREFDB)_\n\n`;
 
@@ -1964,13 +2044,26 @@ function formatCocExtensions(r: BridgeExtensionClassResult): string {
     return out;
   }
 
-  out += `Found ${r.count} extension class(es):\n\n`;
+  // Apply method filter if specified
+  let filtered = r.extensions;
+  if (methodNameFilter) {
+    filtered = r.extensions.filter(ext =>
+      ext.wrappedMethods?.some(m => m.toLowerCase() === methodNameFilter.toLowerCase())
+      || !ext.wrappedMethods || ext.wrappedMethods.length === 0
+    );
+  }
+
+  out += `Found ${filtered.length} extension class(es)${methodNameFilter ? ` wrapping "${methodNameFilter}"` : ''}:\n\n`;
   const seen = new Set<string>();
-  for (const ext of r.extensions) {
+  for (const ext of filtered) {
     if (seen.has(ext.className)) continue;
     seen.add(ext.className);
     out += `- **${ext.className}**`;
     if (ext.module) out += ` (${ext.module})`;
+    if (ext.wrappedMethods && ext.wrappedMethods.length > 0) {
+      out += `\n    Wraps methods: ${ext.wrappedMethods.join(', ')}`;
+      out += `\n    Uses 'next' keyword: ✓`;
+    }
     out += `\n`;
   }
   return out;
@@ -1983,10 +2076,12 @@ function formatCocExtensions(r: BridgeExtensionClassResult): string {
 export async function tryBridgeEventHandlers(
   bridge: BridgeClient | undefined,
   targetName: string,
+  eventName?: string,
+  handlerType?: string,
 ): Promise<ToolResult | null> {
   if (!bridge?.isReady || !bridge.xrefAvailable) return null;
   try {
-    const result = await bridge.findEventSubscribers(targetName);
+    const result = await bridge.findEventSubscribers(targetName, eventName, handlerType);
     if (!result) return null;
     return { content: [{ type: 'text', text: formatEventHandlers(result) }] };
   } catch (e) {
@@ -2004,14 +2099,69 @@ function formatEventHandlers(r: BridgeEventSubscriberResult): string {
     return out;
   }
 
-  out += `Found ${r.count} handler class(es):\n\n`;
+  out += `Found ${r.count} handler(s):\n\n`;
+
+  // Group by handler type
+  const byType = new Map<string, typeof r.handlers>();
   for (const h of r.handlers) {
-    out += `- **${h.className}**`;
-    if (h.module) out += ` (${h.module})`;
-    if (h.methods.length > 0) {
-      out += ` — methods: ${h.methods.join(', ')}`;
+    const type = h.handlerType || 'static';
+    if (!byType.has(type)) byType.set(type, []);
+    byType.get(type)!.push(h);
+  }
+
+  for (const [type, handlers] of byType) {
+    out += `### ${type} handlers (${handlers.length})\n\n`;
+    for (const h of handlers) {
+      out += `- **${h.className}**`;
+      if (h.methodName) out += `.${h.methodName}`;
+      if (h.module) out += ` (${h.module})`;
+      if (h.eventName) out += ` — event: ${h.eventName}`;
+      out += `\n`;
     }
     out += `\n`;
   }
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// API USAGE CALLERS via XREF (P5)
+// ════════════════════════════════════════════════════════════════════════
+
+export async function tryBridgeApiUsageCallers(
+  bridge: BridgeClient | undefined,
+  apiName: string,
+  limit = 200,
+): Promise<ToolResult | null> {
+  if (!bridge?.isReady || !bridge.xrefAvailable) return null;
+  try {
+    const result = await bridge.findApiUsageCallers(apiName, limit);
+    if (!result || result.totalCallers === 0) return null;
+    return { content: [{ type: 'text', text: formatApiUsageCallers(result) }] };
+  } catch (e) {
+    console.error(`[BridgeAdapter] findApiUsageCallers(${apiName}) failed: ${e}`);
+    return null;
+  }
+}
+
+function formatApiUsageCallers(r: BridgeApiUsageCallersResult): string {
+  let out = `# API Usage: ${r.apiName}\n\n`;
+  out += `**Total references:** ${r.totalCallers} from ${r.uniqueClasses} unique class(es)\n`;
+  out += `_Source: C# bridge (DYNAMICSXREFDB)_\n\n`;
+
+  out += `## Top Callers by Class\n\n`;
+  for (const cls of r.callersByClass.slice(0, 30)) {
+    out += `- **${cls.callerClass}** (${cls.callCount} call(s))`;
+    if (cls.module) out += ` [${cls.module}]`;
+    if (cls.methods.length > 0) {
+      out += `\n    Methods: ${cls.methods.slice(0, 8).join(', ')}`;
+      if (cls.methods.length > 8) out += ` (+${cls.methods.length - 8} more)`;
+    }
+    out += `\n`;
+  }
+
+  if (r.callersByClass.length > 30) {
+    out += `\n> ⚠️ Showing top 30 of ${r.uniqueClasses} caller classes.\n`;
+  }
+
   return out;
 }

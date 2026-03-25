@@ -340,6 +340,12 @@ export interface BridgeReferenceInfo {
   kind?: string;
   line: number;
   column: number;
+  /** Categorized reference type: call, extends, field-access, type-reference, reference */
+  referenceType?: string;
+  /** Source class name parsed from SourcePath */
+  callerClass?: string;
+  /** Source method name parsed from SourcePath */
+  callerMethod?: string;
 }
 
 // ===========================
@@ -422,6 +428,20 @@ export interface BridgeWriteResult {
   propertyPath?: string;
   propertyValue?: string;
   api?: string;
+}
+
+/** Result from createSmartTable — includes BP defaults summary */
+export interface BridgeSmartTableResult extends BridgeWriteResult {
+  bpDefaults?: {
+    cacheLookup?: string;
+    saveDataPerCompany?: string;
+    titleField1?: string;
+    titleField2?: string;
+    primaryIndex?: string;
+    clusteredIndex?: string;
+    fieldGroupCount?: number;
+    deleteActionCount?: number;
+  };
 }
 
 /** Method parameter for createObject */
@@ -641,8 +661,10 @@ export interface BridgeCompletionResult {
 
 export interface BridgeExtensionClassEntry {
   className: string;
-  path: string;
+  path?: string;
   module?: string;
+  /** Methods that the extension class wraps via CoC */
+  wrappedMethods?: string[];
 }
 
 export interface BridgeExtensionClassResult {
@@ -653,18 +675,52 @@ export interface BridgeExtensionClassResult {
 }
 
 // ===========================
-// Event subscriber xref types (Phase 6)
+// Event subscriber xref types (Phase 6 — enriched)
 // ===========================
 
 export interface BridgeEventSubscriberEntry {
   className: string;
   module?: string;
-  methods: string[];
+  methods?: string[];
+  /** Individual method name */
+  methodName?: string;
+  /** Event name (e.g. "onInserted") */
+  eventName?: string;
+  /** Handler type: "dataEvent", "delegate", "pre", "post", "static" */
+  handlerType?: string;
 }
 
 export interface BridgeEventSubscriberResult {
   targetName: string;
   count: number;
   handlers: BridgeEventSubscriberEntry[];
+  _source: string;
+}
+
+// ===========================
+// API usage callers xref types
+// ===========================
+
+export interface BridgeApiUsageCallerEntry {
+  callerClass: string;
+  callerMethod?: string;
+  module?: string;
+  kind?: string;
+  line: number;
+}
+
+export interface BridgeApiUsageCallersByClass {
+  callerClass: string;
+  module?: string;
+  methods: string[];
+  callCount: number;
+}
+
+export interface BridgeApiUsageCallersResult {
+  apiName: string;
+  totalCallers: number;
+  uniqueClasses: number;
+  callersByClass: BridgeApiUsageCallersByClass[];
+  callers: BridgeApiUsageCallerEntry[];
   _source: string;
 }

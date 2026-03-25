@@ -644,6 +644,78 @@ namespace D365MetadataBridge.Models
 
         [JsonPropertyName("column")]
         public int Column { get; set; }
+
+        /// <summary>Categorized reference type: call, extends, implements, field-access, type-reference</summary>
+        [JsonPropertyName("referenceType")]
+        public string? ReferenceType { get; set; }
+
+        /// <summary>Source class name parsed from SourcePath (e.g. "SalesFormLetter" from "/Classes/SalesFormLetter/Methods/run")</summary>
+        [JsonPropertyName("callerClass")]
+        public string? CallerClass { get; set; }
+
+        /// <summary>Source method name parsed from SourcePath (e.g. "run" from "/Classes/SalesFormLetter/Methods/run")</summary>
+        [JsonPropertyName("callerMethod")]
+        public string? CallerMethod { get; set; }
+    }
+
+    /// <summary>
+    /// Enriched extension class result with method-level CoC detail.
+    /// </summary>
+    public class ExtensionClassDetailModel
+    {
+        [JsonPropertyName("className")]
+        public string ClassName { get; set; } = "";
+
+        [JsonPropertyName("module")]
+        public string? Module { get; set; }
+
+        /// <summary>Methods that the extension class wraps via CoC (next calls)</summary>
+        [JsonPropertyName("wrappedMethods")]
+        public List<string> WrappedMethods { get; set; } = new List<string>();
+    }
+
+    /// <summary>
+    /// Enriched event subscriber result with handler type categorization.
+    /// </summary>
+    public class EventSubscriberDetailModel
+    {
+        [JsonPropertyName("className")]
+        public string ClassName { get; set; } = "";
+
+        [JsonPropertyName("module")]
+        public string? Module { get; set; }
+
+        [JsonPropertyName("methodName")]
+        public string? MethodName { get; set; }
+
+        /// <summary>Event name (e.g. "onInserted", "onValidatedWrite")</summary>
+        [JsonPropertyName("eventName")]
+        public string? EventName { get; set; }
+
+        /// <summary>Handler type: "dataEvent", "delegate", "pre", "post"</summary>
+        [JsonPropertyName("handlerType")]
+        public string? HandlerType { get; set; }
+    }
+
+    /// <summary>
+    /// API usage caller information from cross-reference database.
+    /// </summary>
+    public class ApiUsageCallerModel
+    {
+        [JsonPropertyName("callerClass")]
+        public string CallerClass { get; set; } = "";
+
+        [JsonPropertyName("callerMethod")]
+        public string? CallerMethod { get; set; }
+
+        [JsonPropertyName("module")]
+        public string? Module { get; set; }
+
+        [JsonPropertyName("kind")]
+        public string? Kind { get; set; }
+
+        [JsonPropertyName("line")]
+        public int Line { get; set; }
     }
 
     // ========================

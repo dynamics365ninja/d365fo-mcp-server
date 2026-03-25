@@ -744,16 +744,16 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 | `get_report_info(reportName)` | **Read AxReport structure** — datasets, fields, designs, RDL summary. Use INSTEAD of PowerShell Get-Content |
 | `get_method_source(className, methodName)` | **Full X++ source code** — use when you need to understand what the method does (complete business logic, conditions, loops) |
 | `get_method_signature(className, methodName, includeCocTemplate?)` | **Exact signature** — required before CoC. Pass `includeCocTemplate: true` only when writing a CoC extension |
-| `find_references(targetName, targetType?)` | Where-used analysis |
+| `find_references(targetName, targetType?)` | Where-used analysis — on Windows VM returns enriched results from `DYNAMICSXREFDB`: `referenceType` (call/extends/field-access/type-reference), `callerClass`, `callerMethod`, summary by type, top callers |
 
 ### Security & Extensions
 | Tool | Use for |
 |------|---------|
-| `analyze_extension_points(objectName, showExistingExtensions?)` | What CoC methods, delegates, and data events does an object expose? Start here before any extension work |
+| `analyze_extension_points(objectName, showExistingExtensions?)` | What CoC methods, delegates, and data events does an object expose? Start here before any extension work. Bridge enrichment: falls back to `DYNAMICSXREFDB` for existing extension detection with method-level CoC detail when SQLite index is empty |
 | `recommend_extension_strategy(goal, objectName?, scenario?)` | Which extensibility mechanism is correct for a given scenario? Prevents wrong choices (CoC vs event vs Business Event vs data entity) |
 | `get_table_extension_info(tableName)` | All extensions of a table across all models: added fields, indexes, methods |
-| `find_coc_extensions(className, methodName?)` | Which extension classes use CoC to wrap a given class/method? |
-| `find_event_handlers(targetTable)` | All `[SubscribesTo]` event handler methods for a table or class |
+| `find_coc_extensions(className, methodName?)` | Which extension classes use CoC to wrap a given class/method? Bridge-first: returns `wrappedMethods` per extension class from `DYNAMICSXREFDB` (compiler-resolved, not FTS) |
+| `find_event_handlers(targetTable)` | All event handler methods for a table or class. Bridge-first: per-method entries from `DYNAMICSXREFDB` with `eventName`, `handlerType` classification (dataEvent/delegate/pre/post), supports `eventName` and `handlerType` filtering |
 | `get_security_artifact_info(name)` | Privilege/Duty/Role: contained entries, full hierarchy chain |
 | `get_security_coverage_for_object(objectName, objectType?)` | Which roles, duties, and privileges grant access to a form, table, or menu item? |
 | `get_menu_item_info(name, itemType?)` | Menu item target object, type, and full security privilege chain |
@@ -766,7 +766,7 @@ c) Save to disk:                     create_d365fo_file(objectType="report", obj
 | `analyze_code_patterns(scenario)` | Find patterns before generating code |
 | `suggest_method_implementation(className, methodName)` | Real implementation examples |
 | `analyze_class_completeness(className)` | Missing standard methods |
-| `get_api_usage_patterns(apiName)` | Typical initialization & usage |
+| `get_api_usage_patterns(apiName)` | Typical initialization & usage. Bridge-first: returns compiler-resolved callers from `DYNAMICSXREFDB` grouped by class with method list and call count |
 | `generate_code(pattern, name)` | Boilerplate: `class`, `runnable`, `form-handler`, `data-entity`, `batch-job`, `table-extension`, `sysoperation`, `event-handler` |
 
 ### Smart Object Generation

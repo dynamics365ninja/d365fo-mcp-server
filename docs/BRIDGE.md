@@ -189,8 +189,16 @@ In all of these cases, the existing logic runs as if the bridge didn't exist.
 | `get_view_info` | `tryBridgeView()` | `IMetadataProvider.Views` |
 | `get_data_entity_info` | `tryBridgeDataEntity()` | `IMetadataProvider.DataEntityViews` |
 | `get_report_info` | `tryBridgeReport()` | `IMetadataProvider.Reports` (fallback only) |
-| `find_references` | `tryBridgeReferences()` | `DYNAMICSXREFDB` |
+| `find_references` | `tryBridgeReferences()` | `DYNAMICSXREFDB` — enriched with `referenceType`, `callerClass`, `callerMethod` |
 | `search` | `tryBridgeSearch()` | `IMetadataProvider` (multi-type) |
+| `get_security_artifact_info` | `tryBridgeSecurityArtifact()` | `IMetadataProvider` (privilege/duty/role) |
+| `get_menu_item_info` | `tryBridgeMenuItem()` | `IMetadataProvider` |
+| `get_table_extension_info` | `tryBridgeTableExtensions()` | `IMetadataProvider` |
+| `code_completion` | `tryBridgeCompletion()` | `IMetadataProvider` |
+| `find_coc_extensions` | `tryBridgeCocExtensions()` | `DYNAMICSXREFDB` — method-level CoC detail (wrappedMethods) |
+| `find_event_handlers` | `tryBridgeEventHandlers()` | `DYNAMICSXREFDB` — eventName/handlerType filtering |
+| `get_api_usage_patterns` | `tryBridgeApiUsageCallers()` | `DYNAMICSXREFDB` — callers grouped by class |
+| `analyze_extension_points` | bridge enrichment (direct call) | `DYNAMICSXREFDB` — fallback for extension detection |
 
 ### Write Tool Handlers (Phase 4)
 
@@ -245,11 +253,15 @@ if (!result?.success) throw new Error('Bridge operation failed');
 These tools use specialized logic that doesn't benefit from the bridge:
 
 - `generate_smart_table`, `generate_smart_form`, `generate_smart_report` — AI code generation
-- `analyze_extension_points`, `recommend_extension_strategy` — analysis heuristics
-- `find_coc_extensions`, `find_event_handlers` — SQLite FTS pattern matching
+- `recommend_extension_strategy` — analysis heuristics (no bridge data needed)
 - `create_d365fo_file` for report, data-entity, tile, kpi, business-event — remain in TypeScript XML generation
 - `update_symbol_index` — SQLite + Redis cache invalidation (bridge is refreshed but not used for indexing)
 - `undo_last_modification` — git operations + index cleanup (uses bridge refresh only)
+
+> **Moved to bridge-first (P1-P5):** `find_coc_extensions`, `find_event_handlers`, and
+> `get_api_usage_patterns` now always try `DYNAMICSXREFDB` first via the C# bridge.
+> `analyze_extension_points` uses bridge as enrichment fallback when the SQLite
+> `extension_metadata` table has no data for the target object.
 
 ---
 
@@ -574,7 +586,10 @@ executes cross-reference queries:
 
 | Method | SQL Table | Returns |
 |---|---|---|
-| `FindReferences(path)` | `References`, `Names`, `Path` | All callers/references to an object |
+| `FindReferences(path)` | `References`, `Names`, `Modules` | Enriched: `referenceType` (call/extends/field-access/type-reference), `callerClass`, `callerMethod` parsed from path; sub-path matching via LIKE |
+| `FindExtensionClasses(baseClassName)` | `References`, `Names`, `Modules` | Extension classes with method-level CoC detail: which base-class methods each extension wraps (via method-path cross-reference) |
+| `FindEventSubscribers(target, eventName?, handlerType?)` | `References`, `Names`, `Modules` | Per-method handler entries with `eventName` extraction, `handlerType` classification (dataEvent/delegate/pre/post/static), optional filtering |
+| `FindApiUsageCallers(apiName, limit?)` | `References`, `Names`, `Modules` | All callers of an API, grouped by class with method list and call count |
 | `GetSchemaInfo()` | `INFORMATION_SCHEMA` | Available tables and columns |
 | `SampleRows(table)` | Any table | Sample data for debugging |
 
@@ -605,8 +620,8 @@ Located in `src/bridge/`:
 src/bridge/
 ├── index.ts              Barrel exports for all bridge types and functions
 ├── bridgeClient.ts       BridgeClient class — spawn, JSON-RPC, typed methods
-├── bridgeTypes.ts        ~50 TypeScript interfaces matching C# models (incl. write, delete, batch, capabilities types)
-└── bridgeAdapter.ts      12 tryBridge*() read adapters + 30 bridge*() write adapters (create/17 modify ops/delete/batch/capabilities/patterns)
+├── bridgeTypes.ts        ~70 TypeScript interfaces matching C# models (incl. write, delete, batch, capabilities, xref enrichment types)
+└── bridgeAdapter.ts      19 tryBridge*() read adapters + 32 bridge*() write adapters (create/modify/delete/batch/capabilities/patterns/xref)
 ```
 
 ### BridgeClient (`bridgeClient.ts`)
@@ -616,8 +631,8 @@ Singleton class managing the child process lifecycle:
 - **`initialize()`** — Spawns the `.exe`, waits for the `"ready"` JSON message (30s timeout)
 - **`call<T>(method, params)`** — Sends JSON-RPC request, returns typed promise (60s timeout)
 - **`dispose()`** — Gracefully shuts down the child process
-- **14 typed read methods** — `readTable()`, `readClass()`, `findReferences()`, etc.
-- **28 typed write methods** — `createObject()`, `addMethod()`, `removeMethod()`, `addField()`, `modifyField()`, `renameField()`, `removeField()`, `replaceAllFields()`, `addIndex()`, `removeIndex()`, `addRelation()`, `removeRelation()`, `addFieldGroup()`, `removeFieldGroup()`, `addFieldToFieldGroup()`, `addEnumValue()`, `modifyEnumValue()`, `removeEnumValue()`, `addControl()`, `addDataSource()`, `setProperty()`, `replaceCode()`, `deleteObject()`, `batchModify()`, `getCapabilities()`, `discoverFormPatterns()`, `addFieldModification()`, `addMenuItemToMenu()`
+- **21 typed read methods** — `readTable()`, `readClass()`, `readEnum()`, `readEdt()`, `readForm()`, `readQuery()`, `readView()`, `readDataEntity()`, `readReport()`, `getMethodSource()`, `searchObjects()`, `listObjects()`, `findReferences()`, `readSecurityPrivilege()`, `readSecurityDuty()`, `readSecurityRole()`, `readMenuItem()`, `readTableExtensions()`, `getCompletionMembers()`, `findExtensionClasses()`, `findEventSubscribers()`, `findApiUsageCallers()`
+- **28 typed write methods** — `createObject()`, `createSmartTable()`, `addMethod()`, `removeMethod()`, `addField()`, `modifyField()`, `renameField()`, `removeField()`, `replaceAllFields()`, `addIndex()`, `removeIndex()`, `addRelation()`, `removeRelation()`, `addFieldGroup()`, `removeFieldGroup()`, `addFieldToFieldGroup()`, `addEnumValue()`, `modifyEnumValue()`, `removeEnumValue()`, `addControl()`, `addDataSource()`, `setProperty()`, `replaceCode()`, `deleteObject()`, `batchModify()`, `getCapabilities()`, `discoverFormPatterns()`, `addFieldModification()`, `addMenuItemToMenu()`
 
 Properties:
 - `isReady` — Process is running and initialized
@@ -644,7 +659,7 @@ interface BridgeTableInfo {
 
 ### Bridge Adapter (`bridgeAdapter.ts`)
 
-Twelve `tryBridge*()` read functions plus twenty-eight `bridge*()` write functions. Each:
+Nineteen `tryBridge*()` read functions plus thirty-two `bridge*()` write functions. Each:
 
 1. Checks `bridge?.isReady` (and `bridge.metadataAvailable` or `bridge.xrefAvailable`)
 2. Calls the appropriate bridge method
@@ -694,7 +709,10 @@ so the AI client can distinguish it from SQLite-sourced data.
 | `getMethodSource` | `className`, `methodName` | `BridgeMethodSource` | IMetadataProvider |
 | `searchObjects` | `query`, `type?`, `maxResults?` | `BridgeSearchResult` | IMetadataProvider |
 | `listObjects` | `type` | `BridgeListResult` | IMetadataProvider |
-| `findReferences` | `targetName` / `objectPath` | `BridgeReferenceResult` | DYNAMICSXREFDB |
+| `findReferences` | `targetName` / `objectPath` | `BridgeReferenceResult` (enriched: `referenceType`, `callerClass`, `callerMethod`) | DYNAMICSXREFDB |
+| `findExtensionClasses` | `baseClassName` | `BridgeExtensionClassResult` (enriched: `wrappedMethods` per extension) | DYNAMICSXREFDB |
+| `findEventSubscribers` | `targetName`, `eventName?`, `handlerType?` | `BridgeEventSubscriberResult` (enriched: per-method entries with `eventName`, `handlerType`) | DYNAMICSXREFDB |
+| `findApiUsageCallers` | `apiName`, `limit?` | `BridgeApiUsageCallersResult` (callers grouped by class) | DYNAMICSXREFDB |
 | `getXrefSchema` | — | Schema info | DYNAMICSXREFDB |
 | `sampleXrefRows` | `tableName?` | Sample data | DYNAMICSXREFDB |
 
@@ -833,7 +851,7 @@ MCP Server (stdio) ─── D365MetadataBridge.exe ─── IMetadataProvider
 
 - Bridge starts with separate `--bin-path` for Microsoft framework DLLs
 - `metadataAvailable: true`, `xrefAvailable: false`
-- Metadata tools use bridge; `find_references` falls back to SQLite FTS
+- Metadata tools use bridge; xref tools (`find_references`, `find_coc_extensions`, etc.) fall back to SQLite FTS
 
 ---
 

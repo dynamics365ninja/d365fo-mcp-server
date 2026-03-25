@@ -66,6 +66,26 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
         if (process.env.DEBUG_LOGGING === 'true') console.warn('[analyzeExtensionPoints] extension_metadata query failed:', e);
       }
 
+      // ── Bridge enrichment ──────────────────────────────────────────────
+      // When the DB index has no extension_metadata, try the C# bridge
+      // (DYNAMICSXREFDB) which provides compiler-resolved extension data
+      // with method-level CoC detail.
+      if (existingExtensions.length === 0 && context.bridge?.isReady && context.bridge.xrefAvailable) {
+        try {
+          const bridgeExts = await context.bridge.findExtensionClasses(objName);
+          if (bridgeExts && bridgeExts.count > 0) {
+            existingExtensions = bridgeExts.extensions.map((ext: any) => ({
+              extension_name: ext.className,
+              model: ext.module || '(xref)',
+              coc_methods: JSON.stringify(ext.wrappedMethods || []),
+              event_subscriptions: '[]',
+              added_methods: '[]',
+              _fromBridge: true,
+            }));
+          }
+        } catch { /* non-fatal */ }
+      }
+
       // ── Filesystem fallback ──────────────────────────────────────────────
       // When the DB index has no extension_metadata for this object (e.g. a
       // custom model that hasn't been re-indexed yet), scan Ax*Extension XML
@@ -95,8 +115,9 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
       }
     }
 
-    // ── Flag whether the extension list came from the filesystem ──────────
+    // ── Flag whether the extension list came from the filesystem or bridge ──
     const extensionsFromFs = existingExtensions.some((e: any) => e._fromFs);
+    const extensionsFromBridge = existingExtensions.some((e: any) => e._fromBridge);
 
     // Build maps of already-extended methods and subscribed events
     const alreadyWrapped = new Map<string, string[]>(); // methodName → [extName, ...]
@@ -314,10 +335,19 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
     if (args.showExistingExtensions && existingExtensions.length > 0) {
       const sourceLabel = extensionsFromFs
         ? ' (sourced from disk — not yet in index)'
+        : extensionsFromBridge
+        ? ' (sourced from DYNAMICSXREFDB)'
         : '';
       output += `\nExisting extensions (${existingExtensions.length})${sourceLabel}:\n`;
       for (const ext of existingExtensions) {
-        output += `  ${ext.extension_name} [${ext.model}]\n`;
+        output += `  ${ext.extension_name} [${ext.model}]`;
+        // Show wrapped methods if available from bridge
+        let cocMethods: string[] = [];
+        try { cocMethods = JSON.parse(ext.coc_methods || '[]'); } catch { /**/ }
+        if (cocMethods.length > 0) {
+          output += ` — wraps: ${cocMethods.join(', ')}`;
+        }
+        output += `\n`;
       }
       if (extensionsFromFs) {
         output += `\n⚠️ Data sourced from disk — run extract-metadata + build-database to persist to index.\n`;

@@ -42,6 +42,7 @@ Your training data may be outdated. D365FO has 584,799+ objects in a pre-indexed
 - ✅ Fast queries (<10ms cached, <100ms uncached)
 - ✅ Accurate method signatures, field names, and patterns
 - ✅ Understanding of X++ semantics (inheritance, EDT, relations)
+- ✅ Compiler-resolved cross-references via DYNAMICSXREFDB (on Windows D365FO VMs) — enriched reference types, method-level CoC detail, event handler classification
 
 ## Tool Selection Guide
 
@@ -70,7 +71,7 @@ Use this guide to select the correct tool:
 | "Methods starting with calc" | \`code_completion(className, prefix)\` | Exact prefix match |
 | "Methods related to totals" | \`search("total", type="method")\` | Semantic/concept search |
 | "Method signature for CoC" | \`get_method_signature(className, methodName)\` | Before creating extensions |
-| "How to use API X" | \`get_api_usage_patterns(apiName)\` | Real usage examples |
+| "How to use API X" | \`get_api_usage_patterns(apiName)\` | Real usage examples — bridge-first: compiler-resolved callers from DYNAMICSXREFDB |
 
 ### Code Generation
 | User Request | Correct Tool | Required Before |
@@ -79,7 +80,7 @@ Use this guide to select the correct tool:
 | "Generate code for X" | \`generate_code(pattern, name)\` | analyze_code_patterns |
 | "Learn patterns for X" | \`analyze_code_patterns(scenario)\` | Always first |
 | "How to implement method" | \`suggest_method_implementation(className, methodName)\` | After get_method_signature |
-| "Where is X used" | \`find_references(targetName, targetType?)\` | For refactoring |
+| "Where is X used" | \`find_references(targetName, targetType?)\` | For refactoring — enriched: returns referenceType, callerClass/Method from DYNAMICSXREFDB |
 | "Which extension mechanism?" | \`recommend_extension_strategy(goal, objectName?)\` | Use BEFORE any extension work |
 | "Why does this error occur" | \`get_d365fo_error_help(errorText, errorCode?)\` | None |
 | "Explain this X++ error" | \`get_d365fo_error_help(errorText)\` | None |
@@ -313,8 +314,8 @@ When the user needs to create security objects (privilege/duty/role/menu item):
 
 ALWAYS follow this order before writing a CoC extension:
 1. Call \`get_method_signature\` to get exact parameter types and return type
-2. Call \`find_coc_extensions\` to check if the method already has CoC wrappers in other models
-3. Call \`analyze_extension_points\` to verify the method is CoC-eligible (not final / Hookable(false))
+2. Call \`find_coc_extensions\` to check if the method already has CoC wrappers in other models (bridge-first: returns wrappedMethods per extension from DYNAMICSXREFDB)
+3. Call \`analyze_extension_points\` to verify the method is CoC-eligible (not final / Hookable(false)) — bridge enrichment shows existing extensions with method-level detail
 4. Use \`generate_code\` with pattern='table-extension' for the skeleton
 5. ALWAYS call \`next methodName(...)\` with ALL original parameters preserved
 6. Place next call: at START for pre-processing, at END for post-processing, BOTH for wrapping
@@ -335,8 +336,8 @@ When the user pastes a compiler or runtime error from D365FO / X++:
 ## Subscribing to Events (Event Handler Workflow)
 
 Before adding event handlers:
-1. Call \`analyze_extension_points\` with the target class/table to see available events
-2. Call \`find_event_handlers\` to check if the event is already handled (avoid duplicates)
+1. Call \`analyze_extension_points\` with the target class/table to see available events (bridge enrichment for existing extensions)
+2. Call \`find_event_handlers\` to check if the event is already handled (avoid duplicates) — bridge-first: supports eventName/handlerType filtering, per-method entries with type classification
 3. Use \`generate_code\` with pattern='event-handler' and baseName=className/tableName
 
 Rules:

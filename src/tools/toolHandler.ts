@@ -318,7 +318,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       case 'generate_smart_table': {
         const r = await handleGenerateSmartTable(
           request.params.arguments as any,
-          context.symbolIndex
+          context.symbolIndex,
+          context.bridge,
         );
         return { content: r?.content ?? [{ type: 'text', text: 'No results returned' }] };
       }

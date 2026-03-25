@@ -141,6 +141,6 @@ Setup guide: [docs/SETUP.md](docs/SETUP.md) · CI/CD pipeline: [docs/PIPELINES.m
 | [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) | All 54 tools with parameters and example prompts |
 | [docs/USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md) | Practical examples: search, CoC, SysOperation, security |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical architecture, dual-database design, cache invalidation |
-| [docs/BRIDGE.md](docs/BRIDGE.md) | C# Metadata Bridge — 12 read + 28 write adapters, index lifecycle |
+| [docs/BRIDGE.md](docs/BRIDGE.md) | C# Metadata Bridge — 19 read + 32 write adapters, DYNAMICSXREFDB cross-ref enrichment |
 | [docs/CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md) | ISV / custom model configuration |
 | [docs/PIPELINES.md](docs/PIPELINES.md) | Automated metadata extraction via Azure DevOps |

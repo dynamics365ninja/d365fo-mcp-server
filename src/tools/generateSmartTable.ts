@@ -6,6 +6,8 @@
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { XppSymbolIndex } from '../metadata/symbolIndex.js';
 import { SmartXmlBuilder, TableFieldSpec, TableIndexSpec, TableRelationSpec } from '../utils/smartXmlBuilder.js';
+import { bridgeCreateSmartTable } from '../bridge/index.js';
+import type { BridgeClient } from '../bridge/bridgeClient.js';
 import path from 'path';
 import fs from 'fs';
 import { getConfigManager } from '../utils/configManager.js';
@@ -153,7 +155,8 @@ export const generateSmartTableTool: Tool = {
 
 export async function handleGenerateSmartTable(
   args: GenerateSmartTableArgs,
-  symbolIndex: XppSymbolIndex
+  symbolIndex: XppSymbolIndex,
+  bridge?: BridgeClient,
 ): Promise<any> {
   const {
     name,
@@ -660,22 +663,22 @@ export async function handleGenerateSmartTable(
     };
   }
 
-  // Generate XML
-  const xml = builder.buildTableXml({
-    name: finalName,
-    label: label || finalName,
-    tableGroup,
-    tableType,
-    fields,
-    indexes,
-    relations,
-    methods: generatedMethods.length > 0 ? generatedMethods : undefined,
-  });
-
-  console.log(`[generateSmartTable] Generated XML (${xml.length} bytes)`);
-
-  // On non-Windows (Azure/Linux): return XML as text — cannot write to K:\ drive
+  // On non-Windows (Azure/Linux): generate XML via SmartXmlBuilder and return as text
+  // The bridge is not available on non-Windows — file writing is handled by the local companion.
   if (isNonWindows) {
+    const xml = builder.buildTableXml({
+      name: finalName,
+      label: label || finalName,
+      tableGroup,
+      tableType,
+      fields,
+      indexes,
+      relations,
+      methods: generatedMethods.length > 0 ? generatedMethods : undefined,
+    });
+
+    console.log(`[generateSmartTable] Generated XML for Azure/Linux (${xml.length} bytes)`);
+
     const noModelNote = resolvedModel
       ? ''
       : `\n> ⚠️  No model resolved — XML generated without prefix. Pass \`modelName\` with the actual model name from .mcp.json (e.g. \`"ContosoExt"\`) for correct object naming.\n> 🚨 **IMPORTANT**: Do NOT add a prefix to the \`name\` parameter when calling this tool — the tool applies the prefix automatically from \`modelName\`. Passing a name that already includes the prefix will result in double-prefixing.`;
@@ -716,6 +719,131 @@ export async function handleGenerateSmartTable(
       }],
     };
   }
+
+  // ── Windows: Bridge-first creation via C# CreateSmartTable ──
+  // The C# bridge applies all BP-smart defaults (CacheLookup, FieldGroups, DeleteActions,
+  // TitleField1/2, PrimaryIndex/ClusteredIndex) using the official IMetadataProvider API.
+  // Falls back to SmartXmlBuilder → fs.writeFile if bridge is unavailable.
+  if (bridge && resolvedModel) {
+    console.log(`[generateSmartTable] Attempting bridge-first creation for ${finalName}...`);
+    const bridgeResult = await bridgeCreateSmartTable(bridge, {
+      objectName: finalName,
+      modelName: resolvedModel,
+      tableGroup,
+      tableType,
+      label: label || finalName,
+      fields: fields.map(f => ({
+        name: f.name,
+        fieldType: f.type || undefined,
+        edt: f.edt || undefined,
+        mandatory: f.mandatory || false,
+        label: f.label || undefined,
+      })),
+      indexes: indexes.map(ix => ({
+        name: ix.name,
+        fields: ix.fields,
+        allowDuplicates: !ix.unique,
+        alternateKey: !!ix.unique,
+      })),
+      relations: relations.map(rel => ({
+        name: rel.name,
+        relatedTable: rel.targetTable,
+        constraints: rel.constraints.map(c => ({
+          field: c.field,
+          relatedField: c.relatedField,
+        })),
+      })),
+      methods: generatedMethods.length > 0
+        ? generatedMethods.map(m => ({ name: m.name, source: m.source }))
+        : undefined,
+    });
+
+    if (bridgeResult?.success && bridgeResult.filePath) {
+      console.log(`[generateSmartTable] ✅ Created via C# bridge: ${bridgeResult.filePath}`);
+
+      // Add to Visual Studio project
+      let projectMessage = '';
+      const effectiveProjectPath = resolvedProjectPath ||
+        (await getConfigManager().getProjectPath()) ||
+        undefined;
+
+      if (effectiveProjectPath) {
+        try {
+          const projectManager = new ProjectFileManager();
+          const wasAdded = await projectManager.addToProject(
+            effectiveProjectPath,
+            'table',
+            finalName,
+            bridgeResult.filePath,
+          );
+          projectMessage = wasAdded
+            ? `\n✅ Added to Visual Studio project:\n📋 Project: ${effectiveProjectPath}`
+            : `\n✅ Already in Visual Studio project:\n📋 Project: ${effectiveProjectPath}`;
+        } catch (projErr) {
+          projectMessage = `\n⚠️ File created but could not be added to project: ${projErr instanceof Error ? projErr.message : String(projErr)}`;
+        }
+      } else {
+        projectMessage = `\n⚠️ addToProject skipped — no projectPath found in .mcp.json or tool args.`;
+      }
+
+      const edtWarningBlock = edtWarnings.length > 0
+        ? `\n### ⚠️ EDT Validation Warnings\n${edtWarnings.join('\n')}\n`
+        : '';
+
+      const bp = bridgeResult.bpDefaults;
+      const bpSummary = bp
+        ? `\n📋 BP Defaults: CacheLookup=${bp.cacheLookup}, SaveDataPerCo=${bp.saveDataPerCompany}, ` +
+          `TitleField1=${bp.titleField1 ?? '(none)'}, TitleField2=${bp.titleField2 ?? '(none)'}, ` +
+          `PrimaryIdx=${bp.primaryIndex ?? '(none)'}, ClusteredIdx=${bp.clusteredIndex ?? '(none)'}, ` +
+          `FieldGroups=${bp.fieldGroupCount ?? 5}, DeleteActions=${bp.deleteActionCount ?? 0}`
+        : '';
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: [
+              `✅ Table **${finalName}** created via C# DevTools API (IMetadataProvider).`,
+              ``,
+              `📁 File: ${bridgeResult.filePath}`,
+              `📦 Model: ${resolvedModel}`,
+              `📊 Fields: ${fields.length}, Indexes: ${indexes.length}, Relations: ${relations.length}`,
+              `🔧 API: ${bridgeResult.api ?? 'IMetaTableProvider.Create (Smart)'}`,
+              bpSummary,
+              edtWarningBlock,
+              projectMessage,
+              ``,
+              `⛔ DO NOT call \`create_d365fo_file\` — the file is already written to disk.`,
+              `⛔ DO NOT call \`generate_smart_table\` again — task is COMPLETE.`,
+              ``,
+              `Next steps for the user:`,
+              `1. Reload the project in Visual Studio (or close/reopen solution)`,
+              `2. Build the project to synchronize the table`,
+              `3. Refresh AOT to see the new object`,
+            ].join('\n'),
+          },
+        ],
+      };
+    }
+
+    // Bridge failed — fall through to SmartXmlBuilder fallback
+    console.warn(`[generateSmartTable] Bridge createSmartTable failed, falling back to SmartXmlBuilder`);
+  }
+
+  // ── Fallback: SmartXmlBuilder → fs.writeFile (no bridge or bridge unavailable) ──
+  // Generate XML
+  const xml = builder.buildTableXml({
+    name: finalName,
+    label: label || finalName,
+    tableGroup,
+    tableType,
+    fields,
+    indexes,
+    relations,
+    methods: generatedMethods.length > 0 ? generatedMethods : undefined,
+  });
+
+  console.log(`[generateSmartTable] Generated XML via SmartXmlBuilder (${xml.length} bytes)`);
 
   // Write to file
   const targetPath = path.join(packagePath, resolvedModel!, resolvedModel!, 'AxTable', `${finalName}.xml`);

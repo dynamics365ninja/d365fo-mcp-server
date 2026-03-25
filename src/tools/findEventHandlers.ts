@@ -32,11 +32,14 @@ export async function findEventHandlersTool(request: CallToolRequest, context: X
     const targetName = args.targetClass || args.targetTable!;
 
     // ── Bridge fast-path (DYNAMICSXREFDB) ──
-    // When no specific eventName or handlerType filter is used, xref is a good source
-    if (!args.eventName && args.handlerType === 'all') {
-      const bridgeResult = await tryBridgeEventHandlers(context.bridge, targetName);
-      if (bridgeResult) return bridgeResult;
-    }
+    // Enriched: bridge now supports eventName and handlerType filtering directly in C#
+    const bridgeResult = await tryBridgeEventHandlers(
+      context.bridge,
+      targetName,
+      args.eventName,
+      args.handlerType,
+    );
+    if (bridgeResult) return bridgeResult;
 
     // ── Fallback: SQLite index ──
     const rdb = context.symbolIndex.getReadDb();

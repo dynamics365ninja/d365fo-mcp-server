@@ -225,7 +225,18 @@ namespace D365MetadataBridge.Protocol
                         {
                             var targetName = request.GetStringParam("targetName")
                                 ?? throw new ArgumentException("Missing parameter: targetName");
-                            return _xrefService!.FindEventSubscribers(targetName);
+                            var eventNameFilter = request.GetStringParam("eventName");
+                            var handlerTypeFilter = request.GetStringParam("handlerType");
+                            return _xrefService!.FindEventSubscribers(targetName, eventNameFilter, handlerTypeFilter);
+                        });
+
+                    case "findapiusagecallers":
+                        return HandleXref(request, () =>
+                        {
+                            var apiName = request.GetStringParam("apiName")
+                                ?? throw new ArgumentException("Missing parameter: apiName");
+                            var limit = request.GetIntParam("limit") ?? 200;
+                            return _xrefService!.FindApiUsageCallers(apiName, limit);
                         });
 
                     // === Delete ===
@@ -275,7 +286,8 @@ namespace D365MetadataBridge.Protocol
                                 "addEnumValue", "modifyEnumValue", "removeEnumValue",
                                 "addControl", "addDataSource",
                                 "setProperty", "replaceCode",
-                                "deleteObject", "getCapabilities", "discoverFormPatterns"
+                                "deleteObject", "getCapabilities", "discoverFormPatterns",
+                                "findExtensionClasses", "findEventSubscribers", "findApiUsageCallers"
                             }
                         }));
 
@@ -408,6 +420,26 @@ namespace D365MetadataBridge.Protocol
                                 default:
                                     throw new ArgumentException($"createObject not supported for '{objectType}' via bridge — use XML fallback");
                             }
+                        });
+
+                    case "createsmarttable":
+                        return HandleWrite(request, () =>
+                        {
+                            var objectName = request.GetStringParam("objectName")
+                                ?? throw new ArgumentException("Missing: objectName");
+                            var modelName = request.GetStringParam("modelName")
+                                ?? throw new ArgumentException("Missing: modelName");
+                            return _writeService!.CreateSmartTable(
+                                objectName, modelName,
+                                request.GetStringParam("tableGroup"),
+                                request.GetStringParam("tableType"),
+                                request.GetStringParam("label"),
+                                request.GetParam<System.Collections.Generic.List<WriteFieldParam>>("fields"),
+                                request.GetParam<System.Collections.Generic.List<WriteFieldGroupParam>>("extraFieldGroups"),
+                                request.GetParam<System.Collections.Generic.List<WriteIndexParam>>("indexes"),
+                                request.GetParam<System.Collections.Generic.List<WriteRelationParam>>("relations"),
+                                request.GetParam<System.Collections.Generic.List<WriteMethodParam>>("methods"),
+                                request.GetDictParam("extraProperties"));
                         });
 
                     case "addmethod":

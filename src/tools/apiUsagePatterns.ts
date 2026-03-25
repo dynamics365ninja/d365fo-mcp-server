@@ -6,6 +6,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { tryBridgeApiUsageCallers } from '../bridge/bridgeAdapter.js';
 
 const GetApiUsagePatternsArgsSchema = z.object({
   apiName: z.string().describe('Name of the API/class/method to analyze'),
@@ -16,6 +17,13 @@ export async function getApiUsagePatternsTool(request: CallToolRequest, context:
   try {
     const args = GetApiUsagePatternsArgsSchema.parse(request.params.arguments);
     const { symbolIndex, cache } = context;
+
+    // ── Bridge fast-path (DYNAMICSXREFDB cross-references) ──
+    // Returns compiler-resolved callers grouped by class
+    const bridgeResult = await tryBridgeApiUsageCallers(context.bridge, args.apiName);
+    if (bridgeResult) return bridgeResult;
+
+    // ── Fallback: SQLite symbol index patterns ──
     // Check cache first
     const cacheKey = `api-patterns:${args.apiName}:${args.context || 'general'}`;
     const cachedResults = await cache.get<any>(cacheKey);

@@ -271,6 +271,268 @@ namespace D365MetadataBridge.Services
         }
 
         /// <summary>
+        /// Creates a new AxTable with BP-smart defaults auto-derived from table group and type.
+        /// Auto-generates: CacheLookup, SaveDataPerCompany, TitleField1/2, PrimaryIndex,
+        /// ClusteredIndex, ReplacementKey, 5 standard FieldGroups (AutoReport, AutoLookup,
+        /// AutoIdentification, AutoSummary, AutoBrowse), and DeleteActions (Restricted).
+        /// This is the primary creation path for generate_smart_table — all BP logic lives here.
+        /// </summary>
+        public object CreateSmartTable(string name, string modelName,
+            string? tableGroup, string? tableType, string? label,
+            List<WriteFieldParam>? fields, List<WriteFieldGroupParam>? extraFieldGroups,
+            List<WriteIndexParam>? indexes, List<WriteRelationParam>? relations,
+            List<WriteMethodParam>? methods, Dictionary<string, string>? extraProperties)
+        {
+            var msi = ResolveModelSaveInfo(modelName)
+                ?? throw new ArgumentException($"Model '{modelName}' not found in {_packagesPath}");
+
+            var axTable = new AxTable { Name = name };
+
+            // ── Validate TableGroup (TempDB/InMemory are TableType, NOT TableGroup) ──
+            if (tableGroup == "TempDB" || tableGroup == "InMemory")
+                throw new ArgumentException(
+                    $"Invalid TableGroup '{tableGroup}'. 'TempDB' and 'InMemory' are TableType values, " +
+                    "not TableGroup values. Pass them via the tableType parameter instead.");
+
+            var normalizedTableType = string.IsNullOrEmpty(tableType)
+                || tableType!.Equals("RegularTable", StringComparison.OrdinalIgnoreCase)
+                ? "" : tableType;
+            var isTempTable = normalizedTableType == "TempDB" || normalizedTableType == "InMemory";
+            var effectiveTableGroup = string.IsNullOrEmpty(tableGroup) ? "Main" : tableGroup;
+
+            // ── Declaration with doc comment ──
+            axTable.Declaration = $"/// <summary>\n/// The <c>{name}</c> table.\n/// </summary>\npublic class {name} extends common\n{{\n}}";
+
+            // ── Label ──
+            if (!string.IsNullOrEmpty(label))
+                axTable.Label = label;
+
+            // ── TableGroup ──
+            if (Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.TableGroup>(effectiveTableGroup, true, out var tg))
+                axTable.TableGroup = tg;
+
+            // ── TableType (only for TempDB / InMemory — RegularTable is the default, omitted) ──
+            if (!string.IsNullOrEmpty(normalizedTableType))
+            {
+                if (Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.TableType>(normalizedTableType, true, out var tt))
+                    axTable.TableType = tt;
+            }
+
+            // ── BP: CacheLookup — set based on TableGroup to avoid BP warning ──
+            if (isTempTable)
+            {
+                axTable.CacheLookup = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.None;
+            }
+            else
+            {
+                var cacheLookupMap = new Dictionary<string, Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["Parameter"]       = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.Found,
+                    ["Group"]           = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.Found,
+                    ["Main"]            = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.Found,
+                    ["Transaction"]     = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.None,
+                    ["WorksheetHeader"] = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.None,
+                    ["WorksheetLine"]   = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.None,
+                    ["Miscellaneous"]   = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.NotInTTS,
+                    ["Framework"]       = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.Found,
+                    ["Reference"]       = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.Found,
+                };
+                axTable.CacheLookup = cacheLookupMap.TryGetValue(effectiveTableGroup!, out var cl)
+                    ? cl
+                    : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel.Found;
+            }
+
+            // ── BP: SaveDataPerCompany — TempDB/InMemory are session-scoped, not company-scoped ──
+            axTable.SaveDataPerCompany = isTempTable
+                ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No
+                : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes;
+
+            // ── Add fields ──
+            var fieldNames = new List<string>();
+            if (fields != null)
+            {
+                foreach (var f in fields)
+                {
+                    var axField = CreateTableField(f);
+                    axTable.AddField(axField);
+                    fieldNames.Add(f.Name);
+                }
+            }
+
+            // ── BP: TitleField1/TitleField2 — first two non-RecId fields ──
+            var titleCandidates = fieldNames
+                .Where(n => !n.Equals("RecId", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (titleCandidates.Count > 0) axTable.TitleField1 = titleCandidates[0];
+            if (titleCandidates.Count > 1) axTable.TitleField2 = titleCandidates[1];
+
+            // ── Add indexes + track unique/clustered for PrimaryIndex/ClusteredIndex ──
+            string? uniqueIndexName = null;
+            string? clusteredIndexName = null;
+            if (indexes != null)
+            {
+                foreach (var ix in indexes)
+                {
+                    var axIdx = new AxTableIndex { Name = ix.Name };
+                    axIdx.AllowDuplicates = ix.AllowDuplicates
+                        ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes
+                        : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
+                    if (ix.AlternateKey || !ix.AllowDuplicates)
+                    {
+                        axIdx.AlternateKey = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes;
+                        axIdx.AllowDuplicates = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
+                        if (uniqueIndexName == null) uniqueIndexName = ix.Name;
+                    }
+                    if (ix.Fields != null)
+                    {
+                        foreach (var ixf in ix.Fields)
+                            axIdx.AddField(new AxTableIndexField { DataField = ixf });
+                    }
+                    axTable.AddIndex(axIdx);
+                }
+            }
+
+            // ── BP: PrimaryIndex / ReplacementKey / ClusteredIndex ──
+            if (uniqueIndexName != null)
+            {
+                axTable.PrimaryIndex = uniqueIndexName;
+                axTable.ReplacementKey = uniqueIndexName;
+                axTable.ClusteredIndex = clusteredIndexName ?? uniqueIndexName;
+            }
+
+            // ── BP: DeleteActions — Restricted for each relation target table ──
+            if (relations != null)
+            {
+                foreach (var rel in relations)
+                {
+                    var relTable = rel.RelatedTable ?? "";
+                    if (!string.IsNullOrEmpty(relTable))
+                    {
+                        try
+                        {
+                            axTable.DeleteActions.Add(new AxTableDeleteAction
+                            {
+                                Name = relTable,
+                                Table = relTable,
+                                DeleteAction = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.DeleteAction.Restricted,
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"[WriteService] DeleteAction for '{relTable}' skipped: {ex.Message}");
+                        }
+                    }
+                }
+            }
+
+            // ── BP: 5 standard FieldGroups ──
+            var nonRecIdFields = fieldNames
+                .Where(n => !n.Equals("RecId", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            // AutoReport — first 5 fields (BP requires at least one field)
+            var autoReport = new AxTableFieldGroup { Name = "AutoReport" };
+            foreach (var f in nonRecIdFields.Take(5))
+                autoReport.AddField(new AxTableFieldGroupField { DataField = f });
+            axTable.AddFieldGroup(autoReport);
+
+            // AutoLookup — first 3 fields
+            var autoLookup = new AxTableFieldGroup { Name = "AutoLookup" };
+            foreach (var f in nonRecIdFields.Take(3))
+                autoLookup.AddField(new AxTableFieldGroupField { DataField = f });
+            axTable.AddFieldGroup(autoLookup);
+
+            // AutoIdentification — empty with AutoPopulate=Yes
+            var autoIdent = new AxTableFieldGroup { Name = "AutoIdentification" };
+            autoIdent.AutoPopulate = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes;
+            axTable.AddFieldGroup(autoIdent);
+
+            // AutoSummary
+            axTable.AddFieldGroup(new AxTableFieldGroup { Name = "AutoSummary" });
+
+            // AutoBrowse
+            axTable.AddFieldGroup(new AxTableFieldGroup { Name = "AutoBrowse" });
+
+            // Extra field groups from caller (beyond the standard 5)
+            if (extraFieldGroups != null)
+            {
+                foreach (var fg in extraFieldGroups)
+                {
+                    var axFg = new AxTableFieldGroup { Name = fg.Name, Label = fg.Label };
+                    if (fg.Fields != null)
+                    {
+                        foreach (var fieldRef in fg.Fields)
+                            axFg.AddField(new AxTableFieldGroupField { DataField = fieldRef });
+                    }
+                    axTable.AddFieldGroup(axFg);
+                }
+            }
+
+            // ── Add relations ──
+            if (relations != null)
+            {
+                foreach (var rel in relations)
+                {
+                    var axRel = new AxTableRelation { Name = rel.Name, RelatedTable = rel.RelatedTable ?? "" };
+                    if (rel.Constraints != null)
+                    {
+                        foreach (var c in rel.Constraints)
+                        {
+                            axRel.AddConstraint(new AxTableRelationConstraintField
+                            {
+                                Name = c.Field ?? "",
+                                Field = c.Field ?? "",
+                                RelatedField = c.RelatedField ?? "",
+                            });
+                        }
+                    }
+                    axTable.AddRelation(axRel);
+                }
+            }
+
+            // ── Add methods ──
+            if (methods != null)
+            {
+                foreach (var m in methods)
+                    axTable.AddMethod(new AxMethod { Name = m.Name, Source = m.Source ?? "" });
+            }
+
+            // ── Apply any extra properties (overrides auto-set values if needed) ──
+            if (extraProperties != null)
+            {
+                foreach (var kv in extraProperties)
+                    SetAxTableProperty(axTable, kv.Key, kv.Value);
+            }
+
+            // ── Write to disk via IMetadataProvider ──
+            var tableProvider = _provider.Tables as IMetaTableProvider
+                ?? throw new InvalidOperationException("DiskProvider.Tables does not implement IMetaTableProvider");
+            tableProvider.Create(axTable, msi);
+
+            var filePath = GetExpectedPath("AxTable", name, modelName);
+            return new
+            {
+                success = true,
+                objectType = "table",
+                objectName = name,
+                modelName,
+                filePath,
+                api = "IMetaTableProvider.Create (Smart)",
+                bpDefaults = new
+                {
+                    cacheLookup = axTable.CacheLookup.ToString(),
+                    saveDataPerCompany = axTable.SaveDataPerCompany.ToString(),
+                    titleField1 = axTable.TitleField1,
+                    titleField2 = axTable.TitleField2,
+                    primaryIndex = axTable.PrimaryIndex,
+                    clusteredIndex = axTable.ClusteredIndex,
+                    fieldGroupCount = 5 + (extraFieldGroups?.Count ?? 0),
+                    deleteActionCount = relations?.Count ?? 0,
+                },
+            };
+        }
+
+        /// <summary>
         /// Creates a new AxEnum via IMetaEnumProvider.Create().
         /// </summary>
         public object CreateEnum(string name, string modelName,
@@ -719,6 +981,9 @@ namespace D365MetadataBridge.Services
         public object CreateForm(string name, string modelName,
             List<WriteMethodParam>? methods, Dictionary<string, string>? properties)
         {
+            // TODO [Phase 2]: CreateSmartForm — port FormPatternTemplates (SimpleList, DetailsMaster,
+            // DetailsTransaction, Workspace, etc.) from TypeScript to C# so that generate_smart_form
+            // can use the bridge like generate_smart_table does with CreateSmartTable.
             var msi = ResolveModelSaveInfo(modelName)
                 ?? throw new ArgumentException($"Model '{modelName}' not found in {_packagesPath}");
 
