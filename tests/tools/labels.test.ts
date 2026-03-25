@@ -255,6 +255,82 @@ describe('create_label', () => {
     const result = await createLabelTool(req('create_label', { labelId: 'Foo' }), ctx);
     expect(result.isError).toBe(true);
   });
+
+  it('defaults description to model name when no comment is provided', async () => {
+    const fsMock = await import('fs');
+    const writeCalls: string[] = [];
+    (fsMock.promises.writeFile as any).mockImplementation(async (_p: string, content: string) => {
+      writeCalls.push(content);
+    });
+    (fsMock.promises.readdir as any).mockResolvedValueOnce(['en-US']);
+    (fsMock.promises.readFile as any).mockResolvedValueOnce('\uFEFF');
+
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'TestDesc',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        updateIndex: false,
+        translations: [{ language: 'en-US', text: 'Test label' }],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    // The written content should contain the model name as comment
+    const labelWrite = writeCalls.find(c => c.includes('TestDesc='));
+    expect(labelWrite).toContain(' ;MyModel');
+  });
+
+  it('uses explicit description over model name default', async () => {
+    const fsMock = await import('fs');
+    const writeCalls: string[] = [];
+    (fsMock.promises.writeFile as any).mockImplementation(async (_p: string, content: string) => {
+      writeCalls.push(content);
+    });
+    (fsMock.promises.readdir as any).mockResolvedValueOnce(['en-US']);
+    (fsMock.promises.readFile as any).mockResolvedValueOnce('\uFEFF');
+
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'TestDesc2',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        description: 'Custom project description',
+        updateIndex: false,
+        translations: [{ language: 'en-US', text: 'Test label 2' }],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    const labelWrite = writeCalls.find(c => c.includes('TestDesc2='));
+    expect(labelWrite).toContain(' ;Custom project description');
+  });
+
+  it('per-translation comment takes priority over description', async () => {
+    const fsMock = await import('fs');
+    const writeCalls: string[] = [];
+    (fsMock.promises.writeFile as any).mockImplementation(async (_p: string, content: string) => {
+      writeCalls.push(content);
+    });
+    (fsMock.promises.readdir as any).mockResolvedValueOnce(['en-US']);
+    (fsMock.promises.readFile as any).mockResolvedValueOnce('\uFEFF');
+
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'TestDesc3',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        description: 'Should be overridden',
+        updateIndex: false,
+        translations: [{ language: 'en-US', text: 'Test label 3', comment: 'Explicit comment' }],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    const labelWrite = writeCalls.find(c => c.includes('TestDesc3='));
+    expect(labelWrite).toContain(' ;Explicit comment');
+    expect(labelWrite).not.toContain('Should be overridden');
+  });
 });
 
 // ─── rename_label ────────────────────────────────────────────────────────────

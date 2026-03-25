@@ -1672,6 +1672,10 @@ Examples:
                 type: 'string',
                 description: 'Developer comment for languages without explicit comment',
               },
+              description: {
+                type: 'string',
+                description: 'Label description (comment line in .label.txt). Defaults to the model/project name when omitted. Per-translation comment and defaultComment take priority.',
+              },
               packagePath: {
                 type: 'string',
                 description: 'Root packages path. Auto-detected from environment config if omitted.',
