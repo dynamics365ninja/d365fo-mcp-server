@@ -63,6 +63,49 @@ export function decodeXmlEntitiesFromXppSource(source: string): string {
   return decodeStandardXmlEntities(source);
 }
 
+/**
+ * Direct XML file-level replace-code fallback.
+ * Used when the C# bridge fails or returns null for replace-code on forms/form-extensions
+ * (e.g. control override methods that the SDK doesn't expose via the Methods API).
+ *
+ * Reads the XML file, performs a simple string replacement inside <Source> CDATA blocks,
+ * and writes the file back. This is a last-resort fallback — the bridge is always preferred.
+ */
+async function directXmlReplaceCode(
+  filePath: string,
+  oldCode: string,
+  newCode: string,
+): Promise<{ success: boolean; message: string } | null> {
+  try {
+    // Read as Buffer to detect and preserve UTF-8 BOM (D365FO XML files use BOM)
+    const buf = await fs.readFile(filePath);
+    const hasBom = buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF;
+    const content = buf.toString('utf-8');
+
+    if (!content.includes(oldCode)) {
+      return null; // oldCode not found in file at all
+    }
+
+    const updated = content.replace(oldCode, newCode);
+    if (updated === content) {
+      return null; // no change made
+    }
+
+    // Preserve BOM if it was present: Node's utf-8 encoding strips BOM on read
+    // but '\uFEFF' prefix restores it on write.
+    const bomPrefix = hasBom && !updated.startsWith('\uFEFF') ? '\uFEFF' : '';
+    await fs.writeFile(filePath, bomPrefix + updated, 'utf-8');
+    console.error(`[modify_d365fo_file] ✅ directXmlReplaceCode fallback: replaced in ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Code replaced via direct XML fallback (bridge was unavailable). File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlReplaceCode failed: ${err}`);
+    return null;
+  }
+}
+
 const ModifyD365FileArgsSchema = z.object({
   objectType: z.enum([
     'class', 'table', 'form', 'enum', 'query', 'view', 'edt', 'data-entity', 'report',
@@ -86,7 +129,12 @@ const ModifyD365FileArgsSchema = z.object({
     'add-control',
     'add-enum-value', 'modify-enum-value', 'remove-enum-value',
     'add-display-method', 'add-table-method', 'add-menu-item-to-menu',
-  ]).describe('Operation to perform'),
+  ]).describe(
+    'Operation to perform. ' +
+    'replace-code REQUIRES parameters: oldCode (exact code to find) + newCode (replacement). ' +
+    'add-method REQUIRES: methodName + sourceCode. ' +
+    'For form control override methods with replace-code, use methodName="ControlName.methodName" (e.g. "PostButton.clicked").'
+  ),
 
   // For add-enum-value / modify-enum-value / remove-enum-value
   enumValueName: z.string().optional().describe(
@@ -183,15 +231,17 @@ const ModifyD365FileArgsSchema = z.object({
     'This is the preferred parameter when passing a complete CoC skeleton. ' +
     'Either methodCode or sourceCode may be used; sourceCode takes precedence if both are supplied.'
   ),
-  // For replace-code
+  // For replace-code (REQUIRED for operation="replace-code" — do NOT use sourceCode for this)
   oldCode: z.string().optional().describe(
-    'Exact existing X++ code snippet to find and replace. Used with operation="replace-code". ' +
+    'REQUIRED for replace-code. Exact existing X++ code snippet to find and replace. ' +
     'Must match the source text exactly (leading/trailing whitespace is trimmed for matching). ' +
-    'If methodName is also provided the search is scoped to that method\'s Source block only.'
+    'If methodName is also provided the search is scoped to that method\'s Source block only. ' +
+    'For form control override methods, use methodName="ControlName.methodName" (e.g. "PostButton.clicked").'
   ),
   newCode: z.string().optional().describe(
-    'Replacement X++ code snippet. Used with operation="replace-code". ' +
-    'Replaces the first occurrence of oldCode in the target source block.'
+    'REQUIRED for replace-code. Replacement X++ code snippet. ' +
+    'Replaces the first occurrence of oldCode in the target source block. ' +
+    'Pass empty string "" to delete the matched oldCode snippet.'
   ),
   methodModifiers: z.string().optional().describe('Method modifiers (e.g., "public static")'),
   methodReturnType: z.string().optional().describe('Return type of method'),
@@ -619,14 +669,56 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         break;
       }
       case 'replace-code': {
-        if (args.oldCode && args.newCode) {
+        // Auto-detect common mistake: agent sends sourceCode/methodCode instead of oldCode/newCode
+        const hasOldNew = args.oldCode && args.newCode !== undefined;
+        const sentSourceCode = args.sourceCode || (args as any).methodCode;
+        
+        if (!hasOldNew && sentSourceCode) {
+          throw new Error(
+            `⛔ replace-code requires 'oldCode' and 'newCode' — NOT 'sourceCode'/'methodCode'.\n\n` +
+            `You sent sourceCode/methodCode but replace-code needs:\n` +
+            `  • oldCode = the exact existing snippet to find\n` +
+            `  • newCode = the replacement snippet\n\n` +
+            `Example:\n` +
+            `  modify_d365fo_file(objectType="form", objectName="MyForm",\n` +
+            `    operation="replace-code",\n` +
+            `    methodName="PostButton.clicked",\n` +
+            `    oldCode="ttsbegin;",\n` +
+            `    newCode="")\n\n` +
+            `If you want to replace an entire method, use remove-method + add-method instead.`
+          );
+        }
+        
+        if (hasOldNew) {
+          // Try bridge first
           bridgeResult = await bridgeReplaceCode(
             context.bridge,
             objectType,
             objectName,
             args.methodName,
-            args.oldCode,
-            args.newCode,
+            args.oldCode!,
+            args.newCode!,
+          );
+
+          // Fallback: if bridge returns null (unsupported type or not connected)
+          // or success=false (SDK couldn't find the code — e.g. form control override),
+          // do direct string replacement in the XML file.
+          // This handles form control override methods which the SDK may not expose.
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlReplaceCode(
+              actualFilePath, args.oldCode!, args.newCode!
+            );
+            if (xmlFallbackResult) {
+              bridgeResult = xmlFallbackResult;
+            }
+          }
+        } else {
+          throw new Error(
+            `replace-code requires both 'oldCode' and 'newCode' parameters.\n` +
+            `  oldCode: ${args.oldCode ? 'provided' : '⛔ MISSING'}\n` +
+            `  newCode: ${args.newCode !== undefined ? 'provided' : '⛔ MISSING'}\n` +
+            `Note: 'sourceCode' is NOT an alias for replace-code — you must use 'oldCode' and 'newCode'.\n` +
+            `For form control override methods, use methodName="ControlName.methodName" (e.g. "PostButton.clicked").`
           );
         }
         break;
@@ -724,9 +816,31 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     }
 
     if (!bridgeResult) {
+      const paramHints: Record<string, string[]> = {
+        'add-method': ['methodName', 'sourceCode'],
+        'remove-method': ['methodName'],
+        'replace-code': ['oldCode', 'newCode'],
+        'add-field': ['fieldName', 'fieldType'],
+        'modify-field': ['fieldName'],
+        'rename-field': ['fieldName', 'fieldNewName'],
+        'add-index': ['indexName'],
+        'remove-index': ['indexName'],
+        'add-relation': ['relationName', 'relatedTable'],
+        'remove-relation': ['relationName'],
+        'add-field-group': ['fieldGroupName'],
+        'remove-field-group': ['fieldGroupName'],
+        'add-field-to-field-group': ['fieldGroupName', 'fieldName'],
+        'add-control': ['controlName', 'parentControl'],
+        'add-data-source': ['dataSourceName', 'dataSourceTable'],
+        'modify-property': ['propertyPath', 'propertyValue'],
+      };
+      const required = paramHints[operation] ?? [];
+      const missingList = required.filter(p => !(args as any)[p]).map(p => `  ⛔ ${p}: MISSING`);
+      const providedList = required.filter(p => (args as any)[p]).map(p => `  ✅ ${p}: provided`);
       throw new Error(
         `Bridge operation '${operation}' returned null — required parameters may be missing.\n` +
-        `Check that all required arguments for '${operation}' are provided.`
+        `Required parameters for '${operation}':\n${[...providedList, ...missingList].join('\n')}\n` +
+        `Provided args: ${Object.keys(args).filter(k => (args as any)[k] !== undefined).join(', ')}`
       );
     }
     if (!bridgeResult.success) {

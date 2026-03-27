@@ -968,7 +968,8 @@ Examples:
                   'Type of modification to perform.\n' +
                   'add-method: add a new method (or CoC method) to a class/table/form.\n' +
                   'remove-method: remove a method by name.\n' +
-                  'replace-code: surgical in-place replacement (oldCode → newCode) inside a method body or class declaration.\n' +
+                  'replace-code: surgical in-place replacement — pass oldCode (exact snippet to find) + newCode (replacement text). ' +
+                  'For form control override methods use methodName="ControlName.methodName" (e.g. "PostButton.clicked").\n' +
                   'add-field: add a field to a table or table-extension.\n' +
                   'modify-field: change EDT/mandatory/label of an existing field.\n' +
                   'rename-field: rename a field (also fixes index DataField refs and TitleField1/2 automatically).\n' +
@@ -1021,6 +1022,21 @@ Examples:
               methodParameters: {
                 type: 'string',
                 description: 'Method parameters (e.g., "str _param1, int _param2")'
+              },
+              oldCode: {
+                type: 'string',
+                description:
+                  '[replace-code] REQUIRED. Exact existing X++ code snippet to find and replace. ' +
+                  'Must match the source text exactly (leading/trailing whitespace is trimmed). ' +
+                  'If methodName is also provided, the search is scoped to that method only. ' +
+                  'For form control override methods, use methodName="ControlName.methodName" (e.g. "PostButton.clicked").'
+              },
+              newCode: {
+                type: 'string',
+                description:
+                  '[replace-code] REQUIRED. Replacement X++ code snippet. ' +
+                  'Replaces the first occurrence of oldCode. ' +
+                  'Pass empty string "" to delete the matched oldCode snippet.'
               },
               fieldName: {
                 type: 'string',

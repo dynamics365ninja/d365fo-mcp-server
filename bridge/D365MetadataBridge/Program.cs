@@ -33,6 +33,7 @@ namespace D365MetadataBridge
         private static string? _binPath = null; // Explicit bin path (UDE: microsoftPackagesPath/bin)
         private static string _xrefServer = "localhost";
         private static string _xrefDatabase = "DYNAMICSXREFDB";
+        private static string? _logFile = null;
         private static readonly TextWriter Log = Console.Error;
 
         static async Task<int> Main(string[] args)
@@ -54,9 +55,35 @@ namespace D365MetadataBridge
                     case "--xref-database" when i + 1 < args.Length:
                         _xrefDatabase = args[++i];
                         break;
+                    case "--log-file" when i + 1 < args.Length:
+                        _logFile = args[++i];
+                        break;
                     case "--help":
                         PrintUsage();
                         return 0;
+                }
+            }
+
+            // Setup file-based logging (tee stderr → file) BEFORE anything else runs.
+            // Configured via --log-file <path> or bridgeLogFile in .mcp.json.
+            if (_logFile != null)
+            {
+                try
+                {
+                    var logDir = Path.GetDirectoryName(_logFile);
+                    if (!string.IsNullOrEmpty(logDir) && !Directory.Exists(logDir))
+                        Directory.CreateDirectory(logDir);
+
+                    var fileWriter = new StreamWriter(_logFile, append: true) { AutoFlush = true };
+                    var teeWriter = new TeeTextWriter(Console.Error, fileWriter);
+                    Console.SetError(teeWriter);
+                    Console.Error.WriteLine($"\n{new string('─', 72)}");
+                    Console.Error.WriteLine($"[Bridge] Log started at {DateTime.Now:O}  pid={System.Diagnostics.Process.GetCurrentProcess().Id}");
+                    Console.Error.WriteLine(new string('─', 72));
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[WARN] Cannot open log file {_logFile}: {ex.Message}");
                 }
             }
 
@@ -250,6 +277,58 @@ namespace D365MetadataBridge
             };
         }
 
+        /// <summary>
+        /// TextWriter that writes to two underlying writers simultaneously (tee).
+        /// Used to mirror Console.Error to both the original stderr pipe AND a log file.
+        /// </summary>
+        private sealed class TeeTextWriter : TextWriter
+        {
+            private readonly TextWriter _primary;
+            private readonly TextWriter _secondary;
+
+            public TeeTextWriter(TextWriter primary, TextWriter secondary)
+            {
+                _primary = primary;
+                _secondary = secondary;
+            }
+
+            public override System.Text.Encoding Encoding => _primary.Encoding;
+
+            public override void Write(char value)
+            {
+                _primary.Write(value);
+                _secondary.Write(value);
+            }
+
+            public override void Write(string? value)
+            {
+                _primary.Write(value);
+                _secondary.Write(value);
+            }
+
+            public override void WriteLine(string? value)
+            {
+                _primary.WriteLine(value);
+                _secondary.WriteLine(value);
+            }
+
+            public override void Flush()
+            {
+                _primary.Flush();
+                _secondary.Flush();
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                {
+                    _secondary.Flush();
+                    _secondary.Dispose();
+                }
+                base.Dispose(disposing);
+            }
+        }
+
         private static void PrintUsage()
         {
             Console.Error.WriteLine(@"
@@ -263,6 +342,7 @@ Options:
   --bin-path <path>        Explicit DLL directory (UDE: microsoftPackagesPath\bin). If omitted, uses {packages-path}\bin.
   --xref-server <server>   SQL Server for cross-reference DB (default: localhost)
   --xref-database <db>     Cross-reference database name (default: DYNAMICSXREFDB)
+  --log-file <path>        Write all diagnostic logs to this file (append mode)
   --help                   Show this help
 
 Protocol:

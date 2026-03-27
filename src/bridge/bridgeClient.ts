@@ -83,6 +83,8 @@ export interface BridgeClientOptions {
   readyTimeoutMs?: number;
   /** Timeout for each RPC call in ms */
   callTimeoutMs?: number;
+  /** Path to a log file for bridge diagnostics (append mode) */
+  logFile?: string;
 }
 
 interface PendingRequest {
@@ -144,6 +146,9 @@ export class BridgeClient extends EventEmitter {
     }
     if (this.options.xrefDatabase) {
       args.push('--xref-database', this.options.xrefDatabase);
+    }
+    if (this.options.logFile) {
+      args.push('--log-file', this.options.logFile);
     }
 
     console.error(`[BridgeClient] Spawning: ${exePath} ${args.join(' ')}`);
@@ -209,10 +214,15 @@ export class BridgeClient extends EventEmitter {
       this.process.stderr!.on('data', (chunk: Buffer) => {
         const text = chunk.toString('utf8').trim();
         if (text) {
-          // Only log non-trivial messages
           for (const line of text.split('\n')) {
-            if (line.includes('[ERROR]') || line.includes('[WARN]')) {
-              console.error(`[Bridge] ${line.trim()}`);
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            // When log file is configured, forward ALL bridge stderr lines
+            // (diagnostics are captured in the file; surface them on TS side too).
+            // Otherwise only forward errors and warnings to avoid noise.
+            if (this.options.logFile ||
+                trimmed.includes('[ERROR]') || trimmed.includes('[WARN]')) {
+              console.error(`[Bridge] ${trimmed}`);
             }
           }
         }
@@ -675,6 +685,7 @@ export async function createBridgeClient(options: {
   bridgeExePath?: string;
   xrefServer?: string;
   xrefDatabase?: string;
+  logFile?: string;
 }): Promise<BridgeClient | null> {
   // Auto-detect packagesPath if not provided
   const packagesPath = options.packagesPath ?? detectPackagesPath();
@@ -703,6 +714,7 @@ function detectPackagesPath(): string | null {
   const candidates = [
     process.env.PackagesPath ?? '',
     'C:\\AosService\\PackagesLocalDirectory',
+    'C:\\AOSService\\PackagesLocalDirectory',
     'J:\\AosService\\PackagesLocalDirectory',
     'K:\\AosService\\PackagesLocalDirectory',
   ].filter(Boolean);

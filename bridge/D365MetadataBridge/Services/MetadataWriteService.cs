@@ -1142,6 +1142,51 @@ namespace D365MetadataBridge.Services
 
                     return new { success = true, operation = "add-method", objectType, objectName, methodName, api = "IMetaViewProvider.Update" };
                 }
+                case "form-extension":
+                {
+                    var axExt = _provider.FormExtensions.Read(objectName)
+                        ?? throw new ArgumentException($"Form extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.FormExtensions, objectName);
+
+                    RemoveMethodIfExists(axExt, methodName);
+
+                    var axMethod = new AxMethod { Name = methodName, Source = source };
+                    ((dynamic)axExt).Methods.Add(axMethod);
+
+                    ((IMetaFormExtensionProvider)_provider.FormExtensions).Update(axExt, msi);
+
+                    return new { success = true, operation = "add-method", objectType, objectName, methodName, api = "IMetaFormExtensionProvider.Update" };
+                }
+                case "class-extension":
+                {
+                    var axClass = _provider.Classes.Read(objectName)
+                        ?? throw new ArgumentException($"Class extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.Classes, objectName);
+
+                    RemoveMethodIfExists(axClass, methodName);
+
+                    var axMethod = new AxMethod { Name = methodName, Source = source };
+                    axClass.AddMethod(axMethod);
+
+                    ((IMetaClassProvider)_provider.Classes).Update(axClass, msi);
+
+                    return new { success = true, operation = "add-method", objectType, objectName, methodName, api = "IMetaClassProvider.Update" };
+                }
+                case "table-extension":
+                {
+                    var axExt = _provider.TableExtensions.Read(objectName)
+                        ?? throw new ArgumentException($"Table extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.TableExtensions, objectName);
+
+                    RemoveMethodIfExists(axExt, methodName);
+
+                    var axMethod = new AxMethod { Name = methodName, Source = source };
+                    ((dynamic)axExt).Methods.Add(axMethod);
+
+                    ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
+
+                    return new { success = true, operation = "add-method", objectType, objectName, methodName, api = "IMetaTableExtensionProvider.Update" };
+                }
                 default:
                     throw new ArgumentException($"add-method not supported for objectType '{objectType}' via bridge (use XML fallback)");
             }
@@ -1305,6 +1350,43 @@ namespace D365MetadataBridge.Services
                     var obj = _provider.Forms.Read(objectName)
                         ?? throw new ArgumentException($"Form '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Forms, objectName);
+
+                    // Diagnostic: log available SourceCode collections for debugging
+                    try
+                    {
+                        dynamic dForm = obj;
+                        int scMethodCount = 0, scDataControlCount = 0, scDataSourceCount = 0;
+                        var dcNames = new System.Collections.Generic.List<string>();
+                        try { foreach (var _ in dForm.SourceCode.Methods) scMethodCount++; } catch { }
+                        try
+                        {
+                            foreach (dynamic dc in dForm.SourceCode.DataControls)
+                            {
+                                scDataControlCount++;
+                                try
+                                {
+                                    string dcName = (string)dc.Name;
+                                    int methodCount = 0;
+                                    var methodNames = new System.Collections.Generic.List<string>();
+                                    try { foreach (dynamic m in dc.Methods) { methodCount++; try { methodNames.Add((string)m.Name); } catch { } } } catch { }
+                                    dcNames.Add($"{dcName}({string.Join(",", methodNames)})");
+                                }
+                                catch { dcNames.Add("?"); }
+                            }
+                        }
+                        catch { }
+                        try { foreach (var _ in dForm.SourceCode.DataSources) scDataSourceCount++; } catch { }
+                        Console.Error.WriteLine($"[WriteService] ReplaceCode form '{objectName}': " +
+                            $"SourceCode.Methods={scMethodCount}, DataControls={scDataControlCount}, DataSources={scDataSourceCount}, " +
+                            $"methodName='{methodName}', oldCode length={oldCode.Length}");
+                        if (dcNames.Count > 0)
+                            Console.Error.WriteLine($"[WriteService] ReplaceCode form '{objectName}': DataControls detail: [{string.Join(", ", dcNames)}]");
+                    }
+                    catch (Exception diagEx)
+                    {
+                        Console.Error.WriteLine($"[WriteService] ReplaceCode form '{objectName}': diagnostic failed: {diagEx.Message}");
+                    }
+
                     var replaced = ReplaceInMethods(obj, methodName, oldCode, newCode);
                     if (!replaced)
                         throw new InvalidOperationException($"oldCode not found in {objectName}" + (methodName != null ? $".{methodName}" : ""));
@@ -1331,6 +1413,39 @@ namespace D365MetadataBridge.Services
                     if (!replaced)
                         throw new InvalidOperationException($"oldCode not found in {objectName}" + (methodName != null ? $".{methodName}" : ""));
                     ((IMetaViewProvider)_provider.Views).Update(obj, msi);
+                    return new { success = true, operation = "replace-code", objectType, objectName, methodName, api = "Update" };
+                }
+                case "form-extension":
+                {
+                    var obj = _provider.FormExtensions.Read(objectName)
+                        ?? throw new ArgumentException($"Form extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.FormExtensions, objectName);
+                    var replaced = ReplaceInMethods(obj, methodName, oldCode, newCode);
+                    if (!replaced)
+                        throw new InvalidOperationException($"oldCode not found in {objectName}" + (methodName != null ? $".{methodName}" : ""));
+                    ((IMetaFormExtensionProvider)_provider.FormExtensions).Update(obj, msi);
+                    return new { success = true, operation = "replace-code", objectType, objectName, methodName, api = "Update" };
+                }
+                case "class-extension":
+                {
+                    var obj = _provider.Classes.Read(objectName)
+                        ?? throw new ArgumentException($"Class extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.Classes, objectName);
+                    var replaced = ReplaceInMethods(obj, methodName, oldCode, newCode);
+                    if (!replaced)
+                        throw new InvalidOperationException($"oldCode not found in {objectName}" + (methodName != null ? $".{methodName}" : ""));
+                    ((IMetaClassProvider)_provider.Classes).Update(obj, msi);
+                    return new { success = true, operation = "replace-code", objectType, objectName, methodName, api = "Update" };
+                }
+                case "table-extension":
+                {
+                    var obj = _provider.TableExtensions.Read(objectName)
+                        ?? throw new ArgumentException($"Table extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.TableExtensions, objectName);
+                    var replaced = ReplaceInMethods(obj, methodName, oldCode, newCode);
+                    if (!replaced)
+                        throw new InvalidOperationException($"oldCode not found in {objectName}" + (methodName != null ? $".{methodName}" : ""));
+                    ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(obj, msi);
                     return new { success = true, operation = "replace-code", objectType, objectName, methodName, api = "Update" };
                 }
                 default:
@@ -1399,6 +1514,36 @@ namespace D365MetadataBridge.Services
                         throw new InvalidOperationException($"Method '{methodName}' not found on view '{objectName}'");
                     ((IMetaViewProvider)_provider.Views).Update(obj, msi);
                     return new { success = true, operation = "remove-method", objectType, objectName, methodName, api = "IMetaViewProvider.Update" };
+                }
+                case "form-extension":
+                {
+                    var obj = _provider.FormExtensions.Read(objectName)
+                        ?? throw new ArgumentException($"Form extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.FormExtensions, objectName);
+                    if (!RemoveMethodByName(obj, methodName))
+                        throw new InvalidOperationException($"Method '{methodName}' not found on form extension '{objectName}'");
+                    ((IMetaFormExtensionProvider)_provider.FormExtensions).Update(obj, msi);
+                    return new { success = true, operation = "remove-method", objectType, objectName, methodName, api = "IMetaFormExtensionProvider.Update" };
+                }
+                case "class-extension":
+                {
+                    var obj = _provider.Classes.Read(objectName)
+                        ?? throw new ArgumentException($"Class extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.Classes, objectName);
+                    if (!RemoveMethodByName(obj, methodName))
+                        throw new InvalidOperationException($"Method '{methodName}' not found on class extension '{objectName}'");
+                    ((IMetaClassProvider)_provider.Classes).Update(obj, msi);
+                    return new { success = true, operation = "remove-method", objectType, objectName, methodName, api = "IMetaClassProvider.Update" };
+                }
+                case "table-extension":
+                {
+                    var obj = _provider.TableExtensions.Read(objectName)
+                        ?? throw new ArgumentException($"Table extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.TableExtensions, objectName);
+                    if (!RemoveMethodByName(obj, methodName))
+                        throw new InvalidOperationException($"Method '{methodName}' not found on table extension '{objectName}'");
+                    ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(obj, msi);
+                    return new { success = true, operation = "remove-method", objectType, objectName, methodName, api = "IMetaTableExtensionProvider.Update" };
                 }
                 default:
                     throw new ArgumentException($"remove-method not supported for objectType '{objectType}' via bridge");
@@ -2221,18 +2366,81 @@ namespace D365MetadataBridge.Services
         /// <summary>
         /// Removes a method by name from an AxClass or AxTable (both have a Methods collection).
         /// Uses dynamic because the Methods property is not on a shared interface.
+        /// For forms/form-extensions, also checks SourceCode.Methods and SourceCode.DataControls.
         /// </summary>
         private void RemoveMethodIfExists(object axObject, string methodName)
         {
+            // Try top-level Methods first (AxClass, AxTable, AxTableExtension, etc.)
+            if (TryRemoveFromCollection(axObject, "Methods", methodName)) return;
+
+            // For forms: SourceCode.Methods (form-level methods like init, run)
             try
             {
-                // Both AxClass and AxTable expose Methods as a KeyedObjectCollection<AxMethod>
                 dynamic dyn = axObject;
-                var methods = dyn.Methods;
-                AxMethod? toRemove = null;
-                foreach (AxMethod m in methods)
+                dynamic sourceCode = dyn.SourceCode;
+                if (sourceCode != null && TryRemoveFromCollection(sourceCode, "Methods", methodName)) return;
+            }
+            catch { }
+
+            // For forms: SourceCode.DataControls (control override methods)
+            try
+            {
+                dynamic dyn = axObject;
+                dynamic sourceCode = dyn.SourceCode;
+                if (sourceCode != null && TryRemoveFromCollection(sourceCode, "DataControls", methodName)) return;
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Removes a method by name, returning true if found and removed.
+        /// For forms/form-extensions, also checks SourceCode.Methods and SourceCode.DataControls.
+        /// </summary>
+        private bool RemoveMethodByName(object axObject, string methodName)
+        {
+            // Try top-level Methods first (AxClass, AxTable, etc.)
+            if (TryRemoveFromCollection(axObject, "Methods", methodName)) return true;
+
+            // For forms: SourceCode.Methods
+            try
+            {
+                dynamic dyn = axObject;
+                dynamic sourceCode = dyn.SourceCode;
+                if (sourceCode != null && TryRemoveFromCollection(sourceCode, "Methods", methodName)) return true;
+            }
+            catch { }
+
+            // For forms: SourceCode.DataControls
+            try
+            {
+                dynamic dyn = axObject;
+                dynamic sourceCode = dyn.SourceCode;
+                if (sourceCode != null && TryRemoveFromCollection(sourceCode, "DataControls", methodName)) return true;
+            }
+            catch { }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Tries to remove a method by Name from a named collection on the given object.
+        /// Returns true if found and removed. Catches silently if the collection doesn't exist.
+        /// </summary>
+        private bool TryRemoveFromCollection(object parentObj, string collectionName, string methodName)
+        {
+            try
+            {
+                var prop = parentObj.GetType().GetProperty(collectionName);
+                if (prop == null) return false;
+                dynamic collection = prop.GetValue(parentObj);
+                if (collection == null) return false;
+
+                // Find the method to remove
+                dynamic? toRemove = null;
+                foreach (dynamic m in collection)
                 {
-                    if (string.Equals(m.Name, methodName, StringComparison.OrdinalIgnoreCase))
+                    string mName = (string)m.Name;
+                    if (string.Equals(mName, methodName, StringComparison.OrdinalIgnoreCase))
                     {
                         toRemove = m;
                         break;
@@ -2240,40 +2448,16 @@ namespace D365MetadataBridge.Services
                 }
                 if (toRemove != null)
                 {
-                    // KeyedObjectCollection has Remove(T) or RemoveAt
-                    methods.Remove(toRemove);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"[WriteService] RemoveMethodIfExists failed: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Removes a method by name, returning true if found and removed.
-        /// Unlike RemoveMethodIfExists, this throws-friendly variant returns a boolean.
-        /// </summary>
-        private bool RemoveMethodByName(object axObject, string methodName)
-        {
-            try
-            {
-                dynamic dyn = axObject;
-                var methods = dyn.Methods;
-                AxMethod? toRemove = null;
-                foreach (AxMethod m in methods)
-                {
-                    if (string.Equals(m.Name, methodName, StringComparison.OrdinalIgnoreCase))
-                    { toRemove = m; break; }
-                }
-                if (toRemove != null)
-                {
-                    methods.Remove(toRemove);
+                    collection.Remove(toRemove);
                     return true;
                 }
                 return false;
             }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WriteService] TryRemoveFromCollection({collectionName}, {methodName}) failed: {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>Sets a property on an existing table field.</summary>
@@ -2415,8 +2599,20 @@ namespace D365MetadataBridge.Services
                 dynamic dyn = axObject;
                 bool replaced = false;
 
-                // Check declaration first (for classDeclaration scope)
-                if (methodName == null || methodName.Equals("classDeclaration", StringComparison.OrdinalIgnoreCase))
+                // Parse "ControlName.methodName" syntax for scoping to a specific form control override.
+                // E.g. methodName="PostButton.clicked" → controlNameFilter="PostButton", effectiveMethodName="clicked"
+                string? controlNameFilter = null;
+                string? effectiveMethodName = methodName;
+                if (methodName != null && methodName.Contains('.'))
+                {
+                    var dotIdx = methodName.IndexOf('.');
+                    controlNameFilter = methodName.Substring(0, dotIdx);
+                    effectiveMethodName = methodName.Substring(dotIdx + 1);
+                }
+
+                // Check declaration first (for classDeclaration scope, only when not targeting a control)
+                if (controlNameFilter == null &&
+                    (methodName == null || methodName.Equals("classDeclaration", StringComparison.OrdinalIgnoreCase)))
                 {
                     try
                     {
@@ -2430,17 +2626,145 @@ namespace D365MetadataBridge.Services
                     catch { /* some objects may not have Declaration */ }
                 }
 
-                // Check methods
-                foreach (AxMethod m in dyn.Methods)
+                // Check top-level methods (skip entirely when scoped to a specific control)
+                if (controlNameFilter == null)
                 {
-                    if (methodName != null && !string.Equals(m.Name, methodName, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    if (m.Source != null && m.Source.Contains(oldCode))
+                    // Standard objects: dyn.Methods (AxClass, AxTable, AxQuery, AxView, extensions)
+                    try
                     {
-                        m.Source = m.Source.Replace(oldCode, newCode);
-                        replaced = true;
+                        foreach (AxMethod m in dyn.Methods)
+                        {
+                            if (effectiveMethodName != null && !string.Equals(m.Name, effectiveMethodName, StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            if (m.Source != null && m.Source.Contains(oldCode))
+                            {
+                                m.Source = m.Source.Replace(oldCode, newCode);
+                                replaced = true;
+                            }
+                        }
                     }
+                    catch { /* object may not have a top-level Methods collection */ }
+
+                    // Forms store methods under SourceCode.Methods (not top-level Methods)
+                    try
+                    {
+                        foreach (dynamic m in dyn.SourceCode.Methods)
+                        {
+                            string mName = (string)m.Name;
+                            if (effectiveMethodName != null && !string.Equals(mName, effectiveMethodName, StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            string? src = (string?)m.Source;
+                            if (src != null && src.Contains(oldCode))
+                            {
+                                m.Source = src.Replace(oldCode, newCode);
+                                replaced = true;
+                            }
+                        }
+                    }
+                    catch { /* object may not have SourceCode.Methods (non-form objects) */ }
+                }
+
+                // Control override methods in forms are stored under SourceCode.DataControls.
+                // Each DataControl item is a CONTROL object (Name = control name, e.g. "PostButton")
+                // which contains a Methods collection (each with Name = method name, e.g. "clicked", and Source).
+                // SDK structure:  SourceCode.DataControls → [ { Name: "PostButton", Methods: [{ Name: "clicked", Source: "..." }] } ]
+                try
+                {
+                    foreach (dynamic ctrl in dyn.SourceCode.DataControls)
+                    {
+                        try
+                        {
+                            string ctrlName = (string)ctrl.Name;
+                            bool controlMatches = controlNameFilter == null ||
+                                string.Equals(ctrlName, controlNameFilter, StringComparison.OrdinalIgnoreCase);
+
+                            if (!controlMatches) continue;
+
+                            // Iterate methods inside this control
+                            try
+                            {
+                                foreach (dynamic m in ctrl.Methods)
+                                {
+                                    try
+                                    {
+                                        string mName = (string)m.Name;
+                                        bool methodMatches = effectiveMethodName == null ||
+                                            string.Equals(mName, effectiveMethodName, StringComparison.OrdinalIgnoreCase);
+
+                                        if (methodMatches)
+                                        {
+                                            string? src = (string?)m.Source;
+                                            if (src != null && src.Contains(oldCode))
+                                            {
+                                                m.Source = src.Replace(oldCode, newCode);
+                                                replaced = true;
+                                                Console.Error.WriteLine($"[WriteService] ReplaceInMethods: replaced in DataControl '{ctrlName}'.'{mName}'");
+                                            }
+                                        }
+                                    }
+                                    catch { }
+                                }
+                            }
+                            catch { /* control may not have Methods */ }
+
+                            // Fallback: some SDK versions may expose Source directly on the DataControl item
+                            // (for cases where control name IS the method name, e.g. flat override list)
+                            if (!replaced)
+                            {
+                                try
+                                {
+                                    string? directSrc = (string?)ctrl.Source;
+                                    if (directSrc != null && directSrc.Contains(oldCode))
+                                    {
+                                        ctrl.Source = directSrc.Replace(oldCode, newCode);
+                                        replaced = true;
+                                        Console.Error.WriteLine($"[WriteService] ReplaceInMethods: replaced via direct Source on DataControl '{ctrlName}'");
+                                    }
+                                }
+                                catch { }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { /* object may not have SourceCode.DataControls (non-form objects) */ }
+
+                // Also try Design.Controls hierarchy — some SDK versions may expose methods on control objects
+                try { replaced |= ReplaceInControls(dyn.Design, controlNameFilter, effectiveMethodName, oldCode, newCode); } catch { }
+                try { replaced |= ReplaceInControls(dyn, controlNameFilter, effectiveMethodName, oldCode, newCode); } catch { }
+
+                // Last resort: if still not found and we have a combined methodName, try the full
+                // "ControlName.methodName" as a single method name in SourceCode.Methods (some forms)
+                if (!replaced && controlNameFilter != null && effectiveMethodName != null)
+                {
+                    try
+                    {
+                        foreach (dynamic m in dyn.SourceCode.Methods)
+                        {
+                            string mName = (string)m.Name;
+                            string combinedUnderscore = $"{controlNameFilter}_{effectiveMethodName}";
+                            if (string.Equals(mName, combinedUnderscore, StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(mName, methodName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                string? src = (string?)m.Source;
+                                if (src != null && src.Contains(oldCode))
+                                {
+                                    m.Source = src.Replace(oldCode, newCode);
+                                    replaced = true;
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                // Absolute last resort: scan ALL reachable Source properties for oldCode (no method name filter)
+                // This handles edge cases where the SDK stores the code in an unexpected location.
+                if (!replaced)
+                {
+                    replaced = ReplaceCodeInXmlFallback(dyn, oldCode, newCode);
                 }
 
                 return replaced;
@@ -2452,19 +2776,208 @@ namespace D365MetadataBridge.Services
             }
         }
 
+        /// <summary>
+        /// Recursively searches all Controls in a form or form-extension object for override methods
+        /// matching the given filter constraints, and replaces oldCode with newCode in their Source.
+        /// Supports "ControlName.methodName" scoping via controlNameFilter + methodNameFilter.
+        /// Safe to call on non-form objects — if they have no Controls collection, returns false silently.
+        /// </summary>
+        private bool ReplaceInControls(dynamic parent, string? controlNameFilter, string? methodNameFilter,
+            string oldCode, string newCode)
+        {
+            bool replaced = false;
+            try
+            {
+                foreach (dynamic control in parent.Controls)
+                {
+                    try
+                    {
+                        string controlName = (string)control.Name;
+                        bool controlMatches = controlNameFilter == null ||
+                            string.Equals(controlName, controlNameFilter, StringComparison.OrdinalIgnoreCase);
+
+                        if (controlMatches)
+                        {
+                            // Try multiple property names for override methods:
+                            // - OverrideMethods (some SDK versions)
+                            // - Methods (other SDK versions / form controls)
+                            replaced |= ReplaceInMethodCollection(control, "OverrideMethods", methodNameFilter, oldCode, newCode);
+                            replaced |= ReplaceInMethodCollection(control, "Methods", methodNameFilter, oldCode, newCode);
+                        }
+
+                        // Recurse into nested controls regardless — a matching control may be nested in a group
+                        replaced |= ReplaceInControls(control, controlNameFilter, methodNameFilter, oldCode, newCode);
+                    }
+                    catch { }
+                }
+            }
+            catch { /* object has no Controls collection; silently skip */ }
+            return replaced;
+        }
+
+        /// <summary>
+        /// Iterates a named method collection on a dynamic object and replaces oldCode with newCode.
+        /// Returns true if at least one replacement was made. Silently returns false if the collection
+        /// doesn't exist on the object.
+        /// </summary>
+        private bool ReplaceInMethodCollection(dynamic obj, string collectionName, string? methodNameFilter,
+            string oldCode, string newCode)
+        {
+            bool replaced = false;
+            try
+            {
+                var prop = ((object)obj).GetType().GetProperty(collectionName);
+                if (prop == null) return false;
+                dynamic? collection = prop.GetValue(obj);
+                if (collection == null) return false;
+
+                foreach (dynamic m in collection)
+                {
+                    try
+                    {
+                        if (methodNameFilter != null &&
+                            !string.Equals((string)m.Name, methodNameFilter, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        string? src = (string?)m.Source;
+                        if (src != null && src.Contains(oldCode))
+                        {
+                            m.Source = src.Replace(oldCode, newCode);
+                            replaced = true;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return replaced;
+        }
+
+        /// <summary>
+        /// Absolute last-resort fallback: enumerate all iterable collections exposed by SourceCode
+        /// (Methods, DataSources, DataControls, Members) and any nested items looking for Source
+        /// properties that contain oldCode. Replaces globally. Used when structured access fails.
+        /// For DataControls, also iterates into each control's Methods sub-collection.
+        /// </summary>
+        private bool ReplaceCodeInXmlFallback(dynamic axObject, string oldCode, string newCode)
+        {
+            bool replaced = false;
+            try
+            {
+                // Try all known sub-collections on SourceCode
+                dynamic? sourceCode = null;
+                try { sourceCode = axObject.SourceCode; } catch { return false; }
+                if (sourceCode == null) return false;
+
+                string[] collectionNames = { "Methods", "DataSources", "Members" };
+                foreach (var colName in collectionNames)
+                {
+                    try
+                    {
+                        var prop = ((object)sourceCode).GetType().GetProperty(colName);
+                        if (prop == null) continue;
+                        dynamic? collection = prop.GetValue(sourceCode);
+                        if (collection == null) continue;
+
+                        foreach (dynamic item in collection)
+                        {
+                            try
+                            {
+                                string? src = null;
+                                try { src = (string?)item.Source; } catch { }
+                                if (src != null && src.Contains(oldCode))
+                                {
+                                    item.Source = src.Replace(oldCode, newCode);
+                                    replaced = true;
+                                    Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced in SourceCode.{colName} item '{(string?)item.Name ?? "?"}'");
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+                }
+
+                // DataControls are special: each item is a control with nested Methods
+                try
+                {
+                    var dcProp = ((object)sourceCode).GetType().GetProperty("DataControls");
+                    if (dcProp != null)
+                    {
+                        dynamic? dcCollection = dcProp.GetValue(sourceCode);
+                        if (dcCollection != null)
+                        {
+                            foreach (dynamic ctrl in dcCollection)
+                            {
+                                try
+                                {
+                                    string ctrlName = "?";
+                                    try { ctrlName = (string)ctrl.Name; } catch { }
+
+                                    // Try methods inside control
+                                    try
+                                    {
+                                        foreach (dynamic m in ctrl.Methods)
+                                        {
+                                            try
+                                            {
+                                                string? src = (string?)m.Source;
+                                                if (src != null && src.Contains(oldCode))
+                                                {
+                                                    m.Source = src.Replace(oldCode, newCode);
+                                                    replaced = true;
+                                                    Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced in DataControls.{ctrlName}.{(string?)m.Name ?? "?"}");
+                                                }
+                                            }
+                                            catch { }
+                                        }
+                                    }
+                                    catch { }
+
+                                    // Also try direct Source on control object (flat override lists)
+                                    try
+                                    {
+                                        string? src = (string?)ctrl.Source;
+                                        if (src != null && src.Contains(oldCode))
+                                        {
+                                            ctrl.Source = src.Replace(oldCode, newCode);
+                                            replaced = true;
+                                            Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced direct Source on DataControl '{ctrlName}'");
+                                        }
+                                    }
+                                    catch { }
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback failed: {ex.Message}");
+            }
+            return replaced;
+        }
+
         // ========================
         // HELPERS: Model Info Resolution for Existing Objects
         // ========================
 
         /// <summary>
         /// Gets ModelSaveInfo for an existing object by asking the provider for its model info.
+        /// The generic IReadOnlySingleKeyedMetadataProvider does NOT expose GetModelInfo —
+        /// it lives on concrete provider interfaces (IMetaClassProvider, IMetaTableProvider, etc.).
+        /// We try dynamic dispatch first, then fall back to concrete provider properties,
+        /// and finally try to infer from the on-disk file path.
         /// </summary>
         private ModelSaveInfo GetModelSaveInfoForObject<T>(IReadOnlySingleKeyedMetadataProvider<T> collection, string objectName)
             where T : class
         {
+            // Strategy 1: dynamic dispatch on the collection object (works if runtime type exposes GetModelInfo)
             try
             {
-                // GetModelInfo returns ModelInfoCollection which is IEnumerable<ModelInfo>
                 dynamic dynCollection = collection;
                 var modelInfos = dynCollection.GetModelInfo(objectName);
                 if (modelInfos != null)
@@ -2475,12 +2988,70 @@ namespace D365MetadataBridge.Services
                     }
                 }
             }
+            catch { /* GetModelInfo not found on this interface — continue to fallback */ }
+
+            // Strategy 2: try all concrete provider properties that have GetModelInfo
+            ModelInfo? foundMi = TryGetModelInfoFromProviders(objectName);
+            if (foundMi != null)
+            {
+                return new ModelSaveInfo { Id = foundMi.Id, Layer = foundMi.Layer };
+            }
+
+            // Strategy 3: infer model from on-disk file path
+            //   Files live at {packagesPath}/{ModelName}/{ModelName}/Ax{Type}/{Name}.xml
+            //   We scan common AOT folders for the object name.
+            string[] aotFolders = { "AxClass", "AxTable", "AxForm", "AxEnum", "AxEdt",
+                                    "AxQuery", "AxView", "AxDataEntityView", "AxReport",
+                                    "AxTableExtension", "AxFormExtension", "AxClassExtension",
+                                    "AxEnumExtension" };
+            try
+            {
+                foreach (var packageDir in Directory.GetDirectories(_packagesPath))
+                {
+                    var packageName = Path.GetFileName(packageDir);
+                    foreach (var aotFolder in aotFolders)
+                    {
+                        var filePath = Path.Combine(packageDir, packageName, aotFolder, objectName + ".xml");
+                        if (File.Exists(filePath))
+                        {
+                            // Found the file — resolve model from this package name
+                            var msi = ResolveModelSaveInfo(packageName);
+                            if (msi != null)
+                            {
+                                Console.Error.WriteLine($"[WriteService] GetModelSaveInfoForObject: resolved '{objectName}' via file path → model '{packageName}'");
+                                return msi;
+                            }
+                        }
+                    }
+                }
+            }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[WriteService] GetModelSaveInfoForObject failed for {objectName}: {ex.Message}");
+                Console.Error.WriteLine($"[WriteService] GetModelSaveInfoForObject file scan failed for {objectName}: {ex.Message}");
             }
 
             throw new InvalidOperationException($"Cannot determine model for existing object '{objectName}'");
+        }
+
+        /// <summary>
+        /// Tries GetModelInfo on all known concrete provider properties.
+        /// Returns the first ModelInfo found, or null.
+        /// </summary>
+        private ModelInfo? TryGetModelInfoFromProviders(string objectName)
+        {
+            // Each provider property (Classes, Tables, etc.) has GetModelInfo on its concrete type
+            try { var mi = _provider.Classes.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            try { var mi = _provider.Tables.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            try { var mi = _provider.Forms.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            try { var mi = _provider.Enums.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            try { var mi = _provider.Edts.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            try { var mi = _provider.Queries.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            try { var mi = _provider.Views.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            try { var mi = _provider.FormExtensions.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            try { var mi = _provider.TableExtensions.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            try { var mi = _provider.EnumExtensions.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            try { var mi = _provider.Reports.GetModelInfo(objectName); if (mi?.Count > 0) return mi.First(); } catch { }
+            return null;
         }
 
         // ========================

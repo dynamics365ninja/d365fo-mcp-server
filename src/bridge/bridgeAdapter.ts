@@ -929,7 +929,7 @@ const BRIDGE_MODIFY_OPS = new Set([
 const BRIDGE_MODIFY_TYPES = new Set([
   'class', 'table', 'enum', 'edt',
   'form', 'query', 'view',
-  'table-extension', 'form-extension', 'enum-extension',
+  'class-extension', 'table-extension', 'form-extension', 'enum-extension',
   'menu-item-action', 'menu-item-display', 'menu-item-output',
 ]);
 

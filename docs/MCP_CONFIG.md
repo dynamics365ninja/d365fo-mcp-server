@@ -88,6 +88,29 @@ Output window is too noisy or truncated. Open it with any text editor or watch l
 Get-Content "C:\Temp\d365fo-mcp.log" -Encoding UTF8 -Wait
 ```
 
+#### C# bridge diagnostics
+
+The C# bridge (`D365MetadataBridge.exe`) has its own diagnostic output (`[WriteService]` messages)
+that is normally filtered — only `[ERROR]` and `[WARN]` lines reach the TS server. To capture
+**all** bridge diagnostics (including `replace-code` tracing, form control traversal, etc.),
+add `bridgeLogFile` to the `context` block:
+
+```json
+"context": {
+  "workspacePath": "K:\\AosService\\PackagesLocalDirectory\\YourPackage\\YourModel",
+  "bridgeLogFile": "C:\\Temp\\d365fo-bridge.log"
+}
+```
+
+When set, `bridgeLogFile` does two things:
+1. The bridge process tees all its stderr to the log file (append mode)
+2. The TS server forwards **all** bridge stderr lines (not just errors/warnings)
+
+Watch live:
+```powershell
+Get-Content "C:\Temp\d365fo-bridge.log" -Encoding UTF8 -Wait -Tail 50
+```
+
 ### HTTP (Azure-hosted or `npm run dev`)
 
 The server listens on a TCP port. Used for Azure deployments and for local `npm run dev` sessions.
@@ -182,6 +205,7 @@ files from `%LOCALAPPDATA%\Microsoft\Dynamics365\XPPConfig\` and detects the pat
 | `devEnvironmentType` | Optional | `auto` (default), `traditional`, or `ude`. Controls path resolution behavior. |
 | `projectPath` | Optional | Full path to your `.rnrproj` file. Auto-detected from roots/list (stdio) or D365FO_SOLUTIONS_PATH. |
 | `solutionPath` | Optional | Visual Studio solution folder. Used when `projectPath` is not set. |
+| `bridgeLogFile` | Optional | Absolute path to a C# bridge log file (e.g. `C:\Temp\d365fo-bridge.log`). When set, the bridge tees all diagnostic output to this file in append mode, and the TS server forwards all bridge stderr lines (not just `[ERROR]`/`[WARN]`). Useful for debugging `modify_d365fo_file` issues (replace-code, form control traversal, etc.). |
 
 ### Environment Variables (stdio `env` block)
 

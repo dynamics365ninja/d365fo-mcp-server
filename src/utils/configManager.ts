@@ -21,6 +21,7 @@ export interface McpContext {
   projectPath?: string;
   solutionPath?: string;
   devEnvironmentType?: 'auto' | 'traditional' | 'ude';
+  bridgeLogFile?: string;           // Path to bridge diagnostic log file (append mode)
 }
 
 export interface McpConfig {

@@ -572,6 +572,7 @@ async function main() {
         const bridge = await createBridgeClient({
           packagesPath,
           binPath,
+          logFile: configMgr.getContext()?.bridgeLogFile ?? undefined,
         });
         if (bridge) {
           stubContext.bridge = bridge;
