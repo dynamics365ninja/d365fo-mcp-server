@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';
 import type { BridgeClient } from '../bridge/bridgeClient.js';
+import type { XppMetadataParser } from '../metadata/xmlParser.js';
 
 
 const GetMethodSignatureArgsSchema = z.object({
@@ -39,7 +40,7 @@ interface MethodSignature {
 export async function getMethodSignatureTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = GetMethodSignatureArgsSchema.parse(request.params.arguments);
-    const { symbolIndex, cache } = context;
+    const { symbolIndex, cache, parser } = context;
     const { className, methodName, modelName } = args;
 
     // Check cache first (method signatures are static — 24h TTL via setClassInfo)
@@ -109,11 +110,28 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
     );
     if (bridgeSignature) return bridgeSignature;
 
+    // Fallback: parse XML file from disk (same pattern as classInfo.ts)
+    const xmlSignature = await tryXmlMethodSignature(
+      parser, classRow.file_path, className, methodName, classRow.model, includeCoc, cache, cacheKey,
+    );
+    if (xmlSignature) return xmlSignature;
+
+    // Last resort: use SQLite signature column if available
+    if ((methodRow as any)?.signature) {
+      const sigText = (methodRow as any).signature as string;
+      let output = `# Method: \`${className}.${methodName}\`\n`;
+      output += `**Model:** ${classRow.model}\n`;
+      output += `_Source: SQLite index (signature only — bridge and XML unavailable)_\n\n`;
+      output += `\`\`\`xpp\n${sigText}\n\`\`\`\n`;
+      output += `\n> ⚠️ CoC template not available without full method source. Start the C# bridge for full functionality.\n`;
+      return { content: [{ type: 'text', text: output }] };
+    }
+
     return {
       content: [{
         type: 'text',
-        text: `❌ Method "${methodName}" found in index for ${classRow.type} "${className}" but bridge returned no source.\n` +
-          `Ensure the C# bridge is running and has access to D365FO metadata.`,
+        text: `❌ Method "${methodName}" found in index for ${classRow.type} "${className}" but no source available.\n` +
+          `Tried: C# bridge → XML file → SQLite signature. Ensure the C# bridge is running or the XML file is accessible on disk.`,
       }],
       isError: true,
     };
@@ -161,6 +179,50 @@ async function tryBridgeMethodSignature(
     return result;
   } catch (e) {
     console.error(`[methodSignature] Bridge getMethodSource(${className}, ${methodName}) failed: ${e}`);
+    return null;
+  }
+}
+
+/**
+ * Try XML file parsing for method signature.
+ * Fallback when C# bridge is unavailable (Azure, Linux, bridge not running).
+ * Mirrors the pattern from classInfo.ts: parse XML with timeout guard.
+ * Returns null to signal fallback to SQLite-only.
+ */
+async function tryXmlMethodSignature(
+  parser: XppMetadataParser | undefined,
+  filePath: string | undefined,
+  className: string,
+  methodName: string,
+  modelName: string,
+  includeCoc: boolean,
+  cache: any,
+  cacheKey: string,
+): Promise<any | null> {
+  if (!parser || !filePath) return null;
+  try {
+    const parseResult = await Promise.race([
+      parser.parseClassFile(filePath, modelName),
+      new Promise<{ success: false; error: string }>(resolve =>
+        setTimeout(() => resolve({ success: false, error: 'timeout' }), 3000)
+      ),
+    ]);
+    if (!parseResult.success || !parseResult.data) return null;
+
+    const method = parseResult.data.methods.find(
+      (m: any) => m.name.toLowerCase() === methodName.toLowerCase()
+    );
+    if (!method?.source) return null;
+
+    const signature = parseMethodSignature(method.source, methodName);
+    if (!signature) return null;
+
+    const obsoleteWarning = detectObsolete(method.source);
+    const result = formatOutput(className, methodName, signature, modelName, includeCoc, obsoleteWarning);
+    await cache.setClassInfo(cacheKey, result);
+    return result;
+  } catch (e) {
+    console.error(`[methodSignature] XML parse for ${className}.${methodName} failed: ${e}`);
     return null;
   }
 }
