@@ -223,7 +223,7 @@ import * as fs from 'fs/promises';  // ✅ namespace import
 Tests run automatically in GitHub Actions on:
 - Every push to `main` and `develop` branches
 - Pull requests to `main` and `develop` branches
-- Matrix testing on Node.js 20.x and 22.x
+- Matrix testing on Node.js 24.x
 
 ---
 

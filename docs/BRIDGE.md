@@ -29,7 +29,7 @@ Every tool handler follows a **bridge-first, fallback** pattern:
 
 ## Read Endpoints
 
-19 read adapters (`tryBridge*()` in `bridgeAdapter.ts`) — return `null` when bridge is unavailable.
+19 read endpoints (mapped through 12 `tryBridge*()` adapter functions in `bridgeAdapter.ts`) — return `null` when bridge is unavailable.
 
 | Method | Parameters | Source |
 |---|---|---|

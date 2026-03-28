@@ -59,7 +59,13 @@ npm run build-database
 
 ## Search Custom Extensions
 
-The server provides a dedicated tool for searching only in custom extensions:
+Use the `search_extensions` tool to search only within custom/ISV models:
+
+```
+search_extensions(query="Cust", prefix="ISV_")
+```
+
+Results are filtered to non-Microsoft models and grouped by model name.
 
 ## Benefits
 

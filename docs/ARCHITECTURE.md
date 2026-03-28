@@ -50,8 +50,8 @@ graph TB
         XREF[(DYNAMICSXREFDB - Cross-reference database)]
     end
 
-    VS -->|"Streamable HTTP, OAuth 2.0"| MCP
-    VS2026 -->|"Streamable HTTP, OAuth 2.0"| MCP
+    VS -->|"Streamable HTTP, API Key"| MCP
+    VS2026 -->|"Streamable HTTP, API Key"| MCP
     MCP -->|"Download on startup"| BLOB
     MCP --> HTTP
     HTTP --> PROTO
@@ -230,7 +230,7 @@ graph LR
 
     subgraph "C# Metadata Bridge — Windows only"
         BCLIENT[bridgeClient.ts - JSON-RPC child process]
-        BADAPT[bridgeAdapter.ts - 12 tryBridge* read + 30 bridge* write]
+        BADAPT[bridgeAdapter.ts - 12 tryBridge* read + 32 bridge* write]
         BTYPES[bridgeTypes.ts - Response types incl. BridgeWriteResult, BridgeDeleteResult, BridgeCapabilities]
     end
 
@@ -599,7 +599,7 @@ graph TB
 | File | Role |
 |------|------|
 | `src/bridge/bridgeClient.ts` | Spawns `.exe`, manages stdin/stdout JSON-RPC, handles timeouts & restarts |
-| `src/bridge/bridgeAdapter.ts` | 12 `tryBridge*()` read functions + 30 `bridge*()` write functions |
+| `src/bridge/bridgeAdapter.ts` | 12 `tryBridge*()` read functions + 32 `bridge*()` write functions |
 | `src/bridge/bridgeTypes.ts` | TypeScript interfaces for bridge responses (`BridgeClassInfo`, `BridgeWriteResult`, etc.) |
 
 ### Write Operations — DiskProvider Discovery
@@ -773,67 +773,17 @@ erDiagram
 
 | Type | Description | Example |
 |------|-------------|---------|
-| `class` | X++ Class | `CustTable`, `SalesLine` |
+| `class` | X++ Class | `SalesFormLetter`, `CustPostInvoice` |
 | `table` | AOT Table | `CustTable`, `InventTable` |
 | `method` | Class/Table Method | `insert()`, `validateWrite()` |
 | `field` | Table Field | `AccountNum`, `Name` |
 | `enum` | Enumeration | `NoYes`, `TransactionType` |
 | `edt` | Extended Data Type | `CustAccount`, `ItemId` |
 
-### Enhanced Metadata Fields
-
-The database now includes rich contextual metadata for better GitHub Copilot integration:
-
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `description` | TEXT | Human-readable description | "CustTable class extending SalesTable" |
-| `tags` | TEXT | Semantic tags (comma-separated) | "validation, query, customer" |
-| `sourceSnippet` | TEXT | First 10 lines of code | "public boolean validate() {...}" |
-| `complexity` | INTEGER | Complexity score (0-100) | 45 |
-| `usedTypes` | TEXT | Referenced types | "CustTable, SalesLine, InventTable" |
-| `methodCalls` | TEXT | Called methods | "select, insert, validateWrite" |
-| `inlineComments` | TEXT | Extracted comments | "Validate customer account..." |
-| `extendsClass` | TEXT | Parent class (for classes) | "FormRun" |
-| `implementsInterfaces` | TEXT | Interfaces implemented | "Runnable, Serializable" |
-| `usageExample` | TEXT | Generated usage example | "CustTable custTable = new..." |
-
-### Semantic Tags
-
-Automatically extracted tags help Copilot understand code context:
-
-**Method Tags:** validation, initialization, data-modification, query, deletion, calculation, conversion, event-handler, transaction, error-handling, database-query, set-based, loop, conditional, async, static-method
-
-**Class Tags:** controller, utility, business-logic, builder-pattern, factory-pattern, event-handler, abstract, final, runnable
-
-**Domain Tags:** customer, vendor, inventory, sales, purchasing, ledger, tax, project, warehouse, production
-
-### Indexes
-
-```sql
--- Primary Key
-CREATE UNIQUE INDEX idx_symbols_id ON symbols(id);
-
--- Type-based queries
-CREATE INDEX idx_symbols_type ON symbols(type);
-
--- Name lookups
-CREATE INDEX idx_symbols_name ON symbols(name);
-
--- Model filtering
-CREATE INDEX idx_symbols_model ON symbols(model);
-
--- Unique constraint to prevent duplicates
-CREATE UNIQUE INDEX idx_symbols_unique 
-    ON symbols(name, type, COALESCE(parent_name, ''), model);
-
--- Full-Text Search (FTS5) with enhanced fields
-CREATE VIRTUAL TABLE symbols_fts USING fts5(
-    name, type, parent_name, signature,
-    description, tags, source_snippet, inline_comments,
-    content='symbols',
-    content_rowid='id'
-);
-```
+Beyond these core fields, each symbol row carries enhanced metadata (description, semantic tags,
+source snippet, complexity score, used types, extends chain, and more) to give Copilot richer
+context during code generation. See the `symbols` table DDL in `src/database/symbolIndex.ts`
+for the full schema.
 
 ---
 
@@ -859,289 +809,7 @@ graph LR
     style TOOLS_CALL fill:#2196F3,color:#fff
 ```
 
-### Tool Arguments & Responses
-
-#### 1. search
-**Input:**
-```json
-{
-  "query": "CustTable",
-  "type": "all",
-  "limit": 20
-}
-```
-
-**Output:**
-```
-Found 5 matches:
-
-[TABLE] CustTable
-[METHOD] CustTable.insert - boolean insert()
-[FIELD] CustTable.AccountNum - str AccountNum
-```
-
-**Type Filter Options:** `class`, `table`, `field`, `method`, `enum`, `all`
-
-#### 2. get_class_info
-**Input:**
-```json
-{
-  "className": "CustTable"
-}
-```
-
-**Output:** Markdown-formatted class details with methods, inheritance, modifiers
-
-#### 3. get_table_info
-**Input:**
-```json
-{
-  "tableName": "CustTable"
-}
-```
-
-**Output:** Markdown-formatted table schema with fields, indexes, relations
-
-#### 4. code_completion
-**Input:**
-```json
-{
-  "className": "CustTable",
-  "prefix": "set"
-}
-```
-
-**Output:** List of matching methods starting with "set"
-
-#### 5. generate_code
-**Input:**
-```json
-{
-  "pattern": "batch-job",
-  "name": "MyBatch"
-}
-```
-
-**Output:** X++ code template for batch job
-
-#### 6. search_extensions
-**Input:**
-```json
-{
-  "query": "Cust",
-  "prefix": "ISV_"
-}
-```
-
-**Output:** Search results filtered to custom/ISV models only
-
-#### 7. analyze_code_patterns
-**Input:**
-```json
-{
-  "scenario": "financial dimensions",
-  "classPattern": "Helper",
-  "limit": 10
-}
-```
-
-**Output:** Markdown-formatted pattern analysis with common classes, methods, and dependencies
-
-#### 8. suggest_method_implementation
-**Input:**
-```json
-{
-  "className": "MyHelper",
-  "methodName": "validate",
-  "parameters": ["_value"]
-}
-```
-
-**Output:** Implementation suggestions from similar methods in codebase with code examples
-
-#### 9. analyze_class_completeness
-**Input:**
-```json
-{
-  "className": "CustTableHelper"
-}
-```
-
-**Output:** Analysis of existing methods and suggestions for commonly missing methods
-
-#### 10. get_api_usage_patterns
-**Input:**
-```json
-{
-  "apiName": "DimensionAttributeValueSet",
-  "context": "initialization"
-}
-```
-
-**Output:** Common usage patterns with initialization, method sequences, and error handling examples
-
-#### 10b. get_xpp_knowledge
-**Input:**
-```json
-{
-  "topic": "batch job",
-  "format": "detailed"
-}
-```
-
-**Output:** Distilled D365FO knowledge: patterns, best practices, AX2012→D365FO migration guidance, and code examples. Topics include: batch jobs, transactions, CoC, queries, set-based operations, security, data entities, temp tables, SSRS reports, number sequences, labels, form patterns, error handling, and testing.
-
-#### 11. batch_search
-**Input:**
-```json
-{
-  "queries": [
-    {"query": "dimension", "type": "class", "limit": 5},
-    {"query": "ledger", "type": "class", "limit": 5},
-    {"query": "financial", "type": "class", "limit": 5}
-  ]
-}
-```
-
-**Output:** Parallel search results for multiple queries in a single request
-
-#### 12. get_form_info
-**Input:**
-```json
-{
-  "formName": "SalesTable"
-}
-```
-
-**Output:** Form structure with datasources, controls (buttons, grids), and methods
-
-#### 13. get_query_info
-**Input:**
-```json
-{
-  "queryName": "CustTransOpenQuery"
-}
-```
-
-**Output:** Query structure with datasources, ranges, joins, and grouping
-
-#### 14. get_view_info
-**Input:**
-```json
-{
-  "viewName": "GeneralJournalAccountEntryView"
-}
-```
-
-**Output:** View/data entity structure with mapped/computed fields and relations
-
-#### 15. get_enum_info
-**Input:**
-```json
-{
-  "enumName": "CustAccountType"
-}
-```
-
-**Output:** Enum values with integer values, labels, and properties (extensible, base type)
-
-#### 16. get_edt_info
-**Input:**
-```json
-{
-  "edtName": "CustAccount",
-  "modelName": "ApplicationSuite"
-}
-```
-
-**Output:** Extended Data Type properties including base type (Extends), enum type, reference table, string/number constraints, labels, and help text
-
-#### 17. get_method_signature
-**Input:**
-```json
-{
-  "className": "SalesTable",
-  "methodName": "validateWrite"
-}
-```
-
-**Output:** Exact method signature with parameters, return type, and CoC extension template
-
-#### 18. find_references
-**Input:**
-```json
-{
-  "targetName": "DimensionAttributeValueSet",
-  "targetType": "class",
-  "limit": 50
-}
-```
-
-**Output:** All usages of class/method/field/enum across codebase with code snippets
-
-#### 19. generate_d365fo_xml
-**Input:**
-```json
-{
-  "objectType": "class",
-  "objectName": "MyHelper",
-  "modelName": "CustomCore"
-}
-```
-
-**Output:** D365FO XML content with proper structure and TABS indentation (cloud-ready)
-
-#### 20. create_d365fo_file
-**Input:**
-```json
-{
-  "objectType": "class",
-  "objectName": "MyHelper",
-  "modelName": "CustomCore",
-  "addToProject": true,
-  "solutionPath": "K:\\VSProjects\\CustomCore\\CustomCore.rnrproj"
-}
-```
-
-**Output:** Creates physical D365FO XML file and optionally adds to VS project (local only)
-
-#### 21. modify_d365fo_file
-**Input:**
-```json
-{
-  "filePath": "K:\\AosService\\...\\MyHelper.xml",
-  "operation": "add_method",
-  "methodName": "calculateDiscount",
-  "methodCode": "public real calculateDiscount() { return 0; }"
-}
-```
-
-**Output:** Safely edits D365FO XML file with automatic backup and validation
-
----
-
-#### 22. build_d365fo_project
-Triggers local execution of msbuild or xppc.exe tracking error objects and code output streams exactly into the console context window natively bypassing manual dev tasks.
-
-#### 23. trigger_db_sync
-Executes sync.exe internally pushing the local updated AxTables towards SQL synchronization validating structural changes autonomously.
-
-#### 24. run_bp_check
-Wraps xppbp.exe logic around the git modified files checking them against the defined local PackagesLocalDirectory best practice standard setups.
-
-#### 25. sysTestRunner
-Executes specific SysTest objects routing testing outputs to text blocks readable by AI validations.
-
-#### 26. review_workspace_changes
-Uses local git diff HEAD --unified=3 combined with standard D365FO knowledge to provide a fully integrated AI code review directly into the active Copilot stream.
-
-#### 27. undo_last_modification
-Intelligently handles reversing uncommitted changes via `git checkout HEAD` (tracked files) or
-`fs.unlinkSync` (untracked files). After reverting or deleting a file, performs full index cleanup:
-removes stale symbols and labels from SQLite, invalidates Redis cache entries for all affected
-objects, refreshes the C# bridge provider state, and (for tracked files) re-indexes the restored
-file to reflect its reverted content.
-
+> For detailed tool parameters and example inputs/outputs, see [MCP_TOOLS.md](MCP_TOOLS.md).
 
 ### Local SDLC Execution
 
@@ -1208,39 +876,18 @@ graph TD
     style L5 fill:#2196F3,color:#fff
 ```
 
-### Caching TTLs
+### Caching
 
-| Cache Type | TTL | Rationale |
-|------------|-----|-----------|
-| Search Results | 1 hour | Metadata rarely changes |
-| Class Info | 1 hour | Static AOT metadata |
-| Table Info | 1 hour | Static AOT metadata |
-| Completions | 30 min | Frequently accessed |
-| Extension Search | 30 min | Less frequent updates |
-
-### Cache Invalidation
-
-Redis cache entries are **actively invalidated** when the underlying data changes — write
-operations do not rely on TTL expiry alone. This prevents stale metadata from being served
-after files are created, modified, deleted, or reverted.
-
-| Trigger | What is invalidated |
-|---------|---------------------|
-| `update_symbol_index` (file exists) | Re-indexes SQLite, then clears: `xpp:class:{name}`, `xpp:table:{name}`, `xpp:method-sig:{name}:*`, `xpp:complete:{name}:*`, `xpp:search:*` |
-| `update_symbol_index` (file deleted) | Removes symbols + labels from SQLite, clears same Redis patterns, refreshes C# bridge |
-| `undo_last_modification` (revert) | Removes stale SQLite entries, clears Redis, refreshes bridge, then re-indexes restored file |
-| `undo_last_modification` (delete) | Removes stale SQLite entries, clears Redis, refreshes bridge |
-| `create_d365fo_file` / `modify_d365fo_file` | **Auto-invalidates** Redis cache and refreshes the C# bridge provider directly (no explicit `update_symbol_index` call needed) |
-
-The `invalidateCache()` helper in `updateSymbolIndex.ts` clears entries for all top-level
-object names found in the file (classes, tables, enums, EDTs) plus wildcard patterns for
-method signatures, completions, and search results.
+- Default TTL: **1 hour** for search results, class/table info; **30 min** for completions
+- Redis cache entries are **actively invalidated** on write operations (`create_d365fo_file`,
+  `modify_d365fo_file`, `update_symbol_index`, `undo_last_modification`) — no stale data
+- Write operations auto-invalidate: Redis keys + SQLite index + C# bridge state
 
 ### Rate Limits
 
 | Endpoint | Limit | Window |
 |----------|-------|--------|
-| `/mcp` | 100 requests | 15 minutes |
+| `/mcp` | 500 requests | 15 minutes |
 | `/health` | 1000 requests | 15 minutes |
 
 ---
@@ -1250,8 +897,8 @@ method signatures, completions, and search results.
 ````mermaid
 graph TD
     subgraph "Authentication"
-        A1[GitHub Copilot] --> A2[OAuth 2.0 Token]
-        A2 --> A3[Azure AD Verification]
+        A1[Client Request] --> A2[API Key / Bearer Token]
+        A2 --> A3[apiKeyAuth Middleware]
     end
 
     subgraph "Authorization"
@@ -1261,7 +908,7 @@ graph TD
 
     subgraph "Network Security"
         C1[HTTPS Only] --> C2[TLS 1.2+]
-        C3[Rate Limiting] --> C4[DDoS Protection]
+        C3[Rate Limiting] --> C4[Token-based + IP-based]
     end
 
     subgraph "Data Security"
@@ -1351,7 +998,7 @@ graph LR
 
 - **Storage:** ~2–3 GB symbols database (without/with UnitTest models) + ~500 MB labels database (4 languages) = ~2.5–3.5 GB total
 - **Memory:** 1.75GB (P0v3) - ~800MB used
-- **Throughput:** 100 req/15min per IP
+- **Throughput:** 500 req/15min per IP (configurable)
 - **Latency:** 
   - Cache hit: <10ms
   - Cache miss: 50-200ms
@@ -1403,7 +1050,7 @@ graph TB
 graph TB
     subgraph "Runtime"
         NODE[Node.js 24 LTS]
-        TS[TypeScript 5.9]
+        TS[TypeScript 6.0]
         DOTNET[.NET Framework 4.8 — Bridge, Windows only]
     end
 
@@ -1451,36 +1098,6 @@ graph TB
 
 ---
 
-## Future Enhancements
-
-````mermaid
-graph LR
-    subgraph "Planned Features"
-        F1[Multi-Tenant Support - Per-organization databases]
-        F2[GraphQL API - Alternative to JSON-RPC]
-        F3[Webhook Notifications - Metadata updates]
-        F4[Advanced Analytics - Usage metrics]
-    end
-
-    subgraph "Performance"
-        P1[PostgreSQL - Replace SQLite for scale]
-        P2[CDN Caching - Edge distribution]
-        P3[GraphQL DataLoader - Batch queries]
-    end
-
-    subgraph "Developer Experience"
-        D1[Visual Studio 2026 Extension - Direct integration]
-        D2[CLI Tool - Local development]
-        D3[REST API - Non-MCP clients]
-    end
-    
-    style F1 fill:#2196F3,color:#fff
-    style P1 fill:#FF9800,color:#fff
-    style D1 fill:#4CAF50,color:#fff
-```
-
----
-
 ## Conclusion
 
 This architecture provides:
@@ -1489,7 +1106,7 @@ This architecture provides:
 ✅ **Live Metadata** - C# bridge provides always-fresh data on Windows D365FO VMs (see [BRIDGE.md](BRIDGE.md))  
 ✅ **Scalability** - Stateless design, horizontal scaling ready  
 ✅ **Reliability** - Error handling, rate limiting, health checks  
-✅ **Security** - OAuth 2.0, HTTPS, Managed Identity  
+✅ **Security** - API Key auth, HTTPS, rate limiting  
 ✅ **Maintainability** - TypeScript, comprehensive tests, CI/CD  
 ✅ **Cost-Effective** - Serverless Azure App Service, efficient caching  
 
