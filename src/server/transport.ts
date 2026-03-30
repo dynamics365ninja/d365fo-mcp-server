@@ -14,6 +14,16 @@ import { getConfigManager } from '../utils/configManager.js';
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
 
 /**
+ * Per-request timeout for the HTTP transport (ms).
+ * Azure App Service + SQLite over SMB storage can be significantly slower than
+ * local SSD. batch_search may run 10 parallel FTS5 queries which compounds the
+ * latency. Default 120 s is generous but still well below Azure's 230 s limit.
+ */
+const TOOL_TIMEOUT_MS = Math.max(10_000,
+  parseInt(process.env.MCP_TOOL_TIMEOUT_MS || '120000', 10) || 120_000
+);
+
+/**
  * Extract workspace folder path from GitHub Copilot MCP request.
  * Copilot can pass workspace info via HTTP headers or _meta in params.
  * Returns a local file-system path (converts file:// URI → path).
@@ -236,9 +246,10 @@ export class CustomHttpTransport implements Transport {
               if (this.pendingRequests.has(internalId!)) {
                 this.pendingRequests.delete(internalId!);
                 (request as any).id = originalId; // restore on timeout
-                reject(new Error('Request timeout'));
+                process.stderr.write(`← ${tag} ⏱️ ${toolName} timed out after ${TOOL_TIMEOUT_MS / 1000}s\n`);
+                reject(new Error(`Request timeout: ${toolName} did not complete within ${TOOL_TIMEOUT_MS / 1000}s`));
               }
-            }, 30000);
+            }, TOOL_TIMEOUT_MS);
 
             this.pendingRequests.set(internalId, (message) => {
               clearTimeout(timeoutId);
@@ -324,13 +335,15 @@ export class CustomHttpTransport implements Transport {
         }
         
         if (!res.headersSent) {
+          // Use request.id (restored to originalId by the timeout handler) so
+          // the client can correlate this error with the original request.
           res.status(500).json({
             jsonrpc: '2.0',
             error: {
               code: -32603,
               message: error instanceof Error ? error.message : 'Internal error',
             },
-            id: null,
+            id: request.id ?? null,
           });
         }
       }
