@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { execFile, exec } from 'child_process';
 import util from 'util';
+import path from 'path';
 import { access } from 'fs/promises';
 import { getConfigManager } from '../utils/configManager.js';
 import { withOperationLock } from '../utils/operationLocks.js';
@@ -78,6 +79,53 @@ const VS_DEV_CMD_CANDIDATES = [
 
 const D365_BUILD_TASKS_ASSEMBLY = 'Microsoft.Dynamics.Framework.Tools.BuildTasks';
 
+// Relative path from MSBuild extensions root to the D365FO .targets file
+const D365_TARGETS_RELATIVE = 'Dynamics365\\Microsoft.Dynamics.Framework.Tools.BuildTasks.Xpp.targets';
+
+// vswhere.exe — ships with the Visual Studio Installer and can locate any VS edition/version
+const VSWHERE_PATH = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe';
+
+/**
+ * Use vswhere.exe to dynamically find the latest VS installation with MSBuild.
+ * Covers VS 2019, 2022, 2026+ and any edition without hardcoded path assumptions.
+ */
+async function findVsWithVswhere(): Promise<{
+  msbuildExe: string;
+  vsDevCmdPath: string | null;
+  msbuildExtensionsPath: string;
+} | null> {
+  try {
+    await access(VSWHERE_PATH);
+  } catch {
+    return null; // VS Installer not present
+  }
+  try {
+    const { stdout } = await execFileAsync(VSWHERE_PATH, [
+      '-latest',
+      '-requires', 'Microsoft.Component.MSBuild',
+      '-property', 'installationPath',
+    ], { timeout: 10_000, windowsHide: true });
+
+    const installPath = stdout.trim().split(/\r?\n/)[0];
+    if (!installPath) return null;
+
+    const msbuildExe = path.join(installPath, 'MSBuild', 'Current', 'Bin', 'MSBuild.exe');
+    try { await access(msbuildExe); } catch { return null; }
+
+    const vsDevCmdPath = path.join(installPath, 'Common7', 'Tools', 'VsDevCmd.bat');
+    let hasDevCmd = false;
+    try { await access(vsDevCmdPath); hasDevCmd = true; } catch { /* not found */ }
+
+    return {
+      msbuildExe,
+      vsDevCmdPath: hasDevCmd ? vsDevCmdPath : null,
+      msbuildExtensionsPath: path.join(installPath, 'MSBuild'),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const buildProjectToolDefinition = {
   name: 'build_d365fo_project',
   description: 'Triggers a local MSBuild process on the .rnrproj to catch compiler errors.',
@@ -100,32 +148,49 @@ export const buildProjectTool = async (params: any, _context: any) => {
       };
     }
 
-    // Try to locate MSBuild
-    let msbuildExe: string | null = null;
-    for (const candidate of MSBUILD_CANDIDATES) {
-      try {
-        await access(candidate);
-        msbuildExe = candidate;
-        break;
-      } catch { /* not found, try next */ }
+    // --- Locate MSBuild + VS Developer environment ---
+    // 1. Try vswhere.exe (dynamic — covers any VS version/edition)
+    const vsInfo = await findVsWithVswhere();
+    let msbuildExe: string | null = vsInfo?.msbuildExe ?? null;
+    let vsDevCmdPath: string | null = vsInfo?.vsDevCmdPath ?? null;
+    let msbuildExtensionsPath: string | null = vsInfo?.msbuildExtensionsPath ?? null;
+
+    // 2. Fall back to hardcoded candidate paths
+    if (!msbuildExe) {
+      for (const candidate of MSBUILD_CANDIDATES) {
+        try {
+          await access(candidate);
+          msbuildExe = candidate;
+          break;
+        } catch { /* not found, try next */ }
+      }
+    }
+    if (!vsDevCmdPath) {
+      for (const candidate of VS_DEV_CMD_CANDIDATES) {
+        try {
+          await access(candidate);
+          vsDevCmdPath = candidate;
+          break;
+        } catch { /* not found, try next */ }
+      }
     }
 
-    // Fall back to msbuild from PATH
+    // 3. Last resort: hope msbuild is on PATH
     if (!msbuildExe) {
       msbuildExe = 'msbuild';
     }
 
-    // Try to locate VsDevCmd.bat — when present we chain it before MSBuild so that the
-    // Visual Studio extension directories are on the probing path.  This prevents MSB4062
-    // ("could not load assembly Microsoft.Dynamics.Framework.Tools.BuildTasks") which
-    // occurs when MSBuild is invoked outside the VS Developer environment.
-    let vsDevCmdPath: string | null = null;
-    for (const candidate of VS_DEV_CMD_CANDIDATES) {
+    // 4. When VsDevCmd is unavailable, check if the D365FO .targets file exists under
+    //    the MSBuild extensions path.  If so, we pass /p:MSBuildExtensionsPath explicitly
+    //    so the .rnrproj Import can resolve the D365 targets/assembly without VsDevCmd.
+    if (!vsDevCmdPath && msbuildExtensionsPath) {
+      const targetsFile = path.join(msbuildExtensionsPath, D365_TARGETS_RELATIVE);
       try {
-        await access(candidate);
-        vsDevCmdPath = candidate;
-        break;
-      } catch { /* not found, try next */ }
+        await access(targetsFile);
+        console.error(`[build_d365fo_project] VsDevCmd not found, but D365 targets exist at: ${targetsFile}`);
+      } catch {
+        msbuildExtensionsPath = null; // targets not here — property won't help
+      }
     }
 
     const buildArgs = [
@@ -136,6 +201,12 @@ export const buildProjectTool = async (params: any, _context: any) => {
       '/v:minimal',
       '/nologo',
     ];
+
+    // When running without VsDevCmd but with a known extensions path, inject it so
+    // that $(MSBuildExtensionsPath)\Dynamics365\...targets resolves correctly.
+    if (!vsDevCmdPath && msbuildExtensionsPath) {
+      buildArgs.push(`/p:MSBuildExtensionsPath=${msbuildExtensionsPath}\\`);
+    }
 
     let stdout: string;
     let stderr: string;
