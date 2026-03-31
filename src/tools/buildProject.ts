@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import { execFile, type ExecFileOptions } from 'child_process';
+import { execFile } from 'child_process';
 import util from 'util';
 import path from 'path';
-import { access } from 'fs/promises';
+import { access, writeFile, unlink } from 'fs/promises';
+import os from 'os';
+import crypto from 'crypto';
 import { getConfigManager } from '../utils/configManager.js';
 import { withOperationLock } from '../utils/operationLocks.js';
 
@@ -194,10 +196,15 @@ export const buildProjectTool = async (params: any, _context: any) => {
       // `call "VsDevCmd.bat"` initialises VS environment variables in-process so that
       // D365FO MSBuild task assemblies are discoverable by the subsequent MSBuild call.
       //
-      // Security: instead of exec(string) which passes a concatenated command to
-      // cmd.exe (vulnerable to shell injection via crafted paths), we use
-      // execFile('cmd.exe', ['/C', command]) after validating all dynamic values
-      // contain only safe filesystem-path characters.  See CodeQL alert #15.
+      // We write a temporary batch file instead of using `cmd /C call "..." && msbuild`
+      // because Node's execFile quoting and cmd.exe's /C quote-stripping interact badly:
+      // Node escapes embedded " as \" (MSVCRT convention) but cmd.exe treats \ as literal,
+      // producing mangled paths like '..\..\Tools\VsDevCmd.bat\"' (see #400).
+      // A temp .cmd file puts each command on its own line, completely sidestepping
+      // the cmd.exe /C quoting heuristic.
+      //
+      // Security: all dynamic values are validated via assertSafePath() which rejects
+      // shell metacharacters.  The temp file contains only those validated paths.
       assertSafePath(vsDevCmdPath, 'VsDevCmd.bat path');
       assertSafePath(msbuildExe!, 'MSBuild.exe path');
       for (const arg of buildArgs) {
@@ -206,21 +213,29 @@ export const buildProjectTool = async (params: any, _context: any) => {
 
       const msbuildToken = quoteCmdArg(msbuildExe!);
       const argsToken = buildArgs.map(a => quoteCmdArg(a)).join(' ');
-      const fullCmd = `call ${quoteCmdArg(vsDevCmdPath)} && ${msbuildToken} ${argsToken}`;
-      console.error(`[build_d365fo_project] Running via VsDevCmd: ${fullCmd}`);
-      ({ stdout, stderr } = await withOperationLock(
-        `build:${resolvedProjectPath}`,
-        // windowsVerbatimArguments prevents Node from auto-quoting fullCmd for
-        // CreateProcess — our string already has the correct quoting for cmd.exe.
-        // Without this flag Node wraps the /C payload in extra double-quotes which
-        // breaks cmd.exe's quote-stripping logic and mangles paths (see #400).
-        () => execFileAsync('cmd.exe', ['/C', fullCmd], {
-          maxBuffer: 20 * 1024 * 1024,
-          timeout: 600_000, // 10 minutes
-          windowsHide: true,
-          windowsVerbatimArguments: true,
-        } satisfies ExecFileOptions & { windowsVerbatimArguments: boolean }),
-      ));
+
+      // Write a temporary batch file — each command on its own line avoids all
+      // cmd.exe /C quote-stripping and `call` double-expansion issues.
+      const tempBat = path.join(os.tmpdir(), `d365build_${crypto.randomBytes(4).toString('hex')}.cmd`);
+      const batContent = `@echo off\r\ncall ${quoteCmdArg(vsDevCmdPath)}\r\nif errorlevel 1 exit /b 1\r\n${msbuildToken} ${argsToken}\r\n`;
+
+      console.error(`[build_d365fo_project] Writing temp build script: ${tempBat}`);
+      console.error(`[build_d365fo_project] VsDevCmd: ${vsDevCmdPath}`);
+      console.error(`[build_d365fo_project] MSBuild:  ${msbuildExe}`);
+      await writeFile(tempBat, batContent, 'utf-8');
+
+      try {
+        ({ stdout, stderr } = await withOperationLock(
+          `build:${resolvedProjectPath}`,
+          () => execFileAsync('cmd.exe', ['/C', tempBat], {
+            maxBuffer: 20 * 1024 * 1024,
+            timeout: 600_000, // 10 minutes
+            windowsHide: true,
+          }),
+        ));
+      } finally {
+        await unlink(tempBat).catch(() => { /* best-effort cleanup */ });
+      }
     } else {
       console.error(`[build_d365fo_project] Running: ${msbuildExe} ${buildArgs.join(' ')}`);
       ({ stdout, stderr } = await withOperationLock(
