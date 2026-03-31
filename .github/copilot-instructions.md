@@ -53,11 +53,55 @@ If you encounter `MyModel`/`MyPackage` placeholder mid-task — STOP and notify 
 
 **`dryRun=true`** — use for multi-line or public API changes. Show diff to user. Wait for confirmation before applying.
 
+### ⛔ Escalating-workarounds anti-pattern — STOP at step 0
+
+If `modify_d365fo_file` is the correct tool but you feel tempted to try something else, you are wrong. STOP.
+```
+WRONG SPIRAL (each step is MORE wrong):
+ Step 1: "I'll use replace_string_in_file to patch the XML"
+ Step 2: "replace failed — I'll try a different approach"
+ Step 3: "I'll read the file with PowerShell first, then overwrite"
+ Step 4: "Terminal returns no output — I'll add Write-Output"
+ Step 5: "I'll use create_d365fo_file with overwrite=true"
+
+CORRECT (always, immediately):
+ modify_d365fo_file(operation="add-field-group" | "add-field" | "add-method" | …)
+```
+If `modify_d365fo_file` itself errors — STOP and report to user. Do NOT try PowerShell.
+
+### `modify_d365fo_file` — full operation inventory
+
+| Category | Operations |
+|----------|------------|
+| Methods | `add-method`, `remove-method`, `replace-code` |
+| Fields | `add-field`, `modify-field`, `rename-field`, `replace-all-fields`, `remove-field` |
+| Indexes | `add-index`, `remove-index` |
+| Relations | `add-relation`, `remove-relation` |
+| Field groups | `add-field-group`, `remove-field-group`, `add-field-to-field-group` |
+| Table-ext | `add-field-modification` (override base-table field label/mandatory) |
+| Form-ext | `add-control`, `add-data-source` |
+| Any object | `modify-property` |
+
 ### modify-property examples
 ```
 TableGroup/TableType/CacheLookup/Label/Extends → modify_d365fo_file(operation="modify-property", propertyPath="...", propertyValue="...")
 ```
 Works for tables, table-extensions, EDTs, classes, and all object types.
+
+### Table-extension property paths (via `modify-property`, objectType="table-extension")
+
+`Label`, `HelpText`, `TableGroup`, `CacheLookup`, `TitleField1`, `TitleField2`, `ClusteredIndex`, `PrimaryIndex`, `SaveDataPerCompany`, `TableType`, `SystemTable`, `ModifiedDateTime`, `CreatedDateTime`, `ModifiedBy`, `CreatedBy`, `CountryRegionCodes`
+
+### rename-field / replace-all-fields
+
+```
+Rename one field   → rename-field   fieldName="OldName"  fieldNewName="NewName"
+                     (auto-fixes index DataField refs and TitleField1/2)
+                     Repair-only: pass OLD corrupted name → only index refs fixed
+
+Rewrite ALL fields → replace-all-fields  fields=[{name,edt?,type?,mandatory?,label?}, ...]
+                     (use when field names contain spaces or are otherwise corrupted)
+```
 
 ### TableGroup vs TableType
 - **TableGroup** = business role: `Miscellaneous`|`Main`|`Transaction`|`Parameter`|`Group`|`WorksheetHeader`|`WorksheetLine`|`Reference`|`Framework`
