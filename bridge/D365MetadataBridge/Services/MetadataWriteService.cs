@@ -1062,11 +1062,12 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Class '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Classes, objectName);
 
-                    // Remove existing method with same name
-                    RemoveMethodIfExists(axClass, methodName);
-
-                    var axMethod = new AxMethod { Name = methodName, Source = source };
-                    axClass.AddMethod(axMethod);
+                    // Update existing method in place to preserve position, or add new
+                    if (!TryUpdateMethodSourceInPlace(axClass, methodName, source))
+                    {
+                        var axMethod = new AxMethod { Name = methodName, Source = source };
+                        axClass.AddMethod(axMethod);
+                    }
 
                     var classProvider = _provider.Classes as IMetaClassProvider
                         ?? throw new InvalidOperationException("IMetaClassProvider not available");
@@ -1080,10 +1081,11 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Table '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Tables, objectName);
 
-                    RemoveMethodIfExists(axTable, methodName);
-
-                    var axMethod = new AxMethod { Name = methodName, Source = source };
-                    axTable.AddMethod(axMethod);
+                    if (!TryUpdateMethodSourceInPlace(axTable, methodName, source))
+                    {
+                        var axMethod = new AxMethod { Name = methodName, Source = source };
+                        axTable.AddMethod(axMethod);
+                    }
 
                     var tableProvider = _provider.Tables as IMetaTableProvider
                         ?? throw new InvalidOperationException("IMetaTableProvider not available");
@@ -1097,10 +1099,11 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Form '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Forms, objectName);
 
-                    RemoveMethodIfExists(axForm, methodName);
-
-                    var axMethod = new AxMethod { Name = methodName, Source = source };
-                    axForm.AddMethod(axMethod);
+                    if (!TryUpdateMethodSourceInPlace(axForm, methodName, source))
+                    {
+                        var axMethod = new AxMethod { Name = methodName, Source = source };
+                        axForm.AddMethod(axMethod);
+                    }
 
                     var formProvider = _provider.Forms as IMetaFormProvider
                         ?? throw new InvalidOperationException("IMetaFormProvider not available");
@@ -1114,10 +1117,11 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Query '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Queries, objectName);
 
-                    RemoveMethodIfExists(axQuery, methodName);
-
-                    var axMethod = new AxMethod { Name = methodName, Source = source };
-                    axQuery.AddMethod(axMethod);
+                    if (!TryUpdateMethodSourceInPlace(axQuery, methodName, source))
+                    {
+                        var axMethod = new AxMethod { Name = methodName, Source = source };
+                        axQuery.AddMethod(axMethod);
+                    }
 
                     var queryProvider = _provider.Queries as IMetaQueryProvider
                         ?? throw new InvalidOperationException("IMetaQueryProvider not available");
@@ -1131,10 +1135,11 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"View '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Views, objectName);
 
-                    RemoveMethodIfExists(axView, methodName);
-
-                    var axMethod = new AxMethod { Name = methodName, Source = source };
-                    axView.AddMethod(axMethod);
+                    if (!TryUpdateMethodSourceInPlace(axView, methodName, source))
+                    {
+                        var axMethod = new AxMethod { Name = methodName, Source = source };
+                        axView.AddMethod(axMethod);
+                    }
 
                     var viewProvider = _provider.Views as IMetaViewProvider
                         ?? throw new InvalidOperationException("IMetaViewProvider not available");
@@ -1148,10 +1153,11 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Form extension '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.FormExtensions, objectName);
 
-                    RemoveMethodIfExists(axExt, methodName);
-
-                    var axMethod = new AxMethod { Name = methodName, Source = source };
-                    ((dynamic)axExt).Methods.Add(axMethod);
+                    if (!TryUpdateMethodSourceInPlace(axExt, methodName, source))
+                    {
+                        var axMethod = new AxMethod { Name = methodName, Source = source };
+                        ((dynamic)axExt).Methods.Add(axMethod);
+                    }
 
                     ((IMetaFormExtensionProvider)_provider.FormExtensions).Update(axExt, msi);
 
@@ -1163,10 +1169,11 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Class extension '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Classes, objectName);
 
-                    RemoveMethodIfExists(axClass, methodName);
-
-                    var axMethod = new AxMethod { Name = methodName, Source = source };
-                    axClass.AddMethod(axMethod);
+                    if (!TryUpdateMethodSourceInPlace(axClass, methodName, source))
+                    {
+                        var axMethod = new AxMethod { Name = methodName, Source = source };
+                        axClass.AddMethod(axMethod);
+                    }
 
                     ((IMetaClassProvider)_provider.Classes).Update(axClass, msi);
 
@@ -1178,10 +1185,11 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Table extension '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.TableExtensions, objectName);
 
-                    RemoveMethodIfExists(axExt, methodName);
-
-                    var axMethod = new AxMethod { Name = methodName, Source = source };
-                    ((dynamic)axExt).Methods.Add(axMethod);
+                    if (!TryUpdateMethodSourceInPlace(axExt, methodName, source))
+                    {
+                        var axMethod = new AxMethod { Name = methodName, Source = source };
+                        ((dynamic)axExt).Methods.Add(axMethod);
+                    }
 
                     ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
 
@@ -2456,6 +2464,68 @@ namespace D365MetadataBridge.Services
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"[WriteService] TryRemoveFromCollection({collectionName}, {methodName}) failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Tries to update an existing method's source in place, preserving its position in the collection.
+        /// Checks top-level Methods, form SourceCode.Methods, and form SourceCode.DataControls.
+        /// Returns true if the method was found and updated.
+        /// </summary>
+        private bool TryUpdateMethodSourceInPlace(object axObject, string methodName, string newSource)
+        {
+            // Try top-level Methods first (AxClass, AxTable, AxTableExtension, etc.)
+            if (TryUpdateSourceInCollection(axObject, "Methods", methodName, newSource)) return true;
+
+            // For forms: SourceCode.Methods (form-level methods like init, run)
+            try
+            {
+                dynamic dyn = axObject;
+                dynamic sourceCode = dyn.SourceCode;
+                if (sourceCode != null && TryUpdateSourceInCollection(sourceCode, "Methods", methodName, newSource)) return true;
+            }
+            catch { }
+
+            // For forms: SourceCode.DataControls (control override methods)
+            try
+            {
+                dynamic dyn = axObject;
+                dynamic sourceCode = dyn.SourceCode;
+                if (sourceCode != null && TryUpdateSourceInCollection(sourceCode, "DataControls", methodName, newSource)) return true;
+            }
+            catch { }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Tries to update the Source property of a method in a named collection.
+        /// Returns true if found and updated.
+        /// </summary>
+        private bool TryUpdateSourceInCollection(object parentObj, string collectionName, string methodName, string newSource)
+        {
+            try
+            {
+                var prop = parentObj.GetType().GetProperty(collectionName);
+                if (prop == null) return false;
+                dynamic collection = prop.GetValue(parentObj);
+                if (collection == null) return false;
+
+                foreach (dynamic m in collection)
+                {
+                    string mName = (string)m.Name;
+                    if (string.Equals(mName, methodName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        m.Source = newSource;
+                        return true;
+                    }
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WriteService] TryUpdateSourceInCollection({collectionName}, {methodName}) failed: {ex.Message}");
                 return false;
             }
         }
