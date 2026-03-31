@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { execFile } from 'child_process';
 import util from 'util';
 import path from 'path';
-import { access, writeFile, unlink, readFile, readdir } from 'fs/promises';
+import { access, writeFile, unlink } from 'fs/promises';
 import os from 'os';
 import crypto from 'crypto';
 import { getConfigManager } from '../utils/configManager.js';
@@ -10,16 +10,11 @@ import { withOperationLock } from '../utils/operationLocks.js';
 
 const execFileAsync = util.promisify(execFile);
 
-/**
- * Validate that a value looks like a legitimate Windows filesystem path.
- * Rejects values containing shell metacharacters that could alter command semantics.
- * This is a defense-in-depth check — paths come from vswhere.exe output,
- * hardcoded candidates, or user-provided .mcp.json config, but we validate
- * before passing them to any shell invocation.
- */
+// ---------------------------------------------------------------------------
+// Security
+// ---------------------------------------------------------------------------
+
 function assertSafePath(value: string, label: string): void {
-  // Block characters that can change shell semantics even inside quotes.
-  // Allowed: letters, digits, spaces, backslash, forward slash, colon, dot, hyphen, underscore, parens, equals
   if (/[&|<>^`!;$%"'\n\r]/.test(value)) {
     throw new Error(
       `${label} contains potentially dangerous characters and cannot be used in a build command: ${value}`
@@ -27,15 +22,17 @@ function assertSafePath(value: string, label: string): void {
   }
 }
 
-/**
- * Quote a Windows cmd.exe argument by wrapping in double-quotes.
- * Only used for values that have already passed assertSafePath().
- */
 function quoteCmdArg(arg: string): string {
   return `"${arg}"`;
 }
 
-// Known MSBuild locations on D365FO development VMs (in order of preference)
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const D365_BUILD_TASKS_ASSEMBLY = 'Microsoft.Dynamics.Framework.Tools.BuildTasks';
+const VSWHERE_PATH = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe';
+
 const MSBUILD_CANDIDATES = [
   'C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\MSBuild\\Current\\Bin\\MSBuild.exe',
   'C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe',
@@ -45,9 +42,6 @@ const MSBUILD_CANDIDATES = [
   'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe',
 ];
 
-// VS Developer Command Prompt batch files — initialises the VS environment so that
-// D365FO MSBuild task assemblies (e.g. Microsoft.Dynamics.Framework.Tools.BuildTasks.17.0)
-// are discoverable by MSBuild (fixes MSB4062 / "could not load assembly" errors).
 const VS_DEV_CMD_CANDIDATES = [
   'C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\Common7\\Tools\\VsDevCmd.bat',
   'C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\Common7\\Tools\\VsDevCmd.bat',
@@ -57,18 +51,15 @@ const VS_DEV_CMD_CANDIDATES = [
   'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\Tools\\VsDevCmd.bat',
 ];
 
-const D365_BUILD_TASKS_ASSEMBLY = 'Microsoft.Dynamics.Framework.Tools.BuildTasks';
+const DEVENV_COM_CANDIDATES = [
+  'C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\Common7\\IDE\\devenv.com',
+  'C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\Common7\\IDE\\devenv.com',
+  'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\devenv.com',
+  'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\Common7\\IDE\\devenv.com',
+  'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\Common7\\IDE\\devenv.com',
+  'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\devenv.com',
+];
 
-// DLL filename includes the version suffix (17.0)
-const D365_BUILD_TASKS_DLL = 'Microsoft.Dynamics.Framework.Tools.BuildTasks.17.0.dll';
-
-// Relative path from MSBuild extensions root to the D365FO .targets file
-const D365_TARGETS_RELATIVE = 'Dynamics365\\Microsoft.Dynamics.Framework.Tools.BuildTasks.Xpp.targets';
-
-// vswhere.exe — ships with the Visual Studio Installer and can locate any VS edition/version
-const VSWHERE_PATH = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe';
-
-// Well-known PackagesLocalDirectory paths on D365FO development VMs
 const PACKAGES_CANDIDATES = [
   'C:\\AOSService\\PackagesLocalDirectory',
   'K:\\AOSService\\PackagesLocalDirectory',
@@ -76,10 +67,10 @@ const PACKAGES_CANDIDATES = [
   'I:\\AOSService\\PackagesLocalDirectory',
 ];
 
-/**
- * Resolve PackagesLocalDirectory path.
- * Priority: configManager.getPackagePath() → well-known candidate paths.
- */
+// ---------------------------------------------------------------------------
+// Path resolution
+// ---------------------------------------------------------------------------
+
 async function resolvePackagesPath(): Promise<string | null> {
   try {
     const configManager = getConfigManager();
@@ -95,119 +86,22 @@ async function resolvePackagesPath(): Promise<string | null> {
   return null;
 }
 
-/**
- * Scan a D365FO .targets file for all <UsingTask> declarations that reference
- * the given assembly name and return the task names.
- * Falls back to well-known task names if the file can't be read.
- */
-async function extractUsingTaskNames(targetsDir: string, _assemblyName: string): Promise<string[]> {
-  const knownTasks = [
-    'CopyReferencesTask',
-    'AxCreateXRefData',
-    'CompileXppTask',
-    'UpdateXRefData',
-    'GenerateCrossReferenceData',
-    'SyncEngine',
-  ];
-
-  try {
-    const files = await readdir(targetsDir);
-    const targetsFiles = files.filter((f: string) => f.toLowerCase().endsWith('.targets'));
-    const taskNames = new Set<string>();
-
-    for (const file of targetsFiles) {
-      try {
-        const content = await readFile(path.join(targetsDir, file), 'utf-8');
-        // Match <UsingTask TaskName="XXX" AssemblyName="...BuildTasks..." />
-        const regex = /<UsingTask\s[^>]*TaskName="([^"]+)"[^>]*Assembly(?:Name|File)="[^"]*BuildTasks[^"]*"/gi;
-        let match;
-        while ((match = regex.exec(content)) !== null) {
-          taskNames.add(match[1]);
-        }
-        // Also match reversed attribute order: AssemblyName before TaskName
-        const regex2 = /<UsingTask\s[^>]*Assembly(?:Name|File)="[^"]*BuildTasks[^"]*"[^>]*TaskName="([^"]+)"/gi;
-        while ((match = regex2.exec(content)) !== null) {
-          taskNames.add(match[1]);
-        }
-      } catch { /* skip unreadable files */ }
-    }
-
-    if (taskNames.size > 0) {
-      return Array.from(taskNames);
-    }
-  } catch { /* directory unreadable */ }
-
-  return knownTasks;
+async function findFirstExisting(candidates: string[]): Promise<string | null> {
+  for (const c of candidates) {
+    try { await access(c); return c; } catch { /* next */ }
+  }
+  return null;
 }
 
-/**
- * Generate a temporary .targets file that re-declares D365FO build tasks with
- * AssemblyFile instead of AssemblyName. When imported after the D365FO .targets,
- * MSBuild's last-wins semantics for UsingTask ensure our definitions take precedence.
- * This fixes MSB4062 on machines where the build tasks assembly is not in the GAC.
- */
-async function generateTaskOverrideTargets(packagesPath: string): Promise<string | null> {
-  // Search for the DLL in common locations
-  const searchPaths = [
-    path.join(packagesPath, 'bin', D365_BUILD_TASKS_DLL),
-    path.join(packagesPath, 'Dynamics', 'AX', D365_BUILD_TASKS_DLL),
-  ];
-
-  let dllPath: string | null = null;
-  for (const candidate of searchPaths) {
-    try { await access(candidate); dllPath = candidate; break; } catch { /* try next */ }
-  }
-
-  if (!dllPath) {
-    console.error(`[build_d365fo_project] Build tasks DLL not found in: ${searchPaths.join(', ')}`);
-    return null;
-  }
-
-  console.error(`[build_d365fo_project] Found build tasks DLL: ${dllPath}`);
-  assertSafePath(dllPath, 'Build tasks DLL path');
-
-  // Extract UsingTask names from the targets files in Dynamics\AX
-  const targetsDir = path.join(packagesPath, 'Dynamics', 'AX');
-  const taskNames = await extractUsingTaskNames(targetsDir, D365_BUILD_TASKS_ASSEMBLY);
-
-  console.error(`[build_d365fo_project] Overriding ${taskNames.length} UsingTask declarations: ${taskNames.join(', ')}`);
-
-  // Generate the override targets file
-  const usingTasks = taskNames
-    .map(name => `  <UsingTask TaskName="${name}" AssemblyFile="${dllPath}" />`)
-    .join('\r\n');
-
-  const targetsContent =
-    `<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">\r\n` +
-    `  <!-- Auto-generated by d365fo-mcp-server to fix MSB4062 assembly resolution -->\r\n` +
-    `${usingTasks}\r\n` +
-    `</Project>\r\n`;
-
-  const tempTargets = path.join(os.tmpdir(), `d365tasks_${crypto.randomBytes(4).toString('hex')}.targets`);
-  await writeFile(tempTargets, targetsContent, 'utf-8');
-  console.error(`[build_d365fo_project] Wrote task override targets: ${tempTargets}`);
-  return tempTargets;
-}
-
-/**
- * Use vswhere.exe to dynamically find the latest VS installation with MSBuild.
- * Covers VS 2019, 2022, 2026+ and any edition without hardcoded path assumptions.
- */
 async function findVsWithVswhere(): Promise<{
   msbuildExe: string;
   vsDevCmdPath: string | null;
-  msbuildExtensionsPath: string;
+  devenvComPath: string | null;
 } | null> {
-  try {
-    await access(VSWHERE_PATH);
-  } catch {
-    return null; // VS Installer not present
-  }
+  try { await access(VSWHERE_PATH); } catch { return null; }
   try {
     const { stdout } = await execFileAsync(VSWHERE_PATH, [
-      '-latest',
-      '-requires', 'Microsoft.Component.MSBuild',
-      '-property', 'installationPath',
+      '-latest', '-requires', 'Microsoft.Component.MSBuild', '-property', 'installationPath',
     ], { timeout: 10_000, windowsHide: true });
 
     const installPath = stdout.trim().split(/\r?\n/)[0];
@@ -217,18 +111,56 @@ async function findVsWithVswhere(): Promise<{
     try { await access(msbuildExe); } catch { return null; }
 
     const vsDevCmdPath = path.join(installPath, 'Common7', 'Tools', 'VsDevCmd.bat');
-    let hasDevCmd = false;
-    try { await access(vsDevCmdPath); hasDevCmd = true; } catch { /* not found */ }
+    const devenvComPath = path.join(installPath, 'Common7', 'IDE', 'devenv.com');
 
     return {
       msbuildExe,
-      vsDevCmdPath: hasDevCmd ? vsDevCmdPath : null,
-      msbuildExtensionsPath: path.join(installPath, 'MSBuild'),
+      vsDevCmdPath: await access(vsDevCmdPath).then(() => vsDevCmdPath, () => null),
+      devenvComPath: await access(devenvComPath).then(() => devenvComPath, () => null),
     };
   } catch {
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// devenv.com /build — headless VS fallback for MSB4062
+// ---------------------------------------------------------------------------
+
+async function buildWithDevenv(
+  devenvComPath: string,
+  projectPath: string,
+): Promise<{ success: boolean; output: string }> {
+  assertSafePath(devenvComPath, 'devenv.com path');
+  assertSafePath(projectPath, 'Project path');
+  console.error(`[build_d365fo_project] devenv.com fallback: ${devenvComPath}`);
+
+  try {
+    const { stdout, stderr } = await withOperationLock(
+      `build:devenv:${projectPath}`,
+      () => execFileAsync(devenvComPath, [projectPath, '/build', 'Debug'], {
+        maxBuffer: 20 * 1024 * 1024,
+        timeout: 900_000,
+        windowsHide: true,
+      }),
+    );
+    const output = [stdout, stderr].filter(Boolean).join('\n').trim();
+    const failed = /\d+\s+failed/.test(output)
+      ? !/0\s+failed/.test(output)
+      : /\b(error|Error)\s+(CS|AX|X\+\+|MSB)\d+|Build FAILED/i.test(output);
+    return { success: !failed, output };
+  } catch (error: any) {
+    return { success: false, output: [error.stdout, error.stderr, error.message].filter(Boolean).join('\n') };
+  }
+}
+
+function isMSB4062(output: string): boolean {
+  return output.includes('MSB4062') && output.includes(D365_BUILD_TASKS_ASSEMBLY);
+}
+
+// ---------------------------------------------------------------------------
+// Tool definition + handler
+// ---------------------------------------------------------------------------
 
 export const buildProjectToolDefinition = {
   name: 'build_d365fo_project',
@@ -240,250 +172,140 @@ export const buildProjectToolDefinition = {
 
 export const buildProjectTool = async (params: any, _context: any) => {
   let resolvedProjectPath: string | undefined;
+  let devenvComPath: string | null = null;
   try {
     const configManager = getConfigManager();
     await configManager.ensureLoaded();
 
     resolvedProjectPath = params.projectPath || await configManager.getProjectPath();
     if (!resolvedProjectPath) {
-      return {
-        content: [{ type: 'text', text: '❌ Cannot determine project path.\n\nProvide projectPath parameter or set it in .mcp.json.' }],
-        isError: true
-      };
+      return { content: [{ type: 'text', text: '❌ Cannot determine project path.\n\nProvide projectPath parameter or set it in .mcp.json.' }], isError: true };
     }
 
-    // --- Locate MSBuild + VS Developer environment ---
-    // 1. Try vswhere.exe (dynamic — covers any VS version/edition)
+    // --- Locate tools ---
     const vsInfo = await findVsWithVswhere();
     let msbuildExe: string | null = vsInfo?.msbuildExe ?? null;
     let vsDevCmdPath: string | null = vsInfo?.vsDevCmdPath ?? null;
-    let msbuildExtensionsPath: string | null = vsInfo?.msbuildExtensionsPath ?? null;
+    devenvComPath = vsInfo?.devenvComPath ?? null;
 
-    // 2. Fall back to hardcoded candidate paths
-    if (!msbuildExe) {
-      for (const candidate of MSBUILD_CANDIDATES) {
-        try {
-          await access(candidate);
-          msbuildExe = candidate;
-          break;
-        } catch { /* not found, try next */ }
-      }
-    }
-    if (!vsDevCmdPath) {
-      for (const candidate of VS_DEV_CMD_CANDIDATES) {
-        try {
-          await access(candidate);
-          vsDevCmdPath = candidate;
-          break;
-        } catch { /* not found, try next */ }
-      }
-    }
+    if (!msbuildExe) msbuildExe = await findFirstExisting(MSBUILD_CANDIDATES) ?? 'msbuild';
+    if (!vsDevCmdPath) vsDevCmdPath = await findFirstExisting(VS_DEV_CMD_CANDIDATES);
+    if (!devenvComPath) devenvComPath = await findFirstExisting(DEVENV_COM_CANDIDATES);
 
-    // 3. Last resort: hope msbuild is on PATH
-    if (!msbuildExe) {
-      msbuildExe = 'msbuild';
-    }
+    const packagesPath = await resolvePackagesPath();
 
-    // 4. When VsDevCmd is unavailable, check if the D365FO .targets file exists under
-    //    the MSBuild extensions path.  If so, we pass /p:MSBuildExtensionsPath explicitly
-    //    so the .rnrproj Import can resolve the D365 targets/assembly without VsDevCmd.
-    if (!vsDevCmdPath && msbuildExtensionsPath) {
-      const targetsFile = path.join(msbuildExtensionsPath, D365_TARGETS_RELATIVE);
-      try {
-        await access(targetsFile);
-        console.error(`[build_d365fo_project] VsDevCmd not found, but D365 targets exist at: ${targetsFile}`);
-      } catch {
-        msbuildExtensionsPath = null; // targets not here — property won't help
-      }
-    }
-
+    // --- Build args ---
     const buildArgs = [
       resolvedProjectPath,
       '/p:Configuration=Debug',
       '/p:Platform=AnyCPU',
-      '/m',
-      '/v:minimal',
-      '/nologo',
+      '/m', '/v:minimal', '/nologo',
     ];
-
-    // When running without VsDevCmd but with a known extensions path, inject it so
-    // that $(MSBuildExtensionsPath)\Dynamics365\...targets resolves correctly.
-    if (!vsDevCmdPath && msbuildExtensionsPath) {
-      buildArgs.push(`/p:MSBuildExtensionsPath=${msbuildExtensionsPath}\\`);
-    }
-
-    // --- Resolve PackagesLocalDirectory for D365FO build task assembly probing ---
-    // The D365FO .targets files reference build tasks (CopyReferencesTask, etc.) that
-    // may not be in the GAC on non-standard machines. We resolve the packages path
-    // and pass it as MSBuild properties so the targets can find their assemblies.
-    const packagesPath = await resolvePackagesPath();
-    let tempTaskOverride: string | null = null;
-
     if (packagesPath) {
       assertSafePath(packagesPath, 'PackagesLocalDirectory path');
       buildArgs.push(`/p:PackagesFolder=${packagesPath}`);
       buildArgs.push(`/p:MetadataDir=${packagesPath}`);
-      console.error(`[build_d365fo_project] PackagesLocalDirectory: ${packagesPath}`);
-
-      // Generate a ForceImport targets file that overrides UsingTask declarations
-      // with AssemblyFile references, fixing MSB4062 when the assembly isn't in GAC.
-      try {
-        tempTaskOverride = await generateTaskOverrideTargets(packagesPath);
-        if (tempTaskOverride) {
-          assertSafePath(tempTaskOverride, 'Task override targets path');
-          buildArgs.push(`/p:ForceImportAfterMicrosoftCommonTargets=${tempTaskOverride}`);
-        }
-      } catch (e: any) {
-        console.error(`[build_d365fo_project] Failed to generate task override targets: ${e.message}`);
-      }
-    } else {
-      console.error('[build_d365fo_project] PackagesLocalDirectory not found — D365FO build task resolution may fail');
     }
 
+    // --- Execute ---
     let stdout: string;
     let stderr: string;
 
     if (vsDevCmdPath) {
-      // Run MSBuild through the VS Developer Command Prompt environment.
-      // `call "VsDevCmd.bat"` initialises VS environment variables in-process so that
-      // D365FO MSBuild task assemblies are discoverable by the subsequent MSBuild call.
-      //
-      // We write a temporary batch file instead of using `cmd /C call "..." && msbuild`
-      // because Node's execFile quoting and cmd.exe's /C quote-stripping interact badly:
-      // Node escapes embedded " as \" (MSVCRT convention) but cmd.exe treats \ as literal,
-      // producing mangled paths like '..\..\Tools\VsDevCmd.bat\"' (see #400).
-      // A temp .cmd file puts each command on its own line, completely sidestepping
-      // the cmd.exe /C quoting heuristic.
-      //
-      // Security: all dynamic values are validated via assertSafePath() which rejects
-      // shell metacharacters.  The temp file contains only those validated paths.
       assertSafePath(vsDevCmdPath, 'VsDevCmd.bat path');
-      assertSafePath(msbuildExe!, 'MSBuild.exe path');
-      for (const arg of buildArgs) {
-        assertSafePath(arg, 'MSBuild argument');
-      }
+      assertSafePath(msbuildExe, 'MSBuild.exe path');
+      for (const arg of buildArgs) assertSafePath(arg, 'MSBuild argument');
 
-      const msbuildToken = quoteCmdArg(msbuildExe!);
-      const argsToken = buildArgs.map(a => quoteCmdArg(a)).join(' ');
-
-      // Write a temporary batch file — each command on its own line avoids all
-      // cmd.exe /C quote-stripping and `call` double-expansion issues.
-      const tempBat = path.join(os.tmpdir(), `d365build_${crypto.randomBytes(4).toString('hex')}.cmd`);
-
-      // Build batch content: set D365FO env vars, call VsDevCmd, then MSBuild
-      let batLines = ['@echo off'];
-
-      // Set D365FO-specific environment variables so that .targets files can resolve
-      // build task assemblies even when they aren't registered in the GAC.
+      const batLines = ['@echo off'];
       if (packagesPath) {
         batLines.push(`set "PackagesFolder=${packagesPath}"`);
         batLines.push(`set "MetadataDir=${packagesPath}"`);
-        // Add bin directory to PATH for native dependency resolution
         batLines.push(`set "PATH=%PATH%;${packagesPath}\\bin"`);
       }
-
       batLines.push(`call ${quoteCmdArg(vsDevCmdPath)}`);
       batLines.push('if errorlevel 1 exit /b 1');
-      batLines.push(`${msbuildToken} ${argsToken}`);
+      batLines.push(`${quoteCmdArg(msbuildExe)} ${buildArgs.map(a => quoteCmdArg(a)).join(' ')}`);
 
-      const batContent = batLines.join('\r\n') + '\r\n';
-
-      console.error(`[build_d365fo_project] Writing temp build script: ${tempBat}`);
-      console.error(`[build_d365fo_project] VsDevCmd: ${vsDevCmdPath}`);
-      console.error(`[build_d365fo_project] MSBuild:  ${msbuildExe}`);
-      await writeFile(tempBat, batContent, 'utf-8');
+      const tempBat = path.join(os.tmpdir(), `d365build_${crypto.randomBytes(4).toString('hex')}.cmd`);
+      console.error(`[build_d365fo_project] VsDevCmd: ${vsDevCmdPath} | MSBuild: ${msbuildExe}`);
+      await writeFile(tempBat, batLines.join('\r\n') + '\r\n', 'utf-8');
 
       try {
         ({ stdout, stderr } = await withOperationLock(
           `build:${resolvedProjectPath}`,
           () => execFileAsync('cmd.exe', ['/C', tempBat], {
             maxBuffer: 20 * 1024 * 1024,
-            timeout: 600_000, // 10 minutes
+            timeout: 600_000,
             windowsHide: true,
           }),
         ));
       } finally {
-        await unlink(tempBat).catch(() => { /* best-effort cleanup */ });
-        if (tempTaskOverride) await unlink(tempTaskOverride).catch(() => { /* best-effort cleanup */ });
+        await unlink(tempBat).catch(() => {});
       }
     } else {
-      console.error(`[build_d365fo_project] Running: ${msbuildExe} ${buildArgs.join(' ')}`);
-      try {
-        ({ stdout, stderr } = await withOperationLock(
-          `build:${resolvedProjectPath}`,
-          () => execFileAsync(msbuildExe!, buildArgs, {
-            maxBuffer: 20 * 1024 * 1024,
-            timeout: 600_000, // 10 minutes
-            windowsHide: true,
-          }),
-        ));
-      } finally {
-        if (tempTaskOverride) await unlink(tempTaskOverride).catch(() => { /* best-effort cleanup */ });
-      }
+      console.error(`[build_d365fo_project] Running MSBuild directly: ${msbuildExe}`);
+      ({ stdout, stderr } = await withOperationLock(
+        `build:${resolvedProjectPath}`,
+        () => execFileAsync(msbuildExe!, buildArgs, {
+          maxBuffer: 20 * 1024 * 1024,
+          timeout: 600_000,
+          windowsHide: true,
+        }),
+      ));
     }
 
     const output = [stdout, stderr].filter(Boolean).join('\n').trim();
-    const hasErrors = /\b(error|Error)\s+(CS|AX|X\+\+|MSB)\d+|Build FAILED/i.test(output);
-    const hasWarnings = /\b(warning)\s+(CS|AX|X\+\+|MSB|BP)\d+/i.test(output);
-
-    // Detect the specific D365FO task-assembly load failure even when it is reported as a
-    // warning/info line rather than a hard error.
-    const hasBuildTasksError = output.includes(D365_BUILD_TASKS_ASSEMBLY) && output.includes('MSB4062');
-    if (hasBuildTasksError) {
-      return {
-        content: [{
-          type: 'text',
-          text: `❌ Build FAILED — D365FO MSBuild task assembly not found (MSB4062)\n\n` +
-            `Project: ${resolvedProjectPath}\n\n` +
-            `The assembly \`${D365_BUILD_TASKS_ASSEMBLY}\` could not be loaded.\n\n` +
-            `**Root cause:** MSBuild was invoked outside the Visual Studio Developer environment, ` +
-            `so the D365FO extension task DLLs are not on the assembly probing path.\n\n` +
-            `**How to fix:**\n` +
-            `1. Ensure the "Dynamics 365" Visual Studio extension is fully installed (repair if needed).\n` +
-            `2. Verify that \`VsDevCmd.bat\` exists in \`Common7\\Tools\` under your VS installation — ` +
-            `this tool automatically chains through it when found.\n` +
-            `3. If the extension is installed but the error persists, run MSBuild from a ` +
-            `**Developer Command Prompt for VS 2022** (Start menu) and confirm the build ` +
-            `succeeds there first.\n\n` +
-            `Raw output:\n${output}`
-        }],
-        isError: true
-      };
-    }
-
-    const status = hasErrors ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
-
-    return {
-      content: [{ type: 'text', text: `${status}\n\nProject: ${resolvedProjectPath}\n\n${output || '(no output)'}` }]
-    };
+    return formatResult(output, resolvedProjectPath, devenvComPath);
   } catch (error: any) {
     console.error('Error building project:', error);
     const rawOutput = [error.stdout, error.stderr, error.message].filter(Boolean).join('\n');
+    return formatResult(rawOutput, resolvedProjectPath ?? '(unknown)', devenvComPath);
+  }
+};
 
-    // Surface a targeted hint when the process exits non-zero due to the D365FO task assembly issue.
-    if (rawOutput.includes(D365_BUILD_TASKS_ASSEMBLY) && rawOutput.includes('MSB4062')) {
+// ---------------------------------------------------------------------------
+// Result formatting + MSB4062 fallback
+// ---------------------------------------------------------------------------
+
+async function formatResult(
+  output: string,
+  projectPath: string,
+  devenvComPath: string | null,
+): Promise<{ content: { type: string; text: string }[]; isError?: boolean }> {
+  if (isMSB4062(output)) {
+    if (devenvComPath) {
+      console.error('[build_d365fo_project] MSB4062 detected — falling back to devenv.com /build');
+      const result = await buildWithDevenv(devenvComPath, projectPath);
+      const status = result.success ? '✅ Build succeeded (via devenv.com)' : '❌ Build FAILED (via devenv.com)';
       return {
         content: [{
           type: 'text',
-          text: `❌ Build failed — D365FO MSBuild task assembly not found (MSB4062)\n\n` +
-            `The assembly \`${D365_BUILD_TASKS_ASSEMBLY}\` could not be loaded by MSBuild.\n\n` +
-            `**Root cause:** The D365FO Visual Studio extension task DLLs are not discoverable ` +
-            `when MSBuild is run outside a Developer Command Prompt environment.\n\n` +
-            `**How to fix:**\n` +
-            `1. Ensure the "Dynamics 365" Visual Studio extension is fully installed.\n` +
-            `2. Verify \`VsDevCmd.bat\` exists at \`Common7\\Tools\` inside your VS 2022 install ` +
-            `folder — this tool chains through it automatically when present.\n` +
-            `3. As a fallback, open a **Developer Command Prompt for VS 2022** and confirm ` +
-            `\`msbuild "${resolvedProjectPath}"\` succeeds there.\n\n` +
-            `Raw output:\n${rawOutput}`
+          text: `${status}\n\nProject: ${projectPath}\n\n` +
+            `ℹ️ MSBuild could not load D365FO build tasks (MSB4062). Retried with devenv.com /build.\n\n` +
+            `${result.output || '(no output)'}`
         }],
-        isError: true
+        isError: !result.success,
       };
     }
-
     return {
-      content: [{ type: 'text', text: '❌ Build failed:\n\n' + rawOutput }],
-      isError: true
+      content: [{
+        type: 'text',
+        text: `❌ Build FAILED — D365FO MSBuild task assembly not found (MSB4062)\n\n` +
+          `Project: ${projectPath}\n\n` +
+          `The assembly \`${D365_BUILD_TASKS_ASSEMBLY}\` could not be loaded and devenv.com was not found.\n\n` +
+          `**How to fix:** Build from **Visual Studio 2022** directly (Ctrl+Shift+B).\n\n` +
+          `Raw output:\n${output}`
+      }],
+      isError: true,
     };
   }
-};
+
+  const hasErrors = /\b(error|Error)\s+(CS|AX|X\+\+|MSB)\d+|Build FAILED/i.test(output);
+  const hasWarnings = /\b(warning)\s+(CS|AX|X\+\+|MSB|BP)\d+/i.test(output);
+  const status = hasErrors ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
+
+  return {
+    content: [{ type: 'text', text: `${status}\n\nProject: ${projectPath}\n\n${output || '(no output)'}` }],
+    ...(hasErrors ? { isError: true } : {}),
+  };
+}
