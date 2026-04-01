@@ -2166,6 +2166,11 @@ namespace D365MetadataBridge.Services
                     break;
                 default:
                     axField = new AxTableFieldString();
+                    // fieldType may be an EDT name (not a recognized base type keyword).
+                    // When edt is not set separately, treat fieldType as the EDT name so at
+                    // least ExtendedDataType is populated rather than creating a bare String field.
+                    if (string.IsNullOrEmpty(f.Edt) && !string.IsNullOrEmpty(f.FieldType))
+                        axField.ExtendedDataType = f.FieldType;
                     break;
             }
 
@@ -3166,7 +3171,7 @@ namespace D365MetadataBridge.Services
         [System.Text.Json.Serialization.JsonPropertyName("name")]
         public string Name { get; set; } = "";
 
-        [System.Text.Json.Serialization.JsonPropertyName("fieldType")]
+        [System.Text.Json.Serialization.JsonPropertyName("type")]
         public string? FieldType { get; set; }
 
         [System.Text.Json.Serialization.JsonPropertyName("edt")]

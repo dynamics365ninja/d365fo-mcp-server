@@ -517,14 +517,18 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'add-field': {
         if (args.fieldName && args.fieldType) {
+          // fieldType = EDT name (e.g. "CustAccount"); fieldBaseType = base XML element type (e.g. "String")
+          // The bridge switch on fieldType picks the AxTableField* class; edt sets ExtendedDataType.
+          const baseType = (args as any).fieldBaseType || args.fieldType;
+          const edtName = (args as any).fieldBaseType ? args.fieldType : undefined;
           bridgeResult = await bridgeAddField(
             context.bridge,
             objectName,
             args.fieldName,
-            args.fieldType,
-            (args as any).edt,
-            (args as any).mandatory,
-            (args as any).label,
+            baseType,
+            edtName,
+            args.fieldMandatory,
+            args.fieldLabel,
           );
         }
         break;
