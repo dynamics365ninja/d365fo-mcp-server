@@ -517,10 +517,21 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'add-field': {
         if (args.fieldName && args.fieldType) {
-          // fieldType = EDT name (e.g. "CustAccount"); fieldBaseType = base XML element type (e.g. "String")
-          // The bridge switch on fieldType picks the AxTableField* class; edt sets ExtendedDataType.
-          const baseType = (args as any).fieldBaseType || args.fieldType;
-          const edtName = (args as any).fieldBaseType ? args.fieldType : undefined;
+          // fieldType is the EDT name; fieldBaseType is the primitive base type.
+          // When fieldBaseType is omitted, auto-resolve it from the symbol index so the
+          // correct AxTableField XML element is emitted. Always pass fieldType as edtName
+          // so the <ExtendedDataType> reference is always written — previously, omitting
+          // fieldBaseType left edtName undefined and produced fields with no EDT reference.
+          const edtName = args.fieldType;
+          let baseType: string = (args as any).fieldBaseType ?? '';
+          if (!baseType) {
+            try {
+              const rdb = symbolIndex.getReadDb();
+              baseType = resolveEdtBaseTypeForField(edtName, rdb);
+            } catch {
+              baseType = edtName; // bridge will apply its own name heuristics
+            }
+          }
           bridgeResult = await bridgeAddField(
             context.bridge,
             objectName,
@@ -1356,3 +1367,30 @@ export const modifyD365FileToolDefinition = {
     'Pass addToProject=true to also register the file in the Visual Studio .rnrproj (useful when the extension file existed on disk but was not yet in the project).',
   inputSchema: ModifyD365FileArgsSchema,
 };
+
+/**
+ * Resolve the primitive base type for an EDT by walking the edt_metadata chain.
+ * Used by add-field to auto-fill fieldBaseType when the caller omits it.
+ * A newly-created EDT not yet in the index returns the EDT name so the bridge
+ * can still apply its own name-based heuristics.
+ */
+function resolveEdtBaseTypeForField(edtName: string, db: any, depth = 0): string {
+  const PRIMITIVES = new Set([
+    'String', 'Integer', 'Int64', 'Real', 'Date', 'UtcDateTime', 'DateTime',
+    'Enum', 'Container', 'Guid', 'GUID',
+  ]);
+  if (depth > 8) return edtName;
+  if (PRIMITIVES.has(edtName)) return edtName;
+  try {
+    const row = db.prepare(
+      `SELECT extends, enum_type FROM edt_metadata WHERE edt_name = ? LIMIT 1`
+    ).get(edtName) as { extends: string | null; enum_type: string | null } | undefined;
+    if (!row) return edtName; // not yet indexed — let bridge use name heuristics
+    if (row.enum_type && !row.extends) return 'Enum';
+    if (!row.extends) return edtName;
+    if (PRIMITIVES.has(row.extends)) return row.extends;
+    return resolveEdtBaseTypeForField(row.extends, db, depth + 1);
+  } catch {
+    return edtName;
+  }
+}

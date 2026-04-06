@@ -987,10 +987,13 @@ function resolveEdtBaseType(edtName: string, db: any, depth = 0): string {
 
   try {
     const row = db.prepare(
-      `SELECT extends FROM edt_metadata WHERE edt_name = ? LIMIT 1`
-    ).get(edtName) as { extends: string | null } | undefined;
+      `SELECT extends, enum_type FROM edt_metadata WHERE edt_name = ? LIMIT 1`
+    ).get(edtName) as { extends: string | null; enum_type: string | null } | undefined;
 
-    if (!row || !row.extends) return 'String';
+    if (!row) return 'String';
+    // Enum-based EDT: extends is null but enum_type is set (e.g. SalesStatus, PurchStatus)
+    if (row.enum_type && !row.extends) return 'Enum';
+    if (!row.extends) return 'String';
     if (PRIMITIVES.has(row.extends)) return row.extends;
 
     // Follow chain to the parent EDT
