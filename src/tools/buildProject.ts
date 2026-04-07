@@ -2,13 +2,31 @@ import { z } from 'zod';
 import { execFile } from 'child_process';
 import util from 'util';
 import path from 'path';
-import { access, writeFile, unlink } from 'fs/promises';
+import { access, writeFile, unlink, appendFile } from 'fs/promises';
 import os from 'os';
 import crypto from 'crypto';
 import { getConfigManager } from '../utils/configManager.js';
-import { withOperationLock } from '../utils/operationLocks.js';
+import { withOperationLock, isOperationLockHeld, forceReleaseLock } from '../utils/operationLocks.js';
 
 const execFileAsync = util.promisify(execFile);
+
+// ---------------------------------------------------------------------------
+// Build-tool file logger
+// Writes structured entries to the bridge log file so stuck builds are visible.
+// ---------------------------------------------------------------------------
+
+async function buildLog(level: 'INFO' | 'WARN' | 'ERROR', message: string): Promise<void> {
+  console.error(`[build_d365fo_project] ${message}`);
+  try {
+    const configManager = getConfigManager();
+    const logFile = configManager.getContext()?.bridgeLogFile;
+    if (!logFile) return;
+    const line = `[${new Date().toISOString()}] [BuildTool] [${level}] ${message}\n`;
+    await appendFile(logFile, line, 'utf-8');
+  } catch {
+    // Best-effort — never throw from logging
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Security
@@ -70,6 +88,19 @@ const PACKAGES_CANDIDATES = [
 // ---------------------------------------------------------------------------
 // Path resolution
 // ---------------------------------------------------------------------------
+
+async function killOrphanedBuildProcesses(): Promise<void> {
+  // Kills any MSBuild and devenv processes that may be stuck from a previous build.
+  // Uses taskkill /F /IM — safe on a D365FO developer VM where these are build-only processes.
+  const targets = ['MSBuild.exe', 'devenv.com', 'devenv.exe'];
+  await Promise.allSettled(
+    targets.map(name =>
+      execFileAsync('taskkill', ['/F', '/IM', name], { timeout: 10_000, windowsHide: true })
+        .then(() => console.error(`[build_d365fo_project] killed ${name}`))
+        .catch(() => { /* process was not running — that's fine */ }),
+    ),
+  );
+}
 
 async function resolvePackagesPath(): Promise<string | null> {
   try {
@@ -133,7 +164,7 @@ async function buildWithDevenv(
 ): Promise<{ success: boolean; output: string }> {
   assertSafePath(devenvComPath, 'devenv.com path');
   assertSafePath(projectPath, 'Project path');
-  console.error(`[build_d365fo_project] devenv.com fallback: ${devenvComPath}`);
+  await buildLog('INFO', `devenv.com fallback started — pid: ${process.pid} | devenv: ${devenvComPath}`);
 
   try {
     const { stdout, stderr } = await withOperationLock(
@@ -148,8 +179,10 @@ async function buildWithDevenv(
     const failed = /\d+\s+failed/.test(output)
       ? !/0\s+failed/.test(output)
       : /\b(error|Error)\s+(CS|AX|X\+\+|MSB)\d+|Build FAILED/i.test(output);
+    await buildLog(failed ? 'ERROR' : 'INFO', `devenv.com fallback finished — success: ${!failed}`);
     return { success: !failed, output };
   } catch (error: any) {
+    await buildLog('ERROR', `devenv.com fallback error: ${error?.message}`);
     return { success: false, output: [error.stdout, error.stderr, error.message].filter(Boolean).join('\n') };
   }
 }
@@ -166,13 +199,15 @@ export const buildProjectToolDefinition = {
   name: 'build_d365fo_project',
   description: 'Triggers a local MSBuild process on the .rnrproj to catch compiler errors.',
   parameters: z.object({
-    projectPath: z.string().optional().describe('The absolute path to the .rnrproj file. Auto-detected from .mcp.json if omitted.')
+    projectPath: z.string().optional().describe('The absolute path to the .rnrproj file. Auto-detected from .mcp.json if omitted.'),
+    force: z.boolean().optional().describe('Kill any running MSBuild/devenv.com processes and clear a stuck build lock before starting. Use when a previous build is stuck.'),
   })
 };
 
 export const buildProjectTool = async (params: any, _context: any) => {
   let resolvedProjectPath: string | undefined;
   let devenvComPath: string | null = null;
+  const force = params.force === true;
   try {
     const configManager = getConfigManager();
     await configManager.ensureLoaded();
@@ -180,6 +215,38 @@ export const buildProjectTool = async (params: any, _context: any) => {
     resolvedProjectPath = params.projectPath || await configManager.getProjectPath();
     if (!resolvedProjectPath) {
       return { content: [{ type: 'text', text: '❌ Cannot determine project path.\n\nProvide projectPath parameter or set it in .mcp.json.' }], isError: true };
+    }
+
+    const buildLockKey = `build:${resolvedProjectPath}`;
+    const devenvLockKey = `build:devenv:${resolvedProjectPath}`;
+
+    if (force) {
+      // Kill orphaned build processes and clear any stale lock so we can proceed.
+      await buildLog('WARN', `force=true requested — killing orphaned build processes and clearing lock for: ${resolvedProjectPath}`);
+      await killOrphanedBuildProcesses();
+      await forceReleaseLock(buildLockKey);
+      await forceReleaseLock(devenvLockKey);
+    } else {
+      // Fail fast rather than queueing behind a potentially-stuck build.
+      // Check BOTH the main MSBuild lock and the devenv.com fallback lock —
+      // the devenv lock survives even after the main lock is released (it's
+      // acquired inside formatResult's MSB4062 fallback, outside the main lock).
+      const [mainLocked, devenvLocked] = await Promise.all([
+        isOperationLockHeld(buildLockKey),
+        isOperationLockHeld(devenvLockKey),
+      ]);
+      if (mainLocked || devenvLocked) {
+        const which = mainLocked ? 'MSBuild' : 'devenv.com fallback';
+        await buildLog('WARN', `Build already in progress (${which} lock held) for: ${resolvedProjectPath} — rejecting new request`);
+        return {
+          content: [{
+            type: 'text',
+            text: `⚠️ A build is already in progress (${which}) for this project.\n\n` +
+              'Wait for it to finish, or call `build_d365fo_project` with `force: true` to kill the stuck build and start fresh.',
+          }],
+          isError: true,
+        };
+      }
     }
 
     // --- Locate tools ---
@@ -211,6 +278,8 @@ export const buildProjectTool = async (params: any, _context: any) => {
     let stdout: string;
     let stderr: string;
 
+    await buildLog('INFO', `Build started — project: ${resolvedProjectPath} | pid: ${process.pid}`);
+
     if (vsDevCmdPath) {
       assertSafePath(vsDevCmdPath, 'VsDevCmd.bat path');
       assertSafePath(msbuildExe, 'MSBuild.exe path');
@@ -227,12 +296,12 @@ export const buildProjectTool = async (params: any, _context: any) => {
       batLines.push(`${quoteCmdArg(msbuildExe)} ${buildArgs.map(a => quoteCmdArg(a)).join(' ')}`);
 
       const tempBat = path.join(os.tmpdir(), `d365build_${crypto.randomBytes(4).toString('hex')}.cmd`);
-      console.error(`[build_d365fo_project] VsDevCmd: ${vsDevCmdPath} | MSBuild: ${msbuildExe}`);
+      await buildLog('INFO', `VsDevCmd: ${vsDevCmdPath} | MSBuild: ${msbuildExe} | bat: ${tempBat}`);
       await writeFile(tempBat, batLines.join('\r\n') + '\r\n', 'utf-8');
 
       try {
         ({ stdout, stderr } = await withOperationLock(
-          `build:${resolvedProjectPath}`,
+          buildLockKey,
           () => execFileAsync('cmd.exe', ['/C', tempBat], {
             maxBuffer: 20 * 1024 * 1024,
             timeout: 600_000,
@@ -243,9 +312,9 @@ export const buildProjectTool = async (params: any, _context: any) => {
         await unlink(tempBat).catch(() => {});
       }
     } else {
-      console.error(`[build_d365fo_project] Running MSBuild directly: ${msbuildExe}`);
+      await buildLog('INFO', `Running MSBuild directly: ${msbuildExe}`);
       ({ stdout, stderr } = await withOperationLock(
-        `build:${resolvedProjectPath}`,
+        buildLockKey,
         () => execFileAsync(msbuildExe!, buildArgs, {
           maxBuffer: 20 * 1024 * 1024,
           timeout: 600_000,
@@ -255,9 +324,10 @@ export const buildProjectTool = async (params: any, _context: any) => {
     }
 
     const output = [stdout, stderr].filter(Boolean).join('\n').trim();
+    await buildLog('INFO', `Build finished — project: ${resolvedProjectPath}`);
     return formatResult(output, resolvedProjectPath, devenvComPath);
   } catch (error: any) {
-    console.error('Error building project:', error);
+    await buildLog('ERROR', `Build error — project: ${resolvedProjectPath ?? '(unknown)'}: ${error?.message}`);
     const rawOutput = [error.stdout, error.stderr, error.message].filter(Boolean).join('\n');
     return formatResult(rawOutput, resolvedProjectPath ?? '(unknown)', devenvComPath);
   }

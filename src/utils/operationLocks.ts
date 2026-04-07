@@ -32,10 +32,43 @@ function getLockDirectory(normalizedKey: string): string {
   return path.join(LOCK_ROOT, hash);
 }
 
+/**
+ * Returns true if `pid` corresponds to a running process.
+ * On Windows, `process.kill(pid, 0)` throws ESRCH when the process is gone
+ * and EPERM when it's alive but owned by another user — both are usable.
+ */
+function isProcessAlive(pid: number): boolean {
+  if (pid === process.pid) return true;
+  try {
+    process.kill(pid, 0);
+    return true;          // signal 0 delivered → process exists
+  } catch (e: any) {
+    return e?.code === 'EPERM'; // EPERM = exists but not ours; ESRCH = gone
+  }
+}
+
 async function tryRemoveStaleLock(lockDir: string, normalizedKey: string): Promise<boolean> {
   try {
     const stat = await fs.stat(lockDir);
     const ageMs = Date.now() - stat.mtimeMs;
+
+    // Primary: check if the owning process is still alive.
+    // If it died (e.g. MCP server was killed mid-build), remove immediately
+    // regardless of age so we don't wait up to LOCK_STALE_MS (20 min).
+    const ownerFile = path.join(lockDir, 'owner.json');
+    try {
+      const ownerRaw = await fs.readFile(ownerFile, 'utf8');
+      const owner = JSON.parse(ownerRaw) as { pid?: number };
+      if (typeof owner.pid === 'number' && !isProcessAlive(owner.pid)) {
+        await fs.rm(lockDir, { recursive: true, force: true });
+        console.error(`[operationLocks] removed dead-process lock for ${normalizedKey} (pid ${owner.pid} no longer running, age ${ageMs} ms)`);
+        return true;
+      }
+    } catch {
+      // owner.json missing or unparseable — fall through to age check
+    }
+
+    // Fallback: time-based stale detection
     if (ageMs < LOCK_STALE_MS) {
       return false;
     }
@@ -123,4 +156,53 @@ export async function withOperationLock<T>(lockKey: string, fn: () => Promise<T>
 
 export function getOperationLockCount(): number {
   return operationLocks.size;
+}
+
+/**
+ * Returns true if a lock for the given key is currently held (in-process or
+ * filesystem-backed by a living process). Dead-process and time-stale locks
+ * are treated as not-held so callers don't block after a crash/restart.
+ */
+export async function isOperationLockHeld(lockKey: string): Promise<boolean> {
+  const normalizedKey = lockKey.trim().toLowerCase();
+
+  // In-process: check map
+  if (operationLocks.has(normalizedKey)) return true;
+
+  // Filesystem: check lock directory existence, owner liveness, and freshness
+  const lockDir = getLockDirectory(normalizedKey);
+  try {
+    const stat = await fs.stat(lockDir);
+    const ageMs = Date.now() - stat.mtimeMs;
+
+    // Check if the owning process is still alive
+    const ownerFile = path.join(lockDir, 'owner.json');
+    try {
+      const ownerRaw = await fs.readFile(ownerFile, 'utf8');
+      const owner = JSON.parse(ownerRaw) as { pid?: number };
+      if (typeof owner.pid === 'number' && !isProcessAlive(owner.pid)) {
+        // Dead process — lock is orphaned, not held
+        return false;
+      }
+    } catch {
+      // owner.json missing/unreadable — fall back to age check
+    }
+
+    return ageMs < LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Forcibly removes the filesystem lock directory for the given key, allowing
+ * a new operation to proceed even if a previous one is stuck.
+ */
+export async function forceReleaseLock(lockKey: string): Promise<void> {
+  const normalizedKey = lockKey.trim().toLowerCase();
+  const lockDir = getLockDirectory(normalizedKey);
+  await fs.rm(lockDir, { recursive: true, force: true }).catch(() => {});
+  // Also clear in-process map entry so we don't wait on a resolved-but-retained promise
+  operationLocks.delete(normalizedKey);
+  console.error(`[operationLocks] force-released lock for ${normalizedKey}`);
 }
