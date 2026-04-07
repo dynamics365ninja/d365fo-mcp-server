@@ -1940,9 +1940,20 @@ export async function xppKnowledgeTool(request: CallToolRequest) {
   try {
     const args = XppKnowledgeArgsSchema.parse(request.params.arguments);
     const entries = searchKnowledge(args.topic);
-    const formatted = args.format === 'detailed'
-      ? formatDetailed(entries)
-      : formatConcise(entries);
+
+    // Empty topic → compact table of contents listing ALL entries
+    const isListAll = args.topic.trim() === '';
+    let formatted: string;
+    if (isListAll) {
+      formatted =
+        '# X++ Knowledge Base — All Topics\n\n' +
+        entries.map(e => `- \`${e.id}\`: **${e.title}**`).join('\n') +
+        '\n\n_Query a specific topic with \`get_xpp_knowledge\` for rules and code examples._';
+    } else {
+      formatted = args.format === 'detailed'
+        ? formatDetailed(entries)
+        : formatConcise(entries);
+    }
 
     return {
       content: [{ type: 'text', text: formatted }],
