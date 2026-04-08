@@ -172,7 +172,7 @@ VS 2022 shows only "ran tool_name" — no output. **Always** write 1 sentence be
 25. SDLC tools (`run_bp_check`, `build_d365fo_project`, `trigger_db_sync`, `run_systest_class`) auto-detect params from `.mcp.json`. If they error about missing binaries, fix `.mcp.json`.
 26. `review_workspace_changes` = git diff code review only. NOT for verifying modify/create success.
 27. `get_form_info` works for ALL forms (standard + custom). If ⚠️ warning, retry with `filePath=`.
-28. **After completing a series of changes** (multiple `create_d365fo_file` / `modify_d365fo_file` calls), **automatically run `build_d365fo_project()`**. If the build reports X++ errors, fix them immediately using `modify_d365fo_file` and rebuild until clean.
+28. **After completing a larger series of changes** (multiple objects, structural metadata changes, or several `create_d365fo_file` / `modify_d365fo_file` calls), **run `build_d365fo_project()`**. Do **not** run a build after every small in-method edit; prefer building after broader changes or when the user explicitly asks for validation. If the build reports X++ errors, fix them immediately using `modify_d365fo_file` and rebuild until clean.
 29. **"Check best practices" / "BP check" → ALWAYS call `run_bp_check()`**. NEVER manually iterate `get_method_source` to review code for BP compliance — the BP checker tool is authoritative and covers all rules.
 
 ### AxClass sourceCode Format

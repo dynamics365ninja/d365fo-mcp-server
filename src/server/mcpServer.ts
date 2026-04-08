@@ -999,9 +999,9 @@ Examples:
                 ],
                 description:
                   'Type of modification to perform.\n' +
-                  'add-method: add a new method (or CoC method) to a class/table/form.\n' +
+                  'add-method: add a new method (or CoC method) to a class/table/form, or update an existing method in place when the same name already exists so its position is preserved.\n' +
                   'remove-method: remove a method by name.\n' +
-                  'replace-code: surgical in-place replacement — pass oldCode (exact snippet to find) + newCode (replacement text). ' +
+                  'replace-code: surgical in-place replacement — pass oldCode (exact snippet to find) + newCode (replacement text). This is also the preferred way to replace an entire existing method when you already know the old source. ' +
                   'For form control override methods use methodName="ControlName.methodName" (e.g. "PostButton.clicked").\n' +
                   'add-field: add a field to a table or table-extension.\n' +
                   'modify-field: change EDT/mandatory/label of an existing field.\n' +

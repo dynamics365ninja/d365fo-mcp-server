@@ -128,7 +128,7 @@ Use this guide to select the correct tool:
 2. \`search(...)\` - find similar implementations
 3. \`get_class_info(...)\` or \`get_table_info(...)\` - understand dependencies
 4. \`generate_code(...)\` or \`create_d365fo_file(...)\` - create with correct patterns
-5. **After completing a series of changes** (multiple \`create_d365fo_file\` / \`modify_d365fo_file\` calls), **automatically run \`build_d365fo_project()\`**. If the build reports X++ errors, fix them immediately using \`modify_d365fo_file\` and rebuild until clean.
+5. **After completing a larger series of changes** (multiple objects, structural metadata changes, or several \`create_d365fo_file\` / \`modify_d365fo_file\` calls), **run \`build_d365fo_project()\`**. Do **not** run a build after every small in-method edit; prefer building after broader changes or when the user explicitly asks for validation. If the build reports X++ errors, fix them immediately using \`modify_d365fo_file\` and rebuild until clean.
 
 ### 4. Semantic vs. Prefix Search
 **Understand the difference:**

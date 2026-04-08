@@ -102,6 +102,29 @@ async function killOrphanedBuildProcesses(): Promise<void> {
   );
 }
 
+async function isProcessImageRunning(imageName: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync('tasklist', [
+      '/FI', `IMAGENAME eq ${imageName}`,
+      '/FO', 'CSV',
+      '/NH',
+    ], { timeout: 10_000, windowsHide: true });
+
+    return stdout.toLowerCase().includes(`"${imageName.toLowerCase()}"`);
+  } catch {
+    return false;
+  }
+}
+
+async function getRunningBuildProcesses(): Promise<string[]> {
+  const targets = ['MSBuild.exe', 'devenv.com', 'devenv.exe'];
+  const states = await Promise.all(targets.map(async name => ({
+    name,
+    running: await isProcessImageRunning(name),
+  })));
+  return states.filter(state => state.running).map(state => state.name);
+}
+
 async function resolvePackagesPath(): Promise<string | null> {
   try {
     const configManager = getConfigManager();
@@ -236,16 +259,25 @@ export const buildProjectTool = async (params: any, _context: any) => {
         isOperationLockHeld(devenvLockKey),
       ]);
       if (mainLocked || devenvLocked) {
-        const which = mainLocked ? 'MSBuild' : 'devenv.com fallback';
-        await buildLog('WARN', `Build already in progress (${which} lock held) for: ${resolvedProjectPath} — rejecting new request`);
-        return {
-          content: [{
-            type: 'text',
-            text: `⚠️ A build is already in progress (${which}) for this project.\n\n` +
-              'Wait for it to finish, or call `build_d365fo_project` with `force: true` to kill the stuck build and start fresh.',
-          }],
-          isError: true,
-        };
+        const runningProcesses = await getRunningBuildProcesses();
+
+        if (runningProcesses.length === 0) {
+          await buildLog('WARN', `Detected stale build lock with no active build processes for: ${resolvedProjectPath} — clearing locks`);
+          await forceReleaseLock(buildLockKey);
+          await forceReleaseLock(devenvLockKey);
+        } else {
+          const which = mainLocked ? 'MSBuild' : 'devenv.com fallback';
+          await buildLog('WARN', `Build already in progress (${which} lock held, active processes: ${runningProcesses.join(', ')}) for: ${resolvedProjectPath} — rejecting new request`);
+          return {
+            content: [{
+              type: 'text',
+              text: `⚠️ A build is already in progress (${which}) for this project.\n\n` +
+                `Active processes: ${runningProcesses.join(', ')}\n\n` +
+                'Wait for it to finish, or call `build_d365fo_project` with `force: true` to kill the stuck build and start fresh.',
+            }],
+            isError: true,
+          };
+        }
       }
     }
 

@@ -700,7 +700,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             `    methodName="PostButton.clicked",\n` +
             `    oldCode="ttsbegin;",\n` +
             `    newCode="")\n\n` +
-            `If you want to replace an entire method, use remove-method + add-method instead.`
+            `If you want to replace an entire existing method, pass the full old method source as oldCode and the full new method source as newCode so the edit stays in place. Use remove-method + add-method only when you intentionally want a remove/add operation.`
           );
         }
         
@@ -1355,7 +1355,7 @@ export const modifyD365FileToolDefinition = {
   description:
     '✏️ Edit existing D365FO XML files (AxClass, AxTable, AxTableExtension, AxForm, AxFormExtension, etc.). ' +
     'Supports atomic operations:\n' +
-    '• Methods: add-method, remove-method (table, form, class, table-extension, class-extension)\n' +
+    '• Methods: add-method, remove-method (table, form, class, table-extension, class-extension). add-method updates an existing method in place when the name already exists, preserving method order.\n' +
     '• Fields: add-field, modify-field, rename-field, replace-all-fields, remove-field (table, table-extension)\n' +
     '• Indexes: add-index, remove-index (table, table-extension)\n' +
     '• Relations: add-relation, remove-relation (table, table-extension)\n' +

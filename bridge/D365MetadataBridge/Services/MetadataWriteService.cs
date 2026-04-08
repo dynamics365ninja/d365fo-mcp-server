@@ -2483,12 +2483,30 @@ namespace D365MetadataBridge.Services
             // Try top-level Methods first (AxClass, AxTable, AxTableExtension, etc.)
             if (TryUpdateSourceInCollection(axObject, "Methods", methodName, newSource)) return true;
 
+            string? controlNameFilter = null;
+            string effectiveMethodName = methodName;
+            if (!string.IsNullOrWhiteSpace(methodName) && methodName.Contains('.'))
+            {
+                var dotIdx = methodName.IndexOf('.');
+                controlNameFilter = methodName.Substring(0, dotIdx);
+                effectiveMethodName = methodName.Substring(dotIdx + 1);
+            }
+
             // For forms: SourceCode.Methods (form-level methods like init, run)
             try
             {
                 dynamic dyn = axObject;
                 dynamic sourceCode = dyn.SourceCode;
-                if (sourceCode != null && TryUpdateSourceInCollection(sourceCode, "Methods", methodName, newSource)) return true;
+                if (sourceCode != null)
+                {
+                    if (TryUpdateSourceInCollection(sourceCode, "Methods", methodName, newSource)) return true;
+
+                    if (controlNameFilter != null)
+                    {
+                        var combinedName = $"{controlNameFilter}_{effectiveMethodName}";
+                        if (TryUpdateSourceInCollection(sourceCode, "Methods", combinedName, newSource)) return true;
+                    }
+                }
             }
             catch { }
 
@@ -2497,9 +2515,56 @@ namespace D365MetadataBridge.Services
             {
                 dynamic dyn = axObject;
                 dynamic sourceCode = dyn.SourceCode;
-                if (sourceCode != null && TryUpdateSourceInCollection(sourceCode, "DataControls", methodName, newSource)) return true;
+                if (sourceCode != null && TryUpdateSourceInFormDataControls(sourceCode, controlNameFilter, effectiveMethodName, methodName, newSource)) return true;
             }
             catch { }
+
+            return false;
+        }
+
+        private bool TryUpdateSourceInFormDataControls(dynamic sourceCode, string? controlNameFilter, string effectiveMethodName, string originalMethodName, string newSource)
+        {
+            try
+            {
+                foreach (dynamic ctrl in sourceCode.DataControls)
+                {
+                    string ctrlName = (string)ctrl.Name;
+                    bool controlMatches = controlNameFilter == null ||
+                        string.Equals(ctrlName, controlNameFilter, StringComparison.OrdinalIgnoreCase);
+
+                    if (!controlMatches) continue;
+
+                    try
+                    {
+                        foreach (dynamic m in ctrl.Methods)
+                        {
+                            string mName = (string)m.Name;
+                            if (string.Equals(mName, effectiveMethodName, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(mName, originalMethodName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                m.Source = newSource;
+                                return true;
+                            }
+                        }
+                    }
+                    catch { }
+
+                    try
+                    {
+                        string? directSrc = (string?)ctrl.Source;
+                        if (directSrc != null && controlNameFilter != null)
+                        {
+                            ctrl.Source = newSource;
+                            return true;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WriteService] TryUpdateSourceInFormDataControls({originalMethodName}) failed: {ex.Message}");
+            }
 
             return false;
         }
