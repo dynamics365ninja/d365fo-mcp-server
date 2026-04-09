@@ -5,7 +5,8 @@
 
 console.log('📦 Loading azure-blob-manager.ts...');
 
-import 'dotenv/config';
+import { loadEnv } from '../src/utils/loadEnv.js';
+loadEnv(import.meta.url);
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';

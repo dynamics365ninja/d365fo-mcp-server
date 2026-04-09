@@ -3,7 +3,8 @@
  * Builds SQLite database from extracted metadata
  */
 
-import dotenv from 'dotenv';
+import { loadEnv } from '../src/utils/loadEnv.js';
+loadEnv(import.meta.url);
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
@@ -12,10 +13,6 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Support ENV_FILE override for multi-instance setups
-// set ENV_FILE=.env.alpha && npm run build-database
-dotenv.config({ path: process.env.ENV_FILE ? path.resolve(process.env.ENV_FILE) : undefined });
 
 import { isCustomModel, isStandardModel, getCustomModels } from '../src/utils/modelClassifier.js';
 import { indexAllLabels } from '../src/metadata/labelParser.js';

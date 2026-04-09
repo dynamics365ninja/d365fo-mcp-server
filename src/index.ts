@@ -3,31 +3,12 @@
  * Main entry point
  */
 
-// Load .env from the directory that contains this source file (src/ or dist/).
-// Using an explicit path makes dotenv work regardless of the process working
-// directory — critical when the server is started from K:\ or any other location.
-//
-// ENV_FILE support: set the ENV_FILE environment variable to point to an
-// instance-specific .env file, enabling multiple server instances to share a
-// single source/dist folder while each using its own configuration.
-//   set ENV_FILE=.env.alpha && node dist/index.js   ← instance 1
-//   set ENV_FILE=.env.beta  && node dist/index.js   ← instance 2
-import dotenv from 'dotenv';
+// Load .env — supports ENV_FILE env var for multi-instance setups.
+// See src/utils/loadEnv.ts for details.
+import { loadEnv } from './utils/loadEnv.js';
+loadEnv(import.meta.url);
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
-{
-  const __d = dirname(fileURLToPath(import.meta.url));
-  // src/index.ts  → ../  = repo root   ✓
-  // dist/index.js → ../  = repo root   ✓
-  const envPath = process.env.ENV_FILE
-    ? resolve(process.env.ENV_FILE)
-    : resolve(__d, '../.env');
-  const result = dotenv.config({ path: envPath });
-  if (result.error && !process.env.ENV_FILE) {
-    // Fallback: let dotenv try process.cwd() the normal way
-    dotenv.config();
-  }
-}
 import express from 'express';
 import compression from 'compression';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';

@@ -18,6 +18,9 @@ lerna-debug.log*
 .env.local
 .env.*.local
 
+# Multi-instance data (per-machine, contains .env files, databases, metadata)
+instances/*/
+
 # Database files
 *.db
 *.db-shm
