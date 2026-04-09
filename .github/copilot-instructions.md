@@ -162,7 +162,7 @@ VS 2022 shows only "ran tool_name" — no output. **Always** write 1 sentence be
 15. **NEVER** call functions in `WHERE` clauses — assign to variable first
 16. **NEVER** use hardcoded strings in `Info()`/`warning()`/`error()` — use `@Model:Label`
 17. **NEVER** nest `while select` loops — use `join` or pre-load to `Map`/temp table
-18. **ALWAYS** call `create_label()` before referencing new labels in code
+18. **ALWAYS** call `create_label()` before referencing new labels in code. **Exception:** when adding a field to a table/table-extension with an EDT that already has a label defined, do **NOT** set a label on the field — the field inherits the label from the EDT automatically. Only set `label` on a field when deliberately overriding the EDT's label.
 19. **ALWAYS** write meaningful `/// <summary>` on public/protected classes and methods
 20. **NEVER** call `[SysObsolete]` methods — read the attribute for the replacement
 21. **NEVER** switch project autonomously via `get_workspace_info(projectName=...)` — ask user
@@ -172,7 +172,7 @@ VS 2022 shows only "ran tool_name" — no output. **Always** write 1 sentence be
 25. SDLC tools (`run_bp_check`, `build_d365fo_project`, `trigger_db_sync`, `run_systest_class`) auto-detect params from `.mcp.json`. If they error about missing binaries, fix `.mcp.json`.
 26. `review_workspace_changes` = git diff code review only. NOT for verifying modify/create success.
 27. `get_form_info` works for ALL forms (standard + custom). If ⚠️ warning, retry with `filePath=`.
-28. **After completing a larger series of changes** (multiple objects, structural metadata changes, or several `create_d365fo_file` / `modify_d365fo_file` calls), **run `build_d365fo_project()`**. Do **not** run a build after every small in-method edit; prefer building after broader changes or when the user explicitly asks for validation. If the build reports X++ errors, fix them immediately using `modify_d365fo_file` and rebuild until clean.
+28. **NEVER run `build_d365fo_project()` automatically.** Builds take a long time and block the user. After completing changes, inform the user that changes are done and they can build manually when ready — e.g. *"Changes applied. Run a build when you're ready to validate."* Only run `build_d365fo_project()` when the user explicitly requests it ("build", "compile", "check errors"). If the build reports X++ errors, fix them immediately using `modify_d365fo_file` and rebuild until clean.
 29. **"Check best practices" / "BP check" → ALWAYS call `run_bp_check()`**. NEVER manually iterate `get_method_source` to review code for BP compliance — the BP checker tool is authoritative and covers all rules.
 
 ### AxClass sourceCode Format
