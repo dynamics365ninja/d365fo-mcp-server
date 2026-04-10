@@ -2604,7 +2604,7 @@ export class XppSymbolIndex {
    */
   searchLabels(
     query: string,
-    opts: { language?: string; model?: string; limit?: number } = {},
+    opts: { language?: string; model?: string; labelFileId?: string; limit?: number } = {},
   ): Array<{
     labelId: string;
     labelFileId: string;
@@ -2615,7 +2615,7 @@ export class XppSymbolIndex {
     filePath: string;
     rank: number;
   }> {
-    const { language = 'en-US', model, limit = 30 } = opts;
+    const { language = 'en-US', model, labelFileId, limit = 30 } = opts;
 
     // labels_fts only indexes en-US rows. For any other language, skip straight to
     // LIKE-based search — attempting FTS would always produce 0 results and then
@@ -2628,45 +2628,27 @@ export class XppSymbolIndex {
     const ftsQuery = query.replace(/['"*()]/g, ' ').trim();
     if (!ftsQuery) return [];
 
-    // Cache the two SQL variants (with / without model filter) so SQLite doesn't
-    // have to re-parse and re-plan on every call.
-    let stmt: Database.Statement;
-    const params: any[] = [ftsQuery];
-
-    if (model) {
-      let s = this.labelsStmtCache.get('searchLabels_model');
-      if (!s) {
-        s = this.labelsDb.prepare(`
-          SELECT l.label_id, l.label_file_id, l.model, l.language, l.text, l.comment, l.file_path,
-                 f.rank
-          FROM labels_fts f
-          JOIN labels l ON l.id = f.rowid
-          WHERE labels_fts MATCH ?
-            AND l.model = ?
-          ORDER BY f.rank
-          LIMIT ?
-        `);
-        this.labelsStmtCache.set('searchLabels_model', s);
-      }
-      stmt = s;
-      params.push(model, limit);
-    } else {
-      let s = this.labelsStmtCache.get('searchLabels_nomodel');
-      if (!s) {
-        s = this.labelsDb.prepare(`
-          SELECT l.label_id, l.label_file_id, l.model, l.language, l.text, l.comment, l.file_path,
-                 f.rank
-          FROM labels_fts f
-          JOIN labels l ON l.id = f.rowid
-          WHERE labels_fts MATCH ?
-          ORDER BY f.rank
-          LIMIT ?
-        `);
-        this.labelsStmtCache.set('searchLabels_nomodel', s);
-      }
-      stmt = s;
-      params.push(limit);
+    // Cache statement keyed by which optional filters are active (4 variants)
+    const stmtKey = `searchLabels_${model ? 'model' : 'nomodel'}_${labelFileId ? 'lfid' : 'nolfid'}`;
+    let stmt = this.labelsStmtCache.get(stmtKey);
+    if (!stmt) {
+      let sql = `
+        SELECT l.label_id, l.label_file_id, l.model, l.language, l.text, l.comment, l.file_path,
+               f.rank
+        FROM labels_fts f
+        JOIN labels l ON l.id = f.rowid
+        WHERE labels_fts MATCH ?`;
+      if (model)       sql += `\n          AND l.model = ?`;
+      if (labelFileId) sql += `\n          AND l.label_file_id = ?`;
+      sql += `\n          ORDER BY f.rank\n          LIMIT ?`;
+      stmt = this.labelsDb.prepare(sql);
+      this.labelsStmtCache.set(stmtKey, stmt);
     }
+
+    const params: any[] = [ftsQuery];
+    if (model)       params.push(model);
+    if (labelFileId) params.push(labelFileId);
+    params.push(limit);
 
     try {
       return stmt.all(...params) as any[];
@@ -2681,28 +2663,29 @@ export class XppSymbolIndex {
    */
   private searchLabelsLike(
     query: string,
-    opts: { language?: string; model?: string; limit?: number } = {},
+    opts: { language?: string; model?: string; labelFileId?: string; limit?: number } = {},
   ): any[] {
-    const { language = 'en-US', model, limit = 30 } = opts;
+    const { language = 'en-US', model, labelFileId, limit = 30 } = opts;
     const pattern = `%${query}%`;
-    const params: any[] = [pattern, pattern, language];
 
-    const stmtKey = model ? 'searchLabelsLike_model' : 'searchLabelsLike_nomodel';
+    const stmtKey = `searchLabelsLike_${model ? 'model' : 'nomodel'}_${labelFileId ? 'lfid' : 'nolfid'}`;
     let stmt = this.labelsStmtCache.get(stmtKey);
     if (!stmt) {
       let sql = `
         SELECT label_id, label_file_id, model, language, text, comment, file_path, 0 as rank
         FROM labels
         WHERE (text LIKE ? OR label_id LIKE ?)
-          AND language = ?
-      `;
-      if (model) sql += ` AND model = ?`;
-      sql += ` LIMIT ?`;
+          AND language = ?`;
+      if (model)       sql += `\n          AND model = ?`;
+      if (labelFileId) sql += `\n          AND label_file_id = ?`;
+      sql += `\n        LIMIT ?`;
       stmt = this.labelsDb.prepare(sql);
       this.labelsStmtCache.set(stmtKey, stmt);
     }
 
-    if (model) params.push(model);
+    const params: any[] = [pattern, pattern, language];
+    if (model)       params.push(model);
+    if (labelFileId) params.push(labelFileId);
     params.push(limit);
     return stmt.all(...params) as any[];
   }

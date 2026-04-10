@@ -41,12 +41,7 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
     const { symbolIndex } = context;
     const { query, language, model, labelFileId, limit } = args;
 
-    let results = symbolIndex.searchLabels(query, { language, model, limit });
-
-    // Filter by labelFileId if requested
-    if (labelFileId) {
-      results = results.filter(r => (r as any).labelFileId === labelFileId);
-    }
+    let results = symbolIndex.searchLabels(query, { language, model, labelFileId, limit });
 
     if (results.length === 0) {
       return {
