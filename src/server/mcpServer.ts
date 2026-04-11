@@ -24,19 +24,27 @@ export { SERVER_MODE, LOCAL_TOOLS, WRITE_TOOLS } from './serverMode.js';
 export type { ServerMode } from './serverMode.js';
 
 /**
- * Convert a file:// URI to a local Windows path.
+ * Convert a file:// URI to a local path.
  * Duplicated from transport.ts to keep mcpServer.ts self-contained
  * (no circular dep between transport ↔ mcpServer).
+ * Handles both Windows (drive-letter) and POSIX (Linux/macOS, Azure) paths.
  */
 function fileUriToPath(uri: string): string | null {
   if (!uri) return null;
   if (uri.startsWith('file:///')) {
-    return decodeURIComponent(uri.slice('file:///'.length)).replace(/\//g, '\\');
+    const decoded = decodeURIComponent(uri.slice('file:///'.length));
+    if (process.platform === 'win32') {
+      return decoded.replace(/\//g, '\\');
+    }
+    // POSIX: restore the leading slash stripped by slice('file:///'.length)
+    return '/' + decoded;
   }
   if (uri.startsWith('file://')) {
-    return decodeURIComponent(uri.slice('file://'.length)).replace(/\//g, '\\');
+    const decoded = decodeURIComponent(uri.slice('file://'.length));
+    return process.platform === 'win32' ? decoded.replace(/\//g, '\\') : decoded;
   }
-  if (uri.length > 2 && (uri[1] === ':' || uri.startsWith('\\\\'))) return uri;
+  // Already a local path — Windows drive letter, UNC share, or POSIX absolute
+  if (uri.length > 2 && (uri[1] === ':' || uri.startsWith('\\\\') || uri.startsWith('/'))) return uri;
   return null;
 }
 

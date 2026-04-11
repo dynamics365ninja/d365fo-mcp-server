@@ -74,16 +74,20 @@ function extractWorkspaceFromRequest(req: Request, requestBody: JSONRPCRequest):
 function fileUriToPath(uri: string | undefined): string | null {
   if (!uri) return null;
   if (uri.startsWith('file:///')) {
-    // file:///K:/VSProjects/... → K:/VSProjects/...
     const decoded = decodeURIComponent(uri.slice('file:///'.length));
-    // Normalize Windows path separators
-    return decoded.replace(/\//g, '\\');
+    if (process.platform === 'win32') {
+      // file:///K:/VSProjects/... → K:\VSProjects\...
+      return decoded.replace(/\//g, '\\');
+    }
+    // POSIX: file:///home/user/proj → /home/user/proj
+    return '/' + decoded;
   }
   if (uri.startsWith('file://')) {
-    return decodeURIComponent(uri.slice('file://'.length)).replace(/\//g, '\\');
+    const decoded = decodeURIComponent(uri.slice('file://'.length));
+    return process.platform === 'win32' ? decoded.replace(/\//g, '\\') : decoded;
   }
-  // Already a local path
-  if (uri.length > 2 && (uri[1] === ':' || uri.startsWith('\\\\'))) {
+  // Already a local path — Windows drive letter or UNC, or POSIX absolute
+  if (uri.length > 2 && (uri[1] === ':' || uri.startsWith('\\\\') || uri.startsWith('/'))) {
     return uri;
   }
   return null;
@@ -93,7 +97,7 @@ export class CustomHttpTransport implements Transport {
   private server: Server;
   private app: Express;
   private context: XppServerContext;
-  private pendingRequests = new Map<string | number, (message: JSONRPCMessage) => void>();
+  private pendingRequests = new Map<string | number, { resolve: (message: JSONRPCMessage) => void; reject: (err: Error) => void }>();
 
   // Transport interface properties
   onmessage?: (message: JSONRPCMessage) => void;
@@ -127,15 +131,21 @@ export class CustomHttpTransport implements Transport {
   }
 
   async close(): Promise<void> {
+    // Reject all in-flight promises so their awaiting callers fail fast
+    // instead of hanging until the per-request timeout fires.
+    const err = new Error('Transport closed');
+    for (const { reject } of this.pendingRequests.values()) {
+      reject(err);
+    }
     this.pendingRequests.clear();
   }
 
   async send(message: JSONRPCMessage): Promise<void> {
     // Route response to the correct pending request by id
     if ('id' in message && message.id !== undefined && message.id !== null) {
-      const resolver = this.pendingRequests.get(message.id);
-      if (resolver) {
-        resolver(message);
+      const pending = this.pendingRequests.get(message.id);
+      if (pending) {
+        pending.resolve(message);
         this.pendingRequests.delete(message.id);
         return;
       }
@@ -181,17 +191,19 @@ export class CustomHttpTransport implements Transport {
         if (!('id' in request)) {
           // Handle special notifications
           if ((request as any).method === 'notifications/cancelled' || 
-              (request as any).method === 'cancelled' ||
-              (request as any).method === 'shutdown') {
-            // Send 202 and signal completion
+              (request as any).method === 'cancelled') {
+            // A cancelled notification does NOT close the transport.
+            // It signals that a specific in-flight request was cancelled by the client,
+            // but the HTTP connection (per-request) is already done.  Simply acknowledge.
+            res.status(202).json({ status: 'accepted' });
+            return;
+          }
+
+          if ((request as any).method === 'shutdown') {
+            // In HTTP mode each request is independent — there is no persistent connection
+            // to tear down.  Calling onclose() here would stop the entire server for ALL
+            // concurrent users, which is wrong.  Acknowledge and do nothing else.
             res.status(202).json({ status: 'accepted', completed: true });
-            
-            // Trigger cleanup after response is sent
-            setImmediate(() => {
-              if (this.onclose) {
-                this.onclose();
-              }
-            });
             return;
           }
           
@@ -251,11 +263,18 @@ export class CustomHttpTransport implements Transport {
               }
             }, TOOL_TIMEOUT_MS);
 
-            this.pendingRequests.set(internalId, (message) => {
-              clearTimeout(timeoutId);
-              // Restore the original client id before resolving
-              if ('id' in message) (message as any).id = originalId;
-              resolve(message);
+            this.pendingRequests.set(internalId, {
+              resolve: (message) => {
+                clearTimeout(timeoutId);
+                // Restore the original client id before resolving
+                if ('id' in message) (message as any).id = originalId;
+                resolve(message);
+              },
+              reject: (err) => {
+                clearTimeout(timeoutId);
+                (request as any).id = originalId;
+                reject(err);
+              },
             });
           });
 

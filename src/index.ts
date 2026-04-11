@@ -51,9 +51,9 @@ if (LOG_FILE) {
     _logStream.write(banner);
     // Tee: intercept process.stderr so every write also goes to the log file
     const origStderrWrite = process.stderr.write.bind(process.stderr);
-    (process.stderr as any).write = function (chunk: any, ...rest: any[]) {
+    (process.stderr as NodeJS.WriteStream & { write: (...args: any[]) => boolean }).write = function (chunk: any, ...rest: any[]): boolean {
       _logStream!.write(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
-      return origStderrWrite(chunk, ...rest);
+      return origStderrWrite(chunk, ...rest) as boolean;
     };
   } catch (e) {
     // Don't crash if log file can't be opened — just disable file logging

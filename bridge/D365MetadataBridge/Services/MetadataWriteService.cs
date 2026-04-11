@@ -100,10 +100,16 @@ namespace D365MetadataBridge.Services
 
                 if (idEl == null || layerEl == null) return null;
 
+                if (!int.TryParse(idEl.Value, out int id) || !int.TryParse(layerEl.Value, out int layer))
+                {
+                    Console.Error.WriteLine($"[WriteService] Invalid numeric Id or Layer in descriptor {xmlPath}: Id='{idEl.Value}' Layer='{layerEl.Value}'");
+                    return null;
+                }
+
                 return new ModelSaveInfo
                 {
-                    Id = int.Parse(idEl.Value),
-                    Layer = int.Parse(layerEl.Value)
+                    Id = id,
+                    Layer = layer
                 };
             }
             catch (Exception ex)

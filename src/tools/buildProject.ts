@@ -91,15 +91,24 @@ const PACKAGES_CANDIDATES = [
 
 async function killOrphanedBuildProcesses(): Promise<void> {
   // Kills any MSBuild and devenv processes that may be stuck from a previous build.
-  // Uses taskkill /F /IM — safe on a D365FO developer VM where these are build-only processes.
+  // Uses taskkill /F /IM which affects ALL processes with matching image names on this machine.
+  // This is intentionally broad — only call this when force=true is explicitly requested.
+  // On a shared developer VM, this will also kill processes started by other users.
   const targets = ['MSBuild.exe', 'devenv.com', 'devenv.exe'];
-  await Promise.allSettled(
+  const results = await Promise.allSettled(
     targets.map(name =>
       execFileAsync('taskkill', ['/F', '/IM', name], { timeout: 10_000, windowsHide: true })
-        .then(() => console.error(`[build_d365fo_project] killed ${name}`))
+        .then(({ stdout }) => {
+          // taskkill prints PIDs of killed processes; log them for traceability
+          console.error(`[build_d365fo_project] killed ${name}: ${stdout.trim() || '(no output)'}`);
+        })
         .catch(() => { /* process was not running — that's fine */ }),
     ),
   );
+  const killed = results.filter(r => r.status === 'fulfilled').length;
+  if (killed > 0) {
+    console.error(`[build_d365fo_project] ⚠️ Killed all matching MSBuild/devenv processes on this machine (force=true)`);
+  }
 }
 
 async function isProcessImageRunning(imageName: string): Promise<boolean> {

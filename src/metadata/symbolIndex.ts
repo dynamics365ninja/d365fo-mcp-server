@@ -57,7 +57,11 @@ export class XppSymbolIndex {
     
     // Enable SQLite performance optimizations for both DBs
     // Note: journal_mode should be set by caller (MEMORY for build, WAL for production)
-    if (!this.db.pragma('journal_mode', { simple: true })) {
+    // pragma('journal_mode', { simple: true }) returns a non-empty string like "wal" or "delete".
+    // A non-empty string is always truthy, so !pragma(...) is always false — the comparison
+    // must be done against the actual value string.
+    const currentJournalMode = this.db.pragma('journal_mode', { simple: true }) as string;
+    if (currentJournalMode !== 'wal') {
       // Set default to WAL if not already configured
       this.db.pragma('journal_mode = WAL'); // Write-Ahead Logging for better concurrency
     }
@@ -76,7 +80,8 @@ export class XppSymbolIndex {
     this.db.pragma('wal_autocheckpoint = 4000');
     
     // Configure labels DB similarly
-    if (!this.labelsDb.pragma('journal_mode', { simple: true })) {
+    const labelsJournalMode = this.labelsDb.pragma('journal_mode', { simple: true }) as string;
+    if (labelsJournalMode !== 'wal') {
       this.labelsDb.pragma('journal_mode = WAL');
     }
     this.labelsDb.pragma('synchronous = NORMAL');

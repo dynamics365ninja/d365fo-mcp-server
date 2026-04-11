@@ -8,6 +8,19 @@ import { withOperationLock } from '../utils/operationLocks.js';
 
 const execFileAsync = util.promisify(execFile);
 
+/**
+ * Guard against shell-injection characters in values that are embedded in
+ * execFile argument arrays.  execFile() does NOT use a shell, but embedded
+ * newlines or quotes can still corrupt the argument stream on some platforms.
+ */
+function assertSafePath(value: string, label: string): void {
+  if (/[&|<>^`!;$%"'\n\r]/.test(value)) {
+    throw new Error(
+      `${label} contains potentially dangerous characters and cannot be used in a command: ${value}`
+    );
+  }
+}
+
 export const sysTestRunnerToolDefinition = {
   name: 'run_systest_class',
   description: 'Invoke D365FO SysTest framework against a specific test class.',
@@ -60,6 +73,19 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
     }
 
     let args: string[];
+    // Validate user-supplied values before embedding them in command arguments.
+    try {
+      assertSafePath(className, 'className');
+      assertSafePath(resolvedModelName, 'modelName');
+      assertSafePath(packagesRoot, 'packagesRoot');
+      if (testMethod) assertSafePath(testMethod, 'testMethod');
+    } catch (validationErr: any) {
+      return {
+        content: [{ type: 'text', text: `❌ Invalid parameter: ${validationErr.message}` }],
+        isError: true,
+      };
+    }
+
     if (runnerPath === sysTestRunnerPath) {
       // SysTestRunner.exe: -name:<className>[::testMethod] -packagePath:<path>
       const testTarget = testMethod ? `${className}::${testMethod}` : className;

@@ -86,6 +86,17 @@ async function directXmlReplaceCode(
       return null; // oldCode not found in file at all
     }
 
+    // Ensure there is exactly one occurrence so we replace the correct block.
+    // String.prototype.replace() without /g only replaces the FIRST occurrence,
+    // which would silently leave other occurrences and produce ambiguous results.
+    const occurrences = content.split(oldCode).length - 1;
+    if (occurrences > 1) {
+      return {
+        success: false,
+        message: `❌ directXmlReplaceCode: oldCode appears ${occurrences} times in ${filePath} — replacement is ambiguous. Provide a more specific oldCode snippet.`,
+      };
+    }
+
     const updated = content.replace(oldCode, newCode);
     if (updated === content) {
       return null; // no change made
