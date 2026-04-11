@@ -3,14 +3,14 @@
     Start an MCP server instance.
 .DESCRIPTION
     Lists available instances and lets you pick which one to run.
-    You can also pass the instance name directly: .\run-instance.ps1 alpha
+    You can also pass the instance name directly: .\instances\run-instance.ps1 alpha
 #>
 param(
     [string]$InstanceName
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = $PSScriptRoot
+$repoRoot = Split-Path $PSScriptRoot -Parent
 
 # ── Discover instances ──────────────────────────────────────────────────────
 $instancesDir = Join-Path $repoRoot 'instances'
@@ -19,7 +19,7 @@ $instances = @(Get-ChildItem -Path $instancesDir -Directory -ErrorAction Silentl
     Sort-Object Name)
 
 if ($instances.Count -eq 0) {
-    Write-Host 'No instances found. Run .\add-instance.ps1 to create one.' -ForegroundColor Yellow
+    Write-Host 'No instances found. Run .\instances\add-instance.ps1 to create one.' -ForegroundColor Yellow
     exit 1
 }
 
@@ -65,4 +65,7 @@ Write-Host "Starting instance: $($selected.Name)" -ForegroundColor Green
 Write-Host "Config: $envFile" -ForegroundColor DarkGray
 Write-Host ''
 
-node (Join-Path $repoRoot 'dist\index.js')
+node (Join-Path $repoRoot 'dist\index.js')  if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Server exited with code $LASTEXITCODE" -ForegroundColor Red
+    exit $LASTEXITCODE
+  }

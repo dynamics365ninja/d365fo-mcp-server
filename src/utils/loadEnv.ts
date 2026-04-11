@@ -36,8 +36,11 @@ export function loadEnv(callerImportMetaUrl: string): void {
     : resolve(callerDir, '../.env');
 
   const result = dotenv.config({ path: envPath });
-  if (result.error) {
-    // Fallback: let dotenv try process.cwd() the normal way
+  if (result.error && !process.env.ENV_FILE) {
+    // Fallback: let dotenv try process.cwd() the normal way.
+    // Only fall back when ENV_FILE was not explicitly set — if the user pointed
+    // at a specific file that is missing, we surface the error rather than
+    // silently loading a different config.
     dotenv.config();
   }
 
