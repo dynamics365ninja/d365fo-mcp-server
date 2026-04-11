@@ -132,7 +132,13 @@ Start the server: `cd K:\d365fo-mcp-server && npm run dev`
 
 ---
 
-#### Scenario D: Local stdio (zero-config, single developer)
+#### Scenario E: Multiple instances (one machine, multiple clients)
+
+Running several D365FO environments from a single installation?
+Use the `instances\add-instance.ps1` / `instances\rebuild-instance.ps1` / `instances\run-instance.ps1` scripts — each
+instance gets its own `.env`, own database, and own port. Point a per-solution `.mcp.json`
+at the correct port for seamless per-project Copilot context.
+See [Scenario F in SETUP.md](SETUP.md#scenario-f-multiple-instances--one-machine-multiple-d365fo-environments) for the full walkthrough.
 
 No HTTP server — Copilot spawns the process directly via stdin/stdout.
 
@@ -359,6 +365,7 @@ After starting, check the server log for:
 | Practical usage examples (CoC, reports, security) | [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) |
 | Complete `.mcp.json` reference (all properties) | [MCP_CONFIG.md](MCP_CONFIG.md) |
 | Server deployment to Azure | [SETUP.md](SETUP.md) / [SETUP_AZURE.md](SETUP_AZURE.md) |
+| Multiple instances on one machine | [SETUP.md — Scenario F](SETUP.md#scenario-f-multiple-instances--one-machine-multiple-d365fo-environments) |
 | C# Bridge internals | [BRIDGE.md](BRIDGE.md) |
 | Architecture overview | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | ISV / custom model configuration | [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) |

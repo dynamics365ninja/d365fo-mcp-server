@@ -20,6 +20,7 @@ If you are responsible for deploying the server infrastructure to Azure, see [SE
   - [Scenario C: Local server only](#scenario-c-local-server-only)
   - [Scenario D: UDE (Unified Developer Experience)](#scenario-d-ude-unified-developer-experience)
   - [Scenario E: Local stdio server (single developer, zero-config)](#scenario-e-local-stdio-server-single-developer-zero-config)
+  - [Scenario F: Multiple instances — one machine, multiple D365FO environments](#scenario-f-multiple-instances--one-machine-multiple-d365fo-environments)
 - [Building the C# Bridge](#building-the-c-bridge)
 - [Where to place .mcp.json](#where-to-place-mcpjson)
 - [Troubleshooting](#troubleshooting)
@@ -373,6 +374,97 @@ npm run build
 ```
 
 Restart the MCP server in VS 2022 after updating (MCP panel → Restart).
+
+---
+
+### Scenario F: Multiple instances — one machine, multiple D365FO environments
+
+**What it is:** You work on several D365FO clients or projects from a single Windows VM.
+Each client needs its own metadata index and its own Copilot context.
+Instead of rebuilding one shared database when switching projects, each instance has its own
+`.env` file, `data/` folder and `metadata/` folder and runs on a different port.
+
+**What you need:**
+- A clone of this repository
+- PowerShell (comes with Windows)
+
+**One-time setup:**
+
+```powershell
+git clone https://github.com/dynamics365ninja/d365fo-mcp-server.git C:\d365fo-mcp-server
+cd C:\d365fo-mcp-server
+npm install
+cd bridge\D365MetadataBridge && dotnet build -c Release && cd ..\..
+npm run build
+```
+
+**Create an instance** (interactive, run once per client/project):
+
+```powershell
+.\instances\add-instance.ps1
+```
+
+The script prompts for a name (e.g. `clientA`, `projectX`) and a port, then creates:
+
+```
+instances\
+├── clientA\
+│   ├── .env          ← instance configuration (copy of template, port pre-filled)
+│   ├── data\         ← instance-specific SQLite databases
+│   └── metadata\     ← instance-specific extracted metadata
+└── clientB\
+    ├── .env
+    ├── data\
+    └── metadata\
+```
+
+Open the generated `.env` and fill in the three required keys:
+
+```env
+XPP_CONFIG_NAME=ClientA     # name from %LOCALAPPDATA%\Microsoft\Dynamics365\XppConfig\
+EXTENSION_PREFIX=ASP        # ISV prefix for code-gen naming
+D365FO_MODEL_NAME=ClientAModel
+```
+
+**Build the metadata index for an instance:**
+
+```powershell
+.\instances\rebuild-instance.ps1 clientA
+# or interactively: .\instances\rebuild-instance.ps1
+# or all at once:   .\instances\rebuild-instance.ps1 --all
+```
+
+The script runs `extract-metadata` and `build-database` with `ENV_FILE` set to the instance
+`.env`, so output goes into `instances\clientA\data\` and `instances\clientA\metadata\`.
+It also offers a `git pull` + `npm install` + `npm run build` step before each run.
+
+**Run an instance:**
+
+```powershell
+.\instances\run-instance.ps1 clientA
+# or interactively: .\instances\run-instance.ps1
+```
+
+This sets `ENV_FILE=instances\clientA\.env` and starts `node dist\index.js`.
+Start each instance in a separate terminal. Each listens on its own port.
+
+**`.mcp.json` — connect Copilot to a specific instance:**
+
+```json
+{
+  "servers": {
+    "d365fo-clientA": {
+      "url": "http://localhost:3001/mcp/"
+    }
+  }
+}
+```
+
+Place a per-solution `.mcp.json` next to each `.sln` file pointing at the correct port.
+An alternative is a global `%USERPROFILE%\.mcp.json` if you always work on one client at a time.
+
+> **Tip:** `instances\rebuild-instance.ps1` compares each instance `.env` against `.env.example` and
+> warns about new configuration keys added in a newer version — so upgrading is safe.
 
 ---
 

@@ -4,8 +4,8 @@
 .DESCRIPTION
     Lists available instances and lets you pick which one to rebuild,
     with an "All instances" option at the end.
-    You can also pass the instance name directly: .\rebuild-instance.ps1 alpha
-    Or rebuild everything:                        .\rebuild-instance.ps1 --all
+    You can also pass the instance name directly: .\instances\rebuild-instance.ps1 alpha
+    Or rebuild everything:                        .\instances\rebuild-instance.ps1 --all
 #>
 param(
     [string]$InstanceName,
@@ -13,7 +13,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = $PSScriptRoot
+$repoRoot = Split-Path $PSScriptRoot -Parent
 
 # ── Discover instances ──────────────────────────────────────────────────────
 $instancesDir = Join-Path $repoRoot 'instances'
@@ -22,7 +22,7 @@ $instances = @(Get-ChildItem -Path $instancesDir -Directory -ErrorAction Silentl
     Sort-Object Name)
 
 if ($instances.Count -eq 0) {
-    Write-Host 'No instances found. Run .\add-instance.ps1 to create one.' -ForegroundColor Yellow
+    Write-Host 'No instances found. Run .\instances\add-instance.ps1 to create one.' -ForegroundColor Yellow
     exit 1
 }
 

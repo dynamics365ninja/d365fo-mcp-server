@@ -25,9 +25,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTRACTED_METADATA_BASE = process.env.METADATA_PATH
   ? path.resolve(process.env.METADATA_PATH)
   : path.resolve(__dirname, '../../extracted-metadata');
-const METADATA_BASE = process.env.METADATA_PATH
-  ? path.resolve(process.env.METADATA_PATH)
-  : path.resolve(__dirname, '../../metadata');
+// Legacy fallback: some DB file_path values may point into metadata/ (separate from
+// extracted-metadata/).  This is NOT overridden by METADATA_PATH so that the fallback
+// remains useful even when a per-instance METADATA_PATH is set.
+const METADATA_BASE = path.resolve(__dirname, '../../metadata');
 
 export type ExtractedObjectType = 'classes' | 'enums' | 'edts' | 'tables' | 'views';
 

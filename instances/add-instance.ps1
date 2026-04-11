@@ -11,7 +11,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = $PSScriptRoot
+$repoRoot = Split-Path $PSScriptRoot -Parent
 $instancesDir = Join-Path $repoRoot 'instances'
 $templateFile = Join-Path $instancesDir '.env.template'
 
@@ -103,8 +103,8 @@ Write-Host 'Instance created.' -ForegroundColor Green
 Write-Host ''
 Write-Host 'Next steps:' -ForegroundColor Cyan
 Write-Host '  1. Edit the .env file - set XPP_CONFIG_NAME, EXTENSION_PREFIX, D365FO_MODEL_NAME'
-Write-Host ('  2. Rebuild:  .\rebuild-instance.ps1 ' + $InstanceName)
-Write-Host ('  3. Run:      .\run-instance.ps1 ' + $InstanceName)
+Write-Host ('  2. Rebuild:  .\instances\rebuild-instance.ps1 ' + $InstanceName)
+Write-Host ('  3. Run:      .\instances\run-instance.ps1 ' + $InstanceName)
 Write-Host ''
 
 # Offer to open .env for editing
