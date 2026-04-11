@@ -189,13 +189,14 @@ Confirm the tool count matches `read-only` mode (all tools except `create_d365fo
 
 ## Azure DevOps Pipelines
 
-Three ready-to-use pipelines are in `.azure-pipelines/`:
+Four ready-to-use pipelines are in `.azure-pipelines/`:
 
 | Pipeline | When to use | Duration |
 |----------|-------------|----------|
-| `d365fo-mcp-data-build-custom.yml` | After any change to your custom models | ~5–15 min |
-| `d365fo-mcp-data-build-standard.yml` | After a D365FO version upgrade or hotfix | ~30–45 min |
-| `d365fo-mcp-data-platform-upgrade.yml` | Full rebuild: standard + custom + database | ~1.5–2 h |
+| `d365fo-mcp-app-deploy.yml` | After any change to server code (auto-triggers on push to `main`) | ~5 min |
+| `d365fo-mcp-data-extract-and-build-custom.yml` | After any change to your custom models | ~15–30 min |
+| `d365fo-mcp-data-extract-and-build-platform.yml` | After a D365FO version upgrade or hotfix | ~60–120 min |
+| `d365fo-mcp-data-platform-upgrade.yml` | Full rebuild: standard + custom + labels | ~90–120 min |
 
 ### Required Variable Group
 
@@ -211,7 +212,7 @@ Create a variable group named **`xpp-mcp-server-config`** in Azure DevOps Librar
 
 ### Uploading Standard Packages
 
-The `d365fo-mcp-data-build-standard.yml` pipeline needs the raw `PackagesLocalDirectory` from your D365FO VM as a zip in the `packages` container.
+The `d365fo-mcp-data-extract-and-build-platform.yml` pipeline needs the raw `PackagesLocalDirectory` from your D365FO VM as a zip in the `packages` container.
 
 On your D365FO VM, compress `K:\AosService\PackagesLocalDirectory` and upload the resulting zip as `PackagesLocalDirectory.zip` to the `packages` container using **Azure Storage Explorer**.
 

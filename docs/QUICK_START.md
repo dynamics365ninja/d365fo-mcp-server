@@ -132,15 +132,9 @@ Start the server: `cd K:\d365fo-mcp-server && npm run dev`
 
 ---
 
-#### Scenario E: Multiple instances (one machine, multiple clients)
+#### Scenario D: Local stdio — zero-config (single developer)
 
-Running several D365FO environments from a single installation?
-Use the `instances\add-instance.ps1` / `instances\rebuild-instance.ps1` / `instances\run-instance.ps1` scripts — each
-instance gets its own `.env`, own database, and own port. Point a per-solution `.mcp.json`
-at the correct port for seamless per-project Copilot context.
-See [Scenario F in SETUP.md](SETUP.md#scenario-f-multiple-instances--one-machine-multiple-d365fo-environments) for the full walkthrough.
-
-No HTTP server — Copilot spawns the process directly via stdin/stdout.
+No HTTP server — Copilot spawns the process directly. Requires a pre-built database.
 
 ```json
 {
@@ -149,7 +143,8 @@ No HTTP server — Copilot spawns the process directly via stdin/stdout.
       "command": "node",
       "args": ["K:\\d365fo-mcp-server\\dist\\index.js"],
       "env": {
-        "MCP_SERVER_MODE": "full",
+        "DB_PATH": "K:\\d365fo-mcp-server\\data\\xpp-metadata.db",
+        "LABELS_DB_PATH": "K:\\d365fo-mcp-server\\data\\xpp-metadata-labels.db",
         "D365FO_SOLUTIONS_PATH": "K:\\repos\\MySolution\\projects",
         "D365FO_WORKSPACE_PATH": "K:\\AosService\\PackagesLocalDirectory\\YourPackageName\\YourModelName"
       }
@@ -157,6 +152,18 @@ No HTTP server — Copilot spawns the process directly via stdin/stdout.
   }
 }
 ```
+
+> **UDE?** Replace `D365FO_WORKSPACE_PATH` with `D365FO_MODEL_NAME` + `D365FO_DEV_ENVIRONMENT_TYPE=ude`. See [Scenario D in SETUP.md](SETUP.md#scenario-d-ude-unified-developer-experience).
+
+---
+
+#### Scenario F: Multiple instances (one machine, multiple clients)
+
+Running several D365FO environments from a single installation?
+Use the `instances\add-instance.ps1` / `instances\rebuild-instance.ps1` / `instances\run-instance.ps1` scripts — each
+instance gets its own `.env`, own database, and own port. Point a per-solution `.mcp.json`
+at the correct port for seamless per-project Copilot context.
+See [Scenario F in SETUP.md](SETUP.md#scenario-f-multiple-instances--one-machine-multiple-d365fo-environments) for the full walkthrough.
 
 ---
 

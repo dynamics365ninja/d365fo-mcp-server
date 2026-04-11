@@ -974,6 +974,8 @@ Create a SalesReport copying fields from SalesInvoice report
 
 ---
 
+### verify_d365fo_project
+
 Verifies that D365FO objects exist on disk at the correct AOT path and are referenced in the Visual Studio project file. Use this instead of PowerShell after `create_d365fo_file` to confirm that files were created and registered correctly.
 
 **Parameters:**

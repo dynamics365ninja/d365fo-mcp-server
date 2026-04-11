@@ -5,6 +5,9 @@ This project uses [Vitest](https://vitest.dev/) as the testing framework.
 ## Running Tests
 
 ```bash
+# Run all tests once
+npm test -- --run
+
 # Run all tests in watch mode
 npm test
 
@@ -13,7 +16,12 @@ npm test -- --coverage
 
 # Run a specific test file
 npm test tests/tools/discovery.test.ts
+
+# Run integration tests (requires built dist/)
+npm run test:integration
 ```
+
+> **Integration tests** (`vitest.integration.config.ts`) exercise tool handler routing end-to-end with a real in-memory SQLite DB. Run them after `npm run build` to catch wiring issues not covered by unit tests.
 
 ## Test Structure
 

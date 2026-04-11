@@ -143,11 +143,15 @@ Setup guide: [docs/SETUP.md](docs/SETUP.md) · CI/CD pipeline: [docs/PIPELINES.m
 | File | Contents |
 |------|---------|
 | [docs/QUICK_START.md](docs/QUICK_START.md) | **Start here** — 5 steps to get running, all `.mcp.json` parameters, logging |
-| [docs/SETUP.md](docs/SETUP.md) | Detailed installation, configuration, all deployment scenarios |
-| [docs/MCP_CONFIG.md](docs/MCP_CONFIG.md) | `.mcp.json` reference — workspace paths, UDE, project settings |
+| [docs/SETUP.md](docs/SETUP.md) | Detailed installation, configuration, all deployment scenarios A–F |
+| [docs/MCP_CONFIG.md](docs/MCP_CONFIG.md) | `.mcp.json` reference — workspace paths, UDE, project settings, all env vars |
 | [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) | All 54 tools with parameters and example prompts |
 | [docs/USAGE_EXAMPLES.md](docs/USAGE_EXAMPLES.md) | Practical examples: search, CoC, SysOperation, security |
+| [docs/CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md) | ISV / custom model configuration and multi-model extraction |
+| [docs/WORKSPACE_DETECTION.md](docs/WORKSPACE_DETECTION.md) | How the server auto-detects your D365FO project, model, and package path |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical architecture, dual-database design, cache invalidation |
 | [docs/BRIDGE.md](docs/BRIDGE.md) | C# Metadata Bridge reference — mandatory on Windows VMs for all write operations |
-| [docs/CUSTOM_EXTENSIONS.md](docs/CUSTOM_EXTENSIONS.md) | ISV / custom model configuration |
-| [docs/PIPELINES.md](docs/PIPELINES.md) | Automated metadata extraction via Azure DevOps |
+| [docs/SETUP_AZURE.md](docs/SETUP_AZURE.md) | Deploy the server to Azure App Service (admin/DevOps guide) |
+| [docs/PIPELINES.md](docs/PIPELINES.md) | Automated metadata extraction and deployment via Azure DevOps |
+| [docs/TESTING.md](docs/TESTING.md) | Running tests, test structure, mock guidelines, coverage |
+| [docs/SQLITE_DEPENDENCY.md](docs/SQLITE_DEPENDENCY.md) | SQLite vs C# Bridge — which tools use which data source |
