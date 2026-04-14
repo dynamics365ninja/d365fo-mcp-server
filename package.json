@@ -32,7 +32,7 @@
     "@azure/storage-blob": "^12.31.0",
     "@modelcontextprotocol/sdk": "^1.27.0",
     "@types/compression": "^1.8.1",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.9.0",
     "compression": "^1.8.1",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
