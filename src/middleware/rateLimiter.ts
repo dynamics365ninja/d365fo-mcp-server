@@ -1,5 +1,6 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Request, Response } from 'express';
+import { createHash } from 'crypto';
 
 /**
  * Rate limiter configuration for different endpoint types
@@ -29,15 +30,21 @@ function parseEnvInt(key: string, defaultVal: number, min: number, max: number):
  * per-user token (GitHub Copilot OAuth token), so it identifies individual
  * users even when they all come from the same IP.
  *
- * Security: we use only the last 32 characters of the token so the full
- * secret never appears in logs or memory for longer than necessary.
+ * Security: we SHA-256 the full Authorization header and use the hash as the
+ * key. Slicing the raw token (old behaviour) let an attacker vary the leading
+ * bytes of a forged header to create unlimited buckets and bypass the limit.
+ * Hashing anchors the key to the ENTIRE header so any change — forged or not —
+ * produces a fresh limit, and the full secret never reaches logs or memory
+ * for longer than the sync hash computation.
+ *
  * Falls back to IP when no Authorization header is present (curl, healthz).
  */
 function generateKey(req: Request): string {
   const authHeader = req.headers['authorization'];
-  if (authHeader && authHeader.length > 8) {
-    // Take last 32 chars — enough entropy to distinguish users, avoids logging full token
-    return 'tok:' + authHeader.slice(-32);
+  if (typeof authHeader === 'string' && authHeader.length > 8) {
+    // Hash the full header; truncate the digest for a compact in-memory key.
+    const digest = createHash('sha256').update(authHeader).digest('hex');
+    return 'tok:' + digest.slice(0, 32);
   }
 
   // Fallback: IP-based key (same logic as before)

@@ -150,7 +150,7 @@ and verify the objects are in place.
 3. `search` + `batch_search` ×9 — parallel searches across name variants (`VendPaymTerms`, `VendPaymentTerms`, `PaymTerm*`, `MY_VendPaymTermsMaintain`) for privileges, duties, and menu items
 4. `get_menu_item_info` ×2 — `VendPaymTerms` menu item detail (target form, security chain); called again for display-type variant
 5. `get_security_artifact_info` ×8 — reads full entry lists for candidate duties: `VendPaymentTermsMaintain`, `VendPaymTermsMaintain`, `LedgerPaymTermsMaintain`, `PaymTermsMaintain`, `VendVendorMasterMaintain`, `VendInvoiceVendorMaintain`, and privileges `PaymTermMaintain`, `PaymTermView`
-6. `validate_object_naming` ×2 — confirms `MY_VendPaymTermsMaintain` follows D365FO conventions and has no collision in 584K+ symbols
+6. `validate_object_naming` ×2 — confirms `MY_VendPaymTermsMaintain` follows D365FO conventions and has no collision across the indexed symbols
    (prefix separator `MY_` is valid — `{Prefix}_{Name}` is a supported D365FO naming pattern)  ✅
 7. `generate_code` — generates security-privilege XML skeleton for `VendPaymTerms`
 8. `search_labels` ×2 — label lookup for "vendor payment terms maintain" (with and without model filter)

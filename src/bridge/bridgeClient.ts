@@ -298,17 +298,29 @@ export class BridgeClient extends EventEmitter {
 
     this.rejectAllPending(new Error('BridgeClient disposed'));
 
-    if (this.process) {
+    // Capture the child reference in a local variable BEFORE clearing this.process.
+    // The deferred SIGTERM closure must retain the reference or it kills nothing,
+    // leaking the D365MetadataBridge child process across restarts.
+    const child = this.process;
+    this.process = null;
+    if (child) {
       try {
-        this.process.stdin?.end();
-        // Give it a moment to exit gracefully
-        setTimeout(() => {
-          if (this.process && !this.process.killed) {
-            this.process.kill('SIGTERM');
+        child.stdin?.end();
+        const graceful = setTimeout(() => {
+          if (!child.killed) {
+            try { child.kill('SIGTERM'); } catch { /* already gone */ }
           }
         }, 2000);
+        // SIGKILL fallback if SIGTERM did not terminate within another 3s.
+        const hard = setTimeout(() => {
+          if (!child.killed) {
+            try { child.kill('SIGKILL'); } catch { /* already gone */ }
+          }
+        }, 5000);
+        // Do not keep the event loop alive purely for these timers.
+        if (typeof graceful.unref === 'function') graceful.unref();
+        if (typeof hard.unref === 'function') hard.unref();
       } catch { /* ignore */ }
-      this.process = null;
     }
   }
 

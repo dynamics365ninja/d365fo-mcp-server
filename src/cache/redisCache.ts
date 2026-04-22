@@ -270,6 +270,27 @@ export class RedisCacheService {
   }
 
   /**
+   * Non-blocking key scan. Unlike KEYS which is O(N) and blocks the Redis
+   * event loop on large keyspaces, SCAN iterates in bounded chunks.
+   * `max` caps the result size so diagnostics/maintenance never walk the
+   * entire keyspace.
+   */
+  private async scanKeys(pattern: string, max: number = 1000): Promise<string[]> {
+    if (!this.client) return [];
+    const keys: string[] = [];
+    let cursor = '0';
+    do {
+      const [nextCursor, batch] = await this.client.scan(cursor, 'MATCH', pattern, 'COUNT', 200);
+      cursor = nextCursor;
+      for (const k of batch) {
+        keys.push(k);
+        if (keys.length >= max) return keys;
+      }
+    } while (cursor !== '0');
+    return keys;
+  }
+
+  /**
    * Delete all keys matching a pattern
    */
   async deletePattern(pattern: string): Promise<void> {
@@ -278,9 +299,12 @@ export class RedisCacheService {
     }
 
     try {
-      const keys = await this.client.keys(pattern);
-      if (keys.length > 0) {
-        await this.client.del(...keys);
+      // SCAN + batched DEL instead of KEYS — SCAN never blocks Redis,
+      // and batched DEL avoids unbounded argument lists.
+      const keys = await this.scanKeys(pattern, 10_000);
+      for (let i = 0; i < keys.length; i += 500) {
+        const chunk = keys.slice(i, i + 500);
+        if (chunk.length > 0) await this.client.del(...chunk);
       }
     } catch (error) {
       console.error('Redis deletePattern error:', error);
@@ -440,8 +464,8 @@ export class RedisCacheService {
       const memoryMatch = info.match(/used_memory_human:(.+)/);
       const memory = memoryMatch ? memoryMatch[1].trim() : 'unknown';
 
-      // Get top keys by TTL (most recently accessed/important)
-      const allKeys = await this.client.keys('xpp:*');
+      // Get top keys by TTL (most recently accessed/important) — use SCAN, not KEYS.
+      const allKeys = await this.scanKeys('xpp:*', 500);
       const topKeys: Array<{ key: string; ttl: number }> = [];
       
       if (allKeys.length > 0) {
@@ -480,9 +504,9 @@ export class RedisCacheService {
     }
 
     try {
-      // Get all keys
-      const searchKeys = await this.client.keys('xpp:search:*');
-      const classKeys = await this.client.keys('xpp:class:*');
+      // Sampled SCAN (capped) so pattern analysis never blocks Redis on large keyspaces.
+      const searchKeys = await this.scanKeys('xpp:search:*', 500);
+      const classKeys = await this.scanKeys('xpp:class:*', 500);
 
       // Extract queries from keys
       const queries = searchKeys

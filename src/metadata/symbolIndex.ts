@@ -1939,13 +1939,28 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Search custom extensions by prefix
+   * Search custom extensions by prefix.
+   *
+   * Restricts results to symbol types whose names carry the `*_Extension` /
+   * `*.<model>Extension` convention (class-extension, table-extension, etc.)
+   * so that unrelated symbols sharing a substring don't leak into extension UI.
    */
   searchCustomExtensions(query: string, prefix?: string, limit: number = 20): XppSymbol[] {
+    // Allow extension-shaped rows (regardless of whether the indexer set a
+    // dedicated *-extension type) while also including explicit extension types.
     let sql = `
       SELECT *
       FROM symbols
       WHERE name LIKE ?
+        AND (
+          type IN (
+            'class-extension','table-extension','form-extension','enum-extension',
+            'edt-extension','view-extension','query-extension','data-entity-extension',
+            'map-extension','menu-extension','security-role-extension','security-duty-extension'
+          )
+          OR name LIKE '%_Extension'
+          OR name LIKE '%.%Extension'
+        )
     `;
 
     const params: any[] = [`%${query}%`];
@@ -2457,11 +2472,30 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Close the database connection
+   * Close the database connection and release all pooled resources.
+   *
+   * Includes:
+   *  - prepared-statement cache
+   *  - main writer DB + read pool
+   *  - labels DB + labels read pool
+   *  - any pending debounced labels FTS rebuild timer
+   *
+   * Previously only the writer DB was closed, leaving file handles and a
+   * pending timer behind which caused shutdown hangs and file-handle leaks.
    */
   close(): void {
+    // Flush any debounced labels FTS rebuild to avoid losing writes on shutdown.
+    if (this._labelsFtsTimer) {
+      clearTimeout(this._labelsFtsTimer);
+      this._labelsFtsTimer = null;
+    }
+
+    // Drain read pools first — writer close will fail on WAL if readers hold a lock.
+    this.closeReadPool();
+
     this.stmtCache.clear();
-    this.db.close();
+    try { this.db.close(); } catch { /* ignore */ }
+    try { this.labelsDb.close(); } catch { /* ignore */ }
   }
 
   // ============================================
@@ -2469,7 +2503,10 @@ export class XppSymbolIndex {
   // ============================================
 
   /**
-   * Add (or replace) a label entry in the index
+   * Add (or replace) a label entry in the index.
+   * Labels live in the separate `labelsDb` connection — NOT in the main symbols DB.
+   * The stmtCache is shared across connections so the cache key is namespaced to avoid
+   * accidentally reusing a statement prepared against a different DB handle.
    */
   addLabel(entry: {
     labelId: string;
@@ -2480,13 +2517,13 @@ export class XppSymbolIndex {
     comment?: string;
     filePath: string;
   }): void {
-    let stmt = this.stmtCache.get('addLabel');
+    let stmt = this.stmtCache.get('labels::addLabel');
     if (!stmt) {
-      stmt = this.db.prepare(`
+      stmt = this.labelsDb.prepare(`
         INSERT OR REPLACE INTO labels (label_id, label_file_id, model, language, text, comment, file_path)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
-      this.stmtCache.set('addLabel', stmt);
+      this.stmtCache.set('labels::addLabel', stmt);
     }
     stmt.run(
       entry.labelId,

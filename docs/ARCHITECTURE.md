@@ -515,23 +515,33 @@ sequenceDiagram
     Bridge->>Bridge: Dispose providers, close SQL
 ```
 
-### Integration Pattern — Bridge-First with Fallback
+### Integration Pattern — Bridge → DB → Disk
 
-Every read tool uses the **try-bridge-first** pattern:
+Every read tool uses a strict three-tier lookup order:
 
 ```
 Tool handler:
-  1. tryBridge*(args)        → call C# bridge via JSON-RPC (stdin/stdout)
-     ├─ Bridge available + object found → return live metadata
-     └─ Bridge unavailable or error    → continue to step 2
-  2. symbolIndex.search()    → FTS5 query on SQLite symbols database
-  3. xmlParser.parse()       → Parse raw XML from PackagesLocalDirectory
-  4. Format + cache result   → Store in Redis (optional)
+  1. Bridge (authoritative)  → C# IMetadataProvider via JSON-RPC (stdin/stdout)
+     └─ Bridge available + object found → return live metadata
+  2. SQLite symbol index     → FTS5 / structured queries on the pre-built DB
+     └─ Used when the bridge is offline (Azure, write-only mode, build agents)
+        or the object is not covered by the bridge for this call
+  3. Disk parse              → xmlParser.parseXxxFile() on the AOT XML file
+     └─ Last resort for objects created in the current session and not yet
+        indexed. The extension scanner has a ~3 s budget and 30 s result cache
+        and can be disabled entirely via D365FO_DISABLE_FS_FALLBACK=true.
+  4. Cache (optional)        → Redis is off by default; when enabled it only
+                               short-circuits the above for repeated queries.
 ```
 
-Write tools (`create_d365fo_file`, `modify_d365fo_file`) have **no fallback** — if the bridge
-is unavailable, they return an error. This is by design: only the C# `IMetadataProvider` API
-can safely create/modify D365FO objects (correct XML encoding, AOT path, `.rnrproj` registration).
+Write tools (`create_d365fo_file`, `modify_d365fo_file`) have **no bridge fallback** — if the
+bridge is unavailable they return an error. This is by design: only the C# `IMetadataProvider`
+API can safely create/modify D365FO objects (correct XML encoding, AOT path, `.rnrproj`
+registration).
+
+**Write-path safety:** every write target is validated against the configured
+`PackagesLocalDirectory` roots and the canonical `<Package>/<Model>/Ax<Type>/<Name>.xml`
+layout. Paths outside the roots or with the wrong shape are rejected before any file I/O.
 
 ### C# Components
 

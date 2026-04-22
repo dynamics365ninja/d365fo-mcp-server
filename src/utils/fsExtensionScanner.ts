@@ -83,8 +83,46 @@ export const EXTENSION_FOLDER_CONFIG: Readonly<Record<string, ExtensionTypeConfi
 // ── Core scanner ─────────────────────────────────────────────────────────────
 
 /**
+ * Hard budget (ms) for a single scan. The scanner walks every package and every
+ * model folder, so without a cap a scan on a full `PackagesLocalDirectory`
+ * (hundreds of packages) can block the tool for many seconds. The budget is
+ * checked between directory reads so partial results are still returned.
+ *
+ * Override with `D365FO_FS_SCAN_TIMEOUT_MS` (minimum 500 ms).
+ */
+const SCAN_TIMEOUT_MS = Math.max(500,
+  parseInt(process.env.D365FO_FS_SCAN_TIMEOUT_MS || '3000', 10) || 3000
+);
+
+/**
+ * When true, the filesystem fallback is completely disabled and the scanner
+ * always returns []. Useful in production where the index is authoritative and
+ * a stale scan would silently mask missing data.
+ */
+const FS_FALLBACK_DISABLED = process.env.D365FO_DISABLE_FS_FALLBACK === 'true';
+
+/**
+ * Per-scan result cache with short TTL. Three different tools
+ * (table-extension / CoC / analyze-extension-points) may request the same
+ * object within a single conversation; caching keeps the scanner from
+ * re-walking the filesystem each time.
+ */
+const SCAN_CACHE_TTL_MS = 30_000;
+interface ScanCacheEntry { at: number; data: FsExtensionScanResult[]; }
+const scanCache = new Map<string, ScanCacheEntry>();
+
+function cacheKeyFor(objectName: string, extensionType: string, packagePath: string): string {
+  return `${packagePath}|${extensionType}|${objectName.toLowerCase()}`;
+}
+
+/**
  * Scan the D365FO packages directory for extension XML files for a given base
  * object and extension type.
+ *
+ * Protections against request-time pathology:
+ *  - returns [] immediately when D365FO_DISABLE_FS_FALLBACK=true
+ *  - caps total work at SCAN_TIMEOUT_MS (partial results allowed)
+ *  - caches the result for SCAN_CACHE_TTL_MS
  *
  * @param objectName   Base object name (e.g. `SalesTable`, `SalesOrder`)
  * @param extensionType Key from EXTENSION_FOLDER_CONFIG (e.g. `'table-extension'`)
@@ -95,8 +133,18 @@ export async function scanFsExtensions(
   extensionType: string,
   packagePath: string,
 ): Promise<FsExtensionScanResult[]> {
+  if (FS_FALLBACK_DISABLED) return [];
   const config = EXTENSION_FOLDER_CONFIG[extensionType];
   if (!config) return [];
+
+  const cacheKey = cacheKeyFor(objectName, extensionType, packagePath);
+  const cached = scanCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < SCAN_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const started = Date.now();
+  const timeBudgetExceeded = () => Date.now() - started > SCAN_TIMEOUT_MS;
 
   const results: FsExtensionScanResult[] = [];
   let packages: string[];
@@ -108,7 +156,8 @@ export async function scanFsExtensions(
 
   const lowerObjName = objectName.toLowerCase();
 
-  for (const pkg of packages) {
+  outer: for (const pkg of packages) {
+    if (timeBudgetExceeded()) break outer;
     const pkgDir = path.join(packagePath, pkg);
     let modelDirs: string[];
     try {
@@ -118,6 +167,7 @@ export async function scanFsExtensions(
     } catch { continue; }
 
     for (const mdl of modelDirs) {
+      if (timeBudgetExceeded()) break outer;
       const axDir = path.join(pkgDir, mdl, config.axFolder);
       let xmlFiles: string[];
       try {
@@ -125,6 +175,7 @@ export async function scanFsExtensions(
       } catch { continue; }
 
       for (const xmlFile of xmlFiles) {
+        if (timeBudgetExceeded()) break outer;
         // ── Fast-path: filename filter (avoids reading files unnecessarily) ──
         const baseName = path.basename(xmlFile, '.xml');
         const lowerBase = baseName.toLowerCase();
@@ -149,6 +200,8 @@ export async function scanFsExtensions(
     }
   }
 
+  // Store even partial results — next call within TTL returns them instantly.
+  scanCache.set(cacheKey, { at: Date.now(), data: results });
   return results;
 }
 

@@ -15,6 +15,19 @@ const SYNCABLE_AOT_FOLDERS = new Set([
 const MAX_OUTPUT_LENGTH = 8_000;
 
 /**
+ * Redact the `-connect=...` argument when logging SyncEngine invocations so
+ * SQL Server credentials never appear in plain text in server logs.
+ */
+function maskConnectArgs(args: string[]): string[] {
+  return args.map(a => {
+    if (typeof a === 'string' && a.toLowerCase().startsWith('-connect=')) {
+      return '-connect=***REDACTED***';
+    }
+    return a;
+  });
+}
+
+/**
  * Runs an executable and streams output to stderr for progress visibility.
  * Returns combined stdout+stderr and the exit code.
  */
@@ -29,9 +42,27 @@ function runWithStreaming(
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
+    // Bound in-memory buffering of child output. A 60-minute sync on a verbose
+    // SyncEngine can emit tens of MB which previously all accumulated in RAM.
+    // Once the cap is hit we drop the oldest bytes — progress is still logged
+    // live to stderr, and the final client-facing output is already capped by
+    // MAX_OUTPUT_LENGTH below.
+    const MAX_BUFFER_BYTES = 2 * 1024 * 1024; // 2 MB per stream
+    const truncated = { stdout: false, stderr: false };
     let stdout = '';
     let stderr = '';
     let killed = false;
+    const appendBounded = (which: 'stdout' | 'stderr', text: string) => {
+      const current = which === 'stdout' ? stdout : stderr;
+      const next = current + text;
+      if (next.length > MAX_BUFFER_BYTES) {
+        truncated[which] = true;
+        const trimmed = next.slice(next.length - MAX_BUFFER_BYTES);
+        if (which === 'stdout') stdout = trimmed; else stderr = trimmed;
+      } else {
+        if (which === 'stdout') stdout = next; else stderr = next;
+      }
+    };
 
     const timer = opts.timeout > 0
       ? setTimeout(() => {
@@ -43,7 +74,7 @@ function runWithStreaming(
 
     child.stdout.on('data', (chunk: Buffer) => {
       const text = chunk.toString();
-      stdout += text;
+      appendBounded('stdout', text);
       // Log progress lines so user can see activity in MCP server logs
       for (const line of text.split('\n').filter((l: string) => l.trim())) {
         console.error(`[db-sync stdout] ${line}`);
@@ -52,7 +83,7 @@ function runWithStreaming(
 
     child.stderr.on('data', (chunk: Buffer) => {
       const text = chunk.toString();
-      stderr += text;
+      appendBounded('stderr', text);
       for (const line of text.split('\n').filter((l: string) => l.trim())) {
         console.error(`[db-sync stderr] ${line}`);
       }
@@ -270,7 +301,7 @@ export const dbSyncTool = async (params: any, _context: any) => {
       }
     }
 
-    console.error(`[trigger_db_sync] Running: "${syncEnginePath}" ${args.join(' ')}`);
+    console.error(`[trigger_db_sync] Running: "${syncEnginePath}" ${maskConnectArgs(args).join(' ')}`);
 
     // Timeouts: partial 15 min, full 60 min
     const timeoutMs = isPartial ? 15 * 60_000 : 60 * 60_000;

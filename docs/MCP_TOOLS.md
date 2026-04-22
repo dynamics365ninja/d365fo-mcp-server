@@ -131,7 +131,7 @@ The following tools empower Copilot to trigger X++ compilation, testing, and db 
 | **find_event_handlers** † | All event handlers with type classification and event filtering | "Who handles the onInserted event of SalesLine?" |
 | **get_table_extension_info** | All extensions of a table: added fields, indexes, methods | "What fields did ISV packages add to CustTable?" |
 | **get_data_entity_info** † | Data entity category, OData name, data sources, keys | "Show me CustCustomerV3Entity details" |
-| **analyze_extension_points** † | CoC-eligible methods, delegates, events — what can be extended (bridge enrichment for existing extensions) | "What can I extend on SalesLine?" |
+| **analyze_extension_points** † | CoC-eligible methods, delegates, events — what can be extended (pass `showExistingExtensions=true` to also list existing wrappers/subscribers) | "What can I extend on SalesLine?" |
 | **recommend_extension_strategy** | Recommends the best extensibility mechanism for a scenario — prevents wrong choices (CoC vs event vs Business Event vs data entity) | "Should I use CoC or Business Event to notify an external system?" |
 | **validate_object_naming** | Validate proposed extension/object names against D365FO conventions | "Is SalesTableExtension a valid extension class name?" |
 
@@ -150,7 +150,7 @@ The following tools empower Copilot to trigger X++ compilation, testing, and db 
 
 ### search
 
-Searches all 584 799+ D365FO symbols. Understands type filters so you can narrow results.
+Searches every indexed D365FO symbol (hundreds of thousands across standard + custom models). Understands type filters so you can narrow results.
 
 **Supported types:** class, table, method, field, enum, edt, form, query, view, report
 

@@ -15,7 +15,9 @@ const FindReferencesArgsSchema = z.object({
   targetType: z.enum(['method', 'class', 'table', 'field', 'enum', 'all']).optional().describe('Type of the target to search for'),
   scope: z.enum(['all', 'workspace', 'standard', 'custom']).optional().default('all').describe('Search scope'),
   limit: z.number().optional().default(50).describe('Maximum results to return'),
-  includeContext: z.boolean().optional().default(true).describe('Include code context around reference'),
+  // Default OFF: code-context snippets roughly quadruple the token cost of this tool.
+  // Agents typically only need file:line:type — turn context on explicitly when you need snippets.
+  includeContext: z.boolean().optional().default(false).describe('Include code context around reference (opt-in to reduce token usage)'),
 });
 
 interface Reference {

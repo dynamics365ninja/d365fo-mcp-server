@@ -10,8 +10,8 @@ This document maps every MCP tool to its data-source usage and explains why SQLi
 
 | Data Source | What It Provides | Platform |
 |-------------|-----------------|----------|
-| **SQLite** — symbols DB | 584 799+ pre-indexed symbols with FTS5 full-text search, `edt_metadata`, `extension_metadata`, `menu_item_targets`, `security_*` hierarchy tables, `source_snippet` column | Cross-platform (Azure/Linux + Windows) |
-| **SQLite** — labels DB | 19M+ label entries across 70 languages with FTS search | Cross-platform |
+| **SQLite** — symbols DB | Hundreds of thousands of pre-indexed symbols with FTS5 full-text search, `edt_metadata`, `extension_metadata`, `menu_item_targets`, `security_*` hierarchy tables, `source_snippet` column | Cross-platform (Azure/Linux + Windows) |
+| **SQLite** — labels DB | Tens of millions of label entries across 70 languages with FTS search | Cross-platform |
 | **C# Bridge** — IMetadataProvider | Live reads of individual D365FO objects (class, table, form, EDT, enum, …) | Windows-only (.NET 4.8) |
 | **C# Bridge** — DYNAMICSXREFDB | Compiler-resolved cross-references: `Names`, `References`, `Modules` tables | Windows-only (SQL Server) |
 
@@ -75,15 +75,15 @@ These tools query across hundreds to thousands of objects with GROUP BY, COUNT, 
 |------|-----------------|---------------|
 | `analyzePatterns` | Scan `source_snippet` for pattern types, method frequencies | Thousands of classes |
 | `analyzeCompleteness` | Compare class methods vs. similar classes | Hundreds of same-type classes |
-| `suggestImplementation` | Fuzzy method name matching across all classes | 584K+ symbols |
-| `suggestEdt` | Exact → prefix → keyword → context on `edt_metadata` | 8K+ EDTs |
+| `suggestImplementation` | Fuzzy method name matching across all classes | Full symbol index |
+| `suggestEdt` | Exact → prefix → keyword → context on `edt_metadata` | Thousands of EDTs |
 | `getTablePatterns` | GROUP BY / COUNT on tables of same TableGroup | Hundreds of tables |
 | `getFormPatterns` | GROUP BY on forms of same pattern | Hundreds of forms |
 | `generateSmartTable` | EDT resolution + auto-FK relations via `edt_metadata` chain walk | `edt_metadata` + symbols |
 | `generateSmartForm` | copyFrom structure + auto-grid from table fields | Symbols + form patterns |
 | `generateSmartReport` | copyFrom TmpTable + EDT → .NET type resolution | `edt_metadata` chain walk |
 | `securityCoverageInfo` | 4-table JOIN (role → duty → privilege → entry point) | `security_*` hierarchy |
-| `validateObjectNaming` | Collision check LIKE/exact across all symbols | 584K+ symbols |
+| `validateObjectNaming` | Collision check LIKE/exact across all symbols | Full symbol index |
 
 ### E) SQLite for File Resolution in Write Operations (1 tool)
 
@@ -119,7 +119,7 @@ SQLite fills all of these gaps with pre-indexed, pre-aggregated data optimized f
 
 ### 3. Sole Source for 19M+ Labels
 
-The labels database contains 19 million+ entries across 70 languages. `IMetadataProvider` has no API for reading or searching label files. Every label operation — search, read, create, rename — goes exclusively through SQLite. There is no alternative data path.
+The labels database contains tens of millions of entries across 70 languages. `IMetadataProvider` has no API for reading or searching label files. Every label operation — search, read, create, rename — goes exclusively through SQLite. There is no alternative data path.
 
 ---
 
@@ -130,7 +130,7 @@ The labels database contains 19 million+ entries across 70 languages. `IMetadata
 | Add FTS to DYNAMICSXREFDB | ❌ Microsoft-owned DB, read-only schema | Would require custom SQL Server full-text index + schema changes to a production database |
 | Add label API to bridge | ⚠️ Possible but laborious | Requires parsing all `.label.txt` files (19M entries) in C#, plus building search/CRUD — essentially reimplementing `labelsDb.ts` |
 | Add aggregation endpoints to bridge | ⚠️ Possible for individual queries | Each analytical query (pattern mining, EDT chain walk, security hierarchy) would need a dedicated C# endpoint — dozens of new endpoints, each doing what one SQL query does today |
-| Enumerate all objects via bridge for aggregation | ❌ Prohibitively slow | Reading 584K objects one-by-one via IPC to compute a GROUP BY would take minutes vs. milliseconds in SQLite |
+| Enumerate all objects via bridge for aggregation | ❌ Prohibitively slow | Reading the full symbol set one-by-one via IPC to compute a GROUP BY would take minutes vs. milliseconds in SQLite |
 | Drop Azure/Linux support | ❌ Violates product requirements | The MCP server must work in read-only Azure deployments where no D365FO runtime exists |
 
 **Conclusion:** SQLite and the C# bridge are complementary by design. The bridge provides **live, authoritative, single-object reads** and **compiler-resolved cross-references**. SQLite provides **bulk search, aggregation, cross-platform availability, and label management**. Neither can fully replace the other.

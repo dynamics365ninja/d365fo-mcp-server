@@ -14,6 +14,8 @@ async function git(args: string[], cwd: string): Promise<string> {
     cwd,
     windowsHide: true,
     maxBuffer: 1024 * 1024 * 10,
+    // Prevent a hung git from blocking the tool indefinitely.
+    timeout: 30_000,
   });
   return stdout.trim();
 }

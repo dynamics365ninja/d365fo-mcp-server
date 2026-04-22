@@ -55,6 +55,11 @@ async function buildFts(): Promise<void> {
 
   const symbolIndex = new XppSymbolIndex(OUTPUT_DB, OUTPUT_LABELS_DB);
 
+  // Close read-pool connections before setting EXCLUSIVE locking mode.
+  // SQLite cannot grant locking_mode = EXCLUSIVE while any other connection
+  // (even read-only, in-process) holds a shared lock.
+  symbolIndex.closeReadPool();
+
   // Use same bulk-load pragmas for the FTS rebuild (important: no WAL during heavy writes)
   symbolIndex.db.pragma('journal_mode = MEMORY');
   symbolIndex.db.pragma('synchronous = OFF');

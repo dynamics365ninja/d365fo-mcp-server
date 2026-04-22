@@ -19,11 +19,12 @@ For architecture details, see [ARCHITECTURE.md § C# Bridge Architecture](ARCHIT
 The bridge runs as a child process spawned by the Node.js server at startup. Communication
 uses newline-delimited JSON-RPC over stdin/stdout.
 
-Every tool handler follows a **bridge-first, fallback** pattern:
+Every tool handler follows a strict **Bridge → DB → Disk** priority:
 
-1. **Bridge available** → call `IMetadataProvider` via JSON-RPC → return result
-2. **Bridge unavailable** → fall back to SQLite index + XML parser (read-only tools only)
-3. **Write operations** → bridge is the **only** path — no fallback exists
+1. **Bridge available** → call `IMetadataProvider` via JSON-RPC → return result (authoritative)
+2. **Bridge offline** → fall back to the SQLite symbol index (read-only tools only)
+3. **Not in index either** → parse the AOT XML file on disk (only for tools that need it — table / table-extension / form / report info and the extension scanner, with a bounded budget)
+4. **Write operations** → bridge is the **only** path — no fallback exists
 
 ---
 

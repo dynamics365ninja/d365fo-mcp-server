@@ -24,6 +24,40 @@ const TOOL_TIMEOUT_MS = Math.max(10_000,
 );
 
 /**
+ * Per-tool timeout classes. A single global ceiling has two failure modes:
+ *  - fast tools (get_class_info, search) starve the request slot when a
+ *    misbehaving call hangs for the full 120 s
+ *  - heavy tools (build, db-sync, systest) get killed prematurely
+ *
+ * We split timeouts by workload. All values can be overridden via env.
+ */
+const TOOL_TIMEOUT_FAST_MS  = Math.max(5_000,  parseInt(process.env.MCP_TOOL_TIMEOUT_FAST_MS  || '30000',  10) || 30_000);
+const TOOL_TIMEOUT_HEAVY_MS = Math.max(60_000, parseInt(process.env.MCP_TOOL_TIMEOUT_HEAVY_MS || '600000', 10) || 600_000);
+
+const HEAVY_TOOLS = new Set<string>([
+  'build_d365fo_project',
+  'trigger_db_sync',
+  'run_bp_check',
+  'run_systest_class',
+  'update_symbol_index',
+]);
+
+const FAST_TOOLS = new Set<string>([
+  'search', 'batch_search',
+  'get_class_info', 'get_table_info', 'get_form_info',
+  'get_edt_info', 'get_enum_info', 'get_menu_item_info',
+  'get_view_info', 'get_query_info', 'get_report_info',
+  'get_data_entity_info', 'search_labels', 'get_label_info',
+]);
+
+function resolveToolTimeout(toolName: string | undefined): number {
+  if (!toolName) return TOOL_TIMEOUT_MS;
+  if (HEAVY_TOOLS.has(toolName)) return TOOL_TIMEOUT_HEAVY_MS;
+  if (FAST_TOOLS.has(toolName))  return TOOL_TIMEOUT_FAST_MS;
+  return TOOL_TIMEOUT_MS;
+}
+
+/**
  * Extract workspace folder path from GitHub Copilot MCP request.
  * Copilot can pass workspace info via HTTP headers or _meta in params.
  * Returns a local file-system path (converts file:// URI → path).
@@ -254,14 +288,19 @@ export class CustomHttpTransport implements Transport {
             const originalId = request.id;
             (request as any).id = internalId;
 
+            // Resolve the timeout class for this specific tool call so slow tools
+            // (build / db-sync) aren't killed and fast tools don't starve the slot
+            // for the full global ceiling.
+            const perToolTimeoutMs = resolveToolTimeout(toolName);
+
             const timeoutId = setTimeout(() => {
               if (this.pendingRequests.has(internalId!)) {
                 this.pendingRequests.delete(internalId!);
                 (request as any).id = originalId; // restore on timeout
-                process.stderr.write(`← ${tag} ⏱️ ${toolName} timed out after ${TOOL_TIMEOUT_MS / 1000}s\n`);
-                reject(new Error(`Request timeout: ${toolName} did not complete within ${TOOL_TIMEOUT_MS / 1000}s`));
+                process.stderr.write(`← ${tag} ⏱️ ${toolName} timed out after ${perToolTimeoutMs / 1000}s\n`);
+                reject(new Error(`Request timeout: ${toolName} did not complete within ${perToolTimeoutMs / 1000}s`));
               }
-            }, TOOL_TIMEOUT_MS);
+            }, perToolTimeoutMs);
 
             this.pendingRequests.set(internalId, {
               resolve: (message) => {

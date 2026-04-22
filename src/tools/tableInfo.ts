@@ -48,14 +48,23 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
       };
     }
 
-    // C# bridge (IMetadataProvider — live D365FO metadata, always available)
+    // Read-path priority: Bridge → DB (symbol index) → Disk (last resort).
+    // 1. Bridge — live D365FO metadata, always up-to-date when available.
     const bridgeResult = await tryBridgeTable(context.bridge, args.tableName, args.methodOffset);
     if (bridgeResult) {
       await cache.setClassInfo(cacheKey, bridgeResult).catch(() => {});
       return bridgeResult;
     }
 
-    // Fallback: table may have just been created and bridge hasn't refreshed yet
+    // 2. DB index fallback — serves offline / write-only / build-agent scenarios.
+    const { symbolIndex } = context;
+    const dbResponse = buildTableResponseFromDb(symbolIndex, args.tableName, args.methodOffset);
+    if (dbResponse) {
+      return dbResponse;
+    }
+
+    // 3. Disk fallback — slowest, only when bridge AND DB have no record
+    //    (e.g. a brand-new table not yet indexed).
     const diskPath = await findD365FileOnDisk('table', args.tableName);
     if (diskPath) {
       const model = path.basename(path.dirname(path.dirname(diskPath)));
@@ -83,7 +92,7 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
     return {
       content: [{
         type: 'text',
-        text: `Table "${args.tableName}" not found via bridge or on disk.\n\nIf this is a newly created table, ensure .mcp.json has the correct modelName/projectPath so the server can locate it.`,
+        text: `Table "${args.tableName}" not found via bridge, symbol index, or on disk.\n\nIf this is a newly created table, ensure .mcp.json has the correct modelName/projectPath so the server can locate it.`,
       }],
       isError: true,
     };
@@ -96,4 +105,47 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
       isError: true,
     };
   }
+}
+
+/**
+ * Serve table info entirely from the pre-indexed symbol database.
+ * Returns null when the table is not present in the index; caller then falls through
+ * to disk parsing. Never reads the filesystem.
+ */
+function buildTableResponseFromDb(
+  symbolIndex: any,
+  tableName: string,
+  methodOffset: number,
+): { content: { type: 'text'; text: string }[] } | null {
+  const tableSym = symbolIndex.getSymbolByName?.(tableName, 'table');
+  if (!tableSym) return null;
+
+  const rdb = symbolIndex.getReadDb();
+  const fields = rdb.prepare(
+    `SELECT name, signature FROM symbols WHERE parent_name = ? AND type = 'field' ORDER BY name`
+  ).all(tableName) as Array<{ name: string; signature: string | null }>;
+  const methods = rdb.prepare(
+    `SELECT name, signature FROM symbols WHERE parent_name = ? AND type = 'method' ORDER BY name`
+  ).all(tableName) as Array<{ name: string; signature: string | null }>;
+
+  const METHOD_PAGE = 25;
+  const totalMethods = methods.length;
+  const paged = methods.slice(methodOffset, methodOffset + METHOD_PAGE);
+  const hasMore = methodOffset + METHOD_PAGE < totalMethods;
+
+  let out = `# Table: ${tableSym.name}\n`;
+  if (tableSym.model) out += `**Model:** ${tableSym.model}\n`;
+  out += `\n## Fields (${fields.length})\n\n`;
+  for (const f of fields) {
+    out += `- **${f.name}**${f.signature ? `: ${f.signature}` : ''}\n`;
+  }
+  out += `\n## Methods (${totalMethods} total${totalMethods > METHOD_PAGE ? `, showing ${methodOffset + 1}–${Math.min(methodOffset + METHOD_PAGE, totalMethods)}` : ''})\n\n`;
+  for (const m of paged) {
+    out += `- \`${m.signature || m.name}\`\n`;
+  }
+  if (hasMore) {
+    out += `\n> ⚠️ ${totalMethods - methodOffset - METHOD_PAGE} more methods. Call again with methodOffset=${methodOffset + METHOD_PAGE}.`;
+  }
+  out += `\n\n> ℹ️ Served from symbol index (bridge unavailable).`;
+  return { content: [{ type: 'text', text: out }] };
 }

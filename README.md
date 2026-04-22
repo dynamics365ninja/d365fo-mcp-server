@@ -20,7 +20,7 @@ GitHub Copilot excels at C#, Python, and JavaScript — languages with rich publ
 
 The result is AI that confidently generates code that doesn't compile: wrong method signatures, missing parameters, fields that don't exist on the table, CoC chains broken because Copilot didn't know an extension already wrapped the method.
 
-This MCP server solves that by pre-indexing your entire D365FO installation — 584,799+ symbols across standard and custom models — and exposing it to Copilot as 54 specialized tools. Before generating any X++ code, Copilot can look up exact method signatures, check what CoC extensions already exist, trace security hierarchies, find label translations, and understand the full shape of your data model. The result is code that compiles on the first try and integrates correctly with your existing customizations.
+This MCP server solves that by pre-indexing your entire D365FO installation — hundreds of thousands of symbols across standard and custom models — and exposing it to Copilot as 54 specialized tools. Before generating any X++ code, Copilot can look up exact method signatures, check what CoC extensions already exist, trace security hierarchies, find label translations, and understand the full shape of your data model. The result is code that compiles on the first try and integrates correctly with your existing customizations.
 
 ![Solution Architecture](docs/img/solution-architecture-diagram.png)
 
@@ -40,7 +40,7 @@ This MCP server solves that by pre-indexing your entire D365FO installation — 
 ---
 
 ## Key Capabilities
-- **Massive Metadata Index:** Instantly looks up signatures, tables, enums, EDTs across standard and ISV code out of 580,000+ objects.
+- **Massive Metadata Index:** Instantly looks up signatures, tables, enums, EDTs across standard and ISV code out of hundreds of thousands of objects.
 - **Smart Object Generation:** AI-driven tools build XML structures exactly matching D365 standard patterns (SimpleList, Forms, Tables).
 - **X++ Knowledge Base:** Queryable knowledge base of D365FO patterns, best practices, and AX2012→D365FO migration guidance — prevents deprecated API usage.
 - **Code Review & Git Diff:** Reviews uncommitted workspace changes locally matching D365 Best Practice metrics directly against Copilot chat.

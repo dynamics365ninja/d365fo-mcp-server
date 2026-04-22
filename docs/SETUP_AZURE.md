@@ -24,7 +24,7 @@ If you are a developer who only wants to **use** an existing server, see [SETUP.
 - **Node.js** 24.x LTS (for building the application and metadata on your Windows VM)
 - **Python** 3.x (required by `node-gyp` during `npm install`)
 - **Git**
-- An Azure subscription with permissions to create App Service, Storage Account, and optionally Redis
+- An Azure subscription with permissions to create App Service and Storage Account (Redis is optional; skip unless you have evidence of cache benefit)
 
 ---
 
@@ -48,7 +48,7 @@ Developer's Windows VM
 | Azure Blob Storage | Stores `xpp-metadata.db` (~2–3 GB depending on UnitTest models) and labels database (~500 MB) | Standard LRS |
 | Azure App Service Plan | Hosts the Node.js server | B3 (dev/test), P0v3 (production) |
 | Azure App Service (Web App) | Runs the MCP server | Linux, Node 24 LTS |
-| Azure Managed Redis | Optional — speeds up repeated queries | B0 Basic or higher |
+| Azure Managed Redis | Optional. Only helpful when many users hammer the same queries; the SQLite index is already in-process and sub-10 ms, so most deployments see no measurable gain. | B0 Basic or higher |
 
 ---
 
@@ -103,7 +103,9 @@ In the Azure Portal, go to the App Service → **Settings** → **Environment va
 |---------|-------|-------|
 | `API_KEY` | e.g. `my-secret-key-here` | When set, all `/mcp` requests must include `X-Api-Key` header. `/health` is always public. Generate a strong random key (e.g. `openssl rand -hex 32`). Leave empty to disable. |
 
-**Optional — Redis (recommended for teams):**
+**Optional — Redis (skip unless measured):**
+
+Most deployments should leave this disabled. The server already serves reads from an in-process SQLite database backed by WAL and FTS5, which is typically faster than a round-trip to Redis. Enable only if profiling shows repeated identical queries from many users dominating your traffic.
 
 | Setting | Value |
 |---------|-------|

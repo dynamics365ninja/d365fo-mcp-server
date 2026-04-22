@@ -599,6 +599,16 @@ async function main() {
       // Resolve dbReady AFTER context is patched — tools can now run with real index.
       resolveDbReady();
       console.log(`✅ Database loaded in ${Date.now() - dbLoadStart} ms (${diagTs()} from process start) — all tools fully operational`);
+
+      // Close the handshake-phase stub cache so we don't leak its (no-op or
+      // real Redis) connection for the rest of the process lifetime.
+      // The stub and the real cache are distinct RedisCacheService instances;
+      // once the real one is wired, the stub is unreachable.
+      if (stubCache !== cache) {
+        stubCache.close().catch(() => {});
+      }
+      // The in-memory stub symbol index is also unreachable once swapped.
+      try { stubIndex.close(); } catch { /* ignore */ }
     }).catch(err => {
       rejectDbReady(err);
       console.error('❌ Background initialization failed:', err);

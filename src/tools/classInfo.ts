@@ -84,36 +84,26 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
       };
     }
 
-    // Try C# bridge first (IMetadataProvider — live D365FO metadata)
-    // Skip bridge for compact=true: DB signatures are instant (no IPC) and sufficient.
-    // Bridge fetches full method source bodies only for the adapter to extract line 1
-    // as a signature — pure waste when compact mode only needs signatures.
-    if (args.compact === false) {
-      const bridgeResult = await tryBridgeClass(context.bridge, args.className, false, args.methodOffset ?? 0);
-      if (bridgeResult) {
-        // Cache bridge result to avoid repeated IPC for the same class
-        await cache.setClassInfo(cacheKey, bridgeResult).catch(() => {});
-        return bridgeResult;
-      }
+    // Try C# bridge first (IMetadataProvider — live D365FO metadata).
+    // Priority order per read-path spec: Bridge → DB → Disk. Bridge is authoritative
+    // because it reflects whatever the currently-running D365FO instance sees;
+    // DB is a pre-indexed mirror; disk is the slowest last-resort parse.
+    const bridgeResult = await tryBridgeClass(context.bridge, args.className, args.compact !== false, args.methodOffset ?? 0);
+    if (bridgeResult) {
+      await cache.setClassInfo(cacheKey, bridgeResult).catch(() => {});
+      return bridgeResult;
     }
 
-    // Query database and parse
+    // Query database next
     const classSymbol = symbolIndex.getSymbolByName(args.className, 'class');
 
     if (!classSymbol) {
-      // SQLite has no record — try bridge as fallback (essential in write-only mode
-      // where SQLite is an empty in-memory DB but bridge reads directly from disk)
-      const bridgeFallback = await tryBridgeClass(context.bridge, args.className, false, args.methodOffset ?? 0);
-      if (bridgeFallback) {
-        await cache.setClassInfo(cacheKey, bridgeFallback).catch(() => {});
-        return bridgeFallback;
-      }
       const typeMismatch = buildObjectTypeMismatchMessage(symbolIndex.getReadDb(), args.className);
       return {
         content: [
           {
             type: 'text',
-            text: `❌ Class "${args.className}" not found in symbol index.${typeMismatch}`,
+            text: `❌ Class "${args.className}" not found via bridge or symbol index.${typeMismatch}`,
           },
         ],
         isError: true,

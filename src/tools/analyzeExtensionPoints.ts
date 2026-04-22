@@ -21,8 +21,10 @@ const AnalyzeExtensionPointsArgsSchema = z.object({
   objectName: z.string().describe('Class or table name to analyze extension points for'),
   objectType: z.enum(['class', 'table', 'form', 'auto']).optional().default('auto')
     .describe('Object type (auto=detect from symbol index)'),
-  showExistingExtensions: z.boolean().optional().default(true)
-    .describe('Show which extension points are already wrapped/subscribed by existing extensions'),
+  // Default OFF: enumerating existing extensions can roughly double the response size.
+  // Opt in only when you want to see who already wraps/subscribes.
+  showExistingExtensions: z.boolean().optional().default(false)
+    .describe('Show which extension points are already wrapped/subscribed by existing extensions (opt-in)'),
 });
 
 export async function analyzeExtensionPointsTool(request: CallToolRequest, context: XppServerContext) {

@@ -2,7 +2,7 @@
 
 <!-- Mirrors rules from xpp_system_instructions MCP prompt (src/prompts/systemInstructions.ts). Keep in sync. -->
 
-This workspace contains D365FO code. **Always use the specialized MCP tools** — backed by a pre-indexed symbol database with 584,799+ D365FO objects. Built-in file/search tools do not understand X++ syntax or AOT structure.
+This workspace contains D365FO code. **Always use the specialized MCP tools** — backed by a pre-indexed symbol database with hundreds of thousands of D365FO objects. Built-in file/search tools do not understand X++ syntax or AOT structure.
 
 ---
 
@@ -23,7 +23,23 @@ MCP rules apply **only to D365FO objects** (`.xml`/`.xpp`, AOT objects, labels, 
 - **`.rnrproj`** = D365FO project → managed by MCP (`addToProject=true`). NEVER edit directly.
 - **`.csproj`** = C# project → use built-in tools.
 
-## 🔌 MANDATORY FIRST CHECK
+## � HOW READS ARE RESOLVED (read-path policy)
+
+Info tools (`get_class_info`, `get_table_info`, `get_form_info`, `get_view_info`, `get_query_info`, `get_report_info`, `get_table_extension_info`, `find_coc_extensions`, `analyze_extension_points`) resolve data in this order:
+
+1. **C# bridge** — live `IMetadataProvider` from the running D365FO instance. Authoritative when available.
+2. **SQLite symbol index** — pre-built mirror. Used when the bridge is offline (Azure, write-only mode, build agents).
+3. **Filesystem parse** — last resort for objects created in the current session and not yet indexed. Scanner has a 3 s budget, 30 s result cache, and can be disabled in production with `D365FO_DISABLE_FS_FALLBACK=true`.
+
+You never need to pick the source manually — just call the tool. If you see `⚠️ Served from symbol index` or `⚠️ Not yet in bridge metadata`, the bridge was unavailable and the tool already fell back.
+
+## 🛡️ WRITE-PATH SAFETY
+
+All write operations (`modify_d365fo_file`, `create_d365fo_file`) only accept paths that live under a configured `PackagesLocalDirectory/<Package>/<Model>/Ax<Type>/<Name>.xml`. Arbitrary paths are rejected.
+
+---
+
+## �🔌 MANDATORY FIRST CHECK
 
 **Call `get_workspace_info()` before doing anything.**
 
@@ -145,40 +161,39 @@ VS 2022 shows only "ran tool_name" — no output. **Always** write 1 sentence be
 
 ## Non-Negotiable Rules
 
-1. **NEVER** use built-in file/edit tools on `.xml`/`.xpp` files
+1. **NEVER** use built-in file/edit tools (`create_file`, `replace_string_in_file`, `read_file`, `grep_search`…) on `.xml`/`.xpp`/`.label.txt`/`.rnrproj` files — use the matching D365FO MCP tool
 2. **NEVER** guess method signatures — call `get_method_signature` before CoC
-3. **NEVER** use `create_file` for D365FO objects — use `create_d365fo_file()`
-4. **NEVER** call `create_d365fo_file` without `projectPath` or `solutionPath`
-5. **NEVER** edit `.label.txt` directly — use `create_label()`; search first with `search_labels()`
-6. **ALWAYS** pass `fieldsHint` for tables, `primaryKeyFields` for composite PKs
-7. **ALWAYS** pass `methods=["find","exist"]` to `generate_smart_table()` when needed — don't add after
-8. **NEVER** include model prefix in `name` param of `generate_smart_*` — auto-applied
-9. **NEVER** use `get_enum_info()` for EDTs — use `get_edt_info()`
-10. **NEVER** infer target model from search results — always use model from `.mcp.json`
-11. **NEVER** create AxReport with `create_file` — use `create_d365fo_file(objectType="report")`
-12. Security types: `security-privilege` → `AxSecurityPrivilege`, `security-duty` → `AxSecurityDuty`, `security-role` → `AxSecurityRole` — NEVER mix them
-13. Class member variables go **inside** class `{ }` in `sourceCode` — outside = lost
-14. **NEVER** use `today()` — use `DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone())`
-15. **NEVER** call functions in `WHERE` clauses — assign to variable first
-16. **NEVER** use hardcoded strings in `Info()`/`warning()`/`error()` — use `@Model:Label`
-17. **NEVER** nest `while select` loops — use `join` or pre-load to `Map`/temp table
-18. **ALWAYS** call `create_label()` before referencing new labels in code. **Exception:** when adding a field to a table/table-extension with an EDT that already has a label defined, do **NOT** set a label on the field — the field inherits the label from the EDT automatically. Only set `label` on a field when deliberately overriding the EDT's label.
-19. **ALWAYS** write meaningful `/// <summary>` on public/protected classes and methods
-20. **NEVER** call `[SysObsolete]` methods — read the attribute for the replacement
-21. **NEVER** switch project autonomously via `get_workspace_info(projectName=...)` — ask user
-22. **ALWAYS** call `get_d365fo_error_help()` for D365FO errors — don't guess fixes
-23. CoC class extension: `create_d365fo_file(objectType="class-extension", objectName="{Target}{Prefix}_Extension")`
-24. Standard data events use `[DataEventHandler]` — NOT `[SubscribesTo + delegateStr]`. `delegateStr` is for custom delegates only.
-25. SDLC tools (`run_bp_check`, `build_d365fo_project`, `trigger_db_sync`, `run_systest_class`) auto-detect params from `.mcp.json`. If they error about missing binaries, fix `.mcp.json`.
-26. `review_workspace_changes` = git diff code review only. NOT for verifying modify/create success.
-27. `get_form_info` works for ALL forms (standard + custom). If ⚠️ warning, retry with `filePath=`.
-28. **NEVER run `build_d365fo_project()` automatically.** Builds take a long time and block the user. After completing changes, inform the user that changes are done and they can build manually when ready — e.g. *"Changes applied. Run a build when you're ready to validate."* Only run `build_d365fo_project()` when the user explicitly requests it ("build", "compile", "check errors"). If the build reports X++ errors, fix them immediately using `modify_d365fo_file` and rebuild until clean.
-29. **"Check best practices" / "BP check" → ALWAYS call `run_bp_check()`**. NEVER manually iterate `get_method_source` to review code for BP compliance — the BP checker tool is authoritative and covers all rules.
+3. **NEVER** call `create_d365fo_file` without `projectPath` or `solutionPath`
+4. **ALWAYS** search labels with `search_labels()` first; create via `create_label()`
+5. **ALWAYS** pass `fieldsHint` for tables, `primaryKeyFields` for composite PKs
+6. **ALWAYS** pass `methods=["find","exist"]` to `generate_smart_table()` when needed — don't add after
+7. **NEVER** include model prefix in `name` of `generate_smart_*` — auto-applied. Pass base name without prefix: `objectName="InventByZones"` + `modelName="ContosoExt"` → `ContosoExtInventByZones`.
+8. **NEVER** use `get_enum_info()` for EDTs — use `get_edt_info()`
+9. **NEVER** infer target model from search results — always use model from `.mcp.json`
+10. Security types: `security-privilege` → `AxSecurityPrivilege`, `security-duty` → `AxSecurityDuty`, `security-role` → `AxSecurityRole` — NEVER mix
+11. Class member variables go **inside** class `{ }` in `sourceCode` — outside = lost
+12. **NEVER** use `today()` — use `DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone())`
+13. **NEVER** call functions in `WHERE` clauses — assign to variable first
+14. **NEVER** use hardcoded strings in `Info()`/`warning()`/`error()` — use `@Model:Label`
+15. **NEVER** nest `while select` loops — use `join` or pre-load to `Map`/temp table
+16. **ALWAYS** call `create_label()` before referencing new labels in code. **Exception:** when adding a field to a table/table-extension with an EDT that already has a label defined, do **NOT** set a label on the field — the field inherits the label from the EDT automatically. Only set `label` on a field when deliberately overriding the EDT's label.
+17. **ALWAYS** write meaningful `/// <summary>` on public/protected classes and methods
+18. **NEVER** call `[SysObsolete]` methods — read the attribute for the replacement
+19. **NEVER** switch project autonomously via `get_workspace_info(projectName=...)` — ask user
+20. **ALWAYS** call `get_d365fo_error_help()` for D365FO errors — don't guess fixes
+21. CoC class extension: `create_d365fo_file(objectType="class-extension", objectName="{Target}{Prefix}_Extension")`
+22. Standard data events use `[DataEventHandler]` — NOT `[SubscribesTo + delegateStr]`. `delegateStr` is for custom delegates only.
+23. SDLC tools (`run_bp_check`, `build_d365fo_project`, `trigger_db_sync`, `run_systest_class`) auto-detect params from `.mcp.json`. If they error about missing binaries, fix `.mcp.json`.
+24. `review_workspace_changes` = git diff code review only. NOT for verifying modify/create success.
+25. `get_form_info` works for ALL forms (standard + custom). If ⚠️ warning, retry with `filePath=`.
+26. **NEVER run `build_d365fo_project()` automatically.** Builds block the user. After completing changes, say *"Changes applied. Run a build when you're ready to validate."* Only build on explicit request ("build", "compile", "check errors"). If the build reports X++ errors, fix them via `modify_d365fo_file` and rebuild until clean.
+27. **"Check best practices" / "BP check" → ALWAYS call `run_bp_check()`**. NEVER manually iterate `get_method_source` to review code for BP compliance — the BP checker is authoritative.
 
 ### AxClass sourceCode Format
 
+Class member variables go **inside** the class braces; methods stay at top level of the `sourceCode` string:
+
 ```xpp
-// ✅ Variables inside class {}
 public class MyClass extends MyBase
 {
     int counter;
@@ -191,10 +206,6 @@ public void myMethod() { ... }
 
 - **Azure/Linux** (response says "Azure/Linux"): tool returns XML → call `create_d365fo_file(xmlContent=..., addToProject=true)`
 - **Windows** (response says "DO NOT call create_d365fo_file"): file already written → STOP
-
-### Prefix Handling
-
-Pass base name without prefix: `objectName="InventByZones"` + `modelName="ContosoExt"` → creates `ContosoExtInventByZones`. Double-prefix auto-prevented. NEVER bypass with `create_file`.
 
 ---
 

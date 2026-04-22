@@ -15,6 +15,7 @@ import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from 
 import { isStandardModel } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { resolveDbPathLocally } from '../utils/metadataResolver.js';
+import { assertWritePathAllowed } from '../utils/pathContainment.js';
 import {
   bridgeValidateAfterWrite, canBridgeModify,
   bridgeAddMethod, bridgeRemoveMethod, bridgeAddField, bridgeSetProperty, bridgeReplaceCode,
@@ -433,6 +434,14 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       );
     }
 
+    // 1a. Path containment guard — every write target must live under a configured
+    //     <PackagesLocalDirectory>/<Package>/<Model>/Ax<Type>/<File>.xml layout.
+    //     Refuses path traversal via explicit filePath or JSON sourcePath (security-critical).
+    const containment = await assertWritePathAllowed(filePath, modelName);
+    if (!containment.ok) {
+      throw new Error(containment.reason || 'Path containment check failed');
+    }
+
     // 1b. Model-ownership guard: refuse to modify objects in standard Microsoft models.
     // This prevents accidental writes to ApplicationSuite, ApplicationFoundation, etc.
     const resolvedModelFromPath = extractModelFromFilePath(filePath);
@@ -462,7 +471,12 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       if (trimmed.startsWith('{')) {
         const data = JSON.parse(fileContent);
         if (data.sourcePath) {
-          actualFilePath = data.sourcePath;
+          // Re-validate the indirect path: sourcePath also comes from user-influenced data.
+          const srcContainment = await assertWritePathAllowed(data.sourcePath, modelName);
+          if (!srcContainment.ok) {
+            throw new Error(`sourcePath rejected: ${srcContainment.reason}`);
+          }
+          actualFilePath = srcContainment.canonicalPath || data.sourcePath;
         } else {
           throw new Error(`Metadata file has no sourcePath: ${filePath}`);
         }

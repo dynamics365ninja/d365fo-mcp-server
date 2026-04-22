@@ -236,7 +236,11 @@ with VS 2022's `.mcp.json` parser.
 | `D365FO_CUSTOM_PACKAGES_PATH` | Optional | UDE: custom X++ code root. |
 | `D365FO_MICROSOFT_PACKAGES_PATH` | Optional | UDE: Microsoft X++ root. |
 | `MCP_SERVER_MODE` | No | `full` (default), `read-only`, or `write-only`. Only needed in hybrid setups. |
-| `MCP_TOOL_TIMEOUT_MS` | No | HTTP transport per-request timeout in ms (default: 120000). Increase if Azure queries time out. |
+| `MCP_TOOL_TIMEOUT_MS` | No | Default HTTP transport per-request timeout in ms (default: 120000). Acts as the catch-all ceiling for tools not in the fast/heavy class below. |
+| `MCP_TOOL_TIMEOUT_FAST_MS` | No | Per-tool timeout (ms) for fast read tools: `search`, `batch_search`, `get_*_info`, `search_labels`, `get_label_info`. Default: 30000. Raise on slow storage (Azure SMB). |
+| `MCP_TOOL_TIMEOUT_HEAVY_MS` | No | Per-tool timeout (ms) for heavy tools: `build_d365fo_project`, `trigger_db_sync`, `run_bp_check`, `run_systest_class`, `update_symbol_index`. Default: 600000 (10 min). |
+| `D365FO_FS_SCAN_TIMEOUT_MS` | No | Budget (ms) for the filesystem extension-scanner fallback (table/form/class extension lookup). Default: 3000. |
+| `D365FO_DISABLE_FS_FALLBACK` | No | `true` disables the disk scan that runs when the symbol index has no data for an extension. Recommended in production where the index is authoritative and a stale scan would mask missing data. |
 | `MCP_FORCE_HTTP` | No | Set to `true` to prevent stdio mode even when stdin is piped (rare). |
 | `ENV_FILE` | No | Absolute or relative path to a `.env` file. When set, the server loads that file instead of the default repo-root `.env`. Use this to run multiple instances of the server from a single installation — each instance has its own `.env` with its own `PORT`, `DB_PATH`, and `METADATA_PATH`. Relative paths in `DB_PATH`, `LABELS_DB_PATH`, and `METADATA_PATH` inside the target file are resolved relative to that file's directory. See [Scenario F in SETUP.md](SETUP.md#scenario-f-multiple-instances--one-machine-multiple-d365fo-environments). |
 | `DEBUG_LOGGING` | No | Set to `true` to enable verbose raw JSON-RPC trace on stderr. Every message VS 2022 sends to the server (`[VS→MCP]`) and every reply the server sends back (`[MCP→VS]`) is printed with a relative timestamp. Useful for diagnosing handshake failures or unexpected tool responses. Works in both stdio and HTTP mode. |

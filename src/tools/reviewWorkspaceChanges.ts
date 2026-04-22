@@ -10,6 +10,9 @@ async function git(args: string[], cwd: string): Promise<string> {
     cwd,
     windowsHide: true,
     maxBuffer: 1024 * 1024 * 10,
+    // Bound runtime so a misbehaving git process (large repo, hung transport,
+    // credential prompt) can never hold the tool thread indefinitely.
+    timeout: 30_000,
   });
   return stdout;
 }
