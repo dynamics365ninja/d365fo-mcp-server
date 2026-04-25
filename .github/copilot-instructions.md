@@ -217,16 +217,62 @@ VS 2022 shows only "ran tool_name" — no output. **Always** write 1 sentence be
 
 Follow the `select` statement contract from Microsoft Learn (link above). Key non-negotiables for generated code:
 
+**Statement order (grammar-enforced):**
+```
+select [FindOption…] [FieldList from] tableBuffer [index…] [order by / group by] [where …] [join … [where …]]
+```
+- `FindOption` keywords (`crossCompany`, `firstOnly`, `forUpdate`, `forceNestedLoop`, `forceSelectOrder`, `forcePlaceholders`, `pessimisticLock`, `optimisticLock`, `repeatableRead`, `validTimeState`, `noFetch`, `reverse`, `firstFast`) go **between `select` and the table buffer / field list** — never after the buffer, never on a joined buffer (with the documented exception of `forUpdate` which can target a specific buffer in a join).
+- `order by` / `group by` / `where` must appear **after the LAST `join` clause**, not between two joins. Multiple `group by` clauses are allowed but only one of them can table-qualify a field.
+
+**Buffer placement of FindOptions (the gotcha the user reported):**
+- **`crossCompany` belongs on the OUTER select (first/driving buffer).** It is a query-level option, not a per-table option. Putting it on a joined buffer is wrong even when "the joined buffer is the one we need data from across companies".
+  ```xpp
+  // ✅ CORRECT
+  select crossCompany custTable
+      join custInvoiceJour
+      where custInvoiceJour.OrderAccount == custTable.AccountNum;
+
+  // ❌ WRONG — crossCompany on the joined buffer
+  select custTable
+      join crossCompany custInvoiceJour
+      where …;
+  ```
+- Optional company filter: `select crossCompany : myContainer custTable …` where `myContainer` is `container` or expression of type container (e.g. `(['dat'] + ['dmo'])`). Without the colon-list, all authorized companies are scanned.
+
+**`in` operator — what it accepts (the second user-reported gotcha):**
+- Grammar: `where Expression in List` where `List` = "an array of values" — i.e. an X++ **`container`**.
+- Works with **any primitive type** that fits in a container: `str`, `int`, `int64`, `real`, `enum`, `boolean`, `date`, `utcDateTime`, `RecId`. **NOT enum-only.** The user's report ("works only on enum") is incorrect — but the practical pattern in MS code most often uses enum containers, which is probably why it appeared that way.
+- Does NOT accept: a `Set`, `List` (the X++ collection class), `Map`, table buffer, or another `select` subquery.
+- Build the container with `[v1, v2, v3]` literal or by concatenation `(c1 + c2)`. Empty container = no rows match (do not pass an empty container expecting "all rows").
+- Only ONE `in` clause per `where` (grammar: `WhereClause = where Expression InClause` — single `InClause`). For multiple set filters, AND them: `where a in c1 && b in c2`.
+- Example:
+  ```xpp
+  container postingTypes = [LedgerPostingType::PurchStdProfit, LedgerPostingType::PurchStdLoss];
+  container accounts = ['1000', '2000', '3000'];
+  select sum(CostAmountAdjustment) from inventSettlement
+      where inventSettlement.OperationsPosting in postingTypes
+        && inventSettlement.LedgerAccount in accounts;
+  ```
+- ❌ NEVER do `inventSettlement.OperationsPosting == LedgerPostingType::A || inventSettlement.OperationsPosting == LedgerPostingType::B || …` — refactor to `in container`.
+
+**Other Learn-confirmed rules:**
 - **Field list before table** when you don't need the full row: `select FieldA, FieldB from myTable where …` — never `select * from` style.
-- **`firstOnly`** when you expect at most one row (after `select`, before `from`): `select firstOnly custTable where …`.
+- **`firstOnly`** when you expect at most one row. Cannot be combined with the `next` statement (Learn explicit warning).
 - **`forUpdate`** required before any `.update()` / `.delete()` inside the same transaction; pair with `ttsbegin`/`ttscommit`.
 - **`exists join` / `notExists join`** instead of nested `while select` for filter-only joins.
-- **`outer join`** is supported but use sparingly — verify field nullability semantics on Learn.
-- **Index hints**: only when you have measured a regression — never speculative.
-- **Aggregates** (`sum`, `avg`, `count`, `minof`, `maxof`) require `group by` for the non-aggregated fields; verify on Learn before composing.
-- **No function calls in `where`** — assign to a local variable first (rule 13).
+- **`outer join`** — there is only LEFT outer; **no RIGHT outer, no `left` keyword**. Default values fill non-matching rows (0 for int, "" for str, etc.) — check explicitly with the joined buffer's `RecId` if you need to distinguish "no match" from "real zero".
+- **Join criteria use `where`, not `on`.** X++ has no `on` keyword.
+- **`index hint`** requires `myTable.allowIndexHint(true)` to be called BEFORE the select — otherwise the hint is silently ignored. Only use when you have measured a regression — never speculative.
+- **`index` (without `hint`)** = sort-only request, always honored.
+- **Aggregates** (`sum`, `avg`, `count`, `minof`, `maxof`):
+  - `sum` / `avg` / `count` work only on integer/real fields (Learn explicit).
+  - When `sum` would return null (no matching rows), X++ returns NO row — guard with `if (buffer)` after the select.
+  - Non-aggregated fields in the select list must be in `group by`.
+- **`forceLiterals`** is forbidden — SQL injection risk (Learn explicit warning). Use `forcePlaceholders` (default for non-join selects) or omit.
+- **No function calls in `where`** — assign to a local variable first (rule 13). Same applies to `joins`/`order by`/`group by`.
 - **No nested `while select`** — use `join` or pre-load to `Map`/temp table (rule 15).
-- **`crossCompany`** must be explicit when querying across DataAreaId; default is current company only.
+- **`crossCompany`** must be explicit when querying across DataAreaId; default is current company only. See buffer-placement rule above.
+- **`validTimeState(dateFrom, dateTo)`** for date-effective tables (tables with `ValidTimeStateFieldType ≠ None`). Don't query date-effective tables without it unless you specifically want all historical rows.
 - **`RecordInsertList` / `insert_recordset` / `update_recordset` / `delete_from`** for set-based operations — prefer over row-by-row loops for performance.
 
 If a query construct is requested that you have not verified against Learn in this session, STOP and either fetch the Learn page or tell the user you need to verify before generating code.

@@ -301,17 +301,53 @@ Division of authority:
 
 Follow the \`select\` statement contract from Microsoft Learn (link above). Non-negotiables for generated code:
 
-- **Field list before table** when you don't need the full row: \`select FieldA, FieldB from myTable where …\` — never \`select * from\` style.
-- **\`firstOnly\`** when you expect at most one row (after \`select\`, before \`from\`).
-- **\`forUpdate\`** required before any \`.update()\` / \`.delete()\` inside the same transaction; pair with \`ttsbegin\`/\`ttscommit\`.
+**Statement order (grammar-enforced):**
+\`\`\`
+select [FindOption…] [FieldList from] tableBuffer [index…] [order by / group by] [where …] [join … [where …]]
+\`\`\`
+- \`FindOption\` keywords (\`crossCompany\`, \`firstOnly\`, \`forUpdate\`, \`forceNestedLoop\`, \`forceSelectOrder\`, \`forcePlaceholders\`, \`pessimisticLock\`, \`optimisticLock\`, \`repeatableRead\`, \`validTimeState\`, \`noFetch\`, \`reverse\`, \`firstFast\`) go **between \`select\` and the table buffer / field list**.
+- \`order by\` / \`group by\` / \`where\` must appear **after the LAST \`join\` clause**, not between two joins.
+
+**Buffer placement of FindOptions — common mistakes:**
+- **\`crossCompany\` belongs on the OUTER select (first/driving buffer).** It is a query-level option, not a per-table option. Putting it on a joined buffer is wrong even when "the joined buffer is the one we need data from across companies".
+  \`\`\`xpp
+  // ✅ CORRECT
+  select crossCompany custTable
+      join custInvoiceJour
+      where custInvoiceJour.OrderAccount == custTable.AccountNum;
+
+  // ❌ WRONG — crossCompany on the joined buffer
+  select custTable
+      join crossCompany custInvoiceJour where …;
+  \`\`\`
+- Optional company filter: \`select crossCompany : myContainer custTable …\` where \`myContainer\` is a \`container\`. Without the colon-list, all authorized companies are scanned.
+
+**\`in\` operator — what it accepts:**
+- Grammar: \`where Expression in List\` where \`List\` = "an array of values" — i.e. an X++ **\`container\`**.
+- Works with **any primitive type** that fits in a container: \`str\`, \`int\`, \`int64\`, \`real\`, \`enum\`, \`boolean\`, \`date\`, \`utcDateTime\`, \`RecId\`. **NOT enum-only.** Practical MS code most often uses enum containers, which can give the false impression of an enum-only restriction.
+- Does NOT accept: a \`Set\`, X++ \`List\` collection class, \`Map\`, table buffer, or another \`select\` subquery.
+- Build the container with \`[v1, v2, v3]\` literal or by concatenation \`(c1 + c2)\`. Empty container = no rows match.
+- Only ONE \`in\` clause per \`where\` — for multiple set filters, AND them: \`where a in c1 && b in c2\`.
+- ❌ NEVER do long chains of \`field == X || field == Y || field == Z\` — refactor to \`in container\`.
+
+**Other Learn-confirmed rules:**
+- **Field list before table** when you don't need the full row.
+- **\`firstOnly\`** when you expect at most one row. Cannot be combined with the \`next\` statement.
+- **\`forUpdate\`** required before any \`.update()\` / \`.delete()\` inside the same transaction.
 - **\`exists join\` / \`notExists join\`** instead of nested \`while select\` for filter-only joins.
-- **\`outer join\`** supported but use sparingly — verify field nullability on Learn.
-- **Index hints** only when measured — never speculative.
-- **Aggregates** (\`sum\`, \`avg\`, \`count\`, \`minof\`, \`maxof\`) require \`group by\` for non-aggregated fields; verify on Learn before composing.
+- **\`outer join\`** — only LEFT outer; **no RIGHT outer, no \`left\` keyword**. Default values fill non-matching rows; check joined buffer's \`RecId\` to distinguish "no match" from "real zero".
+- **Join criteria use \`where\`, not \`on\`** — X++ has no \`on\` keyword.
+- **\`index hint\`** requires \`buffer.allowIndexHint(true)\` to be called first; otherwise silently ignored. Use only when measured.
+- **Aggregates** (\`sum\`, \`avg\`, \`count\`, \`minof\`, \`maxof\`):
+  - \`sum\` / \`avg\` / \`count\` work only on integer/real fields.
+  - When \`sum\` would be null, X++ returns NO row — guard with \`if (buffer)\` after the select.
+  - Non-aggregated fields in the select list must be in \`group by\`.
+- **\`forceLiterals\`** is forbidden — SQL injection risk. Use \`forcePlaceholders\` (default for non-join selects) or omit.
 - **No function calls in \`where\`** — assign to a local variable first.
 - **No nested \`while select\`** — use \`join\` or pre-load to \`Map\`/temp table.
-- **\`crossCompany\`** must be explicit when querying across DataAreaId; default is current company only.
-- **\`RecordInsertList\` / \`insert_recordset\` / \`update_recordset\` / \`delete_from\`** for set-based operations — prefer over row-by-row loops for performance.
+- **\`crossCompany\`** explicit when querying across DataAreaId; default is current company only.
+- **\`validTimeState(dateFrom, dateTo)\`** for date-effective tables (\`ValidTimeStateFieldType ≠ None\`).
+- **\`RecordInsertList\` / \`insert_recordset\` / \`update_recordset\` / \`delete_from\`** for set-based operations — prefer over row-by-row loops.
 
 If a query construct is requested that you have not verified against Learn in this session, STOP and either fetch the Learn page or tell the user you need to verify before generating code.
 
