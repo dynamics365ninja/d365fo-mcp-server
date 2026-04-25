@@ -116,6 +116,18 @@ Use this guide to select the correct tool:
 - Example of WRONG reasoning: task involves a report → search returns objects from "ContosoReports" → ❌ DO NOT use "ContosoReports" as the model. Use the configured model from .mcp.json.
 - **NEVER switch projects autonomously.** The MCP server auto-detects the correct project from the VS 2022 workspace. Do NOT call get_workspace_info(projectName=...) because you think the task belongs to a different model \u2014 the user decides which solution to open; you work within it. If you believe a different model is needed, ASK the user first.
 
+### 1b. dryRun Review Workflow (VS 2022 has no Keep/Undo UI)
+**\`dryRun=true\` is MANDATORY for every \`modify_d365fo_file\` call.** VS 2022's GitHub Copilot Chat does not display per-edit Keep/Undo buttons, so the diff must be reviewed in chat before disk is touched.
+
+Required sequence for every modification:
+1. Call \`modify_d365fo_file\` with \`dryRun=true\` → present the returned diff to the user.
+2. Wait for explicit confirmation ("apply", "ok", "yes", etc.).
+3. Re-call the SAME operation with \`dryRun=false\`.
+
+Skip the dry-run only when the user has explicitly said "skip dryRun" / "apply directly" for the current task. Batched operations (multiple \`modify_d365fo_file\` calls in a row) require dry-run for EACH call — never apply a chain of edits without per-step confirmation.
+
+**Git checkpointing (recommended):** Before non-trivial multi-file tasks, suggest the user create a feature branch (\`git switch -c mcp/<task-name>\`) so changes can be reviewed/discarded via VS 2022 → *View → Git Changes*. Do NOT create branches autonomously — propose and wait for the user.
+
 ### 2. Method Signatures
 **Before creating Chain of Command extensions:**
 1. Call \`get_method_signature(className, methodName)\` - get exact signature

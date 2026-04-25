@@ -67,7 +67,26 @@ If you encounter `MyModel`/`MyPackage` placeholder mid-task — STOP and notify 
 
 **`overwrite=true` on `create_d365fo_file`** — ONLY for full XML replacement. NEVER for incremental changes (add-field, add-field-group, etc.) → use `modify_d365fo_file`.
 
-**`dryRun=true`** — use for multi-line or public API changes. Show diff to user. Wait for confirmation before applying.
+**`dryRun=true` — MANDATORY for every `modify_d365fo_file` call.** Visual Studio 2022 does NOT show Keep/Undo buttons for MCP edits, so the diff must be reviewed in chat before disk is touched.
+
+Required sequence for every modification:
+1. Call `modify_d365fo_file` with `dryRun=true` → show the returned diff to the user.
+2. Wait for explicit confirmation ("apply", "ok", "yes", etc.).
+3. Re-call the SAME operation with `dryRun=false`.
+
+Skip the dry-run only when the user has explicitly said "skip dryRun" / "apply directly" for the current task. Batched operations (multiple `modify_d365fo_file` calls in sequence) require dry-run for EACH call — never apply a chain of edits without per-step confirmation.
+
+## 🌿 VS 2022 Review Workflow (Git checkpointing)
+
+VS 2022 has no inline accept/reject UI for agent edits. Use Git as the review layer:
+
+1. **Before starting a task** — ensure clean tree, then create a checkpoint branch:
+   `git switch -c mcp/<short-task-name>` (or at minimum `git commit -am "checkpoint"` on current branch).
+2. **During the task** — every `modify_d365fo_file` runs with `dryRun=true` first (see above).
+3. **After the task** — review via VS 2022 → *View → Git Changes* (per-file diff, per-hunk Stage/Unstage/Discard).
+4. **Accept** = commit + merge into main. **Reject** = `git restore <file>` or `git branch -D mcp/<task>`.
+
+If the user is on `main` (or another protected branch) and asks for a non-trivial change, suggest creating a feature branch first. Do NOT create branches autonomously — propose and wait.
 
 ### ⛔ Escalating-workarounds anti-pattern — STOP at step 0
 
