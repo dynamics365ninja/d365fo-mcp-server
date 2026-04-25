@@ -116,6 +116,18 @@ Use this guide to select the correct tool:
 - Example of WRONG reasoning: task involves a report → search returns objects from "ContosoReports" → ❌ DO NOT use "ContosoReports" as the model. Use the configured model from .mcp.json.
 - **NEVER switch projects autonomously.** The MCP server auto-detects the correct project from the VS 2022 workspace. Do NOT call get_workspace_info(projectName=...) because you think the task belongs to a different model \u2014 the user decides which solution to open; you work within it. If you believe a different model is needed, ASK the user first.
 
+### 1b. dryRun Review Workflow (VS 2022 has no Keep/Undo UI)
+**\`dryRun=true\` is MANDATORY for every \`modify_d365fo_file\` call.** VS 2022's GitHub Copilot Chat does not display per-edit Keep/Undo buttons, so the diff must be reviewed in chat before disk is touched.
+
+Required sequence for every modification:
+1. Call \`modify_d365fo_file\` with \`dryRun=true\` → present the returned diff to the user.
+2. Wait for explicit confirmation ("apply", "ok", "yes", etc.).
+3. Re-call the SAME operation with \`dryRun=false\`.
+
+Skip the dry-run only when the user has explicitly said "skip dryRun" / "apply directly" for the current task. Batched operations (multiple \`modify_d365fo_file\` calls in a row) require dry-run for EACH call — never apply a chain of edits without per-step confirmation.
+
+**Git checkpointing (recommended):** Before non-trivial multi-file tasks, suggest the user create a feature branch (\`git switch -c mcp/<task-name>\`) so changes can be reviewed/discarded via VS 2022 → *View → Git Changes*. Do NOT create branches autonomously — propose and wait for the user.
+
 ### 2. Method Signatures
 **Before creating Chain of Command extensions:**
 1. Call \`get_method_signature(className, methodName)\` - get exact signature
@@ -260,7 +272,7 @@ When generating X++ code after gathering context:
 ## When to Use General Knowledge
 
 You may use general knowledge for:
-- X++ syntax (if, while, for, select statements)
+- X++ syntax (if, while, for, select statements) — **only if certain**; otherwise consult Microsoft Learn (see below)
 - Standard framework patterns (RunBase, SysOperation)
 - Best practices and design patterns
 - Visual Studio IDE usage
@@ -271,6 +283,132 @@ You may use general knowledge for:
 - Creating D365FO files
 - Discovering patterns and implementations
 - Method/API usage
+
+## Authoritative X++ Syntax Source — Microsoft Learn
+
+When uncertain about X++ syntax, language constructs, framework APIs, or platform behavior, the **only** authoritative source is the Microsoft Learn \`dynamics365/fin-ops-core/dev-itpro\` documentation tree. Do NOT guess and do NOT rely on AX 2012 / older training data.
+
+Key references (fetch via \`fetch_webpage\` if available, otherwise tell the user you need to verify):
+- \`select\` statement, joins, ranges, field lists, \`firstOnly\`, \`forUpdate\`, \`pessimisticLock\`, \`crossCompany\`: <https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/dev-ref/xpp-data/xpp-select-statement>
+- General developer landing page: <https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/dev-tools/developer-home-page>
+- X++ language reference root: <https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/dev-ref/xpp-language-reference>
+
+Division of authority:
+- **Microsoft Learn** = HOW the syntax is written (e.g. "how is \`while select\` constructed").
+- **MCP tools** = WHAT exists in this environment (e.g. "does field \`BalanceMST\` exist on \`CustTable\`").
+
+### X++ Database Query Rules (\`select\` / \`while select\`)
+
+Follow the \`select\` statement contract from Microsoft Learn (link above). Non-negotiables for generated code:
+
+**Statement order (grammar-enforced):**
+\`\`\`
+select [FindOption…] [FieldList from] tableBuffer [index…] [order by / group by] [where …] [join … [where …]]
+\`\`\`
+- \`FindOption\` keywords (\`crossCompany\`, \`firstOnly\`, \`forUpdate\`, \`forceNestedLoop\`, \`forceSelectOrder\`, \`forcePlaceholders\`, \`pessimisticLock\`, \`optimisticLock\`, \`repeatableRead\`, \`validTimeState\`, \`noFetch\`, \`reverse\`, \`firstFast\`) go **between \`select\` and the table buffer / field list**.
+- \`order by\` / \`group by\` / \`where\` must appear **after the LAST \`join\` clause**, not between two joins.
+
+**Buffer placement of FindOptions — common mistakes:**
+- **\`crossCompany\` belongs on the OUTER select (first/driving buffer).** It is a query-level option, not a per-table option. Putting it on a joined buffer is wrong even when "the joined buffer is the one we need data from across companies".
+  \`\`\`xpp
+  // ✅ CORRECT
+  select crossCompany custTable
+      join custInvoiceJour
+      where custInvoiceJour.OrderAccount == custTable.AccountNum;
+
+  // ❌ WRONG — crossCompany on the joined buffer
+  select custTable
+      join crossCompany custInvoiceJour where …;
+  \`\`\`
+- Optional company filter: \`select crossCompany : myContainer custTable …\` where \`myContainer\` is a \`container\`. Without the colon-list, all authorized companies are scanned.
+
+**\`in\` operator — what it accepts:**
+- Grammar: \`where Expression in List\` where \`List\` = "an array of values" — i.e. an X++ **\`container\`**.
+- Works with **any primitive type** that fits in a container: \`str\`, \`int\`, \`int64\`, \`real\`, \`enum\`, \`boolean\`, \`date\`, \`utcDateTime\`, \`RecId\`. **NOT enum-only.** Practical MS code most often uses enum containers, which can give the false impression of an enum-only restriction.
+- Does NOT accept: a \`Set\`, X++ \`List\` collection class, \`Map\`, table buffer, or another \`select\` subquery.
+- Build the container with \`[v1, v2, v3]\` literal or by concatenation \`(c1 + c2)\`. Empty container = no rows match.
+- Only ONE \`in\` clause per \`where\` — for multiple set filters, AND them: \`where a in c1 && b in c2\`.
+- ❌ NEVER do long chains of \`field == X || field == Y || field == Z\` — refactor to \`in container\`.
+
+**Other Learn-confirmed rules:**
+- **Field list before table** when you don't need the full row.
+- **\`firstOnly\`** when you expect at most one row. Cannot be combined with the \`next\` statement.
+- **\`forUpdate\`** required before any \`.update()\` / \`.delete()\` inside the same transaction.
+- **\`exists join\` / \`notExists join\`** instead of nested \`while select\` for filter-only joins.
+- **\`outer join\`** — only LEFT outer; **no RIGHT outer, no \`left\` keyword**. Default values fill non-matching rows; check joined buffer's \`RecId\` to distinguish "no match" from "real zero".
+- **Join criteria use \`where\`, not \`on\`** — X++ has no \`on\` keyword.
+- **\`index hint\`** requires \`buffer.allowIndexHint(true)\` to be called first; otherwise silently ignored. Use only when measured.
+- **Aggregates** (\`sum\`, \`avg\`, \`count\`, \`minof\`, \`maxof\`):
+  - \`sum\` / \`avg\` / \`count\` work only on integer/real fields.
+  - When \`sum\` would be null, X++ returns NO row — guard with \`if (buffer)\` after the select.
+  - Non-aggregated fields in the select list must be in \`group by\`.
+- **\`forceLiterals\`** is forbidden — SQL injection risk. Use \`forcePlaceholders\` (default for non-join selects) or omit.
+- **No function calls in \`where\`** — assign to a local variable first.
+- **No nested \`while select\`** — use \`join\` or pre-load to \`Map\`/temp table.
+- **\`crossCompany\`** explicit when querying across DataAreaId; default is current company only.
+- **\`validTimeState(dateFrom, dateTo)\`** for date-effective tables (\`ValidTimeStateFieldType ≠ None\`).
+- **\`RecordInsertList\` / \`insert_recordset\` / \`update_recordset\` / \`delete_from\`** for set-based operations — prefer over row-by-row loops.
+- **\`doInsert\` / \`doUpdate\` / \`doDelete\`** = bypass overridden \`insert\`/\`update\`/\`delete\` methods, framework code, and event handlers. **Reserved for data-fix / migration scenarios only.**
+- **SQL injection mitigation** — for dynamic queries from user input, use \`executeQueryWithParameters\` API. Never concatenate user input into a \`where\` clause; never use \`forceLiterals\`.
+- **SQL timeout** — interactive: 30 min; batch/services/OData: 3 h. Override via \`queryTimeout\` API. Catch \`Exception::Timeout\` for graceful retry.
+
+If a query construct is requested that you have not verified against Learn in this session, STOP and either fetch the Learn page or tell the user you need to verify before generating code.
+
+### Chain of Command (CoC) Authoring Rules
+
+Verified against [method-wrapping-coc](https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/extensibility/method-wrapping-coc).
+
+**🚨 NEVER copy default parameter values into the wrapper signature.** Even if the base method declares \`= defaultValue\`, the wrapper signature must NOT repeat it.
+
+\`\`\`xpp
+// Base
+public void salute(str message = "Hi") { … }
+
+// ✅ CORRECT
+public void salute(str message) { next salute(message); }
+
+// ❌ WRONG — copying the default
+public void salute(str message = "Hi") { next salute(message); }
+\`\`\`
+
+**Other CoC non-negotiables:**
+- Wrapper must always call \`next\` — except on \`[Replaceable]\` methods.
+- \`next\` must be at first-level statement scope: NOT in \`if\`/\`while\`/\`for\`, NOT after \`return\`, NOT inside a logical expression. PU21+: permitted inside \`try\`/\`catch\`/\`finally\`.
+- Signature otherwise matches base exactly (return type, param types & order, \`static\` modifier). Use \`get_method_signature\` first.
+- Static method wrappers must repeat \`static\`. Forms cannot have static-method CoC.
+- Cannot wrap constructors. New parameterless public methods on the extension class become the extension's own constructor.
+- Extension class shape: \`[ExtensionOf(<Str>(...))] final class <Target>_Extension\` — must be \`final\`.
+- \`[Hookable(false)]\` blocks CoC entirely. \`[Wrappable(false)]\` blocks wrapping; \`final\` methods need \`[Wrappable(true)]\` to be wrappable.
+- Form-nested wrapping uses \`formdatasourcestr\`, \`formdatafieldstr\`, \`formControlStr\`. Cannot add NEW methods on these via CoC — only wrap existing ones (init, validateWrite, clicked, …).
+- Wrappers can read/call **protected** members of the augmented class (PU9+); cannot reach \`private\`.
+
+### X++ Class & Method Rules
+
+Verified against [xpp-classes-methods](https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/dev-ref/xpp-classes-methods).
+
+- **Class default access = \`public\`.** Removing \`public\` does not make a class non-public. Use \`internal\`, \`final\`, \`abstract\` deliberately.
+- **Instance fields default = \`protected\`. NEVER make them \`public\`** — expose via \`parmFoo\` accessors.
+- **Constructor pattern:** one \`new()\` per class (compiler generates default if absent). Convention: \`new()\` is \`protected\`, exposed via \`public static construct()\` factory; \`init()\` for post-construction setup.
+- **Method modifier order:** \`[edit | display] [public | protected | private | internal] [static | abstract | final]\`.
+- **Override visibility:** must be at least as accessible as the base method. \`private\` is not overridable.
+- **Optional parameters** must come after required ones. Callers cannot skip — all preceding parameters must be supplied. Use \`prmIsDefault(_x)\` to detect "was this passed".
+- **All parameters are pass-by-value** — mutating a parameter does not affect the caller's variable.
+- **\`this\` rules:** required for instance method calls; cannot qualify class-declaration member variables (write the bare name); cannot be used in static methods; cannot qualify static methods (use \`ClassName::method()\`).
+- **Extension methods** (target Class/Table/View/Map): extension class must be \`static\`, name ends \`_Extension\`; methods are \`public static\`; first param is the target type, supplied by runtime.
+- **Constants over macros.** \`public const str FOO = 'bar';\` at class scope. Reference via \`ClassName::FOO\` (or unqualified inside the class).
+- **\`var\` keyword** only when the type is obvious from initialization. Skip when the type is ambiguous.
+- **Declare-anywhere is encouraged** — close to first use, smallest scope. Compiler rejects shadowing.
+
+### X++ Statement & Type Rules
+
+Verified against [xpp-conditional](https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/dev-ref/xpp-conditional) and [xpp-variables-data-types](https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/dev-ref/xpp-variables-data-types).
+
+- **\`switch\` \`break\` is required.** For multiple values to one branch use comma-list: \`case 13, 17, 21: …; break;\` — never empty fall-through.
+- **Ternary \`cond ? a : b\`** — both branches must have the same type.
+- **X++ has NO database null.** Each primitive has a "null-equivalent": \`int 0\`, \`real 0.0\`, \`str ""\`, \`date 1900-01-01\`, \`utcDateTime\` with date-part \`1900-01-01\`, \`enum\` value \`0\`. In SQL these compare false; in non-SQL they compare as ordinary values. Don't write \`if (myDate == null)\` — write \`if (!myDate)\` or \`if (myDate == dateNull())\`.
+- **Casting:** prefer \`as\` (returns null on mismatch) and \`is\` (boolean test) over hard down-casts. Late binding only for \`Object\` and \`FormRun\`.
+- **\`using\` blocks** for \`IDisposable\` — equivalent to \`try\`/\`finally { Dispose() }\`, exception-safe.
+- **Embedded local functions** read enclosing variables but cannot leak their own. Use only when the helper does not belong to the class API.
 
 ## Performance Notes
 
