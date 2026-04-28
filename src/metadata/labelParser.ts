@@ -175,7 +175,9 @@ export async function discoverLabelFiles(
 
       results.push({
         labelFileId,
-        language: locale,  // Use actual locale from filesystem (may be en-us or en-US)
+        // Normalize locale to BCP-47 canonical form (e.g. 'en-us' → 'en-US', 'es-mx' → 'es-MX')
+        // Microsoft packages on Linux use lowercase directory names; custom packages use mixed-case.
+        language: locale.split('-').map((part, i) => i === 0 ? part.toLowerCase() : part.toUpperCase()).join('-'),
         filePath: path.join(localeDir, file),
       });
     }

@@ -423,18 +423,19 @@ export class XppSymbolIndex {
     `);
 
     // Only index en-US rows to keep FTS compact (~5x smaller on typical installs)
+    // Case-insensitive: Microsoft packages store language as 'en-us' from Linux directory names
     this.labelsDb.exec(`
-      CREATE TRIGGER IF NOT EXISTS labels_ai AFTER INSERT ON labels WHEN new.language = 'en-US' BEGIN
+      CREATE TRIGGER IF NOT EXISTS labels_ai AFTER INSERT ON labels WHEN LOWER(new.language) = 'en-us' BEGIN
         INSERT INTO labels_fts(rowid, label_id, text, comment)
         VALUES (new.id, new.label_id, new.text, new.comment);
       END;
 
-      CREATE TRIGGER IF NOT EXISTS labels_ad AFTER DELETE ON labels WHEN old.language = 'en-US' BEGIN
+      CREATE TRIGGER IF NOT EXISTS labels_ad AFTER DELETE ON labels WHEN LOWER(old.language) = 'en-us' BEGIN
         INSERT INTO labels_fts(labels_fts, rowid, label_id, text, comment)
         VALUES ('delete', old.id, old.label_id, old.text, old.comment);
       END;
 
-      CREATE TRIGGER IF NOT EXISTS labels_au AFTER UPDATE ON labels WHEN old.language = 'en-US' OR new.language = 'en-US' BEGIN
+      CREATE TRIGGER IF NOT EXISTS labels_au AFTER UPDATE ON labels WHEN LOWER(old.language) = 'en-us' OR LOWER(new.language) = 'en-us' BEGIN
         INSERT INTO labels_fts(labels_fts, rowid, label_id, text, comment)
         VALUES ('delete', old.id, old.label_id, old.text, old.comment);
         INSERT INTO labels_fts(rowid, label_id, text, comment)
@@ -2603,10 +2604,11 @@ export class XppSymbolIndex {
   rebuildLabelsFts(): void {
     // Clear existing FTS index
     this.labelsDb.exec(`INSERT INTO labels_fts(labels_fts) VALUES('delete-all')`);
-    // Re-populate with en-US rows only
+    // Re-populate with en-US rows only (case-insensitive: Microsoft packages store
+    // locale as 'en-us' from Linux-unzipped directory names, custom packages use 'en-US')
     this.labelsDb.exec(`
       INSERT INTO labels_fts(rowid, label_id, text, comment)
-      SELECT id, label_id, text, comment FROM labels WHERE language = 'en-US'
+      SELECT id, label_id, text, comment FROM labels WHERE LOWER(language) = 'en-us'
     `);
   }
 
@@ -2717,7 +2719,7 @@ export class XppSymbolIndex {
         SELECT label_id, label_file_id, model, language, text, comment, file_path, 0 as rank
         FROM labels
         WHERE (text LIKE ? OR label_id LIKE ?)
-          AND language = ?`;
+          AND LOWER(language) = LOWER(?)`;
       if (model)       sql += `\n          AND model = ?`;
       if (labelFileId) sql += `\n          AND label_file_id = ?`;
       sql += `\n        LIMIT ?`;
