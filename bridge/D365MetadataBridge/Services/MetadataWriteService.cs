@@ -1213,10 +1213,6 @@ namespace D365MetadataBridge.Services
         public object AddField(string tableName, string fieldName, string fieldType,
             string? edt, bool mandatory, string? label)
         {
-            var axTable = _provider.Tables.Read(tableName)
-                ?? throw new ArgumentException($"Table '{tableName}' not found");
-            var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
-
             var param = new WriteFieldParam
             {
                 Name = fieldName,
@@ -1226,13 +1222,30 @@ namespace D365MetadataBridge.Services
                 Label = label
             };
             var axField = CreateTableField(param);
-            axTable.AddField(axField);
 
-            var tableProvider = _provider.Tables as IMetaTableProvider
-                ?? throw new InvalidOperationException("IMetaTableProvider not available");
-            tableProvider.Update(axTable, msi);
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                axTable.AddField(axField);
+                var tableProvider = _provider.Tables as IMetaTableProvider
+                    ?? throw new InvalidOperationException("IMetaTableProvider not available");
+                tableProvider.Update(axTable, msi);
+                return new { success = true, operation = "add-field", objectName = tableName, fieldName, fieldType, api = "IMetaTableProvider.Update" };
+            }
 
-            return new { success = true, operation = "add-field", objectName = tableName, fieldName, fieldType, api = "IMetaTableProvider.Update" };
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                axExt.Fields.Add(axField);
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
+                return new { success = true, operation = "add-field", objectName = tableName, fieldName, fieldType, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
         }
 
         /// <summary>
@@ -1733,124 +1746,225 @@ namespace D365MetadataBridge.Services
         // TABLE FIELD MODIFY / RENAME / REMOVE / REPLACE-ALL
         // ========================
 
-        /// <summary>Modifies properties of an existing field on a table.</summary>
+        /// <summary>Modifies properties of an existing field on a table or table-extension.</summary>
         public object ModifyField(string tableName, string fieldName, Dictionary<string, string>? properties)
         {
-            var axTable = _provider.Tables.Read(tableName)
-                ?? throw new ArgumentException($"Table '{tableName}' not found");
-            var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
-
-            AxTableField? target = null;
-            foreach (AxTableField f in axTable.Fields)
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
             {
-                if (string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase))
-                { target = f; break; }
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                AxTableField? target = null;
+                foreach (AxTableField f in axTable.Fields)
+                {
+                    if (string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase))
+                    { target = f; break; }
+                }
+                if (target == null)
+                    throw new InvalidOperationException($"Field '{fieldName}' not found on table '{tableName}'");
+                if (properties != null)
+                {
+                    foreach (var kv in properties)
+                        SetTableFieldProperty(target, kv.Key, kv.Value);
+                }
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "modify-field", objectName = tableName, fieldName, api = "IMetaTableProvider.Update" };
             }
-            if (target == null)
-                throw new InvalidOperationException($"Field '{fieldName}' not found on table '{tableName}'");
 
-            if (properties != null)
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
             {
-                foreach (var kv in properties)
-                    SetTableFieldProperty(target, kv.Key, kv.Value);
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                AxTableField? target = null;
+                foreach (AxTableField f in axExt.Fields)
+                {
+                    if (string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase))
+                    { target = f; break; }
+                }
+                if (target == null)
+                    throw new InvalidOperationException($"Field '{fieldName}' not found on table-extension '{tableName}'");
+                if (properties != null)
+                {
+                    foreach (var kv in properties)
+                        SetTableFieldProperty(target, kv.Key, kv.Value);
+                }
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
+                return new { success = true, operation = "modify-field", objectName = tableName, fieldName, api = "IMetaTableExtensionProvider.Update" };
             }
 
-            ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-            return new { success = true, operation = "modify-field", objectName = tableName, fieldName, api = "IMetaTableProvider.Update" };
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
         }
 
         /// <summary>
-        /// Renames a field on a table. Also fixes index DataField refs and TitleField1/2.
+        /// Renames a field on a table or table-extension. Also fixes index DataField refs, field group refs, and (for tables) TitleField1/2.
         /// </summary>
         public object RenameField(string tableName, string oldName, string newName)
         {
-            var axTable = _provider.Tables.Read(tableName)
-                ?? throw new ArgumentException($"Table '{tableName}' not found");
-            var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
-
-            AxTableField? target = null;
-            foreach (AxTableField f in axTable.Fields)
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
             {
-                if (string.Equals(f.Name, oldName, StringComparison.OrdinalIgnoreCase))
-                { target = f; break; }
-            }
-            if (target == null)
-                throw new InvalidOperationException($"Field '{oldName}' not found on table '{tableName}'");
-
-            target.Name = newName;
-
-            // Fix index DataField references
-            foreach (AxTableIndex idx in axTable.Indexes)
-            {
-                foreach (AxTableIndexField ixf in idx.Fields)
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                AxTableField? target = null;
+                foreach (AxTableField f in axTable.Fields)
                 {
-                    if (string.Equals(ixf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
-                        ixf.DataField = newName;
+                    if (string.Equals(f.Name, oldName, StringComparison.OrdinalIgnoreCase))
+                    { target = f; break; }
                 }
-            }
-
-            // Fix TitleField1/2
-            if (string.Equals(axTable.TitleField1, oldName, StringComparison.OrdinalIgnoreCase))
-                axTable.TitleField1 = newName;
-            if (string.Equals(axTable.TitleField2, oldName, StringComparison.OrdinalIgnoreCase))
-                axTable.TitleField2 = newName;
-
-            // Fix field group references
-            foreach (AxTableFieldGroup fg in axTable.FieldGroups)
-            {
-                foreach (AxTableFieldGroupField fgf in fg.Fields)
+                if (target == null)
+                    throw new InvalidOperationException($"Field '{oldName}' not found on table '{tableName}'");
+                target.Name = newName;
+                // Fix index DataField references
+                foreach (AxTableIndex idx in axTable.Indexes)
                 {
-                    if (string.Equals(fgf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
-                        fgf.DataField = newName;
+                    foreach (AxTableIndexField ixf in idx.Fields)
+                    {
+                        if (string.Equals(ixf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
+                            ixf.DataField = newName;
+                    }
                 }
+                // Fix TitleField1/2
+                if (string.Equals(axTable.TitleField1, oldName, StringComparison.OrdinalIgnoreCase))
+                    axTable.TitleField1 = newName;
+                if (string.Equals(axTable.TitleField2, oldName, StringComparison.OrdinalIgnoreCase))
+                    axTable.TitleField2 = newName;
+                // Fix field group references
+                foreach (AxTableFieldGroup fg in axTable.FieldGroups)
+                {
+                    foreach (AxTableFieldGroupField fgf in fg.Fields)
+                    {
+                        if (string.Equals(fgf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
+                            fgf.DataField = newName;
+                    }
+                }
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "rename-field", objectName = tableName, oldName, newName, api = "IMetaTableProvider.Update" };
             }
 
-            ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-            return new { success = true, operation = "rename-field", objectName = tableName, oldName, newName, api = "IMetaTableProvider.Update" };
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                AxTableField? target = null;
+                foreach (AxTableField f in axExt.Fields)
+                {
+                    if (string.Equals(f.Name, oldName, StringComparison.OrdinalIgnoreCase))
+                    { target = f; break; }
+                }
+                if (target == null)
+                    throw new InvalidOperationException($"Field '{oldName}' not found on table-extension '{tableName}'");
+                target.Name = newName;
+                // Fix index DataField references
+                foreach (AxTableIndex idx in axExt.Indexes)
+                {
+                    foreach (AxTableIndexField ixf in idx.Fields)
+                    {
+                        if (string.Equals(ixf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
+                            ixf.DataField = newName;
+                    }
+                }
+                // Fix field group references (TitleField1/2 not applicable to extensions)
+                foreach (AxTableFieldGroup fg in axExt.FieldGroups)
+                {
+                    foreach (AxTableFieldGroupField fgf in fg.Fields)
+                    {
+                        if (string.Equals(fgf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
+                            fgf.DataField = newName;
+                    }
+                }
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
+                return new { success = true, operation = "rename-field", objectName = tableName, oldName, newName, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
         }
 
-        /// <summary>Removes a field from a table.</summary>
+        /// <summary>Removes a field from a table or table-extension.</summary>
         public object RemoveField(string tableName, string fieldName)
         {
-            var axTable = _provider.Tables.Read(tableName)
-                ?? throw new ArgumentException($"Table '{tableName}' not found");
-            var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
-
-            AxTableField? toRemove = null;
-            foreach (AxTableField f in axTable.Fields)
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
             {
-                if (string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase))
-                { toRemove = f; break; }
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                AxTableField? toRemove = null;
+                foreach (AxTableField f in axTable.Fields)
+                {
+                    if (string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase))
+                    { toRemove = f; break; }
+                }
+                if (toRemove == null)
+                    throw new InvalidOperationException($"Field '{fieldName}' not found on table '{tableName}'");
+                axTable.Fields.Remove(toRemove);
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "remove-field", objectName = tableName, fieldName, api = "IMetaTableProvider.Update" };
             }
-            if (toRemove == null)
-                throw new InvalidOperationException($"Field '{fieldName}' not found on table '{tableName}'");
-            axTable.Fields.Remove(toRemove);
 
-            ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-            return new { success = true, operation = "remove-field", objectName = tableName, fieldName, api = "IMetaTableProvider.Update" };
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                AxTableField? toRemove = null;
+                foreach (AxTableField f in axExt.Fields)
+                {
+                    if (string.Equals(f.Name, fieldName, StringComparison.OrdinalIgnoreCase))
+                    { toRemove = f; break; }
+                }
+                if (toRemove == null)
+                    throw new InvalidOperationException($"Field '{fieldName}' not found on table-extension '{tableName}'");
+                axExt.Fields.Remove(toRemove);
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
+                return new { success = true, operation = "remove-field", objectName = tableName, fieldName, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
         }
 
-        /// <summary>Replaces ALL fields on a table (clear + re-add). Use for bulk field rewrite.</summary>
+        /// <summary>Replaces ALL fields on a table or table-extension (clear + re-add). Use for bulk field rewrite.</summary>
         public object ReplaceAllFields(string tableName, List<WriteFieldParam> fields)
         {
-            var axTable = _provider.Tables.Read(tableName)
-                ?? throw new ArgumentException($"Table '{tableName}' not found");
-            var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
-
-            // Clear existing fields
-            var existing = new List<AxTableField>();
-            foreach (AxTableField f in axTable.Fields) existing.Add(f);
-            foreach (var f in existing) axTable.Fields.Remove(f);
-
-            // Add new fields
-            foreach (var fp in fields)
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
             {
-                var axField = CreateTableField(fp);
-                axTable.AddField(axField);
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                // Clear existing fields
+                var existing = new List<AxTableField>();
+                foreach (AxTableField f in axTable.Fields) existing.Add(f);
+                foreach (var f in existing) axTable.Fields.Remove(f);
+                // Add new fields
+                foreach (var fp in fields)
+                {
+                    var axField = CreateTableField(fp);
+                    axTable.AddField(axField);
+                }
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "replace-all-fields", objectName = tableName, fieldCount = fields.Count, api = "IMetaTableProvider.Update" };
             }
 
-            ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-            return new { success = true, operation = "replace-all-fields", objectName = tableName, fieldCount = fields.Count, api = "IMetaTableProvider.Update" };
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                // Clear existing fields
+                var existing = new List<AxTableField>();
+                foreach (AxTableField f in axExt.Fields) existing.Add(f);
+                foreach (var f in existing) axExt.Fields.Remove(f);
+                // Add new fields
+                foreach (var fp in fields)
+                {
+                    var axField = CreateTableField(fp);
+                    axExt.Fields.Add(axField);
+                }
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
+                return new { success = true, operation = "replace-all-fields", objectName = tableName, fieldCount = fields.Count, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
         }
 
         // ========================
