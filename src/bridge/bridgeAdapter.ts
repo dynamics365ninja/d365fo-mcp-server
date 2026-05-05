@@ -1076,7 +1076,7 @@ export async function bridgeAddField(
     };
   } catch (e) {
     console.error(`[BridgeAdapter] addField(${tableName}, ${fieldName}) failed: ${e}`);
-    return null;
+    return { success: false, message: String(e) };
   }
 }
 
@@ -1350,7 +1350,7 @@ export async function bridgeModifyField(
     };
   } catch (e) {
     console.error(`[BridgeAdapter] modifyField(${tableName}, ${fieldName}) failed: ${e}`);
-    return null;
+    return { success: false, message: String(e) };
   }
 }
 
@@ -1374,7 +1374,7 @@ export async function bridgeRenameField(
     };
   } catch (e) {
     console.error(`[BridgeAdapter] renameField(${tableName}, ${oldName} → ${newName}) failed: ${e}`);
-    return null;
+    return { success: false, message: String(e) };
   }
 }
 
@@ -1397,7 +1397,7 @@ export async function bridgeRemoveField(
     };
   } catch (e) {
     console.error(`[BridgeAdapter] removeField(${tableName}, ${fieldName}) failed: ${e}`);
-    return null;
+    return { success: false, message: String(e) };
   }
 }
 
@@ -1420,7 +1420,7 @@ export async function bridgeReplaceAllFields(
     };
   } catch (e) {
     console.error(`[BridgeAdapter] replaceAllFields(${tableName}) failed: ${e}`);
-    return null;
+    return { success: false, message: String(e) };
   }
 }
 
