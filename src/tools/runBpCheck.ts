@@ -48,17 +48,8 @@ export const runBpCheckTool = async (params: any, _context: any) => {
       };
     }
 
-    // Resolve project path — required by most xppbp.exe versions
+    // Resolve project path — optional in UDE environments where xppbp no longer requires -vsproj
     const resolvedProjectPath = params.projectPath || await configManager.getProjectPath();
-    if (!resolvedProjectPath) {
-      return {
-        content: [{
-          type: 'text',
-          text: '❌ Cannot determine project path.\n\nProvide projectPath parameter or set it in .mcp.json:\n```json\n{ "servers": { "context": { "projectPath": "C:\\\\path\\\\to\\\\MyProject.rnrproj" } } }\n```'
-        }],
-        isError: true
-      };
-    }
 
     // In UDE the custom packages path (ModelStoreFolder) is the metadata root,
     // while the framework packages path (FrameworkDirectory) is the binaries root.
@@ -117,7 +108,7 @@ export const runBpCheckTool = async (params: any, _context: any) => {
     // --- First attempt: modern -metadata: flag ---
     const args = buildArgs('-metadata:');
     const { combined, lastStdout, lastStderr } = await withOperationLock(
-      `bp:${resolvedProjectPath}`,
+      `bp:${modelName}`,
       async () => {
         console.error(`[run_bp_check] Attempt 1: "${xppbpPath}" ${args.join(' ')}`);
         try {
@@ -174,7 +165,8 @@ export const runBpCheckTool = async (params: any, _context: any) => {
     return {
       content: [{
         type: 'text',
-        text: `${summary}\n\nModel: ${modelName}\nProject: ${resolvedProjectPath}` +
+        text: `${summary}\n\nModel: ${modelName}` +
+          (resolvedProjectPath ? `\nProject: ${resolvedProjectPath}` : '') +
           (targetFilter ? `\nFilter: ${targetFilter}` : '') +
           `\n\n${details}`
       }]
