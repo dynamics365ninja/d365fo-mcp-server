@@ -29,11 +29,11 @@ namespace D365MetadataBridge
     /// </summary>
     static class Program
     {
-        private static string _packagesPath = @"K:\AosService\PackagesLocalDirectory";
+        private static string _packagesPath = string.Empty;
         private static string? _referencePackagesPath = null; // UDE: Microsoft FrameworkDirectory packages path
-        private static string? _binPath = null; // Explicit bin path (UDE: microsoftPackagesPath/bin)
+        private static string? _binPath = null;               // Explicit bin path (UDE: microsoftPackagesPath/bin)
         private static string _xrefServer = "localhost";
-        private static string _xrefDatabase = "DYNAMICSXREFDB";
+        private static string _xrefDatabase = string.Empty;
         private static string? _logFile = null;
         private static readonly TextWriter Log = Console.Error;
 
