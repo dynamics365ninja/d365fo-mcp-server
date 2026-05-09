@@ -2461,7 +2461,10 @@ Examples:
         name: 'get_workspace_info',
         description: `🔌 ALWAYS call this FIRST at the start of every D365FO session to verify the workspace configuration.
 
-Returns the configured model name, package path, project path, environment type, EXTENSION_PREFIX value, and effective object prefix.
+Returns the configured model name, package path (custom metadata root), framework directory (Microsoft metadata root, populated only on UDE / Power Platform Tools setups), project path, environment type, EXTENSION_PREFIX value, and effective object prefix.
+
+On UDE there are two metadata roots: custom code lives under the package path, Microsoft standard code under the framework dir. Only the package path is writable — never create or modify files under the framework dir.
+
 Explicitly flags whether the model name is a placeholder (MyModel, MyPackage, etc.) — if so, STOP and inform the user before doing anything else.
 Also warns when EXTENSION_PREFIX is not set in the server environment (prefix will fall back to model name, which may be wrong for models with hyphens like "fm-mcp").
 

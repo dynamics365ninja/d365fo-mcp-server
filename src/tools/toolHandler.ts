@@ -417,6 +417,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         const { modelName, modelSource, projectPath, projectSource, packagePath, packageSource } =
           await configManager.getWorkspaceInfoDiagnostics();
         const envType = await configManager.getDevEnvironmentType();
+        const frameworkDirectory = await configManager.getMicrosoftPackagesPath();
 
         // Prefix diagnostics
         const extensionPrefixEnv = process.env.EXTENSION_PREFIX?.trim() || null;
@@ -446,7 +447,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           `## D365FO Workspace Configuration`,
           ``,
           `Model name      : ${modelName ?? '(not configured)'}  (source: ${modelSource})`,
-          `Package path    : ${packagePath ?? '(not configured)'}  (source: ${packageSource})`,
+          `Package path    : ${packagePath ?? '(not configured)'}  (custom metadata, source: ${packageSource})`,
+          `Framework dir   : ${frameworkDirectory ?? '(not applicable — single-root setup)'}  (Microsoft metadata, read-only)`,
           `Project path    : ${projectPath ?? '(not detected)'}  (source: ${projectSource})`,
           `Env type        : ${envType}`,
           ``,

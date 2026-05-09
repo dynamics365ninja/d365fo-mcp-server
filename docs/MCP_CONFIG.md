@@ -208,8 +208,8 @@ with VS 2022's `.mcp.json` parser.
 | `workspacePath` | `D365FO_WORKSPACE_PATH` | Recommended | Path to your model: `...\PackagesLocalDirectory\PackageName\ModelName`. All three values are derived from it automatically. |
 | `packagePath` | `D365FO_PACKAGE_PATH` | Optional | Base PackagesLocalDirectory path. Auto-extracted from `workspacePath` — only needed when `workspacePath` is not set. |
 | `modelName` | `D365FO_MODEL_NAME` | Optional | Explicit model name override — only needed when it differs from the last `workspacePath` segment. |
-| `customPackagesPath` | `D365FO_CUSTOM_PACKAGES_PATH` | Optional | UDE: Custom X++ code root (from XPP config `ModelStoreFolder`). |
-| `microsoftPackagesPath` | `D365FO_MICROSOFT_PACKAGES_PATH` | Optional | UDE: Microsoft X++ root (from XPP config `FrameworkDirectory`). |
+| `customPackagesPath` | `D365FO_CUSTOM_PACKAGES_PATH` | Optional | UDE: Custom X++ code root (from XPP config `ModelStoreFolder`). Surfaced at runtime by `get_workspace_info` as `Package path`. |
+| `microsoftPackagesPath` | `D365FO_MICROSOFT_PACKAGES_PATH` | Optional | UDE: Microsoft X++ root (from XPP config `FrameworkDirectory`). Surfaced at runtime by `get_workspace_info` as `Framework dir`; read-only — never used as a target for file creation. |
 | `devEnvironmentType` | `D365FO_DEV_ENVIRONMENT_TYPE` | Optional | `auto` (default), `traditional`, or `ude`. Controls path resolution behavior. |
 | `projectPath` | `D365FO_PROJECT_PATH` | Optional | Full path to your `.rnrproj` file. Auto-detected from roots/list (stdio) or D365FO_SOLUTIONS_PATH. |
 | `solutionPath` | `D365FO_SOLUTION_PATH` | Optional | Visual Studio solution folder. Used when `projectPath` is not set. |

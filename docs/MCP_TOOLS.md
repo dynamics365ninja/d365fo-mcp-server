@@ -1125,11 +1125,17 @@ auto-detected model name as a concrete fix suggestion.
 > stop and fix `.mcp.json` before creating any files — without the correct model name, new
 > objects will land in the wrong model.
 
+On UDE / Power Platform Tools environments, D365FO splits metadata into two roots: a writable
+custom root (`Package path`, from `ModelStoreFolder`) and a read-only Microsoft root
+(`Framework dir`, from `FrameworkDirectory`). Both are reported so callers can resolve symbols
+across either tree, but file creation must always target the package path.
+
 **Takes no parameters.**
 
 **Returns:**
 - Model name (from `.mcp.json`) and whether it is a placeholder
-- Package path and project path
+- Package path (custom metadata root) and project path
+- Framework directory (Microsoft metadata root) — UDE only; empty on classic VMs
 - Environment type (`ude`, `traditional`, or `azure`)
 - If placeholder: the real model name auto-detected from `.rnrproj` + exact fix instruction
 
