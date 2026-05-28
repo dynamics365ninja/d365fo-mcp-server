@@ -65,6 +65,7 @@ vi.mock('../../src/utils/modelClassifier', () => ({
   applyObjectPrefix: vi.fn((name: string) => name),
   getObjectSuffix: vi.fn(() => ''),
   applyObjectSuffix: vi.fn((name: string) => name),
+  getExtensionNamingStyle: vi.fn(() => 'prefix'),
   isCustomModel: vi.fn(() => true),
   isStandardModel: vi.fn(() => false),
 }));

@@ -72,6 +72,27 @@ Takes 1–2 hours (standard Microsoft models are large). Only needed when Micros
 
 ---
 
+## Extension Naming Style
+
+When code-gen tools name an **extension element** (table/form/view/etc. extension) or an **extension class** (CoC / augmentation), the token that distinguishes your extension from others is controlled by `EXTENSION_NAMING_STYLE`:
+
+```env
+EXTENSION_PREFIX=CR
+EXTENSION_NAMING_STYLE=prefix        # default — or "model-name"
+```
+
+| Style | Element extension | Extension class |
+|-------|-------------------|-----------------|
+| `prefix` (default) | `CustTable.CrExtension` | `CustTableCr_Extension` |
+| `model-name` | `CustTable.ContosoRobotics` | `CustTable_ContosoRobotics_Extension` |
+
+- **`prefix`** embeds the `EXTENSION_PREFIX` infix (Microsoft's prefix-based naming guideline).
+- **`model-name`** embeds the **model name**, matching the Visual Studio developer-tools default (which uses the model name because it is already guaranteed unique). Use this when your model name is long/customer-specific (e.g. `ContosoRobotics`) but your prefix is a short abbreviation (e.g. `CR`) — the prefix still applies to **new** objects (`CRMyTable`) and to fields/methods added inside extensions (`CRApprovingWorker`); only the extension element/class token switches to the model name.
+
+Run `get_workspace_info` to see the active style and worked examples of exactly what the tools will emit.
+
+---
+
 ## Searching Custom Extensions
 
 Use `search_extensions` to search only within your custom/ISV models:

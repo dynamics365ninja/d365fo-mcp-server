@@ -9,7 +9,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { Parser, Builder } from 'xml2js';
 import { getConfigManager, fallbackPackagePath } from '../utils/configManager.js';
-import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix } from '../utils/modelClassifier.js';
+import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix, getExtensionNamingStyle } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
@@ -3506,15 +3506,20 @@ export async function handleCreateD365File(
 
     // Apply extension prefix to object name
     const objectPrefix = resolveObjectPrefix(actualModelName);
+    const namingStyle = getExtensionNamingStyle();
 
     // If EXTENSION_PREFIX differs from modelName, the AI may have embedded the modelName
     // in the extension name. Strip it so applyObjectPrefix injects the correct prefix only.
+    // NOTE: this stripping only makes sense for the prefix-infix style. Under the
+    // model-name style the model name IS the desired token, so the stripping below is
+    // skipped and applyObjectPrefix (given actualModelName) normalises the name instead.
     let effectiveObjectName = args.objectName;
 
     // Case A: dot-notation extension elements (table/form/EDT/enum extensions)
     // e.g. "CustTable.MyModelExtension" with modelName="MyModel" → "CustTable.Extension"
     // applyObjectPrefix then produces "CustTable.MyExtension"
     if (
+      namingStyle !== 'model-name' &&
       args.objectName.includes('.') &&
       args.objectName.toLowerCase().endsWith('extension') &&
       actualModelName &&
@@ -3536,6 +3541,7 @@ export async function handleCreateD365File(
     // e.g. "SalesFormLetterContoso_Extension" with modelName="ContosoExt" → "SalesFormLetter_Extension"
     // applyObjectPrefix then produces "SalesFormLetterContoso_Extension"
     if (
+      namingStyle !== 'model-name' &&
       args.objectName.endsWith('_Extension') &&
       actualModelName &&
       objectPrefix.toLowerCase() !== actualModelName.toLowerCase()
@@ -3568,9 +3574,20 @@ export async function handleCreateD365File(
       );
     }
 
-    let finalObjectName = applyObjectPrefix(effectiveObjectName, objectPrefix);
+    // Pass actualModelName so the model-name naming style can use it as the extension
+    // token. For the default prefix style (or non-extension objects) it is ignored.
+    let finalObjectName = applyObjectPrefix(effectiveObjectName, objectPrefix, actualModelName);
+    // Trailing suffix (EXTENSION_SUFFIX) applies to NEW objects only — never to
+    // extension elements/classes. (For the prefix style applyObjectSuffix already
+    // skips _Extension and dot-notation "…Extension" names; this guard additionally
+    // covers the model-name style's "Base.ModelName" form, which has no "Extension"
+    // word and would otherwise wrongly receive the suffix.)
+    const isExtensionObjectType =
+      args.objectType === 'class-extension' || DOT_NOTATION_EXTENSION_TYPES.has(args.objectType);
     const objectSuffix = getObjectSuffix();
-    finalObjectName = applyObjectSuffix(finalObjectName, objectSuffix);
+    if (!isExtensionObjectType) {
+      finalObjectName = applyObjectSuffix(finalObjectName, objectSuffix);
+    }
     if (finalObjectName !== args.objectName) {
       console.error(`[create_d365fo_file] Applied naming: ${args.objectName} → ${finalObjectName}`);
     }

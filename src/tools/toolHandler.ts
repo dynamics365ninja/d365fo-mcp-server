@@ -46,7 +46,7 @@ import { securityCoverageInfoTool } from './securityCoverageInfo.js';
 import { analyzeExtensionPointsTool } from './analyzeExtensionPoints.js';
 import { validateObjectNamingTool } from './validateObjectNaming.js';
 import { verifyD365ProjectTool } from './verifyD365Project.js';
-import { resolveObjectPrefix, isCustomModel, getObjectSuffix } from '../utils/modelClassifier.js';
+import { resolveObjectPrefix, isCustomModel, getObjectSuffix, getExtensionNamingStyle, deriveExtensionInfix } from '../utils/modelClassifier.js';
 import { getStdioSessionInfo } from '../utils/stdioSessionInfo.js';
 import { updateSymbolIndexTool } from './updateSymbolIndex.js';
 import { buildProjectTool } from './buildProject.js';
@@ -469,6 +469,33 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
             : `ℹ️  EXTENSION_SUFFIX is not set. No suffix will be applied. This is normal — most projects use prefixes only.`,
           ``,
         ];
+
+        // ── Extension naming style ────────────────────────────────────────────
+        // The prefix doubles as the extension infix UNLESS EXTENSION_NAMING_STYLE
+        // is set to "model-name", in which case extension elements/classes embed the
+        // MODEL NAME (Visual Studio default). The tool ALWAYS normalises the extension
+        // token to whatever this style dictates — so pass the BASE object name and let
+        // the tool name it; do not hand-build the infix yourself.
+        const extNamingStyle = getExtensionNamingStyle();
+        const extInfix = deriveExtensionInfix(effectivePrefix);
+        const sampleClassExt = extNamingStyle === 'model-name' && modelName
+          ? `CustTable_${modelName}_Extension`
+          : `CustTable${extInfix}_Extension`;
+        const sampleElemExt = extNamingStyle === 'model-name' && modelName
+          ? `CustTable.${modelName}`
+          : `CustTable.${extInfix}Extension`;
+        lines.push(
+          `## Extension Naming`,
+          ``,
+          `EXTENSION_NAMING_STYLE: ${process.env.EXTENSION_NAMING_STYLE?.trim() || '(not set → "prefix")'}`,
+          extNamingStyle === 'model-name'
+            ? `✅ model-name style — extension token is the MODEL NAME (Visual Studio default).`
+            : `ℹ️  prefix style (default) — extension token is the EXTENSION_PREFIX infix.`,
+          `  • Extension class  → ${sampleClassExt}`,
+          `  • Element extension → ${sampleElemExt}`,
+          `  ⚠️  Pass the BASE object name (e.g. "CustTable") to create_d365fo_file and let the tool apply the token — any infix you embed will be normalised to the above.`,
+          ``,
+        );
 
         if (isPlaceholder) {
           // Only scan .rnrproj files when model name looks like a placeholder — avoids

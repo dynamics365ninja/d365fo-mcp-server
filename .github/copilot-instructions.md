@@ -43,7 +43,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 5. Never use `today()` — use `DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone())`
 6. Never use hardcoded strings in Info/warning/error — use `@Model:Label`
 7. Call `search_labels()` before `create_label()` — reuse existing labels
-8. Extension class naming: `[ExtensionOf(...)] final class {Target}{Prefix}_Extension`
+8. Extension naming depends on `EXTENSION_NAMING_STYLE` (check `get_workspace_info`). Default `prefix` → class `{Target}{Prefix}_Extension`, element `{Target}.{Prefix}Extension`; `model-name` → class `{Target}_{ModelName}_Extension`, element `{Target}.{ModelName}`. Pass the BASE name to `create_d365fo_file` and let the tool apply the token — don't hand-build the infix.
 
 ## Full Instructions
 

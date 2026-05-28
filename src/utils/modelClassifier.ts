@@ -60,6 +60,28 @@ export function getObjectSuffix(): string {
 }
 
 /**
+ * Resolve the extension-naming style from the environment.
+ *
+ *  - 'prefix' (default): extension elements and extension classes embed the
+ *    EXTENSION_PREFIX as an infix, per Microsoft's prefix-based guideline
+ *    (e.g. CustTable.CrExtension, CustTableCr_Extension).
+ *
+ *  - 'model-name': extension elements and extension classes embed the MODEL NAME,
+ *    matching the Visual Studio developer-tools default
+ *    (e.g. CustTable.ContosoRobotics, CustTable_ContosoRobotics_Extension).
+ *    EXTENSION_PREFIX still applies to NEW objects and to fields/methods added
+ *    inside extensions — only the extension element/class token changes.
+ *
+ * Configured via EXTENSION_NAMING_STYLE. Any value other than 'model-name'
+ * (including unset) resolves to 'prefix' so existing setups are unchanged.
+ */
+export function getExtensionNamingStyle(): 'prefix' | 'model-name' {
+  return process.env.EXTENSION_NAMING_STYLE?.trim().toLowerCase() === 'model-name'
+    ? 'model-name'
+    : 'prefix';
+}
+
+/**
  * Apply a configurable suffix to a NEW model element name.
  * The suffix is appended at the end of the object name.
  *
@@ -167,8 +189,15 @@ export function deriveExtensionInfix(resolvedPrefix: string): string {
  *
  * Case-insensitive check prevents double-prefixing.
  */
-export function applyObjectPrefix(objectName: string, prefix: string): string {
+export function applyObjectPrefix(objectName: string, prefix: string, modelName?: string): string {
   if (!prefix) return objectName;
+
+  // When the model-name style is active AND a model name is supplied, extension
+  // elements/classes embed the model name instead of the prefix infix (VS default).
+  // Only the extension branches (dot-notation + _Extension) diverge — regular
+  // objects still use the prefix, so callers that create new objects (and don't
+  // pass a model name) are completely unaffected.
+  const useModelName = !!modelName && getExtensionNamingStyle() === 'model-name';
 
   // Extension infix form — PascalCase without underscore (e.g. "XY" → "Xy" when env had "XY_")
   const extensionInfix = deriveExtensionInfix(prefix);
@@ -199,6 +228,13 @@ export function applyObjectPrefix(objectName: string, prefix: string): string {
     const basePart = objectName.slice(0, dotIdx);
     const suffixPart = objectName.slice(dotIdx + 1);
 
+    // model-name style: VS default → BaseElement.ModelName
+    // (no prefix infix, no "Extension" word). Replaces whatever token follows the
+    // dot so a re-run is idempotent (BaseElement.ModelName → BaseElement.ModelName).
+    if (useModelName) {
+      return `${basePart}.${modelName}`;
+    }
+
     if (suffixPart.toLowerCase().endsWith('extension')) {
       // Always return the correctly-cased suffix — never preserve the original casing.
       // Without this, "VendTrans.CTSOExtension" with EXTENSION_PREFIX=CTSO_ would not be
@@ -218,6 +254,21 @@ export function applyObjectPrefix(objectName: string, prefix: string): string {
   // IMPORTANT: objectName MUST be the BASE class name + "_Extension" WITHOUT any prefix infix.
   if (objectName.endsWith('_Extension')) {
     const baseName = objectName.slice(0, -'_Extension'.length);
+
+    // model-name style: VS default → Base_ModelName_Extension.
+    // Strip any trailing model-name token (with or without separating underscore)
+    // so re-running is idempotent and never produces Base_ModelName_ModelName_Extension.
+    if (useModelName) {
+      let cleanBase = baseName.replace(/_+$/, '');
+      const lowerModel = modelName!.toLowerCase();
+      if (cleanBase.toLowerCase().endsWith('_' + lowerModel)) {
+        cleanBase = cleanBase.slice(0, cleanBase.length - lowerModel.length - 1);
+      } else if (cleanBase.toLowerCase().endsWith(lowerModel)) {
+        cleanBase = cleanBase.slice(0, cleanBase.length - lowerModel.length);
+      }
+      cleanBase = cleanBase.replace(/_+$/, '');
+      return `${cleanBase}_${modelName}_Extension`;
+    }
 
     // Check if the extension infix is already present at the end (case-insensitive)
     if (baseName.toLowerCase().endsWith(extensionInfix.toLowerCase())) {
