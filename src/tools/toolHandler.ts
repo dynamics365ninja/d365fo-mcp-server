@@ -118,6 +118,8 @@ const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
   create_d365fo_file:               'uncapped',
   generate_d365fo_xml:              'uncapped',
   get_report_info:                  'uncapped',
+  // Method source must never be truncated — partial code is useless
+  get_method_source:                'uncapped',
   // New tools with longer output
   get_security_artifact_info:       8000,
   get_security_coverage_for_object: 8000,
