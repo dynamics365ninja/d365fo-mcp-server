@@ -369,6 +369,34 @@ describe('create_d365fo_file', () => {
     expect(text).not.toMatch(/FmMcpPurchTable|[A-Za-z]+PurchTable\.xml/);
   });
 
+  it('auto-converts bare class-extension name to _Extension form (Case D fix)', async () => {
+    // Bug: objectType="class-extension", objectName="SalesFormLetter" (no "_Extension"
+    // suffix) used to have no dot and not end in "_Extension", so it fell into
+    // applyObjectPrefix's NORMAL CASE and was treated as a brand-new object — wrongly
+    // producing "<Prefix>SalesFormLetter" (e.g. "CrSalesFormLetter"). class-extension
+    // was the only extension type missing the bare-name normalisation that the
+    // dot-notation types got in Case C.
+    // Fix: Case D appends "_Extension" so applyObjectPrefix routes it through the
+    // extension-class branch.
+    const result = await handleCreateD365File(
+      req('create_d365fo_file', {
+        objectType: 'class-extension',
+        objectName: 'SalesFormLetter',
+        modelName: 'FmMcp',
+        packageName: 'FmMcp',
+        packagePath: 'K:\\PackagesLocalDirectory',
+        addToProject: false,
+      }),
+    );
+    // applyObjectPrefix is mocked to identity here, so the message path reflects the
+    // effectiveObjectName transformation only: it must be "SalesFormLetter_Extension.xml"
+    // and NOT the bare "SalesFormLetter.xml" (which would prove Case D did not fire and
+    // the name would later be mangled by the real applyObjectPrefix NORMAL CASE).
+    const text: string = result.content[0].text;
+    expect(text).toMatch(/SalesFormLetter_Extension\.xml/);
+    expect(text).not.toMatch(/[\\/]SalesFormLetter\.xml/);
+  });
+
   it('creates a class from custom xmlContent (hybrid scenario)', async () => {
     const xml = `<?xml version="1.0"?><AxClass><Name>MyHybridClass</Name></AxClass>`;
     const result = await handleCreateD365File(

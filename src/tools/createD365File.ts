@@ -3574,6 +3574,28 @@ export async function handleCreateD365File(
       );
     }
 
+    // Case D: class extensions (CoC) provided as a bare base class name, i.e. WITHOUT
+    // the "_Extension" suffix.
+    // e.g. objectType="class-extension", objectName="SalesFormLetter"
+    // → effectiveObjectName="SalesFormLetter_Extension" so applyObjectPrefix's
+    //   extension-class branch produces the correct name for the active style:
+    //     prefix style     → SalesFormLetterCr_Extension
+    //     model-name style → SalesFormLetter_ContosoRobotics_Extension
+    //
+    // Without this, a bare base name has no dot and does not end in "_Extension", so it
+    // falls into applyObjectPrefix's NORMAL CASE and is treated as a brand-new object —
+    // wrongly producing "CrSalesFormLetter". This mirrors the dot-notation Case C above;
+    // class-extension was the only extension type missing bare-name normalisation
+    // (the EXTENSION_NAMING_STYLE work added the model-name branches but assumed the
+    // caller always supplies the "_Extension" form for CoC classes).
+    if (args.objectType === 'class-extension' && !effectiveObjectName.endsWith('_Extension')) {
+      effectiveObjectName = `${effectiveObjectName}_Extension`;
+      console.error(
+        `[create_d365fo_file] Bare class-extension name auto-converted to _Extension form: ` +
+        `${args.objectName} → ${effectiveObjectName}`
+      );
+    }
+
     // Pass actualModelName so the model-name naming style can use it as the extension
     // token. For the default prefix style (or non-extension objects) it is ignored.
     let finalObjectName = applyObjectPrefix(effectiveObjectName, objectPrefix, actualModelName);
