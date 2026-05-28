@@ -40,7 +40,7 @@ You are GitHub Copilot assisting with Dynamics 365 Finance & Operations (D365FO)
 ## Decision Tree (evaluate FIRST for every request)
 
 1. **Creating D365FO object?** → \`create_d365fo_file\` (never \`create_file\`)
-2. **Modifying existing object?** → \`modify_d365fo_file\` with \`dryRun=true\` first
+2. **Modifying existing object?** → describe the change + confirm in chat, then \`modify_d365fo_file\` (applies immediately, no preview)
 3. **Generating X++ code?** → \`analyze_code_patterns\` + \`search\` → then generate
 4. **Mentions D365FO object?** → Use MCP tools to verify it exists
 5. **Need field/method/API info?** → \`get_class_info\`, \`get_table_info\`, \`get_method_signature\`
@@ -121,15 +121,15 @@ Use this guide to select the correct tool:
 - Example of WRONG reasoning: task involves a report → search returns objects from "ContosoReports" → ❌ DO NOT use "ContosoReports" as the model. Use the configured model from .mcp.json.
 - **NEVER switch projects autonomously.** The MCP server auto-detects the correct project from the VS 2022 workspace. Do NOT call get_workspace_info(projectName=...) because you think the task belongs to a different model \u2014 the user decides which solution to open; you work within it. If you believe a different model is needed, ASK the user first.
 
-### 1b. dryRun Review Workflow (VS 2022 has no Keep/Undo UI)
-**\`dryRun=true\` is MANDATORY for every \`modify_d365fo_file\` call.** VS 2022's GitHub Copilot Chat does not display per-edit Keep/Undo buttons, so the diff must be reviewed in chat before disk is touched.
+### 1b. Confirm-before-write Review Workflow (VS 2022 has no Keep/Undo UI)
+**\`modify_d365fo_file\` and \`create_d365fo_file\` APPLY IMMEDIATELY — there is no dry-run/preview mode.** The moment the tool is called the change is written to disk via IMetadataProvider. VS 2022's GitHub Copilot Chat does not display per-edit Keep/Undo buttons, so review must happen in chat *before* the call.
 
 Required sequence for every modification:
-1. Call \`modify_d365fo_file\` with \`dryRun=true\` → present the returned diff to the user.
+1. **Describe the exact change in chat** (target object, operation, the X++/property before→after) and ask the user to confirm.
 2. Wait for explicit confirmation ("apply", "ok", "yes", etc.).
-3. Re-call the SAME operation with \`dryRun=false\`.
+3. Call \`modify_d365fo_file\` ONCE to apply. Revert with \`undo_last_modification\` if needed (or pass \`createBackup=true\` to keep a .bak copy).
 
-Skip the dry-run only when the user has explicitly said "skip dryRun" / "apply directly" for the current task. Batched operations (multiple \`modify_d365fo_file\` calls in a row) require dry-run for EACH call — never apply a chain of edits without per-step confirmation.
+After the call, read the response: \`isError=true\` means the change did NOT apply — fix the cause and retry. A success response means the file is already written; do not wait for further confirmation to "apply" — it is done. For batched edits, confirm the whole set up front, then apply each call in sequence.
 
 **Git checkpointing (recommended):** Before non-trivial multi-file tasks, suggest the user create a feature branch (\`git switch -c mcp/<task-name>\`) so changes can be reviewed/discarded via VS 2022 → *View → Git Changes*. Do NOT create branches autonomously — propose and wait for the user.
 
@@ -176,7 +176,7 @@ PowerShell and Python scripts hang indefinitely in VS 2022 MCP integration. When
 1. \`get_method_signature("CustTable", "validateWrite")\` → exact signature
 2. \`find_coc_extensions("CustTable")\` → check existing wrappers
 3. \`create_d365fo_file(objectType="class-extension", objectName="CustTableMY_Extension")\`
-4. \`modify_d365fo_file(operation="add-method", sourceCode="<CoC wrapper>", dryRun=true)\`
+4. Confirm the wrapper in chat, then \`modify_d365fo_file(operation="add-method", sourceCode="<CoC wrapper>")\` (applies immediately)
 
 ### Finding Methods
 - Semantic (concept): \`search("total", type="method")\`

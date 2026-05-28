@@ -489,6 +489,10 @@ export function createXppMcpServer(context: XppServerContext): Server {
           name: 'create_d365fo_file',
           description: `Create D365FO AOT object file (.xml) in the correct PackagesLocalDirectory location with proper XML structure and UTF-8 BOM. Auto-adds to VS project (.rnrproj).
 
+⚠️ THIS IS THE WRITE/COMPLETION STEP. Analysis tools (analyze_code_patterns, search, get_class_info/get_table_info, generate_code/generate_smart_*) only PREPARE the design — they do NOT create anything on disk. Once the design is known, you MUST CALL create_d365fo_file to actually write the file. Do NOT stop after analysis or after presenting generated code: the task is incomplete until this tool has run and returned success (isError=false).
+
+On error this tool returns isError=true with a message (e.g. file already exists, Microsoft model blocked). Read it and fix/retry — never treat a ⚠️/❌ response as success.
+
 Object types: class, table, enum, form, query, view, data-entity, report, edt, security-privilege, security-duty, security-role, menu-item-display/action/output, menu, table/class/form/enum/edt/data-entity-extension, menu-item-*-extension, menu-extension, business-event, tile, kpi.
 
 For extensions: objectName="BaseObject.PrefixExtension" (e.g. "CustTable.ContosoExtension").
@@ -666,7 +670,7 @@ SourceCode format for classes: class declaration with member vars inside { }, me
         },
         {
           name: 'modify_d365fo_file',
-          description: '⚠️ WINDOWS ONLY: Safely modifies an existing D365FO XML file (class, table, enum, form, query, view). Supports adding/removing/modifying methods and fields, modifying properties. Validates XML after modification. IMPORTANT: This tool MUST run locally on Windows D365FO VM - it CANNOT work through Azure HTTP proxy (Linux).',
+          description: '⚠️ WINDOWS ONLY: Safely modifies an existing D365FO XML file (class, table, enum, form, query, view). Supports adding/removing/modifying methods and fields, modifying properties. Validates XML after modification. IMPORTANT: This tool MUST run locally on Windows D365FO VM - it CANNOT work through Azure HTTP proxy (Linux).\n\n⚠️ APPLIES IMMEDIATELY — there is NO dry-run/preview mode. The moment this tool is called it writes the change to disk via IMetadataProvider.Update(). Therefore: BEFORE calling, describe the exact change you intend to make in chat and let the user confirm; only then call this tool to apply it. To revert, use undo_last_modification (git checkout), or pass createBackup=true to also keep a .bak copy. On success the response reports the applied operation. On error the response has isError=true with a message — read it and fix/retry; never treat a ⚠️/❌ response as success.',
           inputSchema: {
             type: 'object',
             properties: {

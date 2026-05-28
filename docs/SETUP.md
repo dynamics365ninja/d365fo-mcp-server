@@ -76,9 +76,16 @@ Copy-Item -Path ".github" -Destination "C:\source\repos\" -Recurse
 ```
 
 GitHub Copilot automatically picks up `copilot-instructions.md` as a bootstrap layer.
-It contains minimal rules (tool mapping, key constraints, terminal prohibition) that apply
-before the MCP server connects. The full X++ development instructions are delivered at
-runtime via the MCP prompt `xpp_system_instructions` (defined in `src/prompts/systemInstructions.ts`).
+It contains the rules the agent relies on **without any extra action** — tool mapping, key
+constraints, the terminal prohibition, and the confirm-before-write workflow (create/modify
+apply immediately, there is no dry-run). **This step is not optional:** it is the only channel
+that delivers the workflow rules to the agent automatically.
+
+A fuller version of these instructions is also exposed as the MCP prompt `xpp_system_instructions`
+(defined in `src/prompts/systemInstructions.ts`). ⚠️ MCP prompts are **opt-in** — they are NOT
+injected automatically; the user must explicitly invoke the prompt in the client (e.g. pick
+`xpp_system_instructions` from the MCP prompt picker in chat). Do not rely on it being present by
+default — keep `copilot-instructions.md` in place so the critical rules are always loaded.
 
 ---
 

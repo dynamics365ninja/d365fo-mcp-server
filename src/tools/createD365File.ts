@@ -3406,7 +3406,7 @@ export async function handleCreateD365File(
         '  3. Add workspacePath ending with the package/model name: { "context": { "workspacePath": "C:\\\\AosService\\\\PackagesLocalDirectory\\\\YourModel" } }\n' +
         '  4. Add projectPath or solutionPath to .mcp.json so the model is auto-extracted from .rnrproj';
       console.error(`[create_d365fo_file] ${errorMsg}`);
-      return { content: [{ type: 'text', text: errorMsg }] };
+      return { content: [{ type: 'text', text: errorMsg }], isError: true };
     }
 
     // ⚠️ CRITICAL WARNING: If no project/solution path available anywhere
@@ -3467,7 +3467,8 @@ export async function handleCreateD365File(
               type: 'text',
               text: errorMsg
             }
-          ]
+          ],
+          isError: true,
         };
       }
     }
@@ -3784,6 +3785,7 @@ export async function handleCreateD365File(
                 `  3. Choose a different objectName.`,
             },
           ],
+          isError: true,
         };
       }
     }
@@ -4172,6 +4174,7 @@ export async function handleCreateD365File(
           text: `❌ Error creating D365FO file:\n\n${error instanceof Error ? error.message : 'Unknown error'}`,
         },
       ],
+      isError: true,
     };
   }
 }

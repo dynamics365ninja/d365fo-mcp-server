@@ -27,7 +27,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 | Action | Tool |
 |--------|------|
 | Create D365FO object | `create_d365fo_file` (never `create_file`) |
-| Edit existing object | `modify_d365fo_file` with `dryRun=true` first |
+| Edit existing object | describe change + confirm in chat, then `modify_d365fo_file` (applies immediately) |
 | Search objects | `search()` / `batch_search()` |
 | Read class/table/form | `get_class_info` / `get_table_info` / `get_form_info` |
 | Method signature (for CoC) | `get_method_signature` |
@@ -37,7 +37,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 ## Key Rules (condensed)
 
 1. Model name comes from `.mcp.json` — never infer from search results
-2. `dryRun=true` is mandatory for every `modify_d365fo_file` — VS 2022 has no undo UI
+2. `modify_d365fo_file`/`create_d365fo_file` APPLY IMMEDIATELY (no dry-run) — describe the change and confirm in chat first; revert with `undo_last_modification` (or pass `createBackup=true`)
 3. Never run `build_d365fo_project()` automatically — only on explicit user request
 4. Never copy default parameter values into CoC wrapper signatures
 5. Never use `today()` — use `DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone())`
