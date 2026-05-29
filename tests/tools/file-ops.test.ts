@@ -328,8 +328,15 @@ describe('create_d365fo_file', () => {
         addToProject: false,
       }),
     );
-    expect((result as any).isError).toBeFalsy();
-    expect(result.content[0].text).toMatch(/created|success|MyNewClass/i);
+    if (process.platform === 'win32') {
+      expect((result as any).isError).toBeFalsy();
+      expect(result.content[0].text).toMatch(/created|success|MyNewClass/i);
+    } else {
+      // Non-Windows: creation legitimately fails (requires a Windows D365FO VM) and is
+      // now correctly reported as isError rather than masked as a success message.
+      expect((result as any).isError).toBe(true);
+      expect(result.content[0].text).toMatch(/non-Windows|Windows/i);
+    }
   });
 
   it('creates a table-extension file', async () => {
@@ -343,7 +350,8 @@ describe('create_d365fo_file', () => {
         addToProject: false,
       }),
     );
-    expect((result as any).isError).toBeFalsy();
+    // Non-Windows: creation fails (needs Windows) and is correctly reported as isError.
+    expect((result as any).isError).toBe(process.platform !== 'win32');
   });
 
   it('auto-converts bare extension name to dot-notation (Case C fix)', async () => {
@@ -382,7 +390,8 @@ describe('create_d365fo_file', () => {
         addToProject: false,
       }),
     );
-    expect((result as any).isError).toBeFalsy();
+    // Non-Windows: creation fails (needs Windows) and is correctly reported as isError.
+    expect((result as any).isError).toBe(process.platform !== 'win32');
   });
 
   it('returns error when objectType is missing', async () => {
