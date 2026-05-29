@@ -1453,7 +1453,7 @@ export async function handleGenerateD365Xml(
         '  1. Pass modelName explicitly in the tool call arguments\n' +
         '  2. Add modelName to .mcp.json context: { "context": { "modelName": "YourModel" } }\n' +
         '  3. Add workspacePath ending with the package/model name: { "context": { "workspacePath": "K:\\\\...\\\\YourModel" } }';
-      return { content: [{ type: 'text', text: errorMsg }] };
+      return { content: [{ type: 'text', text: errorMsg }], isError: true };
     }
 
     console.error(

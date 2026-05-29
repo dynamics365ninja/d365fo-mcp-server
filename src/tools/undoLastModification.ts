@@ -97,6 +97,7 @@ export const undoLastModificationTool = async (params: any, context: XppServerCo
     if (!fs.existsSync(absolutePath)) {
       return {
         content: [{ type: 'text', text: 'File not found and not tracked by git: ' + absolutePath }],
+        isError: true,
       };
     }
 

@@ -59,6 +59,7 @@ function getPrivilegeInfo(db: any, name: string, _includeChain: boolean) {
   if (!symbol) {
     return {
       content: [{ type: 'text', text: `Security privilege not found: ${name}\n\nTip: Run extract-metadata and build-database to index security objects.` }],
+      isError: true,
     };
   }
 
@@ -101,6 +102,7 @@ function getDutyInfo(db: any, name: string, includeChain: boolean) {
   if (!symbol) {
     return {
       content: [{ type: 'text', text: `Security duty not found: ${name}` }],
+      isError: true,
     };
   }
 
@@ -166,6 +168,7 @@ function getRoleInfo(db: any, name: string, includeChain: boolean) {
   if (!symbol) {
     return {
       content: [{ type: 'text', text: `Security role not found: ${name}` }],
+      isError: true,
     };
   }
 

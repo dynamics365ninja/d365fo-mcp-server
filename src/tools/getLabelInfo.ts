@@ -77,6 +77,7 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
               `💡 Try search_labels to find labels by text, or omit labelId to list available label files.`,
           },
         ],
+        isError: true,
       };
     }
 

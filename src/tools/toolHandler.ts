@@ -207,7 +207,9 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     }
 
     const finishMetrics = recordToolStart(toolName);
-    const result = await (async () => {
+    let result: any;
+    try {
+    result = await (async () => {
       // Build the progress description for this tool call.
       const args = request.params.arguments as Record<string, any> | undefined;
       const progressMsg = buildProgressMessage(toolName, args);
@@ -623,6 +625,20 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         };
     } })();
     })();
+    } catch (err) {
+      // Central safety net: convert ANY thrown error (incl. zod validation,
+      // bridge failures, unexpected exceptions) into a proper tool result with
+      // isError:true so the agent SEES the failure and can react/retry, instead
+      // of it surfacing as an opaque JSON-RPC protocol error. Individual tools
+      // may still return their own richer isError messages; this only catches
+      // what escapes them.
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[toolHandler] ❌ ${toolName} threw: ${message}`);
+      result = {
+        content: [{ type: 'text', text: `❌ ${toolName} failed: ${message}` }],
+        isError: true,
+      };
+    }
 
     const capped = capToolResponse(toolName, result);
     // Record metrics: detect empty result (no content or first text item is empty)

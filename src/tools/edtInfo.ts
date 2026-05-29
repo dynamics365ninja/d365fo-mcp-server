@@ -77,7 +77,7 @@ function getEdtHierarchy(db: any, edtName: string, modelName?: string) {
   }
 
   if (chain.length === 0) {
-    return { content: [{ type: 'text', text: `EDT not found in edt_metadata: ${edtName}\n\nRun extract-metadata to index EDT metadata.` }] };
+    return { content: [{ type: 'text', text: `EDT not found in edt_metadata: ${edtName}\n\nRun extract-metadata to index EDT metadata.` }], isError: true };
   }
 
   // Direct children (EDTs that extend this one)

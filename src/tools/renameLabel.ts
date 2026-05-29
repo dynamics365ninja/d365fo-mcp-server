@@ -165,6 +165,7 @@ export async function renameLabelTool(request: CallToolRequest, context: XppServ
     if (oldLabelId === newLabelId) {
       return {
         content: [{ type: 'text', text: `⚠️ Old and new label IDs are identical ("${oldLabelId}"). Nothing to do.` }],
+        isError: true,
       };
     }
 

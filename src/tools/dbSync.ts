@@ -334,7 +334,8 @@ export const dbSyncTool = async (params: any, _context: any) => {
           ` (${elapsedSec}s)` +
           `\n\n${scopeDesc}` +
           `\n\n${output || '(no output)'}`
-      }]
+      }],
+      isError: hasErrors,
     };
   } catch (error: any) {
     console.error('Error syncing DB:', error);

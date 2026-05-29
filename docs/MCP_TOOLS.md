@@ -117,7 +117,7 @@ The following tools empower Copilot to trigger X++ compilation, testing, and db 
 |------|------------|-------------|
 | **generate_d365fo_xml** | Anywhere (cloud + local) | Returns XML content — Copilot then creates the file |
 | **create_d365fo_file** | Local Windows VM only | Creates the physical file and adds it to the VS project |
-| **modify_d365fo_file** | Local Windows VM only | Safely edits an existing file with automatic backup |
+| **modify_d365fo_file** | Local Windows VM only | Edits an existing file in place (applies immediately; optional `.bak` backup) |
 | **verify_d365fo_project** | Local Windows VM only | Reads `.rnrproj` on K:\ to verify objects exist on disk and are referenced in the project file |
 
 ### Security & Extensions (10 tools)
@@ -596,12 +596,16 @@ Use this when the MCP server is hosted in Azure and does not have local file sys
 
 ### modify_d365fo_file
 
-Edits an existing D365FO XML file safely:
+Edits an existing D365FO XML file:
 
-1. Creates a backup (`.bak`) before touching anything
-2. Makes the change (add/edit/remove a method or field)
-3. Validates that the XML is still well-formed
-4. Rolls back from the backup if anything goes wrong
+1. Makes the change (add/edit/remove a method or field) via IMetadataProvider
+2. Validates that the XML is still well-formed
+3. Optionally writes a `.bak` first when `createBackup=true` (default: `false`)
+
+> ⚠️ **Applies immediately — there is no dry-run/preview mode.** The change is written
+> to disk the moment the tool is called. Describe the intended change in chat and let the
+> user confirm *before* calling. To revert, use `undo_last_modification` (git checkout) or
+> pass `createBackup=true` to keep a `.bak` copy. Failures are returned with `isError=true`.
 
 Supports `packageName` parameter for when the package name differs from the model name.
 In UDE environments this is auto-resolved; in traditional environments it defaults to
