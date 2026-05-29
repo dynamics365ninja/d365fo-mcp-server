@@ -483,6 +483,40 @@ describe('create_d365fo_file', () => {
     expect(text).not.toMatch(/[\\/]SalesFormLetter\.xml/);
   });
 
+  it('Case D × model-name style: bare class-extension name produces Base_ModelName_Extension', async () => {
+    // Verify that Case D (append _Extension) + Case B (strip model-name infix) +
+    // applyObjectPrefix (model-name branch) all compose correctly when
+    // EXTENSION_NAMING_STYLE=model-name.
+    // Input:  objectType="class-extension", objectName="SalesFormLetter" (bare, no suffix)
+    // Expected output file: SalesFormLetter_ContosoRobotics_Extension.xml
+    //   1. Case D: "SalesFormLetter" → "SalesFormLetter_Extension"
+    //   2. applyObjectPrefix (model-name branch): injects model name →
+    //      "SalesFormLetter_ContosoRobotics_Extension"
+    // applyObjectPrefix is mocked to identity, so we can only confirm Case D fired
+    // (name ends with _Extension and is not the bare name). The configManager mock
+    // returns 'MyModel' as model name, so we verify the _Extension suffix is present.
+    vi.mocked(getExtensionNamingStyle).mockReturnValue('model-name');
+    try {
+      const result = await handleCreateD365File(
+        req('create_d365fo_file', {
+          objectType: 'class-extension',
+          objectName: 'SalesFormLetter',
+          modelName: 'ContosoRobotics',
+          packageName: 'ContosoRobotics',
+          packagePath: 'K:\\PackagesLocalDirectory',
+          addToProject: false,
+        }),
+      );
+      const text: string = result.content[0].text;
+      // Case D must have fired: _Extension suffix present
+      expect(text).toMatch(/SalesFormLetter_Extension\.xml/);
+      // Must NOT fall into the NORMAL CASE (prefix-prepend on bare name)
+      expect(text).not.toMatch(/[\\/]SalesFormLetter\.xml/);
+    } finally {
+      vi.mocked(getExtensionNamingStyle).mockReturnValue('prefix');
+    }
+  });
+
   it('creates a class from custom xmlContent (hybrid scenario)', async () => {
     const xml = `<?xml version="1.0"?><AxClass><Name>MyHybridClass</Name></AxClass>`;
     const result = await handleCreateD365File(

@@ -192,6 +192,32 @@ Search for MyModel helper classes
 
 ---
 
+### code_completion
+
+Lists methods and fields available on a class or table, with optional name-prefix filtering.
+Use this for lightweight symbol look-up when you already know the object name and want to see
+what members are available — without fetching the full class definition.
+
+> ℹ️ For full class details including method source code, use **get_class_info**.
+> For full table schemas, use **get_table_info**.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `className` | Yes | Class or table name |
+| `prefix` | No | Method/field name prefix to filter results |
+| `includeWorkspace` | No | Also scan local workspace files (requires `workspacePath`) |
+| `workspacePath` | No | Path to local workspace root for scanning |
+
+**Examples:**
+```
+What methods start with 'calc' on SalesTable?
+List all methods on LedgerJournalEngine
+Show fields starting with 'Cust' on CustTable
+```
+
+---
+
 ### get_class_info
 
 Returns the complete class definition: every method with its full signature and source code,
@@ -458,6 +484,48 @@ your team's real patterns, not generic templates.
 Analyze patterns for ledger journal creation
 What are the common patterns for helper classes in my code?
 Show me patterns for financial dimension handling
+```
+
+---
+
+### suggest_method_implementation
+
+Finds real examples of how similar methods are implemented in your codebase and generates
+an X++ method skeleton based on method-name heuristics. Call this before writing a method
+from scratch to ground the implementation in proven patterns.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `className` | Yes | Class that will contain the method |
+| `methodName` | Yes | Name of the method to implement |
+| `returnType` | No | Return type of the method (default: `void`) |
+| `parameters` | No | Array of `{ name, type }` parameter objects |
+
+**Examples:**
+```
+How do others implement validateWrite() on a sales-related table?
+Show me similar implementations of calcDiscount() with return type AmountMST
+Generate a skeleton for processPayment() returning boolean
+```
+
+---
+
+### analyze_class_completeness
+
+Checks a class against similar classes in the codebase to identify standard methods it
+is missing. Useful for ensuring a new class is fully implemented before review.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `className` | Yes | Name of the class to analyze |
+
+**Examples:**
+```
+Is MyHelper class complete?
+What standard methods is MySalesService missing?
+Analyze completeness of ContosoInvoiceController
 ```
 
 ---
@@ -1015,6 +1083,105 @@ Verifies that D365FO objects exist on disk at the correct AOT path and are refer
 
 ---
 
+### build_d365fo_project
+
+Triggers an MSBuild / xppc.exe compilation of the D365FO model. Repeated calls poll the
+running job and return the latest log output — no need to re-invoke separately to check status.
+
+> ⚠️ **LOCAL_TOOLS only** — requires a local Windows VM with D365FO installed.
+> Never call this automatically — only on explicit user request.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `modelName` | No | Model name to build; auto-detected from `.mcp.json` if omitted |
+| `projectPath` | No | `.rnrproj` path (used only to extract model name if `modelName` omitted) |
+| `force` | No | Kill any stuck build process and restart (default: `false`) |
+
+**Examples:**
+```
+Build my project and show me the errors
+Build the ContosoRobotics model
+Force-restart the stuck build
+```
+
+---
+
+### trigger_db_sync
+
+Runs SyncEngine.exe to synchronize the D365FO database schema to match current metadata.
+Supports full-model sync or targeted partial sync for specific tables.
+
+> ⚠️ **LOCAL_TOOLS only** — requires a local Windows VM with D365FO installed.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `modelName` | No | Model name to sync; auto-detected from `.mcp.json` if omitted |
+| `tables` | No | Array of table names for partial sync |
+| `tableName` | No | Single table name shorthand (equivalent to `tables: [tableName]`) |
+| `projectPath` | No | `.rnrproj` path; used to extract syncable objects for smart partial sync |
+| `syncViews` | No | Also sync views and data entities (default: `false`) |
+| `connectionString` | No | SQL connection string override |
+| `packagePath` | No | `PackagesLocalDirectory` root override |
+
+**Examples:**
+```
+Sync the database to reflect my table changes
+Sync only MyCustomTable and MyOrderTable
+Sync the whole FmMcp model including views
+```
+
+---
+
+### run_bp_check
+
+Runs the Microsoft xppbp.exe best-practice linter against the model or a specific object.
+Returns a pass/warning/error summary and raw BP output.
+
+> ⚠️ **LOCAL_TOOLS only** — requires a local Windows VM with D365FO installed.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `modelName` | No | Model name to check; auto-detected from `.mcp.json` if omitted |
+| `projectPath` | No | `.rnrproj` path; auto-detected if omitted |
+| `targetFilter` | No | Filter to a specific class, table, or object name |
+| `packagePath` | No | `PackagesLocalDirectory` root override |
+
+**Examples:**
+```
+Run best practice checks on my latest changes
+Run BP check filtered to MyCustomClass
+Check the ContosoRobotics model for best practice violations
+```
+
+---
+
+### run_systest_class
+
+Invokes the D365FO SysTest framework against a specific test class (and optionally a single
+test method). Uses SysTestRunner.exe when available, falling back to xppbp.exe.
+
+> ⚠️ **LOCAL_TOOLS only** — requires a local Windows VM with D365FO installed.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `className` | Yes | SysTest class name to run |
+| `testMethod` | No | Specific test method within the class (runs all methods if omitted) |
+| `modelName` | No | Model containing the test class; auto-detected if omitted |
+| `packagePath` | No | `PackagesLocalDirectory` root override |
+
+**Examples:**
+```
+Run the unit tests in MyTestClass
+Run only the testValidateWrite method in MyTableTest
+Run all tests in ContosoSalesServiceTest
+```
+
+---
+
 ### update_symbol_index
 
 Re-indexes a D365FO XML file in the SQLite symbol database. Since `create_d365fo_file`
@@ -1143,6 +1310,231 @@ across either tree, but file creation must always target the package path.
 ```
 Check my D365FO workspace configuration
 What model am I working in?
+```
+
+---
+
+### get_security_artifact_info
+
+Returns full details for a security privilege, duty, or role including the complete
+hierarchy chain: role → duties → privileges → entry points (forms, tables, menu items).
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `name` | Yes | Name of the security artifact |
+| `artifactType` | Yes | `privilege`, `duty`, or `role` |
+| `includeChain` | No | Walk and display the full hierarchy (default: `true`) |
+
+**Examples:**
+```
+Show me everything in the CustTableFullControl privilege
+What duties does the TradeSalesClerk role include?
+List all entry points in the SalesOrderMaintain duty
+```
+
+---
+
+### get_security_coverage_for_object
+
+Finds which roles, duties, and privileges grant access to a given form, table, or menu item.
+Returns a per-menu-item breakdown with aggregate role counts.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `objectName` | Yes | Form, table, class, or menu item name |
+| `objectType` | No | `form`, `table`, `class`, `menu-item`, or `auto` (default: `auto`) |
+
+**Examples:**
+```
+What roles can access the CustTable form?
+Which security privileges cover SalesTable?
+Who has access to the VendPaymProposal form?
+```
+
+---
+
+### get_menu_item_info
+
+Returns menu item metadata (type, target object, label) and the full security chain from
+the menu item up through privilege → duty → role. Falls back to fuzzy suggestions when the
+exact name is not found.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `name` | Yes | Menu item name |
+| `itemType` | No | `display`, `action`, `output`, or `any` (default: `any`) |
+
+**Examples:**
+```
+What form does the CustTable menu item open?
+Show me the security chain for SalesTableListPage menu item
+What output menu items exist for SalesInvoice?
+```
+
+---
+
+### find_coc_extensions
+
+Finds all Chain of Command (CoC) extension classes that wrap methods on the specified class
+or table. Bridge-first: uses DYNAMICSXREFDB when available for compiler-resolved results;
+falls back to SQLite extension metadata and filesystem scan.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `className` | Yes | Base class or table name being extended |
+| `methodName` | No | Filter results to a specific wrapped method |
+| `includeEventHandlers` | No | Also list static event subscriptions for this class/table (default: `true`) |
+
+**Examples:**
+```
+Does CustTable.validateWrite have any CoC wrappers?
+Find all CoC extensions on SalesFormLetter
+Which classes extend SalesLine.insert()?
+```
+
+---
+
+### find_event_handlers
+
+Finds all event handler methods that subscribe to events on a class or table. Bridge-first:
+uses DYNAMICSXREFDB when available; falls back to FTS5 source-snippet search.
+Supports filtering by event name and handler type.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `targetClass` | One of | Class whose events to find handlers for |
+| `targetTable` | One of | Table whose events to find handlers for |
+| `eventName` | No | Filter to a specific event (e.g. `onInserted`, `onValidatedWrite`) |
+| `handlerType` | No | `static`, `delegate`, or `all` (default: `all`) |
+
+> At least one of `targetClass` or `targetTable` is required.
+
+**Examples:**
+```
+Who handles the onInserted event of SalesLine?
+Find all event handlers on CustTable
+Show only delegate handlers on InventTable
+```
+
+---
+
+### get_table_extension_info
+
+Lists all extension objects that extend a base table — added fields, indexes, methods, and
+event subscriptions — and optionally merges them with the base schema into an effective
+schema summary.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `tableName` | Yes | Base table name whose extensions should be found |
+| `includeEffectiveSchema` | No | Merge base + extension fields/indexes into a combined totals view (default: `true`) |
+
+**Examples:**
+```
+What fields did ISV packages add to CustTable?
+Show all extensions of InventTable with effective schema
+List everything added to SalesLine by any extension
+```
+
+---
+
+### get_data_entity_info
+
+Returns data entity metadata: category, OData public name, data sources, field mappings,
+primary key, and enabled integrations. Bridge-first, with SQLite fuzzy suggestions on miss.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `entityName` | Yes | Name of the data entity (AxDataEntityView object name) |
+
+**Examples:**
+```
+Show me CustCustomerV3Entity details
+What OData name does VendorV2Entity expose?
+What data sources does SalesOrderHeaderV2Entity use?
+```
+
+---
+
+### analyze_extension_points
+
+Analyzes an X++ class, table, or form and returns all available extension surfaces:
+CoC-eligible methods, delegates, standard events, and (optionally) existing wrappers and
+subscribers already present in the codebase.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `objectName` | Yes | Class, table, or form name to analyze |
+| `objectType` | No | `class`, `table`, `form`, or `auto` (default: `auto`) |
+| `showExistingExtensions` | No | Also list existing CoC wrappers and event subscribers (default: `false`) |
+
+**Examples:**
+```
+What can I extend on SalesLine?
+Show extension points for CustTable including existing extensions
+What delegates does SalesFormLetter expose?
+```
+
+---
+
+### recommend_extension_strategy
+
+Rule-based advisor that recommends the best D365FO extensibility mechanism for a described
+goal — preventing wrong choices such as CoC where a Business Event or data entity is more
+appropriate. Returns the recommended strategy, reasoning, risks, alternatives,
+anti-patterns to avoid, and suggested next MCP calls.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `goal` | Yes | Plain-English description of what you want to achieve |
+| `objectName` | No | Target D365FO object, if known |
+| `scenario` | No | One of: `data-validation`, `field-defaulting`, `business-logic-change`, `outbound-integration`, `inbound-data`, `ui-modification`, `document-output`, `number-sequence`, `security-access`, `batch-processing`, `custom`. Auto-detected from `goal` if omitted. |
+
+**Examples:**
+```
+Should I use CoC or Business Event to notify an external system?
+How should I default a field value when a new sales order is created?
+What is the best way to add a custom field to the vendor invoice form?
+```
+
+---
+
+### validate_object_naming
+
+Validates a proposed D365FO object name against naming conventions and detects conflicts
+in the symbol index. Supports both `prefix` and `model-name` extension naming styles
+(controlled by `EXTENSION_NAMING_STYLE`).
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `proposedName` | Yes | The full object name to validate |
+| `objectType` | Yes | Object type: `class`, `table`, `form`, `enum`, `edt`, `query`, `view`, `table-extension`, `class-extension`, `form-extension`, `enum-extension`, `edt-extension`, `menu-item`, `security-privilege`, `security-duty`, `security-role`, `data-entity` |
+| `baseObjectName` | Extension types | Name of the base object being extended (required for all `*-extension` types) |
+| `modelPrefix` | No | Expected ISV/model prefix (2-4 uppercase letters, e.g. `"CR"`, `"WHS"`). Auto-detected from the symbol index if omitted. |
+| `modelName` | No | Target model name. Relevant only when `EXTENSION_NAMING_STYLE=model-name`, where the extension token is the model name instead of the prefix infix (e.g. `CustTable_ContosoRobotics_Extension`). Auto-detected from the active workspace config if omitted. |
+
+**Extension naming styles:**
+
+| Style | Class extension | Element extension |
+|-------|----------------|------------------|
+| `prefix` (default) | `{Base}{Prefix}_Extension` | `{Base}.{Prefix}Extension` |
+| `model-name` | `{Base}_{ModelName}_Extension` | `{Base}.{ModelName}` |
+
+**Examples:**
+```
+Is SalesTableCR_Extension a valid extension class name for SalesTable?
+Validate CustTable.ContosoRoboticsExtension as a table-extension
+Validate CustTable_ContosoRobotics_Extension as class-extension with modelName="ContosoRobotics"
 ```
 
 ---
