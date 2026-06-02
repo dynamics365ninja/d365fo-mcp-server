@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { execFile, spawn } from 'child_process';
 import util from 'util';
 import path from 'path';
-import { access, writeFile, readFile, unlink, appendFile } from 'fs/promises';
+import { access, writeFile, readFile, unlink, appendFile, readdir } from 'fs/promises';
 import { openSync as openSyncFs, closeSync as closeSyncFs } from 'fs';
 import os from 'os';
 import crypto from 'crypto';
@@ -40,41 +40,72 @@ function assertSafePath(value: string, label: string): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Patterns
+// ---------------------------------------------------------------------------
+
 // xppc.exe writes this prefix on error lines in the -log file (standalone/non-VS mode)
 const XPPC_COMPILE_ERROR_RE = /^Compile Error:/m;
 
+// When xppc reports stale symbols from a previous incremental build, a full build is needed
+const XPPC_STALE_SYMBOL_RE = /has not been successfully compiled since it was last changed|Do a Full Build/i;
+
 // ---------------------------------------------------------------------------
-// Async build state management
-// State and log files live in os.tmpdir(), keyed by a hash of modelName+metadataPath.
+// Build job state
 // ---------------------------------------------------------------------------
+
+interface QueueResult {
+  modelName: string;
+  status: 'succeeded' | 'failed';
+  duration: number;
+  logFile: string;
+}
 
 interface BuildJobState {
   pid: number;
-  modelName: string;
+  modelName: string;       // Currently building model
+  targetModel: string;     // Final target model — state file is keyed by this
   tool: string;
   startTime: string;
-  logFile: string;
+  logFile: string;         // Log for the CURRENT model in the queue
   status: 'running' | 'succeeded' | 'failed';
   exitCode?: number;
   endTime?: string;
+  fullBuild?: boolean;
+  // Multi-model queue (only set when buildReferencedModels: true)
+  buildQueue?: string[];        // All models in topological order (deps first, target last)
+  queueIndex?: number;          // Index into buildQueue for the currently-building model
+  queueResults?: QueueResult[]; // Results for already-completed models in the queue
 }
 
-function buildJobKey(modelName: string, customPackagesPath: string): string {
-  return `${modelName.toLowerCase()}|${customPackagesPath.toLowerCase()}`;
+// ---------------------------------------------------------------------------
+// State file / log file paths
+// State file is keyed by targetModel so it remains findable throughout
+// a multi-model build even while a dependency is building.
+// Each model in the queue gets its own log file (keyed by targetModel + index).
+// ---------------------------------------------------------------------------
+
+function stateFilePath(targetModel: string, customPackagesPath: string): string {
+  const hash = crypto
+    .createHash('md5')
+    .update(`${targetModel.toLowerCase()}|${customPackagesPath.toLowerCase()}`)
+    .digest('hex')
+    .slice(0, 10);
+  return path.join(os.tmpdir(), `d365build_state_${hash}.json`);
 }
 
-function buildJobPaths(modelName: string, customPackagesPath: string): { stateFile: string; logFile: string } {
-  const hash = crypto.createHash('md5').update(buildJobKey(modelName, customPackagesPath)).digest('hex').slice(0, 10);
-  return {
-    stateFile: path.join(os.tmpdir(), `d365build_state_${hash}.json`),
-    logFile:   path.join(os.tmpdir(), `d365build_log_${hash}.log`),
-  };
+function logFilePath(targetModel: string, queueIndex: number, customPackagesPath: string): string {
+  const hash = crypto
+    .createHash('md5')
+    .update(`log:${targetModel.toLowerCase()}|${queueIndex}|${customPackagesPath.toLowerCase()}`)
+    .digest('hex')
+    .slice(0, 10);
+  return path.join(os.tmpdir(), `d365build_log_${hash}.log`);
 }
 
-async function readBuildState(modelName: string, customPackagesPath: string): Promise<BuildJobState | null> {
-  const { stateFile } = buildJobPaths(modelName, customPackagesPath);
+async function readBuildState(targetModel: string, customPackagesPath: string): Promise<BuildJobState | null> {
   try {
-    const raw = await readFile(stateFile, 'utf-8');
+    const raw = await readFile(stateFilePath(targetModel, customPackagesPath), 'utf-8');
     return JSON.parse(raw) as BuildJobState;
   } catch {
     return null;
@@ -82,19 +113,18 @@ async function readBuildState(modelName: string, customPackagesPath: string): Pr
 }
 
 async function writeBuildState(state: BuildJobState, customPackagesPath: string): Promise<void> {
-  const { stateFile } = buildJobPaths(state.modelName, customPackagesPath);
-  await writeFile(stateFile, JSON.stringify(state, null, 2), 'utf-8');
+  await writeFile(stateFilePath(state.targetModel, customPackagesPath), JSON.stringify(state, null, 2), 'utf-8');
 }
 
-async function clearBuildState(modelName: string, customPackagesPath: string): Promise<void> {
-  const { stateFile } = buildJobPaths(modelName, customPackagesPath);
-  await unlink(stateFile).catch(() => {});
+async function clearBuildState(targetModel: string, customPackagesPath: string): Promise<void> {
+  await unlink(stateFilePath(targetModel, customPackagesPath)).catch(() => {});
 }
 
 function isProcessAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
+// Return the last N lines of a log file (used while a build is running).
 async function readLogTail(logFile: string, lines = 60): Promise<string> {
   try {
     const content = await readFile(logFile, 'utf-8');
@@ -105,6 +135,25 @@ async function readLogTail(logFile: string, lines = 60): Promise<string> {
   }
 }
 
+// Return up to maxLines of a log file, showing head+tail when truncated.
+// Used when reporting a failed build so the full diagnostic context is visible.
+async function readFullLog(logFile: string, maxLines = 300): Promise<string> {
+  try {
+    const content = await readFile(logFile, 'utf-8');
+    const all = content.split(/\r?\n/);
+    if (all.length <= maxLines) return content.trim();
+    const half = Math.floor(maxLines / 2);
+    return (
+      `[First ${half} lines]\n` +
+      all.slice(0, half).join('\n') +
+      `\n\n... (${all.length - maxLines} lines omitted) ...\n\n` +
+      `[Last ${half} lines]\n` +
+      all.slice(-half).join('\n').trim()
+    );
+  } catch {
+    return '(log not available)';
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Parse model name from .rnrproj XML
@@ -121,7 +170,7 @@ async function getModelFromRnrproj(projectPath: string): Promise<string | null> 
 }
 
 // ---------------------------------------------------------------------------
-// Locate xppc.exe from microsoftPackagesPath
+// Locate xppc.exe
 // ---------------------------------------------------------------------------
 
 async function findXppcExe(microsoftPackagesPath: string | null): Promise<string | null> {
@@ -136,7 +185,6 @@ async function findXppcExe(microsoftPackagesPath: string | null): Promise<string
     path.join(process.env.USERPROFILE || 'C:\\Users\\Default', 'AppData', 'Local');
   const d365Base = path.join(appDataLocal, 'Microsoft', 'Dynamics365');
   try {
-    const { readdir } = await import('fs/promises');
     const versions = await readdir(d365Base);
     for (const ver of versions.sort().reverse()) {
       candidates.push(path.join(d365Base, ver, 'PackagesLocalDirectory', 'bin', 'xppc.exe'));
@@ -158,31 +206,112 @@ async function findXppcExe(microsoftPackagesPath: string | null): Promise<string
 }
 
 // ---------------------------------------------------------------------------
-// Background xppc.exe launch
+// Dependency resolution
+// Reads <ModuleReferences> from the target model's descriptor, recursively
+// follows custom/ISV dependencies (models present in customPackagesPath),
+// and returns a topologically sorted build order (deepest dep first, target
+// last). Microsoft standard models (only in microsoftPackagesPath) are
+// silently skipped.
 // ---------------------------------------------------------------------------
 
-async function launchXppcBackground(
-  xppcExe: string,
-  modelName: string,
+async function resolveBuildQueue(
+  targetModel: string,
   customPackagesPath: string,
-  microsoftPackagesPath: string,
-  extraReferenceFolders: string[] = [],
-): Promise<BuildJobState> {
+  _microsoftPackagesPath: string,
+): Promise<string[]> {
+  const visited = new Set<string>();
+  const order: string[] = [];
+
+  async function visit(modelName: string): Promise<void> {
+    if (visited.has(modelName.toLowerCase())) return;
+    visited.add(modelName.toLowerCase());
+
+    // Read descriptor
+    const descriptorPath = path.join(customPackagesPath, modelName, 'Descriptor', `${modelName}.xml`);
+    let content: string;
+    try {
+      content = await readFile(descriptorPath, 'utf-8');
+    } catch {
+      // No descriptor — still include this model but can't follow its deps
+      order.push(modelName);
+      return;
+    }
+
+    // Extract all <d2p1:string> entries inside <ModuleReferences>
+    const refs = Array.from(content.matchAll(/<d2p1:string>\s*([^<\s]+)\s*<\/d2p1:string>/g))
+      .map(m => m[1].trim())
+      .filter(Boolean);
+
+    // Visit custom/ISV dependencies first (skip Microsoft standard models)
+    for (const ref of refs) {
+      if (visited.has(ref.toLowerCase())) continue;
+      try {
+        await access(path.join(customPackagesPath, ref));
+        await visit(ref); // Recurse into custom dep
+      } catch {
+        // Not found in customPackagesPath → Microsoft standard → skip
+      }
+    }
+
+    order.push(modelName); // Post-order DFS = topological sort
+  }
+
+  await visit(targetModel);
+  return order; // Dependencies first, targetModel last
+}
+
+// ---------------------------------------------------------------------------
+// Kill orphaned build processes
+// ---------------------------------------------------------------------------
+
+async function killOrphanedBuildProcesses(): Promise<void> {
+  await execFileAsync('taskkill', ['/F', '/IM', 'xppc.exe'], { timeout: 10_000, windowsHide: true })
+    .then(({ stdout }) => console.error(`[build_d365fo_project] killed xppc.exe: ${stdout.trim() || '(no output)'}`))
+    .catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// Build context — passed through the entire queue so the close handler can
+// launch the next model without re-resolving paths.
+// ---------------------------------------------------------------------------
+
+interface XppcBuildContext {
+  xppcExe: string;
+  customPackagesPath: string;
+  microsoftPackagesPath: string;
+  extraReferenceFolders: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Core spawn — queue-aware
+// Spawns xppc.exe for state.modelName, writes the updated state (with real
+// PID) to disk, and wires up close/error handlers. The close handler
+// automatically advances the queue when a dependency finishes successfully.
+// Returns the PID of the spawned process.
+// ---------------------------------------------------------------------------
+
+async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): Promise<number> {
+  const { xppcExe, customPackagesPath, microsoftPackagesPath, extraReferenceFolders } = ctx;
+  const { modelName, fullBuild, targetModel } = state;
+
+  // fullBuild only applies to the TARGET model — dependencies always run
+  // incremental. They are already compiled; a full rebuild of every dep in
+  // the chain would be very slow and is only needed when a dep itself has
+  // stale symbols, which the user can fix by building that model directly.
+  const useFullBuild = fullBuild && modelName === targetModel;
+
   assertSafePath(xppcExe, 'xppc.exe path');
   assertSafePath(modelName, 'Model name');
   assertSafePath(customPackagesPath, 'Custom packages path');
   assertSafePath(microsoftPackagesPath, 'Microsoft packages path');
 
-  const { logFile } = buildJobPaths(modelName, customPackagesPath);
   const outputPath = path.join(customPackagesPath, modelName, 'bin');
+  const xppcErrLog = state.logFile.replace('.log', '.xppc.err');
 
-  // xppc.exe -log=<path> writes all compiler diagnostics to a plain-text file:
-  //   Compile Error: Class Method dynamics://...: [(line,col),(line,col)]: message
-  // This is the only reliable way to capture errors in standalone (non-VS) mode.
-  const xppcErrorLog = logFile.replace('.log', '.xppc.err');
+  // Clear stale diagnostic files from a previous run
+  await unlink(xppcErrLog).catch(() => {});
 
-  // Build the full deduplicated set of reference folders.
-  // Start with the two required paths, then append any extras from ReferencePackagesPaths.
+  // Deduplicate reference folders
   const seenRefFolders = new Set<string>();
   const referenceFolderArgs: string[] = [];
   for (const folder of [microsoftPackagesPath, customPackagesPath, ...extraReferenceFolders]) {
@@ -199,92 +328,152 @@ async function launchXppcBackground(
     `-modelmodule=${modelName}`,
     ...referenceFolderArgs,
     `-output=${outputPath}`,
-    '-incremental',
-    `-log=${xppcErrorLog}`,
+    // Full build = omit -incremental (xppc recompiles all elements).
+    // Only applied to the target model — deps always run incremental.
+    ...(useFullBuild ? [] : ['-incremental']),
+    `-log=${xppcErrLog}`,
+    // -verbose surfaces metadata loading errors (XML failures, missing refs)
+    // that are otherwise silently swallowed in non-VS standalone mode.
+    '-verbose',
   ];
 
   await buildLog('INFO', `xppc.exe args: ${xppcArgs.join(' ')}`);
 
-  // Clear stale diagnostics files before each build so a previous failed run's
-  // errors don't bleed into a subsequent successful build's output.
-  // Clear the xppc error log so we never read stale entries from a previous run.
-  await unlink(xppcErrorLog).catch(() => {});
-
-  // xppc.exe is a normal console app — file descriptor redirect works fine
-  const logFd = openSyncFs(logFile, 'w');
+  const logFd = openSyncFs(state.logFile, 'w');
 
   const child = spawn(xppcExe, xppcArgs, {
     detached: false,
     windowsHide: true,
     stdio: ['ignore', logFd, logFd],
   });
-  // Prevent the MCP server from waiting for xppc to exit on shutdown.
   child.unref();
 
-  const state: BuildJobState = {
-    pid: child.pid!,
-    modelName,
-    tool: 'xppc.exe',
-    startTime: new Date().toISOString(),
-    logFile,
-    status: 'running',
-  };
+  const pid = child.pid!;
 
-  await writeBuildState(state, customPackagesPath);
-  await buildLog('INFO', `xppc.exe launched — PID: ${child.pid} | model: ${modelName} | log: ${logFile}`);
+  // Write state with actual PID immediately so polls see it
+  const liveState: BuildJobState = { ...state, pid };
+  await writeBuildState(liveState, customPackagesPath);
+
+  await buildLog('INFO', `xppc.exe launched — PID: ${pid} | model: ${modelName} | log: ${state.logFile}`);
+
+  child.on('error', async (err) => {
+    closeSyncFs(logFd);
+    const failed: BuildJobState = { ...liveState, status: 'failed', exitCode: -1, endTime: new Date().toISOString() };
+    await writeBuildState(failed, customPackagesPath).catch(() => {});
+    await buildLog('ERROR', `xppc.exe spawn error — PID: ${pid}: ${err.message}`);
+  });
 
   child.on('close', async (code) => {
     closeSyncFs(logFd);
     const exitCode = code ?? -1;
 
-    // Read the xppc -log output first — this is the authoritative source of
-    // compiler errors. xppc does NOT write errors to stdout or the XML result
-    // files when run standalone (outside VS/MSBuild). The -log file contains
-    // lines like:
-    //   Compile Error: Class Method dynamics://...: [(28,27),(28,28)]: ';' expected.
-    //   Compile Warning: ...
-    let xppcErrorContent = '';
+    // Read the -log file (authoritative source of X++ compiler errors)
+    let xppcErrContent = '';
     try {
-      xppcErrorContent = await readFile(xppcErrorLog, 'utf-8');
+      xppcErrContent = await readFile(xppcErrLog, 'utf-8');
     } catch { /* no -log file = no diagnostics */ }
 
-    const hasCompileErrors = XPPC_COMPILE_ERROR_RE.test(xppcErrorContent);
-    // A build succeeds only when xppc exits 0 AND no compile errors were logged.
+    const hasCompileErrors = XPPC_COMPILE_ERROR_RE.test(xppcErrContent);
+    const hasStaleSymbol   = XPPC_STALE_SYMBOL_RE.test(xppcErrContent);
+    // A build succeeds only when xppc exits 0 AND the -log has no Compile Error lines.
     // xppc may exit 0 even when it emits errors (observed in UDE standalone mode).
     const succeeded = exitCode === 0 && !hasCompileErrors;
 
-    if (xppcErrorContent.trim()) {
-      await appendFile(logFile, '\n--- xppc compiler diagnostics ---\n' + xppcErrorContent + '\n', 'utf-8');
+    // Append compiler diagnostics to the main log so a single tail read finds everything
+    if (xppcErrContent.trim()) {
+      let diagnostics = '\n--- xppc compiler diagnostics ---\n' + xppcErrContent + '\n';
+      if (hasStaleSymbol) {
+        diagnostics +=
+          '\n💡 STALE SYMBOL DETECTED: Call build_d365fo_project with fullBuild: true\n' +
+          '   to recompile all symbols from scratch.\n';
+      }
+      await appendFile(state.logFile, diagnostics, 'utf-8').catch(() => {});
+    } else if (!succeeded) {
+      // No diagnostics at all — the failure happened before the compiler ran
+      await appendFile(
+        state.logFile,
+        '\n⚠️  No compiler diagnostics from xppc — build failed before compilation started.\n' +
+        '   Possible causes: missing metadata path, missing referenced model, or a\n' +
+        '   malformed XML file that slipped past pre-validation (e.g. in the Descriptor).\n',
+        'utf-8',
+      ).catch(() => {});
     }
 
-    const updated: BuildJobState = {
-      ...state,
+    const duration = Math.round((Date.now() - new Date(liveState.startTime).getTime()) / 1000);
+    const newResult: QueueResult = {
+      modelName,
       status: succeeded ? 'succeeded' : 'failed',
+      duration,
+      logFile: state.logFile,
+    };
+    const allResults: QueueResult[] = [...(liveState.queueResults ?? []), newResult];
+
+    if (!succeeded) {
+      // Failure — stop the queue and finalise
+      const final: BuildJobState = {
+        ...liveState,
+        status: 'failed',
+        exitCode,
+        endTime: new Date().toISOString(),
+        queueResults: allResults,
+      };
+      await writeBuildState(final, customPackagesPath).catch(() => {});
+      await buildLog('ERROR', `xppc.exe FAILED — PID: ${pid} | model: ${modelName} | exit: ${exitCode} | compileErrors: ${hasCompileErrors}`);
+      return;
+    }
+
+    // Success — advance queue if there are more models
+    if (
+      liveState.buildQueue &&
+      liveState.queueIndex !== undefined &&
+      liveState.queueIndex + 1 < liveState.buildQueue.length
+    ) {
+      const nextIdx   = liveState.queueIndex + 1;
+      const nextModel = liveState.buildQueue[nextIdx];
+      const nextLog   = logFilePath(liveState.targetModel, nextIdx, customPackagesPath);
+
+      const nextState: BuildJobState = {
+        ...liveState,
+        pid: 0,           // will be updated by the recursive spawnXppcForState call
+        modelName: nextModel,
+        queueIndex: nextIdx,
+        queueResults: allResults,
+        logFile: nextLog,
+        status: 'running',
+        startTime: new Date().toISOString(),
+        exitCode: undefined,
+        endTime: undefined,
+      };
+      await writeBuildState(nextState, customPackagesPath);
+      await buildLog('INFO', `Queue advancing: ${nextIdx + 1}/${liveState.buildQueue.length} — ${nextModel}`);
+
+      spawnXppcForState(ctx, nextState).catch(async (err) => {
+        await buildLog('ERROR', `Failed to spawn next model ${nextModel}: ${err.message}`);
+        const errState: BuildJobState = {
+          ...nextState,
+          status: 'failed',
+          exitCode: -1,
+          endTime: new Date().toISOString(),
+          queueResults: [...allResults, { modelName: nextModel, status: 'failed', duration: 0, logFile: nextLog }],
+        };
+        await writeBuildState(errState, customPackagesPath).catch(() => {});
+      });
+      return;
+    }
+
+    // All models built — finalise as succeeded
+    const final: BuildJobState = {
+      ...liveState,
+      status: 'succeeded',
       exitCode,
       endTime: new Date().toISOString(),
+      queueResults: allResults,
     };
-    await writeBuildState(updated, customPackagesPath).catch(() => {});
-    await buildLog(succeeded ? 'INFO' : 'ERROR', `xppc.exe finished — PID: ${child.pid} | exit: ${exitCode} | compile errors: ${hasCompileErrors}`);
+    await writeBuildState(final, customPackagesPath).catch(() => {});
+    await buildLog('INFO', `xppc.exe SUCCEEDED — PID: ${pid} | model: ${modelName} | ${duration}s`);
   });
 
-  child.on('error', async (err) => {
-    closeSyncFs(logFd);
-    const updated: BuildJobState = { ...state, status: 'failed', exitCode: -1, endTime: new Date().toISOString() };
-    await writeBuildState(updated, customPackagesPath).catch(() => {});
-    await buildLog('ERROR', `xppc.exe error — PID: ${child.pid}: ${err.message}`);
-  });
-
-  return state;
-}
-
-// ---------------------------------------------------------------------------
-// Kill orphaned build processes
-// ---------------------------------------------------------------------------
-
-async function killOrphanedBuildProcesses(): Promise<void> {
-  await execFileAsync('taskkill', ['/F', '/IM', 'xppc.exe'], { timeout: 10_000, windowsHide: true })
-    .then(({ stdout }) => console.error(`[build_d365fo_project] killed xppc.exe: ${stdout.trim() || '(no output)'}`))
-    .catch(() => {});
+  return pid;
 }
 
 // ---------------------------------------------------------------------------
@@ -300,11 +489,30 @@ export const buildProjectToolDefinition = {
     'First call: starts the build and returns immediately.',
     'Subsequent calls for the same model: return current status + latest log output.',
     'Use force:true to kill a stuck build and restart.',
+    'Use fullBuild:true to omit -incremental and recompile all elements — fixes "stale symbol" errors.',
+    'Use buildReferencedModels:true to also build custom/ISV dependencies before the target model',
+    '(reads ModuleReferences from the model descriptor; skips Microsoft standard models; builds in topological order).',
   ].join(' '),
   parameters: z.object({
-    modelName: z.string().optional().describe('D365FO model name to build (e.g. MyCompanyModel). Auto-detected from workspace if omitted.'),
-    projectPath: z.string().optional().describe('(Legacy) Absolute path to a .rnrproj file — used only to extract the model name when modelName is not provided.'),
-    force: z.boolean().optional().describe('Kill any running build processes and restart.'),
+    modelName: z.string().optional().describe(
+      'D365FO model name to build (e.g. MyCustomModel). Auto-detected from workspace if omitted.',
+    ),
+    projectPath: z.string().optional().describe(
+      '(Legacy) Absolute path to a .rnrproj file — used only to extract the model name when modelName is not provided.',
+    ),
+    force: z.boolean().optional().describe(
+      'Kill any running build processes for this model and restart.',
+    ),
+    fullBuild: z.boolean().optional().describe(
+      'Full recompile of the TARGET model only: omits -incremental so xppc recompiles all elements. ' +
+      'When buildReferencedModels is also set, dependency models still run incremental. ' +
+      'Use when xppc reports "model element has not been successfully compiled since it was last changed".',
+    ),
+    buildReferencedModels: z.boolean().optional().describe(
+      'Before building the target model, also build all custom/ISV models it depends on ' +
+      '(from <ModuleReferences> in the model descriptor). ' +
+      'Skips Microsoft standard models. Builds in topological dependency order.',
+    ),
   }),
 };
 
@@ -314,226 +522,313 @@ export const buildProjectToolDefinition = {
 
 export const buildProjectTool = async (params: any, _context: any) => {
   try {
-  const force = params.force === true;
+    const force                 = params.force                === true;
+    const fullBuild             = params.fullBuild            === true;
+    const buildReferencedModels = params.buildReferencedModels === true;
 
-  const configManager = getConfigManager();
-  await configManager.ensureLoaded();
+    const configManager = getConfigManager();
+    await configManager.ensureLoaded();
 
-  // ------------------------------------------------------------------
-  // Resolve paths — supports both UDE and CHE environments
-  //
-  // UDE (Unified Developer Experience):
-  //   - XPP config JSON present in %LOCALAPPDATA%\Microsoft\Dynamics365\XPPConfig\
-  //   - customPackagesPath    = ModelStoreFolder  (git repo metadata, e.g. src\Metadata)
-  //   - microsoftPackagesPath = FrameworkDirectory (AppData UDE packages)
-  //   - referencePackagesPaths = all folders xppc should reference (incl. dist/ ISV packages)
-  //
-  // CHE (Cloud-Hosted Environment):
-  //   - No XPP config; all packages in a single PackagesLocalDirectory
-  //   - Both paths = PackagesLocalDirectory
-  //   - Typical locations: C:\AOSService\PackagesLocalDirectory or K:\, J:\, I:\
-  // ------------------------------------------------------------------
-  let customPackagesPath: string | null = null;
-  let microsoftPackagesPath: string | null = null;
-  let extraReferenceFolders: string[] = [];
+    // ------------------------------------------------------------------
+    // Resolve D365FO package paths
+    // Supports UDE (Unified Developer Experience) and CHE (Cloud-Hosted Env).
+    // ------------------------------------------------------------------
+    let customPackagesPath:    string | null = null;
+    let microsoftPackagesPath: string | null = null;
+    let extraReferenceFolders: string[] = [];
 
-  // Priority 1: XPP config (UDE) — authoritative source for all paths
-  const xppConfig = await configManager.getActiveXppConfig();
-  if (xppConfig) {
-    customPackagesPath    = xppConfig.customPackagesPath;
-    microsoftPackagesPath = xppConfig.microsoftPackagesPath;
-    extraReferenceFolders = xppConfig.referencePackagesPaths ?? [];
-  }
-
-  // Priority 2: configManager explicit methods (covers .mcp.json overrides)
-  if (!customPackagesPath) {
-    customPackagesPath = await configManager.getCustomPackagesPath();
-  }
-  if (!microsoftPackagesPath) {
-    microsoftPackagesPath = await configManager.getMicrosoftPackagesPath() ?? configManager.getPackagePath();
-  }
-
-  // Priority 3: CHE fallback — probe well-known PackagesLocalDirectory locations
-  if (!microsoftPackagesPath) {
-    for (const candidate of [
-      'C:\\AOSService\\PackagesLocalDirectory',
-      'K:\\AOSService\\PackagesLocalDirectory',
-      'J:\\AOSService\\PackagesLocalDirectory',
-      'I:\\AOSService\\PackagesLocalDirectory',
-    ]) {
-      try { await access(candidate); microsoftPackagesPath = candidate; break; } catch { /* next */ }
+    // Priority 1: XPP config (UDE) — authoritative source for all paths
+    const xppConfig = await configManager.getActiveXppConfig();
+    if (xppConfig) {
+      customPackagesPath    = xppConfig.customPackagesPath;
+      microsoftPackagesPath = xppConfig.microsoftPackagesPath;
+      extraReferenceFolders = xppConfig.referencePackagesPaths ?? [];
     }
-  }
 
-  // In CHE, custom and Microsoft packages share the same PackagesLocalDirectory
-  if (!customPackagesPath && microsoftPackagesPath) {
-    customPackagesPath = microsoftPackagesPath;
-  }
+    // Priority 2: configManager explicit methods (.mcp.json overrides)
+    if (!customPackagesPath)    customPackagesPath    = await configManager.getCustomPackagesPath();
+    if (!microsoftPackagesPath) microsoftPackagesPath = await configManager.getMicrosoftPackagesPath() ?? configManager.getPackagePath();
 
-  if (!customPackagesPath || !microsoftPackagesPath) {
-    return {
-      content: [{
-        type: 'text',
-        text: [
-          `❌ Cannot resolve D365FO package paths.`,
-          ``,
-          `Custom packages path:    ${customPackagesPath ?? '(not found)'}`,
-          `Microsoft packages path: ${microsoftPackagesPath ?? '(not found)'}`,
-          ``,
-          `For UDE: ensure an XPP config is present at %LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig\\`,
-          `For CHE: ensure PackagesLocalDirectory exists at C:\\AOSService\\PackagesLocalDirectory (or K:\\, J:\\, I:\\)`,
-        ].join('\n'),
-      }],
-      isError: true,
-    };
-  }
+    // Priority 3: CHE fallback — probe well-known PackagesLocalDirectory locations
+    if (!microsoftPackagesPath) {
+      for (const candidate of [
+        'C:\\AOSService\\PackagesLocalDirectory',
+        'K:\\AOSService\\PackagesLocalDirectory',
+        'J:\\AOSService\\PackagesLocalDirectory',
+        'I:\\AOSService\\PackagesLocalDirectory',
+      ]) {
+        try { await access(candidate); microsoftPackagesPath = candidate; break; } catch { /* next */ }
+      }
+    }
 
-  // ------------------------------------------------------------------
-  // Resolve model name
-  // Priority: 1) explicit param  2) auto-detected from workspace  3) .rnrproj fallback
-  // ------------------------------------------------------------------
-  let modelName: string | null = params.modelName || configManager.getModelName();
+    // In CHE, custom and Microsoft packages share the same PackagesLocalDirectory
+    if (!customPackagesPath && microsoftPackagesPath) customPackagesPath = microsoftPackagesPath;
 
-  if (!modelName && params.projectPath) {
-    modelName = await getModelFromRnrproj(params.projectPath);
-  }
-
-  if (!modelName) {
-    return {
-      content: [{
-        type: 'text',
-        text: [
-          `❌ Cannot determine model name.`,
-          ``,
-          `Provide modelName parameter, or configure it in .mcp.json / D365FO_MODEL_NAME env var.`,
-        ].join('\n'),
-      }],
-      isError: true,
-    };
-  }
-
-  // ------------------------------------------------------------------
-  // Check for an existing background build for this model
-  // ------------------------------------------------------------------
-  const existingState = await readBuildState(modelName, customPackagesPath);
-
-  if (existingState && !force) {
-    const alive = isProcessAlive(existingState.pid);
-    const logTail = await readLogTail(existingState.logFile);
-
-    if (existingState.status === 'running' && alive) {
-      const elapsed = Math.round((Date.now() - new Date(existingState.startTime).getTime()) / 1000);
+    if (!customPackagesPath || !microsoftPackagesPath) {
       return {
         content: [{
           type: 'text',
-          text: `⏳ Build in progress (${existingState.tool} PID: ${existingState.pid}, running ${elapsed}s)\n\nModel: ${modelName}\n\nCall again to refresh status.\n\n--- Latest log ---\n${logTail}`,
+          text: [
+            `❌ Cannot resolve D365FO package paths.`,
+            ``,
+            `Custom packages path:    ${customPackagesPath ?? '(not found)'}`,
+            `Microsoft packages path: ${microsoftPackagesPath ?? '(not found)'}`,
+            ``,
+            `For UDE: ensure an XPP config is present at %LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig\\`,
+            `For CHE: ensure PackagesLocalDirectory exists at C:\\AOSService\\PackagesLocalDirectory (or K:\\, J:\\, I:\\)`,
+          ].join('\n'),
         }],
+        isError: true,
       };
     }
 
-    if (existingState.status === 'running' && !alive) {
-      // The process has exited but the close handler (which writes the final state) is async.
-      // Wait up to 2 s for it to finish before giving up and declaring an unexpected exit.
-      let finalState = existingState;
-      for (let i = 0; i < 4; i++) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const refreshed = await readBuildState(modelName, customPackagesPath);
-        if (refreshed && refreshed.status !== 'running') { finalState = refreshed; break; }
-      }
-      if (finalState.status !== 'running') {
-        // Close handler finished — fall through to normal result handling below
-        existingState.status = finalState.status;
-        existingState.exitCode = finalState.exitCode;
-        existingState.endTime = finalState.endTime;
+    // ------------------------------------------------------------------
+    // Resolve model name
+    // ------------------------------------------------------------------
+    let modelName: string | null = params.modelName || configManager.getModelName();
+
+    if (!modelName && params.projectPath) {
+      modelName = await getModelFromRnrproj(params.projectPath);
+    }
+
+    if (!modelName) {
+      return {
+        content: [{
+          type: 'text',
+          text: [
+            `❌ Cannot determine model name.`,
+            ``,
+            `Provide modelName parameter, or configure it in .mcp.json / D365FO_MODEL_NAME env var.`,
+          ].join('\n'),
+        }],
+        isError: true,
+      };
+    }
+
+    const targetModel = modelName;
+
+    // ------------------------------------------------------------------
+    // Check for an existing background build (keyed by targetModel)
+    // ------------------------------------------------------------------
+    const existingState = await readBuildState(targetModel, customPackagesPath);
+
+    if (existingState && !force) {
+      // If the caller requests a DIFFERENT build mode than what's cached (e.g. incremental → fullBuild),
+      // and the build is not currently running, discard the stale cached state and fall through
+      // to start a fresh build with the requested mode.
+      const buildModeChanged = existingState.status !== 'running' && fullBuild && !existingState.fullBuild;
+      if (buildModeChanged) {
+        await clearBuildState(targetModel, customPackagesPath);
+        // intentional fall-through to "start new build" below
       } else {
-        await clearBuildState(modelName, customPackagesPath);
+
+      const alive   = isProcessAlive(existingState.pid);
+      const logTail = await readLogTail(existingState.logFile);
+
+      if (existingState.status === 'running' && alive) {
+        const elapsed       = Math.round((Date.now() - new Date(existingState.startTime).getTime()) / 1000);
+        const isQueued      = !!(existingState.buildQueue && existingState.buildQueue.length > 1);
+        const queueProgress = isQueued
+          ? `Building ${(existingState.queueIndex ?? 0) + 1}/${existingState.buildQueue!.length}: ${existingState.modelName}`
+          : `Model: ${existingState.modelName}`;
+        const completedLine = (existingState.queueResults ?? []).length > 0
+          ? '\nCompleted: ' + existingState.queueResults!
+              .map(r => `${r.status === 'succeeded' ? '✅' : '❌'} ${r.modelName} (${r.duration}s)`)
+              .join(', ')
+          : '';
         return {
           content: [{
             type: 'text',
-            text: `❌ Build process (PID: ${existingState.pid}) exited unexpectedly without reporting a result.\n\nModel: ${modelName}\n\n--- Log ---\n${logTail}`,
+            text: `⏳ ${queueProgress} (PID: ${existingState.pid}, running ${elapsed}s)${completedLine}\n\nCall again to refresh.\n\n--- Latest log ---\n${logTail}`,
           }],
-          isError: true,
         };
       }
+
+      if (existingState.status === 'running' && !alive) {
+        // Process has exited but the async close handler may still be writing the final state.
+        // Wait up to 2 s for it to settle.
+        let finalState = existingState;
+        for (let i = 0; i < 4; i++) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const refreshed = await readBuildState(targetModel, customPackagesPath);
+          if (refreshed && refreshed.status !== 'running') { finalState = refreshed; break; }
+        }
+        if (finalState.status !== 'running') {
+          existingState.status   = finalState.status;
+          existingState.exitCode = finalState.exitCode;
+          existingState.endTime  = finalState.endTime;
+          existingState.queueResults = finalState.queueResults;
+        } else {
+          await clearBuildState(targetModel, customPackagesPath);
+          return {
+            content: [{
+              type: 'text',
+              text: `❌ Build process (PID: ${existingState.pid}) exited unexpectedly without reporting a result.\n\nModel: ${targetModel}\n\n--- Log ---\n${logTail}`,
+            }],
+            isError: true,
+          };
+        }
+      }
+
+      // Build finished — return result and clear state
+      await clearBuildState(targetModel, customPackagesPath);
+      const succeeded  = existingState.status === 'succeeded';
+      const isQueued   = !!(existingState.buildQueue && existingState.buildQueue.length > 1);
+      const allResults = existingState.queueResults ?? [];
+
+      if (isQueued) {
+        // Multi-model result
+        const totalDuration = allResults.reduce((sum, r) => sum + r.duration, 0);
+        const statusIcon    = succeeded ? '✅ Build complete' : '❌ Build failed';
+        const modelLines    = allResults
+          .map(r => `  ${r.status === 'succeeded' ? '✅' : '❌'} ${r.modelName}: ${r.duration}s`)
+          .join('\n');
+
+        // Show the full log of the model that failed (or the final target on success)
+        const relevantResult = succeeded
+          ? allResults[allResults.length - 1]
+          : allResults.find(r => r.status === 'failed');
+        const logContent = succeeded
+          ? await readLogTail(relevantResult?.logFile ?? existingState.logFile)
+          : await readFullLog(relevantResult?.logFile ?? existingState.logFile);
+
+        return {
+          content: [{
+            type: 'text',
+            text: `${statusIcon} — ${allResults.length} models, ${totalDuration}s total\n\n${modelLines}\n\n--- Log (${relevantResult?.modelName ?? targetModel}) ---\n${logContent}`,
+          }],
+          ...(succeeded ? {} : { isError: true }),
+        };
+      }
+
+      // Single-model result
+      const logContent    = succeeded ? logTail : await readFullLog(existingState.logFile);
+      const hasWarnings   = succeeded && /^(Generation Warning|Compile Warning):/m.test(logTail);
+      const statusIcon    = !succeeded ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
+      // fullBuild only applies to the target — label reflects what actually ran on the target
+      const buildMode     = existingState.fullBuild ? 'full build (target), incremental (deps)' : 'incremental';
+      const duration      = existingState.endTime
+        ? Math.round((new Date(existingState.endTime).getTime() - new Date(existingState.startTime).getTime()) / 1000)
+        : '?';
+
+      return {
+        content: [{
+          type: 'text',
+          text: `${statusIcon} (${existingState.tool}, ${buildMode}, ${duration}s)\n\nModel: ${targetModel}\n\n${logContent || '(no output)'}`,
+        }],
+        ...((!succeeded) ? { isError: true } : {}),
+      };
+      } // end else (buildModeChanged)
     }
 
-    // Build finished — return result and clear state
-    await clearBuildState(modelName, customPackagesPath);
-    const succeeded = existingState.status === 'succeeded';
-    const hasErrors = !succeeded;
-    const hasWarnings = !hasErrors && /^(Generation Warning|Compile Warning):/m.test(logTail);
-    const statusIcon = hasErrors ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
-    const duration = existingState.endTime
-      ? Math.round((new Date(existingState.endTime).getTime() - new Date(existingState.startTime).getTime()) / 1000)
-      : '?';
+    // ------------------------------------------------------------------
+    // force=true: kill existing processes and clear state
+    // ------------------------------------------------------------------
+    if (force) {
+      await buildLog('WARN', `force=true — killing orphaned build processes for model: ${targetModel}`);
+      if (existingState?.pid) {
+        try { process.kill(existingState.pid, 'SIGTERM'); } catch { /* already gone */ }
+      }
+      await killOrphanedBuildProcesses();
+      await clearBuildState(targetModel, customPackagesPath);
+      await forceReleaseLock(`build:${targetModel}`);
+    }
+
+    // ------------------------------------------------------------------
+    // Find xppc.exe
+    // ------------------------------------------------------------------
+    const xppcExe = await findXppcExe(microsoftPackagesPath);
+    if (!xppcExe) {
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ Cannot find xppc.exe.\n\nLooked in: ${microsoftPackagesPath}\\bin\\xppc.exe\n\nEnsure the D365FO UDE tools are installed.`,
+        }],
+        isError: true,
+      };
+    }
+
+    // ------------------------------------------------------------------
+    // Resolve build queue
+    // ------------------------------------------------------------------
+    let buildQueue: string[];
+    if (buildReferencedModels) {
+      buildQueue = await resolveBuildQueue(targetModel, customPackagesPath, microsoftPackagesPath);
+      await buildLog('INFO', `Build queue (${buildQueue.length}): ${buildQueue.join(' → ')}`);
+    } else {
+      buildQueue = [targetModel];
+    }
+
+    const firstModel   = buildQueue[0];
+    const firstLogFile = logFilePath(targetModel, 0, customPackagesPath);
+
+    // ------------------------------------------------------------------
+    // Log build parameters
+    // ------------------------------------------------------------------
+    await buildLog('INFO', `Starting build — model: ${targetModel} | fullBuild: ${fullBuild} | queue: ${buildQueue.length}`);
+    await buildLog('INFO', `  xppc.exe:              ${xppcExe}`);
+    await buildLog('INFO', `  customPackagesPath:    ${customPackagesPath}`);
+    await buildLog('INFO', `  microsoftPackagesPath: ${microsoftPackagesPath}`);
+    if (extraReferenceFolders.length > 0) {
+      await buildLog('INFO', `  extraReferenceFolders: ${extraReferenceFolders.join(', ')}`);
+    }
+
+    // ------------------------------------------------------------------
+    // Build context (shared across the entire queue)
+    // ------------------------------------------------------------------
+    const ctx: XppcBuildContext = {
+      xppcExe,
+      customPackagesPath,
+      microsoftPackagesPath,
+      extraReferenceFolders,
+    };
+
+    // ------------------------------------------------------------------
+    // Initial state
+    // ------------------------------------------------------------------
+    const initState: BuildJobState = {
+      pid: 0,             // updated by spawnXppcForState
+      modelName: firstModel,
+      targetModel,
+      tool: 'xppc.exe',
+      startTime: new Date().toISOString(),
+      logFile: firstLogFile,
+      status: 'running',
+      fullBuild,
+      buildQueue: buildQueue.length > 1 ? buildQueue : undefined,
+      queueIndex: buildQueue.length > 1 ? 0 : undefined,
+      queueResults: [],
+    };
+
+    await writeBuildState(initState, customPackagesPath);
+    const pid = await spawnXppcForState(ctx, initState);
+
+    // ------------------------------------------------------------------
+    // Return "build started" message
+    // ------------------------------------------------------------------
+    // When deps are included: full build applies only to the target model
+    const modeLabel = fullBuild
+      ? (buildQueue.length > 1 ? 'Full build (target), incremental (deps)' : 'Full build')
+      : 'Incremental build';
+    const queueDetail = buildQueue.length > 1
+      ? `\n\nBuilding ${buildQueue.length} models in order:\n` +
+        buildQueue.map((m, i) => `  ${i + 1}. ${m}${m === targetModel ? ' (target)' : ' (dependency)'}`).join('\n')
+      : '';
+
     return {
       content: [{
         type: 'text',
-        text: `${statusIcon} (${existingState.tool}, ${duration}s)\n\nModel: ${modelName}\n\n${logTail || '(no output)'}`,
+        text: [
+          `🔨 ${modeLabel} started (xppc.exe PID: ${pid})`,
+          ``,
+          `Target: ${targetModel}${queueDetail}`,
+          `Log:    ${firstLogFile}`,
+          ``,
+          `Call **build_d365fo_project** again to check status and see output.`,
+        ].join('\n'),
       }],
-      ...(hasErrors ? { isError: true } : {}),
     };
-  }
 
-  // ------------------------------------------------------------------
-  // force=true: kill existing processes and clear state
-  // ------------------------------------------------------------------
-  if (force) {
-    await buildLog('WARN', `force=true — killing orphaned build processes for model: ${modelName}`);
-    if (existingState?.pid) {
-      try { process.kill(existingState.pid, 'SIGTERM'); } catch { /* already gone */ }
-    }
-    await killOrphanedBuildProcesses();
-    await clearBuildState(modelName, customPackagesPath);
-    await forceReleaseLock(`build:${modelName}`);
-  }
-
-  // ------------------------------------------------------------------
-  // Find xppc.exe
-  // ------------------------------------------------------------------
-  const xppcExe = await findXppcExe(microsoftPackagesPath);
-  if (!xppcExe) {
-    return {
-      content: [{
-        type: 'text',
-        text: `❌ Cannot find xppc.exe.\n\nLooked in: ${microsoftPackagesPath}\\bin\\xppc.exe\n\nEnsure the D365FO UDE tools are installed.`,
-      }],
-      isError: true,
-    };
-  }
-
-  await buildLog('INFO', `Starting xppc.exe build — model: ${modelName}`);
-  await buildLog('INFO', `  xppc.exe:              ${xppcExe}`);
-  await buildLog('INFO', `  customPackagesPath:    ${customPackagesPath}`);
-  await buildLog('INFO', `  microsoftPackagesPath: ${microsoftPackagesPath}`);
-  if (extraReferenceFolders.length > 0) {
-    await buildLog('INFO', `  extraReferenceFolders: ${extraReferenceFolders.join(', ')}`);
-  }
-
-  // ------------------------------------------------------------------
-  // Launch xppc.exe in background
-  // ------------------------------------------------------------------
-  const jobState = await launchXppcBackground(
-    xppcExe,
-    modelName,
-    customPackagesPath,
-    microsoftPackagesPath,
-    extraReferenceFolders,
-  );
-
-  return {
-    content: [{
-      type: 'text',
-      text: [
-        `🔨 Build started (xppc.exe PID: ${jobState.pid})`,
-        ``,
-        `Model: ${modelName}`,
-        `Log:   ${jobState.logFile}`,
-        ``,
-        `Call **build_d365fo_project** again to check status and see output.`,
-      ].join('\n'),
-    }],
-  };
   } catch (error: any) {
     await buildLog('ERROR', `Unhandled error in build_d365fo_project: ${error?.message}`);
     return {
