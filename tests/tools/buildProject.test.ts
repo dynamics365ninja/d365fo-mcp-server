@@ -2,13 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // --- hoisted mocks -----------------------------------------------------------
 const {
-  accessMock, writeFileMock, unlinkMock, readFileMock, readdirMock, spawnMock, execFileMock,
+  accessMock, writeFileMock, appendFileMock, unlinkMock, readFileMock, readdirMock, spawnMock, execFileMock,
   cfgEnsureLoaded, cfgGetProjectPath, cfgGetPackagePath, cfgGetContext,
   cfgGetCustomPackagesPath, cfgGetMicrosoftPackagesPath,
   cfgGetActiveXppConfig, cfgGetModelName,
 } = vi.hoisted(() => {
   const accessMock = vi.fn();
   const writeFileMock = vi.fn().mockResolvedValue(undefined);
+  const appendFileMock = vi.fn().mockResolvedValue(undefined);
   const unlinkMock = vi.fn().mockResolvedValue(undefined);
   const readFileMock = vi.fn();
   const readdirMock = vi.fn().mockRejectedValue(new Error('not found'));
@@ -26,7 +27,7 @@ const {
   const cfgGetActiveXppConfig = vi.fn().mockResolvedValue(null);
   const cfgGetModelName = vi.fn().mockReturnValue(null);
   return {
-    accessMock, writeFileMock, unlinkMock, readFileMock, readdirMock, spawnMock, execFileMock,
+    accessMock, writeFileMock, appendFileMock, unlinkMock, readFileMock, readdirMock, spawnMock, execFileMock,
     cfgEnsureLoaded, cfgGetProjectPath, cfgGetPackagePath, cfgGetContext,
     cfgGetCustomPackagesPath, cfgGetMicrosoftPackagesPath,
     cfgGetActiveXppConfig, cfgGetModelName,
@@ -43,7 +44,7 @@ vi.mock('fs/promises', () => ({
   writeFile: writeFileMock,
   unlink: unlinkMock,
   readFile: readFileMock,
-  appendFile: vi.fn().mockResolvedValue(undefined),
+  appendFile: appendFileMock,
   readdir: readdirMock,
 }));
 vi.mock('../../src/utils/configManager.js', () => ({
@@ -94,6 +95,7 @@ describe('build_d365fo_project', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     writeFileMock.mockResolvedValue(undefined);
+    appendFileMock.mockResolvedValue(undefined);
     unlinkMock.mockResolvedValue(undefined);
     readdirMock.mockRejectedValue(new Error('not found'));
     cfgGetProjectPath.mockResolvedValue(PROJECT_PATH);
@@ -125,7 +127,7 @@ describe('build_d365fo_project', () => {
     expect(exe).toBe(XPPC);
     expect(args).toContain(`-metadata=${PKG}`);
     expect(args).toContain(`-modelmodule=${MODEL_NAME}`);
-    expect(result.content[0].text).toContain('Build started');
+    expect(result.content[0].text).toContain('build started');
     expect(result.isError).toBeFalsy();
   });
 
@@ -136,8 +138,8 @@ describe('build_d365fo_project', () => {
 
     await buildProjectTool({ projectPath: PROJECT_PATH }, {});
 
-    // writeFile is called to persist build state JSON
-    const stateCall = writeFileMock.mock.calls.find((c: any[]) => c[0].includes('d365build_state'));
+    // writeFile is called to persist build state JSON (last write has the real PID)
+    const stateCall = writeFileMock.mock.calls.filter((c: any[]) => c[0].includes('d365build_state')).at(-1);
     expect(stateCall).toBeDefined();
     const state = JSON.parse(stateCall![1]);
     expect(state.pid).toBe(99);
@@ -211,7 +213,7 @@ describe('build_d365fo_project', () => {
 
     const result = await buildProjectTool({ projectPath: PROJECT_PATH }, {});
 
-    expect(result.content[0].text).toContain('in progress');
+    expect(result.content[0].text).toContain('Call again to refresh');
     expect(spawnMock).not.toHaveBeenCalled();
 
     vi.restoreAllMocks();
@@ -313,7 +315,7 @@ describe('build_d365fo_project', () => {
 
     // A new build was started
     expect(spawnMock).toHaveBeenCalledTimes(1);
-    expect(result.content[0].text).toContain('Build started');
+    expect(result.content[0].text).toContain('build started');
   });
 
   it('marks build as failed when xppc exits 0 but log contains Compile Error', async () => {
@@ -426,7 +428,7 @@ describe('build_d365fo_project', () => {
     const result = await buildProjectTool({ modelName: 'MYMODEL' }, {});
     const secondPath = readPaths2[0];
     expect(secondPath).toBeDefined();
-    expect(result.content[0].text).toContain('in progress');
+    expect(result.content[0].text).toContain('Call again to refresh');
     expect(firstPath).toBe(secondPath);
 
     vi.restoreAllMocks();
@@ -443,7 +445,7 @@ describe('build_d365fo_project', () => {
     expect(spawnMock).toHaveBeenCalledTimes(1);
     const [, args] = spawnMock.mock.calls[0];
     expect(args).toContain('-modelmodule=ExplicitModel');
-    expect(result.content[0].text).toContain('Build started');
+    expect(result.content[0].text).toContain('build started');
     expect(result.isError).toBeFalsy();
   });
 });
