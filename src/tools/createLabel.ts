@@ -159,6 +159,17 @@ function parseLabelMap(content: string): Map<string, { text: string; comment?: s
   return map;
 }
 
+/** Case-insensitive ordinal comparison of two label IDs.
+ *  Matches Visual Studio's ordering of .label.txt entries, where `_` (0x5F) sorts
+ *  AFTER all letters. A locale-aware comparer (e.g. localeCompare) instead sorts `_`
+ *  BEFORE letters, which shuffles `word_`-prefixed IDs on every write and produces
+ *  spurious git diffs. Equivalent to .NET's StringComparer.OrdinalIgnoreCase. */
+function compareLabelIdsOrdinalCI(a: string, b: string): number {
+  const ua = a.toUpperCase();
+  const ub = b.toUpperCase();
+  return ua < ub ? -1 : ua > ub ? 1 : 0;
+}
+
 /** Render a label map back to .label.txt content with UTF-8 BOM.
  *  When `sort` is true (default), entries are sorted alphabetically by label ID.
  *  When `sort` is false, entries are written in insertion order (existing + appended).
@@ -169,7 +180,7 @@ function serializeLabelMap(
   eol: '\r\n' | '\n' = '\r\n',
 ): string {
   const entries = sort
-    ? [...map.entries()].sort(([a], [b]) => a.localeCompare(b, 'en', { sensitivity: 'base' }))
+    ? [...map.entries()].sort(([a], [b]) => compareLabelIdsOrdinalCI(a, b))
     : [...map.entries()];
   const lines: string[] = [];
   for (const [id, { text, comment }] of entries) {

@@ -768,6 +768,50 @@ describe('create_label', () => {
     expect(lines[2]).toContain('ZebraLabel=');
   });
 
+  it('orders underscore after letters (case-insensitive ordinal, matching Visual Studio)', async () => {
+    // Regression for the create_label sort-collation bug: a locale-aware comparer
+    // (localeCompare 'en', sensitivity 'base') sorts '_' BEFORE letters, but Visual
+    // Studio uses case-insensitive ordinal where '_' (0x5F) sorts AFTER A–Z. The
+    // disagreement shuffles `word_`-prefixed IDs on every write → spurious git churn.
+    // Empirically proven order in VS: Gx, px, _x (underscore last).
+    const fsMock = await import('fs');
+    const writeCalls: string[] = [];
+    (fsMock.promises.writeFile as any).mockImplementation(async (_p: string, content: string) => {
+      writeCalls.push(content);
+    });
+    (fsMock.promises.readdir as any).mockResolvedValueOnce(['en-US']);
+    // Existing file holds the three probe labels in scrambled order.
+    (fsMock.promises.readFile as any).mockResolvedValueOnce(
+      '﻿Zmvnsorttest_x=underscore\nZmvnsorttestGx=upper G\nZmvnsorttestpx=lower p\n',
+    );
+
+    const result = await createLabelTool(
+      req('create_label', {
+        labelId: 'ZmvnsorttestAx',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        updateIndex: false,
+        addToProject: false,
+        translations: [{ language: 'en-US', text: 'added' }],
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    const labelWrite = writeCalls.find(c => c.includes('ZmvnsorttestGx='));
+    expect(labelWrite).toBeDefined();
+    const ids = labelWrite!
+      .split('\n')
+      .filter(l => l.includes('='))
+      .map(l => l.split('=')[0].replace('﻿', ''));
+    // Case-insensitive ordinal: Ax, Gx, px (G<P), then _x LAST ('_'=0x5F > letters).
+    expect(ids).toEqual([
+      'ZmvnsorttestAx',
+      'ZmvnsorttestGx',
+      'Zmvnsorttestpx',
+      'Zmvnsorttest_x',
+    ]);
+  });
+
   it('respects LABEL_SORT_ORDER=append env var when sortLabels not specified', async () => {
     const fsMock = await import('fs');
     const writeCalls: string[] = [];
