@@ -3759,30 +3759,20 @@ export async function handleCreateD365File(
     // Ensure directory exists (create if needed)
     const directory = path.dirname(normalizedFullPath);
 
-    // Check if this looks like a Windows path on non-Windows system
-    if (process.platform !== 'win32' && /^[A-Z]:\\/.test(normalizedFullPath)) {
-      throw new Error(
-        `❌ Cannot create D365FO file on non-Windows system!\n\n` +
-        `Attempting to create: ${normalizedFullPath}\n` +
-        `Running on: ${process.platform}\n\n` +
-        `The create_d365fo_file tool requires:\n` +
-        `1. Running on Windows (local D365FO VM)\n` +
-        `2. Direct access to PackagesLocalDirectory (e.g. C:\\AosService\\PackagesLocalDirectory)\n\n` +
-        `This tool CANNOT work through Azure MCP proxy (runs on Linux).\n\n` +
-        `Solutions:\n` +
-        `- Run MCP server locally on D365FO Windows VM\n` +
-        `- Use VS 2022 with local MCP stdio transport\n` +
-        `- DO NOT use Azure HTTP proxy for file creation\n`
-      );
-    }
-    
-    // Verify drive/root exists before attempting recursive mkdir
+    // Verify drive/root exists before attempting recursive mkdir.
+    // path.parse().root works on Windows but returns '' for Windows-style paths on POSIX,
+    // so we extract the drive letter with a regex as a fallback.
     // (Node.js gives a cryptic '\\?' error when the drive letter doesn't exist)
-    const driveOrRoot = path.parse(directory).root; // e.g. "K:\" or "C:\"
+    const windowsDriveMatch = /^([A-Za-z]:[/\\])/.exec(normalizedFullPath);
+    const driveOrRoot = windowsDriveMatch ? windowsDriveMatch[1] : path.parse(directory).root; // e.g. "K:\" or "C:\"
     if (driveOrRoot) {
       try {
         await fs.access(driveOrRoot);
       } catch {
+        const nonWindowsHint = process.platform !== 'win32'
+          ? `\n\n⚠️  This server is running on ${process.platform}. Windows drive letters (${driveOrRoot}) are not accessible.\n` +
+            `Run the MCP server locally on the D365FO Windows VM instead.`
+          : '';
         throw new Error(
           `❌ Drive or root path does not exist: ${driveOrRoot}\n\n` +
           `Attempting to create: ${directory}\n\n` +
@@ -3793,7 +3783,7 @@ export async function handleCreateD365File(
           `  K:\\AosService\\PackagesLocalDirectory\n` +
           `  J:\\AosService\\PackagesLocalDirectory\n\n` +
           `Current packagePath: ${basePath}\n` +
-          `Current drive checked: ${driveOrRoot}`
+          `Current drive checked: ${driveOrRoot}${nonWindowsHint}`
         );
       }
     }
