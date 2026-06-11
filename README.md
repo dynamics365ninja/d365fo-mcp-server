@@ -36,7 +36,7 @@ This server pre-indexes your entire D365FO installation (580 000+ symbols across
 
 ## Capabilities
 
-| | |
+| Feature | Description |
 |---|---|
 | 🔍 **Full-codebase intelligence** | 580K+ symbols indexed: classes, tables, forms, EDTs, enums, labels (20M+ rows), security artifacts — FTS5 search in < 10 ms |
 | 🛡️ **Grounded generation** | Fail-closed gates: `prepare_change`/`prepare_create` issue grounding tokens, `resolve_references` proves every identifier, `validate_xpp` enforces best practices — hallucinated code never reaches disk |
