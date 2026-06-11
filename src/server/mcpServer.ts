@@ -1839,7 +1839,8 @@ SourceCode format for classes: class declaration with member vars inside { }, me
         description:
           'Builds a D365FO model using the X++ compiler (xppc.exe). ' +
           'Compiles the ENTIRE MODEL — not just one project file. ' +
-          'Runs in the background: first call starts the build; call again to poll status and see output. ' +
+          'By default the tool BLOCKS until the build finishes and returns the final result, so call it ONCE per requested build (do NOT poll). ' +
+          'Set wait:false for legacy fire-and-forget mode where the tool returns immediately and the caller polls with follow-up calls. ' +
           'Use fullBuild:true when xppc reports "model element has not been successfully compiled since it was last changed" (stale symbol error). ' +
           'Use buildReferencedModels:true to also build custom/ISV dependencies first (reads <ModuleReferences> from the model descriptor; skips Microsoft standard models; topological order).',
         inputSchema: {
@@ -1864,6 +1865,14 @@ SourceCode format for classes: class declaration with member vars inside { }, me
             buildReferencedModels: {
               type: 'boolean',
               description: 'Also build all custom/ISV models this model depends on before building the target. Skips Microsoft standard models.',
+            },
+            wait: {
+              type: 'boolean',
+              description: 'When true (default) the tool blocks until the build finishes and returns the final result in a single call. The agent should make exactly one call per requested build. Set false for legacy fire-and-forget polling behaviour.',
+            },
+            waitTimeoutMs: {
+              type: 'number',
+              description: 'Maximum time (ms) to block when wait:true before returning a "still running" snapshot. Defaults to 30 minutes. The build itself continues in the background.',
             },
           },
           required: [],

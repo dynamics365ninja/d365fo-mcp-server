@@ -120,7 +120,7 @@ describe('build_d365fo_project', () => {
     spawnMock.mockReturnValue(child);
     allowPaths([PROJECT_PATH, XPPC, PKG]);
 
-    const result = await buildProjectTool({ projectPath: PROJECT_PATH }, {});
+    const result = await buildProjectTool({ projectPath: PROJECT_PATH, wait: false }, {});
 
     expect(spawnMock).toHaveBeenCalledTimes(1);
     const [exe, args] = spawnMock.mock.calls[0];
@@ -136,7 +136,7 @@ describe('build_d365fo_project', () => {
     spawnMock.mockReturnValue(child);
     allowPaths([PROJECT_PATH, XPPC, PKG]);
 
-    await buildProjectTool({ projectPath: PROJECT_PATH }, {});
+    await buildProjectTool({ projectPath: PROJECT_PATH, wait: false }, {});
 
     // writeFile is called to persist build state JSON (last write has the real PID)
     const stateCall = writeFileMock.mock.calls.filter((c: any[]) => c[0].includes('d365build_state')).at(-1);
@@ -152,7 +152,7 @@ describe('build_d365fo_project', () => {
     spawnMock.mockReturnValue(child);
     allowPaths([PROJECT_PATH, XPPC, PKG]);
 
-    await buildProjectTool({ projectPath: PROJECT_PATH }, {});
+    await buildProjectTool({ projectPath: PROJECT_PATH, wait: false }, {});
 
     expect(child.unref).toHaveBeenCalledTimes(1);
   });
@@ -211,7 +211,7 @@ describe('build_d365fo_project', () => {
       return origKill(pid, sig);
     });
 
-    const result = await buildProjectTool({ projectPath: PROJECT_PATH }, {});
+    const result = await buildProjectTool({ projectPath: PROJECT_PATH, wait: false }, {});
 
     expect(result.content[0].text).toContain('Call again to refresh');
     expect(spawnMock).not.toHaveBeenCalled();
@@ -283,7 +283,7 @@ describe('build_d365fo_project', () => {
     spawnMock.mockReturnValue(child);
     allowPaths([PROJECT_PATH, xppc]);
 
-    await buildProjectTool({ projectPath: PROJECT_PATH }, {});
+    await buildProjectTool({ projectPath: PROJECT_PATH, wait: false }, {});
 
     expect(spawnMock).toHaveBeenCalledTimes(1);
     const [, args] = spawnMock.mock.calls[0];
@@ -311,7 +311,7 @@ describe('build_d365fo_project', () => {
     spawnMock.mockReturnValue(child);
     allowPaths([PROJECT_PATH, XPPC, PKG]);
 
-    const result = await buildProjectTool({ projectPath: PROJECT_PATH, force: true }, {});
+    const result = await buildProjectTool({ projectPath: PROJECT_PATH, force: true, wait: false }, {});
 
     // A new build was started
     expect(spawnMock).toHaveBeenCalledTimes(1);
@@ -331,7 +331,7 @@ describe('build_d365fo_project', () => {
     allowPaths([XPPC, PKG]);
     cfgGetModelName.mockReturnValue(MODEL_NAME);
 
-    await buildProjectTool({ modelName: MODEL_NAME }, {});
+    await buildProjectTool({ modelName: MODEL_NAME, wait: false }, {});
     expect(closeCallback).toBeDefined();
 
     readFileMock.mockImplementation(async (p: string) => {
@@ -363,7 +363,7 @@ describe('build_d365fo_project', () => {
     allowPaths([XPPC, PKG]);
     cfgGetModelName.mockReturnValue(MODEL_NAME);
 
-    await buildProjectTool({ modelName: MODEL_NAME }, {});
+    await buildProjectTool({ modelName: MODEL_NAME, wait: false }, {});
     expect(closeCallback).toBeDefined();
 
     readFileMock.mockImplementation(async (p: string) => {
@@ -396,7 +396,7 @@ describe('build_d365fo_project', () => {
       throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
     });
 
-    await buildProjectTool({ modelName: 'mymodel' }, {});
+    await buildProjectTool({ modelName: 'mymodel', wait: false }, {});
     const firstPath = readPaths[0];
     expect(firstPath).toBeDefined();
 
@@ -425,7 +425,7 @@ describe('build_d365fo_project', () => {
     });
     vi.spyOn(process, 'kill').mockReturnValue(true as any);
 
-    const result = await buildProjectTool({ modelName: 'MYMODEL' }, {});
+    const result = await buildProjectTool({ modelName: 'MYMODEL', wait: false }, {});
     const secondPath = readPaths2[0];
     expect(secondPath).toBeDefined();
     expect(result.content[0].text).toContain('Call again to refresh');
@@ -440,7 +440,7 @@ describe('build_d365fo_project', () => {
     allowPaths([XPPC, PKG]);
     cfgGetModelName.mockReturnValue(null);
 
-    const result = await buildProjectTool({ modelName: 'ExplicitModel' }, {});
+    const result = await buildProjectTool({ modelName: 'ExplicitModel', wait: false }, {});
 
     expect(spawnMock).toHaveBeenCalledTimes(1);
     const [, args] = spawnMock.mock.calls[0];

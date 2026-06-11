@@ -31,6 +31,7 @@ import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
+import { validateEdtExtensionChange } from '../utils/edtExtensionValidator.js';
 
 /**
  * Decode the standard XML entities (&lt;, &gt;, &apos;, &quot;, &amp;) and normalise
@@ -734,6 +735,27 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'modify-property': {
         if (args.propertyPath && args.propertyValue !== undefined) {
+          // ── Semantic guard for AxEdtExtension property changes ───────────────
+          // D365FO silently accepts illegal extension edits (e.g. widening
+          // StringSize on a derived EDT) but the change is ineffective at
+          // runtime and corrupts the metadata model. Block them here with a
+          // clear explanation of the proper alternative.
+          if (objectType === 'edt-extension') {
+            const guard = await validateEdtExtensionChange(
+              objectName,
+              args.propertyPath,
+              String(args.propertyValue),
+              symbolIndex.getReadDb(),
+              context.bridge,
+            );
+            if (!guard.ok) {
+              return {
+                content: [{ type: 'text', text: guard.message ?? 'EDT extension change rejected.' }],
+                isError: true,
+              };
+            }
+          }
+
           bridgeResult = await bridgeSetProperty(
             context.bridge,
             objectType,

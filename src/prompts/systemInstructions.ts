@@ -149,7 +149,7 @@ After the call, read the response: \`isError=true\` means the change did NOT app
 1. \`prepare_create(goal, objectName, objectType, fieldsHint?)\` — ONE call returns collision check, naming, similar objects, EDT suggestions, reusable labels, property defaults + \`groundingToken\`
 2. Generate the object, then \`resolve_references(code)\` + \`validate_xpp(code)\` — fix any errors in the same turn
 3. \`create_d365fo_file(..., groundingToken=...)\`
-5. **NEVER run \`build_d365fo_project()\` automatically.** Builds take a long time and block the user. After completing changes, tell the user the changes are done and they can build manually when ready. Only run \`build_d365fo_project()\` when the user explicitly requests it ("build", "compile", "check errors"). If after a requested build there are X++ errors, fix them immediately using \`modify_d365fo_file\` and rebuild until clean.
+5. **NEVER run \`build_d365fo_project()\` automatically.** Builds take a long time and block the user. After completing changes, tell the user the changes are done and they can build manually when ready. Only run \`build_d365fo_project()\` when the user explicitly requests it ("build", "compile", "check errors"). If after a requested build there are X++ errors, fix them immediately using \`modify_d365fo_file\` and rebuild until clean. **Call \`build_d365fo_project()\` exactly ONCE per requested build — by default the tool blocks until completion and returns the final result, so do NOT poll with repeated calls.**
 
 ### 4. Semantic vs. Prefix Search
 - **Semantic (by concept):** \`search("total", type="method")\`
@@ -396,6 +396,15 @@ All generated X++ code MUST pass the D365FO Best Practice checker without warnin
   the table MUST have an explicit \`<AxTableRelation>\` for that field
 - The \`generate_smart_table\` tool auto-detects these from \`edt_metadata.reference_table\`
 - If adding fields manually via \`modify_d365fo_file\`, add a matching table relation too
+
+### EDT extensions — what you CAN and CANNOT change
+\`AxEdtExtension\` (and \`modify_d365fo_file\` with \`objectType="edt-extension"\`) can ONLY change a small set of properties on an EDT, and only when the base EDT is marked \`IsExtensible=Yes\`.
+- ✅ Always allowed on extensions (when \`IsExtensible=true\`): \`Label\`, \`HelpText\`, \`FormHelp\`, \`ConfigurationKey\`, \`HelpAlign\`, \`Alignment\`, \`NoOfDecimals\`, \`DecimalSeparator\`, \`SignDisplay\`.
+- ⛔ NEVER changeable via extension: \`Extends\` (re-parenting), \`StringSize\` / \`DisplayLength\` on a *derived* EDT (these inherit from the root EDT — the change has no runtime effect and is rejected by the validator).
+- To **widen StringSize** on a field whose EDT is derived (e.g. \`AccountNum\` → \`Num\`):
+  1. Create a new EDT that extends the existing one with the larger \`StringSize\`, OR
+  2. Use a **table extension** on the consuming field (\`modify_d365fo_file\` operation \`modify-field\` → \`stringSize=...\`) — but mind \`databaseStringSize\` so existing data isn't truncated.
+- The \`modify_d365fo_file\` validator refuses illegal EDT-extension property changes up-front; relay the message verbatim instead of trying to work around it.
 
 ### BPCheckNestedLoopinCode — Avoid nested data access loops
 - ❌ NEVER nest \`while select\` inside another \`while select\` — causes N+1 queries

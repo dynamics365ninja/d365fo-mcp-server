@@ -762,6 +762,7 @@ export class XppMetadataParser {
         referenceTable: getValue('ReferenceTable'),
         relationType: getValue('RelationType'),
         stringSize: getValue('StringSize'),
+        databaseStringSize: getValue('DatabaseStringSize'),
         displayLength: getValue('DisplayLength'),
         label: getValue('Label'),
         helpText: getValue('HelpText'),
@@ -777,6 +778,7 @@ export class XppMetadataParser {
       // Extract additional properties
       const knownProperties = new Set([
         'Name', 'Extends', 'EnumType', 'ReferenceTable', 'RelationType', 'StringSize', 'DisplayLength',
+        'DatabaseStringSize',
         'Label', 'HelpText', 'FormHelp', 'ConfigurationKey', 'Alignment', 'DecimalSeparator',
         'SignDisplay', 'NoOfDecimals', 'ArrayElements', 'Relations', 'TableReferences'
       ]);

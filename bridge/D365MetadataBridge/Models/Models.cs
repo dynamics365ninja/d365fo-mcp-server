@@ -287,6 +287,10 @@ namespace D365MetadataBridge.Models
         [JsonPropertyName("relationType")]
         public string? RelationType { get; set; }
 
+        /// <summary>True when the EDT is marked IsExtensible = Yes — required for AxEdtExtension to apply.</summary>
+        [JsonPropertyName("isExtensible")]
+        public bool IsExtensible { get; set; }
+
         // AxEdtReal specific
         [JsonPropertyName("noOfDecimals")]
         public int? NoOfDecimals { get; set; }

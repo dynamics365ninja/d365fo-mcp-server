@@ -497,11 +497,22 @@ export class XppSymbolIndex {
         reference_table TEXT,
         relation_type TEXT,
         string_size TEXT,
+        database_string_size TEXT,
         display_length TEXT,
         label TEXT,
         model TEXT NOT NULL
       );
     `);
+
+    // Migrate existing edt_metadata table: add database_string_size column when missing
+    {
+      const existingCols = new Set(
+        (this.db.pragma('table_info(edt_metadata)') as Array<{ name: string }>).map(r => r.name)
+      );
+      if (!existingCols.has('database_string_size')) {
+        this.db.exec(`ALTER TABLE edt_metadata ADD COLUMN database_string_size TEXT;`);
+      }
+    }
 
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_edt_metadata_name ON edt_metadata(edt_name);
@@ -1526,12 +1537,13 @@ export class XppSymbolIndex {
 
         // Add extended EDT metadata to new table — always insert when any property is present
         if (edtData.extends || edtData.enumType || edtData.referenceTable ||
-            edtData.stringSize || edtData.displayLength || edtData.label) {
+            edtData.stringSize || edtData.displayLength || edtData.label ||
+            edtData.databaseStringSize) {
           const stmt = this.db.prepare(`
             INSERT OR REPLACE INTO edt_metadata (
               edt_name, extends, enum_type, reference_table, relation_type,
-              string_size, display_length, label, model
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              string_size, database_string_size, display_length, label, model
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
           
           stmt.run(
@@ -1541,6 +1553,7 @@ export class XppSymbolIndex {
             edtData.referenceTable || null,
             edtData.relationType || null,
             edtData.stringSize || null,
+            edtData.databaseStringSize || null,
             edtData.displayLength || null,
             edtData.label || null,
             model

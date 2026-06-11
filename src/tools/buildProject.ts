@@ -596,9 +596,10 @@ export const buildProjectToolDefinition = {
   description: [
     'Builds a D365FO model using the X++ compiler (xppc.exe) and returns compiler errors.',
     'Compiles the entire model — equivalent to building the full model in Visual Studio.',
-    'Because compilation can take several minutes, the build runs in the background.',
-    'First call: starts the build and returns immediately.',
-    'Subsequent calls for the same model: return current status + latest log output.',
+    'By default the tool waits for the build to finish before returning, so call it ONCE per request',
+    '(do NOT poll — a single call returns the final success/failure result).',
+    'Set wait:false for fire-and-forget mode where the tool returns immediately after spawning the build',
+    'and subsequent calls report current status (legacy behaviour).',
     'Use force:true to kill a stuck build and restart.',
     'Use fullBuild:true to omit -incremental and recompile all elements — fixes "stale symbol" errors.',
     'Use buildReferencedModels:true to also build custom/ISV dependencies before the target model',
@@ -624,8 +625,125 @@ export const buildProjectToolDefinition = {
       '(from <ModuleReferences> in the model descriptor). ' +
       'Skips Microsoft standard models. Builds in topological dependency order.',
     ),
+    wait: z.boolean().optional().default(true).describe(
+      'When true (default), the tool BLOCKS until the build finishes and returns the final result in a single call. ' +
+      'Do not call again to poll — the agent should make exactly one tool call per requested build. ' +
+      'When false, the tool returns immediately after spawning xppc and the caller is responsible for polling ' +
+      'with a follow-up call (legacy fire-and-forget behaviour).',
+    ),
+    waitTimeoutMs: z.number().int().positive().optional().describe(
+      'Maximum time (ms) to block when wait:true before returning a "still running" snapshot. ' +
+      'Defaults to 30 minutes. The build itself continues in the background; subsequent calls will pick up the result.',
+    ),
   }),
 };
+
+// ---------------------------------------------------------------------------
+// Render the final result of a finished build (succeeded or failed) as the
+// MCP response payload. Shared between the "existing finished state" branch
+// and the wait-for-completion branch so both code paths produce identical
+// output. Caller is responsible for calling clearBuildState() afterwards
+// when appropriate.
+// ---------------------------------------------------------------------------
+
+async function renderFinishedBuildResult(
+  finalState: BuildJobState,
+  targetModel: string,
+): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+  const succeeded  = finalState.status === 'succeeded';
+  const isQueued   = !!(finalState.buildQueue && finalState.buildQueue.length > 1);
+  const allResults = finalState.queueResults ?? [];
+
+  if (isQueued) {
+    const totalDuration = allResults.reduce((sum, r) => sum + r.duration, 0);
+    const statusIcon    = succeeded ? '✅ Build complete' : '❌ Build failed';
+    const modelLines    = allResults
+      .map(r => `  ${r.status === 'succeeded' ? '✅' : '❌'} ${r.modelName}: ${r.duration}s`)
+      .join('\n');
+
+    const relevantResult = succeeded
+      ? allResults[allResults.length - 1]
+      : allResults.find(r => r.status === 'failed');
+    const relevantLogFile = relevantResult?.logFile ?? finalState.logFile;
+    const logContent = succeeded
+      ? await readLogTail(relevantLogFile)
+      : await readFullLog(relevantLogFile);
+    const structured = succeeded
+      ? ''
+      : formatStructuredDiagnostics(parseXppcDiagnostics(await readWholeLog(relevantLogFile)));
+
+    return {
+      content: [{
+        type: 'text',
+        text: `${statusIcon} — ${allResults.length} models, ${totalDuration}s total\n\n${modelLines}\n\n` +
+          (structured ? `${structured}\n\n` : '') +
+          `--- Log (${relevantResult?.modelName ?? targetModel}) ---\n${logContent}`,
+      }],
+      ...(succeeded ? {} : { isError: true }),
+    };
+  }
+
+  const logTail       = await readLogTail(finalState.logFile);
+  const logContent    = succeeded ? logTail : await readFullLog(finalState.logFile);
+  const hasWarnings   = succeeded && /^(Generation Warning|Compile Warning):/m.test(logTail);
+  const statusIcon    = !succeeded ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
+  const buildMode     = finalState.fullBuild ? 'full build (target), incremental (deps)' : 'incremental';
+  const duration      = finalState.endTime
+    ? Math.round((new Date(finalState.endTime).getTime() - new Date(finalState.startTime).getTime()) / 1000)
+    : '?';
+  const structured    = succeeded
+    ? ''
+    : formatStructuredDiagnostics(parseXppcDiagnostics(await readWholeLog(finalState.logFile)));
+
+  return {
+    content: [{
+      type: 'text',
+      text: `${statusIcon} (${finalState.tool}, ${buildMode}, ${duration}s)\n\nModel: ${targetModel}\n\n` +
+        (structured ? `${structured}\n\n--- Raw log ---\n` : '') +
+        `${logContent || '(no output)'}`,
+    }],
+    ...((!succeeded) ? { isError: true } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Block until the build for `targetModel` reaches a non-running state, the
+// tracked process is no longer alive, or `timeoutMs` elapses. Returns the
+// final state when finished, or null when the timeout was hit.
+// ---------------------------------------------------------------------------
+
+async function waitForBuildCompletion(
+  targetModel: string,
+  customPackagesPath: string,
+  timeoutMs: number,
+): Promise<BuildJobState | null> {
+  const deadline = Date.now() + timeoutMs;
+  // Poll roughly every second; xppc builds typically take many seconds to
+  // many minutes, so a 1 s cadence is fine and keeps responsiveness high.
+  const pollIntervalMs = 1000;
+  let lastState: BuildJobState | null = null;
+  while (Date.now() < deadline) {
+    const state = await readBuildState(targetModel, customPackagesPath);
+    if (state) {
+      lastState = state;
+      if (state.status !== 'running') return state;
+      // Process disappeared without writing a final state — give the close
+      // handler up to ~2 s to settle, then return whatever we have so the
+      // caller can surface a sensible "exited unexpectedly" message.
+      if (state.pid && !isProcessAlive(state.pid)) {
+        for (let i = 0; i < 4; i++) {
+          await new Promise(r => setTimeout(r, 500));
+          const refreshed = await readBuildState(targetModel, customPackagesPath);
+          if (refreshed && refreshed.status !== 'running') return refreshed;
+        }
+        return state;
+      }
+    }
+    await new Promise(r => setTimeout(r, pollIntervalMs));
+  }
+  // Timed out — return null so the caller emits a "still running" snapshot.
+  return lastState && lastState.status !== 'running' ? lastState : null;
+}
 
 // ---------------------------------------------------------------------------
 // Tool handler
@@ -747,6 +865,33 @@ export const buildProjectTool = async (params: any, _context: any) => {
               .map(r => `${r.status === 'succeeded' ? '✅' : '❌'} ${r.modelName} (${r.duration}s)`)
               .join(', ')
           : '';
+        // When wait:true (default) and a build is already running for this
+        // model, attach to it and block until completion instead of returning
+        // a snapshot — this matches the "single call per build" contract.
+        const waitForFinish = params.wait !== false;
+        if (waitForFinish) {
+          const timeoutMs: number = (typeof params.waitTimeoutMs === 'number' && params.waitTimeoutMs > 0)
+            ? params.waitTimeoutMs
+            : 30 * 60 * 1000;
+          const finalState = await waitForBuildCompletion(targetModel, customPackagesPath, timeoutMs);
+          if (finalState && finalState.status !== 'running') {
+            await clearBuildState(targetModel, customPackagesPath);
+            return await renderFinishedBuildResult(finalState, targetModel);
+          }
+          // Timed out — emit a "still running" snapshot so the caller can choose
+          // to extend the wait window with another call.
+          const tailLog = await readLogTail(existingState.logFile);
+          return {
+            content: [{
+              type: 'text',
+              text:
+                `⏳ ${queueProgress} (PID: ${existingState.pid}, running ${elapsed}s; wait timeout reached)${completedLine}\n\n` +
+                `Build continues in background. Call again to collect the final result, ` +
+                `or pass waitTimeoutMs to extend the wait window.\n\n` +
+                `--- Latest log ---\n${tailLog}`,
+            }],
+          };
+        }
         return {
           content: [{
             type: 'text',
@@ -783,63 +928,7 @@ export const buildProjectTool = async (params: any, _context: any) => {
 
       // Build finished — return result and clear state
       await clearBuildState(targetModel, customPackagesPath);
-      const succeeded  = existingState.status === 'succeeded';
-      const isQueued   = !!(existingState.buildQueue && existingState.buildQueue.length > 1);
-      const allResults = existingState.queueResults ?? [];
-
-      if (isQueued) {
-        // Multi-model result
-        const totalDuration = allResults.reduce((sum, r) => sum + r.duration, 0);
-        const statusIcon    = succeeded ? '✅ Build complete' : '❌ Build failed';
-        const modelLines    = allResults
-          .map(r => `  ${r.status === 'succeeded' ? '✅' : '❌'} ${r.modelName}: ${r.duration}s`)
-          .join('\n');
-
-        // Show the full log of the model that failed (or the final target on success)
-        const relevantResult = succeeded
-          ? allResults[allResults.length - 1]
-          : allResults.find(r => r.status === 'failed');
-        const relevantLogFile = relevantResult?.logFile ?? existingState.logFile;
-        const logContent = succeeded
-          ? await readLogTail(relevantLogFile)
-          : await readFullLog(relevantLogFile);
-        const structured = succeeded
-          ? ''
-          : formatStructuredDiagnostics(parseXppcDiagnostics(await readWholeLog(relevantLogFile)));
-
-        return {
-          content: [{
-            type: 'text',
-            text: `${statusIcon} — ${allResults.length} models, ${totalDuration}s total\n\n${modelLines}\n\n` +
-              (structured ? `${structured}\n\n` : '') +
-              `--- Log (${relevantResult?.modelName ?? targetModel}) ---\n${logContent}`,
-          }],
-          ...(succeeded ? {} : { isError: true }),
-        };
-      }
-
-      // Single-model result
-      const logContent    = succeeded ? logTail : await readFullLog(existingState.logFile);
-      const hasWarnings   = succeeded && /^(Generation Warning|Compile Warning):/m.test(logTail);
-      const statusIcon    = !succeeded ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
-      // fullBuild only applies to the target — label reflects what actually ran on the target
-      const buildMode     = existingState.fullBuild ? 'full build (target), incremental (deps)' : 'incremental';
-      const duration      = existingState.endTime
-        ? Math.round((new Date(existingState.endTime).getTime() - new Date(existingState.startTime).getTime()) / 1000)
-        : '?';
-      const structured    = succeeded
-        ? ''
-        : formatStructuredDiagnostics(parseXppcDiagnostics(await readWholeLog(existingState.logFile)));
-
-      return {
-        content: [{
-          type: 'text',
-          text: `${statusIcon} (${existingState.tool}, ${buildMode}, ${duration}s)\n\nModel: ${targetModel}\n\n` +
-            (structured ? `${structured}\n\n--- Raw log ---\n` : '') +
-            `${logContent || '(no output)'}`,
-        }],
-        ...((!succeeded) ? { isError: true } : {}),
-      };
+      return await renderFinishedBuildResult(existingState, targetModel);
       } // end else (buildModeChanged)
     }
 
@@ -926,7 +1015,7 @@ export const buildProjectTool = async (params: any, _context: any) => {
     const pid = await spawnXppcForState(ctx, initState);
 
     // ------------------------------------------------------------------
-    // Return "build started" message
+    // Return "build started" message OR wait for completion
     // ------------------------------------------------------------------
     // When deps are included: full build applies only to the target model
     const modeLabel = fullBuild
@@ -937,6 +1026,43 @@ export const buildProjectTool = async (params: any, _context: any) => {
         buildQueue.map((m, i) => `  ${i + 1}. ${m}${m === targetModel ? ' (target)' : ' (dependency)'}`).join('\n')
       : '';
 
+    // wait defaults to true — single call returns the final result. When the
+    // caller passes wait:false explicitly we keep the legacy fire-and-forget
+    // behaviour for compatibility with callers that intentionally poll.
+    const waitForFinish = params.wait !== false;
+
+    if (waitForFinish) {
+      const timeoutMs: number = (typeof params.waitTimeoutMs === 'number' && params.waitTimeoutMs > 0)
+        ? params.waitTimeoutMs
+        : 30 * 60 * 1000; // 30 minutes default — covers full builds with referenced models
+      const finalState = await waitForBuildCompletion(targetModel, customPackagesPath, timeoutMs);
+      if (finalState && finalState.status !== 'running') {
+        await clearBuildState(targetModel, customPackagesPath);
+        return await renderFinishedBuildResult(finalState, targetModel);
+      }
+      // Timed out — leave the build running so a follow-up call can collect it.
+      const elapsed = Math.round((Date.now() - new Date(initState.startTime).getTime()) / 1000);
+      const tailLog = await readLogTail(firstLogFile);
+      return {
+        content: [{
+          type: 'text',
+          text: [
+            `⏳ ${modeLabel} still running after ${elapsed}s (timeout reached, build continues in background)`,
+            ``,
+            `Target: ${targetModel}${queueDetail}`,
+            `Log:    ${firstLogFile}`,
+            ``,
+            `Call **build_d365fo_project** again to collect the final result. ` +
+            `Or pass waitTimeoutMs to extend the wait window in a single call.`,
+            ``,
+            `--- Latest log ---`,
+            tailLog,
+          ].join('\n'),
+        }],
+      };
+    }
+
+    // Legacy fire-and-forget mode: return immediately after spawning.
     return {
       content: [{
         type: 'text',

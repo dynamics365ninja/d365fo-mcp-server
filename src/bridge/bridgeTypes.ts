@@ -151,6 +151,8 @@ export interface BridgeEdtInfo {
   enumType?: string;
   referenceTable?: string;
   model?: string;
+  /** True when the base EDT is marked IsExtensible = Yes — required for AxEdtExtension. */
+  isExtensible?: boolean;
   // Gap-fill properties
   formHelp?: string;
   configurationKey?: string;
