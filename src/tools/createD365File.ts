@@ -99,7 +99,7 @@ const CreateD365FileArgsSchema = z.object({
     .optional()
     .describe(
       'Custom XML content to write verbatim instead of generating a template. ' +
-      'Use this in hybrid setups: call generate_smart / generate_smart on Azure ' +
+      'Use this in hybrid setups: call generate / generate on Azure ' +
       'to get AI-driven XML, then pass that XML here on the local Windows VM to write the file ' +
       'and add it to the VS2022 project.'
     ),
@@ -4008,7 +4008,7 @@ export async function handleCreateD365File(
 
     // Safety net: ensure every pair of adjacent </Method>…<Method> is separated by
     // exactly one blank line. This guards against xmlContent supplied by callers
-    // (e.g. from generate_smart or generate_d365fo_xml) that might already be
+    // (e.g. from generate or generate_d365fo_xml) that might already be
     // correct, or against edge-cases in the generator that produces no blank line.
     // The replacement is idempotent: \n\n\n → \n\n (no double-blank lines created).
     xmlContent = xmlContent.replace(
@@ -4203,7 +4203,7 @@ export async function handleCreateD365File(
             formPatternWarnings +
             projectMessage +
             `\n${nextSteps}\n` +
-            `⛔ TASK COMPLETE — do NOT call \`generate_smart\`, \`generate_smart\`, or \`d365fo_file(action="create")\` again for this object.`,
+            `⛔ TASK COMPLETE — do NOT call \`generate\`, \`generate\`, or \`d365fo_file(action="create")\` again for this object.`,
         },
       ],
     };

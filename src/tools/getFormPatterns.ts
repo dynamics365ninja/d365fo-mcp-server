@@ -280,16 +280,16 @@ async function renderRecommendation(symbolIndex: any, input: RecommendInput): Pr
   lines.push('');
   lines.push('## ✅ Next step (cloning is the preferred workflow)');
   lines.push('```');
-  lines.push(`generate_smart(objectType="form", `);
+  lines.push(`generate_object(mode="scaffold", objectType="form", `);
   lines.push(`  name="MyNewForm",`);
   lines.push(`  cloneFrom="${cloneSource}",`);
   lines.push(`  tableMapping={${enriched.tableName ? `"<sourceTable>": "${enriched.tableName}"` : `"<sourceTable>": "<yourTable>"`}},`);
   lines.push(`  includeMethodStubs=true`);
   lines.push(`)`);
   lines.push('```');
-  lines.push(`Then: \`form_pattern(action="validate", xml=...)\` → \`d365fo_file(action="create", objectType="form", ...)\`.`);
+  lines.push(`Then: \`object_patterns(domain="form", action="validate", xml=...)\` → \`d365fo_file(action="create", objectType="form", ...)\`.`);
   lines.push('');
-  lines.push(`Use \`form_pattern(action="spec", pattern="${rec.spec.xmlName}")\` for the full structure spec (required containers, ordering, sub-patterns).`);
+  lines.push(`Use \`object_patterns(domain="form", action="spec", pattern="${rec.spec.xmlName}")\` for the full structure spec (required containers, ordering, sub-patterns).`);
 
   return lines.join('\n');
 }

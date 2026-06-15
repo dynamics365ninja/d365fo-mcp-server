@@ -154,7 +154,7 @@ function formatPatterns(patterns: any[], apiName: string): string {
   
   output += `**Next Steps:**\n`;
   output += `- Use \`get_object_info(objectType="class", name="${apiName}")\` to see all available methods\n`;
-  output += `- Use \`code_completion\` to discover method signatures\n`;
+  output += `- Use \`get_object_info(objectType="class", name=..., options={members:"names"})\` to list member names\n`;
   output += `- Use \`search\` to find example implementations\n`;
   
   return output;

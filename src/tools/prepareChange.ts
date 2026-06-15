@@ -15,7 +15,7 @@
  * the real codebase before writing code.
  *
  * Fail-closed enforcement: when GROUNDING_ENFORCE=true, extension patterns
- * in generate_code and create_d365fo_file require this token.
+ * in generate_object(mode="pattern") and d365fo_file(action="create") require this token.
  */
 
 import { z } from 'zod';
@@ -333,11 +333,11 @@ export async function prepareChangeTool(request: any, context: XppServerContext)
   lines.push('');
   lines.push(
     process.env.GROUNDING_ENFORCE === 'true'
-      ? '⚠️  **GROUNDING_ENFORCE=true** — pass `groundingToken` to `generate_code` ' +
+      ? '⚠️  **GROUNDING_ENFORCE=true** — pass `groundingToken` to `generate_object(mode="pattern")` ' +
         '(extension patterns), `d365fo_file(action="create")` and `d365fo_file(action="modify")` (extension objectTypes). ' +
         `The token is bound to \`${objectName}\` — it does not authorize writes to other objects. ` +
         'Token expires in 30 minutes.'
-      : 'ℹ️  Pass `groundingToken` to `generate_code`, `d365fo_file(action="create")` or `d365fo_file(action="modify")` ' +
+      : 'ℹ️  Pass `groundingToken` to `generate_object(mode="pattern")`, `d365fo_file(action="create")` or `d365fo_file(action="modify")` ' +
         'to confirm this context was used. Set `GROUNDING_ENFORCE=true` to require it.',
   );
 

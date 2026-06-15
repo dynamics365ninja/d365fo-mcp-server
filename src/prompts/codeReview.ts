@@ -238,8 +238,8 @@ Use CoC when you need to wrap or augment an existing method's logic.
 
 ### Prerequisites
 1. Call \`get_method(include="signature")\` to get exact parameter types and return type
-2. Call \`find_coc_extensions\` to check if the method is already wrapped
-3. Call \`analyze_extension_points\` to verify the method is CoC-eligible (not \`final\` / \`[Hookable(false)]\`)
+2. Call \`extension_info(mode="coc")\` to check if the method is already wrapped
+3. Call \`extension_info(mode="points")\` to verify the method is CoC-eligible (not \`final\` / \`[Hookable(false)]\`)
 
 ### Class rule
 \`\`\`xpp
@@ -262,7 +262,7 @@ final class SalesFormLetterWHS_Extension
 ### Rules
 - ALWAYS call \`next methodName(...)\` with ALL original parameters preserved
 - Place \`next\` at the START for pre-processing, END for post-processing, or BOTH for wrapping
-- Use \`generate_code pattern='table-extension'\` or \`'form-handler'\` for the skeleton
+- Use \`generate_object(mode="pattern") pattern='table-extension'\` or \`'form-handler'\` for the skeleton
 
 ---
 
@@ -275,9 +275,9 @@ Use event handlers for loosely-coupled reactions to table/class/form events.
 - Avoid tight coupling — no need to wrap a method
 
 ### Workflow
-1. Call \`analyze_extension_points\` with the target class/table to see available events
-2. Call \`find_event_handlers\` to check if the event already has handlers (avoid duplicates)
-3. Use \`generate_code pattern='event-handler' name='{BaseName}EventHandler' baseName='{BaseName}'\`
+1. Call \`extension_info(mode="points")\` with the target class/table to see available events
+2. Call \`extension_info(mode="events")\` to check if the event already has handlers (avoid duplicates)
+3. Use \`generate_object(mode="pattern") pattern='event-handler' name='{BaseName}EventHandler' baseName='{BaseName}'\`
 
 ### Template
 \`\`\`xpp
@@ -343,12 +343,12 @@ security_info(mode="coverage", objectName: "CustTable", objectType: "form")
 
 ### 2. Create menu item XML
 \`\`\`
-generate_code(pattern: "menu-item", name: "MyFeature", menuItemType: "display", targetObject: "MyFeatureForm")
+generate_object(mode="pattern", pattern: "menu-item", name: "MyFeature", menuItemType: "display", targetObject: "MyFeatureForm")
 \`\`\`
 
 ### 3. Create privilege XML (always create BOTH View + Maintain)
 \`\`\`
-generate_code(pattern: "security-privilege", name: "MyFeature", targetObject: "MyFeature")
+generate_object(mode="pattern", pattern: "security-privilege", name: "MyFeature", targetObject: "MyFeature")
 \`\`\`
 
 This generates:
@@ -405,7 +405,7 @@ Then add the duty to that role's XML.
 
 ## Overview
 SysOperation is the **modern replacement for RunBaseBatch**. Always use SysOperation for new batch/dialog operations.
-Generate the full scaffold with: \`generate_code(pattern: "sysoperation", name: "MyOperation")\`
+Generate the full scaffold with: \`generate_object(mode="pattern", pattern: "sysoperation", name: "MyOperation")\`
 
 ## Three Classes
 
@@ -624,7 +624,7 @@ private static server str computePartyName()
 
 ## Workflow
 1. \`get_object_info(objectType: "data-entity", name: "...")\` — check if entity already exists
-2. \`generate_smart\` — for the staging table if needed
+2. \`generate\` — for the staging table if needed
 3. \`d365fo_file(action: "create", objectType: "view", ...)\` — create the entity file
 4. After deployment: refresh entity list in Data Management
 `,

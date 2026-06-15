@@ -25,7 +25,7 @@ npx tsx tests/bridge-e2e.ts             # manual bridge E2E (Windows D365FO VM o
 | `tests/metadata/` | XML parser + pattern miner + SQLite indexing against fixture forms |
 | `tests/bridge/` | bridge client behavior (debounced refresh); `bridge-e2e.ts` is manual |
 
-Contract tests worth knowing: `tests/utils/toolInventory.test.ts` asserts the published tool count (34) and keeps `mcpServer.ts`, the startup catalog and `LOCAL_TOOLS` in sync — it fails when a new tool is registered incompletely (see [NEW_TOOL_CHECKLIST.md](NEW_TOOL_CHECKLIST.md)).
+Contract tests worth knowing: `tests/utils/toolInventory.test.ts` asserts the published tool count (26) and keeps `mcpServer.ts`, the startup catalog and `LOCAL_TOOLS` in sync — it fails when a new tool is registered incompletely (see [NEW_TOOL_CHECKLIST.md](NEW_TOOL_CHECKLIST.md)).
 
 ## Mock strategy
 

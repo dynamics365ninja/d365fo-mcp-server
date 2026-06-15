@@ -21,20 +21,18 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
       return `📖 Reading ${a.include === 'signature' ? 'signature' : a.include === 'source' ? 'source' : 'method'} of ${a.className ?? ''}.${a.methodName ?? ''}`;
     case 'find_references':
       return `🔗 Finding references to ${a.targetName ?? ''}`;
-    case 'find_coc_extensions':
-      return `🔗 Finding CoC extensions of ${a.className ?? ''}${a.methodName ? `.${a.methodName}` : ''}`;
-    case 'find_event_handlers':
-      return `🔗 Finding event handlers for ${a.targetName ?? a.targetTable ?? ''}`;
+    case 'extension_info':
+      switch (a.mode) {
+        case 'events':      return `🔗 Finding event handlers for ${a.target ?? ''}`;
+        case 'table-merge': return `🔧 Reading extensions of table ${a.target ?? ''}`;
+        case 'points':      return `🔍 Analyzing extension points of ${a.target ?? ''}`;
+        case 'strategy':    return `💡 Recommending extension strategy for "${a.goal ?? ''}"${a.target ? ` on ${a.target}` : ''}`;
+        default:            return `🔗 Finding CoC extensions of ${a.target ?? ''}${a.method ? `.${a.method}` : ''}`;
+      }
     case 'security_info':
       return a.mode === 'coverage'
         ? `🔒 Reading security coverage for ${a.objectName ?? ''}`
         : `🔒 Reading security artifact ${a.name ?? ''}`;
-    case 'get_table_extension_info':
-      return `🔧 Reading extensions of table ${a.tableName ?? ''}`;
-    case 'analyze_extension_points':
-      return `🔍 Analyzing extension points of ${a.objectName ?? ''}`;
-    case 'recommend_extension_strategy':
-      return `💡 Recommending extension strategy for "${a.goal ?? ''}"${a.objectName ? ` on ${a.objectName}` : ''}`;
     case 'analyze_code':
       switch (a.mode) {
         case 'implementations': return `💡 Suggesting implementation for ${a.className ?? ''}.${a.methodName ?? ''}`;
@@ -48,13 +46,16 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
         case 'generate': return `🔧 Generating XML for ${a.objectType ?? 'object'} ${a.objectName ?? ''}`;
         default:         return `📁 Creating ${a.objectType ?? 'object'} ${a.objectName ?? ''}`;
       }
-    case 'generate_smart': {
-      const kind = (a.objectType as string) ?? 'object';
-      return `🏗️ Generating smart ${kind} ${a.name ?? ''}`;
-    }
-    case 'get_table_patterns':
-      return `📐 Getting table patterns${a.tableGroup ? ` [${a.tableGroup}]` : ''}${a.similarTo ? ` similar to ${a.similarTo}` : ''}`;
-    case 'form_pattern':
+    case 'generate_object':
+      if (a.mode === 'scaffold') {
+        const kind = (a.objectType as string) ?? 'object';
+        return `🏗️ Generating ${kind} ${a.name ?? ''}`;
+      }
+      return `🔧 Generating code pattern "${a.pattern ?? ''}" for ${a.name ?? ''}`;
+    case 'object_patterns':
+      if (a.domain === 'table') {
+        return `📐 Getting table patterns${a.tableGroup ? ` [${a.tableGroup}]` : ''}${a.similarTo ? ` similar to ${a.similarTo}` : ''}`;
+      }
       switch (a.action) {
         case 'validate': return `✅ Validating form pattern${a.formName ? ` of ${a.formName}` : ''}`;
         case 'spec':     return `📐 Form pattern spec${a.pattern ? `: ${a.pattern}` : ''}`;
@@ -103,10 +104,10 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
       return a.kind === 'error'
         ? `🆘 Looking up D365FO error: "${String(a.errorText ?? '').slice(0, 80)}"`
         : `📚 Reading X++ knowledge: "${a.topic ?? ''}"`;
-    case 'generate_code':
-      return `🔧 Generating code pattern "${a.pattern ?? ''}" for ${a.name ?? ''}`;
-    case 'code_completion':
-      return `💡 Code completion for "${a.className ?? ''}"`;
+    case 'validate_code':
+      return a.mode === 'references'
+        ? `🔎 Resolving symbol references in generated code`
+        : `✅ Validating X++/XML (best-practice rules)`;
     default:
       return `⚙️ Running ${toolName}`;
   }

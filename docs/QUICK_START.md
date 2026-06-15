@@ -181,7 +181,7 @@ Healthy startup log:
 
 | Topic | Documentation |
 |-------|--------------|
-| All 34 tools | [MCP_TOOLS.md](MCP_TOOLS.md) |
+| All 26 tools | [MCP_TOOLS.md](MCP_TOOLS.md) |
 | Real-world tool chains (CoC, forms, security, reports) | [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) |
 | Full `.mcp.json` reference | [MCP_CONFIG.md](MCP_CONFIG.md) |
 | Detailed setup scenarios A–F | [SETUP.md](SETUP.md) |

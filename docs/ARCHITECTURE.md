@@ -15,7 +15,7 @@ graph TB
 
     subgraph "MCP Server — Node.js 24, TypeScript"
         TRANSPORT[Transport: stdio / Express HTTP\n+ rate limiting, dedup cache]
-        TOOLS[34 tool handlers]
+        TOOLS[26 tool handlers]
         GATES[Quality gates\n grounding · references · BP · form patterns]
     end
 
@@ -64,7 +64,7 @@ sequenceDiagram
         SRV->>SRC: bridge-first, SQLite fallback
         SRC-->>IDE: result (~10 ms cached)
     else write tool
-        SRV->>GATE: grounding token · resolve_references · validate_xpp · form_pattern (validate)
+        SRV->>GATE: grounding token · validate_code(mode="references") · validate_code(mode="syntax") · object_patterns (domain=form, validate)
         alt gates pass
             GATE->>SRC: bridge write (IMetadataProvider)
             SRC->>SRC: invalidate SQLite + bridge state
@@ -84,9 +84,9 @@ Generated code must *prove* itself before touching disk. All gates are fail-clos
 | Gate | Tool / mechanism | Blocks when | Switch |
 |------|------------------|-------------|--------|
 | Provenance | `prepare` (mode=change/create) issues a SHA-256 grounding token (30 min TTL, object-bound) | write called without a valid token | `GROUNDING_ENFORCE` |
-| References | `resolve_references` — every type, field, method (incl. arity), enum, label checked against the index | any identifier unresolved | `GROUNDING_ENFORCE` |
-| Best practices | `validate_xpp` — 13 static rules + data-driven XML rules mined from standard models (`property_stats`) | error-severity violations | — (advisory in output) |
-| Form patterns | `form_pattern (action=validate)` — rules FP001–FP010 against the curated pattern catalog | structural violations (FP001–FP005, FP007) | `FORM_PATTERN_ENFORCE` |
+| References | `validate_code(mode="references")` — every type, field, method (incl. arity), enum, label checked against the index | any identifier unresolved | `GROUNDING_ENFORCE` |
+| Best practices | `validate_code(mode="syntax")` — 13 static rules + data-driven XML rules mined from standard models (`property_stats`) | error-severity violations | — (advisory in output) |
+| Form patterns | `object_patterns (domain=form, action=validate)` — rules FP001–FP010 against the curated pattern catalog | structural violations (FP001–FP005, FP007) | `FORM_PATTERN_ENFORCE` |
 
 Supporting reliability mechanisms:
 
@@ -101,9 +101,9 @@ Supporting reliability mechanisms:
 
 ```mermaid
 flowchart LR
-    CAT["Curated catalog\n~19 patterns + ~20 sub-patterns\nsrc/knowledge/formPatterns"] --> ADV[form_pattern\naction=analyze]
-    CAT --> SPEC[form_pattern\naction=spec]
-    CAT --> VAL[form_pattern action=validate\nFP001–FP010]
+    CAT["Curated catalog\n~19 patterns + ~20 sub-patterns\nsrc/knowledge/formPatterns"] --> ADV[object_patterns\ndomain=form, action=analyze]
+    CAT --> SPEC[object_patterns\ndomain=form, action=spec]
+    CAT --> VAL[object_patterns domain=form, action=validate\nFP001–FP010]
     MINE[("form_patterns table\nmined from real forms\nduring build-database")] --> ADV
     MINE -->|cross-check report| CAT
     ADV --> GEN["generate_smart_form\nclone reference form\n+ re-bind datasources"]
@@ -174,7 +174,7 @@ graph LR
 
 | Mode | `MCP_SERVER_MODE` | Tools exposed | Typical host |
 |------|-------------------|---------------|--------------|
-| Full | `full` (default) | all 34 | developer VM |
+| Full | `full` (default) | all 26 | developer VM |
 | Read-only | `read-only` | search/analysis | Azure App Service |
 | Write-only | `write-only` | file ops + bridge reads | hybrid local companion |
 

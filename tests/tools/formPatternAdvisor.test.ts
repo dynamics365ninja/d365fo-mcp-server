@@ -81,7 +81,7 @@ describe('get_form_patterns recommend mode', () => {
     expect(text).toContain('SimpleList');
     expect(text).toContain('Real forms using SimpleList');
     expect(text).toContain('cloneFrom=');
-    expect(text).toContain('form_pattern(action="spec"');
+    expect(text).toContain('object_patterns(domain="form", action="spec"');
   });
 
   it('degrades gracefully without mined pattern data (older index)', async () => {

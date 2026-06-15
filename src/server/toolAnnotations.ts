@@ -50,31 +50,21 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   search:                           read('Search D365FO index'),
   batch_get_info:                   read('Batch read object info'),
   find_references:                  read('Find references'),
-  find_coc_extensions:              read('Find CoC extensions'),
-  find_event_handlers:              read('Find event handlers'),
+  extension_info:                    read('Extensibility (coc/events/points/strategy)'),
 
   // ── Object inspection ─────────────────────────────────────────────────────
   get_object_info:                  read('Read object info'),
   get_method:                       read('Read method signature/source'),
-  get_table_extension_info:         read('Read table extensions'),
   security_info:                    read('Security info (artifact/coverage)'),
 
   // ── Analysis & guidance ───────────────────────────────────────────────────
   analyze_code:                     read('Analyze code (patterns/impl/completeness/API)'),
-  analyze_extension_points:         read('Analyze extension points'),
-  recommend_extension_strategy:     read('Recommend extension strategy'),
   suggest_edt:                      read('Suggest EDT for field'),
-  get_table_patterns:               read('Get table patterns'),
-  form_pattern:                     read('Form patterns (analyze/validate/spec)'),
+  object_patterns:                         read('Patterns (table/form)'),
   get_knowledge:                    read('X++ knowledge / error help'),
-  code_completion:                  read('Suggest code completions'),
   validate_object_naming:           read('Validate object naming'),
-  validate_xpp:                     read('Validate X++ code'),
-  resolve_references:               read('Resolve symbol references'),
+  validate_code:                         read('Validate X++ (syntax/references)'),
   prepare:                          read('Prepare grounded context'),
-
-  // ── Text generation (no disk writes) ──────────────────────────────────────
-  generate_code:                    read('Generate X++ code pattern'),
 
   // ── Diagnostics ───────────────────────────────────────────────────────────
   get_workspace_info:               read('Read workspace configuration'),
@@ -92,9 +82,10 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // are still safe to call — the tool annotations are hints, not gates.
   labels:                           write('Label operations', { destructive: true }),
   undo_last_modification:           write('Undo last modification', { destructive: true }),
-  // generate_smart writes the generated XML to PackagesLocalDirectory
+  // generate_object(mode="scaffold") writes generated XML to PackagesLocalDirectory
   // (bridge or SmartXmlBuilder→fs fallback); it refuses to overwrite.
-  generate_smart:                   write('Generate smart object'),
+  // mode="pattern" is text-only, but the tool is marked write for confirmation UX.
+  generate_object:                         write('Generate code (pattern/scaffold)'),
 
   // ── SDLC operations ───────────────────────────────────────────────────────
   update_symbol_index:              write('Update symbol index', { idempotent: true }),

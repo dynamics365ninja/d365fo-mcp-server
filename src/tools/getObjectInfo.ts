@@ -16,6 +16,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { READER_DISPATCH, OBJECT_INFO_TYPES } from './objectInfoRegistry.js';
+import { completionTool } from './completion.js';
 
 const GetObjectInfoArgsSchema = z.object({
   objectType: z.enum(OBJECT_INFO_TYPES).describe(
@@ -26,7 +27,9 @@ const GetObjectInfoArgsSchema = z.object({
   options: z.record(z.string(), z.any()).optional().describe(
     'Optional type-specific flags forwarded to the reader, e.g. ' +
     '{ "compact": false } for class, { "includeRdl": true } for report, ' +
-    '{ "searchControl": "AccountNum" } for form, { "filter": "Path" } for macro.',
+    '{ "searchControl": "AccountNum" } for form, { "filter": "Path" } for macro. ' +
+    'For classes: { "members": "names" } returns a fast IntelliSense-style member ' +
+    'name list (optional "prefix" to filter) instead of full metadata.',
   ),
 });
 
@@ -40,6 +43,31 @@ export async function getObjectInfoTool(request: CallToolRequest, context: XppSe
   }
 
   const { objectType, name, options } = parsed.data;
+
+  // Folded code_completion: a fast member-name list for classes.
+  // get_object_info(objectType="class", name, options:{ members:"names", prefix? })
+  if (options?.members === 'names') {
+    if (objectType !== 'class') {
+      return {
+        content: [{ type: 'text', text: `❌ get_object_info: options.members="names" is only supported for objectType="class". For "${objectType}" omit it to get full metadata.` }],
+        isError: true,
+      };
+    }
+    const completionRequest: CallToolRequest = {
+      method: 'tools/call',
+      params: {
+        name: 'code_completion',
+        arguments: {
+          className: name,
+          prefix: options.prefix,
+          includeWorkspace: options.includeWorkspace,
+          workspacePath: options.workspacePath,
+        },
+      },
+    };
+    return completionTool(completionRequest, context);
+  }
+
   const dispatch = READER_DISPATCH[objectType];
   if (!dispatch) {
     return {

@@ -52,10 +52,10 @@ function formatReport(report: FormPatternReport, source: string): string {
     : 'no pattern declared';
 
   if (report.violations.length === 0) {
-    lines.push(`✅ form_pattern(action="validate"): ${source} conforms to ${header}.`);
+    lines.push(`✅ object_patterns(domain="form", action="validate"): ${source} conforms to ${header}.`);
   } else {
     lines.push(
-      `${errors.length > 0 ? '❌' : '⚠️'} form_pattern(action="validate"): ` +
+      `${errors.length > 0 ? '❌' : '⚠️'} object_patterns(domain="form", action="validate"): ` +
         `${errors.length} error(s), ${warnings.length} warning(s) — ${source}, ${header}`,
     );
     lines.push('');
@@ -143,7 +143,7 @@ export async function validateFormPatternTool(
   };
 }
 
-// ── Write-gate helper (used by create_d365fo_file / generate_smart) ────
+// ── Write-gate helper (used by create_d365fo_file / generate) ────
 
 /** FORM_PATTERN_ENFORCE defaults to enabled; set to 'false'/'0' to disable blocking. */
 export function isFormPatternEnforceEnabled(): boolean {
@@ -246,7 +246,7 @@ export async function gateOnFormPatternErrors(
           `(${report.pattern ?? 'unknown'}${report.patternVersion ? ` v${report.patternVersion}` : ''}).\n\n` +
           formatReport(report, 'form XML') +
           `\n\nFix the structure (or set FORM_PATTERN_ENFORCE=false to bypass) and retry. ` +
-          `Use form_pattern(action="validate") to iterate quickly.`,
+          `Use object_patterns(domain="form", action="validate") to iterate quickly.`,
       }],
     },
     warningsText,

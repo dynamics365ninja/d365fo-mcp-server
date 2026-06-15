@@ -108,7 +108,7 @@ function findSimilarObjects(
     ).all(objectType, `%${needle}%`) as Array<{ name: string; model: string }>;
     if (rows.length > 0) {
       return rows.map(r => `  ${r.name} (${r.model})`).join('\n') +
-        `\n_Use get_${objectType === 'table' ? 'table' : 'class'}_info or copyFrom in generate_smart_* to reuse their structure._`;
+        `\n_Use get_${objectType === 'table' ? 'table' : 'class'}_info or copyFrom in generate_object(mode="scaffold") to reuse their structure._`;
     }
   } catch {
     // ignore
@@ -249,7 +249,7 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
   lines.push(`**Grounding token:** \`${token}\``);
   lines.push('');
   lines.push(
-    'Next: generate the object, run `resolve_references` + `validate_xpp` on the result, ' +
+    'Next: generate the object, run `validate_code(mode="references")` + `validate_code(mode="syntax")` on the result, ' +
     `then call \`d365fo_file(action="create", objectType="${objectType}", objectName="${objectName}", groundingToken=...)\`. ` +
     'The token is bound to this object and expires in 30 minutes.',
   );

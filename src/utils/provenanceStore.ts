@@ -5,7 +5,7 @@
  * (via prepare_change) before generating extension code. Tokens expire after
  * TTL_MS to prevent stale context being reused across sessions.
  *
- * Enforcement: when GROUNDING_ENFORCE=true, extension patterns in generate_code
+ * Enforcement: when GROUNDING_ENFORCE=true, extension patterns in generate_object(mode="pattern")
  * and extension objectTypes in create_d365fo_file will reject calls without a
  * valid token.
  */
@@ -124,7 +124,7 @@ export function enforceGrounding(
   // would dead-loop the agent between the two servers: local write rejects →
   // error says "call prepare_change" → Azure issues a token this process
   // cannot validate → local write rejects again. Grounding is enforced by the
-  // read-only instance's generate_code path instead.
+  // read-only instance's generate_object(mode="pattern") path instead.
   if (SERVER_MODE === 'write-only') {
     if (!warnedWriteOnlyBypass) {
       warnedWriteOnlyBypass = true;

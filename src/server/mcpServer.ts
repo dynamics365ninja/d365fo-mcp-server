@@ -344,25 +344,26 @@ export function createXppMcpServer(context: XppServerContext): Server {
           },
         },
         {
-          name: 'code_completion',
-          description: 'IntelliSense-like member name completions for CLASSES only. Returns method/field names with basic signatures. Faster than get_object_info when you only need names. For tables, use get_object_info(objectType="table", ...) instead.',
+          name: 'generate_object',
+          description:
+            'Generate X++/AOT code. Choose a `mode`:\n' +
+            '• pattern → a named X++ skeleton from the pattern enum (text only, no write). Call analyze_code(mode="patterns") first, then generate_object(mode="pattern"), then d365fo_file(action="create").\n' +
+            '• scaffold → pattern-aware whole-object generation (table/form/report) with intelligent field/index/relation or form-pattern suggestions; set objectType.\n' +
+            'For a single existing object definition\'s XML use d365fo_file(action="generate") instead.',
           inputSchema: {
             type: 'object',
             properties: {
-              className: { type: 'string', description: 'Class or table name' },
-              prefix: { type: 'string', description: 'Method/field name prefix to filter', default: '' },
-              includeWorkspace: { type: 'boolean', description: 'Whether to include workspace files', default: false },
-              workspacePath: { type: 'string', description: 'Workspace path to search' },
-            },
-            required: ['className'],
-          },
-        },
-        {
-          name: 'generate_code',
-          description: 'Generate X++ code from a named pattern (see pattern enum). Call analyze_code(mode="patterns") first, then generate_code, then d365fo_file(action="create").',
-          inputSchema: {
-            type: 'object',
-            properties: {
+              mode: {
+                type: 'string',
+                enum: ['pattern', 'scaffold'],
+                description: 'pattern = named X++ skeleton (text); scaffold = whole table/form/report (set objectType).',
+              },
+              // ── shared identity / placement ────────────────────────────────
+              name: { type: 'string', description: 'REQUIRED. [pattern] name for the generated element (extensions: base element name; form-datasource/control-extension: the FORM name). [scaffold] object name (report: BASE name WITHOUT model prefix).' },
+              modelName: { type: 'string', description: 'Actual model name from .mcp.json (auto-detected if omitted). NEVER use generic placeholders like "MyModel".' },
+              projectPath: { type: 'string', description: '[scaffold] Path to .rnrproj file for model extraction.' },
+              solutionPath: { type: 'string', description: '[scaffold] Path to solution directory (alternative to projectPath).' },
+              // ── mode=pattern ───────────────────────────────────────────────
               pattern: {
                 type: 'string',
                 enum: [
@@ -373,43 +374,106 @@ export function createXppMcpServer(context: XppServerContext): Server {
                   'display-menu-controller', 'data-entity-staging', 'service-class-ais',
                   'form-datasource-extension', 'form-control-extension', 'map-extension',
                 ],
-                description: 'Pattern to generate. CoC skeletons: class-extension, table-extension, form-handler (form-level methods), ' +
+                description: '[pattern] REQUIRED. Pattern to generate. CoC skeletons: class-extension, table-extension, form-handler (form-level methods), ' +
                   'form-datasource-extension (name=FormName, baseName=DataSourceName), form-control-extension (name=FormName, baseName=ControlName), map-extension. ' +
                   'Other: ssrs-report-full (Contract+DP+Controller), lookup-form, dialog-box, dimension-controller, ' +
                   'number-seq-handler, display-menu-controller, data-entity-staging, service-class-ais (CRUD service + contract).',
               },
-              name: { type: 'string', description: 'Name for the generated element. For extensions: base element name. For form-datasource-extension / form-control-extension: the FORM name.' },
-              modelName: { type: 'string', description: 'Actual model name from .mcp.json (auto-detected from EXTENSION_PREFIX env var if omitted). NEVER use generic placeholders like "MyModel".' },
               menuItemType: {
                 type: 'string',
                 enum: ['display', 'action', 'output'],
-                description: 'For menu-item pattern: type of menu item (display=form, action=class, output=report)',
+                description: '[pattern] For menu-item pattern: type of menu item (display=form, action=class, output=report)',
               },
               baseName: {
                 type: 'string',
-                description: 'For event-handler: base class or table name. ' +
+                description: '[pattern] For event-handler: base class or table name. ' +
                   'For form-datasource-extension: data source name within the form (defaults to form name if omitted). ' +
                   'For form-control-extension: exact control name — use get_object_info(objectType="form", name=...) to find the correct name.',
               },
               targetObject: {
                 type: 'string',
-                description: 'For menu-item and security-privilege patterns: target form/class/report name',
+                description: '[pattern] For menu-item and security-privilege patterns: target form/class/report name',
               },
               serviceMethod: {
                 type: 'string',
-                description: 'For sysoperation pattern: name of the method on the Service class the Controller will call. ' +
-                  'Defaults to "process" when omitted. ' +
-                  'Example: serviceMethod="processOrders" → generates processOrders(Contract _contract) on Service class.',
+                description: '[pattern] For sysoperation pattern: name of the method on the Service class the Controller will call. ' +
+                  'Defaults to "process" when omitted. Example: serviceMethod="processOrders".',
               },
+              // ── mode=scaffold ──────────────────────────────────────────────
+              objectType: {
+                type: 'string',
+                enum: ['table', 'form', 'report'],
+                description: '[scaffold] REQUIRED. Kind of object to generate.',
+              },
+              label: { type: 'string', description: '[scaffold:table|form] Optional label for the generated object.' },
+              caption: { type: 'string', description: '[scaffold:form|report] Optional caption/title (form: window title; report: human-readable report title).' },
+              packagePath: { type: 'string', description: '[scaffold:report] Base packages directory path.' },
+              tableGroup: {
+                type: 'string',
+                description: '[scaffold:table] Business role (TableGroup enum): Main, Transaction, Parameter, Group, WorksheetHeader/WorksheetLine, Reference, Miscellaneous, Framework. ⛔ NEVER pass "TempDB"/"InMemory" here — that is tableType.',
+              },
+              tableType: {
+                type: 'string',
+                description: '[scaffold:table] Storage type: Regular (default, omit), TempDB, InMemory. ⛔ NEVER pass as tableGroup.',
+              },
+              generateCommonFields: { type: 'boolean', description: '[scaffold:table] Auto-generate common fields based on table group patterns.' },
+              dataSource: { type: 'string', description: '[scaffold:form] Optional: Table name for primary datasource.' },
+              formPattern: {
+                type: 'string',
+                description: '[scaffold:form] Optional: Form pattern (SimpleList, SimpleListDetails, DetailsMaster, DetailsTransaction, Dialog, DropDialog, TableOfContents, Lookup, ListPage, Workspace).',
+              },
+              cloneFrom: {
+                type: 'string',
+                description: '[scaffold:form] PREFERRED: clone a reference form\'s full XML (controls + patterns), re-bound via tableMapping. Methods except classDeclaration are stripped; fields missing on target tables are dropped and reported.',
+              },
+              tableMapping: {
+                type: 'object',
+                additionalProperties: { type: 'string' },
+                description: '[scaffold:form] With cloneFrom: sourceTable → targetTable map, e.g. {"CustGroup": "MyRentalGroup"}.',
+              },
+              includeMethodStubs: { type: 'boolean', description: '[scaffold:form] Inject pattern-appropriate lifecycle method stubs with TODO markers.' },
+              generateControls: { type: 'boolean', description: '[scaffold:form] Auto-generate grid controls for datasource.' },
+              fields: {
+                type: 'array',
+                description: '[scaffold:report] Structured TmpTable field specs. Takes priority over fieldsHint.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    edt: { type: 'string' },
+                    dataType: { type: 'string', description: '.NET type, e.g. "System.Double"' },
+                    label: { type: 'string' },
+                  },
+                  required: ['name'],
+                },
+              },
+              contractParams: {
+                type: 'array',
+                description: '[scaffold:report] Dialog parameters for the Contract class.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    type: { type: 'string', description: 'X++ type — EDT or primitive (e.g. "TransDate", "CustAccount")' },
+                    label: { type: 'string' },
+                    mandatory: { type: 'boolean' },
+                  },
+                  required: ['name'],
+                },
+              },
+              generateController: { type: 'boolean', description: '[scaffold:report] Generate Controller class (default: true).' },
+              designStyle: { type: 'string', description: '[scaffold:report] RDL design pattern: "SimpleList" (default) or "GroupedWithTotals".' },
+              copyFrom: { type: 'string', description: '[scaffold:table|form|report] Copy structure from existing object (table fields/indexes/relations; form datasources — prefer cloneFrom; report field structure).' },
+              fieldsHint: { type: 'string', description: '[scaffold:table|report] Comma-separated field names (e.g. "RecId, Name, Amount"). EDTs auto-suggested.' },
             },
-            required: ['pattern', 'name'],
+            required: ['mode'],
           },
         },
         {
           name: 'analyze_code',
           description:
             'Learn from the existing codebase. Choose a `mode`:\n' +
-            '• patterns → common classes/methods/dependencies for a scenario (call BEFORE generate_code).\n' +
+            '• patterns → common classes/methods/dependencies for a scenario (call BEFORE generate_object(mode="pattern")).\n' +
             '• implementations → real implementation examples of a similar method (actual code).\n' +
             '• completeness → missing standard methods on a class (find/exist/validate gaps).\n' +
             '• api-usage → how an API/class is initialized and called in practice.',
@@ -782,7 +846,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         },
         {
           name: 'get_object_info',
-          description: 'Read one D365FO object\'s metadata. Pick the kind via objectType: class, table, form, query, view, enum, edt, report, data-entity, menu-item, service, map, config-key, security-policy, macro. Type-specific flags go in options, e.g. {"includeRdl":true} (report), {"searchControl":"General"} (form), {"compact":false} (class), {"filter":"Path"} (macro), {"mode":"hierarchy"} (edt). For 2+ objects use batch_get_info. Replaces the former get_<type>_info tools.',
+          description: 'Read one D365FO object\'s metadata. Pick the kind via objectType: class, table, form, query, view, enum, edt, report, data-entity, menu-item, service, map, config-key, security-policy, macro. Type-specific flags go in options, e.g. {"includeRdl":true} (report), {"searchControl":"General"} (form), {"compact":false} (class), {"filter":"Path"} (macro), {"mode":"hierarchy"} (edt). For CLASSES, {"members":"names"} (optional {"prefix":...}) returns a fast IntelliSense-style member-name list instead of full metadata. For 2+ objects use batch_get_info. Replaces the former get_<type>_info and code_completion tools.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -936,44 +1000,35 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
           },
         },
         {
-          name: 'get_table_patterns',
-          description: 'Analyze common field types, index patterns, and relation structures for D365FO tables. Filter by tableGroup (Main, Transaction, etc.) or find tables similar to a given table.',
+          name: 'object_patterns',
+          description:
+            'Pattern toolkit. Choose a `domain`:\n' +
+            '• table → common field types, index patterns and relation structures for D365FO tables. Filter by tableGroup (Main, Transaction, …) or similarTo a given table.\n' +
+            '• form → form-pattern toolkit; pick an `action`:\n' +
+            '   - analyze → pattern advisor + usage analysis. RECOMMEND (preferred for a new form): pass recommend={entityKind, hasHeaderLines, fieldCount, usageIntent, tableName} for the right pattern via the Microsoft decision tree + reference forms to clone. Or filter by formPattern / dataSource / similarTo.\n' +
+            '   - spec → full structure spec of a pattern or sub-pattern (required hierarchy/ordering, allowed children, reference forms, lifecycle). Call after analyze, before building.\n' +
+            '   - validate → structural validator of AxForm XML (<50 ms, offline): container hierarchy/order, sub-patterns, PatternVersion. Returns FP001-FP010 violations. Call before action=create on d365fo_file.',
           inputSchema: {
             type: 'object',
             properties: {
+              domain: {
+                type: 'string',
+                enum: ['table', 'form'],
+                description: 'table = table field/index/relation patterns; form = form-pattern toolkit (set action).',
+              },
+              // ── domain=table ───────────────────────────────────────────────
               tableGroup: {
                 type: 'string',
                 enum: ['Main', 'Transaction', 'Parameter', 'Group', 'Reference', 'Miscellaneous', 'WorksheetHeader', 'WorksheetLine'],
-                description: 'Table group type to analyze (choose one)',
+                description: '[table] Table group type to analyze (choose one).',
               },
-              similarTo: {
-                type: 'string',
-                description: 'Name of table to find similar patterns (alternative to tableGroup)',
-              },
-              limit: {
-                type: 'number',
-                description: 'Maximum number of pattern examples (default: 10)',
-                default: 10,
-              },
-            },
-          },
-        },
-        {
-          name: 'form_pattern',
-          description:
-            'Form-pattern toolkit. Choose an `action`:\n' +
-            '• analyze → pattern advisor + usage analysis. RECOMMEND (preferred for a new form): pass recommend={entityKind, hasHeaderLines, fieldCount, usageIntent, tableName} for the right pattern via the Microsoft decision tree + reference forms to clone. Or filter by formPattern / dataSource / similarTo.\n' +
-            '• spec → full structure spec of a pattern or sub-pattern (required hierarchy/ordering, allowed children, reference forms, lifecycle). Call after analyze, before building.\n' +
-            '• validate → structural validator of AxForm XML (<50 ms, offline): container hierarchy/order, sub-patterns, PatternVersion. Returns FP001-FP010 violations. Call before action=create on d365fo_file.',
-          inputSchema: {
-            type: 'object',
-            properties: {
+              // ── domain=form ────────────────────────────────────────────────
               action: {
                 type: 'string',
                 enum: ['analyze', 'validate', 'spec'],
-                description: 'Which form-pattern operation to run.',
+                description: '[form] Which form-pattern operation to run.',
               },
-              // ── action=analyze ─────────────────────────────────────────────
+              // ── domain=form, action=analyze ────────────────────────────────
               formPattern: {
                 type: 'string',
                 enum: ['DetailsTransaction', 'ListPage', 'SimpleList', 'SimpleListDetails', 'Dialog', 'DropDialog', 'FormPart', 'Lookup'],
@@ -981,11 +1036,11 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
               },
               dataSource: {
                 type: 'string',
-                description: '[analyze] Table name - find forms using this table',
+                description: '[form/analyze] Table name - find forms using this table',
               },
               similarTo: {
                 type: 'string',
-                description: '[analyze] Form name to find similar patterns',
+                description: '[table] table name to find similar table patterns; [form/analyze] form name to find similar form patterns.',
               },
               recommend: {
                 type: 'object',
@@ -1036,10 +1091,10 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
               },
               filePath: {
                 type: 'string',
-                description: '[validate] Explicit path to an AxForm XML file (e.g. a freshly created form not yet indexed).',
+                description: '[form/validate] Explicit path to an AxForm XML file (e.g. a freshly created form not yet indexed).',
               },
             },
-            required: ['action'],
+            required: ['domain'],
           },
         },
         {
@@ -1063,153 +1118,6 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
               },
             },
             required: ['fieldName'],
-          },
-        },
-        {
-          name: 'generate_smart',
-          description:
-            'Unified pattern-aware code generator. Choose `objectType`:\n' +
-            '• table → AxTable XML with intelligent field/index/relation suggestions (copyFrom, tableGroup + generateCommonFields, or fieldsHint with auto-EDTs).\n' +
-            '• form → pattern-aware form generation. PREFERRED: cloneFrom + tableMapping. Alternative: formPattern + dataSource. Output validated against form-pattern catalog.\n' +
-            '• report → full SSRS stack (TmpTable + Contract + DP + Controller + AxReport+RDL) in one call; fieldsHint or fields for the TmpTable, contractParams for the dialog.\n' +
-            'For tables/forms: returns XML for d365fo_file(action="create"). For reports on Windows: files written directly; on Azure/Linux: call d365fo_file(action="create") for each returned object.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              objectType: {
-                type: 'string',
-                enum: ['table', 'form', 'report'],
-                description: 'Kind of object to generate.',
-              },
-              // ── shared identity / placement ────────────────────────────────
-              name: {
-                type: 'string',
-                description:
-                  'REQUIRED. Object name. For report: BASE name WITHOUT model prefix (prefix applied automatically).',
-              },
-              label: {
-                type: 'string',
-                description: '[table|form] Optional label for the generated object.',
-              },
-              caption: {
-                type: 'string',
-                description: '[form|report] Optional caption/title (form: window title; report: human-readable report title).',
-              },
-              modelName: {
-                type: 'string',
-                description: 'Model name (auto-detected from projectPath).',
-              },
-              projectPath: {
-                type: 'string',
-                description: 'Path to .rnrproj file for model extraction.',
-              },
-              solutionPath: {
-                type: 'string',
-                description: 'Path to solution directory (alternative to projectPath).',
-              },
-              packagePath: {
-                type: 'string',
-                description: '[report] Base packages directory path.',
-              },
-              // ── objectType=table ───────────────────────────────────────────
-              tableGroup: {
-                type: 'string',
-                description:
-                  '[table] Business role (TableGroup enum): Main (master, CustTable), Transaction (CustTrans), Parameter (CustParameters), ' +
-                  'Group (CustGroup), WorksheetHeader/WorksheetLine (SalesTable/SalesLine), Reference, Miscellaneous, Framework. ' +
-                  '⛔ NEVER pass "TempDB"/"InMemory" here — that is tableType.',
-              },
-              tableType: {
-                type: 'string',
-                description:
-                  '[table] Storage type: Regular (default, omit), TempDB (SQL temp, efficient joins), ' +
-                  'InMemory (AOS-tier ISAM, inefficient joins). ⛔ NEVER pass as tableGroup.',
-              },
-              generateCommonFields: {
-                type: 'boolean',
-                description: '[table] If true, auto-generate common fields based on table group patterns.',
-              },
-              // ── objectType=form ────────────────────────────────────────────
-              dataSource: {
-                type: 'string',
-                description: '[form] Optional: Table name for primary datasource.',
-              },
-              formPattern: {
-                type: 'string',
-                description:
-                  '[form] Optional: Form pattern (SimpleList, SimpleListDetails, DetailsMaster, DetailsTransaction, Dialog, DropDialog, TableOfContents, Lookup, ListPage, Workspace).',
-              },
-              cloneFrom: {
-                type: 'string',
-                description:
-                  '[form] PREFERRED: clone a reference form\'s full XML (controls + patterns), re-bound via tableMapping ' +
-                  '(e.g. CustGroup→SimpleList, PaymTerm→SimpleListDetails, CustParameters→TableOfContents). ' +
-                  'Methods except classDeclaration are stripped; fields missing on target tables are dropped and reported.',
-              },
-              tableMapping: {
-                type: 'object',
-                additionalProperties: { type: 'string' },
-                description: '[form] With cloneFrom: sourceTable → targetTable map, e.g. {"CustGroup": "MyRentalGroup"}.',
-              },
-              includeMethodStubs: {
-                type: 'boolean',
-                description:
-                  '[form] Inject pattern-appropriate lifecycle method stubs (form init/executeQuery/closeOk, datasource initValue/active/validateWrite) with TODO markers.',
-              },
-              generateControls: {
-                type: 'boolean',
-                description: '[form] If true, auto-generate grid controls for datasource.',
-              },
-              // ── objectType=report ──────────────────────────────────────────
-              fields: {
-                type: 'array',
-                description: '[report] Structured TmpTable field specs. Takes priority over fieldsHint.',
-                items: {
-                  type: 'object',
-                  properties: {
-                    name: { type: 'string' },
-                    edt: { type: 'string' },
-                    dataType: { type: 'string', description: '.NET type, e.g. "System.Double"' },
-                    label: { type: 'string' },
-                  },
-                  required: ['name'],
-                },
-              },
-              contractParams: {
-                type: 'array',
-                description: '[report] Dialog parameters for the Contract class.',
-                items: {
-                  type: 'object',
-                  properties: {
-                    name: { type: 'string' },
-                    type: { type: 'string', description: 'X++ type — EDT or primitive (e.g. "TransDate", "CustAccount")' },
-                    label: { type: 'string' },
-                    mandatory: { type: 'boolean' },
-                  },
-                  required: ['name'],
-                },
-              },
-              generateController: {
-                type: 'boolean',
-                description: '[report] Generate Controller class (default: true).',
-              },
-              designStyle: {
-                type: 'string',
-                description: '[report] RDL design pattern: "SimpleList" (default) or "GroupedWithTotals".',
-              },
-              // ── shared input shapes ────────────────────────────────────────
-              copyFrom: {
-                type: 'string',
-                description:
-                  '[table|form|report] Copy structure from existing object: table fields/indexes/relations; form datasources (legacy — prefer cloneFrom for forms); report field structure.',
-              },
-              fieldsHint: {
-                type: 'string',
-                description:
-                  '[table|report] Comma-separated field names (e.g. "RecId, Name, Amount" for tables, "ItemId, ItemName, Qty, Zone" for reports). EDTs auto-suggested.',
-              },
-            },
-            required: ['objectType', 'name'],
           },
         },
       // ── New tools: security, menu items, extensions ──────────────────────────────
@@ -1248,91 +1156,39 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         },
       },
       {
-        name: 'find_coc_extensions',
-        description: 'Find all Chain of Command (CoC) extensions and event handler subscriptions for a D365FO class or table. Use before writing a CoC extension to check for conflicts.',
+        name: 'extension_info',
+        description:
+          'D365FO extensibility analyzer. Choose a `mode`:\n' +
+          '• coc → Chain of Command extensions + event subscriptions for a class/table. Use before writing a CoC extension to check for conflicts.\n' +
+          '• events → event handler subscriptions (SubscribesTo, delegate +=) for a class/table. Use before adding handlers to check for duplicates.\n' +
+          '• table-merge → all extensions of a table across models + effective merged schema (base + extension fields/indexes/methods).\n' +
+          '• points → available extension points (CoC-eligible/replaceable methods, delegates, blocked methods) and which are already extended.\n' +
+          '• strategy → recommends the best extensibility mechanism for a goal (CoC, event handler, business event, data entity, …) with reasoning, risks, alternatives, next steps.',
         inputSchema: {
           type: 'object',
           properties: {
-            className: { type: 'string', description: 'Base class or table name being extended' },
-            methodName: { type: 'string', description: 'Optional: filter to a specific method name' },
-            includeEventHandlers: {
-              type: 'boolean',
-              description: 'Also find static event subscriptions (SubscribesTo) (default: true)',
-              default: true,
-            },
-          },
-          required: ['className'],
-        },
-      },
-      {
-        name: 'get_table_extension_info',
-        description: 'Get all extensions for a D365FO table across all models and show the effective merged schema (base + extension fields/indexes/methods).',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            tableName: { type: 'string', description: 'Base table name whose extensions to find' },
-            includeEffectiveSchema: {
-              type: 'boolean',
-              description: 'Merge base + extension counts (default: true)',
-              default: true,
-            },
-          },
-          required: ['tableName'],
-        },
-      },
-      {
-        name: 'find_event_handlers',
-        description: 'Find all event handler subscriptions (SubscribesTo, delegate +=) for a D365FO class or table. Use before adding event handlers to check for duplicates.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            targetClass: { type: 'string', description: 'Class whose events to find handlers for' },
-            targetTable: { type: 'string', description: 'Table whose events to find handlers for' },
-            eventName: { type: 'string', description: 'Filter to a specific event name (e.g. onInserted)' },
-            handlerType: {
+            mode: {
               type: 'string',
-              enum: ['static', 'delegate', 'all'],
-              description: 'Filter by handler type (default: all)',
-              default: 'all',
+              enum: ['coc', 'events', 'table-merge', 'points', 'strategy'],
+              description: 'coc/events/table-merge/points need `target`; strategy needs `goal`.',
             },
-          },
-        },
-      },
-      {
-        name: 'analyze_extension_points',
-        description: 'Analyze available extension points for a D365FO class, table, or form. Shows CoC-eligible methods, replaceable methods, delegates, blocked methods, and which points are already extended.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            objectName: { type: 'string', description: 'Class, table, or form name to analyze' },
+            target: {
+              type: 'string',
+              description: 'The base object: [coc] class/table being extended; [events] class/table whose handlers to find; [table-merge] base table; [points] class/table/form; [strategy] optional target object.',
+            },
+            method: {
+              type: 'string',
+              description: '[coc] filter to a specific method name; [events] filter to a specific event name (e.g. onInserted).',
+            },
             objectType: {
               type: 'string',
               enum: ['class', 'table', 'form', 'auto'],
-              description: 'Object type (default: auto-detect)',
+              description: '[events] set "table" when target is a table (else class is assumed); [points] object type (default: auto-detect).',
               default: 'auto',
             },
-            showExistingExtensions: {
-              type: 'boolean',
-              description: 'Show which extension points are already extended (default: true)',
-              default: true,
-            },
-          },
-          required: ['objectName'],
-        },
-      },
-      {
-        name: 'recommend_extension_strategy',
-        description: 'Recommends the best D365FO extensibility mechanism for a given scenario (CoC, event handler, business event, data entity, etc.). Prevents common design mistakes. Returns recommendation, reasoning, risks, alternatives, and next MCP tool calls.',
-        inputSchema: {
-          type: 'object',
-          properties: {
             goal: {
               type: 'string',
-              description: 'What you want to achieve — e.g. "validate that SalesLine quantity is positive"',
-            },
-            objectName: {
-              type: 'string',
-              description: 'Target D365FO object if known — e.g. "SalesTable", "CustTable"',
+              description: '[strategy] REQUIRED. What you want to achieve — e.g. "validate that SalesLine quantity is positive".',
             },
             scenario: {
               type: 'string',
@@ -1340,10 +1196,31 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                      'outbound-integration', 'inbound-data', 'ui-modification',
                      'document-output', 'number-sequence', 'security-access',
                      'batch-processing', 'custom'],
-              description: 'Scenario category (auto-detected from goal if omitted)',
+              description: '[strategy] Scenario category (auto-detected from goal if omitted).',
+            },
+            handlerType: {
+              type: 'string',
+              enum: ['static', 'delegate', 'all'],
+              description: '[events] Filter by handler type (default: all).',
+              default: 'all',
+            },
+            includeEventHandlers: {
+              type: 'boolean',
+              description: '[coc] Also find static event subscriptions (SubscribesTo) (default: true).',
+              default: true,
+            },
+            includeEffectiveSchema: {
+              type: 'boolean',
+              description: '[table-merge] Merge base + extension counts (default: true).',
+              default: true,
+            },
+            showExistingExtensions: {
+              type: 'boolean',
+              description: '[points] Show which extension points are already extended (default: true).',
+              default: true,
             },
           },
-          required: ['goal'],
+          required: ['mode'],
         },
       },
       {
@@ -1554,11 +1431,11 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
       },
       {
         name: 'undo_last_modification',
-        description: 'Safely revert the last change to a specific file. If the file is tracked by git, runs git checkout HEAD to restore it. If the file is untracked (newly created), deletes it. Use this to safely roll back incorrectly generated code.\n\n⚠️ Local companion tool: available only in write-only/local mode (Windows VM).',
+        description: 'Safely roll back incorrectly generated code by restoring a file to its last committed state. If the file is tracked by git, runs git checkout HEAD — this discards ALL uncommitted changes to the file, not just the most recent edit (the "last modification" name is historical). If the file is untracked (newly created), deletes it.\n\nAlso re-syncs the symbol/label index to the restored content — prefer this over a manual git revert or editor undo, which leave the index stale and (for .xml/.xpp) can desync the VS 2022 in-memory model.\n\n⚠️ Local companion tool: available only in write-only/local mode (Windows VM).',
         inputSchema: {
           type: 'object',
           properties: {
-            filePath: { type: 'string', description: 'Absolute path to the file to revert or delete' },
+            filePath: { type: 'string', description: 'Absolute path to the file to restore to HEAD (or delete, if untracked)' },
           },
           required: ['filePath'],
         },
@@ -1605,14 +1482,20 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         },
       },
       {
-        name: 'validate_xpp',
+        name: 'validate_code',
         description:
-          'Offline X++/XML best-practice validator (<50 ms, no xppbp.exe). Returns structured violations {rule, severity, line, excerpt, fix}. ' +
-          'Call AFTER generating code, BEFORE writes. Covers select rules (SEL001-005), CoC rules (COC001-003), ' +
-          'BP rules (BP001-003), and table-XML property rules (XML001-005) mined from standard models.',
+          'Static validator for generated X++/XML (paste the text). Choose a `mode`:\n' +
+          '• syntax → offline best-practice/BP validator (<50 ms, no xppbp.exe). Structured violations {rule, severity, line, excerpt, fix}. Covers select (SEL001-005), CoC (COC001-003), BP (BP001-003) and table-XML (XML001-005) rules mined from standard models.\n' +
+          '• references → semantic reference resolver (<200 ms, index-only): verifies every type, field, method (incl. arity), enum, label and intrinsic (tableStr/fieldStr/…) EXISTS in the indexed codebase — catches hallucinated symbols before the compiler.\n' +
+          'Call both AFTER generating, BEFORE writes; fix errors in the same turn. Write tools run references internally when GROUNDING_ENFORCE=true.',
         inputSchema: {
           type: 'object',
           properties: {
+            mode: {
+              type: 'string',
+              enum: ['syntax', 'references'],
+              description: 'syntax = BP/best-practice rules; references = symbol resolution against the index. Defaults to syntax.',
+            },
             code: {
               type: 'string',
               description: 'X++ source code or XML metadata to validate. Paste the full generated text.',
@@ -1621,36 +1504,14 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
               type: 'string',
               enum: ['xpp', 'xml-table', 'xml-any'],
               default: 'xpp',
-              description: '"xpp" for X++ source (default), "xml-table" for AxTable XML, "xml-any" for other XML.',
+              description: '[syntax] "xpp" for X++ source (default), "xml-table" for AxTable XML, "xml-any" for other XML.',
             },
             context: {
               type: 'string',
               description: 'Optional: owning class/table name, used in diagnostic messages.',
             },
           },
-          required: ['code'],
-        },
-      },
-      {
-        name: 'resolve_references',
-        description:
-          'Semantic reference resolver (<200 ms, index-only): verifies every type, field, method (incl. arity), enum, ' +
-          'label and intrinsic (tableStr/fieldStr/…) in generated X++ EXISTS in the indexed codebase — catches hallucinated ' +
-          'symbols before the compiler. Call after generating, before writes; fix errors in the same turn. ' +
-          'Write tools run this internally when GROUNDING_ENFORCE=true.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            code: {
-              type: 'string',
-              description: 'X++ source code to resolve. Paste the full generated method/class text.',
-            },
-            context: {
-              type: 'string',
-              description: 'Optional: owning class/table name, used in diagnostic messages.',
-            },
-          },
-          required: ['code'],
+          required: ['mode', 'code'],
         },
       },
       {

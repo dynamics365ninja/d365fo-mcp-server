@@ -15,9 +15,9 @@ Pick the right form pattern, base it on a standard form, and add lifecycle metho
 
 ```mermaid
 flowchart LR
-    A["form_pattern action=analyze<br/>recommend: setup, 5 fields"] -->|SimpleList + CustGroup| B["form_pattern action=spec<br/>(SimpleList)"]
-    B --> C["generate_smart<br/>objectType: form<br/>cloneFrom: CustGroup<br/>tableMapping: CustGroup→MyRentalGroup<br/>includeMethodStubs: true"]
-    C --> D[form_pattern action=validate]
+    A["object_patterns domain=form, action=analyze<br/>recommend: setup, 5 fields"] -->|SimpleList + CustGroup| B["object_patterns domain=form, action=spec<br/>(SimpleList)"]
+    B --> C["generate_object<br/>objectType: form<br/>cloneFrom: CustGroup<br/>tableMapping: CustGroup→MyRentalGroup<br/>includeMethodStubs: true"]
+    C --> D[object_patterns domain=form, action=validate]
     D -->|0 errors| E[d365fo_file action=create]
     E --> F[verify_d365fo_project ✅]
 ```
@@ -42,17 +42,17 @@ then generate the CoC class that inserts an audit record after the base call.
 
 ```mermaid
 flowchart LR
-    A[get_workspace_info] --> B["find_coc_extensions +<br/>analyze_extension_points"]
+    A[get_workspace_info] --> B["extension_info(mode="coc") +<br/>extension_info(mode="points")"]
     B --> C[prepare mode=change<br/>signature + token]
     C --> D["labels(action=search) →<br/>labels(action=create) ×6"]
-    D --> E[generate_smart objectType=table<br/>+ get_object_info table verify]
-    E --> F["resolve_references<br/>+ validate_xpp"]
+    D --> E[generate_object objectType=table<br/>+ get_object_info table verify]
+    E --> F["validate_code(mode="references")<br/>+ validate_code(mode="syntax")"]
     F --> G["d365fo_file action=create<br/>(CoC class)"]
     G --> H[verify_d365fo_project ✅]
 ```
 
 **Key takeaways**
-- `find_coc_extensions` before writing prevents silent duplicate wrappers — the #1 CoC mistake.
+- `extension_info(mode="coc")` before writing prevents silent duplicate wrappers — the #1 CoC mistake.
 - `get_object_info(objectType="table")` right after generation verifies what was *actually* written (EDTs may differ from the request).
 - The grounding token from `prepare` (mode=change) is required by the write tools — ungrounded code never reaches disk.
 
@@ -71,7 +71,7 @@ Follow the patterns of existing batch jobs in this codebase.
 ```mermaid
 flowchart LR
     A[analyze_code mode=patterns<br/>+ search scope=extensions] --> B["search queries[]<br/>framework classes + EDTs"]
-    B --> C["generate_code<br/>pattern: sysoperation"]
+    B --> C["generate_object(mode="pattern")<br/>pattern: sysoperation"]
     C --> D["get_object_info table + edt<br/>parameter types"]
     D --> E["labels(action=search) →<br/>labels(action=create) ×2"]
     E --> F["d365fo_file action=create ×3<br/>Contract / Controller / Service"]
@@ -172,7 +172,7 @@ Include a Controller so we can attach a menu item.
 ```mermaid
 flowchart LR
     A["get_object_info report<br/>study existing report"] --> B["labels(action=search) →<br/>labels(action=create) ×3"]
-    B --> C["generate_smart objectType=report<br/>5 objects in one call"]
+    B --> C["generate_object objectType=report<br/>5 objects in one call"]
     C --> D["d365fo_file action=create ×5<br/>Tmp → Contract → DP → Controller → Report"]
     D --> E["get_object_info table<br/>InventSum + WHSZone"]
     E --> F["d365fo_file action=modify<br/>processReport() body"]
@@ -180,7 +180,7 @@ flowchart LR
 ```
 
 **Key takeaways**
-- `generate_smart(objectType="report")` replaces 15+ manual calls; creation order matters (TmpTable before DP for `tableStr` resolution).
+- `generate_object(mode="scaffold", objectType="report")` replaces 15+ manual calls; creation order matters (TmpTable before DP for `tableStr` resolution).
 - `processReport()` is intentionally a TODO skeleton — query logic is added after studying the source tables, not guessed.
 - On a Windows VM the files are written directly; the per-file `d365fo_file` (action=create) step is the Azure/Linux path.
 

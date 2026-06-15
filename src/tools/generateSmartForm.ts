@@ -346,7 +346,7 @@ export async function handleGenerateSmartForm(
             `Options:\n` +
             `  1. Check the form name with search("${cloneFrom}", type="form").\n` +
             `  2. Rebuild/update the symbol index if the form is new.\n` +
-            `  3. Fall back to a template: generate_smart(objectType="form", name="${name}", formPattern="...", dataSource="...").`,
+            `  3. Fall back to a template: generate_object(mode="scaffold", objectType="form", name="${name}", formPattern="...", dataSource="...").`,
         }],
         isError: true,
       };
@@ -418,7 +418,7 @@ export async function handleGenerateSmartForm(
         content: [{
           type: 'text',
           text:
-            `❌ generate_smart internal error: the generated XML violates its own pattern ` +
+            `❌ generate internal error: the generated XML violates its own pattern ` +
             `(${patternReport.pattern ?? normalizedPattern}). This indicates template/catalog drift — please report it.\n\n` +
             errorList,
         }],
@@ -550,7 +550,7 @@ export async function handleGenerateSmartForm(
           projectMessage,
           ``,
           `⛔ DO NOT call \`d365fo_file(action="create")\` — the file is already written to disk.`,
-          `⛔ DO NOT call \`generate_smart\` again — task is COMPLETE.`,
+          `⛔ DO NOT call \`generate\` again — task is COMPLETE.`,
           ``,
           `Next steps for the user:`,
           `1. Reload the project in Visual Studio (or close/reopen solution)`,

@@ -294,8 +294,8 @@ export function generateContextualTips(
     });
 
     tips.push({
-      tip: `Use code_completion(className="${firstClass.name}") for IntelliSense-style method/field list`,
-      tool: 'code_completion'
+      tip: `Use get_object_info(objectType="class", name="${firstClass.name}", options={members:"names"}) for an IntelliSense-style method/field list`,
+      tool: 'get_object_info'
     });
 
     if (firstClass.usageFrequency && firstClass.usageFrequency > 10) {

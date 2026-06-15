@@ -243,4 +243,4 @@ The server searches from the working directory up to 5 parent levels.
 
 ## Next steps
 
-[MCP_CONFIG.md](MCP_CONFIG.md) — every option · [MCP_TOOLS.md](MCP_TOOLS.md) — all 34 tools · [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) — real workflows · [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) — ISV/multi-model · [PIPELINES.md](PIPELINES.md) — automated index refresh
+[MCP_CONFIG.md](MCP_CONFIG.md) — every option · [MCP_TOOLS.md](MCP_TOOLS.md) — all 26 tools · [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) — real workflows · [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) — ISV/multi-model · [PIPELINES.md](PIPELINES.md) — automated index refresh

@@ -44,7 +44,7 @@ Call `get_workspace_info()` before doing anything with D365FO objects.
 | Edit existing object | Describe change + confirm in chat, then `d365fo_file(action="modify")` (applies immediately) |
 | Search objects | `search()` — multiple via `search(queries[])`, custom-only via `search(scope="extensions")` |
 | Read any object | `get_object_info(objectType, name, options?)` — objectType ∈ class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro. 2+ known names: `batch_get_info(objects[])` |
-| Validate before write | `resolve_references(code)` + `validate_xpp(code)` |
+| Validate before write | `validate_code(mode="references", code)` + `validate_code(mode="syntax", code)` |
 | X++ rules & patterns | `get_knowledge(kind="knowledge", topic)` |
 | Build/BP/Sync | `build_d365fo_project` / `run_bp_check` / `trigger_db_sync` |
 | Error diagnosis | `get_knowledge(kind="error", errorText)` |

@@ -51,7 +51,7 @@
 
   <!-- Tool handlers -->
   <rect x="340" y="260" width="560" height="110" rx="8" fill="#ffffff" stroke="#6366f1"/>
-  <text x="352" y="282" font-size="12.5" font-weight="600" fill="#4338ca">34 Tool Handlers</text>
+  <text x="352" y="282" font-size="12.5" font-weight="600" fill="#4338ca">26 Tool Handlers</text>
 
   <rect x="352" y="294" width="100" height="22" rx="11" fill="#eef2ff" stroke="#c7d2fe"/>
   <text x="402" y="309" text-anchor="middle" font-size="10.5" fill="#3730a3">Search / X-ref</text>
@@ -82,17 +82,17 @@
 
   <rect x="488" y="418" width="128" height="74" rx="6" fill="#ffffff" stroke="#fdba74"/>
   <text x="552" y="436" text-anchor="middle" font-size="11" font-weight="600" fill="#9a3412">References</text>
-  <text x="552" y="452" text-anchor="middle" font-size="9.5" fill="#7c2d12">resolve_references</text>
+  <text x="552" y="452" text-anchor="middle" font-size="8.5" fill="#7c2d12">validate_code · references</text>
   <text x="552" y="466" text-anchor="middle" font-size="9.5" fill="#7c2d12">every identifier proven</text>
 
   <rect x="626" y="418" width="128" height="74" rx="6" fill="#ffffff" stroke="#fdba74"/>
   <text x="690" y="436" text-anchor="middle" font-size="11" font-weight="600" fill="#9a3412">Best practices</text>
-  <text x="690" y="452" text-anchor="middle" font-size="9.5" fill="#7c2d12">validate_xpp</text>
+  <text x="690" y="452" text-anchor="middle" font-size="8.5" fill="#7c2d12">validate_code · syntax</text>
   <text x="690" y="466" text-anchor="middle" font-size="9.5" fill="#7c2d12">13 + mined rules</text>
 
   <rect x="764" y="418" width="128" height="74" rx="6" fill="#ffffff" stroke="#fdba74"/>
   <text x="828" y="436" text-anchor="middle" font-size="11" font-weight="600" fill="#9a3412">Form patterns</text>
-  <text x="828" y="452" text-anchor="middle" font-size="9.5" fill="#7c2d12">form_pattern · validate</text>
+  <text x="828" y="452" text-anchor="middle" font-size="8.5" fill="#7c2d12">object_patterns · validate</text>
   <text x="828" y="466" text-anchor="middle" font-size="9.5" fill="#7c2d12">FP001–FP010</text>
 
   <!-- Data access -->

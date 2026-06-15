@@ -6,23 +6,17 @@ import { SERVER_MODE, LOCAL_TOOLS } from '../server/serverMode.js';
 import { searchUnifiedTool } from './searchUnified.js';
 import { batchGetInfoTool } from './batchGetInfo.js';
 import { getObjectInfoTool } from './getObjectInfo.js';
-import { completionTool } from './completion.js';
-import { codeGenTool } from './codeGen.js';
 import { findReferencesTool } from './findReferences.js';
 import { getMethodTool } from './getMethod.js';
 import { analyzeCodeTool } from './analyzeCode.js';
 import { d365foFileTool } from './d365foFile.js';
 import { labelsTool } from './labels.js';
-import { handleGetTablePatterns } from './getTablePatterns.js';
-import { formPatternTool } from './formPattern.js';
-import { generateSmartTool } from './generateSmart.js';
+import { objectPatternsTool } from './objectPatterns.js';
+import { generateObjectTool } from './generateObject.js';
 import { handleSuggestEdt } from './suggestEdt.js';
 import { securityInfoTool } from './securityInfo.js';
-import { findCocExtensionsTool } from './findCocExtensions.js';
-import { tableExtensionInfoTool } from './tableExtensionInfo.js';
-import { findEventHandlersTool } from './findEventHandlers.js';
+import { extensionInfoTool } from './extensionInfo.js';
 import { getKnowledgeTool } from './getKnowledge.js';
-import { analyzeExtensionPointsTool } from './analyzeExtensionPoints.js';
 import { validateObjectNamingTool } from './validateObjectNaming.js';
 import { verifyD365ProjectTool } from './verifyD365Project.js';
 import { resolveObjectPrefix, isCustomModel, getObjectSuffix, getExtensionNamingStyle, deriveExtensionInfix } from '../utils/modelClassifier.js';
@@ -33,10 +27,8 @@ import { dbSyncTool } from './dbSync.js';
 import { runBpCheckTool } from './runBpCheck.js';
 import { sysTestRunnerTool } from './sysTestRunner.js';
 import { reviewWorkspaceChangesTool } from './reviewWorkspaceChanges.js';
-import { extensionStrategyAdvisorTool } from './extensionStrategyAdvisor.js';
 import { undoLastModificationTool } from './undoLastModification.js';
-import { validateXppTool } from './validateXpp.js';
-import { resolveReferencesTool } from './resolveReferences.js';
+import { validateCodeTool } from './validateCode.js';
 import { prepareTool } from './prepare.js';
 import { recordToolStart, startMetricsLogging, recordCallSequence } from '../utils/toolMetrics.js';
 import {
@@ -98,7 +90,7 @@ function extractWorkspaceFromMeta(meta: any): string | null {
 /** Per-tool response cap sizes. 'uncapped' = no truncation. */
 const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
   // Uncapped — XML generation, file writes, or long structured output
-  generate_smart:                   'uncapped',
+  generate_object:                  'uncapped',
   d365fo_file:                      'uncapped',
   // get_object_info can return reports (RDL) and full class bodies — never truncate
   get_object_info:                  'uncapped',
@@ -106,11 +98,9 @@ const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
   get_method:                       'uncapped',
   // New tools with longer output
   security_info:                    8000,
-  get_table_extension_info:         6000,
-  analyze_extension_points:         6000,
-  recommend_extension_strategy:     6000,
-  find_coc_extensions:              5000,
-  find_event_handlers:              5000,
+  // extensibility merges the former table-extension/extension-point/strategy/
+  // coc/event-handler tools — keep the most generous of their old caps
+  extension_info:                   6000,
   // Default for everything else
   default:                          5000,
 };
@@ -252,10 +242,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return batchGetInfoTool(request, context);
       case 'get_object_info':
         return getObjectInfoTool(request, context);
-      case 'code_completion':
-        return completionTool(request, context);
-      case 'generate_code':
-        return codeGenTool(request);
+      case 'generate_object':        return generateObjectTool(request, context);
       case 'analyze_code':
         return analyzeCodeTool(request, context);
       case 'd365fo_file':
@@ -266,17 +253,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return getMethodTool(request, context);
       case 'labels':
         return labelsTool(request, context);
-      case 'get_table_patterns': {
-        const r = await handleGetTablePatterns(
-          request.params.arguments as any,
-          context.symbolIndex
-        );
-        return { content: r?.content ?? [{ type: 'text', text: 'No results returned' }] };
-      }
-      case 'form_pattern':
-        return formPatternTool(request, context);
-      case 'generate_smart':
-        return generateSmartTool(request, context);
+      case 'object_patterns':        return objectPatternsTool(request, context);
       case 'suggest_edt': {
         const r = await handleSuggestEdt(
           request.params.arguments as any,
@@ -286,16 +263,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       }
       case 'security_info':
         return securityInfoTool(request, context);
-      case 'find_coc_extensions':
-        return findCocExtensionsTool(request, context);
-      case 'get_table_extension_info':
-        return tableExtensionInfoTool(request, context);
-      case 'find_event_handlers':
-        return findEventHandlersTool(request, context);
-      case 'analyze_extension_points':
-        return analyzeExtensionPointsTool(request, context);
-      case 'recommend_extension_strategy':
-        return extensionStrategyAdvisorTool(request, context);
+      case 'extension_info':        return extensionInfoTool(request, context);
       case 'validate_object_naming':
         return validateObjectNamingTool(request, context);
       case 'verify_d365fo_project':
@@ -316,10 +284,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return await undoLastModificationTool(request.params.arguments as any, context);
       case 'get_knowledge':
         return getKnowledgeTool(request);
-      case 'validate_xpp':
-        return validateXppTool(request, context);
-      case 'resolve_references':
-        return resolveReferencesTool(request, context);
+      case 'validate_code':        return validateCodeTool(request, context);
       case 'prepare':
         return prepareTool(request, context);
       case 'get_workspace_info': {

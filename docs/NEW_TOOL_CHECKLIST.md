@@ -34,6 +34,26 @@ Every new MCP tool requires changes in these files. Check each item before openi
 - [ ] Update tool count in `docs/QUICK_START.md`, `docs/MCP_CONFIG.md`, `docs/CLAUDE_CODE_SETUP.md`
 - [ ] Add tool to Core Tool Mapping table in `.github/copilot-instructions.md` if user-facing
 
+## Prefer merging over adding (discriminator pattern)
+
+Before adding a brand-new tool, check whether the capability belongs to an existing
+**unified** tool. Many tools dispatch on a discriminator parameter instead of being
+separate tools — `get_object_info(objectType)`, `analyze_code(mode)`, `labels(action)`,
+`d365fo_file(action)`, `security_info(mode)`, `get_knowledge(kind)`, `extension_info(mode)`,
+`validate_code(mode)`, `generate_object(mode)`, `object_patterns(domain)`. Fewer tool
+names mean better model tool-selection.
+
+If your capability fits one of these, **add a discriminator value** instead of a new tool:
+
+- [ ] Add the new `mode` / `action` / `domain` value to that tool's enum + description in `mcpServer.ts`
+- [ ] Route it inside the tool's dispatcher (e.g. `src/tools/extensionInfo.ts`) — keep the underlying handler file intact; the dispatcher remaps params and forwards the request
+- [ ] Add a sub-branch to the tool's `case` in `src/utils/toolProgressMessage.ts`
+- [ ] No changes to tool **count** or `index.ts` catalog are needed — the tool already exists
+- [ ] Add a routing/remap test in `tests/tools/mergedDispatchers.test.ts`
+
+Name discriminated tools concretely (`validate_code`, `object_patterns`, `extension_info`) —
+a bare `validate` / `patterns` token is too vague for reliable model tool-selection.
+
 ## Quick count check
 
 ```

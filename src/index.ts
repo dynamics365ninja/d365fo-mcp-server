@@ -580,13 +580,13 @@ async function main() {
     });
 
     // Log tool count immediately (transport is already connected)
-    const totalTools = 47;
+    const totalTools = 26;
     const localToolCount = LOCAL_TOOLS.size;
     const toolCount = SERVER_MODE === 'write-only' ? localToolCount :
                      SERVER_MODE === 'read-only' ? totalTools - localToolCount : totalTools;
     const toolDesc = SERVER_MODE === 'write-only' ? `(${Array.from(LOCAL_TOOLS).join(', ')})` :
                     SERVER_MODE === 'read-only' ? '(all except local tools)' :
-                    '(5 discovery + 4 object-info + 6 intelligent + 2 smart-gen + 3 pattern-analysis + 9 security-ext + 4 file-ops + 7 sdlc-build + 1 labels + 6 code-quality)';
+                    '(2 discovery + 1 labels + 3 object-info + 2 intelligent + 2 smart-gen + 1 file-ops + 1 pattern-analysis + 5 security-ext + 5 sdlc-build + 2 code-review + 2 code-quality)';
     console.log(`🎯 Registered ${toolCount} X++ MCP tools ${toolDesc}`);
     serverState.isReady = true;
     serverState.isHealthy = true;
@@ -677,7 +677,6 @@ async function main() {
         { icon: '🔍', category: 'Search & Discovery', tools: [
           { name: 'search',                       desc: 'Search 584K+ symbols: single, batch (queries[]) or scope=extensions' },
           { name: 'batch_get_info',               desc: 'Get detailed info for up to 10 objects in one parallel call' },
-          { name: 'code_completion',              desc: 'IntelliSense-style method/field listing on any object' },
         ]},
         { icon: '🏷️ ', category: 'Label Management', tools: [
           { name: 'labels',                       desc: 'Unified label ops: action=search|info|create|rename (read/write)' },
@@ -692,23 +691,18 @@ async function main() {
           { name: 'analyze_code',                 desc: 'Learn from the codebase: mode=patterns|implementations|completeness|api-usage' },
         ]},
         { icon: '🎨', category: 'Smart Object Generation', tools: [
-          { name: 'generate_smart',               desc: 'Unified pattern-aware generator: objectType=table|form|report' },
+          { name: 'generate_object',                     desc: 'mode=pattern (named X++ skeleton) | scaffold (whole table/form/report)' },
           { name: 'suggest_edt',                  desc: 'Suggest EDT for field name using fuzzy matching' },
         ]},
         { icon: '📝', category: 'File & Metadata Operations', tools: [
           { name: 'd365fo_file',                  desc: 'action=create|modify|generate — write/edit AOT objects or emit XML (cloud)' },
         ]},
         { icon: '📈', category: 'Pattern Analysis', tools: [
-          { name: 'get_table_patterns',           desc: 'Analyze common field/index patterns for table groups' },
-          { name: 'generate_code',                desc: 'Generate X++ boilerplate (class, SysOperation, CoC, event-handler, …)' },
+          { name: 'object_patterns',                     desc: 'domain=table|form — table field/index patterns, or form-pattern toolkit (analyze/spec/validate)' },
         ]},
         { icon: '🔐', category: 'Security & Extensions', tools: [
           { name: 'security_info',                desc: 'mode=artifact|coverage — Privilege/Duty/Role chain, or who can access an object' },
-          { name: 'find_coc_extensions',          desc: 'Which classes use CoC to wrap a given method?' },
-          { name: 'find_event_handlers',          desc: 'Find all [SubscribesTo] handlers for a table or class event' },
-          { name: 'get_table_extension_info',     desc: 'All extensions of a table: added fields, indexes, methods' },
-          { name: 'analyze_extension_points',     desc: 'CoC-eligible methods, delegates, events — what can be extended?' },
-          { name: 'recommend_extension_strategy',  desc: 'Recommends the best extensibility mechanism for a given scenario' },
+          { name: 'extension_info',                desc: 'mode=coc|events|table-merge|points|strategy — CoC/event-handler/extension analysis + strategy advice' },
           { name: 'validate_object_naming',       desc: 'Validate proposed extensions and object names against D365FO conventions' },
           { name: 'get_workspace_info',           desc: 'Detected workspace paths, model name, project file, and server mode' },
           { name: 'verify_d365fo_project',        desc: 'Verify objects exist on disk and are referenced in the .rnrproj project file' },
@@ -725,9 +719,7 @@ async function main() {
           { name: 'undo_last_modification',       desc: 'Safely revert last file change: checkout HEAD or delete untracked file' },
         ]},
         { icon: '✅', category: 'Code Quality & Grounding', tools: [
-          { name: 'validate_xpp',                 desc: 'Offline BP validator: 18 rules (SEL/COC/BP/TTS/XML), <50 ms, no Windows required' },
-          { name: 'form_pattern',                 desc: 'action=analyze|validate|spec — recommend, validate (FP001-FP010), or full structure spec' },
-          { name: 'resolve_references',           desc: 'Semantic resolver: every type/field/method/label in generated code proven against the index' },
+          { name: 'validate_code',                     desc: 'mode=syntax (offline BP validator, SEL/COC/BP/TTS/XML) | references (semantic symbol resolver vs index)' },
           { name: 'prepare',                      desc: 'Single-call context aggregator + grounding token: mode=change|create' },
         ]},
       ];
