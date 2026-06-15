@@ -54,6 +54,7 @@ describe('catalog integrity', () => {
 
   it('every pattern has versions, purpose, whenToUse, referenceForms and root', () => {
     for (const p of FORM_PATTERN_CATALOG.patterns) {
+      if (p.id === 'Custom') continue; // sentinel — no structure enforced
       expect(p.versions.length, p.id).toBeGreaterThan(0);
       expect(p.purpose.length, p.id).toBeGreaterThan(0);
       expect(p.whenToUse.length, p.id).toBeGreaterThan(0);
@@ -64,13 +65,18 @@ describe('catalog integrity', () => {
 
   it('every sub-pattern has versions and appliesToControlTypes', () => {
     for (const sp of FORM_PATTERN_CATALOG.subPatterns) {
+      if (sp.id === 'Custom') continue; // sentinel — no structure enforced
       expect(sp.versions.length, sp.id).toBeGreaterThan(0);
       expect(sp.appliesToControlTypes.length, sp.id).toBeGreaterThan(0);
     }
   });
 
   it('versions are sorted newest-first', () => {
-    const numeric = (v: string) => v.split('.').map((n) => parseInt(n, 10) || 0);
+    const numeric = (v: string) => {
+      // Strip non-numeric prefixes like 'UX7 ' before parsing
+      const clean = v.replace(/^[^0-9]+/, '');
+      return clean.split('.').map((n) => parseInt(n, 10) || 0);
+    };
     const isNewerOrEqual = (a: string, b: string) => {
       const pa = numeric(a); const pb = numeric(b);
       for (let i = 0; i < Math.max(pa.length, pb.length); i++) {

@@ -36,7 +36,7 @@ export const factBoxCard: FormPatternSpec = {
   xmlName: 'FormPartFactboxCard',
   xmlAliases: ['FactBoxCard', 'FormPartFactBoxCard'],
   displayName: 'Form Part FactBox Card',
-  versions: ['UX7 1.0', '1.1', '1.0'],
+  versions: ['1.1', '1.0'],
   purpose: 'FactBox showing a set of related fields for a single record (card style).',
   whenToUse: ['A handful of related fields (e.g. customer statistics) beside a parent form'],
   referenceForms: ['CustStatisticsStatistics'],

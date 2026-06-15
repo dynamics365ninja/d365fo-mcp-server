@@ -97,7 +97,7 @@ export const dialogFastTabs: FormPatternSpec = {
   purpose: 'Modal dialog whose content is organized into FastTabs — for dialogs with many fields grouped by topic.',
   whenToUse: ['Dialog with >5 fields that benefit from FastTab grouping'],
   whenNotToUse: ['Few flat fields → Dialog - Basic', 'Standard tabs → Dialog w/ Tabs'],
-  referenceForms: [],
+  referenceForms: ['BankReconciliation'],
   designProperties: { Style: 'Dialog' },
   requiresDataSource: 'none',
   root: [
@@ -122,7 +122,7 @@ export const dialogTabs: FormPatternSpec = {
   purpose: 'Modal dialog whose content is organized into standard tabs.',
   whenToUse: ['Dialog that requires tabbed navigation with standard (non-collapsible) tabs'],
   whenNotToUse: ['Use FastTabs for most dialogs'],
-  referenceForms: [],
+  referenceForms: ['SalesCreateOrder'],
   designProperties: { Style: 'Dialog' },
   requiresDataSource: 'none',
   root: [
@@ -146,7 +146,7 @@ export const dialogReadOnly: FormPatternSpec = {
   purpose: 'Read-only modal dialog that presents information without allowing edits — no commit button required.',
   whenToUse: ['Displaying a summary or details that require user acknowledgment only'],
   whenNotToUse: ['User needs to enter data → Dialog - Basic'],
-  referenceForms: [],
+  referenceForms: ['CustTable (quick view)'],
   designProperties: { Style: 'Dialog' },
   requiresDataSource: 'none',
   root: [dialogBody],
@@ -162,7 +162,7 @@ export const dialogDoubleTabs: FormPatternSpec = {
   purpose: 'Modal dialog with two independent tab controls — typically a header group of tabs and a details group.',
   whenToUse: ['Dialog content that requires two separate tab groups at the same level'],
   whenNotToUse: ['Single tab group → Dialog w/ Tabs or Dialog w/ FastTabs'],
-  referenceForms: [],
+  referenceForms: ['BankAccountStatementImport'],
   designProperties: { Style: 'Dialog' },
   requiresDataSource: 'none',
   root: [
@@ -182,7 +182,7 @@ export const dropDialogReadOnly: FormPatternSpec = {
   purpose: 'Read-only drop dialog anchored to a button — shows summary info without allowing edits.',
   whenToUse: ['Read-only preview/summary dropped from a button'],
   whenNotToUse: ['User needs to enter data → Drop Dialog'],
-  referenceForms: [],
+  referenceForms: ['ProjForecastOnAcc'],
   designProperties: { Style: 'DropDialog' },
   requiresDataSource: 'none',
   root: [

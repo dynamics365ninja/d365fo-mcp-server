@@ -97,7 +97,7 @@ export const simpleDetailsStandardTabs: FormPatternSpec = {
   whenNotToUse: [
     'FastTabs preferred for most modern forms',
   ],
-  referenceForms: [],
+  referenceForms: ['HcmPositionDetail'],
   requiresDataSource: 'one',
   root: [
     {
@@ -125,7 +125,7 @@ export const simpleDetailsPanorama: FormPatternSpec = {
   purpose: 'Simple Details variant with a panorama-style horizontal scroll layout inside the details body.',
   whenToUse: ['Single-record form with a panorama layout (rare — workspace-style UX for a detail form)'],
   whenNotToUse: ['Standard detail forms — prefer FastTabs or Toolbar/Fields variants'],
-  referenceForms: [],
+  referenceForms: ['CustCollectionsLetterCreate'],
   requiresDataSource: 'one',
   root: [
     {

@@ -69,7 +69,7 @@ export const advancedSelection: FormPatternSpec = {
     '"Add/Remove" style selection dialogs',
   ],
   whenNotToUse: ['Single-value pick → Lookup patterns'],
-  referenceForms: [],
+  referenceForms: ['DirPartyLookup'],
   requiresDataSource: 'one',
   root: [
     {

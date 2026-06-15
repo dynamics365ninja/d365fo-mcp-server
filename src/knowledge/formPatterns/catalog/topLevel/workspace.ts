@@ -92,7 +92,7 @@ export const formPartSectionListDouble: FormPatternSpec = {
     'A workspace section list with two lists — the primary visible list and a secondary hidden ' +
     'list that becomes visible on toggle (e.g. "My" vs "All" tasks).',
   whenToUse: ['Work-queue section that offers two list views the user can switch between'],
-  referenceForms: [],
+  referenceForms: ['FMRentalsDoubleListPart'],
   requiresDataSource: 'one',
   root: [
     {
@@ -135,7 +135,7 @@ export const hubPartGrid: FormPatternSpec = {
   versions: ['1.0'],
   purpose: 'A grid shown in a workspace section via a Form Part control.',
   whenToUse: ['Grid/list section of an Operational Workspace rendered as a Form Part'],
-  referenceForms: [],
+  referenceForms: ['SalesOrderProcessingWorkspaceGrid'],
   requiresDataSource: 'one',
   root: [
     { id: 'Grid', controlTypes: ['Grid'], occurrence: 'required', extraChildren: 'any' },

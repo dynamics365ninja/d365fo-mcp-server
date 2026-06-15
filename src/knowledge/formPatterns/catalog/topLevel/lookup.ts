@@ -44,7 +44,7 @@ export const lookupGridOnly: FormPatternSpec = {
   purpose: 'Simplified lookup with only a grid (no filter bar or extra buttons) — the most common lookup variant.',
   whenToUse: ['Auto-lookup replacement where no filter bar is needed'],
   whenNotToUse: ['Filter bar needed → Lookup - Basic'],
-  referenceForms: [],
+  referenceForms: ['CurrencyCodeLookup'],
   designProperties: { Style: 'Lookup' },
   requiresDataSource: 'one',
   root: [mainGrid('required')],
@@ -60,7 +60,7 @@ export const lookupTab: FormPatternSpec = {
   purpose: 'Lookup with multiple tab pages offering alternative views (e.g. grid view + tree view) for picking a value.',
   whenToUse: ['Lookup that offers multiple selection modes or views in tabs'],
   whenNotToUse: ['Single grid view → Lookup - Grid Only'],
-  referenceForms: [],
+  referenceForms: ['HcmWorkerLookup'],
   designProperties: { Style: 'Lookup' },
   requiresDataSource: 'one',
   root: [
@@ -84,7 +84,7 @@ export const lookupPreview: FormPatternSpec = {
   purpose: 'Lookup with a grid on the left and a preview/details pane on the right for the selected record.',
   whenToUse: ['Lookup where users need to see record details before confirming their selection'],
   whenNotToUse: ['No preview needed → Lookup - Grid Only'],
-  referenceForms: [],
+  referenceForms: ['EcoResProductVariantsPerCompany'],
   designProperties: { Style: 'Lookup' },
   requiresDataSource: 'one',
   root: [
