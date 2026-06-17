@@ -113,10 +113,11 @@ Start with `cd K:\d365fo-mcp-server && npm run dev`.
       "command": "node",
       "args": ["K:\\d365fo-mcp-server\\dist\\index.js"],
       "env": {
+        "MCP_SERVER_MODE": "full",
         "DB_PATH": "K:\\d365fo-mcp-server\\data\\xpp-metadata.db",
         "LABELS_DB_PATH": "K:\\d365fo-mcp-server\\data\\xpp-metadata-labels.db",
         "D365FO_SOLUTIONS_PATH": "K:\\repos\\MySolution\\projects",
-        "D365FO_WORKSPACE_PATH": "K:\\AosService\\PackagesLocalDirectory\\YourPackage\\YourModel"
+        "D365FO_PACKAGE_PATH": "K:\\AosService\\PackagesLocalDirectory"
       }
     }
   }
