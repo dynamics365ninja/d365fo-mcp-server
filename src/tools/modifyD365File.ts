@@ -497,7 +497,6 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // up the base form XML, walk the control tree, and resolve to the exact name.
     // This makes add-control seamless — no prior get_object_info(form) call required.
     let addControlNote = '';
-    // Note surfaced when add-table-method / add-display-method generates the source.
     let generationNote = '';
     if (operation === 'add-control' && objectType === 'form-extension' && args.parentControl) {
       const resolution = await resolveParentControl(
@@ -684,9 +683,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
 
     switch (operation) {
       case 'add-method': {
-        // sourceCode and methodCode are documented aliases; sourceCode wins when both
-        // are supplied. Accept either so callers passing the methodCode alias are not
-        // silently dropped into the "returned null" path.
+        // sourceCode and methodCode are aliases; sourceCode wins when both are set.
         const methodSource = args.sourceCode ?? (args as any).methodCode;
         if (args.methodName && methodSource) {
           bridgeResult = await bridgeAddMethod(
@@ -700,8 +697,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         break;
       }
       case 'add-display-method': {
-        // Accept explicit source (sourceCode/methodCode alias) verbatim; otherwise
-        // generate a display-method stub from displayMethodReturnEdt + methodName.
+        // Explicit source wins; otherwise generate a stub from displayMethodReturnEdt.
         let methodSource = args.sourceCode ?? (args as any).methodCode;
         const methodName = args.methodName;
         if (!methodSource && methodName && (args as any).displayMethodReturnEdt) {
@@ -725,8 +721,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         break;
       }
       case 'add-table-method': {
-        // Accept explicit source (sourceCode/methodCode alias) verbatim; otherwise
-        // generate a standard table method from tableMethodType (+ tableKeyField).
+        // Explicit source wins; otherwise generate from tableMethodType.
         let methodSource = args.sourceCode ?? (args as any).methodCode;
         let methodName = args.methodName;
         if (!methodSource && (args as any).tableMethodType) {
@@ -796,8 +791,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'modify-field': {
         if (args.fieldName) {
-          // Read the documented field-* params (the advertised surface). The bridge
-          // expects bare prop keys (label/edt/mandatory/…), so map onto those here.
+          // Map the field-* params onto the bare prop keys the bridge expects.
           const fieldProps: Record<string, string> = {};
           if ((args as any).fieldLabel) fieldProps.label = (args as any).fieldLabel;
           if ((args as any).fieldHelpText) fieldProps.helpText = (args as any).fieldHelpText;
@@ -1133,8 +1127,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         'modify-property': ['propertyPath', 'propertyValue'],
       };
       const required = paramHints[operation] ?? [];
-      // Some params have documented aliases — treat any alias as satisfying the requirement
-      // so the diagnostic doesn't report a param "MISSING" when its alias was supplied.
+      // Treat a supplied alias as satisfying the requirement.
       const aliases: Record<string, string[]> = {
         sourceCode: ['methodCode'],
       };

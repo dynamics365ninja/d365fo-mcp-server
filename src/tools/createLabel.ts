@@ -107,10 +107,11 @@ const CreateLabelArgsSchema = z.object({
   createLabelFileIfMissing: z
     .boolean()
     .optional()
-    .default(false)
+    .default(true)
     .describe(
-      'If true and the AxLabelFile does not exist yet, create it with the provided translations. ' +
-        'Set to false (default) to fail fast when the label file is missing.',
+      'If true (default) and the AxLabelFile does not exist yet, create it with the provided ' +
+        'translations. A wrong-path guard still fails loudly when the model directory is not found, ' +
+        'so this never produces a phantom label file. Set to false to fail fast instead of creating.',
     ),
   allowExtensionLabelFile: z
     .boolean()

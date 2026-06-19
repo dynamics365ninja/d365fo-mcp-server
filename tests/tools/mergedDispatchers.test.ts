@@ -168,7 +168,31 @@ describe('object_patterns dispatcher', () => {
     expect(getTablePatternsTool).not.toHaveBeenCalled();
   });
 
-  it('unknown/omitted domain → friendly error', async () => {
+  it('infers domain=form + action=spec from a bare pattern arg', async () => {
+    await objectPatternsTool(req('object_patterns', { pattern: 'SimpleList' }), ctx);
+    expect(formPatternTool).toHaveBeenCalledOnce();
+    expect(getTablePatternsTool).not.toHaveBeenCalled();
+    expect(argsOf(formPatternTool)).toMatchObject({ domain: 'form', action: 'spec', pattern: 'SimpleList' });
+  });
+
+  it('infers domain=form + action=analyze from recommend', async () => {
+    await objectPatternsTool(req('object_patterns', { recommend: { entityKind: 'master' } }), ctx);
+    expect(formPatternTool).toHaveBeenCalledOnce();
+    expect(argsOf(formPatternTool)).toMatchObject({ domain: 'form', action: 'analyze' });
+  });
+
+  it('infers domain=form + action=validate from xml', async () => {
+    await objectPatternsTool(req('object_patterns', { xml: '<AxForm/>' }), ctx);
+    expect(argsOf(formPatternTool)).toMatchObject({ domain: 'form', action: 'validate' });
+  });
+
+  it('infers domain=table from tableGroup when domain omitted', async () => {
+    await objectPatternsTool(req('object_patterns', { tableGroup: 'Main' }), ctx);
+    expect(getTablePatternsTool).toHaveBeenCalledOnce();
+    expect(formPatternTool).not.toHaveBeenCalled();
+  });
+
+  it('unknown/omitted domain with no signals → friendly error', async () => {
     const r: any = await objectPatternsTool(req('object_patterns', {}), ctx);
     expect(r.isError).toBe(true);
   });

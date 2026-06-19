@@ -579,6 +579,8 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                   '• edt: label, extends, edtType, stringSize\n' +
                   '• form: caption, formTemplate, dataSource\n' +
                   '• security-privilege: label, targetObject, objectType (MenuItemDisplay|Action|Output), accessLevel (view|maintain)\n' +
+                  '• security-duty: label, privileges[] (privilege names — array or comma-separated)\n' +
+                  '• security-role: label, duties[] (duty names), privileges[] (privilege names)\n' +
                   '• menu-item-*: label, object, objectType\n' +
                   'Example: properties={"fields":[{"name":"ContosoStatus","enumType":"NoYes","fieldType":"AxTableFieldEnum","label":"@Contoso:Status"}]}'
               },
@@ -1127,7 +1129,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
               },
               createLabelFileIfMissing: {
                 type: 'boolean',
-                description: '[create] Create AxLabelFile structure if missing (default: false).',
+                description: '[create] Create the AxLabelFile structure if missing (default: true). A wrong-path guard still fails loudly when the model directory is not found, so no phantom file is produced. Set false to fail fast instead.',
               },
               sortLabels: {
                 type: 'boolean',

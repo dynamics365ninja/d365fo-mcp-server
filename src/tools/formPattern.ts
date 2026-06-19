@@ -53,8 +53,6 @@ export async function formPatternTool(request: CallToolRequest, context: XppServ
     return getFormPatternSpecTool(subRequest('get_form_pattern_spec', rest), context);
   }
 
-  // analyze: full pattern advisor — supports recommend / formPattern / dataSource / similarTo
-  // (the advertised analyze surface). getFormPatternsTool reads (request, context).
   return getFormPatternsTool(subRequest('get_form_patterns', rest), context);
 }
 

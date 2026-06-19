@@ -22,16 +22,39 @@ function err(text: string) {
 
 export async function objectPatternsTool(request: CallToolRequest, context: XppServerContext) {
   const a = (request.params.arguments ?? {}) as Record<string, any>;
-  const domain = a.domain as string | undefined;
+  let domain = a.domain as string | undefined;
 
-  switch (domain) {
-    case 'table':
-      return getTablePatternsTool(request, context);
-    case 'form':
-      return formPatternTool(request, context);
-    default:
-      return err(`object_patterns: unknown domain "${domain}". Use "table" (table field/index/relation patterns) or "form" (form-pattern toolkit; pass action=analyze|spec|validate).`);
+  // Infer the discriminator from form/table-specific params when omitted.
+  if (domain !== 'table' && domain !== 'form') {
+    const formSignals = ['action', 'pattern', 'recommend', 'formPattern', 'similarTo', 'dataSource', 'xml', 'formName'];
+    const tableSignals = ['tableGroup'];
+    if (formSignals.some(k => a[k] !== undefined)) {
+      domain = 'form';
+    } else if (tableSignals.some(k => a[k] !== undefined)) {
+      domain = 'table';
+    }
   }
+
+  if (domain === 'table') {
+    return getTablePatternsTool(request, context);
+  }
+
+  if (domain === 'form') {
+    // formPatternTool requires `action`; infer it when omitted.
+    let action = a.action as string | undefined;
+    if (!action) {
+      if (a.pattern !== undefined) action = 'spec';
+      else if (a.xml !== undefined || a.formName !== undefined || a.filePath !== undefined) action = 'validate';
+      else action = 'analyze';
+    }
+    const formRequest: CallToolRequest = {
+      ...request,
+      params: { ...request.params, arguments: { ...a, domain, action } },
+    };
+    return formPatternTool(formRequest, context);
+  }
+
+  return err(`object_patterns: unknown domain "${a.domain}". Use "table" (table field/index/relation patterns) or "form" (form-pattern toolkit; pass action=analyze|spec|validate).`);
 }
 
 // Tool registration (name, description, inputSchema) lives inline in

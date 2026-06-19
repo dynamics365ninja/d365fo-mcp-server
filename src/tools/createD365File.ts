@@ -2622,30 +2622,58 @@ ${relationsXml}
   }
 
   /**
+   * Normalize a name list that may arrive as an array or a comma/semicolon/
+   * newline-separated string (models pass either). Returns trimmed, non-empty names.
+   */
+  static normalizeNameList(value: any): string[] {
+    if (!value) return [];
+    const arr = Array.isArray(value) ? value : String(value).split(/[,;\n]+/);
+    return arr.map((s: any) => String(s).trim()).filter((s: string) => s.length > 0);
+  }
+
+  /**
+   * Render a security reference container: a self-closing tag when empty, or the
+   * wrapped child references (e.g. <AxSecurityRolePermissionSet><Name>…</Name></…>).
+   */
+  private static securityRefContainer(container: string, childTag: string, names: string[]): string {
+    if (names.length === 0) return `\t<${container} />`;
+    const children = names
+      .map(n => `\t\t<${childTag}>\n\t\t\t<Name>${n}</Name>\n\t\t</${childTag}>`)
+      .join('\n');
+    return `\t<${container}>\n${children}\n\t</${container}>`;
+  }
+
+  /**
    * Generate AxSecurityDuty XML.
+   * properties.privileges – privilege names to reference (array or comma-separated).
    */
   static generateAxSecurityDutyXml(name: string, properties?: Record<string, any>): string {
     const label = properties?.label || '@TODO:LabelId';
+    const privileges = this.normalizeNameList(properties?.privileges);
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
 \t<Label>${label}</Label>
-\t<Privileges />
+${this.securityRefContainer('Privileges', 'AxSecurityRolePermissionSet', privileges)}
 </AxSecurityDuty>`;
   }
 
   /**
    * Generate AxSecurityRole XML.
+   * properties.duties     – duty names to reference (array or comma-separated).
+   * properties.privileges – privilege names to reference directly on the role.
    */
   static generateAxSecurityRoleXml(name: string, properties?: Record<string, any>): string {
     const label = properties?.label || '@TODO:LabelId';
+    const duties = this.normalizeNameList(properties?.duties);
+    const privileges = this.normalizeNameList(properties?.privileges);
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
 \t<Label>${label}</Label>
 \t<DirectAccessPermissions />
-\t<Duties />
-\t<Privileges />
+${this.securityRefContainer('Duties', 'AxSecurityRoleDutyPermission', duties)}
+${this.securityRefContainer('Privileges', 'AxSecurityRolePermissionSet', privileges)}
 \t<SubRoles />
 </AxSecurityRole>`;
   }

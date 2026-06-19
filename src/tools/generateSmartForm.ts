@@ -388,6 +388,23 @@ export async function handleGenerateSmartForm(
       caption: caption || label || finalName,
       gridFields,
     });
+
+    // Align the Design-level PatternVersion with the version this environment uses
+    // for the pattern; template defaults can lag and be rejected by BP.
+    const designPattern = xml.match(/<Pattern xmlns="">([^<]+)<\/Pattern>/)?.[1];
+    if (designPattern) {
+      const envVersion = resolveEnvPatternVersion(symbolIndex.getReadDb(), designPattern);
+      if (envVersion) {
+        const current = xml.match(/<PatternVersion xmlns="">([^<]*)<\/PatternVersion>/)?.[1];
+        if (current && current !== envVersion) {
+          xml = xml.replace(
+            /(<PatternVersion xmlns="">)[^<]*(<\/PatternVersion>)/,
+            `$1${envVersion}$2`,
+          );
+          cloneNotes += `\n   PatternVersion aligned to this environment: ${current} → ${envVersion}`;
+        }
+      }
+    }
   }
 
   // Optional lifecycle method stubs (pattern-appropriate, with TODO markers)
@@ -429,6 +446,32 @@ export async function handleGenerateSmartForm(
       `\n   ⚠️ Pattern validation found ${patternErrors.length} error(s) in the cloned XML ` +
       `(d365fo_file(action="create") will block them while FORM_PATTERN_ENFORCE=true):\n` +
       errorList.split('\n').map(l => `      ${l}`).join('\n');
+  }
+
+  // Warn when a datasource is bound to a table that does not exist in the index,
+  // suggesting the closest real table name.
+  try {
+    const db = symbolIndex.getReadDb();
+    const tableExists = db.prepare(
+      `SELECT 1 FROM symbols WHERE type = 'table' AND name = ? COLLATE NOCASE LIMIT 1`,
+    );
+    const seenTables = new Set<string>();
+    for (const m of xml.matchAll(/<Table>([^<]+)<\/Table>/g)) {
+      const table = m[1].trim();
+      if (!table || seenTables.has(table.toLowerCase())) continue;
+      seenTables.add(table.toLowerCase());
+      if (tableExists.get(table)) continue;
+      const stem = table.replace(/s$/i, '');
+      const alt = db.prepare(
+        `SELECT name FROM symbols WHERE type = 'table' AND name LIKE ? COLLATE NOCASE ORDER BY LENGTH(name) ASC LIMIT 1`,
+      ).get(`${stem}%`) as { name: string } | undefined;
+      cloneNotes +=
+        `\n   ⚠️ Datasource table "${table}" not found in the index` +
+        (alt && alt.name.toLowerCase() !== table.toLowerCase() ? ` — did you mean "${alt.name}"?` : '') +
+        ` The form will not build until that table exists or the datasource is re-pointed.`;
+    }
+  } catch {
+    /* index unavailable — skip the existence check */
   }
 
   // On non-Windows (Azure/Linux) — return XML as text, no file write possible.
@@ -560,6 +603,26 @@ export async function handleGenerateSmartForm(
       },
     ],
   };
+}
+
+/**
+ * The most common Design-level PatternVersion this environment uses for a form
+ * pattern, from mined form_patterns data. Returns null when no mined data exists.
+ */
+export function resolveEnvPatternVersion(db: any, patternXmlName: string): string | null {
+  try {
+    const row = db.prepare(`
+      SELECT pattern_version, COUNT(*) AS n
+      FROM form_patterns
+      WHERE node_path = 'Design' AND pattern = ? AND pattern_version IS NOT NULL AND pattern_version != ''
+      GROUP BY pattern_version
+      ORDER BY n DESC
+      LIMIT 1
+    `).get(patternXmlName) as { pattern_version: string } | undefined;
+    return row?.pattern_version ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // extractModelFromProject and findProjectInSolution moved to ../utils/projectUtils.ts

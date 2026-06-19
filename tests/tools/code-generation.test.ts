@@ -317,6 +317,42 @@ describe('XmlTemplateGenerator.splitXppClassSource', () => {
   });
 });
 
+// ─── XmlTemplateGenerator security generators ───────────────────────────────
+
+describe('XmlTemplateGenerator security duty/role generators', () => {
+  it('emits privilege references on a duty from properties.privileges', () => {
+    const xml = XmlTemplateGenerator.generateAxSecurityDutyXml('MyDuty', {
+      label: '@My:Duty',
+      privileges: ['MyView', 'MyMaintain'],
+    });
+    expect(xml).toContain('<AxSecurityRolePermissionSet>\n\t\t\t<Name>MyView</Name>');
+    expect(xml).toContain('<Name>MyMaintain</Name>');
+    expect(xml).not.toContain('<Privileges />');
+  });
+
+  it('accepts a comma-separated privilege string', () => {
+    const xml = XmlTemplateGenerator.generateAxSecurityDutyXml('MyDuty', {
+      privileges: 'MyView, MyMaintain',
+    });
+    expect(xml).toContain('<Name>MyView</Name>');
+    expect(xml).toContain('<Name>MyMaintain</Name>');
+  });
+
+  it('keeps an empty self-closing Privileges when none are given', () => {
+    const xml = XmlTemplateGenerator.generateAxSecurityDutyXml('MyDuty', {});
+    expect(xml).toContain('<Privileges />');
+  });
+
+  it('emits duty references on a role from properties.duties', () => {
+    const xml = XmlTemplateGenerator.generateAxSecurityRoleXml('MyRole', {
+      duties: ['MyDuty1', 'MyDuty2'],
+    });
+    expect(xml).toContain('<AxSecurityRoleDutyPermission>\n\t\t\t<Name>MyDuty1</Name>');
+    expect(xml).toContain('<Name>MyDuty2</Name>');
+    expect(xml).not.toContain('<Duties />');
+  });
+});
+
 // ─── generate_smart_table ────────────────────────────────────────────────────
 
 describe('generate_smart_table', () => {

@@ -968,6 +968,7 @@ const BRIDGE_MODIFY_TYPES = new Set([
   'form', 'query', 'view',
   'class-extension', 'table-extension', 'form-extension', 'enum-extension',
   'menu-item-action', 'menu-item-display', 'menu-item-output',
+  'menu',
 ]);
 
 /**
