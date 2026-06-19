@@ -85,13 +85,26 @@ export function getObjectSuffix(): string {
  *    EXTENSION_PREFIX still applies to NEW objects and to fields/methods added
  *    inside extensions — only the extension element/class token changes.
  *
+ *  - 'verbatim': the EXTENSION_PREFIX and EXTENSION_SUFFIX are used VERBATIM
+ *    (no PascalCase transformation) and joined with an explicit underscore
+ *    separator. This is the convention used in projects where the extension
+ *    token is a short uppercase project code (e.g. "XYZ") and the names are:
+ *      • Extension elements → Base.XYZ_Extension  (NOT Base.XYZExtension)
+ *      • Extension classes  → Base_XYZ_Extension  (NOT BaseXYZ_Extension)
+ *      • New objects        → use EXTENSION_SUFFIX only (e.g. MyTable_XYZ),
+ *                              not the prefix.
+ *    Requires EXTENSION_PREFIX="XYZ" (no trailing underscore) and
+ *    EXTENSION_SUFFIX="_XYZ".
+ *
  * Configured via EXTENSION_NAMING_STYLE. Any value other than 'model-name'
- * (including unset) resolves to 'prefix' so existing setups are unchanged.
+ * or 'verbatim' (including unset) resolves to 'prefix' so existing setups
+ * are unchanged.
  */
-export function getExtensionNamingStyle(): 'prefix' | 'model-name' {
-  return process.env.EXTENSION_NAMING_STYLE?.trim().toLowerCase() === 'model-name'
-    ? 'model-name'
-    : 'prefix';
+export function getExtensionNamingStyle(): 'prefix' | 'model-name' | 'verbatim' {
+  const style = process.env.EXTENSION_NAMING_STYLE?.trim().toLowerCase();
+  if (style === 'model-name') return 'model-name';
+  if (style === 'verbatim') return 'verbatim';
+  return 'prefix';
 }
 
 /**
@@ -103,12 +116,21 @@ export function getExtensionNamingStyle(): 'prefix' | 'model-name' {
  *  - Extension classes ending with _Extension (SalesFormLetterXy_Extension)
  *  - Names that already end with the suffix (case-insensitive)
  *
+ * In 'verbatim' style the suffix is the PRIMARY identifier for new objects
+ * (e.g. EXTENSION_SUFFIX="_XYZ" → MyTable_XYZ). Extension elements/classes are
+ * still skipped — the infix is added by applyObjectPrefix() instead.
+ *
  * Examples with EXTENSION_SUFFIX="ZZ":
  *   MyTable        → MyTableZZ
  *   MyClass        → MyClassZZ
  *   MyTableZZ      → MyTableZZ  (no double-suffix)
  *   CustTable.XyExtension → CustTable.XyExtension (skip)
  *   CustTableXy_Extension → CustTableXy_Extension (skip)
+ *
+ * Examples with EXTENSION_SUFFIX="_XYZ" and EXTENSION_NAMING_STYLE="verbatim":
+ *   MyTable         → MyTable_XYZ
+ *   SalesTable.XYZ_Extension → SalesTable.XYZ_Extension (skip)
+ *   SalesTableTable_XYZ_Extension → SalesTableTable_XYZ_Extension (skip)
  */
 export function applyObjectSuffix(objectName: string, suffix: string): string {
   if (!suffix) return objectName;
@@ -211,6 +233,11 @@ export function applyObjectPrefix(objectName: string, prefix: string, modelName?
   // objects still use the prefix, so callers that create new objects (and don't
   // pass a model name) are completely unaffected.
   const useModelName = !!modelName && getExtensionNamingStyle() === 'model-name';
+  // 'verbatim' style: extension elements/classes use the prefix VERBATIM
+  // (uppercase project code like "XYZ") with an underscore separator before
+  // "Extension" and before the infix. New objects use the suffix
+  // (set via EXTENSION_SUFFIX) only — they must NOT receive a leading prefix.
+  const useVerbatim = getExtensionNamingStyle() === 'verbatim';
 
   // Extension infix form — PascalCase without underscore (e.g. "XY" → "Xy" when env had "XY_")
   const extensionInfix = deriveExtensionInfix(prefix);
@@ -248,6 +275,17 @@ export function applyObjectPrefix(objectName: string, prefix: string, modelName?
       return `${basePart}.${modelName}`;
     }
 
+    // 'verbatim' style: BaseElement.XYZ_Extension  (uppercase project code,
+    // underscore separator before "Extension"). e.g. SalesTable.XYZ_Extension.
+    if (useVerbatim) {
+      // Idempotent: if the suffix already is "<prefix>_Extension", return as-is.
+      const correctSuffix = `${prefix}_Extension`;
+      if (suffixPart.toLowerCase() === correctSuffix.toLowerCase()) {
+        return `${basePart}.${correctSuffix}`;
+      }
+      return `${basePart}.${correctSuffix}`;
+    }
+
     if (suffixPart.toLowerCase().endsWith('extension')) {
       // Always return the correctly-cased suffix — never preserve the original casing.
       // Without this, "VendTrans.CTSOExtension" with EXTENSION_PREFIX=CTSO_ would not be
@@ -283,6 +321,22 @@ export function applyObjectPrefix(objectName: string, prefix: string, modelName?
       return `${cleanBase}_${modelName}_Extension`;
     }
 
+    // 'verbatim' style: Base_XYZ_Extension  (underscore-separated, uppercase prefix
+    // preserved). e.g. SalesTableTable_XYZ_Extension, SalesTableForm_XYZ_Extension.
+    if (useVerbatim) {
+      let cleanBase = baseName.replace(/_+$/, '');
+      const lowerPrefix = prefix.toLowerCase();
+      // Idempotency: strip any existing "_<prefix>" infix from the tail so re-running
+      // never produces Base_XYZ_XYZ_Extension. baseName already has "_Extension" stripped.
+      if (cleanBase.toLowerCase().endsWith('_' + lowerPrefix)) {
+        cleanBase = cleanBase.slice(0, cleanBase.length - prefix.length - 1);
+      } else if (cleanBase.toLowerCase().endsWith(lowerPrefix)) {
+        cleanBase = cleanBase.slice(0, cleanBase.length - prefix.length);
+      }
+      cleanBase = cleanBase.replace(/_+$/, '');
+      return `${cleanBase}_${prefix}_Extension`;
+    }
+
     // Check if the extension infix is already present at the end (case-insensitive)
     if (baseName.toLowerCase().endsWith(extensionInfix.toLowerCase())) {
       return objectName; // Already has the correct infix, return as-is
@@ -293,6 +347,13 @@ export function applyObjectPrefix(objectName: string, prefix: string, modelName?
   }
 
   // NORMAL CASE: Regular objects — prefix at the START
+  // EXCEPTION: in 'verbatim' style, regular objects do NOT get a leading prefix
+  // — they are identified by the EXTENSION_SUFFIX (e.g. MyTable_XYZ). The prefix
+  // is reserved for extension elements/classes only.
+  if (useVerbatim) {
+    return objectName;
+  }
+
   // Check if already prefixed (case-insensitive check against the full regular prefix)
   if (objectName.toLowerCase().startsWith(regularPrefix.toLowerCase())) {
     return objectName;
@@ -313,6 +374,10 @@ export function applyObjectPrefix(objectName: string, prefix: string, modelName?
  * Format: {BaseElementName}.{Prefix}Extension
  * Example: HCMWorker.WHSExtension, ContactPerson.ContosoCustomizations
  *
+ * For 'verbatim' style, format is {BaseElementName}.{Prefix}_Extension
+ * (underscore separator before "Extension", prefix kept verbatim).
+ * Example: SalesTable.XYZ_Extension.
+ *
  * Never use just {BaseElement}.Extension — the prefix/infix is required to avoid conflicts.
  */
 export function buildExtensionElementName(baseElement: string, prefix: string): string {
@@ -323,6 +388,9 @@ export function buildExtensionElementName(baseElement: string, prefix: string): 
       `Bad pattern: "${baseElement}.Extension" (too generic, risk of conflicts).`
     );
   }
+  if (getExtensionNamingStyle() === 'verbatim') {
+    return `${baseElement}.${prefix}_Extension`;
+  }
   const infix = deriveExtensionInfix(prefix);
   return `${baseElement}.${infix}Extension`;
 }
@@ -331,6 +399,10 @@ export function buildExtensionElementName(baseElement: string, prefix: string): 
  * Build the name of an EXTENSION CLASS (Chain of Command / augmentation class).
  * Format: {BaseElement}{Prefix}_Extension
  * Example: ContactPersonWHS_Extension, CustTableForm{Prefix}_Extension
+ *
+ * For 'verbatim' style, format is {BaseClass}_{Prefix}_Extension
+ * (underscore separator between base and prefix, prefix kept verbatim).
+ * Example: SalesTableTable_XYZ_Extension, SalesTableForm_XYZ_Extension.
  *
  * Never use just {BaseClass}_Extension — the infix is required.
  */
@@ -341,6 +413,9 @@ export function buildExtensionClassName(baseClass: string, prefix: string): stri
       `Set EXTENSION_PREFIX in .env or pass modelName. ` +
       `Bad pattern: "${baseClass}_Extension" (too generic, risk of conflicts).`
     );
+  }
+  if (getExtensionNamingStyle() === 'verbatim') {
+    return `${baseClass}_${prefix}_Extension`;
   }
   // Derive the PascalCase infix form (e.g. "XY_" env → "Xy" infix, "Contoso" → "Contoso")
   const infix = deriveExtensionInfix(prefix);

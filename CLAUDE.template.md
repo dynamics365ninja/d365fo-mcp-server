@@ -58,7 +58,7 @@ Call `get_workspace_info()` before doing anything with D365FO objects.
 5. Never use `today()` — use `DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone())`
 6. Never use hardcoded strings in Info/warning/error — use `@Model:Label`
 7. Call `labels(action="search")` before `labels(action="create")` — reuse existing labels
-8. Extension naming depends on `EXTENSION_NAMING_STYLE` (check `get_workspace_info`). Default `prefix` → class `{Target}{Prefix}_Extension`, element `{Target}.{Prefix}Extension`; `model-name` → class `{Target}_{ModelName}_Extension`, element `{Target}.{ModelName}`. Pass the BASE name to `d365fo_file(action="create")` and let the tool apply the token — don't hand-build the infix.
+8. Extension naming depends on `EXTENSION_NAMING_STYLE` (check `get_workspace_info`). Default `prefix` → class `{Target}{Prefix}_Extension`, element `{Target}.{Prefix}Extension`; `model-name` → class `{Target}_{ModelName}_Extension`, element `{Target}.{ModelName}`; `verbatim` → class `{Target}_{Prefix}_Extension`, element `{Target}.{Prefix}_Extension` (uses the configured prefix verbatim with an explicit `_` separator). Pass the BASE name to `d365fo_file(action="create")` and let the tool apply the token — don't hand-build the infix.
 9. Reuse before creating: if an extension/handler class for the target already exists in the custom model (`prepare(mode="change")` lists them), add the method there — never create a parallel feature-named class unless the user explicitly asks; never invent suffixes from feature/ticket/customer names
 10. After writes, check the diff is additive (`review_workspace_changes` or re-read via `get_*_info`) — unrelated nodes disappearing = failed edit → `undo_last_modification`
 

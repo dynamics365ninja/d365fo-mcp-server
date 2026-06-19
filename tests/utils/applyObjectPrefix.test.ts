@@ -14,11 +14,18 @@
  *   - VS-generated bare model-name suffix must NOT receive a prepended prefix (original bug)
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { applyObjectPrefix } from '../../src/utils/modelClassifier';
 
 const originalPrefix = process.env.EXTENSION_PREFIX;
 const originalStyle = process.env.EXTENSION_NAMING_STYLE;
+
+// Force the default (prefix) style for every test in this file unless the test
+// explicitly sets EXTENSION_NAMING_STYLE. This is required because .env loads
+// at process start and pollutes the env with whatever style the dev configured.
+beforeEach(() => {
+  delete process.env.EXTENSION_NAMING_STYLE;
+});
 
 afterEach(() => {
   if (originalPrefix === undefined) {

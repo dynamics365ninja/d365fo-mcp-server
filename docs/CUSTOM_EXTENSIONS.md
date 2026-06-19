@@ -85,9 +85,11 @@ EXTENSION_NAMING_STYLE=prefix        # default — or "model-name"
 |-------|-------------------|-----------------|
 | `prefix` (default) | `CustTable.CrExtension` | `CustTableCr_Extension` |
 | `model-name` | `CustTable.ContosoRobotics` | `CustTable_ContosoRobotics_Extension` |
+| `verbatim` | `CustTable.CR_Extension` | `CustTable_CR_Extension` |
 
 - **`prefix`** embeds the `EXTENSION_PREFIX` infix (Microsoft's prefix-based naming guideline).
 - **`model-name`** embeds the **model name**, matching the Visual Studio developer-tools default (which uses the model name because it is already guaranteed unique). Use this when your model name is long/customer-specific (e.g. `ContosoRobotics`) but your prefix is a short abbreviation (e.g. `CR`) — the prefix still applies to **new** objects (`CRMyTable`) and to fields/methods added inside extensions (`CRApprovingWorker`); only the extension element/class token switches to the model name.
+- **`verbatim`** uses `EXTENSION_PREFIX` and `EXTENSION_SUFFIX` **literally** — no PascalCase transformation, with an explicit `_` separator before `Extension` (for elements) and before the infix (for classes). The prefix must have no trailing underscore. Use this when your project follows a convention where the prefix and suffix are short uppercase project codes used as-is (e.g. `CR` / `_CR` → `CustTable.CR_Extension` / `CustTable_CR_Extension`). New objects are identified by `EXTENSION_SUFFIX` only (e.g. `MyTable_CR`).
 
 Run `get_workspace_info` to see the active style and worked examples of exactly what the tools will emit.
 

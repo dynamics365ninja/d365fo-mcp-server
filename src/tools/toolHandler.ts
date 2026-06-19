@@ -396,25 +396,38 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
         // ── Extension naming style ────────────────────────────────────────────
         // The prefix doubles as the extension infix UNLESS EXTENSION_NAMING_STYLE
-        // is set to "model-name", in which case extension elements/classes embed the
-        // MODEL NAME (Visual Studio default). The tool ALWAYS normalises the extension
-        // token to whatever this style dictates — so pass the BASE object name and let
-        // the tool name it; do not hand-build the infix yourself.
+        // is set to "model-name" (extension token = model name, VS default) or
+        // "verbatim" (uses EXTENSION_PREFIX / EXTENSION_SUFFIX exactly as configured,
+        // with explicit "_" separator before "Extension" and before the infix).
+        // The tool ALWAYS normalises the extension token to whatever this style
+        // dictates — so pass the BASE object name and let the tool name it; do
+        // not hand-build the infix yourself.
         const extNamingStyle = getExtensionNamingStyle();
         const extInfix = deriveExtensionInfix(effectivePrefix);
         const sampleClassExt = extNamingStyle === 'model-name' && modelName
           ? `CustTable_${modelName}_Extension`
-          : `CustTable${extInfix}_Extension`;
+          : extNamingStyle === 'verbatim'
+            ? `CustTable_${effectivePrefix}_Extension`
+            : `CustTable${extInfix}_Extension`;
         const sampleElemExt = extNamingStyle === 'model-name' && modelName
           ? `CustTable.${modelName}`
-          : `CustTable.${extInfix}Extension`;
+          : extNamingStyle === 'verbatim'
+            ? `CustTable.${effectivePrefix}_Extension`
+            : `CustTable.${extInfix}Extension`;
+        const sampleNewObject = effectiveSuffix
+          ? `MyTable${effectiveSuffix}`
+          : `MyTable${extInfix}`;
+        const namingStyleLine = extNamingStyle === 'model-name'
+          ? `✅ model-name style — extension token is the MODEL NAME (Visual Studio default).`
+          : extNamingStyle === 'verbatim'
+            ? `✅ verbatim style — extension token is the EXTENSION_PREFIX verbatim with "_" separator (e.g. ${effectivePrefix}). New objects use EXTENSION_SUFFIX.`
+            : `ℹ️  prefix style (default) — extension token is the EXTENSION_PREFIX infix.`;
         lines.push(
           `## Extension Naming`,
           ``,
           `EXTENSION_NAMING_STYLE: ${process.env.EXTENSION_NAMING_STYLE?.trim() || '(not set → "prefix")'}`,
-          extNamingStyle === 'model-name'
-            ? `✅ model-name style — extension token is the MODEL NAME (Visual Studio default).`
-            : `ℹ️  prefix style (default) — extension token is the EXTENSION_PREFIX infix.`,
+          namingStyleLine,
+          `  • New object         → ${sampleNewObject}`,
           `  • Extension class  → ${sampleClassExt}`,
           `  • Element extension → ${sampleElemExt}`,
           `  ⚠️  Pass the BASE object name (e.g. "CustTable") to d365fo_file(action="create") and let the tool apply the token — any infix you embed will be normalised to the above.`,
