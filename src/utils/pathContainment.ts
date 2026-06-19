@@ -127,6 +127,20 @@ export async function assertWritePathAllowed(
   const roots = await getAllowedRoots(opts?.extraRoots);
   const matchedRoot = roots.find(r => isUnder(canonical, r));
   if (!matchedRoot) {
+    // When the path still has the canonical <…>/<Package>/<Model>/Ax<Type>/<File>
+    // shape, the would-be package root is everything above <Package>. Surfacing
+    // the exact value turns a generic "configure a root" into a copy-paste fix —
+    // this is the common repo-checkout case (metadata outside PackagesLocalDirectory).
+    const segs = canonical.split('/').filter(Boolean);
+    const axIdx = segs.findIndex(s => /^Ax[A-Z]/.test(s));
+    const derivedRoot =
+      axIdx >= 3 && axIdx === segs.length - 2 ? segs.slice(0, axIdx - 2).join('/') : '';
+    const suggestion = derivedRoot
+      ? `    This object's package root looks like: ${derivedRoot}\n` +
+        `    → per call:   packagePath="${derivedRoot}"\n` +
+        `    → persistent: set context.customPackagesPath / D365FO_CUSTOM_PACKAGES_PATH to it (and restart).\n`
+      : `    Set context.customPackagesPath / D365FO_CUSTOM_PACKAGES_PATH (and restart), ` +
+        `or pass packagePath="<root that contains the model>".\n`;
     return {
       ok: false,
       reason:
@@ -137,9 +151,9 @@ export async function assertWritePathAllowed(
         `  resolved path: ${canonical}\n` +
         `  allowed roots:\n` +
         (roots.length ? roots.map(r => `    - ${r}`).join('\n') : '    (none configured)') + '\n' +
-        `  → The file resolved under none of these roots. This usually means its model is not on an\n` +
-        `    allowed root: set context.customPackagesPath / D365FO_CUSTOM_PACKAGES_PATH (and restart),\n` +
-        `    or pass packagePath="<root that contains the model>". It is NOT a path-separator issue.`,
+        `  → The file resolved under none of these roots (its model is not on an allowed root):\n` +
+        suggestion +
+        `    It is NOT a path-separator issue.`,
     };
   }
 

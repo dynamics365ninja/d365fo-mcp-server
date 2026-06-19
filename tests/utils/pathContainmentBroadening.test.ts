@@ -31,4 +31,14 @@ describe('pathContainment — PLD-base broadening', () => {
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('NOT a path-separator issue');
   });
+
+  it('suggests the exact package root for a repo-checkout layout', async () => {
+    // The real reported case: metadata lives in a Git checkout, not under PLD.
+    const r = await assertWritePathAllowed(
+      'K:\\repos\\ASL\\src\\d365fo\\metadata\\fm-mcp\\fm-mcp\\AxTable\\AslRentEquipment.xml',
+      'fm-mcp',
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('packagePath="K:/repos/ASL/src/d365fo/metadata"');
+  });
 });
