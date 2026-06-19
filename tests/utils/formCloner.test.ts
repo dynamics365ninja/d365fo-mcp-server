@@ -146,6 +146,167 @@ describe('cloneFormXml', () => {
   });
 });
 
+// A PaymTerm-shaped source carrying every residue category that broke the
+// AslRentEquipment clone: a SourceCode datasource/control method mirror, member
+// vars + macros in classDeclaration, a default <Index>, a @SYS caption, and a
+// QuickFilter whose defaultColumnName points at a soon-to-be-dropped column.
+const paymTermLike = () => `<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>PaymTerm</Name>
+\t<SourceCode>
+\t\t<Methods xmlns="">
+\t\t\t<Method>
+\t\t\t\t<Name>classDeclaration</Name>
+\t\t\t\t<Source><![CDATA[
+[Form]
+public class PaymTerm extends FormRun
+{
+    boolean isDefaultPaymentChange;
+    #ISOCountryRegionCodes
+}
+]]></Source>
+\t\t\t</Method>
+\t\t\t<Method>
+\t\t\t\t<Name>init</Name>
+\t\t\t\t<Source><![CDATA[
+public void init() { super(); }
+]]></Source>
+\t\t\t</Method>
+\t\t</Methods>
+\t\t<DataSources xmlns="">
+\t\t\t<DataSource>
+\t\t\t\t<Name>Payment</Name>
+\t\t\t\t<Fields>
+\t\t\t\t\t<Field><DataField>Cash</DataField></Field>
+\t\t\t\t\t<Field><DataField>PaymTermId</DataField></Field>
+\t\t\t\t</Fields>
+\t\t\t</DataSource>
+\t\t</DataSources>
+\t\t<DataControls xmlns="">
+\t\t\t<Control><Name>Administration_DefaultPaymTerm_PSN</Name></Control>
+\t\t</DataControls>
+\t\t<Members xmlns="" />
+\t</SourceCode>
+\t<DataSources>
+\t\t<AxFormDataSource xmlns="">
+\t\t\t<Name>Payment</Name>
+\t\t\t<Table>PaymTerm</Table>
+\t\t\t<Fields>
+\t\t\t\t<AxFormDataSourceField><DataField>Name</DataField></AxFormDataSourceField>
+\t\t\t\t<AxFormDataSourceField><DataField>PaymTermId</DataField></AxFormDataSourceField>
+\t\t\t\t<AxFormDataSourceField><DataField>Cash</DataField></AxFormDataSourceField>
+\t\t\t</Fields>
+\t\t\t<Index>TermIdx</Index>
+\t\t\t<ReferencedDataSources />
+\t\t\t<DataSourceLinks />
+\t\t\t<DerivedDataSources />
+\t\t</AxFormDataSource>
+\t</DataSources>
+\t<Design>
+\t\t<Caption xmlns="">@SYS23346</Caption>
+\t\t<DataSource xmlns="">Payment</DataSource>
+\t\t<Pattern xmlns="">SimpleList</Pattern>
+\t\t<PatternVersion xmlns="">1.1</PatternVersion>
+\t\t<Style xmlns="">SimpleList</Style>
+\t\t<Controls xmlns="">
+\t\t\t<AxFormControl xmlns="" i:type="AxFormGroupControl">
+\t\t\t\t<Name>CustomFilterGroup</Name>
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormControl>
+\t\t\t\t\t\t<Name>QuickFilterControl</Name>
+\t\t\t\t\t\t<FormControlExtension>
+\t\t\t\t\t\t\t<Name>QuickFilterControl</Name>
+\t\t\t\t\t\t\t<ExtensionProperties>
+\t\t\t\t\t\t\t\t<AxFormControlExtensionProperty>
+\t\t\t\t\t\t\t\t\t<Name>targetControlName</Name>
+\t\t\t\t\t\t\t\t\t<Type>String</Type>
+\t\t\t\t\t\t\t\t\t<Value>PaymentGrid</Value>
+\t\t\t\t\t\t\t\t</AxFormControlExtensionProperty>
+\t\t\t\t\t\t\t\t<AxFormControlExtensionProperty>
+\t\t\t\t\t\t\t\t\t<Name>defaultColumnName</Name>
+\t\t\t\t\t\t\t\t\t<Type>String</Type>
+\t\t\t\t\t\t\t\t\t<Value>Grid_PaymTermId</Value>
+\t\t\t\t\t\t\t\t</AxFormControlExtensionProperty>
+\t\t\t\t\t\t\t</ExtensionProperties>
+\t\t\t\t\t\t</FormControlExtension>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t</Controls>
+\t\t\t</AxFormControl>
+\t\t\t<AxFormControl xmlns="" i:type="AxFormGridControl">
+\t\t\t\t<Name>PaymentGrid</Name>
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormControl xmlns="" i:type="AxFormStringControl">
+\t\t\t\t\t\t<Name>Grid_Name</Name>
+\t\t\t\t\t\t<DataField>Name</DataField>
+\t\t\t\t\t\t<DataSource>Payment</DataSource>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t\t<AxFormControl xmlns="" i:type="AxFormStringControl">
+\t\t\t\t\t\t<Name>Grid_PaymTermId</Name>
+\t\t\t\t\t\t<DataField>PaymTermId</DataField>
+\t\t\t\t\t\t<DataSource>Payment</DataSource>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t\t<AxFormControl xmlns="" i:type="AxFormStringControl">
+\t\t\t\t\t\t<Name>Grid_Cash</Name>
+\t\t\t\t\t\t<DataField>Cash</DataField>
+\t\t\t\t\t\t<DataSource>Payment</DataSource>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t</Controls>
+\t\t\t\t<DataSource>Payment</DataSource>
+\t\t\t</AxFormControl>
+\t\t</Controls>
+\t</Design>
+\t<Parts />
+</AxForm>`;
+
+describe('cloneFormXml residue cleanup (PaymTerm → AslRentEquipment)', () => {
+  const clone = () =>
+    cloneFormXml(paymTermLike(), {
+      targetFormName: 'AslRentEquipment',
+      tableMapping: { PaymTerm: 'AslRentEquipment' },
+      caption: '@AslRent:Equipment',
+      getTableFields: (table) => (table.toLowerCase() === 'aslrentequipment' ? ['Name'] : null),
+    });
+
+  it('empties the SourceCode datasource/control method mirror', () => {
+    const r = clone();
+    expect(r.clearedSourceCodeMirror).toBe(true);
+    const sc = r.xml.slice(r.xml.indexOf('<SourceCode>'), r.xml.indexOf('</SourceCode>'));
+    expect(sc).toContain('<DataSources xmlns="" />');
+    expect(sc).toContain('<DataControls xmlns="" />');
+    // The stale field/control holders are gone.
+    expect(r.xml).not.toContain('Administration_DefaultPaymTerm_PSN');
+    expect(sc).not.toContain('<Field><DataField>Cash</DataField></Field>');
+  });
+
+  it('resets the classDeclaration body (drops member vars and macros)', () => {
+    const r = clone();
+    expect(r.resetClassDeclaration).toBe(true);
+    expect(r.xml).not.toContain('isDefaultPaymentChange');
+    expect(r.xml).not.toContain('#ISOCountryRegionCodes');
+    expect(r.xml).toContain('public class AslRentEquipment extends FormRun');
+  });
+
+  it('drops the source-table default <Index> from re-bound datasources', () => {
+    const r = clone();
+    expect(r.removedIndexes).toEqual([{ dataSource: 'Payment', index: 'TermIdx' }]);
+    expect(r.xml).not.toContain('<Index>TermIdx</Index>');
+  });
+
+  it('overrides the Design caption', () => {
+    const r = clone();
+    expect(r.xml).toContain('<Caption xmlns="">@AslRent:Equipment</Caption>');
+    expect(r.xml).not.toContain('@SYS23346');
+  });
+
+  it('repoints QuickFilter defaultColumnName off a removed column', () => {
+    const r = clone();
+    expect(r.removedControls).toEqual(expect.arrayContaining(['Grid_PaymTermId', 'Grid_Cash']));
+    expect(r.repointedQuickFilters).toEqual([{ from: 'Grid_PaymTermId', to: 'Grid_Name' }]);
+    expect(r.xml).toContain('<Value>Grid_Name</Value>');
+    expect(r.xml).not.toContain('<Value>Grid_PaymTermId</Value>');
+  });
+});
+
 describe('injectMethodStubs', () => {
   it('injects form + datasource stubs into template XML', () => {
     const stubs = methodStubsForPattern('DetailsMaster', 'CustTable');

@@ -203,6 +203,33 @@ describe('validateFormTree rule units', () => {
     expect(rules(report, 'error')).toContain('FP004');
   });
 
+  it('opaque controls: nested Groups inside a DimensionEntryControl are NOT flagged in FieldsFieldGroups', () => {
+    // A faithful clone of a real form (e.g. SalesTable) nests Groups inside the
+    // financial DimensionEntryControl. The platform manages that interior, so the
+    // FieldsFieldGroups "one level of group nesting" rule must not apply to it.
+    const tabPage = node('TabPage', 'TabPageGeneral', {
+      pattern: 'FieldsFieldGroups',
+      children: [
+        node('String', 'AccountNum'),
+        node('DimensionEntryControl', 'LedgerDimension', {
+          children: [
+            node('Group', 'Segment1', { children: [node('String', 'Seg1Val')] }),
+            node('Group', 'Segment2', { children: [node('String', 'Seg2Val')] }),
+          ],
+        }),
+      ],
+    });
+    const design: FormDesignInfo = {
+      pattern: 'DetailsMaster',
+      patternVersion: '1.1',
+      style: 'DetailsFormMaster',
+      properties: {},
+      controls: [actionPane(), node('Tab', 'Tab', { properties: { Style: 'FastTabs' }, children: [tabPage] })],
+    };
+    const report = validateFormTree({ design, dataSourceCount: 1 });
+    expect(rules(report, 'error')).toEqual([]);
+  });
+
   it('FP006: FastTab page without sub-pattern warns (unspecified container)', () => {
     const design: FormDesignInfo = {
       pattern: 'DetailsMaster',

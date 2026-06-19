@@ -353,6 +353,43 @@ describe('XmlTemplateGenerator security duty/role generators', () => {
   });
 });
 
+// ─── table create: enum field generation ─────────────────────────────────────
+
+describe('XmlTemplateGenerator.generateAxTableXml enum fields', () => {
+  it('emits AxTableFieldEnum + EnumType from enumType (extension-style field spec)', () => {
+    const xml = XmlTemplateGenerator.generateAxTableXml('AslRentEquipment', {
+      fields: [{ name: 'EquipmentStatus', enumType: 'NoYes', label: '@Asl:Status' }],
+    });
+    expect(xml).toContain('i:type="AxTableFieldEnum"');
+    expect(xml).toContain('<EnumType>NoYes</EnumType>');
+    expect(xml).not.toContain('AxTableFieldString');
+  });
+
+  it('honors an explicit fieldType="AxTableFieldEnum"', () => {
+    const xml = XmlTemplateGenerator.generateAxTableXml('AslRentEquipment', {
+      fields: [{ name: 'EquipmentStatus', fieldType: 'AxTableFieldEnum', enumType: 'NoYes' }],
+    });
+    expect(xml).toContain('i:type="AxTableFieldEnum"');
+    expect(xml).toContain('<EnumType>NoYes</EnumType>');
+  });
+
+  it('still maps the primitive type="Enum" spec to an enum field', () => {
+    const xml = XmlTemplateGenerator.generateAxTableXml('AslRentEquipment', {
+      fields: [{ name: 'EquipmentStatus', type: 'Enum', enumType: 'NoYes' }],
+    });
+    expect(xml).toContain('i:type="AxTableFieldEnum"');
+    expect(xml).toContain('<EnumType>NoYes</EnumType>');
+  });
+
+  it('leaves plain string fields untouched', () => {
+    const xml = XmlTemplateGenerator.generateAxTableXml('AslRentEquipment', {
+      fields: [{ name: 'EquipmentName', edt: 'Name' }],
+    });
+    expect(xml).toContain('i:type="AxTableFieldString"');
+    expect(xml).not.toContain('<EnumType>');
+  });
+});
+
 // ─── generate_smart_table ────────────────────────────────────────────────────
 
 describe('generate_smart_table', () => {

@@ -572,7 +572,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                 description:
                   'Additional properties by objectType:\n' +
                   '• class: extends, implements, isFinal, isAbstract\n' +
-                  '• table: label, tableGroup, tableType, titleField1/2, fields[]\n' +
+                  '• table: label, tableGroup, tableType, titleField1/2, fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?}] — enum fields need enumType (+ optionally fieldType:"AxTableFieldEnum")\n' +
                   '• enum: label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}]\n' +
                   '• enum-extension: enumValues[{name,label?,value?,countryRegionCodes?}]\n' +
                   '• table-extension: fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need fieldType:"AxTableFieldEnum" + enumType\n' +
@@ -1194,7 +1194,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
               domain: {
                 type: 'string',
                 enum: ['table', 'form'],
-                description: 'table = table field/index/relation patterns; form = form-pattern toolkit (set action).',
+                description: 'table = table field/index/relation patterns; form = form-pattern toolkit (set action). Optional — inferred from the other params (action/pattern/xml/formName → form; tableGroup → table). Alias: patternType.',
               },
               // ── domain=table ───────────────────────────────────────────────
               tableGroup: {
@@ -1274,7 +1274,10 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                 description: '[form/validate] Explicit path to an AxForm XML file (e.g. a freshly created form not yet indexed).',
               },
             },
-            required: ['domain'],
+            // domain is optional: objectPatternsTool infers it from the other
+            // params (and accepts the `patternType` alias). Marking it required
+            // here made clients pre-reject otherwise-valid calls.
+            required: [],
           },
         },
         {
@@ -1658,7 +1661,10 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
               description: '[error] Optional error code (e.g. SYS10028, CSUV1, BPUpgradeCodeToday)',
             },
           },
-          required: ['kind'],
+          // kind is optional: getKnowledgeTool infers it from topic (→ knowledge)
+          // or errorText (→ error). Marking it required made clients pre-reject
+          // calls that passed only `topic`.
+          required: [],
         },
       },
       {

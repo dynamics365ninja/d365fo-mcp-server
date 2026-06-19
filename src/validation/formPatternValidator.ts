@@ -64,6 +64,27 @@ interface FormFacts {
 
 const CONTAINER_TYPES = new Set(['Group', 'TabPage', 'Tab']);
 
+/**
+ * Composite platform controls whose internal child structure is managed by the
+ * platform, not by the form pattern. The financial DimensionEntryControl is the
+ * classic case: it nests its own Groups (one per dimension segment), which a
+ * pattern like FieldsFieldGroups would otherwise reject as "more than one level
+ * of group nesting". Faithful clones of real shipped forms (SalesTable etc.)
+ * legitimately contain these, so the validator treats them as opaque — accepted
+ * wherever input controls are allowed, and never descended into.
+ */
+const OPAQUE_CONTROL_TYPES = new Set([
+  'DimensionEntryControl',
+  'DimensionExpressionEntryControl',
+]);
+
+/** True for composite controls whose interior is not governed by form patterns. */
+function isOpaqueControl(node: FormControlNode): boolean {
+  if (OPAQUE_CONTROL_TYPES.has(node.type)) return true;
+  const hay = `${node.type} ${node.axType ?? ''}`.toLowerCase();
+  return /dimension(entry|expression)/.test(hay);
+}
+
 function nodePath(parentPath: string, node: FormControlNode): string {
   return `${parentPath}/${node.type}[${node.name}]`;
 }
@@ -206,7 +227,9 @@ function matchChildren(
     if (consumed[i]) continue;
     const child = actual[i];
     const allowedExtra =
-      extra === 'any' || (Array.isArray(extra) && (extra.includes('*') || extra.includes(child.type)));
+      extra === 'any'
+      || isOpaqueControl(child)
+      || (Array.isArray(extra) && (extra.includes('*') || extra.includes(child.type)));
     if (!allowedExtra) {
       violations.push({
         rule: 'FP004',
@@ -314,6 +337,10 @@ function validateSubPatternsDeep(
   violations: FormPatternViolation[],
 ): void {
   for (const node of nodes) {
+    // Opaque composite controls (DimensionEntryControl …) own their interior —
+    // do not validate or descend into their managed child structure.
+    if (isOpaqueControl(node)) continue;
+
     const path = nodePath(parentPath, node);
 
     if (node.pattern) {
@@ -370,6 +397,7 @@ function countContainers(nodes: FormControlNode[]): { total: number; patterned: 
   let total = 0;
   let patterned = 0;
   const visit = (node: FormControlNode): void => {
+    if (isOpaqueControl(node)) return; // managed interior — not pattern containers
     if (CONTAINER_TYPES.has(node.type)) {
       total++;
       if (node.pattern) patterned++;

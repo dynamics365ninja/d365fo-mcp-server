@@ -192,6 +192,17 @@ describe('object_patterns dispatcher', () => {
     expect(formPatternTool).not.toHaveBeenCalled();
   });
 
+  it('accepts patternType as an alias for domain', async () => {
+    await objectPatternsTool(req('object_patterns', { patternType: 'table', tableGroup: 'Main' }), ctx);
+    expect(getTablePatternsTool).toHaveBeenCalledOnce();
+    expect(formPatternTool).not.toHaveBeenCalled();
+  });
+
+  it('accepts type as an alias for domain', async () => {
+    await objectPatternsTool(req('object_patterns', { type: 'form', action: 'analyze' }), ctx);
+    expect(formPatternTool).toHaveBeenCalledOnce();
+  });
+
   it('unknown/omitted domain with no signals → friendly error', async () => {
     const r: any = await objectPatternsTool(req('object_patterns', {}), ctx);
     expect(r.isError).toBe(true);

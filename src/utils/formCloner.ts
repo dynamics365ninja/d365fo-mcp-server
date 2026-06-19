@@ -21,6 +21,8 @@ export interface CloneFormOptions {
   getTableFields?: (table: string) => string[] | null;
   /** Strip form/datasource methods except classDeclaration (default true) */
   stripMethods?: boolean;
+  /** New Design caption (label ref or text). Replaces the source form's caption. */
+  caption?: string;
 }
 
 export interface CloneFormResult {
@@ -30,6 +32,14 @@ export interface CloneFormResult {
   droppedFields: Array<{ dataSource: string; field: string }>;
   removedControls: string[];
   strippedMethods: string[];
+  /** True when the <SourceCode> datasource/control method mirror was emptied. */
+  clearedSourceCodeMirror: boolean;
+  /** True when the classDeclaration body (member vars/macros) was reset to empty. */
+  resetClassDeclaration: boolean;
+  /** Default datasource indexes dropped from re-bound datasources. */
+  removedIndexes: Array<{ dataSource: string; index: string }>;
+  /** QuickFilter defaultColumnName references repointed/cleared after column removal. */
+  repointedQuickFilters: Array<{ from: string; to: string }>;
 }
 
 interface ElementBlock {
@@ -103,6 +113,39 @@ function firstElementValue(content: string, tagName: string): string | undefined
   return m?.[1];
 }
 
+/** Value of a FormControlExtension ExtensionProperty by property name. */
+function extPropValue(content: string, propName: string): string | undefined {
+  for (const p of findElementBlocks(content, 'AxFormControlExtensionProperty')) {
+    if (firstElementValue(p.content, 'Name') === propName) {
+      return p.content.match(/<Value>([^<]*)<\/Value>/)?.[1];
+    }
+  }
+  return undefined;
+}
+
+/** Depth-first search for an AxFormControl with a given <Name> under <Design>. */
+function findControlByName(xml: string, name: string): ElementBlock | undefined {
+  const designStart = xml.indexOf('<Design>');
+  const stack = [...findElementBlocks(xml, 'AxFormControl', designStart === -1 ? 0 : designStart)];
+  while (stack.length) {
+    const blk = stack.pop()!;
+    if (firstElementValue(blk.content, 'Name') === name) return blk;
+    for (const child of findElementBlocks(blk.content, 'AxFormControl', blk.content.indexOf('>') + 1)) {
+      stack.push({ start: blk.start + child.start, end: blk.start + child.end, content: child.content });
+    }
+  }
+  return undefined;
+}
+
+/** First direct child AxFormControl <Name> not in the removed set. */
+function firstRemainingChildName(containerContent: string, removed: Set<string>): string | undefined {
+  for (const child of findElementBlocks(containerContent, 'AxFormControl', containerContent.indexOf('>') + 1)) {
+    const n = firstElementValue(child.content, 'Name');
+    if (n && !removed.has(n.toLowerCase())) return n;
+  }
+  return undefined;
+}
+
 /** Remove a set of [start,end) ranges from a string (ranges must not overlap). */
 function removeRanges(xml: string, ranges: Array<{ start: number; end: number }>): string {
   let result = xml;
@@ -137,6 +180,7 @@ export function cloneFormXml(sourceXml: string, opt: CloneFormOptions): CloneFor
     tableMapping = {},
     getTableFields,
     stripMethods = true,
+    caption,
   } = opt;
 
   let xml = sourceXml;
@@ -147,6 +191,10 @@ export function cloneFormXml(sourceXml: string, opt: CloneFormOptions): CloneFor
     droppedFields: [],
     removedControls: [],
     strippedMethods: [],
+    clearedSourceCodeMirror: false,
+    resetClassDeclaration: false,
+    removedIndexes: [],
+    repointedQuickFilters: [],
   };
 
   // ── 1. Form rename ─────────────────────────────────────────────────────────
@@ -177,6 +225,51 @@ export function cloneFormXml(sourceXml: string, opt: CloneFormOptions): CloneFor
         }
       }
       xml = removeRanges(xml, removals);
+    }
+  }
+
+  // ── 2b. Empty the <SourceCode> datasource/control method mirror ────────────
+  // <SourceCode> carries a <DataSources>/<DataControls> mirror that exists only
+  // to host per-datasource, per-field and per-control method overrides. We strip
+  // those methods, so the mirror is dead weight — and it still names the SOURCE
+  // table's fields and the source form's controls, which the deserializer
+  // cross-checks against the (re-bound) real datasources and rejects. Reset both
+  // to the empty self-closing form every clean form uses.
+  for (const childTag of ['DataSources', 'DataControls']) {
+    const sc = findElementBlocks(xml, 'SourceCode')[0];
+    if (!sc) break;
+    const blk = findElementBlocks(xml, childTag, sc.start, sc.end)[0];
+    if (!blk || blk.content.endsWith('/>')) continue;
+    const xmlnsAttr = blk.content.match(/^<\w+\s+(xmlns="[^"]*")/)?.[1] ?? 'xmlns=""';
+    xml = xml.slice(0, blk.start) + `<${childTag} ${xmlnsAttr} />` + xml.slice(blk.end);
+    result.clearedSourceCodeMirror = true;
+  }
+
+  // ── 2c. Reset the classDeclaration body ────────────────────────────────────
+  // Member variables and macros (e.g. `boolean isDefaultPaymentChange;`,
+  // `#ISOCountryRegionCodes`) only existed to support the methods we just
+  // stripped. Keep the class header (attributes / extends / implements) but
+  // empty the body so the clone compiles. The form name was already retargeted.
+  {
+    const sc = findElementBlocks(xml, 'SourceCode')[0];
+    if (sc) {
+      for (const method of findElementBlocks(xml, 'Method', sc.start, sc.end)) {
+        if (firstElementValue(method.content, 'Name') !== 'classDeclaration') continue;
+        const cdata = method.content.match(/<Source>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/Source>/);
+        if (cdata) {
+          const body = cdata[1];
+          const open = body.indexOf('{');
+          const close = body.lastIndexOf('}');
+          if (open !== -1 && close > open && body.slice(open + 1, close).trim().length > 0) {
+            const header = body.slice(0, open).replace(/[ \t]+$/, '');
+            const newCdata = cdata[0].replace(cdata[1], `\n${header.trimStart()}\n{\n}\n`);
+            const newMethod = method.content.replace(cdata[0], newCdata);
+            xml = xml.slice(0, method.start) + newMethod + xml.slice(method.end);
+            result.resetClassDeclaration = true;
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -213,6 +306,14 @@ export function cloneFormXml(sourceXml: string, opt: CloneFormOptions): CloneFor
       newBlock = newBlock.replace(`<Name>${dsName}</Name>`, `<Name>${targetTable}</Name>`);
       result.renamedDataSources.push({ from: dsName, to: targetTable });
     }
+
+    // The default-sort <Index> names an index on the SOURCE table that the
+    // target table almost certainly doesn't have — drop it (D365FO falls back
+    // to the table's primary index).
+    newBlock = newBlock.replace(/[ \t]*<Index(?:\s[^>]*)?>([^<]*)<\/Index>\r?\n?/g, (_m, idx) => {
+      result.removedIndexes.push({ dataSource: renameDs ? targetTable : dsName, index: idx });
+      return '';
+    });
 
     xml = xml.slice(0, ds.start) + newBlock + xml.slice(ds.end);
   }
@@ -285,6 +386,43 @@ export function cloneFormXml(sourceXml: string, opt: CloneFormOptions): CloneFor
         }
       }
       xml = removeRanges(xml, controlRemovals);
+
+      // Repoint QuickFilter defaultColumnName references that named a removed
+      // column — otherwise the QuickFilter points at a control that no longer
+      // exists. Best-effort: retarget to the first surviving column of the same
+      // grid (named by the sibling targetControlName property).
+      const removedSet = new Set(result.removedControls.map((c) => c.toLowerCase()));
+      for (const ext of [...findElementBlocks(xml, 'FormControlExtension')].sort((a, b) => b.start - a.start)) {
+        const defCol = extPropValue(ext.content, 'defaultColumnName');
+        if (!defCol || !removedSet.has(defCol.toLowerCase())) continue;
+        const gridName = extPropValue(ext.content, 'targetControlName');
+        const grid = gridName ? findControlByName(xml, gridName) : undefined;
+        const replacement = grid ? firstRemainingChildName(grid.content, removedSet) : undefined;
+        if (replacement) {
+          const newExt = ext.content.replace(
+            new RegExp(`(<Value>)${escapeRegExp(defCol)}(</Value>)`),
+            `$1${replacement}$2`,
+          );
+          xml = xml.slice(0, ext.start) + newExt + xml.slice(ext.end);
+        }
+        result.repointedQuickFilters.push({ from: defCol, to: replacement ?? '' });
+      }
+    }
+  }
+
+  // ── 5. Caption override ────────────────────────────────────────────────────
+  // The cloned Design keeps the SOURCE form's caption (e.g. @SYS23346 "Payment
+  // terms"). Replace it when the caller supplied a caption. Scoped to the region
+  // before <Controls> so we only touch the Design-level caption, not a tab page's.
+  if (caption) {
+    const designStart = xml.indexOf('<Design>');
+    const controlsStart = xml.indexOf('<Controls', designStart);
+    if (designStart !== -1 && controlsStart !== -1) {
+      const region = xml.slice(designStart, controlsStart);
+      const capRe = /(<Caption(?:\s[^>]*)?>)[^<]*(<\/Caption>)/;
+      if (capRe.test(region)) {
+        xml = xml.slice(0, designStart) + region.replace(capRe, `$1${caption}$2`) + xml.slice(controlsStart);
+      }
     }
   }
 

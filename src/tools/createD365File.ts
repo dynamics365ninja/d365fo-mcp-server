@@ -627,8 +627,12 @@ ${methodsXml}\t</SourceCode>
     // Build <Fields> block from properties.fields array (TableFieldSpec[]).
     // Copilot may pass field definitions via properties.fields or via sourceCode JSON —
     // both paths merge into properties before calling here (see generate()).
-    const fieldSpecs: Array<{ name: string; edt?: string; type?: string; mandatory?: boolean; label?: string }> =
-      Array.isArray(properties?.fields) ? properties.fields : [];
+    // Field-spec keys are unified with the table-extension path (generateAxTableExtensionXml):
+    // accept an explicit AxTableField* i:type (fieldType), a primitive base type (type),
+    // or infer AxTableFieldEnum from enumType — and always emit <EnumType> for enum fields.
+    const fieldSpecs: Array<{
+      name: string; edt?: string; type?: string; fieldType?: string; enumType?: string; mandatory?: boolean; label?: string;
+    }> = Array.isArray(properties?.fields) ? properties.fields : [];
 
     let fieldsXml: string;
     if (fieldSpecs.length === 0) {
@@ -636,14 +640,17 @@ ${methodsXml}\t</SourceCode>
     } else {
       fieldsXml = '\t<Fields>\n';
       for (const f of fieldSpecs) {
-        // Determine i:type: use explicit type if provided, otherwise derive from EDT name heuristics.
-        // NEVER default to AxTableFieldString blindly when an EDT is present — EDT base type matters!
-        const iType = fieldTypeToAxType(f.type || 'String', f.edt);
+        // Determine i:type: explicit AxTableField* wins; otherwise derive from the
+        // primitive type / enumType / EDT name heuristics. NEVER default to
+        // AxTableFieldString blindly when an EDT or enumType is present.
+        const iType = f.fieldType
+          ?? fieldTypeToAxType(f.type || (f.enumType ? 'Enum' : 'String'), f.edt);
         fieldsXml += `\t\t<AxTableField xmlns=""\n\t\t\ti:type="${iType}">\n`;
         fieldsXml += `\t\t\t<Name>${f.name}</Name>\n`;
         if (f.edt)       fieldsXml += `\t\t\t<ExtendedDataType>${f.edt}</ExtendedDataType>\n`;
-        if (f.mandatory) fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
         if (f.label)     fieldsXml += `\t\t\t<Label>${f.label}</Label>\n`;
+        if (f.mandatory) fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
+        if (f.enumType)  fieldsXml += `\t\t\t<EnumType>${f.enumType}</EnumType>\n`;
         fieldsXml += `\t\t</AxTableField>\n`;
       }
       fieldsXml += '\t</Fields>\n';

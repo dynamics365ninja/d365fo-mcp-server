@@ -359,6 +359,7 @@ export async function handleGenerateSmartForm(
     const cloneResult = cloneFormXml(sourceXml, {
       targetFormName: finalName,
       tableMapping,
+      caption: caption || label,
       getTableFields: (table: string) => {
         const rows = fieldStmt.all(table) as Array<{ name: string }>;
         return rows.length > 0 ? rows.map((r) => r.name) : null; // unknown table → keep fields
@@ -373,11 +374,25 @@ export async function handleGenerateSmartForm(
     if (cloneResult.strippedMethods.length > 0) {
       noteLines.push(`   Methods stripped (re-add what you need via d365fo_file(action="modify") add-method): ${cloneResult.strippedMethods.join(', ')}`);
     }
+    if (cloneResult.clearedSourceCodeMirror) {
+      noteLines.push(`   SourceCode datasource/control method mirror cleared (stale field/control method holders)`);
+    }
+    if (cloneResult.resetClassDeclaration) {
+      noteLines.push(`   classDeclaration body reset to empty (source member vars/macros dropped with the methods)`);
+    }
+    if (cloneResult.removedIndexes.length > 0) {
+      noteLines.push(`   Default datasource index dropped (source-table index): ${cloneResult.removedIndexes.map(i => `${i.dataSource}.${i.index}`).join(', ')}`);
+    }
     if (cloneResult.droppedFields.length > 0) {
       noteLines.push(`   ⚠️ Fields dropped (missing on target table): ${cloneResult.droppedFields.map(d => `${d.dataSource}.${d.field}`).join(', ')}`);
     }
     if (cloneResult.removedControls.length > 0) {
       noteLines.push(`   ⚠️ Controls removed (bound to dropped fields): ${cloneResult.removedControls.join(', ')}`);
+    }
+    for (const rq of cloneResult.repointedQuickFilters) {
+      noteLines.push(rq.to
+        ? `   QuickFilter default column repointed: ${rq.from} → ${rq.to}`
+        : `   ⚠️ QuickFilter default column "${rq.from}" was removed and no surviving column was found — set defaultColumnName manually`);
     }
     cloneNotes = `\n${noteLines.join('\n')}`;
   } else {

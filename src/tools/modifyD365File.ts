@@ -604,7 +604,11 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // 1a. Path containment guard — every write target must live under a configured
     //     <PackagesLocalDirectory>/<Package>/<Model>/Ax<Type>/<File>.xml layout.
     //     Refuses path traversal via explicit filePath or JSON sourcePath (security-critical).
-    const containment = await assertWritePathAllowed(filePath, modelName);
+    //     A caller-supplied packagePath (metadata outside PLD, e.g. a repo checkout) is
+    //     honored as an allowed root — findD365File already resolves against it, so the
+    //     containment list must include it too or valid writes get wrongly rejected.
+    const extraRoots = args.packagePath ? [args.packagePath] : undefined;
+    const containment = await assertWritePathAllowed(filePath, modelName, { extraRoots });
     if (!containment.ok) {
       throw new Error(containment.reason || 'Path containment check failed');
     }
@@ -639,7 +643,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         const data = JSON.parse(fileContent);
         if (data.sourcePath) {
           // Re-validate the indirect path: sourcePath also comes from user-influenced data.
-          const srcContainment = await assertWritePathAllowed(data.sourcePath, modelName);
+          const srcContainment = await assertWritePathAllowed(data.sourcePath, modelName, { extraRoots });
           if (!srcContainment.ok) {
             throw new Error(`sourcePath rejected: ${srcContainment.reason}`);
           }

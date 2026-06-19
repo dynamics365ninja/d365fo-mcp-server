@@ -22,7 +22,9 @@ function err(text: string) {
 
 export async function objectPatternsTool(request: CallToolRequest, context: XppServerContext) {
   const a = (request.params.arguments ?? {}) as Record<string, any>;
-  let domain = a.domain as string | undefined;
+  // Accept `patternType` / `type` as aliases for the `domain` discriminator —
+  // agents frequently reach for these names.
+  let domain = (a.domain ?? a.patternType ?? a.type) as string | undefined;
 
   // Infer the discriminator from form/table-specific params when omitted.
   if (domain !== 'table' && domain !== 'form') {
@@ -54,7 +56,11 @@ export async function objectPatternsTool(request: CallToolRequest, context: XppS
     return formPatternTool(formRequest, context);
   }
 
-  return err(`object_patterns: unknown domain "${a.domain}". Use "table" (table field/index/relation patterns) or "form" (form-pattern toolkit; pass action=analyze|spec|validate).`);
+  return err(
+    `object_patterns: could not determine domain (got domain/patternType="${a.domain ?? a.patternType ?? a.type ?? ''}"). ` +
+    `Pass domain="table" (table field/index/relation patterns) or domain="form" (form-pattern toolkit; with action=analyze|spec|validate). ` +
+    `Domain is also inferred from action/pattern/xml/formName (→ form) or tableGroup (→ table).`,
+  );
 }
 
 // Tool registration (name, description, inputSchema) lives inline in

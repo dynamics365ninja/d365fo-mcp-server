@@ -65,7 +65,7 @@ function isUnder(child: string, parent: string): boolean {
  * Order: configured package path → UDE custom packages → UDE Microsoft packages → fallback.
  * Empty/undefined entries are skipped.
  */
-async function getAllowedRoots(): Promise<string[]> {
+async function getAllowedRoots(extraRoots?: (string | null | undefined)[]): Promise<string[]> {
   const cfg = getConfigManager();
   await cfg.ensureLoaded();
   const roots = new Set<string>();
@@ -74,6 +74,12 @@ async function getAllowedRoots(): Promise<string[]> {
   add(cfg.getPackagePath());
   try { add(await cfg.getCustomPackagesPath()); } catch { /* optional */ }
   try { add(await cfg.getMicrosoftPackagesPath()); } catch { /* optional */ }
+
+  // Caller-supplied roots (e.g. the `packagePath` tool param pointing at a repo
+  // checkout outside PackagesLocalDirectory). These are operator/agent-declared
+  // metadata roots and carry the same trust as a configured root; the canonical
+  // AOT-shape and model-hint checks below still apply to anything under them.
+  for (const r of extraRoots ?? []) add(r);
 
   // Fallback only if nothing was configured — prevents writing to unrelated drives
   // when config is silently missing (better to error out than guess).
@@ -93,6 +99,7 @@ async function getAllowedRoots(): Promise<string[]> {
 export async function assertWritePathAllowed(
   filePath: string,
   modelHint?: string,
+  opts?: { extraRoots?: (string | null | undefined)[] },
 ): Promise<PathContainmentResult> {
   if (!filePath || typeof filePath !== 'string') {
     return { ok: false, reason: 'filePath is empty' };
@@ -104,7 +111,7 @@ export async function assertWritePathAllowed(
   const canonical = normalise(filePath);
 
   // 1. Root containment
-  const roots = await getAllowedRoots();
+  const roots = await getAllowedRoots(opts?.extraRoots);
   const matchedRoot = roots.find(r => isUnder(canonical, r));
   if (!matchedRoot) {
     return {
@@ -157,8 +164,12 @@ export async function assertWritePathAllowed(
 }
 
 /** Throwing wrapper — convenient in tool handlers. */
-export async function ensureWritePathAllowed(filePath: string, modelHint?: string): Promise<string> {
-  const r = await assertWritePathAllowed(filePath, modelHint);
+export async function ensureWritePathAllowed(
+  filePath: string,
+  modelHint?: string,
+  opts?: { extraRoots?: (string | null | undefined)[] },
+): Promise<string> {
+  const r = await assertWritePathAllowed(filePath, modelHint, opts);
   if (!r.ok) throw new Error(`⛔ Path containment check failed: ${r.reason}`);
   return r.canonicalPath!;
 }
