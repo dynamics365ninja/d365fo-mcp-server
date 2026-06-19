@@ -72,6 +72,40 @@ describe('tool inventory contract', () => {
     }
   });
 
+  it('advertises modify-operation params in the d365fo_file inputSchema', () => {
+    // Regression guard: the advertised inputSchema is the only param surface the
+    // model sees. If an operation's params are handled in modifyD365File.ts but not
+    // exposed here, the model cannot pass them and the op fails with "returned null".
+    const requiredModifyParams = [
+      // add-table-method / add-display-method
+      'tableMethodType', 'tableKeyField', 'displayMethodReturnEdt',
+      // add-index / remove-index
+      'indexName', 'indexFields', 'indexAllowDuplicates', 'indexAlternateKey',
+      // add-relation
+      'relationName', 'relatedTable', 'relationConstraints',
+      // field groups
+      'fieldGroupName', 'fieldGroupFields', 'extendBaseFieldGroup',
+      // add-data-source
+      'dataSourceName', 'dataSourceTable', 'joinSource', 'linkType',
+      // modify-field extras
+      'fieldHelpText', 'fieldEnumType', 'fieldStringSize',
+      // add-control label
+      'controlLabel',
+      // enum values
+      'enumValueName', 'enumValueLabel', 'enumValueInt', 'enumValueCountryRegionCodes',
+      // add-menu-item-to-menu
+      'menuItemToAdd', 'menuItemToAddType',
+      // aliases / lookup
+      'methodCode', 'sourceCode', 'baseFormName', 'filePath',
+    ];
+    for (const param of requiredModifyParams) {
+      expect(
+        new RegExp(`\\b${param}:\\s*\\{`).test(mcpServerSource),
+        `d365fo_file inputSchema is missing advertised modify param '${param}'`,
+      ).toBe(true);
+    }
+  });
+
   it('includes critical diagnostics and SDLC tools in both inventories', () => {
     const criticalTools = [
       'get_workspace_info',

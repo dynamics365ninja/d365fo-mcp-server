@@ -275,6 +275,9 @@ const ModifyD365FileArgsSchema = z.object({
     'Use CheckBox for NoYes/boolean fields. Use ComboBox for enum fields. ' +
     'If omitted the tool auto-picks based on the EDT base type if controlDataField is provided.'
   ),
+  controlLabel: z.string().optional().describe(
+    'Optional label for the new control (add-control). Becomes the control <Label>.'
+  ),
   positionType: z.string().optional().describe(
     'Optional positioning: AfterItem | BeforeItem. Omit to append at the end of the parent.'
   ),
@@ -330,6 +333,9 @@ const ModifyD365FileArgsSchema = z.object({
   ),
   fieldMandatory: z.boolean().optional().describe('Is field mandatory'),
   fieldLabel: z.string().optional().describe('Field label'),
+  fieldHelpText: z.string().optional().describe('Field help text (modify-field).'),
+  fieldEnumType: z.string().optional().describe('Enum name to set on the field (modify-field, for enum-typed fields).'),
+  fieldStringSize: z.string().optional().describe('String size to set on the field (modify-field, for string-typed fields).'),
   fields: z.array(z.object({
     name: z.string(),
     edt: z.string().optional(),
@@ -379,6 +385,12 @@ const ModifyD365FileArgsSchema = z.object({
   // For add-data-source (form-extension)
   dataSourceName: z.string().optional().describe('Data source reference name for add-data-source (e.g. "MyTable_1").'),
   dataSourceTable: z.string().optional().describe('Base table name for add-data-source (e.g. "MyTable").'),
+  joinSource: z.string().optional().describe(
+    'Optional name of an existing data source on the form to join the new data source to (add-data-source).'
+  ),
+  linkType: z.string().optional().describe(
+    'Optional join/link type when joinSource is set (add-data-source): InnerJoin | OuterJoin | ExistJoin | NotExistJoin | Delayed | Active | Passive.'
+  ),
 
   // For modify-property
   propertyPath: z.string().optional().describe(
@@ -784,13 +796,15 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'modify-field': {
         if (args.fieldName) {
+          // Read the documented field-* params (the advertised surface). The bridge
+          // expects bare prop keys (label/edt/mandatory/…), so map onto those here.
           const fieldProps: Record<string, string> = {};
-          if ((args as any).label) fieldProps.label = (args as any).label;
-          if ((args as any).helpText) fieldProps.helpText = (args as any).helpText;
-          if ((args as any).mandatory !== undefined) fieldProps.mandatory = String((args as any).mandatory);
-          if ((args as any).edt) fieldProps.edt = (args as any).edt;
-          if ((args as any).enumType) fieldProps.enumType = (args as any).enumType;
-          if ((args as any).stringSize) fieldProps.stringSize = String((args as any).stringSize);
+          if ((args as any).fieldLabel) fieldProps.label = (args as any).fieldLabel;
+          if ((args as any).fieldHelpText) fieldProps.helpText = (args as any).fieldHelpText;
+          if ((args as any).fieldMandatory !== undefined) fieldProps.mandatory = String((args as any).fieldMandatory);
+          if ((args as any).fieldType) fieldProps.edt = (args as any).fieldType;
+          if ((args as any).fieldEnumType) fieldProps.enumType = (args as any).fieldEnumType;
+          if ((args as any).fieldStringSize) fieldProps.stringSize = String((args as any).fieldStringSize);
           bridgeResult = await bridgeModifyField(
             context.bridge,
             objectName,
@@ -883,7 +897,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             objectName,
             (args as any).fieldGroupName,
             (args as any).fieldGroupLabel,
-            (args as any).fields,
+            (args as any).fieldGroupFields,
           );
         }
         break;
@@ -1003,7 +1017,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             context.bridge,
             objectName,
             (args as any).enumValueName,
-            (args as any).enumValue ?? 0,
+            (args as any).enumValueInt ?? 0,
             (args as any).enumValueLabel,
             (args as any).enumValueCountryRegionCodes,
           );
@@ -1014,7 +1028,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         if ((args as any).enumValueName) {
           const evProps: Record<string, string> = {};
           if ((args as any).enumValueLabel) evProps.label = (args as any).enumValueLabel;
-          if ((args as any).enumValue !== undefined) evProps.value = String((args as any).enumValue);
+          if ((args as any).enumValueInt !== undefined) evProps.value = String((args as any).enumValueInt);
           bridgeResult = await bridgeModifyEnumValue(
             context.bridge,
             objectName,
@@ -1044,7 +1058,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             (args as any).controlType ?? 'String',
             (args as any).controlDataSource,
             (args as any).controlDataField,
-            (args as any).label,
+            (args as any).controlLabel,
           );
         }
         break;

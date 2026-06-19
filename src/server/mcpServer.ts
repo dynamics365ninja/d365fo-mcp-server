@@ -704,6 +704,18 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                 type: 'string',
                 description: '[modify] Field label (for add-field and modify-field)'
               },
+              fieldHelpText: {
+                type: 'string',
+                description: '[modify:modify-field] Field help text.'
+              },
+              fieldEnumType: {
+                type: 'string',
+                description: '[modify:modify-field] Enum name to set on an enum-typed field.'
+              },
+              fieldStringSize: {
+                type: 'string',
+                description: '[modify:modify-field] String size to set on a string-typed field.'
+              },
               fields: {
                 type: 'array',
                 description:
@@ -768,6 +780,10 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                   '[modify:add-control] Control type: String (default), Integer, Real, CheckBox (NoYes/boolean), ComboBox (enums), ' +
                   'Date, DateTime, Int64, Group, Button, CommandButton, MenuFunctionButton.'
               },
+              controlLabel: {
+                type: 'string',
+                description: '[modify:add-control] Optional label for the new control.'
+              },
               positionType: {
                 type: 'string',
                 description: '[modify:add-control] Optional: AfterItem | BeforeItem. Omit to append at the end of the parent.'
@@ -776,10 +792,162 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                 type: 'string',
                 description: '[modify:add-control] Name of the sibling control to position after (used with positionType=AfterItem).'
               },
+              baseFormName: {
+                type: 'string',
+                description: '[modify:add-control] Base form name for auto-resolving parentControl when the extension name does not contain it (e.g. objectName="SalesOrder.MyExt" → "SalesOrder"). Pass only when auto-detection fails.'
+              },
+              // ── action=modify: add-table-method / add-display-method ─────────
+              tableMethodType: {
+                type: 'string',
+                enum: ['find', 'exist', 'findByRecId', 'validateWrite', 'validateDelete', 'initValue'],
+                description:
+                  '[modify:add-table-method] Standard table method to auto-generate (method name is implied). ' +
+                  'find/exist also need tableKeyField. Omit and pass methodName+sourceCode for a custom method instead.'
+              },
+              tableKeyField: {
+                type: 'string',
+                description: '[modify:add-table-method] Primary key field for find/exist generation (e.g. "ItemId", "SalesId").'
+              },
+              displayMethodReturnEdt: {
+                type: 'string',
+                description: '[modify:add-display-method] EDT/type the display method returns (e.g. "Name", "AmountMST"). With methodName, auto-generates a display-method stub. Omit and pass sourceCode for a custom body.'
+              },
+              // ── action=modify: add-index / remove-index ─────────────────────
+              indexName: {
+                type: 'string',
+                description: '[modify:add-index/remove-index] Index name.'
+              },
+              indexFields: {
+                type: 'array',
+                description: '[modify:add-index] Fields that make up the index (required for add-index).',
+                items: {
+                  type: 'object',
+                  properties: {
+                    fieldName: { type: 'string', description: 'Field name.' },
+                    direction: { type: 'string', enum: ['Asc', 'Desc'], description: 'Sort direction (optional).' },
+                  },
+                  required: ['fieldName'],
+                },
+              },
+              indexAllowDuplicates: {
+                type: 'boolean',
+                description: '[modify:add-index] Allow duplicates (default: false = unique).'
+              },
+              indexAlternateKey: {
+                type: 'boolean',
+                description: '[modify:add-index] Mark the index as an alternate key.'
+              },
+              indexEnabled: {
+                type: 'boolean',
+                description: '[modify:add-index] Whether the index is enabled (default: true).'
+              },
+              // ── action=modify: add-relation / remove-relation ───────────────
+              relationName: {
+                type: 'string',
+                description: '[modify:add-relation/remove-relation] Relation name.'
+              },
+              relatedTable: {
+                type: 'string',
+                description: '[modify:add-relation] Related (foreign key) table name.'
+              },
+              relationConstraints: {
+                type: 'array',
+                description: '[modify:add-relation] Field constraints (field = relatedField pairs).',
+                items: {
+                  type: 'object',
+                  properties: {
+                    fieldName: { type: 'string', description: 'Local field name.' },
+                    relatedFieldName: { type: 'string', description: 'Field name in the related table.' },
+                  },
+                  required: ['fieldName', 'relatedFieldName'],
+                },
+              },
+              relationCardinality: {
+                type: 'string',
+                description: '[modify:add-relation] Local-side cardinality: ZeroMore | ZeroOne | ExactlyOne (default: ZeroMore).'
+              },
+              relatedTableCardinality: {
+                type: 'string',
+                description: '[modify:add-relation] Related-side cardinality: ZeroMore | ZeroOne | ExactlyOne (default: ExactlyOne).'
+              },
+              relationshipType: {
+                type: 'string',
+                description: '[modify:add-relation] Association | Composition | Aggregation | Link | Specialization (default: Association).'
+              },
+              // ── action=modify: field groups ─────────────────────────────────
+              fieldGroupName: {
+                type: 'string',
+                description: '[modify:add-field-group/remove-field-group/add-field-to-field-group] Field group name.'
+              },
+              fieldGroupFields: {
+                type: 'array',
+                description: '[modify:add-field-group] Initial field names (may be empty — add later with add-field-to-field-group).',
+                items: { type: 'string' },
+              },
+              fieldGroupLabel: {
+                type: 'string',
+                description: '[modify:add-field-group] Field group label (optional).'
+              },
+              extendBaseFieldGroup: {
+                type: 'boolean',
+                description: '[modify:add-field-to-field-group] table-extension only: true extends an existing base-table field group (<FieldGroupExtensions>); false/omitted adds to a new group defined in the extension.'
+              },
+              // ── action=modify: add-data-source (form-extension) ─────────────
+              dataSourceName: {
+                type: 'string',
+                description: '[modify:add-data-source] Data source reference name (e.g. "MyTable_1").'
+              },
+              dataSourceTable: {
+                type: 'string',
+                description: '[modify:add-data-source] Base table for the data source (e.g. "MyTable").'
+              },
+              joinSource: {
+                type: 'string',
+                description: '[modify:add-data-source] Optional existing data source on the form to join the new one to.'
+              },
+              linkType: {
+                type: 'string',
+                description: '[modify:add-data-source] Optional join/link type when joinSource is set: InnerJoin | OuterJoin | ExistJoin | NotExistJoin | Delayed | Active | Passive.'
+              },
+              // ── action=modify: enum values ──────────────────────────────────
+              enumValueName: {
+                type: 'string',
+                description: '[modify:add-enum-value/modify-enum-value/remove-enum-value] Enum value name (e.g. "Approved").'
+              },
+              enumValueLabel: {
+                type: 'string',
+                description: '[modify:add-enum-value/modify-enum-value] Label reference (e.g. "@MyModel:Approved").'
+              },
+              enumValueHelpText: {
+                type: 'string',
+                description: '[modify:add-enum-value] Help-text reference (optional).'
+              },
+              enumValueInt: {
+                type: 'number',
+                description: '[modify:add-enum-value] Explicit integer value; if omitted the next available value is assigned. With modify-enum-value, changes the integer (rare).'
+              },
+              enumValueCountryRegionCodes: {
+                type: 'string',
+                description: '[modify:add-enum-value] ISO country/region codes, comma-separated (e.g. "CZ,SK").'
+              },
+              // ── action=modify: add-menu-item-to-menu ────────────────────────
+              menuItemToAdd: {
+                type: 'string',
+                description: '[modify:add-menu-item-to-menu] Name of the menu item to add (e.g. "MyCustomForm").'
+              },
+              menuItemToAddType: {
+                type: 'string',
+                enum: ['display', 'action', 'output'],
+                description: '[modify:add-menu-item-to-menu] Menu item kind: display (form), action (class), output (report). Default: display.'
+              },
               createBackup: {
                 type: 'boolean',
                 description: '[modify] Create backup before modification (default: false)',
                 default: false
+              },
+              filePath: {
+                type: 'string',
+                description: '[modify] Absolute path to the XML file — bypasses symbol-DB lookup. Use when the object was just created and the path is known.'
               },
               workspacePath: {
                 type: 'string',
