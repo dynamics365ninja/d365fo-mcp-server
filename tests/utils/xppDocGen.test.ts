@@ -84,7 +84,7 @@ describe('ensureXppDocComment — fresh generation (no existing doc block)', () 
 
   it('generates a class summary without params/returns', () => {
     const src = [
-      'public class AslBudgetHelper',
+      'public class ContosoBudgetHelper',
       '{',
       '}',
     ].join('\n');
@@ -104,7 +104,7 @@ describe('ensureXppDocComment — completing an existing doc block', () => {
       '/// </summary>',
       'public static int lookAheadMonths()',
       '{',
-      '    AslBudgetLookAheadParameters params = AslBudgetLookAheadParameters::find();',
+      '    ContosoBudgetLookAheadParameters params = ContosoBudgetLookAheadParameters::find();',
       '    return params.LookAheadMonths > 0 ? params.LookAheadMonths : 2;',
       '}',
     ].join('\n');
@@ -168,9 +168,9 @@ describe('ensureXppDocComment — completing an existing doc block', () => {
       '/// </summary>',
       '/// <param name="_forUpdate">A value indicating whether to select for update.</param>',
       '/// <returns>The parameters record.</returns>',
-      'public static AslParameters find(boolean _forUpdate = false)',
+      'public static ContosoParameters find(boolean _forUpdate = false)',
       '{',
-      '    AslParameters parameters;',
+      '    ContosoParameters parameters;',
       '    return parameters;',
       '}',
     ].join('\n');
@@ -226,7 +226,7 @@ describe('ensureXppDocComment — completing an existing doc block', () => {
       '/// <summary>',
       '/// Helper class.',
       '/// </summary>',
-      'public class AslHelper',
+      'public class ContosoHelper',
       '{',
       '}',
     ].join('\n');

@@ -54,13 +54,13 @@ describe('suggestEdtFromFieldName (heuristic)', () => {
 
 describe('resolveBestEdt (DB-aware)', () => {
   it('prefers a real model-prefixed EDT over a generic guess', () => {
-    const db = fakeDb(['AslRentEquipmentId', 'RefRecId']);
-    expect(resolveBestEdt('RentEquipmentId', db)).toBe('AslRentEquipmentId');
+    const db = fakeDb(['ContosoRentEquipmentId', 'RefRecId']);
+    expect(resolveBestEdt('RentEquipmentId', db)).toBe('ContosoRentEquipmentId');
   });
 
   it('returns an exact EDT match when one exists', () => {
-    const db = fakeDb(['AslRentEquipmentId']);
-    expect(resolveBestEdt('AslRentEquipmentId', db)).toBe('AslRentEquipmentId');
+    const db = fakeDb(['ContosoRentEquipmentId']);
+    expect(resolveBestEdt('ContosoRentEquipmentId', db)).toBe('ContosoRentEquipmentId');
   });
 
   it('uses the heuristic when it resolves to an existing EDT', () => {

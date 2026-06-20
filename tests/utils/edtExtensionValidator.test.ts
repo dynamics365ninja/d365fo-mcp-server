@@ -60,7 +60,7 @@ describe('extractBaseEdtName', () => {
   });
 
   it('splits on underscore Extension convention', () => {
-    expect(extractBaseEdtName('AccountNum_AslExtension')).toBe('AccountNum');
+    expect(extractBaseEdtName('AccountNum_ContosoExtension')).toBe('AccountNum');
   });
 
   it('returns input unchanged when no separator', () => {

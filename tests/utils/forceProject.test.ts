@@ -41,11 +41,11 @@ import { getConfigManager } from '../../src/utils/configManager.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WORKSPACE  = 'K:\\repos\\ASL';
-const PROJECT_A  = 'K:\\repos\\ASL\\SolutionA\\ProjectA\\ProjectA.rnrproj';
-const PROJECT_B  = 'K:\\repos\\ASL\\SolutionB\\ProjectB\\ProjectB.rnrproj';
-const INFO_A = { projectPath: PROJECT_A, modelName: 'ModelA', solutionPath: 'K:\\repos\\ASL\\SolutionA' };
-const INFO_B = { projectPath: PROJECT_B, modelName: 'ModelB', solutionPath: 'K:\\repos\\ASL\\SolutionB' };
+const WORKSPACE  = 'K:\\repos\\Contoso';
+const PROJECT_A  = 'K:\\repos\\Contoso\\SolutionA\\ProjectA\\ProjectA.rnrproj';
+const PROJECT_B  = 'K:\\repos\\Contoso\\SolutionB\\ProjectB\\ProjectB.rnrproj';
+const INFO_A = { projectPath: PROJECT_A, modelName: 'ModelA', solutionPath: 'K:\\repos\\Contoso\\SolutionA' };
+const INFO_B = { projectPath: PROJECT_B, modelName: 'ModelB', solutionPath: 'K:\\repos\\Contoso\\SolutionB' };
 
 /** Create a fresh ConfigManager instance (bypasses singleton). */
 function makeManager() {

@@ -357,8 +357,8 @@ describe('XmlTemplateGenerator security duty/role generators', () => {
 
 describe('XmlTemplateGenerator.generateAxTableXml enum fields', () => {
   it('emits AxTableFieldEnum + EnumType from enumType (extension-style field spec)', () => {
-    const xml = XmlTemplateGenerator.generateAxTableXml('AslRentEquipment', {
-      fields: [{ name: 'EquipmentStatus', enumType: 'NoYes', label: '@Asl:Status' }],
+    const xml = XmlTemplateGenerator.generateAxTableXml('ContosoRentEquipment', {
+      fields: [{ name: 'EquipmentStatus', enumType: 'NoYes', label: '@Contoso:Status' }],
     });
     expect(xml).toContain('i:type="AxTableFieldEnum"');
     expect(xml).toContain('<EnumType>NoYes</EnumType>');
@@ -366,7 +366,7 @@ describe('XmlTemplateGenerator.generateAxTableXml enum fields', () => {
   });
 
   it('honors an explicit fieldType="AxTableFieldEnum"', () => {
-    const xml = XmlTemplateGenerator.generateAxTableXml('AslRentEquipment', {
+    const xml = XmlTemplateGenerator.generateAxTableXml('ContosoRentEquipment', {
       fields: [{ name: 'EquipmentStatus', fieldType: 'AxTableFieldEnum', enumType: 'NoYes' }],
     });
     expect(xml).toContain('i:type="AxTableFieldEnum"');
@@ -374,7 +374,7 @@ describe('XmlTemplateGenerator.generateAxTableXml enum fields', () => {
   });
 
   it('still maps the primitive type="Enum" spec to an enum field', () => {
-    const xml = XmlTemplateGenerator.generateAxTableXml('AslRentEquipment', {
+    const xml = XmlTemplateGenerator.generateAxTableXml('ContosoRentEquipment', {
       fields: [{ name: 'EquipmentStatus', type: 'Enum', enumType: 'NoYes' }],
     });
     expect(xml).toContain('i:type="AxTableFieldEnum"');
@@ -382,7 +382,7 @@ describe('XmlTemplateGenerator.generateAxTableXml enum fields', () => {
   });
 
   it('leaves plain string fields untouched', () => {
-    const xml = XmlTemplateGenerator.generateAxTableXml('AslRentEquipment', {
+    const xml = XmlTemplateGenerator.generateAxTableXml('ContosoRentEquipment', {
       fields: [{ name: 'EquipmentName', edt: 'Name' }],
     });
     expect(xml).toContain('i:type="AxTableFieldString"');

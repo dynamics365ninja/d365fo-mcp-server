@@ -149,7 +149,7 @@ describe('cloneFormXml', () => {
 });
 
 // A PaymTerm-shaped source carrying every residue category that broke the
-// AslRentEquipment clone: a SourceCode datasource/control method mirror, member
+// ContosoRentEquipment clone: a SourceCode datasource/control method mirror, member
 // vars + macros in classDeclaration, a default <Index>, a @SYS caption, and a
 // QuickFilter whose defaultColumnName points at a soon-to-be-dropped column.
 const paymTermLike = () => `<?xml version="1.0" encoding="utf-8"?>
@@ -260,13 +260,13 @@ public void init() { super(); }
 \t<Parts />
 </AxForm>`;
 
-describe('cloneFormXml residue cleanup (PaymTerm → AslRentEquipment)', () => {
+describe('cloneFormXml residue cleanup (PaymTerm → ContosoRentEquipment)', () => {
   const clone = () =>
     cloneFormXml(paymTermLike(), {
-      targetFormName: 'AslRentEquipment',
-      tableMapping: { PaymTerm: 'AslRentEquipment' },
-      caption: '@AslRent:Equipment',
-      getTableFields: (table) => (table.toLowerCase() === 'aslrentequipment' ? ['Name'] : null),
+      targetFormName: 'ContosoRentEquipment',
+      tableMapping: { PaymTerm: 'ContosoRentEquipment' },
+      caption: '@ContosoRent:Equipment',
+      getTableFields: (table) => (table.toLowerCase() === 'contosorentequipment' ? ['Name'] : null),
     });
 
   it('empties the SourceCode datasource/control method mirror', () => {
@@ -285,7 +285,7 @@ describe('cloneFormXml residue cleanup (PaymTerm → AslRentEquipment)', () => {
     expect(r.resetClassDeclaration).toBe(true);
     expect(r.xml).not.toContain('isDefaultPaymentChange');
     expect(r.xml).not.toContain('#ISOCountryRegionCodes');
-    expect(r.xml).toContain('public class AslRentEquipment extends FormRun');
+    expect(r.xml).toContain('public class ContosoRentEquipment extends FormRun');
   });
 
   it('drops the source-table default <Index> from re-bound datasources', () => {
@@ -296,7 +296,7 @@ describe('cloneFormXml residue cleanup (PaymTerm → AslRentEquipment)', () => {
 
   it('overrides the Design caption', () => {
     const r = clone();
-    expect(r.xml).toContain('<Caption xmlns="">@AslRent:Equipment</Caption>');
+    expect(r.xml).toContain('<Caption xmlns="">@ContosoRent:Equipment</Caption>');
     expect(r.xml).not.toContain('@SYS23346');
   });
 
