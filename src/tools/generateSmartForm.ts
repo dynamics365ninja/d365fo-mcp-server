@@ -107,6 +107,37 @@ export const generateSmartFormTool: Tool = {
   },
 };
 
+/**
+ * Pre-write check for cloneFrom: cloning copies the reference form's control
+ * hierarchy and sub-patterns verbatim. If the caller asked for a different
+ * pattern than the reference declares, the result will likely violate the
+ * requested pattern (e.g. SimpleListDetails forbids a Tab the source carried)
+ * and be rejected by the form-pattern validator. Returns a warning line when the
+ * cloned form's declared <Pattern> differs from the requested pattern, or null
+ * when they match / either can't be determined.
+ */
+export function cloneFromPatternMismatchWarning(
+  requestedPattern: string | undefined,
+  clonedXml: string,
+  sourceFormName: string,
+): string | null {
+  if (!requestedPattern) return null;
+  const intended = resolvePattern(requestedPattern);
+  const clonedPattern = clonedXml.match(/<Pattern xmlns="">([^<]+)<\/Pattern>/)?.[1];
+  if (!intended || !clonedPattern) return null;
+  if (intended.xmlName.toLowerCase() === clonedPattern.toLowerCase()) return null;
+
+  const ref = intended.referenceForms?.[0];
+  return (
+    `🛑 PATTERN MISMATCH — you requested "${intended.xmlName}" but "${sourceFormName}" is a "${clonedPattern}" form. ` +
+    `Cloning copies that structure verbatim, so the result may violate "${intended.xmlName}" ` +
+    `(controls/sub-patterns the target pattern disallows) and be rejected by the form-pattern validator.` +
+    (ref
+      ? ` Clone a "${intended.xmlName}" reference instead, e.g. cloneFrom="${ref}".`
+      : ` Clone a reference form that already uses "${intended.xmlName}".`)
+  );
+}
+
 export async function handleGenerateSmartForm(
   args: GenerateSmartFormArgs,
   symbolIndex: XppSymbolIndex
@@ -408,6 +439,9 @@ export async function handleGenerateSmartForm(
         ? `   QuickFilter default column repointed: ${rq.from} → ${rq.to}`
         : `   ⚠️ QuickFilter default column "${rq.from}" was removed and no surviving column was found — set defaultColumnName manually`);
     }
+    // Pattern-compatibility pre-check (see cloneFromPatternMismatchWarning).
+    const mismatch = cloneFromPatternMismatchWarning(formPattern, xml, cloneResult.sourceFormName);
+    if (mismatch) noteLines.push(`   ${mismatch}`);
     cloneNotes = `\n${noteLines.join('\n')}`;
   } else {
     xml = FormPatternTemplates.build(normalizedPattern, {

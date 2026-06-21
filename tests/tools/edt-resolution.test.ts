@@ -72,6 +72,27 @@ describe('resolveBestEdt (DB-aware)', () => {
     const db = fakeDb([]);
     expect(resolveBestEdt('Category', db)).toBe('String255');
   });
+
+  it('does NOT grab a domain-prefixed EDT for a generic field word', () => {
+    // "CovStatus" contains "Status" (conf ≥ 0.8) but is an unrelated concept —
+    // a generic "Status" field must not inherit it. Regression for the fuzzy
+    // containment edge that real (noisy) indexes hit but minimal fakes missed.
+    expect(resolveBestEdt('Status', fakeDb(['CovStatus']))).toBe('String255');
+    expect(resolveBestEdt('Type', fakeDb(['LedgerPostingType']))).toBe('String255');
+    expect(resolveBestEdt('Group', fakeDb(['CustGroupId', 'VendGroup']))).toBe('String255');
+  });
+
+  it('still prefers a prefixed EDT for a SPECIFIC multi-word field', () => {
+    // The generic-word guard must not regress the model-prefixed match: a
+    // specific field is unambiguous enough that a prefixed EDT is correct.
+    expect(resolveBestEdt('RentEquipmentId', fakeDb(['ContosoRentEquipmentId', 'CovStatus'])))
+      .toBe('ContosoRentEquipmentId');
+  });
+
+  it('still returns an exact EDT match for a generic word when one exists', () => {
+    // The guard only blocks FUZZY matches; an exact same-name EDT is honored.
+    expect(resolveBestEdt('Category', fakeDb(['Category', 'ProjCategoryId']))).toBe('Category');
+  });
 });
 
 describe('isInfrastructureField', () => {

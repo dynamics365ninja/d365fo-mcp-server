@@ -1053,6 +1053,27 @@ export function isInfrastructureField(fieldName: string): boolean {
   return INFRA.has(fieldName.toLowerCase());
 }
 
+/**
+ * Single common field words that, on their own, don't pin down a domain EDT.
+ * A fuzzy EDT that merely prepends a domain prefix to one of these
+ * (e.g. "Status" → "CovStatus", "Type" → "LedgerPostingType") scores high on
+ * containment but is the wrong concept, so for these names we accept only an
+ * exact EDT match and otherwise fall through to the name heuristic / string
+ * default. Multi-word field names like "RentEquipmentId" are specific enough
+ * that a prefixed EDT ("ContosoRentEquipmentId") is a genuinely good match.
+ */
+const GENERIC_FIELD_WORDS = new Set([
+  'status', 'type', 'category', 'group', 'code', 'class', 'state', 'kind',
+  'level', 'priority', 'value', 'key', 'order', 'sequence', 'version',
+  'mode', 'role', 'reason', 'method', 'action', 'source', 'target', 'color',
+  'size', 'unit', 'parent', 'child', 'owner', 'number', 'line',
+]);
+
+/** True when a field name is a single generic word (see GENERIC_FIELD_WORDS). */
+function isGenericFieldWord(fieldName: string): boolean {
+  return GENERIC_FIELD_WORDS.has(fieldName.toLowerCase());
+}
+
 /** Confidence (0–1) that an EDT name matches a field name, by containment. */
 function edtNameConfidence(field: string, edt: string): number {
   const f = field.toLowerCase();
@@ -1075,6 +1096,11 @@ export function resolveBestEdt(fieldName: string, db: any): string {
     ).get(fieldName) as { edt_name: string } | undefined;
     if (exact) return exact.edt_name;
 
+    // Generic single-word fields don't accept fuzzy matches — a prefixed EDT
+    // (CovStatus for "Status") is a different concept. Only their exact match
+    // above counts; otherwise fall through to the heuristic / string default.
+    const acceptFuzzy = !isGenericFieldWord(fieldName);
+
     const candidates = db.prepare(
       `SELECT edt_name FROM edt_metadata WHERE edt_name LIKE ? COLLATE NOCASE ORDER BY LENGTH(edt_name) ASC LIMIT 30`
     ).all(`%${fieldName}%`) as Array<{ edt_name: string }>;
@@ -1084,12 +1110,12 @@ export function resolveBestEdt(fieldName: string, db: any): string {
       const conf = edtNameConfidence(fieldName, c.edt_name);
       if (conf > bestConf) { bestConf = conf; best = c.edt_name; }
     }
-    if (best && bestConf >= 0.8) return best;
+    if (acceptFuzzy && best && bestConf >= 0.8) return best;
 
     const heuristic = suggestEdtFromFieldName(fieldName);
     if (validateEdtExists(heuristic, db)) return heuristic;
 
-    if (best && bestConf >= 0.6) return best;
+    if (acceptFuzzy && best && bestConf >= 0.6) return best;
   } catch {
     /* DB unavailable — fall back to the pure heuristic below */
   }

@@ -1046,7 +1046,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'Unified label operations — read and write. Choose an `action`:\n' +
             '• search → full-text query across indexed label files (read). Always run before action=create.\n' +
             '• info → all language translations for a labelId, OR list available label files when labelId is omitted. Pass labelFileId (without labelId) to get that label file plus the physical .label.txt path per language (read).\n' +
-            '• create → add a new label to an AxLabelFile, write into every language .label.txt, create XML descriptors if missing (write). Label IDs describe MEANING — never add a model prefix. Target the model\'s ORIGINAL label file, never a label file extension (…_Extension…). Fails if the label already exists.\n' +
+            '• create → add a new label to an AxLabelFile, write into every language .label.txt, create XML descriptors if missing (write). Label IDs describe MEANING — never add a model prefix. Target the model\'s ORIGINAL label file, never a label file extension (…_Extension…). Fails if the label already exists. For many labels at once pass labels:[{labelId, translations}, …] with the shared labelFileId/model at the top level — they are created in one call and reported together.\n' +
             '• update → overwrite the text of an EXISTING label (e.g. fix a wrong/duplicate translation in cs/de). Same args as create; provide the corrected translations[] (write).\n' +
             '• rename → rename a label ID across .label.txt + X++ + XML metadata + SQLite index. Use dryRun=true first (write).',
           inputSchema: {
@@ -1085,9 +1085,35 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                 description: '[info] Exact label ID. Omit for action=info to list available label files for the model.',
               },
               // ── action=create ──────────────────────────────────────────────
+              labels: {
+                type: 'array',
+                description:
+                  '[create] OPTIONAL bulk mode — create several labels in one call. Each entry is { labelId, translations[], description?, defaultComment? }. ' +
+                  'Shared fields (labelFileId, model, languages, paths…) stay at the top level. When present, top-level labelId/translations are ignored. ' +
+                  'Each label is created via the normal single-label path and results are aggregated into one report (a failed entry does not abort the batch).',
+                items: {
+                  type: 'object',
+                  properties: {
+                    labelId: { type: 'string', description: 'Label ID for this entry — alphanumeric, no model prefix.' },
+                    translations: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          language: { type: 'string', description: 'Locale code, e.g. en-US, cs, de, sk' },
+                          text: { type: 'string', description: 'Label text' },
+                          comment: { type: 'string', description: 'Developer comment (optional)' },
+                        },
+                        required: ['language', 'text'],
+                      },
+                    },
+                  },
+                  required: ['labelId', 'translations'],
+                },
+              },
               translations: {
                 type: 'array',
-                description: '[create] REQUIRED. Translations for each language. Provide at least en-US.',
+                description: '[create] REQUIRED for single-label create (omit when using labels[]). Translations for each language. Provide at least en-US.',
                 items: {
                   type: 'object',
                   properties: {
