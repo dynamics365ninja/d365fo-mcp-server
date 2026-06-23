@@ -19,6 +19,7 @@ function makeSnapshot(overrides: Partial<ContextSnapshot> = {}): ContextSnapshot
     envType: 'ude',
     roots: [],
     index: { totalSymbols: 0, byType: {}, indexedModels: [], lastIndexedAt: null },
+    activeObject: null,
     recentObjects: [],
     uncommittedFiles: [],
     generatedAt: '2026-06-23T00:00:00.000Z',
@@ -32,6 +33,21 @@ describe('renderContextSnapshotSection', () => {
     expect(out).toContain('## Context Snapshot');
     expect(out).toContain('Recently edited objects: _none detected');
     expect(out).toContain('Uncommitted X++ changes: _none');
+  });
+
+  it('shows the active object when present', () => {
+    const out = renderContextSnapshotSection(
+      makeSnapshot({
+        activeObject: {
+          name: 'CustTable',
+          type: 'table',
+          path: 'K:\\ws\\CustTable.xml',
+          modifiedAt: '2026-06-23T09:15:00.000Z',
+        },
+      })
+    ).join('\n');
+    expect(out).toContain('Active object (most recently modified): CustTable [table]');
+    expect(out).toContain('2026-06-23 09:15');
   });
 
   it('lists recent objects and uncommitted changes when present', () => {

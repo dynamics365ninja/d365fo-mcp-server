@@ -85,6 +85,9 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
   const { filePath } = params;
   try {
     const { symbolIndex } = context;
+    // A file just changed on disk — drop the workspace scan cache so the
+    // context pipeline (recently-edited / active object) reflects it at once.
+    context.workspaceScanner?.invalidate?.();
     const pathParts = filePath.split(/[\\/]/);
     const fileName = pathParts[pathParts.length - 1] ?? filePath;
     const objectName = fileName.replace(/\.[^.]+$/, '');

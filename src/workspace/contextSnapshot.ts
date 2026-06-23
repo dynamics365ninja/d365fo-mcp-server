@@ -38,6 +38,13 @@ export interface RecentObject {
   modifiedAt: string; // ISO 8601
 }
 
+/**
+ * Best-effort "what the developer is working on now". MCP exposes workspace
+ * roots, not editor focus, so this is the most-recently-modified X++ object —
+ * a good proxy for the active file, not a guarantee of editor cursor state.
+ */
+export type ActiveObject = RecentObject;
+
 export interface ContextSnapshot {
   model: string | null;
   modelSource: string;
@@ -51,6 +58,11 @@ export interface ContextSnapshot {
     indexedModels: string[];
     lastIndexedAt: string | null;
   };
+  /**
+   * Most-recently modified X++ object — proxy for the active file. Null when no
+   * workspace/files are detected. See ActiveObject for the editor-focus caveat.
+   */
+  activeObject: ActiveObject | null;
   /** Most-recently edited X++ objects in the workspace (mtime desc). */
   recentObjects: RecentObject[];
   /** X++ files changed vs HEAD (uncommitted), relative to the repo root. */
@@ -186,6 +198,7 @@ export async function buildContextSnapshot(
     envType,
     roots,
     index,
+    activeObject: recentObjects[0] ?? null,
     recentObjects,
     uncommittedFiles,
     generatedAt: new Date().toISOString(),
@@ -199,6 +212,14 @@ export async function buildContextSnapshot(
  */
 export function renderContextSnapshotSection(snapshot: ContextSnapshot): string[] {
   const lines: string[] = ['## Context Snapshot', ''];
+
+  if (snapshot.activeObject) {
+    const a = snapshot.activeObject;
+    lines.push(
+      `Active object (most recently modified): ${a.name} [${a.type}] — ${a.modifiedAt.replace('T', ' ').slice(0, 16)}`,
+      ''
+    );
+  }
 
   if (snapshot.recentObjects.length === 0) {
     lines.push('Recently edited objects: _none detected in the workspace_');

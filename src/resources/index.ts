@@ -37,6 +37,15 @@ const WORKSPACE_RESOURCES = [
     mimeType: 'application/json',
   },
   {
+    uri: 'workspace://active',
+    name: 'Active Object',
+    description:
+      'The object the developer is most likely working on (most recently ' +
+      'modified X++ file) enriched with its indexed metadata. Proxy for editor ' +
+      'focus — MCP exposes roots, not the cursor.',
+    mimeType: 'application/json',
+  },
+  {
     uri: 'workspace://stats',
     name: 'Workspace Statistics',
     description: 'Symbol-index totals by type, indexed models and workspace file counts.',
@@ -107,6 +116,36 @@ export function registerResources(server: Server, context: XppServerContext): vo
       switch (uri) {
         case 'workspace://context':
           return json(uri, snapshot);
+
+        case 'workspace://active': {
+          const active = snapshot.activeObject;
+          // Enrich with indexed metadata (signature/model) when the type maps
+          // to an indexable symbol type. 'unknown' files are returned as-is.
+          let indexed: { name: string; type: string; model: string; signature?: string } | null = null;
+          if (active && active.type !== 'unknown') {
+            try {
+              const sym = context.symbolIndex.getSymbolByName(active.name, active.type);
+              if (sym) {
+                indexed = {
+                  name: sym.name,
+                  type: sym.type,
+                  model: sym.model,
+                  signature: sym.signature,
+                };
+              }
+            } catch {
+              /* enrichment optional */
+            }
+          }
+          return json(uri, {
+            activeObject: active,
+            indexed,
+            note: active
+              ? 'Proxy for the active file (most recently modified). Not editor-cursor state.'
+              : 'No workspace files detected — cannot infer an active object.',
+            generatedAt: snapshot.generatedAt,
+          });
+        }
 
         case 'workspace://stats':
           return json(uri, {
