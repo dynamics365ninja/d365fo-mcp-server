@@ -22,8 +22,8 @@ export type PrepareMode = (typeof PREPARE_MODES)[number];
 
 const PrepareArgsSchema = z
   .object({
-    mode: z.enum(PREPARE_MODES).describe(
-      'change → aggregate context for extending/modifying an existing object; ' +
+    mode: z.enum(PREPARE_MODES).default('change').describe(
+      'change (default) → aggregate context for extending/modifying an existing object; ' +
       'create → aggregate context for a brand-new object.',
     ),
   })

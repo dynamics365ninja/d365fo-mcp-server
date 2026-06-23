@@ -228,11 +228,52 @@ export async function handleGenerateSmartForm(
 
   // Strategy 2: Create datasource from table and analyze patterns
   if (dataSource && !copyFrom) {
-    console.log(`[generateSmartForm] Creating datasource for table: ${dataSource}`);
-    
+    // Validate the primary datasource table exists and fuzzy-correct common pluralisation
+    // mistakes (e.g. agent passes "AslRentEquipmentTables" instead of "AslRentEquipmentTable").
+    let dataSourceResolved = dataSource;
+    try {
+      const db = symbolIndex.getReadDb();
+      const directHit = db.prepare(
+        `SELECT name FROM symbols WHERE type = 'table' AND name = ? COLLATE NOCASE LIMIT 1`,
+      ).get(dataSource) as { name: string } | undefined;
+      if (!directHit) {
+        const add = (n: string | undefined) => {
+          const v = (n ?? '').trim();
+          if (v && !candidates.some((c: string) => c.toLowerCase() === v.toLowerCase())) candidates.push(v);
+        };
+        const candidates: string[] = [];
+        add(dataSource.replace(/s$/i, ''));            // strip trailing "s"
+        add(dataSource.replace(/Tables?$/i, 'Table')); // "Tables" → "Table"
+        add(dataSource.replace(/Table$/i, ''));        // strip "Table" suffix entirely
+        const matched = candidates
+          .map(c => db.prepare(
+            `SELECT name FROM symbols WHERE type = 'table' AND name = ? COLLATE NOCASE LIMIT 1`,
+          ).get(c) as { name: string } | undefined)
+          .find(r => r)?.name;
+        if (matched) {
+          console.log(`[generateSmartForm] dataSource "${dataSource}" → "${matched}" (auto-corrected)`);
+          dataSourceResolved = matched;
+        } else {
+          const alt = db.prepare(
+            `SELECT name FROM symbols WHERE type = 'table' AND name LIKE ? COLLATE NOCASE ORDER BY LENGTH(name) ASC LIMIT 1`,
+          ).get(`${dataSource.replace(/s$/i, '')}%`) as { name: string } | undefined;
+          const suggestion = alt ? `\n\nDid you mean \`dataSource="${alt.name}"\`?` : '';
+          return {
+            content: [{
+              type: 'text',
+              text: `❌ Table "${dataSource}" not found in the symbol index.${suggestion}\n\nIf the table was just created in this session, call \`update_symbol_index\` first, then retry.`,
+            }],
+          };
+        }
+      }
+    } catch {
+      /* index unavailable — proceed with provided name */
+    }
+
+    console.log(`[generateSmartForm] Creating datasource for table: ${dataSourceResolved}`);
     dataSources.push({
-      name: dataSource,
-      table: dataSource,
+      name: dataSourceResolved,
+      table: dataSourceResolved,
       allowEdit: true,
       allowCreate: true,
       allowDelete: true,
@@ -274,18 +315,21 @@ export async function handleGenerateSmartForm(
       .slice(0, 8);
   };
 
+  // After fuzzy resolution the effective datasource name may differ from the input.
+  const dataSourceEffective = dataSources[0]?.table ?? dataSource;
+
   if (dataSource && dataSources.length > 0) {
     try {
       const db = symbolIndex.getReadDb();
-      gridFields = collectGridFields(db, dataSource);
-      fieldTypes = getFieldControlMap(db, dataSource);
+      gridFields = collectGridFields(db, dataSourceEffective);
+      fieldTypes = getFieldControlMap(db, dataSourceEffective);
 
       if (gridFields.length > 0) {
         if (generateControls) {
           // Legacy path: also build explicit controls for backward compat
           const gridControl = builder.buildGridControl(
-            `${dataSource}Grid`,
-            dataSource,
+            `${dataSourceEffective}Grid`,
+            dataSourceEffective,
             gridFields,
             fieldTypes,
           );

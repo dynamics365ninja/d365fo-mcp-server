@@ -42,6 +42,20 @@ export async function getMethodTool(request: CallToolRequest, context: XppServer
 
   const { include, ...rest } = parsed.data;
 
+  if (!rest.className) {
+    return {
+      content: [{
+        type: 'text',
+        text:
+          `❌ get_method: missing required parameter "className".\n\n` +
+          `Usage: get_method(className="MyClass", methodName="myMethod")\n\n` +
+          `If you only know the method name, use search(query="myMethod", type="method") first ` +
+          `to find which class it belongs to.`,
+      }],
+      isError: true,
+    };
+  }
+
   if (include === 'signature') {
     return getMethodSignatureTool(subRequest('get_method_signature', rest), context);
   }
