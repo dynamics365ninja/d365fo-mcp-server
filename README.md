@@ -167,6 +167,7 @@ Deployment guide: [docs/SETUP_AZURE.md](docs/SETUP_AZURE.md) · CI/CD automation
 | [Claude Code setup](docs/CLAUDE_CODE_SETUP.md) | [Architecture](docs/ARCHITECTURE.md) | [Testing](docs/TESTING.md) |
 | [Usage examples](docs/USAGE_EXAMPLES.md) — real tool chains | [C# Bridge](docs/BRIDGE.md) | [Custom / ISV models](docs/CUSTOM_EXTENSIONS.md) |
 | | [Workspace detection](docs/WORKSPACE_DETECTION.md) | [SQLite vs Bridge](docs/SQLITE_DEPENDENCY.md) |
+| | [Backlog](docs/BACKLOG.md) — deferred work & ideas | |
 
 ## License
 
