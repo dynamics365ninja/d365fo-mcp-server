@@ -23,6 +23,7 @@ import type { XppServerContext } from '../types/context.js';
 import { createProvenanceToken } from '../utils/provenanceStore.js';
 import { tryBridgeCocExtensions } from '../bridge/bridgeAdapter.js';
 import { getConfigManager } from '../utils/configManager.js';
+import { rankContext, renderRankedContext } from '../workspace/contextRanker.js';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -321,6 +322,18 @@ export async function prepareChangeTool(request: any, context: XppServerContext)
   lines.push('### Related patterns _(symbol index)_');
   lines.push(patternText);
   lines.push('');
+
+  // Ranked neighborhood: goal-driven, anchored on the target object. Best-effort.
+  try {
+    const ranked = rankContext(context, {
+      intent: `${goal} ${objectName} ${methodName ?? ''}`,
+      activeObject: { name: objectName, type: resolvedType },
+    });
+    lines.push(...renderRankedContext(ranked));
+    lines.push('');
+  } catch {
+    // Ranked context is additive — omit on failure.
+  }
 
   if (namingText !== null) {
     lines.push(`### Naming validation for \`${proposedName}\``);
