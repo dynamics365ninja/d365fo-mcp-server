@@ -36,6 +36,7 @@ import {
   dedupKey, getDedupedResult, storeDedupResult, appendNote,
 } from '../utils/callDedup.js';
 import { checkIndexStaleness } from '../utils/indexStaleness.js';
+import { buildContextSnapshot, renderContextSnapshotSection } from '../workspace/contextSnapshot.js';
 import * as nodePath from 'path';
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
 
@@ -540,6 +541,17 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
             lines.push(`Last change at  : ${sio.rootsListChangedLastAt}`);
             lines.push(`✅ VS 2022 IS sending roots/list_changed — solution switching IS detectable.`);
           }
+        }
+
+        // -----------------------------------------------------------------------
+        // Context Snapshot — curated "what am I working on" view: recently edited
+        // objects + uncommitted X++ changes. Best-effort; never breaks the tool.
+        // -----------------------------------------------------------------------
+        try {
+          const snapshot = await buildContextSnapshot(context);
+          lines.push('', ...renderContextSnapshotSection(snapshot));
+        } catch {
+          // Snapshot is additive — omit silently on failure.
         }
 
         return { content: [{ type: 'text', text: lines.join('\n') }] };

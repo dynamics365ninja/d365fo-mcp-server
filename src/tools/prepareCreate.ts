@@ -18,6 +18,7 @@ import type { XppServerContext } from '../types/context.js';
 import { createProvenanceToken } from '../utils/provenanceStore.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { resolveObjectPrefix, applyObjectPrefix } from '../utils/modelClassifier.js';
+import { rankContext, renderRankedContext } from '../workspace/contextRanker.js';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -245,6 +246,19 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
   if (propertyDefaults) {
     lines.push('### Property defaults _(mined from standard models)_', propertyDefaults, '');
   }
+
+  // Ranked neighborhood: surface existing code relevant to the goal so the new
+  // object reuses real types/patterns instead of invented ones. Best-effort.
+  try {
+    const ranked = rankContext(context, {
+      intent: `${goal} ${objectName} ${(fieldsHint ?? []).join(' ')}`,
+      activeObject: { name: objectName, type: objectType },
+    });
+    lines.push(...renderRankedContext(ranked), '');
+  } catch {
+    // Additive — omit on failure.
+  }
+
   lines.push('---');
   lines.push(`**Grounding token:** \`${token}\``);
   lines.push('');

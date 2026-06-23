@@ -11,8 +11,7 @@ import {
   ListRootsResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { registerToolHandler } from '../tools/toolHandler.js';
-import { registerClassResource } from '../resources/classResource.js';
-import { registerWorkspaceResources } from '../resources/workspaceResource.js';
+import { registerResources } from '../resources/index.js';
 import { registerCodeReviewPrompt } from '../prompts/codeReview.js';
 import type { XppServerContext } from '../types/context.js';
 import { SERVER_MODE, LOCAL_TOOLS, ALWAYS_TOOLS } from './serverMode.js';
@@ -203,9 +202,8 @@ export function createXppMcpServer(context: XppServerContext): Server {
   // Register centralized tool handler
   registerToolHandler(server, context);
 
-  // Register resources
-  registerClassResource(server, context);
-  registerWorkspaceResources(server, context);
+  // Register resources (single dispatcher — class + workspace schemes)
+  registerResources(server, context);
 
   // Register prompts (includes system instructions)
   registerCodeReviewPrompt(server, context);

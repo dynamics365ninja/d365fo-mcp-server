@@ -1,71 +1,47 @@
 /**
- * MCP Resource: X++ Class Source Code
- * Exposes class source code via xpp://class/{className} URIs
+ * MCP Resource helpers: X++ Class Source Code
+ * Exposes class source code via xpp://class/{className} URIs.
+ *
+ * These are pure helpers consumed by the unified resource registrar
+ * (resources/index.ts). They no longer register their own request handlers —
+ * a single dispatcher owns ListResources/ReadResource so the class and
+ * workspace schemes can coexist (previously the later registration silently
+ * overwrote the earlier one).
  */
 
-import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { ListResourcesRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
 
-export function registerClassResource(server: Server, context: XppServerContext): void {
+export const CLASS_URI_PREFIX = 'xpp://class/';
+
+/** True when a URI addresses a class source resource. */
+export function isClassUri(uri: string): boolean {
+  return uri.startsWith(CLASS_URI_PREFIX);
+}
+
+/**
+ * Read the full X++ source for a class addressed by an xpp://class/{name} URI.
+ * Returns the reconstructed source (declaration + methods).
+ * Throws when the class is unknown or cannot be parsed.
+ */
+export async function readClassSource(
+  context: XppServerContext,
+  uri: string
+): Promise<string> {
   const { symbolIndex, parser } = context;
+  const className = uri.slice(CLASS_URI_PREFIX.length);
+  const classSymbol = symbolIndex.getSymbolByName(className, 'class');
 
-  // List all available class resources
-  server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const classes = symbolIndex.getAllClasses();
-    
-    return {
-      resources: classes.map((cls: { name: string; signature?: string }) => ({
-        uri: `xpp://class/${cls.name}`,
-        name: `Class: ${cls.name}`,
-        description: cls.signature || 'X++ class source code',
-        mimeType: 'text/x-xpp',
-      })),
-    };
-  });
+  if (!classSymbol) {
+    throw new Error(`Class "${className}" not found`);
+  }
 
-  // Read specific class resource
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    const uri = request.params.uri;
-    
-    // Only handle xpp://class/* URIs
-    if (!uri.startsWith('xpp://class/')) {
-      return {
-        contents: [],
-      };
-    }
+  const classInfo = await parser.parseClassFile(classSymbol.filePath);
+  if (!classInfo.success || !classInfo.data) {
+    throw new Error(`Failed to parse class: ${classInfo.error || 'Unknown error'}`);
+  }
 
-    const className = uri.replace('xpp://class/', '');
-    const classSymbol = symbolIndex.getSymbolByName(className, 'class');
-
-    if (!classSymbol) {
-      throw new Error(`Class "${className}" not found`);
-    }
-
-    try {
-      const classInfo = await parser.parseClassFile(classSymbol.filePath);
-      
-      if (!classInfo.success || !classInfo.data) {
-        throw new Error(`Failed to parse class: ${classInfo.error || 'Unknown error'}`);
-      }
-
-      // Combine declaration and methods into full source
-      const fullSource = [
-        classInfo.data.declaration,
-        ...classInfo.data.methods.map((m: { source: string }) => m.source),
-      ].join('\n\n');
-
-      return {
-        contents: [
-          {
-            uri,
-            mimeType: 'text/x-xpp',
-            text: fullSource,
-          },
-        ],
-      };
-    } catch (error) {
-      throw new Error(`Failed to read class "${className}": ${error}`);
-    }
-  });
+  return [
+    classInfo.data.declaration,
+    ...classInfo.data.methods.map((m: { source: string }) => m.source),
+  ].join('\n\n');
 }
