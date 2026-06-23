@@ -50,3 +50,66 @@ the design.
   dir; always tear down on disconnect.
 - "Active" ≠ focus if the newest mtime is a build artifact → keep filtering to AOT
   `.xml` under the model and ignore `bin/obj/.git`.
+
+---
+
+## Context ranker in `search`
+
+**Status:** deferred · **Area:** `src/tools/search.ts`, `src/workspace/contextRanker.ts` · **Depends on:** Phase 2 (shipped)
+
+**What**
+- Optionally let `search` re-rank / append a `rankContext()` "related" block when
+  the caller passes an intent, reusing the ranker already wired into `prepare`.
+
+**Why deferred**
+- `search` already returns FTS5-ranked results, so the ranker is largely
+  redundant there — and `search` is the hottest, most-tested path. Adding a new
+  param means threading it through the large inline schema in
+  [`src/server/mcpServer.ts`](../src/server/mcpServer.ts) plus `searchUnified` and
+  tests, for marginal gain.
+
+**Trigger to pick this up**
+- A concrete case where plain FTS ordering misses relevance that the xref/usage
+  signals would catch (e.g. users repeatedly searching then manually pulling the
+  same neighbors).
+
+**Sketch**
+- Add an optional `intent`/`rankRelated` param on the single-search path; when
+  set, append `renderRankedContext(rankContext(...))` after the FTS results.
+  Keep it off by default so existing behaviour/tests are untouched.
+
+**Risks**
+- Schema churn on a high-traffic tool; double-ranking confusion. Keep it additive
+  and clearly separated from the primary results.
+
+---
+
+## Tighter IDE integration (VSIX shim)
+
+**Status:** idea · **Area:** new (out-of-repo VS extension) + `src/server` · **Depends on:** —
+
+**What**
+- A thin Visual Studio extension (à la the competitor's VSIX) that registers the
+  MCP server, surfaces menu commands (refresh context, diagnose), and — crucially
+  — volunteers **editor focus** and open-document context to the server. Unblocks
+  Phase 3b's real `activeFile` and closes the last UX gap vs IDE-native tools.
+
+**Why deferred (idea-stage)**
+- Big surface area in a different tech stack (C#/VSIX), and most of the value is
+  reachable today via MCP resources + roots without owning a VS extension. Only
+  worth it if MCP-native context (resources/`_meta`) proves insufficient in
+  practice with the target clients.
+
+**Trigger to pick this up**
+- Evidence that Copilot-in-VS / target clients do NOT consume our MCP resources
+  or send focus, AND the proactive-context UX gap is costing real adoption.
+
+**Sketch**
+- VSIX sends active file + open docs via `_meta` on tool calls (already partially
+  parsed in `extractWorkspaceFromMeta`) or a custom notification; server feeds it
+  into `EditorContext` and the ranker anchor (see Phase 3b).
+
+**Risks**
+- Maintenance cost of a second codebase/release pipeline; VS Copilot LM/MCP APIs
+  are still moving. Keep the server fully usable without the VSIX (graceful
+  degradation), never make it a hard dependency.
