@@ -15,6 +15,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
 import { getTablePatternsTool } from './getTablePatterns.js';
 import { formPatternTool } from './formPattern.js';
+import { resolvePatternExact } from '../knowledge/formPatterns/index.js';
 
 function err(text: string) {
   return { content: [{ type: 'text' as const, text }], isError: true };
@@ -24,7 +25,23 @@ export async function objectPatternsTool(request: CallToolRequest, context: XppS
   const a = (request.params.arguments ?? {}) as Record<string, any>;
   // Accept `patternType` / `type` / `objectType` as aliases for the `domain`
   // discriminator — agents frequently reach for these names.
-  let domain = (a.domain ?? a.patternType ?? a.type ?? a.objectType) as string | undefined;
+  const aliasRaw = a.domain ?? a.patternType ?? a.type ?? a.objectType;
+  let domain = aliasRaw as string | undefined;
+
+  // A recognized FORM PATTERN NAME (e.g. "SimpleList", "DetailsMaster") passed
+  // via patternType/type/objectType is not a domain — agents conflate "which
+  // pattern" with the table/form discriminator. Route it to the form toolkit and
+  // spec out that pattern. resolvePatternExact only matches real id/xmlName/alias
+  // (exact, case-insensitive), so concept nouns like "number-sequence" still fall
+  // through to the get_knowledge redirect below.
+  let inferredPattern: string | undefined;
+  if (domain !== 'table' && domain !== 'form' && typeof aliasRaw === 'string') {
+    const spec = resolvePatternExact(aliasRaw);
+    if (spec) {
+      inferredPattern = spec.xmlName;
+      domain = 'form';
+    }
+  }
 
   // Infer the discriminator from form/table-specific params when omitted.
   if (domain !== 'table' && domain !== 'form') {
@@ -43,15 +60,19 @@ export async function objectPatternsTool(request: CallToolRequest, context: XppS
 
   if (domain === 'form') {
     // formPatternTool requires `action`; infer it when omitted.
+    const pattern = a.pattern ?? inferredPattern;
     let action = a.action as string | undefined;
     if (!action) {
-      if (a.pattern !== undefined) action = 'spec';
+      if (pattern !== undefined) action = 'spec';
       else if (a.xml !== undefined || a.formName !== undefined || a.filePath !== undefined) action = 'validate';
       else action = 'analyze';
     }
     const formRequest: CallToolRequest = {
       ...request,
-      params: { ...request.params, arguments: { ...a, domain, action } },
+      params: {
+        ...request.params,
+        arguments: { ...a, domain, action, ...(pattern !== undefined ? { pattern } : {}) },
+      },
     };
     return formPatternTool(formRequest, context);
   }

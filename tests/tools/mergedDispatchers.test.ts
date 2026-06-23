@@ -209,6 +209,26 @@ describe('object_patterns dispatcher', () => {
     expect(formPatternTool).toHaveBeenCalledOnce();
   });
 
+  it('a real form-pattern NAME in patternType → form + action=spec + pattern', async () => {
+    await objectPatternsTool(req('object_patterns', { patternType: 'SimpleList' }), ctx);
+    expect(formPatternTool).toHaveBeenCalledOnce();
+    expect(getTablePatternsTool).not.toHaveBeenCalled();
+    expect(argsOf(formPatternTool)).toMatchObject({ domain: 'form', action: 'spec', pattern: 'SimpleList' });
+  });
+
+  it('a real form-pattern NAME in objectType (canonicalised) → form spec', async () => {
+    await objectPatternsTool(req('object_patterns', { objectType: 'detailsmaster' }), ctx);
+    expect(argsOf(formPatternTool)).toMatchObject({ domain: 'form', action: 'spec', pattern: 'DetailsMaster' });
+  });
+
+  it('a concept noun (number-sequence) in patternType → friendly error, no handler, redirects to get_knowledge', async () => {
+    const r: any = await objectPatternsTool(req('object_patterns', { patternType: 'number-sequence' }), ctx);
+    expect(r.isError).toBe(true);
+    expect(formPatternTool).not.toHaveBeenCalled();
+    expect(getTablePatternsTool).not.toHaveBeenCalled();
+    expect(r.content[0].text).toContain('get_knowledge');
+  });
+
   it('unknown/omitted domain with no signals → friendly error', async () => {
     const r: any = await objectPatternsTool(req('object_patterns', {}), ctx);
     expect(r.isError).toBe(true);
