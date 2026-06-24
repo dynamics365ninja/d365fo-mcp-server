@@ -13,6 +13,14 @@ import { modifyD365FileTool } from '../../src/tools/modifyD365File';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
+const { mockBridgeReplaceAllFields } = vi.hoisted(() => ({
+  mockBridgeReplaceAllFields: vi.fn(async () => ({
+    success: true,
+    message: '✅ Fields replaced',
+    fieldsAdded: 1,
+  })),
+}));
+
 // Mock filesystem — file tools write to disk
 vi.mock('fs/promises', () => ({
   readFile: vi.fn(async (p: string) => {
@@ -34,6 +42,15 @@ vi.mock('fs/promises', () => ({
   stat: vi.fn(async () => ({ isFile: () => true, isDirectory: () => false, size: 1024 })),
   readdir: vi.fn(async () => []),
 }));
+
+vi.mock('../../src/bridge/bridgeAdapter', async (orig) => {
+  const actual = await orig<typeof import('../../src/bridge/bridgeAdapter')>();
+  return {
+    ...actual,
+    bridgeReplaceAllFields: mockBridgeReplaceAllFields,
+    bridgeValidateAfterWrite: vi.fn(async () => null),
+  };
+});
 
 vi.mock('../../src/utils/configManager', () => ({
   getConfigManager: vi.fn(() => ({
@@ -672,5 +689,128 @@ describe('modify_d365fo_file', () => {
     );
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/bridge is not available/i);
+  });
+});
+
+// ─── replace-all-fields EDT base type resolution ──────────────────────────────
+
+describe('replace-all-fields EDT base type resolution', () => {
+  const TABLE_FILE_PATH = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTable\\MyTable.xml';
+
+  const buildBridgeContext = (dbGetImpl?: () => any): XppServerContext => {
+    const stmt = {
+      all: vi.fn(() => []),
+      get: dbGetImpl ? vi.fn(dbGetImpl) : vi.fn(() => undefined),
+      run: vi.fn(),
+    };
+    return {
+      symbolIndex: {
+        searchSymbols: vi.fn(() => []),
+        getSymbolByName: vi.fn(() => undefined),
+        getCustomModels: vi.fn(() => ['MyModel']),
+        db: { prepare: vi.fn(() => stmt), stmt },
+        getReadDb: vi.fn(function (this: any) { return this.db; }),
+      } as any,
+      parser: {} as any,
+      cache: {
+        get: vi.fn(async () => null),
+        set: vi.fn(async () => {}),
+        generateSearchKey: vi.fn((q: string) => `k:${q}`),
+      } as any,
+      workspaceScanner: {} as any,
+      hybridSearch: {} as any,
+      bridge: { isReady: true, metadataAvailable: true } as any,
+    };
+  };
+
+  beforeEach(async () => {
+    mockBridgeReplaceAllFields.mockClear();
+    // Override readFile for table XML (module-level mock returns class XML by default)
+    const fsMod = await import('fs/promises');
+    (fsMod.readFile as any).mockResolvedValue(
+      `<?xml version="1.0" encoding="utf-8"?><AxTable><Name>MyTable</Name><Fields /></AxTable>`,
+    );
+  });
+
+  it('resolves EDT base type and passes it to bridgeReplaceAllFields when type is omitted', async () => {
+    let callCount = 0;
+    const ctx = buildBridgeContext(() => {
+      callCount++;
+      if (callCount === 1) return { extends: 'Real', enum_type: null }; // AmountCur row
+      return undefined; // Real is a primitive — not in edt_metadata
+    });
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'table',
+        objectName: 'MyTable',
+        operation: 'replace-all-fields',
+        filePath: TABLE_FILE_PATH,
+        fields: [{ name: 'Amount', edt: 'AmountCur' }],
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(mockBridgeReplaceAllFields).toHaveBeenCalledTimes(1);
+    const passedFields = mockBridgeReplaceAllFields.mock.calls[0][2] as any[];
+    expect(passedFields[0]).toMatchObject({ name: 'Amount', edt: 'AmountCur', type: 'Real' });
+  });
+
+  it('leaves type unchanged when caller already provides it', async () => {
+    const ctx = buildBridgeContext();
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'table',
+        objectName: 'MyTable',
+        operation: 'replace-all-fields',
+        filePath: TABLE_FILE_PATH,
+        fields: [{ name: 'Amount', edt: 'AmountCur', type: 'Real' }],
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    const passedFields = mockBridgeReplaceAllFields.mock.calls[0][2] as any[];
+    expect(passedFields[0]).toMatchObject({ name: 'Amount', edt: 'AmountCur', type: 'Real' });
+  });
+
+  it('resolves Enum type via enum_type flag in edt_metadata', async () => {
+    const ctx = buildBridgeContext(() => ({ extends: null, enum_type: 'MyStatusEnum' }));
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'table',
+        objectName: 'MyTable',
+        operation: 'replace-all-fields',
+        filePath: TABLE_FILE_PATH,
+        fields: [{ name: 'Status', edt: 'MyStatusEnum' }],
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    const passedFields = mockBridgeReplaceAllFields.mock.calls[0][2] as any[];
+    expect(passedFields[0]).toMatchObject({ name: 'Status', edt: 'MyStatusEnum', type: 'Enum' });
+  });
+
+  it('falls back to edt name when EDT is not in symbol index', async () => {
+    const ctx = buildBridgeContext(() => undefined);
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'table',
+        objectName: 'MyTable',
+        operation: 'replace-all-fields',
+        filePath: TABLE_FILE_PATH,
+        fields: [{ name: 'Qty', edt: 'InventQty' }],
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    const passedFields = mockBridgeReplaceAllFields.mock.calls[0][2] as any[];
+    expect(passedFields[0]).toMatchObject({ name: 'Qty', edt: 'InventQty', type: 'InventQty' });
   });
 });

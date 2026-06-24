@@ -278,6 +278,59 @@ describe('generate_d365fo_xml', () => {
   });
 });
 
+// ─── XmlTemplateGenerator.generateAxSecurityPrivilegeXml ────────────────────
+
+describe('XmlTemplateGenerator.generateAxSecurityPrivilegeXml', () => {
+  it('emits empty DataEntityPermissions when no dataEntity is provided (backward compat)', () => {
+    const xml = XmlTemplateGenerator.generateAxSecurityPrivilegeXml('MyPrivilegeMaintain', {
+      label: '@MyModel:MyLabel',
+      targetObject: 'MyMenuItem',
+      accessLevel: 'maintain',
+    });
+    expect(xml).toContain('<DataEntityPermissions />');
+    expect(xml).not.toContain('AxSecurityDataEntityPermission');
+  });
+
+  it('generates DataEntityPermissions with Read-only Grant for view privilege', () => {
+    const xml = XmlTemplateGenerator.generateAxSecurityPrivilegeXml('MyPrivilegeView', {
+      label: '@MyModel:MyLabel',
+      dataEntity: 'MyEntityView',
+      accessLevel: 'view',
+    });
+    expect(xml).toContain('<AxSecurityDataEntityPermission>');
+    expect(xml).toContain('<Name>MyEntityView</Name>');
+    expect(xml).toContain('<Grant>');
+    expect(xml).toContain('<Read>Allow</Read>');
+    expect(xml).not.toContain('<Create>');
+    expect(xml).not.toContain('<Delete>');
+    expect(xml).toContain('<Fields />');
+    expect(xml).toContain('<Methods />');
+  });
+
+  it('generates DataEntityPermissions with full CRUD + Correct for maintain privilege', () => {
+    const xml = XmlTemplateGenerator.generateAxSecurityPrivilegeXml('MyPrivilegeMaintain', {
+      label: '@MyModel:MyLabel',
+      dataEntity: 'MyEntityMaintain',
+      accessLevel: 'maintain',
+    });
+    expect(xml).toContain('<Read>Allow</Read>');
+    expect(xml).toContain('<Create>Allow</Create>');
+    expect(xml).toContain('<Update>Allow</Update>');
+    expect(xml).toContain('<Delete>Allow</Delete>');
+    expect(xml).toContain('<Correct>Allow</Correct>');
+    expect(xml).toContain('<Fields />');
+    expect(xml).toContain('<Methods />');
+  });
+
+  it('defaults to view (Read only) when accessLevel is omitted', () => {
+    const xml = XmlTemplateGenerator.generateAxSecurityPrivilegeXml('MyPrivilegeView', {
+      dataEntity: 'MyEntity',
+    });
+    expect(xml).toContain('<Read>Allow</Read>');
+    expect(xml).not.toContain('<Create>');
+  });
+});
+
 // ─── XmlTemplateGenerator.splitXppClassSource ────────────────────────────────
 
 describe('XmlTemplateGenerator.splitXppClassSource', () => {

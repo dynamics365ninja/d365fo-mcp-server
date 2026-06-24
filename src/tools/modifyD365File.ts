@@ -697,10 +697,22 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'replace-all-fields': {
         if ((args as any).fields) {
+          const rawFields: any[] = (args as any).fields;
+          const resolvedFields = rawFields.map((f: any) => {
+            if (!f.type && f.edt) {
+              try {
+                const rdb = symbolIndex.getReadDb();
+                return { ...f, type: resolveEdtBaseTypeForField(f.edt, rdb) };
+              } catch {
+                return f;
+              }
+            }
+            return f;
+          });
           bridgeResult = await bridgeReplaceAllFields(
             context.bridge,
             objectName,
-            (args as any).fields,
+            resolvedFields,
           );
         }
         break;
