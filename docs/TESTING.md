@@ -1,6 +1,6 @@
 # Testing
 
-The project uses [Vitest](https://vitest.dev/). 850+ tests run without a live D365FO environment — all external dependencies (SQLite, filesystem, bridge, cache) are mocked.
+The project uses [Vitest](https://vitest.dev/). 1100+ tests run without a live D365FO environment — all external dependencies (SQLite, filesystem, bridge, cache) are mocked.
 
 ## Running tests
 
@@ -9,7 +9,7 @@ npm test -- --run                       # all tests once
 npm test                                # watch mode
 npm test -- --coverage                  # with coverage → coverage/
 npm test tests/tools/discovery.test.ts  # single file
-npm run test:integration                # tool routing end-to-end (requires npm run build)
+npm run test:integration                # tool routing end-to-end via the real dispatcher
 npx tsx tests/bridge-e2e.ts             # manual bridge E2E (Windows D365FO VM only)
 ```
 

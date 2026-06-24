@@ -2,7 +2,8 @@
  * Merged dispatcher tests — verify the consolidated tools route to the correct
  * underlying handler and remap their discriminator/params correctly.
  *
- * Covers: extension_info, validate_code, generate_object, object_patterns.
+ * Covers: extension_info, validate_code, generate_object, object_patterns,
+ * analyze_code, security_info.
  * The underlying handlers are mocked so these tests assert ONLY the dispatcher's
  * own routing + argument-remapping logic (the handlers have their own tests).
  */
@@ -27,8 +28,13 @@ vi.mock('../../src/tools/analyzePatterns', () => ({ analyzeCodePatternsTool: vi.
 vi.mock('../../src/tools/suggestImplementation', () => ({ suggestMethodImplementationTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'impl' }] })) }));
 vi.mock('../../src/tools/analyzeCompleteness', () => ({ analyzeClassCompletenessTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'complete' }] })) }));
 vi.mock('../../src/tools/apiUsagePatterns', () => ({ getApiUsagePatternsTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'api' }] })) }));
+vi.mock('../../src/tools/securityArtifactInfo', () => ({ securityArtifactInfoTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'artifact' }] })) }));
+vi.mock('../../src/tools/securityCoverageInfo', () => ({ securityCoverageInfoTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'coverage' }] })) }));
 
 import { extensionInfoTool } from '../../src/tools/extensionInfo';
+import { securityInfoTool } from '../../src/tools/securityInfo';
+import { securityArtifactInfoTool } from '../../src/tools/securityArtifactInfo';
+import { securityCoverageInfoTool } from '../../src/tools/securityCoverageInfo';
 import { analyzeCodeTool } from '../../src/tools/analyzeCode';
 import { getApiUsagePatternsTool } from '../../src/tools/apiUsagePatterns';
 import { validateCodeTool } from '../../src/tools/validateCode';
@@ -246,5 +252,59 @@ describe('analyze_code dispatcher', () => {
   it('does not override an explicit apiName', async () => {
     await analyzeCodeTool(req('analyze_code', { mode: 'api-usage', apiName: 'NumberSeq', className: 'X' }), ctx);
     expect(argsOf(getApiUsagePatternsTool).apiName).toBe('NumberSeq');
+  });
+});
+
+// ── security_info ─────────────────────────────────────────────────────────────
+describe('security_info dispatcher', () => {
+  it('mode=artifact → securityArtifactInfo with mode stripped, params passed through', async () => {
+    await securityInfoTool(
+      req('security_info', { mode: 'artifact', name: 'VendPaymTermsMaintain', artifactType: 'duty', includeChain: true }),
+      ctx,
+    );
+    expect(securityArtifactInfoTool).toHaveBeenCalledOnce();
+    expect(securityCoverageInfoTool).not.toHaveBeenCalled();
+    const fwd = argsOf(securityArtifactInfoTool);
+    expect(fwd).toEqual({ name: 'VendPaymTermsMaintain', artifactType: 'duty', includeChain: true });
+    expect(fwd.mode).toBeUndefined();
+  });
+
+  it('mode=coverage → securityCoverageInfo with objectName/objectType passed through', async () => {
+    await securityInfoTool(
+      req('security_info', { mode: 'coverage', objectName: 'VendPaymTerms', objectType: 'form' }),
+      ctx,
+    );
+    expect(securityCoverageInfoTool).toHaveBeenCalledOnce();
+    expect(securityArtifactInfoTool).not.toHaveBeenCalled();
+    expect(argsOf(securityCoverageInfoTool)).toEqual({ objectName: 'VendPaymTerms', objectType: 'form' });
+  });
+
+  it('missing name on artifact → friendly error, no handler call', async () => {
+    const r: any = await securityInfoTool(req('security_info', { mode: 'artifact', artifactType: 'role' }), ctx);
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/requires `name`/);
+    expect(securityArtifactInfoTool).not.toHaveBeenCalled();
+  });
+
+  it('missing artifactType on artifact → friendly error', async () => {
+    const r: any = await securityInfoTool(req('security_info', { mode: 'artifact', name: 'X' }), ctx);
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/requires `artifactType`/);
+    expect(securityArtifactInfoTool).not.toHaveBeenCalled();
+  });
+
+  it('missing objectName on coverage → friendly error', async () => {
+    const r: any = await securityInfoTool(req('security_info', { mode: 'coverage' }), ctx);
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/requires `objectName`/);
+    expect(securityCoverageInfoTool).not.toHaveBeenCalled();
+  });
+
+  it('unknown/missing mode → friendly error listing valid modes', async () => {
+    const r: any = await securityInfoTool(req('security_info', { name: 'X', artifactType: 'role' }), ctx);
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/unknown mode/);
+    expect(r.content[0].text).toMatch(/artifact, coverage/);
+    expect(securityArtifactInfoTool).not.toHaveBeenCalled();
   });
 });
