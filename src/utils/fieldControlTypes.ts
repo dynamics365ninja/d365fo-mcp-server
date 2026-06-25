@@ -30,7 +30,7 @@ export const DEFAULT_CONTROL: ControlTypeInfo = {
 const TABLE_FIELD_TO_CONTROL: Record<string, ControlTypeInfo> = {
   AxTableFieldString: { iType: 'AxFormStringControl', typeValue: 'String' },
   AxTableFieldMemo: { iType: 'AxFormStringControl', typeValue: 'String' },
-  AxTableFieldInt: { iType: 'AxFormIntControl', typeValue: 'Integer' },
+  AxTableFieldInt: { iType: 'AxFormIntegerControl', typeValue: 'Integer' },
   AxTableFieldInt64: { iType: 'AxFormInt64Control', typeValue: 'Int64' },
   AxTableFieldReal: { iType: 'AxFormRealControl', typeValue: 'Real' },
   AxTableFieldDate: { iType: 'AxFormDateControl', typeValue: 'Date' },

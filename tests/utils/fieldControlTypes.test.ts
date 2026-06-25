@@ -15,7 +15,7 @@ describe('controlForTableField', () => {
     expect(controlForTableField('AxTableFieldString')).toEqual({ iType: 'AxFormStringControl', typeValue: 'String' });
     expect(controlForTableField('AxTableFieldReal')).toEqual({ iType: 'AxFormRealControl', typeValue: 'Real' });
     expect(controlForTableField('AxTableFieldDate')).toEqual({ iType: 'AxFormDateControl', typeValue: 'Date' });
-    expect(controlForTableField('AxTableFieldInt')).toEqual({ iType: 'AxFormIntControl', typeValue: 'Integer' });
+    expect(controlForTableField('AxTableFieldInt')).toEqual({ iType: 'AxFormIntegerControl', typeValue: 'Integer' });
     expect(controlForTableField('AxTableFieldInt64')).toEqual({ iType: 'AxFormInt64Control', typeValue: 'Int64' });
     expect(controlForTableField('AxTableFieldUtcDateTime')).toEqual({ iType: 'AxFormDateTimeControl', typeValue: 'DateTime' });
   });
