@@ -36,6 +36,7 @@ import {
   isFormPatternEnforceEnabled,
 } from './validateFormPattern.js';
 import { validateEdtExtensionChange } from '../utils/edtExtensionValidator.js';
+import { lintXppSelect } from '../utils/xppSelectLint.js';
 
 /**
  * Decode the standard XML entities (&lt;, &gt;, &apos;, &quot;, &amp;) and normalise
@@ -1798,6 +1799,12 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
     }
 
+    // Advisory X++ select-statement lint on the source just written (add-method /
+    // replace-code etc.). Non-blocking: surfaces a likely "WHERE after join" mistake
+    // up front instead of letting it become a build error the agent hunts by hand.
+    const xppLintWarnings = lintXppSelect(args.sourceCode ?? (args as any).methodCode ?? args.newCode);
+    const xppLintNote = xppLintWarnings.length > 0 ? `\n\n${xppLintWarnings.join('\n\n')}` : '';
+
     return {
       content: [
         {
@@ -1805,7 +1812,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           text:
             `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}\n\n` +
+            `🔧 API: ${bridgeResult.message}${xppLintNote}\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
         },
       ],

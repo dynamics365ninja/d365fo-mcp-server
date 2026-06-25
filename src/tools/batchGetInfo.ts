@@ -10,7 +10,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { READER_DISPATCH, BATCH_INFO_TYPES } from './objectInfoRegistry.js';
+import { READER_DISPATCH, BATCH_INFO_TYPES, withNotFoundGuidance } from './objectInfoRegistry.js';
 
 export const BatchGetInfoArgsSchema = z.object({
   objects: z.array(z.object({
@@ -37,7 +37,7 @@ export async function batchGetInfoTool(request: CallToolRequest, context: XppSer
         params: { name: dispatch.toolName, arguments: dispatch.buildArgs(obj.name) },
       };
       try {
-        const result = await dispatch.tool(subRequest, context);
+        const result = withNotFoundGuidance(await dispatch.tool(subRequest, context), obj.name, obj.type);
         return { ...obj, success: !result.isError, text: result.content?.[0]?.text ?? 'No content' };
       } catch (err) {
         return { ...obj, success: false, text: `Error: ${err instanceof Error ? err.message : err}` };

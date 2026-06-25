@@ -12,6 +12,7 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
+import { isNotFoundResultText, buildNotFoundGuidance } from '../utils/metadataResolver.js';
 import { classInfoTool } from './classInfo.js';
 import { tableInfoTool } from './tableInfo.js';
 import { getFormInfoTool } from './formInfo.js';
@@ -31,6 +32,26 @@ import { tableExtensionInfoTool, formExtensionInfoTool, enumExtensionInfoTool, e
 import { securityArtifactInfoTool } from './securityArtifactInfo.js';
 
 export type InfoTool = (request: CallToolRequest, context: XppServerContext) => Promise<any>;
+
+/**
+ * Append actionable "use search / update_symbol_index, don't grep the disk" guidance
+ * to a reader result that failed to resolve the object. Shared by get_object_info and
+ * batch_get_info so every reader benefits from a single choke point.
+ *
+ * No-op unless the result is an error whose text reads like a not-found (so genuine
+ * operation errors aren't masked), and skipped when a type-mismatch hint or our own
+ * guidance is already present (keeps it idempotent and avoids double guidance).
+ */
+export function withNotFoundGuidance(result: any, name: string, objectType: string): any {
+  if (!result?.isError) return result;
+  const text: string | undefined = result.content?.[0]?.text;
+  if (!isNotFoundResultText(text)) return result;
+  if (/Type Mismatch/i.test(text!) || /Resolve `.*` .* with the right tool/.test(text!)) return result;
+  return {
+    ...result,
+    content: [{ type: 'text', text: text + buildNotFoundGuidance(name, objectType) }],
+  };
+}
 
 export interface ReaderDispatch {
   tool: InfoTool;

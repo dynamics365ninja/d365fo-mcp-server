@@ -15,7 +15,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { READER_DISPATCH, OBJECT_INFO_TYPES } from './objectInfoRegistry.js';
+import { READER_DISPATCH, OBJECT_INFO_TYPES, withNotFoundGuidance } from './objectInfoRegistry.js';
 import { completionTool } from './completion.js';
 
 const GetObjectInfoArgsSchema = z.object({
@@ -91,7 +91,8 @@ export async function getObjectInfoTool(request: CallToolRequest, context: XppSe
     method: 'tools/call',
     params: { name: dispatch.toolName, arguments: dispatch.buildArgs(name, options) },
   };
-  return dispatch.tool(subRequest, context);
+  const result = await dispatch.tool(subRequest, context);
+  return withNotFoundGuidance(result, name, objectType);
 }
 
 // Tool registration (name, description, inputSchema) lives inline in

@@ -372,6 +372,41 @@ export function buildObjectTypeMismatchMessage(
 }
 
 /**
+ * Heuristic: does a reader result's text indicate an object-resolution ("not found")
+ * failure, as opposed to a genuine operation error (parse failure, timeout, etc.)?
+ * Used to decide whether to append the not-found guidance below.
+ */
+export function isNotFoundResultText(text: string | undefined): boolean {
+  if (!text) return false;
+  return /\bnot found\b|could not resolve|does not exist/i.test(text);
+}
+
+/**
+ * Actionable guidance appended to a reader's "object not found" result.
+ *
+ * Steers the agent to the right MCP tools (search / update_symbol_index) and the
+ * config knob for custom packages — and explicitly AWAY from filesystem scanning
+ * (Get-ChildItem / Select-String / dir / ls / find). Raw disk scanning is the
+ * anti-pattern that turns one missing object into dozens of PowerShell calls: it is
+ * slow (350+ model folders), can hang the VS 2022 MCP integration, and bypasses
+ * metadata resolution. The "not found" message alone left a guidance vacuum that
+ * nudged agents straight into it — this fills the vacuum with the correct next steps.
+ */
+export function buildNotFoundGuidance(name: string, objectType: string): string {
+  return (
+    `\n\n---\n` +
+    `🔎 **Resolve \`${name}\` (${objectType}) with the right tool — do not guess or grep the disk:**\n` +
+    `1. \`search\` / \`batch_search\` for \`${name}\` — the exact name may differ (model prefix, casing, suffix).\n` +
+    `2. Real object in a custom package that isn't indexed yet? Run ` +
+    `\`update_symbol_index({ filePath: "<absolute path to ${name}.xml>" })\`, and confirm ` +
+    `\`D365FO_CUSTOM_PACKAGES_PATH\` includes that package so the bridge + symbol index can see it.\n` +
+    `3. Just created it this session? The bridge may not have it yet — pass the file path, or it will be picked up after a refresh.\n\n` +
+    `⛔ Do NOT scan the filesystem (Get-ChildItem / Select-String / dir / ls / find) to locate D365FO objects — ` +
+    `it is slow, can hang the VS 2022 MCP integration, and bypasses metadata resolution. Use the tools above.`
+  );
+}
+
+/**
  * Build a friendly error explaining that the XML for this object type
  * is not available in the current deployment (no D365FO installation).
  */

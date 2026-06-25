@@ -517,6 +517,45 @@ describe('create_d365fo_file', () => {
     ]);
   });
 
+  it('blocks form-extension create when xmlContent uses the malformed control shape', async () => {
+    // Guard: the deserializer-rejecting shape an AI tends to hand-write
+    // (AxFormControlExtension / ParentControlName / FormControlExtension-wrapping / AxFormIntControl)
+    // must be caught at write time with the correct template — not silently written.
+    const malformed =
+      `<?xml version="1.0" encoding="utf-8"?>\n` +
+      `<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">\n` +
+      `\t<Name>BudgetControlConfiguration.MyExt</Name>\n` +
+      `\t<Controls>\n` +
+      `\t\t<AxFormControlExtension>\n` +
+      `\t\t\t<Name>X</Name>\n` +
+      `\t\t\t<ParentControlName>Tab</ParentControlName>\n` +
+      `\t\t\t<FormControlExtension>\n` +
+      `\t\t\t\t<AxFormIntControl><Name>X</Name></AxFormIntControl>\n` +
+      `\t\t\t</FormControlExtension>\n` +
+      `\t\t</AxFormControlExtension>\n` +
+      `\t</Controls>\n` +
+      `</AxFormExtension>`;
+
+    const result = await handleCreateD365File(
+      req('create_d365fo_file', {
+        objectType: 'form-extension',
+        objectName: 'BudgetControlConfiguration.MyExt',
+        modelName: 'Contoso',
+        packageName: 'Contoso',
+        packagePath: 'K:\\PackagesLocalDirectory',
+        addToProject: false,
+        overwrite: true,
+        xmlContent: malformed,
+      }),
+    );
+
+    expect((result as any).isError).toBe(true);
+    const text = result.content[0].text;
+    expect(text).toMatch(/AxFormExtensionControl xmlns=""/);   // correct wrapper shown
+    expect(text).toMatch(/AxFormIntegerControl/);              // correct integer element shown
+    expect(text).toMatch(/<Parent>/);                          // correct parent element shown
+  });
+
   it('auto-converts bare extension name to dot-notation (Case C fix)', async () => {
     // Bug: objectType="table-extension", objectName="PurchTable" (no dot) used to
     // fall into NORMAL CASE of applyObjectPrefix and produce "ContosoPurchTable".

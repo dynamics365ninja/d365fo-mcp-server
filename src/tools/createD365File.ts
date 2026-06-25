@@ -15,7 +15,8 @@ import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeRefreshProvider } from '../bridge/index.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
-import { gateOnFormPatternErrors } from './validateFormPattern.js';
+import { gateOnFormPatternErrors, isFormPatternEnforceEnabled } from './validateFormPattern.js';
+import { validateFormExtensionControlShape, buildFormExtensionShapeError } from '../utils/formExtensionShapeValidator.js';
 import { FormPatternTemplates } from '../utils/formPatternTemplates.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
@@ -4145,6 +4146,22 @@ export async function handleCreateD365File(
       }
       if (gate.warningsText) {
         formPatternWarnings = `\n${gate.warningsText}\n`;
+      }
+    }
+
+    // Form-extension control-shape gate: reject the malformed control shapes an AI
+    // tends to hand-write (<AxFormControlExtension>, <ParentControlName>,
+    // <FormControlExtension> wrapping the control, AxFormIntControl) — they pass XML
+    // well-formedness but the D365FO deserializer rejects them. Blocks when
+    // FORM_PATTERN_ENFORCE is on (default), else appends a warning.
+    if (args.objectType === 'form-extension' && args.xmlContent) {
+      const shapeProblems = validateFormExtensionControlShape(xmlContent);
+      if (shapeProblems.length > 0) {
+        const shapeError = buildFormExtensionShapeError(finalObjectName, shapeProblems);
+        if (isFormPatternEnforceEnabled()) {
+          return { content: [{ type: 'text', text: shapeError }], isError: true };
+        }
+        formPatternWarnings += `\n⚠️ ${shapeError}\n`;
       }
     }
 

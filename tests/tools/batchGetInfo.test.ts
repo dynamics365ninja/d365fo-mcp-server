@@ -66,6 +66,22 @@ describe('batch_get_info', () => {
     expect(text).toContain('NoSuchEnum [ENUM] ❌');
   });
 
+  it('appends actionable resolution guidance (and forbids filesystem scanning) on a not-found result', async () => {
+    const result = await batchGetInfoTool(
+      makeRequest([{ name: 'NoSuchEnum', type: 'enum' }]),
+      context,
+    );
+
+    const text = result.content[0].text;
+    // The reader's own "not found" is preserved …
+    expect(text).toContain('enum not found');
+    // … and the shared guidance is appended: steer to search/update_symbol_index …
+    expect(text).toMatch(/search.*batch_search|update_symbol_index/i);
+    expect(text).toMatch(/D365FO_CUSTOM_PACKAGES_PATH/);
+    // … and explicitly forbid Get-ChildItem / Select-String filesystem scanning.
+    expect(text).toMatch(/Get-ChildItem|Select-String/);
+  });
+
   it('rejects invalid arguments', async () => {
     const result = await batchGetInfoTool(makeRequest([]), context);
     expect(result.isError).toBe(true);
