@@ -46,24 +46,31 @@ add display menu items + a submenu, and a maintenance + a view security role.
 Label everything in en-US, cs and de.
 ```
 
+The diagram below is the **actual tool chain from a recorded run** of this prompt (model `fm-mcp`, `Asl` object prefix — the codebase's own naming). It is busier than an idealized plan because real metadata pushes back: the number-sequence delegate had to be reverse-engineered from the platform, and a couple of form generations were retried. See the cost box for the measured numbers.
+
 ```mermaid
 flowchart TB
-    A["get_workspace_info<br/>model EquipRental, paths, staleness"] --> B["object_patterns domain=table<br/>master + document patterns"]
-    B --> C["suggest_edt + labels action=search<br/>RentEquipmentId, RentRate, RentAgreementId"]
-    C --> D["labels action=create x14<br/>en-US / cs / de"]
-    D --> E["d365fo_file action=create<br/>3 EDTs + 2 base enums"]
-    E --> F["generate_object objectType=table x3<br/>Equipment / Header / Line + relations"]
-    F --> G["analyze_code mode=patterns<br/>number sequence wiring"]
-    G --> H["get_object_info NumberSeqModule + a My* parameters table"]
-    H --> I["d365fo_file action=create<br/>tables + NumberSeqModule class + Parameters"]
-    I --> J["object_patterns domain=form action=analyze<br/>master then DetailsMaster+lines"]
-    J --> K["generate_object objectType=form cloneFrom<br/>EcoResProduct / SalesTable mapping"]
-    K --> L["object_patterns domain=form action=validate<br/>FP001-FP010"]
-    L --> M["d365fo_file action=create x2<br/>forms"]
-    M --> N["d365fo_file action=create<br/>display menu items x2 + menu submenu"]
-    N --> O["validate_object_naming<br/>privileges / duties / role"]
-    O --> P["d365fo_file action=create<br/>2 privileges + 1 duty + 2 roles"]
-    P --> Q["verify_d365fo_project + build_d365fo_project"]
+    A["get_workspace_info<br/>model fm-mcp, paths, staleness"] --> B["get_knowledge x4<br/>number sequences / form patterns / security / object patterns"]
+    B --> C["object_patterns domain=form action=analyze x2<br/>master + header/lines transaction"]
+    C --> D["analyze_code mode=patterns + search x2<br/>how this codebase wires NumberSeqModule"]
+    D --> E["generate_object mode=pattern<br/>pattern=number-seq-handler (AslRent)"]
+    E --> F["verify_d365fo_project<br/>early scaffold sanity check"]
+    F --> G["list_dir + run_in_terminal<br/>locate label-file shape in metadata"]
+    G --> H["labels action=create<br/>AslRent label file, 42 entries (en-US/cs/de)"]
+    H --> I["d365fo_file action=create<br/>2 EDTs + 3 enums + NumberSeqModule enum-extension"]
+    I --> J["d365fo_file action=create x4<br/>tables: Equipment / AgreementHeader / Line / Parameters"]
+    J --> K["d365fo_file action=modify<br/>add-index x4 + add-relation x3"]
+    K --> L["d365fo_file action=modify<br/>table methods: numRef* + numberSeqModule()"]
+    L --> M["d365fo_file action=create<br/>NumberSeqModuleAslRent class + NumberSeqGlobal class-extension"]
+    M --> N["search + run_in_terminal x~10<br/>find NumberSeqGlobal buildModulesMapDelegate pattern"]
+    N --> O["d365fo_file action=modify class-extension<br/>SubscribesTo buildModulesMapDelegate"]
+    O --> P["update_symbol_index"]
+    P --> Q["generate_object objectType=form cloneFrom (+retries)<br/>Equipment←PaymTerm, Agreement←SalesTable"]
+    Q --> R["d365fo_file action=modify form<br/>add lines data source + number-seq form handler methods"]
+    R --> S["generate_object form Parameters TableOfContents<br/>(retried) + update_symbol_index"]
+    S --> T["d365fo_file action=create<br/>3 display menu items + menu AslRentModule + add items"]
+    T --> U["d365fo_file action=create<br/>4 privileges + 2 duties + 2 roles"]
+    U --> V["verify_d365fo_project<br/>final, full object list"]
 ```
 
 **What gets created (≈22 objects)**
@@ -85,9 +92,10 @@ flowchart TB
 - **`RentRate extends AmountMST`** inherits currency formatting and the right `extendedDataType` size — `suggest_edt` proposes it; never type `Real`.
 - Run `build_d365fo_project` at the end: a greenfield slice is where a single missing `tableStr` reference surfaces, and the structured xppc diagnostics point at the exact object.
 
-> **Indicative cost & model**
-> Tool calls **~45–60** · New context **~90–140K** · Output **~25–40K** · Billed total (cached) **~180–320K**
-> **Model: Opus 4.8.** Multi-object dependency ordering + number-sequence reasoning is exactly where Opus saves you the compile-fix loops that would cost more than the upgrade. Do the opening `get_workspace_info` / `labels search` turns on Haiku if you want to trim.
+> **Measured cost & model** *(one recorded end-to-end run — not an estimate)*
+> **Models actually used:** **Claude Sonnet 4.6** as the agent (`panel/editAgent`, 76 turns — all reasoning and every tool call) + **GPT-4o-mini** as a background helper (`backgroundTodoAgent`, 8 calls — todo-list upkeep only, ~$0.006). No Opus, no Haiku.
+> Tool calls **126** (78 MCP + 48 host: terminal / list_dir / todo) · New context **~182K** · Output **~38K** · Total input incl. cached prefix **~5.33M** (cached **~5.15M**) · **Billed ≈ 280 AI credits ≈ $2.80**
+> **Model used: Sonnet 4.6** — it completed the full greenfield slice without an Opus upgrade. The run came in mid-range of the original Opus estimate (200–450 credits) *on the cheaper tier*, the upside being offset by retries: the `NumberSeqGlobal` delegate pattern took ~10 terminal probes to pin down and two form generations were retried. Opus is still the safer pick when the number-sequence/posting reasoning has to land first-try; do the opening `get_workspace_info` / `get_knowledge` / label-discovery turns on Haiku to trim either way.
 
 ---
 
@@ -319,13 +327,14 @@ flowchart TB
 
 | # | Scenario | Shape | Tool calls | Billed total (cached) | Model | Est. cost* |
 |---|----------|-------|-----------:|----------------------:|-------|-----------:|
-| 1 | Equipment Rental | Greenfield module | 45–60 | 180–320K | **Opus 4.8** | ~$2.0–4.5 |
+| 1 | Equipment Rental | Greenfield module | **126**‡ | **~220K**‡ | **Sonnet 4.6**‡ | **~$2.80**‡ |
 | 2 | Sales credit review + audit | Extend standard posting | 30–42 | 140–230K | **Opus 4.8** | ~$1.3–3.0 |
 | 3 | Vendor certificate compliance | Setup + batch + report | 35–48 | 150–260K | **Sonnet 4.6** | ~$0.9–2.0 |
 | 4 | Customer priority tiers | Lightweight cross-stack | 22–32 | 90–160K | **Sonnet 4.6** / Haiku | ~$0.5–1.1 |
 | 5 | Inventory aging analytics | Data-out / integration | 28–40 | 120–210K | **Sonnet 4.6** | ~$0.7–1.5 |
 
 <sub>* End-to-end token cost at the recommended model, prompt caching on (see [What it costs on GitHub Copilot](#what-it-costs-on-github-copilot-pro--business) for the per-model rates and the Copilot AI-Credits breakdown). Ranges are indicative — verify on your own metadata.</sub>
+<sub>‡ Scenario 1 is **measured from one recorded run** (Sonnet 4.6, 126 tool calls, ~182K new + ~38K output context over ~5.15M cached prefix, ≈280 AI credits ≈ $2.80). "~220K" is new context + output for apples-to-apples with the estimate rows. All other rows remain estimates.</sub>
 
 **How to drive these numbers down**
 - **Turn on prompt caching** (default in Copilot/Claude Code). It is the single biggest lever — the indexed metadata and instruction files get cached across turns.
@@ -366,13 +375,14 @@ Output tokens dominate the bill; cached input (the re-sent conversation prefix e
 
 | # | Scenario | Model | Est. cost | ≈ Credits | Pro $15 budget covers | Business $19 budget covers |
 |---|----------|-------|----------:|----------:|----------------------:|---------------------------:|
-| 1 | Equipment Rental | Opus 4.8† | ~$2.0–4.5 | 200–450 | ~3–7×/mo | ~4–9×/mo |
+| 1 | Equipment Rental | Sonnet 4.6‡ | **~$2.80**‡ | **~280**‡ | **~5×/mo** | **~7×/mo** |
 | 2 | Sales credit review | Opus 4.8† | ~$1.3–3.0 | 130–300 | ~5–11×/mo | ~6–14×/mo |
 | 3 | Vendor certificate compliance | Sonnet 4.6 | ~$0.9–2.0 | 90–200 | ~7–16×/mo | ~9–21×/mo |
 | 4 | Customer priority tiers | Sonnet 4.6 | ~$0.5–1.1 | 50–110 | ~13–30×/mo | ~17–38×/mo |
 | 5 | Inventory aging analytics | Sonnet 4.6 | ~$0.7–1.5 | 70–150 | ~10–21×/mo | ~12–27×/mo |
 
 <sub>† Opus needs **Pro+** ($70 credits/mo) or higher — not base Pro. On Pro/Business run these on Sonnet instead (≈ 0.55× the cost; recompute against the Sonnet rate). "Budget covers" = included monthly credits ÷ midpoint scenario cost, one developer.</sub>
+<sub>‡ Scenario 1 row is **measured from one recorded Sonnet 4.6 run** (≈280 AI credits): "Budget covers" = $15 Pro ÷ 280 ≈ 5×/mo, $19 Business ÷ 280 ≈ 7×/mo. Running it on Opus would land in the original ~200–450-credit band.</sub>
 
 **What this means in practice**
 - A **base Pro** seat ($10, $15 credits) comfortably handles **~10–25 Sonnet-class full-stack features a month** before any overage — plenty for one developer's steady custom-dev work.
