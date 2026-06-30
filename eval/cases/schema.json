@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/dynamics365ninja/d365fo-mcp-server/eval/cases/schema.json",
+  "title": "Agent eval use-case spec",
+  "description": "A single D365FO implementation use-case for the agent eval loop. See docs/AGENT_EVAL_LOOP.md section 8.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "tier", "instruction", "target_artifact_types", "golden_path"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^L[0-4]-[a-z0-9-]+$",
+      "description": "Stable case id, e.g. L1-table-basic. Prefix is the complexity tier."
+    },
+    "title": { "type": "string", "description": "Human-readable one-line title." },
+    "tier": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4,
+      "description": "Complexity tier L0-L4. Must match the id prefix."
+    },
+    "instruction": {
+      "type": "string",
+      "description": "The natural-language task the agent must implement using only the grounded tool path."
+    },
+    "target_artifact_types": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "description": "AOT object types the case is expected to produce, e.g. AxTable, AxClass, AxForm."
+    },
+    "golden_path": {
+      "type": "string",
+      "description": "Repo-relative path to the golden metadata folder for this case."
+    },
+    "systest": {
+      "type": "string",
+      "description": "Optional repo-relative path to a SysTest definition for runtime correctness."
+    },
+    "ignore": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Per-case normalisation exceptions: element paths legitimately allowed to vary in the golden diff."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Free-form tags for clustering, e.g. table, coc, form, security."
+    }
+  }
+}

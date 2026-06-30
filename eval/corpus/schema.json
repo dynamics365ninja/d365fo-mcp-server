@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/dynamics365ninja/d365fo-mcp-server/eval/corpus/schema.json",
+  "title": "Agent eval run record",
+  "description": "One self-contained evidence record per (case_id, run_id). See docs/AGENT_EVAL_LOOP.md section 5.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "case_id", "tier", "timestamp", "server_git_sha", "score", "classification"],
+  "properties": {
+    "run_id": { "type": "string", "description": "Unique run id, e.g. <iso8601>__<case_id>__<short-hash>." },
+    "case_id": { "type": "string" },
+    "tier": { "type": "integer", "minimum": 0, "maximum": 4 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "server_git_sha": { "type": "string", "description": "mcp-server commit under test." },
+    "bridge_version": { "type": "string" },
+    "platform_build": { "type": "string", "description": "D365FO PU / platform version on the VM." },
+    "generated_artifacts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "AOT paths the run produced."
+    },
+    "static_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "references": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "passed": { "type": "boolean" },
+            "unresolved": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["passed"]
+        },
+        "syntax": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "passed": { "type": "boolean" },
+            "violations": { "type": "array", "items": { "type": "object" } }
+          },
+          "required": ["passed"]
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["succeeded"],
+      "properties": {
+        "succeeded": { "type": "boolean" },
+        "errors": { "type": "array", "items": { "type": "object" } },
+        "bpWarnings": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "golden_diff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matched"],
+      "properties": {
+        "matched": { "type": "boolean" },
+        "missing": { "type": "array", "items": { "type": "string" } },
+        "extra": { "type": "array", "items": { "type": "string" } },
+        "changed": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "systest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ran": { "type": "boolean" },
+        "passed": { "type": ["boolean", "null"] },
+        "failures": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["ran"]
+    },
+    "score": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["build", "bp_clean", "golden_match"],
+      "properties": {
+        "build": { "type": "integer", "enum": [0, 1] },
+        "bp_clean": { "type": "integer", "enum": [0, 1] },
+        "golden_match": { "type": "integer", "enum": [0, 1] },
+        "systest": { "type": ["integer", "null"], "enum": [0, 1, null] },
+        "tier_weight": { "type": "integer" }
+      }
+    },
+    "classification": {
+      "type": "string",
+      "enum": ["PASS", "TOOL_DEFECT", "KNOWLEDGE_GAP", "VALIDATOR_GAP", "MODEL_ERROR", "ENV_FLAKE"],
+      "description": "Rubric class for the run outcome. See docs/AGENT_EVAL_LOOP.md section 9."
+    },
+    "root_cause_hypothesis": { "type": "string" },
+    "suggested_fix_area": { "type": "string" },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } }
+  }
+}

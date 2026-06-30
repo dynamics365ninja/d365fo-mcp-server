@@ -1,0 +1,14 @@
+{
+  "id": "L1-table-basic",
+  "title": "Basic table with fields, a field group and an index",
+  "tier": 1,
+  "instruction": "Create a new table named XyzAgentNote in the sandbox model. Fields: NoteId (EDT-backed string, mandatory), Subject (string 100), NoteText (long text), CreatedDateTime (utcdatetime). Add a field group 'Overview' containing Subject and NoteText. Add a unique index 'NoteIdx' on NoteId. Set the table's TitleField1 to Subject. Use the standard string EDTs from the index rather than inventing new ones.",
+  "target_artifact_types": ["AxTable"],
+  "golden_path": "eval/goldens/L1-table-basic/",
+  "ignore": [
+    "Table/@Id",
+    "Table/Fields/AxTableField/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": ["table", "fields", "fieldgroup", "index", "deterministic"]
+}
