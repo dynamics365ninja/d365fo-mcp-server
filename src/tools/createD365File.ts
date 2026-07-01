@@ -12,6 +12,7 @@ import { getConfigManager, fallbackPackagePath } from '../utils/configManager.js
 import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix, getExtensionNamingStyle } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
+import { reindentXppSource } from '../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeRefreshProvider } from '../bridge/index.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
@@ -21,6 +22,9 @@ import { FormPatternTemplates } from '../utils/formPatternTemplates.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
+import { buildAxDataEntityXml } from './dataEntityXml.js';
+import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
+import { buildAxMapXml } from './mapXml.js';
 
 /**
  * Per-project-file mutex to serialise concurrent addToProject calls.
@@ -58,7 +62,7 @@ const CreateD365FileArgsSchema = z.object({
       'menu-item-display-extension', 'menu-item-action-extension', 'menu-item-output-extension',
       'menu', 'menu-extension',
       'security-privilege', 'security-duty', 'security-role',
-      'business-event', 'tile', 'kpi',
+      'business-event', 'tile', 'kpi', 'map',
     ])
     .describe('Type of D365FO object to create'),
   objectName: z
@@ -230,15 +234,18 @@ function fieldTypeToAxType(fieldType: string, edtName?: string): string {
 
 /**
  * Normalize the flexible field specs accepted by the tool / XML generators
- * (`{ name, edt?, type?, fieldType?, enumType?, mandatory?, label? }`) into the
- * key shape the C# bridge's WriteFieldParam expects
- * (`{ name, fieldType, extendedDataType, enumType, mandatory, label }`).
+ * (`{ name, edt?, type?, fieldType?, extendedDataType?, enumType?, mandatory?, label? }`)
+ * into the key shape the C# bridge's WriteFieldParam ACTUALLY deserializes.
  *
- * Without this, fields handed to the bridge as `{ edt, type }` silently lose their
- * EDT and base type — the bridge sees FieldType="" and creates a bare String field
- * with no ExtendedDataType. `fieldType` may arrive either as a base-type keyword
- * ("Integer") or as a full i:type ("AxTableFieldInt"); the latter is stripped back
- * to the keyword the bridge's CreateTableField switch understands.
+ * CRITICAL: WriteFieldParam uses `[JsonPropertyName("type")]` and
+ * `[JsonPropertyName("edt")]` — the bridge reads the JSON keys `type` and `edt`,
+ * NOT `fieldType`/`extendedDataType`. Emitting the latter silently loses both:
+ * the bridge sees FieldType=null → CreateTableField falls to the default branch and
+ * produces a bare AxTableFieldString with no ExtendedDataType. (This bit
+ * table-extension AND table create — both share this path.) Accept either input
+ * spelling and always emit the bridge's keys. `type` may arrive as a base-type
+ * keyword ("Integer") or a full i:type ("AxTableFieldInt"); the latter is stripped
+ * back to the keyword the bridge's CreateTableField switch understands.
  */
 export function normalizeFieldSpecsForBridge(
   fields: Record<string, unknown>[],
@@ -247,9 +254,9 @@ export function normalizeFieldSpecsForBridge(
     let fieldType = f.type ?? f.fieldType;
     if (typeof fieldType === 'string') fieldType = fieldType.replace(/^AxTableField/, '');
     const out: Record<string, unknown> = { name: f.name };
-    if (fieldType != null && fieldType !== '') out.fieldType = fieldType;
-    if (f.edt != null) out.extendedDataType = f.edt;
-    else if (f.extendedDataType != null) out.extendedDataType = f.extendedDataType;
+    if (fieldType != null && fieldType !== '') out.type = fieldType;
+    if (f.edt != null) out.edt = f.edt;
+    else if (f.extendedDataType != null) out.edt = f.extendedDataType;
     if (f.enumType != null) out.enumType = f.enumType;
     if (f.mandatory != null) out.mandatory = f.mandatory;
     if (f.label != null) out.label = f.label;
@@ -545,7 +552,13 @@ export class XmlTemplateGenerator {
     const result = XmlTemplateGenerator.splitXppClassSource(cleaned);
     return {
       declaration: result.declaration,
-      methods: result.methods,
+      // The bridge stores each method's source verbatim (no reformatting on its
+      // side) — re-derive consistent indentation here so this CREATE path gets
+      // the same fix as bridgeAddMethod's MODIFY path.
+      methods: result.methods.map(m => ({
+        ...m,
+        source: m.source !== undefined ? reindentXppSource(m.source) : m.source,
+      })),
     };
   }
 
@@ -573,18 +586,13 @@ export class XmlTemplateGenerator {
       ? `\t<Implements>${properties.implements}</Implements>\n`
       : '';
 
-    // D365FO convention: method source is always indented by 4 spaces inside <Source>.
-    // This matches what VS writes and what the compiler/Designer expect to see.
-    const indentMethodSource = (src: string): string =>
-      src.split('\n').map(line => '    ' + line).join('\n');
-
     const methodsXml =
       methods.length === 0
         ? '\t\t<Methods />\n'
         : `\t\t<Methods>\n${methods
             .map(
               m =>
-                `\t\t\t<Method>\n\t\t\t\t<Name>${m.name}</Name>\n\t\t\t\t<Source><![CDATA[\n${indentMethodSource(ensureXppDocComment(m.source))}\n\n]]></Source>\n\t\t\t</Method>`
+                `\t\t\t<Method>\n\t\t\t\t<Name>${m.name}</Name>\n\t\t\t\t<Source><![CDATA[\n${reindentXppSource(ensureXppDocComment(m.source))}\n\n]]></Source>\n\t\t\t</Method>`
             )
             .join('\n\n')}\n\t\t</Methods>\n`;
 
@@ -745,7 +753,13 @@ ${fieldsXml}\t<FullTextIndexes />
     properties?: Record<string, any>
   ): string {
     const label = properties?.label || enumName;
-    const useEnumValue = properties?.useEnumValue ? 'Yes' : 'No';
+    // Extensible enums MUST have UseEnumValue=No (xppc hard requirement).
+    // Explicit <Value> elements also force UseEnumValue=Yes at compile time,
+    // so we suppress them when UseEnumValue=No.
+    const useEnumValue = (properties?.isExtensible || properties?.useEnumValue === false)
+      ? 'No'
+      : (properties?.useEnumValue ? 'Yes' : 'No');
+    const suppressExplicitValues = useEnumValue === 'No';
     const configKeyXml = properties?.configurationKey
       ? `\t<ConfigurationKey>${properties.configurationKey}</ConfigurationKey>\n`
       : '';
@@ -776,8 +790,8 @@ ${fieldsXml}\t<FullTextIndexes />
         enumValuesXml += `\t\t\t<Name>${v.name}</Name>\n`;
         if (v.label) enumValuesXml += `\t\t\t<Label>${v.label}</Label>\n`;
         if (v.helpText) enumValuesXml += `\t\t\t<HelpText>${v.helpText}</HelpText>\n`;
-        // D365FO convention: omit <Value> for 0 (implicit default)
-        if (intValue !== 0) enumValuesXml += `\t\t\t<Value>${intValue}</Value>\n`;
+        // Omit <Value> when UseEnumValue=No (position-based ordering) or for implicit 0
+        if (intValue !== 0 && !suppressExplicitValues) enumValuesXml += `\t\t\t<Value>${intValue}</Value>\n`;
         enumValuesXml += `\t\t</AxEnumValue>\n`;
       }
       enumValuesXml += '\t</EnumValues>\n';
@@ -833,89 +847,55 @@ ${enumValuesXml}${isExtensibleXml}</AxEnum>
   }
 
   /**
-   * Generate AxQuery XML structure
+   * Generate AxQuery XML structure. Delegates to the shared builder so this
+   * cannot drift from generateD365Xml.ts's copy — see queryViewXml.ts for the
+   * property contract and why `dataSource` matters.
    */
   static generateAxQueryXml(
     queryName: string,
     properties?: Record<string, any>
   ): string {
-    const title = properties?.title || queryName;
-
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxQuery xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
-\ti:type="AxQuerySimple">
-\t<Name>${queryName}</Name>
-\t<SourceCode>
-\t\t<Methods>
-\t\t\t<Method>
-\t\t\t\t<Name>classDeclaration</Name>
-\t\t\t\t<Source><![CDATA[
-[Query]
-public class ${queryName} extends QueryRun
-{
-}
-
-]]></Source>
-\t\t\t</Method>
-\t\t</Methods>
-\t</SourceCode>
-\t<Title>${title}</Title>
-\t<DataSources />
-</AxQuery>
-`;
+    return buildAxQueryXml(queryName, properties);
   }
 
   /**
-   * Generate AxView XML structure
+   * Generate AxView XML structure. Delegates to the shared builder so this
+   * cannot drift from generateD365Xml.ts's copy — see queryViewXml.ts for the
+   * property contract and why `query`/`fields` matter.
    */
   static generateAxViewXml(
     viewName: string,
     properties?: Record<string, any>
   ): string {
-    const label = properties?.label || viewName;
+    return buildAxViewXml(viewName, properties);
+  }
 
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${viewName}</Name>
-\t<Label>${label}</Label>
-\t<Fields />
-\t<Mappings />
-\t<Metadata />
-\t<ViewMetadata />
-</AxView>
-`;
+  /**
+   * Generate AxMap XML structure. Delegates to the shared builder so this
+   * cannot drift from generateD365Xml.ts's copy — see mapXml.ts for the
+   * property contract.
+   */
+  static generateAxMapXml(
+    mapName: string,
+    properties?: Record<string, any>
+  ): string {
+    return buildAxMapXml(mapName, properties);
   }
 
   /**
    * Generate AxDataEntityView XML structure
    */
+  /**
+   * Generate AxDataEntityView XML. Delegates to the shared builder so this
+   * cannot drift from generateD365Xml.ts's copy (they already had — see
+   * dataEntityXml.ts for the property contract and why primaryTable/fields
+   * matter).
+   */
   static generateAxDataEntityXml(
     entityName: string,
     properties?: Record<string, any>
   ): string {
-    const label = properties?.label || entityName;
-    const publicEntityName = properties?.publicEntityName || entityName;
-    const publicCollectionName =
-      properties?.publicCollectionName || `${entityName}Collection`;
-
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${entityName}</Name>
-\t<Label>${label}</Label>
-\t<DataManagementEnabled>Yes</DataManagementEnabled>
-\t<DataManagementStagingTable>${entityName}Staging</DataManagementStagingTable>
-\t<EntityCategory>Transaction</EntityCategory>
-\t<IsPublic>Yes</IsPublic>
-\t<PublicCollectionName>${publicCollectionName}</PublicCollectionName>
-\t<PublicEntityName>${publicEntityName}</PublicEntityName>
-\t<Fields />
-\t<Keys />
-\t<Mappings />
-\t<Ranges />
-\t<Relations />
-\t<ViewMetadata />
-</AxDataEntityView>
-`;
+    return buildAxDataEntityXml(entityName, properties);
   }
 
   /**
@@ -1451,6 +1431,8 @@ ${defaultParamGroupXml}
         return this.generateAxQueryXml(objectName, properties);
       case 'view':
         return this.generateAxViewXml(objectName, properties);
+      case 'map':
+        return this.generateAxMapXml(objectName, properties);
       case 'data-entity':
         return this.generateAxDataEntityXml(objectName, properties);
       case 'report':
@@ -2941,6 +2923,7 @@ export class ProjectFileManager {
       'label-file': 'Label Files',
       tile: 'Tiles',
       kpi: 'KPIs',
+      map: 'Maps',
     };
     return folderMap[objectType] || 'Classes';
   }
@@ -2981,6 +2964,7 @@ export class ProjectFileManager {
       'label-file': 'AxLabelFile',
       tile: 'AxTile',
       kpi: 'AxKPI',
+      map: 'AxMap',
     };
     return prefixMap[objectType] || 'AxClass';
   }
@@ -3329,6 +3313,22 @@ export class ProjectFileManager {
       return null;
     }
   }
+}
+
+/**
+ * Returns a BP warning string when a `label` property is raw text (not a @File:Id reference).
+ * xppbp raises BPErrorLabelIsText for any object-level label that is not a label ID.
+ * Use the `labels` tool to find or create a label ID before writing the object.
+ */
+function rawLabelBpWarning(properties: unknown, objectName: string): string {
+  const label = (properties as Record<string, unknown> | undefined)?.label;
+  if (typeof label === 'string' && label.length > 0 && !label.startsWith('@')) {
+    return `\n\n⚠️ **BPErrorLabelIsText risk:** Label "${label}" is raw text, not a label ID.\n` +
+      `xppbp will report BPErrorLabelIsText on ${objectName}.\n` +
+      `Fix: call \`labels(action="search", text="${label}")\` to find an existing @LabelFile:Id,\n` +
+      `or \`labels(action="create", ...)\` to create one, then re-create with the @reference.`;
+  }
+  return '';
 }
 
 /**
@@ -3697,6 +3697,7 @@ export async function handleCreateD365File(
       'label-file': 'AxLabelFile',
       tile: 'AxTile',
       kpi: 'AxKPI',
+      map: 'AxMap',
     };
 
     const objectFolder = objectFolderMap[args.objectType];
@@ -3910,11 +3911,23 @@ export async function handleCreateD365File(
     }
 
     // ── Phase 4: Bridge-first creation via IMetadataProvider.Create() ──
-    // For 18 supported types (class, class-extension, table, enum, edt, query, view, form,
-    // menu, 3 menu-items, 3 security, table/form/enum-extension): try C# bridge first.
+    // For 15 supported types (class, class-extension, table, enum, edt, query, view, form,
+    // menu, 3 menu-items, table/form/enum-extension): try C# bridge first.
     // Falls back to TypeScript XML generation if bridge unavailable or unsupported type
-    // (report, data-entity, tile, kpi, business-event, etc.).
-    if (!args.xmlContent && context?.bridge && actualModelName && canBridgeCreate(args.objectType)) {
+    // (report, data-entity, tile, kpi, business-event, security-privilege/duty/role, etc.).
+    //
+    // EXCEPTION — extensible enums: the C# bridge does not set UseEnumValue=No and
+    // emits explicit <Value> elements, both of which xppc rejects with
+    // "UseEnumValue property must be set to 'No' when IsExtensible is True".
+    // Use the TypeScript XML generator (which handles this correctly) instead.
+    //
+    // EXCEPTION — security-privilege/duty/role: excluded from BRIDGE_CREATE_TYPES
+    // entirely (see bridgeAdapter.ts) because the bridge silently drops their
+    // structured collections (EntryPoints, DataEntityPermissions, Privileges, Duties).
+    const skipBridgeForExtensibleEnum = args.objectType === 'enum'
+      && Boolean((args.properties as Record<string, unknown> | undefined)?.isExtensible);
+
+    if (!args.xmlContent && !skipBridgeForExtensibleEnum && context?.bridge && actualModelName && canBridgeCreate(args.objectType)) {
       try {
         // The bridge's `properties` is a flat string map (C# Dictionary<string,string>).
         // Keep only SCALAR values and stringify them. Structured collections
@@ -3957,7 +3970,12 @@ export async function handleCreateD365File(
           if (props.fieldGroups) bridgeParams.fieldGroups = props.fieldGroups as Record<string, unknown>[];
           if (props.indexes) bridgeParams.indexes = props.indexes as Record<string, unknown>[];
           if (props.relations) bridgeParams.relations = props.relations as Record<string, unknown>[];
-          if (props.methods) bridgeParams.methods = props.methods as { name: string; source?: string }[];
+          if (props.methods) {
+            bridgeParams.methods = (props.methods as { name: string; source?: string }[]).map(m => ({
+              ...m,
+              source: m.source !== undefined ? reindentXppSource(m.source) : m.source,
+            }));
+          }
         }
 
         // For enums: pass values from properties.
@@ -4026,13 +4044,15 @@ export async function handleCreateD365File(
           // resolvable by subsequent modify calls in the same session.
           try { await bridgeRefreshProvider(context.bridge); } catch { /* best-effort */ }
 
+          const rawLabelWarning = rawLabelBpWarning(args.properties, finalObjectName);
+
           return {
             content: [
               {
                 type: 'text',
                 text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
-                  `🔧 API: ${bridgeResult.message}`,
+                  `🔧 API: ${bridgeResult.message}${rawLabelWarning}`,
               },
             ],
           };
@@ -4053,6 +4073,18 @@ export async function handleCreateD365File(
           args.sourceCode,
           args.properties
         );
+
+    // Guard against HTML-entity-escaped xmlContent (e.g. "&lt;?xml..." instead of "<?xml...").
+    // This writes silently — no XML parse happens on this path — so a caller mistake here
+    // looks like a success and only breaks on the next build. Found authoring the
+    // L2-numberseq-basic eval case: passing already-escaped XML through xmlContent produced
+    // a file containing literal "&lt;"/"&gt;" instead of real tags.
+    if (args.xmlContent && /&lt;\?xml|&lt;Ax\w/.test(args.xmlContent) && !args.xmlContent.trimStart().startsWith('<')) {
+      throw new Error(
+        'xmlContent appears to be HTML-entity-escaped (contains "&lt;" but does not start with a literal "<"). ' +
+        'Pass raw XML (with literal < and >), not HTML-encoded text — this parameter is written to disk verbatim, unparsed.'
+      );
+    }
 
     // CRITICAL FIX: Replace unprefixed class/table names with prefixed finalObjectName
     // When xmlContent or sourceCode contains `class MyClass` but finalObjectName is `MyPrefixMyClass`,
@@ -4337,6 +4369,7 @@ export async function handleCreateD365File(
             `🔧 Type: ${objectFolder}\n` +
             bridgeValidation +
             formPatternWarnings +
+            rawLabelBpWarning(args.properties, finalObjectName) +
             projectMessage +
             `\n${nextSteps}\n` +
             `⛔ TASK COMPLETE — do NOT call \`generate\`, \`generate\`, or \`d365fo_file(action="create")\` again for this object.`,

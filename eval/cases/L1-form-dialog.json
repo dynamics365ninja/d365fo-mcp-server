@@ -1,0 +1,21 @@
+{
+  "id": "L1-form-dialog",
+  "title": "Dialog form pattern (parameter-entry dialog)",
+  "tier": 1,
+  "instruction": "In the sandbox model, create a Dialog form named XyzNoteHeaderDialog bound to the AslXyzNoteHeader table's data source, with controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=Dialog). The form must build clean.",
+  "target_artifact_types": [
+    "AxForm"
+  ],
+  "golden_path": "eval/goldens/L1-form-dialog/",
+  "ignore": [
+    "AxForm/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "form",
+    "dialog",
+    "pattern",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

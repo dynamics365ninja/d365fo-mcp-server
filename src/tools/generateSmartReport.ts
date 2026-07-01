@@ -337,6 +337,14 @@ export async function handleGenerateSmartReport(
   const controllerClassName = `${finalName}Controller`;
   const reportCaption = caption || finalName;
 
+  // A tmp table's Label decorates the report caption with a " (temp)"/dataset-name
+  // suffix — fine when reportCaption is plain text, but a raw suffix appended after
+  // a label REFERENCE (e.g. "@Module:LabelId") breaks it into mixed content, which
+  // xppbp flags as BPErrorLabelIsText ("not a label ID"). Only decorate plain text;
+  // leave a label reference unmodified.
+  const tmpTableLabel = (suffix: string): string =>
+    reportCaption.startsWith('@') ? reportCaption : `${reportCaption}${suffix}`;
+
   // Read pool connection for all symbol lookups in this function
   const rdb = symbolIndex.getReadDb();
 
@@ -491,7 +499,7 @@ export async function handleGenerateSmartReport(
   const builder = new SmartXmlBuilder(symbolIndex);
   const tmpTableXml = builder.buildTableXml({
     name: tmpTableName,
-    label: `${reportCaption} (temp)`,
+    label: tmpTableLabel(' (temp)'),
     tableGroup: 'Main',
     tableType: 'TempDB',
     fields: tableFields,
@@ -514,7 +522,7 @@ export async function handleGenerateSmartReport(
     }
     const dsTblXml = builder.buildTableXml({
       name: ds.tmpTableName,
-      label: `${reportCaption} - ${ds.name} (temp)`,
+      label: tmpTableLabel(` - ${ds.name} (temp)`),
       tableGroup: 'Main',
       tableType: 'TempDB',
       fields: ds.tableFields,

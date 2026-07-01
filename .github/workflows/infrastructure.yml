@@ -26,6 +26,9 @@ on:
         required: false
         default: 'en-US,cs,sk,de'
 
+permissions:
+  contents: read
+
 # Opt into Node.js 24 for all JavaScript actions (required after June 2, 2026)
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

@@ -19,6 +19,7 @@ import { createProvenanceToken } from '../utils/provenanceStore.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { resolveObjectPrefix, applyObjectPrefix } from '../utils/modelClassifier.js';
 import { rankContext, renderRankedContext } from '../workspace/contextRanker.js';
+import { RESERVED_SYSTEM_FIELD_NAMES } from './generateSmartTable.js';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -34,8 +35,13 @@ export const prepareCreateArgsSchema = z.object({
   objectType: z.enum([
     'class', 'table', 'form', 'enum', 'edt', 'query', 'view',
     'data-entity', 'report', 'menu-item-display', 'menu-item-action',
-    'menu-item-output', 'security-privilege', 'security-duty', 'security-role',
-  ]).describe('Type of the new D365FO object.'),
+    'menu-item-output', 'menu', 'security-privilege', 'security-duty', 'security-role',
+    'business-event', 'tile', 'kpi', 'map',
+  ]).describe(
+    'Type of the new D365FO object. Wholly new standalone objects only — for ' +
+    'extending an EXISTING object (table-extension, form-extension, CoC class-extension, ' +
+    'etc.) use prepare(mode="change") instead, which auto-detects the base object\'s type.'
+  ),
   fieldsHint: z.array(z.string()).optional().describe(
     'For tables/views: planned field names (e.g. ["CustAccount", "ImportDate", "Qty"]). ' +
     'Each gets EDT suggestions from the index.',
@@ -123,6 +129,22 @@ function suggestEdtsForFields(
   context: XppServerContext,
 ): string {
   const lines: string[] = [];
+
+  // Warn about reserved system field names so the agent catches the issue before
+  // any generation attempt. Adding e.g. a "CreatedDateTime" custom field causes a
+  // compiler error: "Invalid field name; 'X' is reserved for system fields."
+  const reservedHits = fieldsHint.filter(f => RESERVED_SYSTEM_FIELD_NAMES.has(f.toLowerCase()));
+  if (reservedHits.length > 0) {
+    lines.push(
+      `⛔ **Reserved system field names — do NOT use as custom fields:**`,
+      ...reservedHits.map(f =>
+        `  • \`${f}\` — reserved by the platform (auto-tracked). Rename to a non-reserved name (e.g. "NoteDateTime" instead of "CreatedDateTime").`
+      ),
+      `  The platform auto-provides: CreatedDateTime, ModifiedDateTime, CreatedBy, ModifiedBy, RecId, RecVersion, DataAreaId, Partition.`,
+      ``,
+    );
+  }
+
   try {
     const db = context.symbolIndex.getReadDb();
     const stmt = db.prepare(
@@ -130,6 +152,7 @@ function suggestEdtsForFields(
        WHERE type = 'edt' AND name LIKE ? ORDER BY LENGTH(name) LIMIT 3`,
     );
     for (const field of fieldsHint.slice(0, 10)) {
+      if (RESERVED_SYSTEM_FIELD_NAMES.has(field.toLowerCase())) continue;
       const tokens = field.split(/(?=[A-Z])/).filter(t => t.length >= 3);
       const needle = tokens.length > 0 ? tokens[tokens.length - 1] : field;
       const rows = stmt.all(`%${needle}%`) as Array<{ name: string; signature: string | null }>;

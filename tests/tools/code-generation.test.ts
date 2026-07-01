@@ -12,7 +12,7 @@ import { codeGenTool } from '../../src/tools/codeGen';
 import { completionTool } from '../../src/tools/completion';
 import { handleGenerateD365Xml } from '../../src/tools/generateD365Xml';
 import { XmlTemplateGenerator } from '../../src/tools/createD365File';
-import { handleGenerateSmartTable } from '../../src/tools/generateSmartTable';
+import { handleGenerateSmartTable, selectUnbuildableEdts } from '../../src/tools/generateSmartTable';
 import { handleGenerateSmartForm } from '../../src/tools/generateSmartForm';
 import { handleSuggestEdt } from '../../src/tools/suggestEdt';
 import { analyzeCodePatternsTool } from '../../src/tools/analyzePatterns';
@@ -270,11 +270,171 @@ describe('generate_d365fo_xml', () => {
     expect(result.content[0].text).toMatch(/<AxEnum|MyStatus/i);
   });
 
+  it('extensible enum gets UseEnumValue=No and no <Value> elements (xppc requirement)', async () => {
+    // Regression for eval/corpus L0-enum-basic: IsExtensible=true + explicit values caused
+    // "UseEnumValue property must be set to 'No'" build failure.
+    const xml = XmlTemplateGenerator.generateAxEnumXml('MyStatus', {
+      isExtensible: true,
+      enumValues: [
+        { name: 'Draft', value: 0, label: 'Draft' },
+        { name: 'Active', value: 1, label: 'Active' },
+        { name: 'Archived', value: 2, label: 'Archived' },
+      ],
+    });
+    expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
+    expect(xml).toContain('<IsExtensible>true</IsExtensible>');
+    expect(xml).not.toContain('<Value>1</Value>');
+    expect(xml).not.toContain('<Value>2</Value>');
+  });
+
   it('returns error on missing objectType', async () => {
     const result = await handleGenerateD365Xml(
       req('generate_d365fo_xml', { objectName: 'Foo', modelName: 'MyModel' }),
     );
     expect(result.isError).toBe(true);
+  });
+});
+
+// ─── XmlTemplateGenerator.generateAxDataEntityXml ───────────────────────────
+
+describe('XmlTemplateGenerator.generateAxDataEntityXml', () => {
+  it('emits an inert skeleton (no query) when primaryTable/fields are omitted — backward compat', () => {
+    const xml = XmlTemplateGenerator.generateAxDataEntityXml('MyEntity', { label: 'My entity' });
+    expect(xml).toContain('<Fields />');
+    expect(xml).toContain('<ViewMetadata />');
+    expect(xml).not.toContain('AxQuerySimpleRootDataSource');
+  });
+
+  it('populates Fields/Keys/ViewMetadata when primaryTable + fields are given (TOOL_DEFECT fix)', () => {
+    // Regression for eval/corpus/runs/2026-06-30T19__L4-entity-security__fc090d0.json:
+    // the entity previously came out empty with no query at all — non-functional.
+    const xml = XmlTemplateGenerator.generateAxDataEntityXml('MyNoteHeaderEntity', {
+      label: '@MyModel:MyLabel',
+      primaryTable: 'MyNoteHeader',
+      fields: [{ name: 'NoteId' }, { name: 'Subject' }],
+    });
+
+    expect(xml).toContain('<PrimaryKey>EntityKey</PrimaryKey>');
+    expect(xml).toContain('<Name>NoteId</Name>');
+    expect(xml).toContain('<DataSource>MyNoteHeader</DataSource>');
+    expect(xml).toMatch(/<AxDataEntityViewKeyField>\s*<DataField>NoteId<\/DataField>/);
+    expect(xml).toContain('AxQuerySimpleRootDataSource');
+    expect(xml).toContain('<Table>MyNoteHeader</Table>');
+    // Both entity fields must also appear as query datasource fields.
+    expect(xml).toMatch(/<AxQuerySimpleDataSourceField>\s*<Name>NoteId<\/Name>\s*<Field>NoteId<\/Field>/);
+    expect(xml).toMatch(/<AxQuerySimpleDataSourceField>\s*<Name>Subject<\/Name>\s*<Field>Subject<\/Field>/);
+  });
+
+  it('honors an explicit primaryKeyField instead of defaulting to the first field', () => {
+    const xml = XmlTemplateGenerator.generateAxDataEntityXml('MyEntity', {
+      primaryTable: 'MyTable',
+      fields: [{ name: 'A' }, { name: 'B' }],
+      primaryKeyField: 'B',
+    });
+    expect(xml).toMatch(/<AxDataEntityViewKeyField>\s*<DataField>B<\/DataField>/);
+  });
+
+  it('maps a field with a distinct dataField name (alias) correctly', () => {
+    const xml = XmlTemplateGenerator.generateAxDataEntityXml('MyEntity', {
+      primaryTable: 'MyTable',
+      fields: [{ name: 'DisplayName', dataField: 'Txt' }],
+    });
+    expect(xml).toMatch(/<Name>DisplayName<\/Name>\s*<DataField>Txt<\/DataField>/);
+    expect(xml).toMatch(/<Name>Txt<\/Name>\s*<Field>Txt<\/Field>/);
+  });
+});
+
+// ─── XmlTemplateGenerator.generateAxQueryXml / generateAxViewXml ────────────
+
+describe('XmlTemplateGenerator.generateAxQueryXml', () => {
+  it('emits an inert skeleton (no datasource) when dataSource is omitted — backward compat', () => {
+    const xml = XmlTemplateGenerator.generateAxQueryXml('MyQuery', { title: 'My query' });
+    expect(xml).toContain('<DataSources />');
+  });
+
+  it('populates a real AxQuerySimpleRootDataSource when dataSource is given (TOOL_DEFECT fix)', () => {
+    const xml = XmlTemplateGenerator.generateAxQueryXml('MyNoteHeaderQuery', {
+      title: 'My note header query',
+      dataSource: 'MyNoteHeader',
+    });
+    expect(xml).toContain('AxQuerySimpleRootDataSource');
+    expect(xml).toContain('<Table>MyNoteHeader</Table>');
+    expect(xml).toContain('<Title>My note header query</Title>');
+    expect(xml).toContain('i:type="AxQuerySimple"');
+  });
+
+  it('includes explicit query fields when given', () => {
+    const xml = XmlTemplateGenerator.generateAxQueryXml('MyQuery', {
+      dataSource: 'MyTable',
+      fields: [{ name: 'NoteId' }, { name: 'Subject' }],
+    });
+    expect(xml).toMatch(/<AxQuerySimpleDataSourceField>\s*<Name>NoteId<\/Name>\s*<Field>NoteId<\/Field>/);
+    expect(xml).toMatch(/<AxQuerySimpleDataSourceField>\s*<Name>Subject<\/Name>\s*<Field>Subject<\/Field>/);
+  });
+});
+
+describe('XmlTemplateGenerator.generateAxViewXml', () => {
+  it('emits an inert skeleton (no query reference) when query/fields are omitted — backward compat', () => {
+    const xml = XmlTemplateGenerator.generateAxViewXml('MyView', { label: 'My view' });
+    expect(xml).toContain('<Fields />');
+    expect(xml).not.toContain('<Query>');
+  });
+
+  it('references the query and populates bound fields when query + fields are given (TOOL_DEFECT fix)', () => {
+    const xml = XmlTemplateGenerator.generateAxViewXml('MyNoteHeaderView', {
+      query: 'MyNoteHeaderQuery',
+      fields: [{ name: 'NoteId' }, { name: 'Subject' }],
+    });
+    expect(xml).toContain('<Query>MyNoteHeaderQuery</Query>');
+    expect(xml).toContain('AxViewFieldBound');
+    expect(xml).toMatch(/<Name>NoteId<\/Name>\s*<DataField>NoteId<\/DataField>\s*<DataSource>MyNoteHeaderQuery<\/DataSource>/);
+  });
+
+  it('honors an explicit dataSource distinct from the query name', () => {
+    const xml = XmlTemplateGenerator.generateAxViewXml('MyView', {
+      query: 'MyQuery',
+      dataSource: 'CustomAlias',
+      fields: [{ name: 'A' }],
+    });
+    expect(xml).toMatch(/<DataSource>CustomAlias<\/DataSource>/);
+  });
+});
+
+// ─── XmlTemplateGenerator.generateAxMapXml ──────────────────────────────────
+
+describe('XmlTemplateGenerator.generateAxMapXml', () => {
+  it('emits an empty map (no mappings) when mappingTable is omitted', () => {
+    const xml = XmlTemplateGenerator.generateAxMapXml('MyMap', {
+      label: 'My map',
+      fields: [{ name: 'Id', type: 'Int' }],
+    });
+    expect(xml).toContain('<Mappings />');
+    expect(xml).toContain('i:type="AxMapFieldInt"');
+    expect(xml).toContain('<Name>Id</Name>');
+  });
+
+  it('wires an AxTableMapping with per-field connections when mappingTable is given', () => {
+    const xml = XmlTemplateGenerator.generateAxMapXml('MyLogMap', {
+      fields: [
+        { name: 'RefRecId', type: 'Int64', extendedDataType: 'RefRecId' },
+        { name: 'Data', type: 'Container' },
+      ],
+      mappingTable: 'MyLogTable',
+    });
+    expect(xml).toContain('<MappingTable>MyLogTable</MappingTable>');
+    expect(xml).toMatch(/<MapField>RefRecId<\/MapField>\s*<MapFieldTo>RefRecId<\/MapFieldTo>/);
+    expect(xml).toMatch(/<MapField>Data<\/MapField>\s*<MapFieldTo>Data<\/MapFieldTo>/);
+    expect(xml).toContain('i:type="AxMapFieldInt64"');
+    expect(xml).toContain('<ExtendedDataType>RefRecId</ExtendedDataType>');
+  });
+
+  it('honors explicit mappings distinct from field names', () => {
+    const xml = XmlTemplateGenerator.generateAxMapXml('MyMap', {
+      fields: [{ name: 'CudTableId', type: 'Int' }],
+      mappingTable: 'SysDataBaseLog',
+      mappings: [{ mapField: 'CudTableId', mapFieldTo: 'table' }],
+    });
+    expect(xml).toMatch(/<MapField>CudTableId<\/MapField>\s*<MapFieldTo>table<\/MapFieldTo>/);
   });
 });
 
@@ -512,6 +672,37 @@ describe('generate_smart_table', () => {
     const count = (xml.match(/AmountMST(?!2)/g) ?? []).length;
     expect(count).toBeGreaterThanOrEqual(1); // original present
     expect(xml).toContain('AmountMST2');     // duplicate renamed
+  });
+});
+
+// ─── scaffold pre-write EDT gate ─────────────────────────────────────────────
+
+describe('selectUnbuildableEdts (scaffold pre-write gate)', () => {
+  const modelDir = 'K:\\Pkg\\MyModel\\MyModel';
+
+  it('blocks an EDT that exists neither in the index nor on disk', () => {
+    const blocked = selectUnbuildableEdts(
+      [{ field: 'Foo', edt: 'GhostEdt' }],
+      modelDir,
+      () => false, // nothing on disk
+    );
+    expect(blocked).toEqual([{ field: 'Foo', edt: 'GhostEdt' }]);
+  });
+
+  it('allows a same-session EDT that is on disk but unindexed (xppc reads disk)', () => {
+    // Separator-agnostic so this holds on both Windows (path.join → "\") and Linux CI ("/").
+    const onDisk = (p: string) => p.replace(/\\/g, '/').endsWith('AxEdt/AslSessionEdt.xml');
+    const blocked = selectUnbuildableEdts(
+      [{ field: 'A', edt: 'AslSessionEdt' }, { field: 'B', edt: 'GhostEdt' }],
+      modelDir,
+      onDisk,
+    );
+    // Only the truly-missing one is blocked; the on-disk same-session EDT passes.
+    expect(blocked).toEqual([{ field: 'B', edt: 'GhostEdt' }]);
+  });
+
+  it('returns nothing when there are no missing EDTs', () => {
+    expect(selectUnbuildableEdts([], modelDir, () => false)).toEqual([]);
   });
 });
 

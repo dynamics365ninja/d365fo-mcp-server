@@ -1,0 +1,22 @@
+{
+  "id": "L2-business-event-basic",
+  "title": "Business event (BusinessEventsContract + BusinessEventsBase)",
+  "tier": 2,
+  "instruction": "In the sandbox model, define a business event fired when an AslXyzNoteHeader record is created. Create: (1) a DataContract class XyzNoteHeaderCreatedContract extending BusinessEventsContract, with parm methods for NoteId and Subject (decorated [DataMemberAttribute]), and a static newFromNoteHeader(AslXyzNoteHeader) factory; (2) a business event class XyzNoteHeaderCreatedBusinessEvent extending BusinessEventsBase, decorated [BusinessEvents(classStr(XyzNoteHeaderCreatedContract), '<name>', '<description>', ModuleAxapta::<module>)], with a static newFromContract() factory and a [Hookable(false)] buildContract() override returning the held contract. Use get_knowledge(topic=\"business events\") to ground the pattern. Both classes must build clean.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-business-event-basic/",
+  "ignore": [
+    "AxClass/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "business-event",
+    "integration",
+    "multi-artifact",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

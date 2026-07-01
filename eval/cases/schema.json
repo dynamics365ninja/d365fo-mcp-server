@@ -37,6 +37,14 @@
       "type": "string",
       "description": "Optional repo-relative path to a SysTest definition for runtime correctness."
     },
+    "golden_pending": {
+      "type": "boolean",
+      "description": "When true, the case spec is authored but its golden has not yet been captured on the VM (golden authoring requires a real build artifact, §6.4). Such a case is exempt from the 'every case has a golden' CI gate until the golden is committed; flip to false (or remove) once the golden lands."
+    },
+    "systest_pending": {
+      "type": "boolean",
+      "description": "When true, the golden is committed but the case's live SysTest run (the runtime-correctness signal, §6.3) has not been successfully completed yet — e.g. blocked by a platform/environment limitation rather than the implementation itself. See the case's corpus evidence for the reason. Flip to false (or remove) once a live run completes."
+    },
     "ignore": {
       "type": "array",
       "items": { "type": "string" },
@@ -46,6 +54,11 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Free-form tags for clustering, e.g. table, coc, form, security."
+    },
+    "split": {
+      "type": "string",
+      "enum": ["train", "holdout"],
+      "description": "Train/holdout split (docs/AGENT_EVAL_LOOP.md §10). A fix is accepted only if holdout scores do not regress; new cases enter 'holdout' first. Defaults to 'holdout' when omitted."
     }
   }
 }

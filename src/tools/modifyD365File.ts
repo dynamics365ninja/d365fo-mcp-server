@@ -299,6 +299,66 @@ async function directXmlReplaceCode(
 }
 
 /**
+ * Direct XML fallback for modify-property. The C# bridge rejects
+ * modify-property outright for some object types (confirmed: AxForm — "not
+ * supported for objectType 'form' via bridge") even though the property is a
+ * plain text element (e.g. <Caption>) trivially editable by string
+ * replacement, the same way directXmlReplaceCode already handles methods the
+ * bridge can't reach. Only used when the bridge itself reports failure —
+ * never overrides a working bridge modify-property call.
+ *
+ * `propertyPath` is treated as a bare element name (no XPath/dotted-path
+ * support) — matches how existing propertyPath values are passed (e.g.
+ * "Caption", "Pattern"). Refuses to act if the element is missing (returns
+ * null so the caller surfaces the original bridge error) or ambiguous
+ * (appears more than once — ambiguity would risk editing the wrong node).
+ */
+async function directXmlModifyProperty(
+  filePath: string,
+  propertyPath: string,
+  propertyValue: string,
+): Promise<{ success: boolean; message: string } | null> {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '');
+    const escapedValue = String(propertyValue)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const tagName = propertyPath.split(/[./]/).pop()!;
+    const openTagRe = new RegExp(`<${tagName}\\b[^>]*>[\\s\\S]*?</${tagName}>`, 'g');
+    const selfClosingRe = new RegExp(`<${tagName}\\b([^>]*)/>`, 'g');
+
+    const openMatches = content.match(openTagRe) ?? [];
+    const selfClosingMatches = content.match(selfClosingRe) ?? [];
+    const totalMatches = openMatches.length + selfClosingMatches.length;
+
+    if (totalMatches === 0) {
+      return null; // property element not found — let the caller surface the original bridge error
+    }
+    if (totalMatches > 1) {
+      return {
+        success: false,
+        message: `❌ directXmlModifyProperty: <${tagName}> appears ${totalMatches} times in ${filePath} — ambiguous, refusing to guess which one.`,
+      };
+    }
+
+    const updated = openMatches.length === 1
+      ? content.replace(openTagRe, m => m.replace(/>[\s\S]*?</, `>${escapedValue}<`))
+      : content.replace(selfClosingRe, (_m, attrs) => `<${tagName}${attrs}>${escapedValue}</${tagName}>`);
+
+    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: set <${tagName}> in ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Property '${propertyPath}' set via direct XML fallback (bridge does not support modify-property for this object type). File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlModifyProperty failed: ${err}`);
+    return null;
+  }
+}
+
+/**
  * Direct XML fallback for add-menu-item-to-menu.
  * The C# bridge can only modify menus it has loaded from its startup roots;
  * newly created menus trigger a NullRef because they aren't in the bridge's
@@ -1451,6 +1511,18 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             args.propertyPath,
             args.propertyValue,
           );
+
+          // Fallback: some object types (confirmed: AxForm) are rejected by the
+          // bridge outright for modify-property even though the property is a
+          // plain text element trivially editable by string replacement.
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlModifyProperty(
+              actualFilePath, args.propertyPath, String(args.propertyValue),
+            );
+            if (xmlFallbackResult) {
+              bridgeResult = xmlFallbackResult;
+            }
+          }
         }
         break;
       }

@@ -1,0 +1,21 @@
+{
+  "id": "L4-bridge-drops-data-entity-primarytable-fields-on-create",
+  "title": "Bridge drops data-entity primaryTable/fields on create",
+  "tier": 4,
+  "instruction": "Create a public data entity (objectType=data-entity) over a small table, passing properties.primaryTable and properties.fields. Confirm the resulting AxDataEntityView has a non-empty <Fields> and a populated <ViewMetadata><DataSources> with a query rooted on the table -- not just an empty skeleton that happens to compile. Known TOOL_DEFECT as of 2026-06-30 (eval/corpus/runs/2026-06-30T19__L4-entity-security__fc090d0.json): XmlTemplateGenerator's data-entity path silently drops both properties, producing an empty entity with no datasource at all.",
+  "target_artifact_types": [
+    "AxDataEntityView"
+  ],
+  "golden_path": "eval/goldens/L4-bridge-drops-data-entity-primarytable-fields-on-create/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "data-entity",
+    "tool-defect",
+    "mined"
+  ],
+  "split": "holdout"
+}

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>EvalL2EventHandlerDefaultSubjectTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Runtime oracle for the L2-event-handler-basic eval case (docs/AGENT_EVAL_LOOP.md §6.3).
+///
+/// The case asks the agent to add a [DataEventHandler] on AslXyzNoteHeader's
+/// Inserting event that defaults Subject to '(no subject)' when left blank --
+/// the OTHER extensibility mechanism alongside CoC (event handlers fire
+/// out-of-band, cannot return a value or block the call the way a CoC wrapper
+/// can). A golden diff can confirm the handler class + attribute exist with
+/// the right signature, but not that the default is actually applied at
+/// runtime -- that needs a real insert.
+///
+/// Run via `run_systest_class` with className = EvalL2EventHandlerDefaultSubjectTest.
+/// </summary>
+class EvalL2EventHandlerDefaultSubjectTest extends SysTestCase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>testInsertingWithBlankSubjectGetsDefaulted</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Inserting with no Subject set triggers the handler's default.
+    /// </summary>
+    [SysTestCheckInTestAttribute]
+    public void testInsertingWithBlankSubjectGetsDefaulted()
+    {
+        AslXyzNoteHeader noteHeader;
+        noteHeader.NoteId = 'EVT-TEST-1';
+        noteHeader.insert();
+
+        this.assertEquals('(no subject)', noteHeader.Subject);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testInsertingWithExplicitSubjectIsPreserved</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// An explicit Subject is left untouched by the handler.
+    /// </summary>
+    [SysTestCheckInTestAttribute]
+    public void testInsertingWithExplicitSubjectIsPreserved()
+    {
+        AslXyzNoteHeader noteHeader;
+        noteHeader.NoteId = 'EVT-TEST-2';
+        noteHeader.Subject = 'Explicit subject';
+        noteHeader.insert();
+
+        this.assertEquals('Explicit subject', noteHeader.Subject);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

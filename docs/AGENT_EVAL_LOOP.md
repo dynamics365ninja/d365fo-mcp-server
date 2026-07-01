@@ -1,8 +1,8 @@
 # Self-improving agent eval loop — design spec
 
-**Status:** proposal / design only (no implementation yet)
-**Owner:** TBD
-**Related:** [ARCHITECTURE.md](ARCHITECTURE.md) · [TESTING.md](TESTING.md) · [BRIDGE.md](BRIDGE.md) · [BACKLOG.md](BACKLOG.md)
+**Status:** implemented (all phases below are live — see
+[eval/ROADMAP.md](../eval/ROADMAP.md) for current status and open work)
+**Related:** [ARCHITECTURE.md](ARCHITECTURE.md) · [TESTING.md](TESTING.md) · [BRIDGE.md](BRIDGE.md) · [BACKLOG.md](BACKLOG.md) · [eval/README.md](../eval/README.md)
 
 ---
 
@@ -82,7 +82,7 @@ For each selected use-case the **implementer** runs:
 2. **Implement** — drive the grounded path (`prepare` → query tools → `validate_code` → `generate_*` → write). The agent may use only mcp-server tools; no hand-edited XML.
 3. **Static gate** — `validate_code(references)` + `validate_code(syntax)`. Record pass/fail and any violations.
 4. **Build** — `build_d365fo_project`; capture `errors[]` and `bpWarnings[]` (structured).
-5. **Oracle** — diff produced metadata against the case's **golden metadata** (§6). Optionally run `SysTestRunner` for cases that carry assertions.
+5. **Oracle** — diff produced metadata against the case's **golden metadata** (§6). **Runtime gate (cases with a `systest` path):** after a clean build, deploy the case's SysTest class (`eval/systests/<id>.xml`) into the sandbox, build it, then run it via `run_systest_class` (className = the class's `<Name>`). Capture the raw tool output and feed it to the scorer (`eval:score --systest <file>`); `parseSysTestResult` turns it into `{ ran, passed, failures }` for the `systest` scorecard field (§6.3, §7). A SysTest references only standard objects (CoC is transparent), so it fails when the wrapper is missing or wrong — that is the behavioural signal a golden cannot give.
 6. **Score** — compute the scorecard (§7).
 7. **Triage** — classify any failure via the rubric (§9). The implementer records a *hypothesis*; the improver confirms.
 8. **Persist** — append a run record to the corpus (§5).
@@ -259,14 +259,17 @@ Catalog discipline: maintain a **train/held-out split**. Improvements are accept
 
 ---
 
-## 13. Phased rollout
+## 13. Phased rollout — all done
 
 | Phase | Deliverable | Exit criterion |
 |-------|-------------|----------------|
-| 0 — PoC | catalog + corpus schema + **1 golden case**, run end-to-end by hand | one case scores build/BP/golden and produces a corpus record |
-| 1 — implementer harness | automated generate→build→golden→score over L0–L2; manual triage | green/red scorecard per case, reproducibly |
-| 2 — improver | automated clustering + triage confirmation + PR drafting | first tool/knowledge fix PR sourced from corpus evidence |
-| 3 — guarded scale | held-out split, regression gating, scheduling, wider tiers | tool-defect rate trends down across releases without held-out regressions |
+| 0 — PoC ✅ | catalog + corpus schema + 1 golden case, run end-to-end by hand | one case scored build/BP/golden and produced a corpus record |
+| 1 — implementer harness ✅ | automated generate→build→golden→score, multi-artifact support | green/red scorecard per case, reproducibly |
+| 2 — improver ✅ | automated clustering + triage confirmation + PR drafting | tool/knowledge fix PRs sourced from corpus evidence (15+ landed) |
+| 3 — guarded scale ✅ | held-out split, regression gating, CI, wider tiers | `eval-gate` CI gate green; catalog spans L0–L4 across breadth (form patterns, extensibility mechanisms, OOP mechanics, SSRS, etc.) |
+
+Breadth is intentionally open-ended beyond this — see
+[eval/ROADMAP.md](../eval/ROADMAP.md) for what's still uncovered.
 
 ---
 

@@ -9,8 +9,12 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { getConfigManager } from '../utils/configManager.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
+import { reindentXppSource } from '../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
+import { buildAxDataEntityXml } from './dataEntityXml.js';
+import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
+import { buildAxMapXml } from './mapXml.js';
 
 const GenerateD365XmlArgsSchema = z.object({
   objectType: z
@@ -21,7 +25,7 @@ const GenerateD365XmlArgsSchema = z.object({
       'menu-item-display', 'menu-item-action', 'menu-item-output',
       'menu-item-display-extension', 'menu-item-action-extension', 'menu-item-output-extension',
       'menu', 'menu-extension',
-      'security-privilege', 'security-duty', 'security-role',
+      'security-privilege', 'security-duty', 'security-role', 'map',
     ])
     .describe('Type of D365FO object'),
   objectName: z
@@ -276,17 +280,13 @@ class XmlTemplateGenerator {
       ? `\t<Implements>${properties.implements}</Implements>\n`
       : '';
 
-    // D365FO convention: method source is always indented by 4 spaces inside <Source>.
-    const indentMethodSource = (src: string): string =>
-      src.split('\n').map(line => '    ' + line).join('\n');
-
     const methodsXml =
       methods.length === 0
         ? '\t\t<Methods />\n'
         : `\t\t<Methods>\n${methods
             .map(
               m =>
-                `\t\t\t<Method>\n\t\t\t\t<Name>${m.name}</Name>\n\t\t\t\t<Source><![CDATA[\n${indentMethodSource(ensureXppDocComment(m.source))}\n\n]]></Source>\n\t\t\t</Method>`
+                `\t\t\t<Method>\n\t\t\t\t<Name>${m.name}</Name>\n\t\t\t\t<Source><![CDATA[\n${reindentXppSource(ensureXppDocComment(m.source))}\n\n]]></Source>\n\t\t\t</Method>`
             )
             .join('\n\n')}\n\t\t</Methods>\n`;
 
@@ -373,7 +373,13 @@ ${titleField1Xml}${titleField2Xml}\t<DeleteActions />
     properties?: Record<string, any>
   ): string {
     const label = properties?.label || enumName;
-    const useEnumValue = properties?.useEnumValue ? 'Yes' : 'No';
+    // Extensible enums MUST have UseEnumValue=No (xppc hard requirement).
+    // Explicit <Value> elements also force UseEnumValue=Yes at compile time,
+    // so we suppress them when UseEnumValue=No.
+    const useEnumValue = (properties?.isExtensible || properties?.useEnumValue === false)
+      ? 'No'
+      : (properties?.useEnumValue ? 'Yes' : 'No');
+    const suppressExplicitValues = useEnumValue === 'No';
     const configKeyXml = properties?.configurationKey
       ? `\t<ConfigurationKey>${properties.configurationKey}</ConfigurationKey>\n`
       : '';
@@ -404,8 +410,8 @@ ${titleField1Xml}${titleField2Xml}\t<DeleteActions />
         enumValuesXml += `\t\t\t<Name>${v.name}</Name>\n`;
         if (v.label) enumValuesXml += `\t\t\t<Label>${v.label}</Label>\n`;
         if (v.helpText) enumValuesXml += `\t\t\t<HelpText>${v.helpText}</HelpText>\n`;
-        // D365FO convention: omit <Value> for 0 (implicit default)
-        if (intValue !== 0) enumValuesXml += `\t\t\t<Value>${intValue}</Value>\n`;
+        // Omit <Value> when UseEnumValue=No (position-based ordering) or for implicit 0
+        if (intValue !== 0 && !suppressExplicitValues) enumValuesXml += `\t\t\t<Value>${intValue}</Value>\n`;
         enumValuesXml += `\t\t</AxEnumValue>\n`;
       }
       enumValuesXml += '\t</EnumValues>\n';
@@ -465,61 +471,53 @@ ${enumValuesXml}${isExtensibleXml}</AxEnum>
   /**
    * Generate AxQuery XML structure
    */
+  /**
+   * Generate AxQuery XML structure. Delegates to the shared builder
+   * (queryViewXml.ts) so this cannot drift from createD365File.ts's copy —
+   * this copy previously used <Label> (AxQuery actually needs <Title>) and,
+   * like the other copy, silently ignored any dataSource property.
+   */
   static generateAxQueryXml(
     queryName: string,
     properties?: Record<string, any>
   ): string {
-    const label = properties?.label || queryName;
-
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxQuery xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${queryName}</Name>
-\t<Label>${label}</Label>
-\t<DataSources />
-</AxQuery>
-`;
+    return buildAxQueryXml(queryName, properties);
   }
 
   /**
-   * Generate AxView XML structure
+   * Generate AxView XML structure. Delegates to the shared builder
+   * (queryViewXml.ts) so this cannot drift from createD365File.ts's copy.
    */
   static generateAxViewXml(
     viewName: string,
     properties?: Record<string, any>
   ): string {
-    const label = properties?.label || viewName;
-
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${viewName}</Name>
-\t<Label>${label}</Label>
-\t<ViewMetadata />
-\t<Fields />
-</AxView>
-`;
+    return buildAxViewXml(viewName, properties);
   }
 
   /**
-   * Generate AxDataEntityView XML structure
+   * Generate AxMap XML structure. Delegates to the shared builder (mapXml.ts)
+   * so this cannot drift from createD365File.ts's copy.
+   */
+  static generateAxMapXml(
+    mapName: string,
+    properties?: Record<string, any>
+  ): string {
+    return buildAxMapXml(mapName, properties);
+  }
+
+  /**
+   * Generate AxDataEntityView XML structure. Delegates to the shared builder
+   * (dataEntityXml.ts) so this cannot drift from createD365File.ts's copy —
+   * this copy previously used a top-level <DataSources/> element that isn't
+   * even part of the real AxDataEntityView schema and always produced a
+   * non-functional entity regardless of what properties were passed.
    */
   static generateAxDataEntityXml(
     entityName: string,
     properties?: Record<string, any>
   ): string {
-    const label = properties?.label || entityName;
-    const publicEntityName = properties?.publicEntityName || entityName;
-
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${entityName}</Name>
-\t<Label>${label}</Label>
-\t<PublicEntityName>${publicEntityName}</PublicEntityName>
-\t<DataSources />
-\t<Fields />
-\t<Keys />
-\t<Mappings />
-</AxDataEntityView>
-`;
+    return buildAxDataEntityXml(entityName, properties);
   }
 
   /**
@@ -1030,6 +1028,8 @@ ${defaultParamGroupXml}
         return this.generateAxQueryXml(objectName, properties);
       case 'view':
         return this.generateAxViewXml(objectName, properties);
+      case 'map':
+        return this.generateAxMapXml(objectName, properties);
       case 'data-entity':
         return this.generateAxDataEntityXml(objectName, properties);
       case 'report':
@@ -1463,6 +1463,7 @@ export async function handleGenerateD365Xml(
       'security-privilege': 'AxSecurityPrivilege',
       'security-duty': 'AxSecurityDuty',
       'security-role': 'AxSecurityRole',
+      map: 'AxMap',
     };
 
     const objectFolder = objectFolderMap[args.objectType];

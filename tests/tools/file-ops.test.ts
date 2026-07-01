@@ -480,7 +480,9 @@ describe('create_d365fo_file', () => {
   it('table-extension create passes properties.fields to the bridge (normalized to WriteFieldParam keys)', async () => {
     // Regression: the bridge create path only forwarded fields for objectType==='table',
     // so a table-extension's properties.fields were dropped and the file got an empty
-    // <Fields />. Fields must be forwarded AND normalized ({ edt, type } → { extendedDataType, fieldType }).
+    // <Fields />. Fields must be forwarded AND normalized to the bridge's WriteFieldParam
+    // keys — which are `type`/`edt` (JsonPropertyName), NOT fieldType/extendedDataType.
+    // Emitting the wrong keys produced a bare AxTableFieldString with no EDT (eval L2).
     const createObject = vi.fn(async () => ({
       success: true,
       filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTableExtension\\CustTable.MyExt.xml',
@@ -512,8 +514,8 @@ describe('create_d365fo_file', () => {
     const sentParams = createObject.mock.calls[0][0];
     expect(sentParams.objectType).toBe('table-extension');
     expect(sentParams.fields).toEqual([
-      { name: 'LookAheadMonths', fieldType: 'Integer', extendedDataType: 'BudgetNumberOfPeriods' },
-      { name: 'LookBackMonths', fieldType: 'Integer', extendedDataType: 'BudgetNumberOfPeriods' },
+      { name: 'LookAheadMonths', type: 'Integer', edt: 'BudgetNumberOfPeriods' },
+      { name: 'LookBackMonths', type: 'Integer', edt: 'BudgetNumberOfPeriods' },
     ]);
   });
 
@@ -655,6 +657,23 @@ describe('create_d365fo_file', () => {
     );
     // fs is fully mocked — writes succeed on all platforms.
     expect((result as any).isError).toBeFalsy();
+  });
+
+  it('rejects HTML-entity-escaped xmlContent instead of silently writing garbage', async () => {
+    const escaped = `&lt;?xml version="1.0"?&gt;&lt;AxClass&gt;&lt;Name&gt;MyHybridClass&lt;/Name&gt;&lt;/AxClass&gt;`;
+    const result = await handleCreateD365File(
+      req('create_d365fo_file', {
+        objectType: 'class',
+        objectName: 'MyHybridClass',
+        modelName: 'Contoso',
+        packageName: 'Contoso',
+        packagePath: 'K:\\PackagesLocalDirectory',
+        xmlContent: escaped,
+        addToProject: false,
+      }),
+    );
+    expect((result as any).isError).toBeTruthy();
+    expect((result as any).content[0].text).toMatch(/HTML-entity-escaped/);
   });
 
   it('returns error when objectType is missing', async () => {

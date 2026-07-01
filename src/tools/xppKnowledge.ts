@@ -30,7 +30,7 @@ const XppKnowledgeArgsSchema = z.object({
 
 // ─── Knowledge Entry Type ───────────────────────────────────────────────────
 
-interface KnowledgeEntry {
+export interface KnowledgeEntry {
   id: string;
   title: string;
   /** Search keywords (lowercase) for matching */
@@ -49,7 +49,7 @@ interface KnowledgeEntry {
 
 // ─── Knowledge Base ─────────────────────────────────────────────────────────
 
-const KNOWLEDGE_BASE: KnowledgeEntry[] = [
+export const KNOWLEDGE_BASE: KnowledgeEntry[] = [
   // ── Batch / SysOperation ────────────────────────────────────────────────
   {
     id: 'sysoperation',

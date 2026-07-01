@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>EvalL2CocCarFactsTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Runtime oracle for the L2-coc-extension eval case (docs/AGENT_EVAL_LOOP.md §6.3).
+///
+/// The case asks the agent to generate a Chain-of-Command wrapper on the standard
+/// Fleet Management method FMVehicleDataContract.CarFactsSummary(str). The wrapper
+/// must call `next CarFactsSummary(...)` and append the literal suffix ' [verified]'
+/// to the base result. CoC is transparent at the call site, so this test never
+/// references the wrapper class — it constructs the standard contract, calls the
+/// (now-wrapped) method, and asserts the transform is observable. That is the
+/// behavioural signal a golden diff cannot give (a golden judges wrapper *shape*,
+/// not that `next` is actually called and its result transformed).
+///
+/// Deterministic: CarFactsSummary is a pure parm-style accessor (no DB, no number
+/// sequences, no platform state), so the expected output is fixed across PUs.
+///
+/// Run via `run_systest_class` with className = EvalL2CocCarFactsTest. With the
+/// wrapper absent the suffix assertions fail (proving the test actually exercises
+/// the CoC behaviour, not just the base method).
+/// </summary>
+class EvalL2CocCarFactsTest extends SysTestCase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>testCarFactsSummaryAppendsVerifiedSuffix</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The wrapper appends ' [verified]' to the base return value.
+    /// </summary>
+    [SysTestCheckInTestAttribute]
+    public void testCarFactsSummaryAppendsVerifiedSuffix()
+    {
+        FMVehicleDataContract contract = new FMVehicleDataContract();
+
+        str result = contract.CarFactsSummary('Adventure Works Fuji');
+
+        this.assertEquals('Adventure Works Fuji [verified]', result);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testWrapperPreservesBaseValueForDifferentInput</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Determinism across inputs: the base value is preserved verbatim and only the
+    /// suffix is added, for an input distinct from the first test.
+    /// </summary>
+    [SysTestCheckInTestAttribute]
+    public void testWrapperPreservesBaseValueForDifferentInput()
+    {
+        FMVehicleDataContract contract = new FMVehicleDataContract();
+
+        str result = contract.CarFactsSummary('VIN-12345');
+
+        this.assertEquals('VIN-12345 [verified]', result);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

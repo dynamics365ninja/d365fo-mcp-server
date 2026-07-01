@@ -172,6 +172,25 @@ describe('XML rules', () => {
     const result = await validateXppTool(req({ code: xml, codeType: 'xml-table' }));
     expect(getText(result)).not.toContain('XML001');
   });
+
+  it('XML001: does NOT fire on a table EXTENSION (inherits base alternate key)', async () => {
+    // Regression (eval L2-table-extension): an AxTableExtension adding a field has
+    // no index of its own and must not be required to declare an alternate key —
+    // the base table already has one.
+    const xml = `
+      <AxTableExtension>
+        <Name>CustGroup.AslExtension</Name>
+        <Fields>
+          <AxTableField i:type="AxTableFieldInt">
+            <Name>NotePriority</Name>
+            <ExtendedDataType>Counter</ExtendedDataType>
+          </AxTableField>
+        </Fields>
+      </AxTableExtension>
+    `;
+    const result = await validateXppTool(req({ code: xml, codeType: 'xml-table' }));
+    expect(getText(result)).not.toContain('XML001');
+  });
 });
 
 // ─── Data-driven property rules (XML002–XML005) ──────────────────────────────

@@ -17,7 +17,14 @@
     "blob-manager": "tsx scripts/azure-blob-manager.ts",
     "select-config": "powershell -ExecutionPolicy Bypass -File scripts/select-xpp-config.ps1",
     "test-stdio": "tsx scripts/test-stdio.ts",
-    "db-maintenance": "node scripts/db-maintenance.mjs"
+    "db-maintenance": "node scripts/db-maintenance.mjs",
+    "eval:score": "tsx src/eval/oracle/cli.ts",
+    "eval:clusters": "tsx src/eval/improver/cli.ts",
+    "eval:report": "tsx src/eval/improver/reportCli.ts",
+    "eval:knowledge": "tsx src/eval/improver/knowledgeFeedbackCli.ts",
+    "eval:flakes": "tsx src/eval/improver/flakeDetectionCli.ts",
+    "eval:mine": "tsx src/eval/improver/caseMiningCli.ts",
+    "eval:brief": "tsx src/eval/improver/fixBriefCli.ts"
   },
   "keywords": [
     "mcp",

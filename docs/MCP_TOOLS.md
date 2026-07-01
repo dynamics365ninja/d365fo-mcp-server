@@ -115,7 +115,7 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 | `build_d365fo_project` | MSBuild compilation with structured xppc diagnostics (severity, object, line, fix hints for the first errors) | *"Build the project and show the errors"* |
 | `trigger_db_sync` | Database sync for the current model | *"Sync the database"* |
 | `run_bp_check` | Microsoft Best Practices (xppbp.exe) analysis | *"Run a BP check on my model"* |
-| `run_systest_class` | Execute SysTest unit tests via SysTestRunner | *"Run the MyServiceTest class"* |
+| `run_systest_class` | Execute SysTest unit tests via SysTestConsole.exe (requires an interactive console session) | *"Run the MyServiceTest class"* |
 | `update_symbol_index` | Re-index a single changed file without restart | *"Refresh the index for the table I just created"* |
 
 ## ✅ Quality & Grounding (3)

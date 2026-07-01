@@ -14,6 +14,7 @@
 import type { BridgeClient } from './bridgeClient.js';
 import * as debouncedRefresh from './debouncedRefresh.js';
 import { debugLog } from '../utils/logger.js';
+import { reindentXppSource } from '../utils/xppFormat.js';
 import type {
   BridgeTableInfo,
   BridgeClassInfo,
@@ -935,17 +936,35 @@ export async function bridgeResolveObject(
 
 /**
  * Supported object types for bridge-based creation.
- * Covers core types + menu items + security + extensions + form + menu.
+ * Covers core types + menu items + extensions + form + menu.
  * Complex types (report, data-entity, business-event, tile, kpi) continue
  * using TypeScript XML generation — the bridge handles them via xmlContent passthrough.
+ *
+ * security-privilege/security-duty/security-role are DELIBERATELY excluded
+ * (TOOL_DEFECT, found 2026-06-30 via eval/cases/L4-entity-security): the
+ * bridge's generic `properties: Dictionary<string,string>` channel has no way
+ * to carry the structured collections these types need (EntryPoints,
+ * DataEntityPermissions, Privileges, Duties — arrays get filtered out before
+ * reaching the bridge, and even scalar fields like targetObject/dataEntity
+ * have no special-case mapping the way table fields or enum values do). The
+ * bridge create call still "succeeds", but silently produces an empty,
+ * functionally-broken privilege/duty/role (builds clean, grants nothing).
+ * The local XML generators (securityPrivilegeXml.ts + generateAxSecurityDuty/
+ * RoleXml below) build these correctly — let creation fall through to them.
+ *
+ * query/view are DELIBERATELY excluded too (same bug class, found 2026-07-01
+ * via Phase 6 query+view eval case): the bridge accepted `dataSource`/`query`
+ * as scalar properties and reported success, but produced an empty
+ * <DataSources/> (query) or no <Query> reference at all (view) — a query/view
+ * that can select nothing. The local generators (queryViewXml.ts) build a
+ * real AxQuerySimpleRootDataSource / <Query> reference from these properties.
  */
 const BRIDGE_CREATE_TYPES = new Set([
   'class', 'class-extension', 'table', 'enum', 'edt',
-  'query', 'view', 'form',
+  'form',
   'table-extension', 'form-extension', 'enum-extension',
   'menu',
   'menu-item-action', 'menu-item-display', 'menu-item-output',
-  'security-privilege', 'security-duty', 'security-role',
 ]);
 
 /**
@@ -1088,7 +1107,10 @@ export async function bridgeAddMethod(
   if (!BRIDGE_MODIFY_TYPES.has(objectType.toLowerCase())) return null;
 
   try {
-    const result = await bridge.addMethod(objectType, objectName, methodName, sourceCode);
+    // The bridge stores sourceCode verbatim — whatever indentation the caller typed
+    // (or didn't) ends up in the AOT XML as-is. Re-derive consistent indentation
+    // from brace depth so ragged/flush-left input doesn't produce garbled formatting.
+    const result = await bridge.addMethod(objectType, objectName, methodName, reindentXppSource(sourceCode));
     return {
       success: result.success,
       message: result.success

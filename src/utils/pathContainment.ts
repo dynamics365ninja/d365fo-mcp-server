@@ -44,20 +44,53 @@ function isAbsoluteCrossPlatform(p: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(p) || /^\\\\[^\\/]+[\\/][^\\/]+/.test(p);
 }
 
-/** Normalise a path to absolute + POSIX separators for comparison. */
-function normalise(p: string): string {
+function toAbsolute(p: string): string {
+  return isAbsoluteCrossPlatform(p) ? p : path.resolve(p);
+}
+
+/** Absolute + POSIX separators, WITHOUT symlink resolution (the as-given form). */
+function lexicalNorm(p: string): string {
   if (!p) return '';
-  let abs = isAbsoluteCrossPlatform(p) ? p : path.resolve(p);
+  return toAbsolute(p).replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+/** Absolute + POSIX separators WITH symlink resolution (realpath). */
+function realNorm(p: string): string {
+  if (!p) return '';
+  let abs = toAbsolute(p);
   try { abs = realpathSync(abs); } catch { /* may not exist yet — ok */ }
   return abs.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
-/** True when `child` is equal to or nested under `parent` (case-insensitive). */
+/** Back-compat alias — defaults to the realpath form. */
+function normalise(p: string): string {
+  return realNorm(p);
+}
+
+function startsUnder(child: string, parent: string): boolean {
+  if (!parent) return false;
+  const c = child.toLowerCase();
+  const p = parent.toLowerCase();
+  return c === p || c.startsWith(p + '/');
+}
+
+/**
+ * True when `child` is equal to or nested under `parent`, comparing BOTH the
+ * lexical (as-given) and realpath (symlink-resolved) forms of each side.
+ *
+ * Why both: a D365FO model directory is commonly a symlink — e.g.
+ * `…/PackagesLocalDirectory/<Model>` → a repo checkout. A file reached through
+ * that symlink is legitimately "under" the configured PackagesLocalDirectory
+ * root even though its realpath lands in the repo tree (and vice-versa). A
+ * realpath-only comparison wrongly rejects it ("Refusing to write outside
+ * configured roots"). `..` traversal is still neutralised by path.resolve in
+ * both forms, so this does not weaken traversal protection.
+ */
 function isUnder(child: string, parent: string): boolean {
   if (!parent) return false;
-  const c = normalise(child).toLowerCase();
-  const p = normalise(parent).toLowerCase();
-  return c === p || c.startsWith(p + '/');
+  const cl = lexicalNorm(child), cr = realNorm(child);
+  const pl = lexicalNorm(parent), pr = realNorm(parent);
+  return startsUnder(cl, pl) || startsUnder(cr, pr) || startsUnder(cl, pr) || startsUnder(cr, pl);
 }
 
 /**
@@ -69,7 +102,9 @@ async function getAllowedRoots(extraRoots?: (string | null | undefined)[]): Prom
   const cfg = getConfigManager();
   await cfg.ensureLoaded();
   const roots = new Set<string>();
-  const add = (r: string | null | undefined) => { if (r && r.trim()) roots.add(normalise(r)); };
+  // Store the lexical (as-configured) form so containment can compare a file's
+  // as-given path against it; the realpath form is derived per-comparison.
+  const add = (r: string | null | undefined) => { if (r && r.trim()) roots.add(lexicalNorm(r)); };
 
   add(cfg.getPackagePath());
   try { add(await cfg.getCustomPackagesPath()); } catch { /* optional */ }
@@ -121,11 +156,31 @@ export async function assertWritePathAllowed(
     return { ok: false, reason: `filePath must be absolute: "${filePath}"` };
   }
 
-  const canonical = normalise(filePath);
+  // Compute both forms of the file path up-front. The lexical form preserves the
+  // as-given path (e.g. reached through a model-dir symlink under the allowed
+  // root); the realpath form is where it physically lands. Containment accepts
+  // either, but the AOT-shape check below must slice with the SAME form that
+  // matched — so we carry both through instead of pre-collapsing to realpath.
+  const fileLex = lexicalNorm(filePath);
+  const fileReal = realNorm(filePath);
 
   // 1. Root containment
   const roots = await getAllowedRoots(opts?.extraRoots);
-  const matchedRoot = roots.find(r => isUnder(canonical, r));
+  let matchedRoot: string | undefined;
+  let canonical = fileReal;
+  for (const r of roots) {
+    const rReal = realNorm(r);
+    if (startsUnder(fileLex, r) || startsUnder(fileLex, rReal)) {
+      matchedRoot = startsUnder(fileLex, r) ? r : rReal;
+      canonical = fileLex;
+      break;
+    }
+    if (startsUnder(fileReal, rReal) || startsUnder(fileReal, r)) {
+      matchedRoot = startsUnder(fileReal, rReal) ? rReal : r;
+      canonical = fileReal;
+      break;
+    }
+  }
   if (!matchedRoot) {
     // When the path still has the canonical <…>/<Package>/<Model>/Ax<Type>/<File>
     // shape, the would-be package root is everything above <Package>. Surfacing
@@ -224,9 +279,11 @@ export async function assertReadRootAllowed(dirPath: string): Promise<PathContai
     return { ok: false, reason: `dirPath must be absolute: "${dirPath}"` };
   }
 
-  const canonical = normalise(dirPath);
+  // Pass the raw dirPath (not pre-realpath'd) so isUnder can match it lexically
+  // against an allowed root reached through a model-dir symlink.
   const roots = await getAllowedRoots();
-  const matchedRoot = roots.find(r => isUnder(canonical, r));
+  const matchedRoot = roots.find(r => isUnder(dirPath, r));
+  const canonical = normalise(dirPath);
   if (!matchedRoot) {
     return {
       ok: false,

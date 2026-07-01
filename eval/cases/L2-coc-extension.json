@@ -1,0 +1,23 @@
+{
+  "id": "L2-coc-extension",
+  "title": "Chain-of-Command wrapper on FMVehicleDataContract.CarFactsSummary",
+  "tier": 2,
+  "instruction": "In the sandbox model, add a Chain-of-Command wrapper extension class for the standard Fleet Management method FMVehicleDataContract.CarFactsSummary(str). The wrapper must call `next CarFactsSummary(...)` and return the base result with the literal suffix ' [verified]' appended (i.e. `return next CarFactsSummary(carFactsSummary) + ' [verified]';`). Use an `[ExtensionOf(classStr(FMVehicleDataContract))]` final class produced through the grounded generate path (use extension_info(mode=\"points\") / prepare(mode=\"change\") to confirm the method is CoC-eligible — do NOT overlayer or modify FMVehicleDataContract). NOTE: the target sandbox model must reference the FleetManagement model (ModelReferences in its Descriptor) or the build fails with \"does not specify a known class\" even though the symbol index resolves it fine. The class must build clean. Runtime correctness is judged by the SysTest in eval/systests/L2-coc-extension.xml (class EvalL2CocCarFactsTest), which calls the wrapped method and asserts the suffix is appended.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-coc-extension/",
+  "systest_pending": true,
+  "systest": "eval/systests/L2-coc-extension.xml",
+  "ignore": [
+    "AxClass/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "coc",
+    "extension",
+    "class",
+    "runtime"
+  ],
+  "split": "holdout"
+}

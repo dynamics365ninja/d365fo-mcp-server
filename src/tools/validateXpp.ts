@@ -457,7 +457,10 @@ function checkGenericDocComment(code: string): ValidationViolation[] {
  */
 function checkMissingAlternateKey(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
-  if (!code.includes('<AxTable') && !code.includes('<AxTableExtension')) return violations;
+  // A table EXTENSION inherits the base table's alternate key — it must not be
+  // required to declare its own. Only full AxTable definitions need one.
+  if (/<AxTableExtension[\s>]/.test(code)) return violations;
+  if (!code.includes('<AxTable')) return violations;
   // Check that at least one index declares AlternateKey = Yes
   if (!/<AlternateKey>\s*Yes\s*<\/AlternateKey>/i.test(code)) {
     violations.push({

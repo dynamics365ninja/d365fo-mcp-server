@@ -1,0 +1,25 @@
+{
+  "id": "L3-form-detailstransaction",
+  "title": "DetailsTransaction form pattern (header/lines master-detail)",
+  "tier": 3,
+  "instruction": "In the sandbox model, create a lines table named XyzNoteHeaderLine (label @TaxTransactionInquiry:HeaderNote, table group Main) with fields NoteId (EDT Num, String, mandatory), LineNum (EDT LineNum, Integer) and LineText (EDT Notes, String). Add an alternate-key index NoteLineIdx on NoteId+LineNum, and a relation NoteHeader from this table to AslXyzNoteHeader on NoteId=NoteId. Then create a DetailsTransaction form named XyzNoteTransaction (caption @TaxTransactionInquiry:HeaderNote) bound to the AslXyzNoteHeader table as its header data source, auto-generated via the form scaffold pattern (formPattern=DetailsTransaction, dataSource=AslXyzNoteHeader). Note: the scaffold auto-derives the lines table name from the convention '{HeaderTable}Line' -- the lines table must be named exactly AslXyzNoteHeaderLine (not AslXyzNoteLine) for the scaffold to find it and wire both datasources. Both the table and the form must build clean.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxForm"
+  ],
+  "golden_path": "eval/goldens/L3-form-detailstransaction/",
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "form",
+    "table",
+    "detailstransaction",
+    "pattern",
+    "relation",
+    "multi-artifact",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

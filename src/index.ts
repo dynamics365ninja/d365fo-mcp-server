@@ -751,7 +751,7 @@ async function main() {
           { name: 'build_d365fo_project',         desc: 'Run MSBuild compilation locally to capture errors' },
           { name: 'trigger_db_sync',              desc: 'Run a database sync for the current model' },
           { name: 'run_bp_check',                 desc: 'Run Microsoft Best Practices (xppbp.exe) analysis' },
-          { name: 'run_systest_class',            desc: 'Execute unit tests using SysTestRunner.exe' },
+          { name: 'run_systest_class',            desc: 'Execute unit tests using SysTestConsole.exe' },
         ]},
         { icon: '🔄', category: 'Code Review & Source Control', tools: [
           { name: 'review_workspace_changes',     desc: 'AI-based D365FO code review on uncommitted X++ changes (git diff)' },

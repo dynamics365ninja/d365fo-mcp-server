@@ -11,6 +11,7 @@ import {
   resolveReferencesTool,
   type ResolverDeps,
 } from '../../src/tools/resolveReferences';
+import { validateCodeTool } from '../../src/tools/validateCode';
 
 const ORIGINAL_ENFORCE = process.env.GROUNDING_ENFORCE;
 
@@ -356,5 +357,73 @@ describe('resolveReferencesTool', () => {
   it('rejects missing code argument', async () => {
     const result = await resolveReferencesTool({ params: { arguments: {} } }, context);
     expect(result.isError).toBe(true);
+  });
+});
+
+// ─── validate_code references mode for XML (xml-table) ───────────────────────
+// Regression for eval/corpus L1-table-basic VALIDATOR_GAP: references mode never
+// checked EDT names inside <ExtendedDataType>, so wrong EDTs passed the gate and
+// only surfaced at build time.
+
+describe('validateCodeTool references mode — xml-table EDT checking', () => {
+  const context = {
+    symbolIndex: {
+      getReadDb: () => db,
+      getLabelById: (id: string, f?: string) => makeDeps(db).getLabelById(id, f),
+      getLabelFileIds: () => Object.keys(LABELS).map(labelFileId => ({ labelFileId })),
+    },
+  } as any;
+
+  it('verifies a valid EDT reference in AxTableField XML', async () => {
+    const xml = `<?xml version="1.0"?><AxTable><Name>MyTable</Name><Fields>
+      <AxTableField i:type="AxTableFieldString"><Name>Account</Name>
+        <ExtendedDataType>CustAccount</ExtendedDataType></AxTableField>
+    </Fields></AxTable>`;
+    const result = await validateCodeTool(
+      { params: { arguments: { mode: 'references', codeType: 'xml-table', code: xml } } } as any,
+      context,
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain('✅');
+    expect(result.content[0].text).toContain('verified');
+  });
+
+  it('flags a hallucinated EDT name as an error (the VALIDATOR_GAP this closes)', async () => {
+    const xml = `<?xml version="1.0"?><AxTable><Name>MyTable</Name><Fields>
+      <AxTableField i:type="AxTableFieldString"><Name>Subject</Name>
+        <ExtendedDataType>NoSuchEdtName</ExtendedDataType></AxTableField>
+    </Fields></AxTable>`;
+    const result = await validateCodeTool(
+      { params: { arguments: { mode: 'references', codeType: 'xml-table', code: xml } } } as any,
+      context,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('NoSuchEdtName');
+    expect(result.content[0].text).toContain('ExtendedDataType');
+  });
+
+  it('flags an unknown enum in <EnumType>', async () => {
+    const xml = `<?xml version="1.0"?><AxTable><Name>MyTable</Name><Fields>
+      <AxTableField i:type="AxTableFieldEnum"><Name>Status</Name>
+        <EnumType>NoSuchEnum</EnumType></AxTableField>
+    </Fields></AxTable>`;
+    const result = await validateCodeTool(
+      { params: { arguments: { mode: 'references', codeType: 'xml-table', code: xml } } } as any,
+      context,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('NoSuchEnum');
+  });
+
+  it('accepts a known enum (NoYes) in <EnumType>', async () => {
+    const xml = `<?xml version="1.0"?><AxTable><Name>MyTable</Name><Fields>
+      <AxTableField i:type="AxTableFieldEnum"><Name>Active</Name>
+        <EnumType>NoYes</EnumType></AxTableField>
+    </Fields></AxTable>`;
+    const result = await validateCodeTool(
+      { params: { arguments: { mode: 'references', codeType: 'xml-table', code: xml } } } as any,
+      context,
+    );
+    expect(result.isError).toBeFalsy();
   });
 });

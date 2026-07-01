@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>EvalL3BatchCalcTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Runtime oracle for the L3-batch-basic eval case (docs/AGENT_EVAL_LOOP.md §6.3).
+///
+/// The case asks the agent to build a SysOperation batch job (DataContract +
+/// Service + Controller + menu item) whose Service exposes a pure, deterministic
+/// helper: the effective batch size is the requested batch size scaled by the
+/// priority factor. This test constructs the contract and service directly
+/// (bypassing the controller/dialog plumbing, same as a real unit test would)
+/// and asserts the arithmetic — a golden diff can confirm the method exists with
+/// the right signature, but not that the multiplication is correct.
+///
+/// Run via `run_systest_class` with className = EvalL3BatchCalcTest.
+/// </summary>
+class EvalL3BatchCalcTest extends SysTestCase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>testEffectiveBatchSizeMultipliesByPriorityFactor</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 10 * 3 = 30.
+    /// </summary>
+    [SysTestCheckInTestAttribute]
+    public void testEffectiveBatchSizeMultipliesByPriorityFactor()
+    {
+        AslXyzBatchContract contract = new AslXyzBatchContract();
+        contract.parmBatchSize(10);
+        contract.parmPriorityFactor(3);
+
+        AslXyzBatchService service = new AslXyzBatchService();
+        int result = service.calculateEffectiveBatchSize(contract);
+
+        this.assertEquals(30, result);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testEffectiveBatchSizeWithDifferentInputs</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Determinism across inputs: 7 * 5 = 35.
+    /// </summary>
+    [SysTestCheckInTestAttribute]
+    public void testEffectiveBatchSizeWithDifferentInputs()
+    {
+        AslXyzBatchContract contract = new AslXyzBatchContract();
+        contract.parmBatchSize(7);
+        contract.parmPriorityFactor(5);
+
+        AslXyzBatchService service = new AslXyzBatchService();
+        int result = service.calculateEffectiveBatchSize(contract);
+
+        this.assertEquals(35, result);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

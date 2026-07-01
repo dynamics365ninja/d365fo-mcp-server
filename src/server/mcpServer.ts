@@ -572,11 +572,11 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                   'menu-item-action-extension', 'menu-item-output-extension', 'menu-extension',
                   'menu-item-display', 'menu-item-action', 'menu-item-output', 'menu',
                   'security-privilege', 'security-duty', 'security-role',
-                  'business-event', 'tile', 'kpi',
+                  'business-event', 'tile', 'kpi', 'map',
                 ],
                 description:
                   'Type of D365FO object. Each security/menu-item type maps to its own AOT folder — ' +
-                  'NEVER use security-privilege for a duty or role. ' +
+                  'NEVER use security-privilege for duty or role. ' +
                   'class-extension = [ExtensionOf] final class skeleton; business-event = BusinessEventsBase + Contract pair. ' +
                   '[modify] supported: class, table, form, enum, query, view, edt, data-entity, report and their *-extension variants. ' +
                   '[generate] supported: class, table, enum, form, query, view, data-entity, report and table/form/enum/edt/data-entity-extension.'
@@ -612,10 +612,11 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                   '• table-extension: fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need fieldType:"AxTableFieldEnum" + enumType\n' +
                   '• edt: label, extends, edtType, stringSize\n' +
                   '• form: caption, formTemplate, dataSource\n' +
-                  '• security-privilege: label, targetObject, objectType (MenuItemDisplay|Action|Output), accessLevel (view|maintain), dataEntity (data entity name → emits DataEntityPermissions grant for OData access)\n' +
-                  '• security-duty: label, privileges[] (privilege names — array or comma-separated)\n' +
-                  '• security-role: label, duties[] (duty names), privileges[] (privilege names)\n' +
-                  '• menu-item-*: label, object, objectType'
+                  '• security-privilege: label, targetObject, objectType (MenuItemDisplay|Action|Output), accessLevel (view|maintain), dataEntity (grants DataEntityPermissions)\n' +
+                  '• security-duty: label, privileges[]\n' +
+                  '• security-role: label, duties[], privileges[]\n' +
+                  '• menu-item-*: label, object, objectType\n' +
+                  '• data-entity: primaryTable, fields[{name,dataField?}]'
               },
               addToProject: {
                 type: 'boolean',
@@ -781,6 +782,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
                   'table-extension (stored as <AxPropertyModification>): the table names above plus ModifiedDateTime, CreatedDateTime, ModifiedBy, CreatedBy (Yes/No), CountryRegionCodes ("CZ,SK").\n' +
                   'edt: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField.\n' +
                   'class: Extends, Abstract, Final, Label.\n' +
+                  'form: any single text element (Caption, Pattern) via XML fallback.\n' +
                   'Example: propertyPath="TableGroup" propertyValue="Group".'
               },
               propertyValue: {
@@ -1649,7 +1651,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
       },
       {
         name: 'run_systest_class',
-        description: 'Execute a D365FO unit test class using SysTestRunner.exe or xppbp.exe. Returns pass/fail results for each test method.',
+        description: 'Execute a D365FO unit test class via SysTestConsole.exe. Needs an interactive console session — fails headless.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1734,8 +1736,8 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         name: 'validate_code',
         description:
           'Static validator for generated X++/XML (paste the text). Choose a `mode`:\n' +
-          '• syntax → offline best-practice/BP validator (<50 ms, no xppbp.exe). Structured violations {rule, severity, line, excerpt, fix}. Covers select (SEL001-005), CoC (COC001-003), BP (BP001-003) and table-XML (XML001-005) rules mined from standard models.\n' +
-          '• references → semantic reference resolver (<200 ms, index-only): verifies every type, field, method (incl. arity), enum, label and intrinsic (tableStr/fieldStr/…) EXISTS in the indexed codebase — catches hallucinated symbols before the compiler.\n' +
+          '• syntax → offline best-practice/BP validator (no xppbp.exe). Structured violations {rule, severity, line, excerpt, fix}. Covers select, CoC, BP and table-XML rules mined from standard models.\n' +
+          '• references → semantic reference resolver (index-only): verifies every type, field, method (incl. arity), enum, label and intrinsic (tableStr/fieldStr/…) EXISTS in the indexed codebase — catches hallucinated symbols before the compiler. codeType="xml-table" checks XML refs instead: EDT/enum/relation/extends/label.\n' +
           'Call both AFTER generating, BEFORE writes; fix errors in the same turn. Write tools run references internally when GROUNDING_ENFORCE=true.',
         inputSchema: {
           type: 'object',
@@ -1769,9 +1771,9 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
           'ONE-call context aggregator + groundingToken (30-min TTL, required for extension/new-object writes when ' +
           'GROUNDING_ENFORCE=true). Choose a `mode`:\n' +
           '• change → extending/modifying an EXISTING object: exact signature, existing CoC wrappers, eligibility, ' +
-          'recommended strategy, naming validation, code patterns. Replaces the analyze→search→info→generate loop.\n' +
+          'recommended strategy, naming, patterns. Replaces the analyze→search→info→generate loop.\n' +
           '• create → a NEW object: collision check, naming with auto-prefix, similar objects, EDT suggestions, ' +
-          'reusable labels, mined property defaults. Call BEFORE generating any new object.',
+          'reusable labels, mined property defaults.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1793,9 +1795,10 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
               enum: [
                 'class', 'table', 'form', 'enum', 'edt', 'query', 'view',
                 'data-entity', 'report', 'map', 'menu-item-display', 'menu-item-action',
-                'menu-item-output', 'security-privilege', 'security-duty', 'security-role',
+                'menu-item-output', 'menu', 'security-privilege', 'security-duty', 'security-role',
+                'business-event', 'tile', 'kpi',
               ],
-              description: '[change] D365FO object type — auto-detected from the index when omitted. [create] REQUIRED — type of the new object.',
+              description: '[change] D365FO object type — auto-detected when omitted. [create] REQUIRED — type of the new object.',
             },
             methodName: {
               type: 'string',

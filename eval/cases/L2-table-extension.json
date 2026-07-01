@@ -1,0 +1,22 @@
+{
+  "id": "L2-table-extension",
+  "title": "Table extension adding a field to a standard table",
+  "tier": 2,
+  "instruction": "Extend the standard Microsoft table CustGroup in the sandbox model by adding one new field: NotePriority, backed by an existing standard EDT (use suggest_edt / the index to pick an appropriate integer or string EDT — do NOT invent a new EDT). Add the new field to a field group so it surfaces on forms. Do NOT modify any base-table field. The result must be a CustGroup table extension (CustGroup.<Prefix>Extension) that builds clean.",
+  "target_artifact_types": [
+    "AxTableExtension"
+  ],
+  "golden_path": "eval/goldens/L2-table-extension/",
+  "ignore": [
+    "AxTableExtension/@Id",
+    "**/AxTableField/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "table-extension",
+    "field",
+    "fieldgroup",
+    "deterministic"
+  ],
+  "split": "holdout"
+}
