@@ -4,6 +4,8 @@ Everything a **developer** needs to connect GitHub Copilot (VS 2022 ≥ 17.14 / 
 
 > Fast path: [QUICK_START.md](QUICK_START.md) · Azure deployment (admins): [SETUP_AZURE.md](SETUP_AZURE.md) · Claude Code: [CLAUDE_CODE_SETUP.md](CLAUDE_CODE_SETUP.md)
 
+> **Prefer a guided setup?** After `git clone` + `npm install`, run `npm run setup` — the interactive management CLI walks through the scenario choice below, builds the bridge and the index, and prints the `.mcp.json` block. `npm run doctor` verifies an existing installation. Day-to-day: `npx d365fo-mcp start|update|index|instance …` (each command also runs non-interactively with arguments). The PowerShell scripts referenced below keep working as before.
+
 ---
 
 ## Choosing a scenario
@@ -183,6 +185,8 @@ One machine, several D365FO clients — each instance gets its own `.env`, datab
 .\instances\rebuild-instance.ps1 clientA   # extract + build index for the instance (--all for all)
 .\instances\run-instance.ps1 clientA       # start on its port
 ```
+
+Or the CLI equivalents: `npx d365fo-mcp instance add|rebuild|run|upgrade [name]` (interactive when the name is omitted; `instance upgrade` repoints an instance after a UDE version upgrade).
 
 Point a per-solution `.mcp.json` at the right port:
 
