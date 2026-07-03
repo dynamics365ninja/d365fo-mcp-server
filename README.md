@@ -80,6 +80,22 @@ Pick your path:
 
 Full walkthrough with all scenarios: **[docs/QUICK_START.md](docs/QUICK_START.md)**
 
+### Interactive setup (recommended)
+
+After cloning and `npm install`, the management CLI walks you through everything else — scenario selection, C# bridge build, `.env` configuration, index build — and prints the `.mcp.json` block to paste:
+
+```powershell
+git clone https://github.com/dynamics365ninja/d365fo-mcp-server.git K:\d365fo-mcp-server
+cd K:\d365fo-mcp-server
+npm install
+npm run setup        # first-time setup wizard
+npm run doctor       # health check — verifies Node, build, index, bridge
+```
+
+Day-to-day management runs through the same CLI (`npx d365fo-mcp` or `npm run cli --`): `start`, `update`, `index`, and `instance add/list/run/rebuild/upgrade` for multi-instance setups. Every command works non-interactively with arguments, or asks with predefined choices when run bare.
+
+### Manual setup
+
 ```powershell
 # Local / hybrid install (on the D365FO VM)
 git clone https://github.com/dynamics365ninja/d365fo-mcp-server.git K:\d365fo-mcp-server

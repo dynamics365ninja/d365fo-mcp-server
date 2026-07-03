@@ -106,7 +106,8 @@ Write-Host "Starting instance: $($selected.Name)" -ForegroundColor Green
 Write-Host "Config: $envFile" -ForegroundColor DarkGray
 Write-Host ''
 
-node (Join-Path $repoRoot 'dist\index.js')  if ($LASTEXITCODE -ne 0) {
+node (Join-Path $repoRoot 'dist\index.js')
+if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Server exited with code $LASTEXITCODE" -ForegroundColor Red
     exit $LASTEXITCODE
-  }
+}
