@@ -2888,33 +2888,51 @@ namespace D365MetadataBridge.Services
         private dynamic CreateFormControl(string controlType, string controlName,
             string? dataSource, string? dataField, string? label)
         {
-            // Use reflection to find AxFormControl* types in the metadata assembly
+            // D365FO form control classes follow the naming convention AxForm{Type}Control
+            // (e.g. AxFormStringControl, AxFormRealControl, AxFormGridControl) — verified
+            // against live IMetadataProvider reads of real forms (get_object_info) and
+            // against the already-correct CONTROL_TYPE_TO_FORM_CONTROL map used by the
+            // TS-side form-extension XML fallback (modifyD365File.ts). The PREVIOUS
+            // "AxFormControl{Type}" pattern below does not exist for ANY type — every
+            // call fell through to the dictionary fallback, whose values used the exact
+            // same backwards pattern (e.g. "AxFormControlString"), so assembly.GetType()
+            // returned null there too and add-control failed for every control type,
+            // every time, regardless of the field's data type. This was the (until now
+            // unexplained) "add-control is completely non-functional" defect documented
+            // across multiple eval runs (docs/USAGE_EXAMPLES.md).
             var assembly = typeof(AxClass).Assembly;
-            string typeName = $"Microsoft.Dynamics.AX.Metadata.MetaModel.AxFormControl{controlType}";
+            string typeName = $"Microsoft.Dynamics.AX.Metadata.MetaModel.AxForm{controlType}Control";
             var ctrlType = assembly.GetType(typeName);
 
-            // Fallback: try common type names
+            // Fallback: try common type-keyword aliases (case-insensitive; matches the
+            // keywords resolveEdtBaseType/heuristicEdtBaseType return on the TS side).
             if (ctrlType == null)
             {
                 var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["String"] = "AxFormControlString",
-                    ["Integer"] = "AxFormControlInteger",
-                    ["Real"] = "AxFormControlReal",
-                    ["Date"] = "AxFormControlDate",
-                    ["DateTime"] = "AxFormControlDateTime",
-                    ["Int64"] = "AxFormControlInt64",
-                    ["CheckBox"] = "AxFormControlCheckBox",
-                    ["ComboBox"] = "AxFormControlComboBox",
-                    ["Group"] = "AxFormControlGroup",
-                    ["Button"] = "AxFormControlButton",
-                    ["Grid"] = "AxFormControlGrid",
-                    ["Tab"] = "AxFormControlTab",
-                    ["TabPage"] = "AxFormControlTabPage",
-                    ["Image"] = "AxFormControlImage",
-                    ["ActionPane"] = "AxFormControlActionPane",
-                    ["ActionPaneTab"] = "AxFormControlActionPaneTab",
-                    ["ButtonGroup"] = "AxFormControlButtonGroup",
+                    ["String"] = "AxFormStringControl",
+                    ["Integer"] = "AxFormIntegerControl",
+                    ["Int"] = "AxFormIntegerControl",
+                    ["Real"] = "AxFormRealControl",
+                    ["Date"] = "AxFormDateControl",
+                    ["DateTime"] = "AxFormDateTimeControl",
+                    ["UtcDateTime"] = "AxFormDateTimeControl",
+                    ["Time"] = "AxFormTimeControl",
+                    ["Int64"] = "AxFormInt64Control",
+                    ["Guid"] = "AxFormGuidControl",
+                    ["Enum"] = "AxFormComboBoxControl",
+                    ["CheckBox"] = "AxFormCheckBoxControl",
+                    ["ComboBox"] = "AxFormComboBoxControl",
+                    ["Group"] = "AxFormGroupControl",
+                    ["Button"] = "AxFormButtonControl",
+                    ["CommandButton"] = "AxFormCommandButtonControl",
+                    ["Grid"] = "AxFormGridControl",
+                    ["Tab"] = "AxFormTabControl",
+                    ["TabPage"] = "AxFormTabPageControl",
+                    ["Image"] = "AxFormImageControl",
+                    ["ActionPane"] = "AxFormActionPaneControl",
+                    ["ActionPaneTab"] = "AxFormActionPaneTabControl",
+                    ["ButtonGroup"] = "AxFormButtonGroupControl",
                 };
                 if (map.TryGetValue(controlType, out var mapped))
                     ctrlType = assembly.GetType($"Microsoft.Dynamics.AX.Metadata.MetaModel.{mapped}");

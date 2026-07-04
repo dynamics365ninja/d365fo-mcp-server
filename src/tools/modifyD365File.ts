@@ -28,6 +28,7 @@ import {
   bridgeRefreshProvider,
 } from '../bridge/index.js';
 import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
+import { heuristicEdtBaseType } from './generateSmartTable.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
@@ -1621,12 +1622,25 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'add-control': {
         if ((args as any).controlName && (args as any).parentControl) {
+          // The tool never exposes a `controlType` input (not in the Zod schema below),
+          // so this always used to fall back to the literal string "String" — every
+          // control, regardless of the bound field's actual type, was created as a plain
+          // string edit control. Infer a better default from the field name heuristic
+          // (the same one used for table field base-type resolution) when a
+          // controlDataField is given; this is a best-effort name heuristic, not an
+          // index/bridge EDT lookup (that would need resolving controlDataSource, a form
+          // DATA SOURCE name, back to its bound table — out of scope here), but it is
+          // strictly better than always guessing "String".
+          const resolvedControlType =
+            (args as any).controlType
+            ?? ((args as any).controlDataField ? heuristicEdtBaseType((args as any).controlDataField) : undefined)
+            ?? 'String';
           bridgeResult = await bridgeAddControl(
             context.bridge,
             objectName,
             (args as any).controlName,
             (args as any).parentControl,
-            (args as any).controlType ?? 'String',
+            resolvedControlType,
             (args as any).controlDataSource,
             (args as any).controlDataField,
             (args as any).controlLabel,
@@ -1640,7 +1654,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
               actualFilePath,
               (args as any).controlName,
               (args as any).parentControl,
-              (args as any).controlType ?? 'String',
+              resolvedControlType,
               (args as any).controlDataSource,
               (args as any).controlDataField,
               (args as any).controlLabel,

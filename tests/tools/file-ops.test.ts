@@ -1450,6 +1450,55 @@ describe('modify_d365fo_file', () => {
     expect(written[1]).toContain('<Type>Integer</Type>');
   });
 
+  it('add-control infers a non-String controlType from controlDataField when the caller omits controlType', async () => {
+    // Regression (eval scenario 1 — Equipment Rental): the tool never exposes a
+    // `controlType` input at all (not in the Zod schema), so every real caller omits
+    // it — modifyD365File.ts used to hard-default to the literal string "String"
+    // unconditionally, so EVERY control (Real/Date/Enum/...) was created as a plain
+    // string edit control regardless of the bound field's actual type. Combined with
+    // a separate C# bridge bug (AxFormControl{Type} vs the real AxForm{Type}Control
+    // naming), add-control was reported completely non-functional across multiple
+    // eval runs. This asserts the TS side now infers a real type via the field-name
+    // heuristic (heuristicEdtBaseType) instead of always guessing "String" — using
+    // the exact field name ("DailyRate") from the reproducing scenario.
+    const fsMod = await import('fs/promises');
+    const extXml =
+      `<?xml version="1.0" encoding="utf-8"?>\n` +
+      `<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">\n` +
+      `\t<Name>RentAgreementForm.MyExt</Name>\n` +
+      `\t<Controls />\n` +
+      `</AxFormExtension>`;
+    (fsMod.readFile as any).mockResolvedValue(extXml);
+
+    const addControl = vi.fn(async () => ({ success: false }));
+    (ctx as any).bridge = { isReady: true, metadataAvailable: true, addControl, refreshProvider: vi.fn() };
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'form-extension',
+        objectName: 'RentAgreementForm.MyExt',
+        operation: 'add-control',
+        controlName: 'Line_DailyRate',
+        parentControl: 'LinesGrid',
+        // No controlType — the tool must infer one from controlDataField.
+        controlDataSource: 'AC_RentAgreementLine',
+        controlDataField: 'DailyRate',
+        filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxFormExtension\\RentAgreementForm.MyExt.xml',
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    // The bridge attempt itself must also have received the inferred type, not "String".
+    expect(addControl.mock.calls[0][3]).toBe('Real');
+    const written = (fsMod.writeFile as any).mock.calls.find((c: any[]) =>
+      String(c[0]).includes('RentAgreementForm.MyExt.xml'),
+    );
+    expect(written).toBeDefined();
+    expect(written[1]).toContain('<FormControl xmlns="" i:type="AxFormRealControl">');
+    expect(written[1]).toContain('<Type>Real</Type>');
+  });
+
   it('replace-code "oldCode not found" error includes a tip to use get_object_info or add-method', async () => {
     const fsMod = await import('fs/promises');
     // File exists but the oldCode snippet isn't in it (bridge also won't find it).
