@@ -18,6 +18,20 @@ import { isCustomModel, isStandardModel, getCustomModels } from '../src/utils/mo
 import { indexAllLabels } from '../src/metadata/labelParser.js';
 import { XppConfigProvider } from '../src/utils/xppConfigProvider.js';
 import { crossCheckPatternCatalog, formatCrossCheckReport } from '../src/knowledge/formPatterns/crossCheck.js';
+import { box, kv, sectionTitle, statusLine, spread, c, log, shortPath, supportsUnicode, sanitize } from '../src/utils/terminalUi.js';
+
+// Sanitise emoji/fancy punctuation at the stream level on legacy Windows consoles
+// (cp852/cp1250) so output stays readable instead of turning into mojibake.
+// No-op on terminals that render Unicode (Windows Terminal, VS Code, *nix).
+if (!supportsUnicode) {
+  const wrapWrite = (stream: NodeJS.WriteStream) => {
+    const orig = stream.write.bind(stream) as (...a: any[]) => boolean;
+    (stream as any).write = (chunk: any, ...rest: any[]): boolean =>
+      typeof chunk === 'string' ? orig(sanitize(chunk), ...rest) : orig(chunk, ...rest);
+  };
+  wrapWrite(process.stdout);
+  wrapWrite(process.stderr);
+}
 
 const INPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
 const OUTPUT_DB = process.env.DB_PATH || './data/xpp-metadata.db';
@@ -34,19 +48,26 @@ const SKIP_FTS = process.env.SKIP_FTS === 'true';
 const RESUME = process.env.RESUME === 'true';
 
 async function buildDatabase() {
-  console.log('🔨 Building X++ Metadata Database');
-  console.log(`📂 Input: ${INPUT_PATH}`);
-  console.log(`💾 Output: ${OUTPUT_DB}`);
-  console.log(`💾 Labels DB: ${OUTPUT_LABELS_DB}`);
-  console.log(`⚙️  Extract Mode: ${EXTRACT_MODE}`);
-  console.log(`🧹 VACUUM: ${EXTRACT_MODE === 'all' || FORCE_VACUUM ? 'Enabled' : 'Disabled (incremental build)'}`);
+  const W = 56;
+  console.log('');
+  for (const line of box([
+    spread(c.bold('D365 F&O Database Build'), c.dim(`mode=${EXTRACT_MODE}`), W),
+    c.gray('Metadata JSON -> SQLite'),
+  ], W)) {
+    console.log(line);
+  }
+  console.log('');
+  console.log(kv('Input', shortPath(INPUT_PATH)));
+  console.log(kv('Output', shortPath(OUTPUT_DB)));
+  console.log(kv('Labels DB', shortPath(OUTPUT_LABELS_DB)));
+  console.log(kv('VACUUM', EXTRACT_MODE === 'all' || FORCE_VACUUM ? c.green('enabled') : c.dim('disabled (incremental build)')));
   console.log('');
 
   // Create symbol index with separate labels database
   const symbolIndex = new XppSymbolIndex(OUTPUT_DB, OUTPUT_LABELS_DB);
 
   // Optimize for bulk loading: use MEMORY journal during build
-  console.log('⚡ Setting bulk load optimizations (MEMORY journal)...');
+  log.step('Setting bulk load optimizations (MEMORY journal)...');
   // Close read-pool connections first: SQLite cannot grant locking_mode = EXCLUSIVE
   // while any other connection (even read-only, even in-process) holds a shared lock.
   // The pool is only needed for concurrent production reads, not for build scripts.
@@ -71,10 +92,10 @@ async function buildDatabase() {
   if (RESUME) {
     // Resume mode: skip clearing, continue from progress checkpoint
     const done = symbolIndex.getIndexedModels();
-    console.log(`♻️  Resume mode: ${done.size} model(s) already indexed, continuing from checkpoint`);
+    log.info(`Resume mode: ${done.size} model(s) already indexed, continuing from checkpoint`);
   } else if (EXTRACT_MODE === 'all') {
     // Clear entire database for full rebuild
-    console.log('🗑️  Clearing entire database for full rebuild...');
+    log.step('Clearing entire database for full rebuild...');
     symbolIndex.clear();
     symbolIndex.clearProgressTracking();
   } else if (EXTRACT_MODE === 'custom') {
@@ -102,9 +123,9 @@ async function buildDatabase() {
       }
       
       modelsToRebuild = [...new Set(expandedModels)]; // Remove duplicates
-      console.log(`🗑️  Clearing symbols for models: ${CUSTOM_MODELS.join(', ')}`);
+      log.step(`Clearing symbols for models: ${CUSTOM_MODELS.join(', ')}`);
       if (modelsToRebuild.length !== CUSTOM_MODELS.length) {
-        console.log(`   📌 Expanded to ${modelsToRebuild.length} models: ${modelsToRebuild.slice(0, 5).join(', ')}${modelsToRebuild.length > 5 ? '...' : ''}`);
+        log.detail(`Expanded to ${modelsToRebuild.length} models: ${modelsToRebuild.slice(0, 5).join(', ')}${modelsToRebuild.length > 5 ? '...' : ''}`);
       }
       symbolIndex.clearModels(modelsToRebuild, shouldVacuum);
     } else {
@@ -114,8 +135,8 @@ async function buildDatabase() {
         .filter(e => e.isDirectory())
         .map(e => e.name);
       
-      console.log(`🗑️  No CUSTOM_MODELS specified. Treating all ${allModels.length} model(s) in INPUT_PATH as custom`);
-      console.log(`   📦 Models to rebuild: ${allModels.slice(0, 10).join(', ')}${allModels.length > 10 ? '...' : ''}`);
+      log.step(`No CUSTOM_MODELS specified. Treating all ${allModels.length} model(s) in INPUT_PATH as custom`);
+      log.detail(`Models to rebuild: ${allModels.slice(0, 10).join(', ')}${allModels.length > 10 ? '...' : ''}`);
       
       // CRITICAL: Use allModels directly, NOT filtered by isCustomModel()
       // The filtering was already done by extract-metadata when it populated INPUT_PATH
@@ -132,25 +153,28 @@ async function buildDatabase() {
   }
 
   // Index the extracted metadata
-  console.log('📖 Indexing metadata...');
+  console.log('');
+  log.step('Indexing metadata...');
   const startTime = Date.now();
   
   if (modelsToRebuild.length > 0) {
     // Index specific models
-    console.log(`📦 Indexing ${modelsToRebuild.length} model(s): ${modelsToRebuild.slice(0, 10).join(', ')}${modelsToRebuild.length > 10 ? '...' : ''}`);
-    console.log(`   ℹ️  Incremental build: Standard models in database will be preserved`);
+    log.detail(`${modelsToRebuild.length} model(s): ${modelsToRebuild.slice(0, 10).join(', ')}${modelsToRebuild.length > 10 ? '...' : ''}`);
+    log.detail('Incremental build: standard models in database will be preserved');
     for (const modelName of modelsToRebuild) {
       await symbolIndex.indexMetadataDirectory(INPUT_PATH, modelName);
     }
   } else {
     // Index all models in the directory
-    console.log(`📦 Indexing ALL models from: ${INPUT_PATH}`);
-    console.log(`   ⚠️  WARNING: This should only happen for EXTRACT_MODE=all (full rebuild)`);
-    console.log(`   ⚠️  Current EXTRACT_MODE: ${EXTRACT_MODE}`);
+    log.detail(`All models from: ${shortPath(INPUT_PATH)}`);
+    if (EXTRACT_MODE !== 'all') {
+      log.warn(`Indexing ALL models but EXTRACT_MODE=${EXTRACT_MODE} (expected 'all' for a full rebuild)`);
+    }
     await symbolIndex.indexMetadataDirectory(INPUT_PATH);
   }
   
-  console.log(`\n📊 Indexing complete, now collecting statistics...`);
+  console.log('');
+  log.step('Indexing complete, collecting statistics...');
   const endTime = Date.now();
   const duration = ((endTime - startTime) / 1000).toFixed(2);
 
@@ -159,17 +183,16 @@ async function buildDatabase() {
   // Only enable explicitly via COMPUTE_STATS=true (not automatic even for full rebuilds)
   const shouldComputeStats = process.env.COMPUTE_STATS === 'true';
   if (shouldComputeStats) {
-    console.log('📈 Computing usage statistics (this may take 1-2 minutes)...');
     symbolIndex.computeUsageStatistics();
-    console.log('✅ Usage statistics computed');
   } else {
-    console.log('⏭️  Skipping usage statistics computation (use COMPUTE_STATS=true to enable)');
-    console.log('    ℹ️  Statistics provide usage_frequency and called_by_count fields');
+    log.info('Skipping usage statistics computation (use COMPUTE_STATS=true to enable)');
+    log.detail('Statistics provide usage_frequency and called_by_count fields');
   }
 
   const count = symbolIndex.getSymbolCount();
-  console.log(`✅ Database built successfully in ${duration}s!`);
-  console.log(`📊 Total symbols: ${count}`);
+  console.log('');
+  console.log(statusLine('ok', c.green(`Database built in ${duration}s`)));
+  console.log(kv('Symbols', c.cyan(count.toLocaleString('en-US'))));
 
   // Cross-check the curated form pattern catalog against mined pattern usage
   try {
@@ -177,15 +200,16 @@ async function buildDatabase() {
     if (crossCheck) {
       console.log('\n' + formatCrossCheckReport(crossCheck));
     } else {
-      console.log('\n🧭 Form pattern cross-check skipped — no mined pattern data (re-extract metadata to enable).');
+      log.info('Form pattern cross-check skipped - no mined pattern data (re-extract metadata to enable)');
     }
   } catch (e) {
-    console.warn(`⚠️ Form pattern cross-check failed (non-fatal): ${e instanceof Error ? e.message : e}`);
+    log.warn(`Form pattern cross-check failed (non-fatal): ${e instanceof Error ? e.message : e}`);
   }
 
   // ── Label Indexing ─────────────────────────────────────────────────────────
   if (SKIP_FTS) {
-    console.log('\n⏭️  Skipping label indexing (SKIP_FTS=true) — will be indexed by build-fts step');
+    console.log('');
+    log.info('Skipping label indexing (SKIP_FTS=true) - will be indexed by build-fts step');
   } else if (INCLUDE_LABELS) {
     // Build list of package root paths to scan for labels.
     // Priority: XPP config auto-detection > PACKAGES_PATH fallback
@@ -196,7 +220,7 @@ async function buildDatabase() {
       const configName = process.env.XPP_CONFIG_NAME || undefined;
       const xppConfig = await xppProvider.getActiveConfig(configName);
       if (xppConfig) {
-        console.log(`   [UDE] XPP config: ${xppConfig.configName} v${xppConfig.version}`);
+        log.detail(`UDE config: ${xppConfig.configName} v${xppConfig.version}`);
         labelRootPaths.push(xppConfig.customPackagesPath);
         labelRootPaths.push(xppConfig.microsoftPackagesPath);
       }
@@ -206,23 +230,24 @@ async function buildDatabase() {
       labelRootPaths.push(PACKAGES_PATH);
     }
 
-    console.log(`\n🏷️  Indexing AxLabelFile labels from ${labelRootPaths.length} package root(s):`);
+    console.log('');
+    log.step(`Indexing AxLabelFile labels from ${labelRootPaths.length} package root(s):`);
     for (const p of labelRootPaths) {
-      console.log(`   📂 ${p}`);
+      log.detail(shortPath(p));
     }
 
     // Filter out roots that don't exist on disk
     const validRoots = labelRootPaths.filter(p => {
       if (!fsSync.existsSync(p)) {
-        console.log(`   ⚠️  PackagesLocalDirectory not found at "${p}" — skipping.`);
+        log.warn(`PackagesLocalDirectory not found at "${p}" - skipping`);
         return false;
       }
       return true;
     });
 
     if (validRoots.length === 0) {
-      console.log(`   ⚠️  No valid package roots found — skipping labels.`);
-      console.log(`   ℹ️  Set PACKAGES_PATH env var (or configure XPP_CONFIG_NAME for UDE), or INCLUDE_LABELS=false to suppress this message.`);
+      log.warn('No valid package roots found - skipping labels');
+      log.detail('Set PACKAGES_PATH env var (or configure XPP_CONFIG_NAME for UDE), or INCLUDE_LABELS=false to suppress this message.');
     } else {
       const labelStart = Date.now();
 
@@ -266,21 +291,24 @@ async function buildDatabase() {
       }
 
       const labelDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
-      console.log(`   ✅ ${grandTotalLabels} label entries indexed across ${grandTotalModels} models in ${labelDuration}s`);
+      log.ok(`${grandTotalLabels} label entries indexed across ${grandTotalModels} models in ${labelDuration}s`);
 
       const labelCount = symbolIndex.getLabelCount();
-      console.log(`   📊 Total labels in database: ${labelCount}`);
+      log.detail(`Total labels in database: ${labelCount}`);
     }
   } else {
-    console.log('\n⏭️  Skipping label indexing (INCLUDE_LABELS=false)');
+    console.log('');
+    log.info('Skipping label indexing (INCLUDE_LABELS=false)');
   }
 
   if (SKIP_FTS) {
-    console.log('\n⏭️  Skipping WAL conversion (database will be finalized by build-fts step)');
-    console.log('   ℹ️  Upload this database as a pipeline artifact, then run: npm run build-fts');
+    console.log('');
+    log.info('Skipping WAL conversion (database will be finalized by build-fts step)');
+    log.detail('Upload this database as a pipeline artifact, then run: npm run build-fts');
   } else {
     // Convert to WAL mode for production use (better concurrency)
-    console.log('\n🔄 Converting databases to WAL mode for production...');
+    console.log('');
+    log.step('Converting databases to WAL mode for production...');
     symbolIndex.db.pragma('locking_mode = NORMAL');  // Re-enable shared access
     symbolIndex.db.pragma('journal_mode = WAL');     // Enable WAL for runtime
     symbolIndex.db.pragma('synchronous = NORMAL');   // Balance speed/safety
@@ -288,7 +316,7 @@ async function buildDatabase() {
     symbolIndex.labelsDb.pragma('locking_mode = NORMAL');
     symbolIndex.labelsDb.pragma('journal_mode = WAL');
     symbolIndex.labelsDb.pragma('synchronous = NORMAL');
-    console.log('✅ Databases converted to WAL mode');
+    log.ok('Databases converted to WAL mode');
 
     // ANALYZE + optimize: persist query-planner stats into the DB so the production
     // server can open it with zero warmup cost (skipped when SKIP_FTS=true because
@@ -298,13 +326,18 @@ async function buildDatabase() {
 
   // Show breakdown by type
   const breakdown = symbolIndex.getSymbolCountByType();
-  console.log('\n📋 Symbol breakdown:');
+  console.log('');
+  console.log(sectionTitle('Symbol breakdown'));
+  console.log('');
+  const breakdownLabelWidth = Math.max(...Object.keys(breakdown).map(t => t.length)) + 2;
   for (const [type, typeCount] of Object.entries(breakdown)) {
-    console.log(`   ${type}: ${typeCount}`);
+    console.log(kv(type, c.cyan(Number(typeCount).toLocaleString('en-US')), breakdownLabelWidth));
   }
+  console.log('');
 }
 
 buildDatabase().catch((error) => {
-  console.error('❌ Fatal error:', error);
+  log.err(`Fatal error: ${error instanceof Error ? error.message : String(error)}`);
+  if (error instanceof Error && error.stack) console.error(error.stack);
   process.exit(1);
 });

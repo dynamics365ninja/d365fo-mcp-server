@@ -12,9 +12,23 @@ import { fileURLToPath } from 'url';
 import { XppMetadataParser } from '../src/metadata/xmlParser.js';
 import { isCustomModel as checkIsCustomModel, getCustomModels } from '../src/utils/modelClassifier.js';
 import { XppConfigProvider } from '../src/utils/xppConfigProvider.js';
+import { box, kv, sectionTitle, statusLine, spread, c, glyph, log, shortPath, supportsUnicode, sanitize } from '../src/utils/terminalUi.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Sanitise emoji/fancy punctuation at the stream level on legacy Windows consoles
+// (cp852/cp1250) so output stays readable instead of turning into mojibake.
+// No-op on terminals that render Unicode (Windows Terminal, VS Code, *nix).
+if (!supportsUnicode) {
+  const wrapWrite = (stream: NodeJS.WriteStream) => {
+    const orig = stream.write.bind(stream) as (...a: any[]) => boolean;
+    (stream as any).write = (chunk: any, ...rest: any[]): boolean =>
+      typeof chunk === 'string' ? orig(sanitize(chunk), ...rest) : orig(chunk, ...rest);
+  };
+  wrapWrite(process.stdout);
+  wrapWrite(process.stderr);
+}
 
 const PACKAGES_PATH = process.env.D365FO_PACKAGE_PATH || 'C:\\AOSService\\PackagesLocalDirectory';
 const OUTPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
@@ -171,7 +185,16 @@ async function countModelXmlFiles(modelPath: string): Promise<number> {
 
 async function extractMetadata() {
   const extractionStart = Date.now();
-  console.log('🔍 X++ Metadata Extraction');
+
+  const W = 56;
+  console.log('');
+  for (const line of box([
+    spread(c.bold('D365 F&O Metadata Extraction'), c.dim(`mode=${EXTRACT_MODE}`), W),
+    c.gray('XML metadata -> JSON'),
+  ], W)) {
+    console.log(line);
+  }
+  console.log('');
 
   // Build list of metadata root paths to scan
   // Priority: XPP config auto-detection > PACKAGES_PATH fallback
@@ -183,12 +206,12 @@ async function extractMetadata() {
     const configName = process.env.XPP_CONFIG_NAME || undefined;
     const xppConfig = await xppProvider.getActiveConfig(configName);
     if (xppConfig) {
-      console.log(`[UDE] XPP config: ${xppConfig.configName} v${xppConfig.version}`);
+      log.info(`UDE config: ${xppConfig.configName} v${xppConfig.version}`);
       customRoot = xppConfig.customPackagesPath;
       metadataRoots.push(xppConfig.customPackagesPath);
-      console.log(`[UDE] Custom packages path: ${xppConfig.customPackagesPath}`);
+      log.detail(`Custom packages: ${shortPath(xppConfig.customPackagesPath)}`);
       metadataRoots.push(xppConfig.microsoftPackagesPath);
-      console.log(`[UDE] Microsoft packages path: ${xppConfig.microsoftPackagesPath}`);
+      log.detail(`Microsoft packages: ${shortPath(xppConfig.microsoftPackagesPath)}`);
     }
   }
   // Fallback: traditional single path
@@ -196,34 +219,33 @@ async function extractMetadata() {
     metadataRoots.push(PACKAGES_PATH);
   }
 
-  console.log(`📂 Source: ${metadataRoots.join(', ')}`);
-  console.log(`📁 Output: ${OUTPUT_PATH}`);
-  console.log(`🎯 Extract Mode: ${EXTRACT_MODE}`);
+  console.log(kv('Source', metadataRoots.join(', ')));
+  console.log(kv('Output', shortPath(OUTPUT_PATH)));
   
   if (EXTRACT_MODE === 'custom') {
     if (MODELS_TO_EXTRACT.length > 0) {
-      console.log(`📋 Custom Models (explicit): ${MODELS_TO_EXTRACT.join(', ')}`);
+      log.detail(`Custom models (explicit): ${MODELS_TO_EXTRACT.join(', ')}`);
     } else {
-      console.log(`📋 Mode: Extract custom models only`);
+      log.detail('Extracting custom models only');
       if (CUSTOM_MODELS.length > 0) {
-        console.log(`📋 Custom Model patterns: ${CUSTOM_MODELS.join(', ')}`);
+        log.detail(`Custom model patterns: ${CUSTOM_MODELS.join(', ')}`);
       }
       const extensionPrefix = process.env.EXTENSION_PREFIX;
       if (extensionPrefix) {
-        console.log(`📋 Extension Prefix: ${extensionPrefix}`);
+        log.detail(`Extension prefix: ${extensionPrefix}`);
       }
     }
   } else if (EXTRACT_MODE === 'standard') {
-    console.log(`📋 Mode: Extract standard models (exclude custom)`);
+    log.detail('Extracting standard models (exclude custom)');
     if (CUSTOM_MODELS.length > 0) {
-      console.log(`📋 Custom Models to exclude: ${CUSTOM_MODELS.join(', ')}`);
+      log.detail(`Custom models to exclude: ${CUSTOM_MODELS.join(', ')}`);
     }
   } else {
-    console.log(`📋 Mode: Extract all models (standard + custom)`);
+    log.detail('Extracting all models (standard + custom)');
   }
   console.log('');
-  console.log(`ℹ️  Note: AxLabelFile labels (.label.txt) are NOT extracted here.`);
-  console.log(`   Labels are indexed directly from PACKAGES_PATH during 'npm run build-database'.`);
+  log.info('AxLabelFile labels (.label.txt) are NOT extracted here.');
+  log.detail(`Labels are indexed directly from PACKAGES_PATH during 'npm run build-database'.`);
   console.log('');
 
   const parser = new XppMetadataParser();
@@ -265,12 +287,12 @@ async function extractMetadata() {
   if (EXTRACT_MODE === 'all') {
     try {
       await fs.rm(OUTPUT_PATH, { recursive: true, force: true });
-      console.log('🗑️  Cleaned up existing metadata directory');
+      log.step('Cleaned up existing metadata directory');
     } catch (error) {
       // Ignore errors if directory doesn't exist
     }
   } else {
-    console.log(`ℹ️  Preserving existing metadata (mode: ${EXTRACT_MODE})`);
+    log.info('Preserving existing metadata (incremental build)');
   }
 
   // Create output directory
@@ -310,7 +332,7 @@ async function extractMetadata() {
         pkg => pkg.toLowerCase() === modelName.toLowerCase()
       );
       if (!found) {
-        console.warn(`⚠️  Model not found: ${modelName}`);
+        log.warn(`Model not found: ${modelName}`);
       }
     }
   } else {
@@ -352,11 +374,11 @@ async function extractMetadata() {
 
     const packagesToProcessCount = packageRootMap.size;
     if (FILTER_MODE === 'custom-only') {
-      console.log(`📦 Found ${formatCount(packagesToProcessCount)} custom packages to process (${formatCount(totalAllPackageNames - packagesToProcessCount)} standard models excluded)`);
+      log.step(`Found ${formatCount(packagesToProcessCount)} custom packages to process (${formatCount(totalAllPackageNames - packagesToProcessCount)} standard models excluded)`);
     } else if (FILTER_MODE === 'standard-only') {
-      console.log(`📦 Found ${formatCount(packagesToProcessCount)} standard packages to process (${formatCount(totalAllPackageNames - packagesToProcessCount)} custom models excluded)`);
+      log.step(`Found ${formatCount(packagesToProcessCount)} standard packages to process (${formatCount(totalAllPackageNames - packagesToProcessCount)} custom models excluded)`);
     } else {
-      console.log(`📦 Found ${formatCount(packagesToProcessCount)} packages to process`);
+      log.step(`Found ${formatCount(packagesToProcessCount)} packages to process`);
     }
   }
 
@@ -369,7 +391,7 @@ async function extractMetadata() {
     try {
       await fs.access(packagePath);
     } catch {
-      console.warn(`⚠️  Package path not found: ${packagePath}`);
+      log.warn(`Package path not found: ${packagePath}`);
       continue;
     }
 
@@ -380,17 +402,17 @@ async function extractMetadata() {
     for (const modelName of modelDirs) {
       // Skip FormAdaptor models
       if (modelName.endsWith('FormAdaptor')) {
-        console.log(`   ⏭️  Skipping FormAdaptor model: ${modelName}`);
+        log.detail(`${glyph.arrow} skip FormAdaptor model: ${modelName}`);
         continue;
       }
 
       // Apply model-level filtering
       if (FILTER_MODE === 'custom-only' && !isCustomModel(modelName)) {
-        console.log(`   ⏭️  Skipping standard model: ${modelName}`);
+        log.detail(`${glyph.arrow} skip standard model: ${modelName}`);
         continue;
       }
       if (FILTER_MODE === 'standard-only' && isCustomModel(modelName)) {
-        console.log(`   ⏭️  Skipping custom model: ${modelName}`);
+        log.detail(`${glyph.arrow} skip custom model: ${modelName}`);
         continue;
       }
 
@@ -426,7 +448,8 @@ async function extractMetadata() {
 
   const totalModels = modelWorkItems.length;
   const totalExpectedFiles = modelWorkItems.reduce((sum, item) => sum + item.expectedXmlFiles, 0);
-  console.log(`📍 Planned work: ${formatCount(totalModels)} models, ${formatCount(totalExpectedFiles)} XML files`);
+  console.log('');
+  log.step(`Planned work: ${formatCount(totalModels)} models, ${formatCount(totalExpectedFiles)} XML files`);
 
   // Process each model with progress tracking
   let currentPackage = '';
@@ -436,11 +459,12 @@ async function extractMetadata() {
   for (const modelItem of modelWorkItems) {
     if (currentPackage !== modelItem.packageName) {
       currentPackage = modelItem.packageName;
-      console.log(`\n📦 Processing package: ${currentPackage} | Model progress: ${formatPercent(processedModels, totalModels)} (${formatCount(processedModels)}/${formatCount(totalModels)})`);
+      console.log('');
+      log.step(`${c.bold(currentPackage)} ${c.dim(glyph.dot)} model progress ${formatPercent(processedModels, totalModels)} (${formatCount(processedModels)}/${formatCount(totalModels)})`);
     }
 
     const modelStart = Date.now();
-    console.log(`   📂 Model: ${modelItem.modelName} (${formatCount(modelItem.expectedXmlFiles)} XML files)`);
+    log.detail(`${modelItem.modelName} (${formatCount(modelItem.expectedXmlFiles)} XML files)`);
 
     const { modelPath, modelName, isCustom } = modelItem;
 
@@ -504,47 +528,62 @@ async function extractMetadata() {
     const elapsed = Date.now() - extractionStart;
     const avgModelDuration = processedModels > 0 ? cumulativeModelDuration / processedModels : 0;
     const avgFileDuration = stats.totalFiles > 0 ? elapsed / stats.totalFiles : 0;
-    console.log(
-      `   ⏱️  Model done in ${formatDuration(modelDuration)} | Progress: ${formatPercent(processedModels, totalModels)} (${formatCount(processedModels)}/${formatCount(totalModels)} models), ${formatPercent(stats.totalFiles, totalExpectedFiles)} (${formatCount(stats.totalFiles)}/${formatCount(totalExpectedFiles)} files) | Avg: ${formatDuration(avgModelDuration)}/model, ${formatDuration(avgFileDuration)}/file`
+    log.detail(
+      `done in ${formatDuration(modelDuration)} ${glyph.dot} progress ${formatPercent(processedModels, totalModels)} (${formatCount(processedModels)}/${formatCount(totalModels)} models), ${formatPercent(stats.totalFiles, totalExpectedFiles)} (${formatCount(stats.totalFiles)}/${formatCount(totalExpectedFiles)} files) ${glyph.dot} avg ${formatDuration(avgModelDuration)}/model, ${formatDuration(avgFileDuration)}/file`
     );
   }
 
-  console.log('\n✅ Extraction complete!');
   const totalDuration = Date.now() - extractionStart;
   const averagePerFile = stats.totalFiles > 0 ? totalDuration / stats.totalFiles : 0;
   const averagePerModel = processedModels > 0 ? cumulativeModelDuration / processedModels : 0;
-  console.log(`⏱️  Duration: ${formatDuration(totalDuration)} (avg ${formatDuration(averagePerModel)}/model, ${formatDuration(averagePerFile)}/file)`);
-  console.log(`📊 Statistics:`);
-  console.log(`   Total files: ${formatCount(stats.totalFiles)}`);
-  console.log(`   Classes: ${formatCount(stats.classes)}`);
-  console.log(`   Tables: ${formatCount(stats.tables)}`);
-  console.log(`   Forms: ${formatCount(stats.forms)}`);
-  console.log(`   Queries: ${formatCount(stats.queries)}`);
-  console.log(`   Views: ${formatCount(stats.views)}`);
-  console.log(`   Data entities: ${formatCount(stats.dataEntities)}`);
-  console.log(`   Enums: ${formatCount(stats.enums)}`);
-  console.log(`   EDTs: ${formatCount(stats.edts)}`);
-  console.log(`   Reports: ${formatCount(stats.reports)}`);
-  console.log(`   Security privileges: ${formatCount(stats.securityPrivileges)}`);
-  console.log(`   Security duties: ${formatCount(stats.securityDuties)}`);
-  console.log(`   Security roles: ${formatCount(stats.securityRoles)}`);
-  console.log(`   Menu items (display): ${formatCount(stats.menuItemDisplays)}`);
-  console.log(`   Menu items (action): ${formatCount(stats.menuItemActions)}`);
-  console.log(`   Menu items (output): ${formatCount(stats.menuItemOutputs)}`);
-  console.log(`   Table extensions: ${formatCount(stats.tableExtensions)}`);
-  console.log(`   Class extensions: ${formatCount(stats.classExtensions)}`);
-  console.log(`   Form extensions: ${formatCount(stats.formExtensions)}`);
-  console.log(`   Enum extensions: ${formatCount(stats.enumExtensions)}`);
-  console.log(`   EDT extensions: ${formatCount(stats.edtExtensions)}`);
-  console.log(`   Data entity extensions: ${formatCount(stats.dataEntityExtensions)}`);
-  console.log(`   Services: ${formatCount(stats.services)}`);
-  console.log(`   Service groups: ${formatCount(stats.serviceGroups)}`);
-  console.log(`   Maps: ${formatCount(stats.maps)}`);
-  console.log(`   Configuration keys: ${formatCount(stats.configurationKeys)}`);
-  console.log(`   License codes: ${formatCount(stats.licenseCodes)}`);
-  console.log(`   Security policies: ${formatCount(stats.securityPolicies)}`);
-  console.log(`   Macros: ${formatCount(stats.macros)}`);
-  console.log(`   Errors: ${formatCount(stats.errors)}`);
+  console.log('');
+  console.log(statusLine('ok', c.green(`Extraction complete in ${formatDuration(totalDuration)}`)));
+  log.detail(`avg ${formatDuration(averagePerModel)}/model, ${formatDuration(averagePerFile)}/file`);
+  console.log('');
+  console.log(sectionTitle(`Statistics (${formatCount(stats.totalFiles)} files)`));
+  console.log('');
+  const statRows: Array<[string, number]> = [
+    ['Classes', stats.classes],
+    ['Tables', stats.tables],
+    ['Forms', stats.forms],
+    ['Queries', stats.queries],
+    ['Views', stats.views],
+    ['Data entities', stats.dataEntities],
+    ['Enums', stats.enums],
+    ['EDTs', stats.edts],
+    ['Reports', stats.reports],
+    ['Security privileges', stats.securityPrivileges],
+    ['Security duties', stats.securityDuties],
+    ['Security roles', stats.securityRoles],
+    ['Menu items (display)', stats.menuItemDisplays],
+    ['Menu items (action)', stats.menuItemActions],
+    ['Menu items (output)', stats.menuItemOutputs],
+    ['Table extensions', stats.tableExtensions],
+    ['Class extensions', stats.classExtensions],
+    ['Form extensions', stats.formExtensions],
+    ['Enum extensions', stats.enumExtensions],
+    ['EDT extensions', stats.edtExtensions],
+    ['Data entity extensions', stats.dataEntityExtensions],
+    ['Services', stats.services],
+    ['Service groups', stats.serviceGroups],
+    ['Maps', stats.maps],
+    ['Configuration keys', stats.configurationKeys],
+    ['License codes', stats.licenseCodes],
+    ['Security policies', stats.securityPolicies],
+    ['Macros', stats.macros],
+  ];
+  const statLabelWidth = Math.max(...statRows.map(([label]) => label.length)) + 2;
+  for (const [label, value] of statRows) {
+    if (value === 0) continue;
+    console.log(kv(label, c.cyan(formatCount(value)), statLabelWidth));
+  }
+  console.log('');
+  if (stats.errors > 0) {
+    console.log(statusLine('warn', c.yellow(`${formatCount(stats.errors)} error(s) during extraction - see log above`)));
+  } else {
+    console.log(statusLine('ok', 'No errors'));
+  }
+  console.log('');
 }
 
 async function extractClasses(
@@ -572,7 +611,7 @@ async function extractClasses(
   const files = await fs.readdir(classesPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
-  console.log(`   Classes: ${formatCount(xmlFiles.length)} files`);
+  log.detail(`Classes: ${formatCount(xmlFiles.length)} files`);
 
   for (const file of xmlFiles) {
     const filePath = path.join(classesPath, file);
@@ -582,7 +621,7 @@ async function extractClasses(
       const classInfo = await parser.parseClassFile(filePath, modelName);
       
       if (!classInfo.success || !classInfo.data) {
-        console.error(`   ⚠️  Failed to parse ${file}: ${classInfo.error || 'Unknown error'}`);
+        log.warn(`Failed to parse ${file}: ${classInfo.error || 'Unknown error'}`);
         stats.errors++;
         continue;
       }
@@ -595,7 +634,7 @@ async function extractClasses(
 
       stats.classes++;
     } catch (error) {
-      console.error(`   ❌ Error parsing ${file}:`, error);
+      log.err(`Error parsing ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -627,7 +666,7 @@ async function extractTables(
   const files = await fs.readdir(tablesPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
-  console.log(`   Tables: ${formatCount(xmlFiles.length)} files`);
+  log.detail(`Tables: ${formatCount(xmlFiles.length)} files`);
 
   for (const file of xmlFiles) {
     const filePath = path.join(tablesPath, file);
@@ -637,7 +676,7 @@ async function extractTables(
       const tableInfo = await parser.parseTableFile(filePath, modelName);
       
       if (!tableInfo.success || !tableInfo.data) {
-        console.error(`   ⚠️  Failed to parse ${file}: ${tableInfo.error || 'Unknown error'}`);
+        log.warn(`Failed to parse ${file}: ${tableInfo.error || 'Unknown error'}`);
         stats.errors++;
         continue;
       }
@@ -650,7 +689,7 @@ async function extractTables(
 
       stats.tables++;
     } catch (error) {
-      console.error(`   ❌ Error parsing ${file}:`, error);
+      log.err(`Error parsing ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -682,7 +721,7 @@ async function extractForms(
   const files = await fs.readdir(formsPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
-  console.log(`   Forms: ${formatCount(xmlFiles.length)} files`);
+  log.detail(`Forms: ${formatCount(xmlFiles.length)} files`);
 
   for (const file of xmlFiles) {
     const filePath = path.join(formsPath, file);
@@ -693,7 +732,7 @@ async function extractForms(
       const result = await parser.parseFormFile(filePath, modelName);
       
       if (!result.success || !result.data) {
-        console.error(`   ❌ Error parsing ${file}: ${result.error || 'Unknown error'}`);
+        log.err(`Error parsing ${file}: ${result.error || 'Unknown error'}`);
         stats.errors++;
         continue;
       }
@@ -707,7 +746,7 @@ async function extractForms(
 
       stats.forms++;
     } catch (error) {
-      console.error(`   ❌ Error parsing ${file}:`, error);
+      log.err(`Error parsing ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -739,7 +778,7 @@ async function extractQueries(
   const files = await fs.readdir(queriesPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
-  console.log(`   Queries: ${formatCount(xmlFiles.length)} files`);
+  log.detail(`Queries: ${formatCount(xmlFiles.length)} files`);
 
   for (const file of xmlFiles) {
     const filePath = path.join(queriesPath, file);
@@ -762,7 +801,7 @@ async function extractQueries(
 
       stats.queries++;
     } catch (error) {
-      console.error(`   ❌ Error parsing ${file}:`, error);
+      log.err(`Error parsing ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -804,7 +843,7 @@ async function extractViews(
         const viewInfo = await parser.parseViewFile(filePath, modelName);
 
         if (!viewInfo.success || !viewInfo.data) {
-          console.error(`   ⚠️  Failed to parse ${file}: ${viewInfo.error || 'Unknown error'}`);
+          log.warn(`Failed to parse ${file}: ${viewInfo.error || 'Unknown error'}`);
           stats.errors++;
           continue;
         }
@@ -820,13 +859,13 @@ async function extractViews(
           stats.views++;
         }
       } catch (error) {
-        console.error(`   ❌ Error parsing ${file}:`, error);
+        log.err(`Error parsing ${file}: ${error instanceof Error ? error.message : error}`);
         stats.errors++;
       }
     }
   }
 
-  console.log(`   Views/Data entities: ${formatCount(totalXmlFiles)} files`);
+  log.detail(`Views/Data entities: ${formatCount(totalXmlFiles)} files`);
 }
 
 async function extractEnums(
@@ -854,7 +893,7 @@ async function extractEnums(
   const files = await fs.readdir(enumsPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
-  console.log(`   Enums: ${formatCount(xmlFiles.length)} files`);
+  log.detail(`Enums: ${formatCount(xmlFiles.length)} files`);
 
   for (const file of xmlFiles) {
     const filePath = path.join(enumsPath, file);
@@ -870,7 +909,7 @@ async function extractEnums(
 
       stats.enums++;
     } catch (error) {
-      console.error(`   ❌ Error parsing ${file}:`, error);
+      log.err(`Error parsing ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -902,7 +941,7 @@ async function extractEdts(
   const files = await fs.readdir(edtsPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
-  console.log(`   EDTs: ${formatCount(xmlFiles.length)} files`);
+  log.detail(`EDTs: ${formatCount(xmlFiles.length)} files`);
 
   for (const file of xmlFiles) {
     const filePath = path.join(edtsPath, file);
@@ -913,7 +952,7 @@ async function extractEdts(
       const result = await parser.parseEdtFile(filePath, modelName);
       
       if (!result.success || !result.data) {
-        console.error(`   ❌ Error parsing ${file}: ${result.error || 'Unknown error'}`);
+        log.err(`Error parsing ${file}: ${result.error || 'Unknown error'}`);
         stats.errors++;
         continue;
       }
@@ -927,7 +966,7 @@ async function extractEdts(
 
       stats.edts++;
     } catch (error) {
-      console.error(`   ❌ Error parsing ${file}:`, error);
+      log.err(`Error parsing ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -965,7 +1004,7 @@ async function extractReports(
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
   if (xmlFiles.length === 0) return;
-  console.log(`   Reports: ${formatCount(xmlFiles.length)} files`);
+  log.detail(`Reports: ${formatCount(xmlFiles.length)} files`);
 
   const outputDir = path.join(OUTPUT_PATH, modelName, 'reports');
   await fs.mkdir(outputDir, { recursive: true });
@@ -989,7 +1028,7 @@ async function extractReports(
 
       stats.reports++;
     } catch (error) {
-      console.error(`   ❌ Error extracting report ${file}:`, error);
+      log.err(`Error extracting report ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -1009,7 +1048,7 @@ async function extractSecurityPrivileges(
   }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
-  console.log(`   Security privileges: ${formatCount(files.length)} files`);
+  log.detail(`Security privileges: ${formatCount(files.length)} files`);
   const outputDir = path.join(OUTPUT_PATH, modelName, 'security-privileges');
   await fs.mkdir(outputDir, { recursive: true });
   for (const file of files) {
@@ -1022,7 +1061,7 @@ async function extractSecurityPrivileges(
       await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: 'security-privilege' }, isCustom ? sourcePathReplacer : undefined, 2));
       stats.securityPrivileges++;
     } catch (error) {
-      console.error(`   ❌ Error extracting security privilege ${file}:`, error);
+      log.err(`Error extracting security privilege ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -1042,7 +1081,7 @@ async function extractSecurityDuties(
   }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
-  console.log(`   Security duties: ${formatCount(files.length)} files`);
+  log.detail(`Security duties: ${formatCount(files.length)} files`);
   const outputDir = path.join(OUTPUT_PATH, modelName, 'security-duties');
   await fs.mkdir(outputDir, { recursive: true });
   for (const file of files) {
@@ -1055,7 +1094,7 @@ async function extractSecurityDuties(
       await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: 'security-duty' }, isCustom ? sourcePathReplacer : undefined, 2));
       stats.securityDuties++;
     } catch (error) {
-      console.error(`   ❌ Error extracting security duty ${file}:`, error);
+      log.err(`Error extracting security duty ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -1075,7 +1114,7 @@ async function extractSecurityRoles(
   }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
-  console.log(`   Security roles: ${formatCount(files.length)} files`);
+  log.detail(`Security roles: ${formatCount(files.length)} files`);
   const outputDir = path.join(OUTPUT_PATH, modelName, 'security-roles');
   await fs.mkdir(outputDir, { recursive: true });
   for (const file of files) {
@@ -1088,7 +1127,7 @@ async function extractSecurityRoles(
       await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: 'security-role' }, isCustom ? sourcePathReplacer : undefined, 2));
       stats.securityRoles++;
     } catch (error) {
-      console.error(`   ❌ Error extracting security role ${file}:`, error);
+      log.err(`Error extracting security role ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -1115,7 +1154,7 @@ async function extractMenuItems(
   }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
-  console.log(`   Menu items (${itemType}): ${formatCount(files.length)} files`);
+  log.detail(`Menu items (${itemType}): ${formatCount(files.length)} files`);
   const outputDir = path.join(OUTPUT_PATH, modelName, outDirName);
   await fs.mkdir(outputDir, { recursive: true });
   for (const file of files) {
@@ -1128,7 +1167,7 @@ async function extractMenuItems(
       await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: `menu-item-${itemType}` }, isCustom ? sourcePathReplacer : undefined, 2));
       (stats as any)[statKey]++;
     } catch (error) {
-      console.error(`   ❌ Error extracting menu item (${itemType}) ${file}:`, error);
+      log.err(`Error extracting menu item (${itemType}) ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -1160,7 +1199,7 @@ async function extractExtensions(
   }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
-  console.log(`   ${extensionType}s: ${formatCount(files.length)} files`);
+  log.detail(`${extensionType}s: ${formatCount(files.length)} files`);
   const outputDir = path.join(OUTPUT_PATH, modelName, outDirName);
   await fs.mkdir(outputDir, { recursive: true });
   for (const file of files) {
@@ -1174,7 +1213,7 @@ async function extractExtensions(
       const statKey = statKeyMap[extensionType];
       if (statKey) (stats as any)[statKey]++;
     } catch (error) {
-      console.error(`   ❌ Error extracting ${extensionType} ${file}:`, error);
+      log.err(`Error extracting ${extensionType} ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -1194,7 +1233,7 @@ async function extractServices(
   }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
-  console.log(`   Services: ${formatCount(files.length)} files`);
+  log.detail(`Services: ${formatCount(files.length)} files`);
   const outputDir = path.join(OUTPUT_PATH, modelName, 'services');
   await fs.mkdir(outputDir, { recursive: true });
   for (const file of files) {
@@ -1207,7 +1246,7 @@ async function extractServices(
       await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: 'service' }, isCustom ? sourcePathReplacer : undefined, 2));
       stats.services++;
     } catch (error) {
-      console.error(`   ❌ Error extracting service ${file}:`, error);
+      log.err(`Error extracting service ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -1227,7 +1266,7 @@ async function extractServiceGroups(
   }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
-  console.log(`   Service groups: ${formatCount(files.length)} files`);
+  log.detail(`Service groups: ${formatCount(files.length)} files`);
   const outputDir = path.join(OUTPUT_PATH, modelName, 'service-groups');
   await fs.mkdir(outputDir, { recursive: true });
   for (const file of files) {
@@ -1240,7 +1279,7 @@ async function extractServiceGroups(
       await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type: 'service-group' }, isCustom ? sourcePathReplacer : undefined, 2));
       stats.serviceGroups++;
     } catch (error) {
-      console.error(`   ❌ Error extracting service group ${file}:`, error);
+      log.err(`Error extracting service group ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -1269,7 +1308,7 @@ async function extractSimpleType(
   }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
-  console.log(`   ${label}: ${formatCount(files.length)} files`);
+  log.detail(`${label}: ${formatCount(files.length)} files`);
   const outputDir = path.join(OUTPUT_PATH, modelName, outDirName);
   await fs.mkdir(outputDir, { recursive: true });
   for (const file of files) {
@@ -1282,7 +1321,7 @@ async function extractSimpleType(
       await fs.writeFile(outputFile, JSON.stringify({ ...result.data, model: modelName, type }, isCustom ? sourcePathReplacer : undefined, 2));
       (stats as any)[statKey]++;
     } catch (error) {
-      console.error(`   ❌ Error extracting ${label} ${file}:`, error);
+      log.err(`Error extracting ${label} ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
     }
   }
@@ -1315,6 +1354,7 @@ async function extractMacros(parser: XppMetadataParser, modelPath: string, model
 
 // Run extraction
 extractMetadata().catch((error) => {
-  console.error('❌ Fatal error:', error);
+  log.err(`Fatal error: ${error instanceof Error ? error.message : String(error)}`);
+  if (error instanceof Error && error.stack) console.error(error.stack);
   process.exit(1);
 });

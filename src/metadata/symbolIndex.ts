@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { XppSymbol } from './types.js';
 import { isStandardModel } from '../utils/modelClassifier.js';
+import { c, log } from '../utils/terminalUi.js';
 
 /**
  * Detect if running in CI environment
@@ -195,7 +196,7 @@ export class XppSymbolIndex {
    * Do NOT call from the production server startup — the pre-built DB already has stats.
    */
   runPostBuildTasks(): void {
-    console.log('🔧 Running post-build database optimization (ANALYZE + optimize)...');
+    log.step('Running post-build database optimization (ANALYZE + optimize)...');
     const start = Date.now();
     try {
       // Optimize main symbol database
@@ -209,9 +210,9 @@ export class XppSymbolIndex {
       this.labelsDb.pragma('optimize');
       
       const elapsed = ((Date.now() - start) / 1000).toFixed(2);
-      console.log(`✅ Post-build optimization complete in ${elapsed}s`);
+      log.ok(`Post-build optimization complete in ${elapsed}s`);
     } catch (e) {
-      console.warn('⚠️  Post-build optimization failed (non-fatal):', e);
+      log.warn(`Post-build optimization failed (non-fatal): ${e instanceof Error ? e.message : e}`);
     }
   }
 
@@ -1028,8 +1029,9 @@ export class XppSymbolIndex {
    * Optimized for 300k+ methods with minimal memory usage
    */
   computeUsageStatistics(): void {
-    console.log('📊 Computing usage statistics...');
+    log.step('Computing usage statistics...');
     const startTime = Date.now();
+    const inCI = isCI();
     
     // Temporarily disable synchronous writes for speed during statistics computation
     const originalSync = this.db.pragma('synchronous', { simple: true });
@@ -1051,15 +1053,15 @@ export class XppSymbolIndex {
       WHERE type = 'method' AND method_calls IS NOT NULL AND method_calls != ''
     `).all() as Array<{ name: string; method_calls: string }>;
     
-    console.log(`   Found ${allMethods.length} methods with call references`);
+    log.detail(`${allMethods.length.toLocaleString('en-US')} methods with call references`);
     
     if (allMethods.length === 0) {
-      console.log('   No method calls to process, skipping statistics');
+      log.detail('No method calls to process, skipping statistics');
       return;
     }
     
     // Step 2: Batch insert parsed method calls - OPTIMIZED
-    console.log('   Parsing and inserting method calls...');
+    log.detail('Parsing and inserting method calls...');
     const insertStmt = this.db.prepare(
       'INSERT INTO temp_method_calls (caller_method, called_method) VALUES (?, ?)'
     );
@@ -1088,10 +1090,17 @@ export class XppSymbolIndex {
       });
       insertBatch();
       
-      // Progress every 10%
+      // Progress every 10% — a single overwriting line in interactive terminals
+      // (matches the model-indexing progress style below), plain periodic lines
+      // in CI logs where \r overwriting doesn't render.
       if ((batchIdx + 1) % Math.ceil(totalBatches / 10) === 0 || batchIdx === totalBatches - 1) {
         const percent = Math.round(((batchIdx + 1) / totalBatches) * 100);
-        console.log(`   Progress: ${percent}% (${batchEnd}/${allMethods.length} methods)`);
+        const text = `${percent}% (${batchEnd.toLocaleString('en-US')}/${allMethods.length.toLocaleString('en-US')} methods)`;
+        if (inCI) {
+          log.detail(text);
+        } else {
+          process.stdout.write(`\r      ${c.dim(text.padEnd(44))}`);
+        }
       }
       
       // Force GC in CI after each batch to prevent memory buildup
@@ -1099,8 +1108,9 @@ export class XppSymbolIndex {
         global.gc();
       }
     }
+    if (!inCI) console.log(''); // newline after the overwriting progress line
     
-    console.log('   Computing aggregated statistics...');
+    log.detail('Computing aggregated statistics...');
     
     // Step 3: OPTIMIZED - Use single UPDATE with JOIN instead of correlated subqueries
     const updateTransaction = this.db.transaction(() => {
@@ -1117,13 +1127,13 @@ export class XppSymbolIndex {
         CREATE INDEX idx_temp_call_stats ON temp_call_stats(called_method);
       `);
       
-      console.log('   Applying statistics to symbols...');
+      log.detail('Applying statistics to symbols...');
       
       // OPTIMIZED: Use LEFT JOIN UPDATE (SQLite 3.33+) - much faster!
       // If not supported, falls back to correlated subquery with index
       try {
-        if (isCI()) {
-          console.log('   Updating usage_frequency and called_by_count (this may take 1-2 minutes)...');
+        if (inCI) {
+          log.detail('Updating usage_frequency and called_by_count (this may take 1-2 minutes)...');
         }
         
         this.db.exec(`
@@ -1143,8 +1153,8 @@ export class XppSymbolIndex {
             AND EXISTS (SELECT 1 FROM temp_call_stats WHERE temp_call_stats.called_method = symbols.name);
         `);
         
-        if (isCI()) {
-          console.log('   Setting zero counts for unused methods...');
+        if (inCI) {
+          log.detail('Setting zero counts for unused methods...');
         }
         
         // Set to 0 for methods not in temp_call_stats
@@ -1155,7 +1165,7 @@ export class XppSymbolIndex {
             AND NOT EXISTS (SELECT 1 FROM temp_call_stats WHERE temp_call_stats.called_method = symbols.name);
         `);
       } catch (e) {
-        console.warn('   Optimized UPDATE failed, using fallback method');
+        log.warn('Optimized UPDATE failed, using fallback method');
         // Fallback to correlated subquery (slower but compatible)
         this.db.exec(`
           UPDATE symbols
@@ -1179,7 +1189,7 @@ export class XppSymbolIndex {
     
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
-    console.log(`✅ Usage statistics computed in ${duration}s`);
+    log.ok(`Usage statistics computed in ${duration}s`);
   }
 
   /**
@@ -1204,7 +1214,7 @@ export class XppSymbolIndex {
       const skipped = models.filter(m => done.has(m));
       models = models.filter(m => !done.has(m));
       if (skipped.length > 0) {
-        console.log(`   ♻️  Resuming build: skipping ${skipped.length} already-indexed model(s)`);
+        log.detail(`Resuming build: skipping ${skipped.length} already-indexed model(s)`);
       }
     }
 
@@ -1331,38 +1341,34 @@ export class XppSymbolIndex {
       const progressPercent = ((modelIndex / models.length) * 100).toFixed(0);
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
       
-      // Detect CI environment (Azure DevOps, GitHub Actions, GitLab CI, etc.)
-      const isCI = process.env.CI === 'true' || process.env.TF_BUILD === 'True' || process.env.GITHUB_ACTIONS === 'true';
-      
-      if (isCI) {
+      if (isCI()) {
         // CI environment: use normal console.log (one line per model)
-        console.log(`   📦 [${progressPercent}%] ${model} - ${modelDuration}s (${elapsed}s total)`);
+        log.detail(`[${progressPercent}%] ${model} - ${modelDuration}s (${elapsed}s total)`);
       } else {
         // Interactive terminal: overwrite same line for compact output
-        process.stdout.write(`\r   📦 [${progressPercent}%] ${model.padEnd(40)} ${modelDuration}s (${elapsed}s total)`);
+        process.stdout.write(`\r      ${c.dim(`[${progressPercent}%]`)} ${model.padEnd(40)} ${c.dim(`${modelDuration}s (${elapsed}s total)`)}`);
       }
     }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     
     // Add newline only if we were overwriting (interactive mode)
-    const isCI = process.env.CI === 'true' || process.env.TF_BUILD === 'True' || process.env.GITHUB_ACTIONS === 'true';
-    if (!isCI) {
+    if (!isCI()) {
       console.log(''); // New line after progress
     }
 
     if (skipFts) {
       // Phase 1 of two-phase CI build: symbols only, FTS deferred to build-fts step
-      console.log(`   ⏭️  Skipping FTS rebuild (SKIP_FTS=true) — run 'npm run build-fts' to finish`);
+      log.info(`Skipping FTS rebuild (SKIP_FTS=true) - run 'npm run build-fts' to finish`);
       this.createFTSTriggers();
-      console.log(`   ✅ Indexed ${models.length} model(s) in ${duration}s`);
+      log.ok(`Indexed ${models.length} model(s) in ${duration}s`);
     } else {
       // Rebuild FTS index from scratch (much faster than per-insert triggers)
       const ftsStartTime = Date.now();
       this.db.exec("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild');");
       const ftsDuration = ((Date.now() - ftsStartTime) / 1000).toFixed(1);
       this.createFTSTriggers();
-      console.log(`   ✅ Indexed ${models.length} model(s) in ${duration}s (FTS rebuilt in ${ftsDuration}s)`);
+      log.ok(`Indexed ${models.length} model(s) in ${duration}s (FTS rebuilt in ${ftsDuration}s)`);
     }
 
     this.touchLastIndexed();
@@ -1420,7 +1426,7 @@ export class XppSymbolIndex {
    * Use this as a standalone step after a SKIP_FTS=true build (Phase 2 of two-phase CI).
    */
   rebuildFTS(): void {
-    console.log('🔍 Rebuilding symbols FTS index...');
+    log.step('Rebuilding symbols FTS index...');
     this.db.exec('DROP TRIGGER IF EXISTS symbols_ai;');
     this.db.exec('DROP TRIGGER IF EXISTS symbols_au;');
     this.db.exec('DROP TRIGGER IF EXISTS symbols_ad;');
@@ -1428,7 +1434,7 @@ export class XppSymbolIndex {
     this.db.exec("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild');");
     const duration = ((Date.now() - start) / 1000).toFixed(1);
     this.createFTSTriggers();
-    console.log(`✅ Symbols FTS index rebuilt in ${duration}s`);
+    log.ok(`Symbols FTS index rebuilt in ${duration}s`);
   }
 
   private async getModelDirectories(metadataPath: string): Promise<string[]> {
@@ -1501,7 +1507,7 @@ export class XppSymbolIndex {
         processedCount++;
       } catch (error) {
         // Only log errors, don't stop processing
-        console.error(`      ⚠️  Skipped ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -1594,7 +1600,7 @@ export class XppSymbolIndex {
         }
       } catch (error) {
         // Only log errors, don't stop processing
-        console.error(`      ⚠️  Skipped table ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped table ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -1622,7 +1628,7 @@ export class XppSymbolIndex {
       
       } catch (error) {
         // Only log errors, don't stop processing
-        console.error(`      ⚠️  Skipped enum ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped enum ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -1687,7 +1693,7 @@ export class XppSymbolIndex {
           );
         }
       } catch (error) {
-        console.error(`      ⚠️  Skipped edt ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped edt ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -1712,7 +1718,7 @@ export class XppSymbolIndex {
           model,
         });
       } catch (error) {
-        console.error(`      ⚠️  Skipped report ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped report ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -1798,7 +1804,7 @@ export class XppSymbolIndex {
       
       } catch (error) {
         // Only log errors, don't stop processing
-        console.error(`      ⚠️  Skipped form ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped form ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -1827,7 +1833,7 @@ export class XppSymbolIndex {
       
       } catch (error) {
         // Only log errors, don't stop processing
-        console.error(`      ⚠️  Skipped query ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped query ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -1894,7 +1900,7 @@ export class XppSymbolIndex {
 
       } catch (error) {
         // Only log errors, don't stop processing
-        console.error(`      ⚠️  Skipped view ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped view ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -1944,7 +1950,7 @@ export class XppSymbolIndex {
           );
         }
       } catch (error) {
-        console.error(`      ⚠️  Skipped security-privilege ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped security-privilege ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -1977,7 +1983,7 @@ export class XppSymbolIndex {
           insertPriv.run(name, priv, model);
         }
       } catch (error) {
-        console.error(`      ⚠️  Skipped security-duty ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped security-duty ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2010,7 +2016,7 @@ export class XppSymbolIndex {
           insertDuty.run(name, duty, model);
         }
       } catch (error) {
-        console.error(`      ⚠️  Skipped security-role ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped security-role ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2050,7 +2056,7 @@ export class XppSymbolIndex {
           model
         );
       } catch (error) {
-        console.error(`      ⚠️  Skipped menu-item-${menuItemType} ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped menu-item-${menuItemType} ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2088,7 +2094,7 @@ export class XppSymbolIndex {
           }
         }
       } catch (error) {
-        console.error(`      ⚠️  Skipped service ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped service ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2122,7 +2128,7 @@ export class XppSymbolIndex {
           }
         }
       } catch (error) {
-        console.error(`      ⚠️  Skipped service-group ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped service-group ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2152,7 +2158,7 @@ export class XppSymbolIndex {
           }
         }
       } catch (error) {
-        console.error(`      ⚠️  Skipped map ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped map ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2174,7 +2180,7 @@ export class XppSymbolIndex {
           signature: data.parentKey || undefined,
         });
       } catch (error) {
-        console.error(`      ⚠️  Skipped configuration-key ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped configuration-key ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2197,7 +2203,7 @@ export class XppSymbolIndex {
           signature: sig,
         });
       } catch (error) {
-        console.error(`      ⚠️  Skipped license-code ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped license-code ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2232,7 +2238,7 @@ export class XppSymbolIndex {
           model,
         );
       } catch (error) {
-        console.error(`      ⚠️  Skipped security-policy ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped security-policy ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2261,7 +2267,7 @@ export class XppSymbolIndex {
           }
         }
       } catch (error) {
-        console.error(`      ⚠️  Skipped macro ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped macro ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2305,7 +2311,7 @@ export class XppSymbolIndex {
           model
         );
       } catch (error) {
-        console.error(`      ⚠️  Skipped ${extensionType} ${file}: ${error instanceof Error ? error.message : error}`);
+        log.warn(`Skipped ${extensionType} ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }
@@ -2941,14 +2947,14 @@ export class XppSymbolIndex {
     });
     deleteAll();
 
-    console.log(`🗑️  Cleared symbols for models: ${modelNames.join(', ')}`);
+    log.step(`Cleared symbols for models: ${modelNames.join(', ')}`);
     
     if (shouldVacuum) {
-      console.log('🧹 Running VACUUM to optimize database...');
+      log.step('Running VACUUM to optimize database...');
       this.vacuum();
-      console.log('✅ VACUUM completed');
+      log.ok('VACUUM completed');
     } else {
-      console.log('⏭️  Skipping VACUUM for faster incremental build');
+      log.info('Skipping VACUUM for faster incremental build');
     }
   }
 
