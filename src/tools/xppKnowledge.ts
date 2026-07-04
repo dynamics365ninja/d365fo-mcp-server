@@ -2330,6 +2330,54 @@ finally
     ],
     related: ['set-based', 'select-statement', 'performance'],
   },
+
+  // ── Menus & submenu nesting ────────────────────────────────────────────────
+  {
+    id: 'menu-navigation',
+    title: 'Menus, Menu Items & Submenu Nesting',
+    keywords: ['menu', 'submenu', 'sub-menu', 'navigation', 'axmenu', 'axmenuelement', 'menu item', 'nesting', 'inquiries and reports'],
+    summary:
+      'An AxMenu is a flat <Elements> collection of AxMenuElement entries. A menu ITEM reference ' +
+      '(display/action/output) is an AxMenuElementMenuItem. A NESTED SUBMENU (another AxMenu shown ' +
+      'as a folder inside this one, e.g. "Inquiries and reports") is a DIFFERENT element type — ' +
+      'AxMenuElementSubMenu — with its own field name, not a menu-item reference.',
+    rules: [
+      'Menu-item reference: <AxMenuElement i:type="AxMenuElementMenuItem"><Name>X</Name><MenuItemName>X</MenuItemName></AxMenuElement>',
+      'Submenu reference (nesting another AxMenu inside this one): <AxMenuElement i:type="AxMenuElementSubMenu"><Name>X</Name><SubMenu>X</SubMenu></AxMenuElement> — ' +
+        'the field is <SubMenu>, NOT <MenuName> and NOT <MenuItemName>. Verified against the real ' +
+        'Microsoft.Dynamics.AX.Metadata.dll type names: AxMenuElementMenuItem, AxMenuElementSubMenu, ' +
+        'AxMenuElementSeparator, AxMenuElementTile, AxMenuElementMenuReference (a different, legacy concept — not the one you want for a plain submenu).',
+      '❌ There is no tool operation to add a submenu automatically: add-menu-item-to-menu\'s menuItemToAddType only accepts "display"/"action"/"output" (menu ITEMS). To nest a submenu you must hand-author the <AxMenuElementSubMenu> element into the parent menu\'s XML (d365fo_file create/modify with overwrite) — this is a genuine, current tool gap, not a workaround to avoid.',
+      'A submenu is itself just a normal AxMenu object (create it with d365fo_file(action="create", objectType="menu")) — build its own items first, THEN add the AxMenuElementSubMenu reference to it from the parent menu.',
+      'This applies both to brand-new standalone menus AND to menu-extensions (AxMenuExtension) nesting into a standard menu (e.g. under "Inquiries and reports") — neither path has a dedicated add-submenu tool operation.',
+      'Always verify with build_d365fo_project after hand-authoring: a wrong element type name (e.g. the plausible-looking but nonexistent "AxMenuElementMenu"/"MenuName") is NOT caught by xppc itself — it only surfaces when the separate GenerateMetadata runtime-metadata step tries to deserialize the file ("cannot be deserialized as AxMenu ... no knowledge of any type that maps to this name").',
+    ],
+    examples: [
+      {
+        label: 'Parent menu with two items and one nested submenu',
+        code: `<AxMenu xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+  <Name>MyModule</Name>
+  <Label>@MyModel:MyModule</Label>
+  <Elements>
+    <AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">
+      <Name>MyEquipment</Name>
+      <MenuItemName>MyEquipment</MenuItemName>
+    </AxMenuElement>
+    <AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">
+      <Name>MyAgreement</Name>
+      <MenuItemName>MyAgreement</MenuItemName>
+    </AxMenuElement>
+    <!-- Nested submenu: MySetup is itself a separate AxMenu object -->
+    <AxMenuElement xmlns="" i:type="AxMenuElementSubMenu">
+      <Name>MySetup</Name>
+      <SubMenu>MySetup</SubMenu>
+    </AxMenuElement>
+  </Elements>
+</AxMenu>`,
+      },
+    ],
+    related: ['security', 'form-patterns'],
+  },
 ];
 
 // ─── Search Logic ───────────────────────────────────────────────────────────

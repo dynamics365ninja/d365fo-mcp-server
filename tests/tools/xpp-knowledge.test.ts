@@ -64,6 +64,21 @@ describe('get_xpp_knowledge', () => {
     expect(text).not.toContain('❌ No matching');
   });
 
+  it('documents AxMenuElementSubMenu (not AxMenuElementMenu) for "submenu" topic', async () => {
+    // Regression (eval scenario 1 — Equipment Rental): hand-authoring a nested submenu into a
+    // brand-new AxMenu (no tool operation exists for this — add-menu-item-to-menu only accepts
+    // display/action/output) is easy to get wrong. A plausible-looking
+    // <AxMenuElementMenu>/<MenuName> guess is NOT a real type — xppc itself doesn't catch it, only
+    // the separate GenerateMetadata step fails to deserialize it. Verified live against
+    // Microsoft.Dynamics.AX.Metadata.dll: the real type is AxMenuElementSubMenu with a <SubMenu>
+    // field. This was previously undocumented anywhere in the knowledge base.
+    const result = await xppKnowledgeTool(req({ topic: 'submenu' }));
+    const text = getText(result);
+    expect(text).toContain('AxMenuElementSubMenu');
+    expect(text).toContain('SubMenu');
+    expect(text).not.toContain('❌ No matching');
+  });
+
   it('returns detailed format with code examples', async () => {
     const result = await xppKnowledgeTool(req({ topic: 'transactions', format: 'detailed' }));
     const text = getText(result);
