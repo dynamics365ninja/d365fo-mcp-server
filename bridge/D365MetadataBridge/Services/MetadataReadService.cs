@@ -500,12 +500,24 @@ namespace D365MetadataBridge.Services
             try { result.IsExtensible = e.IsExtensible; } catch { }
             try { var mi = prov.Enums.GetModelInfo(enumName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }
 
+            // UseEnumValue=No (the required setting for extensible enums, and the common
+            // case for plain enums too) means values are position-based: the compiler
+            // assigns 0,1,2,... by declaration order and the <Value> element is omitted
+            // from the XML entirely. AxEnumValue.Value then deserializes to its int
+            // default (0) for every member — that's not an exception, so a
+            // SafeInt(..., idx) exception-based fallback never triggers, and every value
+            // incorrectly reports as 0 instead of its real positional ordinal. Only trust
+            // v.Value when UseEnumValue=Yes; otherwise use the declaration-order index,
+            // which is what actually gets compiled.
+            bool usesEnumValue = IsYes(() => ((dynamic)e).UseEnumValue);
+
             try
             {
                 int idx = 0;
                 foreach (var v in e.EnumValues)
                 {
-                    result.Values.Add(new EnumValueModel { Name = v.Name, Value = SafeInt(() => v.Value, idx), Label = Safe(() => v.Label) });
+                    int value = usesEnumValue ? SafeInt(() => v.Value, idx) : idx;
+                    result.Values.Add(new EnumValueModel { Name = v.Name, Value = value, Label = Safe(() => v.Label) });
                     idx++;
                 }
             }
