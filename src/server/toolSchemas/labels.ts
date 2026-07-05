@@ -28,7 +28,7 @@ export const labelsTool = {
         },
         labelFileId: {
           type: 'string',
-          description: '[search|info|create|update|rename] AxLabelFile ID (e.g. ContosoExt, SYS). For action=info with no labelId, returns the physical .label.txt path per language. For create/update/rename use the model\'s ORIGINAL label file, not an extension (…_Extension…).',
+          description: '[search|info|create|update|rename] AxLabelFile ID (e.g. ContosoExt, SYS). For action=info with no labelId, returns the physical .label.txt path per language. For create/update/rename use the model\'s ORIGINAL label file, not an extension (…_Extension…). For a NEW label file this ID is the MODEL name, never the bare EXTENSION_PREFIX.',
         },
         language: {
           type: 'string',

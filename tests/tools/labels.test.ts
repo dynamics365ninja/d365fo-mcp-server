@@ -1289,13 +1289,13 @@ describe('labels dispatcher: action aliases + errors', () => {
   let ctx: XppServerContext;
   beforeEach(() => { ctx = buildContext(); });
 
-  it('redirects create-label-file to d365fo_file with a clear message', async () => {
+  it('redirects create-label-file to the auto-create-on-first-label flow', async () => {
     const r: any = await labelsTool(
       { method: 'tools/call', params: { name: 'labels', arguments: { action: 'create-label-file', model: 'MyModel' } } } as CallToolRequest,
       ctx,
     );
     expect(r.isError).toBe(true);
-    expect(r.content[0].text).toContain('d365fo_file');
+    expect(r.content[0].text).toContain('createLabelFileIfMissing');
   });
 
   it('rejects an unknown action and lists the valid ones', async () => {

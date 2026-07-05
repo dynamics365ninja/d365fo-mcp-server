@@ -48,7 +48,12 @@ const CreateLabelArgsSchema = z.object({
     ),
   labelFileId: z
     .string()
-    .describe('Label file ID to add the label to (e.g. ContosoExt). Must exist in the model.'),
+    .describe(
+      'Label file ID to add the label to (e.g. ContosoExt). Must exist in the model, or be creatable ' +
+      '(createLabelFileIfMissing=true, default). ⛔ For a NEW label file this ID is the MODEL name — ' +
+      'never the bare EXTENSION_PREFIX (e.g. use "ContosoExt", not "Con"). The file lives inside the ' +
+      'model directory regardless of prefix, so an ID that is not the model name will not resolve.',
+    ),
   model: z
     .string()
     .describe('Model name that owns the label file (e.g. ContosoExt, ApplicationSuite)'),

@@ -63,7 +63,8 @@ const ACTION_ALIASES: Record<string, LabelAction> = {
   'rename-label': 'rename',
 };
 
-/** Action values that mean "create the label *file*", which is d365fo_file's job. */
+/** Action values that mean "create the label *file* itself" (there is no dedicated action for this —
+ *  action=create auto-creates a missing AxLabelFile as a side effect of creating the first label in it). */
 const LABEL_FILE_ACTIONS = new Set(['create-label-file', 'create-file', 'create-labelfile', 'new-label-file']);
 
 export async function labelsTool(request: CallToolRequest, context: XppServerContext) {
@@ -76,9 +77,12 @@ export async function labelsTool(request: CallToolRequest, context: XppServerCon
         content: [{
           type: 'text',
           text:
-            `❌ labels: "${rawArgs.action}" is not a labels action — creating a label *file* is done with ` +
-            `d365fo_file(action="create", objectType="label-file", ...). The labels tool only manages individual ` +
-            `labels: ${LABEL_ACTIONS.join(', ')}.`,
+            `❌ labels: "${rawArgs.action}" is not a labels action — d365fo_file has no "label-file" object type. ` +
+            `A new AxLabelFile is created automatically by labels(action="create", createLabelFileIfMissing=true ` +
+            `[default]) as a side effect of adding its first label. The label file's ID (labelFileId) is the ` +
+            `model name (e.g. "ContosoExt") — NEVER the bare EXTENSION_PREFIX. Example:\n` +
+            `  labels(action="create", labelId="EquipmentName", labelFileId="ContosoExt", model="ContosoExt", ` +
+            `translations=[{language:"en-US", text:"Equipment name"}])`,
         }],
         isError: true,
       };

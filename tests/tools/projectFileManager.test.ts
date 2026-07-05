@@ -152,7 +152,6 @@ describe('ProjectFileManager', () => {
         ['security-duty-extension', 'AxSecurityDutyExtension', 'Security Duties'],
         ['security-role-extension', 'AxSecurityRoleExtension', 'Security Roles'],
         ['business-event', 'AxClass', 'Classes'],
-        ['label-file', 'AxLabelFile', 'Label Files'],
         ['tile', 'AxTile', 'Tiles'],
         ['kpi', 'AxKPI', 'KPIs'],
       ];
