@@ -326,6 +326,24 @@ catch (Exception::CLRError)
 
 // ─── Scoring & Search ────────────────────────────────────────────────────────
 
+// Grammatical filler + pure-numeric tokens carry no diagnostic signal on their own
+// (e.g. "is", "not", "0"). Without filtering these out, the word-level partial-match
+// fallback below spuriously matches unrelated error text: a pattern like "tts is not 0"
+// splits into ["tts","is","not","0"], and completely unrelated text such as
+// "...Version=0.0.0.0... is required to compile this module" matches "is" and "0",
+// scoring higher than 0 and potentially outranking every genuinely relevant entry —
+// surfacing a confidently wrong diagnosis (e.g. "TTS Level Mismatch" for a missing
+// assembly reference error) instead of "no match found".
+const STOPWORDS = new Set([
+  'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'to', 'of', 'in', 'on', 'at', 'by', 'or', 'and', 'not', 'no', 'this',
+  'that', 'it', 'its', 'as', 'for', 'with', 'from',
+]);
+
+function isSignificantWord(word: string): boolean {
+  return word.length >= 3 && !STOPWORDS.has(word) && !/^\d+$/.test(word);
+}
+
 function scoreError(entry: ErrorEntry, errorText: string, errorCode?: string): number {
   const lowerText = errorText.toLowerCase();
   const lowerCode = (errorCode ?? '').toLowerCase();
@@ -334,10 +352,19 @@ function scoreError(entry: ErrorEntry, errorText: string, errorCode?: string): n
   for (const pattern of entry.patterns) {
     if (lowerCode && lowerCode.includes(pattern)) score += 20;
     if (lowerText.includes(pattern)) score += 10;
-    // partial match — individual words
-    const words = pattern.split(/\s+/);
+    // Partial match fallback — significant words only (stopwords/numbers/short
+    // tokens are excluded, see isSignificantWord). A SINGLE coincidental word
+    // overlap (e.g. "reference" appearing in both an unrelated compiler error
+    // and a pattern like "label reference") is still not enough signal on its
+    // own to credit a multi-word pattern — require at least 2 of its significant
+    // words to actually appear, so one shared generic term can't alone tip an
+    // unrelated entry into "matched".
+    const words = pattern.split(/\s+/).filter(isSignificantWord);
     const matchedWords = words.filter(w => lowerText.includes(w) || lowerCode.includes(w));
-    score += matchedWords.length * 2;
+    const meetsThreshold = words.length <= 1 ? matchedWords.length === 1 : matchedWords.length >= 2;
+    if (meetsThreshold) {
+      score += matchedWords.length * 2;
+    }
   }
   return score;
 }
