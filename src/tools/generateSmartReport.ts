@@ -552,7 +552,13 @@ export async function handleGenerateSmartReport(
   const contractParmMethods = contractParms.map(p => {
     const methodName = `parm${p.name.charAt(0).toUpperCase()}${p.name.slice(1)}`;
     const labelAttr = p.label ? `,\n        SysOperationLabelAttribute('${p.label}')` : '';
-    const mandatoryAttr = p.mandatory ? `,\n        SysOperationMandatoryAttribute(true)` : '';
+    // NOTE: there is no such class as SysOperationMandatoryAttribute in D365FO —
+    // an earlier version of this generator emitted `SysOperationMandatoryAttribute(true)`
+    // here for mandatory params, which fails to compile ("Class ... was not found")
+    // on every report whose contract has a mandatory dialog field (found building eval
+    // scenario 5 — inventory aging analytics, InventLocationId mandatory=true). Mandatory
+    // enforcement for a SysOperation/report contract is done in validate() (built below),
+    // via checkFailed() — not via a per-parameter attribute — so no attribute is emitted.
     // Use explicit defaultValue when provided, else fall back to the member variable (standard parm pattern)
     const defaultExpr = p.defaultValue ? p.defaultValue : p.name;
     return [
@@ -561,7 +567,7 @@ export async function handleGenerateSmartReport(
       `    /// </summary>`,
       `    /// <param name="_${p.name}">The ${p.name} value.</param>`,
       `    /// <returns>The current ${p.name} value.</returns>`,
-      `    [DataMemberAttribute('${p.name}')${labelAttr}${mandatoryAttr}]`,
+      `    [DataMemberAttribute('${p.name}')${labelAttr}]`,
       `    public ${p.type} ${methodName}(${p.type} _${p.name} = ${defaultExpr})`,
       `    {`,
       `        ${p.name} = _${p.name};`,
