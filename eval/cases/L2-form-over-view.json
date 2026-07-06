@@ -1,0 +1,25 @@
+{
+  "id": "L2-form-over-view",
+  "title": "Form generated over a view data source (regression: 'table not found' when datasource is a view)",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a small table XyzViewSrc with fields Code (string, Num EDT, mandatory) and Descr (string, Name EDT). Create a view XyzActiveView over XyzViewSrc exposing both fields. Then generate a SimpleList form XyzActiveViewList whose data source is the VIEW XyzActiveView (not the underlying table), with grid controls for Code and Descr, produced through the grounded path (object_patterns / generate_object scaffold, then d365fo_file). This is a regression case: generate_object(objectType=form) is known to report 'table not found' when the target data source is a view rather than a table -- the case passes only if the form is produced over the view through the tool path (hand-authoring the form XML from scratch to route around the defect means the case fails). All three objects must build clean.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxView",
+    "AxForm"
+  ],
+  "golden_path": "eval/goldens/L2-form-over-view/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "form",
+    "view",
+    "tool-defect",
+    "mined",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

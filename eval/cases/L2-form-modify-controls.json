@@ -1,0 +1,25 @@
+{
+  "id": "L2-form-modify-controls",
+  "title": "Form controls built exclusively via modify add-control (regression: add-control non-functional)",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a table XyzCtrlNote with fields NoteId (string, Num EDT, mandatory) and Subject (string, Name EDT), plus a unique index NoteIdx on NoteId. Then create a MINIMAL form XyzCtrlNoteForm bound to XyzCtrlNote: the initial create must contain only the data source and an empty design (no visual controls). Add ALL visual controls afterwards, exclusively via d365fo_file action=modify: (1) add-control a Group control HeaderGroup under the design; (2) add-control a Grid MainGrid under the design, with its DataSource property bound to the XyzCtrlNote data source (use modify-property if the grid binding cannot be set at add time); (3) add-control StringEdit columns for NoteId and Subject inside MainGrid, each bound via DataSource/DataField. Do NOT hand-author the controls in the initial create XML and do NOT fall back to create overwrite=true with full form XML if add-control fails -- a fallback means the case fails. This is a regression case: in the recorded run behind docs/USAGE_EXAMPLES.md section 1, add-control failed 6 out of 6 times on a form and hand-authored XML was the only workaround. Both objects must build clean.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxForm"
+  ],
+  "golden_path": "eval/goldens/L2-form-modify-controls/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "form",
+    "modify",
+    "add-control",
+    "tool-defect",
+    "mined",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

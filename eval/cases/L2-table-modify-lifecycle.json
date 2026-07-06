@@ -1,0 +1,25 @@
+{
+  "id": "L2-table-modify-lifecycle",
+  "title": "Table evolved through the full d365fo_file modify operation chain",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a table XyzModLifecycle with exactly two fields: Code (string, use the Num EDT, mandatory) and Description (string, use the Name EDT). Then evolve it EXCLUSIVELY through d365fo_file action=modify operations -- do NOT rewrite the whole XML via create overwrite=true; falling back to a full-XML rewrite means the case fails (the point is to exercise the modify op surface): (1) add-field CustAccount using the standard CustAccount EDT; (2) add-field TempQty (real, use the Qty EDT); (3) modify-field Description to Mandatory=Yes; (4) rename-field Code to NoteCode; (5) add-index CodeIdx, unique, on NoteCode; (6) add-index TmpIdx on CustAccount, then remove-index TmpIdx (it must NOT exist in the final table); (7) add-relation to CustTable on CustAccount (normal relation, follow codebase conventions for the relation shape); (8) add-field-group Overview, then add-field-to-field-group NoteCode and Description into Overview; (9) remove-field TempQty (it must NOT exist in the final table); (10) modify-property TitleField1 = Description. The final table must contain exactly the fields NoteCode, Description, CustAccount, exactly one index (CodeIdx), one relation and one field group, and must build clean.",
+  "target_artifact_types": [
+    "AxTable"
+  ],
+  "golden_path": "eval/goldens/L2-table-modify-lifecycle/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "table",
+    "modify",
+    "fields",
+    "index",
+    "relation",
+    "fieldgroup",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

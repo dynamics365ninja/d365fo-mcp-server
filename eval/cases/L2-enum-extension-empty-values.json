@@ -1,0 +1,23 @@
+{
+  "id": "L2-enum-extension-empty-values",
+  "title": "Enum-extension create silently drops EnumValues (regression: NumberSeqModule::<Value> unresolved)",
+  "tier": 2,
+  "instruction": "In the sandbox model, extend the standard NumberSeqModule enum with one new value XyzEvalRent (reuse a standard label from the labels index). After the d365fo_file create, READ BACK the produced enum-extension XML and confirm the AxEnumExtension has a NON-EMPTY <EnumValues> collection containing XyzEvalRent -- do not proceed on the assumption the write worked. This is a regression case: in the recorded run behind docs/USAGE_EXAMPLES.md section 1 (BUILD #1), the enum-extension write path silently produced empty EnumValues, which only surfaced later as a 'NumberSeqModule::Rent unresolved' build error and had to be hand-fixed with a full-XML overwrite. Then prove the value actually resolves at compile time: create a small class XyzEnumExtProbe with a single static method 'public static NumberSeqModule module()' returning NumberSeqModule::XyzEvalRent. Both objects must build clean on the FIRST build -- a hand-fix overwrite after a failed build means the case fails.",
+  "target_artifact_types": [
+    "AxEnumExtension",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-enum-extension-empty-values/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "enum-extension",
+    "tool-defect",
+    "mined",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

@@ -1,0 +1,27 @@
+{
+  "id": "L3-form-add-datasource-lines",
+  "title": "Second (lines) data source + bound grid added to an existing form via modify (regression: datasource refers to table '')",
+  "tier": 3,
+  "instruction": "In the sandbox model, create a header table XyzDocHeader (DocId: string, Num EDT, mandatory; Description: string, Name EDT; unique index DocIdx on DocId; TitleField1 = Description) and a lines table XyzDocLine (DocId: same Num EDT; LineNum: integer, LineNum EDT; ItemName: string, Name EDT; a relation to XyzDocHeader on DocId with a cascading delete action per codebase conventions). Create a form XyzDocForm initially bound ONLY to XyzDocHeader, with a grid showing DocId and Description. Then extend the form EXCLUSIVELY via d365fo_file action=modify: (1) add-data-source for XyzDocLine, joined to the XyzDocHeader data source (JoinSource on the header, ActiveLink join mode, linked on the DocId relation); (2) add-control a Grid LinesGrid bound to the XyzDocLine data source with StringEdit/IntEdit columns for LineNum and ItemName. The build must then succeed with ZERO errors -- in particular zero errors of the shape \"form datasource ... refers to table '' which does not exist\". This is the minimal repro/regression for the UNRESOLVED defect from the recorded run behind docs/USAGE_EXAMPLES.md section 1 (BUILDS #4-#13: 58 identical such errors that survived cache wipes, fullBuild+force and full Fields-list rewrites, forcing a complete sandbox rollback). No hand-authored full-XML fallback is allowed; if the modify path cannot produce a clean build, the case fails and the run record should classify the root cause.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxTable",
+    "AxForm"
+  ],
+  "golden_path": "eval/goldens/L3-form-add-datasource-lines/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "form",
+    "modify",
+    "add-data-source",
+    "add-control",
+    "tool-defect",
+    "mined",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

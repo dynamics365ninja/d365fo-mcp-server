@@ -1,0 +1,34 @@
+{
+  "id": "L4-master-security-slice",
+  "title": "Master data slice: table + DetailsMaster form + menu wiring + privilege/duty/role chain",
+  "tier": 4,
+  "instruction": "In the sandbox model, ship a complete master-data slice for a simple asset register: (1) a table XyzAsset with fields AssetCode (string, Num EDT, mandatory), Name (string, Name EDT) and AcquiredDate (date, TransDate EDT), a unique index AssetIdx on AssetCode, TitleField1 = Name, and an Overview field group; (2) a DetailsMaster form XyzAssetDetails over XyzAsset -- scaffold it via the form pattern tools (object_patterns spec/validate + generate_object scaffold) and complete any missing controls via d365fo_file action=modify add-control, not via full-XML rewrites; (3) a display menu item XyzAssetDetailsMI pointing at the form; (4) a menu XyzAssetMenu containing the menu item (wire it via the add-menu-item-to-menu modify operation); (5) a security privilege XyzAssetView (view access) and a privilege XyzAssetMaintain (maintain access), each granting EntryPoints access to the menu item; (6) a duty XyzAssetDuty grouping both privileges; (7) a role XyzAssetManager grouping the duty. Reuse standard labels throughout (labels tool; no raw text). All objects must build clean, and the security chain must resolve end to end with non-empty grants (verify with security_info) -- empty skeletons that merely compile are not correct.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxForm",
+    "AxMenuItemDisplay",
+    "AxMenu",
+    "AxSecurityPrivilege",
+    "AxSecurityPrivilege",
+    "AxSecurityDuty",
+    "AxSecurityRole"
+  ],
+  "golden_path": "eval/goldens/L4-master-security-slice/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "security",
+    "privilege",
+    "duty",
+    "role",
+    "form",
+    "detailsmaster",
+    "menu",
+    "modify",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}
