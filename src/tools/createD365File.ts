@@ -14,7 +14,7 @@ import { PackageResolver } from '../utils/packageResolver.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
-import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeRefreshProvider } from '../bridge/index.js';
+import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, bridgeRefreshProvider } from '../bridge/index.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
 import { gateOnFormPatternErrors, isFormPatternEnforceEnabled } from './validateFormPattern.js';
 import { validateFormExtensionControlShape, buildFormExtensionShapeError } from '../utils/formExtensionShapeValidator.js';
@@ -4155,6 +4155,127 @@ export async function handleCreateD365File(
         if (args.objectType === 'edt' && bridgeParams.properties && 'edtType' in bridgeParams.properties) {
           const { edtType, ...rest } = bridgeParams.properties;
           bridgeParams.properties = { ...rest, BaseType: edtType };
+        }
+
+        // For plain 'table' creates, prefer the bridge's BP-smart path
+        // (CreateSmartTable) over the generic createObject/CreateTable RPC.
+        // CreateTable writes exactly what the caller passed and nothing more —
+        // no CacheLookup, PrimaryIndex/ClusteredIndex/ReplacementKey, TitleField1/2,
+        // or the 5 standard FieldGroups (AutoReport/AutoLookup/AutoIdentification/
+        // AutoSummary/AutoBrowse) that every real D365FO table gets. generate_object
+        // (mode="scaffold"/"generate", objectType="table") already routes through
+        // CreateSmartTable and gets these correctly; the plain create verb — the
+        // one a generic "create a table" instruction naturally maps to — silently
+        // produced a BP-defaults-free skeleton instead (eval corpus: L1-table-basic,
+        // L3-form-detailstransaction, L4-ssrs-report-basic — golden_diff missing
+        // CacheLookup/ClusteredIndex/PrimaryIndex/ReplacementKey/TitleField1/TitleField2
+        // and all 5 standard FieldGroups). Try the smart path first; any failure or
+        // unavailability falls through to the existing generic bridgeCreateObject/XML
+        // paths below, unchanged.
+        if (args.objectType === 'table') {
+          const rawTableProps = (args.properties as Record<string, unknown> | undefined) ?? {};
+          const smartTableGroup = typeof rawTableProps.tableGroup === 'string' ? rawTableProps.tableGroup : undefined;
+          const smartTableType = typeof rawTableProps.tableType === 'string' ? rawTableProps.tableType : undefined;
+          const smartLabel = typeof rawTableProps.label === 'string' ? rawTableProps.label : undefined;
+          const smartExtraProperties = scalarProperties
+            ? Object.fromEntries(
+                Object.entries(scalarProperties).filter(
+                  ([k]) => !['tableGroup', 'tableType', 'label'].includes(k),
+                ),
+              )
+            : undefined;
+
+          try {
+            const smartResult = await bridgeCreateSmartTable(context.bridge, {
+              objectName: finalObjectName,
+              modelName: actualModelName,
+              tableGroup: smartTableGroup,
+              tableType: smartTableType,
+              label: smartLabel ?? finalObjectName,
+              fields: bridgeParams.fields,
+              extraFieldGroups: bridgeParams.fieldGroups,
+              indexes: bridgeParams.indexes,
+              relations: bridgeParams.relations,
+              methods: bridgeParams.methods,
+              extraProperties: smartExtraProperties && Object.keys(smartExtraProperties).length > 0
+                ? smartExtraProperties
+                : undefined,
+            });
+
+            if (smartResult?.success && smartResult.filePath) {
+              console.error(`[create_d365fo_file] ✅ Created via C# bridge (BP-smart): ${smartResult.filePath}`);
+
+              let projectMsg = '';
+              if (args.addToProject !== false) {
+                if (projectPathToUse) {
+                  try {
+                    const projectManager = new ProjectFileManager();
+                    await projectManager.addToProject(
+                      projectPathToUse,
+                      args.objectType,
+                      finalObjectName,
+                      smartResult.filePath,
+                    );
+                    projectMsg = `\n✅ Added to project: ${path.basename(projectPathToUse)}`;
+                  } catch (projErr) {
+                    projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
+                  }
+                } else if (solutionPathToUse) {
+                  try {
+                    const detectedPath = await ProjectFileFinder.findProjectInSolution(
+                      solutionPathToUse,
+                      actualModelName,
+                    );
+                    if (detectedPath) {
+                      const projectManager = new ProjectFileManager();
+                      await projectManager.addToProject(
+                        detectedPath,
+                        args.objectType,
+                        finalObjectName,
+                        smartResult.filePath,
+                      );
+                      projectMsg = `\n✅ Added to project: ${path.basename(detectedPath)}`;
+                    } else {
+                      projectMsg = `\n⚠️ Could not find .rnrproj for model '${actualModelName}' in ${solutionPathToUse}`;
+                    }
+                  } catch (projErr) {
+                    projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
+                  }
+                } else {
+                  projectMsg = `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
+                    `Add projectPath to .mcp.json or pass it as a parameter.`;
+                }
+              }
+
+              // Eagerly refresh the bridge provider so the new object is immediately
+              // resolvable by subsequent modify calls in the same session.
+              try { await bridgeRefreshProvider(context.bridge); } catch { /* best-effort */ }
+
+              const rawLabelWarning = rawLabelBpWarning(args.properties, finalObjectName);
+              const bp = smartResult.bpDefaults;
+              const bpSummary = bp
+                ? `\n📋 BP defaults: CacheLookup=${bp.cacheLookup ?? '(n/a)'}, TitleField1=${bp.titleField1 ?? '(none)'}, ` +
+                  `TitleField2=${bp.titleField2 ?? '(none)'}, PrimaryIndex=${bp.primaryIndex ?? '(none)'}, ` +
+                  `ClusteredIndex=${bp.clusteredIndex ?? '(none)'}`
+                : '';
+
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)\n` +
+                      `📁 ${smartResult.filePath}${projectMsg}\n` +
+                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${rawLabelWarning}`,
+                  },
+                ],
+              };
+            }
+            console.error(
+              `[create_d365fo_file] createSmartTable returned ${JSON.stringify(smartResult)} — falling back to generic bridge create`,
+            );
+          } catch (smartErr) {
+            console.error(`[create_d365fo_file] createSmartTable failed, falling back to generic bridge create: ${smartErr}`);
+          }
         }
 
         const bridgeResult = await bridgeCreateObject(context.bridge, bridgeParams);
