@@ -239,8 +239,22 @@ The server searches from the working directory up to 5 parent levels.
 | Writes fail / bridge missing | build the bridge (above) · check `.NET 4.8` · see startup log flags |
 | No search results | Azure: open `/health` in a browser · local: `data/xpp-metadata.db` exists and is > 100 MB |
 
+### stdio handshake fails (`connection closed: initialize response`)
+
+For a stdio server, `stdout` is reserved for MCP JSON-RPC only. Any plain-text startup output on `stdout` (dotenv banners, `Starting server...`, `Redis not configured`, warnings) makes the client read text where it expects JSON and the handshake fails — the process may have started fine and then polluted `stdout`.
+
+Fix checklist:
+
+1. Run the exact server command the client uses and split the streams:
+   `& <SERVER_COMMAND> <SERVER_ARGS> 1> .\logs\mcp-stdout.log 2> .\logs\mcp-stderr.log`. If `mcp-stdout.log` has normal text before JSON-RPC traffic, the stdio contract is broken.
+2. Run environment loaders in quiet mode (for dotenv: `dotenv.config({ quiet: true })`).
+3. In `--stdio` mode, send all normal logs to `stderr`, never `stdout`.
+4. Rebuild the server after changing startup/logging code (`npm run build`).
+5. Verify runtime version (Node `>=24`) and that required helper binaries (the C# bridge) exist.
+6. Restart the MCP client after changing server code or client config.
+
 ---
 
 ## Next steps
 
-[MCP_CONFIG.md](MCP_CONFIG.md) — every option · [MCP_TOOLS.md](MCP_TOOLS.md) — all 26 tools · [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) — real workflows · [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) — ISV/multi-model · [PIPELINES.md](PIPELINES.md) — automated index refresh
+[MCP_CONFIG.md](MCP_CONFIG.md) — every option · [MCP_TOOLS.md](MCP_TOOLS.md) — all 26 tools · [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) — real workflows · [GOTCHAS.md](GOTCHAS.md) — field-learned traps & conventions · [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) — ISV/multi-model · [PIPELINES.md](PIPELINES.md) — automated index refresh
