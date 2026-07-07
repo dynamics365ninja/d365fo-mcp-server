@@ -563,6 +563,79 @@ describe('XmlTemplateGenerator.splitXppClassSource', () => {
   });
 });
 
+// ─── XmlTemplateGenerator.normalizeSelfReferenceName ────────────────────────
+//
+// Regression for eval/corpus/runs/2026-07-06T16__L1-class-basic__73707ff.json
+// (classification: TOOL_DEFECT, build.succeeded: false): the caller passed an
+// already-fully-resolved objectName ("FmMcpXyzNoteFormatter") but sourceCode's
+// own `class XyzNoteFormatter` used the bare, unprefixed name. Because
+// objectName itself needed no prefix-normalizing (finalObjectName ===
+// args.objectName), the existing xmlContent-only "CRITICAL FIX" guard in
+// create_d365fo_file (keyed on finalObjectName !== args.objectName) never
+// fired, so the AOT object's <Name> disagreed with its own X++ class keyword
+// — a hard xppc build error.
+describe('XmlTemplateGenerator.normalizeSelfReferenceName', () => {
+  it('renames a stale self-reference in the header and in method bodies (construct pattern)', () => {
+    const declaration = 'public class XyzNoteFormatter\n{\n    str prefix;\n\n}';
+    const methods = [
+      { name: 'new', source: 'public void new(str _prefix)\n    {\n        prefix = _prefix;\n    }' },
+      {
+        name: 'construct',
+        source: 'public static XyzNoteFormatter construct(str _prefix)\n    {\n        return new XyzNoteFormatter(_prefix);\n    }',
+      },
+    ];
+
+    const result = XmlTemplateGenerator.normalizeSelfReferenceName('FmMcpXyzNoteFormatter', declaration, methods);
+
+    expect(result.declaration).toContain('public class FmMcpXyzNoteFormatter');
+    expect(result.declaration).not.toMatch(/(?<!FmMcp)XyzNoteFormatter/);
+    const construct = result.methods.find(m => m.name === 'construct')!;
+    expect(construct.source).toContain('public static FmMcpXyzNoteFormatter construct');
+    expect(construct.source).toContain('return new FmMcpXyzNoteFormatter(_prefix);');
+    expect(construct.source).not.toMatch(/\bXyzNoteFormatter\b/);
+  });
+
+  it('is a no-op when the declared name already matches className', () => {
+    const declaration = 'public class FmMcpFoo\n{\n}';
+    const methods = [{ name: 'run', source: 'public void run()\n    {\n    }' }];
+    const result = XmlTemplateGenerator.normalizeSelfReferenceName('FmMcpFoo', declaration, methods);
+    expect(result.declaration).toBe(declaration);
+    expect(result.methods).toEqual(methods);
+  });
+
+  it('generateAxClassXml applies the correction end-to-end (Name element + Declaration + method Source agree)', () => {
+    const sourceCode =
+      'public class XyzNoteFormatter\n{\n    str prefix;\n}\n\n' +
+      'public static XyzNoteFormatter construct(str _prefix)\n{\n    return new XyzNoteFormatter(_prefix);\n}';
+    const xml = XmlTemplateGenerator.generateAxClassXml('FmMcpXyzNoteFormatter', sourceCode);
+
+    expect(xml).toContain('<Name>FmMcpXyzNoteFormatter</Name>');
+    expect(xml).toContain('public class FmMcpXyzNoteFormatter');
+    expect(xml).toContain('public static FmMcpXyzNoteFormatter construct');
+    expect(xml).toContain('return new FmMcpXyzNoteFormatter(_prefix);');
+    // No leftover reference to the stale, unprefixed self-name anywhere in the XML.
+    expect(xml).not.toMatch(/\bXyzNoteFormatter\b/);
+  });
+
+  it('parseSourceForBridge applies the correction when className is passed (bridge CREATE path)', () => {
+    const sourceCode =
+      'class XyzNoteFormatter\n{\n    str prefix;\n}\n\n' +
+      'public static XyzNoteFormatter construct(str _prefix)\n{\n    return new XyzNoteFormatter(_prefix);\n}';
+    const parsed = XmlTemplateGenerator.parseSourceForBridge(sourceCode, 'FmMcpXyzNoteFormatter');
+
+    expect(parsed.declaration).toContain('class FmMcpXyzNoteFormatter');
+    const construct = parsed.methods.find(m => m.name === 'construct')!;
+    expect(construct.source).toContain('FmMcpXyzNoteFormatter construct');
+    expect(construct.source).toContain('new FmMcpXyzNoteFormatter(_prefix)');
+  });
+
+  it('parseSourceForBridge without className (legacy callers) leaves self-references untouched', () => {
+    const sourceCode = 'class Foo\n{\n}\n\npublic static Foo construct()\n{\n    return new Foo();\n}';
+    const parsed = XmlTemplateGenerator.parseSourceForBridge(sourceCode);
+    expect(parsed.declaration).toContain('class Foo');
+  });
+});
+
 // ─── XmlTemplateGenerator security generators ───────────────────────────────
 
 describe('XmlTemplateGenerator security duty/role generators', () => {

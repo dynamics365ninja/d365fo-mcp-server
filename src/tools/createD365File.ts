@@ -549,6 +549,41 @@ export class XmlTemplateGenerator {
   }
 
   /**
+   * If `declaration`'s own `class`/`interface` header names something other than
+   * `className` (e.g. the object is being created as "FmMcpFoo" but the caller's
+   * X++ still says `class Foo`), rename every self-reference to that stale name —
+   * in the header AND in every method body (constructor calls, return types,
+   * etc.) — to `className`.
+   *
+   * Left unfixed, the AOT object's `<Name>` (which the create path always sets to
+   * the resolved `className`, independent of whatever the caller typed in
+   * `sourceCode`) does not match its own X++ class keyword — a hard xppc build
+   * error ("class must be named the same as the object it is contained in"),
+   * confirmed by corpus evidence: the caller passed an already-correct,
+   * fully-resolved objectName ("FmMcpXyzNoteFormatter") — so the existing
+   * objectName-vs-finalObjectName prefix-mismatch guard below never fired — while
+   * sourceCode's `class XyzNoteFormatter` used the bare, unprefixed name
+   * (eval/corpus/runs/2026-07-06T16__L1-class-basic__73707ff.json).
+   */
+  static normalizeSelfReferenceName<T extends { name: string; source?: string }>(
+    className: string,
+    declaration: string,
+    methods: T[],
+  ): { declaration: string; methods: T[] } {
+    const declaredName = declaration.match(/\b(?:class|interface)\s+(\w+)/)?.[1];
+    if (!declaredName || declaredName === className) return { declaration, methods };
+
+    const re = new RegExp(`\\b${declaredName}\\b`, 'g');
+    return {
+      declaration: declaration.replace(re, className),
+      methods: methods.map(m => ({
+        ...m,
+        source: m.source !== undefined ? m.source.replace(re, className) : m.source,
+      })) as T[],
+    };
+  }
+
+  /**
    * Parse X++ sourceCode into declaration + methods for the C# bridge.
    *
    * Used by the bridge-first creation path in create_d365fo_file — the C# side
@@ -556,14 +591,21 @@ export class XmlTemplateGenerator {
    * objects {name, source} which it sets on the AxClass via IMetadataProvider.
    *
    * Delegates to splitXppClassSource after decoding any XML entities.
+   *
+   * `className` is the resolved AOT object name the bridge will create this
+   * class under (`finalObjectName`) — passing it lets self-references in the
+   * caller's sourceCode that don't match get corrected (normalizeSelfReferenceName).
    */
-  static parseSourceForBridge(sourceCode: string): {
+  static parseSourceForBridge(sourceCode: string, className?: string): {
     declaration: string;
     methods: { name: string; source?: string }[];
   } {
     // Same entity-decoding as generateAxClassXml to handle AI-generated &lt; etc.
     const cleaned = decodeXmlEntitiesFromXppSource(sourceCode);
-    const result = XmlTemplateGenerator.splitXppClassSource(cleaned);
+    const split = XmlTemplateGenerator.splitXppClassSource(cleaned);
+    const result = className
+      ? XmlTemplateGenerator.normalizeSelfReferenceName(className, split.declaration, split.methods)
+      : split;
     return {
       declaration: result.declaration,
       // The bridge stores each method's source verbatim (no reformatting on its
@@ -591,7 +633,12 @@ export class XmlTemplateGenerator {
     // Split full X++ source into Declaration (class header + fields) and Methods.
     // D365FO XML requires member variable declarations in <Declaration> and
     // each method body as a separate <Method> element under <Methods>.
-    const { declaration, methods } = XmlTemplateGenerator.splitXppClassSource(rawSource);
+    const rawSplit = XmlTemplateGenerator.splitXppClassSource(rawSource);
+    // Correct any stale self-reference (caller's class/interface name doesn't match
+    // the resolved `className`) so the emitted <Name> and X++ class keyword agree.
+    const { declaration, methods } = XmlTemplateGenerator.normalizeSelfReferenceName(
+      className, rawSplit.declaration, rawSplit.methods,
+    );
 
     const extendsAttr = properties?.extends
       ? `\t<Extends>${properties.extends}</Extends>\n`
@@ -4015,7 +4062,7 @@ export async function handleCreateD365File(
 
         // For classes: parse sourceCode into declaration + methods
         if ((args.objectType === 'class' || args.objectType === 'class-extension') && args.sourceCode) {
-          const parsed = XmlTemplateGenerator.parseSourceForBridge(args.sourceCode);
+          const parsed = XmlTemplateGenerator.parseSourceForBridge(args.sourceCode, finalObjectName);
           bridgeParams.declaration = parsed.declaration;
           bridgeParams.methods = parsed.methods;
         }
