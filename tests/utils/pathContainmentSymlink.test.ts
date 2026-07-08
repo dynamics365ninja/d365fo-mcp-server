@@ -31,16 +31,16 @@ import * as path from 'path';
 import { assertWritePathAllowed } from '../../src/utils/pathContainment.js';
 
 let symlinkOk = true;
-const MODEL = 'fmmcp';
+const MODEL = 'contoso';
 
 beforeAll(() => {
-  // Real store: <real>/fmmcp/fmmcp/AxTable/Foo.xml
+  // Real store: <real>/contoso/contoso/AxTable/Foo.xml
   const realModelRoot = path.join(ctx.real, MODEL);
   const realAxTable = path.join(realModelRoot, MODEL, 'AxTable');
   fs.mkdirSync(realAxTable, { recursive: true });
   fs.writeFileSync(path.join(realAxTable, 'Foo.xml'), '<AxTable><Name>Foo</Name></AxTable>');
 
-  // Allowed root: <pld>, with <pld>/fmmcp symlinked to the real model root.
+  // Allowed root: <pld>, with <pld>/contoso symlinked to the real model root.
   fs.mkdirSync(ctx.pld, { recursive: true });
   try {
     const type = process.platform === 'win32' ? 'junction' : 'dir';

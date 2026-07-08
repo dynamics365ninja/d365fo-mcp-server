@@ -73,7 +73,8 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             '• security-duty: label, privileges[]\n' +
             '• security-role: label, duties[], privileges[]\n' +
             '• menu-item-*: label, object, objectType\n' +
-            '• data-entity: primaryTable, fields[{name,dataField?}]\n' +
+            '• data-entity: primaryTable, fields[{name,dataField?}], dataManagementEnabled? (default false — set true ONLY if the staging table already exists, else the build fails)\n' +
+            '• map: label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}], mappingTable?, mappings?[{mapField,mapFieldTo}] (defaults to one connection per field when mappingTable is set)\n' +
             '• query: title?, dataSource (root table; `table` also accepted), dataSourceName?, fields?[{name,field?}]\n' +
             '• view: query (an existing AxQuery name), fields[{name,dataField?}] — dataSource defaults to `query`'
         },
@@ -142,7 +143,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'add-index {indexName, indexFields[{fieldName}]} · add-relation {relationName, relatedTable, relationConstraints?} · ' +
             'add-field-group {fieldGroupName, fieldGroupFields?} · add-data-source {dataSourceName, dataSourceTable} · ' +
             'add-control {controlName, parentControl, controlDataSource?, controlDataField?} · ' +
-            'enum ops {enumValueName, enumValueLabel?, enumValueInt?} · add-menu-item-to-menu {menuItemToAdd} · ' +
+            'enum ops {enumValueName, enumValueNewName?(modify-enum-value rename), enumValueLabel?, enumValueInt?} · add-menu-item-to-menu {menuItemToAdd} · ' +
             'modify-property {propertyPath, propertyValue} · add-table-method {tableMethodType, tableKeyField?} · ' +
             'add-display-method {methodName, displayMethodReturnEdt}. ' +
             'A missing/wrong parameter returns the COMPLETE spec (names, types, descriptions) for that operation — ' +

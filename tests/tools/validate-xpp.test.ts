@@ -254,7 +254,7 @@ describe('XML rules', () => {
     // the base table already has one.
     const xml = `
       <AxTableExtension>
-        <Name>CustGroup.AslExtension</Name>
+        <Name>CustGroup.ContosoExtension</Name>
         <Fields>
           <AxTableField i:type="AxTableFieldInt">
             <Name>NotePriority</Name>

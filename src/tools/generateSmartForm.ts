@@ -122,6 +122,44 @@ export const generateSmartFormTool: Tool = {
 };
 
 /**
+ * Default Design/Caption for a scaffolded form (pure — no DB access).
+ *
+ * Regression (eval/corpus/runs/2026-07-06T17__L1-form-listpage__cb1b73d.json,
+ * cross-referenced by L1-form-dialog and L1-form-lookup — "a systemic
+ * scaffold default, not a one-off"): when neither an explicit `caption` nor
+ * `label` argument was given, the caption defaulted to the raw object name
+ * (e.g. "PFXDemoNoteHeaderListPage") instead of reusing the bound
+ * datasource table's own Label — even though that Label is resolvable via
+ * the bridge/symbol index and is exactly the value real D365FO forms use
+ * (raw-text captions also trip BPErrorLabelIsText and cascade into
+ * BPErrorCaptionNotDefined on unlabeled ActionPane/ButtonGroups). Reusing
+ * the bound table's Label when available is both more correct and BP-clean.
+ */
+export function resolveFormCaption(
+  explicitCaption: string | undefined,
+  explicitLabel: string | undefined,
+  tableLabel: string | undefined,
+  fallbackName: string,
+): string {
+  return explicitCaption || explicitLabel || tableLabel || fallbackName;
+}
+
+/**
+ * Look up a table's own Label reference (e.g. "@TaxTransactionInquiry:HeaderNote")
+ * from the symbol index, for use as a scaffolded form's default caption. Returns
+ * undefined when the table is unindexed or has no Label recorded — callers fall
+ * back to `label`/the raw object name via `resolveFormCaption`.
+ */
+export function lookupTableLabel(symbolIndex: XppSymbolIndex, table: string | undefined): string | undefined {
+  if (!table) return undefined;
+  try {
+    return symbolIndex.getSymbolByName?.(table, 'table')?.signature || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Pre-write check for cloneFrom: cloning copies the reference form's control
  * hierarchy and sub-patterns verbatim. If the caller asked for a different
  * pattern than the reference declares, the result will likely violate the
@@ -412,7 +450,7 @@ export async function handleGenerateSmartForm(
         add(ln.replace(/Table(Lines?)$/i, 'Line'));
         add(ln.replace(/Table(Lines?)$/i, '$1'));
         if (dataSource) {
-          const base = dataSource.replace(/Table$/i, ''); // header base, e.g. AslRentAgreement
+          const base = dataSource.replace(/Table$/i, ''); // header base, e.g. ContosoRentAgreement
           add(`${base}Line`);
           add(`${base}Lines`);
           add(`${base}TransLine`);
@@ -456,8 +494,8 @@ export async function handleGenerateSmartForm(
 
     // Datasource name: by D365FO convention it equals the (corrected) table name.
     // Honor an explicit linesDataSource ONLY when it is a genuinely distinct name —
-    // not just the wrong pluralized guess (e.g. "AslRentAgreementLines") that the
-    // table auto-correction above already resolved to "AslRentAgreementLine".
+    // not just the wrong pluralized guess (e.g. "ContosoRentAgreementLines") that the
+    // table auto-correction above already resolved to "ContosoRentAgreementLine".
     // Otherwise the form ends up with a datasource named after a non-existent table.
     // Local const captures the (possibly auto-corrected) table name so TS keeps the
     // non-undefined narrowing through the reassignments above.
@@ -747,7 +785,7 @@ export async function handleGenerateSmartForm(
       formName: finalName,
       dsName: primaryDs?.name,
       dsTable: primaryDs?.table,
-      caption: caption || label || finalName,
+      caption: resolveFormCaption(caption, label, lookupTableLabel(symbolIndex, primaryDs?.table), finalName),
       gridFields,
       fieldTypes,
       linesDsName: linesDsNameResolved ?? (linesTableResolved || undefined),
@@ -841,6 +879,32 @@ export async function handleGenerateSmartForm(
     }
   }
 
+  // Several patterns (SimpleList's Grid, and the FieldsFieldGroups Group control
+  // on SimpleListDetails/DetailsMaster) bind <DataGroup>Overview</DataGroup> —
+  // this ONLY builds if the datasource table has a matching AxTableFieldGroup
+  // named "Overview". A brand-new/custom table created earlier in the same
+  // session almost never has one yet, so the very next build fails with
+  // "Field group 'Overview' does not exist" — a confusing failure with no clue
+  // back to this control. Confirmed on this exact scaffold path (corpus:
+  // eval/corpus/runs/2026-07-07T11__L3-form-add-datasource-lines__cb1b73d.json,
+  // eval/corpus/runs/2026-07-07T15__L4-master-security-slice__cb1b73d.json).
+  // This tool has no bridge/table-write access here to auto-create the field
+  // group (and a prior investigation found that even a same-session
+  // add-field-group call did not reliably become visible to xppc's build —
+  // suspected metadata-provider staleness, unconfirmed without a live VM
+  // re-check) — surface the dependency loudly instead of failing silently.
+  if (/<DataGroup>Overview<\/DataGroup>/.test(xml)) {
+    const overviewDsTable =
+      xml.match(/<AxFormDataSource[^>]*>\s*<Name>[^<]+<\/Name>\s*<Table>([^<]+)<\/Table>/)?.[1]
+      ?? primaryDs?.table ?? primaryDs?.name ?? dataSources[0]?.table;
+    cloneNotes +=
+      `\n   ⚠️ This form references a field group named "Overview" on ` +
+      `${overviewDsTable ?? 'the datasource table'} — verify it already exists, or add one BEFORE ` +
+      `building via d365fo_file(action="modify", objectType="table", objectName="${overviewDsTable ?? '<table>'}", ` +
+      `operation="add-field-group", fieldGroupName="Overview", fieldGroupFields=[...]). Without it the ` +
+      `build fails with "Field group 'Overview' does not exist".`;
+  }
+
   console.log(`[generateSmartForm] Generated XML (${xml.length} bytes)`);
 
   // Self-test: generated XML must conform to its declared pattern.
@@ -872,23 +936,34 @@ export async function handleGenerateSmartForm(
 
   // Warn when a datasource is bound to a table that does not exist in the index,
   // suggesting the closest real table name.
+  //
+  // Regression (eval/corpus/runs/2026-07-06T17__L1-form-dialog__cb1b73d.json): a
+  // `symbols` row for a table can OUTLIVE the table itself — the index is a cache,
+  // not invalidated when an object is deleted/rolled back on the VM. `SELECT 1 ...
+  // WHERE name = ?` matched a phantom row from a prior (rolled-back) run's table, so
+  // this check silently passed and the scaffold produced a form bound to a table with
+  // no file on disk — a build failure with no warning here. Verify the indexed
+  // file_path still exists before trusting a hit; a stale row is treated the same as
+  // "not found".
   try {
     const db = symbolIndex.getReadDb();
-    const tableExists = db.prepare(
-      `SELECT 1 FROM symbols WHERE type = 'table' AND name = ? COLLATE NOCASE LIMIT 1`,
+    const tableRow = db.prepare(
+      `SELECT file_path FROM symbols WHERE type = 'table' AND name = ? COLLATE NOCASE LIMIT 1`,
     );
     const seenTables = new Set<string>();
     for (const m of xml.matchAll(/<Table>([^<]+)<\/Table>/g)) {
       const table = m[1].trim();
       if (!table || seenTables.has(table.toLowerCase())) continue;
       seenTables.add(table.toLowerCase());
-      if (tableExists.get(table)) continue;
+      const row = tableRow.get(table) as { file_path?: string } | undefined;
+      const stale = row?.file_path && !fs.existsSync(row.file_path);
+      if (row && !stale) continue;
       const stem = table.replace(/s$/i, '');
       const alt = db.prepare(
         `SELECT name FROM symbols WHERE type = 'table' AND name LIKE ? COLLATE NOCASE ORDER BY LENGTH(name) ASC LIMIT 1`,
       ).get(`${stem}%`) as { name: string } | undefined;
       cloneNotes +=
-        `\n   ⚠️ Datasource table "${table}" not found in the index` +
+        `\n   ⚠️ Datasource table "${table}" ${stale ? 'is stale in the index (its file no longer exists on disk — run update_symbol_index)' : 'not found in the index'}` +
         (alt && alt.name.toLowerCase() !== table.toLowerCase() ? ` — did you mean "${alt.name}"?` : '') +
         ` The form will not build until that table exists or the datasource is re-pointed.`;
     }

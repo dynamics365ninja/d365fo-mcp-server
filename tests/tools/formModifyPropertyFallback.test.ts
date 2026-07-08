@@ -33,10 +33,10 @@ vi.mock('../../src/bridge/bridgeAdapter', async (orig) => {
 
 const FORM_XML_ONE_CAPTION = `<?xml version="1.0" encoding="utf-8"?>
 <AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
-	<Name>AslXyzNoteHeaderList</Name>
+	<Name>ContosoXyzNoteHeaderList</Name>
 	<Design>
 		<Caption xmlns="">Note headers</Caption>
-		<DataSource xmlns="">AslXyzNoteHeader</DataSource>
+		<DataSource xmlns="">ContosoXyzNoteHeader</DataSource>
 	</Design>
 </AxForm>`;
 
@@ -104,7 +104,7 @@ vi.mock('../../src/utils/modelClassifier', () => ({
   isStandardModel: vi.fn(() => false),
 }));
 
-const FORM_FILE_PATH = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxForm\\AslXyzNoteHeaderList.xml';
+const FORM_FILE_PATH = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxForm\\ContosoXyzNoteHeaderList.xml';
 
 const req = (name: string, args: Record<string, unknown> = {}): CallToolRequest => ({
   method: 'tools/call',
@@ -151,7 +151,7 @@ describe('modify-property direct-XML fallback for forms (regression)', () => {
     const result = await modifyD365FileTool(
       req('modify_d365fo_file', {
         objectType: 'form',
-        objectName: 'AslXyzNoteHeaderList',
+        objectName: 'ContosoXyzNoteHeaderList',
         operation: 'modify-property',
         propertyPath: 'Caption',
         propertyValue: '@MyModel:HeaderNote',
@@ -174,7 +174,7 @@ describe('modify-property direct-XML fallback for forms (regression)', () => {
     const result = await modifyD365FileTool(
       req('modify_d365fo_file', {
         objectType: 'form',
-        objectName: 'AslXyzNoteHeaderList',
+        objectName: 'ContosoXyzNoteHeaderList',
         operation: 'modify-property',
         propertyPath: 'Caption',
         propertyValue: '@MyModel:HeaderNote',
@@ -192,7 +192,7 @@ describe('modify-property direct-XML fallback for forms (regression)', () => {
     const result = await modifyD365FileTool(
       req('modify_d365fo_file', {
         objectType: 'form',
-        objectName: 'AslXyzNoteHeaderList',
+        objectName: 'ContosoXyzNoteHeaderList',
         operation: 'modify-property',
         propertyPath: 'ThisPropertyDoesNotExist',
         propertyValue: 'x',

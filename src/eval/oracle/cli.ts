@@ -12,7 +12,7 @@
  *     --bp-warnings <n>   number of BP warnings (default: 0)
  *     --systest <file>    text file with the `run_systest_class` output (runtime oracle)
  *     --classification <C> rubric class for the record (default: derived)
- *     --golden-prefix <p> EXTENSION_PREFIX the golden was captured under (default: GOLDEN_CAPTURE_PREFIX, "Asl")
+ *     --golden-prefix <p> EXTENSION_PREFIX the golden was captured under (default: GOLDEN_CAPTURE_PREFIX, "Contoso")
  *     --actual-prefix <p> EXTENSION_PREFIX the actual was produced under (default: read from THIS
  *                         process's EXTENSION_PREFIX env var — the session that ran the case)
  *     --write             append a corpus record to eval/corpus/runs/
@@ -33,9 +33,10 @@ import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import {
   evaluate, evaluateMulti, renderDiff, renderNormalized, normalizeAotXml, parseSysTestResult,
-  GOLDEN_CAPTURE_PREFIX, canonicalizePrefix, type CaseSpec,
+  GOLDEN_CAPTURE_PREFIX, type CaseSpec,
 } from './index.js';
 import { resolveRegularObjectPrefixToken } from '../../utils/modelClassifier.js';
+import { buildActualArtifactsMap } from './actualArtifactResolution.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..', '..');
@@ -68,32 +69,6 @@ function listGoldenArtifacts(caseId: string): string[] {
 function shortSha(): string {
   try { return execSync('git rev-parse --short HEAD', { cwd: REPO_ROOT }).toString().trim(); }
   catch { return 'unknown'; }
-}
-
-/**
- * Resolve the actual-dir file matching a golden artifact filename. Tries an
- * exact filename match first (fast path, and the only path when golden and
- * actual happen to share the same EXTENSION_PREFIX session); if that misses,
- * falls back to matching on the PREFIX-CANONICALISED filename (the golden's
- * filename is itself typically a prefixed object name, e.g.
- * "AslMyContract.metadata.xml", produced under a different session than the
- * one that generated the actual artifacts) so a whole L3/L4 multi-artifact
- * case doesn't spuriously score every artifact as missing/extra under prefix
- * drift alone.
- */
-function resolveActualFile(
-  actualDir: string,
-  goldenName: string,
-  goldenPrefix: string,
-  actualPrefix: string,
-): string | undefined {
-  const direct = path.join(actualDir, goldenName);
-  if (fs.existsSync(direct)) return direct;
-  const canonGolden = canonicalizePrefix(goldenName, goldenPrefix);
-  const candidate = fs.readdirSync(actualDir)
-    .filter(f => f.endsWith('.metadata.xml'))
-    .find(f => canonicalizePrefix(f, actualPrefix) === canonGolden);
-  return candidate ? path.join(actualDir, candidate) : undefined;
 }
 
 /** Flags that consume the following argv element as their value. */
@@ -155,14 +130,11 @@ async function main(): Promise<void> {
     const artifactNames = listGoldenArtifacts(caseId);
     if (artifactNames.length === 0) throw new Error(`No *.metadata.xml goldens in ${goldenDir(caseId)}`);
     const goldenArtifacts: Record<string, string> = {};
-    const actualArtifacts: Record<string, string> = {};
-    const matchedActualFiles = new Set<string>();
     for (const name of artifactNames) {
       goldenArtifacts[name] = fs.readFileSync(path.join(goldenDir(caseId), name), 'utf8');
-      const actualFile = resolveActualFile(resolvedActualDir, name, goldenPrefix, actualPrefix);
-      actualArtifacts[name] = actualFile ? fs.readFileSync(actualFile, 'utf8') : '';
-      if (actualFile) matchedActualFiles.add(path.basename(actualFile));
     }
+    const { actualArtifacts, matchedActualFiles } =
+      buildActualArtifactsMap(resolvedActualDir, artifactNames, goldenPrefix, actualPrefix);
     // Surface extra actual files (produced but not golden-expected, and not already
     // matched to a golden artifact above under prefix-canonicalised filename matching) too.
     for (const f of fs.readdirSync(resolvedActualDir).filter(f => f.endsWith('.metadata.xml'))) {

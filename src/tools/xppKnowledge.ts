@@ -628,12 +628,12 @@ class MyReportDP extends SRSReportDataProviderBase
     examples: [
       {
         label: 'Module class — register the reference in loadModule() (correct API)',
-        code: `public class NumberSeqModuleAslRent extends NumberSeqApplicationModule
+        code: `public class NumberSeqModuleContosoRent extends NumberSeqApplicationModule
 {
     protected void loadModule()
     {
         NumberSeqDatatype datatype = NumberSeqDatatype::construct();
-        datatype.parmDatatypeId(extendedTypeNum(AslRentEquipmentId));
+        datatype.parmDatatypeId(extendedTypeNum(ContosoRentEquipmentId));
         datatype.parmReferenceHelp(literalStr("Equipment ID"));
         datatype.parmWizardIsContinuous(false);
         datatype.parmWizardIsManual(NoYes::No);
@@ -647,7 +647,7 @@ class MyReportDP extends SRSReportDataProviderBase
 
     public NumberSeqModule numberSeqModule()
     {
-        return NumberSeqModule::AslRent;  // your NumberSeqModule enum value
+        return NumberSeqModule::ContosoRent;  // your NumberSeqModule enum value
     }
 }`,
       },
@@ -660,10 +660,10 @@ public NumberSeqFormHandler numberSeqFormHandler()
     if (!numberSeqFormHandler)
     {
         numberSeqFormHandler = NumberSeqFormHandler::newForm(
-            AslRentParameters::numRefAslRentEquipmentId().NumberSequenceId, // RefRecId, not a string
+            ContosoRentParameters::numRefContosoRentEquipmentId().NumberSequenceId, // RefRecId, not a string
             element,
-            AslRentEquipmentTable_ds,
-            fieldNum(AslRentEquipmentTable, AslRentEquipmentId));
+            ContosoRentEquipmentTable_ds,
+            fieldNum(ContosoRentEquipmentTable, ContosoRentEquipmentId));
     }
     return numberSeqFormHandler;
 }`,
@@ -671,10 +671,10 @@ public NumberSeqFormHandler numberSeqFormHandler()
       {
         label: 'Fetching next number at runtime',
         code: `NumberSequenceReference numSeqRef =
-    NumberSeqReference::findReference(extendedTypeNum(AslRentEquipmentId));
+    NumberSeqReference::findReference(extendedTypeNum(ContosoRentEquipmentId));
 
 NumberSeq numSeq = NumberSeq::newGetNum(numSeqRef);
-AslRentEquipmentId newId = numSeq.num();
+ContosoRentEquipmentId newId = numSeq.num();
 
 // If the insert is rolled back, release the number:
 // numSeq.abort();`,

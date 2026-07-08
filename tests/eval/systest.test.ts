@@ -10,23 +10,23 @@ import { scoreRun } from '../../src/eval/oracle/score';
 
 const PASSED = `✅ Tests passed
 
-Class: AslNoteStatusTest
-Model: fm-mcp
+Class: ContosoNoteStatusTest
+Model: Contoso
 
 SysTestRunner: 3 tests run, 3 passed, 0 failed.`;
 
 const FAILED = `❌ Tests FAILED
 
-Class: AslNoteStatusTest
-Model: fm-mcp
+Class: ContosoNoteStatusTest
+Model: Contoso
 
 SysTestRunner: 3 tests run, 2 passed, 1 failed.
-AslNoteStatusTest::testArchivedTransition failed: Assert.areEqual expected 'Archived' actual 'Active'`;
+ContosoNoteStatusTest::testArchivedTransition failed: Assert.areEqual expected 'Archived' actual 'Active'`;
 
 const INDETERMINATE = `⚠️ Tests completed (check output)
 
-Class: AslThing
-Model: fm-mcp
+Class: ContosoThing
+Model: Contoso
 
 (no recognizable pass/fail markers)`;
 
@@ -58,7 +58,7 @@ describe('parseSysTestResult', () => {
     expect(r.ran).toBe(true);
     expect(r.passed).toBe(false);
     expect(r.failures.length).toBeGreaterThanOrEqual(1);
-    expect(r.failures.some(f => f.test === 'AslNoteStatusTest::testArchivedTransition')).toBe(true);
+    expect(r.failures.some(f => f.test === 'ContosoNoteStatusTest::testArchivedTransition')).toBe(true);
     expect(r.failures.some(f => /Assert\.areEqual/.test(f.message))).toBe(true);
   });
 

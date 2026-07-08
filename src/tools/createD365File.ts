@@ -550,7 +550,7 @@ export class XmlTemplateGenerator {
 
   /**
    * If `declaration`'s own `class`/`interface` header names something other than
-   * `className` (e.g. the object is being created as "FmMcpFoo" but the caller's
+   * `className` (e.g. the object is being created as "ContosoFoo" but the caller's
    * X++ still says `class Foo`), rename every self-reference to that stale name —
    * in the header AND in every method body (constructor calls, return types,
    * etc.) — to `className`.
@@ -560,7 +560,7 @@ export class XmlTemplateGenerator {
    * `sourceCode`) does not match its own X++ class keyword — a hard xppc build
    * error ("class must be named the same as the object it is contained in"),
    * confirmed by corpus evidence: the caller passed an already-correct,
-   * fully-resolved objectName ("FmMcpXyzNoteFormatter") — so the existing
+   * fully-resolved objectName ("ContosoXyzNoteFormatter") — so the existing
    * objectName-vs-finalObjectName prefix-mismatch guard below never fired — while
    * sourceCode's `class XyzNoteFormatter` used the bare, unprefixed name
    * (eval/corpus/runs/2026-07-06T16__L1-class-basic__73707ff.json).

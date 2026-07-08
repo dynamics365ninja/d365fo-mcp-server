@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { clusterRuns, renderClusters, type CorpusRun } from './cluster.js';
+import { loadJsonRecords } from './corpusIO.js';
 import {
   aggregateBySplit, renderSplitReport, type ScoredCase, type Split,
 } from './heldout.js';
@@ -25,14 +26,10 @@ interface CorpusRunFull extends CorpusRun {
 
 function loadRuns(): CorpusRunFull[] {
   const dir = path.join(REPO_ROOT, 'eval', 'corpus', 'runs');
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir)
-    .filter(f => f.endsWith('.json'))
-    .map(f => {
-      try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) as CorpusRunFull; }
-      catch { return null; }
-    })
-    .filter((r): r is CorpusRunFull => r != null && typeof r.classification === 'string');
+  return loadJsonRecords(
+    dir,
+    (r): r is CorpusRunFull => r != null && typeof r === 'object' && typeof (r as CorpusRunFull).classification === 'string',
+  );
 }
 
 /** Map case id → split, read from the case specs (default holdout). */

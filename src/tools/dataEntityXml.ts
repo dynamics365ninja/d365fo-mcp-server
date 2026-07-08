@@ -4,17 +4,28 @@
  * createD365File.ts and generateD365Xml.ts each expose a mirrored
  * XmlTemplateGenerator class; both delegate here so the two cannot drift.
  *
- * properties.primaryTable    – REQUIRED for a functional entity: the root table.
- * properties.fields          – [{ name, dataField? }] one AxDataEntityViewMappedField
- *                               + one query datasource field per entry, both sourced
- *                               from primaryTable. dataField defaults to name.
- * properties.primaryKeyField – field `name` to use as the entity key (default: fields[0].name).
- * properties.entityCategory  – Master | Transaction | Reference | Document | Parameter
- *                               (default: Transaction).
+ * properties.primaryTable          – REQUIRED for a functional entity: the root table.
+ * properties.fields                – [{ name, dataField? }] one AxDataEntityViewMappedField
+ *                                     + one query datasource field per entry, both sourced
+ *                                     from primaryTable. dataField defaults to name.
+ * properties.primaryKeyField       – field `name` to use as the entity key (default: fields[0].name).
+ * properties.entityCategory        – Master | Transaction | Reference | Document | Parameter
+ *                                     (default: Transaction).
+ * properties.dataManagementEnabled – opt IN to data-management/DIXF staging (default: false —
+ *                                     see below). When true, properties.dataManagementStagingTable
+ *                                     overrides the default `${entityName}Staging` name.
  *
  * Without primaryTable + at least one field, this emits an inert skeleton
  * (no query) that can never function as a data entity — callers should
  * always pass both.
+ *
+ * DataManagementEnabled defaults to "No" (regression: this used to hard-code
+ * "Yes" + DataManagementStagingTable=`${entityName}Staging` unconditionally —
+ * every generated entity then failed its very next build with "Table
+ * '<Name>Staging' does not exist", since this tool has no path that creates a
+ * staging table. Enabling data-management for a real staging scenario is an
+ * explicit opt-in via properties.dataManagementEnabled — the caller is then
+ * responsible for the staging table existing (create it as its own table).
  */
 export function buildAxDataEntityXml(entityName: string, properties?: Record<string, any>): string {
   const label = properties?.label || entityName;
@@ -24,15 +35,19 @@ export function buildAxDataEntityXml(entityName: string, properties?: Record<str
   const primaryTable: string | undefined = properties?.primaryTable;
   const fields: Array<{ name: string; dataField?: string }> | undefined =
     Array.isArray(properties?.fields) ? properties.fields : undefined;
+  const dataManagementEnabled = properties?.dataManagementEnabled === true;
+  const dataManagementXml = dataManagementEnabled
+    ? `\t<DataManagementEnabled>Yes</DataManagementEnabled>\n` +
+      `\t<DataManagementStagingTable>${properties?.dataManagementStagingTable || `${entityName}Staging`}</DataManagementStagingTable>\n`
+    : `\t<DataManagementEnabled>No</DataManagementEnabled>\n` +
+      `\t<DataManagementStagingTable />\n`;
 
   if (!primaryTable || !fields || fields.length === 0) {
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${entityName}</Name>
 \t<Label>${label}</Label>
-\t<DataManagementEnabled>Yes</DataManagementEnabled>
-\t<DataManagementStagingTable>${entityName}Staging</DataManagementStagingTable>
-\t<EntityCategory>${entityCategory}</EntityCategory>
+${dataManagementXml}\t<EntityCategory>${entityCategory}</EntityCategory>
 \t<IsPublic>Yes</IsPublic>
 \t<PublicCollectionName>${publicCollectionName}</PublicCollectionName>
 \t<PublicEntityName>${publicEntityName}</PublicEntityName>
@@ -64,9 +79,7 @@ export function buildAxDataEntityXml(entityName: string, properties?: Record<str
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${entityName}</Name>
 \t<Label>${label}</Label>
-\t<DataManagementEnabled>Yes</DataManagementEnabled>
-\t<DataManagementStagingTable>${entityName}Staging</DataManagementStagingTable>
-\t<EntityCategory>${entityCategory}</EntityCategory>
+${dataManagementXml}\t<EntityCategory>${entityCategory}</EntityCategory>
 \t<IsPublic>Yes</IsPublic>
 \t<PrimaryKey>EntityKey</PrimaryKey>
 \t<PublicCollectionName>${publicCollectionName}</PublicCollectionName>

@@ -20,7 +20,7 @@ import {
 
 const ENUM_GOLDEN = `<?xml version="1.0" encoding="utf-8"?>
 <AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-  <Name>AslXyzNoteStatus</Name>
+  <Name>ContosoXyzNoteStatus</Name>
   <Label>Note status</Label>
   <UseEnumValue>No</UseEnumValue>
   <IsExtensible>true</IsExtensible>
@@ -34,7 +34,7 @@ const ENUM_GOLDEN = `<?xml version="1.0" encoding="utf-8"?>
 // Same enum, values REORDERED — must still match (collections are order-independent).
 const ENUM_REORDERED = `<?xml version="1.0" encoding="utf-8"?>
 <AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-  <Name>AslXyzNoteStatus</Name>
+  <Name>ContosoXyzNoteStatus</Name>
   <Label>Note status</Label>
   <UseEnumValue>No</UseEnumValue>
   <IsExtensible>true</IsExtensible>
@@ -57,7 +57,7 @@ describe('globToRegExp', () => {
 describe('normalizeAotXml', () => {
   it('flattens elements + attributes to a path → value map', async () => {
     const map = await normalizeAotXml(ENUM_GOLDEN);
-    expect(map.get('AxEnum/Name')).toBe('AslXyzNoteStatus');
+    expect(map.get('AxEnum/Name')).toBe('ContosoXyzNoteStatus');
     expect(map.get('AxEnum/UseEnumValue')).toBe('No');
     expect(map.get('AxEnum/IsExtensible')).toBe('true');
     // Collection members keyed by <Name>, not position.
@@ -110,8 +110,8 @@ describe('normalizeAotXml', () => {
       <AxFormExtensionControl>
         <Name>FormExtensionControlfse38xiwz</Name>
         <FormControl i:type="AxFormCheckBoxControl">
-          <Name>Grid_AslHasNotes</Name>
-          <DataField>AslHasNotes</DataField>
+          <Name>Grid_ContosoHasNotes</Name>
+          <DataField>ContosoHasNotes</DataField>
         </FormControl>
         <Parent>Grid</Parent>
       </AxFormExtensionControl>
@@ -119,12 +119,12 @@ describe('normalizeAotXml', () => {
     const map = await normalizeAotXml(xml);
     // FormControl itself is also keyed by its own Name (pre-existing behavior for any
     // single Name-bearing child) — the fix is the OUTER AxFormExtensionControl key.
-    expect(map.get('AxFormExtension/Controls/AxFormExtensionControl[Grid_AslHasNotes]/FormControl[Grid_AslHasNotes]/DataField'))
-      .toBe('AslHasNotes');
-    expect(map.get('AxFormExtension/Controls/AxFormExtensionControl[Grid_AslHasNotes]/Parent')).toBe('Grid');
+    expect(map.get('AxFormExtension/Controls/AxFormExtensionControl[Grid_ContosoHasNotes]/FormControl[Grid_ContosoHasNotes]/DataField'))
+      .toBe('ContosoHasNotes');
+    expect(map.get('AxFormExtension/Controls/AxFormExtensionControl[Grid_ContosoHasNotes]/Parent')).toBe('Grid');
     // The wrapper's own random Name is still recorded as a leaf value (under the stable key) —
     // just no longer used as the KEY itself.
-    expect(map.get('AxFormExtension/Controls/AxFormExtensionControl[Grid_AslHasNotes]/Name'))
+    expect(map.get('AxFormExtension/Controls/AxFormExtensionControl[Grid_ContosoHasNotes]/Name'))
       .toBe('FormExtensionControlfse38xiwz');
   });
 
@@ -133,8 +133,8 @@ describe('normalizeAotXml', () => {
       <AxFormExtensionControl>
         <Name>FormExtensionControl${wrapperId}</Name>
         <FormControl i:type="AxFormCheckBoxControl">
-          <Name>Grid_AslHasNotes</Name>
-          <DataField>AslHasNotes</DataField>
+          <Name>Grid_ContosoHasNotes</Name>
+          <DataField>ContosoHasNotes</DataField>
         </FormControl>
         <Parent>Grid</Parent>
       </AxFormExtensionControl>
@@ -198,44 +198,44 @@ describe('scoreRun', () => {
 });
 
 describe('normalizeMultiArtifact', () => {
-  const CONTRACT = `<AxClass><Name>AslMyContract</Name><SourceCode><Declaration><![CDATA[class AslMyContract {}]]></Declaration></SourceCode></AxClass>`;
-  const CONTROLLER = `<AxClass><Name>AslMyController</Name><SourceCode><Declaration><![CDATA[class AslMyController {}]]></Declaration></SourceCode></AxClass>`;
+  const CONTRACT = `<AxClass><Name>ContosoMyContract</Name><SourceCode><Declaration><![CDATA[class ContosoMyContract {}]]></Declaration></SourceCode></AxClass>`;
+  const CONTROLLER = `<AxClass><Name>ContosoMyController</Name><SourceCode><Declaration><![CDATA[class ContosoMyController {}]]></Declaration></SourceCode></AxClass>`;
 
   it('prefixes each artifact\'s paths with its filename', async () => {
     const map = await normalizeMultiArtifact({
-      'AslMyContract.metadata.xml': CONTRACT,
-      'AslMyController.metadata.xml': CONTROLLER,
+      'ContosoMyContract.metadata.xml': CONTRACT,
+      'ContosoMyController.metadata.xml': CONTROLLER,
     });
-    expect(map.get('AslMyContract.metadata.xml::AxClass/Name')).toBe('AslMyContract');
-    expect(map.get('AslMyController.metadata.xml::AxClass/Name')).toBe('AslMyController');
+    expect(map.get('ContosoMyContract.metadata.xml::AxClass/Name')).toBe('ContosoMyContract');
+    expect(map.get('ContosoMyController.metadata.xml::AxClass/Name')).toBe('ContosoMyController');
   });
 
   it('an entirely missing artifact diffs as all-missing under its prefix', async () => {
     const golden = await normalizeMultiArtifact({
-      'AslMyContract.metadata.xml': CONTRACT,
-      'AslMyController.metadata.xml': CONTROLLER,
+      'ContosoMyContract.metadata.xml': CONTRACT,
+      'ContosoMyController.metadata.xml': CONTROLLER,
     });
-    const actual = await normalizeMultiArtifact({ 'AslMyContract.metadata.xml': CONTRACT });
+    const actual = await normalizeMultiArtifact({ 'ContosoMyContract.metadata.xml': CONTRACT });
     const diff = diffNormalized(golden, actual);
     expect(diff.matched).toBe(false);
-    expect(diff.missing.every(p => p.startsWith('AslMyController.metadata.xml::'))).toBe(true);
+    expect(diff.missing.every(p => p.startsWith('ContosoMyController.metadata.xml::'))).toBe(true);
   });
 
   it('an unexpected extra artifact diffs as all-extra under its prefix', async () => {
-    const golden = await normalizeMultiArtifact({ 'AslMyContract.metadata.xml': CONTRACT });
+    const golden = await normalizeMultiArtifact({ 'ContosoMyContract.metadata.xml': CONTRACT });
     const actual = await normalizeMultiArtifact({
-      'AslMyContract.metadata.xml': CONTRACT,
-      'AslMyController.metadata.xml': CONTROLLER,
+      'ContosoMyContract.metadata.xml': CONTRACT,
+      'ContosoMyController.metadata.xml': CONTROLLER,
     });
     const diff = diffNormalized(golden, actual);
     expect(diff.matched).toBe(false);
-    expect(diff.extra.every(p => p.startsWith('AslMyController.metadata.xml::'))).toBe(true);
+    expect(diff.extra.every(p => p.startsWith('ContosoMyController.metadata.xml::'))).toBe(true);
   });
 });
 
 describe('evaluateMulti (end-to-end, multi-artifact)', () => {
-  const CONTRACT = `<AxClass><Name>AslMyContract</Name></AxClass>`;
-  const CONTROLLER = `<AxClass><Name>AslMyController</Name></AxClass>`;
+  const CONTRACT = `<AxClass><Name>ContosoMyContract</Name></AxClass>`;
+  const CONTROLLER = `<AxClass><Name>ContosoMyController</Name></AxClass>`;
 
   it('scores a perfect multi-artifact run as golden_match=1', async () => {
     const res = await evaluateMulti({
@@ -254,7 +254,7 @@ describe('evaluateMulti (end-to-end, multi-artifact)', () => {
       goldenArtifacts: { 'Contract.metadata.xml': CONTRACT, 'Controller.metadata.xml': CONTROLLER },
       actualArtifacts: {
         'Contract.metadata.xml': CONTRACT,
-        'Controller.metadata.xml': CONTROLLER.replace('AslMyController', 'AslWrongName'),
+        'Controller.metadata.xml': CONTROLLER.replace('ContosoMyController', 'ContosoWrongName'),
       },
       build: { succeeded: true, bpWarnings: [] },
     });
@@ -290,18 +290,18 @@ describe('evaluate (end-to-end oracle)', () => {
 
 // Regression: a prefix-hardcoding bug discovered during a full-catalog eval run
 // (eval/corpus/runs/2026-07-06T10__L0-edt-basic__4fafcd8.json, classification
-// VALIDATOR_GAP). The L0-edt-basic golden was captured under EXTENSION_PREFIX="Asl"
-// (root object "AslXyzNoteSubject"); a run against a sandbox configured with
-// EXTENSION_PREFIX="FmMcp" correctly produced "FmMcpXyzNoteSubject" — the server
+// VALIDATOR_GAP). The L0-edt-basic golden was captured under EXTENSION_PREFIX="Contoso"
+// (root object "ContosoXyzNoteSubject"); a run against a sandbox configured with
+// EXTENSION_PREFIX="Demo" correctly produced "DemoXyzNoteSubject" — the server
 // applied ITS session's configured prefix per its documented contract
 // (src/utils/modelClassifier.ts). Every other field matched byte-for-byte, yet the
 // oracle's literal string compare on the root Name spuriously failed golden_match.
 // Fixed by making normalize.ts canonicalise prefixed identifiers away before
 // diffing, given each side's own EXTENSION_PREFIX (docs/AGENT_EVAL_LOOP.md §6.2).
 describe('prefix-agnostic golden comparison (regression: eval/corpus/runs/2026-07-06T10__L0-edt-basic__4fafcd8.json)', () => {
-  const EDT_GOLDEN_ASL = `<?xml version="1.0" encoding="utf-8"?>
+  const EDT_GOLDEN_CONTOSO = `<?xml version="1.0" encoding="utf-8"?>
 <AxEdt xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="" i:type="AxEdtString">
-  <Name>AslXyzNoteSubject</Name>
+  <Name>ContosoXyzNoteSubject</Name>
   <Extends>Name</Extends>
   <Label>Note subject</Label>
   <ArrayElements />
@@ -309,40 +309,40 @@ describe('prefix-agnostic golden comparison (regression: eval/corpus/runs/2026-0
   <TableReferences />
 </AxEdt>`;
 
-  // Same logical object, produced under a DIFFERENT session's EXTENSION_PREFIX ("FmMcp"
-  // instead of "Asl") — this is the actual VM output that triggered the corpus record above.
-  const EDT_ACTUAL_FMMCP = EDT_GOLDEN_ASL.replace(/AslXyzNoteSubject/g, 'FmMcpXyzNoteSubject');
+  // Same logical object, produced under a DIFFERENT session's EXTENSION_PREFIX ("Demo"
+  // instead of "Contoso") — this is the actual VM output that triggered the corpus record above.
+  const EDT_ACTUAL_DEMO = EDT_GOLDEN_CONTOSO.replace(/ContosoXyzNoteSubject/g, 'DemoXyzNoteSubject');
 
   it('canonicalizePrefix reduces both prefix sessions to the same placeholder', () => {
-    expect(canonicalizePrefix('AslXyzNoteSubject', 'Asl'))
-      .toBe(canonicalizePrefix('FmMcpXyzNoteSubject', 'FmMcp'));
+    expect(canonicalizePrefix('ContosoXyzNoteSubject', 'Contoso'))
+      .toBe(canonicalizePrefix('DemoXyzNoteSubject', 'Demo'));
   });
 
   it('does NOT strip a prefix-shaped substring that is not at an identifier boundary', () => {
-    // "CustAslThing" — "Asl" is not at a boundary (preceded by a letter), so it must be left alone.
-    expect(canonicalizePrefix('CustAslThing', 'Asl')).toBe('CustAslThing');
+    // "CustContosoThing" — "Contoso" is not at a boundary (preceded by a letter), so it must be left alone.
+    expect(canonicalizePrefix('CustContosoThing', 'Contoso')).toBe('CustContosoThing');
   });
 
   it('does NOT strip when the prefix is not followed by an uppercase letter (not a real prefix use)', () => {
-    // A free-text label that happens to contain "Asl" mid-sentence, lowercase continuation.
-    expect(canonicalizePrefix('Asleep at the wheel', 'Asl')).toBe('Asleep at the wheel');
+    // A free-text label that starts with "Contoso" but is not followed by an uppercase letter.
+    expect(canonicalizePrefix('Contoso at the wheel', 'Contoso')).toBe('Contoso at the wheel');
   });
 
   it('normalizeAotXml: root Name canonicalises identically for two different EXTENSION_PREFIX sessions', async () => {
-    const golden = await normalizeAotXml(EDT_GOLDEN_ASL, [], 'Asl');
-    const actual = await normalizeAotXml(EDT_ACTUAL_FMMCP, [], 'FmMcp');
+    const golden = await normalizeAotXml(EDT_GOLDEN_CONTOSO, [], 'Contoso');
+    const actual = await normalizeAotXml(EDT_ACTUAL_DEMO, [], 'Demo');
     expect(golden.get('AxEdt/Name')).toBe(actual.get('AxEdt/Name'));
     expect(diffNormalized(golden, actual).matched).toBe(true);
   });
 
-  it('evaluate(): golden_match=1 for an EDT captured under "Asl" and produced under "FmMcp" (this session\'s prefix)', async () => {
+  it('evaluate(): golden_match=1 for an EDT captured under "Contoso" and produced under "Demo" (this session\'s prefix)', async () => {
     const res = await evaluate({
       caseSpec: { id: 'L0-edt-basic', tier: 0, ignore: ['AxEdt/@Id', '**/ModelSaveInfo'] },
-      actualXml: EDT_ACTUAL_FMMCP,
-      goldenXml: EDT_GOLDEN_ASL,
+      actualXml: EDT_ACTUAL_DEMO,
+      goldenXml: EDT_GOLDEN_CONTOSO,
       build: { succeeded: true, bpWarnings: [{ code: 'BPErrorLabelIsText' }] },
       goldenPrefix: GOLDEN_CAPTURE_PREFIX,
-      actualPrefix: 'FmMcp',
+      actualPrefix: 'Demo',
     });
     expect(res.goldenDiff.changed).toEqual([]);
     expect(res.goldenDiff.matched).toBe(true);
@@ -352,8 +352,8 @@ describe('prefix-agnostic golden comparison (regression: eval/corpus/runs/2026-0
   it('WITHOUT prefix canonicalisation (both prefixes empty) the same pair still mismatches — proves the fix is load-bearing', async () => {
     const res = await evaluate({
       caseSpec: { id: 'L0-edt-basic', tier: 0, ignore: ['AxEdt/@Id', '**/ModelSaveInfo'] },
-      actualXml: EDT_ACTUAL_FMMCP,
-      goldenXml: EDT_GOLDEN_ASL,
+      actualXml: EDT_ACTUAL_DEMO,
+      goldenXml: EDT_GOLDEN_CONTOSO,
       build: { succeeded: true, bpWarnings: [{ code: 'BPErrorLabelIsText' }] },
       // no goldenPrefix/actualPrefix — legacy literal-string comparison
     });
@@ -364,43 +364,166 @@ describe('prefix-agnostic golden comparison (regression: eval/corpus/runs/2026-0
   it('a genuinely different root Name (not just a prefix change) still correctly mismatches', async () => {
     const res = await evaluate({
       caseSpec: { id: 'L0-edt-basic', tier: 0 },
-      actualXml: EDT_GOLDEN_ASL.replace('AslXyzNoteSubject', 'AslCompletelyDifferentEdt'),
-      goldenXml: EDT_GOLDEN_ASL,
+      actualXml: EDT_GOLDEN_CONTOSO.replace('ContosoXyzNoteSubject', 'ContosoCompletelyDifferentEdt'),
+      goldenXml: EDT_GOLDEN_CONTOSO,
       build: { succeeded: true, bpWarnings: [] },
-      goldenPrefix: 'Asl',
-      actualPrefix: 'Asl',
+      goldenPrefix: 'Contoso',
+      actualPrefix: 'Contoso',
     });
     expect(res.score.golden_match).toBe(0);
   });
 
   it('normalizeMultiArtifact: canonicalises the prefixed FILENAME key too, so a multi-artifact case matches across prefix sessions', async () => {
-    const CONTRACT_ASL = `<AxClass><Name>AslMyContract</Name></AxClass>`;
-    const CONTRACT_FMMCP = `<AxClass><Name>FmMcpMyContract</Name></AxClass>`;
-    const golden = await normalizeMultiArtifact({ 'AslMyContract.metadata.xml': CONTRACT_ASL }, [], 'Asl');
-    const actual = await normalizeMultiArtifact({ 'FmMcpMyContract.metadata.xml': CONTRACT_FMMCP }, [], 'FmMcp');
+    const CONTRACT_CONTOSO = `<AxClass><Name>ContosoMyContract</Name></AxClass>`;
+    const CONTRACT_DEMO = `<AxClass><Name>DemoMyContract</Name></AxClass>`;
+    const golden = await normalizeMultiArtifact({ 'ContosoMyContract.metadata.xml': CONTRACT_CONTOSO }, [], 'Contoso');
+    const actual = await normalizeMultiArtifact({ 'DemoMyContract.metadata.xml': CONTRACT_DEMO }, [], 'Demo');
     expect(diffNormalized(golden, actual).matched).toBe(true);
   });
 
   it('evaluateMulti(): a multi-artifact case matches across prefix sessions end-to-end', async () => {
-    const CONTRACT_ASL = `<AxClass><Name>AslMyContract</Name></AxClass>`;
-    const CONTROLLER_ASL = `<AxClass><Name>AslMyController</Name></AxClass>`;
-    const CONTRACT_FMMCP = `<AxClass><Name>FmMcpMyContract</Name></AxClass>`;
-    const CONTROLLER_FMMCP = `<AxClass><Name>FmMcpMyController</Name></AxClass>`;
+    const CONTRACT_CONTOSO = `<AxClass><Name>ContosoMyContract</Name></AxClass>`;
+    const CONTROLLER_CONTOSO = `<AxClass><Name>ContosoMyController</Name></AxClass>`;
+    const CONTRACT_DEMO = `<AxClass><Name>DemoMyContract</Name></AxClass>`;
+    const CONTROLLER_DEMO = `<AxClass><Name>DemoMyController</Name></AxClass>`;
     const res = await evaluateMulti({
       caseSpec: { id: 'L3-batch-basic', tier: 3 },
       goldenArtifacts: {
-        'AslMyContract.metadata.xml': CONTRACT_ASL,
-        'AslMyController.metadata.xml': CONTROLLER_ASL,
+        'ContosoMyContract.metadata.xml': CONTRACT_CONTOSO,
+        'ContosoMyController.metadata.xml': CONTROLLER_CONTOSO,
       },
       actualArtifacts: {
-        'FmMcpMyContract.metadata.xml': CONTRACT_FMMCP,
-        'FmMcpMyController.metadata.xml': CONTROLLER_FMMCP,
+        'DemoMyContract.metadata.xml': CONTRACT_DEMO,
+        'DemoMyController.metadata.xml': CONTROLLER_DEMO,
       },
       build: { succeeded: true, bpWarnings: [] },
-      goldenPrefix: 'Asl',
-      actualPrefix: 'FmMcp',
+      goldenPrefix: 'Contoso',
+      actualPrefix: 'Demo',
     });
     expect(res.goldenDiff.matched).toBe(true);
     expect(res.score.golden_match).toBe(1);
+  });
+});
+
+// Regression: eval/corpus/runs/2026-07-07T05__L2-dimension-basic__cb1b73d.json and
+// eval/corpus/runs/2026-07-06T19__L2-business-event-basic__cb1b73d.json both scored
+// golden_match=0 (classified TOOL_DEFECT) even though `build` and `bp_clean` passed and
+// the generated Method/Source text was semantically IDENTICAL to the golden — the only
+// delta was indentation depth (e.g. golden's method signature/brace at column 0, actual's
+// at column 4, with every nested line shifted by the same one-level offset). X++ is
+// whitespace-insensitive for indentation, and docs/AGENT_EVAL_LOOP.md §6.2 already commits
+// the oracle to "canonicalise element ordering and whitespace" — but normalizeText() only
+// did CRLF normalisation + trim, so any indentation-convention mismatch (tool vs. golden,
+// or even the D365FO metadata SDK's own on-save reformatting, which is opaque to this repo)
+// spuriously failed golden_match. Fixed by re-deriving indentation from brace depth alone
+// (reusing src/utils/xppFormat.ts's reindentXppSource, baseDepth 0) for `Source`/
+// `Declaration` text specifically before comparing.
+describe('X++ source indentation is not a golden_match diff (regression: L2-dimension-basic / L2-business-event-basic)', () => {
+  const DIMENSION_GOLDEN = `<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>PFXDemoNoteHeader</Name>
+  <SourceCode>
+    <Methods>
+      <Method>
+        <Name>dimensionDisplayValue</Name>
+        <Source><![CDATA[
+public display str dimensionDisplayValue()
+{
+    DimensionAttributeValueSetStorage dimStorage;
+
+    if (!this.DefaultDimension)
+    {
+        return '';
+    }
+
+    dimStorage = DimensionAttributeValueSetStorage::find(this.DefaultDimension);
+
+    return dimStorage.toString();
+}
+]]></Source>
+      </Method>
+    </Methods>
+  </SourceCode>
+</AxTable>`;
+
+  // Same method, byte-identical tokens, but the tool's actual bridge/addMethod output
+  // (captured verbatim in the corpus record) indents the brace/body one level deeper.
+  const DIMENSION_ACTUAL = `<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>PFXDemoNoteHeader</Name>
+  <SourceCode>
+    <Methods>
+      <Method>
+        <Name>dimensionDisplayValue</Name>
+        <Source><![CDATA[
+public display str dimensionDisplayValue()
+    {
+        DimensionAttributeValueSetStorage dimStorage;
+
+        if (!this.DefaultDimension)
+        {
+            return '';
+        }
+
+        dimStorage = DimensionAttributeValueSetStorage::find(this.DefaultDimension);
+
+        return dimStorage.toString();
+    }
+]]></Source>
+      </Method>
+    </Methods>
+  </SourceCode>
+</AxTable>`;
+
+  it('normalizeAotXml: a Method/Source that differs only in indentation canonicalises to the same value', async () => {
+    const golden = await normalizeAotXml(DIMENSION_GOLDEN);
+    const actual = await normalizeAotXml(DIMENSION_ACTUAL);
+    const path = 'AxTable/SourceCode/Methods/Method[dimensionDisplayValue]/Source';
+    expect(golden.get(path)).toBeDefined();
+    expect(golden.get(path)).toBe(actual.get(path));
+    expect(diffNormalized(golden, actual).matched).toBe(true);
+  });
+
+  it('evaluate(): golden_match=1 for an indentation-only difference in a table display method', async () => {
+    const res = await evaluate({
+      caseSpec: { id: 'L2-dimension-basic', tier: 2 },
+      actualXml: DIMENSION_ACTUAL,
+      goldenXml: DIMENSION_GOLDEN,
+      build: { succeeded: true, bpWarnings: [] },
+    });
+    expect(res.goldenDiff.changed).toEqual([]);
+    expect(res.score.golden_match).toBe(1);
+  });
+
+  it('WITHOUT indentation canonicalisation the same pair still mismatches — proves the fix is load-bearing', () => {
+    // Direct string compare (what normalizeText did before the fix): CRLF-normalise + trim
+    // only, no re-indent. The two CDATA bodies differ byte-for-byte on indentation alone.
+    const rawGolden = DIMENSION_GOLDEN.match(/<!\[CDATA\[([\s\S]*?)\]\]>/)![1].trim();
+    const rawActual = DIMENSION_ACTUAL.match(/<!\[CDATA\[([\s\S]*?)\]\]>/)![1].trim();
+    expect(rawGolden).not.toBe(rawActual);
+  });
+
+  it('a genuinely different method BODY (not just indentation) still correctly mismatches', async () => {
+    const differentBody = DIMENSION_ACTUAL.replace(
+      "return dimStorage.toString();",
+      "return 'wrong';",
+    );
+    const res = await evaluate({
+      caseSpec: { id: 'L2-dimension-basic', tier: 2 },
+      actualXml: differentBody,
+      goldenXml: DIMENSION_GOLDEN,
+      build: { succeeded: true, bpWarnings: [] },
+    });
+    expect(res.score.golden_match).toBe(0);
+    expect(res.goldenDiff.changed.length).toBeGreaterThan(0);
+  });
+
+  it('only applies indentation canonicalisation to Source/Declaration text, not arbitrary element text', async () => {
+    // A Label containing brace-like characters must still compare literally.
+    const xmlA = `<AxTable><Name>T</Name><Label>{weird} label</Label></AxTable>`;
+    const xmlB = `<AxTable><Name>T</Name><Label>{ weird } label</Label></AxTable>`;
+    const a = await normalizeAotXml(xmlA);
+    const b = await normalizeAotXml(xmlB);
+    expect(a.get('AxTable/Label')).not.toBe(b.get('AxTable/Label'));
   });
 });

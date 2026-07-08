@@ -64,12 +64,12 @@ describe('L2-coc-extension SysTest asset', () => {
 
   it('scores systest=1 when this class passes and systest=0 when it fails', () => {
     const passed = parseSysTestResult(
-      `✅ Tests passed\n\nClass: ${TEST_CLASS}\nModel: fm-mcp\n\nSysTestRunner: 2 tests run, 2 passed, 0 failed.`,
+      `✅ Tests passed\n\nClass: ${TEST_CLASS}\nModel: Contoso\n\nSysTestRunner: 2 tests run, 2 passed, 0 failed.`,
     );
     expect(passed).toEqual({ ran: true, passed: true, failures: [] });
 
     const failed = parseSysTestResult(
-      `❌ Tests FAILED\n\nClass: ${TEST_CLASS}\nModel: fm-mcp\n\n` +
+      `❌ Tests FAILED\n\nClass: ${TEST_CLASS}\nModel: Contoso\n\n` +
         `SysTestRunner: 2 tests run, 1 passed, 1 failed.\n` +
         `${TEST_CLASS}::testCarFactsSummaryAppendsVerifiedSuffix failed: ` +
         `Assert.areEqual expected 'Adventure Works Fuji [verified]' actual 'Adventure Works Fuji'`,
@@ -124,12 +124,12 @@ describe('L3-batch-basic SysTest asset', () => {
 
   it('scores systest=1 when this class passes and systest=0 when it fails', () => {
     const passed = parseSysTestResult(
-      `✅ Tests passed\n\nClass: ${TEST_CLASS}\nModel: fm-mcp\n\nSysTestRunner: 2 tests run, 2 passed, 0 failed.`,
+      `✅ Tests passed\n\nClass: ${TEST_CLASS}\nModel: Contoso\n\nSysTestRunner: 2 tests run, 2 passed, 0 failed.`,
     );
     expect(passed).toEqual({ ran: true, passed: true, failures: [] });
 
     const failed = parseSysTestResult(
-      `❌ Tests FAILED\n\nClass: ${TEST_CLASS}\nModel: fm-mcp\n\n` +
+      `❌ Tests FAILED\n\nClass: ${TEST_CLASS}\nModel: Contoso\n\n` +
         `SysTestRunner: 2 tests run, 1 passed, 1 failed.\n` +
         `${TEST_CLASS}::testEffectiveBatchSizeMultipliesByPriorityFactor failed: ` +
         `Assert.areEqual expected 30 actual 13`,
@@ -181,12 +181,12 @@ describe('L2-event-handler-basic SysTest asset', () => {
 
   it('scores systest=1 when this class passes and systest=0 when it fails', () => {
     const passed = parseSysTestResult(
-      `✅ Tests passed\n\nClass: ${TEST_CLASS}\nModel: fm-mcp\n\nSysTestRunner: 2 tests run, 2 passed, 0 failed.`,
+      `✅ Tests passed\n\nClass: ${TEST_CLASS}\nModel: Contoso\n\nSysTestRunner: 2 tests run, 2 passed, 0 failed.`,
     );
     expect(passed).toEqual({ ran: true, passed: true, failures: [] });
 
     const failed = parseSysTestResult(
-      `❌ Tests FAILED\n\nClass: ${TEST_CLASS}\nModel: fm-mcp\n\n` +
+      `❌ Tests FAILED\n\nClass: ${TEST_CLASS}\nModel: Contoso\n\n` +
         `SysTestRunner: 2 tests run, 1 passed, 1 failed.\n` +
         `${TEST_CLASS}::testInsertingWithBlankSubjectGetsDefaulted failed: ` +
         `Assert.areEqual expected '(no subject)' actual ''`,

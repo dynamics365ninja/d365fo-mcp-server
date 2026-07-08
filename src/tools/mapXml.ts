@@ -24,6 +24,8 @@ interface MapFieldDef {
   name: string;
   type?: string;
   extendedDataType?: string;
+  /** Alias for extendedDataType (matches the table/table-extension field-spec convention). */
+  edt?: string;
   enumType?: string;
   stringSize?: number;
 }
@@ -34,7 +36,16 @@ interface MapMappingConnection {
 }
 
 /**
- * properties.fields         — [{ name, type?, extendedDataType?, enumType?, stringSize? }]
+ * properties.fields         — [{ name, type?, edt?|extendedDataType?, enumType?, stringSize? }]
+ *                              `edt` is the primary key (matches the `table`/`table-extension`
+ *                              field-spec convention used everywhere else in this tool's
+ *                              properties shapes); `extendedDataType` is accepted as an alias
+ *                              since it matches the emitted XML element name — a caller using
+ *                              either spelling gets an EDT written, instead of it being silently
+ *                              dropped (regression: eval/corpus/runs/
+ *                              2026-07-06T18__L1-map-basic__cb1b73d.json — `map` had NO entry in
+ *                              the properties documentation at all, so a caller reasonably
+ *                              guessed `edt` from the table convention and it was silently lost).
  * properties.mappingTable   — name of the underlying AxTable this map targets.
  * properties.mappings       — [{ mapField, mapFieldTo }] connections into that table.
  *                              Defaults to one connection per field (mapFieldTo = name)
@@ -52,7 +63,8 @@ export function buildAxMapXml(mapName: string, properties?: Record<string, any>)
     ? fields.map(f => {
       const axType = FIELD_TYPE_TO_AXTYPE[f.type || 'String'] || 'AxMapFieldString';
       const inner: string[] = [`\t\t\t<Name>${f.name}</Name>`];
-      if (f.extendedDataType) inner.push(`\t\t\t<ExtendedDataType>${f.extendedDataType}</ExtendedDataType>`);
+      const edt = f.extendedDataType || f.edt;
+      if (edt) inner.push(`\t\t\t<ExtendedDataType>${edt}</ExtendedDataType>`);
       if (axType === 'AxMapFieldEnum' && f.enumType) inner.push(`\t\t\t<EnumType>${f.enumType}</EnumType>`);
       if (axType === 'AxMapFieldString' && f.stringSize !== undefined) inner.push(`\t\t\t<StringSize>${f.stringSize}</StringSize>`);
       return `\t\t<AxMapBaseField xmlns=""\n\t\t\ti:type="${axType}">\n${inner.join('\n')}\n\t\t</AxMapBaseField>`;

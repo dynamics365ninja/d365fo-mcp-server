@@ -13,5 +13,5 @@ First read `eval/cases/$ARGUMENTS.json`. The subagent carries the full loop
 (isolate → implement grounded-only → static gate → build → golden/SysTest oracle
 via `npm run eval:score` → write corpus record → roll back → triage hypothesis).
 It requires the d365fo MCP tools connected in full mode on the VM and pins all
-writes to the `fm-mcp` sandbox — if those tools are not available, it will say so
+writes to the `Contoso` sandbox — if those tools are not available, it will say so
 and stop. Relay the corpus record and pass/fail verdict back to me.

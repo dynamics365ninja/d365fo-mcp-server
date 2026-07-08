@@ -605,7 +605,13 @@ const ModifyD365FileArgsSchema = z.object({
   // For add-enum-value / modify-enum-value / remove-enum-value
   enumValueName: z.string().optional().describe(
     'Enum value name for add-enum-value / modify-enum-value / remove-enum-value. ' +
-    'E.g. "Approved", "Pending", "Rejected".'
+    'E.g. "Approved", "Pending", "Rejected". For modify-enum-value this is the EXISTING ' +
+    'name used to locate the value — see enumValueNewName to rename it.'
+  ),
+  enumValueNewName: z.string().optional().describe(
+    'modify-enum-value ONLY: renames the enum value (its Name/identifier) from ' +
+    'enumValueName to this. Numeric value and label are unaffected unless ' +
+    'enumValueInt/enumValueLabel are also given.'
   ),
   enumValueLabel: z.string().optional().describe(
     'Label reference for the enum value (e.g. "@MyModel:Approved"). ' +
@@ -1121,7 +1127,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
 
     // 3b. Derive the authoritative object name from the resolved file path.
     //     The caller may pass objectName="RentEquipment" while the file on disk
-    //     is AslRentEquipment.xml (auto-prefixed at create time). The C# bridge
+    //     is ContosoRentEquipment.xml (auto-prefixed at create time). The C# bridge
     //     resolves objects by name from its metadata model — if the name doesn't
     //     match the file it will always return null, regardless of refreshes.
     //     Use path.win32.basename so Windows backslash paths are handled correctly
@@ -1588,6 +1594,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       case 'modify-enum-value': {
         if ((args as any).enumValueName) {
           const evProps: Record<string, string> = {};
+          if ((args as any).enumValueNewName) evProps.name = (args as any).enumValueNewName;
           if ((args as any).enumValueLabel) evProps.label = (args as any).enumValueLabel;
           if ((args as any).enumValueInt !== undefined) evProps.value = String((args as any).enumValueInt);
           bridgeResult = await bridgeModifyEnumValue(
@@ -1901,7 +1908,7 @@ async function findD365File(
 
   // Resolve by the given name first; if that misses, retry once with the model
   // prefix applied. create_d365fo_file auto-prefixes new object names (e.g.
-  // "RentEquipmentTable" → "AslRentEquipmentTable"), so a modify call with the bare
+  // "RentEquipmentTable" → "ContosoRentEquipmentTable"), so a modify call with the bare
   // name would otherwise fail to locate the file. The bridge object name is then
   // re-derived from the resolved file's basename, so the prefixed name flows through.
   const direct = await resolveD365FileByName(symbolIndex, objectType, objectName, modelName, packagePath);

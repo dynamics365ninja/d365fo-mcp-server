@@ -567,7 +567,7 @@ describe('XmlTemplateGenerator.splitXppClassSource', () => {
 //
 // Regression for eval/corpus/runs/2026-07-06T16__L1-class-basic__73707ff.json
 // (classification: TOOL_DEFECT, build.succeeded: false): the caller passed an
-// already-fully-resolved objectName ("FmMcpXyzNoteFormatter") but sourceCode's
+// already-fully-resolved objectName ("ContosoXyzNoteFormatter") but sourceCode's
 // own `class XyzNoteFormatter` used the bare, unprefixed name. Because
 // objectName itself needed no prefix-normalizing (finalObjectName ===
 // args.objectName), the existing xmlContent-only "CRITICAL FIX" guard in
@@ -585,20 +585,20 @@ describe('XmlTemplateGenerator.normalizeSelfReferenceName', () => {
       },
     ];
 
-    const result = XmlTemplateGenerator.normalizeSelfReferenceName('FmMcpXyzNoteFormatter', declaration, methods);
+    const result = XmlTemplateGenerator.normalizeSelfReferenceName('ContosoXyzNoteFormatter', declaration, methods);
 
-    expect(result.declaration).toContain('public class FmMcpXyzNoteFormatter');
-    expect(result.declaration).not.toMatch(/(?<!FmMcp)XyzNoteFormatter/);
+    expect(result.declaration).toContain('public class ContosoXyzNoteFormatter');
+    expect(result.declaration).not.toMatch(/(?<!Contoso)XyzNoteFormatter/);
     const construct = result.methods.find(m => m.name === 'construct')!;
-    expect(construct.source).toContain('public static FmMcpXyzNoteFormatter construct');
-    expect(construct.source).toContain('return new FmMcpXyzNoteFormatter(_prefix);');
+    expect(construct.source).toContain('public static ContosoXyzNoteFormatter construct');
+    expect(construct.source).toContain('return new ContosoXyzNoteFormatter(_prefix);');
     expect(construct.source).not.toMatch(/\bXyzNoteFormatter\b/);
   });
 
   it('is a no-op when the declared name already matches className', () => {
-    const declaration = 'public class FmMcpFoo\n{\n}';
+    const declaration = 'public class ContosoFoo\n{\n}';
     const methods = [{ name: 'run', source: 'public void run()\n    {\n    }' }];
-    const result = XmlTemplateGenerator.normalizeSelfReferenceName('FmMcpFoo', declaration, methods);
+    const result = XmlTemplateGenerator.normalizeSelfReferenceName('ContosoFoo', declaration, methods);
     expect(result.declaration).toBe(declaration);
     expect(result.methods).toEqual(methods);
   });
@@ -607,12 +607,12 @@ describe('XmlTemplateGenerator.normalizeSelfReferenceName', () => {
     const sourceCode =
       'public class XyzNoteFormatter\n{\n    str prefix;\n}\n\n' +
       'public static XyzNoteFormatter construct(str _prefix)\n{\n    return new XyzNoteFormatter(_prefix);\n}';
-    const xml = XmlTemplateGenerator.generateAxClassXml('FmMcpXyzNoteFormatter', sourceCode);
+    const xml = XmlTemplateGenerator.generateAxClassXml('ContosoXyzNoteFormatter', sourceCode);
 
-    expect(xml).toContain('<Name>FmMcpXyzNoteFormatter</Name>');
-    expect(xml).toContain('public class FmMcpXyzNoteFormatter');
-    expect(xml).toContain('public static FmMcpXyzNoteFormatter construct');
-    expect(xml).toContain('return new FmMcpXyzNoteFormatter(_prefix);');
+    expect(xml).toContain('<Name>ContosoXyzNoteFormatter</Name>');
+    expect(xml).toContain('public class ContosoXyzNoteFormatter');
+    expect(xml).toContain('public static ContosoXyzNoteFormatter construct');
+    expect(xml).toContain('return new ContosoXyzNoteFormatter(_prefix);');
     // No leftover reference to the stale, unprefixed self-name anywhere in the XML.
     expect(xml).not.toMatch(/\bXyzNoteFormatter\b/);
   });
@@ -621,12 +621,12 @@ describe('XmlTemplateGenerator.normalizeSelfReferenceName', () => {
     const sourceCode =
       'class XyzNoteFormatter\n{\n    str prefix;\n}\n\n' +
       'public static XyzNoteFormatter construct(str _prefix)\n{\n    return new XyzNoteFormatter(_prefix);\n}';
-    const parsed = XmlTemplateGenerator.parseSourceForBridge(sourceCode, 'FmMcpXyzNoteFormatter');
+    const parsed = XmlTemplateGenerator.parseSourceForBridge(sourceCode, 'ContosoXyzNoteFormatter');
 
-    expect(parsed.declaration).toContain('class FmMcpXyzNoteFormatter');
+    expect(parsed.declaration).toContain('class ContosoXyzNoteFormatter');
     const construct = parsed.methods.find(m => m.name === 'construct')!;
-    expect(construct.source).toContain('FmMcpXyzNoteFormatter construct');
-    expect(construct.source).toContain('new FmMcpXyzNoteFormatter(_prefix)');
+    expect(construct.source).toContain('ContosoXyzNoteFormatter construct');
+    expect(construct.source).toContain('new ContosoXyzNoteFormatter(_prefix)');
   });
 
   it('parseSourceForBridge without className (legacy callers) leaves self-references untouched', () => {
@@ -681,12 +681,12 @@ describe('XmlTemplateGenerator security duty/role generators', () => {
 describe('XmlTemplateGenerator security duty/role EXTENSION generators', () => {
   it('emits AxSecurityPrivilegeReference entries on a duty extension', () => {
     const xml = XmlTemplateGenerator.generateAxSecurityDutyExtensionXml(
-      'SalesOrderProgressInquire.AslExtension',
-      { privileges: ['AslSalesPostingAuditLogView'] },
+      'SalesOrderProgressInquire.ContosoExtension',
+      { privileges: ['ContosoSalesPostingAuditLogView'] },
     );
     expect(xml).toContain('<AxSecurityDutyExtension');
-    expect(xml).toContain('<Name>SalesOrderProgressInquire.AslExtension</Name>');
-    expect(xml).toContain('<AxSecurityPrivilegeReference>\n\t\t\t<Name>AslSalesPostingAuditLogView</Name>');
+    expect(xml).toContain('<Name>SalesOrderProgressInquire.ContosoExtension</Name>');
+    expect(xml).toContain('<AxSecurityPrivilegeReference>\n\t\t\t<Name>ContosoSalesPostingAuditLogView</Name>');
     expect(xml).toContain('<PropertyModifications />');
     // No <Label> — duty extensions don't carry one (only the base duty does).
     expect(xml).not.toContain('<Label>');
@@ -707,11 +707,11 @@ describe('XmlTemplateGenerator security duty/role EXTENSION generators', () => {
 
   it('emits duty + privilege references on a role extension', () => {
     const xml = XmlTemplateGenerator.generateAxSecurityRoleExtensionXml(
-      'SystemUser.AslExtension',
+      'SystemUser.ContosoExtension',
       { duties: ['MyDuty1'], privileges: ['MyPrivilege1'] },
     );
     expect(xml).toContain('<AxSecurityRoleExtension');
-    expect(xml).toContain('<Name>SystemUser.AslExtension</Name>');
+    expect(xml).toContain('<Name>SystemUser.ContosoExtension</Name>');
     expect(xml).toContain('<DirectAccessPermissions />');
     expect(xml).toContain('<AxSecurityDutyReference>\n\t\t\t<Name>MyDuty1</Name>');
     expect(xml).toContain('<AxSecurityPrivilegeReference>\n\t\t\t<Name>MyPrivilege1</Name>');
@@ -845,9 +845,9 @@ describe('selectUnbuildableEdts (scaffold pre-write gate)', () => {
 
   it('allows a same-session EDT that is on disk but unindexed (xppc reads disk)', () => {
     // Separator-agnostic so this holds on both Windows (path.join → "\") and Linux CI ("/").
-    const onDisk = (p: string) => p.replace(/\\/g, '/').endsWith('AxEdt/AslSessionEdt.xml');
+    const onDisk = (p: string) => p.replace(/\\/g, '/').endsWith('AxEdt/ContosoSessionEdt.xml');
     const blocked = selectUnbuildableEdts(
-      [{ field: 'A', edt: 'AslSessionEdt' }, { field: 'B', edt: 'GhostEdt' }],
+      [{ field: 'A', edt: 'ContosoSessionEdt' }, { field: 'B', edt: 'GhostEdt' }],
       modelDir,
       onDisk,
     );
@@ -889,6 +889,122 @@ describe('generate_smart_form', () => {
     expect(result?.content[0].text).toContain('MyCustomTable');
   });
 
+  it('defaults the Caption to the bound table\'s own reused Label, not the raw object name', async () => {
+    // Regression: eval/corpus/runs/2026-07-06T17__L1-form-listpage__cb1b73d.json (cross-
+    // referenced by L1-form-dialog and L1-form-lookup as "a systemic scaffold default, not
+    // a one-off"): with no explicit caption/label given, Caption used to fall back to the
+    // raw object name ("PFXDemoNoteHeaderListPage") instead of the table's real Label,
+    // even though that Label is resolvable via the symbol index.
+    const labelCtx = buildContext({
+      symbolIndex: {
+        ...ctx.symbolIndex,
+        getSymbolByName: vi.fn((name: string, type: string) =>
+          type === 'table' && name === 'ConDemoNoteHeader'
+            ? { name, type: 'table', signature: '@TaxTransactionInquiry:HeaderNote' }
+            : undefined,
+        ),
+      } as any,
+    });
+
+    const result = await handleGenerateSmartForm(
+      {
+        name: 'ConDemoNoteHeaderListPage',
+        modelName: 'MyModel',
+        dataSource: 'ConDemoNoteHeader',
+        formPattern: 'ListPage',
+      },
+      labelCtx.symbolIndex,
+    );
+    const text = result?.content[0].text as string;
+    expect(text).toContain('<Caption xmlns="">@TaxTransactionInquiry:HeaderNote</Caption>');
+    expect(text).not.toContain('<Caption xmlns="">ConDemoNoteHeaderListPage</Caption>');
+    expect(text).not.toContain('<Caption xmlns="">PFXConDemoNoteHeaderListPage</Caption>');
+  });
+
+  it('an explicit caption argument still wins over the table Label', async () => {
+    const labelCtx = buildContext({
+      symbolIndex: {
+        ...ctx.symbolIndex,
+        getSymbolByName: vi.fn((name: string, type: string) =>
+          type === 'table' && name === 'ConDemoNoteHeader'
+            ? { name, type: 'table', signature: '@TaxTransactionInquiry:HeaderNote' }
+            : undefined,
+        ),
+      } as any,
+    });
+
+    const result = await handleGenerateSmartForm(
+      {
+        name: 'ConDemoNoteHeaderListPage',
+        modelName: 'MyModel',
+        dataSource: 'ConDemoNoteHeader',
+        formPattern: 'ListPage',
+        caption: '@MyModel:ExplicitCaption',
+      },
+      labelCtx.symbolIndex,
+    );
+    const text = result?.content[0].text as string;
+    expect(text).toContain('<Caption xmlns="">@MyModel:ExplicitCaption</Caption>');
+  });
+
+  it('falls back to the (resolved) object name when the table has no indexed Label (unchanged behaviour)', async () => {
+    const result = await handleGenerateSmartForm(
+      {
+        name: 'MyUnlabeledForm',
+        modelName: 'MyModel',
+        dataSource: 'UnindexedTable',
+        formPattern: 'ListPage',
+      },
+      ctx.symbolIndex, // default mock: getSymbolByName always returns undefined
+    );
+    const text = result?.content[0].text as string;
+    // No table Label available — falls back to the resolved object name, same as before
+    // this fix (no @Label-style caption is emitted; whatever name the object resolved to).
+    expect(text).toMatch(/<Caption xmlns="">[^@<]*MyUnlabeledForm<\/Caption>/);
+  });
+
+  it('warns about a STALE datasource table (indexed row, but its file no longer exists on disk)', async () => {
+    // Regression: eval/corpus/runs/2026-07-06T17__L1-form-dialog__cb1b73d.json — a
+    // rolled-back prior run's table left a phantom `symbols` row. The existence
+    // check used to be a bare `SELECT 1 ... WHERE name = ?`, which matched the
+    // stale row and silently skipped the warning — the scaffold then produced a
+    // form bound to a table with no file on disk (4 build errors, no warning).
+    // No fs mocking needed: this fictional package path genuinely does not exist
+    // on the machine running the test, so the real fs.existsSync(...) === false
+    // check exercises the same "stale row" branch a rolled-back VM table would.
+    const staleCtx = buildContext({
+      symbolIndex: {
+        ...ctx.symbolIndex,
+        getReadDb: vi.fn(() => ({
+          prepare: vi.fn((sql: string) => {
+            // The later staleness check (this fix) selects file_path specifically.
+            if (sql.includes('file_path')) {
+              return { get: vi.fn(() => ({ file_path: 'K:\\Definitely\\Does\\Not\\Exist\\GoneTable.xml' })) };
+            }
+            // The earlier "does the table exist at all" lookup (dataSource resolution,
+            // a SEPARATE existing check) — the stale DB row still matches by name here,
+            // same as a real un-invalidated `symbols` row would; the table is only
+            // discovered to be gone once the file_path staleness check runs later.
+            if (sql.includes('SELECT name FROM symbols')) {
+              return { get: vi.fn(() => ({ name: 'GoneTable' })) };
+            }
+            // "closest alternate name" suggestion lookup — no suggestion.
+            return { get: vi.fn(() => undefined) };
+          }),
+        })),
+      } as any,
+    });
+
+    const result = await handleGenerateSmartForm(
+      { name: 'MyStaleForm', modelName: 'MyModel', dataSource: 'GoneTable' },
+      staleCtx.symbolIndex,
+    );
+    const text = result?.content[0].text as string;
+    expect(text).toContain('is stale in the index');
+    expect(text).toContain('GoneTable');
+    expect(text).toContain('update_symbol_index');
+  });
+
   it('expands a template-less pattern deterministically from the catalog', async () => {
     // "Task" (TaskSingle) has a catalog spec but no hand-written builder
     // template. It used to silently degrade to SimpleList; now the deterministic
@@ -910,6 +1026,51 @@ describe('generate_smart_form', () => {
     // … and the deterministic-catalog note is shown, not the degrade warning.
     expect(text).toContain('Generated deterministically from the form-pattern catalog');
     expect(text).not.toContain('No dedicated template');
+  });
+
+  it('DetailsMaster warns that the Overview FastTab needs a matching table field group', async () => {
+    // Regression: eval/corpus/runs/2026-07-07T11__L3-form-add-datasource-lines__cb1b73d.json,
+    // eval/corpus/runs/2026-07-07T15__L4-master-security-slice__cb1b73d.json — DetailsMaster's
+    // FieldsFieldGroups TabPage always emits <DataGroup>Overview</DataGroup> on its inner Group
+    // control, but the scaffold never creates (or checks for) a matching AxTableFieldGroup named
+    // "Overview" on the bound table. A brand-new custom table almost never has one, so the very
+    // next build silently fails with "Field group 'Overview' does not exist" and no pointer back
+    // to this control. This tool has no table-write access to auto-create the field group (and a
+    // prior investigation found even a same-session add-field-group call unreliable against
+    // xppc's build — unconfirmed without a live VM re-check), so it must surface the dependency
+    // loudly instead.
+    const result = await handleGenerateSmartForm(
+      {
+        name: 'MyDetailsForm',
+        modelName: 'MyModel',
+        dataSource: 'MyCustomTable',
+        formPattern: 'DetailsMaster',
+      },
+      ctx.symbolIndex,
+    );
+    const text = result?.content[0].text as string;
+    expect(text).toContain('<DataGroup>Overview</DataGroup>');
+    expect(text).toContain('references a field group named "Overview"');
+    expect(text).toContain('MyCustomTable');
+    expect(text).toContain('add-field-group');
+  });
+
+  it('Dialog (no DataGroup="Overview" anywhere in its template) does NOT emit the field-group warning', async () => {
+    // Unlike SimpleList/SimpleListDetails/DetailsMaster (all of which reference a field group
+    // named "Overview" somewhere — Grid.DataGroup or the FieldsFieldGroups Group.DataGroup),
+    // Dialog's template has no such reference, so the warning must not fire unconditionally.
+    const result = await handleGenerateSmartForm(
+      {
+        name: 'MyDialogForm',
+        modelName: 'MyModel',
+        dataSource: 'MyCustomTable',
+        formPattern: 'Dialog',
+      },
+      ctx.symbolIndex,
+    );
+    const text = result?.content[0].text as string;
+    expect(text).not.toContain('<DataGroup>Overview</DataGroup>');
+    expect(text).not.toContain('references a field group named "Overview"');
   });
 });
 

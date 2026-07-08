@@ -16,6 +16,7 @@
  */
 
 import { parseStringPromise } from 'xml2js';
+import { reindentXppSource } from '../../utils/xppFormat.js';
 
 /**
  * Built-in ignores applied to every document (in addition to per-case globs).
@@ -32,15 +33,15 @@ const DEFAULT_IGNORES = ['**/ModelSaveInfo', '**/ModelSaveInfo/**', '**/@Id', '*
  * under THIS prefix — it is not re-derived per run.
  *
  * A later eval run is free to configure ANY EXTENSION_PREFIX for its sandbox
- * session (e.g. "FmMcp") — `d365fo_file`/`generate_object` correctly apply the
+ * session (e.g. "Demo") — `d365fo_file`/`generate_object` correctly apply the
  * CURRENT session's prefix to every new object per their documented contract
- * (src/utils/modelClassifier.ts). An object named "FmMcpXyzNoteSubject" and a
- * golden named "AslXyzNoteSubject" describe the SAME object under two
+ * (src/utils/modelClassifier.ts). An object named "DemoXyzNoteSubject" and a
+ * golden named "ContosoXyzNoteSubject" describe the SAME object under two
  * different prefix sessions — that is not a semantic difference, and must not
  * fail `golden_match` (see the corpus record that surfaced this:
  * eval/corpus/runs/2026-07-06T10__L0-edt-basic__4fafcd8.json).
  */
-export const GOLDEN_CAPTURE_PREFIX = 'Asl';
+export const GOLDEN_CAPTURE_PREFIX = 'Contoso';
 
 /** Escape a literal string for embedding in a RegExp. */
 function escapeRegExp(s: string): string {
@@ -61,7 +62,7 @@ const PREFIX_PLACEHOLDER = 'PFX';
  * immediately after a non-alphanumeric character — `.`, `(`, `,`, `_`,
  * whitespace, …) AND require the prefix to be immediately followed by an
  * uppercase letter (the PascalCase continuation of the object's own name,
- * e.g. `AslXyzNoteSubject`, `CustGroup.AslExtension`, `classStr(AslXyzNoteSubject)`).
+ * e.g. `ContosoXyzNoteSubject`, `CustGroup.ContosoExtension`, `classStr(ContosoXyzNoteSubject)`).
  * This keeps the substitution narrow: an incidental occurrence of the prefix
  * text inside unrelated free-form content (e.g. a label) is left alone.
  */
@@ -104,12 +105,42 @@ function isIgnored(path: string, matchers: RegExp[]): boolean {
 }
 
 /**
+ * Is this path an X++ source-code element (`.../Source` or `.../Declaration`)?
+ * These hold CDATA method bodies / class declarations — X++ is whitespace-
+ * insensitive for indentation, so two builds that differ only in indent depth
+ * are semantically identical and must not register as a `golden_match` diff
+ * (see `canonicalizeXppSourceText` below).
+ */
+function isXppSourcePath(pathPrefix: string): boolean {
+  return /\/(Source|Declaration)$/.test(pathPrefix);
+}
+
+/**
+ * Re-derive indentation from brace depth alone (baseDepth 0), discarding
+ * whatever indentation convention the text actually used. Applied identically
+ * to both the golden and the actual side of a diff, so — per §6.2 of
+ * docs/AGENT_EVAL_LOOP.md ("canonicalise element ordering and whitespace") —
+ * two method bodies with identical tokens but different indentation compare
+ * equal. Reuses the same brace-depth algorithm the generators use to emit
+ * X++ source (src/utils/xppFormat.ts), so this is a comparison-time-only
+ * canonicalisation — it never rewrites a stored artifact.
+ */
+function canonicalizeXppSourceText(s: string): string {
+  return reindentXppSource(s, 0);
+}
+
+/**
  * Normalize text content: CRLF -> LF (the C# bridge writes CRLF into <Source>
  * CDATA; a golden authored or diffed on a different platform may use LF — that
- * is a whitespace-style difference, not a semantic one) then trim.
+ * is a whitespace-style difference, not a semantic one) then trim. X++ source
+ * elements (`Source`/`Declaration`) additionally get indentation canonicalised
+ * (see `canonicalizeXppSourceText`) since X++ doesn't care about indent depth.
  */
-function normalizeText(s: string): string {
-  return s.replace(/\r\n/g, '\n').trim();
+function normalizeText(s: string, pathPrefix?: string): string {
+  const crlfNormalized = s.replace(/\r\n/g, '\n').trim();
+  return pathPrefix && isXppSourcePath(pathPrefix)
+    ? canonicalizeXppSourceText(crlfNormalized)
+    : crlfNormalized;
 }
 
 /** A node's OWN Name/DataField, if any (no recursion). */
@@ -204,7 +235,7 @@ function walk(
 
   // Leaf: a plain string is element text.
   if (typeof node === 'string') {
-    const v = normalizeText(node);
+    const v = normalizeText(node, pathPrefix);
     if (v !== '' && !isIgnored(pathPrefix, matchers)) out.set(pathPrefix, canonicalizePrefix(v, prefix));
     return;
   }
@@ -216,7 +247,7 @@ function walk(
   if ('_' in obj || '$' in obj) {
     emitAttrs(obj.$ as Record<string, unknown> | undefined, pathPrefix, out, matchers, prefix);
     if (typeof obj._ === 'string') {
-      const v = normalizeText(obj._);
+      const v = normalizeText(obj._, pathPrefix);
       if (v !== '' && !isIgnored(pathPrefix, matchers)) out.set(pathPrefix, canonicalizePrefix(v, prefix));
     }
   }
@@ -289,7 +320,7 @@ export function renderNormalized(map: Map<string, string>): string {
  *
  * `artifacts` keys are filenames (e.g. "MyContract.metadata.xml") — stable,
  * case-author-chosen identifiers, not full paths. The filename itself is
- * typically the prefixed object name (e.g. "AslMyContract.metadata.xml"), so
+ * typically the prefixed object name (e.g. "ContosoMyContract.metadata.xml"), so
  * it is canonicalised with `prefix` too (see `normalizeAotXml`) — otherwise a
  * golden captured under one prefix and an actual produced under another would
  * combine under different `<filename>::` keys and false-mismatch wholesale.

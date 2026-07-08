@@ -5,26 +5,22 @@
  *   tsx src/eval/improver/knowledgeFeedbackCli.ts [--json]
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { KNOWLEDGE_BASE } from '../../tools/xppKnowledge.js';
 import { buildKnowledgeProposals, renderKnowledgeProposals } from './knowledgeFeedback.js';
 import type { CorpusRun } from './cluster.js';
+import { loadJsonRecords } from './corpusIO.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..', '..');
 
 function loadRuns(): CorpusRun[] {
   const dir = path.join(REPO_ROOT, 'eval', 'corpus', 'runs');
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir)
-    .filter(f => f.endsWith('.json'))
-    .map(f => {
-      try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) as CorpusRun; }
-      catch { return null; }
-    })
-    .filter((r): r is CorpusRun => r != null && typeof r.classification === 'string');
+  return loadJsonRecords(
+    dir,
+    (r): r is CorpusRun => r != null && typeof r === 'object' && typeof (r as CorpusRun).classification === 'string',
+  );
 }
 
 const asJson = process.argv.includes('--json');

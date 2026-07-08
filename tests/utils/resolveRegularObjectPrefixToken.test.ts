@@ -27,13 +27,13 @@ describe('resolveRegularObjectPrefixToken', () => {
   });
 
   it('returns the PascalCase prefix as-is for a normal prefix', () => {
-    process.env.EXTENSION_PREFIX = 'FmMcp';
-    expect(resolveRegularObjectPrefixToken()).toBe('FmMcp');
+    process.env.EXTENSION_PREFIX = 'ContosoDemo';
+    expect(resolveRegularObjectPrefixToken()).toBe('ContosoDemo');
   });
 
   it('capitalizes a lowercase-first prefix (matches applyObjectPrefix\'s own capitalisation)', () => {
-    process.env.EXTENSION_PREFIX = 'fmMcp';
-    expect(resolveRegularObjectPrefixToken()).toBe('FmMcp');
+    process.env.EXTENSION_PREFIX = 'contosoDemo';
+    expect(resolveRegularObjectPrefixToken()).toBe('ContosoDemo');
   });
 
   it('keeps the trailing underscore for underscore-style prefixes', () => {
@@ -42,7 +42,7 @@ describe('resolveRegularObjectPrefixToken', () => {
   });
 
   it('matches the literal token applyObjectPrefix actually prepends to a regular object name', () => {
-    for (const prefix of ['FmMcp', 'Asl', 'XY_', 'Contoso']) {
+    for (const prefix of ['ContosoDemo', 'Demo', 'XY_', 'Contoso']) {
       process.env.EXTENSION_PREFIX = prefix;
       const token = resolveRegularObjectPrefixToken();
       const named = applyObjectPrefix('MyTable', resolveObjectPrefix(''));

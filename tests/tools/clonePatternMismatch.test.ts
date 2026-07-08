@@ -61,10 +61,10 @@ describe('checkTableMappingCoverage', () => {
 
   it('flags a target table with zero known fields as unknown (not a silent skip)', () => {
     const result = checkTableMappingCoverage(
-      { CustGroup: 'AslSalesPostingAuditLog' },
+      { CustGroup: 'ContosoSalesPostingAuditLog' },
       (table) => (table === 'CustGroup' ? CUSTGROUP_FIELDS : []),
     );
-    expect(result.unknownTargets).toEqual(['AslSalesPostingAuditLog']);
+    expect(result.unknownTargets).toEqual(['ContosoSalesPostingAuditLog']);
     expect(result.poorOverlap).toEqual([]);
   });
 
@@ -114,8 +114,8 @@ describe('checkTableMappingCoverage', () => {
 
   it('skips the overlap check when the source table itself is unknown/too small', () => {
     const result = checkTableMappingCoverage(
-      { UnknownSource: 'AslSalesPostingAuditLog' },
-      (table) => (table === 'AslSalesPostingAuditLog' ? ['SalesId', 'PostingType'] : null),
+      { UnknownSource: 'ContosoSalesPostingAuditLog' },
+      (table) => (table === 'ContosoSalesPostingAuditLog' ? ['SalesId', 'PostingType'] : null),
     );
     expect(result.unknownTargets).toEqual([]);
     expect(result.poorOverlap).toEqual([]);

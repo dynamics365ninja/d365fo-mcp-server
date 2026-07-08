@@ -6,6 +6,7 @@
  * FALLBACK: Only for newly created tables not yet indexed, uses disk scan.
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
@@ -82,7 +83,18 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
 /**
  * Serve table info entirely from the pre-indexed symbol database.
  * Returns null when the table is not present in the index; caller then falls through
- * to disk parsing. Never reads the filesystem.
+ * to disk parsing.
+ *
+ * Regression (eval/corpus/runs/2026-07-06T17__L1-form-dialog__cb1b73d.json): the DB
+ * index is a cache — it is not invalidated when an object is deleted/rolled back on
+ * the VM outside a symbol-index rebuild. A prior run's rolled-back table kept
+ * resolving here as if it still existed ("Served from symbol index"), and
+ * generate_object(scaffold) trusted that phantom hit to bind a new form's
+ * datasource, producing a form that references a table with no file on disk —
+ * 4 build errors ("Table '<Name>' does not exist"). Guard against a stale row by
+ * checking the indexed filePath actually still exists before trusting the hit;
+ * a stale entry is treated the same as "not found" so the caller's disk-scan
+ * fallback (or the final not-found error, which now hints at re-indexing) applies.
  */
 function buildTableResponseFromDb(
   symbolIndex: any,
@@ -91,6 +103,14 @@ function buildTableResponseFromDb(
 ): { content: { type: 'text'; text: string }[] } | null {
   const tableSym = symbolIndex.getSymbolByName?.(tableName, 'table');
   if (!tableSym) return null;
+  if (tableSym.filePath && !fs.existsSync(tableSym.filePath)) {
+    console.error(
+      `[tableInfo] Stale symbol-index entry for table '${tableName}' — indexed file ` +
+      `'${tableSym.filePath}' no longer exists on disk (likely rolled back/deleted since ` +
+      `the index was built). Treating as not-found; run update_symbol_index to refresh.`,
+    );
+    return null;
+  }
 
   const rdb = symbolIndex.getReadDb();
   const fields = rdb.prepare(
