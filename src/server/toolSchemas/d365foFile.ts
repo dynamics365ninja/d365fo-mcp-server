@@ -35,20 +35,20 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
           description:
             'Each security/menu-item type maps to its own AOT folder — NEVER use security-privilege for duty or role. ' +
             'class-extension = [ExtensionOf] final class skeleton; business-event = BusinessEventsBase + Contract pair. ' +
-            '[modify] supports class/table/form/enum/query/view/edt/data-entity/report + their *-extension variants. ' +
+            '[modify] supports class/table/form/enum/query/view/edt/data-entity/report + *-extension variants. ' +
             '[generate] supports class/table/enum/form/query/view/data-entity/report + table/form/enum/edt/data-entity-extension.'
         },
         objectName: {
           type: 'string',
-          description: 'Base name WITHOUT model prefix — the tool prepends EXTENSION_PREFIX (or modelName) and detects an existing prefix. Extension classes: pass "{Base}_Extension" with NO prefix infix (the tool produces e.g. "SalesFormLetterMY_Extension"). NEVER hand-build the prefix.'
+          description: 'Base name WITHOUT model prefix — the tool prepends EXTENSION_PREFIX (or modelName) and detects an existing prefix. Extension classes: pass "{Base}_Extension" with NO prefix infix (produces e.g. "SalesFormLetterMY_Extension"). NEVER hand-build the prefix.'
         },
         modelName: {
           type: 'string',
-          description: 'Target model name — auto-detected from .mcp.json if omitted. NEVER guess or take model names from search results (those are source models).'
+          description: 'Target model name — auto-detected from .mcp.json if omitted. NEVER guess or take model names from search results (source models).'
         },
         packageName: {
           type: 'string',
-          description: 'Package name — auto-resolved from model name; pass only when they differ.',
+          description: 'Package name — auto-resolved from model name; pass only if they differ.',
         },
         packagePath: {
           type: 'string',
@@ -56,7 +56,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         },
         sourceCode: {
           type: 'string',
-          description: 'X++ source for the object. FOR CLASSES the content is auto-split: <Declaration> = the class line + ALL member variables inside the outer { }; <Methods> = each method AFTER the closing }. CRITICAL: member variables MUST sit inside the class { }, methods after it — never the reverse.'
+          description: 'X++ source for the object. FOR CLASSES the content is auto-split: <Declaration> = the class line + ALL member variables inside the outer { }; <Methods> = each method AFTER the closing }. CRITICAL: member variables MUST sit inside the class { }, methods after — never reversed.'
         },
         properties: {
           type: 'object',
@@ -69,14 +69,14 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             '• table-extension: fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need fieldType:"AxTableFieldEnum" + enumType\n' +
             '• edt: label, extends, edtType, stringSize\n' +
             '• form: caption, formTemplate, dataSource\n' +
-            '• security-privilege: label, targetObject, objectType (MenuItemDisplay|Action|Output), accessLevel (view|maintain), dataEntity (grants DataEntityPermissions)\n' +
+            '• security-privilege: label, targetObject, objectType (MenuItemDisplay|Action|Output), accessLevel (view|maintain), dataEntity (grants perms)\n' +
             '• security-duty: label, privileges[]\n' +
             '• security-role: label, duties[], privileges[]\n' +
             '• menu-item-*: label, object, objectType\n' +
-            '• data-entity: primaryTable, fields[{name,dataField?}], dataManagementEnabled? (default false — set true ONLY if the staging table already exists, else the build fails)\n' +
-            '• map: label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}], mappingTable?, mappings?[{mapField,mapFieldTo}] (defaults to one connection per field when mappingTable is set)\n' +
-            '• query: title?, dataSource (root table; `table` also accepted), dataSourceName?, fields?[{name,field?}]\n' +
-            '• view: query (an existing AxQuery name), fields[{name,dataField?}] — dataSource defaults to `query`'
+            '• data-entity: primaryTable, fields[{name,dataField?}], dataManagementEnabled? (default false; true only if staging table exists)\n' +
+            '• map: label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}], mappingTable?, mappings?[{mapField,mapFieldTo}] (defaults to one connection/field when mappingTable set)\n' +
+            '• query: title?, dataSource (root table; table also works), dataSourceName?, fields?[{name,field?}]\n' +
+            '• view: query (existing AxQuery), fields[{name,dataField?}] — dataSource defaults to query'
         },
         addToProject: {
           type: 'boolean',
@@ -85,19 +85,19 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         },
         projectPath: {
           type: 'string',
-          description: 'Path to .rnrproj file (needed for addToProject). Auto-detected from .mcp.json context or workspace if omitted.'
+          description: 'Path to .rnrproj file (needed for addToProject). Auto-detected from .mcp.json or workspace if omitted.'
         },
         solutionPath: {
           type: 'string',
-          description: 'VS solution directory — used to find .rnrproj when projectPath is not set.'
+          description: 'VS solution directory — used to find .rnrproj when projectPath unset.'
         },
         xmlContent: {
           type: 'string',
-          description: 'Complete XML to write verbatim (with overwrite=true rewrites an existing object; Azure/Linux: pass XML produced by action=generate).',
+          description: 'Complete XML to write verbatim (with overwrite=true rewrites an existing object; Azure/Linux: pass XML from action=generate).',
         },
         overwrite: {
           type: 'boolean',
-          description: 'Allow overwriting an existing file (use with xmlContent to fully rewrite an object \u2014 never via PowerShell/create_file).',
+          description: 'Allow overwriting an existing file (use with xmlContent to rewrite an object \u2014 never via PowerShell/create_file).',
           default: false,
         },
         groundingToken: {
@@ -131,7 +131,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'add-display-method: display method with [SysClientCacheDataMethodAttribute].\n' +
             'add-table-method: canonical find/exist/findByRecId/validateWrite/validateDelete/initValue boilerplate.\n' +
             'add-field-modification: override base-table field label/mandatory in a table-extension.\n' +
-            'modify-property: any object-level property (TableGroup, TitleField1, TableType, Extends, …) — see propertyPath.'
+            'modify-property: any object-level property (TableGroup, TitleField1, TableType, Extends…) — see propertyPath.'
         },
         params: {
           type: 'object',
@@ -147,20 +147,20 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'modify-property {propertyPath, propertyValue} · add-table-method {tableMethodType, tableKeyField?} · ' +
             'add-display-method {methodName, displayMethodReturnEdt}. ' +
             'A missing/wrong parameter returns the COMPLETE spec (names, types, descriptions) for that operation — ' +
-            'follow the error guidance instead of guessing. The same keys are also accepted flat at top level.',
+            'follow the error guidance instead of guessing. Same keys also accepted flat at top level.',
         },
         createBackup: {
           type: 'boolean',
-          description: '[modify] Create backup before modification (default: false)',
+          description: '[modify] Create backup before modification (default false)',
           default: false
         },
         filePath: {
           type: 'string',
-          description: '[modify] Absolute path to the XML file — bypasses symbol-DB lookup. Use when the object was just created and the path is known.'
+          description: '[modify] Absolute path to the XML file — bypasses symbol-DB lookup. Use when the object was just created.'
         },
         workspacePath: {
           type: 'string',
-          description: '[modify] Path to workspace for finding file'
+          description: '[modify] Workspace path for finding file'
         },
       },
       required: ['action'],
