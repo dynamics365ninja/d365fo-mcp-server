@@ -10,7 +10,8 @@
   "ignore": [
     "AxTableExtension/@Id",
     "**/AxTableField/@Id",
-    "**/ModelSaveInfo"
+    "**/ModelSaveInfo",
+    "AxTableExtension/Fields/AxTableField/ExtendedDataType"
   ],
   "tags": [
     "table-extension",
