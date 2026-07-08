@@ -889,6 +889,48 @@ describe('generate_smart_form', () => {
     expect(result?.content[0].text).toContain('MyCustomTable');
   });
 
+  it('warns about a STALE datasource table (indexed row, but its file no longer exists on disk)', async () => {
+    // Regression: eval/corpus/runs/2026-07-06T17__L1-form-dialog__cb1b73d.json — a
+    // rolled-back prior run's table left a phantom `symbols` row. The existence
+    // check used to be a bare `SELECT 1 ... WHERE name = ?`, which matched the
+    // stale row and silently skipped the warning — the scaffold then produced a
+    // form bound to a table with no file on disk (4 build errors, no warning).
+    // No fs mocking needed: this fictional package path genuinely does not exist
+    // on the machine running the test, so the real fs.existsSync(...) === false
+    // check exercises the same "stale row" branch a rolled-back VM table would.
+    const staleCtx = buildContext({
+      symbolIndex: {
+        ...ctx.symbolIndex,
+        getReadDb: vi.fn(() => ({
+          prepare: vi.fn((sql: string) => {
+            // The later staleness check (this fix) selects file_path specifically.
+            if (sql.includes('file_path')) {
+              return { get: vi.fn(() => ({ file_path: 'K:\\Definitely\\Does\\Not\\Exist\\GoneTable.xml' })) };
+            }
+            // The earlier "does the table exist at all" lookup (dataSource resolution,
+            // a SEPARATE existing check) — the stale DB row still matches by name here,
+            // same as a real un-invalidated `symbols` row would; the table is only
+            // discovered to be gone once the file_path staleness check runs later.
+            if (sql.includes('SELECT name FROM symbols')) {
+              return { get: vi.fn(() => ({ name: 'GoneTable' })) };
+            }
+            // "closest alternate name" suggestion lookup — no suggestion.
+            return { get: vi.fn(() => undefined) };
+          }),
+        })),
+      } as any,
+    });
+
+    const result = await handleGenerateSmartForm(
+      { name: 'MyStaleForm', modelName: 'MyModel', dataSource: 'GoneTable' },
+      staleCtx.symbolIndex,
+    );
+    const text = result?.content[0].text as string;
+    expect(text).toContain('is stale in the index');
+    expect(text).toContain('GoneTable');
+    expect(text).toContain('update_symbol_index');
+  });
+
   it('expands a template-less pattern deterministically from the catalog', async () => {
     // "Task" (TaskSingle) has a catalog spec but no hand-written builder
     // template. It used to silently degrade to SimpleList; now the deterministic

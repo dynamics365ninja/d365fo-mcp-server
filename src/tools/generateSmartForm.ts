@@ -898,23 +898,34 @@ export async function handleGenerateSmartForm(
 
   // Warn when a datasource is bound to a table that does not exist in the index,
   // suggesting the closest real table name.
+  //
+  // Regression (eval/corpus/runs/2026-07-06T17__L1-form-dialog__cb1b73d.json): a
+  // `symbols` row for a table can OUTLIVE the table itself — the index is a cache,
+  // not invalidated when an object is deleted/rolled back on the VM. `SELECT 1 ...
+  // WHERE name = ?` matched a phantom row from a prior (rolled-back) run's table, so
+  // this check silently passed and the scaffold produced a form bound to a table with
+  // no file on disk — a build failure with no warning here. Verify the indexed
+  // file_path still exists before trusting a hit; a stale row is treated the same as
+  // "not found".
   try {
     const db = symbolIndex.getReadDb();
-    const tableExists = db.prepare(
-      `SELECT 1 FROM symbols WHERE type = 'table' AND name = ? COLLATE NOCASE LIMIT 1`,
+    const tableRow = db.prepare(
+      `SELECT file_path FROM symbols WHERE type = 'table' AND name = ? COLLATE NOCASE LIMIT 1`,
     );
     const seenTables = new Set<string>();
     for (const m of xml.matchAll(/<Table>([^<]+)<\/Table>/g)) {
       const table = m[1].trim();
       if (!table || seenTables.has(table.toLowerCase())) continue;
       seenTables.add(table.toLowerCase());
-      if (tableExists.get(table)) continue;
+      const row = tableRow.get(table) as { file_path?: string } | undefined;
+      const stale = row?.file_path && !fs.existsSync(row.file_path);
+      if (row && !stale) continue;
       const stem = table.replace(/s$/i, '');
       const alt = db.prepare(
         `SELECT name FROM symbols WHERE type = 'table' AND name LIKE ? COLLATE NOCASE ORDER BY LENGTH(name) ASC LIMIT 1`,
       ).get(`${stem}%`) as { name: string } | undefined;
       cloneNotes +=
-        `\n   ⚠️ Datasource table "${table}" not found in the index` +
+        `\n   ⚠️ Datasource table "${table}" ${stale ? 'is stale in the index (its file no longer exists on disk — run update_symbol_index)' : 'not found in the index'}` +
         (alt && alt.name.toLowerCase() !== table.toLowerCase() ? ` — did you mean "${alt.name}"?` : '') +
         ` The form will not build until that table exists or the datasource is re-pointed.`;
     }
