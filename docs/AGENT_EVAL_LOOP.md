@@ -132,6 +132,16 @@ One record per `(case_id, run_id)`. Store as newline-delimited JSON now; a SQLit
 
 The record is **self-contained evidence** — the improver agent must be able to act on it without access to the original VM session.
 
+**Never write an empty placeholder object into an evidence array.** `build.bpWarnings`,
+`build.errors`, `systest.failures`, and `golden_diff.changed` each carry `N` entries when the
+corresponding count is `N` — but every entry must include the actual `run_bp_check`/`build`/
+`validate_code` output (at minimum a `message`), not `{}`. An empty array (`[]`, zero
+warnings/failures/deltas) is a real, meaningful result; an empty *object inside* a non-empty
+array means "there was one, but nothing was recorded about it" — which makes the record
+unconfirmable by a VM-free improver session (`eval/corpus/schema.json` requires
+`minProperties: 1` on each entry; `npm run eval:evidence-gaps` lists every corpus record that
+violates this, see src/eval/improver/corpusShapeGuard.ts).
+
 ---
 
 ## 6. Golden-metadata oracle (primary correctness signal)

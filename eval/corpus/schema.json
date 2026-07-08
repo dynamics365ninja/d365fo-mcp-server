@@ -49,8 +49,8 @@
       "required": ["succeeded"],
       "properties": {
         "succeeded": { "type": "boolean" },
-        "errors": { "type": "array", "items": { "type": "object" } },
-        "bpWarnings": { "type": "array", "items": { "type": "object" } }
+        "errors": { "type": "array", "items": { "type": "object", "minProperties": 1 } },
+        "bpWarnings": { "type": "array", "items": { "type": "object", "minProperties": 1 } }
       }
     },
     "golden_diff": {
@@ -61,7 +61,7 @@
         "matched": { "type": "boolean" },
         "missing": { "type": "array", "items": { "type": "string" } },
         "extra": { "type": "array", "items": { "type": "string" } },
-        "changed": { "type": "array", "items": { "type": "object" } }
+        "changed": { "type": "array", "items": { "type": "object", "minProperties": 1 } }
       }
     },
     "systest": {
@@ -70,7 +70,7 @@
       "properties": {
         "ran": { "type": "boolean" },
         "passed": { "type": ["boolean", "null"] },
-        "failures": { "type": "array", "items": { "type": "object" } }
+        "failures": { "type": "array", "items": { "type": "object", "minProperties": 1 } }
       },
       "required": ["ran"]
     },

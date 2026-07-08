@@ -30,7 +30,8 @@
     "eval:knowledge": "tsx src/eval/improver/knowledgeFeedbackCli.ts",
     "eval:flakes": "tsx src/eval/improver/flakeDetectionCli.ts",
     "eval:mine": "tsx src/eval/improver/caseMiningCli.ts",
-    "eval:brief": "tsx src/eval/improver/fixBriefCli.ts"
+    "eval:brief": "tsx src/eval/improver/fixBriefCli.ts",
+    "eval:evidence-gaps": "tsx src/eval/improver/evidenceGapCli.ts"
   },
   "keywords": [
     "mcp",
