@@ -73,7 +73,9 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             '• security-duty: label, privileges[]\n' +
             '• security-role: label, duties[], privileges[]\n' +
             '• menu-item-*: label, object, objectType\n' +
-            '• data-entity: primaryTable, fields[{name,dataField?}]'
+            '• data-entity: primaryTable, fields[{name,dataField?}]\n' +
+            '• query: title?, dataSource (root table; `table` also accepted), dataSourceName?, fields?[{name,field?}]\n' +
+            '• view: query (an existing AxQuery name), fields[{name,dataField?}] — dataSource defaults to `query`'
         },
         addToProject: {
           type: 'boolean',
