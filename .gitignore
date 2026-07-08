@@ -65,10 +65,6 @@ coverage/
 # Internal planning docs
 docs/plans/
 
-# Eval runtime data — per-run corpus records stay local (one file per run, noisy).
-# Goldens ARE tracked: they are reviewed contracts and the regression-gate anchors.
-eval/corpus/runs/
-
 # C# Bridge build artifacts
 bridge/D365MetadataBridge/bin/
 bridge/D365MetadataBridge/obj/

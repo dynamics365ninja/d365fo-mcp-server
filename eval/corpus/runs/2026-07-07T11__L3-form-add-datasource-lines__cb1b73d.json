@@ -1,0 +1,59 @@
+﻿{
+  "run_id": "2026-07-07T11__L3-form-add-datasource-lines__cb1b73d",
+  "case_id": "L3-form-add-datasource-lines",
+  "tier": 3,
+  "timestamp": "2026-07-07T11:59:05.882Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "AxTable/ConDemoDocHeader",
+    "AxTable/ConDemoDocLine",
+    "AxForm/ConDemoDocForm"
+  ],
+  "build": {
+    "succeeded": false,
+    "errors": [
+      {
+        "phase": "Metadata Validation",
+        "message": "Metadata Error: AxForm/ConDemoDocForm/Design/Controls/Tab/Controls/FormTabPageDetail/Controls/DetailTab/Controls/TabPageOverview/Controls/OverviewGroup/DataGroup: Field group 'Overview' does not exist."
+      }
+    ],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "The DetailsMaster/DetailsTransaction form scaffold (generate_object mode=scaffold, objectType=form) emits a TabPage with Pattern=FieldsFieldGroups whose Group control carries <DataGroup>Overview</DataGroup>, but the scaffold never creates a matching AxTableFieldGroup named 'Overview' on the bound table -- so a freshly-scaffolded DetailsMaster/DetailsTransaction form never builds standalone. Adding the missing field group afterwards via the sanctioned d365fo_file(modify, add-field-group) call DOES persist correctly to the table's XML (verified on disk, field group present with DocId/Description) and the C# bridge's get_object_info/search index picks it up after update_symbol_index, but xppc's own 'Metadata: validate forms' pass keeps reporting \"Field group 'Overview' does not exist\" build after build -- identical text, identical location -- even after: (1) removing and re-adding the field group to force a content/timestamp change, (2) update_symbol_index (both targeted and the no-path bridge refresh), (3) build_d365fo_project with fullBuild=true, and (4) fullBuild+force=true (kills/restarts the compiler process). This is the same SHAPE of defect recorded in docs/USAGE_EXAMPLES.md section 1 (a cross-object metadata reference added via a modify op within the same session is invisible to the xppc build's own validation pass, and survives fullBuild+force) -- there it was a form-datasource-to-table reference reporting an empty table name; here it is a form-control-to-table-fieldgroup reference reporting the field group as missing. Separately, and lower severity: (a) d365fo_file(modify, add-relation) silently dropped both relationshipType='Composition' and the cardinality/relatedTableCardinality params (confirmed by re-reading the written XML -- only Name/RelatedTable/Constraints persisted); (b) d365fo_file(modify, add-data-source) silently dropped linkType='ActiveLink' (no <LinkType> element in the written XML despite the param being accepted without error); (c) the offline object_patterns(form, validate) tool passed a placement (Grid control nested in a TabPage with PanelStyle=Grid, no declared sub-pattern) that the real xppc FormPatternValidation pass then rejected as an ERROR ('not allowed at its current location by pattern Details Master') -- a validator/build disagreement (VALIDATOR_GAP) distinct from the field-group defect that blocked the final build.",
+  "suggested_fix_area": "generate_object(mode='scaffold', objectType='form', formPattern=DetailsMaster|DetailsTransaction): either stop emitting DataGroup='Overview' on the auto-generated FieldsFieldGroups TabPage unless the bound table already has that field group, or auto-create the referenced field group on the table as part of the scaffold. Separately: investigate why xppc's 'Metadata: validate forms' pass does not observe a table field group added earlier in the same session via d365fo_file(modify, add-field-group) even after fullBuild+force -- likely a stale metadata-model snapshot cached by the C# bridge/IMetadataProvider layer that xppc reads through, not invalidated by the build's own cache-refresh flags. Also: d365fo_file(modify, add-relation) should persist relationshipType/cardinality/relatedTableCardinality params instead of silently dropping them, and add-data-source should persist linkType. Finally, align object_patterns(form, validate)'s placement rules for Grid controls inside Details* patterns with the real xppc FormPatternValidation rules so the offline gate catches what the compiler will reject.",
+  "evidence_refs": [
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxForm/ConDemoDocForm.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoDocHeader.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoDocLine.xml",
+    "docs/USAGE_EXAMPLES.md#1"
+  ]
+}

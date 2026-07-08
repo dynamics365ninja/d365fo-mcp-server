@@ -1,0 +1,61 @@
+﻿{
+  "run_id": "2026-07-07T11__L3-batch-basic__cb1b73d",
+  "case_id": "L3-batch-basic",
+  "tier": 3,
+  "timestamp": "2026-07-07T11:28:24.691Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoBatchContract.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxClass/SourceCode/Declaration",
+        "expected": "[DataContractAttribute]\nclass PFXDemoBatchContract\n{\n    int batchSize;\n    int priorityFactor;\n}",
+        "actual": "[DataContractAttribute]\nclass PFXDemoBatchContract\n{\n    int batchSize;\n    int priorityFactor;\n\n}"
+      },
+      {
+        "path": "AxClass/SourceCode/Methods/Method[parmBatchSize]/Source",
+        "expected": "[DataMemberAttribute,\n SysOperationLabelAttribute(literalStr(\"@PFXRent:DemoBatchSize\")),\n SysOperationDisplayOrderAttribute('1')]\npublic int parmBatchSize(int _batchSize = batchSize)\n{\n    batchSize = _batchSize;\n    return batchSize;\n}",
+        "actual": "public int parmBatchSize(int _batchSize = batchSize)\n    {\n        batchSize = _batchSize;\n        return batchSize;\n    }"
+      },
+      {
+        "path": "AxClass/SourceCode/Methods/Method[parmPriorityFactor]/Source",
+        "expected": "[DataMemberAttribute,\n SysOperationLabelAttribute(literalStr(\"@PFXRent:DemoPriorityFactor\")),\n SysOperationDisplayOrderAttribute('2')]\npublic int parmPriorityFactor(int _priorityFactor = priorityFactor)\n{\n    priorityFactor = _priorityFactor;\n    return priorityFactor;\n}",
+        "actual": "public int parmPriorityFactor(int _priorityFactor = priorityFactor)\n    {\n        priorityFactor = _priorityFactor;\n        return priorityFactor;\n    }"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT"
+}

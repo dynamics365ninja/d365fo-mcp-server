@@ -1,0 +1,53 @@
+﻿{
+  "run_id": "2026-07-07T06__L2-form-modify-controls__cb1b73d",
+  "case_id": "L2-form-modify-controls",
+  "tier": 2,
+  "timestamp": "2026-07-07T06:40:00.000Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "contoso/contoso/AxTable/ConDemoCtrlNote.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "root_cause_hypothesis": "No golden was captured for this case yet (golden_pending: true) so golden_match here is a structural self-check placeholder, not a real oracle comparison -- see the sibling '__form' record for the case's actual (negative) outcome. Table half of the instruction (fields NoteId/Num-mandatory, Subject/Name, unique index NoteIdx via alternate-key semantics) was fully achievable through the grounded d365fo_file create/modify path and builds clean. Bp warnings (6) are expected for a minimal scaffold table with no field groups/title fields, not tool defects.",
+  "evidence_refs": [
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoCtrlNote.xml"
+  ]
+}

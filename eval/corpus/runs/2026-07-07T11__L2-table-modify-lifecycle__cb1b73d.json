@@ -1,0 +1,63 @@
+﻿{
+  "run_id": "2026-07-07T11__L2-table-modify-lifecycle__cb1b73d",
+  "case_id": "L2-table-modify-lifecycle",
+  "tier": 2,
+  "timestamp": "2026-07-07T11:08:17.000Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "AxTable/ConDemoModLifecycle.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "message": "AxTable ConDemoModLifecycle: BPTableWithRecIdIndexMissingReplacementKey."
+      },
+      {
+        "message": "AxTable ConDemoModLifecycle CustAccount: BPErrorEDTNotMigrated."
+      },
+      {
+        "message": "AxTable ConDemoModLifecycle CustTable: BPErrorTableRelationshipPropertiesCompleteness."
+      },
+      {
+        "message": "AxTable ConDemoModLifecycle: BPErrorTableMissingGroupAutoReport."
+      },
+      {
+        "message": "AxTable ConDemoModLifecycle CustAccount: BPErrorTableFieldNotInFieldGroup."
+      },
+      {
+        "message": "AxTable ConDemoModLifecycle: BPUpgradeMetadataEDTRelation."
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "evidence_refs": [
+    "eval/cases/L2-table-modify-lifecycle.json",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoModLifecycle.xml (rolled back after run)",
+    "npm run eval:score -- L2-table-modify-lifecycle <actual> --bp-warnings 6 => ENOENT scandir eval/goldens/L2-table-modify-lifecycle (golden_pending, confirmed by direct invocation)",
+    "run_bp_check(modelName=contoso, targetFilter=ConDemoModLifecycle) output (6 residual warnings after fixing Label/DeveloperDocumentation/field-group-label text-label issues)"
+  ],
+  "root_cause_hypothesis": "eval/cases/L2-table-modify-lifecycle.json carries golden_pending: true and eval/goldens/L2-table-modify-lifecycle/ does not exist, so npm run eval:score throws ENOENT (findGolden scans the missing dir) -- confirmed by direct invocation (see evidence_refs), not worked around. score.golden_match is reported as 0 (unscorable) by convention -- no reviewed golden exists to diff against -- not because the produced metadata was verified wrong.\n\nManual field-by-field verification against the instruction confirms full conformance: the final ConDemoModLifecycle table has exactly three fields (NoteCode: Num EDT, Mandatory=Yes; Description: Name EDT, Mandatory=Yes; CustAccount: CustAccount EDT), exactly one index (CodeIdx, AlternateKey=Yes, on NoteCode, no AllowDuplicates element which the add-index tool itself documents as defaulting to unique/false), exactly one relation (CustTable, CustAccount=AccountNum, standard CustTable_* convention shape), exactly one field group (Overview, containing NoteCode and Description only), TitleField1=Description, and TempQty/TmpIdx are absent from the final table -- all achieved exclusively through d365fo_file(action=modify) operations (add-field x2, modify-field, rename-field, add-index x2, remove-index, add-relation, add-field-group, add-field-to-field-group x2, remove-field, modify-property x2), zero hand-authored or overwrite XML. Build is clean (xppc: 0 errors).\n\nClassification is TOOL_DEFECT rather than a clean PASS because two separate, reproducible tool defects were found and did not self-correct within the grounded path; both are silent-success no-ops unrelated to the case core scored requirements (the instruction never mentions ReplacementKey or relation Cardinality/RelationshipType), but they are genuine gaps in the exact modify surface this case exercises.\n\nDEFECT 1 (add-relation): d365fo_file(modify, add-relation, params={relationName, relatedTable, relationConstraints, relationCardinality: ZeroMore, relatedTableCardinality: ZeroOne, relationshipType: Association}) -- all three optional param names match exactly the spec the tool itself returns when probed with an empty params object -- reports a successful relation-add, but the written AxTableRelation XML never contains Cardinality, RelatedTableCardinality, or RelationshipType elements; reproduced twice (once inline with the first add-relation call, once again after an isolated remove-relation plus add-relation retry done to rule out a same-file race from an earlier parallel-write mistake on my part). This directly causes BPErrorTableRelationshipPropertiesCompleteness and very likely BPErrorEDTNotMigrated/BPUpgradeMetadataEDTRelation too (the BP checker may not recognize an incompletely-specified AxTableRelation as a valid migration target for the CustAccount EDT implicit relation).\n\nDEFECT 2 (modify-property): d365fo_file(modify, modify-property, params={propertyPath: ReplacementKey, propertyValue: CodeIdx}) reports a successful property update, but the table XML never gained a ReplacementKey element (confirmed on a plain, isolated, non-parallel retry) -- yet modify-property does work correctly for other table-root scalar properties in the exact same session (TitleField1, Label, DeveloperDocumentation all applied and persisted correctly), so ReplacementKey specifically looks to be missing from an internal property-name allowlist/mapping, and modify-property silently no-ops for unrecognized property names instead of erroring the way add-index/add-relation do for missing REQUIRED params.\n\nSECONDARY OBSERVATION (self-corrected, not scored as a defect): labels(action=create, labelFileId=contoso, ...) happily created a new AxLabelFile using the literal model name contoso (which contains a hyphen) as the LabelFileId; the resulting label reference was rejected by the BP checker as BPErrorLabelIsText (not a label ID) even though it is syntactically the tool own suggested @LabelFile:LabelId form -- almost certainly because a hyphenated LabelFileId is not a legal X++/label identifier and the BP checker label-reference matcher simply does not accept it. Recreating the same label under the pre-existing AC labelFileId (also model contoso, no hyphen) resolved cleanly and the BP warning disappeared.\n\nTwo more minor param-naming near-misses (not defects, just noted for the improver): alternateKey/unique are not the accepted add-index param names (the tool silently accepted and ignored them without a validation error, only the empty-params probe surfaced the real names indexAlternateKey/indexAllowDuplicates); similarly modify-field propertyName/propertyValue guess was silently ignored (the correct name is fieldMandatory). Silently accepting and dropping unrecognized keys, rather than warning or erroring on them, is what let both DEFECT 1 and DEFECT 2 pass undetected on the first attempt and is arguably the umbrella root cause tying all of these together.",
+  "suggested_fix_area": "(1) d365fo_file(modify, add-relation): fix relationCardinality/relatedTableCardinality/relationshipType so they actually populate Cardinality/RelatedTableCardinality/RelationshipType on the written AxTableRelation (bridge IMetaTableProvider.Update relation-constraint mapping).\n(2) d365fo_file(modify, modify-property): add ReplacementKey (and audit other AxTable root scalar properties for the same gap) to whatever property-name allowlist modify-property uses, or -- safer -- make modify-property error on any propertyPath it does not recognize instead of returning a misleading success.\n(3) More generally: have d365fo_file(action=modify) validate and reject unknown keys in params for every operation, not just missing REQUIRED ones, so a wrong param name surfaces immediately instead of silently no-oping (this is the pattern that caused both defects above plus the add-index/modify-field near-misses).\n(4) labels(action=create): sanitize or reject a LabelFileId derived from a hyphenated model name (or document that labelFileId must be a legal identifier distinct from the model name) so a freshly-created label file does not produce an unresolvable label reference.\n(5) Author and human-review the golden for L2-table-modify-lifecycle (eval/goldens/L2-table-modify-lifecycle/ConDemoModLifecycle.metadata.xml or an Con-prefixed capture) so future runs can score golden_match; flip golden_pending to false once committed."
+}

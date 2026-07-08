@@ -1,0 +1,40 @@
+﻿{
+  "run_id": "2026-07-07T16__L4-ssrs-report-basic__cb1b73d",
+  "case_id": "L4-ssrs-report-basic",
+  "tier": 4,
+  "timestamp": "2026-07-07T16:03:35.673Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoNoteReportContract.metadata.xml"
+  ],
+  "build": {
+    "succeeded": false,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxClass/SourceCode/Declaration",
+        "expected": "[DataContractAttribute]\npublic final class PFXDemoNoteReportContract\n{\n}",
+        "actual": "/// <summary>\n/// Data contract for the Demo Note Report report.\n/// Defines dialog parameters shown to the user before report execution.\n/// </summary>\n[DataContractAttribute]\npublic class PFXDemoNoteReportContract\n{\n    // No dialog parameters\n\n}"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT"
+}

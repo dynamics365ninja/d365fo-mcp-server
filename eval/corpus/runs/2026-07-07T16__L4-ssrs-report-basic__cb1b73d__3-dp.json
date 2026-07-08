@@ -1,0 +1,51 @@
+﻿{
+  "run_id": "2026-07-07T16__L4-ssrs-report-basic__cb1b73d",
+  "case_id": "L4-ssrs-report-basic",
+  "tier": 4,
+  "timestamp": "2026-07-07T16:03:58.231Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoNoteReportDP.metadata.xml"
+  ],
+  "build": {
+    "succeeded": false,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "AxClass/SourceCode/Methods/Method[getConDemoNoteReportTmp]/Name",
+      "AxClass/SourceCode/Methods/Method[getConDemoNoteReportTmp]/Source"
+    ],
+    "extra": [
+      "AxClass/SourceCode/Methods/Method[getConDemoNoteReportTmp]/Name",
+      "AxClass/SourceCode/Methods/Method[getConDemoNoteReportTmp]/Source"
+    ],
+    "changed": [
+      {
+        "path": "AxClass/SourceCode/Declaration",
+        "expected": "[SRSReportParameterAttribute(classStr(PFXDemoNoteReportContract))]\npublic class PFXDemoNoteReportDP extends SRSReportDataProviderBase\n{\n    PFXDemoNoteReportTmp tmpTable;\n}",
+        "actual": "/// <summary>\n/// Data provider for the Demo Note Report report.\n/// Extends <c>SrsReportDataProviderBase</c> and populates the <c>PFXDemoNoteReportTmp</c> temporary table.\n/// </summary>\n[\n    SRSReportParameterAttribute(classStr(PFXDemoNoteReportContract))\n]\npublic class PFXDemoNoteReportDP extends SrsReportDataProviderBase\n{\n    PFXDemoNoteReportTmp conDemoNoteReportTmp;\n\n}"
+      },
+      {
+        "path": "AxClass/SourceCode/Methods/Method[processReport]/Source",
+        "expected": "public void processReport()\n{\n    PFXDemoNoteHeader noteHeader;\n\n    delete_from tmpTable;\n\n    insert_recordset tmpTable (NoteId, Subject)\n        select NoteId, Subject\n        from noteHeader;\n}",
+        "actual": "/// <summary>\n    /// Main data processing method. Populates the <c>PFXDemoNoteReportTmp</c> temporary table\n    /// with report data based on the contract parameters.\n    /// </summary>\n    public void processReport()\n    {\n        // No contract parameters\n\n        // TODO: Replace with actual query / business logic\n        // Example pattern:\n        //   while select sourceTable\n        //       where sourceTable.Field == paramValue\n        //   {\n        //       conDemoNoteReportTmp.clear();\n        //       conDemoNoteReportTmp.NoteId = ''; // TODO: populate from data source\n        //       conDemoNoteReportTmp.Subject = ''; // TODO: populate from data source\n        //       conDemoNoteReportTmp.insert();\n        //   }\n    }"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT"
+}

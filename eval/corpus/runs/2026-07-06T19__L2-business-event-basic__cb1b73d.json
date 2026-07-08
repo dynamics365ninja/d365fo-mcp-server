@@ -1,0 +1,92 @@
+﻿{
+  "run_id": "2026-07-06T19__L2-business-event-basic__cb1b73d",
+  "case_id": "L2-business-event-basic",
+  "tier": 2,
+  "timestamp": "2026-07-06T19:20:18Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "AxTable/ConDemoNoteHeader.xml (prerequisite fixture, not scored)",
+    "AxClass/ConDemoNoteHeaderCreatedContract.xml",
+    "AxClass/ConDemoNoteHeaderCreatedBusinessEvent.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "message": "BestPractices Warning: AxClass ConDemoNoteHeaderCreatedContract/Method/newFromNoteHeader: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoNoteHeaderCreatedContract.newFromNoteHeader'."
+      },
+      {
+        "message": "BestPractices Warning: AxClass ConDemoNoteHeaderCreatedContract: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoNoteHeaderCreatedContract'."
+      },
+      {
+        "message": "BestPractices Warning: AxClass ConDemoNoteHeaderCreatedBusinessEvent/Method/newFromContract: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoNoteHeaderCreatedBusinessEvent.newFromContract'."
+      },
+      {
+        "message": "BestPractices Warning: AxClass ConDemoNoteHeaderCreatedBusinessEvent: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoNoteHeaderCreatedBusinessEvent'."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "ConDemoNoteHeaderCreatedContract.metadata.xml::AxClass/SourceCode/Methods/Method[newFromNoteHeader]/Source",
+        "golden": "public static PFXDemoNoteHeaderCreatedContract newFromNoteHeader(PFXDemoNoteHeader _noteHeader)\n{\n    PFXDemoNoteHeaderCreatedContract contract = new PFXDemoNoteHeaderCreatedContract();\n    contract.parmNoteId(_noteHeader.NoteId);\n    contract.parmSubject(_noteHeader.Subject);\n    return contract;\n}",
+        "actual": "public static PFXDemoNoteHeaderCreatedContract newFromNoteHeader(PFXDemoNoteHeader _noteHeader)\n    {\n        PFXDemoNoteHeaderCreatedContract contract = new PFXDemoNoteHeaderCreatedContract();\n        contract.parmNoteId(_noteHeader.NoteId);\n        contract.parmSubject(_noteHeader.Subject);\n        return contract;\n    }"
+      },
+      {
+        "path": "ConDemoNoteHeaderCreatedContract.metadata.xml::AxClass/SourceCode/Methods/Method[parmNoteId]/Source",
+        "golden": "[DataMemberAttribute('NoteId')]\npublic Num parmNoteId(Num _noteId = noteId)\n{\n    noteId = _noteId;\n    return noteId;\n}",
+        "actual": "[DataMemberAttribute('NoteId')]\n    public Num parmNoteId(Num _noteId = noteId)\n    {\n        noteId = _noteId;\n        return noteId;\n    }"
+      },
+      {
+        "path": "ConDemoNoteHeaderCreatedContract.metadata.xml::AxClass/SourceCode/Methods/Method[parmSubject]/Source",
+        "golden": "[DataMemberAttribute('Subject')]\npublic Name parmSubject(Name _subject = subject)\n{\n    subject = _subject;\n    return subject;\n}",
+        "actual": "[DataMemberAttribute('Subject')]\n    public Name parmSubject(Name _subject = subject)\n    {\n        subject = _subject;\n        return subject;\n    }"
+      },
+      {
+        "path": "ConDemoNoteHeaderCreatedBusinessEvent.metadata.xml::AxClass/SourceCode/Methods/Method[newFromContract]/Source",
+        "golden": "public static PFXDemoNoteHeaderCreatedBusinessEvent newFromContract(PFXDemoNoteHeaderCreatedContract _contract)\n{\n    PFXDemoNoteHeaderCreatedBusinessEvent event = new PFXDemoNoteHeaderCreatedBusinessEvent();\n    event.contract = _contract;\n    return event;\n}",
+        "actual": "public static PFXDemoNoteHeaderCreatedBusinessEvent newFromContract(PFXDemoNoteHeaderCreatedContract _contract)\n    {\n        PFXDemoNoteHeaderCreatedBusinessEvent event = new PFXDemoNoteHeaderCreatedBusinessEvent();\n        event.contract = _contract;\n        return event;\n    }"
+      },
+      {
+        "path": "ConDemoNoteHeaderCreatedBusinessEvent.metadata.xml::AxClass/SourceCode/Methods/Method[buildContract]/Source",
+        "golden": "[Hookable(false)]\npublic BusinessEventsContract buildContract()\n{\n    return contract;\n}",
+        "actual": "[Hookable(false)]\n    public BusinessEventsContract buildContract()\n    {\n        return contract;\n    }"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "d365fo_file(action='create', objectType='class') auto-splits a class's sourceCode into <Declaration> (class line + member vars) and per-method <Methods>/<Method>/<Source> entries as documented, but it unconditionally re-indents every top-level method body by one extra level (4 spaces) versus what was supplied, regardless of whether the input methods were authored at column 0 (the tool's own documented convention: 'methods after the closing }') or nested inside the class braces. Reproduced twice: first with methods nested inside the class body (produced 8-space-indented bodies, worse), then again after rewriting with methods placed at column 0 after the closing brace exactly as instructed by the tool description (still produced a spurious uniform 4-space indent on every method's signature/braces/body). The golden fixtures for this case (and, per the eval oracle's exact-line-match normalize.ts, which only trims/CRLF-normalizes and does not dedent) store method Source blocks with the method signature and closing brace at column 0. Net effect: two semantically-identical, build-clean, reference-clean classes score golden_match=0 purely on whitespace the author has no way to suppress through the create tool's public sourceCode contract.",
+  "suggested_fix_area": "d365fo_file(action='create', objectType='class') method-source formatting: the auto-split/write path should preserve (or normalize to zero) the base indentation level of each extracted top-level method rather than adding a fixed 4-space indent, so create-time output matches the column-0-method convention documented in the tool's own guidance and used by the golden corpus. Alternatively/additionally, eval/src/eval/oracle/normalize.ts could dedent each Method/Source block to a common minimum-indentation baseline before line-diffing, so build-clean/reference-clean code isn't penalized for a formatting-only discrepancy that has no semantic bearing.",
+  "evidence_refs": [
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoNoteHeader.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxClass/ConDemoNoteHeaderCreatedContract.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxClass/ConDemoNoteHeaderCreatedBusinessEvent.xml",
+    "eval/goldens/L2-business-event-basic/ConDemoNoteHeaderCreatedContract.metadata.xml",
+    "eval/goldens/L2-business-event-basic/ConDemoNoteHeaderCreatedBusinessEvent.metadata.xml"
+  ]
+}

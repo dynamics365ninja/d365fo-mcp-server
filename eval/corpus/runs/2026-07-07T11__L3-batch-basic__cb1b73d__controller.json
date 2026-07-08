@@ -1,0 +1,56 @@
+﻿{
+  "run_id": "2026-07-07T11__L3-batch-basic__cb1b73d",
+  "case_id": "L3-batch-basic",
+  "tier": 3,
+  "timestamp": "2026-07-07T11:28:28.751Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoBatchController.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxClass/SourceCode/Methods/Method[construct]/Source",
+        "expected": "/// <summary>\n/// Constructs the controller for the batch operation.\n/// </summary>\npublic static PFXDemoBatchController construct()\n{\n    PFXDemoBatchController controller = new PFXDemoBatchController();\n    controller.parmClassName(classStr(PFXDemoBatchService));\n    controller.parmMethodName(methodStr(PFXDemoBatchService, process));\n    return controller;\n}",
+        "actual": "/// <summary>\n    /// Constructs the controller for the batch operation.\n    /// </summary>\n    public static PFXDemoBatchController construct()\n    {\n        PFXDemoBatchController controller = new PFXDemoBatchController();\n        controller.parmClassName(classStr(PFXDemoBatchService));\n        controller.parmMethodName(methodStr(PFXDemoBatchService, process));\n        return controller;\n    }"
+      },
+      {
+        "path": "AxClass/SourceCode/Methods/Method[main]/Source",
+        "expected": "/// <summary>\n/// Entry point invoked from the menu item.\n/// </summary>\npublic static void main(Args _args)\n{\n    PFXDemoBatchController controller = PFXDemoBatchController::construct();\n    controller.parmDialogCaption(literalStr(\"@PFXRent:DemoProcessBatch\"));\n    controller.startOperation();\n}",
+        "actual": "/// <summary>\n    /// Entry point invoked from the menu item.\n    /// </summary>\n    public static void main(Args _args)\n    {\n        PFXDemoBatchController controller = PFXDemoBatchController::construct();\n        controller.parmDialogCaption(literalStr(\"@AC:DemoProcessBatch\"));\n        controller.startOperation();\n    }"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT"
+}

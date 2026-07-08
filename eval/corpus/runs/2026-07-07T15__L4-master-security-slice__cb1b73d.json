@@ -1,0 +1,99 @@
+﻿{
+  "run_id": "2026-07-07T15__L4-master-security-slice__cb1b73d",
+  "case_id": "L4-master-security-slice",
+  "tier": 4,
+  "timestamp": "2026-07-07T15:33:06.000Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "AxTable/ConDemoAsset.xml",
+    "AxForm/ConDemoAssetDetails.xml",
+    "AxMenuItemDisplay/ConDemoAssetDetailsMI.xml",
+    "AxMenu/ConDemoAssetMenu.xml",
+    "AxSecurityPrivilege/ConDemoAssetView.xml",
+    "AxSecurityPrivilege/ConDemoAssetMaintain.xml",
+    "AxSecurityDuty/ConDemoAssetDuty.xml",
+    "AxSecurityRole/ConDemoAssetManager.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "message": "AxSecurityDuty ConDemoAssetDuty: BPErrorDutyHasNoPrivileges."
+      },
+      {
+        "message": "AxSecurityDuty ConDemoAssetDuty: BPErrorDutyNotCoveredByRole."
+      },
+      {
+        "message": "AxSecurityPrivilege ConDemoAssetView: BPErrorPrivilegeNotCoveredByDuty."
+      },
+      {
+        "message": "AxSecurityPrivilege ConDemoAssetMaintain: BPErrorPrivilegeNotCoveredByDuty."
+      },
+      {
+        "message": "AxForm ConDemoAssetDetails FormDesign: Unknown label @EnterpriseAssetManagementAppSuite:EntAssetObject (model not referenced by contoso)."
+      },
+      {
+        "message": "AxForm ConDemoAssetDetails TabPageOverview: BPErrorLabelIsText: Caption 'Overview' is raw text, not a label ID."
+      },
+      {
+        "message": "AxForm ConDemoAssetDetails TabPageGeneral: BPErrorLabelIsText: Caption 'General' is raw text, not a label ID."
+      },
+      {
+        "message": "AxTable ConDemoAsset: BPCheckAlternateKeyAbsent (no AlternateKey-flagged index)."
+      },
+      {
+        "message": "AxTable ConDemoAsset: BPErrorTableMissingGroupAutoReport."
+      },
+      {
+        "message": "AxTable ConDemoAsset TableFieldGroup Overview: BPErrorLabelNotDefined."
+      },
+      {
+        "message": "AxTable ConDemoAsset: BPErrorDeveloperDocumentationNotDefined."
+      },
+      {
+        "message": "AxTable ConDemoAsset: BPErrorTableNoCaching."
+      },
+      {
+        "message": "AxTable ConDemoAsset: BPErrorTableMissingFormRef."
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT",
+  "evidence_refs": [
+    "eval/cases/L4-master-security-slice.json",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoAsset.xml (rolled back after run)",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxForm/ConDemoAssetDetails.xml (rolled back after run)",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxMenuItemDisplay/ConDemoAssetDetailsMI.xml (rolled back after run)",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxMenu/ConDemoAssetMenu.xml (rolled back after run)",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxSecurityPrivilege/ConDemoAssetView.xml (rolled back after run)",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxSecurityPrivilege/ConDemoAssetMaintain.xml (rolled back after run)",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxSecurityDuty/ConDemoAssetDuty.xml (rolled back after run)",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxSecurityRole/ConDemoAssetManager.xml (rolled back after run)",
+    "npm run eval:score -- L4-master-security-slice <actual> --bp-warnings 13 => ENOENT scandir eval/goldens/L4-master-security-slice (golden_pending, confirmed by direct invocation with EXTENSION_PREFIX=Con exported)",
+    "security_info(mode=coverage, objectName=ConDemoAssetDetailsMI, objectType=menu-item) confirms non-empty end-to-end resolution: both privileges -> duty ConDemoAssetDuty -> role ConDemoAssetManager, despite the malformed wrapper elements in the raw XML",
+    "run_bp_check(modelName=contoso) output before/after label fixes (18 warnings -> 13 warnings)"
+  ],
+  "root_cause_hypothesis": "npm run eval:score throws ENOENT scandir eval/goldens/L4-master-security-slice because golden_pending is true and no golden dir exists yet, confirmed by direct invocation with EXTENSION_PREFIX=Con exported. That is expected and separate from this run's actual outcome: BUILD IS CLEAN (0 errors) and the full master-data slice (table, DetailsMaster form, menu item, menu, 2 privileges, duty, role) was produced end to end through the grounded tool path only (prepare -> search/get_object_info for EDTs -> generate_object(fields) -> d365fo_file create/modify -> object_patterns validate -> validate_code references/syntax -> build -> run_bp_check -> security_info coverage), with zero hand-authored or hand-patched XML. security_info(mode=coverage) confirms the case's explicit correctness bar is met: both privileges resolve through the duty to the role with non-empty, correct Read/Update/Create/Delete grants (View: Read only; Maintain: full CRUD) -- not an empty skeleton. Classification is TOOL_DEFECT rather than PASS because three separate, reproducible tool defects were hit along the way, two of which left permanent residue in the scored artifacts because the grounded modify surface has no way to correct them.\n\nDEFECT 1 (build-blocking, worked around, not present in final artifact): generate_object(mode=\"scaffold\", objectType=\"form\", formPattern=\"DetailsMaster\", includeMethodStubs=true) injected the requested per-datasource method stubs (active/validateWrite) directly inside the top-level AxFormDataSource's <Methods> element, positioned immediately after <Name> and BEFORE <Table>. This desyncs positional schema binding exactly as previously seen on DetailsTransaction/TableOfContents scaffolds (see prior L3-numberseq-module-slice and L4-headerlines-document-slice runs): xppc fails with \"datasource 'ConDemoAsset' refers to table '' which does not exist\", even though the raw <Table> text is present and correct in the file. This is the first confirmation of this exact defect on the DetailsMaster pattern too, so it is not pattern-specific -- it is the includeMethodStubs=true code path generically across at least three form patterns now. Worked around (not hand-patched) by deleting the broken file via undo_last_modification and regenerating with includeMethodStubs=false, omitting the datasource lifecycle stubs entirely, since the case's core deliverables (controls, grid, FastTabs) do not depend on them and there is no supported d365fo_file(modify) operation to add a datasource-scoped method after the fact (add-method targets the form's own SourceCode, not a specific AxFormDataSource).\n\nDEFECT 2 (permanent residue, unfixable via grounded surface): d365fo_file(action=\"create\", objectType=\"security-duty\", properties.privileges=[...]) and objectType=\"security-role\" (properties.duties=[...]) both emit the wrong wrapper element shape -- <AxSecurityRolePermissionSet> instead of <AxSecurityPrivilegeReference> under AxSecurityDuty/Privileges, and <AxSecurityRoleDutyPermission> instead of <AxSecurityDutyReference> under AxSecurityRole/Duties -- confirming the already-tracked defect (functionally wired per security_info, but wrong BP-checkable shape). This directly causes 4 of the 13 residual BP warnings (BPErrorDutyHasNoPrivileges, BPErrorDutyNotCoveredByRole, BPErrorPrivilegeNotCoveredByDuty x2), because the BP checker's schema-aware coverage rules do not recognize the wrong element names as valid references even though the C# bridge's own security_info reader does resolve them correctly. There is no d365fo_file(modify) operation to rename/replace these wrapper elements; modify-property returned \"Operation 'modify-property' on object type 'security-duty'/'security-role' is not supported by the bridge\" for both types, so this could not be corrected without hand-editing XML, which was correctly avoided per the task's guardrail.\n\nDEFECT 3 (partially my own mistake, but blocked by a genuine tool limitation): I initially reused labels from EnterpriseAssetManagementAppSuite and AssetLeasing for the table/duty/menu/form-caption/privilege labels; contoso's Descriptor only references ApplicationFoundation/ApplicationPlatform/ApplicationSuite, so those labels correctly triggered BPErrorUnknownLabel. Re-grounded via labels(action=\"search\") and fixed table/duty/menu/Maintain-privilege/role labels to labels reused from referenced models (@Budget:LineAssetSource = \"Asset\", @SalesAndMarketing:Maintain, @SYS313197 = \"Manager\") via d365fo_file(modify, modify-property) where supported, or create+overwrite=true where modify-property was unsupported for the object type -- eliminating 4 of the original 5 unknown-label warnings and both non-coverage-related duty/role label issues. However ONE unknown-label warning (the form's Design/Caption, still pointing at the unreferenced EnterpriseAssetManagementAppSuite label) and the form scaffold's own two raw-text FastTab captions (\"Overview\"/\"General\", which I never supplied -- the scaffold tool's own default output) could NOT be corrected: d365fo_file(modify, objectType=\"form\", operation=\"modify-property\", propertyPath=\"Design/Caption\") failed with \"<Caption> appears 3 times in [file] -- ambiguous, refusing to guess which one\", confirming the already-known modify-property structural-path limitation (it counts raw tag-name occurrences file-wide rather than resolving structurally-scoped/qualified paths) blocks fixing form Design captions on any form with more than one Caption-bearing control, which is nearly all non-trivial forms. There is no other grounded operation (no \"modify-control\" op) to target a specific Design element's property by structural path.\n\nSECONDARY OBSERVATION (informational, not scored): the labels(action=\"search\"/\"info\") tool displays legacy SYS-family label files (SYS, WAX, TRX, SYP, GLS, GEE, RET) using a malformed doubled-@ syntax in its own \"Usage in metadata XML\" guidance, e.g. \"<Label>@SYS:@SYS313197</Label>\", which the BP checker correctly rejects with BPErrorLabelIsText (\"not a label ID\"); the correct legacy syntax is the plain single-@ form \"@SYS313197\", confirmed both by the EDT TransDate's own pre-existing Label (\"@SYS7402\", single-@, no BP complaint at all) and by successfully eliminating the role's BPErrorLabelIsText warning after switching to \"@SYS313197\". This is a real, reproducible defect in the labels tool's own suggested usage syntax for any legacy/SYS-style label file, independent of this case's security content.\n\nRemaining 6 BP warnings (BPCheckAlternateKeyAbsent, BPErrorTableMissingGroupAutoReport, BPErrorLabelNotDefined on the Overview field group, BPErrorDeveloperDocumentationNotDefined, BPErrorTableNoCaching, BPErrorTableMissingFormRef) are generic table-hygiene items the case instruction never mandates (it only asks for the unique AssetIdx index, TitleField1=Name, and an Overview field group, all of which are present and correct) and are treated as expected background noise for a minimal master table, consistent with prior corpus records' treatment of similarly-scoped tables.",
+  "suggested_fix_area": "(1) generate_object(mode=\"scaffold\", objectType=\"form\", includeMethodStubs=true): move injected per-datasource method stubs out of the top-level AxFormDataSource element (which must keep Name/Table/Fields/... in schema order with no <Methods> child) and into the SourceCode/DataSources/DataSource/Methods mirror section, matching every shipped form -- this defect is now confirmed across three different form patterns (TableOfContents, DetailsTransaction, DetailsMaster), so it looks like a generic code path, not pattern-specific.\n(2) d365fo_file(action=\"create\", objectType=\"security-duty\"|\"security-role\"): emit <AxSecurityPrivilegeReference>/<AxSecurityDutyReference> instead of <AxSecurityRolePermissionSet>/<AxSecurityRoleDutyPermission>, matching shipped objects (already-tracked defect, reconfirmed here).\n(3) d365fo_file(action=\"modify\", operation=\"modify-property\"): (a) support security-privilege/security-duty/security-role object types (currently \"not supported by the bridge\" for all three, forcing a create+overwrite=true workaround which is only viable for objects with no other unique state); (b) resolve propertyPath structurally instead of refusing whenever a tag name (e.g. Caption) appears more than once file-wide -- accept an indexed or Name-qualified path so a specific Design control's property can be targeted (this blocks fixing raw-text FastTab captions or a form's own Design/Caption on essentially any non-trivial form).\n(4) labels(action=\"search\"/\"info\"): fix the \"Usage in X++\"/\"Usage in metadata XML\" guidance for legacy SYS-family label files (SYS, WAX, TRX, SYP, GLS, GEE, RET) -- it currently suggests a malformed doubled-@ syntax (\"@SYS:@SYS313197\") that the BP checker rejects; the correct form is the plain single-@ legacy syntax (\"@SYS313197\").\n(5) Author and human-review the golden for L4-master-security-slice (8 artifacts: table, form, menu item, menu, 2 privileges, duty, role) so future runs can score golden_match; flip golden_pending to false once fixes (1)-(2) land so the golden can reflect a fully BP-clean build."
+}

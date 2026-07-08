@@ -1,0 +1,69 @@
+﻿{
+  "run_id": "2026-07-06T19__L1-table-basic__cb1b73d",
+  "case_id": "L1-table-basic",
+  "tier": 1,
+  "timestamp": "2026-07-06T19:03:06.531Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoAgentNote.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "AxTable/CacheLookup",
+      "AxTable/ClusteredIndex",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoBrowse]/Name",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoIdentification]/AutoPopulate",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoIdentification]/Name",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Fields/AxTableFieldGroupField[NoteId]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Fields/AxTableFieldGroupField[NoteText]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Fields/AxTableFieldGroupField[Subject]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Name",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[NoteDateTime]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[NoteId]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[NoteText]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[Subject]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Name",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoSummary]/Name",
+      "AxTable/PrimaryIndex",
+      "AxTable/ReplacementKey",
+      "AxTable/SourceCode/Declaration",
+      "AxTable/TitleField2"
+    ],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxTable/Label",
+        "expected": "@SYS13887",
+        "actual": "@AC:DemoAgentNote"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT"
+}

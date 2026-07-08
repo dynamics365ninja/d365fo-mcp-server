@@ -1,0 +1,51 @@
+﻿{
+  "run_id": "2026-07-07T11__L3-batch-basic__cb1b73d",
+  "case_id": "L3-batch-basic",
+  "tier": 3,
+  "timestamp": "2026-07-07T11:28:42.368Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoProcessBatch.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxMenuItemAction/Label",
+        "expected": "@PFXRent:DemoProcessBatch",
+        "actual": "@AC:DemoProcessBatch"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "VALIDATOR_GAP"
+}

@@ -1,0 +1,40 @@
+﻿{
+  "run_id": "2026-07-07T07__L2-interface-abstract-basic__cb1b73d",
+  "case_id": "L2-interface-abstract-basic",
+  "tier": 2,
+  "timestamp": "2026-07-07T07:36:39.639Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "IDemoNoteRenderer.AxClass.metadata.xml",
+    "DemoNotePlainRenderer.AxClass.metadata.xml",
+    "DemoNoteRendererBase.AxClass.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "KNOWLEDGE_GAP"
+}

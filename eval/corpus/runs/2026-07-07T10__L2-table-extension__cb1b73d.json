@@ -1,0 +1,40 @@
+﻿{
+  "run_id": "2026-07-07T10__L2-table-extension__cb1b73d",
+  "case_id": "L2-table-extension",
+  "tier": 2,
+  "timestamp": "2026-07-07T10:40:43.866Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "CustGroup.ConExtension.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxTableExtension/Fields/AxTableField[NotePriority]/ExtendedDataType",
+        "expected": "Counter",
+        "actual": "Priority"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT"
+}

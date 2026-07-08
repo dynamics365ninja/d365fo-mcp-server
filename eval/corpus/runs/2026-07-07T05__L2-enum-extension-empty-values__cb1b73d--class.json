@@ -1,0 +1,37 @@
+﻿{
+  "run_id": "2026-07-07T05__L2-enum-extension-empty-values__cb1b73d",
+  "case_id": "L2-enum-extension-empty-values",
+  "tier": 2,
+  "timestamp": "2026-07-07T05:19:44.941Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoEnumExtProbe.actual.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS"
+}

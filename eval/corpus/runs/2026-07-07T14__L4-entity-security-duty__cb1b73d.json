@@ -1,0 +1,43 @@
+﻿{
+  "run_id": "2026-07-07T14__L4-entity-security__cb1b73d",
+  "case_id": "L4-entity-security",
+  "tier": 4,
+  "timestamp": "2026-07-07T14:38:24.006Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoNoteHeaderDuty.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxSecurityDuty/Label",
+        "expected": "@TaxTransactionInquiry:HeaderNote",
+        "actual": "@AC:PFXNoteHeaderDuty"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT"
+}

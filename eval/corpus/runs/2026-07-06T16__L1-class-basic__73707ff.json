@@ -1,0 +1,45 @@
+﻿{
+  "run_id": "2026-07-06T16__L1-class-basic__73707ff",
+  "case_id": "L1-class-basic",
+  "tier": 1,
+  "timestamp": "2026-07-06T16:44:14.372Z",
+  "server_git_sha": "73707ff",
+  "generated_artifacts": [
+    "ConDemoNoteFormatter.xml"
+  ],
+  "build": {
+    "succeeded": false,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxClass/SourceCode/Declaration",
+        "expected": "public class PFXDemoNoteFormatter\n{\n    str prefix;\n\n}",
+        "actual": "class DemoNoteFormatter\n{\n    str prefix;\n\n}"
+      },
+      {
+        "path": "AxClass/SourceCode/Methods/Method[construct]/Source",
+        "expected": "public static PFXDemoNoteFormatter construct(str _prefix)\n    {\n        return new PFXDemoNoteFormatter(_prefix);\n    }",
+        "actual": "public static DemoNoteFormatter construct(str _prefix)\n    {\n        return new DemoNoteFormatter(_prefix);\n    }"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT"
+}

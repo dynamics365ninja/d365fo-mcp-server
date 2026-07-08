@@ -1,0 +1,36 @@
+﻿{
+  "run_id": "2026-07-06T16__L0-enum-basic__cc58c3f",
+  "case_id": "L0-enum-basic",
+  "tier": 0,
+  "timestamp": "2026-07-06T16:41:09.858Z",
+  "server_git_sha": "cc58c3f",
+  "generated_artifacts": [
+    "ConDemoNoteStatus.actual.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 0
+  },
+  "classification": "KNOWLEDGE_GAP"
+}

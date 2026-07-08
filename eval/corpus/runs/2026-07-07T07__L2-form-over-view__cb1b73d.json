@@ -1,0 +1,146 @@
+﻿{
+  "run_id": "2026-07-07T07__L2-form-over-view__cb1b73d",
+  "case_id": "L2-form-over-view",
+  "tier": 2,
+  "timestamp": "2026-07-07T07:26:53.095Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "contoso/contoso/AxTable/ConDemoViewSrc.xml",
+    "contoso/contoso/AxQuery/ConDemoActiveViewQuery.xml",
+    "contoso/contoso/AxView/ConDemoActiveView.xml",
+    "contoso/contoso/AxForm/ConDemoActiveViewList.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "AxForm/DataSources/AxFormDataSource[PFXDemoActiveView]/Fields/AxFormDataSourceField[Code]/DataField",
+      "AxForm/DataSources/AxFormDataSource[PFXDemoActiveView]/Fields/AxFormDataSourceField[Descr]/DataField",
+      "AxForm/DataSources/AxFormDataSource[PFXDemoActiveView]/InsertIfEmpty",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/@type",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/AlignChild",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/AlignChildren",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/ArrangeMethod",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/Controls/AxFormControl[ButtonGroup]/@type",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/Controls/AxFormControl[ButtonGroup]/ArrangeMethod",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/Controls/AxFormControl[ButtonGroup]/FormControlExtension/@nil",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/Controls/AxFormControl[ButtonGroup]/Name",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/Controls/AxFormControl[ButtonGroup]/Type",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/ElementPosition",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/FilterExpression",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/FormControlExtension/@nil",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/Name",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/Type",
+      "AxForm/Design/Controls/AxFormControl[ActionPane]/VerticalSpacing",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/@type",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/ArrangeMethod",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Controls/AxFormControl[QuickFilterControl]/FormControlExtension[QuickFilterControl]/ExtensionProperties/AxFormControlExtensionProperty[defaultColumnName]/Name",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Controls/AxFormControl[QuickFilterControl]/FormControlExtension[QuickFilterControl]/ExtensionProperties/AxFormControlExtensionProperty[defaultColumnName]/Type",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Controls/AxFormControl[QuickFilterControl]/FormControlExtension[QuickFilterControl]/ExtensionProperties/AxFormControlExtensionProperty[defaultColumnName]/Value",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Controls/AxFormControl[QuickFilterControl]/FormControlExtension[QuickFilterControl]/ExtensionProperties/AxFormControlExtensionProperty[placeholderText]/Name",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Controls/AxFormControl[QuickFilterControl]/FormControlExtension[QuickFilterControl]/ExtensionProperties/AxFormControlExtensionProperty[placeholderText]/Type",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Controls/AxFormControl[QuickFilterControl]/FormControlExtension[QuickFilterControl]/ExtensionProperties/AxFormControlExtensionProperty[targetControlName]/Name",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Controls/AxFormControl[QuickFilterControl]/FormControlExtension[QuickFilterControl]/ExtensionProperties/AxFormControlExtensionProperty[targetControlName]/Type",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Controls/AxFormControl[QuickFilterControl]/FormControlExtension[QuickFilterControl]/ExtensionProperties/AxFormControlExtensionProperty[targetControlName]/Value",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Controls/AxFormControl[QuickFilterControl]/FormControlExtension[QuickFilterControl]/Name",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Controls/AxFormControl[QuickFilterControl]/Name",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/FormControlExtension/@nil",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/FrameType",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Name",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Pattern",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/PatternVersion",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Style",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/Type",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/ViewEditMode",
+      "AxForm/Design/Controls/AxFormControl[CustomFilterGroup]/WidthMode",
+      "AxForm/Design/Controls/AxFormControl[Grid]/@type",
+      "AxForm/Design/Controls/AxFormControl[Grid]/AlternateRowShading",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Code]/@type",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Code]/DataField",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Code]/DataSource",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Code]/FormControlExtension/@nil",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Code]/Name",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Code]/Type",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Descr]/@type",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Descr]/DataField",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Descr]/DataSource",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Descr]/FormControlExtension/@nil",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Descr]/Name",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Controls/AxFormControl[Grid_Descr]/Type",
+      "AxForm/Design/Controls/AxFormControl[Grid]/DataGroup",
+      "AxForm/Design/Controls/AxFormControl[Grid]/DataSource",
+      "AxForm/Design/Controls/AxFormControl[Grid]/ElementPosition",
+      "AxForm/Design/Controls/AxFormControl[Grid]/FilterExpression",
+      "AxForm/Design/Controls/AxFormControl[Grid]/FormControlExtension/@nil",
+      "AxForm/Design/Controls/AxFormControl[Grid]/MultiSelect",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Name",
+      "AxForm/Design/Controls/AxFormControl[Grid]/ShowRowLabels",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Style",
+      "AxForm/Design/Controls/AxFormControl[Grid]/Type",
+      "AxForm/Design/Controls/AxFormControl[Grid]/VerticalSpacing",
+      "AxForm/Design/DataSource",
+      "AxForm/Design/HideIfEmpty",
+      "AxForm/Design/Pattern",
+      "AxForm/Design/PatternVersion",
+      "AxForm/Design/Style",
+      "AxForm/Design/TitleDataSource"
+    ],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxForm/Design/Caption",
+        "expected": "Active view list",
+        "actual": "@SCM:Description"
+      },
+      {
+        "path": "AxForm/SourceCode/Methods/Method[classDeclaration]/Source",
+        "expected": "[Form]\npublic class PFXDemoActiveViewList extends FormRun\n{\n}",
+        "actual": "[Form]\n    public class PFXDemoActiveViewList extends FormRun\n    {\n    }"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true
+    }
+  },
+  "root_cause_hypothesis": "Regression CONFIRMED exactly as described in the case. generate_object(mode='scaffold', objectType='form', dataSource='ConDemoActiveView') fails with the literal message quoted in the case (\"Table 'ConDemoActiveView' not found in the symbol index\") even immediately after update_symbol_index (both filePath-targeted and bare-refresh forms) and even though get_object_info(objectType='view', name='ConDemoActiveView') resolves the view correctly via the bridge with both fields mapped. Root cause found in source (src/tools/generateSmartForm.ts, dataSource resolution block): the lookup runs `SELECT name FROM symbols WHERE type = 'table' AND name = ? COLLATE NOCASE` - a HARDCODED type='table' filter - so a data source backed by an AxView (indexed under type='view') can never match regardless of index freshness; this is a query-filter bug, not a staleness bug, matching the case's own framing. To produce the form without hand-authoring XML, I fell back to d365fo_file(action='create', objectType='form', properties={pattern, dataSource, dataSourceTable, gridFields}) since createD365File.ts's local generateAxFormXml/FormPatternTemplates builder path accepts the same property shape with no symbol-index gate - but in this bridge-connected session that create call was actually serviced by the C# bridge's IMetaFormProvider.Create() (message: 'via IMetadataProvider.Create()'), which silently ignored pattern/dataSource/dataSourceTable/gridFields entirely (only Caption came through as a generic scalar property), producing a near-empty AxForm skeleton with no DataSources, no Design/Pattern, no Controls, and - discovered only via a forced fullBuild - missing even the mandatory classDeclaration SourceCode method (a genuine compile error the first incremental build silently glossed over: 'Errors: 0' was stale/cached). I then rebuilt the form incrementally via legitimate modify operations: add-data-source (objectType=form) DID work over the view-backed name (bridgeAddDataSource is not gated by type='table' the way generateSmartForm's dataSource resolution is) and add-method('classDeclaration') fixed the compile error. However, modify-property(propertyPath='Pattern'|'DataSource', ...) on the plain form failed every time ('modify-property not supported for objectType 'form' via bridge'; its documented XML-fallback only edits an EXISTING single-occurrence element, so it cannot seed a brand-new Pattern/DataSource element under Design), and add-control(parentControl='Design', ...) reproduced the EXACT same known regression documented for L2-form-modify-controls ('Parent control 'Design' not found in form ...') when Design has zero controls - confirming that bug is not view-specific but a general 'cannot seed the first top-level control on a plain AxForm' limitation. End result: the table (ConDemoViewSrc), query (ConDemoActiveViewQuery) and view (ConDemoActiveView) all build clean via the grounded path with no defects; the FORM builds clean (0 xppc errors) but is structurally incomplete versus the intended SimpleList pattern - it has a working AxFormDataSource over the view but no Design/Pattern, no Design/DataSource/TitleDataSource, and none of the ActionPane/CustomFilterGroup/Grid controls (confirmed by diffing against a same-tool-generated reference: calling the SAME generate_object(scaffold) over the underlying TABLE instead of the view produces the full, correct SimpleList XML in one shot, proving the pattern-template builder itself works fine and the defect is purely the view/table symbol-index gate plus the follow-on bridge-Create() gap for forms). Per the case's explicit rule, no hand-authored XML fallback was used to force completeness.",
+  "suggested_fix_area": "(1) PRIMARY: src/tools/generateSmartForm.ts dataSource resolution - change `WHERE type = 'table'` to also accept `type = 'view'` (threading the distinction through so the emitted AxFormDataSource/Table element is still correct, since AOT uses <Table> for both table- and view-backed datasources) so generate_object(scaffold, form) can build a complete SimpleList/etc. pattern over a view in one shot exactly as it does for a table. (2) SECONDARY (compounding, only encountered because of (1)): d365fo_file(action='create', objectType='form') should route non-extension property-rich form creates (pattern/dataSource/dataSourceTable/gridFields present) through the local FormPatternTemplates XML generator rather than the bridge's IMetaFormProvider.Create(), OR the bridge CreateForm() should itself honor pattern/dataSource/gridFields and always emit classDeclaration (a create producing metadata with a hard compile error should not report bare success). (3) modify-property's form XML-fallback (directXmlModifyProperty) only edits an existing single-occurrence element - it cannot seed a brand-new Pattern/DataSource element under an empty Design; if (1)/(2) aren't fixed, a form-building-blocks path needs an 'add-property-if-missing' variant. (4) add-control's 'Parent control not found' when Design has 0 controls (see L2-form-modify-controls) is the same root cause blocking any incremental form-building fallback and should be fixed together with this case.",
+  "evidence_refs": [
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoViewSrc.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxQuery/ConDemoActiveViewQuery.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxView/ConDemoActiveView.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxForm/ConDemoActiveViewList.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxForm/ConDemoActiveViewListRef.xml (reference-only: same scaffold call over the TABLE instead of the view, produced the full correct SimpleList pattern - isolates the defect to the view/table symbol-index gate)",
+    "C:/repos/d365fo-mcp-server/src/tools/generateSmartForm.ts",
+    "C:/repos/d365fo-mcp-server/src/tools/createD365File.ts",
+    "C:/repos/d365fo-mcp-server/src/tools/modifyD365File.ts"
+  ]
+}

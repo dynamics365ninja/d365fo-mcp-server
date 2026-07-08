@@ -1,0 +1,36 @@
+{
+  "run_id": "2026-07-07T16__L4-ssrs-report-advanced__cb1b73d",
+  "case_id": "L4-ssrs-report-advanced",
+  "tier": 4,
+  "timestamp": "2026-07-07T16:17:21.240Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "4-controller.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "KNOWLEDGE_GAP"
+}

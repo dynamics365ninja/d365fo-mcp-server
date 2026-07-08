@@ -1,0 +1,62 @@
+﻿{
+  "run_id": "2026-07-07T04__L2-coc-extension__cb1b73d",
+  "case_id": "L2-coc-extension",
+  "tier": 2,
+  "timestamp": "2026-07-07T04:42:36.601Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "L2-coc-extension.actual.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxClass/Name",
+        "expected": "FMVehicleDataContractCon_Extension",
+        "actual": "FMVehicleDataContractCon_Extension"
+      },
+      {
+        "path": "AxClass/SourceCode/Declaration",
+        "expected": "[ExtensionOf(classStr(FMVehicleDataContract))]\nfinal class FMVehicleDataContractCon_Extension\n{\n}",
+        "actual": "[ExtensionOf(classStr(FMVehicleDataContract))]\nfinal class FMVehicleDataContractCon_Extension\n{\n}"
+      },
+      {
+        "path": "AxClass/SourceCode/Methods/Method[CarFactsSummary]/Source",
+        "expected": "/// <summary>\n/// Appends a verification marker to the car-facts summary text.\n/// </summary>\npublic str CarFactsSummary(str carFactsSummary)\n{\n    return next CarFactsSummary(carFactsSummary) + ' [verified]';\n}",
+        "actual": "/// <summary>\n    /// Appends a verification marker to the car-facts summary text.\n    /// </summary>\n    public str CarFactsSummary(str carFactsSummary)\n    {\n        return next CarFactsSummary(carFactsSummary) + ' [verified]';\n    }"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "VALIDATOR_GAP",
+  "root_cause_hypothesis": "The build/artifact is correct (build succeeded, class content semantically matches the golden), but the oracle's golden diff shows 3 false 'changed' entries. (1) canonicalizePrefix() in src/eval/oracle/normalize.ts requires the EXTENSION_PREFIX token to be followed by an uppercase letter '(?=[A-Z])' to canonicalize it to the PFX placeholder; the common '{Base}{Prefix}_Extension' CoC-wrapper naming convention has the prefix followed by '_' (not uppercase), so neither the golden's 'Con' nor the actual's 'Con' infix gets canonicalized, and AxClass/Name + the Declaration's class-name line false-mismatch across ANY two prefix sessions for every _Extension-suffixed class. (2) The Method Source diff is a systemic method-body indentation difference: golden Method/Source captures have the method signature/body dedented to column 0 with only the block body at +4 spaces, while the current bridge (d365fo_file) always writes Method/Source with the whole method (including the signature line) indented one extra level (as if still nested under the class braces); normalizeText() only trims the whole string and normalizes CRLF, it does not dedent per line. This exact indentation-diff pattern recurs verbatim in multiple other already-recorded corpus runs (e.g. 2026-07-06T18 ConDemoNoteFormatter and ConDemoNoteHeaderCreatedContract/BusinessEvent runs), confirming it is systemic, not case-specific.",
+  "suggested_fix_area": "src/eval/oracle/normalize.ts: canonicalizePrefix() lookahead should also allow the prefix to be followed by '_' (the _Extension infix convention), e.g. change `(?=[A-Z])` to `(?=[A-Z_])` (or a more targeted check for the '_Extension' suffix); and normalizeAotXml()/normalizeText() should dedent Method/Source blocks (e.g. strip a common leading-whitespace amount from every line) before comparing, so a whole-method-body indentation shift does not register as a semantic diff.",
+  "evidence_refs": [
+    "eval/corpus/runs/2026-07-07T04__L2-coc-extension__cb1b73d.json",
+    "eval/corpus/runs/2026-07-06T19__L2-business-event-basic__cb1b73d.json (same Method/Source indentation diff pattern)",
+    "src/eval/oracle/normalize.ts:68-72 (canonicalizePrefix)",
+    "src/eval/oracle/normalize.ts:106-113 (normalizeText)"
+  ]
+}

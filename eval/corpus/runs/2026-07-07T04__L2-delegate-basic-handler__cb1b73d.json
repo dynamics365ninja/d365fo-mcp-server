@@ -1,0 +1,40 @@
+{
+  "run_id": "2026-07-07T04__L2-delegate-basic-handler__cb1b73d",
+  "case_id": "L2-delegate-basic",
+  "tier": 2,
+  "timestamp": "2026-07-07T04:56:31.355Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "L2-delegate-basic.handler.actual.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS"
+}

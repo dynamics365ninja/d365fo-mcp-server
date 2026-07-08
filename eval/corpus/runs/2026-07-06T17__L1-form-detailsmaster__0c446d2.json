@@ -1,0 +1,40 @@
+﻿{
+  "run_id": "2026-07-06T17__L1-form-detailsmaster__0c446d2",
+  "case_id": "L1-form-detailsmaster",
+  "tier": 1,
+  "timestamp": "2026-07-06T17:36:45.227Z",
+  "server_git_sha": "0c446d2",
+  "generated_artifacts": [
+    "actual-form.xml"
+  ],
+  "build": {
+    "succeeded": false,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxForm/Design/Caption",
+        "expected": "@TaxTransactionInquiry:HeaderNote",
+        "actual": "PFXDemoNoteHeaderMaster"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT"
+}

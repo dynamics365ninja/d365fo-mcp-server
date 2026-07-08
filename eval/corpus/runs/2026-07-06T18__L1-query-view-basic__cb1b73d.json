@@ -1,0 +1,61 @@
+﻿{
+  "run_id": "2026-07-06T18__L1-query-view-basic__cb1b73d",
+  "case_id": "L1-query-view-basic",
+  "tier": 1,
+  "timestamp": "2026-07-06T18:57:04Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "AxTable/ConDemoNoteHeader.xml (prerequisite fixture, not scored)",
+    "AxQuery/ConDemoNoteHeaderQuery.xml",
+    "AxView/ConDemoNoteHeaderView.xml"
+  ],
+  "static_gate": {
+    "references": { "passed": true },
+    "syntax": { "passed": true }
+  },
+  "build": {
+    "succeeded": false,
+    "errors": [
+      { "message": "Metadata Error: AxView/ConDemoNoteHeaderView/Fields/NoteId/DataSource: Data source 'ConDemoNoteHeaderQuery' does not exist or is not part of the first root data source in the query." },
+      { "message": "Metadata Error: AxView/ConDemoNoteHeaderView/Fields/Subject/DataSource: Data source 'ConDemoNoteHeaderQuery' does not exist or is not part of the first root data source in the query." },
+      { "message": "MetadataProvider Error: On the 'ConDemoNoteHeaderView' view, the 'NoteId' field does not have a valid datasource." },
+      { "message": "MetadataProvider Error: On the 'ConDemoNoteHeaderView' view, the 'Subject' field does not have a valid datasource." }
+    ],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "ConDemoNoteHeaderQuery.metadata.xml::AxQuery/DataSources/AxQuerySimpleRootDataSource[PFXDemoNoteHeader]/Fields/AxQuerySimpleDataSourceField[NoteId]/Field",
+      "ConDemoNoteHeaderQuery.metadata.xml::AxQuery/DataSources/AxQuerySimpleRootDataSource[PFXDemoNoteHeader]/Fields/AxQuerySimpleDataSourceField[NoteId]/Name",
+      "ConDemoNoteHeaderQuery.metadata.xml::AxQuery/DataSources/AxQuerySimpleRootDataSource[PFXDemoNoteHeader]/Fields/AxQuerySimpleDataSourceField[Subject]/Field",
+      "ConDemoNoteHeaderQuery.metadata.xml::AxQuery/DataSources/AxQuerySimpleRootDataSource[PFXDemoNoteHeader]/Fields/AxQuerySimpleDataSourceField[Subject]/Name",
+      "ConDemoNoteHeaderQuery.metadata.xml::AxQuery/DataSources/AxQuerySimpleRootDataSource[PFXDemoNoteHeader]/Name",
+      "ConDemoNoteHeaderQuery.metadata.xml::AxQuery/DataSources/AxQuerySimpleRootDataSource[PFXDemoNoteHeader]/Table"
+    ],
+    "extra": [],
+    "changed": [
+      { "path": "ConDemoNoteHeaderQuery.metadata.xml::AxQuery/Title", "golden": "@TaxTransactionInquiry:HeaderNote", "actual": "PFXDemoNoteHeaderQuery" },
+      { "path": "ConDemoNoteHeaderView.metadata.xml::AxView/Fields/AxViewField[NoteId]/DataSource", "golden": "PFXDemoNoteHeader", "actual": "PFXDemoNoteHeaderQuery" },
+      { "path": "ConDemoNoteHeaderView.metadata.xml::AxView/Fields/AxViewField[Subject]/DataSource", "golden": "PFXDemoNoteHeader", "actual": "PFXDemoNoteHeaderQuery" },
+      { "path": "ConDemoNoteHeaderView.metadata.xml::AxView/Label", "golden": "@TaxTransactionInquiry:HeaderNote", "actual": "PFXDemoNoteHeaderView" }
+    ]
+  },
+  "systest": { "ran": false, "passed": null, "failures": [] },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "No grounded MCP tool operation exists to add a root DataSource (table + selected fields) to an AxQuery. d365fo_file(action='create', objectType='query') always emits an empty <DataSources /> classDeclaration-only skeleton. d365fo_file(action='modify', objectType='query', operation='add-data-source') is explicitly rejected by the C# bridge ('add-data-source not supported for objectType query'); operation='add-field' misinterprets the query name as a table name and fails with a table-not-found error; operation='modify-property' has no supported propertyPath for query DataSources; generate_object(mode='scaffold') only accepts objectType table/form/report, not query; and passing an ad-hoc 'properties' object (table/dataSourceName/fields, mirroring the data-entity shape) to d365fo_file(action='create', objectType='query', overwrite=true) is silently ignored (DataSources stays empty, no error). By contrast d365fo_file(action='create', objectType='view') DOES silently honor an undocumented properties shape ({query, fields:[{name,dataField}]}) to populate AxView/Query and AxView/Fields -- but since the upstream query never got a root datasource, the tool has no way to know the real datasource name and defaults AxViewFieldBound/DataSource to the query's own name, which is invalid. The downstream effect: the query keeps its scaffold Title (raw object name) instead of a reusable label (no tool step ever prompts/sets Title from the labels index either), and the build fails outright with 4 xppc metadata errors ('field does not have a valid datasource') because the view's bound fields point at a non-existent datasource. validate_code(mode='references') does not catch any of this (0 references checked on either document) -- it has no notion of AxQuery/AxView structural well-formedness, only symbol-name hallucination.",
+  "suggested_fix_area": "Add a d365fo_file(action='modify', objectType='query', operation='add-data-source') bridge implementation that creates an AxQuerySimpleRootDataSource (Name=table name, Table=table, Fields=[{Name,Field}] from an explicit fields list) -- mirroring the existing add-field-group/add-relation table operations -- and/or extend generate_object(mode='scaffold', objectType='query') to accept a fieldsHint/dataSource pair the way table scaffolding already does. Additionally, either make the AxView create-time 'properties' fields/query shape officially documented (it currently works but is unlisted in the tool schema) or reject it with a clear error rather than silently defaulting DataSource to the query's own name when the referenced datasource doesn't exist yet.",
+  "evidence_refs": [
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxQuery/ConDemoNoteHeaderQuery.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxView/ConDemoNoteHeaderView.xml",
+    "eval/goldens/L1-query-view-basic/ConDemoNoteHeaderQuery.metadata.xml",
+    "eval/goldens/L1-query-view-basic/ConDemoNoteHeaderView.metadata.xml"
+  ]
+}

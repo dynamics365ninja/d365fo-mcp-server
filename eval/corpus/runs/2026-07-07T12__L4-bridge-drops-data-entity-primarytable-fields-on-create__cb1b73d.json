@@ -1,0 +1,67 @@
+﻿{
+  "run_id": "2026-07-07T12__L4-bridge-drops-data-entity-primarytable-fields-on-create__cb1b73d",
+  "case_id": "L4-bridge-drops-data-entity-primarytable-fields-on-create",
+  "tier": 4,
+  "timestamp": "2026-07-07T12:53:08.753Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConSmallItemEntity.xml"
+  ],
+  "static_gate": {
+    "references": { "passed": true, "unresolved": [] },
+    "syntax": { "passed": true, "violations": [] }
+  },
+  "build": {
+    "succeeded": false,
+    "errors": [
+      {
+        "message": "Metadata Error: AxDataEntityView/ConSmallItemEntity/DataManagementStagingTable: Table 'ConSmallItemEntityStaging' does not exist.",
+        "source": "xppc.exe full build, contoso"
+      }
+    ],
+    "bpWarnings": [
+      { "rule": "DataEntitySecurityPrivilegeCheck", "severity": "Error" },
+      { "rule": "BPErrorEDTNotMigrated" },
+      { "rule": "BPErrorTableRelationshipPropertiesCompleteness" },
+      { "rule": "BPErrorTablePrimaryKeyEditable" },
+      { "rule": "BPErrorLabelIsText" },
+      { "rule": "BPErrorDeveloperDocumentationNotDefined" },
+      { "rule": "BPErrorTableMissingFormRef" },
+      { "rule": "BPUpgradeMetadataDeleteAction" },
+      { "rule": "BPUpgradeMetadataEDTRelation" }
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [
+      "AxDataEntityView/DataManagementStagingTable"
+    ],
+    "changed": [
+      {
+        "path": "AxDataEntityView/DataManagementEnabled",
+        "expected": "No",
+        "actual": "Yes"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "The specific defect this case targets (d365fo_file create/objectType=data-entity silently dropping properties.primaryTable and properties.fields, producing an empty AxDataEntityView) did NOT reproduce in this session: the produced ConSmallItemEntity.xml has a fully populated <Fields> (3 AxDataEntityViewMappedField entries mapped to ConSmallItem) and a populated <ViewMetadata><DataSources> with an AxQuerySimpleRootDataSource rooted on ConSmallItem carrying the same 3 fields -- i.e. the create tool's data-entity path now honours primaryTable/fields as passed (fixed, or was already fixed since the 2026-06-30 mined defect). However, the same create call unconditionally defaults DataManagementEnabled=Yes and DataManagementStagingTable=<EntityName>Staging without creating (or offering to create) that staging table, so the very next full build fails with 'Table <Name>Staging does not exist.' No golden was previously captured for this case (golden_pending=true, no eval/goldens/<id>/ dir on disk); scored here against a manually-authored, NOT reviewed/committed reference (kept in the session scratchpad only, not eval/goldens) that mirrors the actual output but with DataManagementEnabled=No / no staging table, since that is the correct default shape for an entity whose instruction never asked for staging. A DataEntitySecurityPrivilegeCheck BP error and several unrelated BP warnings on the prerequisite table were also observed but are expected/out of scope (no security privilege or label IDs were requested by the instruction).",
+  "suggested_fix_area": "d365fo_file(action=create, objectType=data-entity) property defaulting in the bridge's data-entity XML template: stop auto-setting DataManagementEnabled=Yes / DataManagementStagingTable=<Name>Staging unless the caller explicitly requests data-management staging (or actually scaffold the staging table alongside the entity when defaulting it on). Track as a follow-up defect distinct from the primaryTable/fields-dropping defect this case was originally mined for, which appears already resolved -- recommend flipping golden_pending to false and committing a golden once this staging-table default is fixed (so the golden can reflect a build that actually compiles).",
+  "evidence_refs": [
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxDataEntityView/ConSmallItemEntity.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConSmallItem.xml (prerequisite table created this run, rolled back)"
+  ]
+}

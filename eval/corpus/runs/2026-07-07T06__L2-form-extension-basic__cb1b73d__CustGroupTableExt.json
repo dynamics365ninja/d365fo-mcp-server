@@ -1,0 +1,44 @@
+﻿{
+  "run_id": "2026-07-07T06__L2-form-extension-basic__cb1b73d",
+  "case_id": "L2-form-extension-basic",
+  "tier": 2,
+  "timestamp": "2026-07-07T06:21:17.780Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "CustGroupTableExt.actual.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "AxTableExtension/Fields/AxTableField[PFXHasNotes]/@type",
+      "AxTableExtension/Fields/AxTableField[PFXHasNotes]/EnumType",
+      "AxTableExtension/Fields/AxTableField[PFXHasNotes]/Label",
+      "AxTableExtension/Fields/AxTableField[PFXHasNotes]/Name"
+    ],
+    "extra": [
+      "AxTableExtension/Fields/AxTableField[ConHasNotes]/@type",
+      "AxTableExtension/Fields/AxTableField[ConHasNotes]/EnumType",
+      "AxTableExtension/Fields/AxTableField[ConHasNotes]/Label",
+      "AxTableExtension/Fields/AxTableField[ConHasNotes]/Name"
+    ],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT"
+}

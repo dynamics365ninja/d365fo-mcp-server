@@ -1,0 +1,64 @@
+﻿{
+  "run_id": "2026-07-06T17__L1-form-dialog__cb1b73d",
+  "case_id": "L1-form-dialog",
+  "tier": 1,
+  "timestamp": "2026-07-06T17:48:49.616Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "AxForm/ConDemoNoteHeaderDialog"
+  ],
+  "static_gate": {
+    "references": { "passed": true },
+    "syntax": { "passed": true }
+  },
+  "build": {
+    "succeeded": false,
+    "errors": [
+      {
+        "message": "Form 'ConDemoNoteHeaderDialog' datasource 'ConDemoNoteHeader' refers to table 'ConDemoNoteHeader' which does not exist."
+      },
+      {
+        "message": "AxForm/ConDemoNoteHeaderDialog/DataSources/ConDemoNoteHeader/Table: Table 'ConDemoNoteHeader' does not exist."
+      },
+      {
+        "message": "AxForm/ConDemoNoteHeaderDialog/Design/Controls/DialogBody/Controls/NoteId/DataField: Field 'NoteId' does not exist on data source 'ConDemoNoteHeader'."
+      },
+      {
+        "message": "AxForm/ConDemoNoteHeaderDialog/Design/Controls/DialogBody/Controls/Subject/DataField: Field 'Subject' does not exist on data source 'ConDemoNoteHeader'."
+      }
+    ],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxForm/Design/Caption",
+        "expected": "@TaxTransactionInquiry:HeaderNote",
+        "actual": "PFXDemoNoteHeaderDialog"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "get_object_info/generate_object(mode=scaffold) resolved the form's bound table (ConDemoNoteHeader) purely from a stale symbol-index snapshot (get_object_info reported 'Served from symbol index (bridge unavailable)') left over from an earlier, already-rolled-back L1-form-basic run. No AxTable file for that name exists anywhere on disk in this environment (confirmed via search + filesystem scan), and prepare(mode=create) also reported the same phantom collision. The scaffold tool trusted this stale index entry, generated a structurally-correct Dialog form (0 references/syntax/pattern errors, near-perfect golden match apart from the always-present raw-text Caption vs. reused-label quirk seen across this whole Note-form case family), but the bound table does not physically exist so xppc fails 4 compile errors. This is not a defect in the Dialog-pattern scaffolding itself (structure matches golden exactly); it is a symbol-index staleness issue: update_symbol_index() with no filePath (bridge/workspace refresh) does not invalidate/rebuild the deeper 'symbol index' DB that get_object_info/generate_object fall back to when the live bridge is unavailable, so deleted objects keep resolving as if they still existed.",
+  "suggested_fix_area": "mcp-server symbol-index layer: either (a) have the bridge-unavailable fallback path in get_object_info/generate_object(scaffold) verify the object file still exists on disk before trusting a cached index hit, or (b) give update_symbol_index a mode that fully invalidates/rebuilds stale table/class entries (not just the bridge cache + workspace scan) so a prior run's rollback doesn't leave phantom objects resolvable by later sessions. Separately: consider whether the eval case portfolio should provide a shared, checked-in fixture table (ConDemoNoteHeader per golden capture) so downstream form-pattern cases (dialog/lookup/detailsmaster) don't implicitly depend on L1-form-basic's table surviving un-rolled-back.",
+  "evidence_refs": [
+    "eval/goldens/L1-form-dialog/ConDemoNoteHeaderDialog.metadata.xml",
+    "eval/goldens/L1-form-basic/ConDemoNoteHeader.metadata.xml",
+    "eval/corpus/runs/2026-07-06T17__L1-form-detailsmaster__0c446d2.json"
+  ]
+}

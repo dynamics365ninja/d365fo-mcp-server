@@ -1,0 +1,59 @@
+﻿{
+  "run_id": "2026-07-06T17__L1-form-listpage__cb1b73d",
+  "case_id": "L1-form-listpage",
+  "tier": 1,
+  "timestamp": "2026-07-06T17:59:43.967Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "AxTable/ConDemoNoteHeader (prerequisite fixture, not scored)",
+    "AxForm/ConDemoNoteHeaderListPage"
+  ],
+  "static_gate": {
+    "references": { "passed": true },
+    "syntax": { "passed": true }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      { "rule": "BPErrorLabelIsText", "target": "AxForm/ConDemoNoteHeaderListPage/FormDesign/FormDesign", "message": "Property 'Caption' must have a label ID as its value, and 'ConDemoNoteHeaderListPage' is not a label ID." },
+      { "rule": "BPErrorCaptionNotDefined", "target": "AxForm/.../ActionPaneTab", "message": "No value is given for the Caption property." },
+      { "rule": "BPErrorCaptionNotDefined", "target": "AxForm/.../NewButtonGroup", "message": "No value is given for the Caption property." },
+      { "rule": "BPErrorCaptionNotDefined", "target": "AxForm/.../MaintainButtonGroup", "message": "No value is given for the Caption property." }
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxForm/Design/Caption",
+        "expected": "@TaxTransactionInquiry:HeaderNote",
+        "actual": "PFXDemoNoteHeaderListPage"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "Two independent findings. (1) Fixture staleness (worked around, not scored): prepare(mode='create') and get_object_info reported ConDemoNoteHeader as an already-existing table ('Served from symbol index (bridge unavailable)') even though no AxTable file existed anywhere on disk in this sandbox (confirmed by full filesystem search) -- a stale symbol-index ghost entry surviving a prior un-rolled-back run, same phenomenon already recorded today in eval/corpus/runs/2026-07-06T17__L1-form-dialog__cb1b73d.json. update_symbol_index() with no filePath does not clear it. I created the minimal prerequisite table myself via the grounded scaffold path (matching the L1-form-basic case's spec: NoteId/Subject fields, Main table group, reused label @TaxTransactionInquiry:HeaderNote) so this case's own signal wasn't drowned out by a missing-fixture build failure. (2) The case's own defect: generate_object(mode='scaffold', objectType='form', formPattern='ListPage') set Design/Caption to the literal form name ('ConDemoNoteHeaderListPage') instead of reusing the bound datasource table's Label (@TaxTransactionInquiry:HeaderNote), even though that Label is resolvable via the bridge (get_object_info confirmed it). This is structurally identical to the golden (pattern validator: 1/1 containers carry sub-pattern, ListPage vUX7 1.0) and to the same Caption-as-literal-text deviation seen in the L1-form-dialog and L1-form-lookup goldens' family, i.e. this is a systemic scaffold default, not a one-off. It costs bp_clean (BPErrorLabelIsText + 3x BPErrorCaptionNotDefined cascading from the un-labeled ActionPane/ButtonGroups) and golden_match (Design/Caption changed) even though the build itself is clean (0 xppc errors) and the pattern shape is otherwise a perfect match (0 missing, 0 extra).",
+  "suggested_fix_area": "generate_object(mode='scaffold', objectType='form'): when a dataSource table is supplied and that table has a non-empty Label, default the form's Design/Caption (and, ideally, propagate a caption onto ActionPaneTab/ButtonGroup children so BPErrorCaptionNotDefined isn't triggered by the standard ActionPane skeleton) to the table's Label instead of the raw form name literal. Separately (shared with the L1-form-dialog finding): the bridge-unavailable fallback path behind get_object_info/prepare's collision check should verify the object file still exists on disk before trusting a symbol-index hit, so a rolled-back run doesn't leave phantom prerequisite objects for the next case run.",
+  "evidence_refs": [
+    "eval/goldens/L1-form-listpage/ConDemoNoteHeaderListPage.metadata.xml",
+    "eval/goldens/L1-form-basic/ConDemoNoteHeader.metadata.xml",
+    "eval/corpus/runs/2026-07-06T17__L1-form-dialog__cb1b73d.json",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxForm/ConDemoNoteHeaderListPage.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoNoteHeader.xml"
+  ]
+}

@@ -1,0 +1,49 @@
+﻿{
+  "run_id": "2026-07-06T10__L0-edt-basic__4fafcd8",
+  "case_id": "L0-edt-basic",
+  "tier": 0,
+  "timestamp": "2026-07-06T10:50:34.816Z",
+  "server_git_sha": "4fafcd8",
+  "generated_artifacts": [
+    "ConDemoNoteSubject.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxEdt/Name",
+        "expected": "ConDemoNoteSubject",
+        "actual": "ConDemoNoteSubject"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 0
+  },
+  "classification": "VALIDATOR_GAP",
+  "root_cause_hypothesis": "The only golden delta is the root AxEdt/Name value (golden=\"ConDemoNoteSubject\" vs actual=\"ConDemoNoteSubject\"); Extends, Label (raw text, matching the golden BPErrorLabelIsText note), and all other structure match exactly. The mismatch is caused entirely by the sandbox EXTENSION_PREFIX for this session (\"Con\") differing from the prefix in effect when the L0-edt-basic golden was captured (\"Con\") — d365fo_file(action=create) correctly auto-applied the CURRENT session prefix per its documented contract, so the produced object is the intended/correct output for this environment. The eval oracle normalizer (src/eval/oracle/normalize.ts) does a literal string compare on the root Name and has no prefix-agnostic comparison, and the case ignore list ([AxEdt/@Id, **/ModelSaveInfo]) does not account for prefix drift, so every run of this (and likely every Con-prefixed) case in an environment configured with a different EXTENSION_PREFIX will spuriously fail golden_match on Name alone even when the object is semantically correct.",
+  "suggested_fix_area": "eval oracle (src/eval/oracle/normalize.ts / diff.ts): add an EXTENSION_PREFIX-aware comparison mode for the root object Name (strip known/likely prefix before compare, or accept a per-run configured-prefix substitution), OR re-capture/parametrize the Con-prefixed goldens so the case ignore list can mask the prefix portion of Name. Not a defect in d365fo_file or the generation tool path itself.",
+  "evidence_refs": [
+    "eval/goldens/L0-edt-basic/ConDemoNoteSubject.metadata.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxEdt/ConDemoNoteSubject.xml",
+    "eval/corpus/runs/2026-07-06T10__L0-edt-basic__4fafcd8.json"
+  ]
+}

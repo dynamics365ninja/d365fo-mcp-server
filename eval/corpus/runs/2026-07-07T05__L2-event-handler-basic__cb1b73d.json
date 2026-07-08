@@ -1,0 +1,44 @@
+﻿{
+  "run_id": "2026-07-07T05__L2-event-handler-basic__cb1b73d",
+  "case_id": "L2-event-handler-basic",
+  "tier": 2,
+  "timestamp": "2026-07-07T05:57:26.485Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoNoteHeaderEH.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxClass/SourceCode/Methods/Method[onInserting]/Source",
+        "expected": "[DataEventHandler(tableStr(PFXDemoNoteHeader), DataEventType::Inserting)]\npublic static void onInserting(Common _sender, DataEventArgs _e)\n{\n    PFXDemoNoteHeader noteHeader = _sender as PFXDemoNoteHeader;\n\n    if (!noteHeader.Subject)\n    {\n        noteHeader.Subject = '(no subject)';\n    }\n}",
+        "actual": "[DataEventHandler(tableStr(PFXDemoNoteHeader), DataEventType::Inserting)]\n    public static void onInserting(Common _sender, DataEventArgs _e)\n    {\n        PFXDemoNoteHeader noteHeader = _sender as PFXDemoNoteHeader;\n\n        if (!noteHeader.Subject)\n        {\n            noteHeader.Subject = '(no subject)';\n        }\n    }"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT"
+}

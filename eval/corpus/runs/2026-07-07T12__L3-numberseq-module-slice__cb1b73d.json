@@ -1,0 +1,69 @@
+﻿{
+  "run_id": "2026-07-07T12__L3-numberseq-module-slice__cb1b73d",
+  "case_id": "L3-numberseq-module-slice",
+  "tier": 3,
+  "timestamp": "2026-07-07T12:40:00.000Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "AxEdt/ConDemoSliceId.xml",
+    "AxEnumExtension/NumberSeqModule.ConExtension.xml",
+    "AxClass/ConNumberSeqModuleDemoSlice.xml",
+    "AxTable/ConDemoSliceParameters.xml",
+    "AxForm/ConDemoSliceParametersForm.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": [
+        "NoYes::No and NoYes::Yes flagged by validate_code(mode=references) as unknown-static-member. NoYes is a real, ubiquitous standard AX enum but is absent from the symbol index under its exact base name; identical tokens in the L2-numberseq-basic sibling case built clean with zero errors, so this is treated as a known validator false positive, not a real reference error."
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "build": {
+    "succeeded": false,
+    "errors": [
+      { "message": "Form dynamics://Form/ConDemoSliceParametersForm: Form ConDemoSliceParametersForm datasource ConDemoSliceParameters refers to table which does not exist (empty table reference)." },
+      { "message": "AxForm/ConDemoSliceParametersForm TabPageGeneral_Key DataField: Field Key does not exist on data source ConDemoSliceParameters." },
+      { "message": "AxForm/ConDemoSliceParametersForm TabPageSetup_Key DataField: Field Key does not exist on data source ConDemoSliceParameters." }
+    ],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "npm run eval:score for this case throws ENOENT scandir eval/goldens/L3-numberseq-module-slice because golden_pending is true and no golden has been captured yet (confirmed by direct invocation). That is a separate, expected condition, not the outcome of this run. The actual, terminal outcome is a genuine BUILD FAILURE caused by a tool defect, described below. Objects 1 through 4 were fully grounded and are believed correct: EDT ConDemoSliceId (String extends Num, label at SYS1161 reused from the standard NumberSequenceReference.NumberSequenceId label); AxEnumExtension NumberSeqModule.ConExtension adding the literal value DemoSlice as mandated by the case; AxClass ConNumberSeqModuleDemoSlice extending NumberSeqApplicationModule with loadModule() registering a NumberSeqDatatype via NumberSeqDatatype colon colon construct plus parm star methods plus this.create(datatype), matching the proven L2-numberseq-basic golden shape exactly (only the datatype id and reference help text differ); numberSeqModule() returning NumberSeqModule colon colon DemoSlice; and a static buildModulesMapSubsciber(Map) method carrying the SubscribesTo attribute on NumberSeqGlobal.buildModulesMapDelegate that calls NumberSeqGlobal colon colon addModuleToMap(classnum(ConNumberSeqModuleDemoSlice), numberSeqModuleNamesMap). This registration-hook shape was grounded, not guessed: find_references on NumberSeqGlobal.addModuleToMap surfaced roughly 30 real standard callers (for example NumberSeqModuleBank.buildModulesMapSubsciber), all following this identical static-method-on-the-module-class-itself pattern, which is why the hook was added as a method on the module class rather than inventing a separate handler class. AxTable ConDemoSliceParameters is a singleton Parameter table with a Key field (EDT ParametersKey, reused from CustParameters), a unique index named Key, PrimaryIndex and ClusteredIndex both set to Key, a find(boolean _forUpdate) method following the CustParameters singleton convention (select firstonly with index Key where Key equals 0, create on miss), and numRefDemoSliceId() returning NumberSeqReference colon colon findReference(extendedTypeNum(ConDemoSliceId)) matching the exact CustParameters.numRefCustAccount() shape. All four objects read back correctly from disk after every write and were never implicated in the build failure. The build failure is entirely attributable to object 5, the form. generate_object(mode=scaffold, objectType=form, formPattern=TableOfContents, dataSource=ConDemoSliceParameters, includeMethodStubs=true) is the tool-recommended, blessed grounded path for this case: object_patterns(domain=form, action=analyze, recommend=...) suggested TableOfContents citing CustParameters, VendParameters and BankParameters as reference forms; a direct cloneFrom=CustParameters attempt was correctly self-blocked by the tool own pre-clone field-overlap check (1 of 210 fields shared), which itself redirected to the formPattern plus dataSource scaffold path used here. The tool wrote the two requested method stubs (ConDemoSliceParameters.initValue and ConDemoSliceParameters.validateWrite) directly inside the TOP-LEVEL AxFormDataSource Methods element, positioned immediately after Name and BEFORE Table. Byte-for-byte comparison against real standard forms (CustParameters and BankParameters, both cited by the tool itself as this pattern reference forms) confirms the top-level AxFormDataSource element never carries a Methods child in any shipped form; datasource method overrides live exclusively in the SourceCode mirror section (SourceCode, DataSources, DataSource, Methods, Method), which the scaffold instead left as an empty placeholder in our generated file. Inserting a Methods element into the top-level AxFormDataSource ahead of Table desyncs positional schema binding, so the Table element (whose text content was verified byte-correct as ConDemoSliceParameters) is deserialized by xppc as an empty table reference, producing the refers-to-table error plus two cascading Field Key does not exist errors for the two field-bound controls the same scaffold call correctly generated elsewhere in the file. object_patterns(domain=form, action=validate) does not catch this: it reported zero errors and four warnings on this exact broken file. Per task instructions this was NOT hand-patched to force a green build; the tool output is scored and reported as produced.",
+  "suggested_fix_area": "generate_object(mode=scaffold, objectType=form, includeMethodStubs=true): move injected per-datasource method stubs out of the top-level DataSources AxFormDataSource element and into the SourceCode DataSources DataSource Methods Method mirror section, matching every shipped form (CustParameters, BankParameters), leaving the top-level AxFormDataSource with only its real metadata properties (Name, Table, Fields, ReferencedDataSources, LinkType, Allow-star, InsertIfEmpty, DataSourceLinks, DerivedDataSources) in schema order. Also: the structural form-pattern validator (object_patterns validate) does not catch a Methods element in a location no real AxFormDataSource ever populates, nor an empty or corrupted Table value on a data source; either the validator or a references-mode XML check analogous to validate_code(mode=references, codeType=xml-table) should flag this before a build is attempted. Separately and non-blocking: validate_code(mode=references) reports NoYes::No and NoYes::Yes as unknown-static-member even though NoYes is one of the most common standard AX enums and the identical tokens built clean in the L2-numberseq-basic sibling case; the symbol index appears to be missing the base NoYes enum specifically (a fuzzy search for NoYes returns only NoYes-suffixed variants, never the exact base enum) and should be re-indexed. Once the form-scaffold defect is fixed, author and human-review the golden for L3-numberseq-module-slice (5 artifacts) and flip golden_pending to false; also reconcile the case target_artifact_types (lists AxClass twice) against the grounded single-class registration-hook pattern confirmed here, so future runs know whether a second class is actually expected.",
+  "evidence_refs": [
+    "eval/cases/L3-numberseq-module-slice.json",
+    "eval/cases/L2-numberseq-basic.json",
+    "eval/goldens/L2-numberseq-basic/NumberSeqModuleDemoNote.AxClass.metadata.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxEdt/ConDemoSliceId.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxEnumExtension/NumberSeqModule.ConExtension.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxClass/ConNumberSeqModuleDemoSlice.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoSliceParameters.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxForm/ConDemoSliceParametersForm.xml",
+    "C:/AOSService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxForm/CustParameters.xml",
+    "C:/AOSService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxForm/BankParameters.xml",
+    "find_references(NumberSeqGlobal.addModuleToMap)",
+    "npm run eval:score for L3-numberseq-module-slice throws ENOENT scandir eval/goldens/L3-numberseq-module-slice"
+  ]
+}

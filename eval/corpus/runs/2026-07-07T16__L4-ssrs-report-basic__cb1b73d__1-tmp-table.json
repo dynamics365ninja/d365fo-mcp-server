@@ -1,0 +1,74 @@
+﻿{
+  "run_id": "2026-07-07T16__L4-ssrs-report-basic__cb1b73d",
+  "case_id": "L4-ssrs-report-basic",
+  "tier": 4,
+  "timestamp": "2026-07-07T16:03:14.785Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoNoteReportTmp.metadata.xml"
+  ],
+  "build": {
+    "succeeded": false,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "AxTable/TableGroup"
+    ],
+    "extra": [
+      "AxTable/ClusteredIndex",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoBrowse]/Name",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoIdentification]/AutoPopulate",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoIdentification]/Name",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Fields/AxTableFieldGroupField[NoteId]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Fields/AxTableFieldGroupField[Subject]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Name",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[NoteId]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[Subject]/DataField",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Name",
+      "AxTable/FieldGroups/AxTableFieldGroup[AutoSummary]/Name",
+      "AxTable/Fields/AxTableField[NoteId]/Mandatory",
+      "AxTable/Indexes/AxTableIndex[DemoNoteReportTmpIdx]/AlternateKey",
+      "AxTable/Indexes/AxTableIndex[DemoNoteReportTmpIdx]/Fields/AxTableIndexField[NoteId]/DataField",
+      "AxTable/Indexes/AxTableIndex[DemoNoteReportTmpIdx]/Name",
+      "AxTable/PrimaryIndex",
+      "AxTable/ReplacementKey",
+      "AxTable/SaveDataPerCompany",
+      "AxTable/SourceCode/Declaration",
+      "AxTable/TitleField1",
+      "AxTable/TitleField2"
+    ],
+    "changed": [
+      {
+        "path": "AxTable/Fields/AxTableField[NoteId]/ExtendedDataType",
+        "expected": "Num",
+        "actual": "PlCorrNoteId"
+      },
+      {
+        "path": "AxTable/Fields/AxTableField[Subject]/ExtendedDataType",
+        "expected": "Name",
+        "actual": "smmSubject"
+      },
+      {
+        "path": "AxTable/Label",
+        "expected": "@TaxTransactionInquiry:HeaderNote",
+        "actual": "Note report temp table"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT"
+}

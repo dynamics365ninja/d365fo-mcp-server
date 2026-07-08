@@ -1,0 +1,60 @@
+﻿{
+  "run_id": "2026-07-07T10__L2-numberseq-basic__cb1b73d",
+  "case_id": "L2-numberseq-basic",
+  "tier": 2,
+  "timestamp": "2026-07-07T10:04:17.891Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "NumberSeqModuleExt.AxEnumExtension.metadata.xml",
+    "NumberSeqModuleDemoNote.AxClass.metadata.xml",
+    "DemoNoteId.AxEdt.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "NumberSeqModuleExt.AxEnumExtension.metadata.xml::AxEnumExtension/EnumValues/AxEnumValue[PFXDemoNote]/Label",
+      "NumberSeqModuleExt.AxEnumExtension.metadata.xml::AxEnumExtension/EnumValues/AxEnumValue[PFXDemoNote]/Name"
+    ],
+    "extra": [
+      "NumberSeqModuleExt.AxEnumExtension.metadata.xml::AxEnumExtension/EnumValues/AxEnumValue[ConDemoNote]/Label",
+      "NumberSeqModuleExt.AxEnumExtension.metadata.xml::AxEnumExtension/EnumValues/AxEnumValue[ConDemoNote]/Name"
+    ],
+    "changed": [
+      {
+        "path": "NumberSeqModuleDemoNote.AxClass.metadata.xml::AxClass/SourceCode/Methods/Method[numberSeqModule]/Source",
+        "expected": "public NumberSeqModule numberSeqModule()\n    {\n        return NumberSeqModule::PFXDemoNote;\n    }",
+        "actual": "public NumberSeqModule numberSeqModule()\n    {\n        return NumberSeqModule::ConDemoNote;\n    }"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "VALIDATOR_GAP",
+  "root_cause_hypothesis": "The grounded implementation is byte-correct per the case instruction: EDT ConDemoNoteId (String extends Num), AxEnumExtension NumberSeqModule.ConExtension adding enum value literally named 'ConDemoNote' (the instruction mandates this exact literal, not a prefix-derived name), and class ConNumberSeqModuleDemoNote overriding loadModule()/numberSeqModule() exactly matching the golden logic modulo the Con vs Con object-name prefix. The oracle canonicalizePrefix(goldenPrefix='Con') rewrites the golden enum-value token 'ConDemoNote' to placeholder 'PFXDemoNote' because it happens to start with the GOLDEN_CAPTURE_PREFIX string 'Con', even though 'ConDemoNote' is a literal enum-value identifier specified verbatim by the case, not a model-prefixed object name. The actual output (produced under actualPrefix='Con') is never canonicalized the same way, so the diff reports false missing/extra/changed on every place ConDemoNote appears (enum value Name/Label and the numberSeqModule() return statement). This matches a known/expected oracle gap called out in the run brief (over-matching literal Con-shaped identifiers unrelated to the model prefix).",
+  "suggested_fix_area": "src/eval/oracle canonicalizePrefix / prefix-agnostic diff normalizer -- needs to distinguish a case-mandated literal identifier (e.g. an enum value name spelled out verbatim in the case instruction) from a genuine model-prefixed object name before rewriting golden tokens to the PFX placeholder.",
+  "evidence_refs": [
+    "eval/cases/L2-numberseq-basic.json",
+    "eval/goldens/L2-numberseq-basic/NumberSeqModuleExt.AxEnumExtension.metadata.xml",
+    "eval/goldens/L2-numberseq-basic/NumberSeqModuleDemoNote.AxClass.metadata.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxEnumExtension/NumberSeqModule.ConExtension.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxClass/ConNumberSeqModuleDemoNote.xml",
+    "src/eval/oracle/cli.ts (canonicalizePrefix usage)"
+  ]
+}

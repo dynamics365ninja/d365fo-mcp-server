@@ -1,0 +1,64 @@
+﻿{
+  "run_id": "2026-07-07T16__L4-ssrs-report-basic__cb1b73d",
+  "case_id": "L4-ssrs-report-basic",
+  "tier": 4,
+  "timestamp": "2026-07-07T16:04:51.930Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoNoteReport.metadata.xml"
+  ],
+  "build": {
+    "succeeded": false,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "AxReport/DataSets/AxReportDataSet[PFXDemoNoteReportTmp]/Parameters/AxReportDataSetParameter[CONDEMONOTEREPORTDP_DynamicParameter]/Alias",
+      "AxReport/DataSets/AxReportDataSet[PFXDemoNoteReportTmp]/Parameters/AxReportDataSetParameter[CONDEMONOTEREPORTDP_DynamicParameter]/DataType",
+      "AxReport/DataSets/AxReportDataSet[PFXDemoNoteReportTmp]/Parameters/AxReportDataSetParameter[CONDEMONOTEREPORTDP_DynamicParameter]/Name",
+      "AxReport/DataSets/AxReportDataSet[PFXDemoNoteReportTmp]/Parameters/AxReportDataSetParameter[CONDEMONOTEREPORTDP_DynamicParameter]/Parameter",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/@type",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/AllowBlank",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/DataType",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/Name",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/Nullable",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/UserVisibility",
+      "AxReport/Designs/AxReportDesign[Design]/@type",
+      "AxReport/Designs/AxReportDesign[Design]/Caption",
+      "AxReport/Designs/AxReportDesign[Design]/DisableIndividualTransformation[DisableIndividualTransformation]/Name",
+      "AxReport/Designs/AxReportDesign[Design]/Name"
+    ],
+    "extra": [
+      "AxReport/DataSets/AxReportDataSet[PFXDemoNoteReportTmp]/Parameters/AxReportDataSetParameter[CONDEMONOTEREPORTDP_DynamicParameter]/Alias",
+      "AxReport/DataSets/AxReportDataSet[PFXDemoNoteReportTmp]/Parameters/AxReportDataSetParameter[CONDEMONOTEREPORTDP_DynamicParameter]/DataType",
+      "AxReport/DataSets/AxReportDataSet[PFXDemoNoteReportTmp]/Parameters/AxReportDataSetParameter[CONDEMONOTEREPORTDP_DynamicParameter]/Name",
+      "AxReport/DataSets/AxReportDataSet[PFXDemoNoteReportTmp]/Parameters/AxReportDataSetParameter[CONDEMONOTEREPORTDP_DynamicParameter]/Parameter",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/@type",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/AllowBlank",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/DataType",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/Name",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/Nullable",
+      "AxReport/DefaultParameterGroup/ReportParameterBases/AxReportParameterBase[CONDEMONOTEREPORTDP_DynamicParameter]/UserVisibility",
+      "AxReport/Designs/AxReportDesign[Report]/@type",
+      "AxReport/Designs/AxReportDesign[Report]/Caption",
+      "AxReport/Designs/AxReportDesign[Report]/DisableIndividualTransformation[DisableIndividualTransformation]/Name",
+      "AxReport/Designs/AxReportDesign[Report]/Name"
+    ],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT"
+}

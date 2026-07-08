@@ -1,0 +1,49 @@
+﻿{
+  "run_id": "2026-07-07T06__L2-form-modify-controls__cb1b73d",
+  "case_id": "L2-form-modify-controls",
+  "tier": 2,
+  "timestamp": "2026-07-07T06:50:00.000Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "contoso/contoso/AxForm/ConDemoCtrlNoteForm.xml"
+  ],
+  "static_gate": {
+    "references": { "passed": true },
+    "syntax": { "passed": true }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "AxForm/Design/Controls/AxFormGroupControl[HeaderGroup]",
+      "AxForm/Design/Controls/AxFormGridControl[MainGrid]",
+      "AxForm/Design/Controls/AxFormGridControl[MainGrid]/Controls/AxFormStringControl[NoteId]",
+      "AxForm/Design/Controls/AxFormGridControl[MainGrid]/Controls/AxFormStringControl[Subject]"
+    ],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "Regression CONFIRMED as described in the case. d365fo_file(action='modify', objectType='form', operation='add-control') cannot add a top-level control as a direct child of the form's root <Design> container when the design starts with zero existing controls (the case's own mandated starting state: 'the initial create must contain only the data source and an empty design'). Reproduced with the exact case-required first control (Group 'HeaderGroup'): every parentControl value tried was rejected with the SAME inner bridge error 'Parent control '<value>' not found in form <formName>' -- tried 'Design' (the AxFormDesign's conventional/default Name, consistent with how other default-valued boolean properties like AxTableIndex/AllowDuplicates are omitted from serialized XML elsewhere in this same run), the empty string, and the form's own name, each after a fresh update_symbol_index (both filePath-targeted and bare refresh) to rule out stale-metadata-root false negatives -- get_object_info confirmed the form WAS resolved (0 controls, 1 data source) immediately before each attempt, and the bridge error text itself says 'Error in addControl: Parent control ... not found', i.e. object resolution succeeded and only the parent-control lookup failed. Source-level evidence (src/tools/modifyD365File.ts add-control case, this repo) shows add-control's only special-cased fallback path is for objectType='form-extension' (directXmlAddControl, because AxFormExtensionControl's <Parent> is a plain string the bridge's Forms.Read can never resolve for an extension name) -- there is NO equivalent path for a plain 'form' whose Design has no addressable named control yet, i.e. no way to seed the very first top-level control via this operation. This is a genuine, reproducible gap distinct from the metadata-root-freshness class of issue the tool's own error message suggests. Per the case's explicit instruction, the create-overwrite and hand-authored-XML fallbacks were NOT used, so the form was left with its data source only (0 controls) -- functionally incomplete relative to the 3-control spec, though it still builds clean as-is.",
+  "suggested_fix_area": "C# bridge AddControl implementation (or the modifyD365File.ts add-control case wrapping it): needs a special-cased path, analogous to the existing form-extension directXmlAddControl fallback, for adding a control directly under AxForm/Design (i.e. treat a well-known parentControl sentinel -- or parentControl omitted -- as 'root of Design.Controls' instead of requiring a name match against an existing AxFormControl). Until fixed, this class of case (build up a form's Design purely via add-control, starting from an empty design) cannot pass without a disallowed hand-authored-XML fallback.",
+  "evidence_refs": [
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxForm/ConDemoCtrlNoteForm.xml",
+    "C:/repos/d365fo-mcp-server/src/tools/modifyD365File.ts"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "run_id": "2026-07-07T10__L2-oracle-discriminator-random-wrapper-name__cb1b73d",
+  "case_id": "L2-oracle-discriminator-random-wrapper-name",
+  "tier": 2,
+  "timestamp": "2026-07-07T10:23:28.594Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "CustGroupFormExt.AxFormExtension.actual.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS"
+}

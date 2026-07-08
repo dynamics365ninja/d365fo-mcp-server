@@ -1,0 +1,40 @@
+﻿{
+  "run_id": "2026-07-06T18__L1-form-lookup__cb1b73d",
+  "case_id": "L1-form-lookup",
+  "tier": 1,
+  "timestamp": "2026-07-06T18:07:23.349Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoNoteHeaderLookup.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxForm/Design/Caption",
+        "expected": "@TaxTransactionInquiry:HeaderNote",
+        "actual": "PFXDemoNoteHeaderLookup"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT"
+}

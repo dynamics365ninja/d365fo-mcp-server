@@ -1,0 +1,55 @@
+﻿{
+  "run_id": "2026-07-07T12__L3-form-detailstransaction__cb1b73d",
+  "case_id": "L3-form-detailstransaction",
+  "tier": 3,
+  "timestamp": "2026-07-07T12:14:39.584Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "DemoNoteHeaderLine.AxTable.metadata.xml",
+    "DemoNoteTransaction.AxForm.metadata.xml"
+  ],
+  "build": {
+    "succeeded": false,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/CacheLookup",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/ClusteredIndex",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoBrowse]/Name",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoIdentification]/AutoPopulate",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoIdentification]/Name",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Fields/AxTableFieldGroupField[LineNum]/DataField",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Fields/AxTableFieldGroupField[LineText]/DataField",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Fields/AxTableFieldGroupField[NoteId]/DataField",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Name",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[LineNum]/DataField",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[LineText]/DataField",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[NoteId]/DataField",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Name",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoSummary]/Name",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/PrimaryIndex",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/ReplacementKey",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/SourceCode/Declaration",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/TitleField1",
+      "DemoNoteHeaderLine.AxTable.metadata.xml::AxTable/TitleField2"
+    ],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT"
+}

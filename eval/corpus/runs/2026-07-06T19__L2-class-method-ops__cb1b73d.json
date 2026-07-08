@@ -1,0 +1,52 @@
+﻿{
+  "run_id": "2026-07-06T19__L2-class-method-ops__cb1b73d",
+  "case_id": "L2-class-method-ops",
+  "tier": 2,
+  "timestamp": "2026-07-06T19:34:50Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "AxClass/ConDemoCalcOps.xml",
+    "AxTable/ConDemoCalcData.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      { "message": "AxTable ConDemoCalcData: BPErrorTableMissingGroupAutoReport: The table has no fields in the AutoReport field group." },
+      { "message": "AxTable ConDemoCalcData: BPErrorTableTitleField1NotDeclared: No field has been specified for the Title Field1 property." },
+      { "message": "AxTable ConDemoCalcData: BPErrorDeveloperDocumentationNotDefined: The mandatory property DeveloperDocumentation is not specified." },
+      { "message": "AxTable ConDemoCalcData/TableFieldString/ItemName: BPErrorTableFieldNotInFieldGroup: The table's field is not a member of a field group." },
+      { "message": "AxTable ConDemoCalcData/TableFieldReal/Qty: BPErrorTableFieldNotInFieldGroup: The table's field is not a member of a field group." },
+      { "message": "AxClass ConDemoCalcOps/Method/multiply: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoCalcOps.multiply'." },
+      { "message": "AxClass ConDemoCalcOps: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoCalcOps'." }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "root_cause_hypothesis": "Not a failure of this run. eval/cases/L2-class-method-ops.json carries \"golden_pending\": true and eval/goldens/L2-class-method-ops/ does not exist yet, so `npm run eval:score` throws ENOENT (findGolden scans the missing dir) -- confirmed by direct invocation, not worked around. score.golden_match is reported as 0/unscorable by convention (no golden_diff object is included -- there is nothing to diff), not because the produced metadata was verified wrong; manual inspection of both artifacts confirms full conformance to the instruction: class ConDemoCalcOps ends with exactly two methods (multiply returning `_a * _b`, not the stub `return 0` it started as; static construct() returning `new ConDemoCalcOps()`), and tempScratch is absent after add-method+remove-method. Table ConDemoCalcData has ItemName (Name EDT)/Qty (Qty EDT), a static find(Name _itemName, boolean _forUpdate=false) selecting firstonly by ItemName, and displayDoubleQty returning `2 * this.Qty`. Both compiled clean (xppc, 0 errors) and passed validate_code references+syntax gates before every write. Separately (secondary observation, not this run's terminal defect): d365fo_file(modify, add-table-method, tableMethodType='find') first resolved the ItemName field's parameter type as the literal field name \"ItemName\" instead of its EDT \"Name\", because the table had just been created via d365fo_file(create) in the same session and its fields were not yet in the symbol index (the tool did emit its own warning about this). Calling update_symbol_index(filePath=<table.xml>) then removing+re-adding the table method resolved it correctly (`Name _itemName`) on the second attempt -- a known/documented staleness class (the tool's own docs warn 'EDTs/enums created this session are not yet indexed'), self-corrected within the grounded path, so it did not survive into the scored artifact and is not scored as a defect here. The already-known indentation-reflow defect (d365fo_file create/modify re-indenting method bodies vs. golden's column-0 convention) was NOT reproduced as a blocking issue this run since there is no golden to diff against yet; it would need to be checked once a reviewed golden is captured.",
+  "suggested_fix_area": "(1) Author + human-review the golden for L2-class-method-ops (eval/goldens/L2-class-method-ops/{ConDemoCalcOps,ConDemoCalcData}.metadata.xml or equivalent Con-prefixed capture) so future runs can score golden_match; flip golden_pending to false once committed. (2) Consider whether add-table-method / table-method scaffolding should proactively index a table it was just asked to modify (or at least surface the same 'not yet indexed, call update_symbol_index first' guidance it already gives for EDTs) so operators don't need to discover the field-type mis-resolution via the warning text and manually recover.",
+  "evidence_refs": [
+    "eval/cases/L2-class-method-ops.json",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxClass/ConDemoCalcOps.xml (rolled back after run)",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoCalcData.xml (rolled back after run)"
+  ]
+}

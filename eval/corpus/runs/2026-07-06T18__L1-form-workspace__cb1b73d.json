@@ -1,0 +1,45 @@
+﻿{
+  "run_id": "2026-07-06T18__L1-form-workspace__cb1b73d",
+  "case_id": "L1-form-workspace",
+  "tier": 1,
+  "timestamp": "2026-07-06T18:34:57.194Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoNoteHeaderWorkspace.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxForm/Design/Caption",
+        "expected": "@TaxTransactionInquiry:HeaderNote",
+        "actual": "PFXDemoNoteHeaderWorkspace"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT"
+}

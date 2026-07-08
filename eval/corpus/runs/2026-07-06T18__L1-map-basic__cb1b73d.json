@@ -1,0 +1,56 @@
+﻿{
+  "run_id": "2026-07-06T18__L1-map-basic__cb1b73d",
+  "case_id": "L1-map-basic",
+  "tier": 1,
+  "timestamp": "2026-07-06T18:45:01.842Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoNoteMap.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "AxMap/Fields/AxMapBaseField[NoteId]/ExtendedDataType",
+      "AxMap/Fields/AxMapBaseField[Subject]/ExtendedDataType",
+      "AxMap/Mappings/AxTableMapping/Connections/AxTableMappingConnection/MapField",
+      "AxMap/Mappings/AxTableMapping/Connections/AxTableMappingConnection/MapFieldTo",
+      "AxMap/Mappings/AxTableMapping/MappingTable"
+    ],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "d365fo_file(action=\"create\", objectType=\"map\") silently drops two parts of the properties payload for AxMap: (1) fields[].edt is never written as <ExtendedDataType> for AxMapFieldString entries (NoteId/Subject came out with no EDT at all), and (2) the top-level properties.mappings array (mappingTable + connections) is ignored outright -- the written <Mappings/> element is always empty regardless of input. Root cause is almost certainly that AxMap scaffolding support is newer/thinner than table/enum scaffolding (the golden itself notes objectType was previously unsupported), so the properties-to-XML mapper for this objectType was never wired up for these two shapes. Separately, d365fo_file(action=\"modify\") does not accept objectType=\"map\" at all (confirmed via a direct call, which errored with a Zod enum-mismatch listing only class/table/form/enum/query/view/edt/data-entity/report/*-extension/menu-item-*/menu/security-*), so there is also no grounded post-create repair path for a map -- create is the only entry point and it is the one that is defective. A secondary, likely unrelated defect found while building the prerequisite fixture table: d365fo_file(action=\"modify\", operation=\"modify-property\") reported success (\"Property CreatedDateTime=Yes set via Update\") for both a real property name and a deliberately bogus one (XXXInvalidProp), but neither write actually persisted to the XML on disk -- false-positive success reporting for this operation on AxTable, at least for boolean top-level properties. Worked around by adding an explicit CreatedDateTime field instead for the prerequisite table, which does not affect this case own scored artifact (the map).",
+  "suggested_fix_area": "mcp-server AxMap create path: wire properties.fields[].edt -> AxMapFieldString/ExtendedDataType (and equivalent for other AxMapField* subtypes) and properties.mappings[] -> AxTableMapping/Connections/AxTableMappingConnection in the map XML generator used by d365fo_file(action=\"create\", objectType=\"map\"). Also add objectType=\"map\" to the d365fo_file(action=\"modify\") allowed-objectType enum with at least an add-mapping/modify-field operation, so a map can be fixed up post-create without hand-editing XML. Separately (lower priority, different object type): investigate why modify-property on AxTable reports success without persisting for at least CreatedDateTime and an invalid property name -- it should either write the value or fail loudly, not silently no-op while reporting success.",
+  "evidence_refs": [
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxMap/ConDemoNoteMap.xml (pre-rollback; missing ExtendedDataType + empty Mappings)",
+    "eval/goldens/L1-map-basic/DemoNoteMap.AxMap.metadata.xml"
+  ]
+}

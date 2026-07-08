@@ -1,0 +1,56 @@
+﻿{
+  "run_id": "2026-07-07T11__L3-batch-basic__cb1b73d",
+  "case_id": "L3-batch-basic",
+  "tier": 3,
+  "timestamp": "2026-07-07T11:28:26.621Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "ConDemoBatchService.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxClass/SourceCode/Methods/Method[calculateEffectiveBatchSize]/Source",
+        "expected": "/// <summary>\n/// Pure, deterministic helper: the requested batch size scaled by the priority factor.\n/// </summary>\npublic int calculateEffectiveBatchSize(PFXDemoBatchContract _contract)\n{\n    return _contract.parmBatchSize() * _contract.parmPriorityFactor();\n}",
+        "actual": "/// <summary>\n    /// Pure, deterministic helper: the requested batch size scaled by the priority factor.\n    /// </summary>\n    public int calculateEffectiveBatchSize(PFXDemoBatchContract _contract)\n    {\n        return _contract.parmBatchSize() * _contract.parmPriorityFactor();\n    }"
+      },
+      {
+        "path": "AxClass/SourceCode/Methods/Method[process]/Source",
+        "expected": "/// <summary>\n/// Batch entry point invoked by the SysOperation controller.\n/// </summary>\npublic void process(PFXDemoBatchContract _contract)\n{\n    info(strFmt(\"Effective batch size: %1\", this.calculateEffectiveBatchSize(_contract)));\n}",
+        "actual": "/// <summary>\n    /// Batch entry point invoked by the SysOperation controller.\n    /// </summary>\n    public void process(PFXDemoBatchContract _contract)\n    {\n        info(strFmt(\"Effective batch size: %1\", this.calculateEffectiveBatchSize(_contract)));\n    }"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT"
+}

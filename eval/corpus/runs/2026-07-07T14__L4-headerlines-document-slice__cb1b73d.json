@@ -1,0 +1,72 @@
+﻿{
+  "run_id": "2026-07-07T14__L4-headerlines-document-slice__cb1b73d",
+  "case_id": "L4-headerlines-document-slice",
+  "tier": 4,
+  "timestamp": "2026-07-07T14:57:09.000Z",
+  "server_git_sha": "cb1b73d",
+  "generated_artifacts": [
+    "AxEnum/ConDemoRentStatus.xml",
+    "AxEdt/ConDemoRentAgreementId.xml",
+    "AxTable/ConDemoRentHeader.xml",
+    "AxTable/ConDemoRentLine.xml",
+    "AxEnumExtension/NumberSeqModule.ConExtension.xml",
+    "AxClass/ConNumberSeqModuleDemoRent.xml",
+    "AxForm/ConDemoRentAgreement.xml",
+    "AxMenuItemDisplay/ConDemoRentAgreementMI.xml",
+    "AxSecurityPrivilege/ConDemoRentMaintain.xml",
+    "AxSecurityDuty/ConDemoRentDuty.xml",
+    "AxSecurityRole/ConDemoRentClerk.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": [
+        "NoYes::No and NoYes::Yes flagged by validate_code(mode=references) as unknown-static-member on ConNumberSeqModuleDemoRent.loadModule(), a known validator false positive (NoYes is a real, ubiquitous standard enum missing from the index under its exact base name -- reproduces the same finding recorded in the L3-numberseq-module-slice corpus run). validate_code(mode=syntax) passed clean on the same source, and the two AxTable XMLs (ConDemoRentHeader, ConDemoRentLine) both passed validate_code(mode=references, codeType=xml-table) with 8/8 references verified and zero errors."
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "build": {
+    "succeeded": false,
+    "errors": [
+      {
+        "message": "Form dynamics://Form/ConDemoRentAgreement: Form 'ConDemoRentAgreement' datasource 'ConDemoRentHeaderLine' refers to table 'ConDemoRentHeaderLine' which does not exist."
+      },
+      {
+        "message": "Form dynamics://Form/ConDemoRentAgreement: Form 'ConDemoRentAgreement' datasource 'ConDemoRentHeader' refers to table '' which does not exist (cascaded binder failure from the broken joined datasource; the raw XML's own Table element for this datasource is intact and byte-correct)."
+      }
+    ],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "npm run eval:score throws ENOENT scandir eval/goldens/L4-headerlines-document-slice because golden_pending is true and no golden dir exists yet, confirmed by direct invocation with EXTENSION_PREFIX=Con exported. That is expected and separate from this run terminal outcome: a genuine BUILD FAILURE caused by a reproducible tool defect in the DetailsTransaction form scaffold, with 10 of the 11 required objects grounded and believed fully correct. Objects 1-4 (AxEnum ConDemoRentStatus with Open/Confirmed/Returned/Cancelled reusing standard labels CashManagement Open, CashManagement Confirmed, Res Returned, SYS CancelledState; AxEdt ConDemoRentAgreementId extending Num reusing GLS 220539 Agreement ID label; AxTable ConDemoRentHeader with RentAgreementId mandatory, CustAccount, FromDate, ToDate, Status fields, a unique RentAgreementIdIdx index, a CustTable relation on CustAccount to AccountNum, an Overview field group over all five fields, and TitleField1 set to RentAgreementId; AxTable ConDemoRentLine with RentAgreementId, LineNum, ItemName, Qty, LineAmount fields, a RentAgreementIdx index on RentAgreementId plus LineNum, and an DemoRentHeader relation on RentAgreementId to RentAgreementId) were all created via d365fo_file create plus modify operations, read back correctly from disk after every write, and passed validate_code references mode with 8 of 8 verified in each table and zero hallucinated symbols. Objects 5-6 (AxEnumExtension NumberSeqModule ConExtension adding value DemoRent as the case mandates; AxClass ConNumberSeqModuleDemoRent extending NumberSeqApplicationModule with loadModule registering a NumberSeqDatatype for ConDemoRentAgreementId via NumberSeqDatatype construct plus parm methods plus this create call, numberSeqModule returning NumberSeqModule DemoRent, and a static buildModulesMapSubsciber Map method carrying SubscribesTo on NumberSeqGlobal buildModulesMapDelegate calling NumberSeqGlobal addModuleToMap) were grounded via get_method on NumberSeqModuleBank.loadModule (include source) and find_references on NumberSeqGlobal.addModuleToMap (45 real standard callers, all the identical static-method-on-the-module-class pattern), matching the proven shape exactly. Objects 8-11 (menu item, privilege, duty, role) were all created cleanly; ConDemoRentMaintain EntryPoints correctly reference ConDemoRentAgreementMI as MenuItemDisplay. One separately-known, non-blocking defect reproduced here, not scored as the terminal failure: d365fo_file create for security-duty emits Privileges containing AxSecurityRolePermissionSet with just a Name element, instead of the AxSecurityPrivilegeReference shape shipped duties use -- functionally wired but will very likely trigger a BP shape-mismatch warning once a build succeeds far enough to run BP checks. The DELETE ACTION mandated by the case, a relation to DemoRentHeader plus a cascading delete action, could not be added at all: there is no add-delete-action or any AxTableDeleteAction-shaped operation in the modify tool operation set, so this specific sub-requirement is an uncovered tool-surface gap, not attempted by hand. The TERMINAL, build-blocking defect is object 7, the form. object_patterns domain form action analyze recommend correctly recommended DetailsTransaction citing SalesTable, PurchTable, ProjInvoiceJournal as reference forms; generate_object mode scaffold objectType form cloneFrom SalesTable tableMapping was tried first per the tool own preferred workflow and was correctly self-blocked by the pre-clone field-overlap check (1 of 185 and 2 of 198 fields shared), which itself redirected to a formPattern plus dataSource scaffold. generate_object mode scaffold objectType form formPattern DetailsTransaction dataSource ConDemoRentHeader includeMethodStubs true was then called (single dataSource param) and produced a rich, mostly well-formed DetailsTransaction structure (ActionPane, NavigationList side panel, FastTabs, header, lines and grid tab pages all correctly bound to ConDemoRentHeader fields) BUT auto-invented a SECOND AxFormDataSource named and typed ConDemoRentHeaderLine -- guessing a HeaderTable-plus-Line naming convention for the lines table that does not match the actual, case-mandated lines table name ConDemoRentLine, and never referencing the real ConDemoRentLine table anywhere in the file. This left the LinesGrid, LinesActionPaneStrip and LineViewLineDetails controls bound to a DataSource pointing at a nonexistent table, and xppc build correctly failed with a message that datasource ConDemoRentHeaderLine refers to table ConDemoRentHeaderLine which does not exist, plus a second cascaded error reporting the FIRST, header datasource table as empty, even though the raw XML Table element for that datasource is intact -- apparently a binder-cascade artifact of the broken joined datasource, not a second independent corruption. Per the case forward-only mandate, this was NOT hand-patched and NOT rolled back and retried: an attempt was made to fix it exclusively through the grounded modify surface and hit two further, confirmed tool gaps: first, d365fo_file modify objectType form operation add-data-source on the base AxForm returns a note stating form-extension only in its own required-parameter error message, meaning add-data-source is documented by the tool itself as applicable only to AxFormExtension objects, not to a base AxForm own DataSources collection, so there is no grounded way to add or replace a base-form datasource after initial scaffold; second, d365fo_file modify operation modify-property with propertyPath targeting the second datasource Table element failed twice, once with a plain slash path and once with a Name-predicate-qualified path, both returning an error that the Table tag appears two times and is ambiguous, refusing to guess which one, confirming modify-property counts raw tag-name occurrences file-wide rather than resolving structurally-scoped paths, so it cannot disambiguate between the two AxFormDataSource elements Table children. object_patterns domain form action validate on the broken file reported zero errors and only three cosmetic FP002 sub-pattern-version warnings -- it does not perform semantic table-existence checking on datasource bindings, so it did not catch this before the build.",
+  "suggested_fix_area": "First, generate_object mode scaffold objectType form formPattern DetailsTransaction with a single dataSource table: stop auto-inventing a second Line-suffixed datasource when only one table is supplied -- either require or accept an explicit second table for the lines datasource, mirroring the multi-table dataSource syntax the tool itself suggests as a SimpleList fallback (a comma separated list of two tables), or omit the second datasource entirely and document that DetailsTransaction scaffolding from a single table needs a follow-up step. Second, d365fo_file modify objectType form operation add-data-source: either lift the form-extension-only restriction so it also supports adding or replacing a datasource on a base AxForm (the exact scenario this case needs to recover from a bad scaffold), or add a dedicated base-form datasource repoint or remove operation. Third, modify-property: resolve propertyPath structurally, respecting a Name qualifier or an index, instead of a file-wide same-tag-name count-and-refuse heuristic, so a qualified or indexed path can disambiguate repeated sibling tag names such as Table across multiple datasources. Fourth, object_patterns action validate: add a semantic check, or point users at an xml-form validate_code references codeType which does not currently exist, that flags a form datasource whose Table does not resolve to an existing table in the symbol index, since the structural pattern validator alone passes broken forms like this one. Fifth, add an add-delete-action or AxTableDeleteAction operation to the table modify surface -- there is currently no grounded way to add a cascading DeleteAction to a table relation at all. Sixth, re-index the base NoYes enum since fuzzy search currently only returns NoYes-suffixed variants, never the exact base enum, matching the same finding from the L3-numberseq-module-slice run. Seventh, security-duty and security-role create should emit AxSecurityPrivilegeReference and AxSecurityDutyReference, matching shipped objects, instead of AxSecurityRolePermissionSet and AxSecurityRoleDutyPermission, per the already-tracked defect. Once the first three items are fixed, re-run this case, author and human-review the golden for L4-headerlines-document-slice, and flip golden_pending to false.",
+  "evidence_refs": [
+    "C:AOSServicePackagesLocalDirectory\contoso\contosoAxFormConDemoRentAgreement.xml",
+    "C:AOSServicePackagesLocalDirectory\contoso\contosoAxTableConDemoRentHeader.xml",
+    "C:AOSServicePackagesLocalDirectory\contoso\contosoAxTableConDemoRentLine.xml",
+    "C:AOSServicePackagesLocalDirectory\contoso\contosoAxClassConNumberSeqModuleDemoRent.xml",
+    "C:AOSServicePackagesLocalDirectory\contoso\contosoAxSecurityDutyConDemoRentDuty.xml",
+    "npm run eval:score -- L4-headerlines-document-slice <actual> => ENOENT scandir eval/goldens/L4-headerlines-document-slice (golden_pending, confirmed by direct invocation)"
+  ]
+}

@@ -1,0 +1,67 @@
+﻿{
+  "run_id": "2026-07-06T18__L1-form-basic__f2c8bfe",
+  "case_id": "L1-form-basic",
+  "tier": 1,
+  "timestamp": "2026-07-06T18:05:00.000Z",
+  "server_git_sha": "f2c8bfe",
+  "generated_artifacts": [
+    "contoso/contoso/AxTable/ConDemoNoteHeader.xml",
+    "contoso/contoso/AxForm/ConDemoNoteHeaderList.xml"
+  ],
+  "static_gate": {
+    "references": { "passed": true },
+    "syntax": { "passed": true }
+  },
+  "build": {
+    "succeeded": false,
+    "errors": [
+      { "text": "Metadata Error: AxTable/ConDemoNoteHeader/ReplacementKey: Index 'DemoNoteHeaderIdx' does not exist." },
+      { "text": "Metadata Error: AxForm/ConDemoNoteHeaderList/Design/Controls/Grid/DataGroup: Field group 'Overview' does not exist." }
+    ],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [
+      "PFXDemoNoteHeader.metadata.xml::AxTable/CacheLookup",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/ClusteredIndex",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoBrowse]/Name",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoIdentification]/AutoPopulate",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoIdentification]/Name",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Fields/AxTableFieldGroupField[NoteId]/DataField",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Fields/AxTableFieldGroupField[Subject]/DataField",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoLookup]/Name",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[NoteId]/DataField",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Fields/AxTableFieldGroupField[Subject]/DataField",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoReport]/Name",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/FieldGroups/AxTableFieldGroup[AutoSummary]/Name",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/PrimaryIndex",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/ReplacementKey",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/SourceCode/Declaration",
+      "PFXDemoNoteHeader.metadata.xml::AxTable/TitleField2"
+    ],
+    "changed": [
+      { "path": "PFXDemoNoteHeaderList.metadata.xml::AxForm/Design/Caption", "golden": "@TaxTransactionInquiry:HeaderNote", "actual": "PFXDemoNoteHeaderList" }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "Two independent defects. (1) PRIMARY / build-breaking: d365fo_file(action='modify', operation='modify-property') on an AxTable silently no-ops for the ReplacementKey property specifically (reports '✅ ... set via Update' but the XML value is unchanged on disk) after the referenced index was recreated via remove-index+add-index; ClusteredIndex/PrimaryIndex/TitleField1 modify-property calls on the SAME table worked correctly, so this looks like a property-specific bug in the bridge's AxTable property setter, not a generic modify-property limitation. The stale ReplacementKey then references a since-removed index name and fails the xppc build (Metadata Error: ReplacementKey: Index 'DemoNoteHeaderIdx' does not exist). (2) SECONDARY / cross-scaffold inconsistency: generate_object(mode='scaffold', objectType='table') auto-populates FieldGroups with AutoReport/AutoLookup/AutoIdentification/AutoSummary/AutoBrowse but never an 'Overview' group, while generate_object(mode='scaffold', objectType='form', formPattern='SimpleList') always emits Grid/DataGroup=Overview; combining both scaffolds for the same table (exactly what this case's instruction requires) reliably fails the build with 'Field group Overview does not exist' unless the table scaffold is told to leave FieldGroups empty (the golden's own capture used an empty <FieldGroups/>, sidestepping the conflict via the framework's implicit-default field groups). (3) Separate, non-blocking harness defect found in src/eval/oracle/cli.ts's --actual-dir multi-artifact path: it keys `actualArtifacts` by the GOLDEN's filename literal instead of the resolved actual file's own basename, so per-artifact canonicalizePrefix(key, actualPrefix) never converts the golden-literal-prefixed key ('Con...') into the shared 'PFX...' placeholder whenever actualPrefix != goldenPrefix, causing every path in the run to spuriously show up as wholesale missing+extra even though content-level values match. Confirmed by re-running the same two artifacts through the single-file oracle path (no --actual-dir), which produced clean, accurate diffs (table: 0 missing/16 extra scaffold-default noise/0 changed; form: 0 missing/0 extra/1 changed = only Caption, an out-of-scope-for-this-instruction known deviation). This corpus record's golden_diff was reconstructed from those two correct single-file runs.",
+  "suggested_fix_area": "C# bridge IMetadataProvider.Update path for AxTable.ReplacementKey (modify-property); generate_object scaffold defaults reconciliation between table FieldGroups and SimpleList form DataGroup; src/eval/oracle/cli.ts resolveActualFile/actualArtifacts keying (use path.basename(actualFile) instead of the golden loop variable `name`).",
+  "evidence_refs": [
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxTable/ConDemoNoteHeader.xml",
+    "C:/AOSService/PackagesLocalDirectory/contoso/contoso/AxForm/ConDemoNoteHeaderList.xml"
+  ]
+}
