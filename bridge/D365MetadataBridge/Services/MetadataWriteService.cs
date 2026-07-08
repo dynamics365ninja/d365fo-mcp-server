@@ -1369,7 +1369,8 @@ namespace D365MetadataBridge.Services
                     var obj = _provider.Classes.Read(objectName)
                         ?? throw new ArgumentException($"Class '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Classes, objectName);
-                    SetAxClassProperty(obj, propertyPath, propertyValue);
+                    if (!SetAxClassProperty(obj, propertyPath, propertyValue))
+                        throw new ArgumentException($"Unknown AxClass property '{propertyPath}' — nothing was written. Supported: extends, isAbstract, isFinal.");
                     ((IMetaClassProvider)_provider.Classes).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -1378,7 +1379,8 @@ namespace D365MetadataBridge.Services
                     var obj = _provider.Tables.Read(objectName)
                         ?? throw new ArgumentException($"Table '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Tables, objectName);
-                    SetAxTableProperty(obj, propertyPath, propertyValue);
+                    if (!SetAxTableProperty(obj, propertyPath, propertyValue))
+                        throw new ArgumentException($"Unknown AxTable property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation, tableGroup, cacheLookup, clusteredIndex, primaryIndex, replacementKey, saveDataPerCompany, tableType, supportInheritance, extends, titleField1, titleField2.");
                     ((IMetaTableProvider)_provider.Tables).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -1387,7 +1389,8 @@ namespace D365MetadataBridge.Services
                     var obj = _provider.Enums.Read(objectName)
                         ?? throw new ArgumentException($"Enum '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Enums, objectName);
-                    SetAxEnumProperty(obj, propertyPath, propertyValue);
+                    if (!SetAxEnumProperty(obj, propertyPath, propertyValue))
+                        throw new ArgumentException($"Unknown AxEnum property '{propertyPath}' — nothing was written. Supported: label, isExtensible.");
                     ((IMetaEnumProvider)_provider.Enums).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -1396,7 +1399,8 @@ namespace D365MetadataBridge.Services
                     var obj = _provider.Edts.Read(objectName)
                         ?? throw new ArgumentException($"EDT '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Edts, objectName);
-                    SetAxEdtProperty(obj, propertyPath, propertyValue);
+                    if (!SetAxEdtProperty(obj, propertyPath, propertyValue))
+                        throw new ArgumentException($"Unknown AxEdt property '{propertyPath}' — nothing was written. Supported: label, helpText, extends, stringSize, referenceTable.");
                     ((IMetaEdtProvider)_provider.Edts).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -1405,7 +1409,8 @@ namespace D365MetadataBridge.Services
                     var obj = _provider.Queries.Read(objectName)
                         ?? throw new ArgumentException($"Query '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Queries, objectName);
-                    SetAxQueryProperty(obj, propertyPath, propertyValue);
+                    if (!SetAxQueryProperty(obj, propertyPath, propertyValue))
+                        throw new ArgumentException($"Unknown (or unavailable on this subclass) AxQuery property '{propertyPath}' — nothing was written. Supported: title, description, allowCrossCompany.");
                     ((IMetaQueryProvider)_provider.Queries).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -1414,7 +1419,8 @@ namespace D365MetadataBridge.Services
                     var obj = _provider.Views.Read(objectName)
                         ?? throw new ArgumentException($"View '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Views, objectName);
-                    SetAxViewProperty(obj, propertyPath, propertyValue);
+                    if (!SetAxViewProperty(obj, propertyPath, propertyValue))
+                        throw new ArgumentException($"Unknown AxView property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation.");
                     ((IMetaViewProvider)_provider.Views).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -1423,7 +1429,8 @@ namespace D365MetadataBridge.Services
                     var obj = _provider.MenuItemActions.Read(objectName)
                         ?? throw new ArgumentException($"MenuItemAction '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.MenuItemActions, objectName);
-                    SetAxMenuItemProperty(obj, propertyPath, propertyValue);
+                    if (!SetAxMenuItemProperty(obj, propertyPath, propertyValue))
+                        throw new ArgumentException($"Unknown (or unsupported) AxMenuItem property '{propertyPath}' — nothing was written. Supported: label, helpText, object, objectType, openMode, normalImage, configurationKey, countryRegionCodes, maintainUserAuthorization.");
                     ((IMetaMenuItemActionProvider)_provider.MenuItemActions).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -1432,7 +1439,8 @@ namespace D365MetadataBridge.Services
                     var obj = _provider.MenuItemDisplays.Read(objectName)
                         ?? throw new ArgumentException($"MenuItemDisplay '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.MenuItemDisplays, objectName);
-                    SetAxMenuItemProperty(obj, propertyPath, propertyValue);
+                    if (!SetAxMenuItemProperty(obj, propertyPath, propertyValue))
+                        throw new ArgumentException($"Unknown (or unsupported) AxMenuItem property '{propertyPath}' — nothing was written. Supported: label, helpText, object, objectType, openMode, normalImage, configurationKey, countryRegionCodes, maintainUserAuthorization.");
                     ((IMetaMenuItemDisplayProvider)_provider.MenuItemDisplays).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -1441,7 +1449,8 @@ namespace D365MetadataBridge.Services
                     var obj = _provider.MenuItemOutputs.Read(objectName)
                         ?? throw new ArgumentException($"MenuItemOutput '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.MenuItemOutputs, objectName);
-                    SetAxMenuItemProperty(obj, propertyPath, propertyValue);
+                    if (!SetAxMenuItemProperty(obj, propertyPath, propertyValue))
+                        throw new ArgumentException($"Unknown (or unsupported) AxMenuItem property '{propertyPath}' — nothing was written. Supported: label, helpText, object, objectType, openMode, normalImage, configurationKey, countryRegionCodes, maintainUserAuthorization.");
                     ((IMetaMenuItemOutputProvider)_provider.MenuItemOutputs).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -2417,7 +2426,18 @@ namespace D365MetadataBridge.Services
         // HELPERS: Property Setters
         // ========================
 
-        private void SetAxClassProperty(AxClass cls, string prop, string value)
+        /// <summary>
+        /// Sets a known AxClass property. Returns false (not thrown — callers that apply a
+        /// whole properties bag at CREATE time, e.g. CreateClass, intentionally skip unknown
+        /// keys rather than aborting the whole create) when `prop` is not recognized;
+        /// modify-property's SetProperty dispatcher checks this and surfaces a clear error
+        /// instead of the false "success" this used to unconditionally report (regression:
+        /// eval/corpus/runs/2026-07-06T18__L1-form-basic__f2c8bfe.json,
+        /// eval/corpus/runs/2026-07-06T18__L1-map-basic__cb1b73d.json — modify-property
+        /// reported success for both a real property AND a deliberately bogus one; neither
+        /// case's actual write was verifiable from the reported result).
+        /// </summary>
+        private bool SetAxClassProperty(AxClass cls, string prop, string value)
         {
             switch (prop.ToLowerInvariant())
             {
@@ -2426,11 +2446,12 @@ namespace D365MetadataBridge.Services
                 case "isfinal": cls.IsFinal = ParseBool(value); break;
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxClass property: {prop}");
-                    break;
+                    return false;
             }
+            return true;
         }
 
-        private void SetAxTableProperty(AxTable tbl, string prop, string value)
+        private bool SetAxTableProperty(AxTable tbl, string prop, string value)
         {
             switch (prop.ToLowerInvariant())
             {
@@ -2446,6 +2467,7 @@ namespace D365MetadataBridge.Services
                     break;
                 case "clusteredindex": tbl.ClusteredIndex = value; break;
                 case "primaryindex": tbl.PrimaryIndex = value; break;
+                case "replacementkey": tbl.ReplacementKey = value; break;
                 case "savedatapercompany":
                     tbl.SaveDataPerCompany = ParseNoYes(value);
                     break;
@@ -2461,11 +2483,12 @@ namespace D365MetadataBridge.Services
                 case "titlefield2": tbl.TitleField2 = value; break;
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxTable property: {prop}");
-                    break;
+                    return false;
             }
+            return true;
         }
 
-        private void SetAxEnumProperty(AxEnum en, string prop, string value)
+        private bool SetAxEnumProperty(AxEnum en, string prop, string value)
         {
             switch (prop.ToLowerInvariant())
             {
@@ -2475,11 +2498,12 @@ namespace D365MetadataBridge.Services
                     break;
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxEnum property: {prop}");
-                    break;
+                    return false;
             }
+            return true;
         }
 
-        private void SetAxEdtProperty(AxEdt edt, string prop, string value)
+        private bool SetAxEdtProperty(AxEdt edt, string prop, string value)
         {
             switch (prop.ToLowerInvariant())
             {
@@ -2493,11 +2517,12 @@ namespace D365MetadataBridge.Services
                 case "basetype": break; // handled at construction time
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxEdt property: {prop}");
-                    break;
+                    return false;
             }
+            return true;
         }
 
-        private void SetAxQueryProperty(AxQuery q, string prop, string value)
+        private bool SetAxQueryProperty(AxQuery q, string prop, string value)
         {
             // AxQuery is abstract — properties may vary by subclass. Use dynamic for safety.
             dynamic dq = q;
@@ -2514,11 +2539,12 @@ namespace D365MetadataBridge.Services
                     break;
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxQuery property: {prop}");
-                    break;
+                    return false;
             }
+            return true;
         }
 
-        private void SetAxViewProperty(AxView v, string prop, string value)
+        private bool SetAxViewProperty(AxView v, string prop, string value)
         {
             switch (prop.ToLowerInvariant())
             {
@@ -2526,15 +2552,16 @@ namespace D365MetadataBridge.Services
                 case "developerdocumentation": v.DeveloperDocumentation = value; break;
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxView property: {prop}");
-                    break;
+                    return false;
             }
+            return true;
         }
 
         /// <summary>
         /// Shared property setter for all three menu item types (Action, Display, Output).
         /// AxMenuItemAction/Display/Output all inherit from AxMenuItem which shares these properties.
         /// </summary>
-        private void SetAxMenuItemProperty(dynamic mi, string prop, string value)
+        private bool SetAxMenuItemProperty(dynamic mi, string prop, string value)
         {
             switch (prop.ToLowerInvariant())
             {
@@ -2553,7 +2580,7 @@ namespace D365MetadataBridge.Services
                 case "imagelocation":
                     // ImageLocation enum type varies across D365FO versions — skip for safety
                     Console.Error.WriteLine($"[WriteService] ImageLocation not directly supported — use modify-property after creation");
-                    break;
+                    return false;
                 case "configurationkey": mi.ConfigurationKey = value; break;
                 case "countryregioncodes": mi.CountryRegionCodes = value; break;
                 case "maintainuserauthorization":
@@ -2561,8 +2588,9 @@ namespace D365MetadataBridge.Services
                     break;
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxMenuItem property: {prop}");
-                    break;
+                    return false;
             }
+            return true;
         }
 
         private void SetAxSecurityPrivilegeProperty(AxSecurityPrivilege priv, string prop, string value)
