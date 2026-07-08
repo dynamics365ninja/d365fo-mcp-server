@@ -36,7 +36,7 @@ describe('renderFixBrief', () => {
         run_id: 'r1',
         root_cause_hypothesis: 'bridge dropped EntryPoints on security-privilege create',
         suggested_fix_area: 'src/bridge/bridgeAdapter.ts BRIDGE_CREATE_TYPES',
-        evidence_refs: ['eval/goldens/L4-entity-security/AslXyzNoteHeaderMaintain.metadata.xml'],
+        evidence_refs: ['eval/goldens/L4-entity-security/ConDemoNoteHeaderMaintain.metadata.xml'],
       }),
     ];
     const cluster = topPriorityCluster(runs)!;
@@ -44,7 +44,7 @@ describe('renderFixBrief', () => {
 
     expect(brief).toContain('bridge dropped EntryPoints on security-privilege create');
     expect(brief).toContain('src/bridge/bridgeAdapter.ts BRIDGE_CREATE_TYPES');
-    expect(brief).toContain('eval/goldens/L4-entity-security/AslXyzNoteHeaderMaintain.metadata.xml');
+    expect(brief).toContain('eval/goldens/L4-entity-security/ConDemoNoteHeaderMaintain.metadata.xml');
     expect(brief).toMatch(/## Task/);
     expect(brief).toMatch(/Do NOT merge/);
   });

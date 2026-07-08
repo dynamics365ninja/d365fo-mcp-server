@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L4-ssrs-report-basic (4 of 5): Controller. Captured 2026-07-01, SHA c43b344. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteReportController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoNoteReportController extends SrsReportRunController
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+public static void main(Args _args)
+{
+    ConDemoNoteReportController controller = new ConDemoNoteReportController();
+    controller.parmReportName(ssrsReportStr(ConDemoNoteReport, Design));
+    controller.parmArgs(_args);
+    controller.startOperation();
+}
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

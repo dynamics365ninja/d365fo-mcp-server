@@ -1,4 +1,4 @@
-# Eval loop — roadmap
+﻿# Eval loop — roadmap
 
 Status as of 2026-07-01 (branch `feat/eval-phase1`, PR #617). Loop machinery is
 complete: implementer protocol, automated golden oracle + scorer (multi-artifact,
@@ -50,5 +50,5 @@ tracks what's still open.
 
 ## Invariant (never break)
 
-All eval writes pinned to the `fm-mcp` sandbox; never add
+All eval writes pinned to the `contoso` sandbox; never add
 `D365FO_CUSTOM_PACKAGES_PATH` targeting a real model (§11).

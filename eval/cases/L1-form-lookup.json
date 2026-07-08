@@ -2,7 +2,7 @@
   "id": "L1-form-lookup",
   "title": "Lookup form pattern (custom lookup form)",
   "tier": 1,
-  "instruction": "In the sandbox model, create a Lookup form named XyzNoteHeaderLookup bound to the AslXyzNoteHeader table's data source, with grid controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=Lookup). The form must build clean. Note: there is no dedicated 'Lookup' template in the form-pattern catalog as of 2026-07-01 -- the scaffold tool substitutes 'LookupGridOnly' and reports this explicitly. That is expected, not an error.",
+  "instruction": "In the sandbox model, create a Lookup form named DemoNoteHeaderLookup bound to the ConDemoNoteHeader table's data source, with grid controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=Lookup). The form must build clean. Note: there is no dedicated 'Lookup' template in the form-pattern catalog as of 2026-07-01 -- the scaffold tool substitutes 'LookupGridOnly' and reports this explicitly. That is expected, not an error.",
   "target_artifact_types": [
     "AxForm"
   ],

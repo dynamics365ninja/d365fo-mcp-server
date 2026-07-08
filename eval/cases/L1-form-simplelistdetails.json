@@ -2,7 +2,7 @@
   "id": "L1-form-simplelistdetails",
   "title": "SimpleListDetails form pattern (grid + details pane)",
   "tier": 1,
-  "instruction": "In the sandbox model, create a SimpleListDetails form named XyzNoteHeaderDetails bound to the AslXyzNoteHeader table's data source, with grid controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=SimpleListDetails). The form must build clean.",
+  "instruction": "In the sandbox model, create a SimpleListDetails form named DemoNoteHeaderDetails bound to the ConDemoNoteHeader table's data source, with grid controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=SimpleListDetails). The form must build clean.",
   "target_artifact_types": [
     "AxForm"
   ],

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-batch-basic (artifact 3 of 4: Controller)
+  Captured: 2026-06-30, server SHA: 7f836a6
+  Platform: xppc 7.0.7858.27
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoBatchController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+class ConDemoBatchController extends SysOperationServiceController
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Constructs the controller for the batch operation.
+/// </summary>
+public static ConDemoBatchController construct()
+{
+    ConDemoBatchController controller = new ConDemoBatchController();
+    controller.parmClassName(classStr(ConDemoBatchService));
+    controller.parmMethodName(methodStr(ConDemoBatchService, process));
+    return controller;
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Entry point invoked from the menu item.
+/// </summary>
+public static void main(Args _args)
+{
+    ConDemoBatchController controller = ConDemoBatchController::construct();
+    controller.parmDialogCaption(literalStr("@ConRent:DemoProcessBatch"));
+    controller.startOperation();
+}
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

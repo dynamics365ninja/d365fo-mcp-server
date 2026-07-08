@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L4-ssrs-report-basic (1 of 5): TempDB tmp table. Captured 2026-07-01, SHA c43b344. -->
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteReportTmp</Name>
+	<SourceCode>
+		<Methods />
+	</SourceCode>
+	<Label>@TaxTransactionInquiry:HeaderNote</Label>
+	<TableGroup>Main</TableGroup>
+	<TableType>TempDB</TableType>
+	<DeleteActions />
+	<FieldGroups />
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>NoteId</Name>
+			<ExtendedDataType>Num</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Subject</Name>
+			<ExtendedDataType>Name</ExtendedDataType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

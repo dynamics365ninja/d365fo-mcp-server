@@ -2,7 +2,7 @@
   "id": "L1-form-detailsmaster",
   "title": "DetailsMaster form pattern (single-record master page)",
   "tier": 1,
-  "instruction": "In the sandbox model, create a DetailsMaster form named XyzNoteHeaderMaster bound to the AslXyzNoteHeader table's data source, with grid controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=DetailsMaster). The form must build clean.",
+  "instruction": "In the sandbox model, create a DetailsMaster form named DemoNoteHeaderMaster bound to the ConDemoNoteHeader table's data source, with grid controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=DetailsMaster). The form must build clean.",
   "target_artifact_types": [
     "AxForm"
   ],

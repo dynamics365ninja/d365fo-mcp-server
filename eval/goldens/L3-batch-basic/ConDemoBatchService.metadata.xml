@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-batch-basic (artifact 2 of 4: Service)
+  Captured: 2026-06-30, server SHA: 7f836a6
+  Platform: xppc 7.0.7858.27
+
+  Known deviation: info(strFmt("Effective batch size: %1", ...)) is raw text in
+  an info() runtime message (not a metadata Label property) - xppbp still flags
+  it as BPErrorLabelIsText (warning severity, not error). Left as-is, consistent
+  with the warning bar already accepted on other goldens in this catalog.
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoBatchService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+class ConDemoBatchService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>process</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Batch entry point invoked by the SysOperation controller.
+/// </summary>
+public void process(ConDemoBatchContract _contract)
+{
+    info(strFmt("Effective batch size: %1", this.calculateEffectiveBatchSize(_contract)));
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>calculateEffectiveBatchSize</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Pure, deterministic helper: the requested batch size scaled by the priority factor.
+/// </summary>
+public int calculateEffectiveBatchSize(ConDemoBatchContract _contract)
+{
+    return _contract.parmBatchSize() * _contract.parmPriorityFactor();
+}
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

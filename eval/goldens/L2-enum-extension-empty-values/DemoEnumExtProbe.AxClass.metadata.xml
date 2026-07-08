@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-enum-extension-empty-values (2 of 2): probe class proving NumberSeqModule::DemoEvalRent resolves at compile time. Captured 2026-07-07, SHA cb1b73d. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoEnumExtProbe</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+class ConDemoEnumExtProbe
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>module</Name>
+				<Source><![CDATA[
+    public static NumberSeqModule module()
+    {
+        return NumberSeqModule::DemoEvalRent;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

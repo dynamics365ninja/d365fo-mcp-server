@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>ConDemoNoteHeaderToc</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+[Form]
+public class ConDemoNoteHeaderToc extends FormRun
+{
+}
+
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>ConDemoNoteHeader</Name>
+			<Table>ConDemoNoteHeader</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">@TaxTransactionInquiry:HeaderNote</Caption>
+		<DataSource xmlns="">ConDemoNoteHeader</DataSource>
+		<Pattern xmlns="">TableOfContents</Pattern>
+		<PatternVersion xmlns="">1.1</PatternVersion>
+		<Style xmlns="">TableOfContents</Style>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+					i:type="AxFormTabControl">
+				<Name>Tab</Name>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+				<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+					<Name>TabPageGeneral</Name>
+					<Type>TabPage</Type>
+					<FormControlExtension
+						i:nil="true" />
+					<Controls>
+						<AxFormControl xmlns=""
+								i:type="AxFormGroupControl">
+							<Name>TabPageGeneralTitle</Name>
+							<Skip>Yes</Skip>
+							<Type>Group</Type>
+							<WidthMode>SizeToAvailable</WidthMode>
+							<FormControlExtension
+								i:nil="true" />
+							<Controls>
+								<AxFormControl xmlns=""
+										i:type="AxFormStaticTextControl">
+									<Name>TabPageGeneralInstruction</Name>
+									<Skip>Yes</Skip>
+									<Type>StaticText</Type>
+									<WidthMode>SizeToAvailable</WidthMode>
+									<FormControlExtension
+										i:nil="true" />
+									<Style>MainInstruction</Style>
+									<Text>General</Text>
+								</AxFormControl>
+							</Controls>
+							<AllowUserSetup>No</AllowUserSetup>
+							<FrameType>None</FrameType>
+							<Style>TOCTitleContainer</Style>
+						</AxFormControl>
+						<AxFormControl xmlns=""
+								i:type="AxFormTabControl">
+							<Name>TabPageGeneralFastTab</Name>
+							<Type>Tab</Type>
+							<FormControlExtension
+								i:nil="true" />
+							<Controls>
+								<AxFormControl xmlns=""
+										i:type="AxFormTabPageControl">
+									<Name>TabPageGeneralPage</Name>
+									<Pattern>FieldsFieldGroups</Pattern>
+									<PatternVersion>1.1</PatternVersion>
+									<Type>TabPage</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<Controls>
+										<AxFormControl xmlns=""
+												i:type="AxFormGroupControl">
+											<Name>TabPageGeneralGroup</Name>
+											<Type>Group</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<Controls>
+										<AxFormControl xmlns=""
+												i:type="AxFormStringControl">
+											<Name>TabPageGeneral_NoteId</Name>
+											<Type>String</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>NoteId</DataField>
+											<DataSource>ConDemoNoteHeader</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormStringControl">
+											<Name>TabPageGeneral_Subject</Name>
+											<Type>String</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>Subject</DataField>
+											<DataSource>ConDemoNoteHeader</DataSource>
+										</AxFormControl>
+											</Controls>
+										</AxFormControl>
+									</Controls>
+									<ColumnsMode>Fill</ColumnsMode>
+									<Caption>General</Caption>
+								</AxFormControl>
+							</Controls>
+							<Style>FastTabs</Style>
+						</AxFormControl>
+					</Controls>
+				</AxFormControl>
+				<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+					<Name>TabPageSetup</Name>
+					<Type>TabPage</Type>
+					<FormControlExtension
+						i:nil="true" />
+					<Controls>
+						<AxFormControl xmlns=""
+								i:type="AxFormGroupControl">
+							<Name>TabPageSetupTitle</Name>
+							<Skip>Yes</Skip>
+							<Type>Group</Type>
+							<WidthMode>SizeToAvailable</WidthMode>
+							<FormControlExtension
+								i:nil="true" />
+							<Controls>
+								<AxFormControl xmlns=""
+										i:type="AxFormStaticTextControl">
+									<Name>TabPageSetupInstruction</Name>
+									<Skip>Yes</Skip>
+									<Type>StaticText</Type>
+									<WidthMode>SizeToAvailable</WidthMode>
+									<FormControlExtension
+										i:nil="true" />
+									<Style>MainInstruction</Style>
+									<Text>Setup</Text>
+								</AxFormControl>
+							</Controls>
+							<AllowUserSetup>No</AllowUserSetup>
+							<FrameType>None</FrameType>
+							<Style>TOCTitleContainer</Style>
+						</AxFormControl>
+						<AxFormControl xmlns=""
+								i:type="AxFormTabControl">
+							<Name>TabPageSetupFastTab</Name>
+							<Type>Tab</Type>
+							<FormControlExtension
+								i:nil="true" />
+							<Controls>
+								<AxFormControl xmlns=""
+										i:type="AxFormTabPageControl">
+									<Name>TabPageSetupPage</Name>
+									<Pattern>FieldsFieldGroups</Pattern>
+									<PatternVersion>1.1</PatternVersion>
+									<Type>TabPage</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<Controls>
+										<AxFormControl xmlns=""
+												i:type="AxFormGroupControl">
+											<Name>TabPageSetupGroup</Name>
+											<Type>Group</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<Controls>
+										<AxFormControl xmlns=""
+												i:type="AxFormStringControl">
+											<Name>TabPageSetup_NoteId</Name>
+											<Type>String</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>NoteId</DataField>
+											<DataSource>ConDemoNoteHeader</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormStringControl">
+											<Name>TabPageSetup_Subject</Name>
+											<Type>String</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>Subject</DataField>
+											<DataSource>ConDemoNoteHeader</DataSource>
+										</AxFormControl>
+											</Controls>
+										</AxFormControl>
+									</Controls>
+									<ColumnsMode>Fill</ColumnsMode>
+									<Caption>Setup</Caption>
+								</AxFormControl>
+							</Controls>
+							<Style>FastTabs</Style>
+						</AxFormControl>
+					</Controls>
+				</AxFormControl>
+				</Controls>
+				<Style>VerticalTabs</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

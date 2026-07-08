@@ -2,7 +2,7 @@
   "id": "L1-table-basic",
   "title": "Basic table with fields, a field group and an index",
   "tier": 1,
-  "instruction": "Create a new table named XyzAgentNote in the sandbox model. Fields: NoteId (EDT-backed string, mandatory), Subject (string, use the Name EDT), NoteText (long text, use the Notes EDT), NoteDateTime (utcdatetime, use the TransDateTime EDT). Add a field group 'Overview' containing Subject and NoteText. Add a unique index 'NoteIdx' on NoteId. Set the table's TitleField1 to Subject. Use standard EDTs from the index rather than inventing new ones. Do NOT name any field 'CreatedDateTime' or 'ModifiedDateTime' — those are reserved D365FO system field names.",
+  "instruction": "Create a new table named DemoAgentNote in the sandbox model. Fields: NoteId (EDT-backed string, mandatory), Subject (string, use the Name EDT), NoteText (long text, use the Notes EDT), NoteDateTime (utcdatetime, use the TransDateTime EDT). Add a field group 'Overview' containing Subject and NoteText. Add a unique index 'NoteIdx' on NoteId. Set the table's TitleField1 to Subject. Use standard EDTs from the index rather than inventing new ones. Do NOT name any field 'CreatedDateTime' or 'ModifiedDateTime' — those are reserved D365FO system field names.",
   "target_artifact_types": [
     "AxTable"
   ],

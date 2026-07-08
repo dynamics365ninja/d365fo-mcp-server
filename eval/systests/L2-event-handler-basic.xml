@@ -6,7 +6,7 @@
 /// <summary>
 /// Runtime oracle for the L2-event-handler-basic eval case (docs/AGENT_EVAL_LOOP.md §6.3).
 ///
-/// The case asks the agent to add a [DataEventHandler] on AslXyzNoteHeader's
+/// The case asks the agent to add a [DataEventHandler] on ConDemoNoteHeader's
 /// Inserting event that defaults Subject to '(no subject)' when left blank --
 /// the OTHER extensibility mechanism alongside CoC (event handlers fire
 /// out-of-band, cannot return a value or block the call the way a CoC wrapper
@@ -30,7 +30,7 @@ class EvalL2EventHandlerDefaultSubjectTest extends SysTestCase
     [SysTestCheckInTestAttribute]
     public void testInsertingWithBlankSubjectGetsDefaulted()
     {
-        AslXyzNoteHeader noteHeader;
+        ConDemoNoteHeader noteHeader;
         noteHeader.NoteId = 'EVT-TEST-1';
         noteHeader.insert();
 
@@ -48,7 +48,7 @@ class EvalL2EventHandlerDefaultSubjectTest extends SysTestCase
     [SysTestCheckInTestAttribute]
     public void testInsertingWithExplicitSubjectIsPreserved()
     {
-        AslXyzNoteHeader noteHeader;
+        ConDemoNoteHeader noteHeader;
         noteHeader.NoteId = 'EVT-TEST-2';
         noteHeader.Subject = 'Explicit subject';
         noteHeader.insert();

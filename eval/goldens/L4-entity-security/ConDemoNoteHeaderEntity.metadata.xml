@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L4-entity-security (artifact 1 of 5: data entity)
+  Captured: 2026-06-30, server SHA: fc090d0
+  Platform: xppc 7.0.7858.27
+
+  Hand-written via d365fo_file(xmlContent, overwrite=true) - d365fo_file(create,
+  objectType="data-entity", properties={primaryTable,fields}) silently DROPS those
+  properties (the bridge produces an empty <Fields/><ViewMetadata/> skeleton with
+  no query/datasource at all). Structure here mirrors a real shipped simple
+  master entity (Currency\AxDataEntityView\CurrencyEntity.xml) read directly off
+  disk. See the corpus record for the full TOOL_DEFECT writeup; not yet fixed in
+  code (data-entity was already a TypeScript-XML-generation-only type before this
+  round, per BRIDGE_CREATE_TYPES - the gap is that XmlTemplateGenerator's
+  data-entity path doesn't populate Fields/ViewMetadata either, same root
+  symptom as the bridge path).
+-->
+<AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteHeaderEntity</Name>
+	<Label>@TaxTransactionInquiry:HeaderNote</Label>
+	<DataManagementEnabled>Yes</DataManagementEnabled>
+	<DataManagementStagingTable>ConDemoNoteHeaderEntityStaging</DataManagementStagingTable>
+	<EntityCategory>Master</EntityCategory>
+	<IsPublic>Yes</IsPublic>
+	<PrimaryKey>EntityKey</PrimaryKey>
+	<PublicCollectionName>DemoNoteHeaders</PublicCollectionName>
+	<PublicEntityName>DemoNoteHeader</PublicEntityName>
+	<Fields>
+		<AxDataEntityViewField xmlns=""
+			i:type="AxDataEntityViewMappedField">
+			<Name>NoteId</Name>
+			<DataField>NoteId</DataField>
+			<DataSource>ConDemoNoteHeader</DataSource>
+		</AxDataEntityViewField>
+		<AxDataEntityViewField xmlns=""
+			i:type="AxDataEntityViewMappedField">
+			<Name>Subject</Name>
+			<DataField>Subject</DataField>
+			<DataSource>ConDemoNoteHeader</DataSource>
+		</AxDataEntityViewField>
+	</Fields>
+	<Keys>
+		<AxDataEntityViewKey>
+			<Name>EntityKey</Name>
+			<Fields>
+				<AxDataEntityViewKeyField>
+					<DataField>NoteId</DataField>
+				</AxDataEntityViewKeyField>
+			</Fields>
+		</AxDataEntityViewKey>
+	</Keys>
+	<Mappings />
+	<Ranges />
+	<Relations />
+	<StateMachines />
+	<ViewMetadata>
+		<Name>Metadata</Name>
+		<SourceCode>
+			<Methods>
+				<Method>
+					<Name>classDeclaration</Name>
+					<Source><![CDATA[
+[Query]
+public class Metadata extends QueryRun
+{
+}
+]]></Source>
+				</Method>
+			</Methods>
+		</SourceCode>
+		<DataSources>
+			<AxQuerySimpleRootDataSource>
+				<Name>ConDemoNoteHeader</Name>
+				<Table>ConDemoNoteHeader</Table>
+				<DataSources />
+				<DerivedDataSources />
+				<Fields>
+					<AxQuerySimpleDataSourceField>
+						<Name>NoteId</Name>
+						<Field>NoteId</Field>
+					</AxQuerySimpleDataSourceField>
+					<AxQuerySimpleDataSourceField>
+						<Name>Subject</Name>
+						<Field>Subject</Field>
+					</AxQuerySimpleDataSourceField>
+				</Fields>
+				<Ranges />
+				<GroupBy />
+				<Having />
+				<OrderBy />
+			</AxQuerySimpleRootDataSource>
+		</DataSources>
+	</ViewMetadata>
+</AxDataEntityView>

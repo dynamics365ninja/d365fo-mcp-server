@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L1-form-basic (artifact 1 of 2: the table)
+  Captured: 2026-06-30, server SHA: cbb395f
+  Platform: xppc 7.0.7858.27
+  Environment: EXTENSION_PREFIX=Con -> table name is ConDemoNoteHeader
+
+  Known deviations from instruction:
+  - Label reused from the index (@TaxTransactionInquiry:HeaderNote, "Header Note")
+    rather than inventing new text, per the instruction's "reused standard label" ask.
+  - BP warnings present (0 errors, multiple warnings: missing alternate key, no
+    AutoReport field group, no caching, no DeveloperDocumentation, no form ref);
+    see the corpus record. All warning-severity, not errors.
+-->
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteHeader</Name>
+	<SourceCode>
+		<Methods />
+	</SourceCode>
+	<Label>@TaxTransactionInquiry:HeaderNote</Label>
+	<TableGroup>Main</TableGroup>
+	<TitleField1>Subject</TitleField1>
+	<DeleteActions />
+	<FieldGroups />
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>NoteId</Name>
+			<ExtendedDataType>Num</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Subject</Name>
+			<ExtendedDataType>Name</ExtendedDataType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>NoteIdx</Name>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>NoteId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

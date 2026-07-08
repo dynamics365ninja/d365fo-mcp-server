@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-business-event-basic (1 of 2): BusinessEventsContract. Captured 2026-07-01, SHA 42fbaa3. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteHeaderCreatedContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+public final class ConDemoNoteHeaderCreatedContract extends BusinessEventsContract
+{
+    Num noteId;
+    Name subject;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>newFromNoteHeader</Name>
+				<Source><![CDATA[
+public static ConDemoNoteHeaderCreatedContract newFromNoteHeader(ConDemoNoteHeader _noteHeader)
+{
+    ConDemoNoteHeaderCreatedContract contract = new ConDemoNoteHeaderCreatedContract();
+    contract.parmNoteId(_noteHeader.NoteId);
+    contract.parmSubject(_noteHeader.Subject);
+    return contract;
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmNoteId</Name>
+				<Source><![CDATA[
+[DataMemberAttribute('NoteId')]
+public Num parmNoteId(Num _noteId = noteId)
+{
+    noteId = _noteId;
+    return noteId;
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSubject</Name>
+				<Source><![CDATA[
+[DataMemberAttribute('Subject')]
+public Name parmSubject(Name _subject = subject)
+{
+    subject = _subject;
+    return subject;
+}
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -2,7 +2,7 @@
   "id": "L1-form-listpage",
   "title": "ListPage form pattern (modern list-page chrome)",
   "tier": 1,
-  "instruction": "In the sandbox model, create a ListPage form named XyzNoteHeaderListPage bound to the AslXyzNoteHeader table's data source, with grid controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=ListPage). The form must build clean.",
+  "instruction": "In the sandbox model, create a ListPage form named DemoNoteHeaderListPage bound to the ConDemoNoteHeader table's data source, with grid controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=ListPage). The form must build clean.",
   "target_artifact_types": [
     "AxForm"
   ],

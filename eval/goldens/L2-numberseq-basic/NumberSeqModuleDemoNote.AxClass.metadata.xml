@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-numberseq-basic (3 of 3): NumberSeqApplicationModule subclass registering the datatype. Captured 2026-07-01, SHA 10d0af0. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConNumberSeqModuleDemoNote</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConNumberSeqModuleDemoNote extends NumberSeqApplicationModule
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>loadModule</Name>
+				<Source><![CDATA[
+protected void loadModule()
+    {
+        NumberSeqDatatype datatype = NumberSeqDatatype::construct();
+        datatype.parmDatatypeId(extendedTypeNum(ConDemoNoteId));
+        datatype.parmReferenceHelp(literalStr("Note ID"));
+        datatype.parmWizardIsContinuous(false);
+        datatype.parmWizardIsManual(NoYes::No);
+        datatype.parmWizardIsChangeDownAllowed(NoYes::Yes);
+        datatype.parmWizardIsChangeUpAllowed(NoYes::Yes);
+        datatype.parmWizardHighest(0);
+        datatype.parmSortField(1);
+        datatype.addParameterType(NumberSeqParameterType::DataArea, true, false);
+        this.create(datatype);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>numberSeqModule</Name>
+				<Source><![CDATA[
+public NumberSeqModule numberSeqModule()
+    {
+        return NumberSeqModule::ConDemoNote;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

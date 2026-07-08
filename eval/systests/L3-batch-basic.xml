@@ -30,11 +30,11 @@ class EvalL3BatchCalcTest extends SysTestCase
     [SysTestCheckInTestAttribute]
     public void testEffectiveBatchSizeMultipliesByPriorityFactor()
     {
-        AslXyzBatchContract contract = new AslXyzBatchContract();
+        ConDemoBatchContract contract = new ConDemoBatchContract();
         contract.parmBatchSize(10);
         contract.parmPriorityFactor(3);
 
-        AslXyzBatchService service = new AslXyzBatchService();
+        ConDemoBatchService service = new ConDemoBatchService();
         int result = service.calculateEffectiveBatchSize(contract);
 
         this.assertEquals(30, result);
@@ -51,11 +51,11 @@ class EvalL3BatchCalcTest extends SysTestCase
     [SysTestCheckInTestAttribute]
     public void testEffectiveBatchSizeWithDifferentInputs()
     {
-        AslXyzBatchContract contract = new AslXyzBatchContract();
+        ConDemoBatchContract contract = new ConDemoBatchContract();
         contract.parmBatchSize(7);
         contract.parmPriorityFactor(5);
 
-        AslXyzBatchService service = new AslXyzBatchService();
+        ConDemoBatchService service = new ConDemoBatchService();
         int result = service.calculateEffectiveBatchSize(contract);
 
         this.assertEquals(35, result);

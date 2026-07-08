@@ -2,7 +2,7 @@
   "id": "L1-form-tableofcontents",
   "title": "TableOfContents form pattern (navigation shell)",
   "tier": 1,
-  "instruction": "In the sandbox model, create a TableOfContents form named XyzNoteHeaderToc bound to the AslXyzNoteHeader table's data source, with controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=TableOfContents). The form must build clean.",
+  "instruction": "In the sandbox model, create a TableOfContents form named DemoNoteHeaderToc bound to the ConDemoNoteHeader table's data source, with controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=TableOfContents). The form must build clean.",
   "target_artifact_types": [
     "AxForm"
   ],

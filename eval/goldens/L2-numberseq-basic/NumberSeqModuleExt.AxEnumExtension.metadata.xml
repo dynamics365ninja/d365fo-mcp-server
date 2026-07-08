@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Golden for L2-numberseq-basic (2 of 3): enum-extension registering the new NumberSeqModule value. Captured 2026-07-01, SHA 10d0af0. -->
 <AxEnumExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-	<Name>NumberSeqModule.AslExtension</Name>
+	<Name>NumberSeqModule.ConExtension</Name>
 	<EnumValues>
 		<AxEnumValue>
-			<Name>AslXyzNote</Name>
+			<Name>ConDemoNote</Name>
 			<Label>@TaxTransactionInquiry:HeaderNote</Label>
 		</AxEnumValue>
 	</EnumValues>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-interface-abstract-basic (3 of 3): the concrete subclass overriding the abstract method - custom-to-custom class inheritance (every prior class case extended a PLATFORM base class only). Captured 2026-07-01, SHA 5d4b4a3. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNotePlainRenderer</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoNotePlainRenderer extends ConDemoNoteRendererBase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>renderContent</Name>
+				<Source><![CDATA[
+protected str renderContent()
+    {
+        return 'Plain note content';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

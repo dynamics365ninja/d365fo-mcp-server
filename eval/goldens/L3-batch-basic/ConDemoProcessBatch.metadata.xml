@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-batch-basic (artifact 4 of 4: menu item)
+  Captured: 2026-06-30, server SHA: 7f836a6
+  Platform: xppc 7.0.7858.27
+-->
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>ConDemoProcessBatch</Name>
+	<Label>@ConRent:DemoProcessBatch</Label>
+	<Object>ConDemoBatchController</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

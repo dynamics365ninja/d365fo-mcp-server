@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L1-class-basic: a plain standalone class (constructor, member var, instance method, static factory) - the first case NOT built on a specialized extensibility mechanism (CoC/business-event/batch/SSRS). Captured 2026-07-01, SHA 5d4b4a3. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteFormatter</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoNoteFormatter
+{
+    str prefix;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+public void new(str _prefix)
+    {
+        prefix = _prefix;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>format</Name>
+				<Source><![CDATA[
+public str format(str _text)
+    {
+        return prefix + ': ' + _text;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+public static ConDemoNoteFormatter construct(str _prefix)
+    {
+        return new ConDemoNoteFormatter(_prefix);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

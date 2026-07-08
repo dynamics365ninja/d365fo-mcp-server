@@ -1,8 +1,8 @@
 {
   "id": "L1-query-view-basic",
-  "title": "AxQuery + AxView over AslXyzNoteHeader",
+  "title": "AxQuery + AxView over ConDemoNoteHeader",
   "tier": 1,
-  "instruction": "In the sandbox model, create an AxQuery named XyzNoteHeaderQuery with a single root datasource over the AslXyzNoteHeader table, selecting NoteId and Subject. Then create an AxView named XyzNoteHeaderView built on that query, with two bound fields (NoteId, Subject) referencing the query's root datasource. Both objects must build clean.",
+  "instruction": "In the sandbox model, create an AxQuery named DemoNoteHeaderQuery with a single root datasource over the ConDemoNoteHeader table, selecting NoteId and Subject. Then create an AxView named DemoNoteHeaderView built on that query, with two bound fields (NoteId, Subject) referencing the query's root datasource. Both objects must build clean.",
   "target_artifact_types": [
     "AxQuery",
     "AxView"

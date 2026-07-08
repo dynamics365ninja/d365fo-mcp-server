@@ -14,7 +14,7 @@ import { PackageResolver } from '../utils/packageResolver.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
-import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeRefreshProvider } from '../bridge/index.js';
+import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, bridgeRefreshProvider } from '../bridge/index.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
 import { gateOnFormPatternErrors, isFormPatternEnforceEnabled } from './validateFormPattern.js';
 import { validateFormExtensionControlShape, buildFormExtensionShapeError } from '../utils/formExtensionShapeValidator.js';
@@ -549,6 +549,41 @@ export class XmlTemplateGenerator {
   }
 
   /**
+   * If `declaration`'s own `class`/`interface` header names something other than
+   * `className` (e.g. the object is being created as "FmMcpFoo" but the caller's
+   * X++ still says `class Foo`), rename every self-reference to that stale name —
+   * in the header AND in every method body (constructor calls, return types,
+   * etc.) — to `className`.
+   *
+   * Left unfixed, the AOT object's `<Name>` (which the create path always sets to
+   * the resolved `className`, independent of whatever the caller typed in
+   * `sourceCode`) does not match its own X++ class keyword — a hard xppc build
+   * error ("class must be named the same as the object it is contained in"),
+   * confirmed by corpus evidence: the caller passed an already-correct,
+   * fully-resolved objectName ("FmMcpXyzNoteFormatter") — so the existing
+   * objectName-vs-finalObjectName prefix-mismatch guard below never fired — while
+   * sourceCode's `class XyzNoteFormatter` used the bare, unprefixed name
+   * (eval/corpus/runs/2026-07-06T16__L1-class-basic__73707ff.json).
+   */
+  static normalizeSelfReferenceName<T extends { name: string; source?: string }>(
+    className: string,
+    declaration: string,
+    methods: T[],
+  ): { declaration: string; methods: T[] } {
+    const declaredName = declaration.match(/\b(?:class|interface)\s+(\w+)/)?.[1];
+    if (!declaredName || declaredName === className) return { declaration, methods };
+
+    const re = new RegExp(`\\b${declaredName}\\b`, 'g');
+    return {
+      declaration: declaration.replace(re, className),
+      methods: methods.map(m => ({
+        ...m,
+        source: m.source !== undefined ? m.source.replace(re, className) : m.source,
+      })) as T[],
+    };
+  }
+
+  /**
    * Parse X++ sourceCode into declaration + methods for the C# bridge.
    *
    * Used by the bridge-first creation path in create_d365fo_file — the C# side
@@ -556,14 +591,21 @@ export class XmlTemplateGenerator {
    * objects {name, source} which it sets on the AxClass via IMetadataProvider.
    *
    * Delegates to splitXppClassSource after decoding any XML entities.
+   *
+   * `className` is the resolved AOT object name the bridge will create this
+   * class under (`finalObjectName`) — passing it lets self-references in the
+   * caller's sourceCode that don't match get corrected (normalizeSelfReferenceName).
    */
-  static parseSourceForBridge(sourceCode: string): {
+  static parseSourceForBridge(sourceCode: string, className?: string): {
     declaration: string;
     methods: { name: string; source?: string }[];
   } {
     // Same entity-decoding as generateAxClassXml to handle AI-generated &lt; etc.
     const cleaned = decodeXmlEntitiesFromXppSource(sourceCode);
-    const result = XmlTemplateGenerator.splitXppClassSource(cleaned);
+    const split = XmlTemplateGenerator.splitXppClassSource(cleaned);
+    const result = className
+      ? XmlTemplateGenerator.normalizeSelfReferenceName(className, split.declaration, split.methods)
+      : split;
     return {
       declaration: result.declaration,
       // The bridge stores each method's source verbatim (no reformatting on its
@@ -591,7 +633,12 @@ export class XmlTemplateGenerator {
     // Split full X++ source into Declaration (class header + fields) and Methods.
     // D365FO XML requires member variable declarations in <Declaration> and
     // each method body as a separate <Method> element under <Methods>.
-    const { declaration, methods } = XmlTemplateGenerator.splitXppClassSource(rawSource);
+    const rawSplit = XmlTemplateGenerator.splitXppClassSource(rawSource);
+    // Correct any stale self-reference (caller's class/interface name doesn't match
+    // the resolved `className`) so the emitted <Name> and X++ class keyword agree.
+    const { declaration, methods } = XmlTemplateGenerator.normalizeSelfReferenceName(
+      className, rawSplit.declaration, rawSplit.methods,
+    );
 
     const extendsAttr = properties?.extends
       ? `\t<Extends>${properties.extends}</Extends>\n`
@@ -4015,7 +4062,7 @@ export async function handleCreateD365File(
 
         // For classes: parse sourceCode into declaration + methods
         if ((args.objectType === 'class' || args.objectType === 'class-extension') && args.sourceCode) {
-          const parsed = XmlTemplateGenerator.parseSourceForBridge(args.sourceCode);
+          const parsed = XmlTemplateGenerator.parseSourceForBridge(args.sourceCode, finalObjectName);
           bridgeParams.declaration = parsed.declaration;
           bridgeParams.methods = parsed.methods;
         }
@@ -4108,6 +4155,127 @@ export async function handleCreateD365File(
         if (args.objectType === 'edt' && bridgeParams.properties && 'edtType' in bridgeParams.properties) {
           const { edtType, ...rest } = bridgeParams.properties;
           bridgeParams.properties = { ...rest, BaseType: edtType };
+        }
+
+        // For plain 'table' creates, prefer the bridge's BP-smart path
+        // (CreateSmartTable) over the generic createObject/CreateTable RPC.
+        // CreateTable writes exactly what the caller passed and nothing more —
+        // no CacheLookup, PrimaryIndex/ClusteredIndex/ReplacementKey, TitleField1/2,
+        // or the 5 standard FieldGroups (AutoReport/AutoLookup/AutoIdentification/
+        // AutoSummary/AutoBrowse) that every real D365FO table gets. generate_object
+        // (mode="scaffold"/"generate", objectType="table") already routes through
+        // CreateSmartTable and gets these correctly; the plain create verb — the
+        // one a generic "create a table" instruction naturally maps to — silently
+        // produced a BP-defaults-free skeleton instead (eval corpus: L1-table-basic,
+        // L3-form-detailstransaction, L4-ssrs-report-basic — golden_diff missing
+        // CacheLookup/ClusteredIndex/PrimaryIndex/ReplacementKey/TitleField1/TitleField2
+        // and all 5 standard FieldGroups). Try the smart path first; any failure or
+        // unavailability falls through to the existing generic bridgeCreateObject/XML
+        // paths below, unchanged.
+        if (args.objectType === 'table') {
+          const rawTableProps = (args.properties as Record<string, unknown> | undefined) ?? {};
+          const smartTableGroup = typeof rawTableProps.tableGroup === 'string' ? rawTableProps.tableGroup : undefined;
+          const smartTableType = typeof rawTableProps.tableType === 'string' ? rawTableProps.tableType : undefined;
+          const smartLabel = typeof rawTableProps.label === 'string' ? rawTableProps.label : undefined;
+          const smartExtraProperties = scalarProperties
+            ? Object.fromEntries(
+                Object.entries(scalarProperties).filter(
+                  ([k]) => !['tableGroup', 'tableType', 'label'].includes(k),
+                ),
+              )
+            : undefined;
+
+          try {
+            const smartResult = await bridgeCreateSmartTable(context.bridge, {
+              objectName: finalObjectName,
+              modelName: actualModelName,
+              tableGroup: smartTableGroup,
+              tableType: smartTableType,
+              label: smartLabel ?? finalObjectName,
+              fields: bridgeParams.fields,
+              extraFieldGroups: bridgeParams.fieldGroups,
+              indexes: bridgeParams.indexes,
+              relations: bridgeParams.relations,
+              methods: bridgeParams.methods,
+              extraProperties: smartExtraProperties && Object.keys(smartExtraProperties).length > 0
+                ? smartExtraProperties
+                : undefined,
+            });
+
+            if (smartResult?.success && smartResult.filePath) {
+              console.error(`[create_d365fo_file] ✅ Created via C# bridge (BP-smart): ${smartResult.filePath}`);
+
+              let projectMsg = '';
+              if (args.addToProject !== false) {
+                if (projectPathToUse) {
+                  try {
+                    const projectManager = new ProjectFileManager();
+                    await projectManager.addToProject(
+                      projectPathToUse,
+                      args.objectType,
+                      finalObjectName,
+                      smartResult.filePath,
+                    );
+                    projectMsg = `\n✅ Added to project: ${path.basename(projectPathToUse)}`;
+                  } catch (projErr) {
+                    projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
+                  }
+                } else if (solutionPathToUse) {
+                  try {
+                    const detectedPath = await ProjectFileFinder.findProjectInSolution(
+                      solutionPathToUse,
+                      actualModelName,
+                    );
+                    if (detectedPath) {
+                      const projectManager = new ProjectFileManager();
+                      await projectManager.addToProject(
+                        detectedPath,
+                        args.objectType,
+                        finalObjectName,
+                        smartResult.filePath,
+                      );
+                      projectMsg = `\n✅ Added to project: ${path.basename(detectedPath)}`;
+                    } else {
+                      projectMsg = `\n⚠️ Could not find .rnrproj for model '${actualModelName}' in ${solutionPathToUse}`;
+                    }
+                  } catch (projErr) {
+                    projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
+                  }
+                } else {
+                  projectMsg = `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
+                    `Add projectPath to .mcp.json or pass it as a parameter.`;
+                }
+              }
+
+              // Eagerly refresh the bridge provider so the new object is immediately
+              // resolvable by subsequent modify calls in the same session.
+              try { await bridgeRefreshProvider(context.bridge); } catch { /* best-effort */ }
+
+              const rawLabelWarning = rawLabelBpWarning(args.properties, finalObjectName);
+              const bp = smartResult.bpDefaults;
+              const bpSummary = bp
+                ? `\n📋 BP defaults: CacheLookup=${bp.cacheLookup ?? '(n/a)'}, TitleField1=${bp.titleField1 ?? '(none)'}, ` +
+                  `TitleField2=${bp.titleField2 ?? '(none)'}, PrimaryIndex=${bp.primaryIndex ?? '(none)'}, ` +
+                  `ClusteredIndex=${bp.clusteredIndex ?? '(none)'}`
+                : '';
+
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)\n` +
+                      `📁 ${smartResult.filePath}${projectMsg}\n` +
+                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${rawLabelWarning}`,
+                  },
+                ],
+              };
+            }
+            console.error(
+              `[create_d365fo_file] createSmartTable returned ${JSON.stringify(smartResult)} — falling back to generic bridge create`,
+            );
+          } catch (smartErr) {
+            console.error(`[create_d365fo_file] createSmartTable failed, falling back to generic bridge create: ${smartErr}`);
+          }
         }
 
         const bridgeResult = await bridgeCreateObject(context.bridge, bridgeParams);

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>ConDemoNoteHeaderWorkspace</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+[Form]
+public class ConDemoNoteHeaderWorkspace extends FormRun
+{
+}
+
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>ConDemoNoteHeader</Name>
+			<Table>ConDemoNoteHeader</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">@TaxTransactionInquiry:HeaderNote</Caption>
+		<DataSource xmlns="">ConDemoNoteHeader</DataSource>
+		<Pattern xmlns="">TabbedWorkspace</Pattern>
+		<PatternVersion xmlns="">1.0</PatternVersion>
+		<Style xmlns="">Workspace</Style>
+		<TitleDataSource xmlns="">ConDemoNoteHeader</TitleDataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns="" i:type="AxFormTabControl">
+				<Name>PanoramaBody</Name>
+				<Type>Tab</Type>
+				<FormControlExtension i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns="" i:type="AxFormTabPageControl">
+						<Name>PanoramaSection</Name>
+						<Type>TabPage</Type>
+						<FormControlExtension i:nil="true" />
+						<Controls />
+					</AxFormControl>
+				</Controls>
+				<Style>Panorama</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

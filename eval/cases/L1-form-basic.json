@@ -2,7 +2,7 @@
   "id": "L1-form-basic",
   "title": "Small table with a bound SimpleList form",
   "tier": 1,
-  "instruction": "Create a new table named XyzNoteHeader in the sandbox model with two fields: NoteId (mandatory string, use the Num EDT) and Subject (string, use the Name EDT). Add a unique index 'NoteIdx' on NoteId. Set TitleField1 to Subject. Use a reused standard label for the table's Label property (search the labels index first; do not invent raw text). Then create a SimpleList form named XyzNoteHeaderList bound to the table's data source, with grid controls for NoteId and Subject, auto-generated via the form scaffold pattern. Both objects must build clean. This case proves the multi-artifact golden oracle: it produces two artifacts (AxTable + AxForm) that are diffed independently.",
+  "instruction": "Create a new table named DemoNoteHeader in the sandbox model with two fields: NoteId (mandatory string, use the Num EDT) and Subject (string, use the Name EDT). Add a unique index 'NoteIdx' on NoteId. Set TitleField1 to Subject. Use a reused standard label for the table's Label property (search the labels index first; do not invent raw text). Then create a SimpleList form named DemoNoteHeaderList bound to the table's data source, with grid controls for NoteId and Subject, auto-generated via the form scaffold pattern. Both objects must build clean. This case proves the multi-artifact golden oracle: it produces two artifacts (AxTable + AxForm) that are diffed independently.",
   "target_artifact_types": [
     "AxTable",
     "AxForm"

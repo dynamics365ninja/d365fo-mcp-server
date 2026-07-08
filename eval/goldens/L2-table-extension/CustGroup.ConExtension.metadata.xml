@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-table-extension — captured 2026-06-30, build green + BP clean.
+     NOTE: the live (pre-fix) bridge create produced a BARE AxTableFieldString with no
+     ExtendedDataType (TOOL_DEFECT: normalizeFieldSpecsForBridge emitted fieldType/
+     extendedDataType but the bridge reads type/edt). This golden is the CORRECTED
+     shape the fixed create path produces: AxTableFieldInt + ExtendedDataType=Counter,
+     plus a field group. See corpus record. -->
+<AxTableExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>CustGroup.ConExtension</Name>
+	<FieldGroupExtensions />
+	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>ConNoteInfo</Name>
+			<Label>Note info</Label>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>NotePriority</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+	</FieldGroups>
+	<FieldModifications />
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>NotePriority</Name>
+			<ExtendedDataType>Counter</ExtendedDataType>
+			<Label>Note priority</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<PropertyModifications />
+	<RelationExtensions />
+	<RelationModifications />
+	<Relations />
+</AxTableExtension>

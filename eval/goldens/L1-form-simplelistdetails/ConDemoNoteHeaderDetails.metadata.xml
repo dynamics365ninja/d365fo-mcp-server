@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden for L1-form-simplelistdetails: SimpleListDetails form. Captured
+  2026-07-01, SHA 9c37103. Generated via generate_object(mode="scaffold",
+  objectType="form", formPattern="SimpleListDetails", generateControls=true).
+  Fully deterministic (no random ids/GUIDs in this pattern's output).
+-->
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>ConDemoNoteHeaderDetails</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+[Form]
+public class ConDemoNoteHeaderDetails extends FormRun
+{
+}
+
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>ConDemoNoteHeader</Name>
+			<Table>ConDemoNoteHeader</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">@TaxTransactionInquiry:HeaderNote</Caption>
+		<DataSource xmlns="">ConDemoNoteHeader</DataSource>
+		<Pattern xmlns="">SimpleListDetails</Pattern>
+		<PatternVersion xmlns="">1.3</PatternVersion>
+		<Style xmlns="">SimpleListDetails</Style>
+		<TitleDataSource xmlns="">ConDemoNoteHeader</TitleDataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+					i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<ElementPosition>134217727</ElementPosition>
+				<FilterExpression>%1</FilterExpression>
+				<Type>ActionPane</Type>
+				<VerticalSpacing>-1</VerticalSpacing>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+							i:type="AxFormButtonGroupControl">
+						<Name>ButtonGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls />
+						<ArrangeMethod>Vertical</ArrangeMethod>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+					i:type="AxFormGroupControl">
+				<Name>GridContainer</Name>
+				<HeightMode>SizeToAvailable</HeightMode>
+				<Type>Group</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl>
+						<Name>QuickFilterControl</Name>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension>
+							<Name>QuickFilterControl</Name>
+							<ExtensionComponents />
+							<ExtensionProperties>
+								<AxFormControlExtensionProperty>
+									<Name>targetControlName</Name>
+									<Type>String</Type>
+									<Value>Grid</Value>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>defaultColumnName</Name>
+									<Type>String</Type>
+									<Value>Grid_NoteId</Value>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>placeholderText</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+							</ExtensionProperties>
+						</FormControlExtension>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+							i:type="AxFormGridControl">
+						<Name>Grid</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>Grid</Type>
+						<WidthMode>SizeToContent</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+								<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+									<Name>Grid_NoteId</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>NoteId</DataField>
+									<DataSource>ConDemoNoteHeader</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+									<Name>Grid_Subject</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>Subject</DataField>
+									<DataSource>ConDemoNoteHeader</DataSource>
+								</AxFormControl>
+						</Controls>
+						<AlternateRowShading>No</AlternateRowShading>
+						<DataSource>ConDemoNoteHeader</DataSource>
+						<GridLinesStyle>Vertical</GridLinesStyle>
+						<MultiSelect>No</MultiSelect>
+						<ShowRowLabels>No</ShowRowLabels>
+						<Style>List</Style>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+				<Style>SidePanel</Style>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+					i:type="AxFormGroupControl">
+				<Name>DetailsHeader</Name>
+				<Pattern>FieldsFieldGroups</Pattern>
+				<PatternVersion>1.1</PatternVersion>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+							i:type="AxFormGroupControl">
+						<Name>Overview</Name>
+						<Type>Group</Type>
+						<DataGroup>Overview</DataGroup>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+										<AxFormControl xmlns=""
+												i:type="AxFormStringControl">
+											<Name>Overview_NoteId</Name>
+											<Type>String</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>NoteId</DataField>
+											<DataSource>ConDemoNoteHeader</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormStringControl">
+											<Name>Overview_Subject</Name>
+											<Type>String</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>Subject</DataField>
+											<DataSource>ConDemoNoteHeader</DataSource>
+										</AxFormControl>
+						</Controls>
+						<FrameType>None</FrameType>
+					</AxFormControl>
+				</Controls>
+				<ColumnsMode>Fill</ColumnsMode>
+				<FrameType>None</FrameType>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+					i:type="AxFormTabControl">
+				<Name>Tab</Name>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+							i:type="AxFormTabPageControl">
+						<Name>TabPageGeneral</Name>
+						<Pattern>FieldsFieldGroups</Pattern>
+						<PatternVersion>1.1</PatternVersion>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+									i:type="AxFormGroupControl">
+								<Name>GeneralGroup</Name>
+								<Type>Group</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+											i:type="AxFormStringControl">
+										<Name>Tab_NoteId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>NoteId</DataField>
+										<DataSource>ConDemoNoteHeader</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormStringControl">
+										<Name>Tab_Subject</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>Subject</DataField>
+										<DataSource>ConDemoNoteHeader</DataSource>
+									</AxFormControl>
+								</Controls>
+							</AxFormControl>
+						</Controls>
+						<ColumnsMode>Fill</ColumnsMode>
+						<Caption>General</Caption>
+					</AxFormControl>
+				</Controls>
+				<Style>FastTabs</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

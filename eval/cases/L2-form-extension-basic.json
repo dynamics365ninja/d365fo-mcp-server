@@ -2,7 +2,7 @@
   "id": "L2-form-extension-basic",
   "title": "Form extension adding a control for a new table-extension field",
   "tier": 2,
-  "instruction": "Extend the standard Microsoft table CustGroup by adding one new field, AslHasNotes, backed by the standard NoYes enum. Then extend the standard form CustGroup with a form extension that adds a CheckBox control (bound to AslHasNotes on the CustGroup data source) as a child of the form's Grid control. Do NOT modify the base table or base form directly -- both must be genuine extensions (AxTableExtension + AxFormExtension). Both objects must build clean.",
+  "instruction": "Extend the standard Microsoft table CustGroup by adding one new field, ConHasNotes, backed by the standard NoYes enum. Then extend the standard form CustGroup with a form extension that adds a CheckBox control (bound to ConHasNotes on the CustGroup data source) as a child of the form's Grid control. Do NOT modify the base table or base form directly -- both must be genuine extensions (AxTableExtension + AxFormExtension). Both objects must build clean.",
   "target_artifact_types": [
     "AxTableExtension",
     "AxFormExtension"

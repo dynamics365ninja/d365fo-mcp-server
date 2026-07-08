@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-event-handler-basic: DataEventHandler. Captured 2026-07-01, SHA 08b8442. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteHeaderEH</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+class ConDemoNoteHeaderEH
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>onInserting</Name>
+				<Source><![CDATA[
+[DataEventHandler(tableStr(ConDemoNoteHeader), DataEventType::Inserting)]
+public static void onInserting(Common _sender, DataEventArgs _e)
+{
+    ConDemoNoteHeader noteHeader = _sender as ConDemoNoteHeader;
+
+    if (!noteHeader.Subject)
+    {
+        noteHeader.Subject = '(no subject)';
+    }
+}
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

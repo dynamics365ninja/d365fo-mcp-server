@@ -2,7 +2,7 @@
   "id": "L0-edt-basic",
   "title": "Single string EDT with label",
   "tier": 0,
-  "instruction": "Create a new EDT named XyzNoteSubject in the sandbox model. It should extend the Name EDT (string 60) and carry label text 'Note subject'. Use the standard Name EDT as the base — do not invent a new base type.",
+  "instruction": "Create a new EDT named DemoNoteSubject in the sandbox model. It should extend the Name EDT (string 60) and carry label text 'Note subject'. Use the standard Name EDT as the base — do not invent a new base type.",
   "target_artifact_types": [
     "AxEdt"
   ],

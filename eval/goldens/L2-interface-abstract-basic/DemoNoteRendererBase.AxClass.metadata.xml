@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-interface-abstract-basic (2 of 3): the abstract base class implementing the interface, mixing a concrete method (render) with an abstract one (renderContent) - verified pattern against a real shipped abstract class (ApplicationFoundation/AxClass/AVChartController.xml). Captured 2026-07-01, SHA 5d4b4a3. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteRendererBase</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public abstract class ConDemoNoteRendererBase implements ConIDemoNoteRenderer
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>render</Name>
+				<Source><![CDATA[
+public str render()
+    {
+        return '[Note] ' + this.renderContent();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>renderContent</Name>
+				<Source><![CDATA[
+protected abstract str renderContent()
+    {
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

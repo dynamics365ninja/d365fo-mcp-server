@@ -619,6 +619,109 @@ describe('create_d365fo_file', () => {
     expect(sentParams.fields[0].enumType).toBe('NoYes');
   });
 
+  it('table create routes through the bridge\'s BP-smart createSmartTable path, not the generic createObject/CreateTable RPC', async () => {
+    // Regression (eval corpus: L1-table-basic, L3-form-detailstransaction, L4-ssrs-report-basic —
+    // 2026-07-06/07 runs, golden_diff missing CacheLookup/ClusteredIndex/PrimaryIndex/
+    // ReplacementKey/TitleField1/TitleField2 and all 5 standard FieldGroups). d365fo_file(action=
+    // "create", objectType="table") went straight to the bridge's generic createObject RPC, which
+    // dispatches to C# CreateTable() — a bare writer that only emits exactly what the caller
+    // passed. The bridge ALSO exposes createSmartTable (C# CreateSmartTable()), which auto-derives
+    // CacheLookup/TitleField1/TitleField2/PrimaryIndex/ClusteredIndex/ReplacementKey and the 5
+    // standard FieldGroups — but only generate_object(mode="scaffold"/"generate", objectType=
+    // "table") used it. The plain create verb — the one a generic "create a table" instruction
+    // naturally maps to — never did, silently producing a BP-defaults-free skeleton. Fixed by
+    // trying createSmartTable first for objectType==='table' and only falling back to the generic
+    // path if it's unavailable/fails.
+    const createSmartTable = vi.fn(async () => ({
+      success: true,
+      filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTable\\MyTable.xml',
+      api: 'IMetaTableProvider.Create (Smart)',
+      bpDefaults: {
+        cacheLookup: 'Found',
+        titleField1: 'Subject',
+        titleField2: 'NoteId',
+        primaryIndex: 'NoteIdx',
+        clusteredIndex: 'NoteIdx',
+      },
+    }));
+    const createObject = vi.fn(async () => ({
+      success: true,
+      filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTable\\MyTable.xml',
+      api: 'IMetaTableProvider.Create',
+    }));
+    const ctx = buildContext();
+    (ctx as any).bridge = {
+      isReady: true,
+      metadataAvailable: true,
+      createSmartTable,
+      createObject,
+      validateObject: vi.fn(async () => null),
+    };
+
+    const result = await handleCreateD365File(
+      req('create_d365fo_file', {
+        objectType: 'table',
+        objectName: 'MyTable',
+        modelName: 'Contoso',
+        packageName: 'Contoso',
+        packagePath: 'K:\\PackagesLocalDirectory',
+        addToProject: false,
+        properties: {
+          tableGroup: 'Main',
+          label: 'My table',
+          fields: [{ name: 'NoteId', type: 'String', mandatory: true }],
+          indexes: [{ name: 'NoteIdx', fields: ['NoteId'], unique: true }],
+        },
+      }),
+      ctx,
+    );
+
+    expect((result as any).isError).toBeFalsy();
+    expect(createSmartTable).toHaveBeenCalledTimes(1);
+    expect(createObject).not.toHaveBeenCalled();
+
+    const sentParams = createSmartTable.mock.calls[0][0];
+    expect(sentParams.objectName).toBe('MyTable');
+    expect(sentParams.tableGroup).toBe('Main');
+    expect(sentParams.label).toBe('My table');
+    expect(sentParams.fields).toEqual([{ name: 'NoteId', type: 'String', mandatory: true }]);
+    // tableGroup/tableType/label must NOT be duplicated into extraProperties.
+    expect(sentParams.extraProperties).toBeUndefined();
+
+    expect(result.content[0].text).toMatch(/Smart/);
+    expect(result.content[0].text).toMatch(/BP defaults/);
+  });
+
+  it('table create falls back to the generic createObject/CreateTable RPC when the bridge has no createSmartTable support', async () => {
+    // Same defect as above, opposite side: an older/degraded bridge that only exposes the
+    // generic createObject RPC (no createSmartTable) must still succeed via the pre-existing
+    // fallback path — the smart-table routing must never be a hard requirement.
+    const createObject = vi.fn(async () => ({
+      success: true,
+      filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTable\\MyTable.xml',
+      api: 'IMetaTableProvider.Create',
+    }));
+    const ctx = buildContext();
+    // No createSmartTable on this bridge mock at all.
+    (ctx as any).bridge = { isReady: true, metadataAvailable: true, createObject, validateObject: vi.fn(async () => null) };
+
+    const result = await handleCreateD365File(
+      req('create_d365fo_file', {
+        objectType: 'table',
+        objectName: 'MyTable',
+        modelName: 'Contoso',
+        packageName: 'Contoso',
+        packagePath: 'K:\\PackagesLocalDirectory',
+        addToProject: false,
+        properties: { fields: [{ name: 'NoteId', type: 'String' }] },
+      }),
+      ctx,
+    );
+
+    expect((result as any).isError).toBeFalsy();
+    expect(createObject).toHaveBeenCalledTimes(1);
+  });
+
   it('table create resolves a "...DateTime"-named EDT to UtcDateTime, not String', async () => {
     // Regression (eval scenario 2): heuristicEdtBaseType('TransDateTime') used to return
     // undefined (see edt-resolution.test.ts for the root cause), so with no index entry

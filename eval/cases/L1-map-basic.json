@@ -2,7 +2,7 @@
   "id": "L1-map-basic",
   "title": "AxMap over an existing table",
   "tier": 1,
-  "instruction": "In the sandbox model, create an AxMap named XyzNoteMap (label + developer documentation @TaxTransactionInquiry:HeaderNote) with three fields: NoteId (String, EDT Num), Subject (String, EDT Description), CreatedDateTime (UtcDateTime). Map it to the existing AslXyzNoteHeader table with a 1:1 field mapping (each map field to the table field of the same name). The map must build clean.",
+  "instruction": "In the sandbox model, create an AxMap named DemoNoteMap (label + developer documentation @TaxTransactionInquiry:HeaderNote) with three fields: NoteId (String, EDT Num), Subject (String, EDT Description), CreatedDateTime (UtcDateTime). Map it to the existing ConDemoNoteHeader table with a 1:1 field mapping (each map field to the table field of the same name). The map must build clean.",
   "target_artifact_types": [
     "AxMap"
   ],

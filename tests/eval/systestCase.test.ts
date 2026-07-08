@@ -116,8 +116,8 @@ describe('L3-batch-basic SysTest asset', () => {
   it('exercises the Contract + Service directly and asserts the pure arithmetic', () => {
     // Unlike CoC (transparent), a batch Service is unit-tested directly —
     // referencing it by name is correct here, not a leak.
-    expect(systestXml3).toMatch(/AslXyzBatchContract/);
-    expect(systestXml3).toMatch(/AslXyzBatchService/);
+    expect(systestXml3).toMatch(/ConDemoBatchContract/);
+    expect(systestXml3).toMatch(/ConDemoBatchService/);
     expect(systestXml3).toMatch(/calculateEffectiveBatchSize/);
     expect(systestXml3).toMatch(/\[SysTestCheckInTestAttribute\]/);
   });
@@ -173,7 +173,7 @@ describe('L2-event-handler-basic SysTest asset', () => {
   });
 
   it('exercises both the defaulted and the explicit-Subject paths', () => {
-    expect(systestXml4).toMatch(/AslXyzNoteHeader/);
+    expect(systestXml4).toMatch(/ConDemoNoteHeader/);
     expect(systestXml4).toMatch(/\(no subject\)/);
     expect(systestXml4).toMatch(/Explicit subject/);
     expect(systestXml4).toMatch(/\[SysTestCheckInTestAttribute\]/);

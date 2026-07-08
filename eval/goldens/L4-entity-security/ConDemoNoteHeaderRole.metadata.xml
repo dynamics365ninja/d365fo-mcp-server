@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L4-entity-security (artifact 5 of 5: security role)
+  Captured: 2026-06-30, server SHA: fc090d0
+  Same TOOL_DEFECT/fix as the privilege artifact - see that file's header.
+-->
+<AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteHeaderRole</Name>
+	<Label>@TaxTransactionInquiry:HeaderNote</Label>
+	<DirectAccessPermissions />
+	<Duties>
+		<AxSecurityRoleDutyPermission>
+			<Name>ConDemoNoteHeaderDuty</Name>
+		</AxSecurityRoleDutyPermission>
+	</Duties>
+	<Privileges />
+	<SubRoles />
+</AxSecurityRole>

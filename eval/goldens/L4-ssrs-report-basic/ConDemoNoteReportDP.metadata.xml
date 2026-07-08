@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L4-ssrs-report-basic (3 of 5): Data Provider. Captured 2026-07-01, SHA c43b344. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteReportDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[SRSReportParameterAttribute(classStr(ConDemoNoteReportContract))]
+public class ConDemoNoteReportDP extends SRSReportDataProviderBase
+{
+    ConDemoNoteReportTmp tmpTable;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getConDemoNoteReportTmp</Name>
+				<Source><![CDATA[
+[SRSReportDataSetAttribute(tableStr(ConDemoNoteReportTmp))]
+public ConDemoNoteReportTmp getConDemoNoteReportTmp()
+{
+    select * from tmpTable;
+    return tmpTable;
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+public void processReport()
+{
+    ConDemoNoteHeader noteHeader;
+
+    delete_from tmpTable;
+
+    insert_recordset tmpTable (NoteId, Subject)
+        select NoteId, Subject
+        from noteHeader;
+}
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

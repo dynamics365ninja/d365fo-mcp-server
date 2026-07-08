@@ -1,7 +1,7 @@
 ---
 name: eval-implementer
 description: Implementer role of the D365FO agent eval loop. Runs ON THE VM (mcp-server in full mode + C# bridge) against the fm-mcp sandbox model. Takes an eval case id, drives the grounded MCP tool path to implement it, builds, scores against the golden/SysTest oracle, writes a corpus record, and rolls back. Use when asked to "run eval case <id>", "run the implementer", or execute a case end-to-end on the VM.
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, mcp__d365fo-eval__prepare, mcp__d365fo-eval__search, mcp__d365fo-eval__get_object_info, mcp__d365fo-eval__batch_get_info, mcp__d365fo-eval__extension_info, mcp__d365fo-eval__find_references, mcp__d365fo-eval__validate_code, mcp__d365fo-eval__validate_object_naming, mcp__d365fo-eval__generate_object, mcp__d365fo-eval__d365fo_file, mcp__d365fo-eval__build_d365fo_project, mcp__d365fo-eval__run_systest_class, mcp__d365fo-eval__run_bp_check, mcp__d365fo-eval__trigger_db_sync, mcp__d365fo-eval__verify_d365fo_project, mcp__d365fo-eval__undo_last_modification, mcp__d365fo-eval__update_symbol_index, mcp__d365fo-eval__get_workspace_info, mcp__d365fo-eval__get_method, mcp__d365fo-eval__get_knowledge, mcp__d365fo-eval__analyze_code, mcp__d365fo-eval__security_info, mcp__d365fo-eval__suggest_edt, mcp__d365fo-eval__labels, mcp__d365fo-eval__object_patterns, mcp__d365fo-eval__review_workspace_changes
 model: inherit
 ---
 

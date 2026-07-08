@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L4-entity-security (artifact 3 of 5: security privilege)
+  Captured: 2026-06-30, server SHA: fc090d0
+
+  d365fo_file(create, objectType="security-privilege", properties={targetObject,
+  objectType, accessLevel, dataEntity}) silently produced an EMPTY privilege
+  (DataEntityPermissions/EntryPoints both <X/>) via the bridge - builds clean,
+  grants nothing. Fixed in this round: security-privilege/duty/role removed from
+  BRIDGE_CREATE_TYPES (src/bridge/bridgeAdapter.ts), routing creation to the
+  already-correct local XmlTemplateGenerator. This golden was captured via the
+  workaround (xmlContent matching exactly what that generator now produces) since
+  the live MCP server needs a reconnect to pick up the fix; see the corpus record.
+-->
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteHeaderMaintain</Name>
+	<Label>@TaxTransactionInquiry:HeaderNote</Label>
+	<DataEntityPermissions>
+		<AxSecurityDataEntityPermission>
+			<Grant>
+				<Correct>Allow</Correct>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<Name>ConDemoNoteHeaderEntity</Name>
+			<Fields />
+			<Methods />
+		</AxSecurityDataEntityPermission>
+	</DataEntityPermissions>
+	<DirectAccessPermissions />
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>ConDemoNoteHeaderDisplay</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+			</Grant>
+			<ObjectName>ConDemoNoteHeaderDisplay</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<FormControlOverrides />
+</AxSecurityPrivilege>

@@ -2,7 +2,7 @@
   "id": "L1-class-basic",
   "title": "Plain standalone class",
   "tier": 1,
-  "instruction": "In the sandbox model, create a plain standalone class named XyzNoteFormatter with: a str member variable 'prefix'; a constructor (new(str _prefix)) that sets it; an instance method format(str _text) that returns prefix + ': ' + _text; and a static factory method construct(str _prefix) that returns a new instance. Not a CoC extension, business event, batch artifact, or SSRS component -- just a basic utility class demonstrating constructor/member-variable/instance-method/static-method mechanics. The class must build clean.",
+  "instruction": "In the sandbox model, create a plain standalone class named DemoNoteFormatter with: a str member variable 'prefix'; a constructor (new(str _prefix)) that sets it; an instance method format(str _text) that returns prefix + ': ' + _text; and a static factory method construct(str _prefix) that returns a new instance. Not a CoC extension, business event, batch artifact, or SSRS component -- just a basic utility class demonstrating constructor/member-variable/instance-method/static-method mechanics. The class must build clean.",
   "target_artifact_types": [
     "AxClass"
   ],

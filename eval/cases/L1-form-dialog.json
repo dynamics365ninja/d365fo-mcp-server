@@ -2,7 +2,7 @@
   "id": "L1-form-dialog",
   "title": "Dialog form pattern (parameter-entry dialog)",
   "tier": 1,
-  "instruction": "In the sandbox model, create a Dialog form named XyzNoteHeaderDialog bound to the AslXyzNoteHeader table's data source, with controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=Dialog). The form must build clean.",
+  "instruction": "In the sandbox model, create a Dialog form named DemoNoteHeaderDialog bound to the ConDemoNoteHeader table's data source, with controls for NoteId and Subject, auto-generated via the form scaffold pattern (formPattern=Dialog). The form must build clean.",
   "target_artifact_types": [
     "AxForm"
   ],

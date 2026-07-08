@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-batch-basic (artifact 1 of 4: DataContract)
+  Captured: 2026-06-30, server SHA: 7f836a6
+  Platform: xppc 7.0.7858.27
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoBatchContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class ConDemoBatchContract
+{
+    int batchSize;
+    int priorityFactor;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmBatchSize</Name>
+				<Source><![CDATA[
+[DataMemberAttribute,
+ SysOperationLabelAttribute(literalStr("@ConRent:DemoBatchSize")),
+ SysOperationDisplayOrderAttribute('1')]
+public int parmBatchSize(int _batchSize = batchSize)
+{
+    batchSize = _batchSize;
+    return batchSize;
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPriorityFactor</Name>
+				<Source><![CDATA[
+[DataMemberAttribute,
+ SysOperationLabelAttribute(literalStr("@ConRent:DemoPriorityFactor")),
+ SysOperationDisplayOrderAttribute('2')]
+public int parmPriorityFactor(int _priorityFactor = priorityFactor)
+{
+    priorityFactor = _priorityFactor;
+    return priorityFactor;
+}
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

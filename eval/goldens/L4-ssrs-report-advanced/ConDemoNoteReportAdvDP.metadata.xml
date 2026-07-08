@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L4-ssrs-report-advanced (3 of 6): Data Provider, processReport() hand-edited (after scaffold) to apply the real subjectFilter via insert_recordset ... where ... like. Captured 2026-07-01, SHA 6e53a07. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteReportAdvDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data provider for the @TaxTransactionInquiry:HeaderNote report.
+/// Extends <c>SrsReportDataProviderBase</c> and populates the <c>ConDemoNoteReportAdvTmp</c> temporary table.
+/// </summary>
+[
+    SRSReportParameterAttribute(classStr(ConDemoNoteReportAdvContract))
+]
+public class ConDemoNoteReportAdvDP extends SrsReportDataProviderBase
+{
+    ConDemoNoteReportAdvTmp conDemoNoteReportAdvTmp;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getConDemoNoteReportAdvTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the temporary table buffer used by the report dataset.
+    /// </summary>
+    /// <returns>The <c>ConDemoNoteReportAdvTmp</c> table buffer.</returns>
+    [SRSReportDataSetAttribute(tableStr(ConDemoNoteReportAdvTmp))]
+    public ConDemoNoteReportAdvTmp getConDemoNoteReportAdvTmp()
+    {
+        select conDemoNoteReportAdvTmp;
+        return conDemoNoteReportAdvTmp;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main data processing method. Populates the <c>ConDemoNoteReportAdvTmp</c> temporary table
+    /// with report data based on the contract parameters.
+    /// </summary>
+    public void processReport()
+    {
+        ConDemoNoteReportAdvContract contract = this.parmDataContract() as ConDemoNoteReportAdvContract;
+        str subjectFilter = contract.parmSubjectFilter();
+        ConDemoNoteHeader noteHeader;
+
+        if (!subjectFilter)
+        {
+            subjectFilter = '*';
+        }
+
+        insert_recordset conDemoNoteReportAdvTmp (NoteId, Subject)
+            select NoteId, Subject from noteHeader
+                where noteHeader.Subject like subjectFilter;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

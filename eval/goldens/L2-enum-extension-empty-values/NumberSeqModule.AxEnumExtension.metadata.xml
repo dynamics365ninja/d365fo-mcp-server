@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-enum-extension-empty-values (1 of 2): enum-extension adding NumberSeqModule::DemoEvalRent. Captured 2026-07-07, SHA cb1b73d. This is the regression surface under test: BUILD #1 in docs/USAGE_EXAMPLES.md section 1 recorded the create call writing an EMPTY <EnumValues/> here, only caught later as an unresolved-symbol build error. This run's read-back confirmed EnumValues was populated correctly. -->
+<AxEnumExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>NumberSeqModule.ConExtension</Name>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>DemoEvalRent</Name>
+			<Label>@GEE:GEE16817</Label>
+		</AxEnumValue>
+	</EnumValues>
+	<PropertyModifications />
+	<ValueModifications />
+</AxEnumExtension>

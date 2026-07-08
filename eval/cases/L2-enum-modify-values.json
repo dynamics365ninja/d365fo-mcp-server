@@ -2,7 +2,7 @@
   "id": "L2-enum-modify-values",
   "title": "Enum values maintained via add/modify/remove-enum-value modify operations",
   "tier": 2,
-  "instruction": "In the sandbox model, create an enum XyzModStatus with three values: Draft (value 0), Active (value 1), Closed (value 2). Reuse standard labels from the labels index for the enum and its values -- do not invent raw text. Then change it EXCLUSIVELY through d365fo_file action=modify operations (no create overwrite=true full-XML rewrites): (1) add-enum-value Archived with value 3; (2) modify-enum-value to rename Closed to Completed, keeping its numeric value 2; (3) add-enum-value Temp with value 4, then remove-enum-value Temp (it must NOT exist in the final enum); (4) remove-enum-value Draft. The final enum must contain exactly Active (1), Completed (2), Archived (3) -- nothing else -- and must build clean.",
+  "instruction": "In the sandbox model, create an enum DemoModStatus with three values: Draft (value 0), Active (value 1), Closed (value 2). Reuse standard labels from the labels index for the enum and its values -- do not invent raw text. Then change it EXCLUSIVELY through d365fo_file action=modify operations (no create overwrite=true full-XML rewrites): (1) add-enum-value Archived with value 3; (2) modify-enum-value to rename Closed to Completed, keeping its numeric value 2; (3) add-enum-value Temp with value 4, then remove-enum-value Temp (it must NOT exist in the final enum); (4) remove-enum-value Draft. The final enum must contain exactly Active (1), Completed (2), Archived (3) -- nothing else -- and must build clean.",
   "target_artifact_types": [
     "AxEnum"
   ],

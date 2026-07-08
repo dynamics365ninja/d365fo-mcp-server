@@ -2,7 +2,7 @@
 <!--
   Golden for L2-oracle-discriminator-random-wrapper-name. This is a SECOND,
   INDEPENDENT regeneration of the exact same logical control captured in
-  eval/goldens/L2-form-extension-basic/CustGroupFormExt.AslExtension.metadata.xml
+  eval/goldens/L2-form-extension-basic/CustGroupFormExt.ConExtension.metadata.xml
   (delete + recreate + add-control replayed fresh) - the wrapper's own random
   <Name> came out as "FormExtensionControlr2xt3flz5" here vs "...fse38xiwz"
   there, proving the two are genuinely independent samples, not a copy.
@@ -16,16 +16,16 @@
   clean, 0 warnings. Captured 2026-07-01, SHA a15fe3e.
 -->
 <AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
-	<Name>CustGroup.AslExtension</Name>
+	<Name>CustGroup.ConExtension</Name>
 	<ControlModifications />
 	<Controls>
 		<AxFormExtensionControl xmlns="">
 			<Name>FormExtensionControlr2xt3flz5</Name>
 			<FormControl xmlns="" i:type="AxFormCheckBoxControl">
-				<Name>Grid_AslHasNotes</Name>
+				<Name>Grid_ConHasNotes</Name>
 				<Type>CheckBox</Type>
 				<FormControlExtension i:nil="true" />
-				<DataField>AslHasNotes</DataField>
+				<DataField>ConHasNotes</DataField>
 				<DataSource>CustGroup</DataSource>
 			</FormControl>
 			<Parent>Grid</Parent>

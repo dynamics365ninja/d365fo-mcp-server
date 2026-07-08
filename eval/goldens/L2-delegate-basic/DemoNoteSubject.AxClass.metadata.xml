@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-delegate-basic (1 of 2): the class declaring a custom delegate and firing it - verified syntax against a real shipped delegate (ApplicationFoundation/AxClass/AifUserSessionService.xml). Distinct from L2-event-handler-basic's system [DataEventHandler] mechanism. Captured 2026-07-01, SHA 5d4b4a3. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteSubject</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoNoteSubject
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>noteAdded</Name>
+				<Source><![CDATA[
+delegate void noteAdded(str _noteId)
+    {
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addNote</Name>
+				<Source><![CDATA[
+public void addNote(str _noteId)
+    {
+        this.noteAdded(_noteId);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

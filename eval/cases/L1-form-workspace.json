@@ -2,7 +2,7 @@
   "id": "L1-form-workspace",
   "title": "Workspace form pattern (Fluent workspace)",
   "tier": 1,
-  "instruction": "In the sandbox model, create a Workspace form named XyzNoteHeaderWorkspace bound to the AslXyzNoteHeader table's data source, auto-generated via the form scaffold pattern (formPattern=Workspace). The form must build clean. Note: the scaffold tool generates the 'TabbedWorkspace' pattern for this request, which is expected.",
+  "instruction": "In the sandbox model, create a Workspace form named DemoNoteHeaderWorkspace bound to the ConDemoNoteHeader table's data source, auto-generated via the form scaffold pattern (formPattern=Workspace). The form must build clean. Note: the scaffold tool generates the 'TabbedWorkspace' pattern for this request, which is expected.",
   "target_artifact_types": [
     "AxForm"
   ],

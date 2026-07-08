@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Golden for L4-ssrs-report-advanced (5 of 6): output menu item, generated alongside the Controller (generateController=true) - the 6th artifact this case has beyond L4-ssrs-report-basic's 5. Captured 2026-07-01, SHA 6e53a07. -->
-<AxMenuItemOutput xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
-	<Name>AslXyzNoteReportAdv</Name>
-	<Label>@TaxTransactionInquiry:HeaderNote</Label>
-	<Object>AslXyzNoteReportAdvController</Object>
-	<ObjectType>Class</ObjectType>
-</AxMenuItemOutput>

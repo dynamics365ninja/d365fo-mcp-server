@@ -2,7 +2,7 @@
   "id": "L2-event-handler-basic",
   "title": "DataEventHandler defaulting a field on insert",
   "tier": 2,
-  "instruction": "In the sandbox model, add a class XyzNoteHeaderEH with a static method decorated [DataEventHandler(tableStr(XyzNoteHeader), DataEventType::Inserting)] that defaults the Subject field to the literal '(no subject)' when it is left blank at insert time. This is the event-handler extensibility mechanism (as opposed to Chain of Command) -- use extension_info(mode=\"events\") first to confirm no existing handler class should be reused instead of creating a new one. The class must build clean. Runtime correctness is judged by the SysTest in eval/systests/L2-event-handler-basic.xml (class EvalL2EventHandlerDefaultSubjectTest), which inserts a record with a blank Subject and asserts the default was applied, and a second record with an explicit Subject and asserts it was left untouched.",
+  "instruction": "In the sandbox model, add a class DemoNoteHeaderEH with a static method decorated [DataEventHandler(tableStr(DemoNoteHeader), DataEventType::Inserting)] that defaults the Subject field to the literal '(no subject)' when it is left blank at insert time. This is the event-handler extensibility mechanism (as opposed to Chain of Command) -- use extension_info(mode=\"events\") first to confirm no existing handler class should be reused instead of creating a new one. The class must build clean. Runtime correctness is judged by the SysTest in eval/systests/L2-event-handler-basic.xml (class EvalL2EventHandlerDefaultSubjectTest), which inserts a record with a blank Subject and asserts the default was applied, and a second record with an explicit Subject and asserts it was left untouched.",
   "target_artifact_types": [
     "AxClass"
   ],

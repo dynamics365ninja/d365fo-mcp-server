@@ -2,7 +2,7 @@
   "id": "L0-enum-basic",
   "title": "Simple enum with three values",
   "tier": 0,
-  "instruction": "Create a new enum named XyzNoteStatus in the sandbox model with three values: Draft (0), Active (1), Archived (2). The enum should be extensible. Use label text for each value: Draft = 'Draft', Active = 'Active', Archived = 'Archived'.",
+  "instruction": "Create a new enum named DemoNoteStatus in the sandbox model with three values: Draft (0), Active (1), Archived (2). The enum should be extensible. Use label text for each value: Draft = 'Draft', Active = 'Active', Archived = 'Archived'.",
   "target_artifact_types": [
     "AxEnum"
   ],
