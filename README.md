@@ -1,5 +1,3 @@
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/dynamics365ninja-d365fo-mcp-server-badge.png)](https://mseep.ai/app/dynamics365ninja-d365fo-mcp-server)
-
 # D365 F&O MCP Server
 
 <div align="center">
