@@ -1628,6 +1628,70 @@ describe('modify_d365fo_file', () => {
     expect(constraints).toEqual([{ field: 'CategoryId', relatedField: 'CategoryId' }]);
   });
 
+  it('modify-enum-value forwards enumValueNewName as a "name" property so the value can be RENAMED', async () => {
+    // Regression: eval/corpus/runs/2026-07-07T05__L2-enum-modify-values__cb1b73d.json —
+    // case instruction: "modify-enum-value to rename Closed to Completed, keeping its
+    // numeric value 2". The tool had NO parameter to change an enum value's own Name —
+    // only enumValueLabel (Label) and enumValueInt (Value) were ever forwarded, so a
+    // "rename" request silently did nothing to the Name and the enum kept "Closed".
+    // Confirmed both "Priority" and every other rename target is unreachable: the
+    // handler's evProps dict never had a "name" key, and the C# bridge's
+    // ModifyEnumValue switch (MetadataWriteService.cs) never had a "name" case either.
+    const fsMod = await import('fs/promises');
+    (fsMod.readFile as any).mockResolvedValueOnce(
+      `<?xml version="1.0"?><AxEnum><Name>ConDemoModStatus</Name></AxEnum>`,
+    );
+
+    const modifyEnumValue = vi.fn(async () => ({ success: true, api: 'IMetaEnumProvider.Update' }));
+    (ctx as any).bridge = { isReady: true, metadataAvailable: true, modifyEnumValue, refreshProvider: vi.fn() };
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'enum',
+        objectName: 'ConDemoModStatus',
+        operation: 'modify-enum-value',
+        enumValueName: 'Closed',
+        enumValueNewName: 'Completed',
+        filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxEnum\\ConDemoModStatus.xml',
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(modifyEnumValue).toHaveBeenCalledTimes(1);
+    const [enumName, valueName, props] = modifyEnumValue.mock.calls[0];
+    expect(enumName).toBe('ConDemoModStatus');
+    expect(valueName).toBe('Closed'); // the EXISTING name, used to locate the value
+    expect(props).toEqual({ name: 'Completed' });
+  });
+
+  it('modify-enum-value still forwards label/value without enumValueNewName (back-compat, unchanged)', async () => {
+    const fsMod = await import('fs/promises');
+    (fsMod.readFile as any).mockResolvedValueOnce(
+      `<?xml version="1.0"?><AxEnum><Name>ConDemoModStatus</Name></AxEnum>`,
+    );
+
+    const modifyEnumValue = vi.fn(async () => ({ success: true, api: 'IMetaEnumProvider.Update' }));
+    (ctx as any).bridge = { isReady: true, metadataAvailable: true, modifyEnumValue, refreshProvider: vi.fn() };
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'enum',
+        objectName: 'ConDemoModStatus',
+        operation: 'modify-enum-value',
+        enumValueName: 'Active',
+        enumValueLabel: '@ConDemo:Active',
+        enumValueInt: 1,
+        filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxEnum\\ConDemoModStatus.xml',
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    const [, , props] = modifyEnumValue.mock.calls[0];
+    expect(props).toEqual({ label: '@ConDemo:Active', value: '1' });
+  });
+
   it('derives objectName from filePath when objectName is omitted', async () => {
     const fsMod = await import('fs/promises');
     (fsMod.readFile as any).mockResolvedValueOnce(

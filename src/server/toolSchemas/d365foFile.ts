@@ -140,7 +140,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'add-index {indexName, indexFields[{fieldName}]} · add-relation {relationName, relatedTable, relationConstraints?} · ' +
             'add-field-group {fieldGroupName, fieldGroupFields?} · add-data-source {dataSourceName, dataSourceTable} · ' +
             'add-control {controlName, parentControl, controlDataSource?, controlDataField?} · ' +
-            'enum ops {enumValueName, enumValueLabel?, enumValueInt?} · add-menu-item-to-menu {menuItemToAdd} · ' +
+            'enum ops {enumValueName, enumValueNewName?(modify-enum-value rename), enumValueLabel?, enumValueInt?} · add-menu-item-to-menu {menuItemToAdd} · ' +
             'modify-property {propertyPath, propertyValue} · add-table-method {tableMethodType, tableKeyField?} · ' +
             'add-display-method {methodName, displayMethodReturnEdt}. ' +
             'A missing/wrong parameter returns the COMPLETE spec (names, types, descriptions) for that operation — ' +

@@ -605,7 +605,13 @@ const ModifyD365FileArgsSchema = z.object({
   // For add-enum-value / modify-enum-value / remove-enum-value
   enumValueName: z.string().optional().describe(
     'Enum value name for add-enum-value / modify-enum-value / remove-enum-value. ' +
-    'E.g. "Approved", "Pending", "Rejected".'
+    'E.g. "Approved", "Pending", "Rejected". For modify-enum-value this is the EXISTING ' +
+    'name used to locate the value — see enumValueNewName to rename it.'
+  ),
+  enumValueNewName: z.string().optional().describe(
+    'modify-enum-value ONLY: renames the enum value (its Name/identifier) from ' +
+    'enumValueName to this. Numeric value and label are unaffected unless ' +
+    'enumValueInt/enumValueLabel are also given.'
   ),
   enumValueLabel: z.string().optional().describe(
     'Label reference for the enum value (e.g. "@MyModel:Approved"). ' +
@@ -1588,6 +1594,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       case 'modify-enum-value': {
         if ((args as any).enumValueName) {
           const evProps: Record<string, string> = {};
+          if ((args as any).enumValueNewName) evProps.name = (args as any).enumValueNewName;
           if ((args as any).enumValueLabel) evProps.label = (args as any).enumValueLabel;
           if ((args as any).enumValueInt !== undefined) evProps.value = String((args as any).enumValueInt);
           bridgeResult = await bridgeModifyEnumValue(

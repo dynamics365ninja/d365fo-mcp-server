@@ -2121,6 +2121,7 @@ namespace D365MetadataBridge.Services
                         case "value":
                             if (int.TryParse(kv.Value, out var iv)) target.Value = iv;
                             break;
+                        case "name": target.Name = kv.Value; break;
                     }
                 }
             }
