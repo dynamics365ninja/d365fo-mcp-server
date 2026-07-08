@@ -14,10 +14,17 @@
  * datasource alias; it does not embed its own ViewMetadata/DataSources.
  */
 
-/** properties.dataSource — REQUIRED for a functional query: the root table. */
+/**
+ * properties.dataSource — REQUIRED for a functional query: the root table.
+ * `table` is accepted as an alias (regression: eval/corpus/runs/
+ * 2026-07-06T18__L1-query-view-basic__cb1b73d.json — `query` had NO entry in
+ * the d365fo_file properties documentation, so a caller reasonably guessed
+ * `table` mirroring data-entity's `primaryTable` convention, and the root
+ * datasource was silently never created).
+ */
 export function buildAxQueryXml(queryName: string, properties?: Record<string, any>): string {
   const title = properties?.title || properties?.label || queryName;
-  const dataSource: string | undefined = properties?.dataSource;
+  const dataSource: string | undefined = properties?.dataSource || properties?.table;
   const dataSourceName: string = properties?.dataSourceName || dataSource || '';
   const fields: Array<{ name: string; field?: string }> | undefined =
     Array.isArray(properties?.fields) ? properties.fields : undefined;
