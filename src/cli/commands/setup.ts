@@ -17,7 +17,7 @@ import { listXppConfigs } from '../xppConfig.js';
 import { rebuildIndex } from './indexCmd.js';
 import { instanceAddCommand } from './instance.js';
 
-type Scenario = 'azure' | 'hybrid' | 'local-http' | 'ude' | 'local-stdio' | 'multi';
+type Scenario = 'hybrid' | 'local-http' | 'ude' | 'local-stdio' | 'multi';
 
 const distEntryWin = () => resolve(repoRoot, 'dist', 'index.js');
 
@@ -159,19 +159,9 @@ export async function setupCommand(): Promise<void> {
     { value: 'local-http', label: 'C — Local HTTP', hint: 'several clients on this machine share one server on a port' },
     { value: 'ude', label: 'D — UDE', hint: 'Unified Developer Experience / Power Platform Tools' },
     { value: 'multi', label: 'F — Multi-instance', hint: 'several D365FO clients on one machine, one instance each' },
-    { value: 'azure', label: 'A — Azure client', hint: 'read-only connection to a team server; no local install' },
   ]);
 
-  // A: nothing to install
-  if (scenario === 'azure') {
-    const url = await askText({ message: 'Azure server URL', placeholder: 'https://your-server.azurewebsites.net/mcp/', required: true });
-    mcpJsonNote({ 'd365fo-mcp-tools': { url } });
-    placementNote();
-    p.outro('Done. For real development (writes on your VM) re-run setup and pick Scenario B.');
-    return;
-  }
-
-  // Everything else needs the local clone installed and built
+  // All scenarios need the local clone installed and built
   if (!await ensureInstalledAndBuilt()) { process.exitCode = 1; return; }
   if (!await maybeBuildBridge(scenario)) { process.exitCode = 1; return; }
 
@@ -211,11 +201,16 @@ export async function setupCommand(): Promise<void> {
 
   if (scenario === 'ude') {
     const modelName = await askText({ message: 'Model name for code generation (D365FO_MODEL_NAME)', required: true });
+    const workspacePath = await askText({
+      message: 'Two-level workspace path …\\PackagesLocalDirectory\\<Package>\\<Model> (D365FO_WORKSPACE_PATH)',
+      placeholder: 'K:\\AosService\\PackagesLocalDirectory\\YourPackage\\YourModel',
+      required: true,
+    });
     mcpJsonNote({
       'd365fo-mcp-tools': {
         command: 'node',
         args: [distEntryWin()],
-        env: { D365FO_MODEL_NAME: modelName, D365FO_DEV_ENVIRONMENT_TYPE: 'ude' },
+        env: { D365FO_MODEL_NAME: modelName, D365FO_DEV_ENVIRONMENT_TYPE: 'ude', D365FO_WORKSPACE_PATH: workspacePath },
       },
     });
     placementNote();
@@ -228,9 +223,15 @@ export async function setupCommand(): Promise<void> {
     message: 'Folder scanned for .rnrproj solutions (D365FO_SOLUTIONS_PATH; Enter to skip)',
     placeholder: 'K:\\repos\\MySolution\\projects',
   });
+  const workspacePath = await askText({
+    message: 'Two-level workspace path …\\PackagesLocalDirectory\\<Package>\\<Model> (D365FO_WORKSPACE_PATH)',
+    placeholder: 'K:\\AosService\\PackagesLocalDirectory\\YourPackage\\YourModel',
+    required: true,
+  });
   const env: Record<string, string> = {
     DB_PATH: paths.defaultDb,
     LABELS_DB_PATH: paths.defaultLabelsDb,
+    D365FO_WORKSPACE_PATH: workspacePath,
   };
   if (solutionsPath) env.D365FO_SOLUTIONS_PATH = solutionsPath;
   mcpJsonNote({ 'd365fo-mcp-tools': { command: 'node', args: [distEntryWin()], env } });

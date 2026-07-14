@@ -400,26 +400,12 @@ async function extractMetadata() {
     const modelDirs = entries.filter(e => e.isDirectory() || e.isSymbolicLink()).map(e => e.name);
 
     for (const modelName of modelDirs) {
-      // Skip FormAdaptor models
-      if (modelName.endsWith('FormAdaptor')) {
-        log.detail(`${glyph.arrow} skip FormAdaptor model: ${modelName}`);
-        continue;
-      }
-
-      // Apply model-level filtering
-      if (FILTER_MODE === 'custom-only' && !isCustomModel(modelName)) {
-        log.detail(`${glyph.arrow} skip standard model: ${modelName}`);
-        continue;
-      }
-      if (FILTER_MODE === 'standard-only' && isCustomModel(modelName)) {
-        log.detail(`${glyph.arrow} skip custom model: ${modelName}`);
-        continue;
-      }
-
       const modelPath = path.join(packagePath, modelName);
 
       // Check if this directory contains X++ metadata (has AxClass, AxTable, etc.)
       // Support both uppercase and lowercase directory names (Linux case-sensitivity)
+      // Do this first so non-model directories (bin, Resources, Reports, …) are
+      // silently skipped before any model-name-based filtering is applied.
       const hasAxClass = await fs.access(path.join(modelPath, 'AxClass')).then(() => true)
         .catch(() => fs.access(path.join(modelPath, 'axclass')).then(() => true).catch(() => false));
       const hasAxTable = await fs.access(path.join(modelPath, 'AxTable')).then(() => true)
@@ -435,6 +421,22 @@ async function extractMetadata() {
 
       if (!hasAxClass && !hasAxTable && !hasAxEnum && !hasAxEdt && !hasAxView && !hasAxDataEntityView) {
         // Skip directories that don't contain X++ metadata
+        continue;
+      }
+
+      // Skip FormAdaptor models
+      if (modelName.endsWith('FormAdaptor')) {
+        log.detail(`${glyph.arrow} skip FormAdaptor model: ${modelName}`);
+        continue;
+      }
+
+      // Apply model-level filtering
+      if (FILTER_MODE === 'custom-only' && !isCustomModel(modelName)) {
+        log.detail(`${glyph.arrow} skip standard model: ${modelName}`);
+        continue;
+      }
+      if (FILTER_MODE === 'standard-only' && isCustomModel(modelName)) {
+        log.detail(`${glyph.arrow} skip custom model: ${modelName}`);
         continue;
       }
 

@@ -1165,7 +1165,9 @@ export class XppSymbolIndex {
     // Sort largest models first — ensures Foundation (56K files) is indexed before any CI timeout
     let models = allModels;
     if (!modelName) {
+      log.detail(`Scanning ${allModels.length} model(s) to determine build order...`);
       models = this.sortModelsBySize(metadataPath, allModels);
+      log.detail(`Build order determined (largest model first: ${models[0] ?? '—'})`);
     }
 
     // Skip already-indexed models when resuming (RESUME=true)
@@ -1198,6 +1200,14 @@ export class XppSymbolIndex {
       modelIndex++;
       const modelPath = path.join(metadataPath, model);
       const modelStartTime = Date.now();
+      const progressPercent = ((modelIndex / models.length) * 100).toFixed(0);
+
+      // Show which model is being processed RIGHT NOW (before the slow transaction)
+      if (isCI()) {
+        log.detail(`[${progressPercent}%] indexing ${model}...`);
+      } else {
+        process.stdout.write(`\r      ${c.dim(`[${progressPercent}%]`)} ${model.padEnd(40)} ${c.dim('indexing...')}`);
+      }
 
       const tx = this.db.transaction(() => {
         const classesPath = path.join(modelPath, 'classes');
@@ -1296,14 +1306,13 @@ export class XppSymbolIndex {
       tx();
 
       const modelDuration = ((Date.now() - modelStartTime) / 1000).toFixed(1);
-      const progressPercent = ((modelIndex / models.length) * 100).toFixed(0);
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
-      
+
       if (isCI()) {
-        // CI environment: use normal console.log (one line per model)
+        // CI environment: overwrite the "indexing..." line with the completed summary
         log.detail(`[${progressPercent}%] ${model} - ${modelDuration}s (${elapsed}s total)`);
       } else {
-        // Interactive terminal: overwrite same line for compact output
+        // Interactive terminal: overwrite the "indexing..." line with completed summary
         process.stdout.write(`\r      ${c.dim(`[${progressPercent}%]`)} ${model.padEnd(40)} ${c.dim(`${modelDuration}s (${elapsed}s total)`)}`);
       }
     }
