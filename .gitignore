@@ -50,6 +50,7 @@ test-model-tags*/
 
 # MCP Configuration
 .mcp.json
+mcp-config-suggestion.json
 
 # OS
 .DS_Store

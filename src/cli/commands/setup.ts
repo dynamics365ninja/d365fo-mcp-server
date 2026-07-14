@@ -22,7 +22,12 @@ type Scenario = 'hybrid' | 'local-http' | 'ude' | 'local-stdio' | 'multi';
 const distEntryWin = () => resolve(repoRoot, 'dist', 'index.js');
 
 function mcpJsonNote(servers: Record<string, unknown>, title = '.mcp.json'): void {
-  p.note(JSON.stringify({ servers }, null, 2), title);
+  const json = JSON.stringify({ servers }, null, 2);
+  p.note(json, title);
+  // Also write the raw JSON to a file so it can be copied without terminal box characters.
+  const outPath = resolve(repoRoot, 'mcp-config-suggestion.json');
+  fs.writeFileSync(outPath, json + '\n', 'utf8');
+  p.log.info(`Raw JSON written to: ${outPath}`);
 }
 
 function placementNote(): void {

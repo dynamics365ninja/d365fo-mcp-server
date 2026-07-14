@@ -937,8 +937,10 @@ export async function createBridgeClient(options: {
 }
 
 function detectPackagesPath(): string | null {
-  // Canonical env vars take priority over well-known path probes. D365FO_PACKAGE_PATH is read by
-  // configManager and exposed via .mcp.json env{} blocks; PACKAGES_PATH is the legacy .env.example name.
+  // Canonical env vars take priority over well-known path probes. D365FO_PACKAGE_PATH can be set
+  // in .env (traditional mode, loaded by dotenv at startup) or in the .mcp.json env{} block
+  // (VS passes it to the subprocess). Both sources land in process.env equivalently.
+  // PACKAGES_PATH is the legacy .env.example name.
   const candidates = [
     process.env.D365FO_PACKAGE_PATH ?? '',
     process.env.PACKAGES_PATH ?? '',

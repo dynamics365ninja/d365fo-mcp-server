@@ -180,7 +180,7 @@ The TypeScript client transparently recovers from transient bridge failures:
 | Cause | Fix |
 |---|---|
 | Bridge not built | Run `dotnet build -c Release` in `bridge/D365MetadataBridge/` |
-| Wrong `packagePath` | Fix `D365FO_PACKAGE_PATH` env var in `.mcp.json` to point to `PackagesLocalDirectory` |
+| Wrong `packagePath` | Fix `D365FO_PACKAGE_PATH` env var (in `.env` for traditional, or `.mcp.json` env block) to point to `PackagesLocalDirectory` |
 | Missing DLLs | Verify `{D365FO_PACKAGE_PATH}/bin/` contains `Microsoft.Dynamics.AX.Metadata.*.dll` |
 | Running on Linux/macOS | Expected — bridge is Windows-only, server uses SQLite fallback |
 
