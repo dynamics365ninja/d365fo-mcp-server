@@ -63,10 +63,12 @@ async function maybeBuildBridge(scenario: Scenario): Promise<boolean> {
     p.log.info('C# bridge skipped — it only builds on Windows D365FO VMs (writes stay unavailable here).');
     return true;
   }
-  if (fs.existsSync(paths.bridgeExe) && !await askConfirm('C# bridge already built — rebuild it?', false)) {
-    return true;
-  }
-  if (!await askConfirm('Build the C# bridge? (required for creating/modifying files)')) {
+  if (fs.existsSync(paths.bridgeExe)) {
+    if (!await askConfirm('C# bridge already built — rebuild it?', false)) {
+      return true;
+    }
+    // user confirmed rebuild — skip the second confirmation
+  } else if (!await askConfirm('Build the C# bridge? (required for creating/modifying files)')) {
     p.log.warn('Skipped — the server will run read-only until you build it.');
     return true;
   }
