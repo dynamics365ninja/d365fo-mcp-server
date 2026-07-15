@@ -4,6 +4,7 @@
  */
 
 import Database from 'better-sqlite3';
+import { Worker } from 'node:worker_threads';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { XppSymbol } from './types.js';
@@ -17,6 +18,12 @@ import { c, log } from '../utils/terminalUi.js';
 const isCI = (): boolean => {
   return !!(process.env.CI || process.env.TF_BUILD || process.env.GITHUB_ACTIONS);
 };
+
+/** Total + per-type symbol counts (both come from one GROUP BY scan). */
+export interface SymbolCounts {
+  total: number;
+  byType: Record<string, number>;
+}
 
 export class XppSymbolIndex {
   public db: Database.Database; // Public for direct pragma access in build scripts
@@ -34,11 +41,17 @@ export class XppSymbolIndex {
   private readPool: Database.Database[] = [];
   private labelsReadPool: Database.Database[] = [];
   private readPoolRR = 0;
+  // Symbol-count scans are expensive (full index scan of 1M+ rows, 30-60 s
+  // cold) — memoize the result and compute it off-thread (see getSymbolCounts).
+  private dbPath: string;
+  private symbolCountsCache: SymbolCounts | null = null;
+  private symbolCountsPromise: Promise<SymbolCounts> | null = null;
   // Per-connection prepared-statement cache.  Prepared statements are bound to
   // their originating connection and cannot be shared across connections.
   private perConnStmtCache = new WeakMap<Database.Database, Map<string, Database.Statement>>();
 
   constructor(dbPath: string, labelsDbPath?: string) {
+    this.dbPath = dbPath;
     // Ensure database directory exists
     const dbDir = path.dirname(dbPath);
     if (!fs.existsSync(dbDir)) {
@@ -745,6 +758,7 @@ export class XppSymbolIndex {
    * Add a symbol to the index with enhanced metadata
    */
   addSymbol(symbol: XppSymbol): void {
+    this.invalidateSymbolCounts();
     let stmt = this.stmtCache.get('addSymbol');
     if (!stmt) {
       stmt = this.db.prepare(`
@@ -800,6 +814,7 @@ export class XppSymbolIndex {
 
     // The FTS trigger (symbols_fts AFTER DELETE) handles FTS cleanup automatically
     const result = this.db.prepare(`DELETE FROM symbols WHERE file_path = ?`).run(filePath);
+    this.invalidateSymbolCounts();
     return { deletedCount: result.changes, objectNames };
   }
 
@@ -971,24 +986,114 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Get symbol count
+   * Get symbol count.
+   *
+   * WARNING: without a warm cache this is a full index scan — 30-60 s on a
+   * large production DB with a cold file cache, and better-sqlite3 blocks the
+   * event loop for the whole scan. Server request paths must use
+   * getSymbolCounts() (off-thread) or getCachedSymbolCounts() instead; the
+   * synchronous form is for build scripts and post-indexing logging where the
+   * DB is small or already hot.
    */
   getSymbolCount(): number {
+    if (this.symbolCountsCache) return this.symbolCountsCache.total;
     const stmt = this.getReadDb().prepare('SELECT COUNT(*) as count FROM symbols');
     return (stmt.get() as { count: number }).count;
   }
 
   /**
-   * Get symbol count by type
+   * Get symbol count by type. Same event-loop-blocking caveat as getSymbolCount().
    */
   getSymbolCountByType(): Record<string, number> {
-    const stmt = this.getReadDb().prepare(
-      `SELECT type, COUNT(*) as count FROM symbols GROUP BY type`
-    );
-    const rows = stmt.all() as { type: string; count: number }[];
-    const result: Record<string, number> = {};
-    for (const row of rows) result[row.type] = row.count;
-    return result;
+    if (this.symbolCountsCache) return this.symbolCountsCache.byType;
+    return this.computeSymbolCountsSync().byType;
+  }
+
+  /**
+   * Cheap emptiness probe — O(1) regardless of table size. Use this instead of
+   * getSymbolCount() === 0 on startup paths.
+   */
+  hasAnySymbols(): boolean {
+    const row = this.getReadDb()
+      .prepare('SELECT EXISTS(SELECT 1 FROM symbols) as present')
+      .get() as { present: number };
+    return row.present === 1;
+  }
+
+  /**
+   * Memoized counts if already computed this session, else null. Never scans —
+   * safe on any request path (health endpoints, status displays).
+   */
+  getCachedSymbolCounts(): SymbolCounts | null {
+    return this.symbolCountsCache;
+  }
+
+  /**
+   * Total + per-type symbol counts without blocking the event loop.
+   *
+   * The scan runs in a worker thread with its own read-only connection (WAL
+   * allows concurrent readers), so the MCP server keeps answering protocol
+   * requests while it runs. The result is memoized; concurrent callers share
+   * one in-flight computation. Falls back to a synchronous scan when the
+   * worker cannot start (:memory: DBs are per-connection and invisible to
+   * another thread; under tsx/vitest the compiled worker .js does not exist).
+   */
+  async getSymbolCounts(): Promise<SymbolCounts> {
+    if (this.symbolCountsCache) return this.symbolCountsCache;
+    if (this.symbolCountsPromise) return this.symbolCountsPromise;
+
+    const promise = this.computeSymbolCountsInWorker()
+      .catch(() => this.computeSymbolCountsSync())
+      .then(counts => {
+        // Only memoize if no write invalidated the computation while it ran.
+        if (this.symbolCountsPromise === promise) {
+          this.symbolCountsCache = counts;
+        }
+        return counts;
+      });
+    this.symbolCountsPromise = promise;
+    return promise;
+  }
+
+  /** Drop memoized counts — call after any write that changes symbol rows. */
+  private invalidateSymbolCounts(): void {
+    this.symbolCountsCache = null;
+    this.symbolCountsPromise = null;
+  }
+
+  private computeSymbolCountsSync(): SymbolCounts {
+    const rows = this.getReadDb()
+      .prepare(`SELECT type, COUNT(*) as count FROM symbols GROUP BY type`)
+      .all() as { type: string; count: number }[];
+    const byType: Record<string, number> = {};
+    let total = 0;
+    for (const row of rows) {
+      byType[row.type] = row.count;
+      total += row.count;
+    }
+    return { total, byType };
+  }
+
+  private computeSymbolCountsInWorker(): Promise<SymbolCounts> {
+    if (this.dbPath === ':memory:') {
+      return Promise.reject(new Error('in-memory DB is not visible to worker threads'));
+    }
+    return new Promise<SymbolCounts>((resolve, reject) => {
+      const worker = new Worker(new URL('./symbolCountsWorker.js', import.meta.url), {
+        workerData: { dbPath: this.dbPath },
+      });
+      worker.once('message', (msg: { ok: boolean; total?: number; byType?: Record<string, number>; error?: string }) => {
+        if (msg.ok) {
+          resolve({ total: msg.total!, byType: msg.byType! });
+        } else {
+          reject(new Error(msg.error));
+        }
+        void worker.terminate();
+      });
+      worker.once('error', reject);
+      // A promise settles only once — this covers "exited before messaging".
+      worker.once('exit', code => reject(new Error(`counts worker exited with code ${code}`)));
+    });
   }
 
   /**
@@ -2849,6 +2954,7 @@ export class XppSymbolIndex {
    * Clear all symbols
    */
   clear(): void {
+    this.invalidateSymbolCounts();
     this.db.exec('DELETE FROM symbols');
     this.db.exec('DELETE FROM table_relations');
     this.db.exec('DELETE FROM form_datasources');
@@ -2880,6 +2986,7 @@ export class XppSymbolIndex {
     // user-supplied data. The actual model name values flow through SQLite's
     // parameterized binding via .run(...modelNames), so there is no injection risk.
     const placeholders = modelNames.map(() => '?').join(',');
+    this.invalidateSymbolCounts();
 
     // Wrap all deletes in a single transaction so the database never ends up
     // in a partially-cleared state if one statement fails mid-way.

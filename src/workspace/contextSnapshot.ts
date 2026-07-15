@@ -158,8 +158,12 @@ export async function buildContextSnapshot(
     lastIndexedAt: null as string | null,
   };
   try {
-    index.totalSymbols = symbolIndex.getSymbolCount();
-    index.byType = symbolIndex.getSymbolCountByType();
+    // Off-thread + memoized — the synchronous count getters block the event
+    // loop for 30-60 s on a cold 2 GB DB, which would starve the MCP transport
+    // during the very first get_workspace_info call.
+    const counts = await symbolIndex.getSymbolCounts();
+    index.totalSymbols = counts.total;
+    index.byType = counts.byType;
     index.indexedModels = Array.from(symbolIndex.getIndexedModels()).sort();
     index.lastIndexedAt = symbolIndex.getLastIndexedAt?.() ?? null;
   } catch {

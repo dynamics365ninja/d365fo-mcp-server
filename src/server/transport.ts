@@ -413,7 +413,8 @@ export class CustomHttpTransport implements Transport {
       res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
-        symbols: this.context.symbolIndex.getSymbolCount(),
+        // Cached-only: a health probe must never trigger a 30-60 s COUNT scan.
+        symbols: this.context.symbolIndex.getCachedSymbolCounts()?.total ?? 0,
       });
     });
   }
