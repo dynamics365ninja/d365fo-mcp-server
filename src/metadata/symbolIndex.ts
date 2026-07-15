@@ -3213,7 +3213,10 @@ export class XppSymbolIndex {
     // labels_fts only indexes en-US rows. For any other language, skip straight to
     // LIKE-based search — attempting FTS would always produce 0 results and then
     // fall through to LIKE anyway, wasting two round-trips.
-    if (language !== 'en-US') {
+    // Compare case-insensitively: callers pass variants like 'en-us', and a
+    // false mismatch here degrades to a LIKE full scan of the labels table
+    // (200+ s on a production DB, synchronously blocking the event loop).
+    if (language.toLowerCase() !== 'en-us') {
       return this.searchLabelsLike(query, opts);
     }
 
@@ -3234,7 +3237,8 @@ export class XppSymbolIndex {
     let stmt = this.labelsStmtCache.get(stmtKey);
     if (!stmt) {
       let sql = `
-        SELECT l.label_id, l.label_file_id, l.model, l.language, l.text, l.comment, l.file_path,
+        SELECT l.label_id AS labelId, l.label_file_id AS labelFileId, l.model, l.language,
+               l.text, l.comment, l.file_path AS filePath,
                f.rank
         FROM labels_fts f
         JOIN labels l ON l.id = f.rowid
@@ -3276,7 +3280,8 @@ export class XppSymbolIndex {
     let stmt = this.labelsStmtCache.get(stmtKey);
     if (!stmt) {
       let sql = `
-        SELECT label_id, label_file_id, model, language, text, comment, file_path, 0 as rank
+        SELECT label_id AS labelId, label_file_id AS labelFileId, model, language,
+               text, comment, file_path AS filePath, 0 as rank
         FROM labels
         WHERE (text LIKE ? ESCAPE '\\' OR label_id LIKE ? ESCAPE '\\')
           AND LOWER(language) = LOWER(?)`;

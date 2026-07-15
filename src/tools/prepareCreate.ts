@@ -106,8 +106,13 @@ function findSimilarObjects(
     // Split CamelCase into tokens and search for the most specific ones
     const tokens = baseName.split(/(?=[A-Z])/).filter(t => t.length >= 4);
     const needle = tokens.length > 0 ? tokens[tokens.length - 1] : baseName;
+    // INDEXED BY: without it the planner picks idx_symbols_parent_name for
+    // `parent_name IS NULL` and fetches every top-level row (4.6 min cold on a
+    // production DB, blocking the event loop until the MCP client kills the
+    // server). idx_type_name evaluates the LIKE against the index, so only
+    // name matches ever touch the table (~10 ms).
     const rows = db.prepare(
-      `SELECT name, model FROM symbols
+      `SELECT name, model FROM symbols INDEXED BY idx_type_name
        WHERE type = ? AND name LIKE ? AND parent_name IS NULL
        ORDER BY LENGTH(name) LIMIT 5`,
     ).all(objectType, `%${needle}%`) as Array<{ name: string; model: string }>;
@@ -143,8 +148,9 @@ function suggestEdtsForFields(
 
   try {
     const db = context.symbolIndex.getReadDb();
+    // INDEXED BY keeps the LIKE on the index (runs once per hinted field).
     const stmt = db.prepare(
-      `SELECT name, signature FROM symbols
+      `SELECT name, signature FROM symbols INDEXED BY idx_type_name
        WHERE type = 'edt' AND name LIKE ? ORDER BY LENGTH(name) LIMIT 3`,
     );
     for (const field of fieldsHint.slice(0, 10)) {
@@ -168,7 +174,7 @@ function suggestEdtsForFields(
 function findReusableLabels(baseName: string, context: XppServerContext): string {
   try {
     const words = baseName.replace(/([A-Z])/g, ' $1').trim();
-    const rows = context.symbolIndex.searchLabels(words, { language: 'en-us', limit: 5 });
+    const rows = context.symbolIndex.searchLabels(words, { language: 'en-US', limit: 5 });
     if (rows.length > 0) {
       return rows
         .map(r => `  @${r.labelFileId}:${r.labelId} = "${r.text}" (${r.model})`)
