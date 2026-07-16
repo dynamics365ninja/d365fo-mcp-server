@@ -7,6 +7,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
 
 const SecurityCoverageInfoArgsSchema = z.object({
   objectName: z.string().describe('Name of the form, table, class, or menu item to check security coverage for'),
@@ -14,11 +15,23 @@ const SecurityCoverageInfoArgsSchema = z.object({
     .describe('Type of the object (auto=detect from symbol index)'),
 });
 
+const MENU_ITEM_TYPES = ['menu-item-display', 'menu-item-action', 'menu-item-output'];
+
+/** Symbol types a given objectType arg could resolve to. */
+function candidateTypes(objectType: string): string[] {
+  if (objectType === 'menu-item') return MENU_ITEM_TYPES;
+  if (objectType === 'auto') return ['form', 'table', 'class', ...MENU_ITEM_TYPES];
+  return [objectType];
+}
+
 export async function securityCoverageInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = SecurityCoverageInfoArgsSchema.parse(request.params.arguments);
     const db = context.symbolIndex.getReadDb();
-    const objName = args.objectName;
+    // Resolve the caller's casing to the canonical AOT name once (#686) — every
+    // probe and side-table join below keys off this name.
+    const objName = canonicalSymbolName(db, args.objectName, candidateTypes(args.objectType))
+      ?? args.objectName;
 
     let resolvedType = args.objectType;
     if (resolvedType === 'auto') {

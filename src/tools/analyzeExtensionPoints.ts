@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { scanFsExtensions, EXTENSION_FOLDER_CONFIG } from '../utils/fsExtensionScanner.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
 
 // Standard D365FO table events available for subscription
 const TABLE_STANDARD_EVENTS = [
@@ -31,7 +32,13 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
   try {
     const args = AnalyzeExtensionPointsArgsSchema.parse(request.params.arguments);
     const rdb = context.symbolIndex.getReadDb();
-    const objName = args.objectName;
+    // Resolve the caller's casing to the canonical AOT name once (#686) — the
+    // method/datasource probes below are parent-scoped on this name.
+    const objName = canonicalSymbolName(
+      rdb,
+      args.objectName,
+      args.objectType === 'auto' ? ['class', 'table', 'form'] : [args.objectType],
+    ) ?? args.objectName;
 
     // Resolve object type
     let resolvedType = args.objectType;

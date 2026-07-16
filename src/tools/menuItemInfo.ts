@@ -7,6 +7,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { tryBridgeMenuItem } from '../bridge/index.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
 
 const MenuItemInfoArgsSchema = z.object({
   name: z.string().describe('Name of the menu item'),
@@ -14,22 +15,31 @@ const MenuItemInfoArgsSchema = z.object({
     .describe('Menu item type filter (display=AxMenuItemDisplay, action=AxMenuItemAction, output=AxMenuItemOutput, any=all types)'),
 });
 
+const typeMap: Record<string, string> = {
+  display: 'menu-item-display',
+  action: 'menu-item-action',
+  output: 'menu-item-output',
+};
+const ALL_MENU_ITEM_TYPES = Object.values(typeMap);
+
 export async function menuItemInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = MenuItemInfoArgsSchema.parse(request.params.arguments);
 
+    // Resolve the caller's casing to the canonical AOT name before the bridge
+    // call (#686) — the bridge matches by exact name too.
+    let name = args.name;
+    try {
+      const types = args.itemType === 'any' ? ALL_MENU_ITEM_TYPES : [typeMap[args.itemType]];
+      name = canonicalSymbolName(context.symbolIndex.getReadDb(), args.name, types) ?? args.name;
+    } catch { /* DB not available — bridge may still resolve it */ }
+
     // Bridge fast-path (C# IMetadataProvider)
-    const bridgeResult = await tryBridgeMenuItem(context.bridge, args.name, args.itemType);
+    const bridgeResult = await tryBridgeMenuItem(context.bridge, name, args.itemType);
     if (bridgeResult) return bridgeResult;
 
     // Fallback: SQLite index
     const db = context.symbolIndex.getReadDb();
-
-    const typeMap: Record<string, string> = {
-      display: 'menu-item-display',
-      action: 'menu-item-action',
-      output: 'menu-item-output',
-    };
 
     let symbolQuery: string;
     let symbolParams: any[];
@@ -38,11 +48,11 @@ export async function menuItemInfoTool(request: CallToolRequest, context: XppSer
       symbolQuery = `SELECT name, type, description, signature, model, file_path FROM symbols
         WHERE name = ? AND type IN ('menu-item-display', 'menu-item-action', 'menu-item-output')
         ORDER BY type`;
-      symbolParams = [args.name];
+      symbolParams = [name];
     } else {
       symbolQuery = `SELECT name, type, description, signature, model, file_path FROM symbols
         WHERE name = ? AND type = ?`;
-      symbolParams = [args.name, typeMap[args.itemType]];
+      symbolParams = [name, typeMap[args.itemType]];
     }
 
     const symbols = db.prepare(symbolQuery).all(...symbolParams) as any[];

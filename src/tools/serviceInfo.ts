@@ -11,6 +11,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
 
 const GetServiceInfoArgsSchema = z.object({
   serviceName: z.string().describe('Name of the AxService object (e.g. "AifUserSessionService")'),
@@ -20,8 +21,12 @@ const GetServiceInfoArgsSchema = z.object({
 export async function getServiceInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = GetServiceInfoArgsSchema.parse(request.params.arguments);
-    const { serviceName, includeOperations } = args;
+    const { includeOperations } = args;
     const db = context.symbolIndex.getReadDb();
+
+    // Resolve the caller's casing to the canonical AOT name once (#686), then
+    // keep every probe below BINARY and on-index.
+    const serviceName = canonicalSymbolName(db, args.serviceName, ['service']) ?? args.serviceName;
 
     const symbol = db.prepare(
       `SELECT name, signature, description, model, file_path FROM symbols WHERE name = ? AND type = 'service' LIMIT 1`

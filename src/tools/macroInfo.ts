@@ -9,6 +9,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { lookupSymbolNocase } from '../utils/symbolLookup.js';
 
 const GetMacroInfoArgsSchema = z.object({
   macroName: z.string().describe('Name of the AxMacroDictionary (macro library, e.g. "AOT", "SysQuery")'),
@@ -20,9 +21,9 @@ export async function getMacroInfoTool(request: CallToolRequest, context: XppSer
     const { macroName, filter } = GetMacroInfoArgsSchema.parse(request.params.arguments);
     const db = context.symbolIndex.getReadDb();
 
-    const symbol = db.prepare(
-      `SELECT name, model, file_path FROM symbols WHERE name = ? AND type = 'macro' LIMIT 1`
-    ).get(macroName) as { name: string; model: string; file_path: string } | undefined;
+    // Case-insensitive by AOT semantics, index-safe by construction (#686):
+    // exact-case probe first, FTS fallback only for a casing mismatch.
+    const symbol = lookupSymbolNocase(db, macroName, ['macro']);
 
     if (!symbol) {
       return {
@@ -31,9 +32,11 @@ export async function getMacroInfoTool(request: CallToolRequest, context: XppSer
       };
     }
 
+    // Side tables are keyed by the canonical name — pass symbol.name, not the
+    // caller's casing, so this stays a BINARY hit.
     let defines = db.prepare(
       `SELECT define_name, define_value FROM macro_defines WHERE macro_name = ? ORDER BY define_name`
-    ).all(macroName) as { define_name: string; define_value: string }[];
+    ).all(symbol.name) as { define_name: string; define_value: string }[];
 
     if (filter) {
       const f = filter.toLowerCase();

@@ -15,6 +15,7 @@ import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { scanFsExtensions } from '../utils/fsExtensionScanner.js';
 import { tryBridgeTableExtensions } from '../bridge/index.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
 
 const TableExtensionInfoArgsSchema = z.object({
   tableName: z.string().describe('Base table name whose extensions to find'),
@@ -26,13 +27,21 @@ export async function tableExtensionInfoTool(request: CallToolRequest, context: 
   try {
     const args = TableExtensionInfoArgsSchema.parse(request.params.arguments);
 
+    // Resolve the caller's casing to the canonical AOT name before the bridge
+    // call (#686) — the bridge matches by exact name too, and every probe and
+    // extension_metadata join below keys off this name.
+    let tableName = args.tableName;
+    try {
+      tableName = canonicalSymbolName(context.symbolIndex.getReadDb(), args.tableName, ['table'])
+        ?? args.tableName;
+    } catch { /* DB not available — bridge may still resolve it */ }
+
     // Bridge fast-path (C# IMetadataProvider)
-    const bridgeResult = await tryBridgeTableExtensions(context.bridge, args.tableName);
+    const bridgeResult = await tryBridgeTableExtensions(context.bridge, tableName);
     if (bridgeResult) return bridgeResult;
 
     // Fallback: SQLite index + filesystem
     const db = context.symbolIndex.getReadDb();
-    const tableName = args.tableName;
 
     // Verify the base table exists
     const baseTable = db.prepare(

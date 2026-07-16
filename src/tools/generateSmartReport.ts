@@ -32,6 +32,7 @@ import { getConfigManager } from '../utils/configManager.js';
 import { resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix } from '../utils/modelClassifier.js';
 import { extractModelFromProject, findProjectInSolution } from '../utils/projectUtils.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
+import { canonicalSymbolName, lookupSymbolNocase } from '../utils/symbolLookup.js';
 
 interface ReportFieldSpec {
   /** Field name on the TmpTable (e.g. "ItemId", "Amount") */
@@ -352,11 +353,10 @@ export async function handleGenerateSmartReport(
       }
 
       if (!srcTmpTable) {
-        // Fallback: direct naming convention <ReportName>Tmp
-        const directTmp = db.prepare(
-          `SELECT name FROM symbols WHERE type = 'table' AND name = ? LIMIT 1`
-        ).get(`${copyFrom}Tmp`) as { name: string } | undefined;
-        srcTmpTable = directTmp?.name;
+        // Fallback: direct naming convention <ReportName>Tmp. Case-insensitive —
+        // copyFrom is caller-supplied, so the derived name may not match the
+        // canonical casing (#686).
+        srcTmpTable = lookupSymbolNocase(db, `${copyFrom}Tmp`, ['table'])?.name;
       }
 
       if (srcTmpTable) {
@@ -1398,8 +1398,12 @@ function resolveFieldType(edtName: string | undefined, db: any): string | undefi
  * table reference — instead of the generic `getNo(1)` / `Common` pattern.
  * Returns undefined when the query is not in the index (non-Windows, or unknown query).
  */
-function resolveAotQueryFirstTable(queryName: string, db: any): string | undefined {
+function resolveAotQueryFirstTable(requestedQueryName: string, db: any): string | undefined {
   try {
+    // Resolve the caller's casing to the canonical AOT name once (#686), so the
+    // parent-scoped probe below stays BINARY and on-index.
+    const queryName = canonicalSymbolName(db, requestedQueryName, ['query']) ?? requestedQueryName;
+
     // Strategy 1: explicit query_datasource symbols (parent_name = query name)
     const ds = db.prepare(
       `SELECT name FROM symbols

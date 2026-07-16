@@ -7,6 +7,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
 
 const GetTablePatternsArgsSchema = z.object({
   tableGroup: z.enum(['Main', 'Transaction', 'Parameter', 'Group', 'Reference', 'Miscellaneous', 'WorksheetHeader', 'WorksheetLine'])
@@ -94,15 +95,19 @@ export async function getTablePatternsTool(request: CallToolRequest, context: Xp
   }
 }
 
-async function analyzeSimilarTable(symbolIndex: any, tableName: string, limit: number): Promise<string> {
+async function analyzeSimilarTable(symbolIndex: any, requestedName: string, limit: number): Promise<string> {
   const rdb = symbolIndex.getReadDb();
+  // Resolve the caller's casing to the canonical AOT name once (#686), so the
+  // field/relation probes below stay BINARY and on-index.
+  const tableName = canonicalSymbolName(rdb, requestedName, ['table']) ?? requestedName;
+
   // Get table info
   const tableRow = rdb.prepare(`
     SELECT * FROM symbols WHERE type = 'table' AND name = ? LIMIT 1
   `).get(tableName);
 
   if (!tableRow) {
-    throw new Error(`Table "${tableName}" not found`);
+    throw new Error(`Table "${requestedName}" not found`);
   }
 
   // Get fields

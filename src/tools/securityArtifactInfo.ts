@@ -7,12 +7,20 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { tryBridgeSecurityArtifact } from '../bridge/index.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
 
 const SecurityArtifactInfoArgsSchema = z.object({
   name: z.string().describe('Name of the security privilege, duty, or role'),
   artifactType: z.enum(['privilege', 'duty', 'role']).describe('Type of security artifact'),
   includeChain: z.boolean().optional().default(true).describe('Walk the full hierarchy (role→duties→privileges→entry points)'),
 });
+
+/** Symbol type backing each artifactType. */
+const SYMBOL_TYPE = {
+  privilege: 'security-privilege',
+  duty: 'security-duty',
+  role: 'security-role',
+} as const;
 
 export async function securityArtifactInfoTool(
   request: CallToolRequest,
@@ -21,9 +29,19 @@ export async function securityArtifactInfoTool(
   try {
     const args = SecurityArtifactInfoArgsSchema.parse(request.params.arguments);
 
+    // Resolve the caller's casing to the canonical AOT name before anything else
+    // (#686) — the bridge matches by exact name too, so canonicalizing here fixes
+    // the bridge path as well as the SQLite fallback below.
+    let name = args.name;
+    try {
+      name = canonicalSymbolName(
+        context.symbolIndex.getReadDb(), args.name, [SYMBOL_TYPE[args.artifactType]],
+      ) ?? args.name;
+    } catch { /* DB not available — bridge may still resolve it */ }
+
     // Bridge fast-path (C# IMetadataProvider)
     const bridgeResult = await tryBridgeSecurityArtifact(
-      context.bridge, args.name, args.artifactType, args.includeChain ?? true,
+      context.bridge, name, args.artifactType, args.includeChain ?? true,
     );
     if (bridgeResult) return bridgeResult;
 
@@ -31,11 +49,11 @@ export async function securityArtifactInfoTool(
     const rdb = context.symbolIndex.getReadDb();
 
     if (args.artifactType === 'privilege') {
-      return getPrivilegeInfo(rdb, args.name, args.includeChain ?? true);
+      return getPrivilegeInfo(rdb, name, args.includeChain ?? true);
     } else if (args.artifactType === 'duty') {
-      return getDutyInfo(rdb, args.name, args.includeChain ?? true);
+      return getDutyInfo(rdb, name, args.includeChain ?? true);
     } else {
-      return getRoleInfo(rdb, args.name, args.includeChain ?? true);
+      return getRoleInfo(rdb, name, args.includeChain ?? true);
     }
   } catch (error) {
     return {

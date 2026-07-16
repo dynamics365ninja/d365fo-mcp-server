@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { getObjectSuffix, getExtensionNamingStyle } from '../utils/modelClassifier.js';
 import { getConfigManager } from '../utils/configManager.js';
+import { lookupSymbolNocase, lookupSymbolsNocase } from '../utils/symbolLookup.js';
 
 const ValidateObjectNamingArgsSchema = z.object({
   proposedName: z.string().describe('The proposed object name to validate'),
@@ -161,9 +162,9 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
           args.objectType.includes('form') ? ['form'] :
           args.objectType.includes('enum') ? ['enum'] : ['edt'];
 
-        const baseExists = db.prepare(
-          `SELECT name FROM symbols WHERE name = ? AND type IN (${dbTypes.map(() => '?').join(',')}) LIMIT 1`
-        ).get(baseObjectName, ...dbTypes) as any;
+        // Case-insensitive: the base object may be spelled with different casing
+        // than the canonical AOT name (#686).
+        const baseExists = lookupSymbolNocase(db, baseObjectName, dbTypes);
 
         if (!baseExists) {
           warnings.push(`Base object "${baseObjectName}" not found in symbol index for types: ${dbTypes.join(', ')}. Ensure it's indexed.`);
@@ -235,9 +236,11 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
       args.objectType === 'data-entity' ? 'view' :
       args.objectType;
 
-    const exactConflict = db.prepare(
-      `SELECT name, type, model FROM symbols WHERE name = ? ORDER BY model LIMIT 5`
-    ).all(name) as any[];
+    // AOT names are case-insensitive, so an existing object differing only in
+    // casing IS a conflict — a case-sensitive probe here reported a false
+    // "no existing objects" (#686). Scoped to top-level objects: a method or
+    // field sharing the name is not an AOT naming conflict.
+    const exactConflict = lookupSymbolsNocase(db, name, { limit: 5 });
 
     const similarSymbols = db.prepare(
       `SELECT name, type, model FROM symbols WHERE name LIKE ? AND type = ? ORDER BY name LIMIT 5`
@@ -294,7 +297,7 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
       output += `  ✓ No existing objects named "${name}" found\n`;
     }
 
-    if (similarSymbols.length > 0 && !exactConflict.some(c => c.name === name)) {
+    if (similarSymbols.length > 0 && !exactConflict.some(c => c.name.toLowerCase() === name.toLowerCase())) {
       output += `  Similar ${args.objectType} names:\n`;
       for (const s of similarSymbols) {
         output += `    ${s.name} [${s.model}]\n`;

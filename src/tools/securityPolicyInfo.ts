@@ -18,9 +18,12 @@ export async function getSecurityPolicyInfoTool(request: CallToolRequest, contex
     const { policyName } = GetSecurityPolicyInfoArgsSchema.parse(request.params.arguments);
     const db = context.symbolIndex.getReadDb();
 
+    // COLLATE NOCASE is safe on this side table (#686): security_policies holds
+    // one row per policy (thousands at most), so a mismatch costs a small scan —
+    // unlike `symbols`, where the same shape scans 1.17M rows.
     const policy = db.prepare(
       `SELECT policy_name, primary_table, query_name, operation, constrained_table, label, model
-       FROM security_policies WHERE policy_name = ? LIMIT 1`
+       FROM security_policies WHERE policy_name = ? COLLATE NOCASE LIMIT 1`
     ).get(policyName) as {
       policy_name: string; primary_table?: string; query_name?: string;
       operation?: string; constrained_table: number; label?: string; model: string;
@@ -33,9 +36,10 @@ export async function getSecurityPolicyInfoTool(request: CallToolRequest, contex
       };
     }
 
+    // policy.policy_name is canonical — keeps this symbols probe BINARY.
     const file = db.prepare(
       `SELECT file_path FROM symbols WHERE name = ? AND type = 'security-policy' LIMIT 1`
-    ).get(policyName) as { file_path?: string } | undefined;
+    ).get(policy.policy_name) as { file_path?: string } | undefined;
 
     const lines: string[] = [];
     lines.push(`# AxSecurityPolicy: \`${policy.policy_name}\``);

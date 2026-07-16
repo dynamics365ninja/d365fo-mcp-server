@@ -25,6 +25,11 @@ const req = (name: string, args: Record<string, unknown> = {}): CallToolRequest 
 /**
  * Build a db whose prepare(sql) returns a statement that resolves get()/all()
  * by matching the first routing rule whose `match` substring appears in the SQL.
+ *
+ * Note: tools that resolve an object name go through symbolLookup (see #686),
+ * whose exact-case probe is `SELECT ... FROM symbols s WHERE s.name = ? ...`
+ * and returns rows via all() — so route those on 'FROM symbols s' with `all`,
+ * not on a `type = '<x>'` literal (the type is a bound parameter there).
  */
 type Route = { match: string; get?: any; all?: any[] };
 const routedDb = (routes: Route[]) => ({
@@ -75,7 +80,7 @@ describe('get_service_info', () => {
 describe('get_map_info', () => {
   it('lists mapped tables (happy path)', async () => {
     const db = routedDb([
-      { match: "type = 'map'", get: { name: 'LogMap', extends_class: 'common', model: 'M', file_path: 'p' } },
+      { match: 'FROM symbols s', all: [{ name: 'LogMap', type: 'map', extends_class: 'common', model: 'M', file_path: 'p' }] },
       { match: 'FROM map_mappings', all: [{ mapping_table: 'SysDataBaseLog', field_connections: 4 }] },
     ]);
     const res = await getMapInfoTool(req('get_map_info', { mapName: 'LogMap' }), ctx(db));
@@ -135,7 +140,7 @@ describe('get_security_policy_info', () => {
 describe('get_macro_info', () => {
   it('lists defines and applies filter (happy path)', async () => {
     const db = routedDb([
-      { match: "type = 'macro'", get: { name: 'AOT', model: 'M', file_path: 'p' } },
+      { match: 'FROM symbols s', all: [{ name: 'AOT', type: 'macro', model: 'M', file_path: 'p' }] },
       { match: 'FROM macro_defines', all: [
         { define_name: 'TablesPath', define_value: "'\\Tables'" },
         { define_name: 'ViewsPath', define_value: "'\\Views'" },
@@ -156,7 +161,7 @@ describe('get_macro_info', () => {
 describe('get_object_info (unified dispatch)', () => {
   it('dispatches to the map reader for objectType=map', async () => {
     const db = routedDb([
-      { match: "type = 'map'", get: { name: 'LogMap', extends_class: 'common', model: 'M', file_path: 'p' } },
+      { match: 'FROM symbols s', all: [{ name: 'LogMap', type: 'map', extends_class: 'common', model: 'M', file_path: 'p' }] },
       { match: 'FROM map_mappings', all: [{ mapping_table: 'SysDataBaseLog', field_connections: 4 }] },
     ]);
     const res = await getObjectInfoTool(req('get_object_info', { objectType: 'map', name: 'LogMap' }), ctx(db));
@@ -166,7 +171,7 @@ describe('get_object_info (unified dispatch)', () => {
 
   it('forwards options to the underlying reader (macro filter)', async () => {
     const db = routedDb([
-      { match: "type = 'macro'", get: { name: 'AOT', model: 'M', file_path: 'p' } },
+      { match: 'FROM symbols s', all: [{ name: 'AOT', type: 'macro', model: 'M', file_path: 'p' }] },
       { match: 'FROM macro_defines', all: [
         { define_name: 'TablesPath', define_value: "'\\Tables'" },
         { define_name: 'ViewsPath', define_value: "'\\Views'" },

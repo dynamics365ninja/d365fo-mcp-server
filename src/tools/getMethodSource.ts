@@ -11,16 +11,29 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import type { XppMetadataParser } from '../metadata/xmlParser.js';
 import { tryBridgeMethodSource } from '../bridge/bridgeAdapter.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
 
 const GetMethodSourceArgsSchema = z.object({
   className: z.string().describe('Name of the class containing the method'),
   methodName: z.string().describe('Name of the method'),
 });
 
+/** Object types that can own methods. */
+const OBJECT_TYPES = ['class', 'table', 'view', 'data-entity'] as const;
+const OBJECT_TYPES_SQL = `(${OBJECT_TYPES.map(t => `'${t}'`).join(', ')})`;
+
 export async function getMethodSourceTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = GetMethodSourceArgsSchema.parse(request.params.arguments);
-    const { className, methodName } = args;
+    const { methodName } = args;
+
+    // Resolve the caller's casing to the canonical AOT name once, up front.
+    // X++ treats AOT identifiers case-insensitively but the index stores the
+    // canonical name, and every lookup below (bridge included) matches by exact
+    // name — so a casing mismatch would otherwise miss all three layers and
+    // report a false "not found" (#686, e.g. WhsrfControlData → WHSRFControlData,
+    // whose own filename disagrees with its AOT name).
+    const className = resolveClassName(context, args.className);
 
     // C# bridge (IMetadataProvider — live D365FO metadata, always available)
     const bridgeResult = await tryBridgeMethodSource(context.bridge, className, methodName);
@@ -72,6 +85,25 @@ export async function getMethodSourceTool(request: CallToolRequest, context: Xpp
 }
 
 /**
+ * Canonical (as-indexed) casing for a method owner, falling back to the name as
+ * given when the index has no match or is unavailable — an unresolved name still
+ * flows through to the normal "not found" path.
+ *
+ * Index-safe by construction: `canonicalSymbolName` probes exact case on
+ * idx_name_type first and only falls back to FTS. Matching with
+ * `name = ? COLLATE NOCASE` here instead would drop to a scan of every
+ * class/table/view row (~86k rows, 4–8 s warm) and the parent_name hint query
+ * below would cost ~48 s — past the MCP client timeout. See src/utils/symbolLookup.ts.
+ */
+function resolveClassName(context: XppServerContext, requested: string): string {
+  try {
+    return canonicalSymbolName(context.symbolIndex.getReadDb(), requested, OBJECT_TYPES) ?? requested;
+  } catch {
+    return requested; // DB not available — bridge/XML may still resolve it
+  }
+}
+
+/**
  * Try XML file parsing for method source.
  * Fallback when C# bridge is unavailable (Azure, Linux, bridge not running).
  * Mirrors the pattern from classInfo.ts: parse XML with timeout guard.
@@ -84,15 +116,15 @@ async function tryXmlMethodSource(
   const { parser, symbolIndex } = context;
   if (!parser) return null;
 
-  // Locate the class file path from SQLite
-  const OBJECT_TYPES = `('class', 'table', 'view', 'data-entity')`;
+  // Locate the class file path from SQLite. `className` is already canonical
+  // (resolveClassName), so this stays a BINARY probe on idx_name_type.
   let classRow: any;
   try {
     const rdb = symbolIndex.getReadDb();
     classRow = rdb.prepare(`
       SELECT file_path, model, type
       FROM symbols
-      WHERE type IN ${OBJECT_TYPES} AND name = ?
+      WHERE type IN ${OBJECT_TYPES_SQL} AND name = ?
       ORDER BY CASE type WHEN 'class' THEN 0 WHEN 'table' THEN 1 ELSE 2 END, model
       LIMIT 1
     `).get(className);

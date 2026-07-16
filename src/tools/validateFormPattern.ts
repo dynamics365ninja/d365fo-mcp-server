@@ -18,6 +18,7 @@ import {
   type FormPatternViolation,
 } from '../validation/formPatternValidator.js';
 import { resolveSubPattern } from '../knowledge/formPatterns/index.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
 import {
   walkFormDesign,
   type FormControlNode,
@@ -98,9 +99,11 @@ export async function validateFormPatternTool(
       source = filePath;
     } else if (!formXml && formName) {
       const db = context?.symbolIndex?.getReadDb?.();
+      // Resolve the caller's casing to the canonical AOT name first (#686).
+      const canonicalForm = db ? (canonicalSymbolName(db, formName, ['form']) ?? formName) : formName;
       const row = db
         ?.prepare(`SELECT file_path FROM symbols WHERE type = 'form' AND name = ? LIMIT 1`)
-        ?.get(formName) as { file_path?: string } | undefined;
+        ?.get(canonicalForm) as { file_path?: string } | undefined;
       if (!row?.file_path) {
         return {
           isError: true,

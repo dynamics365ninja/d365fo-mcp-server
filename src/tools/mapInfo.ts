@@ -7,6 +7,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { lookupSymbolNocase } from '../utils/symbolLookup.js';
 
 const GetMapInfoArgsSchema = z.object({
   mapName: z.string().describe('Name of the AxMap object (e.g. "LogMap")'),
@@ -17,9 +18,8 @@ export async function getMapInfoTool(request: CallToolRequest, context: XppServe
     const { mapName } = GetMapInfoArgsSchema.parse(request.params.arguments);
     const db = context.symbolIndex.getReadDb();
 
-    const symbol = db.prepare(
-      `SELECT name, extends_class, model, file_path FROM symbols WHERE name = ? AND type = 'map' LIMIT 1`
-    ).get(mapName) as { name: string; extends_class?: string; model: string; file_path: string } | undefined;
+    // Case-insensitive by AOT semantics, index-safe by construction (#686).
+    const symbol = lookupSymbolNocase(db, mapName, ['map']);
 
     if (!symbol) {
       return {
@@ -28,9 +28,10 @@ export async function getMapInfoTool(request: CallToolRequest, context: XppServe
       };
     }
 
+    // Side table is keyed by the canonical name — pass symbol.name.
     const mappings = db.prepare(
       `SELECT mapping_table, field_connections FROM map_mappings WHERE map_name = ? ORDER BY mapping_table`
-    ).all(mapName) as { mapping_table: string; field_connections: number }[];
+    ).all(symbol.name) as { mapping_table: string; field_connections: number }[];
 
     const lines: string[] = [];
     lines.push(`# AxMap: \`${symbol.name}\``);

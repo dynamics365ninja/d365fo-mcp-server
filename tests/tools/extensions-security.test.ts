@@ -330,6 +330,8 @@ describe('analyze_extension_points', () => {
     // object type resolution
     db.stmt.get.mockReturnValue({ type: 'class' });
     db.stmt.all
+      // canonical-name probe (symbolLookup, #686) — runs before everything else
+      .mockReturnValueOnce([{ name: 'SalesFormLetter', type: 'class', model: 'M', extends_class: null, file_path: '' }])
       .mockReturnValueOnce([]) // existing extensions
       .mockReturnValueOnce([  // methods
         { name: 'run', type: 'method', signature: 'void run()', is_final: 0 },

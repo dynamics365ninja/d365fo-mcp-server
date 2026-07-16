@@ -8,6 +8,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
 
 const GetConfigKeyInfoArgsSchema = z.object({
   name: z.string().describe('Name of the AxConfigurationKey or AxLicenseCode (e.g. "AdvancedLedgerEntry")'),
@@ -15,8 +16,13 @@ const GetConfigKeyInfoArgsSchema = z.object({
 
 export async function getConfigKeyInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
-    const { name } = GetConfigKeyInfoArgsSchema.parse(request.params.arguments);
+    const args = GetConfigKeyInfoArgsSchema.parse(request.params.arguments);
     const db = context.symbolIndex.getReadDb();
+
+    // Resolve the caller's casing to the canonical AOT name once, against both
+    // types this tool accepts (#686). The parent-chain / children probes below
+    // walk DB-sourced names, which are already canonical.
+    const name = canonicalSymbolName(db, args.name, ['configuration-key', 'license-code']) ?? args.name;
 
     // Configuration key: signature holds the parent key name.
     const key = db.prepare(

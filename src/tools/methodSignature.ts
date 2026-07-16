@@ -13,6 +13,11 @@ import type { XppServerContext } from '../types/context.js';
 import { buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';
 import type { BridgeClient } from '../bridge/bridgeClient.js';
 import type { XppMetadataParser } from '../metadata/xmlParser.js';
+import { canonicalSymbolName } from '../utils/symbolLookup.js';
+
+/** Object types that can own methods. */
+const OBJECT_TYPES = ['class', 'table', 'view', 'data-entity'] as const;
+const OBJECT_TYPES_SQL = `(${OBJECT_TYPES.map(t => `'${t}'`).join(', ')})`;
 
 
 const GetMethodSignatureArgsSchema = z.object({
@@ -41,17 +46,23 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
   try {
     const args = GetMethodSignatureArgsSchema.parse(request.params.arguments);
     const { symbolIndex, parser } = context;
-    const { className, methodName, modelName } = args;
-
-    // 1. Find the class/table/view — methods live on all three object types
-    const OBJECT_TYPES = `('class', 'table', 'view', 'data-entity')`;
+    const { methodName, modelName } = args;
     const rdb = symbolIndex.getReadDb();
+
+    // 1. Find the class/table/view — methods live on all three object types.
+    // Resolve the caller's casing to the canonical AOT name first: X++ treats
+    // AOT identifiers case-insensitively, but the probes below match by exact
+    // name, so a mismatch would report a false "not found" (#686). Canonicalizing
+    // once keeps those probes BINARY and on-index — `name = ? COLLATE NOCASE`
+    // here would scan every class/table/view row instead (~86k rows, 4–8 s warm).
+    const className = canonicalSymbolName(rdb, args.className, OBJECT_TYPES) ?? args.className;
+
     let classRow: any;
     if (modelName) {
       classRow = rdb.prepare(`
         SELECT file_path, model, name, type
         FROM symbols
-        WHERE type IN ${OBJECT_TYPES} AND name = ? AND model = ?
+        WHERE type IN ${OBJECT_TYPES_SQL} AND name = ? AND model = ?
         ORDER BY CASE type WHEN 'class' THEN 0 WHEN 'table' THEN 1 ELSE 2 END
         LIMIT 1
       `).get(className, modelName);
@@ -59,7 +70,7 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
       classRow = rdb.prepare(`
         SELECT file_path, model, name, type
         FROM symbols
-        WHERE type IN ${OBJECT_TYPES} AND name = ?
+        WHERE type IN ${OBJECT_TYPES_SQL} AND name = ?
         ORDER BY CASE type WHEN 'class' THEN 0 WHEN 'table' THEN 1 ELSE 2 END, model
         LIMIT 1
       `).get(className);
@@ -79,16 +90,19 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
     }
 
     // 2. Find the method in database (advisory — delegates and SubscribesTo handlers may be absent)
+    // COLLATE NOCASE on the method name is safe here: `parent_name` is canonical
+    // and `type`/`parent_name` narrow the range to one object's members before
+    // the case-insensitive comparison runs.
     const methodStmt = rdb.prepare(`
       SELECT name, signature, parent_name, file_path
       FROM symbols
       WHERE type = 'method'
-        AND name = ?
         AND parent_name = ?
+        AND name = ? COLLATE NOCASE
       LIMIT 1
     `);
 
-    const methodRow = methodStmt.get(methodName, className);
+    const methodRow = methodStmt.get(className, methodName);
 
     // 3. C# bridge (IMetadataProvider — live source, always current)
     const includeCoc = args.includeCocTemplate ?? false;
