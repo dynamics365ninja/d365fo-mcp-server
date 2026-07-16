@@ -124,4 +124,68 @@ describe('parseMethodSignature', () => {
       { type: 'int', name: '_n', defaultValue: '1' },
     ]);
   });
+
+  // Modifiers/return type are read from the comment- and string-blanked twin,
+  // not the raw line: a same-line comment or attribute must not inject a
+  // keyword. A phantom 'static' would land in the CoC template and not compile.
+  it('does not take modifiers from a same-line comment or attribute string', () => {
+    const sig = parseMethodSignature('/* static */ public void foo()\n{\n}', 'foo');
+    expect(sig).not.toBeNull();
+    expect(sig!.modifiers).toEqual(['public']);
+    expect(sig!.signature).toBe('public void foo()');
+
+    const sig2 = parseMethodSignature(
+      "[SysObsolete('use the static one')] public void foo()\n{\n}", 'foo');
+    expect(sig2).not.toBeNull();
+    expect(sig2!.modifiers).toEqual(['public']);
+    expect(sig2!.returnType).toBe('void');
+  });
+
+  it('parses an abstract/interface declaration terminated by a semicolon', () => {
+    const sig = parseMethodSignature('abstract public void doIt(int _a);', 'doIt');
+    expect(sig).not.toBeNull();
+    expect(sig!.modifiers).toEqual(['public', 'abstract']);
+    expect(sig!.parameters).toEqual([{ type: 'int', name: '_a' }]);
+  });
+
+  it('does not mistake an unqualified call for the declaration', () => {
+    // A bare call statement — arguments are values, not `Type _name` pairs.
+    expect(parseMethodSignature('public void bar()\n{\n    construct(1);\n}', 'construct')).toBeNull();
+    // Right-hand side of an assignment.
+    expect(parseMethodSignature('public void bar()\n{\n    x = construct();\n}', 'construct')).toBeNull();
+    // Inside a condition.
+    expect(parseMethodSignature('public void bar()\n{\n    if (construct())\n    {\n    }\n}', 'construct')).toBeNull();
+    // As a return expression.
+    expect(parseMethodSignature('public Foo bar()\n{\n    return construct();\n}', 'construct')).toBeNull();
+  });
+
+  it('finds the declaration even when a call to it appears first', () => {
+    const src = [
+      'public void caller()',
+      '{',
+      '    this.helper(1);',
+      '}',
+      '',
+      'public void helper(int _a)',
+      '{',
+      '}',
+    ].join('\n');
+    const sig = parseMethodSignature(src, 'helper');
+    expect(sig).not.toBeNull();
+    expect(sig!.parameters).toEqual([{ type: 'int', name: '_a' }]);
+  });
+
+  // A partial list would produce `next foo(_b)` for `foo(_a, _b)` — the same
+  // arity mismatch this parser exists to prevent. Fall through instead.
+  it('returns null rather than emitting a partially parsed parameter list', () => {
+    expect(parseMethodSignature('public void foo(int _a, )\n{\n}', 'foo')).toBeNull();
+    expect(parseMethodSignature('public void foo(_a, int _b)\n{\n}', 'foo')).toBeNull();
+  });
+
+  it('keeps the length of a sized str parameter with the type', () => {
+    const sig = parseMethodSignature('public void setName(str 30 _name)\n{\n}', 'setName');
+    expect(sig).not.toBeNull();
+    expect(sig!.parameters).toEqual([{ type: 'str 30', name: '_name' }]);
+    expect(sig!.cocTemplate).toContain('next setName(_name);');
+  });
 });
