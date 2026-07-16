@@ -22,6 +22,15 @@ export interface XppDeclaration {
   parameters: XppDeclarationParameter[];
 }
 
+export interface XppClassHeader {
+  kind: 'class' | 'interface';
+  name: string;
+  extends?: string;
+  implements: string[];
+  isAbstract: boolean;
+  isFinal: boolean;
+}
+
 export interface XppDeclarationParameter {
   type: string;
   name: string;
@@ -210,6 +219,58 @@ function tryDeclarationAt(source: string, blanked: string, nameStart: number): X
   }
 
   return { modifiers, returnType, parameters };
+}
+
+/**
+ * Parse the header of an AxClass `<SourceCode><Declaration>` CDATA block —
+ * `[attributes] [modifiers] class Name [extends Base] [implements A, B] {`.
+ *
+ * The inheritance clause exists ONLY as X++ text here; AxClass XML has no
+ * <Extends>/<Implements>/<IsAbstract>/<IsFinal> elements, so reading those
+ * (as this parser used to) yields undefined for every class in the AOT.
+ *
+ * Two traps this avoids, both measured against the real AOT:
+ *  - The header routinely wraps across lines (~17% of implements lists are
+ *    multi-line), so it is closed by the body's '{', never by end-of-line.
+ *  - Doc comments above the class say things like "extends the base class",
+ *    so a regex over the raw CDATA harvests `extends the`. Comments and
+ *    strings are blanked first, and the search is anchored at the class
+ *    keyword rather than run over the whole block.
+ *
+ * Returns null when no class/interface header is present.
+ */
+export function parseXppClassHeader(declaration: string): XppClassHeader | null {
+  if (!declaration || typeof declaration !== 'string') return null;
+
+  const blanked = blankCommentsAndStrings(declaration);
+  const kw = /\b(class|interface)\s+([\w.]+)/.exec(blanked);
+  if (!kw) return null;
+
+  // The header runs from the keyword to the body's opening brace. A declaration
+  // block with no brace (malformed/truncated) still yields a usable header.
+  const braceIdx = blanked.indexOf('{', kw.index);
+  const headEnd = braceIdx < 0 ? blanked.length : braceIdx;
+  const head = blanked.slice(kw.index, headEnd);
+
+  // Modifiers sit before the keyword on its own line; attributes on preceding
+  // lines are excluded, and a blanked attribute body can't inject a keyword.
+  const lineStart = blanked.lastIndexOf('\n', kw.index) + 1;
+  const modifiers = blanked.slice(lineStart, kw.index);
+
+  const extendsMatch = /\bextends\s+([\w.]+)/i.exec(head);
+  const implementsMatch = /\bimplements\s+([\s\S]+)$/i.exec(head);
+  const implementsList = implementsMatch
+    ? implementsMatch[1].split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+
+  return {
+    kind: kw[1] as 'class' | 'interface',
+    name: kw[2],
+    extends: extendsMatch?.[1],
+    implements: implementsList,
+    isAbstract: /\babstract\b/i.test(modifiers),
+    isFinal: /\bfinal\b/i.test(modifiers),
+  };
 }
 
 /**

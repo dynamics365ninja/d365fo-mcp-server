@@ -21,7 +21,13 @@ import type {
 } from './types.js';
 import { EnhancedXppParser } from './enhancedParser.js';
 import { walkFormDesign, collectPatternNodes } from './formPatternMiner.js';
-import { parseXppDeclaration, type XppDeclaration } from './xppDeclaration.js';
+import {
+  parseXppDeclaration,
+  parseXppClassHeader,
+  blankCommentsAndStrings,
+  type XppDeclaration,
+  type XppClassHeader,
+} from './xppDeclaration.js';
 
 export class XppMetadataParser {
   private parser: Parser;
@@ -55,11 +61,21 @@ export class XppMetadataParser {
       const methodsData = axClass.SourceCode?.Methods?.Method || axClass.Methods?.Method;
 
       const parsedMethods = this.parseMethods(methodsData, className);
-      const parsedImplements = this.parseImplements(axClass.Implements);
-      const parsedDeclaration = this.extractClassDeclaration(axClass);
-      const isAbstract = axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true';
-      const isFinal = axClass.IsFinal === 'Yes' || axClass.IsFinal === 'true';
-      const extendsClass = axClass.Extends || undefined;
+
+      // Inheritance lives in the Declaration CDATA as X++ text, not in XML
+      // elements — see parseXppClassHeader. The element reads are kept only as
+      // a fallback for hand-written/synthetic AxClass XML in tests and tools.
+      const header = parseXppClassHeader(this.cdataText(axClass.SourceCode?.Declaration));
+
+      const parsedImplements = header?.implements.length
+        ? header.implements
+        : this.parseImplements(axClass.Implements);
+      const parsedDeclaration = this.extractClassDeclaration(axClass, header);
+      const isAbstract = header?.isAbstract
+        ?? (axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true');
+      const isFinal = header?.isFinal
+        ?? (axClass.IsFinal === 'Yes' || axClass.IsFinal === 'true');
+      const extendsClass = header?.extends || axClass.Extends || undefined;
 
       const classInfoBase = {
         name: className,
@@ -168,17 +184,43 @@ export class XppMetadataParser {
     }
   }
 
+  /**
+   * Text of a CDATA-bearing element. xml2js hands back a plain string, unless
+   * the element carries an attribute (mergeAttrs) — then the text sits under
+   * `_` and the raw value is an object.
+   */
+  private cdataText(node: unknown): string {
+    if (typeof node === 'string') return node;
+    const text = (node as { _?: unknown } | null | undefined)?._;
+    return typeof text === 'string' ? text : '';
+  }
+
   private parseImplements(implementsStr?: string | any): string[] {
     if (!implementsStr) return [];
     if (typeof implementsStr !== 'string') return [];
     return implementsStr.split(',').map(i => i.trim()).filter(Boolean);
   }
 
-  private extractClassDeclaration(axClass: any): string {
+  /**
+   * The class's declaration line. Rebuilt from the parsed Declaration CDATA so
+   * it reflects what the source actually says; falls back to synthesising one
+   * from XML elements when there is no declaration to read.
+   */
+  private extractClassDeclaration(axClass: any, header?: XppClassHeader | null): string {
     const modifiers: string[] = [];
+    if (header) {
+      if (header.isAbstract) modifiers.push('abstract');
+      if (header.isFinal) modifiers.push('final');
+      let decl = modifiers.length > 0 ? `${modifiers.join(' ')} ` : '';
+      decl += `${header.kind} ${header.name}`;
+      if (header.extends) decl += ` extends ${header.extends}`;
+      if (header.implements.length) decl += ` implements ${header.implements.join(', ')}`;
+      return decl;
+    }
+
     if (axClass.IsAbstract === 'Yes' || axClass.IsAbstract === 'true') modifiers.push('abstract');
     if (axClass.IsFinal === 'Yes' || axClass.IsFinal === 'true') modifiers.push('final');
-    
+
     let decl = modifiers.length > 0 ? `${modifiers.join(' ')} ` : '';
     decl += `class ${axClass.Name}`;
     if (axClass.Extends) decl += ` extends ${axClass.Extends}`;
@@ -791,18 +833,29 @@ export class XppMetadataParser {
       if (!root) return { success: false, error: `Cannot parse extension type: ${extensionType}` };
 
       const name: string = root.Name || '';
-      const extendsValue: string = root.Extends || root.BaseObject || '';
 
-      // For class extensions, base object name is inferred from Extends or the name itself
-      // Class extension names follow the pattern "BaseClass.Suffix" or "BaseClass_Suffix_Extension"
-      let baseObjectName = extendsValue;
-      if (!baseObjectName && extensionType === 'class-extension') {
-        // Try to parse from declaration: [ExtensionOf(classStr(BaseName))]
-        const decl: string = root.SourceCode?.Declaration || '';
-        const match = decl.match(/ExtensionOf\s*\(\s*classStr\s*\(\s*(\w+)\s*\)/i)
-          ?? decl.match(/ExtensionOf\s*\(\s*tableStr\s*\(\s*(\w+)\s*\)/i)
-          ?? decl.match(/ExtensionOf\s*\(\s*formStr\s*\(\s*(\w+)\s*\)/i);
-        baseObjectName = match?.[1] || '';
+      // No Ax*Extension XML carries <Extends>/<BaseObject> — these reads are a
+      // fallback for synthetic XML only. Real files identify the base object
+      // either by the [ExtensionOf(<kind>Str(Base))] attribute on the
+      // declaration (class extensions) or by the "Base.<Suffix>" name
+      // convention (every other kind), so both are read here. Leaving this
+      // empty silently kills every extension_metadata lookup keyed on
+      // base_object_name — resolve_references' extension-method and
+      // table-extension-field checks, and table_extension_info.
+      let baseObjectName: string = root.Extends || root.BaseObject || '';
+
+      if (!baseObjectName) {
+        // Comments/strings blanked so a mention in a doc comment can't match.
+        const decl = blankCommentsAndStrings(this.cdataText(root.SourceCode?.Declaration));
+        // Any intrinsic: classStr / tableStr / formStr / enumStr /
+        // extendedTypeStr / dataEntityViewStr.
+        baseObjectName = decl.match(/ExtensionOf\s*\(\s*\w+Str\s*\(\s*([\w.]+)\s*\)/i)?.[1] || '';
+      }
+
+      if (!baseObjectName && name.includes('.')) {
+        // "SalesTable.FooExtension" → "SalesTable"; the suffix may itself
+        // contain dots ("OMLegalEntity.Extension.Retail"), so split on the first.
+        baseObjectName = name.slice(0, name.indexOf('.'));
       }
 
       // Extract added fields
