@@ -21,6 +21,7 @@ import type {
 } from './types.js';
 import { EnhancedXppParser } from './enhancedParser.js';
 import { walkFormDesign, collectPatternNodes } from './formPatternMiner.js';
+import { parseXppDeclaration, type XppDeclaration } from './xppDeclaration.js';
 
 export class XppMetadataParser {
   private parser: Parser;
@@ -193,13 +194,14 @@ export class XppMetadataParser {
     return methods.map(method => {
       const source = method.Source || '';
       const methodName = method.Name || 'unknown';
-      
+      const decl = parseXppDeclaration(source, methodName);
+
       const baseMethod: XppMethodInfo = {
         name: methodName,
         visibility: this.parseVisibility(method.Visibility),
-        returnType: this.extractReturnType(source, methodName) || method.ReturnType || 'void',
-        parameters: this.extractParametersFromSource(source, methodName),
-        isStatic: this.isMethodStatic(source),
+        returnType: decl?.returnType || method.ReturnType || 'void',
+        parameters: this.toParameterInfo(decl),
+        isStatic: decl?.modifiers.includes('static') ?? false,
         source: source,
         documentation: method.DeveloperDocumentation || undefined,
       };
@@ -399,107 +401,9 @@ export class XppMetadataParser {
     return Array.isArray(value) ? value : [value];
   }
 
-  /**
-   * Extract parameters from method source code
-   */
-  private extractParametersFromSource(source: string, methodName: string): XppParameterInfo[] {
-    if (!source) return [];
-
-    // Find method signature in source - look for methodName followed by parentheses
-    // Pattern: methodName(param1, param2, ...)
-    const methodPattern = new RegExp(`\\b${this.escapeRegex(methodName)}\\s*\\(([^)]*)\\)`, 'i');
-    const match = source.match(methodPattern);
-
-    if (!match || !match[1]) return [];
-
-    const paramsStr = match[1].trim();
-    if (!paramsStr) return [];
-
-    // Split by comma, but be careful with generic types that contain commas
-    const params = this.splitParameters(paramsStr);
-
-    return params.map(param => {
-      // Parse "Type name" or "Type _name" format
-      const parts = param.trim().split(/\s+/);
-      if (parts.length >= 2) {
-        // Join all but last part as type (handles complex types like "Dictionary<string, int>")
-        const name = parts[parts.length - 1];
-        const type = parts.slice(0, -1).join(' ');
-        return { type, name };
-      }
-      return { type: 'object', name: param.trim() };
-    }).filter(p => p.name.length > 0);
-  }
-
-  /**
-   * Extract return type from method source
-   */
-  private extractReturnType(source: string, methodName: string): string | undefined {
-    if (!source) return undefined;
-
-    // Look for pattern: [modifiers] returnType methodName(
-    const pattern = new RegExp(`\\b(\\w+)\\s+${this.escapeRegex(methodName)}\\s*\\(`, 'i');
-    const match = source.match(pattern);
-
-    if (match && match[1]) {
-      const returnType = match[1];
-      // Filter out modifiers
-      const modifiers = ['public', 'private', 'protected', 'static', 'final', 'abstract', 'internal'];
-      if (!modifiers.includes(returnType.toLowerCase())) {
-        return returnType;
-      }
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Check if method is static from source
-   */
-  private isMethodStatic(source: string): boolean {
-    if (!source) return false;
-    return /\bstatic\s+/i.test(source);
-  }
-
-  /**
-   * Escape special regex characters
-   */
-  private escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  /**
-   * Split parameters by comma, respecting nested generics
-   */
-  private splitParameters(paramsStr: string): string[] {
-    const params: string[] = [];
-    let current = '';
-    let depth = 0;
-
-    for (let i = 0; i < paramsStr.length; i++) {
-      const char = paramsStr[i];
-      
-      if (char === '<' || char === '(') {
-        depth++;
-        current += char;
-      } else if (char === '>' || char === ')') {
-        depth--;
-        current += char;
-      } else if (char === ',' && depth === 0) {
-        if (current.trim()) {
-          params.push(current.trim());
-        }
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-
-    if (current.trim()) {
-      params.push(current.trim());
-    }
-
-    return params;
+  /** Declaration parameters narrowed to the shape XppMethodInfo carries. */
+  private toParameterInfo(decl: XppDeclaration | null): XppParameterInfo[] {
+    return decl?.parameters.map(p => ({ type: p.type, name: p.name })) ?? [];
   }
 
   /**
@@ -629,14 +533,15 @@ export class XppMetadataParser {
     for (const methodNode of methodNodes) {
       const name = methodNode.Name || 'Unknown';
       const source = methodNode.Source || '';
+      const decl = parseXppDeclaration(source, name);
 
       // Parse method info (similar to class methods)
       const methodInfo: any = {
         name,
         visibility: 'public', // Forms typically have public methods
-        returnType: this.extractReturnType(source, name) || 'void',
-        parameters: this.extractParametersFromSource(source, name),
-        isStatic: this.isMethodStatic(source),
+        returnType: decl?.returnType || 'void',
+        parameters: this.toParameterInfo(decl),
+        isStatic: decl?.modifiers.includes('static') ?? false,
         source,
         sourceSnippet: source.split('\n').slice(0, 10).join('\n'),
       };

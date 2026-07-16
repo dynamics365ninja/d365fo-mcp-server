@@ -13,6 +13,7 @@ import type { XppServerContext } from '../types/context.js';
 import { buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';
 import type { BridgeClient } from '../bridge/bridgeClient.js';
 import type { XppMetadataParser } from '../metadata/xmlParser.js';
+import { parseXppDeclaration } from '../metadata/xppDeclaration.js';
 import { canonicalSymbolName } from '../utils/symbolLookup.js';
 
 /** Object types that can own methods. */
@@ -267,82 +268,25 @@ function parseByObjectType(
 }
 
 /**
- * Parse method signature from source code
+ * Parse method signature from source code.
+ *
+ * The declaration parsing itself lives in ../metadata/xppDeclaration.js and is
+ * shared with the XML metadata parser; this only turns a parsed declaration
+ * into the rendered signature and CoC template. Exported for unit tests.
  */
-function parseMethodSignature(source: string, methodName: string): MethodSignature | null {
-  if (!source) return null;
+export function parseMethodSignature(source: string, methodName: string): MethodSignature | null {
+  const decl = parseXppDeclaration(source, methodName);
+  if (!decl) return null;
 
-  // Find method declaration line
-  const lines = source.split('\n');
-  let declarationLine = '';
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.includes(methodName) && trimmed.includes('(')) {
-      declarationLine = trimmed;
-      break;
-    }
-  }
-
-  if (!declarationLine) return null;
-
-  // Parse modifiers (public, private, protected, static, final, etc.)
-  const modifiers: string[] = [];
-  const modifierKeywords = ['public', 'private', 'protected', 'static', 'final', 'abstract', 'display'];
-  
-  for (const keyword of modifierKeywords) {
-    if (declarationLine.toLowerCase().includes(keyword)) {
-      modifiers.push(keyword);
-    }
-  }
-
-  // Parse return type
-  let returnType = 'void';
-  const returnTypeMatch = declarationLine.match(/(?:public|private|protected|static|final)?\s+(\w+)\s+\w+\s*\(/);
-  if (returnTypeMatch) {
-    returnType = returnTypeMatch[1];
-  }
-
-  // Parse parameters
-  const parametersMatch = declarationLine.match(/\((.*?)\)/);
-  const parameters: Array<{ type: string; name: string; defaultValue?: string }> = [];
-
-  if (parametersMatch && parametersMatch[1].trim()) {
-    const paramString = parametersMatch[1];
-    const paramParts = paramString.split(',');
-
-    for (const part of paramParts) {
-      const trimmed = part.trim();
-      const paramMatch = trimmed.match(/(\w+)\s+(_?\w+)(?:\s*=\s*(.+))?/);
-      
-      if (paramMatch) {
-        const param: any = {
-          type: paramMatch[1],
-          name: paramMatch[2],
-        };
-        
-        if (paramMatch[3]) {
-          param.defaultValue = paramMatch[3].trim();
-        }
-        
-        parameters.push(param);
-      }
-    }
-  }
-
-  // Build full signature
-  const signature = buildSignatureString(modifiers, returnType, methodName, parameters);
-
-  // Build CoC template
-  const cocTemplate = buildCoCTemplate(modifiers, returnType, methodName, parameters);
+  const { modifiers, returnType, parameters } = decl;
 
   return {
     modifiers,
     returnType,
     methodName,
     parameters,
-    signature,
-    cocTemplate,
+    signature: buildSignatureString(modifiers, returnType, methodName, parameters),
+    cocTemplate: buildCoCTemplate(modifiers, returnType, methodName, parameters),
   };
 }
 
@@ -388,8 +332,8 @@ function buildCoCTemplate(
 ): string {
   let template = '';
 
-  // Add modifiers (replace public/private/protected with method attribute)
-  const cocModifiers = modifiers.filter(m => !['public', 'private', 'protected'].includes(m));
+  // Add modifiers (replace access modifiers with method attribute)
+  const cocModifiers = modifiers.filter(m => !['public', 'private', 'protected', 'internal'].includes(m));
   
   template += '[ExtensionOf(classStr(OriginalClassName))]\n';
   template += 'final class OriginalClassName_Extension\n';
