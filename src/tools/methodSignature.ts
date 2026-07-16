@@ -252,67 +252,152 @@ function parseByObjectType(
   }
 }
 
+const MODIFIER_KEYWORDS = [
+  'public', 'private', 'protected', 'internal', 'static', 'final', 'abstract', 'display', 'edit',
+];
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
- * Parse method signature from source code
+ * Produce a same-length copy of X++ source where comment content and
+ * string-literal content are blanked out with spaces (newlines preserved).
+ * Declaration search and paren balancing run on this copy so they can't be
+ * fooled by a method name mentioned in a comment/attribute string, or by
+ * parens/commas inside string defaults. Indexes map 1:1 to the original.
  */
-function parseMethodSignature(source: string, methodName: string): MethodSignature | null {
+function blankCommentsAndStrings(src: string): string {
+  const out = src.split('');
+  let state: 'code' | 'line' | 'block' | 'str' = 'code';
+  let quote = '';
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (state === 'code') {
+      if (c === '/' && d === '/') { state = 'line'; out[i] = out[i + 1] = ' '; i++; }
+      else if (c === '/' && d === '*') { state = 'block'; out[i] = out[i + 1] = ' '; i++; }
+      else if (c === "'" || c === '"') { state = 'str'; quote = c; }
+    } else if (state === 'line') {
+      if (c === '\n') state = 'code';
+      else out[i] = ' ';
+    } else if (state === 'block') {
+      if (c === '*' && d === '/') { state = 'code'; out[i] = out[i + 1] = ' '; i++; }
+      else if (c !== '\n') out[i] = ' ';
+    } else {
+      if (c === '\\') { out[i] = ' '; if (d !== undefined) { out[i + 1] = ' '; i++; } }
+      else if (c === quote) state = 'code';
+      else if (c !== '\n') out[i] = ' ';
+    }
+  }
+  return out.join('');
+}
+
+/**
+ * Split a parameter list on top-level commas only — commas nested inside
+ * parens (intrinsic defaults like methodStr(A, b)) or brackets (container
+ * literals) belong to the parameter, not the list. `blanked` is the
+ * comment/string-blanked twin of `paramSrc` used for structural decisions;
+ * slices are taken from the original so default values stay verbatim.
+ */
+function splitTopLevelParams(paramSrc: string, blanked: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < blanked.length; i++) {
+    const c = blanked[i];
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (c === ',' && depth === 0) {
+      parts.push(paramSrc.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(paramSrc.slice(start));
+  return parts;
+}
+
+/** Parse one "Type _name [= default]" parameter; null when malformed. */
+function parseParameter(
+  raw: string,
+  blanked: string,
+): { type: string; name: string; defaultValue?: string } | null {
+  // Split off the default at the first top-level '='
+  let eq = -1;
+  let depth = 0;
+  for (let i = 0; i < blanked.length; i++) {
+    const c = blanked[i];
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (c === '=' && depth === 0) { eq = i; break; }
+  }
+  const left = (eq >= 0 ? raw.slice(0, eq) : raw).trim().replace(/\s+/g, ' ');
+  const defaultValue = eq >= 0 ? raw.slice(eq + 1).trim().replace(/\s+/g, ' ') : undefined;
+
+  const tokens = left.split(' ');
+  if (tokens.length < 2) return null;
+  const name = tokens[tokens.length - 1];
+  const type = tokens.slice(0, -1).join(' ');
+  return defaultValue ? { type, name, defaultValue } : { type, name };
+}
+
+/**
+ * Parse method signature from source code.
+ *
+ * X++ declarations routinely wrap the parameter list across several lines
+ * (every standard construct/new* pattern with defaulted params does), so the
+ * declaration is located by position and closed by balanced-paren scanning —
+ * never by assuming it fits on one line. Exported for unit tests.
+ */
+export function parseMethodSignature(source: string, methodName: string): MethodSignature | null {
   if (!source) return null;
 
-  // Find method declaration line
-  const lines = source.split('\n');
-  let declarationLine = '';
+  const blanked = blankCommentsAndStrings(source);
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.includes(methodName) && trimmed.includes('(')) {
-      declarationLine = trimmed;
-      break;
+  // Locate the declaration: the method name not preceded by a word char or
+  // '.' (which would make it a call like `this.name(` / `Owner::name(`),
+  // followed by '('. Comments and string contents are blanked, so an
+  // attribute like [SysObsolete('use construct() instead')] can't match.
+  const nameRe = new RegExp(`(^|[^\\w.:])(${escapeRegExp(methodName)})\\s*\\(`, 'i');
+  const m = nameRe.exec(blanked);
+  if (!m) return null;
+  const nameStart = m.index + m[1].length;
+  const openParen = blanked.indexOf('(', nameStart);
+
+  // Balanced scan (on the blanked copy) to the closing paren, across lines.
+  let depth = 0;
+  let closeParen = -1;
+  for (let i = openParen; i < blanked.length; i++) {
+    const c = blanked[i];
+    if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      if (depth === 0) { closeParen = i; break; }
     }
   }
+  if (closeParen < 0) return null;
 
-  if (!declarationLine) return null;
+  // Modifiers and return type live on the declaration line, before the name.
+  const lineStart = source.lastIndexOf('\n', nameStart) + 1;
+  const prefix = source.slice(lineStart, nameStart);
 
-  // Parse modifiers (public, private, protected, static, final, etc.)
-  const modifiers: string[] = [];
-  const modifierKeywords = ['public', 'private', 'protected', 'static', 'final', 'abstract', 'display'];
-  
-  for (const keyword of modifierKeywords) {
-    if (declarationLine.toLowerCase().includes(keyword)) {
-      modifiers.push(keyword);
-    }
-  }
+  const modifiers = MODIFIER_KEYWORDS.filter(k => new RegExp(`\\b${k}\\b`, 'i').test(prefix));
 
-  // Parse return type
-  let returnType = 'void';
-  const returnTypeMatch = declarationLine.match(/(?:public|private|protected|static|final)?\s+(\w+)\s+\w+\s*\(/);
-  if (returnTypeMatch) {
-    returnType = returnTypeMatch[1];
-  }
+  // Return type: last identifier in the prefix that isn't a modifier keyword.
+  const prefixTokens = prefix.match(/[\w.]+/g) ?? [];
+  const typeTokens = prefixTokens.filter(t => !MODIFIER_KEYWORDS.includes(t.toLowerCase()));
+  const returnType = typeTokens.length > 0 ? typeTokens[typeTokens.length - 1] : 'void';
 
-  // Parse parameters
-  const parametersMatch = declarationLine.match(/\((.*?)\)/);
+  // Parameters: original text between the balanced parens (defaults verbatim).
+  const paramSrc = source.slice(openParen + 1, closeParen);
+  const paramBlanked = blanked.slice(openParen + 1, closeParen);
   const parameters: Array<{ type: string; name: string; defaultValue?: string }> = [];
-
-  if (parametersMatch && parametersMatch[1].trim()) {
-    const paramString = parametersMatch[1];
-    const paramParts = paramString.split(',');
-
-    for (const part of paramParts) {
-      const trimmed = part.trim();
-      const paramMatch = trimmed.match(/(\w+)\s+(_?\w+)(?:\s*=\s*(.+))?/);
-      
-      if (paramMatch) {
-        const param: any = {
-          type: paramMatch[1],
-          name: paramMatch[2],
-        };
-        
-        if (paramMatch[3]) {
-          param.defaultValue = paramMatch[3].trim();
-        }
-        
-        parameters.push(param);
-      }
+  if (paramBlanked.trim()) {
+    const rawParts = splitTopLevelParams(paramSrc, paramBlanked);
+    const blankedParts = splitTopLevelParams(paramBlanked, paramBlanked);
+    for (let i = 0; i < rawParts.length; i++) {
+      const param = parseParameter(rawParts[i], blankedParts[i]);
+      if (param) parameters.push(param);
     }
   }
 
@@ -374,8 +459,8 @@ function buildCoCTemplate(
 ): string {
   let template = '';
 
-  // Add modifiers (replace public/private/protected with method attribute)
-  const cocModifiers = modifiers.filter(m => !['public', 'private', 'protected'].includes(m));
+  // Add modifiers (replace access modifiers with method attribute)
+  const cocModifiers = modifiers.filter(m => !['public', 'private', 'protected', 'internal'].includes(m));
   
   template += '[ExtensionOf(classStr(OriginalClassName))]\n';
   template += 'final class OriginalClassName_Extension\n';
