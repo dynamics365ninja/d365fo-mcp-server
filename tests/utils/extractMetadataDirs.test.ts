@@ -1,5 +1,5 @@
 /**
- * extract-metadata folder resolution tests (#694 — progress percentage over 100%)
+ * extract-metadata folder resolution tests (extraction progress percentage over 100%)
  *
  * The extraction progress denominator used to be counted from a hand-written list of
  * 9 folders paired with lowercase twins ('AxClass', 'axclass', …), while the extractors
@@ -71,7 +71,7 @@ describe('EXTRACTED_AOT_DIRS', () => {
       'AxClass', 'AxTable', 'AxForm', 'AxQuery', 'AxView',
       'AxDataEntityView', 'AxEnum', 'AxEdt', 'AxReport',
     ]));
-    // Everything below incremented the numerator with no matching denominator (#694).
+    // Everything below incremented the numerator with no matching denominator.
     expect(EXTRACTED_AOT_DIRS).toEqual(expect.arrayContaining([
       'AxTableExtension', 'AxFormExtension', 'AxMapExtension',
       'AxSecurityPrivilege', 'AxSecurityDuty', 'AxSecurityRole',

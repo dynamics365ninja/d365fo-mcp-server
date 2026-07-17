@@ -187,7 +187,7 @@ interface AotExtractor {
  * This is the single source of truth for both the extraction work and the progress
  * denominator (EXTRACTED_AOT_DIRS is derived from it), so the two cannot drift apart.
  * They previously did: only 9 folders were counted while ~36 were extracted, which put
- * progress past 100% (#694).
+ * progress past 100%.
  *
  * No AxClassExtension: the AOT has no such folder. Class extensions are AxClass files
  * carrying [ExtensionOf(...)], and extractClasses emits their records (#693).
@@ -253,7 +253,7 @@ const MODEL_MARKER_DIRS = ['AxClass', 'AxTable', 'AxEnum', 'AxEdt', 'AxView', 'A
  * Reading the directory once and matching case-insensitively is what keeps a folder
  * from resolving twice: probing 'AxClass' and then an 'axclass' twin hits the same
  * directory on case-insensitive filesystems, which double-counted every folder on
- * Windows and made extractViews parse each view file twice (#694).
+ * Windows and made extractViews parse each view file twice.
  */
 export async function mapModelDirs(modelPath: string): Promise<Map<string, string>> {
   const byLowerName = new Map<string, string>();
@@ -575,7 +575,7 @@ async function extractMetadata() {
 
     // Resolve the model's folders once, then run every extractor whose folders exist.
     // AOT_EXTRACTORS is the same list countModelXmlFiles counted, so the numerator and
-    // the denominator cover exactly the same folders (#694).
+    // the denominator cover exactly the same folders.
     const ctx: ModelContext = { parser, modelName, stats, isCustom };
     const dirsByLowerName = await mapModelDirs(modelPath);
 
