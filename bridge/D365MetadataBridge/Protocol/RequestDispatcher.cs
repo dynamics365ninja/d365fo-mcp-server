@@ -244,17 +244,6 @@ namespace D365MetadataBridge.Protocol
                             return _xrefService!.FindApiUsageCallers(apiName, limit);
                         });
 
-                    // === Delete ===
-                    case "deleteobject":
-                        return HandleMetadata(request, () =>
-                        {
-                            var objectType = request.GetStringParam("objectType")
-                                ?? throw new ArgumentException("Missing parameter: objectType");
-                            var objectName = request.GetStringParam("objectName")
-                                ?? throw new ArgumentException("Missing parameter: objectName");
-                            return _metadataService!.DeleteObject(objectType, objectName);
-                        });
-
                     // === Capabilities ===
                     case "getcapabilities":
                         return HandleMetadata(request, () =>
@@ -291,7 +280,7 @@ namespace D365MetadataBridge.Protocol
                                 "addEnumValue", "modifyEnumValue", "removeEnumValue",
                                 "addControl", "addDataSource",
                                 "setProperty", "replaceCode",
-                                "deleteObject", "getCapabilities", "discoverFormPatterns",
+                                "getCapabilities", "discoverFormPatterns",
                                 "findExtensionClasses", "findEventSubscribers", "findApiUsageCallers"
                             }
                         }));

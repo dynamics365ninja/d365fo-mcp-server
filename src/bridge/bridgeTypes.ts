@@ -497,19 +497,6 @@ export interface BridgeEnumValueParam {
 }
 
 // ===========================
-// Delete result
-// ===========================
-
-export interface BridgeDeleteResult {
-  success: boolean;
-  objectType: string;
-  objectName: string;
-  model?: string;
-  filePath?: string;
-  error?: string;
-}
-
-// ===========================
 // Batch modify types
 // ===========================
 

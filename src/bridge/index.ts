@@ -61,7 +61,6 @@ export {
   bridgeReplaceCode,
   bridgeAddFieldModification,
   bridgeAddMenuItemToMenu,
-  bridgeDeleteObject,
   bridgeBatchModify,
   bridgeGetCapabilities,
   bridgeDiscoverFormPatterns,

@@ -68,7 +68,7 @@ describe('read retry', () => {
 });
 
 describe('write protection', () => {
-  it.each(['createObject', 'addMethod', 'setProperty', 'deleteObject', 'batchModify', 'refreshProvider'])(
+  it.each(['createObject', 'addMethod', 'setProperty', 'batchModify', 'refreshProvider'])(
     'never retries write method %s on timeout',
     async (method) => {
       const client = makeClient();

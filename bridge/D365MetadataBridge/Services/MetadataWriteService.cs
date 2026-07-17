@@ -3415,13 +3415,17 @@ namespace D365MetadataBridge.Services
 
             // Strategy 3: infer model from on-disk file path
             //   Files live at {packagesPath}/{ModelName}/{ModelName}/Ax{Type}/{Name}.xml
-            //   We scan common AOT folders for the object name.
+            //   We scan common AOT folders for the object name. A union scan, not a
+            //   type mapping: every folder is tried, so AxClass already covers class
+            //   extensions ([ExtensionOf(...)] AxClass files) and an AxClassExtension
+            //   entry would only ever be a probe that cannot match — no package has
+            //   that folder (#693).
             string[] aotFolders = { "AxClass", "AxTable", "AxForm", "AxEnum", "AxEdt",
                                     "AxQuery", "AxView", "AxDataEntityView", "AxReport",
                                     "AxMenu", "AxMenuItemDisplay", "AxMenuItemAction", "AxMenuItemOutput",
                                     "AxSecurityPrivilege", "AxSecurityDuty", "AxSecurityRole",
-                                    "AxTableExtension", "AxFormExtension", "AxClassExtension",
-                                    "AxEnumExtension" };
+                                    "AxTableExtension", "AxFormExtension", "AxEnumExtension",
+                                    "AxEdtExtension", "AxDataEntityViewExtension" };
             try
             {
                 foreach (var packageDir in Directory.GetDirectories(_packagesPath))

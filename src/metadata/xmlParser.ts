@@ -913,7 +913,9 @@ export class XppMetadataParser {
       // Determine XML root element by extensionType
       const rootKeyMap: Record<string, string> = {
         'table-extension':       'AxTableExtension',
-        'class-extension':       'AxClassExtension',
+        // Not AxClassExtension: a class extension is an AxClass file carrying
+        // [ExtensionOf(...)], so its root element is AxClass like any other class (#693).
+        'class-extension':       'AxClass',
         'form-extension':        'AxFormExtension',
         'enum-extension':        'AxEnumExtension',
         'edt-extension':         'AxEdtExtension',
