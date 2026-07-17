@@ -802,30 +802,63 @@ export class XppSymbolIndex {
   }
 
   /**
+   * All stored forms a file path may take in the index. Full builds store the
+   * JSON's sourcePath: CI-extracted custom models normalize it to a
+   * PackagesLocalDirectory-relative forward-slash path (see normalizeSourcePath
+   * in scripts/extract-metadata.ts), while locally built DBs keep the absolute
+   * Windows path with backslashes. Matching every form keeps stale-row cleanup
+   * working regardless of which build produced the DB.
+   */
+  private filePathForms(filePath: string): string[] {
+    const forms = new Set<string>([
+      filePath,
+      filePath.replace(/\//g, '\\'),
+      filePath.replace(/\\/g, '/'),
+    ]);
+    const m = /[/\\]PackagesLocalDirectory[/\\](.+)$/.exec(filePath);
+    if (m) {
+      const tail = m[1].replace(/\\/g, '/');
+      forms.add(tail);
+      forms.add(tail.replace(/\//g, '\\'));
+    }
+    return [...forms];
+  }
+
+  /**
    * Remove all symbols for a given file path from both the main table and FTS index.
+   * Matches every stored path form (see filePathForms) so stale rows are removed
+   * even when the DB stores a different path form than the caller passed.
    * Returns the names of top-level objects that were removed (for cache invalidation).
    */
   removeSymbolsByFile(filePath: string): { deletedCount: number; objectNames: string[] } {
+    const forms = this.filePathForms(filePath);
+    const placeholders = forms.map(() => '?').join(', ');
+
     // Collect object names BEFORE deletion (for cache invalidation)
     const rows = this.db.prepare(
-      `SELECT DISTINCT name FROM symbols WHERE file_path = ? AND parent_name IS NULL`
-    ).all(filePath) as Array<{ name: string }>;
+      `SELECT DISTINCT name FROM symbols WHERE file_path IN (${placeholders}) AND parent_name IS NULL`
+    ).all(...forms) as Array<{ name: string }>;
     const objectNames = rows.map(r => r.name);
 
     // The FTS trigger (symbols_fts AFTER DELETE) handles FTS cleanup automatically
-    const result = this.db.prepare(`DELETE FROM symbols WHERE file_path = ?`).run(filePath);
+    const result = this.db.prepare(`DELETE FROM symbols WHERE file_path IN (${placeholders})`).run(...forms);
     this.invalidateSymbolCounts();
     return { deletedCount: result.changes, objectNames };
   }
 
   /**
    * Remove all labels for a given file path from the labels DB.
+   * Matches every stored path form (see filePathForms), like removeSymbolsByFile.
    * Also cleans up the labels FTS index.
    * Returns the count of deleted label rows.
    */
   removeLabelsByFile(filePath: string): number {
+    const forms = this.filePathForms(filePath);
+    const placeholders = forms.map(() => '?').join(', ');
     // The labels_ad trigger handles FTS cleanup for en-US rows
-    const result = this.labelsDb.prepare(`DELETE FROM labels WHERE file_path = ?`).run(filePath);
+    const result = this.labelsDb.prepare(
+      `DELETE FROM labels WHERE file_path IN (${placeholders})`
+    ).run(...forms);
     return result.changes;
   }
 
@@ -866,11 +899,15 @@ export class XppSymbolIndex {
     
     // Strip FTS5 special characters – keep alphanumeric, underscore and spaces
     const cleaned = trimmed.replace(/[^\w\s]/g, ' ').trim();
-    const tokens = cleaned
+    const allTokens = cleaned
       .split(/\s+/)
-      .filter(t => t.length > 0)
       .map(t => t.toLowerCase())
-      .filter(t => !stopWords.has(t) && t.length > 1); // Filter stop words and single chars
+      .filter(t => t.length > 1); // Filter single chars
+    // Drop stop words only while a real token remains — a query may legitimately
+    // BE a stop word (e.g. a method literally named "find"), and falling through
+    // to the phrase-search fallback would behave differently for it.
+    const withoutStopWords = allTokens.filter(t => !stopWords.has(t));
+    const tokens = withoutStopWords.length > 0 ? withoutStopWords : allTokens;
     
     // If no tokens remain after filtering, use original query in quotes
     if (tokens.length === 0) {

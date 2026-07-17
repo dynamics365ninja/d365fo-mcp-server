@@ -17,18 +17,37 @@ const AOT_FOLDER_TYPE_MAP: Record<string, XppSymbol['type']> = {
   'axform': 'form',
   'axformextension': 'form-extension',
   'axenum': 'enum',
-  'axenumsextension': 'enum-extension',
+  'axenumextension': 'enum-extension',
   'axedt': 'edt',
-  'axedtsextension': 'edt-extension',
+  'axedtextension': 'edt-extension',
   'axquery': 'query',
+  'axquerysimpleextension': 'query-extension',
   'axview': 'view',
+  'axviewextension': 'view-extension',
+  // Full builds store data entities as type 'view' (see indexViews) — keep parity.
+  'axdataentityview': 'view',
+  'axdataentityviewextension': 'data-entity-extension',
   'axreport': 'report',
+  'axmap': 'map',
+  'axmapextension': 'map-extension',
+  'axmenuextension': 'menu-extension',
+  'axservice': 'service',
+  'axservicegroup': 'service-group',
+  'axconfigurationkey': 'configuration-key',
+  'axlicensecode': 'license-code',
+  'axsecuritypolicy': 'security-policy',
+  'axmacrodictionary': 'macro',
   'axsecurityprivilege': 'security-privilege',
   'axsecurityduty': 'security-duty',
+  'axsecuritydutyextension': 'security-duty-extension',
   'axsecurityrole': 'security-role',
+  'axsecurityroleextension': 'security-role-extension',
   'axmenuitemaction': 'menu-item-action',
+  'axmenuitemactionextension': 'menu-item-action-extension',
   'axmenuitemdisplay': 'menu-item-display',
+  'axmenuitemdisplayextension': 'menu-item-display-extension',
   'axmenuitemoutput': 'menu-item-output',
+  'axmenuitemoutputextension': 'menu-item-output-extension',
 };
 
 /**
@@ -99,17 +118,20 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
       } catch (e: any) {
         bridgeNote = `Bridge refresh skipped: ${e?.message ?? e}`;
       }
-      symbolIndex.touchLastIndexed?.();
+      // Note: deliberately no touchLastIndexed() here — nothing was reindexed in
+      // SQLite, and bumping the timestamp would make get_workspace_info report a
+      // possibly stale index as fresh (see src/utils/indexStaleness.ts).
       return {
         content: [{
           type: 'text',
           text:
-            `🔄 **Index refresh** (no filePath supplied).\n\n` +
+            `🔄 **Bridge/cache refresh** (no filePath supplied).\n\n` +
             `${bridgeNote}\n` +
             `Workspace scan cache invalidated.\n\n` +
-            `ℹ️ To fully index a specific new object into the searchable symbol DB (so scaffolding ` +
-            `resolves its EDTs/enums and references work), call this tool again with \`filePath\` ` +
-            `pointing at the created \`.xml\` (e.g. the new AxEnum/AxEdt/AxTable file).`,
+            `ℹ️ The SQLite symbol index itself was NOT reindexed. To fully index a specific new ` +
+            `object into the searchable symbol DB (so scaffolding resolves its EDTs/enums and ` +
+            `references work), call this tool again with \`filePath\` pointing at the created ` +
+            `\`.xml\` (e.g. the new AxEnum/AxEdt/AxTable file).`,
         }],
       };
     }
@@ -213,11 +235,10 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
 
     console.error(`[update_symbol_index] Re-indexing ${objectType} "${objectName}" (model: ${model})`);
 
-    // 1. Remove all existing symbols for this file so stale entries don't linger
-    const deleted = symbolIndex.db
-      .prepare(`DELETE FROM symbols WHERE file_path = ?`)
-      .run(filePath);
-    const deletedCount = deleted.changes;
+    // 1. Remove all existing symbols for this file so stale entries don't linger.
+    // removeSymbolsByFile matches every stored path form (absolute Windows path
+    // or PackagesLocalDirectory-relative, either slash style) — see symbolIndex.ts.
+    const { deletedCount } = symbolIndex.removeSymbolsByFile(filePath);
 
     // 1b. Refresh C# bridge metadata provider so it picks up the updated file
     try {
@@ -301,6 +322,23 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
               signature: field.extendedDataType || field.enumType || field.type,
               filePath,
               model,
+            });
+            insertedCount++;
+          }
+          // Re-insert table methods too — the full build (indexTables) indexes
+          // them, and the delete above just removed them; skipping them here
+          // would silently drop a table's methods on every incremental reindex.
+          for (const method of tableData.methods ?? []) {
+            const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') ?? '';
+            symbolIndex.addSymbol({
+              name: method.name,
+              type: 'method',
+              parentName: tableData.name,
+              signature: `${method.returnType} ${method.name}(${params})`,
+              filePath,
+              model,
+              source: method.source,
+              sourceSnippet: method.sourceSnippet,
             });
             insertedCount++;
           }

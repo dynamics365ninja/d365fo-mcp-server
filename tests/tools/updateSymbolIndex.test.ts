@@ -56,6 +56,7 @@ function createContext(db?: ReturnType<typeof createRecordingDb>['db']): XppServ
       removeSymbolsByFile: vi.fn(() => ({ deletedCount: 0, objectNames: [] })),
       removeLabelsByFile: vi.fn(() => 0),
       bulkAddLabels: vi.fn(),
+      touchLastIndexed: vi.fn(),
       db: db ?? {
         prepare: vi.fn(() => ({ run: vi.fn(() => ({ changes: 0 })) })),
         transaction: vi.fn((fn: any) => fn),
@@ -125,6 +126,87 @@ describe('update_symbol_index label file reconciliation', () => {
   });
 });
 
+describe('update_symbol_index AOT folder type mapping', () => {
+  // Regression (audit 2.1): the map used non-existent folder names
+  // 'AxEnumsExtension'/'AxEdtsExtension' (the real AOT folders are singular:
+  // AxEnumExtension/AxEdtExtension — see AOT_EXTRACTORS in
+  // scripts/extract-metadata.ts) and lacked entries for many folders, so all
+  // of these objects were silently indexed as type 'class' via the
+  // `?? 'class'` fallback.
+  let context: XppServerContext;
+
+  beforeEach(() => {
+    context = createContext();
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ['AxEnumExtension', 'enum-extension'],
+    ['AxEdtExtension', 'edt-extension'],
+    // Full builds store data entities as type 'view' (see indexViews) — parity.
+    ['AxDataEntityView', 'view'],
+    ['AxDataEntityViewExtension', 'data-entity-extension'],
+    ['AxViewExtension', 'view-extension'],
+    ['AxQuerySimpleExtension', 'query-extension'],
+    ['AxMenuExtension', 'menu-extension'],
+    ['AxMapExtension', 'map-extension'],
+    ['AxService', 'service'],
+    ['AxServiceGroup', 'service-group'],
+    ['AxMap', 'map'],
+    ['AxConfigurationKey', 'configuration-key'],
+    ['AxLicenseCode', 'license-code'],
+    ['AxSecurityPolicy', 'security-policy'],
+    ['AxMacroDictionary', 'macro'],
+    ['AxSecurityDutyExtension', 'security-duty-extension'],
+    ['AxSecurityRoleExtension', 'security-role-extension'],
+    ['AxMenuItemDisplayExtension', 'menu-item-display-extension'],
+    ['AxMenuItemActionExtension', 'menu-item-action-extension'],
+    ['AxMenuItemOutputExtension', 'menu-item-output-extension'],
+  ])('classifies a file under %s as %s (not the class fallback)', async (folder, expectedType) => {
+    const filePath = `K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\${folder}\\MyObject.xml`;
+    existsSyncMock.mockReturnValue(true);
+
+    const result = await updateSymbolIndexTool({ filePath }, context);
+
+    expect(result.isError).toBeFalsy();
+    const addSymbolCalls = (context.symbolIndex.addSymbol as any).mock.calls.map((c: any[]) => c[0]);
+    const objectSymbol = addSymbolCalls.find((s: any) => s.name === 'MyObject');
+    expect(objectSymbol?.type).toBe(expectedType);
+    // The AOT folder key also drives model extraction (folder before the AOT folder)
+    expect(objectSymbol?.model).toBe('MyModel');
+  });
+});
+
+describe('update_symbol_index refresh mode (no filePath)', () => {
+  let context: XppServerContext;
+
+  beforeEach(() => {
+    context = createContext();
+    vi.clearAllMocks();
+  });
+
+  it('does not bump last_indexed_at and does not claim the SQLite index was refreshed', async () => {
+    // Regression (audit 2.3): refresh mode reindexes nothing in SQLite, but it
+    // used to call touchLastIndexed() anyway — get_workspace_info then reported
+    // a possibly stale index as fresh (see src/utils/indexStaleness.ts).
+    const result = await updateSymbolIndexTool({}, context);
+
+    expect(result.isError).toBeFalsy();
+    expect(context.symbolIndex.touchLastIndexed).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain('NOT reindexed');
+  });
+
+  it('still bumps last_indexed_at when a file is actually re-indexed', async () => {
+    const filePath = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxService\\MyService.xml';
+    existsSyncMock.mockReturnValue(true);
+
+    const result = await updateSymbolIndexTool({ filePath }, context);
+
+    expect(result.isError).toBeFalsy();
+    expect(context.symbolIndex.touchLastIndexed).toHaveBeenCalled();
+  });
+});
+
 describe('update_symbol_index table re-indexing preserves field EDT/EnumType', () => {
   let context: XppServerContext;
 
@@ -172,6 +254,57 @@ describe('update_symbol_index table re-indexing preserves field EDT/EnumType', (
 
     expect(myIdField?.signature).toBe('ContosoMyId');
     expect(myStatusField?.signature).toBe('ContosoMyStatus');
+    // Stale-row cleanup must go through removeSymbolsByFile (path-form-agnostic
+    // matching), not an inline `DELETE ... WHERE file_path = ?` (audit 2.2).
+    expect(context.symbolIndex.removeSymbolsByFile).toHaveBeenCalledWith(filePath);
+  });
+
+  it('re-inserts table methods, matching what the full build (indexTables) stores', async () => {
+    // Regression (audit 2.5): the table branch only re-inserted fields, so a
+    // table's previously indexed methods were deleted by the stale-row cleanup
+    // and never re-added on incremental reindex.
+    const filePath = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTable\\MyTable.xml';
+    existsSyncMock.mockReturnValue(true);
+    readFilePromiseMock.mockResolvedValue(`<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>MyTable</Name>
+  <SourceCode>
+    <Methods>
+      <Method>
+        <Name>find</Name>
+        <Source><![CDATA[public static MyTable find(ContosoMyId _myId, boolean _forUpdate = false)
+{
+    MyTable myTable;
+    myTable.selectForUpdate(_forUpdate);
+    select firstonly myTable where myTable.MyId == _myId;
+    return myTable;
+}]]></Source>
+      </Method>
+    </Methods>
+  </SourceCode>
+  <Fields>
+    <AxTableField xmlns="" i:type="AxTableFieldString">
+      <Name>MyId</Name>
+      <ExtendedDataType>ContosoMyId</ExtendedDataType>
+    </AxTableField>
+  </Fields>
+</AxTable>`);
+
+    const result = await updateSymbolIndexTool({ filePath }, context);
+
+    expect(result.isError).toBeFalsy();
+    const addSymbolCalls = (context.symbolIndex.addSymbol as any).mock.calls.map((c: any[]) => c[0]);
+    const findMethod = addSymbolCalls.find((s: any) => s.type === 'method' && s.name === 'find');
+
+    expect(findMethod).toMatchObject({
+      name: 'find',
+      type: 'method',
+      parentName: 'MyTable',
+      signature: 'MyTable find(ContosoMyId _myId, boolean _forUpdate)',
+      filePath,
+      model: 'MyModel',
+    });
+    expect(findMethod.source).toContain('select firstonly myTable');
   });
 });
 
