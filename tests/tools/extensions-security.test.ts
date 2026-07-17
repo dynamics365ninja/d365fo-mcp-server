@@ -73,20 +73,28 @@ describe('find_coc_extensions', () => {
     const db = createMockDb();
     const ctx = buildContext(db);
 
-    // First prepare call → extension_metadata query
-    db.stmt.all
-      .mockReturnValueOnce([
-        {
-          extension_name: 'SalesFormLetter_MyExt',
-          model: 'MyModel',
-          base_object_name: 'SalesFormLetter',
-          coc_methods: '["run","parmSalesTable"]',
-          added_methods: '[]',
-          event_subscriptions: '[]',
-        },
-      ])
-      // Second prepare call → symbols fallback
-      .mockReturnValueOnce([]);
+    // Routed by SQL rather than by call order: the tool canonicalizes the
+    // caller's name first (a symbols probe), so a positional
+    // mockReturnValueOnce chain would feed the extension_metadata row to the
+    // canonicalization probe instead.
+    db.prepare.mockImplementation(((sql: string) => ({
+      all: vi.fn(() =>
+        sql.includes("extension_type = 'class-extension'")
+          ? [
+              {
+                extension_name: 'SalesFormLetter_MyExt',
+                model: 'MyModel',
+                base_object_name: 'SalesFormLetter',
+                coc_methods: '["run","parmSalesTable"]',
+                added_methods: '[]',
+                event_subscriptions: '[]',
+              },
+            ]
+          : [],
+      ),
+      get: vi.fn(() => undefined),
+      run: vi.fn(() => ({ changes: 0 })),
+    })) as any);
 
     const result = await findCocExtensionsTool(
       req('find_coc_extensions', { className: 'SalesFormLetter' }),

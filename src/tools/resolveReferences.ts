@@ -313,7 +313,9 @@ function findMethod(
        WHERE base_object_name = ?`,
     ).all(owner) as Array<{ added_methods: string | null; coc_methods: string | null }>;
     if (extRows.length === 0 && !ownerHit) {
-      // Owner not in symbols under any casing — nocase scan is bounded (~3k rows).
+      // Owner not in symbols under any casing — nocase scan is bounded by
+      // extension_metadata, which is small (single-digit thousands of rows;
+      // indexing class extensions in #693 roughly doubled it).
       extRows = deps.db.prepare(
         `SELECT added_methods, coc_methods FROM extension_metadata
          WHERE base_object_name = ? COLLATE NOCASE`,

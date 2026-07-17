@@ -6,10 +6,10 @@
 import { loadEnv } from '../src/utils/loadEnv.js';
 loadEnv(import.meta.url);
 import * as fs from 'fs/promises';
-import * as fsSync from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { XppMetadataParser } from '../src/metadata/xmlParser.js';
+import { XppMetadataParser, buildClassExtensionRecord } from '../src/metadata/xmlParser.js';
+import type { XppClassInfo } from '../src/metadata/types.js';
 import { isCustomModel as checkIsCustomModel, getCustomModels } from '../src/utils/modelClassifier.js';
 import { XppConfigProvider } from '../src/utils/xppConfigProvider.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, log, shortPath, supportsUnicode, sanitize } from '../src/utils/terminalUi.js';
@@ -110,6 +110,15 @@ interface ExtractionStats {
   enumExtensions: number;
   edtExtensions: number;
   dataEntityExtensions: number;
+  viewExtensions: number;
+  queryExtensions: number;
+  mapExtensions: number;
+  menuExtensions: number;
+  securityDutyExtensions: number;
+  securityRoleExtensions: number;
+  menuItemDisplayExtensions: number;
+  menuItemActionExtensions: number;
+  menuItemOutputExtensions: number;
   services: number;
   serviceGroups: number;
   maps: number;
@@ -153,33 +162,131 @@ function formatPercent(current: number, total: number): string {
   return `${formatDecimal((current / total) * 100)}%`;
 }
 
-async function countXmlFilesInDirectory(dirPath: string): Promise<number> {
-  if (!fsSync.existsSync(dirPath)) {
-    return 0;
-  }
+/** The model-level values every extractor needs, threaded through AOT_EXTRACTORS. */
+interface ModelContext {
+  parser: XppMetadataParser;
+  modelName: string;
+  stats: ExtractionStats;
+  isCustom: boolean;
+}
 
+/** One entry of AOT_EXTRACTORS: the folders to read and the extractor that reads them. */
+interface AotExtractor {
+  /** AOT folders this extractor reads, in canonical PascalCase. */
+  dirs: string[];
+  /**
+   * Runs with `dirPaths` = those of `dirs` that exist in this model, as real on-disk
+   * paths. Never called with an empty list, so extractors need no "missing folder" check.
+   */
+  run: (ctx: ModelContext, dirPaths: string[]) => Promise<void>;
+}
+
+/**
+ * Every extractor a model is run through, in order, paired with the AOT folders it reads.
+ *
+ * This is the single source of truth for both the extraction work and the progress
+ * denominator (EXTRACTED_AOT_DIRS is derived from it), so the two cannot drift apart.
+ * They previously did: only 9 folders were counted while ~36 were extracted, which put
+ * progress past 100% (#694).
+ *
+ * No AxClassExtension: the AOT has no such folder. Class extensions are AxClass files
+ * carrying [ExtensionOf(...)], and extractClasses emits their records (#693).
+ * AxMapExtension is empty in every package surveyed, but generate_object can emit one,
+ * so it stays wired to keep our own output indexable. AxWorkflow*Extension folders are
+ * likewise empty and nothing creates them - left out (#693).
+ */
+const AOT_EXTRACTORS: AotExtractor[] = [
+  { dirs: ['AxClass'], run: (c, [dir]) => extractClasses(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxTable'], run: (c, [dir]) => extractTables(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxForm'], run: (c, [dir]) => extractForms(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxQuery'], run: (c, [dir]) => extractQueries(dir, c.modelName, c.stats, c.isCustom) },
+  // One extractor for both: parseViewFile tells a view from a data entity by content.
+  { dirs: ['AxView', 'AxDataEntityView'], run: (c, dirs) => extractViews(c.parser, dirs, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxEnum'], run: (c, [dir]) => extractEnums(dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxEdt'], run: (c, [dir]) => extractEdts(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxReport'], run: (c, [dir]) => extractReports(dir, c.modelName, c.stats, c.isCustom) },
+
+  { dirs: ['AxSecurityPrivilege'], run: (c, [dir]) => extractSecurityPrivileges(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxSecurityDuty'], run: (c, [dir]) => extractSecurityDuties(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxSecurityRole'], run: (c, [dir]) => extractSecurityRoles(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+
+  { dirs: ['AxMenuItemDisplay'], run: (c, [dir]) => extractMenuItems(c.parser, dir, c.modelName, 'display', c.stats, c.isCustom) },
+  { dirs: ['AxMenuItemAction'], run: (c, [dir]) => extractMenuItems(c.parser, dir, c.modelName, 'action', c.stats, c.isCustom) },
+  { dirs: ['AxMenuItemOutput'], run: (c, [dir]) => extractMenuItems(c.parser, dir, c.modelName, 'output', c.stats, c.isCustom) },
+
+  { dirs: ['AxTableExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'table-extension', c.stats, c.isCustom) },
+  { dirs: ['AxFormExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'form-extension', c.stats, c.isCustom) },
+  { dirs: ['AxEnumExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'enum-extension', c.stats, c.isCustom) },
+  { dirs: ['AxEdtExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'edt-extension', c.stats, c.isCustom) },
+  { dirs: ['AxDataEntityViewExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'data-entity-extension', c.stats, c.isCustom) },
+  { dirs: ['AxViewExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'view-extension', c.stats, c.isCustom) },
+  { dirs: ['AxQuerySimpleExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'query-extension', c.stats, c.isCustom) },
+  { dirs: ['AxMenuExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'menu-extension', c.stats, c.isCustom) },
+  { dirs: ['AxSecurityDutyExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'security-duty-extension', c.stats, c.isCustom) },
+  { dirs: ['AxSecurityRoleExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'security-role-extension', c.stats, c.isCustom) },
+  { dirs: ['AxMenuItemDisplayExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'menu-item-display-extension', c.stats, c.isCustom) },
+  { dirs: ['AxMenuItemActionExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'menu-item-action-extension', c.stats, c.isCustom) },
+  { dirs: ['AxMenuItemOutputExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'menu-item-output-extension', c.stats, c.isCustom) },
+  { dirs: ['AxMapExtension'], run: (c, [dir]) => extractExtensions(c.parser, dir, c.modelName, 'map-extension', c.stats, c.isCustom) },
+
+  { dirs: ['AxService'], run: (c, [dir]) => extractServices(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxServiceGroup'], run: (c, [dir]) => extractServiceGroups(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+
+  { dirs: ['AxMap'], run: (c, [dir]) => extractMaps(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxConfigurationKey'], run: (c, [dir]) => extractConfigurationKeys(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxLicenseCode'], run: (c, [dir]) => extractLicenseCodes(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxSecurityPolicy'], run: (c, [dir]) => extractSecurityPolicies(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+  { dirs: ['AxMacroDictionary'], run: (c, [dir]) => extractMacros(c.parser, dir, c.modelName, c.stats, c.isCustom) },
+];
+
+/** Every AOT folder the extractors read - the progress denominator. Derived, never edited. */
+export const EXTRACTED_AOT_DIRS: string[] = AOT_EXTRACTORS.flatMap(e => e.dirs);
+
+/** The folders that mark a directory as an X++ model rather than bin/Resources/etc. */
+const MODEL_MARKER_DIRS = ['AxClass', 'AxTable', 'AxEnum', 'AxEdt', 'AxView', 'AxDataEntityView'];
+
+/**
+ * Map a model's real subdirectory names by their lowercased form, so callers can look
+ * up a canonical 'AxClass' regardless of the casing on disk (the AOT ships PascalCase,
+ * but Linux checkouts may be lowercased).
+ *
+ * Reading the directory once and matching case-insensitively is what keeps a folder
+ * from resolving twice: probing 'AxClass' and then an 'axclass' twin hits the same
+ * directory on case-insensitive filesystems, which double-counted every folder on
+ * Windows and made extractViews parse each view file twice (#694).
+ */
+export async function mapModelDirs(modelPath: string): Promise<Map<string, string>> {
+  const byLowerName = new Map<string, string>();
+  try {
+    for (const entry of await fs.readdir(modelPath, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        byLowerName.set(entry.name.toLowerCase(), path.join(modelPath, entry.name));
+      }
+    }
+  } catch {
+    // Model path unreadable - callers treat this as "no extractable folders".
+  }
+  return byLowerName;
+}
+
+/** Resolve canonical folder names against a model's actual folders, dropping absent ones. */
+function resolveDirs(dirsByLowerName: Map<string, string>, canonicalDirs: string[]): string[] {
+  return canonicalDirs
+    .map(dirName => dirsByLowerName.get(dirName.toLowerCase()))
+    .filter((dirPath): dirPath is string => dirPath !== undefined);
+}
+
+async function countXmlFilesInDirectory(dirPath: string): Promise<number> {
   const files = await fs.readdir(dirPath);
   return files.filter(file => file.endsWith('.xml')).length;
 }
 
-async function countModelXmlFiles(modelPath: string): Promise<number> {
+/** Expected XML file count for a model, over exactly the folders the extractors read. */
+export async function countModelXmlFiles(dirsByLowerName: Map<string, string>): Promise<number> {
   let total = 0;
-  const sourceDirs = [
-    'AxClass', 'axclass',
-    'AxTable', 'axtable',
-    'AxForm', 'axform',
-    'AxQuery', 'axquery',
-    'AxView', 'axview',
-    'AxDataEntityView', 'axdataentityview',
-    'AxEnum', 'axenum',
-    'AxEdt', 'axedt',
-    'AxReport', 'axreport',
-  ];
-
-  for (const sourceDir of sourceDirs) {
-    total += await countXmlFilesInDirectory(path.join(modelPath, sourceDir));
+  for (const dirPath of resolveDirs(dirsByLowerName, EXTRACTED_AOT_DIRS)) {
+    total += await countXmlFilesInDirectory(dirPath);
   }
-
   return total;
 }
 
@@ -272,6 +379,15 @@ async function extractMetadata() {
     enumExtensions: 0,
     edtExtensions: 0,
     dataEntityExtensions: 0,
+    viewExtensions: 0,
+    queryExtensions: 0,
+    mapExtensions: 0,
+    menuExtensions: 0,
+    securityDutyExtensions: 0,
+    securityRoleExtensions: 0,
+    menuItemDisplayExtensions: 0,
+    menuItemActionExtensions: 0,
+    menuItemOutputExtensions: 0,
     services: 0,
     serviceGroups: 0,
     maps: 0,
@@ -403,23 +519,10 @@ async function extractMetadata() {
       const modelPath = path.join(packagePath, modelName);
 
       // Check if this directory contains X++ metadata (has AxClass, AxTable, etc.)
-      // Support both uppercase and lowercase directory names (Linux case-sensitivity)
       // Do this first so non-model directories (bin, Resources, Reports, …) are
       // silently skipped before any model-name-based filtering is applied.
-      const hasAxClass = await fs.access(path.join(modelPath, 'AxClass')).then(() => true)
-        .catch(() => fs.access(path.join(modelPath, 'axclass')).then(() => true).catch(() => false));
-      const hasAxTable = await fs.access(path.join(modelPath, 'AxTable')).then(() => true)
-        .catch(() => fs.access(path.join(modelPath, 'axtable')).then(() => true).catch(() => false));
-      const hasAxEnum = await fs.access(path.join(modelPath, 'AxEnum')).then(() => true)
-        .catch(() => fs.access(path.join(modelPath, 'axenum')).then(() => true).catch(() => false));
-      const hasAxEdt = await fs.access(path.join(modelPath, 'AxEdt')).then(() => true)
-        .catch(() => fs.access(path.join(modelPath, 'axedt')).then(() => true).catch(() => false));
-      const hasAxView = await fs.access(path.join(modelPath, 'AxView')).then(() => true)
-        .catch(() => fs.access(path.join(modelPath, 'axview')).then(() => true).catch(() => false));
-      const hasAxDataEntityView = await fs.access(path.join(modelPath, 'AxDataEntityView')).then(() => true)
-        .catch(() => fs.access(path.join(modelPath, 'axdataentityview')).then(() => true).catch(() => false));
-
-      if (!hasAxClass && !hasAxTable && !hasAxEnum && !hasAxEdt && !hasAxView && !hasAxDataEntityView) {
+      const modelDirsByLowerName = await mapModelDirs(modelPath);
+      if (resolveDirs(modelDirsByLowerName, MODEL_MARKER_DIRS).length === 0) {
         // Skip directories that don't contain X++ metadata
         continue;
       }
@@ -440,7 +543,7 @@ async function extractMetadata() {
         continue;
       }
 
-      const expectedXmlFiles = await countModelXmlFiles(modelPath);
+      const expectedXmlFiles = await countModelXmlFiles(modelDirsByLowerName);
       // In UDE mode: custom iff the package lives under customRoot.
       // In traditional mode: fall back to name-based detection.
       const isCustom = customRoot ? rootPath === customRoot : isCustomModel(modelName);
@@ -470,58 +573,17 @@ async function extractMetadata() {
 
     const { modelPath, modelName, isCustom } = modelItem;
 
-    // Extract classes
-    await extractClasses(parser, modelPath, modelName, stats, isCustom);
+    // Resolve the model's folders once, then run every extractor whose folders exist.
+    // AOT_EXTRACTORS is the same list countModelXmlFiles counted, so the numerator and
+    // the denominator cover exactly the same folders (#694).
+    const ctx: ModelContext = { parser, modelName, stats, isCustom };
+    const dirsByLowerName = await mapModelDirs(modelPath);
 
-    // Extract tables
-    await extractTables(parser, modelPath, modelName, stats, isCustom);
-
-    // Extract forms
-    await extractForms(parser, modelPath, modelName, stats, isCustom);
-
-    // Extract queries
-    await extractQueries(parser, modelPath, modelName, stats, isCustom);
-
-    // Extract views
-    await extractViews(parser, modelPath, modelName, stats, isCustom);
-
-    // Extract enums
-    await extractEnums(parser, modelPath, modelName, stats, isCustom);
-
-    // Extract EDTs
-    await extractEdts(parser, modelPath, modelName, stats, isCustom);
-
-    // Extract Reports
-    await extractReports(modelPath, modelName, stats, isCustom);
-
-    // Extract security objects
-    await extractSecurityPrivileges(parser, modelPath, modelName, stats, isCustom);
-    await extractSecurityDuties(parser, modelPath, modelName, stats, isCustom);
-    await extractSecurityRoles(parser, modelPath, modelName, stats, isCustom);
-
-    // Extract menu items
-    await extractMenuItems(parser, modelPath, modelName, 'display', stats, isCustom);
-    await extractMenuItems(parser, modelPath, modelName, 'action', stats, isCustom);
-    await extractMenuItems(parser, modelPath, modelName, 'output', stats, isCustom);
-
-    // Extract extensions
-    await extractExtensions(parser, modelPath, modelName, 'table-extension', 'AxTableExtension', stats, isCustom);
-    await extractExtensions(parser, modelPath, modelName, 'class-extension', 'AxClassExtension', stats, isCustom);
-    await extractExtensions(parser, modelPath, modelName, 'form-extension', 'AxFormExtension', stats, isCustom);
-    await extractExtensions(parser, modelPath, modelName, 'enum-extension', 'AxEnumExtension', stats, isCustom);
-    await extractExtensions(parser, modelPath, modelName, 'edt-extension', 'AxEdtExtension', stats, isCustom);
-    await extractExtensions(parser, modelPath, modelName, 'data-entity-extension', 'AxDataEntityViewExtension', stats, isCustom);
-
-    // Extract services + service groups
-    await extractServices(parser, modelPath, modelName, stats, isCustom);
-    await extractServiceGroups(parser, modelPath, modelName, stats, isCustom);
-
-    // Extract maps, feature gating, security policies, macros
-    await extractMaps(parser, modelPath, modelName, stats, isCustom);
-    await extractConfigurationKeys(parser, modelPath, modelName, stats, isCustom);
-    await extractLicenseCodes(parser, modelPath, modelName, stats, isCustom);
-    await extractSecurityPolicies(parser, modelPath, modelName, stats, isCustom);
-    await extractMacros(parser, modelPath, modelName, stats, isCustom);
+    for (const extractor of AOT_EXTRACTORS) {
+      const dirPaths = resolveDirs(dirsByLowerName, extractor.dirs);
+      if (dirPaths.length === 0) continue;
+      await extractor.run(ctx, dirPaths);
+    }
 
     const modelDuration = Date.now() - modelStart;
     cumulativeModelDuration += modelDuration;
@@ -566,6 +628,15 @@ async function extractMetadata() {
     ['Enum extensions', stats.enumExtensions],
     ['EDT extensions', stats.edtExtensions],
     ['Data entity extensions', stats.dataEntityExtensions],
+    ['View extensions', stats.viewExtensions],
+    ['Query extensions', stats.queryExtensions],
+    ['Map extensions', stats.mapExtensions],
+    ['Menu extensions', stats.menuExtensions],
+    ['Security duty extensions', stats.securityDutyExtensions],
+    ['Security role extensions', stats.securityRoleExtensions],
+    ['Menu item extensions (display)', stats.menuItemDisplayExtensions],
+    ['Menu item extensions (action)', stats.menuItemActionExtensions],
+    ['Menu item extensions (output)', stats.menuItemOutputExtensions],
     ['Services', stats.services],
     ['Service groups', stats.serviceGroups],
     ['Maps', stats.maps],
@@ -590,26 +661,11 @@ async function extractMetadata() {
 
 async function extractClasses(
   parser: XppMetadataParser,
-  modelPath: string,
+  classesPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
-  let classesPath = path.join(modelPath, 'AxClass');
-  
-  try {
-    await fs.access(classesPath);
-  } catch {
-    // Try lowercase
-    classesPath = path.join(modelPath, 'axclass');
-    try {
-      await fs.access(classesPath);
-    } catch {
-      return; // No classes in this model
-    }
-  }
-
   const files = await fs.readdir(classesPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
@@ -635,6 +691,14 @@ async function extractClasses(
       await fs.writeFile(outputFile, JSON.stringify(classInfo.data, isCustom ? sourcePathReplacer : undefined, 2));
 
       stats.classes++;
+
+      // A class carrying [ExtensionOf(...)] is also a class extension. It stays
+      // indexed as a class (it is a real AxClass) and additionally gets an
+      // extension record, which is what find_coc_extensions and
+      // resolve_references' extension-method path query.
+      if (classInfo.data.extensionOf) {
+        await writeClassExtensionRecord(classInfo.data, modelName, stats, isCustom);
+      }
     } catch (error) {
       log.err(`Error parsing ${file}: ${error instanceof Error ? error.message : error}`);
       stats.errors++;
@@ -643,28 +707,38 @@ async function extractClasses(
 
 }
 
+/**
+ * Write the class-extension record for an AxClass carrying [ExtensionOf(...)]
+ * into the `class-extensions/` folder symbolIndex.indexExtensions already
+ * reads, so both the symbols row and the extension_metadata row come out of
+ * the existing pipeline unchanged.
+ */
+async function writeClassExtensionRecord(
+  classInfo: XppClassInfo,
+  modelName: string,
+  stats: ExtractionStats,
+  isCustom: boolean,
+) {
+  const record = buildClassExtensionRecord(classInfo, modelName);
+  if (!record) return;
+
+  const outputDir = path.join(OUTPUT_PATH, modelName, 'class-extensions');
+  await fs.mkdir(outputDir, { recursive: true });
+  await fs.writeFile(
+    path.join(outputDir, `${classInfo.name}.json`),
+    JSON.stringify(record, isCustom ? sourcePathReplacer : undefined, 2),
+  );
+
+  stats.classExtensions++;
+}
+
 async function extractTables(
   parser: XppMetadataParser,
-  modelPath: string,
+  tablesPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
-  let tablesPath = path.join(modelPath, 'AxTable');
-  
-  try {
-    await fs.access(tablesPath);
-  } catch {
-    // Try lowercase
-    tablesPath = path.join(modelPath, 'axtable');
-    try {
-      await fs.access(tablesPath);
-    } catch {
-      return; // No tables in this model
-    }
-  }
-
   const files = await fs.readdir(tablesPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
@@ -700,26 +774,11 @@ async function extractTables(
 
 async function extractForms(
   parser: XppMetadataParser,
-  modelPath: string,
+  formsPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
-  let formsPath = path.join(modelPath, 'AxForm');
-  
-  try {
-    await fs.access(formsPath);
-  } catch {
-    // Try lowercase
-    formsPath = path.join(modelPath, 'axform');
-    try {
-      await fs.access(formsPath);
-    } catch {
-      return; // No forms in this model
-    }
-  }
-
   const files = await fs.readdir(formsPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
@@ -756,27 +815,11 @@ async function extractForms(
 }
 
 async function extractQueries(
-  parser: XppMetadataParser,
-  modelPath: string,
+  queriesPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
-  let queriesPath = path.join(modelPath, 'AxQuery');
-  
-  try {
-    await fs.access(queriesPath);
-  } catch {
-    // Try lowercase
-    queriesPath = path.join(modelPath, 'axquery');
-    try {
-      await fs.access(queriesPath);
-    } catch {
-      return; // No queries in this model
-    }
-  }
-
   const files = await fs.readdir(queriesPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
@@ -812,24 +855,11 @@ async function extractQueries(
 
 async function extractViews(
   parser: XppMetadataParser,
-  modelPath: string,
+  sourceDirs: string[],
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  const sourceDirs: string[] = [];
-
-  for (const dirName of ['AxView', 'axview', 'AxDataEntityView', 'axdataentityview']) {
-    const candidate = path.join(modelPath, dirName);
-    if (fsSync.existsSync(candidate)) {
-      sourceDirs.push(candidate);
-    }
-  }
-
-  if (sourceDirs.length === 0) {
-    return;
-  }
-
   let totalXmlFiles = 0;
 
   for (const sourceDir of sourceDirs) {
@@ -871,27 +901,11 @@ async function extractViews(
 }
 
 async function extractEnums(
-  parser: XppMetadataParser,
-  modelPath: string,
+  enumsPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
-  let enumsPath = path.join(modelPath, 'AxEnum');
-  
-  try {
-    await fs.access(enumsPath);
-  } catch {
-    // Try lowercase
-    enumsPath = path.join(modelPath, 'axenum');
-    try {
-      await fs.access(enumsPath);
-    } catch {
-      return; // No enums in this model
-    }
-  }
-
   const files = await fs.readdir(enumsPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
@@ -920,26 +934,11 @@ async function extractEnums(
 
 async function extractEdts(
   parser: XppMetadataParser,
-  modelPath: string,
+  edtsPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
-  let edtsPath = path.join(modelPath, 'AxEdt');
-
-  try {
-    await fs.access(edtsPath);
-  } catch {
-    // Try lowercase
-    edtsPath = path.join(modelPath, 'axedt');
-    try {
-      await fs.access(edtsPath);
-    } catch {
-      return; // No EDTs in this model
-    }
-  }
-
   const files = await fs.readdir(edtsPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
@@ -982,26 +981,11 @@ async function extractEdts(
  * caching a full parse, so we only need enough for the symbol DB entry.
  */
 async function extractReports(
-  modelPath: string,
+  reportsPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  // Support both uppercase and lowercase directory names (Linux case-sensitivity)
-  let reportsPath = path.join(modelPath, 'AxReport');
-
-  try {
-    await fs.access(reportsPath);
-  } catch {
-    // Try lowercase
-    reportsPath = path.join(modelPath, 'axreport');
-    try {
-      await fs.access(reportsPath);
-    } catch {
-      return; // No reports in this model
-    }
-  }
-
   const files = await fs.readdir(reportsPath);
   const xmlFiles = files.filter(f => f.endsWith('.xml'));
 
@@ -1038,16 +1022,11 @@ async function extractReports(
 
 async function extractSecurityPrivileges(
   parser: XppMetadataParser,
-  modelPath: string,
+  dirPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  let dirPath = path.join(modelPath, 'AxSecurityPrivilege');
-  try { await fs.access(dirPath); } catch {
-    dirPath = path.join(modelPath, 'axsecurityprivilege');
-    try { await fs.access(dirPath); } catch { return; }
-  }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
   log.detail(`Security privileges: ${formatCount(files.length)} files`);
@@ -1071,16 +1050,11 @@ async function extractSecurityPrivileges(
 
 async function extractSecurityDuties(
   parser: XppMetadataParser,
-  modelPath: string,
+  dirPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  let dirPath = path.join(modelPath, 'AxSecurityDuty');
-  try { await fs.access(dirPath); } catch {
-    dirPath = path.join(modelPath, 'axsecurityduty');
-    try { await fs.access(dirPath); } catch { return; }
-  }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
   log.detail(`Security duties: ${formatCount(files.length)} files`);
@@ -1104,16 +1078,11 @@ async function extractSecurityDuties(
 
 async function extractSecurityRoles(
   parser: XppMetadataParser,
-  modelPath: string,
+  dirPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  let dirPath = path.join(modelPath, 'AxSecurityRole');
-  try { await fs.access(dirPath); } catch {
-    dirPath = path.join(modelPath, 'axsecurityrole');
-    try { await fs.access(dirPath); } catch { return; }
-  }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
   log.detail(`Security roles: ${formatCount(files.length)} files`);
@@ -1137,23 +1106,16 @@ async function extractSecurityRoles(
 
 async function extractMenuItems(
   parser: XppMetadataParser,
-  modelPath: string,
+  dirPath: string,
   modelName: string,
   itemType: 'display' | 'action' | 'output',
   stats: ExtractionStats,
   isCustom = false
 ) {
-  const dirName = itemType === 'display' ? 'AxMenuItemDisplay'
-    : itemType === 'action' ? 'AxMenuItemAction' : 'AxMenuItemOutput';
   const outDirName = `menu-item-${itemType}s`;
   const statKey = itemType === 'display' ? 'menuItemDisplays'
     : itemType === 'action' ? 'menuItemActions' : 'menuItemOutputs';
 
-  let dirPath = path.join(modelPath, dirName);
-  try { await fs.access(dirPath); } catch {
-    dirPath = path.join(modelPath, dirName.toLowerCase());
-    try { await fs.access(dirPath); } catch { return; }
-  }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
   log.detail(`Menu items (${itemType}): ${formatCount(files.length)} files`);
@@ -1177,10 +1139,9 @@ async function extractMenuItems(
 
 async function extractExtensions(
   parser: XppMetadataParser,
-  modelPath: string,
+  dirPath: string,
   modelName: string,
   extensionType: string,
-  axDirName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
@@ -1192,13 +1153,17 @@ async function extractExtensions(
     'enum-extension': 'enumExtensions',
     'edt-extension': 'edtExtensions',
     'data-entity-extension': 'dataEntityExtensions',
+    'view-extension': 'viewExtensions',
+    'query-extension': 'queryExtensions',
+    'map-extension': 'mapExtensions',
+    'menu-extension': 'menuExtensions',
+    'security-duty-extension': 'securityDutyExtensions',
+    'security-role-extension': 'securityRoleExtensions',
+    'menu-item-display-extension': 'menuItemDisplayExtensions',
+    'menu-item-action-extension': 'menuItemActionExtensions',
+    'menu-item-output-extension': 'menuItemOutputExtensions',
   };
 
-  let dirPath = path.join(modelPath, axDirName);
-  try { await fs.access(dirPath); } catch {
-    dirPath = path.join(modelPath, axDirName.toLowerCase());
-    try { await fs.access(dirPath); } catch { return; }
-  }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
   log.detail(`${extensionType}s: ${formatCount(files.length)} files`);
@@ -1223,16 +1188,11 @@ async function extractExtensions(
 
 async function extractServices(
   parser: XppMetadataParser,
-  modelPath: string,
+  dirPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  let dirPath = path.join(modelPath, 'AxService');
-  try { await fs.access(dirPath); } catch {
-    dirPath = path.join(modelPath, 'axservice');
-    try { await fs.access(dirPath); } catch { return; }
-  }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
   log.detail(`Services: ${formatCount(files.length)} files`);
@@ -1256,16 +1216,11 @@ async function extractServices(
 
 async function extractServiceGroups(
   parser: XppMetadataParser,
-  modelPath: string,
+  dirPath: string,
   modelName: string,
   stats: ExtractionStats,
   isCustom = false
 ) {
-  let dirPath = path.join(modelPath, 'AxServiceGroup');
-  try { await fs.access(dirPath); } catch {
-    dirPath = path.join(modelPath, 'axservicegroup');
-    try { await fs.access(dirPath); } catch { return; }
-  }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
   log.detail(`Service groups: ${formatCount(files.length)} files`);
@@ -1292,9 +1247,8 @@ async function extractServiceGroups(
  * writes JSON metadata with the given `type`, and bumps `statKey`.
  */
 async function extractSimpleType(
-  modelPath: string,
+  dirPath: string,
   modelName: string,
-  axDirName: string,
   outDirName: string,
   type: string,
   statKey: keyof ExtractionStats,
@@ -1303,11 +1257,6 @@ async function extractSimpleType(
   isCustom: boolean,
   label: string,
 ) {
-  let dirPath = path.join(modelPath, axDirName);
-  try { await fs.access(dirPath); } catch {
-    dirPath = path.join(modelPath, axDirName.toLowerCase());
-    try { await fs.access(dirPath); } catch { return; }
-  }
   const files = (await fs.readdir(dirPath)).filter(f => f.endsWith('.xml'));
   if (files.length === 0) return;
   log.detail(`${label}: ${formatCount(files.length)} files`);
@@ -1329,34 +1278,40 @@ async function extractSimpleType(
   }
 }
 
-async function extractMaps(parser: XppMetadataParser, modelPath: string, modelName: string, stats: ExtractionStats, isCustom = false) {
-  await extractSimpleType(modelPath, modelName, 'AxMap', 'maps', 'map', 'maps',
+async function extractMaps(parser: XppMetadataParser, dirPath: string, modelName: string, stats: ExtractionStats, isCustom = false) {
+  await extractSimpleType(dirPath, modelName, 'maps', 'map', 'maps',
     (f) => parser.parseMapFile(f), stats, isCustom, 'Maps');
 }
 
-async function extractConfigurationKeys(parser: XppMetadataParser, modelPath: string, modelName: string, stats: ExtractionStats, isCustom = false) {
-  await extractSimpleType(modelPath, modelName, 'AxConfigurationKey', 'configuration-keys', 'configuration-key', 'configurationKeys',
+async function extractConfigurationKeys(parser: XppMetadataParser, dirPath: string, modelName: string, stats: ExtractionStats, isCustom = false) {
+  await extractSimpleType(dirPath, modelName, 'configuration-keys', 'configuration-key', 'configurationKeys',
     (f) => parser.parseConfigurationKeyFile(f), stats, isCustom, 'Configuration keys');
 }
 
-async function extractLicenseCodes(parser: XppMetadataParser, modelPath: string, modelName: string, stats: ExtractionStats, isCustom = false) {
-  await extractSimpleType(modelPath, modelName, 'AxLicenseCode', 'license-codes', 'license-code', 'licenseCodes',
+async function extractLicenseCodes(parser: XppMetadataParser, dirPath: string, modelName: string, stats: ExtractionStats, isCustom = false) {
+  await extractSimpleType(dirPath, modelName, 'license-codes', 'license-code', 'licenseCodes',
     (f) => parser.parseLicenseCodeFile(f), stats, isCustom, 'License codes');
 }
 
-async function extractSecurityPolicies(parser: XppMetadataParser, modelPath: string, modelName: string, stats: ExtractionStats, isCustom = false) {
-  await extractSimpleType(modelPath, modelName, 'AxSecurityPolicy', 'security-policies', 'security-policy', 'securityPolicies',
+async function extractSecurityPolicies(parser: XppMetadataParser, dirPath: string, modelName: string, stats: ExtractionStats, isCustom = false) {
+  await extractSimpleType(dirPath, modelName, 'security-policies', 'security-policy', 'securityPolicies',
     (f) => parser.parseSecurityPolicyFile(f), stats, isCustom, 'Security policies');
 }
 
-async function extractMacros(parser: XppMetadataParser, modelPath: string, modelName: string, stats: ExtractionStats, isCustom = false) {
-  await extractSimpleType(modelPath, modelName, 'AxMacroDictionary', 'macros', 'macro', 'macros',
+async function extractMacros(parser: XppMetadataParser, dirPath: string, modelName: string, stats: ExtractionStats, isCustom = false) {
+  await extractSimpleType(dirPath, modelName, 'macros', 'macro', 'macros',
     (f) => parser.parseMacroFile(f), stats, isCustom, 'Macros');
 }
 
-// Run extraction
-extractMetadata().catch((error) => {
-  log.err(`Fatal error: ${error instanceof Error ? error.message : String(error)}`);
-  if (error instanceof Error && error.stack) console.error(error.stack);
-  process.exit(1);
-});
+// Run extraction only when invoked as a script: tests import this module for
+// EXTRACTED_AOT_DIRS/mapModelDirs/countModelXmlFiles and must not trigger a full run.
+const invokedAsScript = process.argv[1] !== undefined
+  && path.resolve(process.argv[1]) === path.resolve(__filename);
+
+if (invokedAsScript) {
+  extractMetadata().catch((error) => {
+    log.err(`Fatal error: ${error instanceof Error ? error.message : String(error)}`);
+    if (error instanceof Error && error.stack) console.error(error.stack);
+    process.exit(1);
+  });
+}

@@ -167,8 +167,11 @@ describe('parseClassFile inheritance', () => {
 
 describe('parseExtensionFile base object', () => {
   it('reads the base object from the ExtensionOf attribute', async () => {
+    // Root tag is AxClass, not AxClassExtension: the AOT has no AxClassExtension
+    // artifact, and asserting against a shape that never reaches disk is what let
+    // the wrong rootKeyMap entry survive (#693).
     const file = await writeExtension(
-      'AxClassExtension',
+      'AxClass',
       'SalesTable_Extension',
       '[ExtensionOf(classStr(SalesTableType))]\nfinal class SalesTable_Extension\n{\n}',
     );

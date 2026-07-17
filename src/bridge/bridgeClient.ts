@@ -40,7 +40,6 @@ import type {
   BridgeRefreshResult,
   BridgeWriteResult,
   BridgeSmartTableResult,
-  BridgeDeleteResult,
   BridgeBatchOperationRequest,
   BridgeBatchOperationResult,
   BridgeCapabilities,
@@ -823,12 +822,7 @@ export class BridgeClient extends EventEmitter {
     return this.call<BridgeWriteResult>('addMenuItemToMenu', { objectName: menuName, menuItemToAdd, menuItemToAddType: menuItemToAddType ?? 'display' });
   }
 
-  // Delete, Batch, Capabilities, Pattern Discovery
-
-  /** Delete a D365FO object by removing its file from disk */
-  async deleteObject(objectType: string, objectName: string): Promise<BridgeDeleteResult> {
-    return this.call<BridgeDeleteResult>('deleteObject', { objectType, objectName });
-  }
+  // Batch, Capabilities, Pattern Discovery
 
   /** Execute multiple write operations on a single object in one call */
   async batchModify(

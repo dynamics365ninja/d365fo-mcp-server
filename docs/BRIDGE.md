@@ -104,7 +104,6 @@ All use the Read → Modify → `IMetaXxxProvider.Update()` pattern.
 
 | Method | Purpose |
 |---|---|
-| `deleteObject` | `IMetaXxxProvider.Delete()` for class, table, enum, edt |
 | `batchModify` | Multiple operations in one call |
 | `getCapabilities` | Reports supported types + operations |
 | `discoverFormPatterns` | Analyzes form design patterns |

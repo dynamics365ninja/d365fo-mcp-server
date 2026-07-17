@@ -1378,6 +1378,33 @@ export class XppSymbolIndex {
         const deExtPath = path.join(modelPath, 'data-entity-extensions');
         if (fs.existsSync(deExtPath)) this.indexExtensions(deExtPath, model, 'data-entity-extension');
 
+        const viewExtPath = path.join(modelPath, 'view-extensions');
+        if (fs.existsSync(viewExtPath)) this.indexExtensions(viewExtPath, model, 'view-extension');
+
+        const queryExtPath = path.join(modelPath, 'query-extensions');
+        if (fs.existsSync(queryExtPath)) this.indexExtensions(queryExtPath, model, 'query-extension');
+
+        const mapExtPath = path.join(modelPath, 'map-extensions');
+        if (fs.existsSync(mapExtPath)) this.indexExtensions(mapExtPath, model, 'map-extension');
+
+        const menuExtPath = path.join(modelPath, 'menu-extensions');
+        if (fs.existsSync(menuExtPath)) this.indexExtensions(menuExtPath, model, 'menu-extension');
+
+        const secDutyExtPath = path.join(modelPath, 'security-duty-extensions');
+        if (fs.existsSync(secDutyExtPath)) this.indexExtensions(secDutyExtPath, model, 'security-duty-extension');
+
+        const secRoleExtPath = path.join(modelPath, 'security-role-extensions');
+        if (fs.existsSync(secRoleExtPath)) this.indexExtensions(secRoleExtPath, model, 'security-role-extension');
+
+        const miDisplayExtPath = path.join(modelPath, 'menu-item-display-extensions');
+        if (fs.existsSync(miDisplayExtPath)) this.indexExtensions(miDisplayExtPath, model, 'menu-item-display-extension');
+
+        const miActionExtPath = path.join(modelPath, 'menu-item-action-extensions');
+        if (fs.existsSync(miActionExtPath)) this.indexExtensions(miActionExtPath, model, 'menu-item-action-extension');
+
+        const miOutputExtPath = path.join(modelPath, 'menu-item-output-extensions');
+        if (fs.existsSync(miOutputExtPath)) this.indexExtensions(miOutputExtPath, model, 'menu-item-output-extension');
+
         // Services + service groups
         const servicesPath = path.join(modelPath, 'services');
         if (fs.existsSync(servicesPath)) this.indexServices(servicesPath, model);
@@ -2572,7 +2599,8 @@ export class XppSymbolIndex {
           type IN (
             'class-extension','table-extension','form-extension','enum-extension',
             'edt-extension','view-extension','query-extension','data-entity-extension',
-            'map-extension','menu-extension','security-role-extension','security-duty-extension'
+            'map-extension','menu-extension','security-role-extension','security-duty-extension',
+            'menu-item-display-extension','menu-item-action-extension','menu-item-output-extension'
           )
           OR name LIKE '%_Extension'
           OR name LIKE '%.%Extension'

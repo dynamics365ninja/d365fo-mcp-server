@@ -37,6 +37,19 @@ export interface XppDeclarationParameter {
   defaultValue?: string;
 }
 
+export interface XppExtensionOf {
+  /** Base object being extended — the intrinsic's first argument. */
+  baseObjectName: string;
+  /** Intrinsic minus its `Str` suffix, lowercased: 'class', 'table', 'formdatasource', … */
+  baseKind: string;
+  /**
+   * Second argument of the two-argument intrinsics — the data source name for
+   * `formDataSourceStr(Form, DataSource)`, the control name for
+   * `formControlStr(Form, Control)`. Undefined for the single-argument forms.
+   */
+  memberName?: string;
+}
+
 export const MODIFIER_KEYWORDS = [
   'public', 'private', 'protected', 'internal', 'static', 'final', 'abstract', 'display', 'edit',
 ];
@@ -271,6 +284,50 @@ export function parseXppClassHeader(declaration: string): XppClassHeader | null 
     isAbstract: /\babstract\b/i.test(modifiers),
     isFinal: /\bfinal\b/i.test(modifiers),
   };
+}
+
+/**
+ * Read the `[ExtensionOf(<kind>Str(Base[, Member]))]` attribute that marks a
+ * class as an extension. In the AOT there is no AxClassExtension artifact —
+ * class extensions are ordinary AxClass files, and this attribute is the only
+ * reliable signal that one is an extension. The `*_Extension` name convention
+ * is not: 87 of 400 classes so named carry no attribute at all.
+ *
+ * Shapes measured across the AOT that a narrower regex gets wrong:
+ *  - Intrinsic case varies freely (`classStr`, `classstr`, `dataentityviewstr`).
+ *  - The base need not be a class: `formDataSourceStr`, `formControlStr` and
+ *    `dataEntityViewStr` all appear.
+ *  - `formDataSourceStr(Form, DataSource)` / `formControlStr(Form, Control)`
+ *    take two arguments; the base object is the first.
+ *
+ * Returns null when no attribute is present.
+ */
+export function parseExtensionOfAttribute(declaration: string): XppExtensionOf | null {
+  if (!declaration || typeof declaration !== 'string') return null;
+
+  // Blanked first so an [ExtensionOf(...)] quoted in a doc comment above the
+  // class can't be read as the real attribute. Identifiers survive blanking
+  // untouched, so the captures can be taken straight off the blanked copy.
+  const blanked = blankCommentsAndStrings(declaration);
+  const m = /ExtensionOf\s*\(\s*(\w+)Str\s*\(\s*([\w.]+)\s*(?:,\s*([\w.]+)\s*)?\)/i.exec(blanked);
+  if (!m) return null;
+
+  return {
+    baseObjectName: m[2],
+    baseKind: m[1].toLowerCase(),
+    memberName: m[3],
+  };
+}
+
+/**
+ * True when an X++ method body makes a Chain of Command `next <method>(...)`
+ * call — i.e. the method wraps a base implementation rather than adding a new
+ * one. Comments are blanked first so "// remember to call next parmId()" in a
+ * stub doesn't register as a wrapper.
+ */
+export function callsNext(source: string): boolean {
+  if (!source || typeof source !== 'string') return false;
+  return /\bnext\s+\w+\s*\(/i.test(blankCommentsAndStrings(source));
 }
 
 /**

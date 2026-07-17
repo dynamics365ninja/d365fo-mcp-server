@@ -1737,36 +1737,6 @@ export async function bridgeAddDataSource(
   }
 }
 
-// DELETE OBJECT
-
-/**
- * Deletes a D365FO object via the C# bridge.
- * Returns a formatted ToolResult or null if bridge unavailable.
- */
-export async function bridgeDeleteObject(
-  bridge: BridgeClient | undefined,
-  objectType: string,
-  objectName: string,
-): Promise<ToolResult | null> {
-  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
-
-  try {
-    const result = await bridge.deleteObject(objectType, objectName);
-    if (result.success) {
-      let text = `✅ **Deleted** ${objectType} \`${objectName}\`\n`;
-      if (result.model) text += `- **Model:** ${result.model}\n`;
-      if (result.filePath) text += `- **File:** ${result.filePath}\n`;
-      return { content: [{ type: 'text', text }] };
-    } else {
-      const text = `❌ **Delete failed** for ${objectType} \`${objectName}\`\n- Error: ${result.error ?? 'Unknown error'}`;
-      return { content: [{ type: 'text', text }], isError: true };
-    }
-  } catch (e) {
-    console.error(`[BridgeAdapter] deleteObject(${objectType}, ${objectName}) failed: ${e}`);
-    return null;
-  }
-}
-
 // TABLE-EXTENSION: ADD FIELD MODIFICATION
 
 /**
