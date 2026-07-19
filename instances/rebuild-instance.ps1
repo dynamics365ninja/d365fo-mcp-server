@@ -1,11 +1,29 @@
 <#
 .SYNOPSIS
-    Rebuild databases for one or all MCP server instances.
+    Rebuild (reindex) the databases for one or all MCP server instances.
 .DESCRIPTION
-    Lists available instances and lets you pick which one to rebuild,
-    with an "All instances" option at the end.
-    You can also pass the instance name directly: .\instances\rebuild-instance.ps1 alpha
-    Or rebuild everything:                        .\instances\rebuild-instance.ps1 --all
+    Runs a FULL reindex of an instance's metadata databases from the CURRENT
+    source (extract + build via tsx). It does NOT update the server binaries —
+    that is a repo-global step you run yourself, because it affects every
+    instance at once.
+
+    Full update flow after a git pull:
+      1. git pull                     # and decide what actually changed
+      2. npm install; npm run build   # ONCE — rebuilds dist/ that ALL instances run
+      3. rebuild only if the pull changed the parser / DB schema:
+           .\instances\rebuild-instance.ps1 <name>          # one instance
+           .\instances\rebuild-instance.ps1 --all           # every instance
+    Most code changes are runtime-only: after step 2 just restart the instances,
+    no reindex needed. Reindex only for parser/extraction/schema changes.
+
+    This always does a full (EXTRACT_MODE=all) rebuild. The engine also supports
+    incremental 'custom'/'standard' builds, but they are not exposed here: on UDE
+    the build phase cannot see the auto-detected custom models, and the per-model
+    reindex path is slower than a full rebuild on single-language instances, so a
+    full rebuild is both simplest and fastest for local instances.
+
+    You can pass the instance name directly: .\instances\rebuild-instance.ps1 alpha
+    Rebuild everything:                       .\instances\rebuild-instance.ps1 --all
 #>
 param(
     [string]$InstanceName,
@@ -224,34 +242,13 @@ if ($All) {
     }
 }
 
-# ── Optionally update code first ────────────────────────────────────────────
-Write-Host ''
-$pullAnswer = Read-Host 'Pull latest code from Git? [Y/n]'
-if ($pullAnswer -ne 'n') {
-    Write-Host ''
-    Write-Host '[Git] Pulling latest...' -ForegroundColor DarkGray
-    & git pull
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host 'ERROR: git pull failed' -ForegroundColor Red
-        exit 1
-    }
-
-    Write-Host '[npm] Installing dependencies...' -ForegroundColor DarkGray
-    & npm install
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host 'ERROR: npm install failed' -ForegroundColor Red
-        exit 1
-    }
-
-    Write-Host '[tsc] Building TypeScript...' -ForegroundColor DarkGray
-    & npm run build
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host 'ERROR: TypeScript build failed' -ForegroundColor Red
-        exit 1
-    }
-} else {
-    Write-Host 'Skipping code update.' -ForegroundColor DarkGray
-}
+# ── Code updates are a separate, repo-global step (by design) ────────────────
+# This script only reindexes databases. Updating the server binaries
+# (git pull; npm install; npm run build) is a repo-wide operation that affects
+# EVERY instance's shared dist/ at once — doing it here while rebuilding a single
+# instance would leave the other instances running new binaries against an
+# old-schema database. Run the code update yourself, once, then rebuild the
+# instance(s) that need it. See the .DESCRIPTION for the full flow.
 
 # ── Check for new settings ──────────────────────────────────────────────────
 $hasNewSettings = $false

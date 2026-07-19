@@ -34,6 +34,8 @@ EXTRACT_MODE=custom
 
 **How custom model detection works:** Everything listed in `CUSTOM_MODELS` is treated as your code. All other models are automatically classified as Microsoft standard. The server never requires you to maintain a static list of Microsoft model names — the list auto-adapts to new D365FO versions.
 
+**What to put in `CUSTOM_MODELS`:** list **every** non-Microsoft model you have source for — both the models you author into **and** any source-ISV models you only extend (never modify) — not just the ones you actively change. The classification drives `search(scope="extensions")`, workspace context ranking, form-pattern mining (ISV objects must stay out of the mined *standard* pattern catalog), and the Azure custom-build pipeline — all of which want ISV code classified as custom. Binary-only ISV models (shipped as compiled DLLs with no object XML) are never indexed, so there is no need to list them.
+
 ### UDE (Unified Developer Experience / Power Platform Tools)
 
 In UDE environments, custom models are **auto-detected** from the custom packages path (`ModelStoreFolder` in your XPP config file). You do not need to set `CUSTOM_MODELS`:

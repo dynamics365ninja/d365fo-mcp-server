@@ -182,11 +182,32 @@ One machine, several D365FO clients — each instance gets its own `.env`, datab
 ```powershell
 .\instances\add-instance.ps1            # interactive: name + port → instances\<name>\{.env,data,metadata}
 # edit instances\<name>\.env: XPP_CONFIG_NAME, EXTENSION_PREFIX, D365FO_MODEL_NAME
-.\instances\rebuild-instance.ps1 clientA   # extract + build index for the instance (--all for all)
+.\instances\rebuild-instance.ps1 clientA   # first build: extract + build index (--all for all instances)
 .\instances\run-instance.ps1 clientA       # start on its port
 ```
 
 Or the CLI equivalents: `npx d365fo-mcp instance add|rebuild|run|upgrade [name]` (interactive when the name is omitted; `instance upgrade` repoints an instance after a UDE version upgrade).
+
+### Keeping instances in sync
+
+Updating the server code and reindexing an instance's database are **separate** steps, at different scopes:
+
+- **Server binaries are repo-global.** All instances run the same `dist/`, so update it once — never per instance:
+  ```powershell
+  git pull; npm install; npm run build      # once; then restart the instances
+  ```
+- **Databases are per-instance.** `rebuild-instance.ps1` runs a full reindex from the current source. Only reindex when it's actually needed:
+
+  | What changed | Command |
+  |---|---|
+  | First build of an instance | `rebuild-instance.ps1 <name>` |
+  | **Microsoft base** upgraded (UDE version) | `upgrade-instance.ps1 <name>` |
+  | Pull changed the **parser / DB schema** | `rebuild-instance.ps1 --all` |
+  | Runtime-only code change | *(just `npm run build` + restart — no reindex)* |
+
+  Add `--all` to rebuild every instance.
+
+> `rebuild-instance.ps1` deliberately does **not** `git pull` or build binaries: that is a repo-wide action, and doing it while rebuilding a single instance would leave the others running new binaries against an old-schema database.
 
 Point a per-solution `.mcp.json` at the right port:
 
