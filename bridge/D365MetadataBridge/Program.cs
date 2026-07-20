@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -108,6 +109,7 @@ namespace D365MetadataBridge
             Log.WriteLine($"[INFO] Assembly resolution configured for: {primaryBinPath}");
             if (fallbackBinPath != null && Directory.Exists(fallbackBinPath))
                 Log.WriteLine($"[INFO] Additional assembly search path: {fallbackBinPath}");
+            ReportMetamodelVersion(primaryBinPath, fallbackBinPath);
 
             // Delegate to RunBridge — a separate method whose JIT compilation is
             // deferred (NoInlining) until AFTER AssemblyResolve is registered.
@@ -266,6 +268,62 @@ namespace D365MetadataBridge
             var stdout = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
             await stdout.WriteLineAsync(json);
             await stdout.FlushAsync();
+        }
+
+        /// <summary>
+        /// Log the metamodel build we compiled against vs. the one we are about to load,
+        /// and warn when they differ.
+        ///
+        /// Every D365FO platform build stamps assembly version 7.0.0.0 and varies only in
+        /// FileVersion, so the CLR binder cannot tell two metamodels apart — and the
+        /// AssemblyResolve → LoadFrom path below does not enforce identity either.  A bridge
+        /// built against 7.0.7996 therefore loads 7.0.7690 without complaint and fails much
+        /// later with MissingMethodException / TypeLoadException at JIT time.  This turns that
+        /// silent divergence into one line in the log.  See issue #703.
+        ///
+        /// Diagnostic only — never fails startup, since a mismatch is usually harmless.
+        /// Touches no D365FO types, so it is safe to call from Main.
+        /// </summary>
+        private static void ReportMetamodelVersion(string primaryBinPath, string? fallbackBinPath)
+        {
+            const string MetadataDll = "Microsoft.Dynamics.AX.Metadata.dll";
+            try
+            {
+                string? runtimeDll = null;
+                foreach (var searchPath in new[] { primaryBinPath, fallbackBinPath })
+                {
+                    if (searchPath == null) continue;
+                    var candidate = Path.Combine(searchPath, MetadataDll);
+                    if (File.Exists(candidate)) { runtimeDll = candidate; break; }
+                }
+
+                if (runtimeDll == null)
+                {
+                    Log.WriteLine($"[WARN] {MetadataDll} not found under {primaryBinPath} — metadata operations will fail.");
+                    return;
+                }
+
+                var runtimeVersion = FileVersionInfo.GetVersionInfo(runtimeDll).FileVersion ?? "unknown";
+                Log.WriteLine($"[INFO] Metamodel runtime: {runtimeVersion} ({runtimeDll})");
+
+                var builtAgainst = BuildInfo.MetamodelFileVersion;
+                if (string.IsNullOrEmpty(builtAgainst))
+                {
+                    Log.WriteLine("[INFO] Metamodel build version unknown — version check skipped.");
+                }
+                else if (builtAgainst != runtimeVersion)
+                {
+                    Log.WriteLine($"[WARN] Metamodel version mismatch: built against {builtAgainst} " +
+                                  $"(from {BuildInfo.MetamodelBinPath}), loading {runtimeVersion}.");
+                    Log.WriteLine("[WARN] Usually harmless, but if metadata calls fail with MissingMethodException " +
+                                  "or TypeLoadException, rebuild the bridge against this environment: " +
+                                  $"dotnet build -c Release -p:D365BinPath=\"{Path.GetDirectoryName(runtimeDll)}\"");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.WriteLine($"[WARN] Metamodel version check failed: {ex.Message}");
+            }
         }
 
         private static void SetupAssemblyResolution(string primaryBinPath, string? fallbackBinPath = null)

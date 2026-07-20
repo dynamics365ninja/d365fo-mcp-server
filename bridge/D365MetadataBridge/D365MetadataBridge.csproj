@@ -61,4 +61,56 @@
     </Reference>
   </ItemGroup>
 
+  <!--
+    Record WHICH metamodel build we compiled against, so the bridge can warn at
+    startup when it is pointed at an environment shipping a different one.
+
+    This matters because every platform build stamps the SAME assembly version
+    (7.0.0.0) and differs only in FileVersion (e.g. 7.0.7690.155 vs 7.0.7996.33).
+    The CLR binder therefore cannot tell them apart, and the AssemblyResolve →
+    LoadFrom path in Program.cs does not enforce identity — a mismatched DLL
+    loads silently and only blows up later as MissingMethodException /
+    TypeLoadException at JIT time, far from the cause.  See issue #703.
+  -->
+  <Target Name="CaptureMetamodelBuildVersion"
+          BeforeTargets="BeforeCompile"
+          Inputs="$(D365BinPath)\Microsoft.Dynamics.AX.Metadata.dll"
+          Outputs="$(IntermediateOutputPath)BuildInfo.g.cs">
+    <PropertyGroup>
+      <_MetamodelDll>$(D365BinPath)\Microsoft.Dynamics.AX.Metadata.dll</_MetamodelDll>
+    </PropertyGroup>
+    <GetFileVersion FilePath="$(_MetamodelDll)" Condition="Exists('$(_MetamodelDll)')">
+      <Output TaskParameter="Version" PropertyName="_MetamodelFileVersion" />
+    </GetFileVersion>
+    <Message Importance="high"
+             Text="Bridge compiles against metamodel $(_MetamodelFileVersion) from $(D365BinPath)"
+             Condition="'$(_MetamodelFileVersion)' != ''" />
+    <Warning Text="D365BinPath '$(D365BinPath)' has no Microsoft.Dynamics.AX.Metadata.dll — the runtime version check will be disabled."
+             Condition="'$(_MetamodelFileVersion)' == ''" />
+    <WriteLinesToFile File="$(IntermediateOutputPath)BuildInfo.g.cs" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="// &lt;auto-generated /&gt; Produced by the CaptureMetamodelBuildVersion target.;namespace D365MetadataBridge;{;    internal static class BuildInfo;    {;        /// &lt;summary&gt;FileVersion of the Microsoft.Dynamics.AX.Metadata.dll this build compiled against, or &quot;&quot; if unknown.&lt;/summary&gt;;        internal const string MetamodelFileVersion = &quot;$(_MetamodelFileVersion)&quot;%3B;        /// &lt;summary&gt;bin directory those reference assemblies came from, or &quot;&quot; if unknown.&lt;/summary&gt;;        internal const string MetamodelBinPath = @&quot;$(D365BinPath)&quot;%3B;    };}" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)BuildInfo.g.cs" />
+      <FileWrites Include="$(IntermediateOutputPath)BuildInfo.g.cs" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    MSBuild has no built-in task for reading a file's FileVersion (GetAssemblyIdentity
+    returns the assembly version — 7.0.0.0 for every platform build, which is exactly
+    the value that cannot distinguish them).
+  -->
+  <UsingTask TaskName="GetFileVersion" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <FilePath ParameterType="System.String" Required="true" />
+      <Version ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Fragment" Language="cs">
+        Version = System.Diagnostics.FileVersionInfo.GetVersionInfo(FilePath).FileVersion ?? "";
+      </Code>
+    </Task>
+  </UsingTask>
+
 </Project>

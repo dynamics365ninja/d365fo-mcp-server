@@ -215,6 +215,28 @@ feed, add the public source explicitly:
 dotnet build -c Release -p:D365BinPath="<FrameworkDirectory>\bin" --source https://api.nuget.org/v3/index.json
 ```
 
+### Metamodel version mismatch
+
+The bridge compiles against the `Microsoft.Dynamics.*` assemblies in `D365BinPath` but loads
+them at runtime from whichever environment it is pointed at. On a machine spanning several
+platform builds those can differ. Every build stamps assembly version `7.0.0.0` and varies
+only in file version, so the CLR cannot tell them apart — a mismatched metamodel loads
+silently and surfaces much later as `MissingMethodException` or `TypeLoadException`.
+
+The bridge logs both versions at startup and warns when they diverge:
+
+```
+[INFO] Metamodel runtime: 7.0.7690.155 (K:\AosService\PackagesLocalDirectory\bin\...)
+[WARN] Metamodel version mismatch: built against 7.0.7996.33 (from ...), loading 7.0.7690.155.
+```
+
+The warning is informational — differing builds are usually compatible. If metadata calls do
+fail with the exceptions above, rebuild against that environment:
+
+```powershell
+dotnet build -c Release -p:D365BinPath="<that environment>\bin"
+```
+
 ### Output shows SQLite data, not bridge data
 
 Check if the result was served from cache (cache hit occurs before bridge check), or the
