@@ -335,6 +335,7 @@ namespace D365MetadataBridge.Services
                 Extends = Safe(() => table.Extends),
                 SaveDataPerCompany = Safe(() => table.SaveDataPerCompany.ToString()),
                 SupportInheritance = Safe(() => table.SupportInheritance.ToString()),
+                InstanceRelationType = Safe(() => table.InstanceRelationType),
             };
 
             try { var mi = prov.Tables.GetModelInfo(tableName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }

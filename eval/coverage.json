@@ -1,15 +1,15 @@
 {
   "core": {
     "tier": "core",
-    "total": 42,
-    "covered": 33,
-    "percent": 78.6
+    "total": 43,
+    "covered": 34,
+    "percent": 79.1
   },
   "total": {
     "tier": "all",
-    "total": 69,
-    "covered": 34,
-    "percent": 49.3
+    "total": 77,
+    "covered": 37,
+    "percent": 48.1
   },
   "leaves": [
     {
@@ -160,6 +160,20 @@
       "covered": true,
       "cases": [
         "L3-form-detailstransaction"
+      ]
+    },
+    {
+      "id": "table-inheritance",
+      "label": "Table inheritance (SupportInheritance/Extends)",
+      "domain": "Data model",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-table-inheritance-basic"
       ]
     },
     {
@@ -362,7 +376,10 @@
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
         "L2-numberseq-basic",
+        "L2-occ-retry-basic",
+        "L2-table-caching-basic",
         "L2-table-extension",
+        "L2-table-inheritance-basic",
         "L3-form-detailstransaction"
       ]
     },
@@ -395,9 +412,88 @@
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
         "L2-numberseq-basic",
+        "L2-occ-retry-basic",
+        "L2-table-caching-basic",
         "L2-table-extension",
+        "L2-table-inheritance-basic",
         "L3-form-detailstransaction"
       ]
+    },
+    {
+      "id": "occ-unitofwork",
+      "label": "Optimistic concurrency & UnitOfWork",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-occ-retry-basic"
+      ]
+    },
+    {
+      "id": "caching",
+      "label": "Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache)",
+      "domain": "Code",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-table-caching-basic"
+      ]
+    },
+    {
+      "id": "xpp-collections",
+      "label": "X++ collections & containers (List/Map/Set/Struct)",
+      "domain": "Code",
+      "tier": "total",
+      "weight": 3,
+      "k": false,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "datetime-timezones",
+      "label": "Date/time & time zones (utcdatetime, DateTimeUtil)",
+      "domain": "Code",
+      "tier": "total",
+      "weight": 3,
+      "k": false,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "dotnet-interop",
+      "label": ".NET interop (CLRInterop, using alias, CLRError)",
+      "domain": "Code",
+      "tier": "total",
+      "weight": 2,
+      "k": false,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "reflection-dict",
+      "label": "Reflection / Dict* metadata API",
+      "domain": "Code",
+      "tier": "total",
+      "weight": 2,
+      "k": false,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
     },
     {
       "id": "form",
@@ -566,6 +662,18 @@
     {
       "id": "parallel-batch",
       "label": "Parallel batch processing",
+      "domain": "Frameworks",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "async-retryable-batch",
+      "label": "Async & retryable batch (BatchRetryable/runAsync)",
       "domain": "Frameworks",
       "tier": "total",
       "weight": 2,
@@ -769,7 +877,7 @@
       "domain": "Integration",
       "tier": "core",
       "weight": 3,
-      "k": false,
+      "k": true,
       "e": false,
       "t": false,
       "covered": false,
@@ -909,7 +1017,7 @@
       "domain": "Security",
       "tier": "total",
       "weight": 1,
-      "k": false,
+      "k": true,
       "e": false,
       "t": false,
       "covered": false,
@@ -972,7 +1080,10 @@
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
         "L2-numberseq-basic",
+        "L2-occ-retry-basic",
+        "L2-table-caching-basic",
         "L2-table-extension",
+        "L2-table-inheritance-basic",
         "L3-form-detailstransaction"
       ]
     }

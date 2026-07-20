@@ -44,38 +44,52 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
       switch (a.action) {
         case 'modify': {
           const op = a.operation ?? 'modify';
-          const obj = `${a.objectType ?? 'object'} ${a.objectName ?? ''}`;
+          // Op-specific parameters (methodName, fieldName, indexName, …) may arrive
+          // nested in `params` rather than flat at top level — merge so the label
+          // reflects the real values instead of showing blanks.
+          const p = { ...a, ...(a.params ?? {}) };
+          // Callers that just created the object pass `filePath` instead of
+          // `objectName`; fall back to the file's basename so the label isn't empty.
+          const objName = a.objectName
+            ?? (typeof a.filePath === 'string'
+              ? a.filePath.replace(/\\/g, '/').split('/').pop()?.replace(/\.xml$/i, '')
+              : undefined);
+          const obj = `${a.objectType ?? 'object'} ${objName ?? ''}`.trim();
           switch (op) {
             case 'add-index':
             case 'remove-index': {
-              const fields = Array.isArray(a.indexFields)
-                ? a.indexFields.map((f: any) => f.fieldName ?? f).join(', ')
+              const fields = Array.isArray(p.indexFields)
+                ? p.indexFields.map((f: any) => f.fieldName ?? f).join(', ')
                 : '';
-              return `✏️ ${op} "${a.indexName ?? ''}"${fields ? ` [${fields}]` : ''} on ${obj}`;
+              return `✏️ ${op} "${p.indexName ?? ''}"${fields ? ` [${fields}]` : ''} on ${obj}`;
             }
             case 'add-relation':
             case 'remove-relation': {
-              const constraints = Array.isArray(a.relationConstraints)
-                ? a.relationConstraints.map((c: any) => `${c.fieldName ?? c.field} → ${c.relatedFieldName ?? c.relatedField}`).join(', ')
+              const constraints = Array.isArray(p.relationConstraints)
+                ? p.relationConstraints.map((c: any) => `${c.fieldName ?? c.field} → ${c.relatedFieldName ?? c.relatedField}`).join(', ')
                 : '';
-              return `✏️ ${op} "${a.relationName ?? ''}"${a.relatedTable ? ` → ${a.relatedTable}` : ''}${constraints ? ` [${constraints}]` : ''} on ${obj}`;
+              return `✏️ ${op} "${p.relationName ?? ''}"${p.relatedTable ? ` → ${p.relatedTable}` : ''}${constraints ? ` [${constraints}]` : ''} on ${obj}`;
             }
             case 'modify-property':
-              return `✏️ ${op} ${a.propertyPath ?? ''}${a.propertyValue !== undefined ? ` = ${String(a.propertyValue).slice(0, 40)}` : ''} on ${obj}`;
+              return `✏️ ${op} ${p.propertyPath ?? ''}${p.propertyValue !== undefined ? ` = ${String(p.propertyValue).slice(0, 40)}` : ''} on ${obj}`;
             case 'add-method':
             case 'remove-method':
             case 'add-table-method':
-            case 'add-display-method':
-              return `✏️ ${op} "${a.methodName ?? ''}" on ${obj}`;
+            case 'add-display-method': {
+              // methodName is optional for add-method — it is derived from the
+              // source signature downstream; derive it here too for the label.
+              const name = p.methodName ?? deriveMethodNameForLabel(p.sourceCode) ?? '';
+              return `✏️ ${op} "${name}" on ${obj}`;
+            }
             case 'add-field':
             case 'modify-field':
             case 'rename-field':
             case 'remove-field':
-              return `✏️ ${op} "${a.fieldName ?? ''}"${a.fieldNewName ? ` → "${a.fieldNewName}"` : ''} on ${obj}`;
+              return `✏️ ${op} "${p.fieldName ?? ''}"${p.fieldNewName ? ` → "${p.fieldNewName}"` : ''} on ${obj}`;
             case 'add-enum-value':
             case 'modify-enum-value':
             case 'remove-enum-value':
-              return `✏️ ${op} "${a.enumValueName ?? ''}" on ${obj}`;
+              return `✏️ ${op} "${p.enumValueName ?? ''}" on ${obj}`;
             default:
               return `✏️ ${op} on ${obj}`;
           }
@@ -148,4 +162,20 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
     default:
       return `⚙️ Running ${toolName}`;
   }
+}
+
+/**
+ * Best-effort method-name extraction for the progress label only, used when an
+ * add-method call omits `methodName` and relies on downstream derivation from the
+ * source. Strips line/block comments, then returns the identifier before the first
+ * '(' of the signature. Not authoritative — the bridge derives the real name.
+ */
+function deriveMethodNameForLabel(source: unknown): string | null {
+  if (typeof source !== 'string' || !source) return null;
+  const cleaned = source
+    .replace(/\/\/[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\[[^\]]*\]/g, ' ');
+  const m = cleaned.match(/\b([A-Za-z_]\w*)\s*\(/);
+  return m ? m[1] : null;
 }

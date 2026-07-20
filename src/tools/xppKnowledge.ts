@@ -339,8 +339,9 @@ while (qr.next())
       'Method signature MUST match the original exactly (use get_method(include="signature") tool)',
       'ALWAYS call next <methodName>() — skipping it breaks the chain for other extensions',
       'Cannot access private members of the original class',
-      'Can wrap: public, protected methods; cannot wrap: private, static',
-      'For static methods: use [PostHandlerFor] / [PreHandlerFor] event handlers instead',
+      'Can wrap public and protected methods — instance AND static (a static wrapper must repeat the "static" modifier); cannot wrap private methods or constructors. Forms cannot have static-method CoC',
+      'For form static methods or fire-and-forget scenarios where CoC is not possible, use [PostHandlerFor] / [PreHandlerFor] event handlers instead',
+      'For the strict wrapper non-negotiables (default parameters, next placement, [Wrappable]/[Hookable]) see the coc-authoring topic',
       'Naming: <TargetClass>_<YourModel>_Extension (e.g. SalesTable_ContosoExt_Extension)',
       'Form CoC: [ExtensionOf(formStr(CustTable))] — wraps form methods like init(), run()',
       'Form datasource CoC: wrap datasource methods like init(), validateWrite()',
@@ -388,7 +389,7 @@ final class SalesFormLetter_MyModel_Extension
 }`,
       },
     ],
-    related: ['event-handlers', 'form-patterns'],
+    related: ['event-handlers', 'form-patterns', 'coc-authoring'],
   },
 
   // ── Event Handlers ──────────────────────────────────────────────────────
@@ -465,7 +466,7 @@ final class SalesFormLetter_MyModel_Extension
       'Entity category: Document (header+lines), Master (single table), Reference, Transaction, Parameter',
       'Use AutoIdentification field group for natural key (maps to AlternateKey)',
       'Mapping: entity fields map to data source fields — handle computed/unmapped columns via virtual fields + postLoad/mapEntityToDataSource',
-      'Composite entity: wraps multiple entities for header+lines import (e.g. SalesOrderV2 + SalesOrderLine)',
+      'Composite entity: wraps multiple entities for header+lines import (e.g. SalesOrderHeaderV2Entity + SalesOrderLineV2Entity)',
       'NEVER create AIF document services in D365FO — always use data entities',
     ],
     related: ['query-patterns'],
@@ -591,7 +592,7 @@ class MyReportDP extends SrsReportDataProviderBase
     summary:
       'D365FO deprecates many AX2012 APIs. Using deprecated APIs triggers BP warnings/errors.',
     rules: [
-      'today() → DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) — BPUpgradeCodeToday; NEVER use today() in new code',
+      'today() → DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()) — BPUpgradeCodeToday; NEVER use today() in new code (same replacement the bp-rules topic mandates)',
       'NEVER call today() or any function directly in a WHERE condition — assign to a variable first',
       'curext() → use Ledger::primaryForLegalEntity(CompanyInfo::findDataArea(curext()).RecId)',
       'AIF services → Data entities + OData',
@@ -687,12 +688,12 @@ MyRentEquipmentId newId = numSeq.num();
   {
     id: 'workflow',
     title: 'Workflow Development (WorkflowDocument, WorkflowType)',
-    keywords: ['workflow', 'workflowdocument', 'workflowtype', 'workflowapproval', 'workflowtask', 'approval', 'submit', 'cansubmittoworkflow'],
+    keywords: ['workflow', 'workflowdocument', 'workflowtype', 'approval', 'task', 'submit', 'cansubmittoworkflow'],
     summary:
       'D365FO workflows are built from a Document (condition fields), a Type, Approvals/Tasks, ' +
       'and event handlers. Structure: Document → Type → Approvals/Tasks → EventHandlers.',
     rules: [
-      'Key base classes: WorkflowDocument, WorkflowType, WorkflowApproval, WorkflowTask',
+      'Key X++ base classes: WorkflowDocument and WorkflowType — Approvals and Tasks are AOT elements (their code lives in generated event handlers), NOT X++ base classes (there is no WorkflowTask class, and WorkflowApproval is only a field)',
       'WorkflowDocument subclass defines which table fields are available as workflow conditions',
       'SubmitToWorkflowMenuItem action menu item provides the submit button on the form',
       'canSubmitToWorkflow() method on the table controls when submit is enabled',
@@ -768,11 +769,12 @@ MyRentEquipmentId newId = numSeq.num();
       'Duty = business function: "Maintain customer records" → groups related privileges',
       'Role = job function: "Accounts receivable clerk" → groups duties',
       'Table permissions: set on the privilege entry point, cascading to related tables',
-      'XDS (Extensible Data Security): row-level security policies',
+      'XDS (Extensible Data Security): row-level security policies (AxSecurityPolicy) that filter records via a constrained query + policy context',
       'Use security_info(mode="coverage") to check what covers a form/table/menu item',
       'Use security_info(mode="artifact") to inspect a role/duty/privilege hierarchy',
+      'This topic is the conceptual overview — see security-privileges-duties for privilege/duty/role authoring (XML, generate_object, access levels)',
     ],
-    related: ['form-patterns'],
+    related: ['form-patterns', 'security-privileges-duties'],
   },
 
   // ── Performance ─────────────────────────────────────────────────────────
@@ -808,10 +810,11 @@ MyRentEquipmentId newId = numSeq.num();
       'SysTestMethodAttribute: [SysTestMethod] on each test method',
       'Assert methods: this.assertEquals(), this.assertTrue(), this.assertFalse(), this.assertNotNull()',
       'setUp() / tearDown(): run before/after each test method',
-      'ATL classes: AtlScenario, AtlCommand — for high-level business process tests',
-      'Test data: use AtlDataHelper or setUp() to create transient test records',
+      'ATL (Acceptance Test Library): entry point is AtlDataRootNode::construct(); navigate via data.invent()/data.sales()/… and use the Creators/Commands/Queries/Specifications concepts (AtlCommand* family) — there is NO AtlScenario or AtlDataHelper class',
+      'Test data: use the ATL data root (AtlDataRootNode) creators or setUp() to create transient test records',
       'Run with: run_systest_class MCP tool or Visual Studio Test Explorer',
-      'Naming: <TestedClass>Test (e.g. CustTableTest)',
+      'Naming: <TestedClass>Test (e.g. CustTableTest) — the repo systests use this suffix; pick ONE convention per model and keep it consistent',
+      'See the unit-testing topic for the detailed SysTestCase rules (transaction rollback, SysTestSuite, mocking)',
     ],
     examples: [
       {
@@ -1097,7 +1100,7 @@ while select crosscompany : companies
       'Transaction rollback: all DML in a test is rolled back after each test — no cleanup needed for DB state',
       'For methods that call ttsbegin internally: wrap test in try/catch and expect a clean state',
       'Mock dependencies: use delegation pattern or extract interfaces — X++ has no built-in mocking framework',
-      'Naming convention: <ClassName>_Test (e.g. MyServiceClass_Test)',
+      'Naming convention: <ClassName>Test (e.g. MyServiceTest) — matches the repo systests and the testing topic; avoid mixing the <ClassName>_Test variant in the same model',
       'Attributes: [SysTestMethodAttribute] optional — but helps categorize tests',
       'Run tests: Visual Studio → Test → Run All Tests, or SysTestSuite.run() in a batch job',
     ],
@@ -1107,7 +1110,7 @@ while select crosscompany : companies
         code: `/// <summary>
 /// Unit tests for MyService.
 /// </summary>
-class MyService_Test extends SysTestCase
+class MyServiceTest extends SysTestCase
 {
     MyService service;
 
@@ -1152,7 +1155,7 @@ class MyService_Test extends SysTestCase
 }`,
       },
     ],
-    related: ['transactions', 'error-handling'],
+    related: ['transactions', 'error-handling', 'testing'],
   },
 
   // ── Telemetry & Logging ─────────────────────────────────────────────────
@@ -1172,7 +1175,7 @@ class MyService_Test extends SysTestCase
       'To capture infolog output programmatically (testing/logging): snapshot infolog.infologData() and walk it with SysInfologEnumerator::newData() — there is no SysInfoLogScope class',
       'NEVER use print statement — it only shows in job output, not infolog',
       'For Azure Application Insights telemetry: use Microsoft.ApplicationInsights NuGet — not available in standard X++ without NuGet reference',
-      'Structured telemetry: use SysTelemetry class (available in platform update 20+)',
+      'Structured telemetry: use SysGlobalTelemetry (logTrace / logEvent / logMetric / logMetricWithCustomProperties) — there is NO SysTelemetry class; for richer App Insights logging use SysApplicationInsightsTelemetryLogger (Monitoring and Telemetry model)',
       'Batch job logging: use this.BatchHeader.addRuntimeTask() for progress feedback',
       'Infolog messages in batch: saved to BatchHistory — accessible via Batch jobs > History',
       'NEVER log sensitive data (passwords, connection strings, PII) — use masked/hashed values',
@@ -1222,7 +1225,7 @@ while (enumerator.moveNext())
       'NEVER insert into DirPartyTable directly — always use the DirPartyTable static helper methods',
       'To link your custom table to GAB: add a Party field (EDT: DirPartyRecId), set RefTableId, RefRecId',
       'DirPartyPostalAddressView is a convenient view for reading the primary address',
-      'GlobalAddressBookHelper and DirPartyService provide high-level create/update APIs',
+      'High-level create/update APIs live on the DirParty class (constructFromPartyRecId, constructFromCommon, createOrUpdatePostalAddress, createOrUpdateContactInfo) and DirPartyTable::createNew — there is NO GlobalAddressBookHelper or DirPartyService class',
     ],
     examples: [
       {
@@ -1393,21 +1396,22 @@ rate = ExchangeRateHelper::getExchangeRate1_Static(Ledger::current(), fromCurren
   // ── Alerts / Business Events ────────────────────────────────────────────
   {
     id: 'alerts-business-events',
-    title: 'Alerts & Business Events — BusinessEventsContract, AlertRuleTable',
-    keywords: ['alert', 'business event', 'businesseventscontract', 'businesseventscatalog', 'alertrule', 'eventbuscontract', 'notification', 'businessevent', 'businesseventsbase'],
+    title: 'Alerts & Business Events — BusinessEventsContract, EventRule',
+    keywords: ['alert', 'business event', 'businesseventscontract', 'businesseventscatalog', 'eventrule', 'eventinbox', 'eventjobcud', 'notification', 'businessevent', 'businesseventsbase'],
     summary:
       'D365FO supports two notification mechanisms: (1) Classic Alerts (user-defined rules on table changes) ' +
       'and (2) Business Events (developer-defined, publishable to Azure Service Bus / Logic Apps / Power Automate). ' +
       'Use Business Events for integration scenarios, Alerts for user-defined notifications.',
     rules: [
-      'Business Events: create a class extending BusinessEventsBase with [BusinessEvents] attribute',
-      'BusinessEventsContract: data contract class with [DataContract] + parm methods for payload',
-      'Register in BusinessEventsCatalog.addBusinessEventsToCatalog() via CoC extension',
-      'Trigger the event: new MyBusinessEvent(contract).send()',
-      'Classic Alerts: driven by EventRule and EventJobTable — users configure in UI, no code needed',
+      'Business Events: create a class extending BusinessEventsBase with the [BusinessEvents(classStr(<Contract>), name, description, ModuleAxapta::…)] attribute — registration in the catalog is automatic from that attribute, do NOT hand-edit BusinessEventsCatalog',
+      'BusinessEventsContract: data contract class with [DataContract] + [DataMember(...), BusinessEventsDataMember(...)] parm methods for payload',
+      'Constructor is private new(); expose a static newFrom<Buffer>() factory and override [Wrappable(false), Replaceable(false)] buildContract()',
+      'Trigger the event: MyBusinessEvent::newFrom<Buffer>(buffer).send() — never call the private new() directly',
+      'Gating: BusinessEventsConfigurationReader::isBusinessEventEnabled controls whether an event is active for a legal entity',
+      'Classic Alerts: driven by EventRule / EventRuleData / EventInbox tables, processed by the EventJobCUD batch class — users configure rules in UI, no code needed',
       'Business Events are visible in System administration > Business events catalog',
       'Enable/disable per legal entity in the catalog; endpoint configured there (Service Bus, etc.)',
-      'For unit testing: use BusinessEventsTestHelper to mock the event bus',
+      'For unit testing there is no BusinessEventsTestHelper — model against BusinessEventsTestEndpointContract and the SysTest framework',
       'NEVER use direct REST calls for integration — always prefer Business Events for D365FO outbound',
     ],
     examples: [
@@ -1433,7 +1437,8 @@ public final class MyBusinessEventContract extends BusinessEventsContract
         totalAmount = _salesTable.SalesBalance;
     }
 
-    [DataMemberAttribute('SalesId')]
+    [DataMemberAttribute('SalesId'),
+     BusinessEventsDataMember('@SYS22843')]
     public SalesId parmSalesId(SalesId _salesId = salesId)
     {
         salesId = _salesId;
@@ -1458,7 +1463,7 @@ public final class MySalesConfirmedBusinessEvent extends BusinessEventsBase
         return event;
     }
 
-    [Hookable(false)]
+    [Wrappable(false), Replaceable(false)]
     public BusinessEventsContract buildContract()
     {
         return contract;
@@ -1580,7 +1585,7 @@ if (SecurityRights::hasTableAccess(tableNum(MyCustomTable), AccessType::Read))
 </AxSecurityPrivilege>`,
       },
     ],
-    related: ['coc-extensions', 'data-entities'],
+    related: ['coc-extensions', 'data-entities', 'security'],
   },
 
   // ── SSRS Reports ────────────────────────────────────────────────────────
@@ -1612,15 +1617,15 @@ if (SecurityRights::hasTableAccess(tableNum(MyCustomTable), AccessType::Read))
     summary:
       'D365FO inventory uses InventTrans (transactions), InventDim (dimension combinations), and InventSum ' +
       '(aggregated on-hand). The InventMovement class hierarchy handles business logic for creating/updating ' +
-      'inventory transactions. Reservations flow through InventUpDate_Reservation.',
+      'inventory transactions. Reservations flow through InventUpd_Reservation.',
     rules: [
       'InventTrans: one record per inventory lot/transaction; linked via InventTransOrigin to source docs',
       'InventDim: stores inventory dimensions (Site, Warehouse, Location, Batch, Serial, etc.) — NEVER create duplicates, use InventDim::findOrCreate()',
       'InventSum: aggregated on-hand per ItemId + InventDimId — do NOT update directly, it is maintained by the system',
       'InventOnHand: use InventOnHand class (not direct InventSum queries) for accurate on-hand calculations',
       'InventMovement: abstract class hierarchy for business rules on inventory transactions — each source doc type has its own subclass',
-      'InventUpdate: updates InventTrans status (e.g. InventUpDate_Physical for packing slip, InventUpDate_Financial for invoice)',
-      'Reservation: InventUpDate_Reservation handles soft/hard reservation; respects reservation hierarchy (Site > Warehouse > Location > Batch > Serial)',
+      'InventUpdate: updates InventTrans status (e.g. InventUpd_Physical for packing slip, InventUpd_Financial for invoice)',
+      'Reservation: InventUpd_Reservation handles soft/hard reservation; respects reservation hierarchy (Site > Warehouse > Location > Batch > Serial)',
       'Dimensions: configuration keys control which dimensions are active — check InventDimSetup',
       'Use InventDimCtrl_Frm* classes to control dimension field visibility on forms',
       'For custom inventory dimensions: follow the extension pattern in Microsoft docs — add via model extension, NOT overlayering',
@@ -1934,7 +1939,6 @@ else
   <Name>MyModuleKey</Name>
   <Label>@MyModel:ModuleLabel</Label>
   <Enabled>Yes</Enabled>
-  <ParentKey>SysMaster</ParentKey>
   <LicenseCode>MyModuleLicenseCode</LicenseCode>
 </AxConfigurationKey>`,
       },
@@ -2458,6 +2462,307 @@ finally
       },
     ],
     related: ['security', 'form-patterns'],
+  },
+
+  // ── Custom Services & OData Actions ─────────────────────────────────────
+  {
+    id: 'custom-services',
+    title: 'Custom Services & OData Actions (SysEntryPointAttribute, Service Groups)',
+    keywords: ['custom service', 'service', 'service group', 'odata action', 'sysentrypointattribute', 'sysentrypoint', 'axservice', 'axservicegroup', 'api services', 'service operation', 'json endpoint', 'integration endpoint', 'bound action', 'unbound action'],
+    summary:
+      'Custom services expose X++ business logic as callable REST/SOAP operations. A service class holds the ' +
+      'operation methods, an AxService names them, and an AxServiceGroup publishes them at /api/services. ' +
+      'OData actions are the entity-bound alternative for verbs that do not fit CRUD.',
+    rules: [
+      'Service class: a normal X++ class whose PUBLIC methods become operations; each parameter/return type is a [DataContract] class or a primitive',
+      'Authorization: every externally callable operation MUST carry [SysEntryPointAttribute(true)] (checkAccessRights=true) — without it the call is rejected/insecure',
+      'AxService object: <Name>, <Class> (the service class), and <Operations> listing the exposed method names',
+      'AxServiceGroup object: groups one or more services; its name is the URL segment — endpoint is /api/services/<ServiceGroup>/<Service>/<Operation>',
+      'Data contract parameters: use [DataContractAttribute] classes with [DataMemberAttribute] parm methods — same contract style as SysOperation',
+      'OData actions (entity-bound verbs): add a public static method on the data entity decorated with [SysODataActionAttribute("ActionName", true)]; first parameter type controls bound (entity) vs unbound (collection) — call at /data/Entities/Microsoft.Dynamics.DataEntities.ActionName',
+      'Return a strongly-typed contract or a container — never raw text; keep operations idempotent where possible',
+      'NEVER put long-running work in a synchronous service operation — schedule a SysOperation batch and return a job reference',
+      'Custom services run under the caller\'s security context — do not bypass SysEntryPointAttribute checks',
+    ],
+    examples: [
+      {
+        label: 'Service class + operation with SysEntryPointAttribute',
+        code: `// 1. Data contract for the request payload
+[DataContractAttribute]
+class MyPriceRequestContract
+{
+    ItemId itemId;
+
+    [DataMemberAttribute('ItemId')]
+    public ItemId parmItemId(ItemId _itemId = itemId)
+    {
+        itemId = _itemId;
+        return itemId;
+    }
+}
+
+// 2. Service class — the operation method
+class MyPriceService
+{
+    /// <summary>
+    /// Returns the current sales price for an item.
+    /// </summary>
+    [SysEntryPointAttribute(true)]
+    public MyPriceResponseContract getPrice(MyPriceRequestContract _request)
+    {
+        MyPriceResponseContract response = new MyPriceResponseContract();
+        response.parmPrice(MyPriceProvider::salesPrice(_request.parmItemId()));
+        return response;
+    }
+}
+
+// 3. AxService lists getPrice; AxServiceGroup publishes it at
+//    /api/services/<Group>/MyPriceService/getPrice`,
+      },
+      {
+        label: 'OData action bound to a data entity',
+        code: `// Public static method on the entity, callable via /data
+[SysODataActionAttribute('Recalculate', true)]
+public static str recalculate(str _entityKey)
+{
+    // ... custom verb that does not map to insert/update/delete
+    return 'OK';
+}`,
+      },
+    ],
+    related: ['data-entities', 'sysoperation', 'security-privileges-duties'],
+  },
+
+  // ── Table Inheritance ───────────────────────────────────────────────────
+  {
+    id: 'table-inheritance',
+    title: 'Table Inheritance (SupportInheritance, Extends, InstanceRelationType)',
+    keywords: ['table inheritance', 'supportinheritance', 'table extends', 'instancerelationtype', 'derived table', 'base table', 'polymorphic table', 'discriminator', 'relationtype'],
+    summary:
+      'Table inheritance lets a base table share fields with derived tables while each row has a concrete type ' +
+      '(like class inheritance for data). Microsoft uses it for e.g. the business-events endpoint hierarchy. ' +
+      'It is a design-time table feature, NOT a runtime cast.',
+    rules: [
+      'Base table: set SupportInheritance = Yes and choose an InstanceRelationType field (the discriminator that stores which derived table each row belongs to)',
+      'Derived table: set Extends = <BaseTable>; it inherits all base fields and adds its own',
+      'The InstanceRelationType field on the base holds the tableId of the concrete (leaf) table for each record — the kernel uses it for polymorphic selects',
+      'A select on the base table returns rows of ALL derived types; use the .isFormDataSource()/instanceof-style checks or select the specific derived buffer to narrow',
+      'Common fields live ONCE on the base — do not duplicate them on derived tables',
+      'You cannot change SupportInheritance or Extends on a shipped table via extension — inheritance is fixed at base-table design time',
+      'Prefer inheritance only for genuine is-a hierarchies with shared behavior/fields; for optional add-on data a related table + relation is simpler',
+      'Abstract base: mark the base table Abstract = Yes when it should never hold rows of its own type',
+    ],
+    examples: [
+      {
+        label: 'Base + derived table shape (metadata summary)',
+        code: `// Base table MyPartyBase:
+//   SupportInheritance = Yes
+//   InstanceRelationType = <MyPartyBase discriminator field>
+//   Abstract = Yes
+//   Fields: PartyId, Name
+
+// Derived table MyPerson:
+//   Extends = MyPartyBase
+//   Fields: FirstName, LastName   (PartyId/Name inherited)
+
+// Derived table MyOrganization:
+//   Extends = MyPartyBase
+//   Fields: OrgNumber             (PartyId/Name inherited)
+
+// Polymorphic select — returns Person AND Organization rows:
+MyPartyBase party;
+while select party
+{
+    if (party is MyPerson)
+    {
+        MyPerson person = party;   // narrow to the leaf type
+        info(person.FirstName);
+    }
+}`,
+      },
+    ],
+    related: ['data-entities', 'query-patterns'],
+  },
+
+  // ── Async & Retryable Batch ─────────────────────────────────────────────
+  {
+    id: 'async-retryable-batch',
+    title: 'Async & Retryable Batch (BatchRetryable, runAsync, SysOperationSandbox)',
+    keywords: ['batchretryable', 'isretryable', 'runasync', 'sysoperationsandbox', 'retryable', 'async batch', 'transient fault', 'batch retry', 'reliable async'],
+    summary:
+      'Batch tasks can opt into automatic retry on transient faults and run work asynchronously off the caller ' +
+      'thread. Retryable tasks must be idempotent because the framework may re-run them.',
+    rules: [
+      'Retryable task: implement the BatchRetryable interface on your batch/SysOperation service class and return true from isRetryable() so the batch engine retries on transient faults (deadlock, SQL timeout)',
+      'RetryCount / retry policy: the batch framework decides how many times to re-run — your isRetryable() only opts in; make the task IDEMPOTENT (safe to run twice)',
+      'runAsync: use SysOperationSandbox / the async execution mode to run a unit of work off the current session thread when you must not block the caller (e.g. from a form)',
+      'SysOperationSandbox runs a static method reliably in the background and surfaces infolog back to the user session — verify the exact entry-point method with get_object_info before relying on it',
+      'Do NOT hold open transactions across an async boundary — start ttsbegin/ttscommit inside the async unit, not around it',
+      'A retryable task must not accumulate side effects on partial failure — either make each run fully idempotent or guard with a completed-marker record',
+      'For genuine parallelism (partitioning a large workload into independent tasks) combine this with the parallel-batch bundling pattern',
+      'Never swallow the transient exception yourself if you opted into retry — let it propagate so the engine can re-run the task',
+    ],
+    examples: [
+      {
+        label: 'Retryable SysOperation service',
+        code: `class MyReconciliationService extends SysOperationServiceBase implements BatchRetryable
+{
+    /// <summary>
+    /// Opt into automatic retry on transient faults. Must be idempotent.
+    /// </summary>
+    public boolean isRetryable()
+    {
+        return true;
+    }
+
+    public void run(MyReconciliationContract _contract)
+    {
+        ttsbegin;
+        // idempotent work — safe if the engine re-runs after a transient fault
+        this.reconcile(_contract.parmFromDate());
+        ttscommit;
+    }
+}`,
+      },
+      {
+        label: 'Schedule background work off the caller thread',
+        code: `// Run a SysOperation service in the background (ScheduledBatch) so the
+// caller (e.g. a form button) is not blocked while the work runs.
+MyReconciliationController controller = new MyReconciliationController();
+controller.parmExecutionMode(SysOperationExecutionMode::ScheduledBatch);
+controller.startOperation();`,
+      },
+    ],
+    related: ['sysoperation', 'parallel-batch', 'transactions'],
+  },
+
+  // ── Optimistic Concurrency & Unit of Work ───────────────────────────────
+  {
+    id: 'occ-unitofwork',
+    title: 'Optimistic Concurrency & UnitOfWork (OccEnabled, RecVersion, UpdateConflict)',
+    keywords: ['occ', 'optimistic concurrency', 'occenabled', 'recversion', 'updateconflict', 'updateconflictnotrecovered', 'unitofwork', 'pessimisticlock', 'optimisticlock', 'selectforupdate', 'concurrency', 'reread'],
+    summary:
+      'Optimistic Concurrency Control (OCC) lets multiple sessions read the same record without locking and ' +
+      'detects conflicts at write time via the RecVersion column. UnitOfWork batches related inserts/updates/' +
+      'deletes into one coordinated, referential-integrity-aware commit.',
+    rules: [
+      'OCC is controlled by the table property OccEnabled (default Yes). With OCC on, a select does NOT hold an update lock; the lock is taken only at update time',
+      'RecVersion: a hidden column the kernel bumps on every update; if it changed between your select and update, the kernel throws Exception::UpdateConflict',
+      'forupdate + optimisticlock: default modern pattern — select forupdate optimisticlock, then update; re-read (reread()) inside the catch on UpdateConflict',
+      'pessimisticlock: takes the lock at select time (blocks other writers) — use only for genuine hotspots where retry churn is worse than blocking',
+      'UpdateConflict handling: catch (Exception::UpdateConflict) → reread() the record, re-apply your change, retry; if retries are exhausted the kernel throws UpdateConflictNotRecovered',
+      'NEVER disable OccEnabled to \"avoid\" conflicts — it serialises writers and hurts throughput; fix the retry logic instead',
+      'UnitOfWork: use new UnitOfWork(); register buffers with insertOnSaveChanges/updateOnSaveChanges/deleteOnSaveChanges, then saveChanges() commits them in dependency order within one transaction',
+      'UnitOfWork resolves foreign-key order for you (parent inserted before child) — prefer it over hand-ordered inserts across related tables',
+      'Do the whole read-modify-write of an OCC record inside one ttsbegin/ttscommit; keep the transaction short to shrink the conflict window',
+    ],
+    examples: [
+      {
+        label: 'OCC update with UpdateConflict retry',
+        code: `#OCCRetryCount
+CustTable custTable;
+
+try
+{
+    ttsbegin;
+    select forupdate optimisticlock custTable
+        where custTable.AccountNum == _accountNum;
+
+    custTable.CreditMax += 1000;
+    custTable.update();
+    ttscommit;
+}
+catch (Exception::UpdateConflict)
+{
+    if (appl.ttsLevel() == 0)
+    {
+        if (xSession::currentRetryCount() >= #RetryNum)
+        {
+            throw Exception::UpdateConflictNotRecovered;
+        }
+        else
+        {
+            retry;   // kernel re-reads and re-runs the tts block
+        }
+    }
+    else
+    {
+        throw Exception::UpdateConflict;
+    }
+}`,
+      },
+      {
+        label: 'UnitOfWork for related inserts',
+        code: `UnitOfWork uow = new UnitOfWork();
+
+MyHeader header = new MyHeader();
+header.OrderId = 'ORD-001';
+
+MyLine line = new MyLine();
+line.ItemId = 'A-001';
+
+// header inserted before line — UnitOfWork orders by relation
+uow.insertOnSaveChanges(header);
+uow.insertOnSaveChanges(line);
+uow.saveChanges();`,
+      },
+    ],
+    related: ['transactions', 'set-based', 'error-handling'],
+  },
+
+  // ── Caching (deep) ──────────────────────────────────────────────────────
+  {
+    id: 'caching',
+    title: 'Caching — CacheLookup, SysGlobalObjectCache, RecordViewCache',
+    keywords: ['cache', 'cachelookup', 'found', 'foundandempty', 'entiretable', 'notintts', 'sysglobalobjectcache', 'recordviewcache', 'flush', 'record cache', 'global cache', 'display method cache'],
+    summary:
+      'D365FO has several caching layers. Table record caching (CacheLookup) is automatic and keyed by the ' +
+      'primary/unique index; SysGlobalObjectCache is an explicit server-side key/value cache; RecordViewCache ' +
+      'pre-loads a record set for repeated in-memory reads.',
+    rules: [
+      'CacheLookup table property values: None, NotInTTS, Found, FoundAndEmpty, EntireTable',
+      'Found: caches records that were found by a unique-index lookup (most common for master/reference tables)',
+      'FoundAndEmpty: like Found but ALSO caches \"not found\" results — use when many lookups miss (avoids repeat round-trips), at the cost of remembering absences',
+      'EntireTable: loads the whole table into a per-AOS cache — ONLY for small, rarely-changing reference tables; a single insert/update/delete FLUSHES the entire-table cache cluster-wide',
+      'NotInTTS: re-reads from DB (not cache) inside a transaction to guarantee a fresh row before update — cache is bypassed within ttsbegin/ttscommit',
+      'Record caching only works for selects on the WHOLE primary/unique index (all key fields with ==) — a partial-key or range select bypasses the cache',
+      'SysGlobalObjectCache (kernel class): explicit cross-session server cache — set(owner, key, value, scope) / find(owner, key, value, scope); scope controls DataArea vs Global; call clear/remove to invalidate. Use for expensive computed/config values, never for volatile transactional data',
+      'RecordViewCache (kernel class): construct with a select-forupdate buffer to pre-load a set of records into memory once, then repeated while-select/find on the same criteria read from memory — ideal for tight loops re-reading the same working set',
+      'Display/edit method caching: mark expensive display methods with [SysClientCacheDataMethodAttribute(true)] so the client caches the value instead of round-tripping per repaint',
+      'NEVER cache security-sensitive or per-user data in SysGlobalObjectCache with a Global scope — leaks across companies/users',
+    ],
+    examples: [
+      {
+        label: 'SysGlobalObjectCache read-through',
+        code: `SysGlobalObjectCache goc = classfactory.globalObjectCache();
+container   result = goc.find('MyModule', [_configKey]);
+
+if (!result)
+{
+    // Miss — compute the expensive value once and cache it
+    MyValue value = MyExpensiveCalc::run(_configKey);
+    result = [value];
+    goc.insert('MyModule', [_configKey], result);
+}
+
+MyValue cached = conPeek(result, 1);`,
+      },
+      {
+        label: 'RecordViewCache for a repeated working set',
+        code: `InventDim inventDim;
+inventDim.InventLocationId = _warehouse;
+
+// Pre-load all matching InventDim rows once into memory
+RecordViewCache cache = new RecordViewCache(inventDim);
+
+// Subsequent finds on the same criteria read from the cache, not SQL
+InventDim lookup;
+select firstonly lookup
+    where lookup.InventLocationId == _warehouse
+       && lookup.InventSiteId     == _site;`,
+      },
+    ],
+    related: ['performance', 'set-based', 'transactions'],
   },
 ];
 

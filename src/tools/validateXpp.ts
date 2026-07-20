@@ -681,7 +681,7 @@ const XML_PROPERTY_RULES = [
   checkFieldEdt,
 ];
 
-function runRules(
+export function runRules(
   code: string,
   codeType: 'xpp' | 'xml-table' | 'xml-any',
   stats?: PropertyStatsProvider,

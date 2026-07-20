@@ -1,0 +1,23 @@
+{
+  "id": "L2-table-inheritance-basic",
+  "title": "Table inheritance (base SupportInheritance=Yes + derived Extends)",
+  "tier": 2,
+  "instruction": "In the sandbox model, model a small table-inheritance hierarchy. Create: (1) a base table DemoVehicle with SupportInheritance=Yes and fields VehicleId (an EDT-backed str) and Make (str); (2) a derived table DemoTruck whose Extends property is set to DemoVehicle, adding a field PayloadKg (real). The derived table must inherit the base fields through inheritance rather than redeclaring them. Use get_knowledge(topic=\"table inheritance\") to ground the SupportInheritance / Extends / InstanceRelationType discriminator pattern. Both tables must build clean.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxTable"
+  ],
+  "golden_path": "eval/goldens/L2-table-inheritance-basic/",
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "table",
+    "inheritance",
+    "data-model",
+    "multi-artifact",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

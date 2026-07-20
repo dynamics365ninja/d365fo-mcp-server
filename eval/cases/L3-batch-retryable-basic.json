@@ -1,0 +1,25 @@
+{
+  "id": "L3-batch-retryable-basic",
+  "title": "Retryable batch SysOperation service (implements BatchRetryable / isRetryable)",
+  "tier": 3,
+  "instruction": "In the sandbox model, implement a retryable batch job over ConDemoNoteHeader. Create: (1) a DataContract class DemoNoteReindexContract with a parm method BatchGroupId decorated [DataMemberAttribute]; (2) a SysOperation service class DemoNoteReindexService extending SysOperationServiceBase and implementing BatchRetryable, whose process(DemoNoteReindexContract _contract) method iterates ConDemoNoteHeader, and whose isRetryable() returns true so the batch framework retries transient failures; (3) a controller class DemoNoteReindexController extending SysOperationServiceController that constructs the service operation and defaults the execution mode to SysOperationExecutionMode::ScheduledBatch. Use get_knowledge(topic=\"async batch\") to ground the BatchRetryable / SysOperation scheduled-batch pattern. All classes must build clean.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxClass",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-batch-retryable-basic/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "batch",
+    "sysoperation",
+    "retryable",
+    "async",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

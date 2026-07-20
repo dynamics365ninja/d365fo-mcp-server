@@ -1380,7 +1380,7 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Table '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Tables, objectName);
                     if (!SetAxTableProperty(obj, propertyPath, propertyValue))
-                        throw new ArgumentException($"Unknown AxTable property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation, tableGroup, cacheLookup, clusteredIndex, primaryIndex, replacementKey, saveDataPerCompany, tableType, supportInheritance, extends, titleField1, titleField2.");
+                        throw new ArgumentException($"Unknown AxTable property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation, tableGroup, cacheLookup, clusteredIndex, primaryIndex, replacementKey, saveDataPerCompany, tableType, supportInheritance, instanceRelationType, extends, titleField1, titleField2.");
                     ((IMetaTableProvider)_provider.Tables).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -2478,6 +2478,13 @@ namespace D365MetadataBridge.Services
                     break;
                 case "supportinheritance":
                     tbl.SupportInheritance = ParseNoYes(value);
+                    break;
+                case "instancerelationtype":
+                    // Table-inheritance discriminator: the value is the NAME of the
+                    // base table's int64 discriminator field (e.g. DirPartyTable sets
+                    // this to its own "InstanceRelationType" field). Requires
+                    // SupportInheritance=Yes on the same table.
+                    tbl.InstanceRelationType = value;
                     break;
                 case "extends": tbl.Extends = value; break;
                 case "titlefield1": tbl.TitleField1 = value; break;

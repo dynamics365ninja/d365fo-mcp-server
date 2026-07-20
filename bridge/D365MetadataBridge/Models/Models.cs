@@ -42,6 +42,9 @@ namespace D365MetadataBridge.Models
         [JsonPropertyName("supportInheritance")]
         public string? SupportInheritance { get; set; }
 
+        [JsonPropertyName("instanceRelationType")]
+        public string? InstanceRelationType { get; set; }
+
         [JsonPropertyName("model")]
         public string? Model { get; set; }
 

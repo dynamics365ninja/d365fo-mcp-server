@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoSettingCache</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoSettingCache
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>value</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the setting value for <c>_key</c>, reading through the
+    /// <c>SysGlobalObjectCache</c> and falling back to <c>ConDemoSetting</c> on a miss.
+    /// </summary>
+    /// <param name = "_key">The setting key to resolve.</param>
+    /// <returns>The cached or freshly read setting value.</returns>
+    public static str value(str _key)
+    {
+        SysGlobalObjectCache goc = classfactory.globalObjectCache();
+        container result = goc.find(classStr(ConDemoSettingCache), [_key]);
+
+        if (!result)
+        {
+            ConDemoSetting settingBuffer;
+
+            select firstonly settingBuffer
+            where settingBuffer.SettingKey == _key;
+
+            result = [settingBuffer.SettingValue];
+            goc.insert(classStr(ConDemoSettingCache), [_key], result);
+        }
+
+        return conPeek(result, 1);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

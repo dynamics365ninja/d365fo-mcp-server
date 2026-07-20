@@ -56,6 +56,7 @@ export interface BridgeTableInfo {
   saveDataPerCompany?: string;
   extends?: string;
   supportInheritance?: string;
+  instanceRelationType?: string;
   model?: string;
   fields: BridgeFieldInfo[];
   indexes: BridgeIndexInfo[];

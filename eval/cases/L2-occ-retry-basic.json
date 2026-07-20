@@ -1,0 +1,23 @@
+{
+  "id": "L2-occ-retry-basic",
+  "title": "Optimistic concurrency: OccEnabled table + UpdateConflict retry loop",
+  "tier": 2,
+  "instruction": "In the sandbox model, demonstrate optimistic concurrency control. Create: (1) a table DemoCounter with OccEnabled=Yes, a unique primary index on field CounterName (str) and a field CounterValue (int); (2) a class DemoCounterBump with a static method increment(str _name) that, inside ttsbegin/ttscommit, selects forupdate the matching DemoCounter and updates CounterValue, wrapped in a retry loop that catches Exception::UpdateConflict and retries per the OCC pattern. Use get_knowledge(topic=\"optimistic concurrency\") to ground the OccEnabled / RecVersion / UpdateConflict-retry pattern. Both objects must build clean.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-occ-retry-basic/",
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "occ",
+    "concurrency",
+    "table",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}
