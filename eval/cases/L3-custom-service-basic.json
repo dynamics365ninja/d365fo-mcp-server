@@ -1,0 +1,28 @@
+{
+  "id": "L3-custom-service-basic",
+  "title": "Custom service (SysEntryPointAttribute + AxService + AxServiceGroup exposed under /api/services)",
+  "tier": 3,
+  "instruction": "In the sandbox model, expose a custom service that returns the Subject of a ConDemoNoteHeader by its NoteId. Create: (1) a request DataContract class DemoNoteLookupRequest with a parm method NoteId decorated [DataMemberAttribute]; (2) a response DataContract class DemoNoteLookupResponse with a parm method Subject decorated [DataMemberAttribute]; (3) a service class DemoNoteLookupService with a public method lookup(DemoNoteLookupRequest _request) returning DemoNoteLookupResponse, decorated [SysEntryPointAttribute(true)], that selects ConDemoNoteHeader by NoteId and fills the response; (4) an AxService DemoNoteService bound to class DemoNoteLookupService exposing the lookup operation; (5) an AxServiceGroup DemoNoteServiceGroup containing DemoNoteService so it is auto-published under /api/services. Use get_knowledge(topic=\"custom services\") to ground the SysEntryPointAttribute + service-group pattern. All objects must build clean.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxClass",
+    "AxClass",
+    "AxService",
+    "AxServiceGroup"
+  ],
+  "golden_path": "eval/goldens/L3-custom-service-basic/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "custom-service",
+    "service-group",
+    "odata",
+    "integration",
+    "multi-artifact",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

@@ -1,0 +1,22 @@
+{
+  "id": "L2-table-caching-basic",
+  "title": "Caching: CacheLookup table + SysGlobalObjectCache accessor",
+  "tier": 2,
+  "instruction": "In the sandbox model, demonstrate record and global caching. Create: (1) a table DemoSetting with CacheLookup=Found, a unique index on field SettingKey (str) and a field SettingValue (str); (2) a class DemoSettingCache with a static method value(str _key) that first consults SysGlobalObjectCache (owner/key/scope) for the value, and on a miss selects DemoSetting by SettingKey, stores the result in the global cache, and returns it. Use get_knowledge(topic=\"caching\") to ground the CacheLookup Found/FoundAndEmpty semantics and the SysGlobalObjectCache key/scope pattern. Both objects must build clean.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-table-caching-basic/",
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "caching",
+    "table",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

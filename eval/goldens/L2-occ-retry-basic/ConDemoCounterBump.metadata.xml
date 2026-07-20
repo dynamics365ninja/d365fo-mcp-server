@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCounterBump</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoCounterBump
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>increment</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Increments the counter value for <c>_name</c> with OCC UpdateConflict retry.
+    /// </summary>
+    /// <param name = "_name">The counter name to increment.</param>
+    public static void increment(str _name)
+    {
+        ConDemoCounter counter;
+
+        try
+        {
+            ttsbegin;
+            select forupdate counter
+            where counter.CounterName == _name;
+            counter.CounterValue += 1;
+            counter.update();
+            ttscommit;
+        }
+        catch (Exception::UpdateConflict)
+        {
+            if (xSession::currentRetryCount() >= 5)
+            {
+                throw Exception::UpdateConflictNotRecovered;
+            }
+            else
+            {
+                retry;
+            }
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

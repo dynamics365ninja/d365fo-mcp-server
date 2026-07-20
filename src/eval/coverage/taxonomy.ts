@@ -106,6 +106,11 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'relations-indexes', label: 'Relations, indexes, field groups', domain: 'Data model', source: 'topic', tier: 'core', weight: 5,
     aotTypes: ['table'], knowledgeIds: ['xpp-class-rules'], caseTags: ['relation'],
   },
+  {
+    id: 'table-inheritance', label: 'Table inheritance (SupportInheritance/Extends)', domain: 'Data model', source: 'topic', tier: 'total', weight: 2,
+    aotTypes: ['table'], knowledgeIds: ['table-inheritance'], caseIds: ['L2-table-inheritance-basic'],
+    note: 'Golden captured on the Contoso VM (2026-07-20).',
+  },
 
   // ── Code ────────────────────────────────────────────────────────────────
   {
@@ -173,6 +178,36 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'deprecated-apis', label: 'Deprecated APIs & migration', domain: 'Code', source: 'topic', tier: 'core', weight: 3,
     aotTypes: ['class'], knowledgeIds: ['deprecated'], caseTags: ['deterministic'],
+  },
+  {
+    id: 'occ-unitofwork', label: 'Optimistic concurrency & UnitOfWork', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['occ-unitofwork'], caseIds: ['L2-occ-retry-basic'],
+    note: 'Golden captured on the Contoso VM (2026-07-20).',
+  },
+  {
+    id: 'caching', label: 'Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache)', domain: 'Code', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['class', 'table'], knowledgeIds: ['caching'], caseIds: ['L2-table-caching-basic'],
+    note: 'Golden captured on the Contoso VM (2026-07-20).',
+  },
+  {
+    id: 'xpp-collections', label: 'X++ collections & containers (List/Map/Set/Struct)', domain: 'Code', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['class'],
+    note: 'Known hole (audit 2026-07-20, C6): no knowledge entry and no eval case yet.',
+  },
+  {
+    id: 'datetime-timezones', label: 'Date/time & time zones (utcdatetime, DateTimeUtil)', domain: 'Code', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['class'],
+    note: 'Known hole (audit 2026-07-20, C7): scattered across bp-rules/deprecated; no dedicated knowledge entry or case.',
+  },
+  {
+    id: 'dotnet-interop', label: '.NET interop (CLRInterop, using alias, CLRError)', domain: 'Code', source: 'topic', tier: 'total', weight: 2,
+    aotTypes: ['class'],
+    note: 'Known hole (audit 2026-07-20, C8): no dedicated knowledge entry and no eval case.',
+  },
+  {
+    id: 'reflection-dict', label: 'Reflection / Dict* metadata API', domain: 'Code', source: 'topic', tier: 'total', weight: 2,
+    aotTypes: ['class'],
+    note: 'Known hole (audit 2026-07-20, C9): no dedicated knowledge entry and no eval case.',
   },
 
   // ── UI ──────────────────────────────────────────────────────────────────
@@ -243,6 +278,11 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'parallel-batch', label: 'Parallel batch processing', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['parallel-batch'],
     note: 'Knowledge only — no eval case yet.',
+  },
+  {
+    id: 'async-retryable-batch', label: 'Async & retryable batch (BatchRetryable/runAsync)', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
+    aotTypes: ['class'], knowledgeIds: ['async-retryable-batch'], caseIds: ['L3-batch-retryable-basic'],
+    note: 'Eval case authored (L3-batch-retryable-basic) — golden capture pending on the VM.',
   },
   {
     id: 'number-sequences', label: 'Number sequences', domain: 'Frameworks', source: 'topic', tier: 'core', weight: 5,
@@ -321,8 +361,8 @@ export const TAXONOMY: CoverageLeaf[] = [
   },
   {
     id: 'custom-service', label: 'Custom services / OData actions', domain: 'Integration', source: 'aot', tier: 'core', weight: 3,
-    aotTypes: ['service', 'service-group'],
-    note: 'Known hole (roadmap P3): no dedicated knowledge entry and no eval case.',
+    aotTypes: ['service', 'service-group'], knowledgeIds: ['custom-services'], caseIds: ['L3-custom-service-basic'],
+    note: 'Knowledge + eval case authored (L3-custom-service-basic, golden pending); full create/validate tool path for services still pending.',
   },
   {
     id: 'dmf', label: 'Data management framework (DMF/DIXF)', domain: 'Integration', source: 'topic', tier: 'total', weight: 2,
@@ -375,8 +415,8 @@ export const TAXONOMY: CoverageLeaf[] = [
   },
   {
     id: 'xds', label: 'Extensible data security (XDS)', domain: 'Security', source: 'aot', tier: 'total', weight: 1,
-    aotTypes: ['security-policy'],
-    note: 'Deliberately deprioritised (roadmap P3): no knowledge, no case.',
+    aotTypes: ['security-policy'], knowledgeIds: ['security'],
+    note: 'Overview only in the security topic — deep XDS authoring (policy, context, XDS() query method) and an eval case remain a known hole.',
   },
   {
     id: 'license-code', label: 'License codes', domain: 'Security', source: 'aot', tier: 'total', weight: 0,
