@@ -1,0 +1,28 @@
+{
+  "$comment": "Starter for scripted/manual instance creation. Copy to instances/<name>/d365fo-mcp.json and fill in the blanks — prefer `d365fo-mcp instance add` (interactive, asks only what your scenario needs) unless you're provisioning instances from a script. Every key, its default and the environment variable it maps to: docs/CONFIGURATION.md. Delete this key before use if you want a byte-for-byte match with what the wizard writes.",
+  "version": 1,
+  "server": {
+    "port": 3001
+  },
+  "environment": {
+    "type": "ude",
+    "xppConfigName": "",
+    "packagePath": "",
+    "customModels": []
+  },
+  "workspace": {
+    "modelName": "",
+    "path": ""
+  },
+  "naming": {
+    "prefix": ""
+  },
+  "index": {
+    "extractMode": "all",
+    "includeLabels": true,
+    "labelLanguages": ["en-US"],
+    "dbPath": "./data/xpp-metadata.db",
+    "labelsDbPath": "./data/xpp-metadata-labels.db",
+    "metadataPath": "./metadata"
+  }
+}

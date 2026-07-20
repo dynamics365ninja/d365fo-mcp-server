@@ -187,7 +187,7 @@ npx d365fo-mcp instance run clientA     # start on its port
 
 `instance upgrade <name>` repoints an instance at a new XPP config after a UDE version upgrade and rebuilds it. Each command is interactive when the name is omitted. To run an instance manually, point the server at its config: `D365FO_CONFIG=instances\clientA\d365fo-mcp.json node dist\index.js`.
 
-The `instances\*.ps1` scripts remain for installations still configured through per-instance `.env` files.
+Provisioning instances from a script instead of interactively? Copy `instances\d365fo-mcp.template.json` to `instances\<name>\d365fo-mcp.json` and fill in the blanks. The `instances\*.ps1` scripts remain for installations still configured through per-instance `.env` files.
 
 ### Keeping instances in sync
 
