@@ -9,11 +9,12 @@ import { isWindows, paths } from '../context.js';
 import { runExe, runShell } from '../exec.js';
 import { listInstances } from '../instances.js';
 import { instanceTarget, rootTarget } from '../target.js';
-import { askConfirm, p } from '../ui.js';
+import { askConfirm, p, requireGitCheckout } from '../ui.js';
 import { rebuildIndex } from './indexCmd.js';
 
 export async function updateCommand(opts: { yes?: boolean }): Promise<void> {
   p.intro('d365fo-mcp update');
+  if (!requireGitCheckout()) return;
 
   const steps: [string, () => Promise<number>][] = [
     ['git pull', () => runExe('git', ['pull'])],

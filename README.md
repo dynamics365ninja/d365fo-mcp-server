@@ -83,9 +83,19 @@ Pick your path:
 
 Full walkthrough with all scenarios: **[docs/QUICK_START.md](docs/QUICK_START.md)**
 
-### Interactive setup (recommended)
+### One-line install (recommended)
 
-After cloning and `npm install`, the management CLI walks you through everything else — scenario selection, C# bridge build, configuration, index build — and prints the `.mcp.json` block to paste. Every answer is explained as it is asked and stored in `config/d365fo-mcp.json`; there is no `.env` to fill in (see **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** for the full setting reference):
+Paste into PowerShell on the D365FO VM — the installer checks (and installs, if missing) Node.js and Git, clones the repository, runs `npm install`, and starts the interactive setup wizard:
+
+```powershell
+irm https://raw.githubusercontent.com/dynamics365ninja/d365fo-mcp-server/main/install.ps1 | iex
+```
+
+Safe to re-run — an existing installation is updated instead of re-cloned. Configure via env vars when needed: `$env:D365FO_MCP_DIR` (install directory), `$env:D365FO_MCP_YES = '1'` (non-interactive), `$env:D365FO_MCP_NO_WIZARD = '1'` (skip the wizard).
+
+### Interactive setup
+
+Already cloned, or prefer to run the steps yourself? After `npm install`, the management CLI walks you through everything else — scenario selection, C# bridge build, configuration, index build — and prints the `.mcp.json` block to paste. Every answer is explained as it is asked and stored in `config/d365fo-mcp.json`; there is no `.env` to fill in (see **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** for the full setting reference):
 
 ```powershell
 git clone https://github.com/dynamics365ninja/d365fo-mcp-server.git K:\d365fo-mcp-server

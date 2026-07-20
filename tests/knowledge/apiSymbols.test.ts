@@ -8,15 +8,17 @@
  * were introduced.
  *
  * Two modes, so it runs both on a VM and on CI:
- *  • DB present  (data/xpp-metadata.db or DB_PATH) → resolve LIVE and assert
- *    zero findings (unknown type / member / casing), honouring the allowlist.
- *  • DB absent   (CI)                              → every reference must be
+ *  • FULL DB present (data/xpp-metadata.db or DB_PATH, sentinel-checked) →
+ *    resolve LIVE and assert zero findings (unknown type / member / casing),
+ *    honouring the allowlist.
+ *  • otherwise (CI, dev machines with a fixture DB) → every reference must be
  *    covered by the committed snapshot, so a knowledge edit cannot ship
  *    without being re-audited on the VM. Skips only if no snapshot exists.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+import Database from 'better-sqlite3';
 import { describe, it, expect } from 'vitest';
 import { KNOWLEDGE_BASE } from '../../src/tools/xppKnowledge';
 import { extractKnowledgeRefs } from '../../src/eval/audit/knowledgeRefs';
@@ -38,8 +40,35 @@ function readJson<T>(file: string, fallback: T): T {
   return fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, 'utf8')) as T) : fallback;
 }
 
+/**
+ * The live gate only makes sense against the real standard index — dev
+ * machines often carry a small test-fixture DB at data/xpp-metadata.db, and
+ * auditing against that reports every standard symbol as unknown. Probe a few
+ * canonical AppSuite symbols; if any is missing, this is not a full index and
+ * the committed snapshot is authoritative instead.
+ */
+const SENTINELS = ['CustTable', 'InventDim', 'RunBaseBatch'];
+function isFullStandardIndex(dbPath: string): boolean {
+  try {
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      const placeholders = SENTINELS.map(() => '?').join(',');
+      // Filter on the indexed `type` column first — a bare name lookup would
+      // full-scan the 2 GB index (see memory/sqlite-query-antipatterns).
+      const rows = db
+        .prepare(`SELECT DISTINCT name FROM symbols WHERE type IN ('table', 'class') AND name IN (${placeholders})`)
+        .all(...SENTINELS) as Array<{ name: string }>;
+      return rows.length === SENTINELS.length;
+    } finally {
+      db.close();
+    }
+  } catch {
+    return false; // unreadable or foreign schema — treat as no DB
+  }
+}
+
 const refs = extractKnowledgeRefs(KNOWLEDGE_BASE);
-const hasDb = fs.existsSync(DB_PATH);
+const hasFullDb = fs.existsSync(DB_PATH) && isFullStandardIndex(DB_PATH);
 const hasSnapshot = fs.existsSync(SNAPSHOT_PATH);
 
 describe('KNOWLEDGE_BASE API symbols', () => {
@@ -49,7 +78,7 @@ describe('KNOWLEDGE_BASE API symbols', () => {
     expect(refs.length).toBeGreaterThan(50);
   });
 
-  it.runIf(hasDb)(
+  it.runIf(hasFullDb)(
     'every named API/type resolves against the live symbol index',
     async () => {
       const allow = readJson<Allowlist>(ALLOW_PATH, {});
@@ -60,7 +89,7 @@ describe('KNOWLEDGE_BASE API symbols', () => {
     120_000,
   );
 
-  it.runIf(!hasDb && hasSnapshot)(
+  it.runIf(!hasFullDb && hasSnapshot)(
     'every reference is covered by the committed audit snapshot',
     () => {
       const snapshot = readJson<AuditSnapshot | null>(SNAPSHOT_PATH, null)!;
@@ -76,7 +105,7 @@ describe('KNOWLEDGE_BASE API symbols', () => {
     },
   );
 
-  it.skipIf(hasDb || hasSnapshot)('audit gate is available (DB or snapshot present)', () => {
+  it.skipIf(hasFullDb || hasSnapshot)('audit gate is available (full DB or snapshot present)', () => {
     // Marker test: only runs (as skipped) when neither a DB nor a snapshot is
     // available. Present so the file never reports "no tests" in that setup.
     expect(true).toBe(true);

@@ -5,6 +5,7 @@
  */
 import * as p from '@clack/prompts';
 import type { Option } from '@clack/prompts';
+import { installOneLiner, isGitCheckout } from './context.js';
 
 export { p };
 
@@ -33,4 +34,22 @@ export async function askConfirm(message: string, initialValue = true): Promise<
 
 export async function askSelect<T extends string>(message: string, options: Option<T>[], initialValue?: T): Promise<T> {
   return ensure(await p.select<T>({ message, options, initialValue }));
+}
+
+/**
+ * Guard for commands that only work inside a git checkout (setup, update,
+ * index). Running from the npx cache or an unpacked release tarball lacks
+ * scripts/, devDependencies and git — point the user at the installer instead
+ * of failing halfway through.
+ */
+export function requireGitCheckout(): boolean {
+  if (isGitCheckout) return true;
+  p.log.error('This copy of d365fo-mcp is not a full installation — no git checkout found.');
+  p.log.info(
+    'Install the server with PowerShell:\n' +
+    `  ${installOneLiner}\n` +
+    'then run this command again from the install directory (npm run cli -- <command>).',
+  );
+  process.exitCode = 1;
+  return false;
 }

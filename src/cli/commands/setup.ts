@@ -19,7 +19,7 @@ import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { askAdvanced, askSecrets, askSetting, askSettings } from '../settingsPrompt.js';
 import { migrateLegacyEnv, openStore, readSetting, saveStore, writeSetting, type SettingsStore } from '../settingsStore.js';
 import { rootTarget } from '../target.js';
-import { askConfirm, askSelect, askText, p } from '../ui.js';
+import { askConfirm, askSelect, askText, p, requireGitCheckout } from '../ui.js';
 import { listXppConfigs } from '../xppConfig.js';
 import { rebuildIndex } from './indexCmd.js';
 import { instanceAddCommand } from './instance.js';
@@ -178,6 +178,7 @@ export function savedNote(store: SettingsStore): void {
 
 export async function setupCommand(): Promise<void> {
   p.intro('d365fo-mcp setup — first-time setup');
+  if (!requireGitCheckout()) return;
 
   const scenario = await askSelect<Scenario>('How will this developer machine use the MCP server? (docs/SETUP.md)', [
     { value: 'local-stdio', label: 'E — Local stdio ★', hint: 'single developer on a D365FO VM; VS launches the server' },

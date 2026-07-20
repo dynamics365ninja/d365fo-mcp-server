@@ -1,11 +1,22 @@
 {
-  "name": "d365fo-mcp-server",
+  "name": "d365fo-mcp",
   "version": "1.0.0",
   "description": "MCP Server for X++ Code Completion in D365 Finance & Operations",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "d365fo-mcp": "dist/cli/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dynamics365ninja/d365fo-mcp-server.git"
+  },
+  "homepage": "https://github.com/dynamics365ninja/d365fo-mcp-server#readme",
+  "bugs": {
+    "url": "https://github.com/dynamics365ninja/d365fo-mcp-server/issues"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -14,6 +25,7 @@
     "doctor": "tsx src/cli/index.ts doctor",
     "config:docs": "tsx scripts/generate-config-docs.ts",
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "start": "node dist/index.js",
     "test": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",

@@ -1,0 +1,34 @@
+name: Lint installer
+
+on:
+  pull_request:
+    paths:
+      - 'install.ps1'
+  push:
+    branches:
+      - main
+    paths:
+      - 'install.ps1'
+
+permissions:
+  contents: read
+
+jobs:
+  parse:
+    name: Parse install.ps1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Syntax check with the PowerShell parser
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/install.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) {
+            $errors | ForEach-Object { Write-Error "install.ps1:$($_.Extent.StartLineNumber): $($_.Message)" }
+            exit 1
+          }
+          Write-Host 'install.ps1 parses cleanly.'

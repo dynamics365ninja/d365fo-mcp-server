@@ -23,7 +23,17 @@ Get the D365 F&O MCP Server running with GitHub Copilot in 5 steps.
 
 ## Step 2 — Clone and build
 
-### Interactive setup (recommended)
+### One-line install (recommended)
+
+Paste into PowerShell — the installer takes care of the Node.js and Git prerequisites from Step 1 (installs them if missing), clones the repository, runs `npm install`, and hands off to the setup wizard:
+
+```powershell
+irm https://raw.githubusercontent.com/dynamics365ninja/d365fo-mcp-server/main/install.ps1 | iex
+```
+
+Safe to re-run — an existing installation is updated (`git pull`) instead of re-cloned. Env-var overrides: `$env:D365FO_MCP_DIR` (install directory), `$env:D365FO_MCP_YES = '1'` (non-interactive defaults), `$env:D365FO_MCP_NO_WIZARD = '1'` (clone + install only). If the wizard completed, continue with [Step 3](#step-3--connect-copilot).
+
+### Interactive setup
 
 The first-time setup wizard walks you through everything below — scenario selection, C# bridge build, configuration, index build — and prints the `.mcp.json` block to paste in Step 3. It asks only what your scenario needs, explains every question, and saves the answers to `config/d365fo-mcp.json` (secrets to `config/secrets.json`), so no `.env` editing is involved:
 

@@ -8,7 +8,7 @@ import { isWindows, paths } from '../context.js';
 import { runNode } from '../exec.js';
 import { listInstances } from '../instances.js';
 import { instanceTarget, pickTarget, rootTarget, targetEnv, Target } from '../target.js';
-import { askSelect, p } from '../ui.js';
+import { askSelect, p, requireGitCheckout } from '../ui.js';
 import { normalizeXppConfigName } from '../xppConfig.js';
 
 /** Run extract + build-database for one target. Returns true on success. */
@@ -38,6 +38,7 @@ export async function rebuildIndex(target: Target): Promise<boolean> {
 
 export async function indexCommand(instanceName: string | undefined, opts: { all?: boolean; yes?: boolean }): Promise<void> {
   p.intro('d365fo-mcp index');
+  if (!requireGitCheckout()) return;
 
   let targets: Target[];
   if (opts.all) {
