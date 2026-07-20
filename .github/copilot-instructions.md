@@ -3,7 +3,8 @@
 <!-- Thin pointer — full rules are delivered via the MCP `xpp_system_instructions` prompt.
      This file provides only the minimum static context needed when the MCP server
      is not yet connected or the prompt hasn't been loaded.
-     Keep this file in sync with CLAUDE.template.md. -->
+     Serves Claude Code too: copy it to a parent of your solution folders as
+     CLAUDE.md (docs/CLAUDE_CODE_SETUP.md, Step 3). -->
 
 ## Tool Priority
 

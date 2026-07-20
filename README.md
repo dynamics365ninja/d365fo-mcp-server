@@ -152,7 +152,7 @@ All options: **[docs/MCP_CONFIG.md](docs/MCP_CONFIG.md)**
 
 ```powershell
 claude mcp add-json --scope user d365fo-mcp-tools '{"type":"http","url":"https://your-server.azurewebsites.net/mcp/","alwaysLoad":true}'
-Copy-Item "K:\d365fo-mcp-server\CLAUDE.template.md" "C:\source\repos\CLAUDE.md"
+Copy-Item "K:\d365fo-mcp-server\.github\copilot-instructions.md" "C:\source\repos\CLAUDE.md"
 ```
 
 Stdio variant and troubleshooting: **[docs/CLAUDE_CODE_SETUP.md](docs/CLAUDE_CODE_SETUP.md)**
