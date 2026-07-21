@@ -35,11 +35,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test -- --run
-
+      # Build first: tests/packaging/publishedFiles.test.ts inspects what
+      # `npm pack` would publish, which is dist/ — with the old order it saw an
+      # unbuilt tree and failed. Building first also surfaces a type error
+      # before spending a minute on the suite.
       - name: Build TypeScript
         run: npm run build
+
+      - name: Run tests
+        run: npm test -- --run
 
       - name: Prepare deployment files
         run: |
