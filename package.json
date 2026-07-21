@@ -43,6 +43,7 @@
     "eval:knowledge": "tsx src/eval/improver/knowledgeFeedbackCli.ts",
     "eval:knowledge-audit": "tsx src/eval/audit/knowledgeAuditCli.ts",
     "eval:coverage": "tsx src/eval/coverage/coverageCli.ts",
+    "eval:fixtures": "tsx src/eval/fixtures/cli.ts",
     "eval:flakes": "tsx src/eval/improver/flakeDetectionCli.ts",
     "eval:mine": "tsx src/eval/improver/caseMiningCli.ts",
     "eval:brief": "tsx src/eval/improver/fixBriefCli.ts"

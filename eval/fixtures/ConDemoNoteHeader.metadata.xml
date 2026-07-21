@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HARNESS-LEVEL EVAL FIXTURE — ConDemoNoteHeader (AxTable)
+
+  This is a shared INPUT object, NOT a case output. ~18 catalog cases READ from
+  or bind to this table (form datasources, maps, queries, data entities, batch
+  jobs, custom services, SSRS DPs, ...). It must exist BEFORE those cases run and
+  must survive the per-case rollback. See docs/AGENT_EVAL_LOOP.md §4a/§11 and
+  eval/fixtures/README.md for the provisioning + rollback-exclusion contract.
+
+  Why it lives here (root cause, eval/ROADMAP.md step 1): the table was
+  originally created only as artifact 1 of case L1-form-basic. The implementer
+  protocol rolls back every case after scoring, so the shared table could never
+  survive — each rollback re-broke every dependent case. Separating the fixture
+  from its origin case (this file) is the fix.
+
+  Shape recovered verbatim from the 2026-06-30 golden
+  eval/goldens/L1-form-basic/ConDemoNoteHeader.metadata.xml (the golden of the
+  table itself), so provisioning reproduces exactly what dependent cases and
+  their goldens were captured against. Keep this in sync with that golden: if the
+  L1-form-basic table golden changes, this fixture changes with it.
+
+  Name reflects EXTENSION_PREFIX=Con applied to the authored name "DemoNoteHeader"
+  — the provisioned AOT object is ConDemoNoteHeader.
+-->
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteHeader</Name>
+	<SourceCode>
+		<Methods />
+	</SourceCode>
+	<Label>@TaxTransactionInquiry:HeaderNote</Label>
+	<TableGroup>Main</TableGroup>
+	<TitleField1>Subject</TitleField1>
+	<DeleteActions />
+	<FieldGroups />
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>NoteId</Name>
+			<ExtendedDataType>Num</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Subject</Name>
+			<ExtendedDataType>Name</ExtendedDataType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>NoteIdx</Name>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>NoteId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

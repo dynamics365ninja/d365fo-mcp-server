@@ -19,13 +19,29 @@ customisation model; **all writes are pinned to the `Contoso` sandbox** (§11).
 
 1. **Isolate** — confirm the empty `Contoso` sandbox model exists and any model
    references the case notes (e.g. FleetManagement) are present in its Descriptor.
-2. **Implement (grounded only)** — drive the case `instruction` through the tool
+2. **Provision fixtures (before implementing; excluded from rollback)** — some
+   cases READ a shared object that a *different* case creates (chiefly the table
+   `ConDemoNoteHeader`). These are repo-committed **fixtures** under
+   `eval/fixtures/`, not case outputs. Ask what this case needs:
+   ```
+   npm run eval:fixtures            # full classification + per-case provisioning plan
+   ```
+   For each fixture the plan lists for `<id>` (i.e. `fixturesForCase(id)`), create
+   it from its committed `eval/fixtures/<Name>.metadata.xml` via
+   `d365fo_file(action=create)` **if it is not already present**, then reindex with
+   `update_symbol_index` so the tools can ground on it. Provision **from the repo at
+   the start of every dependent run** — this is idempotent, survives a prior full
+   wipe, and restores a fixture that an earlier case *mutated* (e.g.
+   `L2-dimension-basic` adds a field to `ConDemoNoteHeader`). Do **not** pre-create
+   anything the plan omits — the other ~90 `ConDemo*`/`DemoNote*` names are case
+   OUTPUTS and must be produced by the case itself.
+3. **Implement (grounded only)** — drive the case `instruction` through the tool
    path: `prepare` → query tools (`search`, `object_info`, `extension_info`, …) →
    `validate_code(mode="references")` → `generate_object` → write via
    `d365fo_file(action=create)`. **No hand-edited XML.**
-3. **Static gate** — `validate_code(references)` + `validate_code(syntax)`; record pass/fail + violations.
-4. **Build** — `build_d365fo_project`; capture structured `errors[]` and `bpWarnings[]`.
-5. **Oracle** — score against the golden (VM-free scorer):
+4. **Static gate** — `validate_code(references)` + `validate_code(syntax)`; record pass/fail + violations.
+5. **Build** — `build_d365fo_project`; capture structured `errors[]` and `bpWarnings[]`.
+6. **Oracle** — score against the golden (VM-free scorer):
    ```
    npm run eval:score -- <caseId> <actualXml.xml> [--bp-warnings N] [--build-failed] [--systest <file>] [--write]
    npm run eval:score -- <caseId> --actual-dir <dir> ...   # multi-artifact cases
@@ -33,9 +49,16 @@ customisation model; **all writes are pinned to the `Contoso` sandbox** (§11).
    For a case with a `systest` path: after a clean build, deploy `eval/systests/<id>.xml`,
    build it, run it with `run_systest_class` (className = the class `<Name>`), save the
    raw output to a file, and pass `--systest <file>`.
-6. **Score & record** — `--write` appends a record matching `eval/corpus/schema.json` to `eval/corpus/runs/`.
-7. **Roll back** — undo the write / wipe the sandbox model so runs never pollute each other or the index.
-8. **Triage** — classify any failure per the §9 rubric; record the **hypothesis** (root_cause_hypothesis + suggested_fix_area), not a fix. The improver confirms and fixes.
+7. **Score & record** — `--write` appends a record matching `eval/corpus/schema.json` to `eval/corpus/runs/`.
+8. **Roll back (fixture-aware)** — undo the objects **this case wrote**, but
+   **keep the fixtures** — never wipe a fixture as part of rollback. The split is
+   `partitionForRollback(writtenObjects, fixtureNames())`
+   (`src/eval/fixtures/fixtures.ts`): everything in `undo` is reverted, everything
+   in `keep` stays. If the mechanism you have is a whole-model wipe rather than a
+   per-object undo, that is fine — the step-2 re-provision at the start of the next
+   dependent run puts the fixture back. Leave the sandbox holding only fixtures (or
+   empty), never case residue.
+9. **Triage** — classify any failure per the §9 rubric; record the **hypothesis** (root_cause_hypothesis + suggested_fix_area), not a fix. The improver confirms and fixes.
 
 ## Guardrails
 - Builds are slow (minutes) and must be serialised — run one case at a time.

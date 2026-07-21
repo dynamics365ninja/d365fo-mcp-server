@@ -37,8 +37,13 @@ otherwise closed: every P0–P3 finding is fixed and held by
 `tests/knowledge/apiSymbols.test.ts` + `tests/knowledge/exampleValidation.test.ts`
 + `npm run eval:knowledge-audit` (229 refs, 0 findings against the live index),
 with consciously deferred gaps recorded in `src/eval/coverage/taxonomy.ts`.
-Those gates are the durable record — one item is still open:
+Those gates are the durable record — two items are still open:
 
+- **`d365fo-cli` skill files** (separate repo, not checked out here) still need
+  the `apiSymbols` / `eval:knowledge-audit` treatment — including the
+  `sysoperation-batch-patterns` defects from the original review
+  (`SysRunnable::run()` was confirmed absent from the index) and the
+  `--install-to FleetManagement` demo-model examples.
 - **Prove knowledge code *examples* compile (real build, VM)** — the offline BP
   slice is done: `tests/knowledge/exampleValidation.test.ts` routes every
   KNOWLEDGE_BASE example through the `validate_code(mode="syntax")` rules and
