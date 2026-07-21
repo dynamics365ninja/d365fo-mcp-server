@@ -11,15 +11,16 @@
  */
 import * as fs from 'node:fs';
 import { relative, resolve } from 'node:path';
-import { isWindows, paths, repoRoot } from '../context.js';
+import { installMode, isWindows, paths, repoRoot } from '../context.js';
 import type { SectionId } from '../../config/settings.js';
 import { settingByPath, settingsInSection } from '../../config/settings.js';
 import { runExe, runShell } from '../exec.js';
 import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
+import { checkRelease } from '../npmRegistry.js';
 import { askAdvanced, askSecrets, askSetting, askSettings } from '../settingsPrompt.js';
 import { migrateLegacyEnv, openStore, readSetting, saveStore, writeSetting, type SettingsStore } from '../settingsStore.js';
 import { rootTarget } from '../target.js';
-import { askConfirm, askSelect, askText, p, requireGitCheckout } from '../ui.js';
+import { askConfirm, askSelect, askText, p, requireFullInstall } from '../ui.js';
 import { listXppConfigs } from '../xppConfig.js';
 import { rebuildIndex } from './indexCmd.js';
 import { instanceAddCommand } from './instance.js';
@@ -34,6 +35,12 @@ const setting = (path: string) => {
 
 /** npm install + npm run build, skipping steps that are already done. */
 async function ensureInstalledAndBuilt(): Promise<boolean> {
+  // An npm install arrives with its dependencies resolved and dist/ prebuilt,
+  // and has no sources to compile — there is nothing here for it to do.
+  if (installMode === 'npm') {
+    p.log.success('Installed from npm — dependencies and build are already in place.');
+    return true;
+  }
   if (!fs.existsSync(resolve(repoRoot, 'node_modules'))) {
     p.log.step('Installing dependencies (npm install)…');
     if (await runShell('npm install') !== 0) { p.log.error('npm install failed.'); return false; }
@@ -178,7 +185,18 @@ export function savedNote(store: SettingsStore): void {
 
 export async function setupCommand(): Promise<void> {
   p.intro('d365fo-mcp setup — first-time setup');
-  if (!requireGitCheckout()) return;
+  if (!requireFullInstall()) return;
+
+  // Setting up an already-stale copy wastes the longest step there is: the
+  // index build. Say so before it starts, but never block on it — plenty of
+  // D365FO VMs have no route to the registry.
+  const release = await checkRelease();
+  if (release.behind) {
+    p.log.warn(
+      `This is d365fo-mcp ${release.current}; ${release.latest} is published.\n` +
+      `   Updating first avoids rebuilding the index twice: ${installMode === 'npm' ? 'npm install -g d365fo-mcp@latest' : 'd365fo-mcp update'}`,
+    );
+  }
 
   const scenario = await askSelect<Scenario>('How will this developer machine use the MCP server? (docs/SETUP.md)', [
     { value: 'local-stdio', label: 'E — Local stdio ★', hint: 'single developer on a D365FO VM; VS launches the server' },

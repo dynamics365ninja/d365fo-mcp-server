@@ -27,7 +27,7 @@ import { setupCommand } from './commands/setup.js';
 import { startCommand } from './commands/start.js';
 import { updateCommand } from './commands/update.js';
 import { askSelect, p } from './ui.js';
-import { isGitCheckout } from './context.js';
+import { isFullInstall } from './context.js';
 import { VERSION } from '../version.js';
 import { listInstances } from './instances.js';
 
@@ -106,13 +106,14 @@ instance.command('upgrade')
 async function mainMenu(): Promise<void> {
   p.intro('d365fo-mcp — D365 F&O MCP Server management');
   const hasInstances = listInstances().length > 0;
-  // Outside a checkout only `connect` can actually do anything, so it leads —
-  // everything above it in the full list would just print the installer hint.
+  // Without a full installation only `connect` can actually do anything, so it
+  // leads — everything above it in the full list would just print the
+  // installer hint.
   const connectEntry = { value: 'connect', label: 'Connect', hint: 'use a server someone already deployed' };
   const action = await askSelect('What do you want to do?', [
-    ...(isGitCheckout ? [] : [connectEntry]),
+    ...(isFullInstall ? [] : [connectEntry]),
     { value: 'setup', label: 'Setup', hint: 'first-time setup wizard' },
-    ...(isGitCheckout ? [connectEntry] : []),
+    ...(isFullInstall ? [connectEntry] : []),
     { value: 'config', label: 'Change settings', hint: 'edit one area of the configuration' },
     { value: 'doctor', label: 'Doctor', hint: 'check environment & installation' },
     { value: 'start', label: 'Start server', hint: hasInstances ? 'root or an instance' : 'root server' },

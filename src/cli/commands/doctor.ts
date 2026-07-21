@@ -9,8 +9,9 @@ import * as fs from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { p } from '../ui.js';
 import { settingByPath } from '../../config/settings.js';
-import { isWindows, paths, repoRoot } from '../context.js';
+import { installMode, isWindows, paths, repoRoot } from '../context.js';
 import { listInstances } from '../instances.js';
+import { checkRelease } from '../npmRegistry.js';
 import { conflictingLegacyValues, readPath, readSetting, type SettingsStore } from '../settingsStore.js';
 import { instanceTarget, rootTarget, type Target } from '../target.js';
 import { isXppConfigStale, listXppConfigs, xppConfigDir } from '../xppConfig.js';
@@ -116,6 +117,27 @@ async function checkNativeBinding(): Promise<CheckResult> {
   }
 }
 
+/**
+ * Whether this copy is the latest published release.
+ *
+ * Never a hard failure: an old copy still works, and a VM with no route to the
+ * registry must not fail its health check over it.
+ */
+async function checkReleaseFreshness(): Promise<CheckResult> {
+  const status = await checkRelease();
+  if (status.latest === null) {
+    return { severity: 'info', message: `d365fo-mcp ${status.current} — npm registry unreachable, cannot check for a newer release` };
+  }
+  if (status.behind) {
+    return {
+      severity: 'warn',
+      message: `d365fo-mcp ${status.current} — ${status.latest} is available`,
+      fix: installMode === 'npm' ? 'npm install -g d365fo-mcp@latest' : 'd365fo-mcp update',
+    };
+  }
+  return { severity: 'ok', message: `d365fo-mcp ${status.current} (latest)` };
+}
+
 async function probeHealth(port: number, label: string): Promise<CheckResult> {
   try {
     const res = await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(1500) });
@@ -136,6 +158,9 @@ export async function doctorCommand(): Promise<void> {
     if (r.severity === 'fail') failures++;
     report(r);
   };
+
+  // Release freshness — advisory, and silent about a registry it cannot reach.
+  emit(await checkReleaseFreshness());
 
   // Runtime
   const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
