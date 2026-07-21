@@ -9,7 +9,7 @@ import * as fs from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { p } from '../ui.js';
 import { settingByPath } from '../../config/settings.js';
-import { dataRoot, installMode, isWindows, paths, repoRoot } from '../context.js';
+import { bridgeBuildCommand, dataRoot, installMode, isWindows, paths, repoRoot } from '../context.js';
 import { listInstances } from '../instances.js';
 import { checkRelease } from '../npmRegistry.js';
 import { conflictingLegacyValues, readPath, readSetting, type SettingsStore } from '../settingsStore.js';
@@ -209,7 +209,7 @@ export async function doctorCommand(): Promise<void> {
       ? { severity: 'ok', message: 'C# bridge built (D365MetadataBridge.exe)' }
       // Absolute path: outside a checkout the user is nowhere near the bridge,
       // and a relative `cd bridge\...` would just fail.
-      : { severity: 'warn', message: 'C# bridge not built — server runs read-only', fix: `cd "${paths.bridgeDir}" && dotnet build -c Release` });
+      : { severity: 'warn', message: 'C# bridge not built — server runs read-only', fix: bridgeBuildCommand() });
     const dir = xppConfigDir();
     const configs = listXppConfigs();
     if (dir && fs.existsSync(dir)) {

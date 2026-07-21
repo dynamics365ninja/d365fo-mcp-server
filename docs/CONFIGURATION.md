@@ -121,6 +121,7 @@ The metadata-provider child process — the only write path to the AOT.
 | `bridge.maxRetries` | advanced | `BRIDGE_MAX_RETRIES` | `2` | Read calls are retried after a health-checked restart of the child process. Writes are never retried — a timed-out write may already have been applied. 0 disables retries. |
 | `bridge.healthcheckMs` | advanced | `BRIDGE_HEALTHCHECK_MS` | `0` | Proactively detects a wedged bridge while idle. 0 disables the ping. |
 | `bridge.maxRestarts` | advanced | `BRIDGE_MAX_RESTARTS` | `3` | Circuit breaker: after this many respawns within 60 s the server stops trying. |
+| `bridge.exePath` | advanced | `D365FO_BRIDGE_EXE_PATH` | — | Absolute path to D365MetadataBridge.exe. Leave empty to auto-detect inside the installation — the setup wizard fills this in for an npm install, where the binary is built outside the package so that updating the package does not delete it. |
 | `bridge.logFile` | advanced | `D365FO_BRIDGE_LOG_FILE` | — | Absolute path the C# bridge appends its own diagnostics to. |
 | `bridge.fsScanTimeoutMs` | advanced | `D365FO_FS_SCAN_TIMEOUT_MS` | `3000` | Budget for the filesystem scan used when the bridge cannot answer an extension lookup (minimum 500). |
 | `bridge.disableFsFallback` | advanced | `D365FO_DISABLE_FS_FALLBACK` | `false` | Makes extension lookups bridge-only. Turn on to diagnose stale-index issues — results get stricter, not faster. |
@@ -204,6 +205,7 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "maxRetries": 2,
     "healthcheckMs": 0,
     "maxRestarts": 3,
+    "exePath": "",
     "logFile": "",
     "fsScanTimeoutMs": 3000,
     "disableFsFallback": false

@@ -15,6 +15,7 @@ import { dataRoot, installMode, isWindows, paths, repoRoot, setDataRoot } from '
 import type { SectionId } from '../../config/settings.js';
 import { settingByPath, settingsInSection } from '../../config/settings.js';
 import { runExe, runShell } from '../exec.js';
+import { pinBridgeExe } from '../bridgePath.js';
 import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { checkRelease } from '../npmRegistry.js';
 import { askAdvanced, askSecrets, askSetting, askSettings } from '../settingsPrompt.js';
@@ -111,6 +112,9 @@ async function maybeBuildBridge(scenario: Scenario): Promise<boolean> {
     return true;
   }
   const args = ['build', '-c', 'Release'];
+  // An npm install builds outside the package so the binary survives an
+  // update; a checkout keeps MSBuild's default so nothing about it changes.
+  if (paths.bridgeOutDir) args.push('-o', paths.bridgeOutDir);
   if (scenario === 'ude') {
     const binPath = await askText({
       message: 'UDE: path to the FrameworkDirectory\\bin folder (Enter to let MSBuild auto-detect)',
@@ -261,6 +265,9 @@ export async function setupCommand(): Promise<void> {
   }
 
   const store = openRootStore();
+  // Before either branch saves: the server cannot find a bridge built outside
+  // the package unless the config says where it is.
+  pinBridgeExe(store);
 
   if (scenario === 'hybrid') {
     // The Azure half is configured through App Service settings; this wizard
