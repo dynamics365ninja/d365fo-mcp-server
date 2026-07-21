@@ -544,9 +544,21 @@ async function extractMetadata() {
       // to just the configured model.
       const isCustom = customRoot ? rootPath === customRoot : isCustomModel(modelName);
 
+      // An explicit CUSTOM_MODELS list still NARROWS a custom-only run on UDE. The path
+      // rule decides what CAN be custom; a hand-maintained list decides how much of it to
+      // extract. Only wildcard patterns reach this branch (exact names take the
+      // MODELS_TO_EXTRACT path above, which leaves FILTER_MODE at 'all'), and without this
+      // an operator on UDE would have no way to scope a refresh to their own models — the
+      // root-level scan ignores CUSTOM_MODELS entirely once customRoot is set.
+      const narrowedByConfig = !!customRoot && CUSTOM_MODELS.length > 0 && !isCustomModel(modelName);
+
       // Apply model-level filtering
       if (FILTER_MODE === 'custom-only' && !isCustom) {
         log.detail(`${glyph.arrow} skip standard model: ${modelName}`);
+        continue;
+      }
+      if (FILTER_MODE === 'custom-only' && narrowedByConfig) {
+        log.detail(`${glyph.arrow} skip model outside CUSTOM_MODELS patterns: ${modelName}`);
         continue;
       }
       if (FILTER_MODE === 'standard-only' && isCustom) {
