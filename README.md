@@ -74,11 +74,20 @@ Structural violations (wrong order, missing container, disallowed control) **blo
 
 ## Quick Start
 
-**Installing on your own D365FO VM** — the usual case. One line in PowerShell installs the prerequisites, clones the repository and runs the setup wizard, which builds the C# bridge and the metadata index for you:
+**Installing on your own D365FO VM** — the usual case. One line in PowerShell installs Node.js if it is missing, installs the server from npm, and runs the setup wizard, which asks where the index should live and builds the C# bridge for you:
 
 ```powershell
 irm https://raw.githubusercontent.com/dynamics365ninja/d365fo-mcp-server/main/install.ps1 | iex
 ```
+
+Already have Node.js 24+? Then the one-liner has nothing to bootstrap and you can skip it:
+
+```powershell
+npm install -g d365fo-mcp
+d365fo-mcp setup
+```
+
+Re-running either is safe. An installation made before the npm package existed is a git checkout, and both are left exactly where they are and updated in place.
 
 **Your team already runs a shared server?** Then you install nothing — point your editor at it:
 

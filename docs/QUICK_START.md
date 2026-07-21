@@ -83,7 +83,7 @@ claude mcp add-json --scope user d365fo-mcp-tools '{"type":"http","url":"https:/
 | GitHub Copilot extension | VS → Extensions | Copilot users |
 | .NET SDK | pre-installed on D365FO VMs, else [dotnet.microsoft.com](https://dotnet.microsoft.com/download) | C# bridge (writes) |
 | Node.js 24.x LTS | [nodejs.org](https://nodejs.org), or `Install-D365SupportingSoftware -Name node.js` | installed for you by the one-liner |
-| Git | [git-scm.com](https://git-scm.com) | installed for you by the one-liner |
+| Git | [git-scm.com](https://git-scm.com) | only for a git-checkout installation, or to work on the source |
 | Python 3.x | option in the Node.js installer | only if npm cannot fetch a prebuilt `better-sqlite3` binary and has to compile it |
 
 ## 2. Install
@@ -92,15 +92,17 @@ claude mcp add-json --scope user d365fo-mcp-tools '{"type":"http","url":"https:/
 irm https://raw.githubusercontent.com/dynamics365ninja/d365fo-mcp-server/main/install.ps1 | iex
 ```
 
-The installer checks for Node.js and Git (installing them if missing), clones the repository, runs `npm install`, and hands off to the setup wizard — which selects your scenario, builds the C# bridge, asks only the settings that scenario needs, builds the index if you want one, and prints the `.mcp.json` block for step 3.
+The installer checks for Node.js (installing it if missing), installs the server with `npm install -g d365fo-mcp`, and hands off to the setup wizard — which selects your scenario, asks where the configuration and the index should live, builds the C# bridge, asks only the settings that scenario needs, builds the index if you want one, and prints the `.mcp.json` block for step 3.
 
-Safe to re-run: an existing installation is updated (`git pull`) rather than re-cloned. Override with environment variables set on the same line:
+With Node.js 24+ already present the one-liner has nothing to bootstrap, so `npm install -g d365fo-mcp` followed by `d365fo-mcp setup` does the same thing.
+
+Safe to re-run. Installations made before the npm package became self-contained are git checkouts that hold their configuration and index inside the checkout; those are detected and updated in place (`git pull`) instead, so nothing moves and no index is rebuilt. Override with environment variables set on the same line:
 
 | Variable | Effect |
 |---|---|
-| `$env:D365FO_MCP_DIR` | install directory (default `K:\d365fo-mcp-server`) |
+| `$env:D365FO_MCP_DIR` | where to look for an existing checkout (default `K:\d365fo-mcp-server`) |
 | `$env:D365FO_MCP_YES = '1'` | non-interactive, accept defaults |
-| `$env:D365FO_MCP_NO_WIZARD = '1'` | clone + `npm install` only, skip the wizard |
+| `$env:D365FO_MCP_NO_WIZARD = '1'` | install only, skip the wizard |
 
 Answers are saved to `config/d365fo-mcp.json` (secrets to `config/secrets.json`) — there is no `.env` to fill in. Every key, its default and the matching environment variable: [CONFIGURATION.md](CONFIGURATION.md). An older `.env` keeps working and is imported the first time the wizard runs.
 
@@ -126,7 +128,7 @@ npm run build-database
 
 </details>
 
-> **Why not `npx d365fo-mcp setup`?** The CLI is on npm as [`d365fo-mcp`](https://www.npmjs.com/package/d365fo-mcp), but `setup`, `update` and `index` need the repository itself — `scripts/`, dev dependencies and `git pull`. Run from a bare `npx` they stop and refer you back here rather than half-configuring the machine. Only `connect` (Path A) is self-sufficient.
+> **The npm package is the installation.** [`d365fo-mcp`](https://www.npmjs.com/package/d365fo-mcp) carries the compiled server, the index scripts and the C# bridge sources, so `npm install -g d365fo-mcp` followed by `d365fo-mcp setup` needs no clone. The one-liner above exists to install Node.js first, which npm cannot do for itself. Only `npx d365fo-mcp` without a global install stays a `connect`-only client, since it has nowhere to keep an installation.
 
 ## 3. Configure your editor
 
