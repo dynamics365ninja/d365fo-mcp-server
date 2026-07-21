@@ -11,7 +11,7 @@
  */
 import * as fs from 'node:fs';
 import { relative, resolve } from 'node:path';
-import { installMode, isWindows, paths, repoRoot } from '../context.js';
+import { dataRoot, installMode, isWindows, paths, repoRoot, setDataRoot } from '../context.js';
 import type { SectionId } from '../../config/settings.js';
 import { settingByPath, settingsInSection } from '../../config/settings.js';
 import { runExe, runShell } from '../exec.js';
@@ -32,6 +32,47 @@ const setting = (path: string) => {
   if (!found) throw new Error(`Unknown setting: ${path}`); // registry typo — fail loudly at first use
   return found;
 };
+
+/**
+ * Ask an npm install where to keep its configuration, index and instances.
+ *
+ * `npm install -g d365fo-mcp@latest` replaces the package directory, so none
+ * of that can live inside it. Asking also puts the choice of *drive* in the
+ * user's hands, which matters more than it looks: a full index is upwards of
+ * 2 GB, and the default under %LOCALAPPDATA% is on C: — routinely the smallest
+ * disk on a D365FO VM.
+ *
+ * A checkout skips this entirely; it is its own data directory.
+ */
+async function configureDataRoot(): Promise<void> {
+  if (installMode === 'git') return;
+
+  const current = dataRoot();
+  const configured = fs.existsSync(paths.rootConfig);
+  if (configured && !await askConfirm(`Installation directory is ${current} — move it?`, false)) {
+    return;
+  }
+
+  const chosen = await askText({
+    message: 'Where should the configuration and the metadata index live?',
+    placeholder: current,
+    initialValue: current,
+    required: true,
+  });
+  if (resolve(chosen) === current) {
+    setDataRoot(current); // records the pointer even when the default was kept
+    return;
+  }
+  if (configured) {
+    p.log.warn(
+      `The existing configuration stays in ${current}.\n` +
+      '   Copy config\\ and data\\ across by hand if you want to keep the index; ' +
+      'otherwise it will be rebuilt from scratch.',
+    );
+  }
+  setDataRoot(chosen);
+  p.log.success(`Installation directory: ${dataRoot()}`);
+}
 
 /** npm install + npm run build, skipping steps that are already done. */
 async function ensureInstalledAndBuilt(): Promise<boolean> {
@@ -88,7 +129,7 @@ async function maybeBuildBridge(scenario: Scenario): Promise<boolean> {
 
 /** Open the root store and fold an existing .env into it. */
 function openRootStore(): SettingsStore {
-  const store = openStore(repoRoot, paths.rootEnv);
+  const store = openStore(dataRoot(), paths.rootEnv);
   const migrated = migrateLegacyEnv(store);
   if (migrated.length > 0) {
     p.log.success(
@@ -174,10 +215,10 @@ async function maybeBuildIndex(): Promise<boolean> {
 }
 
 export function savedNote(store: SettingsStore): void {
-  const rel = relative(repoRoot, store.configPath) || store.configPath;
+  const rel = relative(dataRoot(), store.configPath) || store.configPath;
   const lines = [`Settings written to ${rel}`];
   if (fs.existsSync(store.secretsPath)) {
-    lines.push(`Secrets written to ${relative(repoRoot, store.secretsPath)} (git-ignored, owner-only)`);
+    lines.push(`Secrets written to ${relative(dataRoot(), store.secretsPath)} (git-ignored, owner-only)`);
   }
   lines.push('', 'Edit it by re-running `d365fo-mcp setup` or by hand — it is plain JSON.');
   p.note(lines.join('\n'), 'Configuration');
@@ -205,6 +246,9 @@ export async function setupCommand(): Promise<void> {
     { value: 'ude', label: 'D — UDE', hint: 'Unified Developer Experience / Power Platform Tools' },
     { value: 'multi', label: 'F — Multi-instance', hint: 'several D365FO clients on one machine, one instance each' },
   ]);
+
+  // Before anything is written: every path below hangs off the data directory.
+  await configureDataRoot();
 
   // All scenarios need the local clone installed and built
   if (!await ensureInstalledAndBuilt()) { process.exitCode = 1; return; }

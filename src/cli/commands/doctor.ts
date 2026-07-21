@@ -9,7 +9,7 @@ import * as fs from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { p } from '../ui.js';
 import { settingByPath } from '../../config/settings.js';
-import { installMode, isWindows, paths, repoRoot } from '../context.js';
+import { dataRoot, installMode, isWindows, paths, repoRoot } from '../context.js';
 import { listInstances } from '../instances.js';
 import { checkRelease } from '../npmRegistry.js';
 import { conflictingLegacyValues, readPath, readSetting, type SettingsStore } from '../settingsStore.js';
@@ -25,6 +25,11 @@ interface CheckResult {
 }
 
 const REQUIRED_NODE_MAJOR = 24;
+/**
+ * How to reach the wizard from here. `npm run setup` only exists in a checkout
+ * — an npm install has no package scripts of its own to run.
+ */
+const SETUP_COMMAND = installMode === 'git' ? 'npm run setup' : 'd365fo-mcp setup';
 /** Below this size the index is almost certainly incomplete (SETUP.md troubleshooting). */
 const MIN_HEALTHY_DB_BYTES = 100 * 1024 * 1024;
 
@@ -60,20 +65,20 @@ function checkDb(store: SettingsStore, defaultDb: string, label: string): CheckR
 /** The structured config the setup wizard writes — absent means never set up. */
 function checkConfig(target: Target, label: string): CheckResult {
   if (fs.existsSync(target.store.configPath)) {
-    const shown = relative(repoRoot, target.store.configPath) || target.store.configPath;
+    const shown = relative(dataRoot(), target.store.configPath) || target.store.configPath;
     return { severity: 'ok', message: `${label}: configuration present (${shown})` };
   }
   if (target.envFile) {
     return {
       severity: 'warn',
       message: `${label}: no d365fo-mcp.json — running on the legacy .env only`,
-      fix: 'npm run setup — imports the .env and writes the structured config',
+      fix: `${SETUP_COMMAND} — imports the .env and writes the structured config`,
     };
   }
   return {
     severity: 'info',
     message: `${label}: not configured — fine when everything comes from the .mcp.json env block`,
-    fix: 'npm run setup',
+    fix: SETUP_COMMAND,
   };
 }
 
@@ -168,16 +173,27 @@ export async function doctorCommand(): Promise<void> {
     ? { severity: 'ok', message: `Node.js ${process.versions.node}` }
     : { severity: 'fail', message: `Node.js ${process.versions.node} — ${REQUIRED_NODE_MAJOR}.x required (package.json engines)`, fix: 'install Node 24 LTS' });
 
-  // Install + build
-  const hasNodeModules = fs.existsSync(resolve(repoRoot, 'node_modules'));
-  emit(hasNodeModules
-    ? { severity: 'ok', message: 'Dependencies installed (node_modules)' }
-    : { severity: 'fail', message: 'node_modules missing', fix: 'npm install' });
-  // Only meaningful once the dependencies exist — otherwise it just restates the failure above.
-  if (hasNodeModules) emit(await checkNativeBinding());
+  // Install + build. A global npm install resolves its dependencies from the
+  // parent node_modules, so a package-local one neither exists nor means
+  // anything there — the binding check below is the honest signal in both
+  // layouts, and the only one worth failing on.
+  if (installMode === 'git') {
+    const hasNodeModules = fs.existsSync(resolve(repoRoot, 'node_modules'));
+    emit(hasNodeModules
+      ? { severity: 'ok', message: 'Dependencies installed (node_modules)' }
+      : { severity: 'fail', message: 'node_modules missing', fix: 'npm install' });
+    // Only meaningful once the dependencies exist — otherwise it just restates the failure above.
+    if (hasNodeModules) emit(await checkNativeBinding());
+  } else {
+    emit(await checkNativeBinding());
+  }
   emit(fs.existsSync(paths.distEntry)
     ? { severity: 'ok', message: 'Server built (dist/index.js)' }
     : { severity: 'fail', message: 'dist/index.js missing — server not built', fix: 'npm run build' });
+
+  // Where this installation keeps its state — the first thing to check when
+  // the wizard's answers appear to have vanished after an update.
+  emit({ severity: 'info', message: `Installed from ${installMode}; data directory: ${dataRoot()}` });
 
   // Configuration
   const root = rootTarget();
@@ -191,7 +207,9 @@ export async function doctorCommand(): Promise<void> {
   if (isWindows) {
     emit(fs.existsSync(paths.bridgeExe)
       ? { severity: 'ok', message: 'C# bridge built (D365MetadataBridge.exe)' }
-      : { severity: 'warn', message: 'C# bridge not built — server runs read-only', fix: 'cd bridge\\D365MetadataBridge && dotnet build -c Release' });
+      // Absolute path: outside a checkout the user is nowhere near the bridge,
+      // and a relative `cd bridge\...` would just fail.
+      : { severity: 'warn', message: 'C# bridge not built — server runs read-only', fix: `cd "${paths.bridgeDir}" && dotnet build -c Release` });
     const dir = xppConfigDir();
     const configs = listXppConfigs();
     if (dir && fs.existsSync(dir)) {
