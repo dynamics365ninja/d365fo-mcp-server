@@ -17,6 +17,7 @@ import * as os from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
+  bridgeBuildCommand,
   dataRoot,
   installMode,
   isGitCheckout,
@@ -58,6 +59,15 @@ describe('data root in a checkout', () => {
     expect(paths.bridgeExe).toBe(
       resolve(repoRoot, 'bridge', 'D365MetadataBridge', 'bin', 'Release', 'D365MetadataBridge.exe'),
     );
+  });
+
+  it('leaves the bridge build where MSBuild puts it', () => {
+    // An npm install redirects the build out of the package with `-o`, because
+    // an update would delete it there. A checkout must not be redirected: its
+    // binary is already outside the blast radius of `git pull`, and moving it
+    // would strand every bridge built by an earlier version.
+    expect(paths.bridgeOutDir).toBeNull();
+    expect(bridgeBuildCommand()).toBe(`cd "${paths.bridgeDir}" && dotnet build -c Release`);
   });
 });
 

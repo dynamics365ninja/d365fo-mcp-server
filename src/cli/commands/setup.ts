@@ -11,10 +11,11 @@
  */
 import * as fs from 'node:fs';
 import { relative, resolve } from 'node:path';
-import { dataRoot, installMode, isWindows, paths, repoRoot, setDataRoot } from '../context.js';
+import { DOTNET_MISSING, dataRoot, installMode, isWindows, paths, repoRoot, setDataRoot } from '../context.js';
 import type { SectionId } from '../../config/settings.js';
 import { settingByPath, settingsInSection } from '../../config/settings.js';
-import { runExe, runShell } from '../exec.js';
+import { commandExists, runExe, runShell } from '../exec.js';
+import { pinBridgeExe } from '../bridgePath.js';
 import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { checkRelease } from '../npmRegistry.js';
 import { askAdvanced, askSecrets, askSetting, askSettings } from '../settingsPrompt.js';
@@ -110,7 +111,15 @@ async function maybeBuildBridge(scenario: Scenario): Promise<boolean> {
     p.log.warn('Skipped — the server will run read-only until you build it.');
     return true;
   }
+  if (!await commandExists('dotnet')) {
+    p.log.warn(DOTNET_MISSING);
+    return true; // read-only is a working state; refusing the whole wizard is not
+  }
+
   const args = ['build', '-c', 'Release'];
+  // An npm install builds outside the package so the binary survives an
+  // update; a checkout keeps MSBuild's default so nothing about it changes.
+  if (paths.bridgeOutDir) args.push('-o', paths.bridgeOutDir);
   if (scenario === 'ude') {
     const binPath = await askText({
       message: 'UDE: path to the FrameworkDirectory\\bin folder (Enter to let MSBuild auto-detect)',
@@ -120,7 +129,15 @@ async function maybeBuildBridge(scenario: Scenario): Promise<boolean> {
   }
   p.log.step('Building C# bridge (dotnet build -c Release)…');
   if (await runExe('dotnet', args, { cwd: paths.bridgeDir }) !== 0) {
-    p.log.error('Bridge build failed — check .NET Framework 4.8 Dev Pack and the NuGet feed (docs/SETUP.md).');
+    // Not the .NET Framework 4.8 Dev Pack: the project references
+    // Microsoft.NETFramework.ReferenceAssemblies.net48, which supplies the
+    // reference assemblies from NuGet precisely so the targeting pack does not
+    // have to be installed. What a build needs is the SDK (checked above),
+    // a reachable NuGet feed, and the D365FO assemblies it compiles against.
+    p.log.error(
+      'Bridge build failed. Usual causes: no route to nuget.org for the restore, ' +
+      'or no D365FO bin directory to compile against (docs/SETUP.md).',
+    );
     return false;
   }
   p.log.success('C# bridge built.');
@@ -261,6 +278,9 @@ export async function setupCommand(): Promise<void> {
   }
 
   const store = openRootStore();
+  // Before either branch saves: the server cannot find a bridge built outside
+  // the package unless the config says where it is.
+  pinBridgeExe(store);
 
   if (scenario === 'hybrid') {
     // The Azure half is configured through App Service settings; this wizard

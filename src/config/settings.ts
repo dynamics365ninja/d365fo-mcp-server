@@ -565,6 +565,18 @@ export const SETTINGS: Setting[] = [
     default: 3,
   },
   {
+    path: 'bridge.exePath',
+    env: 'D365FO_BRIDGE_EXE_PATH',
+    section: 'bridge',
+    tier: 'advanced',
+    type: 'path',
+    label: 'Bridge executable',
+    description:
+      'Absolute path to D365MetadataBridge.exe. Leave empty to auto-detect inside the installation — ' +
+      'the setup wizard fills this in for an npm install, where the binary is built outside the package ' +
+      'so that updating the package does not delete it.',
+  },
+  {
     path: 'bridge.logFile',
     env: 'D365FO_BRIDGE_LOG_FILE',
     section: 'bridge',

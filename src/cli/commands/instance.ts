@@ -7,6 +7,7 @@
 import * as fs from 'node:fs';
 import { resolve } from 'node:path';
 import { settingByPath, settingsInSection } from '../../config/settings.js';
+import { pinBridgeExe } from '../bridgePath.js';
 import { createInstance, getInstance, listInstances, suggestPort } from '../instances.js';
 import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { selectXppConfig } from './config.js';
@@ -87,6 +88,9 @@ export async function instanceAddCommand(name: string | undefined, portArg: stri
 
   // Same questions as the root wizard, scoped to this instance's config file.
   const store = openInstanceStore(inst.dir);
+  // Instances share the one bridge binary this machine built, and need to be
+  // told where it is for the same reason the root config does.
+  pinBridgeExe(store);
   p.log.step('D365FO environment — where this instance reads its X++ packages');
   const envType = String(await askSetting(store, envTypeSetting, {
     initial: listXppConfigs().length > 0 ? 'ude' : 'traditional',

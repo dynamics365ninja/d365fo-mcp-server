@@ -7,8 +7,8 @@
  * build); an npm install reinstalls itself from the registry.
  */
 import * as fs from 'node:fs';
-import { installMode, isWindows, paths } from '../context.js';
-import { runExe, runShell } from '../exec.js';
+import { DOTNET_MISSING, bridgeBuildCommand, installMode, isWindows, paths } from '../context.js';
+import { commandExists, runExe, runShell } from '../exec.js';
 import { listInstances } from '../instances.js';
 import { checkRelease } from '../npmRegistry.js';
 import { instanceTarget, rootTarget } from '../target.js';
@@ -19,10 +19,9 @@ import { rebuildIndex } from './indexCmd.js';
  * What to do about the C# bridge after the code has been refreshed.
  *
  * Both inputs are needed, and *when* they are sampled is the whole point.
- * `hadBridge` is taken before the update, because `npm install -g` replaces
- * the package directory and takes the bridge binary with it; asking only
- * afterwards would read every npm-mode update as "this install never needed
- * writes" and silently drop the write path.
+ * `hadBridge` is taken before the update: judged on the after-state alone, a
+ * bridge the update destroyed is indistinguishable from one that was never
+ * built, and the difference is whether the server just lost its write path.
  *
  *   none     — there was no bridge, so this install does not use writes
  *   optional — the bridge survived; rebuilding is a post-upgrade nicety
@@ -56,11 +55,11 @@ export async function updateCommand(opts: { yes?: boolean }): Promise<void> {
     }
   }
 
-  // Sampled before the update, not after: the bridge binary lives inside the
-  // package, and `npm install -g` replaces the package wholesale. Asking
-  // afterwards would always find it missing, skip the rebuild as "this install
-  // never needed writes", and leave a server that had the write path silently
-  // read-only until someone noticed.
+  // Sampled before the update rather than after. The bridge is built outside
+  // the package now, so an update should leave it alone — but this is what
+  // proves it did: if the binary was there before and is gone after, the
+  // update destroyed the write path, and saying so beats reading the absence
+  // as "this install never needed writes" and silently moving on.
   const hadBridge = isWindows && fs.existsSync(paths.bridgeExe);
 
   const steps: [string, () => Promise<number>][] = installMode === 'npm'
@@ -88,8 +87,14 @@ export async function updateCommand(opts: { yes?: boolean }): Promise<void> {
         ? 'Rebuild the C# bridge now? (required to restore writes)'
         : 'Rebuild the C# bridge (recommended after a D365FO version upgrade)?',
     );
-    if (rebuild) {
-      if (await runExe('dotnet', ['build', '-c', 'Release'], { cwd: paths.bridgeDir }) !== 0) {
+    if (rebuild && !await commandExists('dotnet')) {
+      p.log.warn(DOTNET_MISSING);
+    } else if (rebuild) {
+      // Same output directory the wizard used, or the rebuild would land in
+      // the package and the configured bridge.exePath would still point at
+      // the old binary outside it.
+      const buildArgs = ['build', '-c', 'Release', ...(paths.bridgeOutDir ? ['-o', paths.bridgeOutDir] : [])];
+      if (await runExe('dotnet', buildArgs, { cwd: paths.bridgeDir }) !== 0) {
         p.log.error(gone
           ? 'Bridge build failed — the server stays read-only until it succeeds.'
           : 'Bridge build failed — writes may use the previous bridge binary.');
@@ -100,7 +105,7 @@ export async function updateCommand(opts: { yes?: boolean }): Promise<void> {
     } else if (gone) {
       // Declining is allowed, but it must not be quiet: the capability was
       // there before this command ran and is not there now.
-      p.log.warn(`Skipped — the server runs read-only. Rebuild later with:\n   cd "${paths.bridgeDir}" && dotnet build -c Release`);
+      p.log.warn(`Skipped — the server runs read-only. Rebuild later with:\n   ${bridgeBuildCommand()}`);
     }
   }
 

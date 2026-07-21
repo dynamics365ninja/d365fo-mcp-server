@@ -42,7 +42,7 @@ flowchart TD
 | Visual Studio 2022 / 2026 | ≥ 17.14 / any | MCP support |
 | GitHub Copilot extension | latest | agent mode |
 | Node.js + Python | 24.x LTS / 3.x | local & hybrid (native SQLite build) |
-| .NET Framework 4.8 Dev Pack | 4.8 | C# bridge — **all writes** (pre-installed on D365FO VMs) |
+| .NET SDK | any current | C# bridge — **all writes** (pre-installed on D365FO VMs) |
 | Git | any | local & hybrid |
 
 ## Enable MCP (one-time)

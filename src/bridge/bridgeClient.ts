@@ -845,12 +845,27 @@ export class BridgeClient extends EventEmitter {
 
   // Private helpers
 
+  /**
+   * Locate the bridge binary.
+   *
+   * An explicit path wins and is not second-guessed: it is how an npm install
+   * finds a binary built outside the package (updating the package deletes
+   * anything inside it, and the bridge has to be built per environment — see
+   * the metamodel version check in Program.cs), and how one machine can point
+   * several configurations at different builds.
+   *
+   * Everything else falls back to the in-installation search, unchanged.
+   */
   private resolveBridgeExe(): string {
-    if (this.options.bridgeExePath) {
-      if (!fs.existsSync(this.options.bridgeExePath)) {
-        throw new Error(`Bridge exe not found at: ${this.options.bridgeExePath}`);
+    const configured = this.options.bridgeExePath?.trim() || process.env.D365FO_BRIDGE_EXE_PATH?.trim();
+    if (configured) {
+      if (!fs.existsSync(configured)) {
+        throw new Error(
+          `Bridge exe not found at the configured path: ${configured}\n` +
+          '  Set bridge.exePath (D365FO_BRIDGE_EXE_PATH) to the built binary, or clear it to auto-detect.'
+        );
       }
-      return this.options.bridgeExePath;
+      return configured;
     }
 
     const __filename = fileURLToPath(import.meta.url);

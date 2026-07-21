@@ -47,6 +47,24 @@ export function runExe(cmd: string, args: string[], opts: RunOptions = {}): Prom
   return spawnAndWait(cmd, args, opts, false);
 }
 
+/**
+ * Whether an executable is on PATH.
+ *
+ * Used to check a prerequisite before spawning it: `runExe` on a missing
+ * binary rejects with a bare `spawn <name> ENOENT`, which tells a user
+ * nothing about what to install. Runs the command rather than probing PATH by
+ * hand so it agrees with what the spawn will actually find.
+ */
+export function commandExists(cmd: string, versionArg = '--version'): Promise<boolean> {
+  return new Promise(resolvePromise => {
+    const child = spawn(cmd, [versionArg], { stdio: 'ignore', shell: false });
+    child.on('error', () => resolvePromise(false));
+    // A non-zero exit still proves the binary is there and runnable; only
+    // failure to spawn at all means it is missing.
+    child.on('close', () => resolvePromise(true));
+  });
+}
+
 /** Throwing variant — use for steps where a failure must abort the flow. */
 export async function mustSucceed(promise: Promise<number>, what: string): Promise<void> {
   const code = await promise;

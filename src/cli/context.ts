@@ -150,16 +150,65 @@ export const paths = {
   /** Where the wizard drops the ready-to-paste .mcp.json block. */
   get mcpSuggestion(): string { return resolve(currentDataRoot, 'mcp-config-suggestion.json'); },
 
+  /**
+   * Where `dotnet build` puts the bridge.
+   *
+   * A checkout keeps MSBuild's own default inside the project, exactly as
+   * before. An npm install cannot: the project lives in the package, and
+   * `npm install -g` replaces the package — so the build output would be
+   * deleted by the very next update, taking the server's only write path with
+   * it. It goes to the data directory instead, which updates never touch.
+   *
+   * Prebuilding the binary and shipping it in the package is not an option
+   * either: every D365FO platform build stamps assembly version 7.0.0.0 and
+   * differs only in FileVersion, so a bridge built elsewhere loads the local
+   * metamodel without complaint and then fails at JIT time (issue #703, and
+   * the version check in Program.cs). It has to be built per environment.
+   */
+  get bridgeOutDir(): string | null {
+    return installMode === 'git' ? null : resolve(currentDataRoot, 'bridge');
+  },
+
   // Code — always in the package, never in the data directory.
   distEntry: resolve(repoRoot, 'dist', 'index.js'),
   bridgeDir: resolve(repoRoot, 'bridge', 'D365MetadataBridge'),
-  bridgeExe: resolve(repoRoot, 'bridge', 'D365MetadataBridge', 'bin', 'Release', 'D365MetadataBridge.exe'),
+  get bridgeExe(): string {
+    return installMode === 'git'
+      ? resolve(repoRoot, 'bridge', 'D365MetadataBridge', 'bin', 'Release', 'D365MetadataBridge.exe')
+      : resolve(currentDataRoot, 'bridge', 'D365MetadataBridge.exe');
+  },
   extractScript: resolve(repoRoot, 'scripts', 'extract-metadata.ts'),
   buildDbScript: resolve(repoRoot, 'scripts', 'build-database.ts'),
   /** esbuild bundles of the two scripts above — what an npm install ships instead of the sources. */
   extractScriptDist: resolve(repoRoot, 'dist', 'scripts', 'extract-metadata.js'),
   buildDbScriptDist: resolve(repoRoot, 'dist', 'scripts', 'build-database.js'),
 };
+
+/**
+ * The exact command that builds the bridge for this installation, for every
+ * message that tells a user to run it by hand. An npm install needs the `-o`
+ * that puts the output outside the package; printing the bare command would
+ * put the binary somewhere the next update deletes.
+ */
+/**
+ * What to say when the bridge cannot be built because the .NET SDK is absent.
+ *
+ * Deliberately does not mention the .NET Framework 4.8 Developer Pack, which
+ * earlier messages here blamed: the project references
+ * Microsoft.NETFramework.ReferenceAssemblies.net48, which supplies those
+ * reference assemblies from NuGet exactly so the targeting pack need not be
+ * installed. Sending people to install a 100 MB pack they do not need, while
+ * the actual missing prerequisite goes unnamed, is worse than saying nothing.
+ */
+export const DOTNET_MISSING =
+  'The .NET SDK is not on PATH, so the C# bridge cannot be built — the server will run read-only.\n' +
+  '   Install it from https://dotnet.microsoft.com/download (the SDK, not just the runtime),\n' +
+  '   then run `d365fo-mcp setup` again. Reads and search work without it.';
+
+export function bridgeBuildCommand(): string {
+  const out = paths.bridgeOutDir ? ` -o "${paths.bridgeOutDir}"` : '';
+  return `cd "${paths.bridgeDir}" && dotnet build -c Release${out}`;
+}
 
 /**
  * True when this copy can rebuild an index — the one capability that separates
