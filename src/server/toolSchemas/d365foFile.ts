@@ -80,9 +80,8 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             '• view: query (existing AxQuery), fields[{name,dataField?}] — dataSource defaults to query\n' +
             '• service: serviceClass (defaults to the service name), externalName?, namespace?, description?, operations["opName"] or [{name?,method?,enableIdempotence?,subscriberAccessLevelRead?}]\n' +
             '• service-group: autoDeploy? (Yes publishes at /api/services), description?, services["MyService"] or [{name?,service?}]\n' +
-            '  ⚠ service/service-group CROSS-REFERENCES (serviceClass, services[].service) are written VERBATIM — only objectName gets the model prefix. ' +
-            'Pass the FINAL name of the already-created service/class (e.g. "ContosoDemoNoteService", not "DemoNoteService"), or the group resolves to nothing. ' +
-            'Verbatim is deliberate: a group may reference a Microsoft service (DimensionService) that must NOT be prefixed.'
+            '  ⚠ service/service-group CROSS-REFS (serviceClass, services[].service) are written VERBATIM — only objectName is prefixed. ' +
+            'Pass the FINAL name of the already-created service/class (e.g. "ContosoDemoNoteService", not "DemoNoteService"), else the group resolves to nothing — verbatim lets a group also reference an unprefixed Microsoft service (DimensionService).'
         },
         addToProject: {
           type: 'boolean',

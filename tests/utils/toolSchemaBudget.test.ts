@@ -24,12 +24,13 @@ import { createXppMcpServer } from '../../src/server/mcpServer';
 const CHARS_PER_TOKEN = 4;
 
 // Ceilings in characters of serialized JSON. Current actuals (2026-07, after
-// exposing generate_object's `additionalDatasets` (multi-dataset SSRS) — a
-// previously unreachable capability, so the ceiling was raised deliberately:
-// total ≈ 61,823 · d365fo_file ≈ 8,390 (generate_object ≈ 8,469 is now the
-// largest). Headroom is small on purpose so creep is caught early.
-const TOTAL_BUDGET = 62_100;
-const LARGEST_TOOL_BUDGET = 8_800;
+// adding d365fo_file's `service` + `service-group` objectTypes — two genuinely
+// new AOT capabilities, so the ceilings were raised deliberately (same as the
+// earlier generate_object `additionalDatasets` bump): total ≈ 62,555 ·
+// d365fo_file ≈ 9,493 (now the largest, ahead of generate_object ≈ 8,469).
+// Headroom is small on purpose so creep is caught early.
+const TOTAL_BUDGET = 62_900;
+const LARGEST_TOOL_BUDGET = 9_800;
 
 async function getTools(): Promise<Array<{ name: string }>> {
   const ctx: any = { symbolIndex: {}, parser: {} };
