@@ -18,7 +18,10 @@ single biggest lever on the published number (most red E cells in
   blockers are now cleared — `service`/`service-group` object types and a
   harness-level fixture (`eval/fixtures/`) landed — so they are ready for VM
   golden capture (`L3-batch-retryable-basic` still needs its three SysOperation
-  classes authored).
+  classes authored). When capturing `L3-custom-service-basic`, pass FINAL
+  prefixed names for the service-group cross-references (`create` prefixes only
+  `objectName`, so a group referencing an unprefixed service resolves to
+  nothing).
 - `L4-bridge-drops-data-entity-primarytable-fields-on-create` — encodes the
   data-entity caller-wiring gap (the shared XML builder populates a real query
   when `primaryTable`/`fields` are passed, but callers must know to pass them).
@@ -28,6 +31,13 @@ single biggest lever on the published number (most red E cells in
 remove it) as each lands.
 
 ## Remaining knowledge-audit scope
+
+The 2026-07-20 knowledge-base audit (KB vs metamodel / real AOT / MS docs) is
+otherwise closed: every P0–P3 finding is fixed and held by
+`tests/knowledge/apiSymbols.test.ts` + `tests/knowledge/exampleValidation.test.ts`
++ `npm run eval:knowledge-audit` (229 refs, 0 findings against the live index),
+with consciously deferred gaps recorded in `src/eval/coverage/taxonomy.ts`.
+Those gates are the durable record — two items are still open:
 
 - **`d365fo-cli` skill files** (separate repo, not checked out here) still need
   the `apiSymbols` / `eval:knowledge-audit` treatment — including the
