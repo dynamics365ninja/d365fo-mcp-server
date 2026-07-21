@@ -48,8 +48,23 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
+          # `git describe` fails when no earlier tag exists (the first release);
+          # without the guard the range collapses to HEAD..HEAD and the notes
+          # come out empty. Merge commits are dropped — the PR titles they carry
+          # are less informative than the underlying conventional commits.
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
           echo "## What's Changed" > CHANGELOG.md
-          git log $(git describe --tags --abbrev=0 HEAD^)..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          if [ -n "$PREV_TAG" ]; then
+            echo "Changes since $PREV_TAG:" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log "$PREV_TAG..HEAD" --no-merges --pretty=format:"- %s (%h)" >> CHANGELOG.md
+          else
+            echo "Initial release — 30 most recent commits:" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            git log HEAD --no-merges --max-count=30 --pretty=format:"- %s (%h)" >> CHANGELOG.md
+          fi
+          echo "" >> CHANGELOG.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v3
