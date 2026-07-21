@@ -10,6 +10,7 @@ import { relative, resolve } from 'node:path';
 import { p } from '../ui.js';
 import { settingByPath } from '../../config/settings.js';
 import { bridgeBuildCommand, dataRoot, installMode, isWindows, paths, repoRoot } from '../context.js';
+import { commandExists } from '../exec.js';
 import { listInstances } from '../instances.js';
 import { checkRelease } from '../npmRegistry.js';
 import { conflictingLegacyValues, readPath, readSetting, type SettingsStore } from '../settingsStore.js';
@@ -205,11 +206,18 @@ export async function doctorCommand(): Promise<void> {
 
   // C# bridge: the only write path; Windows-only.
   if (isWindows) {
-    emit(fs.existsSync(paths.bridgeExe)
-      ? { severity: 'ok', message: 'C# bridge built (D365MetadataBridge.exe)' }
+    if (fs.existsSync(paths.bridgeExe)) {
+      emit({ severity: 'ok', message: `C# bridge built (${paths.bridgeExe})` });
+    } else if (await commandExists('dotnet')) {
       // Absolute path: outside a checkout the user is nowhere near the bridge,
       // and a relative `cd bridge\...` would just fail.
-      : { severity: 'warn', message: 'C# bridge not built — server runs read-only', fix: bridgeBuildCommand() });
+      emit({ severity: 'warn', message: 'C# bridge not built — server runs read-only', fix: bridgeBuildCommand() });
+    } else {
+      // Naming the real prerequisite beats printing a build command that
+      // cannot run. Only checked when the bridge is missing — a built bridge
+      // needs no SDK, and asking would be noise on every healthy install.
+      emit({ severity: 'warn', message: 'C# bridge not built and no .NET SDK to build it — server runs read-only', fix: 'install the .NET SDK from https://dotnet.microsoft.com/download, then: d365fo-mcp setup' });
+    }
     const dir = xppConfigDir();
     const configs = listXppConfigs();
     if (dir && fs.existsSync(dir)) {

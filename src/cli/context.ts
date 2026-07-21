@@ -190,6 +190,21 @@ export const paths = {
  * that puts the output outside the package; printing the bare command would
  * put the binary somewhere the next update deletes.
  */
+/**
+ * What to say when the bridge cannot be built because the .NET SDK is absent.
+ *
+ * Deliberately does not mention the .NET Framework 4.8 Developer Pack, which
+ * earlier messages here blamed: the project references
+ * Microsoft.NETFramework.ReferenceAssemblies.net48, which supplies those
+ * reference assemblies from NuGet exactly so the targeting pack need not be
+ * installed. Sending people to install a 100 MB pack they do not need, while
+ * the actual missing prerequisite goes unnamed, is worse than saying nothing.
+ */
+export const DOTNET_MISSING =
+  'The .NET SDK is not on PATH, so the C# bridge cannot be built — the server will run read-only.\n' +
+  '   Install it from https://dotnet.microsoft.com/download (the SDK, not just the runtime),\n' +
+  '   then run `d365fo-mcp setup` again. Reads and search work without it.';
+
 export function bridgeBuildCommand(): string {
   const out = paths.bridgeOutDir ? ` -o "${paths.bridgeOutDir}"` : '';
   return `cd "${paths.bridgeDir}" && dotnet build -c Release${out}`;

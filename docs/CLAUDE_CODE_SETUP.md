@@ -15,7 +15,7 @@ Same prerequisites and build steps as the Copilot guide — no VS 2022 required.
 | Node.js 24.x LTS | [nodejs.org](https://nodejs.org) |
 | Claude Code CLI | `npm install -g @anthropic-ai/claude-code` |
 | Python 3.x | Needed by `node-gyp` for native SQLite |
-| .NET Framework 4.8 Developer Pack | Required for the C# bridge (file create/modify on D365FO VMs) |
+| .NET SDK | Required for the C# bridge (file create/modify on D365FO VMs) |
 
 ```powershell
 git clone https://github.com/dynamics365ninja/d365fo-mcp-server.git K:\d365fo-mcp-server

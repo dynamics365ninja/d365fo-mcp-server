@@ -7,8 +7,8 @@
  * build); an npm install reinstalls itself from the registry.
  */
 import * as fs from 'node:fs';
-import { bridgeBuildCommand, installMode, isWindows, paths } from '../context.js';
-import { runExe, runShell } from '../exec.js';
+import { DOTNET_MISSING, bridgeBuildCommand, installMode, isWindows, paths } from '../context.js';
+import { commandExists, runExe, runShell } from '../exec.js';
 import { listInstances } from '../instances.js';
 import { checkRelease } from '../npmRegistry.js';
 import { instanceTarget, rootTarget } from '../target.js';
@@ -87,7 +87,9 @@ export async function updateCommand(opts: { yes?: boolean }): Promise<void> {
         ? 'Rebuild the C# bridge now? (required to restore writes)'
         : 'Rebuild the C# bridge (recommended after a D365FO version upgrade)?',
     );
-    if (rebuild) {
+    if (rebuild && !await commandExists('dotnet')) {
+      p.log.warn(DOTNET_MISSING);
+    } else if (rebuild) {
       // Same output directory the wizard used, or the rebuild would land in
       // the package and the configured bridge.exePath would still point at
       // the old binary outside it.
