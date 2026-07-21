@@ -14,7 +14,7 @@
  */
 import * as fs from 'node:fs';
 import * as os from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { loadEnv } from '../../src/utils/loadEnv.js';
@@ -22,16 +22,34 @@ import { loadEnv } from '../../src/utils/loadEnv.js';
 let tmp: string;
 let savedEnv: NodeJS.ProcessEnv;
 
+/**
+ * A distinctive packages path that is absolute on this platform.
+ *
+ * It has to be: a relative packagePath is resolved against the config's own
+ * directory, which is correct behaviour but would make the assertions below
+ * measure that resolution rather than which config was found. A literal
+ * `K:\...` is absolute on Windows and relative everywhere else, so hard-coding
+ * one passes locally and fails on the Linux CI runner.
+ */
+function packagesPath(name: string): string {
+  return resolve(tmp, name, 'PackagesLocalDirectory');
+}
+
 /** An installation root holding a config that names a distinctive path. */
 function makeInstall(packagePath: string): string {
   const root = fs.mkdtempSync(join(tmp, 'install-'));
+  writeConfig(root, packagePath);
+  return root;
+}
+
+/** Write config/d365fo-mcp.json under `root`. */
+function writeConfig(root: string, packagePath: string): void {
   fs.mkdirSync(join(root, 'config'), { recursive: true });
   fs.writeFileSync(
     join(root, 'config', 'd365fo-mcp.json'),
     JSON.stringify({ version: 1, environment: { type: 'traditional', packagePath } }),
     'utf8',
   );
-  return root;
 }
 
 /** Call loadEnv as if from a module living at `<root>/<...segments>/mod.js`. */
@@ -58,29 +76,27 @@ afterEach(() => {
 
 describe('loadEnv config discovery', () => {
   it('finds the config from one level down (server at dist/, scripts at scripts/)', () => {
-    const root = makeInstall('K:\\One\\PackagesLocalDirectory');
+    const expected = packagesPath('one');
+    const root = makeInstall(expected);
     loadFrom(root, 'dist');
-    expect(process.env.D365FO_PACKAGE_PATH).toBe('K:\\One\\PackagesLocalDirectory');
+    expect(process.env.D365FO_PACKAGE_PATH).toBe(expected);
   });
 
   it('finds the config from two levels down (bundles at dist/scripts/)', () => {
-    const root = makeInstall('K:\\Two\\PackagesLocalDirectory');
+    const expected = packagesPath('two');
+    const root = makeInstall(expected);
     loadFrom(root, 'dist', 'scripts');
-    expect(process.env.D365FO_PACKAGE_PATH).toBe('K:\\Two\\PackagesLocalDirectory');
+    expect(process.env.D365FO_PACKAGE_PATH).toBe(expected);
   });
 
   it('prefers the nearest installation when one is nested inside another', () => {
     // Guards the upward walk against climbing past the installation it is in.
-    const outer = makeInstall('K:\\Outer\\PackagesLocalDirectory');
+    const outer = makeInstall(packagesPath('outer'));
+    const expected = packagesPath('inner');
     const inner = join(outer, 'inner');
-    fs.mkdirSync(join(inner, 'config'), { recursive: true });
-    fs.writeFileSync(
-      join(inner, 'config', 'd365fo-mcp.json'),
-      JSON.stringify({ version: 1, environment: { type: 'traditional', packagePath: 'K:\\Inner\\PackagesLocalDirectory' } }),
-      'utf8',
-    );
+    writeConfig(inner, expected);
     loadFrom(inner, 'dist');
-    expect(process.env.D365FO_PACKAGE_PATH).toBe('K:\\Inner\\PackagesLocalDirectory');
+    expect(process.env.D365FO_PACKAGE_PATH).toBe(expected);
   });
 
   it('leaves the variable unset when there is no configuration anywhere', () => {
@@ -90,11 +106,12 @@ describe('loadEnv config discovery', () => {
   });
 
   it('still lets an explicit ENV_FILE win over discovery', () => {
-    const root = makeInstall('K:\\Config\\PackagesLocalDirectory');
+    const root = makeInstall(packagesPath('from-config'));
+    const pinned = packagesPath('from-env-file');
     const envFile = join(tmp, 'pinned.env');
-    fs.writeFileSync(envFile, 'D365FO_PACKAGE_PATH=K:\\Pinned\\PackagesLocalDirectory\n', 'utf8');
+    fs.writeFileSync(envFile, `D365FO_PACKAGE_PATH=${pinned}\n`, 'utf8');
     process.env.ENV_FILE = envFile;
     loadFrom(root, 'dist', 'scripts');
-    expect(process.env.D365FO_PACKAGE_PATH).toBe('K:\\Pinned\\PackagesLocalDirectory');
+    expect(process.env.D365FO_PACKAGE_PATH).toBe(pinned);
   });
 });
