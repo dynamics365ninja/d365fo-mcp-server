@@ -102,7 +102,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | --- | --- | :-: | :-: | :-: | --- |
 | Data entity (OData) | core | ✅ | ✅ | ✅ | L4-entity-security |
 | Data entity extension | total | ✅ | — | ✅ | No eval case yet. |
-| Custom services / OData actions | core | ✅ | — | — | Knowledge + eval case authored (L3-custom-service-basic, golden pending); full create/validate tool path for services still pending. |
+| Custom services / OData actions | core | ✅ | — | ✅ | Knowledge + eval case authored (L3-custom-service-basic, golden pending); full create/validate tool path for services still pending. |
 | Data management framework (DMF/DIXF) | total | ✅ | — | ✅ | Knowledge only — deeper DMF coverage is a known hole. |
 | Dual-write (Dataverse) | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
 | Power Platform / virtual entities | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
@@ -137,7 +137,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 5 | Transactions (ttsbegin/ttscommit) | missing E |
 | 4 | Enum extension | missing E |
 | 4 | Performance patterns | missing E |
-| 3 | Custom services / OData actions | missing E+T |
+| 3 | Custom services / OData actions | missing E |
 | 3 | Date/time & time zones (utcdatetime, DateTimeUtil) | missing K+E |
 | 3 | Inventory (InventTrans / InventDim) | missing E |
 | 3 | Menus & submenu nesting | missing E |
@@ -178,4 +178,4 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 - Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice, L4-master-security-slice
 
-_Generated 2026-07-20._
+_Generated 2026-07-21._

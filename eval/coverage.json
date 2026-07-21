@@ -879,7 +879,7 @@
       "weight": 3,
       "k": true,
       "e": false,
-      "t": false,
+      "t": true,
       "covered": false,
       "cases": []
     },
