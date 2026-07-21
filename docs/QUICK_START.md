@@ -93,10 +93,33 @@ Pick your scenario:
 
 ### A — Azure client
 
+Let the CLI write it (no clone needed — it merges into your editor's config and leaves other MCP servers alone):
+
+```powershell
+npx d365fo-mcp connect https://your-server.azurewebsites.net
+```
+
+It asks which editor and whether the server needs an API key, verifies the server answers before writing, and registers Claude Code through its own `claude mcp add-json`. Non-interactively: `--client vs|vscode|cursor|claude --api-key <key> --yes`.
+
+Or write it by hand:
+
 ```json
 {
   "servers": {
     "d365fo-mcp-tools": { "url": "https://your-server.azurewebsites.net/mcp/" }
+  }
+}
+```
+
+If the deployment enforces an API key, add it as a header:
+
+```json
+{
+  "servers": {
+    "d365fo-mcp-tools": {
+      "url": "https://your-server.azurewebsites.net/mcp/",
+      "headers": { "X-Api-Key": "your-key" }
+    }
   }
 }
 ```
