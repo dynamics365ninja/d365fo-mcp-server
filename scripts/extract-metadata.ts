@@ -45,6 +45,40 @@ const EXTRACT_MODE = process.env.EXTRACT_MODE || 'all';
 const isCustomModel = checkIsCustomModel;
 
 /**
+ * Decide how one model relates to "custom" for this extract run.
+ *
+ * `isCustom` — the classification recorded in the extract manifest and used for
+ * sourcePath normalisation. On UDE (customRoot set) it is PATH-based: a model is custom
+ * iff it lives under the custom root, matching the root-level package scan. Name-based
+ * isCustomModel() is only the fallback for traditional environments with no custom root.
+ * Using isCustomModel() on UDE would drop ISV models that ship source under the custom
+ * root — their names match neither D365FO_MODEL_NAME nor EXTENSION_PREFIX — leaving a
+ * `custom` build scoped to just the configured model (#711).
+ *
+ * `narrowedByConfig` — an explicit CUSTOM_MODELS list still NARROWS a custom-only run on
+ * UDE. The path rule decides what CAN be custom; a hand-maintained list decides how much
+ * of it to extract. The root-level scan ignores CUSTOM_MODELS entirely once customRoot is
+ * set, so without this an operator who set CUSTOM_MODELS="Contoso*" would have no way to
+ * scope a refresh to their own models and would re-extract every ISV under the root.
+ * Only wildcard patterns reach here — exact names take the MODELS_TO_EXTRACT path, which
+ * leaves FILTER_MODE at 'all'.
+ *
+ * Exported so the classification can be tested without running an extraction; the
+ * `customModels` parameter exists so tests need not depend on import-time env capture.
+ */
+export function classifyCustom(
+  rootPath: string,
+  customRoot: string | null,
+  modelName: string,
+  customModels: string[] = CUSTOM_MODELS,
+): { isCustom: boolean; narrowedByConfig: boolean } {
+  const isCustom = customRoot ? rootPath === customRoot : isCustomModel(modelName);
+  const narrowedByConfig =
+    !!customRoot && customModels.length > 0 && !isCustomModel(modelName);
+  return { isCustom, narrowedByConfig };
+}
+
+/**
  * Strip machine-specific prefix so that sourcePath stored in JSON is relative
  * to PackagesLocalDirectory (portable across CI agents and local machines).
  * e.g. "/home/vsts/work/1/PackagesLocalDirectory/App/App/AxClass/X.xml"
@@ -534,20 +568,23 @@ async function extractMetadata() {
         continue;
       }
 
+      const { isCustom, narrowedByConfig } = classifyCustom(rootPath, customRoot, modelName);
+
       // Apply model-level filtering
-      if (FILTER_MODE === 'custom-only' && !isCustomModel(modelName)) {
+      if (FILTER_MODE === 'custom-only' && !isCustom) {
         log.detail(`${glyph.arrow} skip standard model: ${modelName}`);
         continue;
       }
-      if (FILTER_MODE === 'standard-only' && isCustomModel(modelName)) {
+      if (FILTER_MODE === 'custom-only' && narrowedByConfig) {
+        log.detail(`${glyph.arrow} skip model outside CUSTOM_MODELS patterns: ${modelName}`);
+        continue;
+      }
+      if (FILTER_MODE === 'standard-only' && isCustom) {
         log.detail(`${glyph.arrow} skip custom model: ${modelName}`);
         continue;
       }
 
       const expectedXmlFiles = await countModelXmlFiles(modelDirsByLowerName);
-      // In UDE mode: custom iff the package lives under customRoot.
-      // In traditional mode: fall back to name-based detection.
-      const isCustom = customRoot ? rootPath === customRoot : isCustomModel(modelName);
       modelWorkItems.push({ packageName, modelName, modelPath, expectedXmlFiles, isCustom });
     }
   }
