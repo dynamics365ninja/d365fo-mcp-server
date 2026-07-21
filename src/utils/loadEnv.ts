@@ -23,12 +23,47 @@
  */
 
 import dotenv from 'dotenv';
-import { dirname, isAbsolute, resolve } from 'path';
+import { existsSync } from 'fs';
+import { dirname, isAbsolute, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { resolveConfigFiles, toEnvRecord } from '../config/configFile.js';
 
 /** Env vars whose relative paths should resolve from the .env file directory. */
 const PATH_VARS = ['DB_PATH', 'LABELS_DB_PATH', 'METADATA_PATH'] as const;
+
+/**
+ * The installation directory a module should read its configuration from.
+ *
+ * Callers sit at different depths: the server is `dist/index.js` and the index
+ * scripts are `scripts/*.ts` in a checkout, all one level down — but their
+ * bundled counterparts are `dist/scripts/*.js`, two levels down. Assuming one
+ * level, as this used to, made a bundle look for `dist/config/` and silently
+ * fall through to every default: the wrong packages path, and worse, the
+ * default DB_PATH, so a standalone run would write beside the real index
+ * instead of the configured one.
+ *
+ * The search starts one level up, so any caller that resolved correctly before
+ * still matches on the first try and nothing about its behaviour changes. Only
+ * a caller that finds nothing keeps climbing, and only for two more levels —
+ * enough for `dist/scripts`, and short enough that a machine with no
+ * configuration at all cannot wander into an unrelated directory above the
+ * installation.
+ */
+function installRootFrom(callerDir: string): string {
+  let dir = resolve(callerDir, '..');
+  for (let up = 0; up < 3; up++) {
+    const hasConfig = existsSync(join(dir, 'config', 'd365fo-mcp.json'))
+      || existsSync(join(dir, 'd365fo-mcp.json'))
+      || existsSync(join(dir, '.env'));
+    if (hasConfig) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // Nothing found: keep the historical answer, so the caller ends up reporting
+  // a missing file at the path it always looked at.
+  return resolve(callerDir, '..');
+}
 
 /**
  * Load environment variables from a .env file.
@@ -42,7 +77,7 @@ export function loadEnv(callerImportMetaUrl: string): void {
 
   const envPath = process.env.ENV_FILE
     ? resolve(process.env.ENV_FILE)
-    : resolve(callerDir, '../.env');
+    : resolve(installRootFrom(callerDir), '.env');
 
   // Everything already present is a real environment variable (shell, .mcp.json
   // env{} block, App Settings) and outranks both files below.

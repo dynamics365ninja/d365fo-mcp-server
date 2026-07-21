@@ -5,8 +5,8 @@
  * the same shape — only the config path differs.
  */
 import * as fs from 'node:fs';
-import { resolve } from 'node:path';
-import { repoRoot } from './context.js';
+import { dirname, resolve } from 'node:path';
+import { paths, repoRoot } from './context.js';
 import type { SettingsStore } from './settingsStore.js';
 import { p } from './ui.js';
 
@@ -32,8 +32,11 @@ export function stdioServer(store: SettingsStore, extraEnv?: Record<string, stri
 export function mcpJsonNote(servers: Record<string, unknown>, title = '.mcp.json'): void {
   const json = JSON.stringify({ servers }, null, 2);
   p.note(json, title);
-  // Also write the raw JSON to a file so it can be copied without terminal box characters.
-  const outPath = resolve(repoRoot, 'mcp-config-suggestion.json');
+  // Also write the raw JSON to a file so it can be copied without terminal box
+  // characters. It goes to the data directory, not the package: an npm install
+  // replaces the package on every update, and may not even be writable.
+  const outPath = paths.mcpSuggestion;
+  fs.mkdirSync(dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, json + '\n', 'utf8');
   p.log.info(`Raw JSON written to: ${outPath}`);
 }

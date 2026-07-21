@@ -8,7 +8,12 @@
     "d365fo-mcp": "dist/cli/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.map",
+    "!dist/eval/**",
+    "bridge/D365MetadataBridge",
+    "!bridge/D365MetadataBridge/bin/**",
+    "!bridge/D365MetadataBridge/obj/**"
   ],
   "repository": {
     "type": "git",
@@ -24,7 +29,8 @@
     "setup": "tsx src/cli/index.ts setup",
     "doctor": "tsx src/cli/index.ts doctor",
     "config:docs": "tsx scripts/generate-config-docs.ts",
-    "build": "tsc",
+    "build": "tsc && npm run build:scripts",
+    "build:scripts": "esbuild scripts/extract-metadata.ts scripts/build-database.ts scripts/build-fts.ts --bundle --platform=node --format=esm --target=node24 --packages=external --outdir=dist/scripts && esbuild src/metadata/symbolCountsWorker.ts --bundle --platform=node --format=esm --target=node24 --packages=external --outdir=dist/scripts",
     "prepublishOnly": "npm run build",
     "start": "node dist/index.js",
     "test": "vitest",
@@ -78,6 +84,7 @@
     "@types/node": "^26.0.1",
     "@types/xml2js": "^0.4.14",
     "@vitest/coverage-v8": "^4.1.4",
+    "esbuild": "^0.28.1",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.4"
