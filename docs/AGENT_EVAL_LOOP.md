@@ -79,6 +79,7 @@ The two agents communicate **only** through the corpus — no shared in-memory s
 For each selected use-case the **implementer** runs:
 
 1. **Isolate** — provision a throwaway sandbox model/package for this run (see §8).
+1a. **Provision fixtures (§4a)** — (re)provision the shared INPUT objects this case READS (e.g. the `ConDemoNoteHeader` table) from the repo-committed definitions in `eval/fixtures/`, and reindex. These are *not* case outputs; they must exist before the case and are excluded from the rollback in step 9.
 2. **Implement** — drive the grounded path (`prepare` → query tools → `validate_code` → `generate_*` → write). The agent may use only mcp-server tools; no hand-edited XML.
 3. **Static gate** — `validate_code(references)` + `validate_code(syntax)`. Record pass/fail and any violations.
 4. **Build** — `build_d365fo_project`; capture `errors[]` and `bpWarnings[]` (structured).
@@ -86,7 +87,31 @@ For each selected use-case the **implementer** runs:
 6. **Score** — compute the scorecard (§7).
 7. **Triage** — classify any failure via the rubric (§9). The implementer records a *hypothesis*; the improver confirms.
 8. **Persist** — append a run record to the corpus (§5).
-9. **Roll back** — undo writes / wipe the sandbox model so runs never pollute each other or the index.
+9. **Roll back (fixture-aware)** — undo the objects this case wrote / wipe the sandbox model so runs never pollute each other or the index, **but never delete a fixture** (§4a). The exclusion is `partitionForRollback(written, fixtureNames())`; a whole-model wipe is acceptable because step 1a re-provisions the fixture at the start of the next dependent run.
+
+### 4a. Harness-level fixtures
+
+A few objects are **shared INPUTS**: one case creates them and other cases read
+from them. The clearest is the table `ConDemoNoteHeader` — created as artifact 1
+of `L1-form-basic` but read/bound/selected by ~18 other cases (form datasources,
+map, query/view, dimension field, business & data events, batch, custom service,
+data entity, SSRS data providers). Because step 9 rolls back every case, a shared
+object created *by* a case cannot survive — each rollback re-breaks every
+dependent case.
+
+Fix: such INPUTS live in the repo under `eval/fixtures/*.metadata.xml`,
+independent of any case. The split between INPUT fixtures and the ~90 case
+OUTPUTS that must **not** be pre-provisioned is derived and audited by
+`src/eval/fixtures/fixtures.ts` (`npm run eval:fixtures`): a demo object
+referenced by more than one case is SHARED and needs an explicit decision;
+single-case names are that case's OUTPUT. Only decisions marked `INPUT` are
+provisioned. See `eval/fixtures/README.md` for the current classification
+(including the one open call — the `ConDemoNoteHeaderList` form that
+`L4-entity-security` latently references).
+
+Provisioning is idempotent and runs at the **start of every dependent case**, so
+it survives a full wipe and restores a fixture that a case *mutated* in place
+(e.g. `L2-dimension-basic` adds a field to `ConDemoNoteHeader`).
 
 The **improver** runs asynchronously: cluster corpus failures → prioritise → reproduce as a minimal repo test → fix → validate against a held-out split → open a PR citing the corpus evidence (§10).
 
@@ -245,7 +270,7 @@ Catalog discipline: maintain a **train/held-out split**. Improvements are accept
 ## 11. Isolation & safety
 
 - Every run targets a **dedicated throwaway sandbox model/package**; never a real customisation model.
-- Writes are reversible (bridge one-call undo) and the sandbox model is wiped between runs, so neither the metadata nor the SQLite index is polluted.
+- Writes are reversible (bridge one-call undo) and the sandbox model is wiped between runs, so neither the metadata nor the SQLite index is polluted. **Exception — fixtures (§4a):** shared INPUT objects from `eval/fixtures/` are excluded from rollback (`partitionForRollback`) and re-provisioned at the start of the next dependent run; they are not case residue.
 - Path-containment is already enforced (`PackagesLocalDirectory/<Package>/<Model>/Ax<Type>/`); the harness must additionally pin writes to the sandbox model.
 - Builds are **serialised** with timeouts; the VM is the throughput bottleneck (full builds are minutes, not seconds) — size cadence and batch accordingly.
 
