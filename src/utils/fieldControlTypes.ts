@@ -80,11 +80,117 @@ export function parseTableFieldControls(tableXml: string): FieldControlMap {
 }
 
 /**
+ * A view's own XML carries no field TYPES — an `<AxViewFieldBound>` only names
+ * the underlying table field. Parse the bindings so the types can be picked up
+ * from the tables the view's query reads.
+ *
+ * `dataSource` is the QUERY datasource alias, not a table name; resolving it
+ * needs the query (see {@link parseQueryDataSourceTables}).
+ */
+export function parseViewFieldBindings(
+  viewXml: string,
+): Array<{ name: string; dataField: string; dataSource?: string }> {
+  const out: Array<{ name: string; dataField: string; dataSource?: string }> = [];
+  const fieldRe = /<AxViewField\b[^>]*?i:type="AxViewFieldBound"[^>]*>([\s\S]*?)<\/AxViewField>/g;
+  let m: RegExpExecArray | null;
+  while ((m = fieldRe.exec(viewXml)) !== null) {
+    const body = m[1];
+    const name = body.match(/<Name>([^<]+)<\/Name>/)?.[1]?.trim();
+    if (!name) continue;
+    const dataField = body.match(/<DataField>([^<]+)<\/DataField>/)?.[1]?.trim() ?? name;
+    const dataSource = body.match(/<DataSource>([^<]+)<\/DataSource>/)?.[1]?.trim();
+    out.push({ name, dataField, dataSource });
+  }
+  return out;
+}
+
+/**
+ * Map a query's datasource ALIASES to the tables behind them. In AxQuery XML a
+ * datasource's `<Table>` always directly follows its `<Name>`, at every nesting
+ * level, so one pass over that pair covers root and child datasources alike.
+ */
+export function parseQueryDataSourceTables(queryXml: string): Map<string, string> {
+  const map = new Map<string, string>();
+  const re = /<Name>([^<]+)<\/Name>\s*<Table>([^<]+)<\/Table>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(queryXml)) !== null) {
+    map.set(m[1].trim(), m[2].trim());
+  }
+  return map;
+}
+
+/** The `<Query>` an AxView is built on, or undefined for a query-less view. */
+export function parseViewQueryName(viewXml: string): string | undefined {
+  const v = viewXml.match(/<Query>([^<]*)<\/Query>/)?.[1]?.trim();
+  return v ? v : undefined;
+}
+
+/** AOT XML of a top-level object, via the symbol index. Empty string when unavailable. */
+function readIndexedObjectXml(db: any, name: string, types: readonly string[]): string {
+  const hit = lookupSymbolNocase(db, name, types);
+  const p = hit?.file_path;
+  if (!p || !fs.existsSync(p)) return '';
+  try {
+    return fs.readFileSync(p, 'utf-8');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Field→control-type map for a VIEW: hop view → query → the query's tables, and
+ * type each view field from the table field it is bound to.
+ *
+ * Without this every control on a form over a view came out as a plain String —
+ * enums, dates and reals included — because the view XML the map was parsed from
+ * contains no `AxTableField` at all.
+ */
+function getViewFieldControlMap(db: any, viewXml: string, depth = 0): FieldControlMap {
+  const map: FieldControlMap = new Map();
+  const bindings = parseViewFieldBindings(viewXml);
+  if (bindings.length === 0) return map;
+
+  const queryName = parseViewQueryName(viewXml);
+  const aliasToTable = queryName
+    ? parseQueryDataSourceTables(readIndexedObjectXml(db, queryName, ['query']))
+    : new Map<string, string>();
+
+  // One parse per underlying object, not per field. A query datasource may itself
+  // be a VIEW (GeneralJournalUnionView reads GeneralJournalWithSubledgerView), so
+  // this recurses — bounded, because a cyclic view chain would not compile but a
+  // malformed one on disk still must not hang the scaffold.
+  const MAX_VIEW_DEPTH = 4;
+  const sourceMaps = new Map<string, FieldControlMap>();
+  const mapForSource = (name: string): FieldControlMap => {
+    let m = sourceMaps.get(name);
+    if (!m) {
+      const xml = readIndexedObjectXml(db, name, ['table', 'view']);
+      m = /^\s*<AxView[\s>]/m.test(xml)
+        ? (depth < MAX_VIEW_DEPTH ? getViewFieldControlMap(db, xml, depth + 1) : new Map())
+        : parseTableFieldControls(xml);
+      sourceMaps.set(name, m);
+    }
+    return m;
+  };
+
+  for (const b of bindings) {
+    // The alias usually equals the object name, so it is a sane last resort.
+    const source = (b.dataSource && aliasToTable.get(b.dataSource)) || b.dataSource;
+    if (!source) continue;
+    const hit = mapForSource(source).get(b.dataField.toLowerCase());
+    if (hit) map.set(b.name.toLowerCase(), hit);
+  }
+  return map;
+}
+
+/**
  * Build a field→control-type map for a table by locating its AOT XML through the
  * symbol index (any field row of the table carries the table's `file_path`).
+ * Views are supported too, through the extra query→table hop described in
+ * {@link getViewFieldControlMap}.
  *
  * @param db   read-only better-sqlite3 handle (symbolIndex.getReadDb())
- * @param table table name
+ * @param table table (or view) name
  */
 export function getFieldControlMap(db: any, table: string): FieldControlMap {
   try {
@@ -100,7 +206,10 @@ export function getFieldControlMap(db: any, table: string): FieldControlMap {
       )
       .get(canonical) as { file_path?: string } | undefined;
     if (!row?.file_path || !fs.existsSync(row.file_path)) return new Map();
-    return parseTableFieldControls(fs.readFileSync(row.file_path, 'utf-8'));
+    const xml = fs.readFileSync(row.file_path, 'utf-8');
+    // An AxView document has no AxTableField to parse — take the view route.
+    if (/^\s*<AxView[\s>]/m.test(xml)) return getViewFieldControlMap(db, xml);
+    return parseTableFieldControls(xml);
   } catch {
     return new Map();
   }

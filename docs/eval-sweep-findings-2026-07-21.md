@@ -35,6 +35,20 @@ C# edit is worse than an open ticket.
 
 ## Corrected attribution
 
+- **The `-viewlist` finding was misdiagnosed.** It was filed as "tables and views are both put in
+  `-viewlist`; they must be split by object type". Verified on the VM against SyncEngine 7.0.30743
+  / platform 7.0.7858.27: **`-viewlist` is not a SyncEngine argument at all.** The parameter dump
+  lists one `TableOrViewList` (fed by `-synclist`), plus `DropTableOrViewList`,
+  `TableExtensionList`, `CompositeEntityList` and `ADEsList` — no view list of any kind. Passing it
+  prints `Invalid argument -viewlist=<names> specified` and the run **continues** with those names
+  dropped, so the requested view was never synced and nothing failed. The fix is one list, not two;
+  splitting them would have reproduced the original bug in a tidier shape.
+  Two things fell out of that VM run and are fixed alongside it: `trigger_db_sync` scored the
+  outcome by grepping the whole log for `error|failed|exception`, and SyncEngine logs a benign
+  startup warning (`Failed to abort paused PostServiceync resumable index … Invalid column name
+  'DEFERREDOPERATIONSTATE'`) on **every** sync in this environment — so every green run was reported
+  ❌. The verdict now comes from SyncEngine's own completion line, with a rejected argument and an
+  explicit failure line as overrides.
 - **#26 was misfiled** and is NOT overwrite hygiene. There is no backup writer on the
   create/overwrite path at all. The only `.backup-<ts>` writer is `createFileBackup`
   (`modifyD365File.ts`), reached from `ensureRecoverableModification`, which *deliberately* forces
