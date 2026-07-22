@@ -9,10 +9,10 @@
  *                         (L3/L4 cases that produce several objects). Mutually
  *                         exclusive with the single <actualXml> positional/--golden.
  *     --build-failed      mark build as failed (default: succeeded)
- *     --bp-warnings <n>   number of BP warnings (default: 0)
+ *     --bp-warnings <n>   number of BP warnings xppbp reported (OMIT = BP not checked -> bp_clean: null)
  *     --systest <file>    text file with the `run_systest_class` output (runtime oracle)
  *     --classification <C> rubric class for the record (default: derived)
- *     --golden-prefix <p> EXTENSION_PREFIX the golden was captured under (default: GOLDEN_CAPTURE_PREFIX, "Contoso")
+ *     --golden-prefix <p> EXTENSION_PREFIX the golden was captured under (default: every GOLDEN_CAPTURE_PREFIXES token)
  *     --actual-prefix <p> EXTENSION_PREFIX the actual was produced under (default: read from THIS
  *                         process's EXTENSION_PREFIX env var — the session that ran the case)
  *     --write             append a corpus record to eval/corpus/runs/
@@ -33,7 +33,7 @@ import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import {
   evaluate, evaluateMulti, renderDiff, renderNormalized, normalizeAotXml, parseSysTestResult,
-  scoreRun, GOLDEN_CAPTURE_PREFIX, type CaseSpec, type GoldenDiff, type Score,
+  scoreRun, GOLDEN_CAPTURE_PREFIXES, type CaseSpec, type GoldenDiff, type Score,
 } from './index.js';
 import { resolveRegularObjectPrefixToken } from '../../utils/modelClassifier.js';
 import { buildActualArtifactsMap } from './actualArtifactResolution.js';
@@ -107,8 +107,24 @@ async function main(): Promise<void> {
   ) as CaseSpec & { ignore?: string[]; golden_pending?: boolean };
 
   const buildSucceeded = !flagSet('--build-failed');
-  const bpCount = Number(arg('--bp-warnings') ?? '0');
-  const build = { succeeded: buildSucceeded, bpWarnings: Array.from({ length: bpCount }, () => ({})) };
+  // `--bp-warnings` ABSENT means xppbp was not run for this capture — NOT "ran and
+  // found nothing". It used to default to 0, which silently minted `bp_clean: 1`
+  // for every run whose operator forgot the flag and made the dimension
+  // untrendable (docs/eval-sweep-findings-2026-07-21.md #3). Leave bpWarnings
+  // undefined so the score records `bp_clean: null` (BP not checked), and say so.
+  const bpArg = arg('--bp-warnings');
+  const bpChecked = bpArg !== undefined;
+  const bpCount = Number(bpArg ?? '0');
+  const build = {
+    succeeded: buildSucceeded,
+    bpWarnings: bpChecked ? Array.from({ length: bpCount }, () => ({})) : undefined,
+  };
+  if (!bpChecked) {
+    console.error(
+      'note: --bp-warnings not supplied → bp_clean: null (BP NOT CHECKED). ' +
+      'Pass `--bp-warnings 0` only if run_bp_check actually ran and reported none.',
+    );
+  }
 
   const systestFile = arg('--systest');
   const systest = systestFile
@@ -121,8 +137,15 @@ async function main(): Promise<void> {
   // (e.g. a local self-check comparing a golden against itself/another golden-shaped fixture,
   // no VM session involved) fall back to the golden's own prefix so that unprefixed-env usage
   // keeps matching exactly as before. Either is overridable for edge cases.
-  const goldenPrefix = arg('--golden-prefix') ?? GOLDEN_CAPTURE_PREFIX;
-  const actualPrefix = arg('--actual-prefix') ?? (resolveRegularObjectPrefixToken() || GOLDEN_CAPTURE_PREFIX);
+  //
+  // Both defaults are the WHOLE set of capture prefixes (`GOLDEN_CAPTURE_PREFIXES`,
+  // currently ["Contoso","Con"]) rather than the single `GOLDEN_CAPTURE_PREFIX`: the
+  // committed corpus is `Con`-prefixed, which "Contoso" can never match, so the old
+  // single-token default left the golden side un-canonicalised and forced operators to
+  // hand-pass `--golden-prefix Con --actual-prefix Con` (docs/eval-sweep-findings-2026-07-21.md #2).
+  const goldenPrefix: string | readonly string[] = arg('--golden-prefix') ?? GOLDEN_CAPTURE_PREFIXES;
+  const actualPrefix: string | readonly string[] =
+    arg('--actual-prefix') ?? (resolveRegularObjectPrefixToken() || GOLDEN_CAPTURE_PREFIXES);
 
   let goldenDiff: GoldenDiff | null;
   let score: Score;
@@ -206,7 +229,9 @@ async function main(): Promise<void> {
     const classification = arg('--classification')
       ?? (score.golden_match === null
         ? 'ENV_FLAKE'
-        : (score.build === 1 && score.golden_match === 1 ? (score.bp_clean === 1 ? 'PASS' : 'KNOWLEDGE_GAP') : 'TOOL_DEFECT'));
+        // bp_clean === null means BP was NOT CHECKED — that is an absence of evidence,
+        // not evidence of a knowledge gap, so only an explicit 0 downgrades to KNOWLEDGE_GAP.
+        : (score.build === 1 && score.golden_match === 1 ? (score.bp_clean === 0 ? 'KNOWLEDGE_GAP' : 'PASS') : 'TOOL_DEFECT'));
     const ts = new Date().toISOString().replace(/[:.]/g, '').slice(0, 13);
     const sha = shortSha();
     const record = {
@@ -216,7 +241,10 @@ async function main(): Promise<void> {
       timestamp: new Date().toISOString(),
       server_git_sha: sha,
       generated_artifacts: generatedArtifacts,
-      build: { succeeded: build.succeeded, errors: [], bpWarnings: build.bpWarnings },
+      // `bp_checked` is the provenance flag that makes bp_clean trendable: a record
+      // WITHOUT it (every pre-2026-07-22 record) has unknown BP provenance and is
+      // reported separately rather than averaged in (#3).
+      build: { succeeded: build.succeeded, errors: [], bp_checked: bpChecked, bpWarnings: build.bpWarnings ?? null },
       golden_diff: goldenDiff,
       systest: systestOut,
       score,

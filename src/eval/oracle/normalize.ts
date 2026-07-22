@@ -17,6 +17,8 @@
 
 import { parseStringPromise } from 'xml2js';
 import { reindentXppSource } from '../../utils/xppFormat.js';
+import { canonicalizePrefix, type PrefixSpec } from './prefix.js';
+import { artifactKeyMap } from './artifactKey.js';
 
 /**
  * Built-in ignores applied to every document (in addition to per-case globs).
@@ -43,34 +45,26 @@ const DEFAULT_IGNORES = ['**/ModelSaveInfo', '**/ModelSaveInfo/**', '**/@Id', '*
  */
 export const GOLDEN_CAPTURE_PREFIX = 'Contoso';
 
-/** Escape a literal string for embedding in a RegExp. */
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** Stable placeholder a canonicalised prefix occurrence is replaced with. */
-const PREFIX_PLACEHOLDER = 'PFX';
-
 /**
- * Canonicalise occurrences of `prefix` — the model-naming EXTENSION_PREFIX in
- * effect for THIS document (the golden's fixed capture-time prefix, or the
- * actual's current session-configured prefix) — into a stable placeholder, so
- * a value/key built under one prefix session compares equal to the same
- * value/key built under a different one.
+ * EVERY EXTENSION_PREFIX the committed `eval/goldens/` corpus was captured
+ * under. The corpus was NOT captured under a single prefix: the bulk of it uses
+ * the short token `Con` (`ConDemoNoteSubject`, `CustGroup.ConExtension`, …)
+ * while `GOLDEN_CAPTURE_PREFIX` — the single-prefix default every caller
+ * inherited — is `Contoso`. Because `canonicalizePrefix` requires the prefix to
+ * be followed by an uppercase letter, "Contoso" never matches a `Con`-captured
+ * identifier (`Con` + `t` is lowercase), so the golden side of a diff was in
+ * practice NEVER canonicalised. Scoring then only worked when the operator
+ * hand-passed `--golden-prefix Con --actual-prefix Con`, and passing just one of
+ * the two produced a false mismatch (`golden="PFXDemoEnumExtProbe"` vs
+ * `actual="ConDemoEnumExtProbe"`).
  *
- * Matches are anchored at an identifier-start boundary (string start, or
- * immediately after a non-alphanumeric character — `.`, `(`, `,`, `_`,
- * whitespace, …) AND require the prefix to be immediately followed by an
- * uppercase letter (the PascalCase continuation of the object's own name,
- * e.g. `ContosoXyzNoteSubject`, `CustGroup.ContosoExtension`, `classStr(ContosoXyzNoteSubject)`).
- * This keeps the substitution narrow: an incidental occurrence of the prefix
- * text inside unrelated free-form content (e.g. a label) is left alone.
+ * Canonicalising against the whole set (longest-first, so `Contoso` is consumed
+ * before `Con` can bite into it) makes prefix resolution tolerant instead of
+ * requiring the goldens to be renamed — see docs/eval-sweep-findings-2026-07-21.md #2.
  */
-export function canonicalizePrefix(value: string, prefix: string): string {
-  if (!prefix) return value;
-  const re = new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(prefix)}(?=[A-Z])`, 'g');
-  return value.replace(re, `$1${PREFIX_PLACEHOLDER}`);
-}
+export const GOLDEN_CAPTURE_PREFIXES: readonly string[] = ['Contoso', 'Con'];
+
+export { canonicalizePrefix, PREFIX_PLACEHOLDER, type PrefixSpec } from './prefix.js';
 
 /** Compile a path glob (`**`, `*`, literal) to an anchored RegExp. */
 export function globToRegExp(glob: string): RegExp {
@@ -126,7 +120,53 @@ function isXppSourcePath(pathPrefix: string): boolean {
  * canonicalisation — it never rewrites a stored artifact.
  */
 function canonicalizeXppSourceText(s: string): string {
-  return reindentXppSource(s, 0);
+  return canonicalizeXppDocComments(reindentXppSource(s, 0));
+}
+
+/**
+ * Placeholder a contiguous run of `///` XmlDoc lines collapses to.
+ * Deliberately still a `///` line: PRESENCE of a doc comment survives the
+ * canonicalisation, only its PROSE is discarded (see below).
+ */
+export const XMLDOC_PLACEHOLDER = '/// <xmldoc/>';
+
+/**
+ * Collapse every contiguous run of `///` XmlDoc lines to a single placeholder
+ * line, keeping the run's own (already re-derived) indentation.
+ *
+ * Why: `///` doc-comment WORDING is not pinned by any case instruction, and
+ * `d365fo_file` auto-injects a class-level doc comment whose text is generated
+ * from the object name. A faithful rerun by an agent that writes different
+ * prose therefore scored `golden_match: 0` for a purely cosmetic reason —
+ * corpus-wide oracle fragility, docs/eval-sweep-findings-2026-07-21.md #24.
+ *
+ * Why COLLAPSE rather than STRIP (the direction the finding suggested):
+ * deleting `///` lines outright would also make a golden that HAS a doc comment
+ * compare equal to an actual that has NONE — and the presence of a doc header is
+ * exactly what the `BPXmlDocNoDocumentationComments` best-practice rule (and
+ * therefore the `bp_clean` dimension) measures. Stripping would mask a real,
+ * BP-visible content difference. Collapsing keeps "a doc comment exists here,
+ * attached to this declaration" load-bearing while making its wording free.
+ *
+ * `///` inside a string literal is not special-cased: X++ string literals use
+ * single quotes and a `///` run is only recognised at the START of a line, so
+ * the only way to hit that is a multi-line literal whose continuation line
+ * begins with `///` — not expressible in X++.
+ */
+function canonicalizeXppDocComments(s: string): string {
+  const out: string[] = [];
+  let inRun = false;
+  for (const line of s.split('\n')) {
+    const m = /^(\s*)\/\/\//.exec(line);
+    if (m) {
+      if (!inRun) out.push(`${m[1]}${XMLDOC_PLACEHOLDER}`);
+      inRun = true;
+      continue;
+    }
+    inRun = false;
+    out.push(line);
+  }
+  return out.join('\n');
 }
 
 /**
@@ -198,7 +238,7 @@ function nestedName(node: Record<string, unknown>): string | undefined {
  * nested name, different random wrapper id) align under the same key rather
  * than false-mismatching on the whole subtree.
  */
-function discriminator(node: Record<string, unknown>, tag: string | undefined, prefix: string): string | undefined {
+function discriminator(node: Record<string, unknown>, tag: string | undefined, prefix: PrefixSpec): string | undefined {
   const own = ownName(node);
   if (own !== undefined && tag && looksAutoGenerated(own, tag)) {
     const nested = nestedName(node);
@@ -212,7 +252,7 @@ function emitAttrs(
   pathPrefix: string,
   out: Map<string, string>,
   matchers: RegExp[],
-  prefix: string,
+  prefix: PrefixSpec,
 ): void {
   if (!attrs) return;
   for (const [name, value] of Object.entries(attrs)) {
@@ -229,7 +269,7 @@ function walk(
   pathPrefix: string,
   out: Map<string, string>,
   matchers: RegExp[],
-  prefix: string,
+  prefix: PrefixSpec,
 ): void {
   if (node == null) return;
 
@@ -284,7 +324,7 @@ function walk(
 export async function normalizeAotXml(
   xml: string,
   ignore: string[] = [],
-  prefix = '',
+  prefix: PrefixSpec = '',
 ): Promise<Map<string, string>> {
   const parsed = await parseStringPromise(xml, {
     explicitArray: true,
@@ -331,19 +371,23 @@ export function renderNormalized(map: Map<string, string>): string {
  * `artifacts` keys are filenames (e.g. "MyContract.metadata.xml") — stable,
  * case-author-chosen identifiers, not full paths. The filename itself is
  * typically the prefixed object name (e.g. "ContosoMyContract.metadata.xml"), so
- * it is canonicalised with `prefix` too (see `normalizeAotXml`) — otherwise a
- * golden captured under one prefix and an actual produced under another would
- * combine under different `<filename>::` keys and false-mismatch wholesale.
+ * it is reduced to a LOGICAL ARTIFACT KEY (`artifactKeyMap`) that also absorbs
+ * the corpus's second, legacy filename convention (unprefixed stem +
+ * `.Ax<Type>` infix) — otherwise a golden captured under one prefix/convention
+ * and an actual produced under another would combine under different
+ * `<filename>::` keys and false-mismatch wholesale.
  */
 export async function normalizeMultiArtifact(
   artifacts: Record<string, string>,
   ignore: string[] = [],
-  prefix = '',
+  prefix: PrefixSpec = '',
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  for (const name of Object.keys(artifacts).sort()) {
+  const names = Object.keys(artifacts).sort();
+  const keys = artifactKeyMap(names, prefix);
+  for (const name of names) {
     const single = await normalizeAotXml(artifacts[name], ignore, prefix);
-    const canonName = canonicalizePrefix(name, prefix);
+    const canonName = keys.get(name) ?? canonicalizePrefix(name, prefix);
     for (const [path, value] of single) out.set(`${canonName}::${path}`, value);
   }
   return out;

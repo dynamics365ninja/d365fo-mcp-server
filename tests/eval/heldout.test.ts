@@ -11,8 +11,11 @@ import {
   type ScoredCase,
 } from '../../src/eval/improver/heldout';
 
+// `bpChecked: true` = the capture actually ran xppbp. Since the 2026-07-22
+// scoring-integrity fix (#3) an unchecked run is excluded from pass_at_bp_clean
+// rather than counted as clean.
 const sc = (caseId: string, split: 'train' | 'holdout', b: number, bp: number, g: number): ScoredCase =>
-  ({ caseId, split, score: { build: b, bp_clean: bp, golden_match: g } });
+  ({ caseId, split, score: { build: b, bp_clean: bp, golden_match: g }, bpChecked: true });
 
 describe('aggregate', () => {
   it('computes pass fractions per metric', () => {
@@ -23,8 +26,25 @@ describe('aggregate', () => {
     expect(a.pass_at_golden).toBe(0.5);
   });
 
-  it('is 0 (not NaN) for an empty set', () => {
-    expect(aggregate([])).toEqual({ count: 0, pass_at_build: 0, pass_at_bp_clean: 0, pass_at_golden: 0 });
+  it('is 0 (not NaN) for an empty set — and bp is null, since nothing was measured', () => {
+    expect(aggregate([])).toEqual({ count: 0, pass_at_build: 0, pass_at_bp_clean: null, pass_at_golden: 0 });
+  });
+
+  it('excludes BP-unverified cases from the BP rate instead of counting them clean (#3)', () => {
+    const a = aggregate([
+      sc('a', 'train', 1, 1, 1),
+      { caseId: 'b', split: 'train', score: { build: 1, bp_clean: 1, golden_match: 1 } }, // legacy: unverifiable
+      { caseId: 'c', split: 'train', score: { build: 1, bp_clean: null, golden_match: 1 } }, // BP not run
+    ]);
+    expect(a.count).toBe(3);
+    expect(a.pass_at_bp_clean).toBe(1); // 1 of 1 VERIFIED case, not 2 of 3
+  });
+
+  it('holdoutRegressed skips a metric that was not measured on either side', () => {
+    const unmeasured = { count: 1, pass_at_build: 1, pass_at_bp_clean: null, pass_at_golden: 1 };
+    const measured = { count: 1, pass_at_build: 1, pass_at_bp_clean: 1, pass_at_golden: 1 };
+    expect(holdoutRegressed(measured, unmeasured).ok).toBe(true);
+    expect(holdoutRegressed(unmeasured, measured).ok).toBe(true);
   });
 });
 

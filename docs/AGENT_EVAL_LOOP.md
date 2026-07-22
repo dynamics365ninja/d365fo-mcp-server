@@ -198,11 +198,25 @@ Per run, layered from cheap to expensive:
 | Signal | Meaning | Gate? |
 |--------|---------|-------|
 | `build` | xppc produced no errors | hard gate — below this, nothing else counts |
-| `bp_clean` | zero best-practice **error**-severity warnings | quality gate |
+| `bp_clean` | `1` = xppbp ran and reported zero **error**-severity warnings, `0` = it ran and reported some, **`null` = it was never run** | quality gate |
 | `golden_match` | normalised metadata == golden | **primary correctness** |
 | `systest` | runtime assertions pass (when present) | deep correctness (optional) |
 
+`bp_clean` is only scored when the capture supplies BP evidence: `tsx src/eval/oracle/cli.ts`
+without `--bp-warnings` records `bp_clean: null` and `build.bp_checked: false`. Pass
+`--bp-warnings 0` **only** when `run_bp_check` actually ran and reported none — the flag used to
+default to 0, which minted a fake `bp_clean: 1` for every capture that skipped xppbp and made the
+dimension untrendable.
+
 Aggregate metrics tracked over time, per tier: `pass@build`, `pass@bp_clean`, `pass@golden`, `pass@systest`, and the headline **tool-defect rate** (should trend down as the improver lands fixes).
+`pass@bp_clean` is averaged over **BP-verified runs only** (`build.bp_checked === true`, or a
+`bp_clean: 0` — which is only reachable from observed warnings); everything else is counted and
+reported as `unverified` instead of being blended in.
+
+The golden diff canonicalises `///` XmlDoc **prose** (a contiguous run of `///` lines collapses to
+one `/// <xmldoc/>` placeholder) — doc-comment wording is not pinned by any case instruction. The
+**presence** of a doc comment is still load-bearing, because that is exactly what
+`BPXmlDocNoDocumentationComments` measures.
 
 ---
 

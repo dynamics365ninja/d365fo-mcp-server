@@ -13,8 +13,9 @@ import { type SysTestResult } from './systest.js';
 
 export {
   normalizeAotXml, normalizeMultiArtifact, renderNormalized, globToRegExp,
-  GOLDEN_CAPTURE_PREFIX, canonicalizePrefix,
+  GOLDEN_CAPTURE_PREFIX, GOLDEN_CAPTURE_PREFIXES, canonicalizePrefix, type PrefixSpec,
 } from './normalize.js';
+export { artifactKey, artifactKeyMap } from './artifactKey.js';
 export { diffNormalized, renderDiff, type GoldenDiff } from './diff.js';
 export { scoreRun, type Score, type BuildResult, type ScoreInput } from './score.js';
 export { parseSysTestResult, type SysTestResult, type SysTestFailure } from './systest.js';
@@ -39,7 +40,7 @@ export interface EvaluateInput {
    * to '' (no canonicalisation — legacy literal-string comparison), so
    * existing callers that don't pass one are unaffected.
    */
-  goldenPrefix?: string;
+  goldenPrefix?: string | readonly string[];
   /**
    * EXTENSION_PREFIX the actual artifact was produced under (the CURRENT
    * session's configured prefix — see
@@ -47,7 +48,7 @@ export interface EvaluateInput {
    * Defaults to '' (no canonicalisation), so callers that don't know/care
    * about prefix drift keep the legacy literal-string comparison.
    */
-  actualPrefix?: string;
+  actualPrefix?: string | readonly string[];
 }
 
 export interface EvaluateResult {
@@ -83,9 +84,9 @@ export interface EvaluateMultiInput {
   build: BuildResult;
   systest?: SysTestResult | { passed: boolean | null } | null;
   /** See EvaluateInput.goldenPrefix. */
-  goldenPrefix?: string;
+  goldenPrefix?: string | readonly string[];
   /** See EvaluateInput.actualPrefix. */
-  actualPrefix?: string;
+  actualPrefix?: string | readonly string[];
 }
 
 /**
