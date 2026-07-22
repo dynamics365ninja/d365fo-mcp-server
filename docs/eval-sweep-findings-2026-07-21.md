@@ -339,18 +339,38 @@ live AND effective: `add-control parentControl="Design"` on a zero-control desig
 `✅ Control 'ProbeGroup' added to 'Design' via IMetaFormProvider.Update`. #8 is therefore CLOSED.
 `L3-form-add-datasource-lines` went from 58 `refers to table ''` build errors to **0**.
 
-## 35. THE CLUSTER: bridge modify ops SILENTLY DISCARD optional parameters (TOOL_DEFECT, top priority)
-Accepted, `✅ success` returned, **absent from the written XML, no warning**. Proven three times
-in one sweep, and it generalises the previously separate #5 and #27 into ONE class of bug:
-- `add-relation` drops `relationshipType` / `relationCardinality` / `relatedTableCardinality`
-  (xppbp then names exactly those three) — this is #5.
-- `add-data-source` drops `linkType=Active`.
-- `add-index` drops `allowDuplicates` / `alternateKey` — related to #27.
-Consequence for scoring: the residual `bp_clean: 0` on all three form cases is **tool-gap blocked,
-not output quality** — `BPCheckAlternateKeyAbsent` is unreachable because `alternateKey` is
-dropped, and the relationship-properties rule because the relation params are dropped.
-Fix direction: a dropped/unrecognised parameter must either be serialised or reported as a
-warning — never silently accepted (same principle as #6).
+## 35. Modify ops SILENTLY DISCARD parameters (TOOL_DEFECT, top priority) — ⏳ ADDRESSED by PR #731
+
+**⚠️ CORRECTION (2026-07-22): the original "ONE class of bug" framing below was WRONG.**
+The #731 audit traced each op and found **three distinct bugs in three different layers** — and
+one of the three symptoms was not a parameter drop at all. Corrected root causes:
+
+| op | param(s) | actual root cause |
+|---|---|---|
+| `add-relation` (#5) | `relationshipType`, `relationCardinality`, `relatedTableCardinality` | TS-side drop **and** C# gap — `modifyD365File.ts` never forwards them, `bridgeClient.addRelation` has no such params, and `MetadataWriteService.AddRelation` (:1812) writes `Name`/`RelatedTable`/constraints only |
+| `modify-field` (#6) | any misspelled key (e.g. `mandatory`) | **Zod strips unknown keys** — the value vanished before any code saw it, yet the op still answered `✅ … modified via IMetaTableProvider.Update` |
+| `add-index` (#35) | `allowDuplicates` / `alternateKey` | **NOT a param drop and NOT a C# bug** — `AddIndex` (:1765) serialises both. The observed absence was an artefact of the same-session dead-end (#29) forcing the whole-file overwrite |
+| `add-index` (#27) | `indexAllowDuplicates` | Zod `boolean` vs XML `No`/`Yes` |
+| `add-data-source` | `linkType` | **C#-side only** — `CreateFormDataSourceRoot` (:1126) ignores it; the value reaches the signature and stops |
+| `add-enum-value` | `enumValueHelpText` | **NEW finding from the audit** — advertised, forwarded by nobody, no bridge param |
+
+The lead that motivated the audit (the adapter passing only `objectName`, per #23) **did not
+reproduce** on current `main`: `bridgeAddIndex`/`bridgeAddDataSource` do forward their params today.
+
+What PR #731 shipped: the op-spec registry became a parameter ledger (`findIgnoredParams()` with
+near-miss suggestions, `OP_UNHONOURED_PARAMS` as an explicit confession list), `modifyD365File.ts`
+now reads the **raw** arguments pre-Zod-strip and accounts for every key (`⚠️ … did not reach the
+written XML`), rejects mutation calls carrying no mutation param, writes the three relation
+properties on disk with their documented defaults, and coerces the index NoYes flags. It also
+folded in the orphaned `e94835f` (`directXmlAddIndex` from PR #729), which had never reached `main`.
+
+**Still open, honestly unverifiable in-repo** (the bridge cannot compile without the VM's
+`Microsoft.Dynamics.AX.Metadata` assemblies): the proper C#-side fixes for `add-data-source`
+`linkType` and `add-enum-value` `enumValueHelpText`, and the proper C# `add-relation` property
+serialisation. Those got the loud-warning treatment only — no unverified C# behavioural change.
+
+Consequence for scoring (unchanged): the residual `bp_clean: 0` on the three form cases is
+**tool-gap blocked, not output quality**.
 
 ## 36. No operation exists for table DeleteActions (TOOL_DEFECT, coverage gap)
 A cascading delete action is simply inexpressible through the tool surface.
