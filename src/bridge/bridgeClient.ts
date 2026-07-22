@@ -742,9 +742,29 @@ export class BridgeClient extends EventEmitter {
     return this.call<BridgeWriteResult>('removeIndex', { objectName: tableName, indexName });
   }
 
-  /** Add a relation to a table */
-  async addRelation(tableName: string, relationName: string, relatedTable: string, constraints?: Array<{ field?: string; relatedField?: string }>): Promise<BridgeWriteResult> {
-    return this.call<BridgeWriteResult>('addRelation', { objectName: tableName, relationName, relatedTable, constraints });
+  /**
+   * Add a relation to a table.
+   *
+   * `properties` carries Cardinality / RelatedTableCardinality / RelationshipType —
+   * real AxTableRelation properties the bridge now sets through the provider. They
+   * used to be dropped on both sides, which is what raised
+   * BPErrorTableRelationshipPropertiesCompleteness on a relation reported as added
+   * (findings #5 / #35). An invalid value is rejected by the bridge with the list of
+   * legal ones rather than silently ignored.
+   */
+  async addRelation(
+    tableName: string,
+    relationName: string,
+    relatedTable: string,
+    constraints?: Array<{ field?: string; relatedField?: string }>,
+    properties?: { relationCardinality?: string; relatedTableCardinality?: string; relationshipType?: string },
+  ): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addRelation', {
+      objectName: tableName, relationName, relatedTable, constraints,
+      relationCardinality: properties?.relationCardinality,
+      relatedTableCardinality: properties?.relatedTableCardinality,
+      relationshipType: properties?.relationshipType,
+    });
   }
 
   /** Remove a relation from a table */

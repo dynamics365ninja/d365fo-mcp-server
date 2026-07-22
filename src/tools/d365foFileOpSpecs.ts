@@ -177,17 +177,21 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     type: 'array of { fieldName, relatedFieldName }',
     description: 'Field constraints (local field = related field pairs).',
   },
+  // Value sets are the metamodel enums themselves (verified on platform 7.0.7858.27);
+  // anything outside them is rejected by the bridge with the legal list, not dropped.
   relationCardinality: {
     type: 'string',
-    description: 'Local-side cardinality: ZeroMore | ZeroOne | ExactlyOne (default: ZeroMore).',
+    description:
+      'Local-side cardinality: ZeroOne | ExactlyOne | ZeroMore | OneMore | NotSpecified (default: ZeroMore).',
   },
   relatedTableCardinality: {
     type: 'string',
-    description: 'Related-side cardinality: ZeroMore | ZeroOne | ExactlyOne (default: ExactlyOne).',
+    description: 'Related-side cardinality: ZeroOne | ExactlyOne | NotSpecified (default: ExactlyOne).',
   },
   relationshipType: {
     type: 'string',
-    description: 'Association | Composition | Aggregation | Link | Specialization (default: Association).',
+    description:
+      'Association | Composition | Aggregation | Link | Specialization | NotSpecified (default: Association).',
   },
   // field groups
   fieldGroupName: { type: 'string', description: 'Field group name.' },
@@ -222,7 +226,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     description: 'modify-enum-value: rename the value located by enumValueName to this.',
   },
   enumValueLabel: { type: 'string', description: 'Label reference (e.g. "@MyModel:Approved").' },
-  enumValueHelpText: { type: 'string', description: 'Help-text reference (optional).' },
+  enumValueHelpText: {
+    type: 'string',
+    description:
+      'NOT WRITABLE — an enum value has no help text in the metamodel (AxEnumValue has no ' +
+      'HelpText property). Kept only so passing it produces an explanation instead of a ' +
+      'spelling suggestion. Use enumValueLabel, or set HelpText on the enum.',
+  },
   enumValueInt: { type: 'number', description: 'Explicit integer value (omitted = next available).' },
   enumValueCountryRegionCodes: {
     type: 'string',
@@ -394,21 +404,17 @@ export const D365FO_FILE_CORE_PARAMS: ReadonlySet<string> = new Set([
  * value did not reach the XML (corpus cluster #35).
  *
  * Keep this list empty-by-default: an entry here is a confession, not a design.
- * Each one is a VM-side (C#) task, tracked with the reason it cannot be honoured
- * TS-side.
+ * An entry is either a pending VM-side (C#) task or — as with the one below — a
+ * parameter the metamodel cannot express at all, in which case the note says so
+ * instead of promising a fix that will never come.
  */
 export const OP_UNHONOURED_PARAMS: Record<string, Record<string, string>> = {
   'add-enum-value': {
     enumValueHelpText:
-      'nothing carries a help text for a new enum value — the dispatcher forwards name/value/label/' +
-      'countryRegionCodes only, and the bridge AddEnumValue has no helpText parameter. ' +
-      'Add the help text on the enum value afterwards in Visual Studio.',
-  },
-  'add-data-source': {
-    linkType:
-      "the bridge's AddDataSource passes linkType no further than its own signature — " +
-      'CreateFormDataSourceRoot() sets Name/Table/JoinSource only, so no <LinkType> element is written. ' +
-      'Set it afterwards on the data source in the form XML (or in Visual Studio) until the bridge is fixed.',
+      'an enum VALUE has no help text in the D365FO metamodel. Verified by reflection on this ' +
+      "platform (7.0.7858.27): AxEnumValue exposes Name, Tags, Label, ConfigurationKey, Value, " +
+      'CountryRegionCodes, FeatureClass — and no HelpText; only the AxEnum itself has Help/HelpText. ' +
+      'Real AOT enum XML agrees. Use enumValueLabel for the value, or set HelpText on the enum.',
   },
 };
 

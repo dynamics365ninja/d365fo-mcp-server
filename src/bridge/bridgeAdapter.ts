@@ -1443,14 +1443,23 @@ export async function bridgeAddRelation(
   relationName: string,
   relatedTable: string,
   constraints?: Array<{ field?: string; relatedField?: string }>,
-): Promise<{ success: boolean; message: string } | null> {
+  properties?: { relationCardinality?: string; relatedTableCardinality?: string; relationshipType?: string },
+): Promise<{ success: boolean; message: string; propertiesWritten?: boolean } | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
-    const result = await bridge.addRelation(tableName, relationName, relatedTable, constraints);
+    const result = await bridge.addRelation(tableName, relationName, relatedTable, constraints, properties);
+    // An older bridge binary silently ignores the extra params; it echoes back only
+    // what it set, so the response says whether the on-disk fallback is still needed.
+    const r = result as unknown as Record<string, unknown>;
+    const propertiesWritten = typeof r.relationshipType === 'string';
     return {
       success: result.success,
+      propertiesWritten,
       message: result.success
-        ? `✅ Relation '${relationName}' added via ${result.api}`
+        ? `✅ Relation '${relationName}' added via ${result.api}` +
+          (propertiesWritten
+            ? ` (Cardinality=${r.cardinality}, RelatedTableCardinality=${r.relatedTableCardinality}, RelationshipType=${r.relationshipType})`
+            : '')
         : `Bridge addRelation returned success=false`,
     };
   } catch (e) {

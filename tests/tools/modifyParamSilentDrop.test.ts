@@ -278,7 +278,12 @@ describe('#35 — an accepted-but-dropped parameter must be reported, never sile
     expect(text).toMatch(/did not reach the written XML/);
   });
 
-  it('warns that add-data-source does not write linkType (C#-side drop)', async () => {
+  it('no longer warns about linkType — the bridge writes it now', async () => {
+    // Was: "add-data-source drops linkType (C#-side)". The bridge's
+    // CreateFormDataSourceRoot now sets LinkType, verified on the VM against
+    // AxFormDataSourceRoot.LinkType (DataSourceLinkType_ITxt) — a real
+    // <LinkType>InnerJoin</LinkType> lands in the form XML. Flagging it as
+    // not-honoured would now itself be the lie.
     currentXml.value = FORM_EXTENSION_XML;
     const result = await modifyD365FileTool(
       req({
@@ -294,9 +299,7 @@ describe('#35 — an accepted-but-dropped parameter must be reported, never sile
       buildContext(),
     );
 
-    const text = textOf(result);
-    expect(text).toContain('linkType');
-    expect(text).toMatch(/NOT WRITTEN/);
+    expect(textOf(result)).not.toMatch(/linkType[\s\S]*NOT WRITTEN/);
   });
 
   it('does not warn when every parameter is consumed', async () => {
@@ -454,8 +457,11 @@ describe('parameter-accounting helpers', () => {
     expect(findIgnoredParams('add-relation', ['relationName', 'relatedTable', 'indexName'])).toEqual([
       { name: 'indexName', reason: 'other-op', suggestion: undefined },
     ]);
-    expect(findIgnoredParams('add-data-source', ['dataSourceName', 'dataSourceTable', 'linkType'])).toEqual([
-      { name: 'linkType', reason: 'not-honoured', detail: expect.stringContaining('CreateFormDataSourceRoot') },
+    // linkType used to be the third case here; it is honoured now, so the
+    // not-honoured example is the one the metamodel genuinely cannot express.
+    expect(findIgnoredParams('add-data-source', ['dataSourceName', 'dataSourceTable', 'linkType'])).toEqual([]);
+    expect(findIgnoredParams('add-enum-value', ['enumValueName', 'enumValueHelpText'])).toEqual([
+      { name: 'enumValueHelpText', reason: 'not-honoured', detail: expect.stringContaining('AxEnumValue') },
     ]);
   });
 
@@ -472,11 +478,13 @@ describe('parameter-accounting helpers', () => {
   });
 
   it('reports the two enum-value drops the audit turned up', () => {
-    // add-enum-value advertises enumValueHelpText, but the dispatcher forwards
-    // name/value/label/countryRegionCodes only and the bridge has no helpText
-    // parameter — nothing carries it, so it must be reported.
+    // add-enum-value advertises enumValueHelpText, but an enum VALUE has no help
+    // text in the metamodel at all — AxEnumValue exposes Name/Tags/Label/
+    // ConfigurationKey/Value/CountryRegionCodes/FeatureClass and nothing else
+    // (reflected on platform 7.0.7858.27). This one can never become honoured,
+    // so the detail must say that rather than promise a C# fix.
     expect(findIgnoredParams('add-enum-value', ['enumValueName', 'enumValueHelpText'])).toEqual([
-      { name: 'enumValueHelpText', reason: 'not-honoured', detail: expect.stringContaining('AddEnumValue') },
+      { name: 'enumValueHelpText', reason: 'not-honoured', detail: expect.stringContaining('AxEnumValue') },
     ]);
     // enumValueNewName IS honoured by modify-enum-value (it was simply missing
     // from the op-spec registry) — it must not be flagged.

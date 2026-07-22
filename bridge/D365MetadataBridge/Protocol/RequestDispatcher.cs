@@ -538,7 +538,10 @@ namespace D365MetadataBridge.Protocol
                             var relatedTable = request.GetStringParam("relatedTable")
                                 ?? throw new ArgumentException("Missing: relatedTable");
                             return _writeService!.AddRelation(tableName, relationName, relatedTable,
-                                request.GetParam<System.Collections.Generic.List<WriteRelationConstraint>>("constraints"));
+                                request.GetParam<System.Collections.Generic.List<WriteRelationConstraint>>("constraints"),
+                                request.GetStringParam("relationCardinality") ?? request.GetStringParam("cardinality"),
+                                request.GetStringParam("relatedTableCardinality"),
+                                request.GetStringParam("relationshipType"));
                         });
 
                     case "removerelation":
@@ -965,7 +968,10 @@ namespace D365MetadataBridge.Protocol
                                 writeResult = _writeService.AddRelation(objectName,
                                     S("relationName") ?? throw new ArgumentException("Missing: relationName"),
                                     S("relatedTable") ?? throw new ArgumentException("Missing: relatedTable"),
-                                    op.GetTypedParam<System.Collections.Generic.List<WriteRelationConstraint>>("constraints"));
+                                    op.GetTypedParam<System.Collections.Generic.List<WriteRelationConstraint>>("constraints"),
+                                    S("relationCardinality") ?? S("cardinality"),
+                                    S("relatedTableCardinality"),
+                                    S("relationshipType"));
                                 break;
 
                             case "removerelation":
