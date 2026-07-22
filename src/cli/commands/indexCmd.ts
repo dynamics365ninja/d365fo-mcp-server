@@ -4,7 +4,7 @@
  * instances/rebuild-instance.ps1 minus the git-pull step (that lives in
  * `d365fo-mcp update`).
  */
-import { installMode, isWindows, paths } from '../context.js';
+import { dataRoot, installMode, isWindows, paths } from '../context.js';
 import { runNode } from '../exec.js';
 import { listInstances } from '../instances.js';
 import { instanceTarget, pickTarget, rootTarget, targetEnv, Target } from '../target.js';
@@ -27,6 +27,12 @@ function scriptArgs(tsSource: string, bundle: string): string[] {
 /** Run extract + build-database for one target. Returns true on success. */
 export async function rebuildIndex(target: Target): Promise<boolean> {
   const env = targetEnv(target);
+  // Run from the target's own directory, not the package: the index scripts
+  // fall back to relative literals ('./data/xpp-metadata.db') whenever a
+  // setting is absent AND no config file exists to anchor it, and the default
+  // cwd of runNode is repoRoot — which for an npm install is the package npm
+  // replaces on every update, on whatever drive npm happens to live on.
+  const cwd = target.instance?.dir ?? dataRoot();
 
   if (isWindows) {
     const expanded = normalizeXppConfigName(target.store);
@@ -34,13 +40,13 @@ export async function rebuildIndex(target: Target): Promise<boolean> {
   }
 
   p.log.step(`[1/2] Extracting metadata (${target.label})…`);
-  if (await runNode(scriptArgs(paths.extractScript, paths.extractScriptDist), { env }) !== 0) {
+  if (await runNode(scriptArgs(paths.extractScript, paths.extractScriptDist), { cwd, env }) !== 0) {
     p.log.error(`Metadata extraction failed for ${target.label}`);
     return false;
   }
 
   p.log.step(`[2/2] Building database (${target.label})…`);
-  if (await runNode(['--max-old-space-size=6144', ...scriptArgs(paths.buildDbScript, paths.buildDbScriptDist)], { env }) !== 0) {
+  if (await runNode(['--max-old-space-size=6144', ...scriptArgs(paths.buildDbScript, paths.buildDbScriptDist)], { cwd, env }) !== 0) {
     p.log.error(`Database build failed for ${target.label}`);
     return false;
   }

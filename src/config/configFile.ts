@@ -128,6 +128,31 @@ export function toEnvRecord(files: Pick<ResolvedConfigFiles, 'baseDir' | 'config
   return out;
 }
 
+/**
+ * The path settings the wizard never writes, resolved against `baseDir`.
+ *
+ * DB_PATH, LABELS_DB_PATH and METADATA_PATH are advanced settings with
+ * relative defaults, so a normal setup leaves them out of the config file
+ * entirely and every consumer falls back to its own `'./data/…'` literal —
+ * which resolves from process.cwd(). For a git checkout that is the repo, and
+ * the answer happens to be right. For an npm install it is the *package*
+ * directory: `d365fo-mcp index` spawns the build scripts with cwd = repoRoot,
+ * so a 2 GB index landed next to the installed package, on whatever drive npm
+ * lives on, instead of in the installation directory the user chose in setup
+ * (issue: build ran out of space on C: and SQLite aborted the transaction).
+ *
+ * Emitting the defaults here pins them to the installation directory instead.
+ * A checkout is its own data directory, so its paths do not move.
+ */
+export function defaultPathEnv(baseDir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const setting of SETTINGS) {
+    if (setting.type !== 'path' || typeof setting.default !== 'string' || setting.default === '') continue;
+    out[setting.env] = isAbsolute(setting.default) ? setting.default : resolve(baseDir, setting.default);
+  }
+  return out;
+}
+
 /** Write the config file, creating its directory. Keys are emitted in registry order. */
 export function writeConfigFile(configPath: string, config: ConfigObject): void {
   fs.mkdirSync(dirname(configPath), { recursive: true });
