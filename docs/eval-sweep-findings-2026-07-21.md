@@ -33,20 +33,6 @@ C# edit is worse than an open ticket.
 - Only `fullBuild` runs metadata validation. An incremental build reported 0 errors on a model with
   2 real metadata errors, so `pass@build` from incremental runs is weaker than it looks.
 
-## Open — writers
-
-Three defects the same corpus record (2026-07-22T04__L2-form-over-view) raised alongside #37,
-never separately filed:
-
-- `generate_object(scaffold, form)` resolves `dataSource` against TABLES only, so a form over a
-  VIEW fails with "not found in the symbol index" even after `update_symbol_index`.
-  `object_patterns` resolves the same view fine — the defect is the scaffold's own lookup.
-- `d365fo_file(create, objectType="view")` defaults each `AxViewFieldBound` `<DataSource>` to the
-  QUERY name instead of the query's root data source name. Passing `fields[].dataSource`
-  explicitly works — only the default is wrong.
-- `trigger_db_sync(tables=[…], syncViews=true)` puts BOTH tables and views in `-viewlist`;
-  SyncEngine aborts with "Invalid argument -viewlist=…". They must be split by object type.
-
 ## Corrected attribution
 
 - **#26 was misfiled** and is NOT overwrite hygiene. There is no backup writer on the

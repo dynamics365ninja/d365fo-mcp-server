@@ -18,11 +18,11 @@ export const triggerDbSyncTool = {
         tables: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Partial sync: sync only these tables (faster). Example: ["CustTable", "MyNewTable"]. Omit for full-model sync.',
+          description: 'Partial sync: sync only these tables/views (faster). Example: ["CustTable", "MyNewTable"]. Views may be listed here too — they are routed to the view list automatically. Omit for full-model sync.',
         },
         tableName: { type: 'string', description: 'Single-table shorthand — equivalent to tables=["tableName"]. Kept for backwards compatibility.' },
         projectPath: { type: 'string', description: 'Path to .rnrproj file. Auto-extracts table/view names for partial sync. Auto-detected from .mcp.json when no explicit tables given.' },
-        syncViews: { type: 'boolean', description: 'Also sync views and data entities. Required after creating/modifying data entities. Default: false.' },
+        syncViews: { type: 'boolean', description: 'FULL sync only: also sync views and data entities. Ignored for partial sync, where views are routed by name. Default: false.' },
         connectionString: { type: 'string', description: 'SQL Server connection string. Default: "Data Source=localhost;Initial Catalog=AxDB;Integrated Security=True".' },
         packagePath: { type: 'string', description: 'PackagesLocalDirectory root. Auto-detected from .mcp.json if omitted.' },
       },
