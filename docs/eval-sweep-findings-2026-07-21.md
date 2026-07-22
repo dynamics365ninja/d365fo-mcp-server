@@ -33,22 +33,22 @@ C# edit is worse than an open ticket.
 - Only `fullBuild` runs metadata validation. An incremental build reported 0 errors on a model with
   2 real metadata errors, so `pass@build` from incremental runs is weaker than it looks.
 
-## Open — writers
-
-Three defects the same corpus record (2026-07-22T04__L2-form-over-view) raised alongside #37,
-never separately filed:
-
-- `generate_object(scaffold, form)` resolves `dataSource` against TABLES only, so a form over a
-  VIEW fails with "not found in the symbol index" even after `update_symbol_index`.
-  `object_patterns` resolves the same view fine — the defect is the scaffold's own lookup.
-- `d365fo_file(create, objectType="view")` defaults each `AxViewFieldBound` `<DataSource>` to the
-  QUERY name instead of the query's root data source name. Passing `fields[].dataSource`
-  explicitly works — only the default is wrong.
-- `trigger_db_sync(tables=[…], syncViews=true)` puts BOTH tables and views in `-viewlist`;
-  SyncEngine aborts with "Invalid argument -viewlist=…". They must be split by object type.
-
 ## Corrected attribution
 
+- **The `-viewlist` finding was misdiagnosed.** It was filed as "tables and views are both put in
+  `-viewlist`; they must be split by object type". Verified on the VM against SyncEngine 7.0.30743
+  / platform 7.0.7858.27: **`-viewlist` is not a SyncEngine argument at all.** The parameter dump
+  lists one `TableOrViewList` (fed by `-synclist`), plus `DropTableOrViewList`,
+  `TableExtensionList`, `CompositeEntityList` and `ADEsList` — no view list of any kind. Passing it
+  prints `Invalid argument -viewlist=<names> specified` and the run **continues** with those names
+  dropped, so the requested view was never synced and nothing failed. The fix is one list, not two;
+  splitting them would have reproduced the original bug in a tidier shape.
+  Two things fell out of that VM run and are fixed alongside it: `trigger_db_sync` scored the
+  outcome by grepping the whole log for `error|failed|exception`, and SyncEngine logs a benign
+  startup warning (`Failed to abort paused PostServiceync resumable index … Invalid column name
+  'DEFERREDOPERATIONSTATE'`) on **every** sync in this environment — so every green run was reported
+  ❌. The verdict now comes from SyncEngine's own completion line, with a rejected argument and an
+  explicit failure line as overrides.
 - **#26 was misfiled** and is NOT overwrite hygiene. There is no backup writer on the
   create/overwrite path at all. The only `.backup-<ts>` writer is `createFileBackup`
   (`modifyD365File.ts`), reached from `ensureRecoverableModification`, which *deliberately* forces

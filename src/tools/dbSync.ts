@@ -4,11 +4,41 @@ import fs from 'fs/promises';
 import { Parser } from 'xml2js';
 import { getConfigManager } from '../utils/configManager.js';
 import { withOperationLock } from '../utils/operationLocks.js';
+import { lookupSymbolNocase, type DbLike } from '../utils/symbolLookup.js';
 
-/** AOT folders that map to syncable DB objects (tables, table extensions, views, data entities). */
-const SYNCABLE_AOT_FOLDERS = new Set([
-  'AxTable', 'AxTableExtension', 'AxView', 'AxDataEntityView', 'AxDataEntityViewExtension',
+/**
+ * AOT folders that map to syncable DB objects, and what kind of object each one
+ * holds.
+ *
+ * There is NO separate view list: SyncEngine takes tables and views in the same
+ * `-synclist`, which it reports back as `TableOrViewList`. `-viewlist` is not a
+ * SyncEngine argument at all — passing it prints
+ *
+ *     Invalid argument -viewlist=<names> specified
+ *
+ * and the run CONTINUES with those names silently dropped, so a requested view
+ * was never synced and nothing failed. Verified 2026-07-22 against SyncEngine
+ * 7.0.30743 / platform 7.0.7858.27 on the dev VM; the parameter dump lists
+ * TableOrViewList, DropTableOrViewList, TableExtensionList, CompositeEntityList
+ * and ADEsList, and no view list of any kind. The `kind` below therefore only
+ * drives what the tool REPORTS, never argument routing.
+ */
+const SYNCABLE_AOT_FOLDERS = new Map<string, SyncKind>([
+  ['AxTable', 'table'],
+  ['AxTableExtension', 'table'],
+  ['AxView', 'view'],
+  ['AxDataEntityView', 'view'],
+  ['AxDataEntityViewExtension', 'view'],
 ]);
+
+/** What kind of object a sync target is — reported, not routed on. */
+type SyncKind = 'table' | 'view';
+
+/** A syncable object plus what kind it is. */
+interface SyncTarget {
+  name: string;
+  kind: SyncKind;
+}
 
 /** Max output length returned to the client (characters). */
 const MAX_OUTPUT_LENGTH = 8_000;
@@ -105,15 +135,17 @@ function runWithStreaming(
 }
 
 /**
- * Extract table/view names from a .rnrproj project file.
- * Looks for Content Include entries like "AxTable\MyTable", "AxTableExtension\MyExt", etc.
+ * Extract syncable object names from a .rnrproj project file, tagged with the
+ * SyncEngine list they belong in. Looks for Content Include entries like
+ * "AxTable\MyTable", "AxView\MyView", "AxTableExtension\MyExt", etc. — the AOT
+ * folder is authoritative for the table/view split.
  */
-async function extractTablesFromProject(projectPath: string): Promise<string[]> {
+export async function extractTablesFromProject(projectPath: string): Promise<SyncTarget[]> {
   const parser = new Parser({ explicitArray: true });
   const xml = await fs.readFile(projectPath, 'utf-8');
   const parsed = await parser.parseStringPromise(xml);
 
-  const tables: string[] = [];
+  const targets: SyncTarget[] = [];
   const itemGroups: any[] = parsed?.Project?.ItemGroup ?? [];
   for (const group of itemGroups) {
     const contents: any[] = Array.isArray(group.Content) ? group.Content : [];
@@ -123,17 +155,45 @@ async function extractTablesFromProject(projectPath: string): Promise<string[]> 
       // Format: "AxTable\MyTableName" or "AxTableExtension\SomeExt"
       const sep = inc.includes('\\') ? '\\' : inc.includes('/') ? '/' : '\\';
       const parts = inc.split(sep);
-      if (parts.length >= 2 && SYNCABLE_AOT_FOLDERS.has(parts[0])) {
+      const kind = parts.length >= 2 ? SYNCABLE_AOT_FOLDERS.get(parts[0]) : undefined;
+      if (kind) {
         // For extensions like "CustTable.MyExt", extract base table name
         const objectName = parts[1];
         const baseName = objectName.includes('.') ? objectName.split('.')[0] : objectName;
-        if (baseName && !tables.includes(baseName)) {
-          tables.push(baseName);
+        if (baseName && !targets.some(t => t.name === baseName)) {
+          targets.push({ name: baseName, kind });
         }
       }
     }
   }
-  return tables;
+  return targets;
+}
+
+/**
+ * Label explicitly named objects as table or view using the symbol index, so the
+ * tool can report what it actually synced. Both kinds go into the same
+ * `-synclist`, so a wrong label costs nothing but an inaccurate summary; an
+ * unknown name is reported as such rather than silently called a table.
+ */
+export function classifySyncTargets(
+  names: string[],
+  db: DbLike | undefined,
+): { targets: SyncTarget[]; unresolved: string[] } {
+  const targets: SyncTarget[] = [];
+  const unresolved: string[] = [];
+  for (const name of names) {
+    let kind: SyncKind = 'table';
+    if (db) {
+      const hit = lookupSymbolNocase(db, name, ['table', 'view']);
+      if (hit) {
+        kind = hit.type === 'view' ? 'view' : 'table';
+      } else {
+        unresolved.push(name);
+      }
+    }
+    targets.push({ name, kind });
+  }
+  return { targets, unresolved };
 }
 
 /**
@@ -153,6 +213,74 @@ async function checkStaticMetadata(packagesRoot: string, modelName: string): Pro
   }
 }
 
+/**
+ * Build the SyncEngine command line. Pure, so the argument shape can be gated by
+ * a test instead of only by a 3-minute run against a live AxDB.
+ *
+ * `targets` empty ⇒ full sync. Tables and views share `-synclist`; `-viewlist`
+ * must never appear (see SYNCABLE_AOT_FOLDERS for the verified reason).
+ */
+export function buildSyncEngineArgs(opts: {
+  targets: SyncTarget[];
+  syncViews: boolean;
+  metadataBinPath: string;
+  connStr: string;
+}): string[] {
+  const isPartial = opts.targets.length > 0;
+  const syncMode = isPartial
+    ? 'PartialList'
+    : opts.syncViews ? 'FullAllAndViews' : 'FullAll';
+
+  const args = [
+    `-syncmode=${syncMode}`,
+    `-metadatabinaries=${opts.metadataBinPath}`,
+    `-connect=${opts.connStr}`,
+  ];
+  if (isPartial) {
+    args.push(`-synclist=${opts.targets.map(t => t.name).join(',')}`);
+  } else {
+    // Only for a full sync — verbose diagnostics add real overhead.
+    args.push('-verbosediagnostics');
+  }
+  return args;
+}
+
+/**
+ * Decide whether a SyncEngine run actually succeeded.
+ *
+ * The old test — "any line contains error/failed/exception" — reported ❌ for a
+ * sync that completed cleanly, because SyncEngine logs a benign startup warning
+ * on this environment (`Log level - Warning | Failed to abort paused
+ * PostServiceync resumable index from last run: SqlException … Invalid column
+ * name 'DEFERREDOPERATIONSTATE'`) before it does any work. Every partial sync on
+ * this VM tripped it, so a green run was indistinguishable from a red one.
+ *
+ * SyncEngine states its own verdict: it prints `<SyncMode> finished` and
+ * `Sync finished and took <n> milliseconds` only on a completed run. Take that
+ * as the signal, and keep two overrides that a completion line must not hide:
+ * a rejected argument (which is silently ignored — how the bogus `-viewlist`
+ * went unnoticed) and an explicit failure/abort line.
+ */
+export function classifySyncOutcome(rawOutput: string): { succeeded: boolean; reason: string } {
+  const invalidArg = rawOutput.match(/^.*Invalid argument .*$/mi)?.[0]?.trim();
+  if (invalidArg) {
+    // SyncEngine drops the argument and carries on, so this never fails the run
+    // on its own — the caller must be told the request was not honoured.
+    return { succeeded: false, reason: `SyncEngine rejected an argument: ${invalidArg}` };
+  }
+  const hardFailure = rawOutput.match(
+    /^.*\b(sync failed|synchronization failed|aborting sync|unhandled exception|fatal error)\b.*$/mi,
+  )?.[0]?.trim();
+  if (hardFailure) {
+    return { succeeded: false, reason: hardFailure };
+  }
+  const completed = /\bSync finished and took\b/i.test(rawOutput)
+    || /\b(PartialList|FullAll|FullAllAndViews|PartialTables|FullTables) finished\b/i.test(rawOutput);
+  return completed
+    ? { succeeded: true, reason: 'SyncEngine reported completion' }
+    : { succeeded: false, reason: 'SyncEngine never reported completion' };
+}
+
 /** Truncate output to avoid huge MCP responses. */
 function truncateOutput(text: string): string {
   if (text.length <= MAX_OUTPUT_LENGTH) return text;
@@ -165,7 +293,7 @@ function truncateOutput(text: string): string {
 // Tool registration (name, description, inputSchema) lives inline in
 // src/server/mcpServer.ts - the single source of truth for tool instructions.
 
-export const dbSyncTool = async (params: any, _context: any) => {
+export const dbSyncTool = async (params: any, context: any) => {
   const { syncViews = false } = params;
   try {
     const configManager = getConfigManager();
@@ -200,24 +328,37 @@ export const dbSyncTool = async (params: any, _context: any) => {
       console.error(`[trigger_db_sync] ${metadataWarning}`);
     }
 
-    // Resolve table list: explicit tables[]/tableName > projectPath extraction > full sync
-    let tableList: string[] = [
+    // Resolve object list: explicit tables[]/tableName > projectPath extraction > full sync
+    const explicitNames: string[] = [
       ...(params.tables ?? []),
       ...(params.tableName ? [params.tableName] : []),
     ].filter((t: string) => t.trim().length > 0);
 
+    let syncTargets: SyncTarget[] = [];
+    let unresolvedNames: string[] = [];
     let projectExtracted = false;
-    if (tableList.length === 0) {
-      // Try to extract tables from project file for smart partial sync
+    if (explicitNames.length > 0) {
+      // The caller names objects without saying what they are; the symbol index
+      // decides which SyncEngine list each belongs in.
+      let db: DbLike | undefined;
+      try {
+        db = context?.symbolIndex?.getReadDb?.();
+      } catch {
+        /* index unavailable — everything falls back to the table list */
+      }
+      ({ targets: syncTargets, unresolved: unresolvedNames } =
+        classifySyncTargets(explicitNames, db));
+    } else {
+      // Try to extract syncable objects from the project file for smart partial sync
       const projectPath = params.projectPath || await configManager.getProjectPath();
       if (projectPath) {
         try {
           await fs.access(projectPath);
           const extracted = await extractTablesFromProject(projectPath);
           if (extracted.length > 0) {
-            tableList = extracted;
+            syncTargets = extracted;
             projectExtracted = true;
-            console.error(`[trigger_db_sync] Extracted ${extracted.length} syncable objects from project: ${extracted.join(', ')}`);
+            console.error(`[trigger_db_sync] Extracted ${extracted.length} syncable objects from project: ${extracted.map(t => t.name).join(', ')}`);
           }
         } catch (e: any) {
           console.error(`[trigger_db_sync] Could not read project file ${projectPath}: ${e.message}`);
@@ -226,38 +367,19 @@ export const dbSyncTool = async (params: any, _context: any) => {
       }
     }
 
-    const isPartial = tableList.length > 0;
+    const partialTables = syncTargets.filter(t => t.kind === 'table').map(t => t.name);
+    const partialViews = syncTargets.filter(t => t.kind === 'view').map(t => t.name);
+    const isPartial = syncTargets.length > 0;
 
     // SyncEngine needs the PackagesLocalDirectory root — it reads StaticMetadata
     // from every model's bin folder, not just the current model's.
-    const metadataBinPath = packagesRoot;
-    const connStr = params.connectionString
-      || 'Data Source=localhost;Initial Catalog=AxDB;Integrated Security=True';
-
-    let syncMode: string;
-    if (isPartial) {
-      syncMode = 'PartialList';
-    } else if (syncViews) {
-      syncMode = 'FullAllAndViews';
-    } else {
-      syncMode = 'FullAll';
-    }
-
-    const args: string[] = [
-      `-syncmode=${syncMode}`,
-      `-metadatabinaries=${metadataBinPath}`,
-      `-connect=${connStr}`,
-    ];
-    // Only add verbosediagnostics for full sync (adds overhead)
-    if (!isPartial) {
-      args.push('-verbosediagnostics');
-    }
-    if (isPartial) {
-      args.push(`-synclist=${tableList.join(',')}`);
-      if (syncViews) {
-        args.push(`-viewlist=${tableList.join(',')}`);
-      }
-    }
+    const args = buildSyncEngineArgs({
+      targets: syncTargets,
+      syncViews,
+      metadataBinPath: packagesRoot,
+      connStr: params.connectionString
+        || 'Data Source=localhost;Initial Catalog=AxDB;Integrated Security=True',
+    });
 
     console.error(`[trigger_db_sync] Running: "${syncEnginePath}" ${maskConnectArgs(args).join(' ')}`);
 
@@ -276,19 +398,33 @@ export const dbSyncTool = async (params: any, _context: any) => {
 
     const rawOutput = [stdout, stderr].filter(Boolean).join('\n').trim();
     const output = truncateOutput(rawOutput);
-    const hasErrors = /\b(error|failed|exception)\b/i.test(rawOutput) &&
-      !/0 error/i.test(rawOutput);  // "0 errors" is success
+    const verdict = classifySyncOutcome(rawOutput);
+    const hasErrors = !verdict.succeeded;
 
+    const scopeParts: string[] = [];
+    if (partialTables.length > 0) {
+      scopeParts.push(`${partialTables.length} table(s): ${partialTables.join(', ')}`);
+    }
+    if (partialViews.length > 0) {
+      scopeParts.push(`${partialViews.length} view(s): ${partialViews.join(', ')}`);
+    }
+    // Names the index has never seen are still passed to SyncEngine (it resolves
+    // against the compiled metadata, not our index), but say so — a typo and a
+    // genuinely new object look identical from here.
+    const unresolvedNote = unresolvedNames.length > 0
+      ? `\n⚠️ Not in the symbol index — synced anyway, but unverifiable from here: ` +
+        `${unresolvedNames.join(', ')}. Run \`update_symbol_index\` if these are new objects.`
+      : '';
     const scopeDesc = isPartial
-      ? `Partial sync — ${tableList.length} table(s): ${tableList.join(', ')}` +
+      ? `Partial sync — ${scopeParts.join('; ')}` +
         (projectExtracted ? ' (extracted from project)' : '') +
-        (syncViews ? ' + views' : '')
+        unresolvedNote
       : `Full sync — model: ${modelName}${syncViews ? ' (tables + views)' : ''}`;
 
     return {
       content: [{
         type: 'text',
-        text: (hasErrors ? '❌ DB Sync failed' : '✅ DB Sync completed') +
+        text: (hasErrors ? `❌ DB Sync failed — ${verdict.reason}` : '✅ DB Sync completed') +
           ` (${elapsedSec}s)` +
           `\n\n${scopeDesc}` +
           `\n\n${output || '(no output)'}`
