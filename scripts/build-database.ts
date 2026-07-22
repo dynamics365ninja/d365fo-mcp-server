@@ -185,6 +185,15 @@ async function buildDatabase() {
     symbolIndex.clearModels(modelsToRebuild, shouldVacuum);
   }
 
+  // property_stats counts are cumulative, so gating the miners only stops NEW pollution —
+  // rows a previous build wrote for a custom/ISV model survive until deleted. The table is
+  // tiny (one row per node_type/property/value/model), so re-checking it on every build
+  // costs microseconds and needs no reindex.
+  const purged = symbolIndex.purgeNonMineableStats();
+  if (purged.length > 0) {
+    log.info(`Purged property_stats mined from ${purged.length} non-Microsoft model(s): ${purged.slice(0, 10).join(', ')}${purged.length > 10 ? '...' : ''}`);
+  }
+
   // Index the extracted metadata
   console.log('');
   log.step('Indexing metadata...');

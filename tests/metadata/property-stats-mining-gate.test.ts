@@ -189,6 +189,108 @@ describe('AxFormDesign pattern stats', () => {
   });
 });
 
+/**
+ * The gate stops NEW pollution, but property_stats counts are cumulative
+ * (ON CONFLICT ... count + excluded.count), so rows an earlier build wrote survive it.
+ * purgeNonMineableStats() is what removes them — cheap enough to run on every build
+ * because the table holds one row per node_type/property/value/model, not per object.
+ */
+describe('purgeNonMineableStats', () => {
+  /** Seed the corpus the way a pre-fix build left it: everything mined, gate or not. */
+  function seedPolluted(index: XppSymbolIndex): void {
+    index.recordPropertyStat('AxTable', 'TableGroup', 'Main', 'ApplicationSuite');
+    index.recordPropertyStat('AxTable', 'TableGroup', 'Main', 'ContosoRobotics');
+    index.recordPropertyStat('AxFormDesign', 'Pattern', 'SimpleList', 'ContosoRobotics');
+    index.recordPropertyStat('AxFormDesign', 'Pattern', 'Custom', 'SomeIsvSolution');
+    index.flushPropertyStats();
+  }
+
+  it('removes rows for declared non-Microsoft models and keeps Microsoft ones', () => {
+    const index = new XppSymbolIndex(':memory:', ':memory:');
+    seedPolluted(index);
+
+    index.setNonMicrosoftModels(['ContosoRobotics', 'SomeIsvSolution']);
+    const purged = index.purgeNonMineableStats();
+
+    expect(purged.sort()).toEqual(['ContosoRobotics', 'SomeIsvSolution']);
+    expect(statCount(index, 'AxTable', 'TableGroup', 'ContosoRobotics')).toBe(0);
+    expect(statCount(index, 'AxFormDesign', 'Pattern', 'ContosoRobotics')).toBe(0);
+    expect(statCount(index, 'AxFormDesign', 'Pattern', 'SomeIsvSolution')).toBe(0);
+    expect(statCount(index, 'AxTable', 'TableGroup', 'ApplicationSuite')).toBe(1);
+    index.close?.();
+  });
+
+  it('clears historical pollution the current run was never told about', () => {
+    // The model is not in any declared set — CUSTOM_MODELS alone must be enough, which is
+    // what makes this a cleanup for databases built before the gate existed.
+    process.env.CUSTOM_MODELS = 'ContosoRobotics';
+    const index = new XppSymbolIndex(':memory:', ':memory:');
+    seedPolluted(index);
+
+    expect(index.purgeNonMineableStats()).toEqual(['ContosoRobotics']);
+    expect(statCount(index, 'AxTable', 'TableGroup', 'ContosoRobotics')).toBe(0);
+    index.close?.();
+  });
+
+  it('is a no-op on a clean corpus', () => {
+    const index = new XppSymbolIndex(':memory:', ':memory:');
+    index.recordPropertyStat('AxTable', 'TableGroup', 'Main', 'ApplicationSuite');
+    index.flushPropertyStats();
+
+    expect(index.purgeNonMineableStats()).toEqual([]);
+    expect(statCount(index, 'AxTable', 'TableGroup', 'ApplicationSuite')).toBe(1);
+    index.close?.();
+  });
+
+  it('is idempotent — a second run finds nothing left', () => {
+    const index = new XppSymbolIndex(':memory:', ':memory:');
+    seedPolluted(index);
+    index.setNonMicrosoftModels(['ContosoRobotics', 'SomeIsvSolution']);
+
+    expect(index.purgeNonMineableStats()).toHaveLength(2);
+    expect(index.purgeNonMineableStats()).toEqual([]);
+    index.close?.();
+  });
+
+  it('dryRun reports the same models without deleting', () => {
+    const index = new XppSymbolIndex(':memory:', ':memory:');
+    seedPolluted(index);
+    index.setNonMicrosoftModels(['ContosoRobotics', 'SomeIsvSolution']);
+
+    expect(index.purgeNonMineableStats({ dryRun: true }).sort()).toEqual(['ContosoRobotics', 'SomeIsvSolution']);
+    expect(statCount(index, 'AxTable', 'TableGroup', 'ContosoRobotics')).toBe(1);
+    expect(index.purgeNonMineableStats().sort()).toEqual(['ContosoRobotics', 'SomeIsvSolution']);
+    index.close?.();
+  });
+
+  it('touches only property_stats — symbols and form_patterns survive', async () => {
+    // The purge is corpus hygiene, not a model teardown: clearModels() is the API that
+    // removes a model's data, and confusing the two would silently drop indexed symbols.
+    await writeTable(tmpDir, 'ContosoRobotics', 'ConRoboTable');
+    await writeForm(tmpDir, 'ContosoRobotics', 'ConRoboForm', 'SimpleList');
+
+    const index = new XppSymbolIndex(':memory:', ':memory:');
+    await index.indexMetadataDirectory(tmpDir);
+    index.recordPropertyStat('AxTable', 'TableGroup', 'Main', 'ContosoRobotics');
+    index.flushPropertyStats();
+
+    index.setNonMicrosoftModels(['ContosoRobotics']);
+    index.purgeNonMineableStats();
+
+    const symbols = index.getReadDb().prepare(
+      'SELECT COUNT(*) AS n FROM symbols WHERE model = ?',
+    ).get('ContosoRobotics') as { n: number };
+    const patterns = index.getReadDb().prepare(
+      'SELECT COUNT(*) AS n FROM form_patterns WHERE model = ?',
+    ).get('ContosoRobotics') as { n: number };
+
+    expect(symbols.n).toBeGreaterThan(0);
+    expect(patterns.n).toBe(1);
+    expect(statCount(index, 'AxTable', 'TableGroup', 'ContosoRobotics')).toBe(0);
+    index.close?.();
+  });
+});
+
 describe('setNonMicrosoftModels semantics', () => {
   it('an empty declaration leaves isStandardModel() in charge', async () => {
     process.env.CUSTOM_MODELS = 'ContosoRobotics';

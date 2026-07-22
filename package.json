@@ -39,6 +39,7 @@
     "build-database": "node --max-old-space-size=6144 --import tsx/esm scripts/build-database.ts",
     "build-fts": "node --max-old-space-size=6144 --import tsx/esm scripts/build-fts.ts",
     "index-metadata": "tsx scripts/extract-metadata.ts && node --max-old-space-size=6144 --import tsx/esm scripts/build-database.ts",
+    "purge-property-stats": "tsx scripts/purge-property-stats.ts",
     "blob-manager": "tsx scripts/azure-blob-manager.ts",
     "select-config": "tsx src/cli/index.ts config --xpp-config",
     "test-stdio": "tsx scripts/test-stdio.ts",

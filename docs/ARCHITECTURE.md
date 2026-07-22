@@ -151,6 +151,8 @@ Dual-database design — symbol searches never scan label rows (**10–30× fast
 
 Each `symbols` row carries enhanced metadata beyond name/type/path: description, semantic tags, source snippet, complexity, used types, extends chain, usage statistics — richer context for generation. Statistical tables (`property_stats`, `form_patterns`) power the data-driven validators and advisors.
 
+`property_stats` is a corpus of **Microsoft-authored models only** — it answers "what does the standard platform do", so mining our own or a third-party ISV's objects would feed our own habits back to us as platform convention. The gate is `XppSymbolIndex.isMineableModel()`, fed by the extract manifest (the only source of truth on UDE, where `CUSTOM_MODELS` is empty by design) plus the name-based `isStandardModel()`. Counts are cumulative, so `build-database` also purges rows that fail today's gate; `npm run purge-property-stats [-- --dry-run]` does the same to an existing database without a rebuild.
+
 Read concurrency: WAL mode, read-connection pool with per-connection prepared-statement caches, 256 MB mmap.
 
 ---
