@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-custom-service-basic (artifact 2 of 5: response DataContract class (parm method with [DataMemberAttribute]))
+  Captured: 2026-07-21, server SHA: c262b19
+  Platform: xppc 7.0.7858.27
+  Model: Contoso (sandbox), EXTENSION_PREFIX=Con
+  Build: 0 errors, 0 BP warnings. Requires fixture table ConDemoNoteHeader (eval/fixtures/).
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteLookupResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Response data contract carrying the subject of the looked-up note header.
+/// </summary>
+[DataContractAttribute]
+class ConDemoNoteLookupResponse
+{
+    Name subject;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSubject</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Subject')]
+    public Name parmSubject(Name _subject = subject)
+    {
+        subject = _subject;
+        return subject;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

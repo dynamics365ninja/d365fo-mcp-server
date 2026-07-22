@@ -2,14 +2,14 @@
   "core": {
     "tier": "core",
     "total": 43,
-    "covered": 34,
-    "percent": 79.1
+    "covered": 43,
+    "percent": 100
   },
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 37,
-    "percent": 48.1
+    "covered": 46,
+    "percent": 59.7
   },
   "leaves": [
     {
@@ -23,7 +23,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L1-table-basic"
+        "L1-table-basic",
+        "L2-table-modify-lifecycle"
       ]
     },
     {
@@ -87,10 +88,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-enum-extension-empty-values"
+      ]
     },
     {
       "id": "view",
@@ -103,7 +106,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L1-query-view-basic"
+        "L1-query-view-basic",
+        "L2-form-over-view"
       ]
     },
     {
@@ -159,6 +163,7 @@
       "t": true,
       "covered": true,
       "cases": [
+        "L2-table-modify-lifecycle",
         "L3-form-detailstransaction"
       ]
     },
@@ -265,10 +270,15 @@
       "tier": "core",
       "weight": 5,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-form-modify-controls",
+        "L2-table-modify-lifecycle",
+        "L3-form-add-datasource-lines",
+        "L4-master-security-slice"
+      ]
     },
     {
       "id": "select-grammar",
@@ -318,10 +328,12 @@
       "tier": "core",
       "weight": 5,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-error-handling-infolog"
+      ]
     },
     {
       "id": "sysextension",
@@ -342,10 +354,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-performance-set-based"
+      ]
     },
     {
       "id": "bp-rules",
@@ -380,6 +394,8 @@
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
+        "L2-table-modify-lifecycle",
+        "L3-custom-service-basic",
         "L3-form-detailstransaction"
       ]
     },
@@ -416,6 +432,8 @@
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
+        "L2-table-modify-lifecycle",
+        "L3-custom-service-basic",
         "L3-form-detailstransaction"
       ]
     },
@@ -551,10 +569,13 @@
       "tier": "core",
       "weight": 5,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-form-modify-controls",
+        "L3-form-add-datasource-lines"
+      ]
     },
     {
       "id": "menu-item",
@@ -577,10 +598,12 @@
       "tier": "core",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L4-master-security-slice"
+      ]
     },
     {
       "id": "tiles-kpis",
@@ -730,10 +753,12 @@
       "tier": "core",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-workflow-document-submit"
+      ]
     },
     {
       "id": "business-events",
@@ -780,10 +805,12 @@
       "tier": "core",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-multi-company-changecompany"
+      ]
     },
     {
       "id": "global-address-book",
@@ -878,10 +905,12 @@
       "tier": "core",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-custom-service-basic"
+      ]
     },
     {
       "id": "dmf",
@@ -966,7 +995,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L4-entity-security"
+        "L4-entity-security",
+        "L4-master-security-slice"
       ]
     },
     {
@@ -980,7 +1010,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L4-entity-security"
+        "L4-entity-security",
+        "L4-master-security-slice"
       ]
     },
     {
@@ -994,7 +1025,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L4-entity-security"
+        "L4-entity-security",
+        "L4-master-security-slice"
       ]
     },
     {
@@ -1084,6 +1116,8 @@
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
+        "L2-table-modify-lifecycle",
+        "L3-custom-service-basic",
         "L3-form-detailstransaction"
       ]
     }
@@ -1092,8 +1126,7 @@
     "knowledge": [],
     "cases": [
       "L2-oracle-discriminator-random-wrapper-name",
-      "L4-headerlines-document-slice",
-      "L4-master-security-slice"
+      "L4-headerlines-document-slice"
     ]
   }
 }

@@ -1,0 +1,52 @@
+{
+  "run_id": "2026-07-21T18__L2-form-modify-controls__c262b19",
+  "case_id": "L2-form-modify-controls",
+  "tier": 2,
+  "timestamp": "2026-07-21T18:52:00.000Z",
+  "server_git_sha": "c262b19",
+  "generated_artifacts": [
+    "ConDemoCtrlNote.xml",
+    "ConDemoCtrlNoteForm.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPCheckAlternateKeyAbsent",
+        "message": "Table ConDemoCtrlNote does not have an alternate key"
+      },
+      {
+        "rule": "BPErrorDeveloperDocumentationNotDefined",
+        "message": "Table ConDemoCtrlNote: the mandatory property DeveloperDocumentation is not specified"
+      },
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "message": "Table ConDemoCtrlNote: no form ref is specified"
+      }
+    ]
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 0,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "CASE BLOCKED — the required deliverable was never produced, so score.build=0 even though the incomplete artifact subset (table + control-less form) compiles clean with 0 errors. The case demands that every visual control be added to an initially control-less form via d365fo_file(action=modify, operation=add-control). That is structurally impossible: the bridge resolves parentControl with FindControlRecursive(design, name) (bridge/D365MetadataBridge/Services/MetadataWriteService.cs:2296 and :2901), which only iterates design.Controls and can never return the design ROOT itself. On a form whose design has no controls, EVERY parentControl value fails, so a form can never receive its first top-level control. Tried 'Design' and the form name; both fail identically, and reproducibly after update_symbol_index and after a successful build. IMPORTANT — this is NOT the historical defect the case was mined from: the AxForm{Type}Control type-resolution bug is genuinely FIXED. Probe (throwaway ConDemoCtrlProbeForm, scaffolded with a Grid, then removed) proved add-control into an EXISTING container works and emits correct XML: i:type=\"AxFormStringControl\", <Type>String</Type>, <DataField>Subject</DataField>, <DataSource>ConDemoCtrlNote</DataSource>. So the remaining blocker is purely design-root addressing. Two further defects surfaced on the same surface. (2) d365fo_file(action=create, objectType=form) silently DROPS the documented properties.dataSource — the emitted form had <DataSources /> empty despite dataSource=ConDemoCtrlNote; had to be repaired with modify add-data-source (same silent-drop shape as the table-side defects in L2-table-modify-lifecycle). (3) the same form create emits <Methods xmlns=\"\" /> with no classDeclaration, so a form created via the bridge NEVER compiles: xppc failed with \"Form dynamics://Form/ConDemoCtrlNoteForm: The 'classDeclaration' is missing from element 'ConDemoCtrlNoteForm'\". generate_object(mode=scaffold) does emit classDeclaration, so only the d365fo_file create path is affected; modify add-method repairs it and the build then goes green. (4) Diagnostics defect: when FindControlRecursive returns null the TS layer misreports a genuine parent-not-found as \"could not resolve form '<name>'\" / \"the C# metadata bridge could not find it in its metadata model\", and its 'Reliable fallback' explicitly recommends d365fo_file(action=create, overwrite=true, xmlContent=...) — i.e. it steers the agent straight into the hand-authored-XML workaround that this very case forbids and that the mined defect report identified as the bad outcome.",
+  "suggested_fix_area": "(a) bridge MetadataWriteService.AddControl: treat a design-root sentinel (parentControl in {\"Design\", \"\", form name, \"Root\"} or null) as the design itself before recursing, so the first top-level control can be added; FindControlRecursive should also be allowed to return the design container. (b) d365fo_file(action=create, objectType=form) must honour properties.dataSource, or reject it loudly instead of dropping it. (c) the form create path must emit a classDeclaration method ([Form] public class <Name> extends FormRun) so the produced form compiles — currently every bridge-created form is dead on arrival. (d) modifyD365File error mapping: distinguish 'form not found' from 'parent control not found', and never suggest create overwrite=true with hand-authored XML as the remedy for a modify failure.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxTable/ConDemoCtrlNote.xml",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxForm/ConDemoCtrlNoteForm.xml",
+    "K:/repos/d365fo-mcp-server/bridge/D365MetadataBridge/Services/MetadataWriteService.cs#L2287-L2306",
+    "K:/repos/d365fo-mcp-server/bridge/D365MetadataBridge/Services/MetadataWriteService.cs#L2901-L2921",
+    "K:/repos/d365fo-mcp-server/src/tools/modifyD365File.ts"
+  ]
+}

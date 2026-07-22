@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L4-master-security-slice (artifact 1 of 8: master table (AssetIdx unique index, Overview field group, TitleField1=Name))
+  Captured: 2026-07-21 on the D365FO VM, server SHA c262b19. Full build (xppc, fullBuild) clean,
+  xppbp clean for all 8 artifacts of this slice (the only remaining BP warnings belong to the
+  unrelated ConDemoNoteHeader fixture).
+  NOTE (TOOL_DEFECT, see corpus record): almost every artifact had to be written via
+  d365fo_file(action="create", overwrite=true, xmlContent=...) because the bridge-backed
+  modify operations cannot resolve same-session objects. Element shapes below are the ones the
+  metadata compiler actually accepts; several differ from what the tools emit today:
+    * duty  -> AxSecurityPrivilegeReference (tool emitted AxSecurityRolePermissionSet)
+    * role  -> AxSecurityDutyReference      (tool emitted AxSecurityRoleDutyPermission)
+    * menu  -> AxMenuElement i:type="AxMenuElementMenuItem" (tool emitted AxMenuFunctionItem)
+    * form group with <DataGroup> also needs a sibling <DataSource> (scaffold omits it)
+    * legacy SYS labels must be written @SYS12345, not @SYS:@SYS12345 (labels tool suggests the latter)
+-->
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoAsset</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoAsset extends common
+{
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+	<DeveloperDocumentation>@SYS114344</DeveloperDocumentation>
+	<FormRef>ConDemoAssetDetailsMI</FormRef>
+	<Label>@SYS114344</Label>
+	<TableGroup>Main</TableGroup>
+	<TitleField1>Name</TitleField1>
+	<TitleField2>AssetCode</TitleField2>
+	<CacheLookup>Found</CacheLookup>
+	<ClusteredIndex>AssetIdx</ClusteredIndex>
+	<ReplacementKey>AssetIdx</ReplacementKey>
+	<DeleteActions />
+	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>AutoReport</Name>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>AssetCode</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Name</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>AcquiredDate</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoLookup</Name>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>AssetCode</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Name</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoIdentification</Name>
+			<AutoPopulate>Yes</AutoPopulate>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoSummary</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoBrowse</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>Overview</Name>
+			<Label>@SYS9039</Label>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>AssetCode</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Name</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>AcquiredDate</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+	</FieldGroups>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AssetCode</Name>
+			<ExtendedDataType>Num</ExtendedDataType>
+			<Label>@SYS13019</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Name</Name>
+			<ExtendedDataType>Name</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldDate">
+			<Name>AcquiredDate</Name>
+			<ExtendedDataType>TransDate</ExtendedDataType>
+			<Label>@SYS67433</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>AssetIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>AssetCode</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

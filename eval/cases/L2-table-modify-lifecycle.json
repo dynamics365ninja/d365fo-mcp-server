@@ -7,7 +7,7 @@
     "AxTable"
   ],
   "golden_path": "eval/goldens/L2-table-modify-lifecycle/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

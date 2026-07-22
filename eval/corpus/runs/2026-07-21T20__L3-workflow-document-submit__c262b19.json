@@ -1,0 +1,71 @@
+{
+  "run_id": "2026-07-21T20__L3-workflow-document-submit__c262b19",
+  "case_id": "L3-workflow-document-submit",
+  "tier": 3,
+  "timestamp": "2026-07-21T20:07:46.525Z",
+  "server_git_sha": "c262b19",
+  "generated_artifacts": [
+    "ConDemoWfRequest.metadata.xml",
+    "ConDemoWfRequestDocument.metadata.xml",
+    "ConDemoWfRequestQuery.metadata.xml",
+    "ConDemoWfSubmitMI.metadata.xml",
+    "ConDemoWfSubmitManager.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "object": "ConDemoWfRequest",
+        "allowed": true,
+        "reason": "no form in scope for this case"
+      },
+      {
+        "rule": "BPErrorMenuItemNotCoveredByPrivilege",
+        "object": "ConDemoWfSubmitMI",
+        "allowed": true,
+        "reason": "no security privilege in scope for this case"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": [
+        "NoYes::No / NoYes::Yes (FALSE POSITIVE: kernel enum reported unknown-static-member)",
+        "Workflow::activateFromWorkflowType arity 4/5 (FALSE POSITIVE: last param has default = curUserId())"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Case content itself was reachable via the grounded path, but four write-path defects forced the create overwrite=true fallback three times: (1) d365fo_file(action=\"modify\", operation=\"add-index\") could not resolve ConDemoWfRequest created in the same session even with an explicit filePath and after update_symbol_index (bridge metadata roots fixed at startup); (2) d365fo_file(action=\"create\", objectType=\"table\") silently DROPPED the canSubmitToWorkflow method passed in sourceCode, writing <Methods />; (3) d365fo_file(action=\"create\", objectType=\"query\") omits <DynamicFields>Yes</DynamicFields> on a data source with an empty field list, producing a query that fails xppc with \"The field list of the data source cannot be empty if the dynamic field is set to false\"; (4) generate_object(mode=\"scaffold\", objectType=\"table\") ignored the structured fields[] array entirely (EDT hints and the enumType field were lost, wrong EDTs RequestId_NL/smmSubject were mined from fieldsHint), demanded fieldsHint even though fields[] was supplied, and WROTE the file to disk despite being documented as text-only generation. Secondary: d365fo_file(action=\"create\", objectType=\"class\") corrupts the class declaration doc comment, substituting the class name for a word after \"class\" (\"The <c>X</c> class is the ...\" became \"The <c>X</c> class X the ...\"). Also VALIDATOR_GAP: validate_code(mode=\"references\") rejects the kernel enum literals NoYes::No/NoYes::Yes as unknown-static-member and reports arity-mismatch for a call that omits a parameter carrying a default value. The two remaining BP warnings are inherent to the case scope (no form, no privilege) and the spec was amended to allow them.",
+  "suggested_fix_area": "src/tools/d365fo-file (table create: honour sourceCode methods; query create: emit DynamicFields; class create: stop rewriting declaration doc comments; modify: resolve same-session objects from disk when the bridge model misses them), src/tools/generate-object (scaffold table: honour fields[] over fieldsHint, do not write to disk in generate mode), src/validation/resolve-references (kernel enum literals, default-valued parameters in arity check)",
+  "evidence_refs": [
+    "K:\\AosService\\PackagesLocalDirectory\\Contoso\\Contoso\\AxTable\\ConDemoWfRequest.xml",
+    "K:\\AosService\\PackagesLocalDirectory\\Contoso\\Contoso\\AxQuery\\ConDemoWfRequestQuery.xml",
+    "eval/goldens/L3-workflow-document-submit/"
+  ]
+}

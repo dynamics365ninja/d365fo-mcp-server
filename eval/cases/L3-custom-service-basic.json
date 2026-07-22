@@ -11,7 +11,7 @@
     "AxServiceGroup"
   ],
   "golden_path": "eval/goldens/L3-custom-service-basic/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

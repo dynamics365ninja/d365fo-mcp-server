@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteArchiver</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Archives con demo note headers using set-based database operations.
+/// </summary>
+public class ConDemoNoteArchiver
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>archiveAll</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Archives every note header row with a single set-based insert.
+    /// </summary>
+    public static void archiveAll()
+    {
+        ConDemoNoteArchive  archive;
+        ConDemoNoteHeader   header;
+
+        ttsbegin;
+
+        insert_recordset archive (NoteId, Subject)
+        select NoteId, Subject
+        from header;
+
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>archiveMany</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Archives the notes identified by the supplied container in one database round trip.
+    /// </summary>
+    /// <param name = "_noteIds">A container holding the note identifiers to archive.</param>
+    public static void archiveMany(container _noteIds)
+    {
+        ConDemoNoteArchive  archive;
+        RecordInsertList    insertList = new RecordInsertList(tableNum(ConDemoNoteArchive));
+        int                 idx;
+
+        ttsbegin;
+
+        for (idx = 1; idx <= conLen(_noteIds); idx++)
+        {
+            archive.clear();
+            archive.NoteId           = conPeek(_noteIds, idx);
+            archive.ArchivedDateTime = DateTimeUtil::utcNow();
+
+            insertList.add(archive);
+        }
+
+        insertList.insertDatabase();
+
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>isArchived</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Indicates whether the specified note is already archived.
+    /// </summary>
+    /// <param name = "_noteId">The note identifier to probe.</param>
+    /// <returns>true if the note is archived; otherwise, false.</returns>
+    public static boolean isArchived(Num _noteId)
+    {
+        ConDemoNoteArchive archive;
+
+        select firstonly RecId from archive
+        where archive.NoteId == _noteId;
+
+        return archive.RecId != 0;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>purgeBefore</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Purges every archived note older than the supplied cut-off with a single set-based delete.
+    /// </summary>
+    /// <param name = "_cutOff">The cut-off date and time; archived notes older than this are removed.</param>
+    public static void purgeBefore(utcdatetime _cutOff)
+    {
+        ConDemoNoteArchive archive;
+
+        ttsbegin;
+
+        delete_from archive
+        where archive.ArchivedDateTime < _cutOff;
+
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

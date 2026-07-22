@@ -1,0 +1,54 @@
+{
+  "run_id": "2026-07-22T04__L2-form-over-view__6e252c6",
+  "case_id": "L2-form-over-view",
+  "tier": 2,
+  "timestamp": "2026-07-22T04:01:42.744Z",
+  "server_git_sha": "6e252c6",
+  "generated_artifacts": [
+    "ConDemoActiveView.metadata.xml",
+    "ConDemoActiveViewList.metadata.xml",
+    "ConDemoActiveViewQuery.metadata.xml",
+    "ConDemoViewSrc.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "object": "ConDemoViewSrc",
+        "message": "No form ref is specified."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "MIXED RESULT. The case's target artifacts were all produced through the grounded tool path and the full-model xppc build is clean (0 errors) for table + query + view + form, and the golden matched. BUT the specific regression this case names STILL REPRODUCES: generate_object(mode='scaffold', objectType='form', dataSource='ConDemoActiveView') fails with \"Table 'ConDemoActiveView' not found in the symbol index\" when the data source is a VIEW rather than a table. This was retried after an explicit update_symbol_index (which reported the view indexed, 'Inserted: 1 symbol') and failed identically, so it is NOT a staleness artifact - the form scaffold resolves its dataSource against TABLES only and never consults views. Notably object_patterns(domain='form', action='analyze', recommend={tableName:'ConDemoActiveView'}) resolved the same view without complaint, so the defect is localized to the generate_object form-scaffold lookup, not the shared index. The form over the view was instead produced via the OTHER grounded leg - d365fo_file(action='create', objectType='form', properties.dataSource='ConDemoActiveView') followed by 4 add-control ops - which bound <Table>ConDemoActiveView</Table> correctly. The case permits 'object_patterns / generate_object scaffold, then d365fo_file'; no hand-authored XML and no overwrite=true+xmlContent escape hatch was used, so the case passes on artifacts while the named scaffold defect remains OPEN. ADDITIONAL DEFECTS FOUND: (1) d365fo_file(create, objectType='view') defaults each AxViewFieldBound <DataSource> to the QUERY NAME (ConDemoActiveViewQuery) instead of the query's root data source name (ConDemoViewSrc). Standard views (e.g. CustInvoiceJourTotalTaxAmountView) use the data source name. Worked around by passing fields[].dataSource explicitly, which the tool does honour - only the DEFAULT is wrong. (2) modify-property is not implemented for forms at all ('modify-property not supported for objectType form via bridge'), so the SimpleList Design annotations (Pattern / PatternVersion / Style) that object_patterns(action='spec') prescribes cannot be set through the grounded path; the emitted form therefore carries no Pattern declaration. (3) trigger_db_sync(tables=[...], syncViews=true) builds a malformed SyncEngine command line - it passed BOTH the table and the view to -viewlist and SyncEngine aborted with 'Invalid argument -viewlist=ConDemoViewSrc,ConDemoActiveView specified' after 294s. Tables and views must go to -tablelist and -viewlist respectively. This blocks post-create validation that a generated view actually syncs. (4) BPErrorTableMissingFormRef on ConDemoViewSrc is unfixable because modify-property rejects FormRef on tables (seen in all three cases this session).",
+  "suggested_fix_area": "generate_object form scaffold: resolve dataSource against views (and data entities), not tables only - mirror the lookup object_patterns already uses. XmlTemplateGenerator view builder: default AxViewFieldBound.DataSource to the query's root data source name rather than the query name. src/bridge: implement modify-property for forms (Design Pattern/PatternVersion/Style). trigger_db_sync: split partial-sync names into -tablelist vs -viewlist by object type instead of putting everything in -viewlist. Add FormRef to the AxTable modify-property allow-list."
+}

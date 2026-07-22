@@ -8,7 +8,7 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L2-enum-extension-empty-values/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

@@ -1,0 +1,34 @@
+{
+  "run_id": "2026-07-21T19__L2-multi-company-changecompany__c262b19",
+  "case_id": "L2-multi-company-changecompany",
+  "tier": 2,
+  "timestamp": "2026-07-21T19:53:37.554Z",
+  "server_git_sha": "c262b19",
+  "generated_artifacts": [
+    "ConDemoCompanyReader.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS"
+}

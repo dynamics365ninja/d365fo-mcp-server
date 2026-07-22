@@ -159,7 +159,8 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'error-handling', label: 'Error handling & infolog', domain: 'Code', source: 'topic', tier: 'core', weight: 5,
     aotTypes: ['class'], knowledgeIds: ['error-handling', 'telemetry'],
-    note: 'Known hole: knowledge exists, but no case scores infolog/exception behaviour.',
+    caseIds: ['L2-error-handling-infolog'],
+    note: 'Case authored (checkFailed validation + typed catches + exceptionTextFallThrough + infolog capture); golden pending VM capture.',
   },
   {
     id: 'sysextension', label: 'SysExtension plug-in pattern', domain: 'Code', source: 'topic', tier: 'total', weight: 2,
@@ -169,7 +170,8 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'performance', label: 'Performance patterns', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['performance', 'set-based'],
-    note: 'Known hole: no case measures or asserts a performance property.',
+    caseIds: ['L2-performance-set-based'],
+    note: 'Case authored; it asserts a STRUCTURAL performance property (insert_recordset / RecordInsertList / firstonly / delete_from instead of row-by-row) rather than a wall-clock measurement, which is not reproducible across VM load. Golden pending VM capture.',
   },
   {
     id: 'bp-rules', label: 'Best-practice (BP) compliance', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
@@ -301,7 +303,8 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'workflow', label: 'Workflow', domain: 'Frameworks', source: 'topic', tier: 'core', weight: 3,
     aotTypes: ['class'], knowledgeIds: ['workflow'],
-    note: 'Known hole (roadmap P3): knowledge exists, no eval case proves it.',
+    caseIds: ['L3-workflow-document-submit'],
+    note: 'Case authored for the X++/tool-path-reachable half (WorkflowDocument subclass + query, canSubmitToWorkflow, submit manager, action menu item). The AxWorkflowType/Approval/Category AOT elements stay uncovered: d365fo_file has no objectType for them. Golden pending VM capture.',
   },
   {
     id: 'business-events', label: 'Business events & alerts', domain: 'Frameworks', source: 'topic', tier: 'core', weight: 3,
@@ -320,7 +323,8 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'multi-company', label: 'Multi-company / changeCompany', domain: 'Frameworks', source: 'topic', tier: 'core', weight: 3,
     aotTypes: ['class'], knowledgeIds: ['multi-company'],
-    note: 'Knowledge only — no eval case yet.',
+    caseIds: ['L2-multi-company-changecompany'],
+    note: 'Case authored (changeCompany block + crosscompany select over a company container); golden pending VM capture.',
   },
   {
     id: 'global-address-book', label: 'Global address book', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,

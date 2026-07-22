@@ -1,0 +1,63 @@
+{
+  "run_id": "2026-07-22T03__L3-form-add-datasource-lines__6e252c6",
+  "case_id": "L3-form-add-datasource-lines",
+  "tier": 3,
+  "timestamp": "2026-07-22T03:52:01.253Z",
+  "server_git_sha": "6e252c6",
+  "generated_artifacts": [
+    "ConDemoDocForm.metadata.xml",
+    "ConDemoDocHeader.metadata.xml",
+    "ConDemoDocLine.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPErrorTableRelationshipPropertiesCompleteness",
+        "object": "ConDemoDocLine/TableRelation/ConDemoDocHeader",
+        "message": "Relation properties [RelationshipType, RelatedTableCardinality, Cardinality] are not set."
+      },
+      {
+        "rule": "BPCheckAlternateKeyAbsent",
+        "object": "ConDemoDocHeader",
+        "message": "Table does not have an alternate key"
+      },
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "object": "ConDemoDocHeader",
+        "message": "No form ref is specified."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "PRIMARY RESULT: the UNRESOLVED defect behind this regression case is FIXED. add-data-source on a plain (non-extension) form emitted a correct <Table>ConDemoDocLine</Table> with <JoinSource>ConDemoDocHeader</JoinSource>, and the full-model xppc build returned 0 errors - ZERO occurrences of \"form datasource ... refers to table '' which does not exist\". The recorded baseline (USAGE_EXAMPLES section 1, BUILDS #4-#13) was 58 identical such errors surviving cache wipes, fullBuild+force and Fields-list rewrites, forcing a full sandbox rollback. Both grids and all 4 bound columns were added via add-control including LinesGrid over the second data source. No overwrite=true/xmlContent escape hatch was used; golden matched. DOMINANT RESIDUAL DEFECT - OPTIONAL PARAMETERS ARE SILENTLY DISCARDED across at least three bridge modify ops. Each accepted the parameter, returned success, and omitted it from the emitted XML with no warning: (1) add-relation dropped ALL THREE of relationshipType=Composition, relationCardinality=ZeroMore, relatedTableCardinality=ExactlyOne -- proven by xppbp BPErrorTableRelationshipPropertiesCompleteness naming exactly those three properties; (2) add-data-source dropped linkType=Active (no <LinkType> element), so the case's required ActiveLink join mode is not expressible; (3) add-index dropped allowDuplicates=false and alternateKey=true (observed in the L2-form-modify-controls run in this same session). This is one bug class, not three: the bridge write path maps only required params and ignores the optional ones. SECONDARY GAPS: (a) there is NO operation for table DeleteActions and add-relation has no delete-action parameter, so the case's 'cascading delete action' cannot be expressed through the grounded path at all - RelationshipType=Composition was the closest grounded approximation and it was itself dropped; (b) modify-property rejects FormRef (BPErrorTableMissingFormRef unfixable); (c) the labels tool suggested @RevenueRecognition:ItemName from a label file that is NOT deployed - xppbp reported BPErrorUnknownLabel; this independently reproduces the 'suggests labels from non-deployed label files' half of defect (6) in the 2026-07-21 L4-master-security-slice record (fixed here by switching to @TRX:@TRX1701). NOTE: the case text specifies 'LineNum: integer' but both LineNum and LineNumber EDTs are Real in D365FO; the explicitly named LineNum EDT was used and the column bound as a Real control.",
+  "suggested_fix_area": "src/bridge MetadataWriteService: stop silently discarding optional parameters - add-relation (relationshipType, cardinality, relatedTableCardinality), add-data-source (linkType), add-index (allowDuplicates, alternateKey); ideally fail loudly or echo back which params were applied. Add a delete-action operation (or an onDelete param on add-relation) for table DeleteActions. Add FormRef to the AxTable modify-property allow-list. labels tool: filter suggestions to label files actually deployed in the environment so xppbp does not report BPErrorUnknownLabel."
+}

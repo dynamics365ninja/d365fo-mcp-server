@@ -1,0 +1,23 @@
+{
+  "id": "L2-multi-company-changecompany",
+  "title": "Multi-company: changeCompany block + crosscompany select over a company container",
+  "tier": 2,
+  "instruction": "In the sandbox model, prove company-context handling against the existing ConDemoNoteHeader table (fields NoteId: EDT Num, Subject: EDT Name). Create a single class DemoCompanyReader with exactly three public static methods: (a) `public static Name subjectInCompany(DataAreaId _dataAreaId, Num _noteId)` -- reads the Subject of the note from ANOTHER legal entity using a `changeCompany(_dataAreaId) { ... }` block with the `select firstonly` INSIDE the block (a buffer selected outside the block keeps the caller's company context), then returns header.Subject; the company id must come from the parameter -- a hardcoded 'DAT'/'USMF' literal fails the case. (b) `public static container subjectsAcrossCompanies(container _companies, Num _noteId)` -- ONE `while select crosscompany : _companies DataAreaId, NoteId, Subject from header where header.NoteId == _noteId` loop that accumulates one strFmt('%1 | %2', header.DataAreaId, header.Subject) entry per company into a container it returns; use the crosscompany-with-container form, NOT a loop that calls changeCompany once per company (changeCompany reopens the connection and must never be called inside a loop). (c) `public static DataAreaId currentCompany()` -- returns curExt(); never a company literal. Ground the pattern with get_knowledge(topic=\"multi-company\"). The class must build clean with zero BP warnings. Correctness is judged in the golden X++ source: it must contain a changeCompany() block enclosing its select, a `crosscompany :` select bound to the container parameter, and no hardcoded DataAreaId literal anywhere.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-multi-company-changecompany/",
+  "golden_pending": false,
+  "ignore": [
+    "AxClass/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "multi-company",
+    "changecompany",
+    "crosscompany",
+    "dataareaid",
+    "class"
+  ],
+  "split": "holdout"
+}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L4-master-security-slice (artifact 3 of 8: display menu item)
+  Captured: 2026-07-21 on the D365FO VM, server SHA c262b19. Full build (xppc, fullBuild) clean,
+  xppbp clean for all 8 artifacts of this slice (the only remaining BP warnings belong to the
+  unrelated ConDemoNoteHeader fixture).
+  NOTE (TOOL_DEFECT, see corpus record): almost every artifact had to be written via
+  d365fo_file(action="create", overwrite=true, xmlContent=...) because the bridge-backed
+  modify operations cannot resolve same-session objects. Element shapes below are the ones the
+  metadata compiler actually accepts; several differ from what the tools emit today:
+    * duty  -> AxSecurityPrivilegeReference (tool emitted AxSecurityRolePermissionSet)
+    * role  -> AxSecurityDutyReference      (tool emitted AxSecurityRoleDutyPermission)
+    * menu  -> AxMenuElement i:type="AxMenuElementMenuItem" (tool emitted AxMenuFunctionItem)
+    * form group with <DataGroup> also needs a sibling <DataSource> (scaffold omits it)
+    * legacy SYS labels must be written @SYS12345, not @SYS:@SYS12345 (labels tool suggests the latter)
+-->
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>ConDemoAssetDetailsMI</Name>
+	<Label>@SYS114344</Label>
+	<Object>ConDemoAssetDetails</Object>
+</AxMenuItemDisplay>

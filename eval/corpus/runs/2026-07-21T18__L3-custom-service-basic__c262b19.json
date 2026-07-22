@@ -1,0 +1,65 @@
+{
+  "run_id": "2026-07-21T18__L3-custom-service-basic__c262b19",
+  "case_id": "L3-custom-service-basic",
+  "tier": 3,
+  "timestamp": "2026-07-21T18:21:44.651Z",
+  "server_git_sha": "c262b19",
+  "platform_build": "xppc 7.0.7858.27",
+  "generated_artifacts": [
+    "ConDemoNoteLookupRequest.metadata.xml",
+    "ConDemoNoteLookupResponse.metadata.xml",
+    "ConDemoNoteLookupService.metadata.xml",
+    "ConDemoNoteService.metadata.xml",
+    "ConDemoNoteServiceGroup.metadata.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": [
+        {
+          "rule": "SEL005",
+          "severity": "warning",
+          "line": 16,
+          "excerpt": "parmNoteId(...) inside where clause",
+          "status": "fixed before write by hoisting the call into a local variable; re-validation clean"
+        }
+      ]
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "evidence_refs": [
+    "eval/cases/L3-custom-service-basic.json",
+    "eval/goldens/L3-custom-service-basic/ (captured this run, 5 artifacts)",
+    "eval/fixtures/ConDemoNoteHeader.metadata.xml (provisioned pre-run, excluded from rollback)",
+    "build_d365fo_project(modelName=Contoso, fullBuild=true) - 0 errors, 1 pre-existing ExternalReference env warning",
+    "run_bp_check(modelName=Contoso) - 0 warnings on case artifacts; 7 remaining belong to the ConDemoNoteHeader fixture table",
+    "get_knowledge(topic=\"custom services\") - grounded the AxService/AxServiceGroup shape and the SysEntryPointAttribute omission"
+  ]
+}
