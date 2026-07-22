@@ -1,0 +1,22 @@
+{
+  "id": "L3-parallel-batch-tasks",
+  "title": "Parallel batch: bundle work into BatchHeader tasks instead of one long-running job",
+  "tier": 3,
+  "instruction": "In the sandbox model, split a long job into parallel batch tasks. Ground it first with get_knowledge(topic=\"parallel-batch\"). Create: (1) a SysOperation service class DemoParallelWorker with a `public void processBundle(DemoParallelContract _contract)` marked [SysEntryPointAttribute] that processes exactly the bundle identified by the contract; (2) a data contract class DemoParallelContract with [DataContractAttribute] and [DataMemberAttribute] parm methods for the bundle bounds (from/to key) - the contract must be serializable, so no List/Map members; (3) a class DemoParallelScheduler with `public static void scheduleAll()` that partitions the ConDemoNoteHeader rows into bundles, and for each bundle creates a task on a BatchHeader (BatchHeader::construct(), addRuntimeTask(...) with a SysOperationServiceController targeting the worker, then save()), so the tasks run in parallel. Doing the work inline in a single loop FAILS this case. Confirm the BatchHeader member signatures with search/get_method before writing them - do not guess. All objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-parallel-batch-tasks/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "batch",
+    "parallel-batch",
+    "sysoperation",
+    "class"
+  ],
+  "split": "holdout"
+}

@@ -1,0 +1,22 @@
+{
+  "id": "L3-inventory-inventdim-onhand",
+  "title": "Inventory: dimension-aware on-hand query through InventDim/InventDimParm",
+  "tier": 3,
+  "instruction": "In the sandbox model, read on-hand inventory the supported way. Ground it first with get_knowledge(topic=\"inventory-management\"). Create a class DemoOnHandReader with public static methods: (1) `InventQty availableForSite(ItemId _itemId, InventSiteId _siteId)` - builds an InventDim buffer carrying only InventSiteId, finds/creates its canonical record with InventDim::findOrCreate(), sets the matching InventDimParm coverage flags with initFromInventDim(), and reads the quantity through the InventOnHand/InventSumDatePhysicalDim path taught by the knowledge entry; (2) `boolean hasPhysicalOnHand(ItemId _itemId)` - the item-level probe using the same API with an empty dimension set. Selecting InventSum or InventTrans directly and summing PostedQty FAILS this case: dimension coverage must come from InventDimParm, never from a hand-written where clause. Confirm every inventory class and member signature with search/get_method before writing it - do not guess. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-inventory-inventdim-onhand/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "inventory",
+    "inventdim",
+    "onhand",
+    "class"
+  ],
+  "split": "holdout"
+}

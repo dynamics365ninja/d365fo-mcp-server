@@ -1,0 +1,23 @@
+{
+  "id": "L3-file-csv-import",
+  "title": "File IO: read a CSV/Excel upload through the supported reader APIs",
+  "tier": 3,
+  "instruction": "In the sandbox model, read an uploaded data file the supported way. Ground it first with get_knowledge(topic=\"file-readers\"). Create a class DemoFileImporter with public static methods: (1) `container readCsv(System.IO.Stream _stream)` - parses the stream with CommaStreamIo (never with a hand-rolled strSplit over a text line), skips the header row, and returns the rows as a packed container; (2) `container readExcel(System.IO.Stream _stream)` - reads the first worksheet through the OpenXML SpreadsheetDocument/WorkbookPart path taught by the knowledge entry; (3) `void importRows(container _rows)` - inserts the parsed rows into ConDemoNoteHeader inside ttsbegin/ttscommit with a RecordInsertList. Reading from a server file path with a raw AsciiIo FAILS this case: the file arrives as a stream from the browser upload. Confirm every reader class and member signature with search/get_method before writing it - do not guess. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-file-csv-import/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "file-io",
+    "csv",
+    "excel",
+    "integration",
+    "class"
+  ],
+  "split": "holdout"
+}

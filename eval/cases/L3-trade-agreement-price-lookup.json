@@ -1,0 +1,22 @@
+{
+  "id": "L3-trade-agreement-price-lookup",
+  "title": "Trade agreements: price/discount resolution through PriceDisc instead of a manual join",
+  "tier": 3,
+  "instruction": "In the sandbox model, resolve a sales price the supported way. Ground it first with get_knowledge(topic=\"trade-agreements\"). Create a class DemoPriceResolver with public static methods: (1) `Price salesPrice(ItemId _itemId, CustAccount _customer, Qty _qty, TransDate _date)` - resolves the effective price through the PriceDisc framework (construct the PriceDisc object for the sales module, call the find-price path taught by the knowledge entry, then read the resolved price), honouring quantity breaks and the given date; (2) `Percent lineDiscountPercent(ItemId _itemId, CustAccount _customer, Qty _qty, TransDate _date)` - the discount half through the same object. Selecting PriceDiscTable directly and picking the first matching row FAILS this case: agreement hierarchy, unit conversion and date effectivity must come from the framework. Confirm every PriceDisc member signature with search/get_method before writing it - do not guess. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-trade-agreement-price-lookup/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "trade-agreements",
+    "pricedisc",
+    "pricing",
+    "class"
+  ],
+  "split": "holdout"
+}

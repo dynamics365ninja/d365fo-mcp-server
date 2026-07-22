@@ -1,0 +1,24 @@
+{
+  "id": "L3-dmf-entity-import-slice",
+  "title": "DMF/DIXF: import-ready entity with staging behaviour (validateWrite + staging hook)",
+  "tier": 3,
+  "instruction": "In the sandbox model, build an import-ready DMF slice. Ground it first with get_knowledge(topic=\"data-management-framework\"). Create: (1) a table DemoImportTarget (label @TaxTransactionInquiry:HeaderNote, table group Main) with fields DocumentCode (String, EDT Num, mandatory), Description (String, EDT Name) and Amount (EDT AmountCur), plus a unique alternate-key index ImportTargetIdx on DocumentCode; (2) a data entity DemoImportTargetEntity over that table with public field names, DocumentCode as the entity key, EntityCategory=Master and DataManagementEnabled=Yes so DMF generates the staging table; on the entity, override `public boolean validateWrite()` to reject a non-positive Amount with a labelled error, and implement the staging hook DMF calls after the staging load (confirm its exact name and signature with get_knowledge/search before writing it - do not guess) so it normalises DocumentCode to upper case. Both objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxDataEntityView"
+  ],
+  "golden_path": "eval/goldens/L3-dmf-entity-import-slice/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "dmf",
+    "dixf",
+    "data-entity",
+    "import",
+    "integration"
+  ],
+  "split": "holdout"
+}

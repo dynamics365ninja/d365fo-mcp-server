@@ -1,0 +1,23 @@
+{
+  "id": "L2-direct-sql-connection",
+  "title": "Direct SQL escape hatch: parameterised Statement with SqlStatementExecutePermission",
+  "tier": 2,
+  "instruction": "In the sandbox model, use the direct-SQL escape hatch correctly. Ground it first with get_knowledge(topic=\"direct-sql\"). Create a class DemoDirectSqlReader with `public static server int64 countNotes()` that: builds the SQL text with the table's real SQL name resolved from metadata (never a hardcoded database name), asserts `new SqlStatementExecutePermission(sqlText).assert();` before executing, obtains a Connection via new Connection(), creates a Statement, executes the statement that counts rows in the ConDemoNoteHeader table, reads the value from the ResultSet, and reverts the assert with CodeAccessPermission::revertAssert() in a finally block. String-concatenating a caller-supplied value into the SQL text FAILS this case (injection), and so does omitting the permission assert. The class must build with zero BP errors. NOTE: the case exists to prove the escape hatch is used with its guard rails - the knowledge entry's advice to prefer X++ selects stands.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-direct-sql-connection/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "direct-sql",
+    "sql",
+    "permission",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

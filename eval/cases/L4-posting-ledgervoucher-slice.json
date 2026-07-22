@@ -1,0 +1,23 @@
+{
+  "id": "L4-posting-ledgervoucher-slice",
+  "title": "Posting engine: LedgerVoucher + LedgerVoucherObject balanced voucher slice",
+  "tier": 4,
+  "instruction": "In the sandbox model, post a balanced voucher through the ledger posting engine. Ground it first with get_knowledge(topic=\"posting-engine\"). Create a class DemoVoucherPoster with `public static void postPair(LedgerJournalTrans _source)` that: constructs a LedgerVoucher for the correct DetailSummary/SysModule context, creates a LedgerVoucherObject via LedgerVoucherObject::newVoucher() with a voucher number drawn from a number sequence (never a hand-built string), adds it with addVoucher(), then adds exactly two LedgerVoucherTransObject entries whose amounts net to zero (a debit and the matching credit) and ends with end(). The whole posting must sit inside ttsbegin/ttscommit and must throw a labelled error (not silently return) when the pair does not balance. SCOPE LIMIT: no ledger fixture is created - the case scores the STRUCTURE of the posting call chain (construct -> newVoucher -> addVoucher -> addTrans -> end, transaction-wrapped, number-sequence-backed), not a posted result. Confirm every posting class and member signature with search/get_method before writing it - do not guess. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L4-posting-ledgervoucher-slice/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "posting",
+    "ledgervoucher",
+    "ledger",
+    "class",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

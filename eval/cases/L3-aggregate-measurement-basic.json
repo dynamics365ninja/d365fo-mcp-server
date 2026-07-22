@@ -1,0 +1,25 @@
+{
+  "id": "L3-aggregate-measurement-basic",
+  "title": "Aggregate measurement over a custom entity: one measure group, one measure, one dimension attribute",
+  "tier": 3,
+  "instruction": "In the sandbox model, build an analytics star-schema slice. Ground it first with get_knowledge(topic=\"aggregate-measurements\"). Create: (1) a table DemoRequestFact (label @TaxTransactionInquiry:HeaderNote, table group Main) with fields RequestCode (String, EDT Num, mandatory), RequestType (String, EDT Name) and DaysToClose (Integer), plus a unique alternate-key index RequestFactIdx on RequestCode; (2) a data entity DemoRequestFactEntity over that table (public, EntityCategory=Master, RequestCode as the key) - the fact source, so the entity-store refresh reads a denormalised shape; (3) an aggregate measurement DemoRequestMeasure (d365fo_file objectType \"aggregate-measurement\") with Usage=StagedEntityStore and exactly one measure group over ConDemoRequestFactEntity that has one dimension attribute on RequestType and one measure AvgDaysToClose with AggregateFunction=Avg over DaysToClose. Modelling the measure group over the raw table instead of the entity FAILS this case. SCOPE LIMIT: deploying/refreshing the entity store is a runtime operation and is out of scope - the case scores the metadata. All objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxDataEntityView",
+    "AxAggregateMeasurement"
+  ],
+  "golden_path": "eval/goldens/L3-aggregate-measurement-basic/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "aggregate-measurement",
+    "analytics",
+    "entity-store",
+    "data-entity",
+    "table"
+  ],
+  "split": "holdout"
+}

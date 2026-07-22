@@ -1,0 +1,24 @@
+{
+  "id": "L2-edt-extension-basic",
+  "title": "EDT extension: extend an EDT through PropertyModifications instead of editing it",
+  "tier": 2,
+  "instruction": "In the sandbox model, prove the EDT extension path. Ground the extension model first with get_knowledge(topic=\"coc\"). Create: (1) an EDT DemoDocumentCode (String, StringSize 20, labelled, with DeveloperDocumentation); (2) an EDT extension over the standard EDT AccountNum (d365fo_file objectType \"edt-extension\") that adjusts its HelpText through PropertyModifications - the extension element lives in the sandbox model and must not edit the base EDT in place; (3) a table DemoDocumentIndex (label @TaxTransactionInquiry:HeaderNote, table group Main) with one field DocumentCode typed by ConDemoDocumentCode plus a unique alternate-key index DocumentIndexIdx, proving the new EDT resolves at compile time. Editing a base element in place instead of adding the extension element FAILS this case. All three objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxEdt",
+    "AxEdtExtension",
+    "AxTable"
+  ],
+  "golden_path": "eval/goldens/L2-edt-extension-basic/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "edt",
+    "edt-extension",
+    "extension",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

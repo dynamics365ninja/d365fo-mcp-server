@@ -1,0 +1,25 @@
+{
+  "id": "L2-sysextension-plugin",
+  "title": "SysExtension plug-in pattern: attribute-driven factory instead of a switch",
+  "tier": 2,
+  "instruction": "In the sandbox model, replace a construct-switch with the SysExtension plug-in pattern. Ground it first with get_knowledge(topic=\"sysextension\"). Create: (1) a base enum DemoChannelType with elements Web, Store and Partner (labelled, extensible); (2) a class DemoChannelAttribute extending SysAttribute with a parm method carrying the DemoChannelType value, so it can decorate an implementation class; (3) an abstract class DemoChannelHandler with `public abstract str describe()` and a `public static DemoChannelHandler construct(DemoChannelType _channel)` that resolves the implementation through the SysExtension framework (SysExtensionAppClassFactory with the attribute instance as the key) - a switch statement over the enum in construct() FAILS this case; (4) two concrete handlers DemoChannelHandlerWeb and DemoChannelHandlerStore, each decorated with the attribute for its enum value and each returning a labelled string from describe(). Confirm the SysExtension factory member signature with search/get_method before writing it - do not guess. All objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxEnum"
+  ],
+  "golden_path": "eval/goldens/L2-sysextension-plugin/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "sysextension",
+    "plugin",
+    "factory",
+    "attribute",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

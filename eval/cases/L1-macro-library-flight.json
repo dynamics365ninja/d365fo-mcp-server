@@ -1,0 +1,23 @@
+{
+  "id": "L1-macro-library-flight",
+  "title": "Macro library (AxMacroDictionary) with flight #defines, consumed from X++",
+  "tier": 1,
+  "instruction": "In the sandbox model, create a macro library the platform way. Ground it first with get_knowledge(topic=\"macros\"). Create: (1) a macro library DemoModuleFlights (d365fo_file objectType \"macro\") whose Source declares exactly two flight constants, `#define.DemoFastPostingFlight('DemoFastPostingFlight')` and `#define.DemoBulkImportFlight('DemoBulkImportFlight')` - one #define per line, no other content; (2) a class DemoFlightReader whose declaration area includes the library with the include directive and whose `public static boolean isFastPostingEnabled()` returns the flight state for #DemoFastPostingFlight. Both objects must build with zero BP errors. NOTE: the macro library is the only place a #define belongs here - the class must not redeclare the constants locally.",
+  "target_artifact_types": [
+    "AxMacroDictionary",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L1-macro-library-flight/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "macro",
+    "macrodictionary",
+    "flight",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

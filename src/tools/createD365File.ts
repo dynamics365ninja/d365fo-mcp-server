@@ -68,6 +68,7 @@ const CreateD365FileArgsSchema = z.object({
       'security-duty-extension', 'security-role-extension',
       'business-event', 'tile', 'kpi', 'map',
       'service', 'service-group',
+      'macro', 'configuration-key', 'security-policy', 'aggregate-measurement', 'license-code',
     ])
     .describe('Type of D365FO object to create'),
   objectName: z
@@ -1577,6 +1578,16 @@ ${defaultParamGroupXml}
         return buildAxServiceXml(objectName, properties);
       case 'service-group':
         return buildAxServiceGroupXml(objectName, properties);
+      case 'macro':
+        return XmlTemplateGenerator.generateAxMacroXml(objectName, sourceCode, properties);
+      case 'configuration-key':
+        return XmlTemplateGenerator.generateAxConfigurationKeyXml(objectName, properties);
+      case 'security-policy':
+        return XmlTemplateGenerator.generateAxSecurityPolicyXml(objectName, properties);
+      case 'aggregate-measurement':
+        return XmlTemplateGenerator.generateAxAggregateMeasurementXml(objectName, properties);
+      case 'license-code':
+        return XmlTemplateGenerator.generateAxLicenseCodeXml(objectName, properties);
       default:
         throw new Error(`Unsupported object type: ${objectType}`);
     }
@@ -2899,6 +2910,148 @@ public final class ${contractName} extends BusinessEventsContract
   }
 
   /**
+   * Generate macro-library XML (AxMacroDictionary).
+   *
+   * The whole library body is ONE property (`Source`) — there is no per-macro
+   * sub-element in the metadata, so the caller's sourceCode is emitted verbatim
+   * (XML-escaped) exactly the way the platform's own flight libraries do it.
+   */
+  static generateAxMacroXml(name: string, sourceCode?: string, properties?: Record<string, any>): string {
+    const source = (sourceCode ?? properties?.source ?? `#define.${name}Placeholder('${name}')`)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxMacroDictionary xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>${name}</Name>
+\t<Source>${source}</Source>
+</AxMacroDictionary>`;
+  }
+
+  /**
+   * Generate configuration-key XML (AxConfigurationKey).
+   * ParentKey nests the key under an existing one; LicenseCode ties it to an
+   * ISV licence (both optional — an omitted element means "no parent/licence").
+   */
+  static generateAxConfigurationKeyXml(name: string, properties?: Record<string, any>): string {
+    const label       = properties?.label       || `@TODO:${name}Label`;
+    const parentKey   = properties?.parentKey   || '';
+    const licenseCode = properties?.licenseCode || '';
+    const tags        = properties?.tags        || '';
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxConfigurationKey xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>${name}</Name>
+\t<Label>${label}</Label>${parentKey ? `\n\t<ParentKey>${parentKey}</ParentKey>` : ''}${licenseCode ? `\n\t<LicenseCode>${licenseCode}</LicenseCode>` : ''}${tags ? `\n\t<Tags>${tags}</Tags>` : ''}
+</AxConfigurationKey>`;
+  }
+
+  /**
+   * Generate XDS security-policy XML (AxSecurityPolicy).
+   * A policy constrains PrimaryTable through Query; every constrained table is
+   * an AxSecurityPolicyConstrainedTable entry carrying its TableRelation.
+   */
+  static generateAxSecurityPolicyXml(name: string, properties?: Record<string, any>): string {
+    const label            = properties?.label            || `@TODO:${name}Label`;
+    const primaryTable     = properties?.primaryTable     || '';
+    const query            = properties?.query            || '';
+    const enabled          = properties?.enabled === false ? 'No' : 'Yes';
+    const constrainedTable = properties?.constrainedTable === false ? 'No' : 'Yes';
+    const contextType      = properties?.contextType      || '';
+    const roleName         = properties?.roleName         || '';
+    const constrained: Array<{ name: string; tableRelation?: string }> =
+      Array.isArray(properties?.constrainedTables) ? properties!.constrainedTables : [];
+
+    const constrainedXml = constrained.length
+      ? constrained.map(t => `\t\t<AxSecurityPolicyConstrainedEntity xmlns=""
+\t\t\ti:type="AxSecurityPolicyConstrainedTable">
+\t\t\t<Name>${t.name}</Name>
+\t\t\t<ConstrainedTables />
+\t\t\t<TableRelation>${t.tableRelation ?? t.name}</TableRelation>
+\t\t</AxSecurityPolicyConstrainedEntity>`).join('\n')
+      : '';
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPolicy xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>${name}</Name>
+\t<ConstrainedTable>${constrainedTable}</ConstrainedTable>
+\t<Enabled>${enabled}</Enabled>
+\t<Label>${label}</Label>${contextType ? `\n\t<ContextType>${contextType}</ContextType>` : ''}${roleName ? `\n\t<RoleName>${roleName}</RoleName>` : ''}${primaryTable ? `\n\t<PrimaryTable>${primaryTable}</PrimaryTable>` : ''}${query ? `\n\t<Query>${query}</Query>` : ''}
+\t<ConstrainedTables>${constrainedXml ? `\n${constrainedXml}\n\t` : ''}</ConstrainedTables>
+</AxSecurityPolicy>`;
+  }
+
+  /**
+   * Generate aggregate-measurement XML (AxAggregateMeasurement).
+   * One measure group per fact table/entity: Attributes are the slicing keys,
+   * Measures the aggregated fields (Sum/Count/Min/Max/Avg).
+   */
+  static generateAxAggregateMeasurementXml(name: string, properties?: Record<string, any>): string {
+    const usage = properties?.usage || 'StagedEntityStore';
+    const groups: Array<{
+      name: string;
+      table: string;
+      attributes?: Array<{ name: string; field?: string; nameField?: string }>;
+      measures?: Array<{ name: string; field: string; aggregateFunction?: string }>;
+    }> = Array.isArray(properties?.measureGroups) ? properties!.measureGroups : [];
+
+    const groupXml = groups.map(group => {
+      const attributes = (group.attributes ?? []).map(attr => {
+        const field = attr.field ?? attr.name;
+        return `\t\t\t\t<AxDimensionAttribute>
+\t\t\t\t\t<Name>${attr.name}</Name>${attr.nameField ? `\n\t\t\t\t\t<NameField>${attr.nameField}</NameField>` : ''}
+\t\t\t\t\t<KeyFields>
+\t\t\t\t\t\t<AxDimensionFieldReference>
+\t\t\t\t\t\t\t<DimensionField>${field}</DimensionField>
+\t\t\t\t\t\t</AxDimensionFieldReference>
+\t\t\t\t\t</KeyFields>
+\t\t\t\t</AxDimensionAttribute>`;
+      }).join('\n');
+
+      const measures = (group.measures ?? []).map(measure => `\t\t\t\t<AxMeasure>
+\t\t\t\t\t<Name>${measure.name}</Name>
+\t\t\t\t\t<AggregateFunction>${measure.aggregateFunction ?? 'Sum'}</AggregateFunction>
+\t\t\t\t\t<Field>${measure.field}</Field>
+\t\t\t\t</AxMeasure>`).join('\n');
+
+      return `\t\t<AxMeasureGroup xmlns="">
+\t\t\t<Name>${group.name}</Name>
+\t\t\t<Table>${group.table}</Table>
+\t\t\t<Attributes>${attributes ? `\n${attributes}\n\t\t\t` : ''}</Attributes>
+\t\t\t<Measures>${measures ? `\n${measures}\n\t\t\t` : ''}</Measures>
+\t\t</AxMeasureGroup>`;
+    }).join('\n');
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxAggregateMeasurement xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V2">
+\t<Name>${name}</Name>
+\t<Usage>${usage}</Usage>
+\t<MeasureGroups>${groupXml ? `\n${groupXml}\n\t` : ''}</MeasureGroups>
+</AxAggregateMeasurement>`;
+  }
+
+  /**
+   * Generate license-code XML (AxLicenseCode) — the ISV licensing anchor a
+   * configuration key points at through its LicenseCode property.
+   */
+  static generateAxLicenseCodeXml(name: string, properties?: Record<string, any>): string {
+    const label     = properties?.label     || `@TODO:${name}Label`;
+    const group     = properties?.group     || 'Module';
+    const pkg       = properties?.package   || 'BusinessEssential';
+    const publicKey = properties?.publicKey ?? 2;
+
+    return `<?xml version="1.0" encoding="utf-8"?>
+<AxLicenseCode xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>${name}</Name>
+\t<Group>${group}</Group>
+\t<Label>${label}</Label>
+\t<Package>${pkg}</Package>
+\t<PublicKey>${publicKey}</PublicKey>
+</AxLicenseCode>`;
+  }
+
+  /**
    * Generate AxMenu XML.
    */
   static generateAxMenuXml(name: string, properties?: Record<string, any>): string {
@@ -3077,6 +3230,11 @@ export class ProjectFileManager {
       map: 'Maps',
       service: 'Services',
       'service-group': 'Service Groups',
+      macro: 'Macros',
+      'configuration-key': 'Configuration Keys',
+      'security-policy': 'Security Policies',
+      'aggregate-measurement': 'Aggregate Measurements',
+      'license-code': 'License Codes',
     };
     return folderMap[objectType] || 'Classes';
   }
@@ -3121,6 +3279,11 @@ export class ProjectFileManager {
       map: 'AxMap',
       service: 'AxService',
       'service-group': 'AxServiceGroup',
+      macro: 'AxMacroDictionary',
+      'configuration-key': 'AxConfigurationKey',
+      'security-policy': 'AxSecurityPolicy',
+      'aggregate-measurement': 'AxAggregateMeasurement',
+      'license-code': 'AxLicenseCode',
     };
     return prefixMap[objectType] || 'AxClass';
   }
@@ -3953,6 +4116,11 @@ export async function handleCreateD365File(
       map: 'AxMap',
       service: 'AxService',
       'service-group': 'AxServiceGroup',
+      macro: 'AxMacroDictionary',
+      'configuration-key': 'AxConfigurationKey',
+      'security-policy': 'AxSecurityPolicy',
+      'aggregate-measurement': 'AxAggregateMeasurement',
+      'license-code': 'AxLicenseCode',
     };
 
     const objectFolder = objectFolderMap[args.objectType];

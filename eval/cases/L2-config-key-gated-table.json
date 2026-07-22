@@ -1,0 +1,24 @@
+{
+  "id": "L2-config-key-gated-table",
+  "title": "Configuration key gating a table and its menu item",
+  "tier": 2,
+  "instruction": "In the sandbox model, gate a feature area behind a configuration key. Ground it first with get_knowledge(topic=\"configuration-keys\"). Create: (1) a configuration key DemoModuleKey (d365fo_file objectType \"configuration-key\") with a Label and no parent key; (2) a table DemoGatedSetting (label @TaxTransactionInquiry:HeaderNote, table group Main) with fields SettingKey (String, EDT Num, mandatory) and SettingValue (String, EDT Name), a unique alternate-key index GatedSettingIdx on SettingKey, and its ConfigurationKey property set to ConDemoModuleKey; (3) a display menu item DemoGatedSettingMI whose ConfigurationKey property is also ConDemoModuleKey, so the whole chain (key -> table -> navigation) disables together. All three objects must build with zero BP errors. NOTE: disabling the key drops the table from the synchronised schema - the case only asserts the metadata chain, it must not disable the key.",
+  "target_artifact_types": [
+    "AxConfigurationKey",
+    "AxTable",
+    "AxMenuItemDisplay"
+  ],
+  "golden_path": "eval/goldens/L2-config-key-gated-table/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "configuration-key",
+    "table",
+    "menu-item",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

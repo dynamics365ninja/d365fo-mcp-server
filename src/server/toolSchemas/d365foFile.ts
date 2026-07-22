@@ -32,6 +32,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'security-duty-extension', 'security-role-extension',
             'business-event', 'tile', 'kpi', 'map',
             'service', 'service-group',
+            'macro', 'configuration-key', 'security-policy', 'aggregate-measurement', 'license-code',
           ],
           description:
             'Each security/menu-item type maps to its own AOT folder — NEVER use security-privilege for duty or role. ' +

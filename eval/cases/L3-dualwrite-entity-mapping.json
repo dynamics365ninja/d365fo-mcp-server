@@ -1,0 +1,23 @@
+{
+  "id": "L3-dualwrite-entity-mapping",
+  "title": "Dual-write: change-tracked entity with a business key ready for a Dataverse map",
+  "tier": 3,
+  "instruction": "In the sandbox model, prepare an entity for dual-write. Ground it first with get_knowledge(topic=\"dual-write\"). SCOPE LIMIT: the dual-write map itself is authored in the dual-write UI and is NOT an AOT element - out of scope. Create: (1) a table DemoSyncCustomer (label @TaxTransactionInquiry:HeaderNote, table group Main) with fields CustomerCode (String, EDT Num, mandatory) and Name (String, EDT Name), the table's ModifiedDateTime property enabled, and a unique alternate-key index SyncCustomerIdx on CustomerCode; (2) a data entity DemoSyncCustomerEntity over it with EntityCategory=Master, public field names, CustomerCode as the natural business key (a stable alternate key - RecId as the key FAILS this case, because dual-write matches on business keys), IsPublic=Yes and change tracking enabled on the entity so incremental sync works. Both objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxDataEntityView"
+  ],
+  "golden_path": "eval/goldens/L3-dualwrite-entity-mapping/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "dual-write",
+    "dataverse",
+    "data-entity",
+    "integration"
+  ],
+  "split": "holdout"
+}

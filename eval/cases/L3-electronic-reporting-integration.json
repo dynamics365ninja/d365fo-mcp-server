@@ -1,0 +1,22 @@
+{
+  "id": "L3-electronic-reporting-integration",
+  "title": "Electronic Reporting: X++ data-provider class consumed by an ER model mapping",
+  "tier": 3,
+  "instruction": "In the sandbox model, build the X++ half of an Electronic Reporting integration. Ground it first with get_knowledge(topic=\"electronic-reporting\"). SCOPE LIMIT: the ER model, mapping and format are configured in the UI and are NOT AOT elements - they are out of scope and must not be hand-authored. Create a class DemoErDataProvider that ER can bind to as an application data source: a public class with a static construct(), a `public container getInvoiceTotals(Num _documentId)` returning the aggregated values ER will read, and public parm methods for every value the format consumes (no protected state reachable only through internals). Every returned string must come from a label. Document, in the class' DeveloperDocumentation, which ER model-mapping data source binds to it. Confirm any ER framework base class or interface you use with search before writing it - do not guess. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-electronic-reporting-integration/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "electronic-reporting",
+    "er",
+    "integration",
+    "class"
+  ],
+  "split": "holdout"
+}

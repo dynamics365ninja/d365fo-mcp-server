@@ -1,0 +1,22 @@
+{
+  "id": "L2-feature-management-flight",
+  "title": "Feature management: IFeatureMetadata implementation and a feature-gated code path",
+  "tier": 2,
+  "instruction": "In the sandbox model, ship an optional behaviour behind a feature. Ground it first with get_knowledge(topic=\"feature-management\"). Create: (1) a class DemoFastPostingFeature implementing IFeatureMetadata with the singleton `instance()` pattern (private static construct + static instance()), returning labelled name/summary/learn-more values and the correct enabled-by-default and can-disable answers; (2) a class DemoPostingService whose `public static str describe()` branches on `FeatureStateProvider::isFeatureEnabled(DemoFastPostingFeature::instance())` and returns a different labelled string per branch. Confirm the IFeatureMetadata member list with get_object_info/get_method before implementing it - an incomplete interface implementation fails the build. A boolean flag on a parameters table, or a macro flight, FAILS this case: the point is the feature-management contract. Both classes must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-feature-management-flight/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "feature-management",
+    "ifeaturemetadata",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}
