@@ -204,13 +204,27 @@ describe('relative path resolution', () => {
     expect(process.env.DB_PATH).toBe(path.resolve('/instances/alpha', './data/xpp.db'));
   });
 
-  it('does not change PATH_VARS that are already unset', () => {
-    // No env vars set by dotenv mock → nothing to resolve
+  it('anchors unset PATH_VARS to the installation directory, not process.cwd()', () => {
+    // Nothing configures them: the wizard writes neither, since all three are
+    // advanced settings with defaults. They must still come out absolute and
+    // under the installation directory — leaving them unset made every consumer
+    // fall back to './data/…' against process.cwd(), which for an npm install
+    // is the package directory rather than the directory chosen in setup.
     loadEnv(FAKE_CALLER_URL);
 
-    expect(process.env.DB_PATH).toBeUndefined();
-    expect(process.env.LABELS_DB_PATH).toBeUndefined();
-    expect(process.env.METADATA_PATH).toBeUndefined();
+    expect(process.env.DB_PATH).toBe(path.resolve('/repo', './data/xpp-metadata.db'));
+    expect(process.env.LABELS_DB_PATH).toBe(path.resolve('/repo', './data/xpp-metadata-labels.db'));
+    expect(process.env.METADATA_PATH).toBe(path.resolve('/repo', './extracted-metadata'));
+  });
+
+  it('leaves an explicit PATH_VAR alone — the default is the lowest precedence', () => {
+    process.env.DB_PATH = 'K:\\d365fo-mcp\\data\\xpp-metadata.db';
+
+    loadEnv(FAKE_CALLER_URL);
+
+    expect(process.env.DB_PATH).toBe('K:\\d365fo-mcp\\data\\xpp-metadata.db');
+    // The ones nobody set still get the anchored default.
+    expect(process.env.METADATA_PATH).toBe(path.resolve('/repo', './extracted-metadata'));
   });
 });
 

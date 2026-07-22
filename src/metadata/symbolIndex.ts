@@ -1324,6 +1324,44 @@ export class XppSymbolIndex {
    *                   database (a custom-model build: ~10K of ~1.2M symbols, where the full
    *                   rebuild cost 327s against 5s of actual indexing work).
    */
+  /**
+   * Turn a write failure inside a model transaction into an error that names
+   * the database being written and, when the drive is the likely cause, how
+   * much room is left on it.
+   *
+   * A full disk makes SQLite roll the transaction back itself, so better-sqlite3's
+   * wrapper then fails to COMMIT and the only thing the user sees is
+   * "cannot commit - no transaction is active" with a stack inside the library —
+   * no path, no mention of space. That message sent at least one user hunting
+   * for a corrupt index when the index was simply being written to the wrong
+   * (and nearly full) drive.
+   */
+  private describeWriteFailure(err: unknown, model: string): Error {
+    const original = err instanceof Error ? err : new Error(String(err));
+    const message = original.message;
+    const diskRelated = /disk is full|SQLITE_FULL|disk I\/O error|no transaction is active/i.test(message);
+    if (!diskRelated) return original;
+
+    let space = '';
+    try {
+      const stat = fs.statfsSync(path.dirname(path.resolve(this.dbPath)));
+      const freeGb = (Number(stat.bavail) * Number(stat.bsize)) / 1024 ** 3;
+      space = ` (${freeGb.toFixed(1)} GB free there)`;
+    } catch {
+      // statfs is best-effort — the path advice below is the useful part.
+    }
+
+    const wrapped = new Error(
+      `Writing model '${model}' to ${this.dbPath} failed: ${message}\n` +
+      `The index is written to that path${space}. A full disk makes SQLite roll the write back on its own, ` +
+      `which is what surfaces as "cannot commit - no transaction is active".\n` +
+      `Point the installation at a drive with room (a full index needs several GB): ` +
+      `re-run 'd365fo-mcp setup' and choose another directory, or set index.dbPath / index.metadataPath in d365fo-mcp.json.`,
+    );
+    wrapped.cause = original;
+    return wrapped;
+  }
+
   async indexMetadataDirectory(
     metadataPath: string,
     modelNames?: string | string[],
@@ -1521,7 +1559,11 @@ export class XppSymbolIndex {
         // Mark model as done atomically with its data (same transaction)
         markProgress?.run(model, Date.now());
       });
-      tx();
+      try {
+        tx();
+      } catch (err) {
+        throw this.describeWriteFailure(err, model);
+      }
 
       const modelDuration = ((Date.now() - modelStartTime) / 1000).toFixed(1);
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);

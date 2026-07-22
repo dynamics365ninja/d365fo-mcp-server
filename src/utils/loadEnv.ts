@@ -10,6 +10,8 @@
  *      caller picked on purpose)
  *   3. config/d365fo-mcp.json + config/secrets.json
  *   4. the ambient repo-root .env (pre-wizard installations keep working)
+ *   5. the built-in defaults for path settings, resolved against the
+ *      installation directory (see defaultPathEnv)
  *
  * Multiple instances run from one source folder by pointing each at its own
  * config or .env file:
@@ -26,7 +28,7 @@ import dotenv from 'dotenv';
 import { existsSync } from 'fs';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { resolveConfigFiles, toEnvRecord } from '../config/configFile.js';
+import { defaultPathEnv, resolveConfigFiles, toEnvRecord } from '../config/configFile.js';
 
 /** Env vars whose relative paths should resolve from the .env file directory. */
 const PATH_VARS = ['DB_PATH', 'LABELS_DB_PATH', 'METADATA_PATH'] as const;
@@ -115,6 +117,14 @@ export function loadEnv(callerImportMetaUrl: string): void {
   const files = resolveConfigFiles(envDir);
   for (const [key, value] of Object.entries(toEnvRecord(files))) {
     if (!fromRealEnv.has(key) && !pinnedByEnvFile.has(key)) process.env[key] = value;
+  }
+
+  // Lowest precedence of all: the defaults for the path settings nobody writes
+  // out, anchored to the installation directory rather than process.cwd(). See
+  // defaultPathEnv — without this the index of an npm install is built beside
+  // the package instead of in the directory chosen during setup.
+  for (const [key, value] of Object.entries(defaultPathEnv(files.baseDir))) {
+    if (!process.env[key]) process.env[key] = value;
   }
 
   // Bridge the public D365FO_-prefixed setting name to the internal
