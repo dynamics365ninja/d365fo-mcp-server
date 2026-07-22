@@ -106,3 +106,66 @@ describe('isCustomModel — existing signals still hold', () => {
     expect(isCustomModel('WHSCustomExtensions')).toBe(true);
   });
 });
+
+/**
+ * #721: the EXTENSION_PREFIX branch was the one case-SENSITIVE comparison in a file
+ * whose every other comparison — and this function's own docstring — is case-insensitive.
+ * The misclassification is silent: the write guard (modifyD365File), the contextRanker
+ * boost and the property-stats miner all read isCustomModel(), so the user only sees a
+ * server behaving as if their model weren't theirs.
+ */
+describe('isCustomModel — EXTENSION_PREFIX matching (#721)', () => {
+  function onlyPrefix(prefix: string): void {
+    process.env.EXTENSION_PREFIX = prefix;
+    delete process.env.D365FO_MODEL_NAME;
+    delete process.env.CUSTOM_MODELS;
+    clearAutoDetectedModels();
+  }
+
+  it('REGRESSION: lowercase prefix matches a PascalCase model', () => {
+    onlyPrefix('contoso');
+    expect(isCustomModel('ContosoRobotics')).toBe(true);
+  });
+
+  it('REGRESSION: uppercase prefix matches a PascalCase model', () => {
+    onlyPrefix('CONTOSO');
+    expect(isCustomModel('ContosoRobotics')).toBe(true);
+  });
+
+  it('mixed-case prefix matches a differently-cased model', () => {
+    onlyPrefix('WhS');
+    expect(isCustomModel('WHSCustomExtensions')).toBe(true);
+  });
+
+  /**
+   * Decision pinned here: getExtensionPrefix() returns EXTENSION_PREFIX raw (underscore
+   * included) while resolveObjectPrefix() strips it, so "XY_" matches BOTH the literal
+   * underscore form and the bare PascalCase form a model name normally uses.
+   */
+  it('underscore-style prefix matches the literal underscore form', () => {
+    onlyPrefix('XY_');
+    expect(isCustomModel('XY_Robotics')).toBe(true);
+  });
+
+  it('underscore-style prefix also matches the bare form of the model name', () => {
+    onlyPrefix('XY_');
+    expect(isCustomModel('XyRobotics')).toBe(true);
+  });
+
+  it('an all-underscore prefix does not match every model', () => {
+    // Stripping would leave an empty prefix, and ''.startsWith() is true for everything.
+    onlyPrefix('_');
+    expect(isCustomModel('ApplicationSuite')).toBe(false);
+  });
+
+  it('still scoped — an unrelated model stays standard', () => {
+    onlyPrefix('contoso');
+    expect(isCustomModel('ApplicationSuite')).toBe(false);
+  });
+
+  it('an empty/whitespace prefix matches nothing', () => {
+    onlyPrefix('   ');
+    expect(isCustomModel('ApplicationSuite')).toBe(false);
+    expect(isCustomModel('ContosoRobotics')).toBe(false);
+  });
+});

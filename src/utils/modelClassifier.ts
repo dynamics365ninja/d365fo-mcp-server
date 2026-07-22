@@ -389,9 +389,35 @@ export function isCustomModel(modelName: string): boolean {
   const extensionPrefix = getExtensionPrefix();
 
   const isInCustomList = customModels.some(pattern => matchesPattern(pattern, modelName));
-  const hasExtensionPrefix = !!(extensionPrefix && modelName.startsWith(extensionPrefix));
+  const hasExtensionPrefix = matchesExtensionPrefix(extensionPrefix, modelName);
 
   return isInCustomList || hasExtensionPrefix;
+}
+
+/**
+ * Does `modelName` start with the configured EXTENSION_PREFIX?
+ *
+ * Two deliberate normalizations, both aligning this check with the rest of the file:
+ *
+ *  - **Case-insensitive**, like every other comparison here (CUSTOM_MODELS via
+ *    matchesPattern(), D365FO_MODEL_NAME, applyObjectPrefix()'s double-prefix guards).
+ *    EXTENSION_PREFIX=contoso now recognises a model named ContosoRobotics.
+ *
+ *  - **Trailing '_' stripped**, because getExtensionPrefix() returns EXTENSION_PREFIX raw
+ *    while resolveObjectPrefix() strips it. Model names rarely carry the underscore
+ *    (EXTENSION_PREFIX="XY_" names objects XY_CustTable but the MODEL is usually XyRobotics),
+ *    so matching the raw form only would leave those models classified as standard — the
+ *    exact silent failure this guards against. "XY_" therefore matches both XY_Robotics
+ *    and XyRobotics.
+ *
+ * A prefix of only underscores has no bare form; fall back to the raw value rather than
+ * degenerating into an empty prefix that matches every model.
+ */
+function matchesExtensionPrefix(extensionPrefix: string, modelName: string): boolean {
+  const rawPrefix = extensionPrefix.trim().toLowerCase();
+  if (!rawPrefix) return false;
+  const effective = rawPrefix.replace(/_+$/, '') || rawPrefix;
+  return modelName.toLowerCase().startsWith(effective);
 }
 
 /**
