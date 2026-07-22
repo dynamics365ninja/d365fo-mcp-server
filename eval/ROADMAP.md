@@ -14,7 +14,7 @@ overwrite-produced output into its golden — fix first, capture second.
 
 ## Capture the remaining pending goldens (VM)
 
-**6 of 50 cases are still `golden_pending`:**
+**7 of 50 cases are still `golden_pending`:**
 
 - `L2-class-method-ops`, `L2-enum-modify-values`, `L3-numberseq-module-slice`
 - `L3-batch-retryable-basic` — still needs its three SysOperation classes authored.
