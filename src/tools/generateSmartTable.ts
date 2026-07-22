@@ -565,7 +565,9 @@ export async function handleGenerateSmartTable(
   const resolvedPackagePath = argPackagePath || customPackagesRoot || configManager.getPackagePath();
   // getPackagePath() already probes C:\ and K:\ well-known locations before returning null,
   // so reaching here with null means neither location exists on this machine.
-  if (!resolvedPackagePath && process.platform === 'win32') {
+  // preview never writes, so it must not require a write location — demanding one
+  // made "just show me the XML" fail on any machine without a D365FO install.
+  if (!resolvedPackagePath && process.platform === 'win32' && !preview) {
     throw new Error(
       '\u274c Cannot determine PackagesLocalDirectory path.\n\n' +
       'Neither C:\\AosService\\PackagesLocalDirectory nor K:\\AosService\\PackagesLocalDirectory were found.\n\n' +
