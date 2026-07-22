@@ -145,16 +145,31 @@ export async function askAdvanced(store: SettingsStore, sections: SectionId[]): 
     return { value: id, label: `${section.title} (${count})`, hint: section.description };
   });
 
-  const picked = ensure(await multiselect<SectionId>({
-    message: 'Which areas do you want to tune? (space selects, Enter confirms)',
-    options,
-    required: false,
-  }));
+  // A confirm submits the instant `y` is pressed, so the Enter a user habitually
+  // types right after it lands on this prompt and submits an empty selection —
+  // the review they just asked for would silently never happen. Never walk past
+  // an empty pick: confirm it, and pre-select everything on the retry so a
+  // second stray Enter reviews all areas instead of skipping again.
+  let initialValues: SectionId[] = [];
+  for (;;) {
+    const picked = ensure(await multiselect<SectionId>({
+      message: 'Which areas do you want to tune? (space selects, Enter confirms)',
+      options,
+      initialValues,
+      required: false,
+    }));
 
-  for (const id of picked) {
-    const section = SECTIONS.find(s => s.id === id)!;
-    p.log.step(`${section.title} — ${section.description}`);
-    await askSettings(store, settingsInSection(id, 'advanced'));
+    if (picked.length > 0) {
+      for (const id of picked) {
+        const section = SECTIONS.find(s => s.id === id)!;
+        p.log.step(`${section.title} — ${section.description}`);
+        await askSettings(store, settingsInSection(id, 'advanced'));
+      }
+      return;
+    }
+
+    if (await askConfirm('Nothing selected — leave every advanced setting at its default?', true)) return;
+    initialValues = available;
   }
 }
 
