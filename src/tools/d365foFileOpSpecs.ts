@@ -204,6 +204,10 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   },
   // enum values
   enumValueName: { type: 'string', description: 'Enum value name (e.g. "Approved").' },
+  enumValueNewName: {
+    type: 'string',
+    description: 'modify-enum-value: rename the value located by enumValueName to this.',
+  },
   enumValueLabel: { type: 'string', description: 'Label reference (e.g. "@MyModel:Approved").' },
   enumValueHelpText: { type: 'string', description: 'Help-text reference (optional).' },
   enumValueInt: { type: 'number', description: 'Explicit integer value (omitted = next available).' },
@@ -224,6 +228,14 @@ export interface D365FileOpSpec {
   required: string[];
   /** Params the operation understands beyond the required ones. */
   optional: string[];
+  /**
+   * Optional params of which AT LEAST ONE must be supplied for the operation to
+   * mutate anything. Without one of them the op writes nothing, so reporting
+   * success would be a lie (corpus finding #6: `modify-field {fieldName,
+   * mandatory:true}` returned "✅ Field 'Description' modified" while the wrong
+   * key meant nothing was written).
+   */
+  mutationOneOf?: string[];
   /** Op-level guidance that used to live in the published schema. */
   note?: string;
 }
@@ -260,6 +272,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'modify-field': {
     required: ['fieldName'],
     optional: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize'],
+    mutationOneOf: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize'],
   },
   'rename-field': {
     required: ['fieldName', 'fieldNewName'],
@@ -331,7 +344,8 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'modify-enum-value': {
     required: ['enumValueName'],
-    optional: ['enumValueLabel', 'enumValueInt'],
+    optional: ['enumValueNewName', 'enumValueLabel', 'enumValueInt'],
+    mutationOneOf: ['enumValueNewName', 'enumValueLabel', 'enumValueInt'],
   },
   'remove-enum-value': { required: ['enumValueName'], optional: [] },
   'add-menu-item-to-menu': {
@@ -340,6 +354,163 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'modify-property': { required: ['propertyPath', 'propertyValue'], optional: [] },
 };
+
+/**
+ * Params every modify call accepts regardless of operation (routing, file
+ * resolution, project/backup handling). Anything outside this set and outside
+ * the operation's own spec is not consumed by the operation.
+ */
+export const D365FO_FILE_CORE_PARAMS: ReadonlySet<string> = new Set([
+  // routing / dispatch
+  'action', 'params', 'operation', 'objectType', 'objectName',
+  // file + model resolution
+  'filePath', 'workspacePath', 'modelName', 'model', 'packageName', 'packagePath',
+  // side options
+  'createBackup', 'addToProject', 'projectPath', 'solutionPath', 'groundingToken',
+]);
+
+/**
+ * Params an operation ADVERTISES but the write path does not actually serialise.
+ * They must never be accepted in silence — the caller has to learn that the
+ * value did not reach the XML (corpus cluster #35).
+ *
+ * Keep this list empty-by-default: an entry here is a confession, not a design.
+ * Each one is a VM-side (C#) task, tracked with the reason it cannot be honoured
+ * TS-side.
+ */
+export const OP_UNHONOURED_PARAMS: Record<string, Record<string, string>> = {
+  'add-enum-value': {
+    enumValueHelpText:
+      'nothing carries a help text for a new enum value — the dispatcher forwards name/value/label/' +
+      'countryRegionCodes only, and the bridge AddEnumValue has no helpText parameter. ' +
+      'Add the help text on the enum value afterwards in Visual Studio.',
+  },
+  'add-data-source': {
+    linkType:
+      "the bridge's AddDataSource passes linkType no further than its own signature — " +
+      'CreateFormDataSourceRoot() sets Name/Table/JoinSource only, so no <LinkType> element is written. ' +
+      'Set it afterwards on the data source in the form XML (or in Visual Studio) until the bridge is fixed.',
+  },
+};
+
+/** One parameter the caller supplied that the operation will not consume. */
+export interface IgnoredParam {
+  name: string;
+  /**
+   * unknown      — not a parameter of ANY operation (usually a misspelling)
+   * other-op     — a real parameter, but not one this operation reads
+   * not-honoured — accepted by this operation, but never written (see OP_UNHONOURED_PARAMS)
+   */
+  reason: 'unknown' | 'other-op' | 'not-honoured';
+  /** Closest parameter of THIS operation, when the name looks like a near-miss. */
+  suggestion?: string;
+  /** Why the value is dropped (for 'not-honoured'). */
+  detail?: string;
+}
+
+/** Every parameter name known to any operation (plus aliases). */
+function allKnownParamNames(): Set<string> {
+  const names = new Set<string>(Object.keys(D365FO_FILE_PARAM_SPECS));
+  for (const spec of Object.values(D365FO_FILE_OP_SPECS)) {
+    for (const p of [...spec.required, ...spec.optional]) names.add(p);
+  }
+  for (const aliases of Object.values(OP_PARAM_ALIASES)) {
+    for (const a of aliases) names.add(a);
+  }
+  return names;
+}
+
+/** Params this operation reads, including aliases of its required params. */
+function opParamNames(operation: string): string[] {
+  const spec = D365FO_FILE_OP_SPECS[operation];
+  if (!spec) return [];
+  const names = [...spec.required, ...spec.optional];
+  for (const p of spec.required) names.push(...(OP_PARAM_ALIASES[p] ?? []));
+  return names;
+}
+
+/**
+ * Near-miss suggestion for an unrecognised key: `mandatory` → `fieldMandatory`,
+ * `allowDuplicates` → `indexAllowDuplicates`, `alternateKey` → `indexAlternateKey`.
+ * Only suffix/prefix containment is used — no fuzzy distance guessing.
+ */
+function suggestParam(operation: string, key: string): string | undefined {
+  const k = key.toLowerCase();
+  const candidates = opParamNames(operation);
+  return (
+    candidates.find(p => p.toLowerCase() === k) ??
+    candidates.find(p => p.toLowerCase().endsWith(k)) ??
+    candidates.find(p => k.endsWith(p.toLowerCase()))
+  );
+}
+
+/**
+ * Parameters the caller supplied that the operation will NOT consume.
+ *
+ * The wire schema advertises a free-form `params` object and the Zod schema
+ * strips unknown keys, so a misspelled or misplaced parameter used to vanish
+ * without a trace and the op still answered "✅". Everything this returns must
+ * be surfaced to the caller.
+ */
+export function findIgnoredParams(
+  operation: string,
+  providedKeys: readonly string[],
+): IgnoredParam[] {
+  if (!D365FO_FILE_OP_SPECS[operation]) return [];
+  const known = allKnownParamNames();
+  const mine = new Set(opParamNames(operation));
+  const unhonoured = OP_UNHONOURED_PARAMS[operation] ?? {};
+
+  const ignored: IgnoredParam[] = [];
+  for (const key of providedKeys) {
+    if (D365FO_FILE_CORE_PARAMS.has(key)) continue;
+    if (mine.has(key)) {
+      if (unhonoured[key]) ignored.push({ name: key, reason: 'not-honoured', detail: unhonoured[key] });
+      continue;
+    }
+    ignored.push({
+      name: key,
+      reason: known.has(key) ? 'other-op' : 'unknown',
+      suggestion: suggestParam(operation, key),
+    });
+  }
+  return ignored;
+}
+
+/** Human-readable warning block for ignored params (empty string when none). */
+export function renderIgnoredParamsWarning(operation: string, ignored: readonly IgnoredParam[]): string {
+  if (ignored.length === 0) return '';
+  const lines = ignored.map(p => {
+    if (p.reason === 'not-honoured') {
+      return `  ⚠️ ${p.name}: NOT WRITTEN — ${p.detail}`;
+    }
+    const what = p.reason === 'unknown'
+      ? 'not a recognised d365fo_file parameter'
+      : `not read by operation '${operation}'`;
+    const hint = p.suggestion ? ` — did you mean '${p.suggestion}'?` : '';
+    return `  ⚠️ ${p.name}: IGNORED (${what})${hint}`;
+  });
+  return [
+    `⚠️ ${ignored.length} parameter(s) did not reach the written XML:`,
+    ...lines,
+    `The value(s) above were NOT applied. Re-run with the correct parameter name(s).`,
+  ].join('\n');
+}
+
+/**
+ * Reports that an operation was called with none of the params that would make
+ * it mutate anything (see D365FileOpSpec.mutationOneOf). Returns the list of
+ * candidate params, or [] when the call is fine.
+ */
+export function findMissingMutationParams(
+  operation: string,
+  providedKeys: readonly string[],
+): string[] {
+  const oneOf = D365FO_FILE_OP_SPECS[operation]?.mutationOneOf;
+  if (!oneOf || oneOf.length === 0) return [];
+  const provided = new Set(providedKeys);
+  return oneOf.some(p => provided.has(p)) ? [] : [...oneOf];
+}
 
 /** Required params for an operation ([] for unknown ops — matches old paramHints). */
 export function getRequiredParams(operation: string): string[] {

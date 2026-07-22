@@ -40,7 +40,10 @@ import {
 } from './validateFormPattern.js';
 import { validateEdtExtensionChange } from '../utils/edtExtensionValidator.js';
 import { lintXppSelect } from '../utils/xppSelectLint.js';
-import { getRequiredParams, renderOpSpec, OP_PARAM_ALIASES } from './d365foFileOpSpecs.js';
+import {
+  getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
+  findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
+} from './d365foFileOpSpecs.js';
 import { lookupSymbolNocase } from '../utils/symbolLookup.js';
 
 /**
@@ -516,6 +519,197 @@ async function directXmlAddControl(
 }
 
 /**
+ * Normalises a NoYes-shaped flag to a boolean.
+ *
+ * The wire type is boolean, but the value these params end up as in AxTable XML
+ * is `No`/`Yes`, so callers legitimately pass the string spelling (corpus #27:
+ * indexAllowDuplicates="No" was rejected with a bare "expected boolean").
+ * Anything unrecognised returns undefined so the op's own default applies.
+ */
+export function coerceNoYesFlag(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (v === 'yes' || v === 'true' || v === '1') return true;
+    if (v === 'no' || v === 'false' || v === '0') return false;
+  }
+  return undefined;
+}
+
+/**
+ * Direct XML fallback for add-index on a TABLE.
+ *
+ * The C# bridge's AddIndex resolves its target via _provider.Tables.Read(name),
+ * whose DiskProvider metadata roots are fixed at bridge startup. A table CREATED
+ * THIS SESSION is therefore reported "Table '<name>' not found" — even after
+ * update_symbol_index and even when an explicit filePath was supplied (filePath
+ * only steers the TS-side file lookup, never the bridge's own name resolution).
+ * Corpus evidence: 2026-07-21T19__L2-error-handling-infolog (add-index on
+ * ConDemoTicket failed 3×) and 2026-07-21T20__L3-workflow-document-submit.
+ * With no working grounded path the only way to land the index was
+ * d365fo_file(action="create", overwrite=true) — the whole-file escape hatch the
+ * eval loop forbids.
+ *
+ * This writes an <AxTableIndex> element straight into the table's <Indexes>
+ * collection, in the shape the D365FO SDK serialises: <Name>, <AllowDuplicates>,
+ * optional <AlternateKey>, then <Fields> of <AxTableIndexField><DataField>.
+ * <Indexes> is a collection sibling, NOT part of the order-sensitive top-level
+ * property block, so appending to it is safe. Unlike the bridge it edits the file
+ * on disk, so it is unaffected by what the provider loaded at startup — and it
+ * carries allowDuplicates/alternateKey, which the whole-file overwrite workaround
+ * dropped (cluster #35).
+ */
+async function directXmlAddIndex(
+  filePath: string,
+  indexName: string,
+  fields: string[] | undefined,
+  allowDuplicates: boolean | undefined,
+  alternateKey: boolean | undefined,
+): Promise<{ success: boolean; message: string } | null> {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Only tables carry an <Indexes> collection — bail on any other shape so a
+    // mis-typed objectType never corrupts a non-table file.
+    if (!/<AxTable\b/.test(content)) return null;
+
+    // Idempotent: if an index with this name already exists, report success
+    // rather than writing a duplicate (mirrors directXmlAddControl).
+    if (new RegExp(`<AxTableIndex>\\s*<Name>${indexName}</Name>`).test(content)) {
+      return {
+        success: true,
+        message: `✅ Index '${indexName}' already present in ${filePath} — skipped (idempotent).`,
+      };
+    }
+
+    const fieldElements = (fields ?? [])
+      .map(f =>
+        `\t\t\t\t<AxTableIndexField>\n` +
+        `\t\t\t\t\t<DataField>${f}</DataField>\n` +
+        `\t\t\t\t</AxTableIndexField>`)
+      .join('\n');
+    const fieldsBlock = fieldElements
+      ? `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>`
+      : `\t\t\t<Fields />`;
+
+    const newElement =
+      `\t\t<AxTableIndex>\n` +
+      `\t\t\t<Name>${indexName}</Name>\n` +
+      `\t\t\t<AllowDuplicates>${allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n` +
+      (alternateKey ? `\t\t\t<AlternateKey>Yes</AlternateKey>\n` : '') +
+      `${fieldsBlock}\n` +
+      `\t\t</AxTableIndex>`;
+
+    let updated: string;
+    if (content.includes('<Indexes />')) {
+      updated = content.replace('<Indexes />', `<Indexes>\n${newElement}\n\t</Indexes>`);
+    } else if (content.includes('</Indexes>')) {
+      updated = content.replace('</Indexes>', `${newElement}\n\t</Indexes>`);
+    } else {
+      // No <Indexes> collection at all — not a shape we can safely patch.
+      return null;
+    }
+
+    if (updated === content) return null;
+
+    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    console.error(`[modify_d365fo_file] ✅ directXmlAddIndex: added '${indexName}' to ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Index '${indexName}' added via direct XML fallback (bridge could not resolve the same-session table). File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddIndex failed: ${err}`);
+    return null;
+  }
+}
+
+/**
+ * Writes the relation properties the bridge drops into an <AxTableRelation>.
+ *
+ * add-relation documents relationCardinality / relatedTableCardinality /
+ * relationshipType WITH defaults, but neither bridgeClient.addRelation nor the
+ * C# MetadataWriteService.AddRelation carries them: AddRelation only sets Name,
+ * RelatedTable and the constraints. The result was a relation that reports
+ * "✅ Relation 'X' added" and then fails BP with
+ * BPErrorTableRelationshipPropertiesCompleteness naming exactly those three
+ * properties — with no repair path, because modify-property rejects
+ * Relations/<name>/RelationshipType (corpus findings #5 / #35).
+ *
+ * The C# side cannot be fixed or tested without the VM's metadata assemblies, so
+ * the properties are written on disk after the relation lands. Element order is
+ * the one both in-repo generators emit (createD365File.ts / generateTableRelation.ts,
+ * matching the SDK serialiser): Name, Cardinality, RelatedTable,
+ * RelatedTableCardinality, RelationshipType, Constraints. Order matters — AxTable
+ * XML silently drops misordered properties (#13) — so nothing is guessed here:
+ * each element is anchored to the sibling it must follow, and the function is a
+ * no-op if the anchor is absent or the property is already present.
+ */
+export async function directXmlEnsureRelationProperties(
+  filePath: string,
+  relationName: string,
+  cardinality: string,
+  relatedTableCardinality: string,
+  relationshipType: string,
+): Promise<{ applied: string[] } | null> {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Locate the <AxTableRelation> block that carries this <Name>.
+    const relRegex = /<AxTableRelation>[\s\S]*?<\/AxTableRelation>/g;
+    let block: string | undefined;
+    for (const m of content.matchAll(relRegex)) {
+      if (new RegExp(`<Name>${relationName}</Name>`).test(m[0])) { block = m[0]; break; }
+    }
+    if (!block) return null;
+
+    const indent = /\n(\s*)<Name>/.exec(block)?.[1] ?? '\t\t\t';
+    let patched = block;
+    const applied: string[] = [];
+
+    // <Cardinality> goes directly after <Name>.
+    if (!/<Cardinality>/.test(patched)) {
+      patched = patched.replace(
+        new RegExp(`(<Name>${relationName}</Name>)`),
+        `$1\n${indent}<Cardinality>${cardinality}</Cardinality>`,
+      );
+      applied.push(`Cardinality=${cardinality}`);
+    }
+    // <RelatedTableCardinality> and <RelationshipType> go after <RelatedTable>,
+    // in that order.
+    const relatedTableMatch = /<RelatedTable>[^<]*<\/RelatedTable>/.exec(patched);
+    if (relatedTableMatch) {
+      let insertion = '';
+      if (!/<RelatedTableCardinality>/.test(patched)) {
+        insertion += `\n${indent}<RelatedTableCardinality>${relatedTableCardinality}</RelatedTableCardinality>`;
+        applied.push(`RelatedTableCardinality=${relatedTableCardinality}`);
+      }
+      if (!/<RelationshipType>/.test(patched)) {
+        insertion += `\n${indent}<RelationshipType>${relationshipType}</RelationshipType>`;
+        applied.push(`RelationshipType=${relationshipType}`);
+      }
+      if (insertion) {
+        patched = patched.replace(relatedTableMatch[0], `${relatedTableMatch[0]}${insertion}`);
+      }
+    }
+
+    if (applied.length === 0 || patched === block) return { applied: [] };
+
+    const updated = content.replace(block, patched);
+    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    console.error(
+      `[modify_d365fo_file] ✅ directXmlEnsureRelationProperties: ${applied.join(', ')} on '${relationName}' in ${filePath}`,
+    );
+    return { applied };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlEnsureRelationProperties failed: ${err}`);
+    return null;
+  }
+}
+
+/**
  * Heuristic: does a bridge failure message indicate the C# provider could not
  * resolve the target object (vs. a genuine operation error like "index already
  * exists")? An unresolved object is the one failure worth a refresh+retry,
@@ -772,9 +966,17 @@ const ModifyD365FileArgsSchema = z.object({
     fieldName: z.string(),
     direction: z.enum(['Asc', 'Desc']).optional(),
   })).optional().describe('Fields that make up the index. Required for add-index.'),
-  indexAllowDuplicates: z.boolean().optional().describe('Whether index allows duplicates (default: false = unique).'),
-  indexAlternateKey: z.boolean().optional().describe('Whether index is an alternate key.'),
-  indexEnabled: z.boolean().optional().describe('Whether index is enabled (default: true).'),
+  // Accept the XML spelling too: the AxTable element value is No/Yes, so callers
+  // naturally pass "Yes"/"No" and used to get a bare "expected boolean" (#27).
+  indexAllowDuplicates: z.union([z.boolean(), z.string()]).optional().describe(
+    'Whether index allows duplicates (default: false = unique). Accepts true/false or the XML spelling "Yes"/"No".'
+  ),
+  indexAlternateKey: z.union([z.boolean(), z.string()]).optional().describe(
+    'Whether index is an alternate key. Accepts true/false or the XML spelling "Yes"/"No".'
+  ),
+  indexEnabled: z.union([z.boolean(), z.string()]).optional().describe(
+    'Whether index is enabled (default: true). Accepts true/false or the XML spelling "Yes"/"No".'
+  ),
 
   // For add-relation / remove-relation (table, table-extension)
   relationName: z.string().optional().describe('Relation name for add-relation / remove-relation.'),
@@ -866,6 +1068,36 @@ const ModifyD365FileArgsSchema = z.object({
 export async function modifyD365FileTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = ModifyD365FileArgsSchema.parse(request.params.arguments);
+
+    // ── Silent-parameter-drop guard (corpus cluster #35, #6) ─────────────────
+    // The published schema advertises a free-form `params` object and the Zod
+    // schema STRIPS unknown keys, so a misspelled or misplaced parameter used to
+    // disappear without a trace while the op still answered "✅ … modified".
+    // Read the RAW arguments (pre-strip) and account for every key: either the
+    // operation consumes it, or the caller is told it was dropped.
+    const rawArgs = (request.params.arguments ?? {}) as Record<string, unknown>;
+    const providedKeys = Object.keys(rawArgs).filter(k => rawArgs[k] !== undefined);
+    const ignoredParams = findIgnoredParams(String(args.operation), providedKeys);
+    const ignoredParamsWarning = renderIgnoredParamsWarning(String(args.operation), ignoredParams);
+
+    // A call that carries none of the params that would mutate anything must not
+    // report success: `modify-field {fieldName, mandatory:true}` (wrong key —
+    // it is fieldMandatory) wrote nothing and still answered
+    // "✅ Field 'Description' modified via IMetaTableProvider.Update".
+    const missingMutation = findMissingMutationParams(String(args.operation), providedKeys);
+    if (missingMutation.length > 0) {
+      return {
+        content: [{
+          type: 'text',
+          text:
+            `❌ '${args.operation}' was called with no parameter that changes anything — nothing would be written.\n` +
+            `Pass at least one of: ${missingMutation.join(', ')}.\n` +
+            (ignoredParamsWarning ? `\n${ignoredParamsWarning}\n` : '') +
+            `\n${renderOpSpec(String(args.operation))}`,
+        }],
+        isError: true,
+      };
+    }
 
     // Decode XML entities in X++ payloads. An AI that copied entity-encoded code (an
     // SSRS <Text> block, or escaped doc comments like "/// &lt;summary&gt;") sends
@@ -1403,14 +1635,37 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           const indexFieldNames: string[] | undefined = Array.isArray((args as any).indexFields)
             ? (args as any).indexFields.map((f: any) => (typeof f === 'string' ? f : f?.fieldName)).filter(Boolean)
             : undefined;
+          // indexAllowDuplicates / indexAlternateKey are booleans on the wire, but
+          // the AxTable XML value is No/Yes — callers naturally pass the STRING and
+          // used to get a bare "expected boolean" rejection (#27). Accept both.
+          const allowDuplicates = coerceNoYesFlag((args as any).indexAllowDuplicates);
+          const alternateKey = coerceNoYesFlag((args as any).indexAlternateKey);
           bridgeResult = await bridgeAddIndex(
             context.bridge,
             objectName,
             (args as any).indexName,
             indexFieldNames,
-            (args as any).indexAllowDuplicates,
-            (args as any).indexAlternateKey,
+            allowDuplicates,
+            alternateKey,
           );
+          // Fallback: the bridge's AddIndex resolves the table via
+          // _provider.Tables.Read, whose metadata roots are fixed at startup, so a
+          // table CREATED THIS SESSION reports "Table '<name>' not found" — even
+          // after update_symbol_index and even when an explicit filePath was
+          // supplied (see corpus L2-error-handling-infolog / L3-workflow-document-
+          // submit). Rather than push the agent into the forbidden whole-file
+          // overwrite (which also drops allowDuplicates/alternateKey — #35), write
+          // the index straight into the on-disk XML.
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlAddIndex(
+              actualFilePath,
+              (args as any).indexName,
+              indexFieldNames,
+              allowDuplicates,
+              alternateKey,
+            );
+            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+          }
         }
         break;
       }
@@ -1445,6 +1700,30 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             (args as any).relatedTable,
             constraints,
           );
+          // The relation properties add-relation documents (with defaults) are
+          // carried by NEITHER bridgeClient.addRelation NOR the C# AddRelation —
+          // it writes Name/RelatedTable/Constraints only, so the op answered
+          // "✅ Relation 'X' added" and xppbp then raised
+          // BPErrorTableRelationshipPropertiesCompleteness naming exactly the three
+          // dropped properties, with no repair path (modify-property rejects
+          // Relations/<name>/RelationshipType). Findings #5 / #35. The C# fix needs
+          // the VM's metadata assemblies, so write them on disk here — applying the
+          // documented defaults, exactly as the create path does.
+          if (bridgeResult?.success) {
+            const relProps = await directXmlEnsureRelationProperties(
+              actualFilePath,
+              (args as any).relationName,
+              (args as any).relationCardinality ?? 'ZeroMore',
+              (args as any).relatedTableCardinality ?? 'ExactlyOne',
+              (args as any).relationshipType ?? 'Association',
+            );
+            if (relProps && relProps.applied.length > 0) {
+              bridgeResult = {
+                success: true,
+                message: `${bridgeResult.message} (+ ${relProps.applied.join(', ')} written directly to the XML)`,
+              };
+            }
+          }
         }
         break;
       }
@@ -1891,7 +2170,8 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           text:
             `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${xppLintNote}${backupNote}\n\n` +
+            `🔧 API: ${bridgeResult.message}${xppLintNote}${backupNote}` +
+            (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
         },
       ],
