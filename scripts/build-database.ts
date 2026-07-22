@@ -67,6 +67,18 @@ async function buildDatabase() {
   // Create symbol index with separate labels database
   const symbolIndex = new XppSymbolIndex(OUTPUT_DB, OUTPUT_LABELS_DB);
 
+  // The extract phase is the only place that knows which models are non-Microsoft on UDE
+  // (path rule under the custom root; CUSTOM_MODELS is empty there by design). Read the
+  // manifest unconditionally — not just when scoping a `custom` rebuild — so the
+  // property-stats miners never mine our own or an ISV's objects as "standard platform".
+  const extractManifestCustomModels = readExtractedCustomModels(INPUT_PATH);
+  if (extractManifestCustomModels !== undefined) {
+    symbolIndex.setNonMicrosoftModels(extractManifestCustomModels);
+    console.log(kv('Non-MS models', extractManifestCustomModels.length > 0
+      ? c.dim(`${extractManifestCustomModels.length} from extract manifest (excluded from property stats)`)
+      : c.dim('none recorded by extract manifest')));
+  }
+
   // Optimize for bulk loading: use MEMORY journal during build
   log.step('Setting bulk load optimizations (MEMORY journal)...');
   // Close read-pool connections first: SQLite cannot grant locking_mode = EXCLUSIVE
@@ -107,8 +119,8 @@ async function buildDatabase() {
 
     // When CUSTOM_MODELS is empty, bridge the classification from extract-metadata's manifest.
     // `undefined` = no manifest (legacy/blob-download flow); an array (even empty) = the extract
-    // run's authoritative custom set. Read once so we can tell those two apart.
-    const manifestCustomModels = CUSTOM_MODELS.length > 0 ? undefined : readExtractedCustomModels(INPUT_PATH);
+    // run's authoritative custom set. Read above so we can tell those two apart.
+    const manifestCustomModels = CUSTOM_MODELS.length > 0 ? undefined : extractManifestCustomModels;
 
     if (CUSTOM_MODELS.length > 0) {
       // Expand patterns (e.g., "My*" → ["MyModel", "MyFinanceCore", ...])
