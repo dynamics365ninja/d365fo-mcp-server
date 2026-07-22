@@ -15,6 +15,7 @@ import type { BridgeClient } from './bridgeClient.js';
 import * as debouncedRefresh from './debouncedRefresh.js';
 import { debugLog } from '../utils/logger.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
+import { rankExactFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
 import type {
   BridgeTableInfo,
   BridgeClassInfo,
@@ -672,23 +673,58 @@ function formatLabelReferences(references: BridgeReferenceInfo[], label: string,
 
 // SEARCH
 
+export interface BridgeSearchOptions {
+  /**
+   * Exact-name hits the caller already resolved from the SQLite index with an
+   * index-safe probe. Used to repair defect #15: the bridge fills its result
+   * window in provider-enumeration order and truncates at maxResults, so an
+   * exact match can be missing entirely. Any candidate absent from the bridge
+   * window is spliced in and ranked first.
+   */
+  exactMatches?: Array<{ name: string; type: string }>;
+}
+
 export async function tryBridgeSearch(
   bridge: BridgeClient | undefined,
   query: string,
   objectType?: string,
   maxResults = 50,
+  opts?: BridgeSearchOptions,
 ): Promise<ToolResult | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     const sr = await bridge.searchObjects(query, objectType, maxResults);
-    if (!sr || sr.results.length === 0) return null;
+    if (!sr) return null;
+
+    // Splice in exact matches the bridge's truncated window missed (#15).
+    const bridgeHits = sr.results ?? [];
+    const known = new Set(bridgeHits.map(r => `${r.name.toLowerCase()} ${r.type}`));
+    const spliced: Array<{ name: string; type: string; fromIndex?: boolean }> = [];
+    for (const cand of opts?.exactMatches ?? []) {
+      if (!isExactNameMatch(query, cand.name)) continue;
+      if (known.has(`${cand.name.toLowerCase()} ${cand.type}`)) continue;
+      known.add(`${cand.name.toLowerCase()} ${cand.type}`);
+      spliced.push({ ...cand, fromIndex: true });
+    }
+
+    const merged = [...spliced, ...bridgeHits];
+    if (merged.length === 0) return null;
+
+    // Exact name matches first — the bridge itself returns provider order (#15).
+    const ranked = rankExactFirst(query, merged, r => r.name).slice(0, Math.max(maxResults, spliced.length));
 
     let out = `# Search: "${query}"${objectType ? ` (type: ${objectType})` : ''}\n\n`;
-    out += `**Results:** ${sr.results.length}\n`;
+    out += `**Results:** ${ranked.length}\n`;
     out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
 
-    for (const r of sr.results.slice(0, maxResults)) {
-      out += `- **${r.name}** (${r.type})\n`;
+    for (const r of ranked) {
+      const exact = isExactNameMatch(query, r.name) ? ' ⭐ exact match' : '';
+      out += `- **${r.name}** (${r.type})${exact}\n`;
+    }
+
+    if (spliced.length > 0) {
+      out += `\n_${spliced.length} exact match(es) came from the SQLite symbol index — ` +
+        `the bridge's result window (maxResults=${maxResults}) did not contain them._\n`;
     }
 
     return { content: [{ type: 'text', text: out }] };

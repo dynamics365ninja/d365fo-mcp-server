@@ -12,6 +12,12 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { getConfigManager } from '../utils/configManager.js';
+import {
+  formatLabelReference,
+  isLabelLikelyResolvable,
+  labelProvenanceWarning,
+} from '../utils/labelReference.js';
 
 const SearchLabelsArgsSchema = z.object({
   query: z
@@ -34,6 +40,16 @@ const SearchLabelsArgsSchema = z.object({
     .describe('Restrict results to a specific label file ID (e.g. ContosoExt, SYS)'),
   limit: z.number().optional().default(30).describe('Maximum number of results (default 30)'),
 });
+
+/** Best-effort current model: explicit arg → configured model → env. Never throws. */
+function resolveCurrentModel(explicit?: string): string | undefined {
+  if (explicit) return explicit;
+  try {
+    const configured = getConfigManager().getModelName();
+    if (configured) return configured;
+  } catch { /* config not loaded — fall through */ }
+  return process.env.D365FO_MODEL_NAME || undefined;
+}
 
 export async function searchLabelsTool(request: CallToolRequest, context: XppServerContext) {
   try {
@@ -75,19 +91,36 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
       '',
     ];
 
-    for (const raw of results) {
-      const r = normalise(raw);
-      // X++ label reference syntax
-      const ref = `@${r.labelFileId}:${r.labelId}`;
-      lines.push(`  ${ref}`);
+    const currentModel = resolveCurrentModel(args.model);
+
+    const normalised = results.map(normalise);
+
+    for (const r of normalised) {
+      // X++ label reference syntax — never double-prefix an id that already
+      // carries its label file id (#33/#41: `@SYS:@SYS67433` is rejected by xppbp).
+      const ref = formatLabelReference(r.labelFileId, r.labelId);
+      const resolvable = isLabelLikelyResolvable(r.labelFileId, r.model, currentModel);
+      lines.push(`  ${ref}${resolvable ? '' : `   ${labelProvenanceWarning(r.model)}`}`);
       lines.push(`  Text    : ${r.text}`);
       if (r.comment) lines.push(`  Comment : ${r.comment}`);
       lines.push(`  Model   : ${r.model}  |  LabelFile: ${r.labelFileId}`);
       lines.push('');
     }
 
-    lines.push(`💡 Use the label reference syntax in X++:  literalStr("@${(normalise(results[0])).labelFileId}:${(normalise(results[0])).labelId}")`);
-    lines.push(`💡 Or in metadata XML:  <Label>@${(normalise(results[0])).labelFileId}:${(normalise(results[0])).labelId}</Label>`);
+    // Only ever *recommend* a label the model can actually resolve — suggesting an
+    // unreferenced one is what produced BPErrorUnknownLabel in the sweep (#33/#41).
+    const recommended = normalised.find(r => isLabelLikelyResolvable(r.labelFileId, r.model, currentModel));
+    if (recommended) {
+      const ref = formatLabelReference(recommended.labelFileId, recommended.labelId);
+      lines.push(`💡 Use the label reference syntax in X++:  literalStr("${ref}")`);
+      lines.push(`💡 Or in metadata XML:  <Label>${ref}</Label>`);
+    } else {
+      lines.push(
+        `⚠️ None of these labels is in a core label file (SYS/…) or in your own model, so none is ` +
+        `recommended as-is: referencing one raises BPErrorUnknownLabel unless your model references ` +
+        `its package. Create your own with labels(action="create") instead.`,
+      );
+    }
 
     return {
       content: [{ type: 'text', text: lines.join('\n') }],
