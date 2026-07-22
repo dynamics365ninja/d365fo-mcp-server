@@ -34,6 +34,12 @@ export class XppSymbolIndex {
   // Buffer for property_stats observations — flushed once per model (batch INSERT)
   // Key: "nodeType|property|value|model", Value: accumulated count
   private propStatBuffer: Map<string, number> = new Map();
+  // Per-run "not authored by Microsoft" set (lowercased), supplied by the caller —
+  // see setNonMicrosoftModels(). null = caller said nothing, fall back to isStandardModel().
+  private nonMicrosoftModels: Set<string> | null = null;
+  // isStandardModel() re-parses env on every call and the miners run per node; the
+  // answer is constant per model within a run. Cleared by setNonMicrosoftModels().
+  private mineableModelCache: Map<string, boolean> = new Map();
 
   // Read-only connection pool: WAL mode allows N readers + 1 writer without
   // blocking each other. Pool size: READ_POOL_SIZE env var (default 3, clamped 1-8).
@@ -1991,7 +1997,12 @@ export class XppSymbolIndex {
               node.patternVersion ?? null,
               JSON.stringify(node.childSequence ?? []),
             );
-            if (node.nodePath === 'Design') {
+            // form_patterns rows above are per-model FACTS and are stored for every model;
+            // property_stats is a corpus of "what the standard platform does", so the same
+            // gate as recordTablePropertyStats() applies here. Without it our own forms and
+            // ISV forms skew the mined pattern distribution that generateSmartForm's
+            // defaultFormPattern() picks from — on every environment, not just UDE.
+            if (node.nodePath === 'Design' && this.isMineableModel(model)) {
               this.recordPropertyStat('AxFormDesign', 'Pattern', node.pattern, model);
               this.recordPropertyStat(
                 'AxFormDesign',
@@ -2629,12 +2640,45 @@ export class XppSymbolIndex {
   }
 
   /**
+   * Tell the index which models this run knows to be non-Microsoft, overriding the
+   * name-based `isStandardModel()` heuristic for the property-stats miners.
+   *
+   * `isStandardModel()` reads CUSTOM_MODELS/EXTENSION_PREFIX from the environment, and
+   * `build-database` runs as a separate process where CUSTOM_MODELS is deliberately empty
+   * on UDE (custom models are path-auto-detected during extract — see
+   * src/utils/extractManifest.ts). Without this, our own model and every third-party ISV
+   * model under the custom root are mined as if Microsoft had authored them, and the
+   * mined defaults that `prepare`/`generate_object`/`validate_code` present as platform
+   * convention are really our own past habits fed back to us.
+   *
+   * The list is additive: a model here is never mined, and models not listed still go
+   * through `isStandardModel()`. Pass an empty array to assert "the caller checked and
+   * found none" — that is different from never calling this at all.
+   */
+  setNonMicrosoftModels(models: string[]): void {
+    this.nonMicrosoftModels = new Set(models.map(m => m.toLowerCase()));
+    this.mineableModelCache.clear();
+  }
+
+  /**
+   * Single gate for every property-stats miner: may this model's metadata be mined as
+   * evidence of "what the standard Microsoft platform does"?
+   */
+  private isMineableModel(model: string): boolean {
+    const cached = this.mineableModelCache.get(model);
+    if (cached !== undefined) return cached;
+    const mineable = !this.nonMicrosoftModels?.has(model.toLowerCase()) && isStandardModel(model);
+    this.mineableModelCache.set(model, mineable);
+    return mineable;
+  }
+
+  /**
    * Mine property statistics from one parsed table JSON. Only standard
    * (Microsoft) models are mined — the stats answer "what does the standard
    * platform do", not "what did our customizations do".
    */
   private recordTablePropertyStats(tableData: any, model: string): void {
-    if (!isStandardModel(model)) return;
+    if (!this.isMineableModel(model)) return;
     const presence = (v: unknown) => (v ? '(present)' : '(absent)');
     try {
       // xmlParser defaults label to the table name — same value means no real label
