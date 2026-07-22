@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoWfSubmitManager</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Submits a <c>ConDemoWfRequest</c> record to the workflow.
+/// </summary>
+public class ConDemoWfSubmitManager
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Submits the record supplied by the caller to the workflow.
+    /// </summary>
+    /// <param name = "_args">The arguments of the calling menu item.</param>
+    public static void main(Args _args)
+    {
+        ConDemoWfRequest request = _args.record() as ConDemoWfRequest;
+        ConDemoWfRequest requestUpdate;
+
+        if (!request.canSubmitToWorkflow())
+        {
+            throw error("@TaxTransactionInquiry:HeaderNote");
+        }
+
+        ttsbegin;
+
+        Workflow::activateFromWorkflowType('ConDemoWfRequestType', request.RecId, '', NoYes::No);
+
+        select firstonly forupdate requestUpdate
+        where requestUpdate.RecId == request.RecId;
+
+        if (requestUpdate)
+        {
+            requestUpdate.SubmittedToWorkflow = NoYes::Yes;
+            requestUpdate.update();
+        }
+
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

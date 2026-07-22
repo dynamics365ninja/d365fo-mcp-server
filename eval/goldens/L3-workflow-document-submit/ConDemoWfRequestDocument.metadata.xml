@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoWfRequestDocument</Name>
+	<Extends>WorkflowDocument</Extends>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Workflow document for the <c>ConDemoWfRequest</c> table.
+/// </summary>
+public class ConDemoWfRequestDocument extends WorkflowDocument
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getQueryName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the name of the query that supplies the workflow condition fields.
+    /// </summary>
+    /// <returns>The name of the query in the AOT.</returns>
+    public queryName getQueryName()
+    {
+        return queryStr(ConDemoWfRequestQuery);
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>getQueryRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns a <c>QueryRun</c> restricted to the record of the supplied workflow context.
+    /// </summary>
+    /// <param name = "_context">The workflow context of the running workflow instance.</param>
+    /// <returns>A <c>QueryRun</c> object.</returns>
+    public QueryRun getQueryRun(WorkflowContext _context)
+    {
+        Query    query = new Query(queryStr(ConDemoWfRequestQuery));
+        QueryRun queryRun = new QueryRun(query);
+
+        queryRun.query().dataSourceTable(tableNum(ConDemoWfRequest)).addRange(fieldNum(ConDemoWfRequest, RecId)).value(SysQuery::value(_context.parmRecId()));
+
+        return queryRun;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

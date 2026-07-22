@@ -1,0 +1,25 @@
+{
+  "id": "L2-performance-set-based",
+  "title": "Performance: set-based insert_recordset / RecordInsertList / delete_from instead of row-by-row",
+  "tier": 2,
+  "instruction": "In the sandbox model, prove the set-based performance contract against the existing ConDemoNoteHeader table (fields NoteId: EDT Num, Subject: EDT Name). Create: (1) a table DemoNoteArchive (label @TaxTransactionInquiry:HeaderNote, table group Main) with fields NoteId (String, EDT Num, mandatory), Subject (String, EDT Name) and ArchivedDateTime (UtcDateTime), plus a unique alternate-key index NoteArchiveIdx on NoteId; (2) a class DemoNoteArchiver with exactly four public static methods, each of which must use the set-based / index-covered form: (a) `public static void archiveAll()` -- copies every ConDemoNoteHeader row into ConDemoNoteArchive with ONE `insert_recordset archive (NoteId, Subject) select NoteId, Subject from header;` statement; a `while select` loop calling archive.insert() per row FAILS this case even though it compiles. (b) `public static void archiveMany(container _noteIds)` -- the buffers are built in X++ (one per element of _noteIds) so insert_recordset does not apply; insert them with RecordInsertList instead: construct `new RecordInsertList(tableNum(ConDemoNoteArchive))`, call .add(archive) per row, and exactly ONE .insertDatabase() after the loop; no per-row .insert(). (c) `public static boolean isArchived(Num _noteId)` -- a single-record existence probe `select firstonly RecId from archive where archive.NoteId == _noteId;` returning `archive.RecId != 0`: firstonly plus the indexed field plus a minimal field list, never a full-buffer scan. (d) `public static void purgeBefore(utcdatetime _cutOff)` -- ONE set-based `delete_from archive where archive.ArchivedDateTime < _cutOff;`; the cut-off arrives as a parameter, and no function call (e.g. DateTimeUtil::utcNow()) may appear inside the where clause. There must be no nested `while select` anywhere in the class (BPCheckNestedLoopinCode). Ground the pattern with get_knowledge(topic=\"set-based\") and get_knowledge(topic=\"performance\"). Both objects must build with zero BP errors, and with no BP warnings other than BPErrorTableMissingFormRef -- that one is unavoidable here because no form or display menu item is in scope for this case. To keep the rest of the BP surface clean the archive table needs DeveloperDocumentation, CacheLookup, an AutoReport/AutoLookup/AutoIdentification field-group membership for every field, AllowEdit=No on the NoteId key field (BPErrorTablePrimaryKeyEditable), and an EDT-typed ArchivedDateTime (TransDateTime) rather than a bare UtcDateTime base type (BPErrorTableFieldNotDefinedUsingType/BPErrorLabelNotDefined). NOTE ON SCORING: this case asserts a STRUCTURAL performance property, not a measured runtime -- the golden X++ source must contain insert_recordset, RecordInsertList + insertDatabase, firstonly and delete_from, and must not contain a row-by-row insert loop. A wall-clock measurement is deliberately not part of the oracle because it is not reproducible across VM load.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-performance-set-based/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "performance",
+    "set-based",
+    "insert-recordset",
+    "recordinsertlist",
+    "class",
+    "table"
+  ],
+  "split": "holdout"
+}

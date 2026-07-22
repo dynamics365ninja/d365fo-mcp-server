@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoActiveView</Name>
+	<Label>@SCM:Code</Label>
+	<Query>ConDemoActiveViewQuery</Query>
+	<Fields>
+		<AxViewField xmlns=""
+			i:type="AxViewFieldBound">
+			<Name>Code</Name>
+			<DataField>Code</DataField>
+			<DataSource>ConDemoViewSrc</DataSource>
+		</AxViewField>
+		<AxViewField xmlns=""
+			i:type="AxViewFieldBound">
+			<Name>Descr</Name>
+			<DataField>Descr</DataField>
+			<DataSource>ConDemoViewSrc</DataSource>
+		</AxViewField>
+	</Fields>
+	<Mappings />
+	<ViewMetadata />
+</AxView>

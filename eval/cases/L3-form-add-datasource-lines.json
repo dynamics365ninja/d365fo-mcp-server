@@ -9,7 +9,7 @@
     "AxForm"
   ],
   "golden_path": "eval/goldens/L3-form-add-datasource-lines/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

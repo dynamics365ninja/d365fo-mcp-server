@@ -1,0 +1,52 @@
+{
+  "run_id": "2026-07-21T20__L4-master-security-slice__c262b19",
+  "case_id": "L4-master-security-slice",
+  "tier": 4,
+  "timestamp": "2026-07-21T20:42:55.786Z",
+  "server_git_sha": "c262b19",
+  "generated_artifacts": [
+    "ConDemoAsset.metadata.xml",
+    "ConDemoAssetDetails.metadata.xml",
+    "ConDemoAssetDetailsMI.metadata.xml",
+    "ConDemoAssetDuty.metadata.xml",
+    "ConDemoAssetMaintain.metadata.xml",
+    "ConDemoAssetManager.metadata.xml",
+    "ConDemoAssetMenu.metadata.xml",
+    "ConDemoAssetView.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Artifacts are green (full xppc build clean, xppbp clean for all 8 objects, golden captured), but NONE of the composite could be produced by the grounded tool path. Six distinct defects: (1) every bridge-backed d365fo_file(action=modify) op (modify-field, add-field-group, add-index, add-control) fails with 'could not resolve <object>' for objects created in the same session, even after update_symbol_index and even with an explicit filePath - only the direct-XML-fallback ops (modify-property, add-menu-item-to-menu) work, so the case's prescribed 'complete controls via add-control' and 'wire menu via add-menu-item-to-menu' path is half-dead; (2) add-menu-item-to-menu's XML fallback emits <AxMenuFunctionItem>, a shape used by 0 of 73 standard AxMenu files (correct: <AxMenuElement i:type=\"AxMenuElementMenuItem\">); (3) d365fo_file(create, security-duty/security-role) emits AxSecurityRolePermissionSet / AxSecurityRoleDutyPermission instead of AxSecurityPrivilegeReference / AxSecurityDutyReference - xppbp proves the chain does NOT resolve (BPErrorDutyHasNoPrivileges, BPErrorPrivilegeNotCoveredByDuty, BPErrorDutyNotCoveredByRole). The already-committed L4-entity-security golden enshrines this broken shape and should be re-captured; (4) generate_object(scaffold, form) emits a group control with <DataGroup> but no sibling <DataSource>, which fails metadata validation ('Field group X does not exist'), and binds the DetailsMaster TitleField control to the alphabetically-first field instead of the table's TitleField1 (String control over a Date field); (5) generate_object(scaffold, table) ignores fields[], requires fieldsHint, mines String255 for a Num field, sets PrimaryIndex on an editable key, and refuses to run once the table exists - while create(objectType=table) cannot express indexes/field groups, so the two tools deadlock each other; (6) the labels tool advertises '<Label>@SYS:@SYS12345</Label>' for legacy SYS labels, which xppbp rejects with BPErrorLabelIsText (correct form: @SYS12345), and it happily suggests labels from label files that are not deployed (@EnterpriseAssetManagementAppSuite:* -> 'Unknown label').",
+  "suggested_fix_area": "src/bridge (same-session object resolution for modify ops; make add-control/add-field-group/add-index/modify-field fall back to direct XML like modify-property does), XmlTemplateGenerator security duty/role + menu element shapes, form scaffold (DataGroup->DataSource pairing, TitleField binding from TitleField1), table scaffold/create convergence, labels tool metadata-syntax hint for legacy SYS labels + deployed-label-file filter."
+}

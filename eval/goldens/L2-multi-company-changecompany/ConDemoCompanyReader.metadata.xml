@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCompanyReader</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Provides con demo company reader functionality.
+/// </summary>
+public class ConDemoCompanyReader
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>subjectInCompany</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Reads the subject of a note from another legal entity.
+    /// </summary>
+    /// <param name = "_dataAreaId">The legal entity to read from.</param>
+    /// <param name = "_noteId">The note identifier.</param>
+    /// <returns>The subject of the note in the requested legal entity.</returns>
+    public static Name subjectInCompany(DataAreaId _dataAreaId, Num _noteId)
+    {
+        ConDemoNoteHeader header;
+
+        changeCompany(_dataAreaId)
+        {
+            select firstonly Subject from header
+            where header.NoteId == _noteId;
+        }
+
+        return header.Subject;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>subjectsAcrossCompanies</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Reads the subject of a note from every supplied legal entity in one query.
+    /// </summary>
+    /// <param name = "_companies">A container of legal entity identifiers.</param>
+    /// <param name = "_noteId">The note identifier.</param>
+    /// <returns>A container with one formatted entry per legal entity that holds the note.</returns>
+    public static container subjectsAcrossCompanies(container _companies, Num _noteId)
+    {
+        ConDemoNoteHeader header;
+        container result;
+
+        while select crosscompany : _companies DataAreaId, NoteId, Subject from header
+        where header.NoteId == _noteId
+        {
+            result += [strFmt('%1 | %2', header.DataAreaId, header.Subject)];
+        }
+
+        return result;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>currentCompany</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the legal entity of the current session.
+    /// </summary>
+    /// <returns>The identifier of the current legal entity.</returns>
+    public static DataAreaId currentCompany()
+    {
+        return curExt();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

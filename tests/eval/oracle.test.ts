@@ -65,6 +65,18 @@ describe('normalizeAotXml', () => {
     expect(map.get('AxEnum/EnumValues/AxEnumValue[Archived]/Label')).toBe('Archived');
   });
 
+  // Regression (docs/eval-sweep-findings-2026-07-21.md #1, found by the
+  // L2-enum-extension-empty-values run): a genuinely missing actual artifact is fed in as
+  // an EMPTY string by buildActualArtifactsMap (`actualArtifacts[name] = ''`). xml2js parses
+  // '' to `null`, so the old `Object.entries(parsed)` threw
+  // `TypeError: Cannot convert undefined or null to object` and aborted the ENTIRE score run
+  // — the loudest failure mode reported nothing. An empty document must degrade to an empty
+  // map (every path then diffs as `missing`), never throw.
+  it('an empty / whitespace-only document normalises to an empty map instead of throwing', async () => {
+    expect((await normalizeAotXml('')).size).toBe(0);
+    expect((await normalizeAotXml('   \n\t ')).size).toBe(0);
+  });
+
   it('captures the i:type attribute as @type (field base type)', async () => {
     const xml = `<AxTableExtension xmlns:i="http://x"><Fields>
       <AxTableField i:type="AxTableFieldInt"><Name>NotePriority</Name>
@@ -219,6 +231,26 @@ describe('normalizeMultiArtifact', () => {
     const diff = diffNormalized(golden, actual);
     expect(diff.matched).toBe(false);
     expect(diff.missing.every(p => p.startsWith('ContosoMyController.metadata.xml::'))).toBe(true);
+  });
+
+  // Regression (docs/eval-sweep-findings-2026-07-21.md #1): the previous "all-missing" test
+  // above OMITS the missing artifact from the actual map, but the real buildActualArtifactsMap
+  // passes it through with EMPTY-STRING content (`actualArtifacts[name] = ''`). That empty
+  // string used to crash normalizeAotXml. Feed the shape production actually produces and prove
+  // it degrades to all-missing rather than throwing.
+  it('a missing artifact supplied as empty-string content (buildActualArtifactsMap shape) diffs as all-missing, not a crash', async () => {
+    const golden = await normalizeMultiArtifact({
+      'ContosoMyContract.metadata.xml': CONTRACT,
+      'ContosoMyController.metadata.xml': CONTROLLER,
+    });
+    const actual = await normalizeMultiArtifact({
+      'ContosoMyContract.metadata.xml': CONTRACT,
+      'ContosoMyController.metadata.xml': '', // genuinely-missing artifact, as keyed by buildActualArtifactsMap
+    });
+    const diff = diffNormalized(golden, actual);
+    expect(diff.matched).toBe(false);
+    expect(diff.missing.every(p => p.startsWith('ContosoMyController.metadata.xml::'))).toBe(true);
+    expect(diff.extra).toEqual([]);
   });
 
   it('an unexpected extra artifact diffs as all-extra under its prefix', async () => {

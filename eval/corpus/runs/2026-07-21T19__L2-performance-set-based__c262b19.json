@@ -1,0 +1,37 @@
+{
+  "run_id": "2026-07-21T19__L2-performance-set-based__c262b19",
+  "case_id": "L2-performance-set-based",
+  "tier": 2,
+  "timestamp": "2026-07-21T19:44:04.217Z",
+  "server_git_sha": "c262b19",
+  "generated_artifacts": [
+    "ConDemoNoteArchive.metadata.xml",
+    "ConDemoNoteArchiver.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "KNOWLEDGE_GAP"
+}

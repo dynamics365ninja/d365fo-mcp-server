@@ -1,0 +1,48 @@
+{
+  "run_id": "2026-07-21T19__L2-error-handling-infolog__c262b19",
+  "case_id": "L2-error-handling-infolog",
+  "tier": 2,
+  "timestamp": "2026-07-21T19:30:58.801Z",
+  "server_git_sha": "c262b19",
+  "generated_artifacts": [
+    "ConDemoTicket.metadata.xml",
+    "ConDemoTicketPoster.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "message": "AxTable ConDemoTicket: No form ref is specified"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "Case PASSES build (0 errors) and golden capture; both scored X++ discriminators are present (validateWrite routes through checkFailed and returns the accumulated boolean; post() has exactly two typed catches Exception::DuplicateKeyException then Exception::Error with exceptionTextFallThrough() and no bare catch; postAndCollect() snapshots infolog.infologData() before the call and returns conDel(infolog.infologData(),1,conLen(before))). bp_clean=0 is inherent to the case spec, not a defect: the only residual warning is BPErrorTableMissingFormRef, unreachable because the case deliberately creates no form/display menu item. Four live tool defects were hit on the way. (1) validate_code(mode='references') reports the KERNEL enum Exception as unknown-static-member: 'Exception::Error' and 'Exception::DuplicateKeyException' both fail with \"Static method not found on Exception\" even in a minimal probe; Exception is a compiler/kernel enum with no AOT AxEnum, so every correct X++ try/catch in the product fails the static gate. Under GROUNDING_ENFORCE this would block the write outright. (2) get_object_info(objectType='edt', ...) is broken wholesale on this VM: 'Num', 'Notes' and even 'CustAccount' all return \"Bridge returned no data\", while the same EDTs resolve fine through validate_code(references) and appear in search — the tool tells the agent to invent/replace a perfectly valid standard EDT. (3) search(type='edt', query='Num') never surfaces the EXACT match 'Num' even at limit=40 (only NumberOf*/Numeric* prefix hits) — exact-name hits are not ranked first. (4) d365fo_file(action='modify') cannot touch an object created in the same session: add-index on ConDemoTicket failed three times with \"Bridge operation could not resolve table 'ConDemoTicket'\" even after update_symbol_index(filePath) succeeded and after a bare bridge refresh (which itself reported 'Bridge provider not available (skipped)'), forcing the documented whole-file overwrite fallback. (5) NEW and most damaging for goldens: AxTable XML is element-ORDER-sensitive and out-of-order top-level properties are SILENTLY DROPPED by the metadata deserializer, while validate_code(mode='syntax', codeType='xml-table') reported '✅ no violations' on the misordered document. Concretely, writing CacheLookup/DeveloperDocumentation BEFORE Label and ReplacementKey after PrimaryIndex made xppbp report BPErrorTableTitleField1NotDeclared + BPErrorLabelNotDefined + BPErrorDeveloperDocumentationNotDefined for properties that ARE physically present in the file. The required order is the mandatory block (ConfigurationKey, DeveloperDocumentation, FormRef, Label, TableGroup, TitleField1, TitleField2) followed by the alphabetical extended block (CacheLookup, ClusteredIndex, PrimaryIndex, ReplacementKey, ...). Also note there is no table-level <AlternateKey> property (it is index-level only) and the XML validator did not flag that either.",
+  "suggested_fix_area": "(a) resolve-references: special-case the kernel enum Exception (and other compiler-intrinsic enums) so Exception::<Value> resolves instead of being reported as a missing static member — highest priority, it fails the static gate on idiomatic X++. (b) bridge EDT reader in get_object_info: EDT lookups return no data for standard EDTs (CustAccount/Num/Notes) — fall back to the symbol index when the bridge yields nothing, as validate_code already does. (c) search ranking: promote an exact case-insensitive name match to rank 1. (d) d365fo_file(action=modify): when the bridge cannot resolve a session-created object, fall back to the XML-file path handler already used for create/overwrite instead of erroring; filePath was supplied and ignored. (e) validate_code(codeType='xml-table'): add a top-level element-ORDER rule for AxTable (mandatory block then alphabetical extended block) and reject unknown/misplaced table-level properties such as <AlternateKey>, since misordering silently voids properties and corrupts any captured golden.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxTable/ConDemoTicket.xml",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxClass/ConDemoTicketPoster.xml",
+    "K:/repos/d365fo-mcp-server/eval/goldens/L2-error-handling-infolog/ConDemoTicket.metadata.xml",
+    "K:/repos/d365fo-mcp-server/eval/goldens/L2-error-handling-infolog/ConDemoTicketPoster.metadata.xml"
+  ]
+}

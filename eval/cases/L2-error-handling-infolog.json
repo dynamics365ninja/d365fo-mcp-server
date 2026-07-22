@@ -1,0 +1,26 @@
+{
+  "id": "L2-error-handling-infolog",
+  "title": "Error handling: checkFailed validation + typed catches with exceptionTextFallThrough + infolog capture",
+  "tier": 2,
+  "instruction": "In the sandbox model, prove the D365FO exception/infolog contract. Create: (1) a table DemoTicket (label @TaxTransactionInquiry:HeaderNote, table group Main) with fields TicketId (String, EDT Num, mandatory) and TicketNote (String, EDT Notes), a unique alternate-key index TicketIdx on TicketId, and a validateWrite() override that assigns `boolean ret = super();` and then, when TicketNote is blank, does `ret = checkFailed(\"@TaxTransactionInquiry:HeaderNote\");` before `return ret;` -- checkFailed() posts the error to the infolog AND returns false, so the override must return the accumulated boolean; it must NOT call error() and then return true, and it must NOT use a raw string literal (BPErrorLabelIsText). (2) a class DemoTicketPoster with exactly two public static methods: (a) `public static boolean post(Num _ticketId, Notes _ticketNote)` which declares a ConDemoTicket buffer, assigns the two fields, and inside a try block does `ttsbegin; if (!ticket.validateWrite()) { throw error(\"@TaxTransactionInquiry:HeaderNote\"); } ticket.insert(); ttscommit;` then returns true; it must have exactly two TYPED catch branches and no bare `catch` -- first `catch (Exception::DuplicateKeyException)` which logs via error(\"@TaxTransactionInquiry:HeaderNote\") and returns false, then `catch (Exception::Error)` which calls `exceptionTextFallThrough();` (so the infolog text written inside the aborted transaction survives the ttsabort) and returns false. Never swallow an exception silently -- every catch either logs or falls the text through. (b) `public static container postAndCollect(Num _ticketId, Notes _ticketNote)` which snapshots `infolog.infologData()` into a local BEFORE calling DemoTicketPoster::post(), and returns ONLY the messages that call produced, via `conDel(infolog.infologData(), 1, conLen(before))` -- the infolog-capture pattern from get_knowledge(topic=\"telemetry\"); there is no SysInfoLogScope class, and SysInfologEnumerator::newData() is the enumerator for that container. Ground the exception rules with get_knowledge(topic=\"error handling\"). Reuse the standard label @TaxTransactionInquiry:HeaderNote everywhere a user-facing message is needed -- do not invent raw text and do not create a new label file. Both objects must build with zero BP errors, and with no BP warnings other than BPErrorTableMissingFormRef -- that one is unavoidable here because no form or display menu item is in scope for this case. Correctness is judged in the golden X++ source: the validateWrite() must route through checkFailed, and post() must contain both typed catches plus exceptionTextFallThrough() -- a version that compiles but uses a bare catch, swallows the exception, or omits exceptionTextFallThrough() is a fail.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-error-handling-infolog/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "error-handling",
+    "infolog",
+    "exception",
+    "checkfailed",
+    "telemetry",
+    "class",
+    "table"
+  ],
+  "split": "holdout"
+}

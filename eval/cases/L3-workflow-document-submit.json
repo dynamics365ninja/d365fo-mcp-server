@@ -1,0 +1,28 @@
+{
+  "id": "L3-workflow-document-submit",
+  "title": "Workflow submission slice: WorkflowDocument subclass + canSubmitToWorkflow + submit menu item",
+  "tier": 3,
+  "instruction": "In the sandbox model, build the X++ side of a workflow submission, end to end. Create: (1) a table DemoWfRequest (label @TaxTransactionInquiry:HeaderNote, table group Main) with fields RequestId (String, EDT Num, mandatory), Subject (String, EDT Name) and SubmittedToWorkflow (Enum, base enum NoYes), a unique alternate-key index WfRequestIdx on RequestId, and a `public boolean canSubmitToWorkflow(str _workflowType = '')` override returning `super(_workflowType) && this.RequestId != '' && this.SubmittedToWorkflow == NoYes::No` -- this is the method the form's submit button consults. (2) an AOT query DemoWfRequestQuery with ConDemoWfRequest as its single data source (all fields, no ranges) -- the workflow document's condition query. (3) a class DemoWfRequestDocument extending WorkflowDocument that overrides `public QueryRun getQueryRun(WorkflowContext _context)`: build `new Query(queryStr(ConDemoWfRequestQuery))`, wrap it in a QueryRun, and add a range on the ConDemoWfRequest data source's RecId field set to SysQuery::value(_context.parmRecId()), then return the QueryRun. Use api_symbols/search to confirm the WorkflowDocument member signature before writing it -- do not guess. (4) a class DemoWfSubmitManager with `public static void main(Args _args)` that takes the ConDemoWfRequest from _args.record(), rejects the call with `throw error(\"@TaxTransactionInquiry:HeaderNote\")` when canSubmitToWorkflow() is false, and otherwise, inside ttsbegin/ttscommit, calls Workflow::activateFromWorkflowType(...) and then reselects the record forupdate and sets SubmittedToWorkflow = NoYes::Yes before update(). (5) an action menu item DemoWfSubmitMI (label @TaxTransactionInquiry:HeaderNote, object type Class) pointing at ConDemoWfSubmitManager. IMPORTANT SCOPE LIMIT: the AxWorkflowType, AxWorkflowApproval and AxWorkflowCategory AOT elements are OUT OF SCOPE -- d365fo_file has no objectType for them, so they cannot be produced through the grounded tool path, and hand-authoring their XML is forbidden. Consequently the workflow type name must be passed to Workflow::activateFromWorkflowType as a plain str constant 'ConDemoWfRequestType'; do NOT use the workflowtypestr() intrinsic, which would not resolve at compile time and would fail the build. Ground the structure with get_knowledge(topic=\"workflow\"). All five objects must build clean with zero BP errors, and with no BP warnings other than BPErrorTableMissingFormRef on ConDemoWfRequest and BPErrorMenuItemNotCoveredByPrivilege on ConDemoWfSubmitMI -- both are unavoidable here because no form and no security privilege are in scope for this case. To keep the rest of the BP surface clean the request table needs DeveloperDocumentation, CacheLookup, ReplacementKey and ClusteredIndex pointing at WfRequestIdx (but NOT PrimaryIndex, which would trigger BPErrorTablePrimaryKeyEditable on the editable RequestId), AutoReport/AutoLookup field-group membership for every field, and a Label on the SubmittedToWorkflow enum field only -- labelling all three fields with the same pinned label trips BPErrorTableDuplicateUITextField. NOTE ON THE BASE CLASS: WorkflowDocument declares getQueryName() as abstract and exposes no getQueryRun member, so ConDemoWfRequestDocument must also implement public queryName getQueryName() { return queryStr(ConDemoWfRequestQuery); } -- getQueryRun(WorkflowContext) is a NEW method on the subclass, not an override. NOTE ON THE QUERY: the root data source must carry <DynamicFields>Yes</DynamicFields>, otherwise xppc fails with 'The field list of the data source cannot be empty if the dynamic field is set to false'.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxQuery",
+    "AxClass",
+    "AxClass",
+    "AxMenuItemAction"
+  ],
+  "golden_path": "eval/goldens/L3-workflow-document-submit/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "workflow",
+    "workflowdocument",
+    "submit",
+    "query",
+    "menu-item",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

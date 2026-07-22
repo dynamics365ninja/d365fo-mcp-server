@@ -68,6 +68,10 @@ beforeAll(() => {
   sym('run', 'method', 'SalesFormLetter', 'public void run()');
   sym('ContosoBase', 'class');
   sym('doStuff', 'method', 'ContosoBase', 'public int doStuff(int _a, str _b = "")');
+  // A trailing default whose VALUE is a function call (parens inside the default) — the
+  // shape from finding #18 (Workflow::activateFromWorkflowType's `_submittingUser = curUserId()`).
+  sym('activateFrom', 'method', 'ContosoBase',
+    'public static void activateFrom(int _type, str _user = curUserId())');
   sym('ContosoChild', 'class', undefined, undefined, 'ContosoBase');
   // Enum / EDT / form / query
   sym('NoYes', 'enum');
@@ -155,6 +159,30 @@ QueryBuildDataSource qbds;
     expect(errorsOf(code)).toEqual([]);
   });
 
+  // Regression: docs/eval-sweep-findings-2026-07-21.md #12. `Exception` is a compiler enum
+  // with NO AxEnum in metadata, so every idiomatic try/catch used to hard-ERROR in the
+  // static-access path and block the write under GROUNDING_ENFORCE. `Exception` is deliberately
+  // NOT seeded in `deps`, so this exercises the kernel-enum allow-list, not an index hit.
+  it('accepts Exception:: typed catches with no AxEnum in the index (#12)', () => {
+    const code = 'catch (Exception::DuplicateKeyException) {}\ncatch (Exception::Error) {}';
+    expect(errorsOf(code)).toEqual([]);
+  });
+
+  // Regression: #17. NoYes is the most common enum in X++, yet the real VM index frequently
+  // does not prove it. The shared `deps` happens to seed NoYes, which would mask the fix — so
+  // prove the allow-list against a deliberately EMPTY index (no NoYes symbol at all).
+  it('accepts NoYes:: even when the index does not prove NoYes (#17)', () => {
+    const empty = new XppSymbolIndex(':memory:', ':memory:');
+    try {
+      const emptyDeps = makeDeps(empty.getReadDb());
+      const errs = resolveXppReferences('if (NoYes::Yes == NoYes::No) {}', emptyDeps)
+        .violations.filter(v => v.severity === 'error');
+      expect(errs).toEqual([]);
+    } finally {
+      empty.close();
+    }
+  });
+
   it('verifies static call through the inheritance chain', () => {
     expect(errorsOf('ContosoChild::doStuff(1);')).toEqual([]);
   });
@@ -232,6 +260,21 @@ describe('resolveXppReferences — arity checks', () => {
 
   it('flags too many arguments', () => {
     const errors = errorsOf('CustTable::find("c1", true, 42);');
+    expect(errors).toHaveLength(1);
+    expect(errors[0].kind).toBe('arity-mismatch');
+  });
+
+  // Regression: docs/eval-sweep-findings-2026-07-21.md #18. A trailing parameter with a
+  // FUNCTION-CALL default (`_user = curUserId()`) is optional, so a call omitting it must NOT
+  // be flagged — splitTopLevel keeps the default's own parens balanced and `=`-detection marks
+  // it optional. (The finding reported a spurious "expects 5" when only 4 were required.)
+  it('treats a trailing function-call default as optional (#18)', () => {
+    expect(errorsOf('ContosoBase::activateFrom(1);')).toEqual([]);       // omits the defaulted arg
+    expect(errorsOf('ContosoBase::activateFrom(1, "u");')).toEqual([]);  // supplies it
+  });
+
+  it('still flags too few args even with a function-call default present (#18 guard)', () => {
+    const errors = errorsOf('ContosoBase::activateFrom();'); // 0 args, min is 1
     expect(errors).toHaveLength(1);
     expect(errors[0].kind).toBe('arity-mismatch');
   });

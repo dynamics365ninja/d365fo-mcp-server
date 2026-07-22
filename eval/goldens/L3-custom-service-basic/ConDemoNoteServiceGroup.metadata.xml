@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-custom-service-basic (artifact 5 of 5: AxServiceGroup with AutoDeploy=Yes, publishing the service under /api/services)
+  Captured: 2026-07-21, server SHA: c262b19
+  Platform: xppc 7.0.7858.27
+  Model: Contoso (sandbox), EXTENSION_PREFIX=Con
+  Build: 0 errors. Requires fixture table ConDemoNoteHeader (eval/fixtures/).
+-->
+<AxServiceGroup xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteServiceGroup</Name>
+	<AutoDeploy>Yes</AutoDeploy>
+	<Description>Service group publishing the demo note lookup service under /api/services.</Description>
+	<Services>
+		<AxServiceGroupService>
+			<Name>ConDemoNoteService</Name>
+			<Service>ConDemoNoteService</Service>
+		</AxServiceGroupService>
+	</Services>
+</AxServiceGroup>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-custom-service-basic (artifact 4 of 5: AxService binding the service class and exposing the lookup operation)
+  Captured: 2026-07-21, server SHA: c262b19
+  Platform: xppc 7.0.7858.27
+  Model: Contoso (sandbox), EXTENSION_PREFIX=Con
+  Build: 0 errors. Requires fixture table ConDemoNoteHeader (eval/fixtures/).
+-->
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteService</Name>
+	<Class>ConDemoNoteLookupService</Class>
+	<Description>Custom service exposing note header lookup operations.</Description>
+	<ExternalName>DemoNoteService</ExternalName>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>lookup</Name>
+			<Method>lookup</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

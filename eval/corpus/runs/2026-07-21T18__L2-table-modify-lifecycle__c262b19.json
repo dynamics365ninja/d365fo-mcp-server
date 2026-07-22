@@ -1,0 +1,77 @@
+{
+  "run_id": "2026-07-21T18__L2-table-modify-lifecycle__c262b19",
+  "case_id": "L2-table-modify-lifecycle",
+  "tier": 2,
+  "timestamp": "2026-07-21T18:42:22.553Z",
+  "server_git_sha": "c262b19",
+  "generated_artifacts": [
+    "ConDemoModLifecycle.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPCheckAlternateKeyAbsent",
+        "message": "Table ConDemoModLifecycle does not have an alternate key"
+      },
+      {
+        "rule": "BPErrorEDTNotMigrated",
+        "message": "Relation under EDT 'CustAccount' must be migrated to table relation"
+      },
+      {
+        "rule": "BPUpgradeMetadataEDTRelation",
+        "message": "EDT relation found in field CustAccount; should be migrated to a regular table relation"
+      },
+      {
+        "rule": "BPErrorTableRelationshipPropertiesCompleteness",
+        "message": "Relation properties [RelationshipType, RelatedTableCardinality, Cardinality] for table relation 'CustTable' are not set"
+      },
+      {
+        "rule": "BPErrorTableTitleField2NotDeclared",
+        "message": "No field has been specified for the 'Title Field2' property"
+      },
+      {
+        "rule": "BPErrorLabelNotDefined",
+        "message": "No label is given for the 'Label' property of field group Overview"
+      },
+      {
+        "rule": "BPErrorDeveloperDocumentationNotDefined",
+        "message": "The mandatory property DeveloperDocumentation is not specified"
+      },
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "message": "No form ref is specified"
+      },
+      {
+        "rule": "BPErrorTableFieldNotInFieldGroup",
+        "message": "Field CustAccount is not a member of a field group"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "Case passes build + golden. Two silent-failure defects in d365fo_file(action=modify) on tables. (1) add-relation accepts relationshipType/relationCardinality/relatedTableCardinality per its own parameter spec (which even documents defaults Association/ZeroMore/ExactlyOne) but drops them: the emitted AxTableRelation contains only Name/RelatedTable/Constraints, and xppbp then raises BPErrorTableRelationshipPropertiesCompleteness. modify-property cannot repair it (Relations/* is not in its supported property list), so a BP-complete relation is unreachable through the modify surface. (2) modify-field returns success for a call that carries no recognised mutation parameter: params {fieldName, mandatory:true} reported 'Field Description modified' while writing nothing (correct key is fieldMandatory). Unknown params should be rejected, or a no-op should not report success. Residual BP warnings are inherent to the case spec, not defects: 'exactly one index' forbids an alternate key, TitleField1=TitleField2=Description follows from step 10, and the CustAccount EDT relation is a standard-EDT artefact.",
+  "suggested_fix_area": "src bridge table-modify handlers: (a) add-relation must serialise relationshipType/relationCardinality/relatedTableCardinality (apply the documented defaults when omitted); (b) modify-field must fail on an unrecognised/empty mutation param set instead of reporting success; (c) consider surfacing the parameter spec proactively rather than only in the missing-required-param error path.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxTable/ConDemoModLifecycle.xml",
+    "K:/repos/d365fo-mcp-server/eval/goldens/L2-table-modify-lifecycle/ConDemoModLifecycle.metadata.xml"
+  ]
+}

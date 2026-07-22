@@ -1,0 +1,68 @@
+{
+  "run_id": "2026-07-21T18__L2-enum-extension-empty-values__c262b19",
+  "case_id": "L2-enum-extension-empty-values",
+  "tier": 2,
+  "timestamp": "2026-07-21T18:33:35.694Z",
+  "server_git_sha": "c262b19",
+  "generated_artifacts": [
+    "ConDemoEnumExtProbe.metadata.xml",
+    "NumberSeqModule.ConExtension.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPXmlDocNoDocumentationComments",
+        "element": "AxClass ConDemoEnumExtProbe",
+        "note": "golden-inherent: the captured golden class carries no XML doc headers, so any byte-faithful reproduction emits this"
+      },
+      {
+        "rule": "BPXmlDocNoDocumentationComments",
+        "element": "AxClass ConDemoEnumExtProbe/Method/module",
+        "note": "golden-inherent: same as above"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "platform_build": "xppc 7.0.7858.27",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "evidence_refs": [
+    "eval/cases/L2-enum-extension-empty-values.json (golden_pending flipped to false this run)",
+    "eval/goldens/L2-enum-extension-empty-values/ (2 artifacts, captured 2026-07-07 SHA cb1b73d; reproduced byte-identical this run)",
+    "d365fo_file(action=create, objectType=enum-extension, objectName=NumberSeqModule, properties.enumValues=[DemoEvalRent @GEE:GEE16817]) -> NumberSeqModule.ConExtension.xml",
+    "READ-BACK of K:\\AosService\\PackagesLocalDirectory\\Contoso\\Contoso\\AxEnumExtension\\NumberSeqModule.ConExtension.xml: <EnumValues> NON-EMPTY, contains AxEnumValue DemoEvalRent - the BUILD #1 regression (silently empty EnumValues) does NOT reproduce",
+    "build_d365fo_project(modelName=Contoso) - FIRST build clean, 0 errors, no hand-fix overwrite needed; NumberSeqModule::DemoEvalRent resolved in ConDemoEnumExtProbe.module()",
+    "run_bp_check(modelName=Contoso) - 2 warnings on case artifacts (both BPXmlDocNoDocumentationComments); the other 7 belong to the ConDemoNoteHeader fixture table",
+    "prior record 2026-07-07T05__...--class.json shows the identical bp_clean=0 / classification=PASS profile",
+    "HARNESS DEFECT observed (not a case failure): src/eval/oracle/normalize.ts:299 throws TypeError \"Cannot convert undefined or null to object\" when buildActualArtifactsMap leaves an unresolved golden artifact keyed with empty content - xml2js parses \"\" to null. Reported instead of an artifact-missing diff.",
+    "HARNESS FRICTION: this golden dir uses unprefixed filenames (DemoEnumExtProbe.AxClass.metadata.xml) while content is Con-prefixed, so scoring required explicit --golden-prefix Con --actual-prefix Con"
+  ]
+}

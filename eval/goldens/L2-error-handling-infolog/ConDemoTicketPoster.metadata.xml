@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoTicketPoster</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Provides con demo ticket poster functionality.
+/// </summary>
+public class ConDemoTicketPoster
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>post</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// post and returns the result.
+    /// </summary>
+    /// <param name="_ticketId">The ticket id (Num).</param>
+    /// <param name="_ticketNote">The ticket note (Notes).</param>
+    /// <returns>true if the operation succeeds; otherwise, false.</returns>
+    public static boolean post(Num _ticketId, Notes _ticketNote)
+    {
+        ConDemoTicket ticket;
+
+        try
+        {
+            ticket.TicketId   = _ticketId;
+            ticket.TicketNote = _ticketNote;
+
+            ttsbegin;
+
+            if (!ticket.validateWrite())
+            {
+                throw error("@TaxTransactionInquiry:HeaderNote");
+            }
+
+            ticket.insert();
+
+            ttscommit;
+        }
+        catch (Exception::DuplicateKeyException)
+        {
+            error("@TaxTransactionInquiry:HeaderNote");
+            return false;
+        }
+        catch (Exception::Error)
+        {
+            exceptionTextFallThrough();
+            return false;
+        }
+
+        return true;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>postAndCollect</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Post and collect.
+    /// </summary>
+    /// <param name="_ticketId">The ticket id (Num).</param>
+    /// <param name="_ticketNote">The ticket note (Notes).</param>
+    /// <returns>A packed container with the serialized state.</returns>
+    public static container postAndCollect(Num _ticketId, Notes _ticketNote)
+    {
+        container before = infolog.infologData();
+
+        ConDemoTicketPoster::post(_ticketId, _ticketNote);
+
+        return conDel(infolog.infologData(), 1, conLen(before));
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

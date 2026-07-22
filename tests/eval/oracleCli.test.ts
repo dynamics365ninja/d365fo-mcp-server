@@ -124,16 +124,26 @@ describe('buildActualArtifactsMap', () => {
  * and `bp_clean` normally and report golden_match: null (not 0, not a crash).
  */
 describe('oracle CLI degrades gracefully when the golden is unavailable (golden_pending)', () => {
-  const PENDING_CASE = 'L3-custom-service-basic';
+  // Pick whichever case is still golden_pending rather than pinning one by name: goldens get
+  // captured on the VM one at a time (§6.4), so a hardcoded id turns every capture into a
+  // spurious test failure. The premise is "some case is pending", not "this case is pending".
+  const casesDir = path.join(REPO_ROOT, 'eval', 'cases');
+  const PENDING_CASE = fs
+    .readdirSync(casesDir)
+    .filter((f) => f.endsWith('.json') && f !== 'schema.json')
+    .sort()
+    .find((f) => JSON.parse(fs.readFileSync(path.join(casesDir, f), 'utf8')).golden_pending === true)
+    ?.replace(/\.json$/, '');
+
   let emptyDir: string;
 
   beforeEach(() => {
-    // Guard the fixture premise: if this case's golden gets captured later (§6.4), this
-    // suite's assumption no longer holds — fail loudly with a clear message so it's updated.
-    const spec = JSON.parse(
-      fs.readFileSync(path.join(REPO_ROOT, 'eval', 'cases', `${PENDING_CASE}.json`), 'utf8'),
-    );
-    expect(spec.golden_pending, `${PENDING_CASE} is no longer golden_pending — pick another pending case`).toBe(true);
+    // Once every golden is captured this path can no longer be exercised against the real
+    // catalog. Fail loudly rather than silently passing on a premise that no longer holds.
+    expect(
+      PENDING_CASE,
+      'no case is golden_pending any more — rewrite this suite against a synthetic case spec',
+    ).toBeDefined();
     emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-pending-'));
   });
 

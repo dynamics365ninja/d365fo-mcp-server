@@ -1,0 +1,57 @@
+{
+  "run_id": "2026-07-22T03__L2-form-modify-controls__6e252c6",
+  "case_id": "L2-form-modify-controls",
+  "tier": 2,
+  "timestamp": "2026-07-22T03:45:44.310Z",
+  "server_git_sha": "6e252c6",
+  "generated_artifacts": [
+    "ConDemoCtrlNote.metadata.xml",
+    "ConDemoCtrlNoteForm.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPCheckAlternateKeyAbsent",
+        "object": "ConDemoCtrlNote",
+        "message": "Table ConDemoCtrlNote does not have an alternate key"
+      },
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "object": "ConDemoCtrlNote",
+        "message": "No form ref is specified."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "PRIMARY RESULT: the form design-root regression is FIXED. PR #728 (FormAuthoringDefaults.IsDesignRootSentinel) is live and effective: a form created with a data source and an EMPTY design accepted its FIRST top-level control via d365fo_file(action=modify, operation=add-control, parentControl=\"Design\"). All 5 add-control ops succeeded via IMetaFormProvider.Update (HeaderGroup Group under Design; MainGrid Grid under Design with controlDataSource bound at add time; NoteId + Subject String columns inside MainGrid bound via controlDataSource/controlDataField). This inverts the recorded baseline of 6/6 add-control failures. NO overwrite=true/xmlContent escape hatch was used anywhere; build is clean (xppc 0 errors) and the golden matches. RESIDUAL DEFECTS (non-blocking, all pre-existing and independent of #728): (1) add-index SILENTLY DROPS the allowDuplicates and alternateKey params - both were passed, the op returned success, and neither <AllowDuplicates> nor <AlternateKey> appears in the emitted XML, so a unique/alternate-key index cannot be expressed through the grounded path and BPCheckAlternateKeyAbsent is unfixable; it also cannot update an existing index (errors \"already exists\"), forcing remove-index + add-index. (2) modify-property rejects FormRef (\"Unknown AxTable property FormRef\"); supported list has no FormRef, so BPErrorTableMissingFormRef is unfixable via the grounded path. (3) The labels tool advertises legacy SYS labels as \"@SYS:@SYS71455\"; xppbp rejects that with BPErrorLabelIsText - the correct metadata form is \"@SYS71455\". This independently reproduces defect (6) from the 2026-07-21 L4-master-security-slice run and cost one build cycle. (4) prepare(mode=create) reported a name collision for ConDemoCtrlNote from a STALE symbol-index entry - the table did not exist on disk (residue of an earlier rolled-back run that de-indexed nothing). The 2 remaining bp warnings are scope-inherent for this case anyway: a FormRef needs a display menu item, which is outside the case target_artifact_types [AxTable, AxForm].",
+  "suggested_fix_area": "src/bridge MetadataWriteService add-index: honour allowDuplicates/alternateKey (currently accepted and discarded) and support updating an existing index instead of erroring; add FormRef (and other ref properties) to the AxTable modify-property allow-list; labels tool: emit legacy SYS labels in metadata-valid form (@SYS71455, not @SYS:@SYS71455); rollback/undo path: de-index symbols when a created object is removed so prepare() stops reporting phantom collisions."
+}

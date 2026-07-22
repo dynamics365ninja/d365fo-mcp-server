@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-custom-service-basic (artifact 3 of 5: service class holding the lookup operation; NO [SysEntryPointAttribute] (deprecated in AX7 for custom services))
+  Captured: 2026-07-21, server SHA: c262b19
+  Platform: xppc 7.0.7858.27
+  Model: Contoso (sandbox), EXTENSION_PREFIX=Con
+  Build: 0 errors, 0 BP warnings. Requires fixture table ConDemoNoteHeader (eval/fixtures/).
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteLookupService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Custom service exposing note header lookup operations.
+/// </summary>
+class ConDemoNoteLookupService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>lookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the subject of a note header identified by its note ID.
+    /// </summary>
+    /// <param name = "_request">The lookup request holding the note ID.</param>
+    /// <returns>A response contract holding the subject of the note header.</returns>
+    public ConDemoNoteLookupResponse lookup(ConDemoNoteLookupRequest _request)
+    {
+        ConDemoNoteLookupResponse  response = new ConDemoNoteLookupResponse();
+        ConDemoNoteHeader          noteHeader;
+        Num                        noteId = _request.parmNoteId();
+
+        select firstonly Subject from noteHeader
+        where noteHeader.NoteId == noteId;
+
+        response.parmSubject(noteHeader.Subject);
+
+        return response;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
