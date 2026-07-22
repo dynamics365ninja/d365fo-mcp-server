@@ -30,6 +30,9 @@ const AOT_FOLDER_TYPE_MAP: Record<string, XppSymbol['type']> = {
   'axreport': 'report',
   'axmap': 'map',
   'axmapextension': 'map-extension',
+  // #34: AxMenu was missing here, so a menu was indexed as type=class (the `?? 'class'`
+  // default below) AND model=Unknown (extractModelFromPath only recognised MAPPED folders).
+  'axmenu': 'menu',
   'axmenuextension': 'menu-extension',
   'axservice': 'service',
   'axservicegroup': 'service-group',
@@ -55,10 +58,21 @@ const AOT_FOLDER_TYPE_MAP: Record<string, XppSymbol['type']> = {
  * Pattern: {packagesRoot}\{package}\{model}\Ax{Type}\{Name}.xml
  * or:      {packagesRoot}\{model}\{model}\Ax{Type}\{Name}.xml
  */
+/** Any AOT element folder, mapped or not (AxMenu, AxWorkflowType, …). */
+const AOT_FOLDER_PATTERN = /^ax[a-z]/i;
+
+/** True for an AOT element folder segment — mapped types plus everything else Ax*. */
+export function isAotFolder(segment: string): boolean {
+  return segment.toLowerCase() in AOT_FOLDER_TYPE_MAP || AOT_FOLDER_PATTERN.test(segment);
+}
+
 function extractModelFromPath(filePath: string): string | null {
   const parts = filePath.replace(/\//g, '\\').split('\\');
-  // Find the AOT folder index (e.g. AxClass, AxTable)
-  const aotIdx = parts.findIndex(p => p.toLowerCase() in AOT_FOLDER_TYPE_MAP);
+  // Find the AOT folder index (e.g. AxClass, AxTable).
+  // #34: this used to accept only folders present in AOT_FOLDER_TYPE_MAP, so an
+  // AxMenu path yielded model="Unknown" purely because the type map had a hole.
+  // Any Ax* element folder identifies the model, whether or not we can type it.
+  const aotIdx = parts.findIndex(p => isAotFolder(p));
   if (aotIdx >= 2) {
     return parts[aotIdx - 1]; // folder immediately before the AOT folder = model name
   }
@@ -70,6 +84,28 @@ function extractModelFromPath(filePath: string): string | null {
   }
 
   return null;
+}
+
+/**
+ * Symbol type for an AOT folder segment.
+ *
+ * #34: the old expression was `AOT_FOLDER_TYPE_MAP[folder] ?? 'class'`, which
+ * turned every unmapped AOT folder into a CLASS — an AxMenu was indexed as
+ * `type=class`, poisoning search and every type-scoped lookup. A folder we can
+ * name but not map now yields its own derived type (`AxWorkflowType` →
+ * `workflowtype`) instead of a confident lie; `class` remains the fallback only
+ * when the path carries no AOT folder at all.
+ */
+export function classifyAotFolder(aotFolder: string): XppSymbol['type'] {
+  const key = aotFolder.toLowerCase();
+  const mapped = AOT_FOLDER_TYPE_MAP[key];
+  if (mapped) return mapped;
+  if (AOT_FOLDER_PATTERN.test(aotFolder)) {
+    // Derived, deliberately outside the curated union — it is a truthful label
+    // for a type this server does not model, and stays searchable.
+    return key.replace(/^ax/, '') as XppSymbol['type'];
+  }
+  return 'class';
 }
 
 function isLabelTextFile(filePath: string): boolean {
@@ -142,8 +178,8 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
     const fileName = pathParts[pathParts.length - 1] ?? filePath;
     const objectName = fileName.replace(/\.[^.]+$/, '');
     const parts = filePath.replace(/\//g, '\\').split('\\');
-    const aotFolder = parts.find((p: string) => p.toLowerCase() in AOT_FOLDER_TYPE_MAP) ?? '';
-    const objectType: XppSymbol['type'] = AOT_FOLDER_TYPE_MAP[aotFolder.toLowerCase()] ?? 'class';
+    const aotFolder = parts.find((p: string) => isAotFolder(p)) ?? '';
+    const objectType: XppSymbol['type'] = classifyAotFolder(aotFolder);
 
     // File deleted: clean up stale index entries
     if (!fs.existsSync(filePath)) {

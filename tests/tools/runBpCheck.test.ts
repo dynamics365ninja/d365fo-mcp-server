@@ -453,8 +453,110 @@ describe('run_bp_check — violation detection', () => {
 
     const result = await runBpCheckTool({ modelName: 'MyModel', targetFilter: 'MyClass' }, {});
 
-    expect(result.content[0].text).toContain('Filter: MyClass');
+    expect(result.content[0].text).toContain('Filter: class:MyClass');
     const args = capturedArgs(0);
     expect(args.some(a => a.includes('MyClass'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Finding #25 (2026-07-21 sweep): run_bp_check(targetFilter=…) does not scope
+//
+// `targetFilter=ConDemoCompanyReader, targetElementType=class` still processed
+// 2 elements and returned only TABLE warnings — attribution had to be done by
+// reading rule names. Two causes in the very first attempt, which is the one
+// that succeeds on this VM:
+//   • it passed `-all` (check the whole model) alongside the filter, and
+//   • it expressed the filter as `-filter:<name>`, which this xppbp does not
+//     recognise, so the scope was silently dropped — and targetElementType was
+//     not carried at all outside the equals style.
+// ---------------------------------------------------------------------------
+describe('run_bp_check — targetFilter actually scopes (#25)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('MyModel');
+    cfgGetProjectPath.mockResolvedValue(null);
+    cfgGetPackagePath.mockReturnValue(null);
+    cfgGetCustomPackagesPath.mockResolvedValue(null);
+    cfgGetMicrosoftPackagesPath.mockResolvedValue(null);
+    cfgGetActiveXppConfig.mockResolvedValue(null);
+    allowPaths([CHE_PKG, CHE_XPPBP]);
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, { stdout: '✅', stderr: '' });
+    });
+  });
+
+  it('does NOT pass -all together with a filter (that is what checked the whole model)', async () => {
+    await runBpCheckTool(
+      { modelName: 'MyModel', targetFilter: 'ConDemoCompanyReader', targetElementType: 'class' },
+      {},
+    );
+
+    const args = capturedArgs(0);
+    expect(args).not.toContain('-all');
+    expect(args).toContain('class:ConDemoCompanyReader');
+  });
+
+  it('carries targetElementType in the very first attempt, not only in the equals style', async () => {
+    await runBpCheckTool(
+      { modelName: 'MyModel', targetFilter: 'ConDemoTicket', targetElementType: 'table' },
+      {},
+    );
+
+    expect(capturedArgs(0)).toContain('table:ConDemoTicket');
+    // The unrecognised flag form is gone.
+    expect(capturedArgs(0).some(a => a.startsWith('-filter'))).toBe(false);
+  });
+
+  it('still passes -all when no filter is requested', async () => {
+    await runBpCheckTool({ modelName: 'MyModel' }, {});
+    expect(capturedArgs(0)).toContain('-all');
+  });
+
+  it('reports honestly when xppbp returned findings for other elements', async () => {
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, {
+        stdout:
+          'BPErrorTableMissingFormRef: K:\\Pkg\\Contoso\\Contoso\\AxTable\\ConDemoTicket.xml\n' +
+          'BPErrorTableFieldGroupEmpty: K:\\Pkg\\Contoso\\Contoso\\AxTable\\ConDemoLine.xml\n',
+        stderr: '',
+      });
+    });
+
+    const result = await runBpCheckTool(
+      { modelName: 'MyModel', targetFilter: 'ConDemoCompanyReader', targetElementType: 'class' },
+      {},
+    );
+    const text = result.content[0].text as string;
+
+    expect(text).toContain('Scope NOT honoured');
+    expect(text).toContain('ConDemoTicket');
+    expect(text).toContain('ConDemoLine');
+  });
+
+  it('confirms the scope when every finding belongs to the filtered element', async () => {
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, {
+        stdout: 'BPErrorXmlDocMissing: K:\\Pkg\\Contoso\\Contoso\\AxClass\\ConDemoCompanyReader.xml\n',
+        stderr: '',
+      });
+    });
+
+    const result = await runBpCheckTool(
+      { modelName: 'MyModel', targetFilter: 'ConDemoCompanyReader', targetElementType: 'class' },
+      {},
+    );
+
+    expect(result.content[0].text as string).toContain('Scope: honoured');
+  });
+});
+
+describe('extractReportedElements (#25 helper)', () => {
+  it('reads element names out of AOT paths and quoted references', async () => {
+    const { extractReportedElements } = await import('../../src/tools/runBpCheck');
+    expect(extractReportedElements('warn K:\\Pkg\\M\\M\\AxTable\\ConDemoTicket.xml')).toContain('ConDemoTicket');
+    expect(extractReportedElements("BPError: table 'ConDemoLine' is bad")).toContain('ConDemoLine');
+    expect(extractReportedElements('no elements here')).toEqual([]);
   });
 });

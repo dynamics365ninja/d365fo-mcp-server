@@ -165,6 +165,11 @@ function getDutyInfo(db: any, name: string, includeChain: boolean) {
         output += `  • ${priv.privilege_name}\n`;
       }
     }
+  } else {
+    // #34: same honesty rule as roles — absence of rows is absence of data.
+    output += `\nPrivileges: NO DATA — no rows in the security_duty_privileges index for ` +
+      `"${symbol.name}". Feed it with update_symbol_index(filePath=<AxSecurityDuty xml>) or a full ` +
+      `index build; an unindexed duty is indistinguishable from an empty one here.\n`;
   }
 
   if (roles.length > 0) {
@@ -238,7 +243,16 @@ function getRoleInfo(db: any, name: string, includeChain: boolean) {
       }
     }
   } else {
-    output += `\nDuties: none indexed\n`;
+    // #34: "none indexed" read as "this role has no duties", which is a claim this
+    // tool cannot make — security_role_duties is populated only when the role XML
+    // was parsed by a full build or by update_symbol_index. Say what is actually known.
+    output += `\nDuties: NO DATA — this server has no rows in its security_role_duties index for ` +
+      `"${symbol.name}".\n` +
+      `  This does NOT mean the role has no duties. The table is fed by a full index build or by ` +
+      `update_symbol_index(filePath=<AxSecurityRole xml>); a role that was never indexed looks ` +
+      `identical to an empty one here.\n` +
+      `  To verify: run update_symbol_index on the role's .xml and retry, or read the ` +
+      `<Duties> element of the file directly.\n`;
   }
 
   return { content: [{ type: 'text', text: output }] };

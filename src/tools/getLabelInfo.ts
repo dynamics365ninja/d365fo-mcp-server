@@ -7,6 +7,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { formatLabelReference } from '../utils/labelReference.js';
 
 const GetLabelInfoArgsSchema = z.object({
   labelId: z
@@ -112,7 +113,9 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
     }
 
     const first = rows[0];
-    const ref = `@${first.labelFileId}:${labelId}`;
+    // #33/#41: never emit `@SYS:@SYS67433` — an id that already carries its label
+    // file id is a complete reference, and xppbp rejects the doubled form.
+    const ref = formatLabelReference(first.labelFileId, labelId);
 
     const lines: string[] = [
       `Label: ${ref}`,

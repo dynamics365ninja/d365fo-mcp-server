@@ -812,7 +812,10 @@ export class XppMetadataParser {
       const name: string = root.Name || '';
       const label: string | undefined = root.Label || undefined;
 
-      const rawPrivs = root.Privileges?.AxSecurityRolePermissionSet ??
+      // #34, same family as the role parser: a standard AxSecurityDuty lists its
+      // privileges as <AxSecurityPrivilegeReference>.
+      const rawPrivs = root.Privileges?.AxSecurityPrivilegeReference ??
+                       root.Privileges?.AxSecurityRolePermissionSet ??
                        root.Privileges?.AxSecurityPrivilegePermissionSet;
       const privArray = rawPrivs ? (Array.isArray(rawPrivs) ? rawPrivs : [rawPrivs]) : [];
       const privileges: string[] = privArray
@@ -842,7 +845,12 @@ export class XppMetadataParser {
       const label: string | undefined = root.Label || undefined;
       const description: string | undefined = root.Description || undefined;
 
-      const rawDuties = root.Duties?.AxSecurityRoleDutyPermission ??
+      // #34: a STANDARD AxSecurityRole lists its duties as <AxSecurityDutyReference>.
+      // Only the two legacy/incorrect element names were read here, so a correctly
+      // shaped role parsed as "0 duties" — which security_info(mode=artifact) then
+      // reported as "Duties: none indexed" for a freshly indexed role.
+      const rawDuties = root.Duties?.AxSecurityDutyReference ??
+                        root.Duties?.AxSecurityRoleDutyPermission ??
                         root.Duties?.AxSecurityDutyPermission;
       const dutyArray = rawDuties ? (Array.isArray(rawDuties) ? rawDuties : [rawDuties]) : [];
       const duties: string[] = dutyArray

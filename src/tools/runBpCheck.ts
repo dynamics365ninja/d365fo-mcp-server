@@ -24,6 +24,38 @@ async function tryXppbp(xppbpPath: string, args: string[]): Promise<{ stdout: st
   });
 }
 
+/**
+ * Element names xppbp mentions in its output. Recognises the two shapes it
+ * emits: an AOT file path (`…\AxTable\ConDemoTicket.xml`) and a quoted element
+ * reference (`element 'ConDemoTicket'` / `Table 'ConDemoTicket'`).
+ */
+export function extractReportedElements(output: string): string[] {
+  const names = new Set<string>();
+  for (const m of output.matchAll(/[\\/]Ax[A-Za-z]+[\\/]([A-Za-z0-9_]+)\.xml/g)) names.add(m[1]);
+  for (const m of output.matchAll(/\b(?:element|table|class|form|query|view|enum|edt)\s+'([A-Za-z0-9_]+)'/gi)) {
+    names.add(m[1]);
+  }
+  return [...names];
+}
+
+/**
+ * Scope-verification note for a filtered run (#25). xppbp silently ignores an
+ * unknown filter flag, so a scoped call can quietly return whole-model results;
+ * saying so is better than leaving the agent to attribute findings by hand.
+ */
+export function describeScope(targetFilter: string, output: string): string {
+  const reported = extractReportedElements(output);
+  const foreign = reported.filter(n => n.toLowerCase() !== targetFilter.toLowerCase());
+  if (foreign.length === 0) {
+    return reported.length > 0 ? `\nScope: honoured — findings are for ${targetFilter} only.` : '';
+  }
+  return (
+    `\n⚠️ Scope NOT honoured: xppbp also reported on ${foreign.slice(0, 5).join(', ')}` +
+    `${foreign.length > 5 ? ` (+${foreign.length - 5} more)` : ''}. ` +
+    `Findings below are NOT all attributable to "${targetFilter}" — check each element name before acting.`
+  );
+}
+
 export const runBpCheckTool = async (params: any, _context: any) => {
   const { targetFilter, targetElementType } = params;
   try {
@@ -101,15 +133,24 @@ export const runBpCheckTool = async (params: any, _context: any) => {
      */
 
     // Style A — colon separator with -compilerMetadata
+    //
+    // #25: `-all` means "check the whole model" and xppbp does NOT recognise
+    // `-filter:` — so this style silently ignored the requested scope (a run
+    // filtered to one class returned warnings for two unrelated table elements).
+    // With a targetFilter we therefore drop `-all` and append the positional
+    // `<type>:<Name>` element selector this xppbp understands.
     const buildArgsColonStyle = (metadataFlag: string, compilerMetadataFlag: string): string[] => {
       const a: string[] = [
         `${metadataFlag}${metadataPath}`,
         `-module:${modelName}`,
         `-model:${modelName}`,
         `${compilerMetadataFlag}${compilerMetadataPath}`,
-        `-all`,
       ];
-      if (targetFilter) a.push(`-filter:${targetFilter}`);
+      if (targetFilter) {
+        a.push(`${(targetElementType ?? 'class').toLowerCase()}:${targetFilter}`);
+      } else {
+        a.push(`-all`);
+      }
       return a;
     };
 
@@ -128,13 +169,14 @@ export const runBpCheckTool = async (params: any, _context: any) => {
         a.push(`-packagesRoot=${compilerMetadataPath}`);
       }
 
-      a.push(`-all`);
-
       // Positional element filter: "<type>:<Name>" — type comes from targetElementType
-      // (defaults to 'class' when omitted for backwards compatibility).
+      // (defaults to 'class' when omitted for backwards compatibility). `-all` is
+      // mutually exclusive with it: passing both checks the whole model (#25).
       if (targetFilter) {
         const elemType = (targetElementType ?? 'class').toLowerCase();
         a.push(`${elemType}:${targetFilter}`);
+      } else {
+        a.push(`-all`);
       }
       return a;
     };
@@ -146,9 +188,12 @@ export const runBpCheckTool = async (params: any, _context: any) => {
         `-packagesRoot:${compilerMetadataPath}`,
         `-module:${modelName}`,
         `-model:${modelName}`,
-        `-all`,
       ];
-      if (targetFilter) a.push(`-filter:${targetFilter}`);
+      if (targetFilter) {
+        a.push(`${(targetElementType ?? 'class').toLowerCase()}:${targetFilter}`);
+      } else {
+        a.push(`-all`);
+      }
       return a;
     };
 
@@ -239,12 +284,17 @@ export const runBpCheckTool = async (params: any, _context: any) => {
     const summary = hasIssues ? '⚠️ BP Check completed with issues' : '✅ BP Check passed';
     const details = logContent || combined || '(no output)';
 
+    // #25: report honestly whether the requested scope actually took effect —
+    // attribution used to require reading rule names and guessing.
+    const scopeNote = targetFilter ? describeScope(targetFilter, combined) : '';
+
     return {
       content: [{
         type: 'text',
         text: `${summary}\n\nModel: ${modelName}` +
           (resolvedProjectPath ? `\nProject: ${resolvedProjectPath}` : '') +
-          (targetFilter ? `\nFilter: ${targetFilter}` : '') +
+          (targetFilter ? `\nFilter: ${(targetElementType ?? 'class').toLowerCase()}:${targetFilter}` : '') +
+          scopeNote +
           `\n\n${details}`
       }]
     };

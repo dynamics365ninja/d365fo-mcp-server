@@ -145,7 +145,7 @@ export interface XppSymbol {
       | 'security-duty-extension' | 'security-role-extension'
       | 'menu-item-display-extension' | 'menu-item-action-extension'
       | 'menu-item-output-extension'
-      | 'service' | 'service-group'
+      | 'menu' | 'service' | 'service-group'
       | 'map' | 'configuration-key' | 'license-code' | 'security-policy' | 'macro';
   parentName?: string;
   signature?: string;

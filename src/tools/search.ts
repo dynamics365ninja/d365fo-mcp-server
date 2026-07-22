@@ -18,6 +18,42 @@ import {
   formatSuggestions
 } from '../utils/suggestionEngine.js';
 import { tryBridgeSearch } from '../bridge/bridgeAdapter.js';
+import { lookupSymbolsNocase } from '../utils/symbolLookup.js';
+import { rankExactFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
+
+/**
+ * Index-safe probe for symbols whose name EQUALS the query (#15).
+ *
+ * Runs `lookupSymbolsNocase`, i.e. an exact-case equality probe on
+ * idx_name_type followed by a bounded FTS5 phrase match for differently-cased
+ * input. Deliberately NOT `LIKE` and NOT `name = ? COLLATE NOCASE` as the
+ * primary predicate: on the 1.17M-row production symbol DB either shape
+ * degrades to a full scan (80–278 s measured) and blocks the event loop until
+ * MCP clients kill the server.
+ *
+ * Returns [] on any failure — the exact-first repair must never break search.
+ */
+export function probeExactMatches(
+  symbolIndex: any,
+  query: string,
+  types?: string[],
+): Array<{ name: string; type: string; model?: string; filePath?: string }> {
+  if (!query || /[\s*"%]/.test(query)) return [];
+  try {
+    const db = symbolIndex?.getReadDb?.();
+    if (!db) return [];
+    return lookupSymbolsNocase(db, query, { types, limit: 5 })
+      .filter(hit => isExactNameMatch(query, hit.name))
+      .map(hit => ({
+        name: hit.name,
+        type: hit.type,
+        model: hit.model ?? undefined,
+        filePath: hit.file_path ?? undefined,
+      }));
+  } catch {
+    return [];
+  }
+}
 
 const SearchArgsSchema = z.object({
   query: z.string().describe('Search query (class name, method name, etc.)'),
@@ -43,8 +79,18 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
       return await performHybridSearch(args, context);
     }
 
-    // Try C# bridge first (IMetadataProvider — live D365FO metadata)
-    const bridgeResult = await tryBridgeSearch(context.bridge, args.query, args.type === 'all' ? undefined : args.type, args.limit);
+    // Try C# bridge first (IMetadataProvider — live D365FO metadata).
+    // The exact-name probe is passed along so an exact match that fell outside
+    // the bridge's truncated result window is still ranked first (#15).
+    const searchTypes = args.type === 'all' ? undefined : [args.type];
+    const exactMatches = probeExactMatches(symbolIndex, args.query, searchTypes);
+    const bridgeResult = await tryBridgeSearch(
+      context.bridge,
+      args.query,
+      args.type === 'all' ? undefined : args.type,
+      args.limit,
+      { exactMatches },
+    );
     if (bridgeResult) return bridgeResult;
 
     // Standard external metadata search
@@ -221,7 +267,15 @@ async function performExternalSearch(
 ) {
   try {
     const types = args.type === 'all' ? undefined : [args.type];
-    const results: any[] = symbolIndex.searchSymbols(args.query, args.limit, types) || [];
+    const raw: any[] = symbolIndex.searchSymbols(args.query, args.limit, types) || [];
+
+    // #15: FTS5 `ORDER BY rank` scores token frequency, not name equality, so an
+    // exact-name hit can be missing from (or buried inside) the window. Probe for
+    // it on-index and rank it first.
+    const seen = new Set(raw.map(r => `${String(r.name).toLowerCase()} ${r.type}`));
+    const missingExact = probeExactMatches(symbolIndex, args.query, types)
+      .filter(hit => !seen.has(`${hit.name.toLowerCase()} ${hit.type}`));
+    const results: any[] = rankExactFirst(args.query, [...missingExact, ...raw], r => String(r.name));
 
     if (!results || results.length === 0) {
       const allSymbolNames = symbolIndex.getAllSymbolNames(args.query);
@@ -267,7 +321,15 @@ async function performExternalSearch(
     const tips = args.verbose ? generateContextualTips(args.query, results, args.type) : [];
 
     let output = `Found ${results.length} matches:\n`;
-    
+
+    // #15: the grouped renderer below hides ordering, so call the exact match out
+    // explicitly — that is the whole point of the exact-first repair.
+    const exactHits = results.filter(r => isExactNameMatch(args.query, String(r.name)));
+    if (exactHits.length > 0) {
+      output += `\n⭐ **Exact name match:** ` +
+        exactHits.map(r => `${r.name} (${r.type})`).join(', ') + '\n';
+    }
+
     output += formatRichContext(args.query, results, {
       relatedSearches,
       commonPatterns,

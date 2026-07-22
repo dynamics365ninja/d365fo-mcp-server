@@ -175,6 +175,52 @@ describe('update_symbol_index AOT folder type mapping', () => {
     // The AOT folder key also drives model extraction (folder before the AOT folder)
     expect(objectSymbol?.model).toBe('MyModel');
   });
+
+  // ── Finding #34 (2026-07-21 sweep) ────────────────────────────────────────
+  // "update_symbol_index indexed an AxMenu as type=class, model=Unknown".
+  // Two holes, one missing map entry: AxMenu was absent from
+  // AOT_FOLDER_TYPE_MAP, so (a) the `?? 'class'` fallback mislabelled it and
+  // (b) extractModelFromPath — which only recognised MAPPED folders — could not
+  // find the model segment either.
+  it('indexes an AxMenu as type=menu, not as a class (#34)', async () => {
+    const filePath = 'K:\\PackagesLocalDirectory\\Contoso\\Contoso\\AxMenu\\ConDemoMenu.xml';
+    existsSyncMock.mockReturnValue(true);
+
+    const result = await updateSymbolIndexTool({ filePath }, context);
+
+    expect(result.isError).toBeFalsy();
+    const symbols = (context.symbolIndex.addSymbol as any).mock.calls.map((c: any[]) => c[0]);
+    const menu = symbols.find((s: any) => s.name === 'ConDemoMenu');
+    expect(menu?.type).toBe('menu');
+    expect(menu?.type).not.toBe('class');
+    expect(result.content[0].text).toContain('menu');
+  });
+
+  it('resolves the model of an AxMenu instead of reporting Unknown (#34)', async () => {
+    const filePath = 'K:\\PackagesLocalDirectory\\Contoso\\Contoso\\AxMenu\\ConDemoMenu.xml';
+    existsSyncMock.mockReturnValue(true);
+
+    const result = await updateSymbolIndexTool({ filePath }, context);
+
+    const symbols = (context.symbolIndex.addSymbol as any).mock.calls.map((c: any[]) => c[0]);
+    const menu = symbols.find((s: any) => s.name === 'ConDemoMenu');
+    expect(menu?.model).toBe('Contoso');
+    expect(result.content[0].text).not.toContain('Unknown');
+  });
+
+  it('does not claim an unmapped AOT folder is a class (#34)', async () => {
+    // Any Ax* element folder we cannot map must yield a truthful derived type,
+    // never a confident "class".
+    const filePath = 'K:\\PackagesLocalDirectory\\Contoso\\Contoso\\AxWorkflowType\\ConDemoWf.xml';
+    existsSyncMock.mockReturnValue(true);
+
+    await updateSymbolIndexTool({ filePath }, context);
+
+    const symbols = (context.symbolIndex.addSymbol as any).mock.calls.map((c: any[]) => c[0]);
+    const wf = symbols.find((s: any) => s.name === 'ConDemoWf');
+    expect(wf?.type).not.toBe('class');
+    expect(wf?.model).toBe('Contoso');
+  });
 });
 
 describe('update_symbol_index refresh mode (no filePath)', () => {
