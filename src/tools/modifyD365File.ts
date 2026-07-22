@@ -516,6 +516,93 @@ async function directXmlAddControl(
 }
 
 /**
+ * Direct XML fallback for add-index on a TABLE.
+ *
+ * The C# bridge's AddIndex resolves its target via _provider.Tables.Read(name),
+ * whose DiskProvider metadata roots are fixed at bridge startup. A table CREATED
+ * THIS SESSION is therefore reported "Table '<name>' not found" — even after
+ * update_symbol_index and even when an explicit filePath was supplied (filePath
+ * only steers the TS-side file lookup, never the bridge's own name resolution).
+ * Corpus evidence: 2026-07-21T19__L2-error-handling-infolog (add-index on
+ * ConDemoTicket failed 3×) and 2026-07-21T20__L3-workflow-document-submit
+ * (add-index on ConDemoWfRequest). With no working grounded path the only way to
+ * land the index was d365fo_file(action="create", overwrite=true) — the whole-file
+ * escape hatch the eval loop forbids.
+ *
+ * This writes an <AxTableIndex> element straight into the table's <Indexes>
+ * collection, in the exact shape the D365FO SDK serialises (verified against a
+ * captured golden): <Name>, <AllowDuplicates>, optional <AlternateKey>, then
+ * <Fields> of <AxTableIndexField><DataField>. <Indexes> is a collection sibling,
+ * NOT part of the order-sensitive top-level property block, so appending to it is
+ * safe. It edits the file on disk, so it is unaffected by what the bridge loaded.
+ */
+async function directXmlAddIndex(
+  filePath: string,
+  indexName: string,
+  fields: string[] | undefined,
+  allowDuplicates: boolean | undefined,
+  alternateKey: boolean | undefined,
+): Promise<{ success: boolean; message: string } | null> {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Only tables carry an <Indexes> collection — bail on any other shape so a
+    // mis-typed objectType never corrupts a non-table file.
+    if (!/<AxTable\b/.test(content)) return null;
+
+    // Idempotent: if an index with this name already exists, report success
+    // rather than writing a duplicate (mirrors directXmlAddControl).
+    if (new RegExp(`<AxTableIndex>\\s*<Name>${indexName}</Name>`).test(content)) {
+      return {
+        success: true,
+        message: `✅ Index '${indexName}' already present in ${filePath} — skipped (idempotent).`,
+      };
+    }
+
+    const fieldElements = (fields ?? [])
+      .map(f =>
+        `\t\t\t\t<AxTableIndexField>\n` +
+        `\t\t\t\t\t<DataField>${f}</DataField>\n` +
+        `\t\t\t\t</AxTableIndexField>`)
+      .join('\n');
+    const fieldsBlock = fieldElements
+      ? `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>`
+      : `\t\t\t<Fields />`;
+
+    const newElement =
+      `\t\t<AxTableIndex>\n` +
+      `\t\t\t<Name>${indexName}</Name>\n` +
+      `\t\t\t<AllowDuplicates>${allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n` +
+      (alternateKey ? `\t\t\t<AlternateKey>Yes</AlternateKey>\n` : '') +
+      `${fieldsBlock}\n` +
+      `\t\t</AxTableIndex>`;
+
+    let updated: string;
+    if (content.includes('<Indexes />')) {
+      updated = content.replace('<Indexes />', `<Indexes>\n${newElement}\n\t</Indexes>`);
+    } else if (content.includes('</Indexes>')) {
+      updated = content.replace('</Indexes>', `${newElement}\n\t</Indexes>`);
+    } else {
+      // No <Indexes> collection at all — not a shape we can safely patch.
+      return null;
+    }
+
+    if (updated === content) return null;
+
+    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    console.error(`[modify_d365fo_file] ✅ directXmlAddIndex: added '${indexName}' to ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Index '${indexName}' added via direct XML fallback (bridge could not resolve the same-session table). File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddIndex failed: ${err}`);
+    return null;
+  }
+}
+
+/**
  * Heuristic: does a bridge failure message indicate the C# provider could not
  * resolve the target object (vs. a genuine operation error like "index already
  * exists")? An unresolved object is the one failure worth a refresh+retry,
@@ -1411,6 +1498,23 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             (args as any).indexAllowDuplicates,
             (args as any).indexAlternateKey,
           );
+          // Fallback: the bridge's AddIndex resolves the table via
+          // _provider.Tables.Read, whose metadata roots are fixed at startup, so a
+          // table CREATED THIS SESSION reports "Table '<name>' not found" — even
+          // after update_symbol_index and even when an explicit filePath was
+          // supplied (see corpus L2-error-handling-infolog / L3-workflow-document-
+          // submit). Rather than push the agent into the forbidden whole-file
+          // overwrite, write the index straight into the on-disk XML.
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlAddIndex(
+              actualFilePath,
+              (args as any).indexName,
+              indexFieldNames,
+              (args as any).indexAllowDuplicates,
+              (args as any).indexAlternateKey,
+            );
+            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+          }
         }
         break;
       }
