@@ -215,6 +215,35 @@ describe('#13 AxTable canonical element order', () => {
     expect(runRules(withSource, 'xml-table').filter(v => v.rule === 'XML006')).toHaveLength(0);
   });
 
+  // The element scan used to strip CDATA/comments with chained `.replace()`. A non-greedy
+  // `<!--[\s\S]*?-->` never matches an UNTERMINATED region, so its contents survived and were
+  // scanned as real elements — a malformed document could then invent violations that are not
+  // there. Skipping regions in a forward scan runs an unterminated one to EOF instead.
+  it('does not scan the contents of an unterminated comment as elements', () => {
+    const xml = `<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>ConDemoTicket</Name>
+\t<Label>@SYS2</Label>
+\t<TitleField1>Subject</TitleField1>
+\t<!-- <CacheLookup>Found</CacheLookup><DeveloperDocumentation>@SYS1</DeveloperDocumentation>
+\t<Fields />
+</AxTable>`;
+    expect(runRules(xml, 'xml-table').filter(v => v.rule === 'XML006')).toHaveLength(0);
+  });
+
+  // Same guarantee for CDATA. The block sits directly under the root so its contents WOULD
+  // land at the depth the order check reads — otherwise the test passes either way and proves
+  // nothing.
+  it('does not scan the contents of an unterminated CDATA block as elements', () => {
+    const xml = `<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>ConDemoTicket</Name>
+\t<Label>@SYS2</Label>
+\t<TitleField1>Subject</TitleField1>
+\t<![CDATA[ if (a < b) { }
+\t<CacheLookup>Found</CacheLookup><DeveloperDocumentation>@SYS1</DeveloperDocumentation>
+</AxTable>`;
+    expect(runRules(xml, 'xml-table').filter(v => v.rule === 'XML006')).toHaveLength(0);
+  });
+
   it('flags a table-level <AlternateKey>, which does not exist in the AxTable model', () => {
     const bogus = `<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>ConDemoTicket</Name>

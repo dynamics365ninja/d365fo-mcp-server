@@ -680,29 +680,51 @@ const XPP_RULES = [
 ];
 
 /**
- * Collect the names of the direct children of the document root, in document
- * order. CDATA is stripped first — X++ inside `<Source><![CDATA[…]]></Source>`
- * is full of `<` characters that would otherwise be read as tags.
+ * Collect the names of the direct children of the document root, in document order.
+ *
+ * Skips CDATA / comments / PIs in a single forward scan rather than stripping them with
+ * chained `.replace()`. Two reasons that matters: removing one region can splice its
+ * neighbours into a NEW delimiter (`<!<!-- -->--` leaves `<!--`), and a non-greedy
+ * `<!--[\s\S]*?-->` does not match an UNTERMINATED comment at all, so it survives intact.
+ * Skipping in place can do neither. CDATA is what makes this necessary in the first place:
+ * X++ inside `<Source><![CDATA[…]]></Source>` is full of `<` that would read as tags.
  */
 function rootChildElements(xml: string): string[] {
-  const stripped = xml
-    .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<\?[\s\S]*?\?>/g, '');
   const out: string[] = [];
   let depth = 0;
-  const tagRe = /<(\/?)([A-Za-z_][\w.-]*)([^>]*?)(\/?)>/g;
-  let m: RegExpExecArray | null;
-  while ((m = tagRe.exec(stripped)) !== null) {
-    const closing = m[1] === '/';
-    const name = m[2];
-    const selfClosing = m[4] === '/';
-    if (closing) {
-      depth--;
+  let i = 0;
+
+  /** End of a skipped region; an unterminated one runs to EOF. */
+  const skipTo = (from: number, terminator: string): number => {
+    const end = xml.indexOf(terminator, from);
+    return end === -1 ? xml.length : end + terminator.length;
+  };
+
+  const tagRe = /<(\/?)([A-Za-z_][\w.-]*)([^>]*?)(\/?)>/y;
+
+  while (i < xml.length) {
+    const lt = xml.indexOf('<', i);
+    if (lt === -1) break;
+
+    // Order matters: the longer delimiters must be tested before the `<!` catch-all.
+    if (xml.startsWith('<![CDATA[', lt)) { i = skipTo(lt + 9, ']]>'); continue; }
+    if (xml.startsWith('<!--', lt)) { i = skipTo(lt + 4, '-->'); continue; }
+    if (xml.startsWith('<?', lt)) { i = skipTo(lt + 2, '?>'); continue; }
+    if (xml.startsWith('<!', lt)) { i = skipTo(lt + 2, '>'); continue; }
+
+    tagRe.lastIndex = lt;
+    const m = tagRe.exec(xml);
+    if (!m) {
+      i = lt + 1;
       continue;
     }
-    if (depth === 1) out.push(name);
-    if (!selfClosing) depth++;
+    if (m[1] === '/') {
+      depth--;
+    } else {
+      if (depth === 1) out.push(m[2]);
+      if (m[4] !== '/') depth++;
+    }
+    i = lt + m[0].length;
   }
   return out;
 }
