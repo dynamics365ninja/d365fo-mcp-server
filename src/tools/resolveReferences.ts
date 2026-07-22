@@ -137,12 +137,9 @@ const KERNEL_TYPES = new Set([
   'fileiopermission', 'runaspermission', 'datetimeutil', 'timezone', 'random',
   'runbase', 'image', 'clrinterop', 'clrobject', 'thread', 'webrequest',
   'webresponse', 'gc', 'session', 'infolog', 'debug', 'global',
-  // Kernel enums (not in metadata XML). 'exception' is a compiler enum with no
-  // AxEnum at all; 'noyes' is the single most common enum in X++ yet the local
-  // index does not prove it — so every idiomatic try/catch (Exception::Error,
-  // Exception::DuplicateKeyException) and every NoYes::Yes/No used to hard-ERROR
-  // in the static-access path and block writes under GROUNDING_ENFORCE. See
-  // docs/eval-sweep-findings-2026-07-21.md #12 (Exception) and #17 (NoYes).
+  // Kernel enums (not in metadata XML). 'exception' has no AxEnum at all, and the
+  // index does not prove 'noyes' — without both, every try/catch and NoYes:: use
+  // hard-errors in the static-access path.
   'types', 'tablescope', 'utcdatetimeorder', 'dateorder', 'dateday',
   'datemonth', 'dateyear', 'statementtype', 'concurrencymodel', 'isolationlevel',
   'exception', 'noyes',
