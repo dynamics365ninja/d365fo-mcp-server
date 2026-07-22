@@ -58,7 +58,6 @@ export function suggestPort(instances: Instance[]): number {
 export function createInstance(name: string, port: number): Instance {
   const dir = join(paths.instancesDir, name);
   const envFile = join(dir, '.env');
-  const configFile = join(dir, 'd365fo-mcp.json');
   if (configCandidates(dir).some(p => fs.existsSync(p)) || fs.existsSync(envFile)) {
     throw new Error(`Instance '${name}' already exists.`);
   }
@@ -74,5 +73,7 @@ export function createInstance(name: string, port: number): Instance {
   writeSetting(store, settingByPath('index.metadataPath')!, './metadata');
   saveStore(store);
 
-  return { name, dir, envFile, configFile, port };
+  // store.configPath rather than a second literal: where a fresh config lands is
+  // resolveConfigFiles' decision, and the two must not drift apart.
+  return { name, dir, envFile, configFile: store.configPath, port };
 }
