@@ -20,8 +20,10 @@ import { SETTINGS, parseValue, serializeValue, settingByPath } from '../../src/c
 import {
   conflictingLegacyValues,
   migrateLegacyEnv,
+  openInstanceStore,
   openStore,
   readSetting,
+  saveStore,
   writeSetting,
 } from '../../src/cli/settingsStore.js';
 
@@ -129,6 +131,16 @@ describe('config file', () => {
     expect(env.GROUNDING_SECRET).toBe('s3cret');
   });
 
+  it('defaults a not-yet-created config to the repo layout (config/)', () => {
+    const files = resolveConfigFiles(tmp, { allowEnvOverride: false });
+    expect(files.configPath).toBe(join(tmp, 'config', 'd365fo-mcp.json'));
+  });
+
+  it('writes a not-yet-created config to the supplied fallback path', () => {
+    const files = resolveConfigFiles(tmp, { allowEnvOverride: false, fallbackConfigPath: join(tmp, 'd365fo-mcp.json') });
+    expect(files.configPath).toBe(join(tmp, 'd365fo-mcp.json'));
+  });
+
   it('honours D365FO_CONFIG only when the caller allows it', () => {
     const explicit = join(tmp, 'elsewhere', 'custom.json');
     writeConfigFile(explicit, { naming: { prefix: 'FROM_ENV' } });
@@ -146,6 +158,27 @@ describe('settings store', () => {
     fs.writeFileSync(file, content);
     return file;
   };
+
+  it('creates a fresh instance config at the top level, not under config/', () => {
+    // Regression: the wizard used to write instances/<name>/config/d365fo-mcp.json,
+    // which listInstances() (top-level d365fo-mcp.json | .env) could not discover.
+    const instanceDir = join(tmp, 'instances', 'gamma');
+    fs.mkdirSync(instanceDir, { recursive: true });
+    const store = openInstanceStore(instanceDir);
+    expect(store.configPath).toBe(join(instanceDir, 'd365fo-mcp.json'));
+
+    writeSetting(store, settingByPath('server.port')!, 3007);
+    saveStore(store);
+    expect(fs.existsSync(join(instanceDir, 'd365fo-mcp.json'))).toBe(true);
+    expect(fs.existsSync(join(instanceDir, 'config', 'd365fo-mcp.json'))).toBe(false);
+  });
+
+  it('still finds an existing instance config written under config/ by an older build', () => {
+    const instanceDir = join(tmp, 'instances', 'delta');
+    writeConfigFile(join(instanceDir, 'config', 'd365fo-mcp.json'), { naming: { prefix: 'OLDBUILD' } });
+    const store = openInstanceStore(instanceDir);
+    expect(readSetting(store, settingByPath('naming.prefix')!)).toBe('OLDBUILD');
+  });
 
   it('falls back to a legacy .env when the JSON does not define a value', () => {
     const envFile = writeEnv('EXTENSION_PREFIX=OLD\nPORT=3005\n');

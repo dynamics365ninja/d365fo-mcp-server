@@ -36,10 +36,10 @@ export interface SettingsStore {
  * Open the store for a base directory (repo root, or an instance folder).
  * `legacyEnvFile` is the .env that used to hold the same settings, if any.
  */
-export function openStore(baseDir: string, legacyEnvFile: string | null): SettingsStore {
+export function openStore(baseDir: string, legacyEnvFile: string | null, fallbackConfigPath?: string): SettingsStore {
   // allowEnvOverride: false — the CLI opens several stores in one process, so a
   // D365FO_CONFIG inherited from the shell must not redirect all of them.
-  const files = resolveConfigFiles(baseDir, { allowEnvOverride: false });
+  const files = resolveConfigFiles(baseDir, { allowEnvOverride: false, fallbackConfigPath });
   return {
     dir: files.dir,
     baseDir: files.baseDir,
@@ -53,7 +53,9 @@ export function openStore(baseDir: string, legacyEnvFile: string | null): Settin
 
 /** Store rooted at an instance folder: instances/<name>/d365fo-mcp.json. */
 export function openInstanceStore(instanceDir: string): SettingsStore {
-  return openStore(instanceDir, join(instanceDir, '.env'));
+  // A fresh instance has no config yet; write it to the top-level instance
+  // layout (not the config/ repo layout) so listInstances() can find it.
+  return openStore(instanceDir, join(instanceDir, '.env'), join(instanceDir, 'd365fo-mcp.json'));
 }
 
 /** Effective value of a setting, or undefined when nothing configures it. */

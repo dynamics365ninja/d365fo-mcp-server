@@ -81,12 +81,25 @@ function readJson(file: string): ConfigObject | null {
  * `allowEnvOverride` is what the running server wants (D365FO_CONFIG points it
  * at one specific instance); the CLI passes false, since it manages several
  * targets in one process and must not collapse them all onto that one file.
+ *
+ * `fallbackConfigPath` is where a not-yet-created config should be written when
+ * no candidate exists — and, like the candidates themselves, only when
+ * D365FO_CONFIG did not already name the file outright. It defaults to the repo
+ * layout (<baseDir>/config/…); an instance passes its top-level
+ * <baseDir>/d365fo-mcp.json so a freshly created instance lands in the instance
+ * layout listInstances() discovers, not under config/ (where it would be
+ * invisible to list/rebuild/run).
  */
-export function resolveConfigFiles(baseDir: string, opts?: { allowEnvOverride?: boolean }): ResolvedConfigFiles {
+export function resolveConfigFiles(
+  baseDir: string,
+  opts?: { allowEnvOverride?: boolean; fallbackConfigPath?: string },
+): ResolvedConfigFiles {
   const explicit = opts?.allowEnvOverride === false ? undefined : process.env.D365FO_CONFIG?.trim();
   const configPath = explicit
     ? resolve(explicit)
-    : configCandidates(baseDir).find(p => fs.existsSync(p)) ?? join(baseDir, 'config', 'd365fo-mcp.json');
+    : configCandidates(baseDir).find(p => fs.existsSync(p))
+      ?? opts?.fallbackConfigPath
+      ?? join(baseDir, 'config', 'd365fo-mcp.json');
 
   const dir = dirname(configPath);
   return {
