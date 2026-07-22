@@ -295,6 +295,16 @@ export async function normalizeAotXml(
   const matchers = [...DEFAULT_IGNORES, ...ignore].map(globToRegExp);
   const out = new Map<string, string>();
 
+  // An empty / whitespace-only document parses to `null` (xml2js). This is exactly
+  // what buildActualArtifactsMap produces for a golden artifact with NO resolvable
+  // actual file (`actualArtifacts[name] = ''`) — a genuinely missing artifact. The
+  // contract there (and in normalizeMultiArtifact) is that such an artifact registers
+  // every one of its paths as `missing`, i.e. contributes an EMPTY map — not that it
+  // crashes scoring. Guard the null before `Object.entries` so a missing artifact is
+  // reported as a mismatch instead of aborting the whole score run with
+  // `TypeError: Cannot convert undefined or null to object`.
+  if (parsed == null || typeof parsed !== 'object') return out;
+
   // Root has a single top-level element (AxEnum / AxTable / AxTableExtension / …).
   for (const [rootTag, rootVal] of Object.entries(parsed as Record<string, unknown>)) {
     const children = Array.isArray(rootVal) ? rootVal : [rootVal];
