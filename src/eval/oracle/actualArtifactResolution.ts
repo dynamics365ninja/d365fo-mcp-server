@@ -6,7 +6,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { canonicalizePrefix } from './normalize.js';
+import { artifactKey } from './artifactKey.js';
+import { type PrefixSpec } from './prefix.js';
 
 /**
  * Resolve the actual-dir file matching a golden artifact filename. Tries an
@@ -18,19 +19,26 @@ import { canonicalizePrefix } from './normalize.js';
  * one that generated the actual artifacts) so a whole L3/L4 multi-artifact
  * case doesn't spuriously score every artifact as missing/extra under prefix
  * drift alone.
+ *
+ * The fallback compares LOGICAL ARTIFACT KEYS (`artifactKey`), not merely
+ * prefix-canonicalised filenames, so a legacy golden filename
+ * (`DemoEnumExtProbe.AxClass.metadata.xml` — unprefixed stem, `.Ax<Type>`
+ * infix) still pairs with the actual file the VM produced
+ * (`ConDemoEnumExtProbe.metadata.xml`). See artifactKey.ts and
+ * docs/eval-sweep-findings-2026-07-21.md #2.
  */
 export function resolveActualFile(
   actualDir: string,
   goldenName: string,
-  goldenPrefix: string,
-  actualPrefix: string,
+  goldenPrefix: PrefixSpec,
+  actualPrefix: PrefixSpec,
 ): string | undefined {
   const direct = path.join(actualDir, goldenName);
   if (fs.existsSync(direct)) return direct;
-  const canonGolden = canonicalizePrefix(goldenName, goldenPrefix);
+  const canonGolden = artifactKey(goldenName, goldenPrefix);
   const candidate = fs.readdirSync(actualDir)
     .filter(f => f.endsWith('.metadata.xml'))
-    .find(f => canonicalizePrefix(f, actualPrefix) === canonGolden);
+    .find(f => artifactKey(f, actualPrefix) === canonGolden);
   return candidate ? path.join(actualDir, candidate) : undefined;
 }
 
@@ -64,8 +72,8 @@ export function resolveActualFile(
 export function buildActualArtifactsMap(
   actualDir: string,
   artifactNames: string[],
-  goldenPrefix: string,
-  actualPrefix: string,
+  goldenPrefix: PrefixSpec,
+  actualPrefix: PrefixSpec,
 ): { actualArtifacts: Record<string, string>; matchedActualFiles: Set<string> } {
   const actualArtifacts: Record<string, string> = {};
   const matchedActualFiles = new Set<string>();

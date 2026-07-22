@@ -13,14 +13,28 @@ export type Split = 'train' | 'holdout';
 export interface ScoredCase {
   caseId: string;
   split: Split;
-  score: { build: number; bp_clean: number; golden_match: number };
+  score: { build: number; bp_clean: number | null; golden_match: number };
+  /**
+   * Did the capture actually run xppbp? `undefined` = unknown provenance (every
+   * record written before the flag existed). Mirrors `bpState` in report.ts:
+   * only `bp_clean === 0` proves the check ran, so an unflagged 1 is NOT
+   * comparable with a checked one and is left out of `pass_at_bp_clean`
+   * (docs/eval-sweep-findings-2026-07-21.md #3).
+   */
+  bpChecked?: boolean;
+}
+
+/** 'clean' | 'dirty' | 'unverified' — see `bpState` in report.ts. */
+function bpVerified(c: ScoredCase): boolean {
+  return c.bpChecked === true || c.score.bp_clean === 0;
 }
 
 export interface SplitAggregate {
   count: number;
   /** Fractions in [0,1]. */
   pass_at_build: number;
-  pass_at_bp_clean: number;
+  /** Over BP-VERIFIED cases only; `null` when none carries BP evidence. */
+  pass_at_bp_clean: number | null;
   pass_at_golden: number;
 }
 
@@ -33,7 +47,12 @@ export function aggregate(cases: ScoredCase[]): SplitAggregate {
   return {
     count,
     pass_at_build: frac(cases.filter(c => c.score.build === 1).length, count),
-    pass_at_bp_clean: frac(cases.filter(c => c.score.bp_clean === 1).length, count),
+    pass_at_bp_clean: (() => {
+      const verified = cases.filter(bpVerified);
+      return verified.length === 0
+        ? null
+        : frac(verified.filter(c => c.score.bp_clean === 1).length, verified.length);
+    })(),
     pass_at_golden: frac(cases.filter(c => c.score.golden_match === 1).length, count),
   };
 }
@@ -66,8 +85,13 @@ export function holdoutRegressed(
 ): RegressionResult {
   const regressions: RegressionResult['regressions'] = [];
   for (const m of METRICS) {
-    if (candidate[m] < baseline[m] - epsilon) {
-      regressions.push({ metric: m, baseline: baseline[m], candidate: candidate[m] });
+    const b = baseline[m];
+    const c = candidate[m];
+    // A `null` side means the metric was not measured on that run — there is no
+    // regression to assert, and fabricating a 0 would invent a failure.
+    if (b === null || c === null) continue;
+    if (c < b - epsilon) {
+      regressions.push({ metric: m, baseline: b, candidate: c });
     }
   }
   return { ok: regressions.length === 0, regressions };
@@ -75,7 +99,7 @@ export function holdoutRegressed(
 
 export function renderSplitReport(agg: Record<Split, SplitAggregate>): string {
   const row = (name: string, a: SplitAggregate) =>
-    `  ${name.padEnd(8)} n=${a.count}  build=${pct(a.pass_at_build)}  bp=${pct(a.pass_at_bp_clean)}  golden=${pct(a.pass_at_golden)}`;
+    `  ${name.padEnd(8)} n=${a.count}  build=${pct(a.pass_at_build)}  bp=${a.pass_at_bp_clean === null ? 'n/a' : pct(a.pass_at_bp_clean)}  golden=${pct(a.pass_at_golden)}`;
   return ['# Scores by split', row('train', agg.train), row('holdout', agg.holdout)].join('\n');
 }
 

@@ -21,7 +21,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..', '..');
 
 interface CorpusRunFull extends CorpusRun {
-  score?: CorpusRun['score'] & { build?: number; bp_clean?: number; golden_match?: number };
+  score?: CorpusRun['score'] & { build?: number; bp_clean?: number | null; golden_match?: number };
+  build?: { bp_checked?: boolean };
 }
 
 function loadRuns(): CorpusRunFull[] {
@@ -59,9 +60,10 @@ function latestScoredCases(runs: CorpusRunFull[], splits: Map<string, Split>): S
     split: splits.get(r.case_id) ?? 'holdout',
     score: {
       build: r.score?.build ?? 0,
-      bp_clean: r.score?.bp_clean ?? 0,
+      bp_clean: r.score?.bp_clean ?? null,
       golden_match: r.score?.golden_match ?? 0,
     },
+    bpChecked: r.build?.bp_checked,
   }));
 }
 
