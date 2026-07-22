@@ -23,13 +23,13 @@ import { createXppMcpServer } from '../../src/server/mcpServer';
 // the human-readable log line, never for assertions.
 const CHARS_PER_TOKEN = 4;
 
-// Ceilings in characters of serialized JSON. Current actuals (2026-07, after
-// adding d365fo_file's `service` + `service-group` objectTypes — two genuinely
-// new AOT capabilities, so the ceilings were raised deliberately (same as the
-// earlier generate_object `additionalDatasets` bump): total ≈ 62,555 ·
-// d365fo_file ≈ 9,493 (now the largest, ahead of generate_object ≈ 8,469).
+// Ceilings in characters of serialized JSON. Current actual ≈ 62,930 · largest
+// tool d365fo_file ≈ 9,5xx (ahead of generate_object ≈ 8,5xx). Raised
+// deliberately whenever a genuinely new AOT capability lands — `service` +
+// `service-group` objectTypes, then d365fo_file's add-/remove-delete-action
+// (findings #36) and generate_object scaffold `fields[]`/`preview` (#21).
 // Headroom is small on purpose so creep is caught early.
-const TOTAL_BUDGET = 62_900;
+const TOTAL_BUDGET = 63_100;
 const LARGEST_TOOL_BUDGET = 9_800;
 
 async function getTools(): Promise<Array<{ name: string }>> {

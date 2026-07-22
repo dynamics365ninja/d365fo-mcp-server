@@ -472,8 +472,9 @@ function checkGenericDocComment(code: string): ValidationViolation[] {
 
 /**
  * XML001 — AxTable XML missing an index with <AlternateKey>Yes</AlternateKey>.
- * Every D365FO table must have at least one index marked as alternate key
- * for the BPCheckAlternateKeyAbsent rule.
+ * Warning, not error: xppbp raises BPCheckAlternateKeyAbsent as a warning and the
+ * table still builds. As an error it made a legitimately single-index table
+ * unsatisfiable (eval #7).
  */
 function checkMissingAlternateKey(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
@@ -485,12 +486,11 @@ function checkMissingAlternateKey(code: string): ValidationViolation[] {
   if (!/<AlternateKey>\s*Yes\s*<\/AlternateKey>/i.test(code)) {
     violations.push({
       rule: 'XML001',
-      severity: 'error',
+      severity: 'warning',
       excerpt: '<AxTable> — no index with <AlternateKey>Yes</AlternateKey>',
-      fix: 'Add at least one <AxTableIndex> with <AlternateKey>Yes</AlternateKey>. ' +
-        'D365FO requires every table to have an alternate key index ' +
-        '(BPCheckAlternateKeyAbsent). ' +
-        'generate_smart adds this automatically via buildPrimaryKeyIndex.',
+      fix: 'Add an <AxTableIndex> with <AlternateKey>Yes</AlternateKey> unless the table ' +
+        'deliberately has none — xppbp reports BPCheckAlternateKeyAbsent as a warning and ' +
+        'the table still builds. generate_smart adds one via buildPrimaryKeyIndex.',
     });
   }
   return violations;

@@ -76,6 +76,7 @@ export const generateObjectTool = {
           description: '[scaffold:table] Storage type: Regular (default, omit), TempDB, InMemory. ⛔ NEVER pass as tableGroup.',
         },
         generateCommonFields: { type: 'boolean', description: '[scaffold:table] Auto-generate common fields based on table group patterns.' },
+        preview: { type: 'boolean', description: '[scaffold:table] Return the XML without writing to disk.' },
         dataSource: { type: 'string', description: '[scaffold:form] Optional: Table name for primary datasource.' },
         formPattern: {
           type: 'string',
@@ -94,7 +95,7 @@ export const generateObjectTool = {
         generateControls: { type: 'boolean', description: '[scaffold:form] Auto-generate grid controls for datasource.' },
         fields: {
           type: 'array',
-          description: '[scaffold:report | fields] Structured field specs. Takes priority over fieldsHint. For mode="fields": name + optional edt/enumType/type/label/mandatory (EDT auto-resolved when omitted).',
+          description: '[scaffold:table|report | fields] Structured field specs; takes priority over fieldsHint. PREFER for enum-backed fields or an explicit EDT — a bare name cannot express either. name + optional edt/enumType/type/label/mandatory (EDT auto-resolved when omitted).',
           items: {
             type: 'object',
             properties: {

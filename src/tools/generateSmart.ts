@@ -59,7 +59,11 @@ export async function generateSmartTool(request: CallToolRequest, context: XppSe
   }
 
   const result = await handler(rest, context);
-  return { content: result?.content ?? [{ type: 'text', text: 'No results returned' }] };
+  // Preserve isError — dropping it reported a rejected generation as a success.
+  return {
+    content: result?.content ?? [{ type: 'text', text: 'No results returned' }],
+    ...(result?.isError ? { isError: true } : {}),
+  };
 }
 
 // Tool registration (name, description, inputSchema) lives inline in

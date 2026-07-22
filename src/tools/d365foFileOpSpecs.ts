@@ -47,6 +47,19 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     type: 'string',
     description: 'Replacement for the first occurrence of oldCode; pass "" to delete the snippet.',
   },
+  // table delete actions
+  deleteActionName: {
+    type: 'string',
+    description: 'Delete action name — conventionally the related table name.',
+  },
+  deleteActionTable: {
+    type: 'string',
+    description: 'Related table the delete action applies to (defaults to deleteActionName).',
+  },
+  deleteActionType: {
+    type: 'string (None | Restricted | Cascade | CascadeRestricted)',
+    description: 'Delete action to take on the related table. Defaults to Restricted.',
+  },
   // table fields
   fieldName: { type: 'string', description: 'Field name.' },
   fieldNewName: {
@@ -309,6 +322,12 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     optional: ['relationConstraints', 'relationCardinality', 'relatedTableCardinality', 'relationshipType'],
   },
   'remove-relation': { required: ['relationName'], optional: [] },
+  'add-delete-action': {
+    required: ['deleteActionName'],
+    optional: ['deleteActionTable', 'deleteActionType'],
+    note: 'objectType="table" only. deleteActionTable defaults to deleteActionName; deleteActionType defaults to Restricted.',
+  },
+  'remove-delete-action': { required: ['deleteActionName'], optional: [] },
   'add-field-group': {
     required: ['fieldGroupName'],
     optional: ['fieldGroupFields', 'fieldGroupLabel'],

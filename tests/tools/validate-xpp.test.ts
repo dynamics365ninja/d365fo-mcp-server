@@ -233,6 +233,29 @@ describe('XML rules', () => {
     expect(getText(result)).toContain('XML001');
   });
 
+  it('XML001: is a warning, not a hard error (eval #7)', async () => {
+    // xppbp reports BPCheckAlternateKeyAbsent as a warning and the table builds.
+    // As an error, a case that legitimately mandates one index could never pass.
+    const xml = `
+      <AxTable>
+        <Name>ConDemoAsset</Name>
+        <Label>@Contoso:AssetLabel</Label>
+        <TableGroup>Main</TableGroup>
+        <Indexes>
+          <AxTableIndex>
+            <Name>AssetIdx</Name>
+            <AlternateKey>No</AlternateKey>
+          </AxTableIndex>
+        </Indexes>
+      </AxTable>
+    `;
+    const result = await validateXppTool(req({ code: xml, codeType: 'xml-table' }));
+    expect(getText(result)).toContain('XML001');
+    expect(getText(result)).toContain('[XML001] — WARNING');
+    expect(result.isError).toBeFalsy();
+    expect(getText(result)).toContain('0 error(s)');
+  });
+
   it('XML001: passes when AlternateKey is Yes', async () => {
     const xml = `
       <AxTable>

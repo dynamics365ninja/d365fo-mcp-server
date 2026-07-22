@@ -120,6 +120,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'add-display-method', 'add-table-method',
             'add-index', 'remove-index',
             'add-relation', 'remove-relation',
+            'add-delete-action', 'remove-delete-action',
             'add-field-group', 'remove-field-group', 'add-field-to-field-group',
             'add-field-modification',
             'add-data-source', 'add-control',
@@ -136,6 +137,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'add-display-method: display method with [SysClientCacheDataMethodAttribute].\n' +
             'add-table-method: canonical find/exist/findByRecId/validateWrite/validateDelete/initValue boilerplate.\n' +
             'add-field-modification: override base-table field label/mandatory in a table-extension.\n' +
+            'add-delete-action: table DeleteActions entry — deleteActionName + optional deleteActionTable/deleteActionType (None|Restricted|Cascade|CascadeRestricted).\n' +
             'modify-property: any object-level property (TableGroup, TitleField1, TableType, Extends…) — see propertyPath.'
         },
         params: {

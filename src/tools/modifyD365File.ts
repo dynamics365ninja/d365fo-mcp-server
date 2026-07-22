@@ -36,6 +36,7 @@ import {
   upsertAxTableProperty,
   AX_TABLE_NON_EXISTENT_PROPERTIES,
 } from '../utils/axTablePropertyOrder.js';
+import { upsertAxFormDesignProperty } from '../utils/axFormDesignProperties.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import {
@@ -326,6 +327,19 @@ async function directXmlModifyProperty(
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     const tagName = propertyPath.split(/[./]/).pop()!;
+
+    // Forms first: the bridge refuses modify-property for AxForm entirely, and the
+    // generic path below cannot serve Design properties either — Caption/Style also
+    // occur on controls, so it sees several matches and refuses (#37).
+    const formPatched = upsertAxFormDesignProperty(content, tagName, escapedValue);
+    if (formPatched) {
+      await fs.writeFile(filePath, normalizeD365Xml(formPatched), 'utf-8');
+      return {
+        success: true,
+        message: `✅ Form Design property '${tagName}'='${propertyValue}' set via direct XML (the bridge does not support modify-property for forms). File: ${filePath}`,
+      };
+    }
+
     const openTagRe = new RegExp(`<${tagName}\\b[^>]*>[\\s\\S]*?</${tagName}>`, 'g');
     const selfClosingRe = new RegExp(`<${tagName}\\b([^>]*)/>`, 'g');
 
@@ -662,6 +676,85 @@ async function directXmlAddIndex(
   }
 }
 
+/** DeleteAction values accepted by the AxTable serialiser. */
+export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRestricted'] as const;
+
+/**
+ * add-delete-action / remove-delete-action on a TABLE, written straight to the XML.
+ *
+ * There is no bridge operation for DeleteActions at all (finding #36), so a
+ * cascading delete action was inexpressible through the modify surface — the only
+ * route was the forbidden whole-file overwrite. <DeleteActions> is a collection
+ * sibling, not part of the order-sensitive top-level property block, so patching
+ * it in place is safe. Shape matches MetadataWriteService.cs: Name, Table,
+ * DeleteAction.
+ */
+async function directXmlDeleteAction(
+  filePath: string,
+  mode: 'add' | 'remove',
+  name: string,
+  table: string | undefined,
+  deleteAction: string | undefined,
+): Promise<{ success: boolean; message: string } | null> {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Only tables carry <DeleteActions> — bail on any other shape so a mis-typed
+    // objectType never corrupts a non-table file.
+    if (!/<AxTable\b/.test(content)) return null;
+
+    const blockRe = new RegExp(
+      `[\\t ]*<AxTableDeleteAction>\\s*<Name>${escapeRegExp(name)}</Name>[\\s\\S]*?</AxTableDeleteAction>\\n?`,
+    );
+    const existing = blockRe.exec(content);
+
+    if (mode === 'remove') {
+      if (!existing) {
+        return { success: true, message: `✅ Delete action '${name}' not present in ${filePath} — nothing to remove.` };
+      }
+      const updated = content.replace(blockRe, '');
+      await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+      return { success: true, message: `✅ Delete action '${name}' removed. File: ${filePath}` };
+    }
+
+    if (existing) {
+      return { success: true, message: `✅ Delete action '${name}' already present in ${filePath} — skipped (idempotent).` };
+    }
+
+    const newElement =
+      `\t\t<AxTableDeleteAction>\n` +
+      `\t\t\t<Name>${name}</Name>\n` +
+      `\t\t\t<Table>${table ?? name}</Table>\n` +
+      `\t\t\t<DeleteAction>${deleteAction ?? 'Restricted'}</DeleteAction>\n` +
+      `\t\t</AxTableDeleteAction>`;
+
+    let updated: string;
+    if (content.includes('<DeleteActions />')) {
+      updated = content.replace('<DeleteActions />', `<DeleteActions>\n${newElement}\n\t</DeleteActions>`);
+    } else if (content.includes('</DeleteActions>')) {
+      updated = content.replace('</DeleteActions>', `${newElement}\n\t</DeleteActions>`);
+    } else {
+      // No <DeleteActions> collection at all — not a shape we can safely patch.
+      return null;
+    }
+    if (updated === content) return null;
+
+    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    return {
+      success: true,
+      message: `✅ Delete action '${name}' (${deleteAction ?? 'Restricted'} on ${table ?? name}) added. File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlDeleteAction failed: ${err}`);
+    return null;
+  }
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * Writes the relation properties the bridge drops into an <AxTableRelation>.
  *
@@ -825,6 +918,7 @@ const ModifyD365FileArgsSchema = z.object({
     'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'remove-field',
     'add-index', 'remove-index',
     'add-relation', 'remove-relation',
+    'add-delete-action', 'remove-delete-action',
     'add-field-group', 'remove-field-group', 'add-field-to-field-group',
     'add-field-modification',
     'add-data-source',
@@ -1025,6 +1119,17 @@ const ModifyD365FileArgsSchema = z.object({
   relationCardinality: z.string().optional().describe('Cardinality on local side: ZeroMore | ZeroOne | ExactlyOne (default: ZeroMore).'),
   relatedTableCardinality: z.string().optional().describe('Cardinality on related side: ZeroMore | ZeroOne | ExactlyOne (default: ExactlyOne).'),
   relationshipType: z.string().optional().describe('Relationship type: Association | Composition | Aggregation | Link | Specialization (default: Association).'),
+
+  // For add-delete-action / remove-delete-action (table)
+  deleteActionTable: z.string().optional().describe(
+    'Related table the delete action applies to (e.g. "SalesLine"). Defaults to deleteActionName.'
+  ),
+  deleteActionName: z.string().optional().describe(
+    'Delete action name — conventionally the related table name. Required for both add- and remove-delete-action.'
+  ),
+  deleteActionType: z.enum(DELETE_ACTION_TYPES).optional().describe(
+    'None | Restricted (default) | Cascade | CascadeRestricted.'
+  ),
 
   // For add-field-group / remove-field-group / add-field-to-field-group (table, table-extension)
   fieldGroupName: z.string().optional().describe('Field group name. For add-field-to-field-group in a table-extension: name of the group (new or existing base-table group).'),
@@ -1770,6 +1875,21 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             context.bridge,
             objectName,
             (args as any).relationName,
+          );
+        }
+        break;
+      }
+      case 'add-delete-action':
+      case 'remove-delete-action': {
+        // No bridge op exists for DeleteActions (#36) — this is the only path.
+        const daName = (args as any).deleteActionName ?? (args as any).deleteActionTable;
+        if (daName) {
+          bridgeResult = await directXmlDeleteAction(
+            actualFilePath,
+            operation === 'add-delete-action' ? 'add' : 'remove',
+            daName,
+            (args as any).deleteActionTable,
+            (args as any).deleteActionType,
           );
         }
         break;
