@@ -1,0 +1,21 @@
+{
+  "id": "L3-currency-exchange-conversion",
+  "title": "Currency: transaction to accounting currency conversion through the exchange-rate provider",
+  "tier": 3,
+  "instruction": "In the sandbox model, convert amounts correctly across currencies. Ground it first with get_knowledge(topic=\"currency-exchange-rates\"). Create a class DemoCurrencyConverter with public static methods: (1) `AmountMST toAccountingCurrency(AmountCur _amount, CurrencyCode _fromCurrency, TransDate _date)` - converts through the platform exchange-rate API (CurrencyExchangeHelper / ExchangeRateHelper as taught by the knowledge entry) for the legal entity's accounting currency on the given date; (2) `AmountCur convert(AmountCur _amount, CurrencyCode _from, CurrencyCode _to, TransDate _date)` - cross-currency conversion via the same helper; (3) `AmountCur roundToCurrency(AmountCur _amount, CurrencyCode _currency)` - rounds with the currency's own rounding rule from the Currency table, never with a hardcoded 0.01. Hand-multiplying by an ExchangeRate value read straight from the exchange-rate table FAILS this case. Confirm the helper class and member signatures with search/get_method before writing them - do not guess. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-currency-exchange-conversion/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "currency",
+    "exchange-rate",
+    "class"
+  ],
+  "split": "holdout"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "L3-gab-party-postaladdress",
+  "title": "Global address book: create a party with a primary postal address through the GAB API",
+  "tier": 3,
+  "instruction": "In the sandbox model, create global-address-book data the supported way. Ground it first with get_knowledge(topic=\"global-address-book\"). Create a class DemoPartyBuilder with public static methods: (1) `RecId createOrganization(Name _name)` - creates an organization party through the DirParty/DirPartyTable API taught by the knowledge entry, inside ttsbegin/ttscommit, and returns its RecId; (2) `void addPrimaryAddress(RecId _party, LogisticsAddressCountryRegionId _countryRegion, LogisticsAddressCity _city)` - attaches a postal address with the Primary role using the DirParty postal-address API (a DirPartyPostalAddressView-backed call), never by inserting into LogisticsPostalAddress or DirPartyLocation directly; (3) `LogisticsAddressCity primaryCity(RecId _party)` - reads the primary address back through the view. Direct inserts into the location tables FAIL this case. Confirm every GAB class, view and member signature with search/get_method before writing it - do not guess. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-gab-party-postaladdress/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "global-address-book",
+    "gab",
+    "dirparty",
+    "address",
+    "class"
+  ],
+  "split": "holdout"
+}

@@ -36,6 +36,7 @@ export const prepareTool = {
             'data-entity', 'report', 'map', 'menu-item-display', 'menu-item-action',
             'menu-item-output', 'menu', 'security-privilege', 'security-duty', 'security-role',
             'business-event', 'tile', 'kpi', 'service', 'service-group',
+            'macro', 'configuration-key', 'security-policy', 'aggregate-measurement', 'license-code',
           ],
           description: '[change] D365FO object type — auto-detected when omitted. [create] REQUIRED — type of the new object.',
         },

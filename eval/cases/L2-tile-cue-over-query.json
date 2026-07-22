@@ -1,0 +1,26 @@
+{
+  "id": "L2-tile-cue-over-query",
+  "title": "Count tile (Cue) over an AOT query with a display menu item",
+  "tier": 2,
+  "instruction": "In the sandbox model, build a workspace count tile end to end. Ground it first with get_knowledge(topic=\"tiles-kpis\"). Create: (1) an AOT query DemoBlockedCustomersQuery with CustTable as its single data source (DynamicFields=Yes) and a range on the Blocked field set to CustVendorBlocked::All, so the tile shows an actionable, narrow count; (2) a display menu item DemoBlockedCustomersMI (label @TaxTransactionInquiry:HeaderNote, object type Form) pointing at the standard CustTable form - this is what the tile opens on click; (3) a tile DemoBlockedCustomersTile (d365fo_file objectType \"tile\") with Label, Size=Wide, MenuItemName=ConDemoBlockedCustomersMI and Query=ConDemoBlockedCustomersQuery. A tile without a Query is a link tile, not a Cue, and FAILS this case. All three objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxQuery",
+    "AxMenuItemDisplay",
+    "AxTile"
+  ],
+  "golden_path": "eval/goldens/L2-tile-cue-over-query/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "tile",
+    "cue",
+    "kpi",
+    "query",
+    "menu-item",
+    "ui"
+  ],
+  "split": "holdout"
+}

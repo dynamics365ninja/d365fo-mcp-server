@@ -1,0 +1,24 @@
+{
+  "id": "L2-virtual-entity-power-platform",
+  "title": "Power Platform: entity marked up for virtual-entity exposure",
+  "tier": 2,
+  "instruction": "In the sandbox model, expose data as a Dataverse virtual entity. Ground it first with get_knowledge(topic=\"power-platform-integration\"). SCOPE LIMIT: enabling the entity in the Power Platform admin UI is a runtime step, not an AOT one - out of scope. Create: (1) a table DemoVirtualSource (label @TaxTransactionInquiry:HeaderNote, table group Main) with fields SourceCode (String, EDT Num, mandatory) and Description (String, EDT Name) plus a unique alternate-key index VirtualSourceIdx on SourceCode; (2) a data entity DemoVirtualSourceEntity over it with IsPublic=Yes, a PublicCollectionName and PublicEntityName in plural/singular form, EntityCategory=Master and SourceCode as the natural key, so Dataverse can map it. An entity that is not public, or whose key is RecId, FAILS this case. Both objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxDataEntityView"
+  ],
+  "golden_path": "eval/goldens/L2-virtual-entity-power-platform/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "power-platform",
+    "virtual-entity",
+    "dataverse",
+    "data-entity",
+    "integration"
+  ],
+  "split": "holdout"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "L3-data-entity-extension-field",
+  "title": "Data entity extension: surface a table-extension field on an existing entity",
+  "tier": 3,
+  "instruction": "In the sandbox model, extend an existing data entity without editing it. Ground it first with get_knowledge(topic=\"data-entities\"). Create: (1) a table extension over CustTable adding one field DemoLoyaltyCode (String, EDT Name) with the sandbox model's prefix; (2) a data entity extension over the standard CustCustomerV3Entity (d365fo_file objectType \"data-entity-extension\") adding a mapped field that binds DemoLoyaltyCode to the entity's CustTable data source, so the field is exposed over OData. Use extension_info/get_object_info to confirm the entity's data-source name before writing the mapped field - a wrong DataSource value compiles but breaks at runtime. Creating a new entity instead of extending the standard one FAILS this case. Both objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxTableExtension",
+    "AxDataEntityViewExtension"
+  ],
+  "golden_path": "eval/goldens/L3-data-entity-extension-field/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "data-entity",
+    "data-entity-extension",
+    "table-extension",
+    "integration"
+  ],
+  "split": "holdout"
+}

@@ -1,0 +1,24 @@
+{
+  "id": "L3-print-management-report",
+  "title": "Print management: document node registration + settings resolution for a custom document",
+  "tier": 3,
+  "instruction": "In the sandbox model, wire a custom document into print management. Ground it first with get_knowledge(topic=\"print-management\"). Create: (1) a base enum DemoPrintDocType (extensible, labelled) with a single element DemoConfirmation representing the new document; (2) a class DemoPrintMgmtDocType that registers the document node - implement the default-report-format and node-description members the framework expects, returning the SSRS report design name as a plain str constant; (3) a class DemoPrintMgmtRunner with `public static void printFor(Num _documentId)` that resolves the print-management settings for the document through the PrintMgmtDocType/PrintMgmtSettings API (never by constructing an SRSPrintDestinationSettings by hand), applies the resolved settings to an SRSReportRun-style controller, and infologs a labelled message when no setting is configured. Confirm every print-management class and member signature with search/get_method before writing it - do not guess. All objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxEnum"
+  ],
+  "golden_path": "eval/goldens/L3-print-management-report/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "print-management",
+    "ssrs",
+    "report",
+    "class",
+    "enum"
+  ],
+  "split": "holdout"
+}

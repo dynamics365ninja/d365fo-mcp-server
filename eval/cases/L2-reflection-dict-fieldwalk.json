@@ -1,0 +1,23 @@
+{
+  "id": "L2-reflection-dict-fieldwalk",
+  "title": "Reflection: DictTable/DictField walk with labels resolved once, DictEnum value2Label, guarded dynamic call",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoReflectionUtil exercising the runtime metadata API. Ground it first with get_knowledge(topic=\"reflection-dict\"). Public static methods: (1) `void dumpRecord(Common _record)` - constructs `new DictTable(_record.TableId)` ONCE outside any loop, iterates fields with fieldCnt()/fieldCnt2Id(i)/fieldObject(fieldId), skips system fields, and infologs `dictField.label()` plus the value read dynamically as `_record.(fieldId)`; re-constructing the DictTable per field FAILS the case. (2) `str enumLabel(EnumId _enumId, int _value)` - returns `new DictEnum(_enumId).value2Label(_value)`. (3) `void runIfPresent(ClassId _classId, str _methodName)` - constructs a DictClass and calls callStatic() only after hasStaticMethod() returned true; an unguarded dynamic call FAILS the case. Every Dict* object must be seeded from an intrinsic (tableNum/classNum/enumNum) or from a passed id, never from a string literal name. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-reflection-dict-fieldwalk/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "reflection",
+    "dict",
+    "metadata-api",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

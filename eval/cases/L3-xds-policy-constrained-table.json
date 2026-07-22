@@ -1,0 +1,25 @@
+{
+  "id": "L3-xds-policy-constrained-table",
+  "title": "XDS: extensible data security policy constraining a table through a policy query",
+  "tier": 3,
+  "instruction": "In the sandbox model, constrain data with an XDS policy. Ground it first with get_knowledge(topic=\"security\"). Create: (1) a table DemoTerritory (label @TaxTransactionInquiry:HeaderNote, table group Main) with fields TerritoryCode (String, EDT Num, mandatory) and OwnerUserId (EDT UserId), plus a unique alternate-key index TerritoryIdx on TerritoryCode - this is the PRIMARY table of the policy; (2) a table DemoTerritoryLine with fields TerritoryCode (EDT Num) and LineNum (EDT LineNum), a unique index on both, and a table relation to ConDemoTerritory on TerritoryCode - the constrained table; (3) an AOT query DemoTerritoryPolicyQuery over ConDemoTerritory (DynamicFields=Yes) whose range on OwnerUserId resolves to the current user, so the policy is per user; (4) a security policy DemoTerritoryPolicy (d365fo_file objectType \"security-policy\") with PrimaryTable=ConDemoTerritory, Query=ConDemoTerritoryPolicyQuery, ConstrainedTable=Yes, Enabled=Yes and one constrained-table entry for ConDemoTerritoryLine carrying its TableRelation. All four objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxQuery",
+    "AxSecurityPolicy"
+  ],
+  "golden_path": "eval/goldens/L3-xds-policy-constrained-table/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "xds",
+    "security-policy",
+    "security",
+    "query",
+    "table"
+  ],
+  "split": "holdout"
+}

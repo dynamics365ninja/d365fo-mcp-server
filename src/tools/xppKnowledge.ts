@@ -2770,6 +2770,513 @@ select firstonly lookup
     ],
     related: ['performance', 'set-based', 'transactions'],
   },
+
+  // ── X++ collections & containers ────────────────────────────────────────
+  {
+    id: 'xpp-collections',
+    title: 'X++ Collections & Containers (List, Map, Set, Struct, container)',
+    keywords: ['list', 'map', 'set', 'struct', 'container', 'collection', 'enumerator', 'iterator', 'conpeek', 'conins', 'condel', 'conlen', 'confind', 'array', 'types enum', 'pack', 'unpack'],
+    summary:
+      'X++ has two families of in-memory collections: the kernel collection classes (List, Map, Set, Struct, Array), ' +
+      'which are reference types with enumerators, and the primitive `container`, a value type used for packing, ' +
+      'cross-tier marshalling and table fields. Choosing the wrong one is a classic performance bug: containers are ' +
+      'copied on every assignment and grow O(n²) when appended in a loop.',
+    rules: [
+      'Element types are declared at construction with the kernel `Types` enum: new List(Types::String), new Map(Types::Int64, Types::Class), new Set(Types::Integer)',
+      'List — ordered, duplicates allowed: addEnd()/addStart(), elements(), getEnumerator(). Iterate with a ListEnumerator: while (enumerator.moveNext()) { … enumerator.current() }',
+      'Map — key/value: insert(key, value), exists(key), lookup(key) (THROWS if the key is absent — guard with exists() or use MapEnumerator), remove(key), elements()',
+      'Set — unordered unique values: add(), in(), remove(), elements(); use it for de-duplication and membership tests instead of scanning a List',
+      'Struct — a named-field record: new Struct(), add(name, value), value(name), exists(name). Prefer a real class or table buffer when the shape is fixed and known at compile time',
+      'container — value semantics: assignment COPIES. Building one with `con += [x]` inside a loop reallocates every iteration; accumulate in a List and convert once at the end',
+      'container accessors are 1-based intrinsics: conLen(), conPeek(c, i), conIns(), conDel(), conFind(), conNull(). They are not methods and do not mutate — they return a new container',
+      'Cross-tier / persistence: only container (and the pack()/unpack() pattern built on it) can cross the client/server boundary or be stored in a table field. List, Map and Set implement pack()/unpack() so they can be marshalled through a container',
+      'SysOperation data contracts must expose primitives or a container — never a raw List/Map property; serialize with pack()/unpack() (or List::create(packedContainer)) instead',
+      'List::create(container) / Map::create(container) / list.pack() are the supported round-trip helpers; do not hand-roll a conPeek loop over a packed collection',
+      'Array (kernel class) is a dynamic 1-based array of one type; the fixed-size X++ array declaration (`int values[10]`) is a different, compile-time construct',
+      'An enumerator is invalidated by mutating the collection it iterates — collect the changes and apply them after the loop',
+      'None of these collections are thread-safe and none survive a session; they are per-call in-memory structures only',
+    ],
+    examples: [
+      {
+        label: 'List + enumerator, and the container anti-pattern',
+        code: `// GOOD — accumulate in a List, convert once
+List accountNums = new List(Types::String);
+
+CustTable custTable;
+while select AccountNum from custTable
+{
+    accountNums.addEnd(custTable.AccountNum);
+}
+
+ListEnumerator enumerator = accountNums.getEnumerator();
+while (enumerator.moveNext())
+{
+    CustAccount accountNum = enumerator.current();
+    info(accountNum);
+}
+
+// One conversion at the end when a container is genuinely needed
+container packed = accountNums.pack();
+
+// BAD — \`result += [value]\` inside a loop copies the whole container
+// every iteration (O(n²) allocations on a large result set).`,
+      },
+      {
+        label: 'Map with an exists() guard, and Set for de-duplication',
+        code: `Map balanceByAccount = new Map(Types::String, Types::Real);
+Set  seenAccounts     = new Set(Types::String);
+
+CustTrans custTrans;
+while select AccountNum, AmountCur from custTrans
+{
+    if (!seenAccounts.in(custTrans.AccountNum))
+    {
+        seenAccounts.add(custTrans.AccountNum);
+    }
+
+    // lookup() throws on a missing key — always guard with exists()
+    if (balanceByAccount.exists(custTrans.AccountNum))
+    {
+        balanceByAccount.insert(
+            custTrans.AccountNum,
+            balanceByAccount.lookup(custTrans.AccountNum) + custTrans.AmountCur);
+    }
+    else
+    {
+        balanceByAccount.insert(custTrans.AccountNum, custTrans.AmountCur);
+    }
+}
+
+MapEnumerator mapEnumerator = balanceByAccount.getEnumerator();
+while (mapEnumerator.moveNext())
+{
+    info(strFmt('%1: %2', mapEnumerator.currentKey(), mapEnumerator.currentValue()));
+}`,
+      },
+    ],
+    related: ['performance', 'sysoperation', 'select-statement'],
+  },
+
+  // ── Date/time & time zones ──────────────────────────────────────────────
+  {
+    id: 'datetime-timezones',
+    title: 'Date/Time & Time Zones (utcdatetime, DateTimeUtil, session date)',
+    keywords: ['date', 'datetime', 'utcdatetime', 'datetimeutil', 'timezone', 'time zone', 'utcnow', 'today', 'systemdateget', 'timezone conversion', 'validtimestate', 'date effectivity', 'str2date', 'datetime2str'],
+    summary:
+      'D365FO stores every utcdatetime in UTC and converts to a time zone only for display or user input. ' +
+      'The whole surface lives on the kernel class DateTimeUtil — mixing it with the legacy date functions ' +
+      '(today(), timeNow()) is the source of most off-by-one-day and off-by-hours bugs.',
+    rules: [
+      'Table fields of type UtcDateTime always hold UTC. Never store a value you converted to a user/company time zone — convert only at the edge (form display, report, file export)',
+      'DateTimeUtil::utcNow() is the current UTC instant — the right default for stamping created/modified data',
+      'DateTimeUtil::getSystemDateTime() honours the session date/time override (a user can set a session date); utcNow() does not. Use the session-aware one for BUSINESS decisions, utcNow() for audit stamps',
+      'For a business DATE use systemDateGet() (session-aware). NEVER use today(): it reads the AOS server clock, ignores both the session date and the user time zone, and is a BP error',
+      'Convert for display with DateTimeUtil::applyTimeZoneOffset(utcValue, timeZone) and back with DateTimeUtil::removeTimeZoneOffset(localValue, timeZone) — applyTimeZoneOffset is UTC → local, removeTimeZoneOffset is local → UTC',
+      'The time zone comes from DateTimeUtil::getUserPreferredTimeZone() (the Timezone kernel enum), or DateTimeUtil::getCompanyTimeZone() for company-scoped output. Do not hardcode Timezone::GMTCOORDINATEDUNIVERSALTIME',
+      'Build a utcdatetime from parts with DateTimeUtil::newDateTime(date, timeOfDay, timeZone); split it with DateTimeUtil::date() and DateTimeUtil::time()',
+      'Arithmetic: DateTimeUtil::addDays/addHours/addMinutes/addSeconds and ::addMonths/::addYears — never add raw seconds by casting to int64',
+      'Sentinels: DateTimeUtil::minValue() and DateTimeUtil::maxValue() (not 0 / dateNull()). Date-effective (ValidTimeState) tables use maxValue() as "no end date"',
+      'Persist / interchange with DateTimeUtil::toStr() (ISO 8601, culture-invariant) and DateTimeUtil::parse(); datetime2Str()/str2Datetime() are LOCALE-dependent and belong to the UI only',
+      'Compare utcdatetime values directly (they are all UTC) — converting both sides to local first is redundant and breaks across DST boundaries',
+      'When a query range needs a whole local day, convert the local day boundaries to UTC once and range on the UTC values; do not range on a converted column',
+    ],
+    examples: [
+      {
+        label: 'UTC storage, local display, and a correct day range',
+        code: `Timezone userTimeZone = DateTimeUtil::getUserPreferredTimeZone();
+
+// Stamp in UTC — never a converted value
+MyRequestTable request;
+request.SubmittedDateTime = DateTimeUtil::utcNow();
+
+// Display: convert at the edge only
+utcdatetime displayValue = DateTimeUtil::applyTimeZoneOffset(
+    request.SubmittedDateTime, userTimeZone);
+
+// A whole LOCAL day expressed as a UTC range
+date       businessDate = systemDateGet();
+utcdatetime dayStartUtc  = DateTimeUtil::removeTimeZoneOffset(
+    DateTimeUtil::newDateTime(businessDate, 0), userTimeZone);
+utcdatetime dayEndUtc    = DateTimeUtil::addSeconds(
+    DateTimeUtil::removeTimeZoneOffset(
+        DateTimeUtil::newDateTime(businessDate + 1, 0), userTimeZone), -1);
+
+MyRequestTable found;
+while select found
+    where found.SubmittedDateTime >= dayStartUtc
+       && found.SubmittedDateTime <= dayEndUtc
+{
+    info(DateTimeUtil::toStr(found.SubmittedDateTime));
+}`,
+      },
+      {
+        label: 'Date-effective sentinel and culture-invariant round-trip',
+        code: `// "No end date" on a ValidTimeState table is maxValue(), not an empty value
+MyEffectiveTable effective;
+effective.ValidFrom = DateTimeUtil::utcNow();
+effective.ValidTo   = DateTimeUtil::maxValue();
+
+// Interchange: ISO 8601, culture-invariant both ways
+str        serialized   = DateTimeUtil::toStr(effective.ValidFrom);
+utcdatetime deserialized = DateTimeUtil::parse(serialized);
+
+if (deserialized == effective.ValidFrom)
+{
+    info(serialized);
+}`,
+      },
+    ],
+    related: ['deprecated', 'bp-rules', 'select-statement'],
+  },
+
+  // ── .NET interop ────────────────────────────────────────────────────────
+  {
+    id: 'dotnet-interop',
+    title: '.NET Interop (CLR types, using alias, CLRError, InteropPermission)',
+    keywords: ['clr', 'clrinterop', 'net interop', 'dotnet', 'using', 'system.string', 'stringbuilder', 'clrerror', 'getlastexception', 'interoppermission', 'marshalling', 'clr exception', 'assembly reference'],
+    summary:
+      'X++ can call .NET types directly. The three things that go wrong are: the call runs on the wrong tier, ' +
+      'the CLR exception is swallowed because it is caught as a plain error, and the type is written out ' +
+      'fully qualified everywhere because no `using` alias was declared.',
+    rules: [
+      'Declare `using System.Text;` above the class declaration to shorten names; without it every CLR type must be fully qualified (System.Text.StringBuilder)',
+      'CLR calls must execute where the assembly is deployed — put them in a `server` static method (or a class with RunOn = Server). A client-tier CLR call against a server-only assembly fails at runtime, not at compile time',
+      'Assert interop permission before calling out: new InteropPermission(InteropKind::ClrInterop).assert(); — required for CAS-protected interop, and it documents the boundary',
+      'Catch CLR failures with `catch (Exception::CLRError)` and pull the real message from CLRInterop::getLastException() — a bare `catch (Exception::Error)` will NOT catch a CLR exception and the diagnostic is lost',
+      'Marshalling: X++ str ↔ System.String and X++ real/int ↔ the matching CLR primitives convert implicitly; anytype needs CLRInterop::getAnyTypeForObject() / CLRInterop::getObjectForAnyType()',
+      'CLR enums are reached by value with CLRInterop::parseClrEnum(\'System.StringComparison\', \'OrdinalIgnoreCase\') — an X++ enum literal will not bind to a CLR enum parameter',
+      'A CLR array is a System.Array — index it with get_Item()/set_Item(), not with X++ [] syntax; property getters/setters are get_X()/set_X()',
+      'null checks use `if (clrObject == null)`; do NOT compare a CLR object with an X++ empty value',
+      'Dispose deterministic resources explicitly (streams, readers) in a finally block — X++ has no `using` STATEMENT, only the using DECLARATION for namespaces',
+      'Reference the assembly from the model (References node) so the compiler resolves it; a runtime-only GAC assembly compiles but breaks on a clean build machine',
+      'Prefer an X++ equivalent when one exists (strFmt, Set/Map, System.IO only when the X++ file APIs cannot do it) — interop costs marshalling and blocks the compiler from checking anything',
+    ],
+    examples: [
+      {
+        label: 'Server-tier CLR call with proper CLRError handling',
+        code: `using System.Text;
+
+public static server str buildCsvLine(container _values)
+{
+    str result;
+
+    new InteropPermission(InteropKind::ClrInterop).assert();
+
+    try
+    {
+        StringBuilder builder = new StringBuilder();
+        int           i;
+
+        for (i = 1; i <= conLen(_values); i++)
+        {
+            if (i > 1)
+            {
+                builder.Append(',');
+            }
+
+            builder.Append(any2Str(conPeek(_values, i)));
+        }
+
+        result = builder.ToString();
+    }
+    catch (Exception::CLRError)
+    {
+        // Without this branch the real .NET message is lost
+        System.Exception clrException = CLRInterop::getLastException();
+        error(clrException.get_Message());
+    }
+    finally
+    {
+        CodeAccessPermission::revertAssert();
+    }
+
+    return result;
+}`,
+      },
+    ],
+    related: ['file-readers', 'error-handling', 'bp-rules'],
+  },
+
+  // ── Reflection / Dict* metadata API ─────────────────────────────────────
+  {
+    id: 'reflection-dict',
+    title: 'Reflection — Dict* runtime metadata API (DictTable, DictField, DictClass, DictEnum)',
+    keywords: ['reflection', 'dicttable', 'dictfield', 'dictclass', 'dictenum', 'dictmethod', 'sysdicttable', 'sysdictclass', 'metadata api', 'tablenum', 'fieldnum', 'classnum', 'dynamic call', 'fieldid2name', 'tableid2name'],
+    summary:
+      'The Dict* kernel classes expose the AOT at runtime: enumerate a table\'s fields, resolve labels, ' +
+      'instantiate a class by id, translate an enum value to its label. Use them for genuinely generic code — ' +
+      'never as a substitute for the compile-time intrinsics, which the compiler and the cross-reference can check.',
+    rules: [
+      'Always seed the Dict* object from an intrinsic, not a string: new DictTable(tableNum(CustTable)), new DictField(tableNum(CustTable), fieldNum(CustTable, AccountNum)), new DictClass(classNum(MyClass)), new DictEnum(enumNum(NoYes))',
+      'DictTable: name(), label(), fieldCnt(), fieldCnt2Id(i) → field id, fieldObject(fieldId) → DictField, makeRecord() → an empty buffer of that table',
+      'DictField: name(), label(), baseType() (Types enum), enumId(), typeId() — the way to render a generic field/value pair with the right label',
+      'DictClass: name(), callObject(methodName, object) / callStatic(methodName, …) for dynamic dispatch, hasStaticMethod(), makeObject()',
+      'DictEnum: value2Label(value), value2Symbol(value), symbol2Value(symbol), values() — the correct way to display an enum whose type is only known at runtime',
+      'SysDictTable / SysDictField / SysDictClass are the APPLICATION-layer wrappers over the kernel classes; they add security-aware and convenience helpers (SysDictTable::recordCount(), getLabelOrName(), fieldsRecursive()) — reach for them when the kernel class lacks a helper',
+      'fieldId2Name()/fieldName2Id()/tableId2Name()/tableName2Id() are the lightweight lookups when only a name↔id translation is needed — no Dict* object required',
+      'Reflection defeats the cross-reference: a table or method reached only through a Dict* call is invisible to "find references" and survives a rename as a runtime error. Keep the reflective surface small and covered by tests',
+      'Reflective loops over every field are expensive per call — resolve metadata ONCE outside the record loop, never per row',
+      'Dict* reads metadata only. It cannot create or modify AOT elements at runtime; design-time metadata authoring is the Microsoft.Dynamics.AX.Metadata API, not X++',
+      'A dynamic call whose target does not exist throws at runtime — guard with hasStaticMethod()/hasObjectMethod() before callStatic()/callObject()',
+    ],
+    examples: [
+      {
+        label: 'Generic field walk with labels resolved once',
+        code: `public static void dumpRecord(Common _record)
+{
+    DictTable dictTable = new DictTable(_record.TableId);
+    int       i;
+
+    for (i = 1; i <= dictTable.fieldCnt(); i++)
+    {
+        FieldId    fieldId   = dictTable.fieldCnt2Id(i);
+        DictField  dictField = dictTable.fieldObject(fieldId);
+
+        if (dictField.isSystem())
+        {
+            continue;
+        }
+
+        info(strFmt('%1: %2', dictField.label(), _record.(fieldId)));
+    }
+}`,
+      },
+      {
+        label: 'Runtime enum label + guarded dynamic call',
+        code: `// Enum whose type is only known at runtime
+public static str enumLabel(EnumId _enumId, int _value)
+{
+    DictEnum dictEnum = new DictEnum(_enumId);
+
+    return dictEnum.value2Label(_value);
+}
+
+// Dynamic dispatch — guarded, so a missing method is a handled case
+public static void runIfPresent(ClassId _classId, str _methodName)
+{
+    DictClass dictClass = new DictClass(_classId);
+
+    if (dictClass.hasStaticMethod(_methodName))
+    {
+        dictClass.callStatic(_methodName);
+    }
+}`,
+      },
+    ],
+    related: ['xpp-class-rules', 'performance', 'labels'],
+  },
+
+  // ── Tiles & KPIs ────────────────────────────────────────────────────────
+  {
+    id: 'tiles-kpis',
+    title: 'Tiles, Cues & KPIs (AxTile, AxKPI, workspace tiles)',
+    keywords: ['tile', 'cue', 'kpi', 'workspace tile', 'count tile', 'tile size', 'refreshfrequency', 'scoringpattern', 'aggregate measurement', 'cue group', 'tile button'],
+    summary:
+      'A Tile is an AOT element that renders a count (or a static link) on a workspace, driven by an AOT query ' +
+      'and opening a menu item when clicked. A KPI is the analytical sibling: it scores a measure from an ' +
+      'aggregate measurement against a goal. Both are metadata-only elements — no X++ is required.',
+    rules: [
+      'AxTile properties that matter: Name, Label, Query (the AOT query whose row count is displayed), MenuItemName (what opens on click) and Size (Small / Medium / Wide / Large)',
+      'A tile without a Query is a link tile — it just navigates; with a Query it becomes a Cue and shows a live count',
+      'The tile\'s query is executed per user per refresh: keep it narrow (indexed ranges, firstonly-friendly) or the workspace becomes the slowest page in the app',
+      'Range the query on the CURRENT user/company where that is the intent — a tile query without a user range shows a count nobody can act on',
+      'Surface a tile on a workspace form through a tile/cue-group control that references the tile by name; the tile element itself carries no layout',
+      'AxKPI properties: Measurement (the aggregate measurement), Value (Measure + MeasureGroup), Goal, ScoringPattern (LessIsBetter / MoreIsBetter / CloserIsBetter), RefreshFrequency and ShowStatus',
+      'A KPI therefore REQUIRES an aggregate measurement deployed to the entity store — a KPI over a plain table is not possible',
+      'Labels are mandatory on both (they are user-facing surfaces): use a label id, never a hardcoded string',
+      'Extension story: tiles and KPIs are added by creating NEW elements plus a form extension that places them — an existing Microsoft tile\'s query cannot be redefined in place',
+      'Both are deprioritised in most custom work: a saved view or an embedded Power BI report usually delivers the same insight without the entity-store dependency',
+    ],
+    examples: [
+      {
+        label: 'Count tile (Cue) metadata shape',
+        code: `<?xml version="1.0" encoding="utf-8"?>
+<AxTile xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>MyOpenRequestsTile</Name>
+	<Label>@MyModule:OpenRequests</Label>
+	<MenuItemName>MyRequestListPage</MenuItemName>
+	<Query>MyOpenRequestsQuery</Query>
+	<Size>Wide</Size>
+</AxTile>`,
+      },
+      {
+        label: 'KPI over an aggregate measurement',
+        code: `<?xml version="1.0" encoding="utf-8"?>
+<AxKPI xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>MyAvgDaysToCloseKpi</Name>
+	<Label>@MyModule:AvgDaysToClose</Label>
+	<Measurement>MyRequestMeasure</Measurement>
+	<RefreshFrequency>AsFastAsPermissible</RefreshFrequency>
+	<ScoringPattern>LessIsBetter</ScoringPattern>
+	<ShowStatus>No</ShowStatus>
+	<Goal>
+		<Value>10</Value>
+		<Ranges />
+	</Goal>
+	<Trends />
+	<Value>
+		<Measure>AvgDaysToClose</Measure>
+		<MeasureGroup>MyRequestMeasureGroup</MeasureGroup>
+		<Ranges />
+	</Value>
+</AxKPI>`,
+      },
+    ],
+    related: ['form-patterns', 'aggregate-measurements', 'query-patterns'],
+  },
+
+  // ── Macros ──────────────────────────────────────────────────────────────
+  {
+    id: 'macros',
+    title: 'Macros (macro libraries, #define, #localmacro) — legacy, use sparingly',
+    keywords: ['macro', 'macros', 'define', 'localmacro', 'globalmacro', 'macro library', 'macrolib', 'axmacrodictionary', 'preprocessor', 'flight', 'flighting'],
+    summary:
+      'Macros are a text preprocessor inherited from AX. A macro library is an AOT element (AxMacroDictionary) ' +
+      'whose Source is a list of #define/#localmacro declarations, included with `#<LibraryName>`. New code should ' +
+      'use const, an enum or a class constant instead — the two places macros still legitimately appear are ' +
+      'feature flight names and legacy platform includes.',
+    rules: [
+      'A macro library is an AOT element under AxMacroDictionary; its entire body is the Source property — there is no per-macro sub-element',
+      'Declare with #define.NAME(value) for a constant, #localmacro.NAME … #endmacro for a code fragment; use with #NAME',
+      'Include a library at the top of the class/table declaration with the include directive `#<LibraryName>` (e.g. #ApplicationFoundationFlights)',
+      'Macros are expanded BEFORE compilation: there is no type check, no IntelliSense, no cross-reference and no debugger step — a wrong macro shows up as an error in the expanded line, not the macro',
+      'PREFER instead: `const int MyLimit = 100;` for a value, a base enum for a closed value set, a static class method for a code fragment, a label for user-facing text',
+      'Do NOT put business logic in a #localmacro — it is uncoverable by unit tests and invisible to a refactor',
+      'Macros are NOT extensible: you cannot extend or override a Microsoft macro library, so anything modelled as a macro is a hard fork point',
+      'The remaining mainstream use is flight names (#define.MyFeatureFlight(\'MyFeatureFlight\')) — matching the platform\'s own convention in AxMacroDictionary libraries',
+      'Conditional compilation (#if.Never / #endif) exists but should never ship — dead code belongs deleted, not preprocessed away',
+    ],
+    examples: [
+      {
+        label: 'Macro library metadata shape (AxMacroDictionary)',
+        code: `<?xml version="1.0" encoding="utf-8"?>
+<AxMacroDictionary xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>MyModuleFlights</Name>
+	<Source>#define.MyFastPostingFlight('MyFastPostingFlight')
+#define.MyBulkImportFlight('MyBulkImportFlight')
+</Source>
+</AxMacroDictionary>`,
+      },
+      {
+        label: 'Using a macro vs. the modern replacement',
+        code: `// Legacy: include the library, then reference the macro
+// (declaration area of the class)
+// #MyModuleFlights
+//
+// if (MyFastPostingFlight::instance().isEnabled()) { … }
+
+// Modern replacement for a plain constant — type-checked, refactorable,
+// visible to the cross-reference:
+public class MyPostingLimits
+{
+    public const int MaxLinesPerBatch = 500;
+}`,
+      },
+    ],
+    related: ['feature-management', 'bp-rules', 'xpp-class-rules'],
+  },
+
+  // ── Aggregate measurements ──────────────────────────────────────────────
+  {
+    id: 'aggregate-measurements',
+    title: 'Aggregate Measurements & Analytics (AxAggregateMeasurement, entity store)',
+    keywords: ['aggregate measurement', 'measure group', 'dimension attribute', 'entity store', 'axdw', 'analytics', 'power bi', 'kpi', 'aggregate dimension', 'stagedentitystore', 'measure'],
+    summary:
+      'An aggregate measurement is the star schema D365FO ships to analytics: measure groups (facts, each bound ' +
+      'to a table or entity) plus dimension attributes (the keys you slice by). Deployed to the entity store ' +
+      '(AxDW), it is what embedded Power BI reports and KPIs read.',
+    rules: [
+      'AxAggregateMeasurement carries Name, Usage (StagedEntityStore for entity-store deployment) and one or more MeasureGroups',
+      'Each AxMeasureGroup binds to exactly one Table (a real table or, more commonly, a denormalised entity) and lists Measures and Attributes (AxDimensionAttribute → KeyFields → DimensionField)',
+      'Measures need an aggregation (Sum / Count / Min / Max / Avg) — a field with no aggregation is a dimension attribute, not a measure',
+      'Model the fact source as a data entity or a view, not the raw transaction table: the entity store refresh reads it as-is, so joins done at query time cost every refresh',
+      'Shared dimensions live in AxAggregateDimension elements and are referenced by attributes so multiple measure groups slice consistently',
+      'Deployment is a runtime operation (Data management → Entity store → Refresh), not part of the build; a measurement that compiles can still be undeployed and therefore invisible to Power BI',
+      'Refresh is incremental only when the source entity supports change tracking — enable it on the entity or every refresh is a full reload',
+      'A KPI element references the measurement plus a Measure/MeasureGroup pair; the measurement must exist and be deployed before the KPI resolves',
+      'Do not model an aggregate measurement for operational reporting — for row-level operational output use an SSRS report or a query; measurements are for aggregated analytics',
+      'Extension: measure groups can be added to a Microsoft measurement only by creating your own measurement — there is no aggregate-measurement extension element',
+    ],
+    examples: [
+      {
+        label: 'Minimal measurement with one measure group',
+        code: `<?xml version="1.0" encoding="utf-8"?>
+<AxAggregateMeasurement xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V2">
+	<Name>MyRequestMeasure</Name>
+	<Usage>StagedEntityStore</Usage>
+	<MeasureGroups>
+		<AxMeasureGroup xmlns="">
+			<Name>MyRequestMeasureGroup</Name>
+			<Table>MyRequestSummaryEntity</Table>
+			<Attributes>
+				<AxDimensionAttribute>
+					<Name>RequestType</Name>
+					<NameField>RequestType</NameField>
+					<KeyFields>
+						<AxDimensionFieldReference>
+							<DimensionField>RequestType</DimensionField>
+						</AxDimensionFieldReference>
+					</KeyFields>
+				</AxDimensionAttribute>
+			</Attributes>
+			<Measures>
+				<AxMeasure>
+					<Name>AvgDaysToClose</Name>
+					<AggregateFunction>Avg</AggregateFunction>
+					<Field>DaysToClose</Field>
+				</AxMeasure>
+			</Measures>
+		</AxMeasureGroup>
+	</MeasureGroups>
+</AxAggregateMeasurement>`,
+      },
+    ],
+    related: ['tiles-kpis', 'data-entities', 'electronic-reporting'],
+  },
+
+  // ── License codes ───────────────────────────────────────────────────────
+  {
+    id: 'license-codes',
+    title: 'License Codes (AxLicenseCode) — ISV licensing',
+    keywords: ['license code', 'licensecode', 'isv licensing', 'axlicensecode', 'publickey', 'license package', 'configuration key licensing', 'sysbpcheck license'],
+    summary:
+      'A license code is the ISV licensing anchor: configuration keys point at it, and the code is enabled by a ' +
+      'signed license file. In a customer implementation you almost never author one — it exists so an ISV can ' +
+      'gate a whole feature area behind a purchased licence.',
+    rules: [
+      'AxLicenseCode properties: Name, Label, Group (e.g. Module), Package (the licensing package, e.g. BusinessEssential) and PublicKey (the ISV key slot the licence file is signed against)',
+      'A license code has NO effect on its own — it gates functionality only through configuration keys whose LicenseCode property points at it',
+      'The chain is: license code → configuration key → AOT element (table/field/menu item/…) with that ConfigurationKey. Disabling the licence disables everything down the chain',
+      'Disabling a licence/configuration key drops the underlying tables from the synchronised schema — never gate a table that already holds customer data without a migration plan',
+      'Customer (non-ISV) models should use configuration keys or feature management, not license codes — licensing is for shipped, sold code',
+      'The PublicKey slot ties the code to the ISV\'s signing key; it is issued as part of the ISV registration, not chosen freely',
+      'Licence state is evaluated at sync/runtime, not at build time: code behind a disabled licence still compiles',
+      'Feature management (a runtime toggle) is the modern way to ship an optional feature; reach for a license code only when the gate must be a commercial one',
+    ],
+    examples: [
+      {
+        label: 'License code + the configuration key that consumes it',
+        code: `<?xml version="1.0" encoding="utf-8"?>
+<AxLicenseCode xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>MyIsvSuite</Name>
+	<Group>Module</Group>
+	<Label>@MyModule:IsvSuiteLicense</Label>
+	<Package>BusinessEssential</Package>
+	<PublicKey>2</PublicKey>
+</AxLicenseCode>
+
+<!-- The configuration key is what actually gates the elements: -->
+<!--
+<AxConfigurationKey xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>MyIsvSuiteKey</Name>
+	<Label>@MyModule:IsvSuiteKey</Label>
+	<LicenseCode>MyIsvSuite</LicenseCode>
+</AxConfigurationKey>
+-->`,
+      },
+    ],
+    related: ['configuration-keys', 'feature-management', 'security'],
+  },
 ];
 
 // ─── Search Logic ───────────────────────────────────────────────────────────

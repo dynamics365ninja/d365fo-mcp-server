@@ -12,9 +12,53 @@ resolution root is VM-blocked, so table-shaped composite cases can still only
 be completed via `create overwrite=true`. Capturing such a case bakes
 overwrite-produced output into its golden — fix first, capture second.
 
-## Capture the remaining pending goldens (VM)
+## Capture the remaining pending goldens (VM) — the ONLY thing between here and total 100%
 
-**7 of 50 cases are still `golden_pending`:**
+Every taxonomy leaf now has **K and T green**: the eight missing knowledge
+entries were written (`xpp-collections`, `datetime-timezones`, `dotnet-interop`,
+`reflection-dict`, `tiles-kpis`, `macros`, `aggregate-measurements`,
+`license-codes` — all audited live against the symbol index), and the five
+missing create paths were added to `d365fo_file` (`macro`, `configuration-key`,
+`security-policy`, `aggregate-measurement`, `license-code`, with XML shapes
+pinned to real PackagesLocalDirectory elements in
+`tests/tools/coverageClosureXml.test.ts`). Every uncovered leaf is therefore
+**missing E only**, and each already has an authored case.
+
+**36 of 79 cases are `golden_pending`.** The 29 authored for coverage closure:
+
+| Leaf | Case |
+| --- | --- |
+| xpp-collections | `L2-collections-map-list-container` |
+| datetime-timezones | `L2-datetime-timezone-range` |
+| dotnet-interop | `L2-dotnet-interop-clrerror` |
+| reflection-dict | `L2-reflection-dict-fieldwalk` |
+| sysextension | `L2-sysextension-plugin` |
+| sysda | `L2-sysda-fluent-query` |
+| macro | `L1-macro-library-flight` |
+| tiles-kpis | `L2-tile-cue-over-query` |
+| print-management | `L3-print-management-report` |
+| electronic-reporting | `L3-electronic-reporting-integration` |
+| parallel-batch | `L3-parallel-batch-tasks` |
+| feature-management | `L2-feature-management-flight` |
+| configuration-keys | `L2-config-key-gated-table` |
+| currency | `L3-currency-exchange-conversion` |
+| inventory | `L3-inventory-inventdim-onhand` |
+| posting-engine | `L4-posting-ledgervoucher-slice` |
+| global-address-book | `L3-gab-party-postaladdress` |
+| warehouse | `L3-warehouse-work-slice` |
+| trade-agreements | `L3-trade-agreement-price-lookup` |
+| edt-extension | `L2-edt-extension-basic` |
+| data-entity-extension | `L3-data-entity-extension-field` |
+| dmf | `L3-dmf-entity-import-slice` |
+| dual-write | `L3-dualwrite-entity-mapping` |
+| file-io | `L3-file-csv-import` |
+| direct-sql | `L2-direct-sql-connection` |
+| power-platform | `L2-virtual-entity-power-platform` |
+| xds | `L3-xds-policy-constrained-table` |
+| license-code | `L2-license-code-configkey` |
+| aggregate-measurements | `L3-aggregate-measurement-basic` |
+
+Plus the seven that predate this batch:
 
 - `L2-class-method-ops`, `L2-enum-modify-values`, `L3-numberseq-module-slice`
 - `L3-batch-retryable-basic` — still needs its three SysOperation classes authored.
@@ -25,7 +69,16 @@ overwrite-produced output into its golden — fix first, capture second.
 - `L4-headerlines-document-slice`
 
 `eval-run` captures each golden on the VM; flip `golden_pending` to false (or
-remove it) as each lands.
+remove) as each lands. **The five new create paths are unproven until their
+cases run**: the server must be rebuilt and the MCP client restarted before
+`macro` / `configuration-key` / `security-policy` / `aggregate-measurement` /
+`license-code` exist at runtime.
+
+The domain-heavy cases (posting, WHS, trade agreements, GAB, currency,
+inventory, DMF, print management, ER) deliberately describe the OUTCOME and
+require the implementer to confirm framework member signatures through
+`search`/`get_method` instead of naming every API in the instruction — the same
+scoping the workflow case uses for its out-of-tool-path half.
 
 Two committed goldens also need **re-capture** once the security/form writer
 fixes land — see the findings doc.

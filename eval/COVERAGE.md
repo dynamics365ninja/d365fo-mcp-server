@@ -18,7 +18,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Table | core | ✅ | ✅ | ✅ | L1-table-basic, L2-table-modify-lifecycle |
 | Table extension | core | ✅ | ✅ | ✅ | L2-table-extension |
 | Extended data type | core | ✅ | ✅ | ✅ | L0-edt-basic |
-| EDT extension | total | ✅ | — | ✅ | No eval case yet — EDT extensions are rare in custom-model work. |
+| EDT extension | total | ✅ | — | ✅ | Eval case authored (EDT + EDT extension via PropertyModifications); golden pending VM capture. |
 | Base enum | core | ✅ | ✅ | ✅ | L0-enum-basic |
 | Enum extension | core | ✅ | ✅ | ✅ | L2-enum-extension-empty-values |
 | View | core | ✅ | ✅ | ✅ | L1-query-view-basic, L2-form-over-view |
@@ -37,22 +37,22 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Chain of Command extension | core | ✅ | ✅ | ✅ | L2-coc-extension |
 | Event handler subscription | core | ✅ | ✅ | ✅ | L2-event-handler-basic |
 | Delegate | core | ✅ | ✅ | ✅ | L2-delegate-basic |
-| Macro | total | — | — | — | Neither knowledge nor case: macros are legacy and discouraged in new code. |
+| Macro | total | ✅ | — | ✅ | Knowledge entry teaches the legacy status and the modern replacement; eval case authored, golden pending VM capture. |
 | Transactions (ttsbegin/ttscommit) | core | ✅ | ✅ | ✅ | L2-form-modify-controls, L2-table-modify-lifecycle, L3-form-add-datasource-lines +1 |
 | X++ select grammar | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-basic |
 | Set-based operations | core | ✅ | ✅ | ✅ | L4-ssrs-report-basic |
-| SysDa fluent query API | total | ✅ | — | ✅ | Knowledge only — no eval case; SysDa is rare outside platform code. |
+| SysDa fluent query API | total | ✅ | — | ✅ | Eval case authored (SysDa fluent select); golden pending VM capture. |
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
-| SysExtension plug-in pattern | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
+| SysExtension plug-in pattern | total | ✅ | — | ✅ | Eval case authored (attribute-driven SysExtension factory); golden pending VM capture. |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
 | Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +22 |
 | Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +22 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
-| X++ collections & containers (List/Map/Set/Struct) | total | — | — | ✅ | Known hole (audit 2026-07-20, C6): no knowledge entry and no eval case yet. |
-| Date/time & time zones (utcdatetime, DateTimeUtil) | total | — | — | ✅ | Known hole (audit 2026-07-20, C7): scattered across bp-rules/deprecated; no dedicated knowledge entry or case. |
-| .NET interop (CLRInterop, using alias, CLRError) | total | — | — | ✅ | Known hole (audit 2026-07-20, C8): no dedicated knowledge entry and no eval case. |
-| Reflection / Dict* metadata API | total | — | — | ✅ | Known hole (audit 2026-07-20, C9): no dedicated knowledge entry and no eval case. |
+| X++ collections & containers (List/Map/Set/Struct) | total | ✅ | — | ✅ | Knowledge entry written (audit hole C6 closed); eval case authored, golden pending VM capture. |
+| Date/time & time zones (utcdatetime, DateTimeUtil) | total | ✅ | — | ✅ | Knowledge entry written (audit hole C7 closed); eval case authored, golden pending VM capture. |
+| .NET interop (CLRInterop, using alias, CLRError) | total | ✅ | — | ✅ | Knowledge entry written (audit hole C8 closed); eval case authored, golden pending VM capture. |
+| Reflection / Dict* metadata API | total | ✅ | — | ✅ | Knowledge entry written (audit hole C9 closed); eval case authored, golden pending VM capture. |
 
 ## UI (6/7)
 
@@ -64,7 +64,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | FormRun lifecycle & data sources | core | ✅ | ✅ | ✅ | L2-form-modify-controls, L3-form-add-datasource-lines |
 | Menu items (display/action/output) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced |
 | Menus & submenu nesting | core | ✅ | ✅ | ✅ | L4-master-security-slice |
-| Tiles & KPIs | total | — | — | ✅ | Deliberately deprioritised (roadmap P3): no knowledge, no case — rare in custom-model work. |
+| Tiles & KPIs | total | ✅ | — | ✅ | Knowledge entry written; eval case authored (count tile over an AOT query), golden pending VM capture. |
 
 ## Reporting (1/4)
 
@@ -72,43 +72,43 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | --- | --- | :-: | :-: | :-: | --- |
 | SSRS report (DP + contract + controller) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-basic |
 | Multi-dataset SSRS report | total | ✅ | — | ✅ | missing E |
-| Print management | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
-| Electronic Reporting (ER) | total | ✅ | — | ✅ | Knowledge only — ER artifacts are configured in the UI, not authored in the AOT. |
+| Print management | total | ✅ | — | ✅ | Eval case authored (document node + settings resolution); golden pending VM capture. |
+| Electronic Reporting (ER) | total | ✅ | — | ✅ | Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture. |
 
 ## Frameworks (6/16)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysOperation / batch | core | ✅ | ✅ | ✅ | L3-batch-basic |
-| Parallel batch processing | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
+| Parallel batch processing | total | ✅ | — | ✅ | Eval case authored (BatchHeader runtime tasks); golden pending VM capture. |
 | Async & retryable batch (BatchRetryable/runAsync) | total | ✅ | — | ✅ | Eval case authored (L3-batch-retryable-basic) — golden capture pending on the VM. |
 | Number sequences | core | ✅ | ✅ | ✅ | L2-numberseq-basic |
 | Financial dimensions | core | ✅ | ✅ | ✅ | L2-dimension-basic |
-| Posting engine (LedgerVoucher) | total | ✅ | — | ✅ | Knowledge only — posting cannot be scored without a full ledger fixture. |
+| Posting engine (LedgerVoucher) | total | ✅ | — | ✅ | Eval case authored; it scores the STRUCTURE of the LedgerVoucher call chain, not a posted result (no ledger fixture). Golden pending VM capture. |
 | Workflow | core | ✅ | ✅ | ✅ | L3-workflow-document-submit |
 | Business events & alerts | core | ✅ | ✅ | ✅ | L2-business-event-basic |
-| Feature management | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
-| Configuration keys | total | ✅ | — | — | Knowledge only — no eval case yet. |
+| Feature management | total | ✅ | — | ✅ | Eval case authored (IFeatureMetadata + FeatureStateProvider branch); golden pending VM capture. |
+| Configuration keys | total | ✅ | — | ✅ | Create path added (d365fo_file objectType "configuration-key"); eval case authored, golden pending VM capture. |
 | Multi-company / changeCompany | core | ✅ | ✅ | ✅ | L2-multi-company-changecompany |
-| Global address book | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
-| Currency & exchange rates | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
-| Inventory (InventTrans / InventDim) | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
-| Warehouse management (WHS) | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
-| Trade agreements & pricing | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
+| Global address book | total | ✅ | — | ✅ | Eval case authored (party + primary postal address through the DirParty API); golden pending VM capture. |
+| Currency & exchange rates | total | ✅ | — | ✅ | Eval case authored (exchange-rate helper conversion + currency rounding); golden pending VM capture. |
+| Inventory (InventTrans / InventDim) | total | ✅ | — | ✅ | Eval case authored (InventDim/InventDimParm on-hand read); golden pending VM capture. |
+| Warehouse management (WHS) | total | ✅ | — | ✅ | Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture. |
+| Trade agreements & pricing | total | ✅ | — | ✅ | Eval case authored (PriceDisc price/discount resolution); golden pending VM capture. |
 
 ## Integration (2/9)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | Data entity (OData) | core | ✅ | ✅ | ✅ | L4-entity-security |
-| Data entity extension | total | ✅ | — | ✅ | No eval case yet. |
+| Data entity extension | total | ✅ | — | ✅ | Eval case authored (table extension field surfaced on a standard entity); golden pending VM capture. |
 | Custom services / OData actions | core | ✅ | ✅ | ✅ | L3-custom-service-basic |
-| Data management framework (DMF/DIXF) | total | ✅ | — | ✅ | Knowledge only — deeper DMF coverage is a known hole. |
-| Dual-write (Dataverse) | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
-| Power Platform / virtual entities | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
-| Reading Excel / CSV files | total | ✅ | — | ✅ | Knowledge only — no eval case yet. |
-| Direct SQL execution | total | ✅ | — | ✅ | Knowledge only — direct SQL is an escape hatch, deliberately not exercised. |
-| Aggregate measurements / analytics | total | — | — | — | Known hole (roadmap P3): no knowledge, no case, no tool path. |
+| Data management framework (DMF/DIXF) | total | ✅ | — | ✅ | Eval case authored (import-ready entity + staging hook); golden pending VM capture. |
+| Dual-write (Dataverse) | total | ✅ | — | ✅ | Eval case authored for the AOT half (business key + change tracking); the dual-write map itself is UI-authored. Golden pending VM capture. |
+| Power Platform / virtual entities | total | ✅ | — | ✅ | Eval case authored (entity marked up for virtual-entity exposure); golden pending VM capture. |
+| Reading Excel / CSV files | total | ✅ | — | ✅ | Eval case authored (CommaStreamIo + OpenXML stream readers); golden pending VM capture. |
+| Direct SQL execution | total | ✅ | — | ✅ | Eval case authored — the escape hatch WITH its guard rails (permission assert, no concatenated input). Golden pending VM capture. |
+| Aggregate measurements / analytics | total | ✅ | — | ✅ | Knowledge entry + create path added; eval case authored, golden pending VM capture. |
 
 ## Security (4/6)
 
@@ -118,8 +118,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Security duty | core | ✅ | ✅ | ✅ | L4-entity-security, L4-master-security-slice |
 | Security role | core | ✅ | ✅ | ✅ | L4-entity-security, L4-master-security-slice |
 | Data-entity security | core | ✅ | ✅ | ✅ | L4-entity-security |
-| Extensible data security (XDS) | total | ✅ | — | — | Overview only in the security topic — deep XDS authoring (policy, context, XDS() query method) and an eval case remain a known hole. |
-| License codes | total | — | — | — | Exotic — ISV licensing only. The visible asymptote of the "total" tier. |
+| Extensible data security (XDS) | total | ✅ | — | ✅ | Create path added (d365fo_file objectType "security-policy"); eval case authored (policy + policy query + constrained table), golden pending VM capture. |
+| License codes | total | ✅ | — | ✅ | Exotic (ISV licensing only) but now closable: knowledge + create path added, eval case authored, golden pending VM capture. |
 
 ## Quality (2/2)
 
@@ -132,15 +132,15 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
-| 3 | Date/time & time zones (utcdatetime, DateTimeUtil) | missing K+E |
+| 3 | Date/time & time zones (utcdatetime, DateTimeUtil) | missing E |
 | 3 | Inventory (InventTrans / InventDim) | missing E |
-| 3 | X++ collections & containers (List/Map/Set/Struct) | missing K+E |
+| 3 | X++ collections & containers (List/Map/Set/Struct) | missing E |
 | 2 | Async & retryable batch (BatchRetryable/runAsync) | missing E |
-| 2 | Configuration keys | missing E+T |
+| 2 | Configuration keys | missing E |
 | 2 | Currency & exchange rates | missing E |
 | 2 | Data entity extension | missing E |
 | 2 | Data management framework (DMF/DIXF) | missing E |
-| 2 | .NET interop (CLRInterop, using alias, CLRError) | missing K+E |
+| 2 | .NET interop (CLRInterop, using alias, CLRError) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |
 | 2 | EDT extension | missing E |
 | 2 | Feature management | missing E |
@@ -149,20 +149,20 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 2 | Parallel batch processing | missing E |
 | 2 | Posting engine (LedgerVoucher) | missing E |
 | 2 | Print management | missing E |
-| 2 | Reflection / Dict* metadata API | missing K+E |
+| 2 | Reflection / Dict* metadata API | missing E |
 | 2 | Multi-dataset SSRS report | missing E |
 | 2 | SysExtension plug-in pattern | missing E |
-| 1 | Aggregate measurements / analytics | missing K+E+T |
+| 1 | Aggregate measurements / analytics | missing E |
 | 1 | Direct SQL execution | missing E |
 | 1 | Electronic Reporting (ER) | missing E |
-| 1 | Macro | missing K+E+T |
+| 1 | Macro | missing E |
 | 1 | Power Platform / virtual entities | missing E |
 | 1 | SysDa fluent query API | missing E |
-| 1 | Tiles & KPIs | missing K+E |
+| 1 | Tiles & KPIs | missing E |
 | 1 | Trade agreements & pricing | missing E |
 | 1 | Warehouse management (WHS) | missing E |
-| 1 | Extensible data security (XDS) | missing E+T |
-| 0 | License codes | missing K+E+T |
+| 1 | Extensible data security (XDS) | missing E |
+| 0 | License codes | missing E |
 
 ## Orphans
 

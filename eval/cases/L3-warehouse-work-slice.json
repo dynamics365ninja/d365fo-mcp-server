@@ -1,0 +1,22 @@
+{
+  "id": "L3-warehouse-work-slice",
+  "title": "Warehouse (WHS): work template resolution and a work-creation slice",
+  "tier": 3,
+  "instruction": "In the sandbox model, build the X++ half of a warehouse work slice. Ground it first with get_knowledge(topic=\"warehouse-management\"). SCOPE LIMIT: work templates and location directives are configured data, not AOT elements - they are out of scope. Create a class DemoWhsWorkService with public static methods: (1) `WHSWorkId createWorkForLoad(WHSLoadId _loadId)` - resolves the applicable work template through the WHS work-template API and creates work via the WHSWorkCreate/WHSWorkBuild path taught by the knowledge entry, inside ttsbegin/ttscommit; (2) `boolean isWorkClosed(WHSWorkId _workId)` - reads the work header status through the WHS tables with an indexed, firstonly select. Inserting into WHSWorkTable/WHSWorkLine directly FAILS this case: work must be created through the framework so templates and directives apply. Confirm every WHS class and member signature with search/get_method before writing it - do not guess. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-warehouse-work-slice/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "warehouse",
+    "whs",
+    "work",
+    "class"
+  ],
+  "split": "holdout"
+}

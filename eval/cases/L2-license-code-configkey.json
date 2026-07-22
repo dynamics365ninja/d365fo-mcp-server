@@ -1,0 +1,23 @@
+{
+  "id": "L2-license-code-configkey",
+  "title": "License code + configuration key chain (ISV licensing anchor)",
+  "tier": 2,
+  "instruction": "In the sandbox model, model an ISV licensing chain. Ground it first with get_knowledge(topic=\"license-codes\"). Create: (1) a license code DemoIsvSuite (d365fo_file objectType \"license-code\") with a Label, Group=Module, Package=BusinessEssential and PublicKey=2; (2) a configuration key DemoIsvSuiteKey (objectType \"configuration-key\") whose LicenseCode property points at ConDemoIsvSuite; (3) a second configuration key DemoIsvSuiteReportsKey whose ParentKey is ConDemoIsvSuiteKey, proving the nesting. The case asserts the METADATA chain only - no element may be gated by the key here, and the key must not be disabled (disabling drops gated tables from the synchronised schema). All three objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxLicenseCode",
+    "AxConfigurationKey"
+  ],
+  "golden_path": "eval/goldens/L2-license-code-configkey/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "license-code",
+    "configuration-key",
+    "security",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

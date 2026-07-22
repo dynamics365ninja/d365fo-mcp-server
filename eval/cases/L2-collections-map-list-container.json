@@ -1,0 +1,25 @@
+{
+  "id": "L2-collections-map-list-container",
+  "title": "X++ collections: List + enumerator, Map with exists() guard, Set de-duplication, container packing",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoCollectionUtil that demonstrates the four X++ collection shapes correctly. Ground the API surface first with get_knowledge(topic=\"xpp-collections\"). Methods, all public static: (1) `container distinctAccounts(container _accountNums)` - puts every element of _accountNums into a `new Set(Types::String)`, so duplicates collapse, and returns `set.pack()`; membership must be tested with Set.in(), never by scanning a List. (2) `Map balanceByAccount(container _accountNums)` - builds a `new Map(Types::String, Types::Real)` keyed by CustAccount; for every element it selects `sum(AmountCur)` from CustTrans for that account and inserts the total. Every read of an existing key must be guarded with Map.exists() before Map.lookup(), because lookup() throws on a missing key. (3) `container collectAccountNums()` - accumulates every CustTable.AccountNum into a `new List(Types::String)` with addEnd() inside the while select, and converts ONCE after the loop with List.pack(). Appending to a container inside the loop (`result += [value]`) FAILS this case even though it compiles - that is the O(n^2) anti-pattern the case exists to prove. (4) `void logAccounts(container _packedList)` - rebuilds the list with List::create(_packedList), iterates it with a ListEnumerator (moveNext()/current()) and infologs each value via strFmt with a label, never a hardcoded English string. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-collections-map-list-container/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "collections",
+    "list",
+    "map",
+    "set",
+    "container",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

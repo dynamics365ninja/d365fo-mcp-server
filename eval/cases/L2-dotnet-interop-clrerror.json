@@ -1,0 +1,24 @@
+{
+  "id": "L2-dotnet-interop-clrerror",
+  "title": ".NET interop: server-tier CLR call with InteropPermission and a real CLRError diagnostic",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoInteropCsv that calls .NET correctly. Ground it first with get_knowledge(topic=\"dotnet-interop\"). Requirements: the file declares `using System.Text;` above the class declaration; the single public method is `public static server str buildLine(container _values)`; it asserts `new InteropPermission(InteropKind::ClrInterop).assert();` before touching CLR types and reverts the assert in a finally block with CodeAccessPermission::revertAssert(); it builds the comma-separated line with a System.Text.StringBuilder (Append/ToString), not with string concatenation in a loop; and it catches CLR failures with `catch (Exception::CLRError)`, pulls the message out of CLRInterop::getLastException() and surfaces it through error() with a label-based strFmt. A bare `catch (Exception::Error)` around the CLR call FAILS this case - it does not catch a CLR exception and the diagnostic is lost. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-dotnet-interop-clrerror/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "dotnet",
+    "clr",
+    "interop",
+    "clrerror",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

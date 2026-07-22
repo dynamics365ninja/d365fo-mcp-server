@@ -1,0 +1,22 @@
+{
+  "id": "L2-sysda-fluent-query",
+  "title": "SysDa fluent query API: programmatic select without a query string",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoSysDaReader that reads data through the SysDa fluent API instead of an X++ select. Ground it first with get_knowledge(topic=\"sysda\"). The public static method `container blockedCustomerAccounts()` must build a SysDaQueryObject over CustTable, add a where expression restricting Blocked to CustVendorBlocked::No, project only the AccountNum field, execute it through a SysDaSearchObject / SysDaQueryable execution path, iterate the result with next(), and return the accounts as a packed container. Confirm every SysDa class and member signature with search/get_method before writing it - do not guess a fluent method name. A plain `while select` FAILS this case: the point is to prove the SysDa path compiles and runs. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-sysda-fluent-query/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "sysda",
+    "query",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}
