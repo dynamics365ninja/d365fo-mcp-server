@@ -677,12 +677,30 @@ async function renderFinishedBuildResult(
   return {
     content: [{
       type: 'text',
-      text: `${statusIcon} (${finalState.tool}, ${buildMode}, ${duration}s)\n\nModel: ${targetModel}\n\n` +
+      text: `${statusIcon} (${finalState.tool}, ${buildMode}, ${duration}s)\n\nModel: ${targetModel}\n` +
+        incrementalScopeCaveat(succeeded, !!finalState.fullBuild) + '\n' +
         (structured ? `${structured}\n\n--- Raw log ---\n` : '') +
         `${logContent || '(no output)'}`,
     }],
     ...((!succeeded) ? { isError: true } : {}),
   };
+}
+
+/**
+ * What a clean INCREMENTAL build does and does not prove.
+ *
+ * `-incremental` is documented by xppc as "Compile only the elements that have
+ * been changed", so an element it considers unchanged is never recompiled and
+ * its metadata errors are never reported. A model with real metadata errors
+ * therefore builds green incrementally — which is how a run scored pass@build
+ * on a model that does not actually compile. Only a full build sees everything,
+ * so a green incremental result has to say what it covered.
+ */
+function incrementalScopeCaveat(succeeded: boolean, fullBuild: boolean): string {
+  if (!succeeded || fullBuild) return '';
+  return '\nℹ️ Incremental: only CHANGED elements were compiled. A clean result here is not proof ' +
+    'the model compiles — unchanged elements with metadata errors are not revisited. ' +
+    'Use fullBuild: true before trusting a green build (e.g. to score a task as done).\n';
 }
 
 // ---------------------------------------------------------------------------

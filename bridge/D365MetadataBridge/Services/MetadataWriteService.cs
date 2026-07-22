@@ -1123,7 +1123,8 @@ namespace D365MetadataBridge.Services
         /// AxFormDataSourceConcrete subtype can yield AxFormDataSourceReferenced (used for
         /// nested/referenced sources), which AxForm.AddDataSource then fails to cast.
         /// </summary>
-        private AxFormDataSourceConcrete CreateFormDataSourceRoot(string dsName, string table, string? joinSource)
+        private AxFormDataSourceConcrete CreateFormDataSourceRoot(string dsName, string table, string? joinSource,
+            string? linkType = null)
         {
             var assembly = typeof(AxClass).Assembly;
             var dsType = assembly.GetType("Microsoft.Dynamics.AX.Metadata.MetaModel.AxFormDataSourceRoot")
@@ -1136,7 +1137,49 @@ namespace D365MetadataBridge.Services
             ds.Name = dsName;
             ds.Table = table;
             if (!string.IsNullOrEmpty(joinSource)) ds.JoinSource = joinSource;
+            // LinkType used to be accepted by the caller and then dropped here, so a join
+            // reported success and serialised without it (findings #35).
+            SetEnumProperty((object)ds, "LinkType", linkType);
             return (AxFormDataSourceConcrete)ds;
+        }
+
+        /// <summary>
+        /// Sets an enum-typed metamodel property from its string name, reflectively.
+        ///
+        /// The metamodel spells these as generated enums (DataSourceLinkType_ITxt,
+        /// Cardinality, RelationshipType …) whose members are the only legal values, so a
+        /// typo cannot be written — but it must not be swallowed either. An unparseable
+        /// value throws with the full member list rather than leaving the property at its
+        /// default, which is exactly how these parameters went missing before: accepted,
+        /// dropped, reported as success.
+        ///
+        /// A null/empty value is a no-op (the caller did not ask for the property).
+        /// </summary>
+        private static void SetEnumProperty(object target, string propertyName, string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+
+            var prop = target.GetType().GetProperty(propertyName)
+                ?? throw new InvalidOperationException(
+                    $"{target.GetType().Name} has no '{propertyName}' property in this metamodel build " +
+                    $"({BuildInfo.MetamodelFileVersion}).");
+            var enumType = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+            if (!enumType.IsEnum)
+                throw new InvalidOperationException(
+                    $"{target.GetType().Name}.{propertyName} is {enumType.Name}, not an enum.");
+
+            object parsed;
+            try
+            {
+                parsed = Enum.Parse(enumType, value!.Trim(), ignoreCase: true);
+            }
+            catch (ArgumentException)
+            {
+                throw new ArgumentException(
+                    $"'{value}' is not a valid {propertyName}. Valid values: " +
+                    string.Join(", ", Enum.GetNames(enumType)) + ".");
+            }
+            prop.SetValue(target, parsed);
         }
 
         /// <summary>
@@ -1808,14 +1851,30 @@ namespace D365MetadataBridge.Services
         // TABLE RELATION OPERATIONS
         // ========================
 
-        /// <summary>Adds a relation to a table.</summary>
-        public object AddRelation(string tableName, string relationName, string relatedTable, List<WriteRelationConstraint>? constraints)
+        /// <summary>
+        /// Adds a relation to a table.
+        ///
+        /// Cardinality / RelatedTableCardinality / RelationshipType are real
+        /// AxTableRelation properties (verified against this VM's metamodel), but this
+        /// method used to set only Name, RelatedTable and the constraints — so a relation
+        /// reported "✅ added" and then failed BP with
+        /// BPErrorTableRelationshipPropertiesCompleteness naming exactly those three
+        /// (findings #5 / #35). The TS side patched them onto the XML afterwards as a
+        /// workaround; writing them through the provider is what puts them in the
+        /// serialiser's own element order instead of a hand-anchored one.
+        /// </summary>
+        public object AddRelation(string tableName, string relationName, string relatedTable,
+            List<WriteRelationConstraint>? constraints,
+            string? cardinality = null, string? relatedTableCardinality = null, string? relationshipType = null)
         {
             var axTable = _provider.Tables.Read(tableName)
                 ?? throw new ArgumentException($"Table '{tableName}' not found");
             var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
 
             var axRel = new AxTableRelation { Name = relationName, RelatedTable = relatedTable };
+            SetEnumProperty(axRel, "Cardinality", cardinality);
+            SetEnumProperty(axRel, "RelatedTableCardinality", relatedTableCardinality);
+            SetEnumProperty(axRel, "RelationshipType", relationshipType);
             if (constraints != null)
             {
                 foreach (var c in constraints)
@@ -1831,7 +1890,14 @@ namespace D365MetadataBridge.Services
             axTable.AddRelation(axRel);
 
             ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-            return new { success = true, operation = "add-relation", objectName = tableName, relationName, relatedTable, api = "IMetaTableProvider.Update" };
+            return new
+            {
+                success = true, operation = "add-relation", objectName = tableName, relationName, relatedTable,
+                cardinality = axRel.Cardinality.ToString(),
+                relatedTableCardinality = axRel.RelatedTableCardinality.ToString(),
+                relationshipType = axRel.RelationshipType.ToString(),
+                api = "IMetaTableProvider.Update",
+            };
         }
 
         /// <summary>Removes a relation from a table.</summary>
@@ -1941,13 +2007,15 @@ namespace D365MetadataBridge.Services
                 }
                 if (target == null)
                     throw new InvalidOperationException($"Field '{fieldName}' not found on table '{tableName}'");
+                var applied = new List<string>();
                 if (properties != null)
                 {
                     foreach (var kv in properties)
-                        SetTableFieldProperty(target, kv.Key, kv.Value);
+                        if (SetTableFieldProperty(target, kv.Key, kv.Value)) applied.Add(kv.Key);
                 }
+                RequireSomethingApplied("modify-field", tableName, fieldName, properties, applied, SupportedTableFieldProperties);
                 ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-                return new { success = true, operation = "modify-field", objectName = tableName, fieldName, api = "IMetaTableProvider.Update" };
+                return new { success = true, operation = "modify-field", objectName = tableName, fieldName, applied, api = "IMetaTableProvider.Update" };
             }
 
             var axExt = _provider.TableExtensions.Read(tableName);
@@ -1962,15 +2030,17 @@ namespace D365MetadataBridge.Services
                 }
                 if (target == null)
                     throw new InvalidOperationException($"Field '{fieldName}' not found on table-extension '{tableName}'");
+                var applied = new List<string>();
                 if (properties != null)
                 {
                     foreach (var kv in properties)
-                        SetTableFieldProperty(target, kv.Key, kv.Value);
+                        if (SetTableFieldProperty(target, kv.Key, kv.Value)) applied.Add(kv.Key);
                 }
+                RequireSomethingApplied("modify-field", tableName, fieldName, properties, applied, SupportedTableFieldProperties);
                 var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
                     ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
                 extProvider.Update(axExt, msi);
-                return new { success = true, operation = "modify-field", objectName = tableName, fieldName, api = "IMetaTableExtensionProvider.Update" };
+                return new { success = true, operation = "modify-field", objectName = tableName, fieldName, applied, api = "IMetaTableExtensionProvider.Update" };
             }
 
             throw new ArgumentException($"Table or table-extension '{tableName}' not found");
@@ -2183,23 +2253,33 @@ namespace D365MetadataBridge.Services
             if (target == null)
                 throw new InvalidOperationException($"Enum value '{valueName}' not found on enum '{enumName}'");
 
+            var applied = new List<string>();
             if (properties != null)
             {
                 foreach (var kv in properties)
                 {
                     switch (kv.Key.ToLowerInvariant())
                     {
-                        case "label": target.Label = kv.Value; break;
+                        case "label": target.Label = kv.Value; applied.Add(kv.Key); break;
                         case "value":
-                            if (int.TryParse(kv.Value, out var iv)) target.Value = iv;
+                            if (int.TryParse(kv.Value, out var iv)) { target.Value = iv; applied.Add(kv.Key); }
                             break;
-                        case "name": target.Name = kv.Value; break;
+                        case "name": target.Name = kv.Value; applied.Add(kv.Key); break;
+                        case "countryregioncodes": target.CountryRegionCodes = kv.Value; applied.Add(kv.Key); break;
+                        case "configurationkey": target.ConfigurationKey = kv.Value; applied.Add(kv.Key); break;
+                        default:
+                            Console.Error.WriteLine($"[WriteService] Unknown enum value property: {kv.Key}");
+                            break;
                     }
                 }
             }
+            // helpText is deliberately absent: AxEnumValue has no HelpText in the
+            // metamodel (only AxEnum does), so there is nothing to write it to.
+            RequireSomethingApplied("modify-enum-value", enumName, valueName, properties, applied,
+                new[] { "label", "value", "name", "countryRegionCodes", "configurationKey" });
 
             ((IMetaEnumProvider)_provider.Enums).Update(axEnum, msi);
-            return new { success = true, operation = "modify-enum-value", objectName = enumName, valueName, api = "IMetaEnumProvider.Update" };
+            return new { success = true, operation = "modify-enum-value", objectName = enumName, valueName, applied, api = "IMetaEnumProvider.Update" };
         }
 
         /// <summary>Removes a value from an enum.</summary>
@@ -2409,10 +2489,10 @@ namespace D365MetadataBridge.Services
                             return new { success = true, operation = "add-data-source", objectType, objectName, dsName, table, skipped = true, reason = $"data source '{(string)dyn.Name}' already binds table '{table}'", api = "IMetaFormProvider.Update" };
                     }
 
-                    axForm.AddDataSource(CreateFormDataSourceRoot(dsName, table, joinSource));
+                    axForm.AddDataSource(CreateFormDataSourceRoot(dsName, table, joinSource, linkType));
 
                     ((IMetaFormProvider)_provider.Forms).Update(axForm, msi);
-                    return new { success = true, operation = "add-data-source", objectType, objectName, dsName, table, api = "IMetaFormProvider.Update" };
+                    return new { success = true, operation = "add-data-source", objectType, objectName, dsName, table, joinSource, linkType, api = "IMetaFormProvider.Update" };
                 }
                 default:
                     throw new ArgumentException($"add-data-source not supported for objectType '{objectType}' via bridge");
@@ -2926,32 +3006,65 @@ namespace D365MetadataBridge.Services
         }
 
         /// <summary>Sets a property on an existing table field.</summary>
-        private void SetTableFieldProperty(AxTableField field, string prop, string value)
+        /// <summary>Table-field properties SetTableFieldProperty knows how to write.</summary>
+        private static readonly string[] SupportedTableFieldProperties =
+            { "label", "helpText", "mandatory", "allowEdit", "extendedDataType", "stringSize", "enumType" };
+
+        /// <summary>
+        /// Applies one field property. Returns false when the key is unknown, or when it
+        /// is known but does not apply to THIS field type (stringSize on an enum field) —
+        /// the caller turns "nothing applied" into an error instead of a hollow success.
+        /// </summary>
+        private bool SetTableFieldProperty(AxTableField field, string prop, string value)
         {
             switch (prop.ToLowerInvariant())
             {
-                case "label": field.Label = value; break;
-                case "helptext": field.HelpText = value; break;
+                case "label": field.Label = value; return true;
+                case "helptext": field.HelpText = value; return true;
                 case "mandatory":
                     field.Mandatory = ParseNoYes(value);
-                    break;
+                    return true;
                 case "allowedit":
                     field.AllowEdit = ParseNoYes(value);
-                    break;
+                    return true;
                 case "extendeddatatype":
                 case "edt":
                     field.ExtendedDataType = value;
-                    break;
+                    return true;
                 case "stringsize":
-                    if (field is AxTableFieldString sf && int.TryParse(value, out var ss)) sf.StringSize = ss;
-                    break;
+                    if (field is AxTableFieldString sf && int.TryParse(value, out var ss)) { sf.StringSize = ss; return true; }
+                    return false;
                 case "enumtype":
-                    if (field is AxTableFieldEnum ef) ef.EnumType = value;
-                    break;
+                    if (field is AxTableFieldEnum ef) { ef.EnumType = value; return true; }
+                    return false;
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown table field property: {prop}");
-                    break;
+                    return false;
             }
+        }
+
+        /// <summary>
+        /// Turns a property bag that changed nothing into an error.
+        ///
+        /// Every modify-* op here read its properties, applied whatever it recognised,
+        /// called Update() and returned success — so a caller who sent the parameters in
+        /// the wrong shape (flat instead of nested under `properties`), or a key this
+        /// build does not support, got "✅ modified" over a byte-identical file. The
+        /// modify surface must not report a write it did not make.
+        /// </summary>
+        private static void RequireSomethingApplied(
+            string operation, string objectName, string targetName,
+            Dictionary<string, string>? properties, List<string> applied, IEnumerable<string> supported)
+        {
+            if (applied.Count > 0) return;
+            if (properties == null || properties.Count == 0)
+                throw new ArgumentException(
+                    $"{operation} on '{objectName}.{targetName}' was given no properties, so it would " +
+                    $"change nothing. Pass them under `properties`, e.g. " +
+                    $"properties: {{ \"{supported.First()}\": \"…\" }}. Supported: {string.Join(", ", supported)}.");
+            throw new ArgumentException(
+                $"{operation} on '{objectName}.{targetName}' changed nothing: none of " +
+                $"[{string.Join(", ", properties.Keys)}] could be applied. Supported: {string.Join(", ", supported)}.");
         }
 
         /// <summary>

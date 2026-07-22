@@ -1835,29 +1835,36 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
                   relatedField: c?.relatedField ?? c?.relatedFieldName,
                 }))
               : undefined;
+          const relationProperties = {
+            relationCardinality: (args as any).relationCardinality ?? 'ZeroMore',
+            relatedTableCardinality: (args as any).relatedTableCardinality ?? 'ExactlyOne',
+            relationshipType: (args as any).relationshipType ?? 'Association',
+          };
           bridgeResult = await bridgeAddRelation(
             context.bridge,
             objectName,
             (args as any).relationName,
             (args as any).relatedTable,
             constraints,
+            relationProperties,
           );
-          // The relation properties add-relation documents (with defaults) are
-          // carried by NEITHER bridgeClient.addRelation NOR the C# AddRelation —
-          // it writes Name/RelatedTable/Constraints only, so the op answered
-          // "✅ Relation 'X' added" and xppbp then raised
-          // BPErrorTableRelationshipPropertiesCompleteness naming exactly the three
-          // dropped properties, with no repair path (modify-property rejects
-          // Relations/<name>/RelationshipType). Findings #5 / #35. The C# fix needs
-          // the VM's metadata assemblies, so write them on disk here — applying the
-          // documented defaults, exactly as the create path does.
-          if (bridgeResult?.success) {
+          // The bridge now sets Cardinality/RelatedTableCardinality/RelationshipType
+          // through the provider (verified on the VM: they serialise in the SDK's own
+          // element order). Dropping them is what raised
+          // BPErrorTableRelationshipPropertiesCompleteness on a relation reported as
+          // added, with no repair path — modify-property rejects
+          // Relations/<name>/RelationshipType (findings #5 / #35).
+          //
+          // The on-disk writer stays as the fallback for an OLD bridge binary, which
+          // ignores the new params without complaint; it no-ops when the properties are
+          // already present, so the bridge path costs one file read.
+          if (bridgeResult?.success && !(bridgeResult as any).propertiesWritten) {
             const relProps = await directXmlEnsureRelationProperties(
               actualFilePath,
               (args as any).relationName,
-              (args as any).relationCardinality ?? 'ZeroMore',
-              (args as any).relatedTableCardinality ?? 'ExactlyOne',
-              (args as any).relationshipType ?? 'Association',
+              relationProperties.relationCardinality,
+              relationProperties.relatedTableCardinality,
+              relationProperties.relationshipType,
             );
             if (relProps && relProps.applied.length > 0) {
               bridgeResult = {
