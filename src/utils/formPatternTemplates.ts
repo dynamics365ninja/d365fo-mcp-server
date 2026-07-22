@@ -43,7 +43,23 @@ export interface FormTemplateOptions {
   fieldTypes?: FieldControlMap;
   /** Field → control-type map for the lines table (DetailsTransaction). */
   linesFieldTypes?: FieldControlMap;
+  /**
+   * The datasource table's `TitleField1` — the field a DetailsMaster header
+   * title control must bind to. When omitted the first grid field is used, which
+   * is only ever right by accident: grid fields arrive in ALPHABETICAL order, so
+   * the title ends up bound to whatever field sorts first
+   * (docs/eval-sweep-findings-2026-07-21.md #32).
+   */
+  titleField?: string;
 }
+
+/**
+ * A form control that carries `<DataGroup>` MUST also carry a sibling
+ * `<DataSource>`; the field group is resolved on that datasource's table. Without
+ * it a full build fails with `Field group 'Overview' does not exist` — and an
+ * INCREMENTAL build passes it silently, which is why this survived several
+ * captures (docs/eval-sweep-findings-2026-07-21.md #32, HEADLINE (b)).
+ */
 
 /** Supported top-level D365FO form patterns */
 export type FormPattern =
@@ -385,6 +401,7 @@ ${listFieldControls}\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t<Name>Overview</Name>
 \t\t\t\t\t\t<Type>Group</Type>
 \t\t\t\t\t\t<DataGroup>Overview</DataGroup>
+\t\t\t\t\t\t<DataSource>${dsName}</DataSource>
 \t\t\t\t\t\t<FormControlExtension
 \t\t\t\t\t\t\ti:nil="true" />
 \t\t\t\t\t\t<Controls>
@@ -462,13 +479,19 @@ ${tabFieldControls}\t\t\t\t\t\t\t\t</Controls>
     // DetailsMaster 1.4 wraps the detail view in a single "Panel Tab" page whose
     // header is a DetailTitleContainer group carrying a TitleField bound to the
     // record's identifying field.
-    const titleField = gridFields[0];
+    // Bind the title to the table's TitleField1 when it is known. `gridFields` is
+    // alphabetically ordered, so gridFields[0] is an arbitrary field — it is only
+    // a last-resort fallback (findings #32).
+    const titleField = opt.titleField && opt.titleField.trim().length > 0
+      ? opt.titleField.trim()
+      : gridFields[0];
+    const titleCtl = controlForField(titleField ?? '', opt.fieldTypes);
     const detailTitleXml = titleField
       ? `\t\t\t\t\t\t\t\t\t<AxFormControl xmlns=""\n` +
-        `\t\t\t\t\t\t\t\t\t\t\ti:type="AxFormStringControl">\n` +
+        `\t\t\t\t\t\t\t\t\t\t\ti:type="${titleCtl.iType}">\n` +
         `\t\t\t\t\t\t\t\t\t\t<Name>TitleField</Name>\n` +
         `\t\t\t\t\t\t\t\t\t\t<Skip>Yes</Skip>\n` +
-        `\t\t\t\t\t\t\t\t\t\t<Type>String</Type>\n` +
+        `\t\t\t\t\t\t\t\t\t\t<Type>${titleCtl.typeValue}</Type>\n` +
         `\t\t\t\t\t\t\t\t\t\t<WidthMode>SizeToAvailable</WidthMode>\n` +
         `\t\t\t\t\t\t\t\t\t\t<FormControlExtension\n\t\t\t\t\t\t\t\t\t\t\ti:nil="true" />\n` +
         `\t\t\t\t\t\t\t\t\t\t<DataField>${titleField}</DataField>\n` +
@@ -638,6 +661,7 @@ ${detailTitleXml}\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t<Controls>
 ${overviewFieldControls}\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t<DataGroup>Overview</DataGroup>
+\t\t\t\t\t\t\t\t\t\t\t\t<DataSource>${dsName}</DataSource>
 \t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t<ColumnsMode>Fill</ColumnsMode>

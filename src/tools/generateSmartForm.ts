@@ -21,7 +21,7 @@ import { expandPatternToXml, canExpandPattern } from '../utils/formControlExpand
 import { cloneFormXml } from '../utils/formCloner.js';
 import { methodStubsForPattern, injectMethodStubs } from '../knowledge/formPatterns/methodStubs.js';
 import { findBaseFormXml } from './modifyD365File.js';
-import { getFieldControlMap, type FieldControlMap } from '../utils/fieldControlTypes.js';
+import { getFieldControlMap, getTableTitleField, type FieldControlMap } from '../utils/fieldControlTypes.js';
 import { lookupSymbolNocase } from '../utils/symbolLookup.js';
 
 interface GenerateSmartFormArgs {
@@ -376,6 +376,9 @@ export async function handleGenerateSmartForm(
   // Field -> control-type map (enum->ComboBox, date->Date, etc.) so generated controls
   // aren't all typed as String.
   let fieldTypes: FieldControlMap | undefined;
+  // The primary table's TitleField1 — the field a DetailsMaster title control must
+  // bind to (findings #32); undefined when the table declares none.
+  let primaryTitleField: string | undefined;
   let linesFields: string[] = [];
   let linesFieldTypes: FieldControlMap | undefined;
 
@@ -403,6 +406,7 @@ export async function handleGenerateSmartForm(
       const db = symbolIndex.getReadDb();
       gridFields = collectGridFields(db, dataSourceEffective);
       fieldTypes = getFieldControlMap(db, dataSourceEffective);
+      primaryTitleField = getTableTitleField(db, dataSourceEffective);
 
       if (gridFields.length > 0) {
         if (generateControls) {
@@ -795,6 +799,7 @@ export async function handleGenerateSmartForm(
       caption: resolveFormCaption(caption, label, lookupTableLabel(symbolIndex, primaryDs?.table), finalName),
       gridFields,
       fieldTypes,
+      titleField: primaryTitleField,
       linesDsName: linesDsNameResolved ?? (linesTableResolved || undefined),
       linesDsTable: linesTableResolved || undefined,
       linesFields,

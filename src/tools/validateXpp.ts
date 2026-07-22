@@ -20,6 +20,8 @@
  *   BP004   Developer-only statements left in code (pause / print)
  *   TTS001  Unbalanced ttsbegin / ttscommit
  *   XML001  AxTable XML missing an index with <AlternateKey>Yes</AlternateKey>
+ *   XML006  AxTable elements out of canonical order (silently dropped by the AOT)
+ *   XML007  Table-level property that does not exist in the AxTable model
  *
  * Keyword scans run against a comment/string-masked copy of the source
  * (maskStringsAndComments) to avoid false positives inside literals/comments.
@@ -33,6 +35,11 @@
  */
 
 import { z } from 'zod';
+import {
+  AX_TABLE_ELEMENT_ORDER,
+  AX_TABLE_NON_EXISTENT_PROPERTIES,
+  axTableElementRank,
+} from '../utils/axTablePropertyOrder.js';
 
 // Schema
 
@@ -672,8 +679,117 @@ const XPP_RULES = [
   checkDevArtifacts,
 ];
 
+/**
+ * Collect the names of the direct children of the document root, in document order.
+ *
+ * Skips CDATA / comments / PIs in a single forward scan rather than stripping them with
+ * chained `.replace()`. Two reasons that matters: removing one region can splice its
+ * neighbours into a NEW delimiter (`<!<!-- -->--` leaves `<!--`), and a non-greedy
+ * `<!--[\s\S]*?-->` does not match an UNTERMINATED comment at all, so it survives intact.
+ * Skipping in place can do neither. CDATA is what makes this necessary in the first place:
+ * X++ inside `<Source><![CDATA[…]]></Source>` is full of `<` that would read as tags.
+ */
+function rootChildElements(xml: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let i = 0;
+
+  /** End of a skipped region; an unterminated one runs to EOF. */
+  const skipTo = (from: number, terminator: string): number => {
+    const end = xml.indexOf(terminator, from);
+    return end === -1 ? xml.length : end + terminator.length;
+  };
+
+  const tagRe = /<(\/?)([A-Za-z_][\w.-]*)([^>]*?)(\/?)>/y;
+
+  while (i < xml.length) {
+    const lt = xml.indexOf('<', i);
+    if (lt === -1) break;
+
+    // Order matters: the longer delimiters must be tested before the `<!` catch-all.
+    if (xml.startsWith('<![CDATA[', lt)) { i = skipTo(lt + 9, ']]>'); continue; }
+    if (xml.startsWith('<!--', lt)) { i = skipTo(lt + 4, '-->'); continue; }
+    if (xml.startsWith('<?', lt)) { i = skipTo(lt + 2, '?>'); continue; }
+    if (xml.startsWith('<!', lt)) { i = skipTo(lt + 2, '>'); continue; }
+
+    tagRe.lastIndex = lt;
+    const m = tagRe.exec(xml);
+    if (!m) {
+      i = lt + 1;
+      continue;
+    }
+    if (m[1] === '/') {
+      depth--;
+    } else {
+      if (depth === 1) out.push(m[2]);
+      if (m[4] !== '/') depth++;
+    }
+    i = lt + m[0].length;
+  }
+  return out;
+}
+
+/**
+ * XML006 — AxTable elements out of canonical order.
+ *
+ * The AOT deserializer drops a misordered property SILENTLY: xppbp then reports
+ * BPErrorLabelNotDefined / BPErrorTableTitleField1NotDeclared /
+ * BPErrorDeveloperDocumentationNotDefined for properties that are physically in
+ * the file, and this validator used to answer "no violations" on exactly that
+ * document (docs/eval-sweep-findings-2026-07-21.md #13).
+ */
+function checkTableElementOrder(code: string): ValidationViolation[] {
+  if (!/<AxTable[\s>]/.test(code)) return [];
+  const children = rootChildElements(code).filter(
+    n => axTableElementRank(n) !== Number.MAX_SAFE_INTEGER,
+  );
+  const violations: ValidationViolation[] = [];
+  for (let i = 1; i < children.length; i++) {
+    const prev = children[i - 1];
+    const cur = children[i];
+    if (axTableElementRank(cur) >= axTableElementRank(prev)) continue;
+    violations.push({
+      rule: 'XML006',
+      severity: 'error',
+      line: lineNumber(code, code.indexOf(`<${cur}`)),
+      excerpt: `<${cur}> appears after <${prev}>`,
+      fix:
+        `AxTable XML is order-sensitive and a misordered element is dropped SILENTLY ` +
+        `(the build stays green, xppbp then reports the property as missing). ` +
+        `Move <${cur}> before <${prev}>. Canonical order: ` +
+        `${AX_TABLE_ELEMENT_ORDER.join(' → ')}.`,
+    });
+    break; // one report per document — fixing the order fixes them all
+  }
+  return violations;
+}
+
+/**
+ * XML007 — a table-level property that does not exist in the AxTable model.
+ * `<AlternateKey>` at table level is the common one: it reads naturally, is
+ * accepted by every writer, and does nothing at all (findings #13).
+ */
+function checkNonExistentTableProperties(code: string): ValidationViolation[] {
+  if (!/<AxTable[\s>]/.test(code)) return [];
+  const violations: ValidationViolation[] = [];
+  for (const name of new Set(rootChildElements(code))) {
+    const explanation = AX_TABLE_NON_EXISTENT_PROPERTIES[name];
+    if (!explanation) continue;
+    violations.push({
+      rule: 'XML007',
+      severity: 'error',
+      line: lineNumber(code, code.indexOf(`<${name}`)),
+      excerpt: `<${name}> is not an AxTable property`,
+      fix: `${explanation} As written this element is ignored by the deserializer — silently.`,
+    });
+  }
+  return violations;
+}
+
 const XML_RULES = [
   checkMissingAlternateKey,
+  checkTableElementOrder,
+  checkNonExistentTableProperties,
 ];
 
 const XML_PROPERTY_RULES = [

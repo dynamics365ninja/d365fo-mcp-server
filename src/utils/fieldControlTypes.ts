@@ -106,6 +106,41 @@ export function getFieldControlMap(db: any, table: string): FieldControlMap {
   }
 }
 
+/**
+ * Read `<TitleField1>` out of a table's AOT XML. The element is table-level, so
+ * the match is anchored on the FIRST occurrence outside any nested block —
+ * `<TitleField1>` exists nowhere else in an AxTable document, so a plain match
+ * is safe. Returns undefined when the table declares no title field.
+ */
+export function parseTableTitleField(tableXml: string): string | undefined {
+  const v = tableXml.match(/<TitleField1>([^<]*)<\/TitleField1>/)?.[1]?.trim();
+  return v ? v : undefined;
+}
+
+/**
+ * Resolve a table's `TitleField1` through the symbol index (same file_path hop as
+ * {@link getFieldControlMap}). Used by the form scaffold so a DetailsMaster title
+ * control binds to the record's identifying field instead of the alphabetically
+ * first one (docs/eval-sweep-findings-2026-07-21.md #32).
+ */
+export function getTableTitleField(db: any, table: string): string | undefined {
+  try {
+    const canonical = lookupSymbolNocase(db, table)?.name ?? table;
+    const row = db
+      .prepare(
+        `SELECT file_path FROM symbols
+         WHERE type = 'field' AND parent_name = ?
+           AND file_path IS NOT NULL AND file_path != ''
+         LIMIT 1`,
+      )
+      .get(canonical) as { file_path?: string } | undefined;
+    if (!row?.file_path || !fs.existsSync(row.file_path)) return undefined;
+    return parseTableTitleField(fs.readFileSync(row.file_path, 'utf-8'));
+  } catch {
+    return undefined;
+  }
+}
+
 /** Control type for a single field from a (possibly undefined) map, defaulting to String. */
 export function controlForField(field: string, types?: FieldControlMap): ControlTypeInfo {
   return types?.get(field.toLowerCase()) ?? DEFAULT_CONTROL;

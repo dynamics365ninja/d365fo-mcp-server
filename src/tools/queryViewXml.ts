@@ -56,12 +56,34 @@ ${classDeclaration}
 `;
   }
 
+  // A data source with NO explicit field list only compiles when it is marked
+  // dynamic. xppc rejects the "all fields" shape with "The field list of the data
+  // source 'X' cannot be empty if the dynamic field is set to false", so every
+  // fieldless query this builder produced failed the build
+  // (docs/eval-sweep-findings-2026-07-21.md #20). `properties.dynamicFields` lets a
+  // caller force it either way; otherwise it follows "no explicit fields ⇒ dynamic".
+  //
+  // Position: between <DerivedDataSources> and <Fields>. The captured golden
+  // (eval/goldens/L1-query-view-basic) fixes the surrounding sequence
+  // Name → Table → DataSources → DerivedDataSources → Fields, and DynamicFields
+  // sorts there alphabetically — the same place the AxTable serializer puts its
+  // extended properties (#13). AOT XML silently DROPS misordered elements, so this
+  // position is deliberate, not incidental.
+  const explicitDynamic: boolean | undefined =
+    typeof properties?.dynamicFields === 'boolean'
+      ? properties.dynamicFields
+      : typeof properties?.dynamicFields === 'string'
+        ? /^(yes|true)$/i.test(properties.dynamicFields)
+        : undefined;
+  const dynamicFields = explicitDynamic ?? !fields?.length;
+  const dynamicFieldsXml = dynamicFields ? '\t\t\t<DynamicFields>Yes</DynamicFields>\n' : '';
+
   const fieldsXml = fields?.length
-    ? fields.map(f => `\t\t\t<AxQuerySimpleDataSourceField>
-\t\t\t\t<Name>${f.field || f.name}</Name>
-\t\t\t\t<Field>${f.field || f.name}</Field>
-\t\t\t</AxQuerySimpleDataSourceField>`).join('\n')
-    : '';
+    ? `\t\t\t<Fields>\n${fields.map(f => `\t\t\t\t<AxQuerySimpleDataSourceField>
+\t\t\t\t\t<Name>${f.field || f.name}</Name>
+\t\t\t\t\t<Field>${f.field || f.name}</Field>
+\t\t\t\t</AxQuerySimpleDataSourceField>`).join('\n')}\n\t\t\t</Fields>\n`
+    : '\t\t\t<Fields />\n';
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <AxQuery xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
@@ -75,10 +97,7 @@ ${classDeclaration}
 \t\t\t<Table>${dataSource}</Table>
 \t\t\t<DataSources />
 \t\t\t<DerivedDataSources />
-\t\t\t<Fields>
-${fieldsXml}
-\t\t\t</Fields>
-\t\t\t<Ranges />
+${dynamicFieldsXml}${fieldsXml}\t\t\t<Ranges />
 \t\t\t<GroupBy />
 \t\t\t<Having />
 \t\t\t<OrderBy />
@@ -89,19 +108,49 @@ ${fieldsXml}
 }
 
 /**
- * properties.query      — name of an existing AxQuery this view is built on.
- * properties.dataSource  — that query's root datasource NAME (defaults to
- *                           properties.query — matches the common convention
- *                           of naming a simple query's root datasource after
- *                           its table, and matching buildAxQueryXml's default
- *                           dataSourceName when the caller didn't override it).
- * properties.fields      — [{ name, dataField? }] → one AxViewFieldBound per
- *                           entry, dataField defaults to name.
+ * Extract the root data source NAME from an AxQuery document.
+ *
+ * A view's `<DataSource>` must name the query's root data source — NOT the query
+ * itself. Exported so the create path can resolve it from the query file on disk.
+ */
+export function extractQueryRootDataSourceName(queryXml: string): string | undefined {
+  const root = queryXml.match(
+    /<AxQuerySimpleRootDataSource>[\s\S]*?<Name>([^<]+)<\/Name>/,
+  )?.[1]?.trim();
+  return root ? root : undefined;
+}
+
+/**
+ * properties.query               — name of an existing AxQuery this view is built on.
+ * properties.dataSource          — that query's root datasource NAME.
+ * properties.queryRootDataSource — same thing, resolved by the caller from the
+ *                                   query on disk (see extractQueryRootDataSourceName).
+ * properties.queryXml            — the referenced query's raw XML; the root
+ *                                   datasource name is read out of it.
+ * properties.fields              — [{ name, dataField? }] → one AxViewFieldBound
+ *                                   per entry, dataField defaults to name.
+ *
+ * Resolution order is deliberate: an explicit `dataSource` wins, then a resolved
+ * root name, then the referenced query's own XML. Only as a LAST resort does it
+ * fall back to the query name — which is what it used to do unconditionally, and
+ * which is essentially always wrong: buildAxQueryXml names a simple query's root
+ * datasource after its TABLE, so a view generated from a `…Query` object bound its
+ * fields to a datasource that does not exist
+ * (docs/eval-sweep-findings-2026-07-21.md #38; ground truth in
+ * eval/goldens/L1-query-view-basic, where the view's DataSource is
+ * `ConDemoNoteHeader`, not `ConDemoNoteHeaderQuery`).
  */
 export function buildAxViewXml(viewName: string, properties?: Record<string, any>): string {
   const label = properties?.label || viewName;
   const query: string | undefined = properties?.query;
-  const dataSource: string = properties?.dataSource || query || '';
+  const dataSource: string =
+    properties?.dataSource
+    || properties?.queryRootDataSource
+    || (typeof properties?.queryXml === 'string'
+      ? extractQueryRootDataSourceName(properties.queryXml)
+      : undefined)
+    || query
+    || '';
   const fields: Array<{ name: string; dataField?: string }> | undefined =
     Array.isArray(properties?.fields) ? properties.fields : undefined;
 
