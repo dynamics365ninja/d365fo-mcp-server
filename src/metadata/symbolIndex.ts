@@ -2673,6 +2673,43 @@ export class XppSymbolIndex {
   }
 
   /**
+   * Delete property_stats rows for models that today's gate would not mine.
+   *
+   * The counts are cumulative (`ON CONFLICT ... count + excluded.count`), so gating the
+   * miners only stops NEW pollution — rows written by an earlier build survive until
+   * something removes them. This is that something, and it is cheap enough to run on every
+   * build: the table is tiny (a few thousand rows, ~150 models on a full D365FO index)
+   * because it stores one row per node_type/property/value/model, not per object.
+   *
+   * Re-evaluates every model actually present in the table rather than only the models
+   * this run was told about, so it also clears historical pollution — e.g. rows mined
+   * before a model was added to CUSTOM_MODELS. It is therefore only as good as the current
+   * notion of "non-Microsoft": an ISV model that neither the extract manifest nor
+   * isStandardModel() knows about stays until it is declared.
+   *
+   * Returns the models purged (empty when the corpus is already clean). With
+   * `{ dryRun: true }` it returns the same list without deleting anything, so callers can
+   * report the damage without duplicating the predicate.
+   */
+  purgeNonMineableStats(opts: { dryRun?: boolean } = {}): string[] {
+    const models = (this.db.prepare('SELECT DISTINCT model FROM property_stats').all() as Array<{ model: string }>)
+      .map(r => r.model);
+    const toPurge = models.filter(m => !this.isMineableModel(m));
+    if (toPurge.length === 0 || opts.dryRun) return toPurge;
+
+    // Chunked to stay clear of SQLITE_MAX_VARIABLE_NUMBER on a pathological model count.
+    const purge = this.db.transaction((names: string[]) => {
+      for (let i = 0; i < names.length; i += 400) {
+        const chunk = names.slice(i, i + 400);
+        const placeholders = chunk.map(() => '?').join(',');
+        this.db.prepare(`DELETE FROM property_stats WHERE model IN (${placeholders})`).run(...chunk);
+      }
+    });
+    purge(toPurge);
+    return toPurge;
+  }
+
+  /**
    * Mine property statistics from one parsed table JSON. Only standard
    * (Microsoft) models are mined — the stats answer "what does the standard
    * platform do", not "what did our customizations do".
