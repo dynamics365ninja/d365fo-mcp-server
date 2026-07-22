@@ -218,11 +218,15 @@ describe('relative path resolution', () => {
   });
 
   it('leaves an explicit PATH_VAR alone — the default is the lowest precedence', () => {
-    process.env.DB_PATH = 'K:\\d365fo-mcp\\data\\xpp-metadata.db';
+    // A path the surrounding OS agrees is absolute: a drive-letter path is one
+    // on Windows only, and on the Linux CI it would be treated as relative and
+    // resolved against envDir — testing the resolution rule, not this one.
+    const chosen = path.resolve('/chosen-install-dir', 'data', 'xpp-metadata.db');
+    process.env.DB_PATH = chosen;
 
     loadEnv(FAKE_CALLER_URL);
 
-    expect(process.env.DB_PATH).toBe('K:\\d365fo-mcp\\data\\xpp-metadata.db');
+    expect(process.env.DB_PATH).toBe(chosen);
     // The ones nobody set still get the anchored default.
     expect(process.env.METADATA_PATH).toBe(path.resolve('/repo', './extracted-metadata'));
   });
