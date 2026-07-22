@@ -33,20 +33,19 @@ C# edit is worse than an open ticket.
 - Only `fullBuild` runs metadata validation. An incremental build reported 0 errors on a model with
   2 real metadata errors, so `pass@build` from incremental runs is weaker than it looks.
 
-## Open — validator
-
-- **#7** — `validate_code(syntax)` raises `BPCheckAlternateKeyAbsent` as a hard ERROR (`XML001`)
-  while xppbp treats it as a warning and the build is clean. A case that legitimately mandates one
-  index cannot satisfy it at all: an error-severity rule a valid, building table cannot pass.
-
 ## Open — writers
 
-- **#21** — `generate_object(scaffold, table)` demands `fieldsHint` despite `fields[]`, mines EDTs
-  from field names, drops enum fields, and WRITES TO DISK despite being generation-only
-  (`undo_last_modification` cannot clean that up — `PackagesLocalDirectory` is not a git repo).
-- **#36** — no operation exists for table DeleteActions, so a cascading delete action is
-  inexpressible.
-- **#37 (forms half)** — `modify-property` is unimplemented for forms. The table half is done.
+Three defects the same corpus record (2026-07-22T04__L2-form-over-view) raised alongside #37,
+never separately filed:
+
+- `generate_object(scaffold, form)` resolves `dataSource` against TABLES only, so a form over a
+  VIEW fails with "not found in the symbol index" even after `update_symbol_index`.
+  `object_patterns` resolves the same view fine — the defect is the scaffold's own lookup.
+- `d365fo_file(create, objectType="view")` defaults each `AxViewFieldBound` `<DataSource>` to the
+  QUERY name instead of the query's root data source name. Passing `fields[].dataSource`
+  explicitly works — only the default is wrong.
+- `trigger_db_sync(tables=[…], syncViews=true)` puts BOTH tables and views in `-viewlist`;
+  SyncEngine aborts with "Invalid argument -viewlist=…". They must be split by object type.
 
 ## Corrected attribution
 

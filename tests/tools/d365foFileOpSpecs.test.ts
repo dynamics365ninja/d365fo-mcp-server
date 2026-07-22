@@ -22,7 +22,7 @@ describe('d365fo_file op-spec registry', () => {
     const publishedOps: string[] =
       (d365foFileSchema.inputSchema.properties as any).operation.enum;
     expect(new Set(Object.keys(D365FO_FILE_OP_SPECS))).toEqual(new Set(publishedOps));
-    expect(publishedOps).toHaveLength(25);
+    expect(publishedOps).toHaveLength(27);
   });
 
   it('every required/optional param has a param-spec entry with type and description', () => {

@@ -1126,6 +1126,9 @@ const BRIDGE_MODIFY_OPS = new Set([
   'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'remove-field',
   'add-index', 'remove-index',
   'add-relation', 'remove-relation',
+  // No C# op backs these — they are served by a direct-XML writer, but they still
+  // pass through the same modify gate.
+  'add-delete-action', 'remove-delete-action',
   'add-field-group', 'remove-field-group', 'add-field-to-field-group',
   'modify-property',
   'add-enum-value', 'modify-enum-value', 'remove-enum-value',

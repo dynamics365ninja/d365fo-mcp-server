@@ -810,6 +810,76 @@ describe('generate_smart_table', () => {
     expect(result?.content[0].text).toMatch(/Description|Amount/);
   });
 
+  // eval #21: fieldsHint carries only names, so an enum-backed field or an explicit
+  // EDT could not be expressed and was silently mis-typed as a String EDT.
+  it('accepts structured fields[] and keeps enum fields as AxTableFieldEnum', async () => {
+    const result = await handleGenerateSmartTable(
+      {
+        name: 'ConDemoNote',
+        modelName: 'MyModel',
+        fields: [
+          { name: 'NoteId', edt: 'Description', mandatory: true },
+          { name: 'Status', enumType: 'ConDemoNoteStatus' },
+        ],
+      },
+      ctx.symbolIndex,
+    );
+    const text = result?.content[0].text as string;
+    expect(text).toContain('<EnumType>ConDemoNoteStatus</EnumType>');
+    expect(text).toContain('i:type="AxTableFieldEnum"');
+    // The caller's enum name survives; fieldsHint could never have expressed it.
+    expect(text).toContain('<Name>NoteId</Name>');
+    expect(text).toContain('<Mandatory>Yes</Mandatory>');
+  });
+
+  // eval #21: scaffold is generation-only by name but the Windows path writes the
+  // file, and undo_last_modification cannot clean that up (PackagesLocalDirectory
+  // is not a git repo). preview=true is the no-write route.
+  it('preview=true returns XML without writing on Windows', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    const result = await handleGenerateSmartTable(
+      {
+        name: 'ConDemoPreview',
+        modelName: 'MyModel',
+        preview: true,
+        fields: [{ name: 'NoteId', edt: 'Description' }],
+      },
+      ctx.symbolIndex,
+    );
+    const text = result?.content[0].text as string;
+    expect(text).toContain('nothing was written to disk');
+    expect(text).toContain('<AxTable');
+  });
+
+  it('fields[] wins over fieldsHint', async () => {
+    const result = await handleGenerateSmartTable(
+      {
+        name: 'ConDemoNote',
+        modelName: 'MyModel',
+        fieldsHint: 'ShouldBeIgnored',
+        fields: [{ name: 'OnlyThis', edt: 'Description' }],
+      },
+      ctx.symbolIndex,
+    );
+    const text = result?.content[0].text as string;
+    expect(text).toContain('OnlyThis');
+    expect(text).not.toContain('ShouldBeIgnored');
+  });
+
+  it('rejects reserved system field names passed via fields[]', async () => {
+    const result = await handleGenerateSmartTable(
+      {
+        name: 'ConDemoNote',
+        modelName: 'MyModel',
+        fields: [{ name: 'CreatedDateTime' }],
+      },
+      ctx.symbolIndex,
+    );
+    expect(result?.isError).toBe(true);
+    expect(result?.content[0].text).toContain('Reserved system field name');
+    expect(result?.content[0].text).toContain('`fields`');
+  });
+
   it('includes an index when uniqueIndex is specified', async () => {
     const result = await handleGenerateSmartTable(
       {
