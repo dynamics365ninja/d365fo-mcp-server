@@ -36,6 +36,15 @@ describe('macro library (AxMacroDictionary)', () => {
     expect(xml).toContain('&gt;');
     expect(xml).toContain('&amp;');
   });
+
+  it('escapes the CR of every line break as &#xD;, the way the MS serializer does', () => {
+    // A literal CRLF compiles too (the parser normalises it to LF), but it does
+    // not round-trip — Visual Studio rewrites the element with &#xD; and the
+    // golden churns. Pinned after the L1-macro-library-flight VM run.
+    const xml = XmlTemplateGenerator.generate('macro', 'ConDemoModuleFlights', "#define.A('A')\n#define.B('B')");
+    expect(xml).toContain("#define.A('A')&#xD;\r\n#define.B('B')");
+    expect(xml).not.toMatch(/\('A'\)\r?\n#define/);
+  });
 });
 
 describe('configuration key (AxConfigurationKey)', () => {

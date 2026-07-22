@@ -1,0 +1,28 @@
+{
+  "run_id": "2026-07-22T16__L1-macro-library-flight__ab35b2c",
+  "case_id": "L1-macro-library-flight",
+  "tier": 1,
+  "timestamp": "2026-07-22T16:48:07.654Z",
+  "server_git_sha": "ab35b2c",
+  "generated_artifacts": [],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "PASS"
+}

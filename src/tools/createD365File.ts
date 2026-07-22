@@ -2915,12 +2915,20 @@ public final class ${contractName} extends BusinessEventsContract
    * The whole library body is ONE property (`Source`) — there is no per-macro
    * sub-element in the metadata, so the caller's sourceCode is emitted verbatim
    * (XML-escaped) exactly the way the platform's own flight libraries do it.
+   *
+   * Line breaks are written as CRLF with the CR escaped (`&#xD;` + newline),
+   * which is what the MS serializer emits (see ApplicationFoundationFlights.xml).
+   * A literal CRLF also compiles — an XML parser normalises it to LF — but it
+   * does not round-trip: the CR is lost on re-serialization, so a golden frozen
+   * on the unescaped form would churn the first time the element is rewritten
+   * by Visual Studio. Verified on the VM by L1-macro-library-flight.
    */
   static generateAxMacroXml(name: string, sourceCode?: string, properties?: Record<string, any>): string {
     const source = (sourceCode ?? properties?.source ?? `#define.${name}Placeholder('${name}')`)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+      .replace(/>/g, '&gt;')
+      .replace(/\r\n|\r|\n/g, '&#xD;\r\n');
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxMacroDictionary xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
