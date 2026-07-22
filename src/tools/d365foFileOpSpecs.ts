@@ -321,6 +321,9 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'controlDataSource', 'controlDataField', 'controlType', 'controlLabel',
       'positionType', 'previousSibling', 'baseFormName',
     ],
+    note: 'objectType="form": parentControl="Design" adds the control at the TOP LEVEL of the '
+      + 'form design — use it for the first control on a form whose design is still empty. '
+      + 'Otherwise pass the exact name of an existing container (Tab, TabPage, Group, Grid).',
   },
   'add-enum-value': {
     required: ['enumValueName'],

@@ -528,7 +528,13 @@ export function isUnresolvedObjectError(message: string | undefined): boolean {
   // resolution and must not trigger the refresh+retry or the "could not resolve"
   // guidance: replace-code's "oldCode not found in <obj>.<method>", a missing
   // method/field/index, etc. The object was resolved — only the snippet/member wasn't.
-  if (/\b(oldcode|new ?code|code|snippet|method|field|index|relation|element)\b[^.]*\bnot found/i.test(message)) {
+  //
+  // `control` / `data source` are in this list because the bridge's add-control
+  // failure reads "Parent control 'X' not found in form 'Y'" — the form WAS read
+  // successfully. Misclassifying it as unresolved produced the factually wrong
+  // "the C# metadata bridge could not find '<form>' in its metadata model"
+  // (corpus: 2026-07-21T18__L2-form-modify-controls__c262b19).
+  if (/\b(oldcode|new ?code|code|snippet|method|field|index|relation|element|control|data ?source|value)\b[^.]*\bnot found/i.test(message)) {
     return false;
   }
   // Genuine object-resolution failures: a quoted object name "'X' not found",
@@ -555,11 +561,11 @@ function unresolvedObjectError(
     `This is typical right after creating an object in the same session — the bridge's metadata ` +
     `roots are fixed at startup, so a file written this session may not be in its model.\n` +
     `Auto-refresh was already attempted once and still failed.\n\n` +
-    `Reliable fallback (works for tables, forms, classes created this session):\n` +
-    `  Read ${objectName}.xml with get_object_info, add the ${operation.replace('add-', '')} ` +
-    `element directly to the XML, then re-write the whole file:\n` +
-    `  d365fo_file(action="create", overwrite=true, xmlContent="<complete updated XML>")\n\n` +
-    `Alternative — try in order:\n` +
+    // Deliberately NOT suggesting `d365fo_file(action="create", overwrite=true,
+    // xmlContent=...)` here: rewriting a whole object from hand-authored XML is the
+    // exact escape hatch that loses metadata the provider would have written, and it
+    // is never the right remedy for a *modify* failure. Fix the resolution instead.
+    `Try in order:\n` +
     `  1. update_symbol_index({ filePath: "<path to ${objectName}.xml>" })\n` +
     `  2. Check D365FO_CUSTOM_PACKAGES_PATH points to the correct metadata folder.\n` +
     `  3. Confirm ${objectName}.xml actually exists on disk.\n` +
@@ -665,9 +671,12 @@ const ModifyD365FileArgsSchema = z.object({
     'e.g. "MyCustPriorityTier". Used as <Name> inside <FormControl>.'
   ),
   parentControl: z.string().optional().describe(
-    'Name of the existing parent control/tab/group in the base form to insert into. ' +
+    'Name of the existing parent control/tab/group to insert into. ' +
     'e.g. "TabGeneral", "HeaderGroup", "TabPageSales". ' +
-    'Becomes the <Parent> element of the AxFormExtensionControl wrapper.'
+    'On objectType="form", pass "Design" to add the control at the TOP LEVEL of the form ' +
+    'design (required for the first control on a form whose design is still empty). ' +
+    'On objectType="form-extension" it becomes the <Parent> element of the ' +
+    'AxFormExtensionControl wrapper.'
   ),
   controlDataSource: z.string().optional().describe(
     'Data source name for the new control binding (e.g. "CustTable"). ' +
@@ -1791,6 +1800,15 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         );
       }
       let opErrorMsg = `Bridge operation '${operation}' failed: ${bridgeResult!.message}`;
+      if (operation === 'add-control' && /parent control .* not found/i.test(bridgeResult!.message ?? '')) {
+        opErrorMsg +=
+          `\n\n💡 The ${objectType} '${objectName}' WAS found — only the parent container was not.\n` +
+          `  • To add a control at the TOP LEVEL of the form design, pass parentControl="Design".\n` +
+          `  • Otherwise list the existing containers first: get_object_info(objectType="${objectType}", name="${objectName}")\n` +
+          `    and pass the exact container name (e.g. a Tab, TabPage, Group or Grid) as parentControl.\n` +
+          `  • Do not rewrite the whole object from hand-authored XML — it loses metadata the ` +
+          `provider writes for you. Fix the parentControl instead.`;
+      }
       if (operation === 'replace-code' && /oldCode not found/i.test(bridgeResult!.message ?? '')) {
         opErrorMsg +=
           `\n\n💡 Tip: The oldCode must match the exact source currently on disk.\n` +

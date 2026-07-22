@@ -1050,6 +1050,7 @@ namespace D365MetadataBridge.Services
 
             var axForm = new AxForm { Name = name };
 
+            var unknownProperties = new List<string>();
             if (properties != null)
             {
                 foreach (var kv in properties)
@@ -1058,14 +1059,42 @@ namespace D365MetadataBridge.Services
                     {
                         case "label": axForm.Design.Caption = kv.Value; break;
                         case "caption": axForm.Design.Caption = kv.Value; break;
+                        // properties.dataSource used to be accepted and silently dropped, so a
+                        // form created with it came out with an empty <DataSources /> and the
+                        // caller only found out at compile/runtime. Honour it: the value is the
+                        // TABLE name, and the data source takes the same name (D365FO convention).
+                        case "datasource":
+                        case "table":
+                            if (!string.IsNullOrWhiteSpace(kv.Value))
+                                axForm.AddDataSource(CreateFormDataSourceRoot(kv.Value.Trim(), kv.Value.Trim(), null));
+                            break;
+                        default:
+                            unknownProperties.Add(kv.Key);
+                            break;
                     }
                 }
             }
 
+            var hasClassDeclaration = false;
             if (methods != null)
             {
                 foreach (var m in methods)
+                {
+                    if (FormAuthoringDefaults.IsClassDeclarationMethod(m.Name)) hasClassDeclaration = true;
                     axForm.AddMethod(new AxMethod { Name = m.Name, Source = m.Source ?? "" });
+                }
+            }
+
+            // Without a classDeclaration xppc rejects the form outright
+            // ("The 'classDeclaration' is missing from element '<Form>'"), i.e. every
+            // bridge-created form was uncompilable. Supply the standard one when absent.
+            if (!hasClassDeclaration)
+            {
+                axForm.AddMethod(new AxMethod
+                {
+                    Name = FormAuthoringDefaults.ClassDeclarationMethodName,
+                    Source = FormAuthoringDefaults.DefaultFormClassDeclaration(name),
+                });
             }
 
             var provider = _provider.Forms as IMetaFormProvider
@@ -1073,7 +1102,41 @@ namespace D365MetadataBridge.Services
             provider.Create(axForm, msi);
 
             var filePath = GetExpectedPath("AxForm", name, modelName);
-            return new { success = true, objectType = "form", objectName = name, modelName, filePath, api = "IMetaFormProvider.Create" };
+            return new
+            {
+                success = true,
+                objectType = "form",
+                objectName = name,
+                modelName,
+                filePath,
+                api = "IMetaFormProvider.Create",
+                // Never drop a property silently — an ignored key must be visible to the caller.
+                warnings = unknownProperties.Count == 0
+                    ? null
+                    : new[] { $"Ignored unsupported form properties: {string.Join(", ", unknownProperties)}. Supported: label/caption, dataSource." },
+            };
+        }
+
+        /// <summary>
+        /// Creates a top-level (root) form data source. AxFormDataSource is abstract and a
+        /// top-level source MUST be an AxFormDataSourceRoot — picking the first concrete
+        /// AxFormDataSourceConcrete subtype can yield AxFormDataSourceReferenced (used for
+        /// nested/referenced sources), which AxForm.AddDataSource then fails to cast.
+        /// </summary>
+        private AxFormDataSourceConcrete CreateFormDataSourceRoot(string dsName, string table, string? joinSource)
+        {
+            var assembly = typeof(AxClass).Assembly;
+            var dsType = assembly.GetType("Microsoft.Dynamics.AX.Metadata.MetaModel.AxFormDataSourceRoot")
+                ?? assembly.GetTypes().FirstOrDefault(t =>
+                       typeof(AxFormDataSourceConcrete).IsAssignableFrom(t) && !t.IsAbstract
+                       && t.Name == "AxFormDataSourceRoot")
+                ?? throw new InvalidOperationException(
+                    "AxFormDataSourceRoot type not found in metadata assembly — use xmlContent fallback");
+            dynamic ds = Activator.CreateInstance(dsType)!;
+            ds.Name = dsName;
+            ds.Table = table;
+            if (!string.IsNullOrEmpty(joinSource)) ds.JoinSource = joinSource;
+            return (AxFormDataSourceConcrete)ds;
         }
 
         /// <summary>
@@ -2294,8 +2357,21 @@ namespace D365MetadataBridge.Services
             // Navigate to parent control in the design tree
             var design = axForm.Design;
             var parent = FindControlRecursive(design, parentControl);
+
+            // FindControlRecursive only ever walks design.Controls, so it can never return the
+            // design ROOT. Fall back to the design itself when parentControl is a design-root
+            // sentinel ("Design", the form name, empty/omitted, ...) — otherwise a form whose
+            // design has no controls yet can never receive its FIRST top-level control, which
+            // blocked every form-lifecycle eval case (see FormAuthoringDefaults).
+            // A real control wins over the sentinel: the recursive lookup is tried first, so a
+            // control genuinely NAMED "Design" still resolves to itself.
+            if (parent == null && FormAuthoringDefaults.IsDesignRootSentinel(parentControl, formName))
+                parent = design;
+
             if (parent == null)
-                throw new InvalidOperationException($"Parent control '{parentControl}' not found in form '{formName}'");
+                throw new InvalidOperationException(
+                    $"Parent control '{parentControl}' not found in form '{formName}'. " +
+                    "Pass parentControl=\"Design\" (or omit it) to add a control at the top level of the form design.");
 
             // Create the control using reflection (AxFormControl is abstract)
             var control = CreateFormControl(controlType, controlName, dataSource, dataField, label);
@@ -2333,23 +2409,7 @@ namespace D365MetadataBridge.Services
                             return new { success = true, operation = "add-data-source", objectType, objectName, dsName, table, skipped = true, reason = $"data source '{(string)dyn.Name}' already binds table '{table}'", api = "IMetaFormProvider.Update" };
                     }
 
-                    // AxFormDataSource hierarchy is abstract. A top-level form data source
-                    // MUST be an AxFormDataSourceRoot — picking the first concrete
-                    // AxFormDataSourceConcrete subtype can yield AxFormDataSourceReferenced
-                    // (used for nested/referenced sources), which AxForm.AddDataSource then
-                    // fails to cast to AxFormDataSourceRoot. Resolve the Root type explicitly.
-                    var assembly = typeof(AxClass).Assembly;
-                    var dsType = assembly.GetType("Microsoft.Dynamics.AX.Metadata.MetaModel.AxFormDataSourceRoot")
-                        ?? assembly.GetTypes().FirstOrDefault(t =>
-                               typeof(AxFormDataSourceConcrete).IsAssignableFrom(t) && !t.IsAbstract
-                               && t.Name == "AxFormDataSourceRoot")
-                        ?? throw new InvalidOperationException(
-                            "AxFormDataSourceRoot type not found in metadata assembly — use xmlContent fallback");
-                    dynamic ds = Activator.CreateInstance(dsType)!;
-                    ds.Name = dsName;
-                    ds.Table = table;
-                    if (!string.IsNullOrEmpty(joinSource)) ds.JoinSource = joinSource;
-                    axForm.AddDataSource((AxFormDataSourceConcrete)ds);
+                    axForm.AddDataSource(CreateFormDataSourceRoot(dsName, table, joinSource));
 
                     ((IMetaFormProvider)_provider.Forms).Update(axForm, msi);
                     return new { success = true, operation = "add-data-source", objectType, objectName, dsName, table, api = "IMetaFormProvider.Update" };
