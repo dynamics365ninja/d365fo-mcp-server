@@ -32,6 +32,10 @@ import {
 import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
 import { heuristicEdtBaseType } from './generateSmartTable.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
+import {
+  upsertAxTableProperty,
+  AX_TABLE_NON_EXISTENT_PROPERTIES,
+} from '../utils/axTablePropertyOrder.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import {
@@ -330,7 +334,32 @@ async function directXmlModifyProperty(
     const totalMatches = openMatches.length + selfClosingMatches.length;
 
     if (totalMatches === 0) {
-      return null; // property element not found — let the caller surface the original bridge error
+      // The element does not exist yet. For an AxTable we know the canonical
+      // element order, so it can be INSERTED in the right place instead of failing.
+      // This is what makes properties the C# bridge refuses outright reachable at
+      // all — notably FormRef, whose absence is the very BPErrorTableMissingFormRef
+      // the agent is trying to fix (docs/eval-sweep-findings-2026-07-21.md #37).
+      // Order matters: a property written in the wrong position is dropped without
+      // a word (#13), which is why this goes through upsertAxTableProperty.
+      const nonExistent = AX_TABLE_NON_EXISTENT_PROPERTIES[tagName];
+      if (nonExistent && /<AxTable[\s>]/.test(content)) {
+        return {
+          success: false,
+          message: `❌ '${tagName}' is not an AxTable property — nothing was written. ${nonExistent}`,
+        };
+      }
+      const inserted = upsertAxTableProperty(content, tagName, escapedValue);
+      if (!inserted) {
+        return null; // not a table / unknown property — surface the original bridge error
+      }
+      await fs.writeFile(filePath, normalizeD365Xml(inserted), 'utf-8');
+      console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: inserted <${tagName}> in ${filePath}`);
+      return {
+        success: true,
+        message:
+          `✅ Property '${propertyPath}'='${propertyValue}' added via direct XML fallback ` +
+          `(the element did not exist; inserted in canonical AxTable element order). File: ${filePath}`,
+      };
     }
     if (totalMatches > 1) {
       return {
@@ -374,12 +403,20 @@ async function directXmlAddMenuItemToMenu(
     const typeMap: Record<string, string> = { display: 'Display', action: 'Action', output: 'Output' };
     const menuItemType = typeMap[menuItemToAddType?.toLowerCase()] ?? 'Display';
 
+    // An AxMenu's <Elements> holds AxMenuElement entries discriminated by i:type —
+    // `AxMenuElementMenuItem` for a menu-item reference. `AxMenuFunctionItem` is not
+    // a type in the metadata model at all (zero of the 73 shipped AxMenu files use
+    // it), so the element deserializes into nothing and the menu comes out empty:
+    // docs/eval-sweep-findings-2026-07-21.md #30. `MenuItemType` is omitted for
+    // MenuItemType stays explicit (Display is the model default and the shipped
+    // files omit it, but writing it costs nothing and keeps display/action/output
+    // unambiguous).
     const newElement =
-      `\t\t<AxMenuFunctionItem>\n` +
+      `\t\t<AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">\n` +
       `\t\t\t<Name>${menuItemToAdd}</Name>\n` +
       `\t\t\t<MenuItemName>${menuItemToAdd}</MenuItemName>\n` +
       `\t\t\t<MenuItemType>${menuItemType}</MenuItemType>\n` +
-      `\t\t</AxMenuFunctionItem>`;
+      `\t\t</AxMenuElement>`;
 
     let updated: string;
     if (content.includes('<Elements />')) {

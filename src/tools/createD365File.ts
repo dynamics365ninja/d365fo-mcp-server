@@ -21,6 +21,7 @@ import { validateFormExtensionControlShape, buildFormExtensionShapeError } from 
 import { FormPatternTemplates } from '../utils/formPatternTemplates.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
+import { renderAxTableProperties } from '../utils/axTablePropertyOrder.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
 import { buildAxDataEntityXml } from './dataEntityXml.js';
 import { resolveEdtBaseType, resolveEdtEnumType, heuristicEdtBaseType, isEnumName, bridgeEdtBaseType } from './generateSmartTable.js';
@@ -573,7 +574,17 @@ export class XmlTemplateGenerator {
     declaration: string,
     methods: T[],
   ): { declaration: string; methods: T[] } {
-    const declaredName = declaration.match(/\b(?:class|interface)\s+(\w+)/)?.[1];
+    // Match the class/interface header on CODE lines only. Matching the raw text
+    // let a doc comment win: "/// The <c>Foo</c> class is the workflow document"
+    // yields declaredName="is", and the rename then replaced every standalone "is"
+    // in the declaration and in every method body with the class name
+    // ("class is the workflow document" → "class Foo the workflow document").
+    // Reproduced from docs/eval-sweep-findings-2026-07-21.md #22.
+    const codeOnly = declaration
+      .split('\n')
+      .filter(l => !l.trim().startsWith('///') && !l.trim().startsWith('//'))
+      .join('\n');
+    const declaredName = codeOnly.match(/\b(?:class|interface)\s+(\w+)/)?.[1];
     if (!declaredName || declaredName === className) return { declaration, methods };
 
     const re = new RegExp(`\\b${declaredName}\\b`, 'g');
@@ -698,36 +709,34 @@ ${methodsXml}\t</SourceCode>
    */
   static generateAxTableXml(
     tableName: string,
-    properties?: Record<string, any>
+    properties?: Record<string, any>,
+    sourceCode?: string,
   ): string {
-    const label = properties?.label || tableName;
-    const tableGroup = properties?.tableGroup || 'Main';
-    const tableType = properties?.tableType || '';
-    const titleField1 = properties?.titleField1 || '';
-    const titleField2 = properties?.titleField2 || '';
-    const configKey = properties?.configurationKey || '';
     const primaryIndex = properties?.primaryIndex || '';
-    const cacheLookup = properties?.cacheLookup || '';
 
-    // Build optional configuration key
-    const configKeyXml = configKey
-      ? `\t<ConfigurationKey>${configKey}</ConfigurationKey>\n`
-      : '';
-
-    // Build optional cache lookup (only if explicitly set)
-    const cacheLookupXml = cacheLookup
-      ? `\t<CacheLookup>${cacheLookup}</CacheLookup>\n`
-      : '';
-
-    // Build optional primary index (NOTE: ClusteredIndex is NOT in real D365FO files)
-    const primaryIndexXml = primaryIndex
-      ? `\t<PrimaryIndex>${primaryIndex}</PrimaryIndex>\n\t<ReplacementKey>${primaryIndex}</ReplacementKey>\n`
-      : '';
-
-    // Build optional TableType (TempDB, InMemory; omit for Regular — it's the default)
-    const tableTypeXml = tableType
-      ? `\t<TableType>${tableType}</TableType>\n`
-      : '';
+    // Property block, emitted in CANONICAL ORDER. AxTable XML is order-sensitive
+    // and a misordered property is dropped without a word — see
+    // src/utils/axTablePropertyOrder.ts and findings #13. Empty values are omitted
+    // rather than written as <TitleField1></TitleField1>, matching the shipped
+    // tables and the VM-captured golden eval/goldens/L1-table-basic.
+    const propertiesXml = renderAxTableProperties({
+      ConfigurationKey: properties?.configurationKey,
+      DeveloperDocumentation: properties?.developerDocumentation,
+      FormRef: properties?.formRef,
+      Label: properties?.label || tableName,
+      TableGroup: properties?.tableGroup || 'Main',
+      TitleField1: properties?.titleField1,
+      TitleField2: properties?.titleField2,
+      CacheLookup: properties?.cacheLookup,
+      ClusteredIndex: properties?.clusteredIndex,
+      PrimaryIndex: primaryIndex,
+      // ReplacementKey mirrors PrimaryIndex unless the caller says otherwise.
+      ReplacementKey: properties?.replacementKey || primaryIndex,
+      SaveDataPerCompany: properties?.saveDataPerCompany,
+      SupportInheritance: properties?.supportInheritance,
+      // TableType: TempDB / InMemory; omitted for Regular, which is the default.
+      TableType: properties?.tableType,
+    });
 
     // Build <Fields> block from properties.fields array (TableFieldSpec[]).
     // Copilot may pass field definitions via properties.fields or via sourceCode JSON —
@@ -761,22 +770,38 @@ ${methodsXml}\t</SourceCode>
       fieldsXml += '\t</Fields>\n';
     }
 
+    // X++ passed in `sourceCode` used to be discarded outright: the caller got a ✅
+    // and an empty <Methods /> on disk, discoverable only by reading the file back
+    // (findings #19). Table source is class-shaped (`public class X extends common`
+    // + methods), so the class splitter handles it; when the caller passed only
+    // method bodies the splitter still returns them as methods.
+    const parsedSource = sourceCode?.trim()
+      ? XmlTemplateGenerator.parseSourceForBridge(sourceCode, tableName)
+      : undefined;
+    const declarationXpp =
+      parsedSource?.declaration?.trim()
+      && /\bclass\s+\w+/.test(parsedSource.declaration)
+        ? parsedSource.declaration.trim()
+        : `public class ${tableName} extends common\n{\n}`;
+    const methodsFromSource = parsedSource?.methods ?? [];
+    const methodsXml = methodsFromSource.length === 0
+      ? '\t\t<Methods />'
+      : `\t\t<Methods>\n${methodsFromSource
+          .map(m =>
+            `\t\t\t<Method>\n\t\t\t\t<Name>${m.name}</Name>\n` +
+            `\t\t\t\t<Source><![CDATA[\n${m.source ?? ''}\n\n]]></Source>\n\t\t\t</Method>`)
+          .join('\n')}\n\t\t</Methods>`;
+
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${tableName}</Name>
 \t<SourceCode>
 \t\t<Declaration><![CDATA[
-public class ${tableName} extends common
-{
-}
+${declarationXpp}
 ]]></Declaration>
-\t\t<Methods />
+${methodsXml}
 \t</SourceCode>
-${configKeyXml}\t<Label>${label}</Label>
-\t<TableGroup>${tableGroup}</TableGroup>
-${tableTypeXml}\t<TitleField1>${titleField1}</TitleField1>
-\t<TitleField2>${titleField2}</TitleField2>
-${cacheLookupXml}${primaryIndexXml}\t<DeleteActions />
+${propertiesXml}\t<DeleteActions />
 \t<FieldGroups>
 \t\t<AxTableFieldGroup>
 \t\t\t<Name>AutoReport</Name>
@@ -1471,8 +1496,10 @@ ${defaultParamGroupXml}
       case 'class-extension':
         return this.generateAxClassExtensionXml(objectName, sourceCode, properties);
       case 'table': {
-        // sourceCode is not used for tables directly, but Copilot may pass field
-        // definitions as a JSON string in sourceCode. Try to parse and merge into properties.
+        // sourceCode carries either X++ (declaration + methods — see
+        // generateAxTableXml, findings #19) or, from some callers, a JSON blob of
+        // field definitions. Parse the JSON shape into properties; anything else is
+        // treated as X++ and handed to the table generator as source.
         let mergedProperties = properties;
         if (sourceCode && sourceCode.trim().startsWith('{')) {
           try {
@@ -1485,7 +1512,10 @@ ${defaultParamGroupXml}
             // Not valid JSON — ignore
           }
         }
-        return this.generateAxTableXml(objectName, mergedProperties);
+        const tableSource = sourceCode && !sourceCode.trim().startsWith('{')
+          ? sourceCode
+          : undefined;
+        return this.generateAxTableXml(objectName, mergedProperties, tableSource);
       }
       case 'enum':
         return this.generateAxEnumXml(objectName, properties);
@@ -2683,7 +2713,16 @@ ${relationsXml}
 
   /**
    * Render a security reference container: a self-closing tag when empty, or the
-   * wrapped child references (e.g. <AxSecurityRolePermissionSet><Name>…</Name></…>).
+   * wrapped child references (e.g. <AxSecurityPrivilegeReference><Name>…</Name></…>).
+   *
+   * The child element name matters: a duty/role that lists its privileges under
+   * `AxSecurityRolePermissionSet` / `AxSecurityRoleDutyPermission` deserializes into
+   * an EMPTY reference list, so the whole duty→privilege→role chain is dead —
+   * xppbp then reports BPErrorDutyHasNoPrivileges / BPErrorPrivilegeNotCoveredByDuty /
+   * BPErrorDutyNotCoveredByRole for references that are physically in the file.
+   * The correct names are AxSecurityPrivilegeReference / AxSecurityDutyReference
+   * (the same ones the *Extension writers below and generateD365Xml.ts already use).
+   * Evidence: docs/eval-sweep-findings-2026-07-21.md #31 (L4-master-security-slice run).
    */
   private static securityRefContainer(container: string, childTag: string, names: string[]): string {
     if (names.length === 0) return `\t<${container} />`;
@@ -2704,7 +2743,7 @@ ${relationsXml}
 <AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
 \t<Label>${label}</Label>
-${this.securityRefContainer('Privileges', 'AxSecurityRolePermissionSet', privileges)}
+${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
 </AxSecurityDuty>`;
   }
 
@@ -2722,8 +2761,8 @@ ${this.securityRefContainer('Privileges', 'AxSecurityRolePermissionSet', privile
 \t<Name>${name}</Name>
 \t<Label>${label}</Label>
 \t<DirectAccessPermissions />
-${this.securityRefContainer('Duties', 'AxSecurityRoleDutyPermission', duties)}
-${this.securityRefContainer('Privileges', 'AxSecurityRolePermissionSet', privileges)}
+${this.securityRefContainer('Duties', 'AxSecurityDutyReference', duties)}
+${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
 \t<SubRoles />
 </AxSecurityRole>`;
   }
@@ -4192,7 +4231,28 @@ export async function handleCreateD365File(
               source: m.source !== undefined ? reindentXppSource(m.source) : m.source,
             }));
           }
+        }
 
+        // X++ handed to a table create via `sourceCode` reached NOBODY: only
+        // `properties.methods` was forwarded, so a full method body was answered with
+        // ✅ and an empty <Methods /> on disk (findings #19). Parse it the same way the
+        // class path does; an explicit properties.methods still wins.
+        if (
+          (args.objectType === 'table' || args.objectType === 'table-extension') &&
+          args.sourceCode &&
+          !args.sourceCode.trim().startsWith('{') &&
+          !bridgeParams.methods
+        ) {
+          const parsedTableSource = XmlTemplateGenerator.parseSourceForBridge(
+            args.sourceCode,
+            finalObjectName,
+          );
+          if (parsedTableSource.methods.length > 0) {
+            bridgeParams.methods = parsedTableSource.methods;
+          }
+        }
+
+        if ((args.objectType === 'table' || args.objectType === 'table-extension') && args.properties) {
           // Resolve each field's base type from its EDT when the caller only gave
           // `edt` (the documented usage — the tool schema says "EDT auto-resolved
           // when omitted"). Without this, C# CreateTableField() defaults ANY field
@@ -4479,6 +4539,37 @@ export async function handleCreateD365File(
       }
     }
 
+    // A view's <DataSource> must name the referenced QUERY'S ROOT DATASOURCE, not
+    // the query. Neither `query` nor `view` is a bridge create type, so this
+    // template is the only writer for them — read the query off disk (same model
+    // folder) and hand its XML to the builder, which extracts the root name
+    // (docs/eval-sweep-findings-2026-07-21.md #38).
+    let effectiveProperties = args.properties;
+    if (
+      args.objectType === 'view' &&
+      args.properties?.query &&
+      !args.properties?.dataSource &&
+      !args.properties?.queryRootDataSource &&
+      !args.properties?.queryXml
+    ) {
+      const queryFile = path.join(
+        path.dirname(modelPath),
+        'AxQuery',
+        `${String(args.properties.query)}.xml`,
+      );
+      try {
+        const queryXml = await fs.readFile(queryFile, 'utf-8');
+        effectiveProperties = { ...args.properties, queryXml };
+        console.error(`[create_d365fo_file] Resolved view datasource from ${queryFile}`);
+      } catch {
+        console.error(
+          `[create_d365fo_file] ⚠️ Could not read query '${args.properties.query}' at ${queryFile} — ` +
+          `the view's <DataSource> falls back to the query name, which is usually wrong. ` +
+          `Pass properties.dataSource explicitly.`,
+        );
+      }
+    }
+
     // Generate (or use provided) XML content
     let xmlContent = args.xmlContent
       ? args.xmlContent
@@ -4486,7 +4577,7 @@ export async function handleCreateD365File(
           args.objectType,
           finalObjectName,
           args.sourceCode,
-          args.properties
+          effectiveProperties
         );
 
     // Guard against HTML-entity-escaped xmlContent (e.g. "&lt;?xml..." instead of "<?xml...").

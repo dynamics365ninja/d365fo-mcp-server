@@ -8,6 +8,7 @@ import { FormPatternTemplates, FormPattern } from './formPatternTemplates.js';
 import { ensureXppDocComment } from './xppDocGen.js';
 import { decodeXmlEntitiesFromXppSource } from '../tools/modifyD365File.js';
 import { type FieldControlMap, controlForField } from './fieldControlTypes.js';
+import { renderAxTableProperties } from './axTablePropertyOrder.js';
 
 export interface TableFieldSpec {
   name: string;
@@ -125,10 +126,6 @@ export class SmartXmlBuilder {
     }
     xml += `\t</SourceCode>\n`;
 
-    if (label) {
-      xml += `\t<Label>${this.escapeXml(label)}</Label>\n`;
-    }
-
     // 'RegularTable' is the default and is omitted from XML.
     const normalizedTableType = tableType && tableType.toLowerCase() !== 'regulartable' ? tableType : '';
     const isTempTable = normalizedTableType === 'TempDB' || normalizedTableType === 'InMemory';
@@ -153,49 +150,47 @@ export class SmartXmlBuilder {
       || (isTempTable ? 'Main' : this.minedMajority('AxTable', 'TableGroup'))
       || 'Main';
 
-    // BP rule: CacheLookup must be set to avoid the "CacheLookup should be set" BP warning.
-    // TempDB/InMemory tables are session-scoped, not in SQL Server → never cached.
-    if (isTempTable) {
-      xml += `\t<CacheLookup>None</CacheLookup>\n`;
-    } else {
-      const cacheLookupMap: Record<string, string> = {
-        Parameter:       'Found',
-        Group:           'Found',
-        Main:            'Found',
-        Transaction:     'None',
-        WorksheetHeader: 'None',
-        WorksheetLine:   'None',
-        Miscellaneous:   'NotInTTS',
-        Framework:       'Found',
-      };
-      const cacheLookup = cacheLookupMap[effectiveTableGroup] || 'Found';
-      xml += `\t<CacheLookup>${cacheLookup}</CacheLookup>\n`;
-    }
-
-    // BP rule: TempDB/InMemory tables are session-scoped, not company-scoped.
-    xml += `\t<SaveDataPerCompany>${isTempTable ? 'No' : 'Yes'}</SaveDataPerCompany>\n`;
-
-    xml += `\t<TableGroup>${effectiveTableGroup}</TableGroup>\n`;
-
-    if (normalizedTableType) {
-      xml += `\t<TableType>${normalizedTableType}</TableType>\n`;
-    }
+    // BP rule: CacheLookup must be set to avoid the "CacheLookup should be set" BP
+    // warning. TempDB/InMemory tables are session-scoped, not in SQL Server → never cached.
+    const cacheLookupMap: Record<string, string> = {
+      Parameter:       'Found',
+      Group:           'Found',
+      Main:            'Found',
+      Transaction:     'None',
+      WorksheetHeader: 'None',
+      WorksheetLine:   'None',
+      Miscellaneous:   'NotInTTS',
+      Framework:       'Found',
+    };
+    const cacheLookup = isTempTable
+      ? 'None'
+      : (cacheLookupMap[effectiveTableGroup] || 'Found');
 
     const titleCandidates = fields.filter(f => f.name !== 'RecId').slice(0, 2);
-    if (titleCandidates[0]) xml += `\t<TitleField1>${titleCandidates[0].name}</TitleField1>\n`;
-    if (titleCandidates[1]) xml += `\t<TitleField2>${titleCandidates[1].name}</TitleField2>\n`;
-
     const uniqueIdx = indexes?.find(i => i.unique);
-    if (uniqueIdx) {
-      xml += `\t<PrimaryIndex>${uniqueIdx.name}</PrimaryIndex>\n`;
-      xml += `\t<ReplacementKey>${uniqueIdx.name}</ReplacementKey>\n`;
-    }
-
     // BP rule: a table needs a ClusteredIndex to avoid the "no clustered index" warning.
     const clusteredIdx = indexes?.find(i => i.clustered) || uniqueIdx;
-    if (clusteredIdx) {
-      xml += `\t<ClusteredIndex>${clusteredIdx.name}</ClusteredIndex>\n`;
-    }
+
+    // The property block is rendered in CANONICAL ORDER. It used to be written in the
+    // order the BP rules were reasoned about (CacheLookup and SaveDataPerCompany
+    // before TableGroup/TitleField1, ClusteredIndex after ReplacementKey) — and
+    // AxTable XML DROPS a misordered property SILENTLY, so the very BP defaults this
+    // builder exists to set were at risk of being discarded
+    // (docs/eval-sweep-findings-2026-07-21.md #13; canonical order proven by the
+    // VM-captured golden eval/goldens/L1-table-basic).
+    xml += renderAxTableProperties({
+      Label: label ? this.escapeXml(label) : undefined,
+      TableGroup: effectiveTableGroup,
+      TitleField1: titleCandidates[0]?.name,
+      TitleField2: titleCandidates[1]?.name,
+      CacheLookup: cacheLookup,
+      ClusteredIndex: clusteredIdx?.name,
+      PrimaryIndex: uniqueIdx?.name,
+      ReplacementKey: uniqueIdx?.name,
+      // BP rule: TempDB/InMemory tables are session-scoped, not company-scoped.
+      SaveDataPerCompany: isTempTable ? 'No' : 'Yes',
+      TableType: normalizedTableType || undefined,
+    });
 
     // BP rule: relations require matching DeleteActions to avoid a BP warning.
     if (relations && relations.length > 0) {
