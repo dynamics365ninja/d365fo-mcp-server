@@ -36,7 +36,7 @@ document → `parseStringPromise` returns `null`) and returns an empty map, so a
 artifact registers every path as `missing` instead of aborting the run. Held by two regression
 tests in `tests/eval/oracle.test.ts` (a unit test on `normalizeAotXml('')`, and an integration
 test feeding the exact empty-string shape `buildActualArtifactsMap` produces through
-`normalizeMultiArtifact`). Uncommitted in the working tree.
+`normalizeMultiArtifact`). Merged to `main` via PR #730.
 
 `src/eval/oracle/actualArtifactResolution.ts` sets `actualArtifacts[name] = ''` for a
 golden artifact with no resolvable actual file, and its doc comment promises the empty
@@ -70,7 +70,7 @@ faithful reproduction of such a golden now scores `bp_clean: 0` on
 So `bp_clean` mixes "BP-clean" with "BP never checked" and cannot be trended.
 Found by: L3-custom-service-basic + L2-enum-extension-empty-values runs.
 
-## 5. `add-relation` drops its own documented relation properties (TOOL_DEFECT, high)
+## 5. `add-relation` drops its own documented relation properties (TOOL_DEFECT, high) — ⏳ ADDRESSED by PR #731 (on-disk write with documented defaults; proper C# serialisation still open, see #35)
 The op's own parameter spec documents `relationCardinality` (default ZeroMore),
 `relatedTableCardinality` (default ExactlyOne) and `relationshipType` (default Association).
 All three were passed explicitly; the op reported `✅ Relation 'CustTable' added` and emitted
@@ -84,7 +84,7 @@ Fix area: bridge table-modify handlers — serialise the relation properties, ap
 documented defaults when omitted.
 Found by: L2-table-modify-lifecycle run.
 
-## 6. `modify-field` claims success on a call with no recognised mutation param (TOOL_DEFECT, high)
+## 6. `modify-field` claims success on a call with no recognised mutation param (TOOL_DEFECT, high) — ✅ FIXED by PR #731 (root cause: Zod strips unknown keys; now rejected + near-miss suggestion `mandatory`→`fieldMandatory`)
 `params: {fieldName: "Description", mandatory: true}` returned
 `✅ Field 'Description' modified via IMetaTableProvider.Update` while writing nothing —
 verified against all 15 auto-backups that `Description` never gained `<Mandatory>`.
@@ -123,19 +123,19 @@ Fix: treat a design-root sentinel ("Design", empty, form name, null) as the desi
 before recursing.
 Found by: L2-form-modify-controls run.
 
-## 9. `properties.dataSource` silently dropped on form create (TOOL_DEFECT)
+## 9. `properties.dataSource` silently dropped on form create (TOOL_DEFECT) — ✅ FIXED by PR #728 (merged)
 `d365fo_file(action=create, objectType=form, properties={dataSource:"…"})` emits
 `<DataSources />` empty. Same silent-drop shape as #5. Workaround: `modify add-data-source`.
 Found by: L2-form-modify-controls run.
 
-## 10. Bridge-created forms never compile — no `classDeclaration` (TOOL_DEFECT)
+## 10. Bridge-created forms never compile — no `classDeclaration` (TOOL_DEFECT) — ✅ FIXED by PR #728 (merged)
 The `d365fo_file` form create path emits `<Methods xmlns="" />` with no `classDeclaration`;
 xppc fails with "The 'classDeclaration' is missing from element '<Form>'".
 `generate_object(mode=scaffold)` DOES emit one, so only the `d365fo_file` create path is
 affected. `modify add-method` repairs it and the build then goes green.
 Found by: L2-form-modify-controls run.
 
-## 11. Diagnostics steer the agent into the forbidden workaround (TOOL_DEFECT, trust issue)
+## 11. Diagnostics steer the agent into the forbidden workaround (TOOL_DEFECT, trust issue) — ✅ FIXED by PR #728 (merged; the escape hatch is now explicitly ruled out in a comment and the diagnostic explains the real same-session cause)
 A genuine parent-control-not-found is misreported as "could not resolve form 'X' / the C#
 metadata bridge could not find it in its metadata model" — factually wrong, the bridge had
 already read the form. The attached "Reliable fallback" then recommends
@@ -149,7 +149,7 @@ Found by: L2-form-modify-controls run.
 Fix: `exception` added to `KERNEL_TYPES` in `src/tools/resolveReferences.ts`, so `Exception::Error`
 / `Exception::DuplicateKeyException` verify via the kernel-enum allow-list (their values aren't
 indexed, same as any kernel enum). Held by a regression test in `tests/tools/resolve-references.test.ts`
-that exercises typed catches with NO Exception symbol in the index. Uncommitted.
+that exercises typed catches with NO Exception symbol in the index. Merged via PR #730.
 
 `Exception::Error` and `Exception::DuplicateKeyException` both fail as `unknown-static-member`
 ("Static method not found on Exception"). Reproduced on a minimal 10-line probe.
@@ -198,7 +198,7 @@ Same family as #12 (`Exception`), but `NoYes` is the single most common enum in 
 fires on a large share of all cases. Fixed with #12: `noyes` added to `KERNEL_TYPES` in
 `src/tools/resolveReferences.ts`. Held by a regression test that proves it against a deliberately
 EMPTY index (the shared test fixture happens to seed NoYes, which would have masked the fix).
-Uncommitted.
+Merged via PR #730.
 Found by: L3-workflow-document-submit run.
 
 ## 18. `validate_code(references)` arity check ignores default parameter values (VALIDATOR_GAP) — ✅ ALREADY FIXED (locked 2026-07-22)
@@ -265,7 +265,7 @@ The table overwrite path writes `*.xml.backup-<ts>` next to the object even when
 was not requested. Left alone it becomes sandbox residue for every overwrite-based case.
 Found by: L2-performance-set-based run.
 
-## 27. `add-index` param typing is wrong-shaped (TOOL_DEFECT, minor but guarantees a first-try failure)
+## 27. `add-index` param typing is wrong-shaped (TOOL_DEFECT, minor but guarantees a first-try failure) — ✅ FIXED by PR #731 (`coerceNoYesFlag()` + widened Zod)
 `indexAllowDuplicates` is a Zod BOOLEAN, but the AxTable XML value is `No`/`Yes`, so callers
 naturally pass the string and get `expected boolean`.
 Found by: L2-performance-set-based run.
