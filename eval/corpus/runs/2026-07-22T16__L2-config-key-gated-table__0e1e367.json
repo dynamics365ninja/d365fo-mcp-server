@@ -1,0 +1,58 @@
+{
+  "run_id": "2026-07-22T16__L2-config-key-gated-table__0e1e367",
+  "case_id": "L2-config-key-gated-table",
+  "tier": 2,
+  "timestamp": "2026-07-22T16:59:17.949Z",
+  "server_git_sha": "0e1e367",
+  "generated_artifacts": [
+    {
+      "path": "AxConfigurationKey/ConDemoModuleKey.xml",
+      "type": "AxConfigurationKey"
+    },
+    {
+      "path": "AxTable/ConDemoGatedSetting.xml",
+      "type": "AxTable"
+    },
+    {
+      "path": "AxMenuItemDisplay/ConDemoGatedSettingMI.xml",
+      "type": "AxMenuItemDisplay"
+    }
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references_passed": true,
+    "syntax_passed": true,
+    "violations": []
+  },
+  "root_cause_hypothesis": "Build clean (0 errors) and all 3 artifacts produced, but two grounded-path defects surfaced. (1) d365fo_file(action=create, objectType=table) silently DROPS properties.configurationKey: the same property IS honoured by objectType=menu-item-display (ConfigurationKey landed in the MI XML on first write), but the table create path emitted no ConfigurationKey element and no dropped-parameter warning - the finding #35 shape. Workaround needed a second call, modify-property propertyPath=ConfigurationKey, which succeeded only via the direct-XML fallback (bridge reported the element did not exist). (2) modify(add-index) accepts indexAllowDuplicates without warning but never writes AllowDuplicates (tested as boolean false and string \"No\"); sibling indexAlternateKey in the same call DID write. Harmless here because the metadata default is already No, but it is a silent-drop. Secondary VALIDATOR_GAP: validate_code(mode=references, codeType=xml-table) does not resolve <ConfigurationKey> - a bogus ConTotallyBogusKeyXyz passed clean. bp_clean=0 is a case-design artefact, not a defect: the 4 warnings on the case objects (BPErrorMenuItemNotCoveredByPrivilege, BPTableWithRecIdIndexMissingReplacementKey, BPErrorDeveloperDocumentationNotDefined, BPErrorTableMissingFormRef) cannot all be cleared without a form and a privilege, which the case does not ask for; the case text only demands zero BP ERRORS, and errors were 0.",
+  "suggested_fix_area": "d365fo_file table create writer (properties.configurationKey passthrough + dropped-param honesty); add-index writer (indexAllowDuplicates); validate_code xml-table reference resolver (ConfigurationKey element)",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxTable/ConDemoGatedSetting.xml",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxMenuItemDisplay/ConDemoGatedSettingMI.xml",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxConfigurationKey/ConDemoModuleKey.xml"
+  ]
+}

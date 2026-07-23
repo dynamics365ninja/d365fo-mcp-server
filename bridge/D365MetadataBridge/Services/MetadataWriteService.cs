@@ -224,11 +224,14 @@ namespace D365MetadataBridge.Services
 
             var axTable = new AxTable { Name = name };
 
-            // Apply table-level properties (Label, TableGroup, CacheLookup, etc.)
+            // Apply table-level properties (Label, TableGroup, CacheLookup, etc.).
+            // Finding #35: an unknown key was dropped in silence — report it instead.
+            var unsupportedProperties = new List<string>();
             if (properties != null)
             {
                 foreach (var kv in properties)
-                    SetAxTableProperty(axTable, kv.Key, kv.Value);
+                    if (!SetAxTableProperty(axTable, kv.Key, kv.Value))
+                        unsupportedProperties.Add(kv.Key);
             }
 
             // Add fields
@@ -318,7 +321,14 @@ namespace D365MetadataBridge.Services
             tableProvider.Create(axTable, msi);
 
             var filePath = GetExpectedPath("AxTable", name, modelName);
-            return new { success = true, objectType = "table", objectName = name, modelName, filePath, api = "IMetaTableProvider.Create" };
+            return new
+            {
+                success = true, objectType = "table", objectName = name, modelName, filePath,
+                api = "IMetaTableProvider.Create",
+                appliedProperties = (properties?.Keys ?? Enumerable.Empty<string>())
+                    .Where(k => !unsupportedProperties.Contains(k)).ToList(),
+                unsupportedProperties,
+            };
         }
 
         /// <summary>
@@ -549,10 +559,15 @@ namespace D365MetadataBridge.Services
             }
 
             // ── Apply any extra properties (overrides auto-set values if needed) ──
+            // Finding #35: the return value used to be thrown away, so an unknown key
+            // (configurationKey, …) produced a stderr line nobody reads and a ✅ to the
+            // caller. Collect what did NOT apply and report it in the response.
+            var unsupportedProperties = new List<string>();
             if (extraProperties != null)
             {
                 foreach (var kv in extraProperties)
-                    SetAxTableProperty(axTable, kv.Key, kv.Value);
+                    if (!SetAxTableProperty(axTable, kv.Key, kv.Value))
+                        unsupportedProperties.Add(kv.Key);
             }
 
             // ── Write to disk via IMetadataProvider ──
@@ -569,6 +584,9 @@ namespace D365MetadataBridge.Services
                 modelName,
                 filePath,
                 api = "IMetaTableProvider.Create (Smart)",
+                appliedProperties = (extraProperties?.Keys ?? Enumerable.Empty<string>())
+                    .Where(k => !unsupportedProperties.Contains(k)).ToList(),
+                unsupportedProperties,
                 bpDefaults = new
                 {
                     cacheLookup = axTable.CacheLookup.ToString(),
@@ -1486,7 +1504,7 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Table '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Tables, objectName);
                     if (!SetAxTableProperty(obj, propertyPath, propertyValue))
-                        throw new ArgumentException($"Unknown AxTable property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation, tableGroup, cacheLookup, clusteredIndex, primaryIndex, replacementKey, saveDataPerCompany, tableType, supportInheritance, instanceRelationType, extends, titleField1, titleField2.");
+                        throw new ArgumentException($"Unknown AxTable property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation, configurationKey, formRef, tableGroup, cacheLookup, clusteredIndex, primaryIndex, replacementKey, saveDataPerCompany, tableType, supportInheritance, instanceRelationType, extends, titleField1, titleField2.");
                     ((IMetaTableProvider)_provider.Tables).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -2598,13 +2616,25 @@ namespace D365MetadataBridge.Services
             {
                 case "label": tbl.Label = value; break;
                 case "developerdocumentation": tbl.DeveloperDocumentation = value; break;
+                // ConfigurationKey / FormRef were missing here, so EVERY writer that
+                // funnels through this switch (CreateTable, CreateSmartTable,
+                // modify-property) discarded them while answering success — the table
+                // half of finding #35. Both are plain string properties on AxTable.
+                case "configurationkey": tbl.ConfigurationKey = value; break;
+                case "formref": tbl.FormRef = value; break;
                 case "tablegroup":
-                    if (Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.TableGroup>(value, true, out var tg))
-                        tbl.TableGroup = tg;
+                    if (!Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.TableGroup>(value, true, out var tg))
+                        throw new ArgumentException(
+                            $"'{value}' is not a valid TableGroup. Valid values: " +
+                            string.Join(", ", Enum.GetNames(typeof(Microsoft.Dynamics.AX.Metadata.Core.MetaModel.TableGroup))) + ".");
+                    tbl.TableGroup = tg;
                     break;
                 case "cachelookup":
-                    if (Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel>(value, true, out var cl))
-                        tbl.CacheLookup = cl;
+                    if (!Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel>(value, true, out var cl))
+                        throw new ArgumentException(
+                            $"'{value}' is not a valid CacheLookup. Valid values: " +
+                            string.Join(", ", Enum.GetNames(typeof(Microsoft.Dynamics.AX.Metadata.Core.MetaModel.RecordCacheLevel))) + ".");
+                    tbl.CacheLookup = cl;
                     break;
                 case "clusteredindex": tbl.ClusteredIndex = value; break;
                 case "primaryindex": tbl.PrimaryIndex = value; break;
@@ -2613,8 +2643,11 @@ namespace D365MetadataBridge.Services
                     tbl.SaveDataPerCompany = ParseNoYes(value);
                     break;
                 case "tabletype":
-                    if (Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.TableType>(value, true, out var tt))
-                        tbl.TableType = tt;
+                    if (!Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.TableType>(value, true, out var tt))
+                        throw new ArgumentException(
+                            $"'{value}' is not a valid TableType. Valid values: " +
+                            string.Join(", ", Enum.GetNames(typeof(Microsoft.Dynamics.AX.Metadata.Core.MetaModel.TableType))) + ".");
+                    tbl.TableType = tt;
                     break;
                 case "supportinheritance":
                     tbl.SupportInheritance = ParseNoYes(value);
