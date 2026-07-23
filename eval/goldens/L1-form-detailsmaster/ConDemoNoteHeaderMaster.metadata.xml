@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Golden for L1-form-detailsmaster: DetailsMaster form pattern. Captured 2026-07-01, SHA f203a68. Fully deterministic (no random ids). -->
+<!-- Golden for L1-form-detailsmaster: DetailsMaster form pattern. Re-captured 2026-07-23, SHA 99e43c9, after PR #735. Fully deterministic (no random ids). Build: 0 errors. -->
 <AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
 	<Name>ConDemoNoteHeaderMaster</Name>
 	<SourceCode>
@@ -155,7 +155,7 @@ public class ConDemoNoteHeaderMaster extends FormRun
 										<WidthMode>SizeToAvailable</WidthMode>
 										<FormControlExtension
 											i:nil="true" />
-										<DataField>NoteId</DataField>
+										<DataField>Subject</DataField>
 										<DataSource>ConDemoNoteHeader</DataSource>
 										<ShowLabel>No</ShowLabel>
 										<Style>TitleField</Style>
@@ -209,6 +209,7 @@ public class ConDemoNoteHeaderMaster extends FormRun
 										</AxFormControl>
 												</Controls>
 												<DataGroup>Overview</DataGroup>
+												<DataSource>ConDemoNoteHeader</DataSource>
 											</AxFormControl>
 										</Controls>
 										<ColumnsMode>Fill</ColumnsMode>

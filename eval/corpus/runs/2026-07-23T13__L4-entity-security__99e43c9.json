@@ -1,0 +1,50 @@
+{
+  "run_id": "2026-07-23T13__L4-entity-security__99e43c9",
+  "case_id": "L4-entity-security",
+  "tier": 4,
+  "timestamp": "2026-07-23T13:05:00.000Z",
+  "server_git_sha": "99e43c9",
+  "platform_build": "xppc 7.0.7858.27",
+  "generated_artifacts": [
+    "Contoso/AxDataEntityView/ConDemoNoteHeaderEntity.xml",
+    "Contoso/AxMenuItemDisplay/ConDemoNoteHeaderDisplay.xml",
+    "Contoso/AxSecurityPrivilege/ConDemoNoteHeaderMaintain.xml",
+    "Contoso/AxSecurityDuty/ConDemoNoteHeaderDuty.xml",
+    "Contoso/AxSecurityRole/ConDemoNoteHeaderRole.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "bp_checked": true,
+    "errors": [],
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "PASS",
+  "root_cause_hypothesis": "Golden RE-CAPTURE run, so golden_match is self-referential and proves nothing on its own; the load-bearing evidence is the live chain walk. The 2026-06-30 golden emitted <AxSecurityRolePermissionSet>/<AxSecurityRoleDutyPermission>, which the metadata deserializer discards: the duty and role compiled clean and granted nothing, so the golden could never fail on the thing the case exists to catch. Re-running the real create path on the merged fix (PR #735) emits <AxSecurityPrivilegeReference>/<AxSecurityDutyReference>; the data-entity path also now honours primaryTable/fields, so the entity no longer needs the hand-written xmlContent workaround.",
+  "suggested_fix_area": "none - the writers are correct; the goldens were the stale artifact",
+  "evidence_refs": [
+    "security_info(role=ConDemoNoteHeaderRole) -> Duties (1): ConDemoNoteHeaderDuty",
+    "security_info(duty=ConDemoNoteHeaderDuty) -> Privileges (1): ConDemoNoteHeaderMaintain; Assigned to Roles (1): ConDemoNoteHeaderRole",
+    "security_info(privilege=ConDemoNoteHeaderMaintain) -> Entry Points (1): ConDemoNoteHeaderDisplay [MenuItemDisplay] R:[Allow] U:[Allow]",
+    "xppc Contoso: Errors 0 (only the pre-existing PricingEngine ExternalReference warning)",
+    "xppbp Contoso: 0 warnings on all five artifacts",
+    "entity DataManagementEnabled is No, not Yes: the old golden pointed DataManagementStagingTable at ConDemoNoteHeaderEntityStaging, which does not exist in the fixture model"
+  ]
+}

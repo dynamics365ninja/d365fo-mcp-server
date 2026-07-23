@@ -75,6 +75,25 @@ build, run it with the `run_systest_class` tool, save its text output to a file,
 pass `--systest <file>`. The oracle parses it into `{ ran, passed, failures }`
 (via `src/eval/oracle/systest.ts`) and folds `systest` into the scorecard.
 
+## Triage bias: an honest failure beats a confident lie
+
+The most damaging defects the sweeps have found were **the tool asserting a
+falsehood** rather than failing: claiming a standard EDT did not exist when the
+bridge was merely unreachable, returning `✅ success` for a parameter that was
+silently discarded, scoring `bp_clean: 1` from absent evidence, naming the wrong
+cause in a fallback message, recommending a label syntax the compiler rejects.
+Each one sent the agent off to "fix" something that was already correct.
+
+Two consequences for triage:
+
+- **Making the failure honest is a real fix**, not a placeholder for one. It is
+  also provable in-repo even when the root cause is not, so prefer it over
+  leaving a confident lie in place while the deeper fix waits.
+- **A green dimension needs provenance.** `bp_clean: 1` means BP ran and was
+  clean (`build.bp_checked: true`), never "BP was not run". A golden that was
+  captured from defective output can never fail on the thing its case exists to
+  catch — score the live behaviour (a chain walk, a SysTest), not just the shape.
+
 ## Improver toolchain
 
 `npm run eval:clusters` (prioritized failure clusters) · `eval:report` (corpus

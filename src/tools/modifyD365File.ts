@@ -257,14 +257,47 @@ export function extractMethodNameFromSource(source: string | undefined): string 
 }
 
 /**
+ * Why the bridge path did not apply, in the caller's own words.
+ *
+ * The direct-XML fallbacks used to announce "bridge was unavailable" unconditionally,
+ * which is the true reason in only one of the four ways the bridge path can decline:
+ * it can also be a type outside BRIDGE_MODIFY_TYPES, an SDK that cannot reach the
+ * member (form control overrides), or a thrown error. Reporting the wrong cause sent
+ * agents off to restart a bridge that was healthy — and hid genuine outages behind a
+ * green result, since the write still succeeded (see the #4 sweep finding: two calls
+ * "fell back" while a third seconds later went through Update just fine).
+ */
+export function describeBridgeFallbackReason(
+  bridge: { isReady?: boolean; metadataAvailable?: boolean } | undefined,
+  objectType: string,
+  operation: string,
+  bridgeResult: { success: boolean; message: string } | null,
+): string {
+  if (!bridge?.isReady || !bridge.metadataAvailable) {
+    return 'the bridge was unavailable';
+  }
+  if (!canBridgeModify(objectType, operation)) {
+    return `the bridge does not support ${operation} for objectType="${objectType}"`;
+  }
+  if (bridgeResult && !bridgeResult.success) {
+    return `the bridge was reachable but declined: ${bridgeResult.message}`;
+  }
+  return 'the bridge was reachable but did not handle this call';
+}
+
+/**
  * Direct XML file-level replace-code fallback, used when the C# bridge can't
  * reach a method (e.g. form/form-extension control overrides not exposed via
  * the Methods API). Last resort — the bridge is always preferred.
+ *
+ * `reason` comes from describeBridgeFallbackReason so the success message names the
+ * cause that actually applied instead of asserting an outage that may not exist.
  */
 async function directXmlReplaceCode(
   filePath: string,
   oldCode: string,
   newCode: string,
+  reason: string,
 ): Promise<{ success: boolean; message: string } | null> {
   try {
     // Files on disk are CRLF; oldCode from get_method_source is typically LF-only.
@@ -294,10 +327,10 @@ async function directXmlReplaceCode(
     }
 
     await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
-    console.error(`[modify_d365fo_file] ✅ directXmlReplaceCode fallback: replaced in ${filePath}`);
+    console.error(`[modify_d365fo_file] ✅ directXmlReplaceCode fallback (${reason}): replaced in ${filePath}`);
     return {
       success: true,
-      message: `✅ Code replaced via direct XML fallback (bridge was unavailable). File: ${filePath}`,
+      message: `✅ Code replaced via direct XML fallback (${reason}). File: ${filePath}`,
     };
   } catch (err) {
     console.error(`[modify_d365fo_file] directXmlReplaceCode failed: ${err}`);
@@ -319,6 +352,7 @@ async function directXmlModifyProperty(
   filePath: string,
   propertyPath: string,
   propertyValue: string,
+  reason: string,
 ): Promise<{ success: boolean; message: string } | null> {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
@@ -390,7 +424,7 @@ async function directXmlModifyProperty(
     console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: set <${tagName}> in ${filePath}`);
     return {
       success: true,
-      message: `✅ Property '${propertyPath}' set via direct XML fallback (bridge does not support modify-property for this object type). File: ${filePath}`,
+      message: `✅ Property '${propertyPath}' set via direct XML fallback (${reason}). File: ${filePath}`,
     };
   } catch (err) {
     console.error(`[modify_d365fo_file] directXmlModifyProperty failed: ${err}`);
@@ -1971,6 +2005,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           if (!bridgeResult || !bridgeResult.success) {
             const xmlFallbackResult = await directXmlModifyProperty(
               actualFilePath, args.propertyPath, String(args.propertyValue),
+              describeBridgeFallbackReason(context.bridge, objectType, 'modify-property', bridgeResult),
             );
             if (xmlFallbackResult) {
               bridgeResult = xmlFallbackResult;
@@ -2017,7 +2052,8 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           // This handles form control override methods which the SDK may not expose.
           if (!bridgeResult || !bridgeResult.success) {
             const xmlFallbackResult = await directXmlReplaceCode(
-              actualFilePath, args.oldCode!, args.newCode!
+              actualFilePath, args.oldCode!, args.newCode!,
+              describeBridgeFallbackReason(context.bridge, objectType, 'replace-code', bridgeResult),
             );
             if (xmlFallbackResult) {
               bridgeResult = xmlFallbackResult;

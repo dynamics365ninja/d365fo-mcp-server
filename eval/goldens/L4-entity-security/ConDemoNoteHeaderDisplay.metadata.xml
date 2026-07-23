@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Golden metadata for eval case: L4-entity-security (artifact 2 of 5: display menu item)
-  Captured: 2026-06-30, server SHA: fc090d0
+  Re-captured: 2026-07-23, server SHA: 99e43c9, platform xppc 7.0.7858.27
+  Produced by the real grounded path (d365fo_file action="create"), not hand-written.
+  Build: 0 errors. Chain verified live via security_info: role -> 1 duty -> 1 privilege
+  -> 1 entry point (ConDemoNoteHeaderDisplay, MenuItemDisplay).
 -->
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
 	<Name>ConDemoNoteHeaderDisplay</Name>
