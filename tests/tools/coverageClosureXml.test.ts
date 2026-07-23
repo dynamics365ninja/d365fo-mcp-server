@@ -30,6 +30,14 @@ describe('macro library (AxMacroDictionary)', () => {
     expect(xml).toContain("<Source>#define.DemoFastPostingFlight('DemoFastPostingFlight')</Source>");
   });
 
+  it('closes with the empty <Macros /> element the serializer always writes', () => {
+    // 649/649 platform macro dictionaries carry it (none has a non-empty <Macros>).
+    // Omitting it compiles, but VS re-adds it on first touch and the golden churns —
+    // caught by the L1-macro-library-flight re-run, same class as the &#xD; defect.
+    const xml = XmlTemplateGenerator.generate('macro', 'ConDemoModuleFlights', "#define.A('A')");
+    expect(xml).toContain('</Source>\n\t<Macros />\n</AxMacroDictionary>');
+  });
+
   it('XML-escapes the macro body (a #if.Never guard contains angle brackets)', () => {
     const xml = XmlTemplateGenerator.generate('macro', 'ConDemoGuards', '#define.Limit(a < b && c > d)');
     expect(xml).toContain('&lt;');

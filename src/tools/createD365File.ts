@@ -2938,6 +2938,7 @@ public final class ${contractName} extends BusinessEventsContract
 <AxMacroDictionary xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
 \t<Source>${source}</Source>
+\t<Macros />
 </AxMacroDictionary>`;
   }
 

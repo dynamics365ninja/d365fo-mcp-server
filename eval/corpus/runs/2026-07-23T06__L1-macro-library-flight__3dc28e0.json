@@ -1,0 +1,49 @@
+{
+  "run_id": "2026-07-23T06__L1-macro-library-flight__3dc28e0",
+  "case_id": "L1-macro-library-flight",
+  "tier": 1,
+  "timestamp": "2026-07-23T06:03:15.935Z",
+  "server_git_sha": "3dc28e0",
+  "generated_artifacts": [
+    "ConDemoFlightReader.metadata.xml",
+    "ConDemoModuleFlights.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Re-run after 0e1e367. The CR fix is confirmed live: <Source> now carries '&#xD;' before every line break, byte-identical in shape to the platform's own flight libraries. A SECOND, same-class serialization gap remains in the AxMacroDictionary writer: it omits the empty '<Macros />' element that follows </Source>. All 644 Microsoft AxMacroDictionary files in PackagesLocalDirectory carry it; ours is the only one that does not. It compiles (build 0 errors, macro include and both #defines resolved) but will not round-trip -- Visual Studio re-adds the element on the first touch, so a golden frozen on the current output would churn. Golden therefore NOT captured; golden_pending left true, same reasoning the CR fix was made before capture. Secondary, non-blocking: validate_code(mode=references) reported '0 references verified' for a class body containing an include directive (#ConDemoModuleFlights), a macro reference (#DemoFastPostingFlight) and a global function call (isFlightEnabled) -- none of the three is resolved, so the static gate gives no signal at all on macro-based code.",
+  "suggested_fix_area": "src/tools/createD365File.ts -- AxMacroDictionary writer: emit '\t<Macros />' after </Source> (cover it in tests/tools/coverageClosureXml.test.ts next to the &#xD; assertion). Separately, resolveReferences: teach it the macro include/reference syntax and Global-scope function calls, or make it report 'no resolvable references' instead of a green 'all 0 verified'.",
+  "evidence_refs": [
+    "K:\\AosService\\PackagesLocalDirectory\\Contoso\\Contoso\\AxMacroDictionary\\ConDemoModuleFlights.xml",
+    "K:\\AosService\\PackagesLocalDirectory\\Contoso\\Contoso\\AxClass\\ConDemoFlightReader.xml",
+    "K:\\AOSService\\PackagesLocalDirectory\\ApplicationFoundation\\ApplicationFoundation\\AxMacroDictionary\\ApplicationFoundationFlights.xml",
+    "eval/corpus/runs/2026-07-22T16__L1-macro-library-flight__ab35b2c.json"
+  ]
+}
