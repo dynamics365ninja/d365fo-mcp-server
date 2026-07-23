@@ -16,7 +16,13 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createInstance, getInstance, listInstances } from '../../src/cli/instances.js';
+import {
+  createInstance,
+  getInstance,
+  isLegacyInstanceLayout,
+  listInstances,
+  normalizeInstanceLayout,
+} from '../../src/cli/instances.js';
 import { writeConfigFile } from '../../src/config/configFile.js';
 
 const state = vi.hoisted(() => ({ root: '' }));
@@ -88,6 +94,63 @@ describe('listInstances', () => {
   it('ignores a directory that holds neither a config nor a .env', () => {
     fs.mkdirSync(join(instanceDir('empty'), 'data'), { recursive: true });
     expect(listInstances()).toEqual([]);
+  });
+});
+
+describe('normalizeInstanceLayout', () => {
+  const secrets = (dir: string) => join(dir, 'secrets.json');
+
+  it('moves config and secrets up one level and drops the empty config folder', () => {
+    const dir = instanceDir('legacy');
+    writeConfigFile(join(dir, 'config', 'd365fo-mcp.json'), { server: { port: 3030 } });
+    fs.writeFileSync(secrets(join(dir, 'config')), '{"auth":{"clientSecret":"x"}}\n', 'utf8');
+
+    const inst = getInstance('legacy')!;
+    expect(isLegacyInstanceLayout(inst)).toBe(true);
+
+    const moved = normalizeInstanceLayout(inst);
+    expect(moved).toEqual([join(dir, 'd365fo-mcp.json'), secrets(dir)]);
+    expect(fs.existsSync(join(dir, 'config'))).toBe(false);
+
+    // Discovery now agrees with what the docs tell the user to point at.
+    const after = getInstance('legacy')!;
+    expect(after.configFile).toBe(join(dir, 'd365fo-mcp.json'));
+    expect(after.port).toBe(3030);
+    expect(isLegacyInstanceLayout(after)).toBe(false);
+  });
+
+  it('is a no-op for an instance already in the top-level layout', () => {
+    writeConfigFile(join(instanceDir('modern'), 'd365fo-mcp.json'), { server: { port: 3031 } });
+
+    const inst = getInstance('modern')!;
+    expect(isLegacyInstanceLayout(inst)).toBe(false);
+    expect(normalizeInstanceLayout(inst)).toEqual([]);
+    expect(getInstance('modern')?.port).toBe(3031);
+  });
+
+  it('never overwrites a top-level file that already exists', () => {
+    // listInstances() prefers the top-level config, so it is the live one —
+    // the config/ copy is a leftover and must not replace it.
+    const dir = instanceDir('both');
+    writeConfigFile(join(dir, 'd365fo-mcp.json'), { server: { port: 3032 } });
+    writeConfigFile(join(dir, 'config', 'd365fo-mcp.json'), { server: { port: 9999 } });
+
+    // Reached through the config/ path, as `doctor` would after a manual move
+    // of the config alone left the stale copy behind.
+    const stale = { ...getInstance('both')!, configFile: join(dir, 'config', 'd365fo-mcp.json') };
+    expect(normalizeInstanceLayout(stale)).toEqual([]);
+    expect(getInstance('both')?.port).toBe(3032);
+    expect(fs.existsSync(join(dir, 'config', 'd365fo-mcp.json'))).toBe(true);
+  });
+
+  it('leaves a config folder holding anything else in place', () => {
+    const dir = instanceDir('extra');
+    writeConfigFile(join(dir, 'config', 'd365fo-mcp.json'), { server: { port: 3033 } });
+    fs.writeFileSync(join(dir, 'config', 'notes.txt'), 'keep me\n', 'utf8');
+
+    normalizeInstanceLayout(getInstance('extra')!);
+    expect(getInstance('extra')?.configFile).toBe(join(dir, 'd365fo-mcp.json'));
+    expect(fs.readFileSync(join(dir, 'config', 'notes.txt'), 'utf8')).toBe('keep me\n');
   });
 });
 

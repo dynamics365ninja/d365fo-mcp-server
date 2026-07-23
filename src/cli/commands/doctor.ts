@@ -11,7 +11,7 @@ import { p } from '../ui.js';
 import { settingByPath } from '../../config/settings.js';
 import { bridgeBuildCommand, dataRoot, installMode, isWindows, paths, repoRoot } from '../context.js';
 import { commandExists } from '../exec.js';
-import { listInstances } from '../instances.js';
+import { isLegacyInstanceLayout, listInstances, type Instance } from '../instances.js';
 import { checkRelease } from '../npmRegistry.js';
 import { conflictingLegacyValues, readPath, readSetting, type SettingsStore } from '../settingsStore.js';
 import { instanceTarget, rootTarget, type Target } from '../target.js';
@@ -95,6 +95,24 @@ function legacyEnvChecks(target: Target, label: string): CheckResult[] {
     message: `${label}: .env and d365fo-mcp.json disagree — the JSON config wins:\n` +
       conflicts.map(c => `   ${c.setting.env}: .env=${c.envValue} · config=${c.configValue}`).join('\n'),
     fix: 'delete the stale keys from .env (or the whole file once the config is complete)',
+  }];
+}
+
+/**
+ * An instance whose config still lives under instances/<name>/config/.
+ * It runs, so this is not a failure — but the docs, the template and
+ * add-instance.ps1 all name the top-level path, so following any of them
+ * points D365FO_CONFIG at a file that does not exist and the server starts on
+ * defaults instead. Say which file is real and how to end up where the docs
+ * already claim it is.
+ */
+function layoutChecks(inst: Instance): CheckResult[] {
+  if (!isLegacyInstanceLayout(inst)) return [];
+  const target = resolve(inst.dir, 'd365fo-mcp.json');
+  return [{
+    severity: 'warn',
+    message: `Instance '${inst.name}': config is in the old layout (${inst.configFile}) — the docs all say ${target}`,
+    fix: `d365fo-mcp instance upgrade ${inst.name} moves it, or move d365fo-mcp.json and secrets.json up one level by hand`,
   }];
 }
 
@@ -235,6 +253,7 @@ export async function doctorCommand(): Promise<void> {
     for (const inst of instances) {
       const target = instanceTarget(inst);
       emit(checkConfig(target, `Instance '${inst.name}'`));
+      for (const r of layoutChecks(inst)) emit(r);
       for (const r of legacyEnvChecks(target, `Instance '${inst.name}'`)) emit(r);
       emit(checkDb(target.store, resolve(inst.dir, 'data', 'xpp-metadata.db'), `Instance '${inst.name}'`));
       if (isWindows && isXppConfigStale(target.store)) {

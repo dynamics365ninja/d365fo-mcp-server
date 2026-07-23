@@ -189,6 +189,8 @@ npx d365fo-mcp instance run clientA     # start on its port
 
 Provisioning instances from a script instead of interactively? Copy `instances\d365fo-mcp.template.json` to `instances\<name>\d365fo-mcp.json` and fill in the blanks. The `instances\*.ps1` scripts remain for installations still configured through per-instance `.env` files.
 
+> **Instance config under `instances\<name>\config\`?** Some builds wrote it one level deeper. Such an instance still runs, but `D365FO_CONFIG=instances\<name>\d365fo-mcp.json` as written above then names a file that does not exist and the server starts on defaults. `d365fo-mcp doctor` flags it; `instance upgrade <name>` moves `d365fo-mcp.json` and `secrets.json` up one level, or move the two files yourself.
+
 ### Keeping instances in sync
 
 Updating the server code and reindexing an instance's database are **separate** steps, at different scopes:

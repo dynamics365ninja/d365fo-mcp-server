@@ -8,7 +8,7 @@ import * as fs from 'node:fs';
 import { resolve } from 'node:path';
 import { settingByPath, settingsInSection } from '../../config/settings.js';
 import { pinBridgeExe } from '../bridgePath.js';
-import { createInstance, getInstance, listInstances, suggestPort } from '../instances.js';
+import { createInstance, getInstance, listInstances, normalizeInstanceLayout, suggestPort } from '../instances.js';
 import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { selectXppConfig } from './config.js';
 import { askAdvanced, askSetting, askSettings } from '../settingsPrompt.js';
@@ -175,6 +175,16 @@ export async function instanceUpgradeCommand(name: string | undefined): Promise<
       }),
     );
     inst = getInstance(picked)!;
+  }
+
+  // The one command that already rewrites an instance's configuration is also
+  // where an instance left in the old instances/<name>/config/ layout gets out
+  // of it — every doc and script names the top-level path, so an instance that
+  // keeps the old one silently ignores a D365FO_CONFIG copied from them.
+  const moved = normalizeInstanceLayout(inst);
+  if (moved.length > 0) {
+    p.log.success(`Moved out of the old config/ layout: ${moved.join(', ')}`);
+    inst = getInstance(inst.name)!;
   }
 
   const store = openInstanceStore(inst.dir);
