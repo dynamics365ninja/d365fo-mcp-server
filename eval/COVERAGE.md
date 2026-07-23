@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 48 | 77 | 62.3% |
+| total | 49 | 77 | 63.6% |
 
 ## Data model (11/12)
 
@@ -28,7 +28,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (15/21)
+## Code (16/21)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -45,12 +45,12 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | — | ✅ | Eval case authored (attribute-driven SysExtension factory); golden pending VM capture. |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +24 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +24 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +25 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +25 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
-| Date/time & time zones (utcdatetime, DateTimeUtil) | total | ✅ | — | ✅ | Knowledge entry written (audit hole C7 closed); eval case authored, golden pending VM capture. |
+| Date/time & time zones (utcdatetime, DateTimeUtil) | total | ✅ | ✅ | ✅ | L2-datetime-timezone-range |
 | .NET interop (CLRInterop, using alias, CLRError) | total | ✅ | — | ✅ | Knowledge entry written (audit hole C8 closed); eval case authored, golden pending VM capture. |
 | Reflection / Dict* metadata API | total | ✅ | — | ✅ | Knowledge entry written (audit hole C9 closed); eval case authored, golden pending VM capture. |
 
@@ -126,13 +126,12 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L3-batch-basic |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +24 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +25 |
 
 ## Closure queue (uncovered, by frequency weight)
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
-| 3 | Date/time & time zones (utcdatetime, DateTimeUtil) | missing E |
 | 3 | Inventory (InventTrans / InventDim) | missing E |
 | 2 | Async & retryable batch (BatchRetryable/runAsync) | missing E |
 | 2 | Configuration keys | missing E |

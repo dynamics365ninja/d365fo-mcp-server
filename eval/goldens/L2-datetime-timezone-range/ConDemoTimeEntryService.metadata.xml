@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoTimeEntryService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Proves the <c>utcdatetime</c> contract: values are stored in UTC and converted
+/// with <c>DateTimeUtil</c> only at the display edge.
+/// </summary>
+public final class ConDemoTimeEntryService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>start</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Inserts a time entry and stamps its start with the current UTC instant.
+    /// </summary>
+    /// <param name = "_entryId">The identifier of the time entry to create.</param>
+    public static void start(Num _entryId)
+    {
+        ConDemoTimeEntry timeEntry;
+
+        ttsbegin;
+
+        timeEntry.EntryId = _entryId;
+        timeEntry.StartedDateTime = DateTimeUtil::utcNow();
+        timeEntry.insert();
+
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>localDayRangeUtc</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Converts a local business day into the equivalent UTC range.
+    /// </summary>
+    /// <param name = "_businessDate">The business date expressed in the user time zone.</param>
+    /// <returns>A container holding the inclusive UTC range [fromUtc, toUtc].</returns>
+    public static container localDayRangeUtc(date _businessDate)
+    {
+        Timezone    userTimeZone      = DateTimeUtil::getUserPreferredTimeZone();
+        utcdatetime localDayStart     = DateTimeUtil::newDateTime(_businessDate, 0);
+        utcdatetime localNextDayStart = DateTimeUtil::newDateTime(_businessDate + 1, 0);
+        utcdatetime fromUtc           = DateTimeUtil::removeTimeZoneOffset(localDayStart, userTimeZone);
+        utcdatetime toUtc             = DateTimeUtil::addSeconds(DateTimeUtil::removeTimeZoneOffset(localNextDayStart, userTimeZone), -1);
+
+        return [fromUtc, toUtc];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>countForBusinessDay</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts the time entries started during the current business day.
+    /// </summary>
+    /// <returns>The number of time entries started within the business day.</returns>
+    public static int countForBusinessDay()
+    {
+        ConDemoTimeEntry timeEntry;
+        date             businessDate = systemDateGet();
+        utcdatetime      fromUtc;
+        utcdatetime      toUtc;
+
+        [fromUtc, toUtc] = ConDemoTimeEntryService::localDayRangeUtc(businessDate);
+
+        select count(RecId) from timeEntry where timeEntry.StartedDateTime >= fromUtc && timeEntry.StartedDateTime <= toUtc;
+
+        return any2Int(timeEntry.RecId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>displayValue</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Converts a stored UTC value to the user time zone for display purposes only.
+    /// </summary>
+    /// <param name = "_stored">The stored UTC value.</param>
+    /// <returns>The value expressed in the user preferred time zone.</returns>
+    public static utcdatetime displayValue(utcdatetime _stored)
+    {
+        return DateTimeUtil::applyTimeZoneOffset(_stored, DateTimeUtil::getUserPreferredTimeZone());
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
