@@ -3795,6 +3795,30 @@ export class ProjectFileManager {
 }
 
 /**
+ * Bring a bridge-written artifact to the line endings the MS serializer uses.
+ *
+ * The bridge writes the XML skeleton with CRLF but leaves the X++ inside
+ * `<![CDATA[ ]]>` on bare LF, so a freshly created class is mixed-EOL (34 CRLF /
+ * 98 LF when the L2-collections-map-list-container run measured it) while every
+ * AxClass on disk is pure CRLF. It compiles either way, but the first
+ * `modify` re-serialises the whole file to CRLF — so the artifact CHANGES
+ * without anyone editing it, and a golden captured from a create churns on the
+ * next touch. Every modify path already writes through normalizeD365Xml; this
+ * closes the create half.
+ *
+ * Best-effort by design: a normalization failure must not fail a successful create.
+ */
+async function normalizeCreatedArtifactEol(filePath: string): Promise<void> {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const normalized = normalizeD365Xml(raw);
+    if (normalized !== raw) await fs.writeFile(filePath, normalized, 'utf-8');
+  } catch (err) {
+    console.error(`[create_d365fo_file] EOL normalization skipped for ${filePath}: ${err}`);
+  }
+}
+
+/**
  * Returns a BP warning string when a `label` property is raw text (not a @File:Id reference).
  * xppbp raises BPErrorLabelIsText for any object-level label that is not a label ID.
  * Use the `labels` tool to find or create a label ID before writing the object.
@@ -4634,6 +4658,7 @@ export async function handleCreateD365File(
 
             if (smartResult?.success && smartResult.filePath) {
               console.error(`[create_d365fo_file] ✅ Created via C# bridge (BP-smart): ${smartResult.filePath}`);
+              await normalizeCreatedArtifactEol(smartResult.filePath);
 
               let projectMsg = '';
               if (args.addToProject !== false) {
@@ -4728,6 +4753,7 @@ export async function handleCreateD365File(
         const bridgeResult = await bridgeCreateObject(context.bridge, bridgeParams);
         if (bridgeResult?.success && bridgeResult.filePath) {
           console.error(`[create_d365fo_file] ✅ Created via C# bridge: ${bridgeResult.filePath}`);
+          await normalizeCreatedArtifactEol(bridgeResult.filePath);
 
           // Add to .rnrproj if requested
           let projectMsg = '';
