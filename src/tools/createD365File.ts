@@ -2915,12 +2915,20 @@ public final class ${contractName} extends BusinessEventsContract
    * The whole library body is ONE property (`Source`) — there is no per-macro
    * sub-element in the metadata, so the caller's sourceCode is emitted verbatim
    * (XML-escaped) exactly the way the platform's own flight libraries do it.
+   *
+   * Line breaks are written as CRLF with the CR escaped (`&#xD;` + newline),
+   * which is what the MS serializer emits (see ApplicationFoundationFlights.xml).
+   * A literal CRLF also compiles — an XML parser normalises it to LF — but it
+   * does not round-trip: the CR is lost on re-serialization, so a golden frozen
+   * on the unescaped form would churn the first time the element is rewritten
+   * by Visual Studio. Verified on the VM by L1-macro-library-flight.
    */
   static generateAxMacroXml(name: string, sourceCode?: string, properties?: Record<string, any>): string {
     const source = (sourceCode ?? properties?.source ?? `#define.${name}Placeholder('${name}')`)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+      .replace(/>/g, '&gt;')
+      .replace(/\r\n|\r|\n/g, '&#xD;\r\n');
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxMacroDictionary xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
@@ -3039,7 +3047,19 @@ public final class ${contractName} extends BusinessEventsContract
     const label     = properties?.label     || `@TODO:${name}Label`;
     const group     = properties?.group     || 'Module';
     const pkg       = properties?.package   || 'BusinessEssential';
-    const publicKey = properties?.publicKey ?? 2;
+    // PublicKey is a GLOBALLY unique ISV key slot: xppc fails the build with
+    // "Duplicate value 'N' detected" if any other installed model already owns
+    // the slot (all 74 platform license codes hold 74 distinct slots). There is
+    // therefore no safe default — defaulting to a literal collided with
+    // ApplicationFoundation/LogisticsBasic in the L2-license-code-configkey run.
+    const publicKey = properties?.publicKey;
+    if (publicKey === undefined || publicKey === null || publicKey === '') {
+      throw new Error(
+        'license-code requires properties.publicKey — the ISV key slot, which must be globally unique ' +
+        'across every installed model (the build fails with "Duplicate value \'N\' detected" otherwise). ' +
+        'Slots in use on a standard install: 1-11, 13, 14, 18, 19, 24-234 (sparse), 603-605, 634, 635, 654, 655.'
+      );
+    }
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxLicenseCode xmlns:i="http://www.w3.org/2001/XMLSchema-instance">

@@ -49,6 +49,7 @@
       "required": ["succeeded"],
       "properties": {
         "succeeded": { "type": "boolean" },
+        "bp_checked": { "type": "boolean", "description": "Provenance flag: whether BP actually ran. Absent on every pre-2026-07-22 record, whose bp_clean provenance is unknown." },
         "errors": { "type": "array", "items": { "type": "object" } },
         "bpWarnings": { "type": "array", "items": { "type": "object" } }
       }

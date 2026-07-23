@@ -72,6 +72,9 @@ function shortSha(): string {
   catch { return 'unknown'; }
 }
 
+/** The rubric classes of eval/corpus/schema.json — the record is rejected by any other. */
+const CLASSIFICATIONS = ['PASS', 'TOOL_DEFECT', 'KNOWLEDGE_GAP', 'VALIDATOR_GAP', 'MODEL_ERROR', 'ENV_FLAKE'];
+
 /** Flags that consume the following argv element as their value. */
 const VALUE_FLAGS = [
   '--golden', '--actual-dir', '--bp-warnings', '--systest', '--classification',
@@ -226,7 +229,19 @@ async function main(): Promise<void> {
     // fall back to the caller-supplied --classification (the implementer sets one), else a
     // neutral ENV_FLAKE (matches how such inconclusive runs are triaged) rather than a
     // spurious TOOL_DEFECT.
-    const classification = arg('--classification')
+    // The caller-supplied class goes straight into the record, so validate it against the
+    // schema enum here — an invented class (CASE_DESIGN, seen in the
+    // L2-license-code-configkey run) otherwise produces a record that fails validation
+    // only much later, in the corpus reader.
+    const suppliedClassification = arg('--classification');
+    if (suppliedClassification && !CLASSIFICATIONS.includes(suppliedClassification)) {
+      console.error(
+        `--classification "${suppliedClassification}" is not one of ${CLASSIFICATIONS.join(', ')} ` +
+        `(eval/corpus/schema.json). Pick the closest class and put the nuance in root_cause_hypothesis.`
+      );
+      process.exit(2);
+    }
+    const classification = suppliedClassification
       ?? (score.golden_match === null
         ? 'ENV_FLAKE'
         // bp_clean === null means BP was NOT CHECKED — that is an absence of evidence,

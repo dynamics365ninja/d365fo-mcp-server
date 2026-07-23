@@ -3250,6 +3250,7 @@ public class MyPostingLimits
       'Disabling a licence/configuration key drops the underlying tables from the synchronised schema — never gate a table that already holds customer data without a migration plan',
       'Customer (non-ISV) models should use configuration keys or feature management, not license codes — licensing is for shipped, sold code',
       'The PublicKey slot ties the code to the ISV\'s signing key; it is issued as part of the ISV registration, not chosen freely',
+      'PublicKey is GLOBALLY UNIQUE — xppc fails the build with "Metadata Error: …/PublicKey: Duplicate value \'N\' detected" if any other installed model already owns the slot; check the existing AxLicenseCode elements before picking one (a standard install occupies 1-11, 13, 14, 18, 19, then sparsely up to 234, plus 603-605, 634, 635, 654, 655)',
       'Licence state is evaluated at sync/runtime, not at build time: code behind a disabled licence still compiles',
       'Feature management (a runtime toggle) is the modern way to ship an optional feature; reach for a license code only when the gate must be a commercial one',
     ],
@@ -3262,7 +3263,8 @@ public class MyPostingLimits
 	<Group>Module</Group>
 	<Label>@MyModule:IsvSuiteLicense</Label>
 	<Package>BusinessEssential</Package>
-	<PublicKey>2</PublicKey>
+	<!-- PublicKey must be a slot no installed model uses yet - 2 is LogisticsBasic -->
+	<PublicKey>700</PublicKey>
 </AxLicenseCode>
 
 <!-- The configuration key is what actually gates the elements: -->

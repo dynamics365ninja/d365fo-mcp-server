@@ -36,6 +36,15 @@ describe('macro library (AxMacroDictionary)', () => {
     expect(xml).toContain('&gt;');
     expect(xml).toContain('&amp;');
   });
+
+  it('escapes the CR of every line break as &#xD;, the way the MS serializer does', () => {
+    // A literal CRLF compiles too (the parser normalises it to LF), but it does
+    // not round-trip — Visual Studio rewrites the element with &#xD; and the
+    // golden churns. Pinned after the L1-macro-library-flight VM run.
+    const xml = XmlTemplateGenerator.generate('macro', 'ConDemoModuleFlights', "#define.A('A')\n#define.B('B')");
+    expect(xml).toContain("#define.A('A')&#xD;\r\n#define.B('B')");
+    expect(xml).not.toMatch(/\('A'\)\r?\n#define/);
+  });
 });
 
 describe('configuration key (AxConfigurationKey)', () => {
@@ -128,10 +137,20 @@ describe('license code (AxLicenseCode)', () => {
   it('emits the ISV licensing quartet with the platform defaults', () => {
     const xml = XmlTemplateGenerator.generate('license-code', 'ConDemoIsvSuite', undefined, {
       label: '@MyModule:IsvSuite',
+      publicKey: 700,
     });
     expect(xml).toContain('<Name>ConDemoIsvSuite</Name>');
     expect(xml).toContain('<Group>Module</Group>');
     expect(xml).toContain('<Package>BusinessEssential</Package>');
-    expect(xml).toContain('<PublicKey>2</PublicKey>');
+    expect(xml).toContain('<PublicKey>700</PublicKey>');
+  });
+
+  it('refuses to guess the PublicKey — the slot is globally unique', () => {
+    // Pinned after the L2-license-code-configkey VM run: the former default of
+    // 2 is owned by ApplicationFoundation/LogisticsBasic, so every defaulted
+    // license code failed the build with "Duplicate value '2' detected".
+    expect(() =>
+      XmlTemplateGenerator.generate('license-code', 'ConDemoIsvSuite', undefined, { label: '@MyModule:IsvSuite' }),
+    ).toThrow(/publicKey/i);
   });
 });
