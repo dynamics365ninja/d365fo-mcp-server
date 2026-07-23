@@ -70,19 +70,20 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             '• enum-extension: enumValues[{name,label?,value?,countryRegionCodes?}]\n' +
             '• table-extension: fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need fieldType:"AxTableFieldEnum" + enumType\n' +
             '• edt: label, extends, edtType, stringSize\n' +
+            '• edt-extension: label?, helpText?, stringSize?, extends?, formHelp?, propertyModifications?[{name,value}] = the change\n' +
             '• form: caption, formTemplate, dataSource\n' +
             '• security-privilege: label, targetObject, objectType (MenuItemDisplay|Action|Output), accessLevel (view|maintain), dataEntity (grants perms)\n' +
             '• security-duty: label, privileges[]\n' +
             '• security-role: label, duties[], privileges[]\n' +
             '• menu-item-*: label, object, objectType\n' +
-            '• data-entity: primaryTable, fields[{name,dataField?}], dataManagementEnabled? (default false; true only if staging table exists)\n' +
-            '• map: label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}], mappingTable?, mappings?[{mapField,mapFieldTo}] (defaults to one connection/field when mappingTable set)\n' +
+            '• data-entity: primaryTable, fields[{name,dataField?}], dataManagementEnabled? (default false; true needs a staging table)\n' +
+            '• map: label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}], mappingTable?, mappings?[{mapField,mapFieldTo}] (one connection/field by default)\n' +
             '• query: title?, dataSource (root table; table also works), dataSourceName?, fields?[{name,field?}]\n' +
             '• view: query (existing AxQuery), fields[{name,dataField?}] — dataSource defaults to query\n' +
             '• service: serviceClass (defaults to the service name), externalName?, namespace?, description?, operations["opName"] or [{name?,method?,enableIdempotence?,subscriberAccessLevelRead?}]\n' +
             '• service-group: autoDeploy? (Yes publishes at /api/services), description?, services["MyService"] or [{name?,service?}]\n' +
             '  ⚠ service/service-group CROSS-REFS (serviceClass, services[].service) are written VERBATIM — only objectName is prefixed. ' +
-            'Pass the FINAL name of the already-created service/class (e.g. "ContosoDemoNoteService", not "DemoNoteService"), else the group resolves to nothing — verbatim lets a group also reference an unprefixed Microsoft service (DimensionService).'
+            'Pass the FINAL name (e.g. "ContosoDemoNoteService", not "DemoNoteService") or the group resolves to nothing; verbatim also lets it reference an unprefixed MS service.'
         },
         addToProject: {
           type: 'boolean',

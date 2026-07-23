@@ -1,0 +1,61 @@
+{
+  "run_id": "2026-07-23T16__L2-edt-extension-basic__01cd181",
+  "case_id": "L2-edt-extension-basic",
+  "tier": 2,
+  "timestamp": "2026-07-23T16:57:05.468Z",
+  "server_git_sha": "01cd181",
+  "generated_artifacts": [
+    "Contoso/AxEdt/ConDemoDocumentCode.xml",
+    "Contoso/AxEdtExtension/AccountNum.ConExtension.xml",
+    "Contoso/AxTable/ConDemoDocumentIndex.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "bp_checked": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "element": "ConDemoDocumentIndex",
+        "note": "unavoidable - the case creates no form; 7 further warnings belong to the pre-existing ConDemoNoteHeader fixture and are excluded"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "The edt-extension write path cannot express the only thing an EDT extension exists for. d365fo_file(action=\"create\", objectType=\"edt-extension\") always emits an empty <PropertyModifications /> (and omits <ArrayElements />): properties.helpText / properties.propertyModifications are silently ignored, with no warning (contrast add-index, which does warn about ignored params). action=\"generate\" behaves the same and additionally drops the extension suffix (Name=AccountNum, path AxEdtExtension/AccountNum.xml - an invalid extension element). d365fo_file(action=\"modify\", objectType=\"edt-extension\") is rejected: \"Operation modify-property on object type edt-extension is not supported by the bridge\". The correct artifact could only be produced through the xmlContent+overwrite escape hatch. Secondary: modify-property on AxEdt silently accepts nothing but label/helpText/extends/stringSize/referenceTable, while the create path swallows unknown properties (developerDocumentation) without a warning; add-index is idempotent by NAME, so the tool own remediation advice (\"Re-run with the correct parameter name(s)\") no-ops and the corrected AlternateKey/AllowDuplicates are never applied - remove-index + add-index is required. Case defect: instruction (1) asks for DeveloperDocumentation on an EDT, but AxEdtString has no such property in the metamodel (reflection over Microsoft.Dynamics.AX.Metadata.dll); only AxTable has it. HelpText was used instead.",
+  "suggested_fix_area": "src/tools/d365fo-file (edt-extension writer + bridge AxEdtExtension property mapping): support PropertyModifications on create/generate/modify, emit <ArrayElements />, keep the .<Prefix>Extension suffix in generate mode, and surface ignored-property warnings on every writer path (not just add-index). Also: make add-index re-apply properties on an existing index instead of a name-only idempotent skip. labels(action=\"info\") does not accept the documented new-format id \"@LabelFile:LabelId\" (@TaxTransactionInquiry:HeaderNote -> not found), although search and the split labelId+labelFileId form resolve it. Case text should drop DeveloperDocumentation from the EDT requirement.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxEdtExtension/AccountNum.ConExtension.xml",
+    "K:/AosService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxEdtExtension/PrintMgmtIdentificationTxt.Extension.xml",
+    "K:/AosService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxTable/CustGroup.xml",
+    "eval/goldens/L2-edt-extension-basic/"
+  ]
+}

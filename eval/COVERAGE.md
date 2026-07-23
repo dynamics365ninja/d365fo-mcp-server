@@ -9,16 +9,16 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 54 | 77 | 70.1% |
+| total | 55 | 77 | 71.4% |
 
-## Data model (11/12)
+## Data model (12/12)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | Table | core | ✅ | ✅ | ✅ | L1-table-basic, L2-table-modify-lifecycle |
 | Table extension | core | ✅ | ✅ | ✅ | L2-table-extension |
 | Extended data type | core | ✅ | ✅ | ✅ | L0-edt-basic |
-| EDT extension | total | ✅ | — | ✅ | Eval case authored (EDT + EDT extension via PropertyModifications); golden pending VM capture. |
+| EDT extension | total | ✅ | ✅ | ✅ | L2-edt-extension-basic |
 | Base enum | core | ✅ | ✅ | ✅ | L0-enum-basic |
 | Enum extension | core | ✅ | ✅ | ✅ | L2-enum-extension-empty-values |
 | View | core | ✅ | ✅ | ✅ | L1-query-view-basic, L2-form-over-view |
@@ -45,8 +45,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | ✅ | ✅ | L2-sysextension-plugin |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +30 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +30 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +31 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +31 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
@@ -126,7 +126,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L3-batch-basic |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +30 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +31 |
 
 ## Closure queue (uncovered, by frequency weight)
 
@@ -138,7 +138,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 2 | Data entity extension | missing E |
 | 2 | Data management framework (DMF/DIXF) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |
-| 2 | EDT extension | missing E |
 | 2 | Feature management | missing E |
 | 2 | Reading Excel / CSV files | missing E |
 | 2 | Global address book | missing E |
