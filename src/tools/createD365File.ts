@@ -27,6 +27,7 @@ import { buildAxDataEntityXml } from './dataEntityXml.js';
 import { resolveEdtBaseType, resolveEdtEnumType, heuristicEdtBaseType, isEnumName, bridgeEdtBaseType } from './generateSmartTable.js';
 import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
 import { buildAxMapXml } from './mapXml.js';
+import { buildAxEdtExtensionXml } from './edtExtensionXml.js';
 import { buildAxServiceXml, buildAxServiceGroupXml } from './serviceXml.js';
 import { recordCreatedArtifact } from './createdArtifactLedger.js';
 import {
@@ -1543,7 +1544,7 @@ ${defaultParamGroupXml}
       case 'form-extension':
         return this.generateAxFormExtensionXml(objectName);
       case 'edt-extension':
-        return this.generateAxSimpleExtensionXml('AxEdtExtension', objectName);
+        return this.generateAxEdtExtensionXml(objectName, properties);
       case 'enum-extension':
         return this.generateAxEnumExtensionXml(objectName, properties);
       case 'data-entity-extension':
@@ -2460,6 +2461,15 @@ ${defaultParamGroupXml}
    * AxMenuItemOutputExtension.
    * Name convention: BaseObjectName.ExtensionName  (e.g. CustTable.MyExtension)
    */
+  /**
+   * Generate AxEdtExtension XML. Delegates to the shared builder so this cannot
+   * drift from generateD365Xml.ts's copy — see edtExtensionXml.ts for the property
+   * contract and why <ArrayElements /> is unconditional.
+   */
+  static generateAxEdtExtensionXml(name: string, properties?: Record<string, any>): string {
+    return buildAxEdtExtensionXml(name, properties);
+  }
+
   static generateAxSimpleExtensionXml(rootElement: string, name: string): string {
     return `<?xml version="1.0" encoding="utf-8"?>
 <${rootElement} xmlns:i="http://www.w3.org/2001/XMLSchema-instance">

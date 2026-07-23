@@ -14,6 +14,7 @@ import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
 import { buildAxDataEntityXml } from './dataEntityXml.js';
 import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
+import { buildAxEdtExtensionXml } from './edtExtensionXml.js';
 import { buildAxMapXml } from './mapXml.js';
 import { buildAxServiceXml, buildAxServiceGroupXml } from './serviceXml.js';
 
@@ -1027,7 +1028,7 @@ ${defaultParamGroupXml}
       case 'form-extension':
         return this.generateAxFormExtensionXml(objectName);
       case 'edt-extension':
-        return this.generateAxSimpleExtensionXml('AxEdtExtension', objectName);
+        return this.generateAxEdtExtensionXml(objectName, properties);
       case 'enum-extension':
         return this.generateAxEnumExtensionXml(objectName, properties);
       case 'data-entity-extension':
@@ -1094,6 +1095,15 @@ ${defaultParamGroupXml}
 \t<Relations />
 \t<TableReferences />${stringSize}
 </AxEdt>`;
+  }
+
+  /**
+   * Generate AxEdtExtension XML. Delegates to the shared builder so this cannot
+   * drift from createD365File.ts's copy — see edtExtensionXml.ts for the property
+   * contract and why <ArrayElements /> is unconditional.
+   */
+  static generateAxEdtExtensionXml(name: string, properties?: Record<string, any>): string {
+    return buildAxEdtExtensionXml(name, properties);
   }
 
   static generateAxSimpleExtensionXml(rootElement: string, name: string): string {
