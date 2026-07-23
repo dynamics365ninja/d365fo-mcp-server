@@ -1,25 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Golden metadata for eval case: L4-entity-security (artifact 1 of 5: data entity)
-  Captured: 2026-06-30, server SHA: fc090d0
-  Platform: xppc 7.0.7858.27
+  Re-captured: 2026-07-23, server SHA: 99e43c9, platform xppc 7.0.7858.27
+  Produced by the real grounded path (d365fo_file action="create"), not hand-written.
+  Build: 0 errors. Chain verified live via security_info: role -> 1 duty -> 1 privilege
+  -> 1 entry point (ConDemoNoteHeaderDisplay, MenuItemDisplay).
 
-  Hand-written via d365fo_file(xmlContent, overwrite=true) - d365fo_file(create,
-  objectType="data-entity", properties={primaryTable,fields}) silently DROPS those
-  properties (the bridge produces an empty <Fields/><ViewMetadata/> skeleton with
-  no query/datasource at all). Structure here mirrors a real shipped simple
-  master entity (Currency\AxDataEntityView\CurrencyEntity.xml) read directly off
-  disk. See the corpus record for the full TOOL_DEFECT writeup; not yet fixed in
-  code (data-entity was already a TypeScript-XML-generation-only type before this
-  round, per BRIDGE_CREATE_TYPES - the gap is that XmlTemplateGenerator's
-  data-entity path doesn't populate Fields/ViewMetadata either, same root
-  symptom as the bridge path).
+  Supersedes the 2026-06-30 hand-written golden. d365fo_file(create, data-entity)
+  now honours primaryTable/fields, so Fields/Keys/ViewMetadata come from the tool.
+  DataManagementEnabled is No: the old golden said Yes and pointed
+  DataManagementStagingTable at ConDemoNoteHeaderEntityStaging, an object that does
+  not exist in the fixture model - a claim no correct run could ever reproduce.
+  The case requires a PUBLIC entity (IsPublic=Yes, for OData); it does not ask for
+  a DMF staging table.
 -->
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>ConDemoNoteHeaderEntity</Name>
 	<Label>@TaxTransactionInquiry:HeaderNote</Label>
-	<DataManagementEnabled>Yes</DataManagementEnabled>
-	<DataManagementStagingTable>ConDemoNoteHeaderEntityStaging</DataManagementStagingTable>
+	<DataManagementEnabled>No</DataManagementEnabled>
+	<DataManagementStagingTable />
 	<EntityCategory>Master</EntityCategory>
 	<IsPublic>Yes</IsPublic>
 	<PrimaryKey>EntityKey</PrimaryKey>
@@ -52,7 +51,6 @@
 	<Mappings />
 	<Ranges />
 	<Relations />
-	<StateMachines />
 	<ViewMetadata>
 		<Name>Metadata</Name>
 		<SourceCode>

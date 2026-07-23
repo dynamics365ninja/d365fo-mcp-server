@@ -1,15 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Golden metadata for eval case: L4-entity-security (artifact 4 of 5: security duty)
-  Captured: 2026-06-30, server SHA: fc090d0
-  Same TOOL_DEFECT/fix as the privilege artifact - see that file's header.
+  Re-captured: 2026-07-23, server SHA: 99e43c9, platform xppc 7.0.7858.27
+  Produced by the real grounded path (d365fo_file action="create"), not hand-written.
+  Build: 0 errors. Chain verified live via security_info: role -> 1 duty -> 1 privilege
+  -> 1 entry point (ConDemoNoteHeaderDisplay, MenuItemDisplay).
+
+  Supersedes the 2026-06-30 golden, which listed the privilege as
+  <AxSecurityRolePermissionSet>. That element deserializes to nothing: the duty
+  compiled clean and granted nothing, so the golden could never fail on the very
+  thing the case exists to check. Correct element is <AxSecurityPrivilegeReference>
+  (PR #735).
 -->
 <AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>ConDemoNoteHeaderDuty</Name>
 	<Label>@TaxTransactionInquiry:HeaderNote</Label>
 	<Privileges>
-		<AxSecurityRolePermissionSet>
+		<AxSecurityPrivilegeReference>
 			<Name>ConDemoNoteHeaderMaintain</Name>
-		</AxSecurityRolePermissionSet>
+		</AxSecurityPrivilegeReference>
 	</Privileges>
 </AxSecurityDuty>

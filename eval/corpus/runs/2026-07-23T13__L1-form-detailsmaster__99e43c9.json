@@ -1,0 +1,54 @@
+{
+  "run_id": "2026-07-23T13__L1-form-detailsmaster__99e43c9",
+  "case_id": "L1-form-detailsmaster",
+  "tier": 1,
+  "timestamp": "2026-07-23T13:00:00.000Z",
+  "server_git_sha": "99e43c9",
+  "platform_build": "xppc 7.0.7858.27",
+  "generated_artifacts": [
+    "Contoso/AxForm/ConDemoNoteHeaderMaster.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "bp_checked": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPErrorLabelIsText",
+        "element": "ConDemoNoteHeaderMaster/.../FormTabPageControl/TabPageOverview",
+        "message": "Property 'Caption' must have a label ID as its value, and 'Overview' is not a label ID."
+      },
+      {
+        "rule": "BPErrorLabelIsText",
+        "element": "ConDemoNoteHeaderMaster/.../FormTabPageControl/TabPageGeneral",
+        "message": "Property 'Caption' must have a label ID as its value, and 'General' is not a label ID."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "Golden RE-CAPTURE run: golden_match is self-referential and carries no signal. The build dimension is the real result and it flipped from the 2026-07-06 record's succeeded=false to true - the scaffold now emits the <DataSource> sibling next to <DataGroup> on OverviewGroup, which is what the old golden was missing. Separately, BP (run for the first time on this case) shows the form is NOT BP-clean: FormPatternTemplates writes literal 'Overview'/'General' strings into the tab-page Caption properties instead of label IDs. That is a template defect, not a run defect, and it is shared by every pattern in src/utils/formPatternTemplates.ts that emits a captioned tab page - so fixing it invalidates the committed goldens for the other form-pattern cases too and needs its own re-capture cycle. Filed here rather than fixed in the re-capture. The case itself only requires a clean BUILD, which passed.",
+  "suggested_fix_area": "src/utils/formPatternTemplates.ts - tab-page Caption should be a label ID (@SYS...), not literal text; ripples to the L1-form-simplelistdetails / L3-form-detailstransaction goldens",
+  "evidence_refs": [
+    "xppc Contoso: Errors 0 (only the pre-existing PricingEngine ExternalReference warning)",
+    "xppbp Contoso: 2x BPErrorLabelIsText on TabPageOverview / TabPageGeneral of ConDemoNoteHeaderMaster; the other 7 warnings belong to the pre-existing ConDemoNoteHeader fixture table, not to this run",
+    "supersedes 2026-07-06T17__L1-form-detailsmaster__0c446d2.json (build.succeeded=false, golden_diff.matched=false)"
+  ]
+}
