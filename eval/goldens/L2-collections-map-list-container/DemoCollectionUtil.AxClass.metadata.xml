@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-collections-map-list-container: X++ collection shapes (Set de-duplication + pack, Map with exists() guard over a CustTrans sum, List.addEnd accumulation converted once with pack(), ListEnumerator + labelled strFmt). Captured 2026-07-23, SHA 0e1e367. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCollectionUtil</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Demonstrates the four X++ collection shapes: Set, Map, List and container.
+/// </summary>
+public final class ConDemoCollectionUtil
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>distinctAccounts</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Collapses duplicate account numbers by putting every element of the container into a Set.
+    /// </summary>
+    /// <param name = "_accountNums">A container of customer account numbers, possibly with duplicates.</param>
+    /// <returns>The packed Set of distinct account numbers.</returns>
+    public static container distinctAccounts(container _accountNums)
+    {
+        Set         accountSet = new Set(Types::String);
+        CustAccount accountNum;
+        int         i;
+        int         elementCount;
+
+        elementCount = conLen(_accountNums);
+
+        for (i = 1; i <= elementCount; i++)
+        {
+            accountNum = conPeek(_accountNums, i);
+
+            if (!accountSet.in(accountNum))
+            {
+                accountSet.add(accountNum);
+            }
+        }
+
+        return accountSet.pack();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>balanceByAccount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds a map of the total customer transaction amount per account number.
+    /// </summary>
+    /// <param name = "_accountNums">A container of customer account numbers.</param>
+    /// <returns>A map keyed by account number holding the summed amount.</returns>
+    public static Map balanceByAccount(container _accountNums)
+    {
+        Map         balanceMap = new Map(Types::String, Types::Real);
+        CustTrans   custTrans;
+        CustAccount accountNum;
+        AmountCur   totalAmount;
+        int         i;
+        int         elementCount;
+
+        elementCount = conLen(_accountNums);
+
+        for (i = 1; i <= elementCount; i++)
+        {
+            accountNum = conPeek(_accountNums, i);
+
+            select sum(AmountCur) from custTrans
+            where custTrans.AccountNum == accountNum;
+
+            totalAmount = custTrans.AmountCur;
+
+            // lookup() throws when the key is absent, so guard every read with exists()
+            if (balanceMap.exists(accountNum))
+            {
+                balanceMap.insert(accountNum, balanceMap.lookup(accountNum) + totalAmount);
+            }
+            else
+            {
+                balanceMap.insert(accountNum, totalAmount);
+            }
+        }
+
+        return balanceMap;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>collectAccountNums</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Collects every customer account number into a List and converts it once after the loop.
+    /// </summary>
+    /// <returns>The packed List of account numbers.</returns>
+    public static container collectAccountNums()
+    {
+        List        accountList = new List(Types::String);
+        CustTable   custTable;
+
+        while select AccountNum from custTable
+        {
+            accountList.addEnd(custTable.AccountNum);
+        }
+
+        return accountList.pack();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>logAccounts</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Rebuilds a packed List and writes every account number to the Infolog.
+    /// </summary>
+    /// <param name = "_packedList">A container produced by <c>List.pack</c>.</param>
+    public static void logAccounts(container _packedList)
+    {
+        List            accountList;
+        ListEnumerator  listEnumerator;
+
+        accountList = List::create(_packedList);
+        listEnumerator = accountList.getEnumerator();
+
+        while (listEnumerator.moveNext())
+        {
+            info(strFmt("@SYS24991", listEnumerator.current()));
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

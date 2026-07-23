@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 47,
-    "percent": 61
+    "covered": 48,
+    "percent": 62.3
   },
   "leaves": [
     {
@@ -386,6 +386,7 @@
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
+        "L2-collections-map-list-container",
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
@@ -425,6 +426,7 @@
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
+        "L2-collections-map-list-container",
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
@@ -474,10 +476,12 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-collections-map-list-container"
+      ]
     },
     {
       "id": "datetime-timezones",
@@ -1112,6 +1116,7 @@
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
+        "L2-collections-map-list-container",
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
