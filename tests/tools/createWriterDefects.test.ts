@@ -334,8 +334,12 @@ describe('#20 query with no explicit field list is marked dynamic', () => {
     // field is set to false" — every "all fields" query used to fail the build.
     expect(xml).toContain('<DynamicFields>Yes</DynamicFields>');
     expect(xml).toContain('<Fields />');
-    expect(xml.indexOf('<DerivedDataSources />')).toBeLessThan(xml.indexOf('<DynamicFields>'));
-    expect(xml.indexOf('<DynamicFields>')).toBeLessThan(xml.indexOf('<Fields />'));
+    // Contract order is Name → DynamicFields → Table → … : emitted anywhere later
+    // the deserializer DROPS the element and reads the flag back as false, which
+    // reintroduces the very build error above (L3-xds-policy-constrained-table run).
+    expect(xml.indexOf('<DynamicFields>')).toBeLessThan(xml.indexOf('<Table>'));
+    expect(xml.indexOf('<Name>ConDemoNoteHeader</Name>')).toBeLessThan(xml.indexOf('<DynamicFields>'));
+    expect(xml.indexOf('<DynamicFields>')).toBeLessThan(xml.indexOf('<DerivedDataSources />'));
   });
 
   it('an explicit field list stays static', () => {

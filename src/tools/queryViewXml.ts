@@ -63,12 +63,18 @@ ${classDeclaration}
   // (docs/eval-sweep-findings-2026-07-21.md #20). `properties.dynamicFields` lets a
   // caller force it either way; otherwise it follows "no explicit fields ⇒ dynamic".
   //
-  // Position: between <DerivedDataSources> and <Fields>. The captured golden
-  // (eval/goldens/L1-query-view-basic) fixes the surrounding sequence
-  // Name → Table → DataSources → DerivedDataSources → Fields, and DynamicFields
-  // sorts there alphabetically — the same place the AxTable serializer puts its
-  // extended properties (#13). AOT XML silently DROPS misordered elements, so this
-  // position is deliberate, not incidental.
+  // Position: between <Name> and <Table>, which is where every platform query puts
+  // it (ApplicationPlatform/AxQuery/BatchDelete.xml, ApplicationSuite/…/
+  // ActivityListOpenTasks.xml — 13/13 of the platform queries that set it) and where
+  // the captured golden eval/goldens/L3-workflow-document-submit/
+  // ConDemoWfRequestQuery.metadata.xml has it. The DataContract order is
+  // Name → DynamicFields → Table → DataSources → DerivedDataSources → Fields → …
+  //
+  // AOT XML silently DROPS misordered elements: emitted after <DerivedDataSources>
+  // the flag was read back as FALSE, and the full build then failed with "The field
+  // list of the data source 'X' cannot be empty if the dynamic field is set to
+  // false" — the very error the flag exists to avoid. An INCREMENTAL build accepts
+  // the file, so only a fullBuild caught it (L3-xds-policy-constrained-table run).
   const explicitDynamic: boolean | undefined =
     typeof properties?.dynamicFields === 'boolean'
       ? properties.dynamicFields
@@ -94,10 +100,10 @@ ${classDeclaration}
 \t<DataSources>
 \t\t<AxQuerySimpleRootDataSource>
 \t\t\t<Name>${dataSourceName}</Name>
-\t\t\t<Table>${dataSource}</Table>
+${dynamicFieldsXml}\t\t\t<Table>${dataSource}</Table>
 \t\t\t<DataSources />
 \t\t\t<DerivedDataSources />
-${dynamicFieldsXml}${fieldsXml}\t\t\t<Ranges />
+${fieldsXml}\t\t\t<Ranges />
 \t\t\t<GroupBy />
 \t\t\t<Having />
 \t\t\t<OrderBy />

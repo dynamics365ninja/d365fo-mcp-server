@@ -1,0 +1,32 @@
+{
+  "run_id": "2026-07-23T05__L3-xds-policy-constrained-table__d449433",
+  "case_id": "L3-xds-policy-constrained-table",
+  "tier": 3,
+  "timestamp": "2026-07-23T05:13:55.388Z",
+  "server_git_sha": "d449433",
+  "generated_artifacts": [],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {}
+    ]
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "Build and BP are clean and the NEW security-policy create path is fully correct: d365fo_file(action=create, objectType=security-policy) emitted the exact MS shape (AxSecurityPolicyConstrainedEntity + xmlns=\"\" reset + i:type=\"AxSecurityPolicyConstrainedTable\") and the child SURVIVED deserialization - the regenerated runtime metadata Contoso_AxSecurityPolicy.md contains ConDemoTerritoryLine with TableRelation ConDemoTerritory, and 'Metadata: validate policy' passed on a full build. TOOL_DEFECT is recorded for the AxQuery writer, not the policy writer. Two independent defects: (1) create(objectType=query) emits <DynamicFields> AFTER <DataSources>/<DerivedDataSources>, but the DataContract element order is Name, DynamicFields, Table, DataSources, DerivedDataSources, Fields, Ranges, GroupBy, Having, OrderBy - out-of-order elements are skipped by the deserializer, so DynamicFields=Yes was silently read as false and the FULL build failed with 'Metadata Error: AxQuerySimple/.../DynamicFields: The field list of the data source cannot be empty if the dynamic field is set to false'. An incremental build did NOT catch it. (2) there is no supported route to author a query data-source RANGE: properties.ranges[] is silently dropped by create with no warning, and modify-property rejects any Ranges path ('Supported: title, description, allowCrossCompany'). The case requires a range on OwnerUserId resolving to the current user, so the artifact could only be completed with a hand-authored xmlContent overwrite - the corrected query (canonical element order + <Value>(currentUserId())</Value>) then full-built clean. Secondary: bp_clean=0 comes from a single BPErrorTableMissingFormRef on ConDemoTerritory (a form is out of case scope) plus 7 warnings owned by the pre-existing ConDemoNoteHeader fixture; the case text only demands 'zero BP errors', which was met (Errors: 0).",
+  "suggested_fix_area": "src/tools/generators/query (AxQuery serializer: canonical child-element order for AxQuerySimpleRootDataSource/EmbeddedDataSource, and support for properties.ranges[] -> AxQuerySimpleDataSourceRange); bridge modify-property allowlist for AxQuery (add a Ranges add/modify operation); d365fo_file create should WARN on unrecognised properties.* keys instead of dropping them silently (cluster #35); validate_code(mode=references, codeType=xml-any) resolved only 1 reference in the AxSecurityPolicy XML - it does not know PrimaryTable/Query/ConstrainedTables/TableRelation semantics (validator gap)."
+}
