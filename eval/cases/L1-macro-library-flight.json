@@ -8,7 +8,7 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L1-macro-library-flight/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

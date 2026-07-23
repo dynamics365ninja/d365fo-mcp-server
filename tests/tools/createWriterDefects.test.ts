@@ -483,3 +483,48 @@ public class WfRequestDocument extends WorkflowDocument
     expect(xml).toContain('class is the workflow document');
   });
 });
+
+describe('extractInnerClassMethods — macro directives in the declaration', () => {
+  // Corpus: eval/corpus/runs/2026-07-23T18__L1-macro-library-flight__b7abafe.json
+  // The class-source splitter rebuilt <Declaration> from lines ending in ';' only.
+  // A macro include (`#ConDemoModuleFlights`) has no semicolon, so it was silently
+  // dropped — the class then referenced `#DemoFastPostingFlight` with no library
+  // included and failed to compile, while the tool still reported success.
+  it('preserves a macro include line when splitting a class with inner methods', () => {
+    const decl = `public class ConDemoFlightReader
+{
+    #ConDemoModuleFlights
+
+    public boolean isFast()
+    {
+        return Global::isFlightEnabled(#DemoFastPostingFlight);
+    }
+}`;
+    const out = XmlTemplateGenerator.extractInnerClassMethods(decl);
+    expect(out).not.toBeNull();
+    expect(out!.declaration).toContain('#ConDemoModuleFlights');
+    expect(out!.methods).toHaveLength(1);
+    expect(out!.methods[0].name).toBe('isFast');
+    expect(out!.methods[0].source).toContain('#DemoFastPostingFlight');
+  });
+
+  it('emits the macro directive BEFORE member variables that use it', () => {
+    const decl = `public class ConDemoReader
+{
+    #ConDemoLib
+    int cachedValue;
+
+    public int read()
+    {
+        return cachedValue;
+    }
+}`;
+    const out = XmlTemplateGenerator.extractInnerClassMethods(decl);
+    expect(out).not.toBeNull();
+    const macroIdx = out!.declaration.indexOf('#ConDemoLib');
+    const memberIdx = out!.declaration.indexOf('int cachedValue;');
+    expect(macroIdx).toBeGreaterThan(-1);
+    expect(memberIdx).toBeGreaterThan(-1);
+    expect(macroIdx).toBeLessThan(memberIdx);
+  });
+});

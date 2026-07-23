@@ -455,6 +455,12 @@ export class XmlTemplateGenerator {
 
     const methods: Array<{ name: string; source: string }> = [];
     const memberVarLines: string[] = [];
+    // Macro directives (#Library include, #define, #localmacro/#endmacro) live in the
+    // class declaration but have no trailing ';', so the member-var rule below would
+    // drop them — leaving the class referencing an undefined macro and failing to
+    // compile. Collected separately and emitted FIRST, before the member vars that
+    // may use them. Regression: eval/corpus/runs/2026-07-23T18__L1-macro-library-flight.
+    const macroDirectiveLines: string[] = [];
 
     let pos = 0;
     while (pos < classBody.length) {
@@ -463,7 +469,9 @@ export class XmlTemplateGenerator {
         // No more braces — collect any trailing member-variable declarations
         for (const line of classBody.substring(pos).split('\n')) {
           const t = line.trim();
-          if (t.length > 0 && t.endsWith(';') && !t.includes('(') &&
+          if (t.startsWith('#')) {
+            macroDirectiveLines.push(t);
+          } else if (t.length > 0 && t.endsWith(';') && !t.includes('(') &&
               !t.startsWith('//') && !t.startsWith('*')) {
             memberVarLines.push(t);
           }
@@ -491,7 +499,9 @@ export class XmlTemplateGenerator {
         // Collect member-variable lines that appeared before the method signature.
         for (const line of sigText.split('\n')) {
           const t = line.trim();
-          if (t.length > 0 && t.endsWith(';') && !t.includes('(') &&
+          if (t.startsWith('#')) {
+            macroDirectiveLines.push(t);
+          } else if (t.length > 0 && t.endsWith(';') && !t.includes('(') &&
               !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('[')) {
             memberVarLines.push(t);
           }
@@ -533,7 +543,9 @@ export class XmlTemplateGenerator {
         // Not a method (no '(' in sigText) — collect member-variable declarations
         for (const line of sigText.split('\n')) {
           const t = line.trim();
-          if (t.length > 0 && t.endsWith(';') && !t.includes('(') &&
+          if (t.startsWith('#')) {
+            macroDirectiveLines.push(t);
+          } else if (t.length > 0 && t.endsWith(';') && !t.includes('(') &&
               !t.startsWith('//') && !t.startsWith('*')) {
             memberVarLines.push(t);
           }
@@ -546,14 +558,16 @@ export class XmlTemplateGenerator {
 
     if (methods.length === 0) return null;
 
-    // Rebuild the declaration as: class header + member variable declarations only
+    // Rebuild the declaration as: class header + macro directives + member variables.
+    // Macro includes/#define must precede any member var that references them.
     const classHeader = classDeclaration.substring(0, classOpenIdx + 1);
-    const memberVarsXpp = memberVarLines.length > 0
-      ? '\n' + memberVarLines.map(v => '    ' + v).join('\n') + '\n\n'
+    const declLines = [...macroDirectiveLines, ...memberVarLines];
+    const declBodyXpp = declLines.length > 0
+      ? '\n' + declLines.map(v => '    ' + v).join('\n') + '\n\n'
       : '\n';
 
     return {
-      declaration: classHeader + memberVarsXpp + '}',
+      declaration: classHeader + declBodyXpp + '}',
       methods,
     };
   }

@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 55,
-    "percent": 71.4
+    "covered": 56,
+    "percent": 72.7
   },
   "leaves": [
     {
@@ -261,10 +261,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L1-macro-library-flight"
+      ]
     },
     {
       "id": "transactions",
@@ -391,6 +393,7 @@
         "L1-form-simplelistdetails",
         "L1-form-tableofcontents",
         "L1-form-workspace",
+        "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
@@ -438,6 +441,7 @@
         "L1-form-simplelistdetails",
         "L1-form-tableofcontents",
         "L1-form-workspace",
+        "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
@@ -1143,6 +1147,7 @@
         "L1-form-simplelistdetails",
         "L1-form-tableofcontents",
         "L1-form-workspace",
+        "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
