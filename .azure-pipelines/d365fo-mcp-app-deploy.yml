@@ -1,8 +1,8 @@
 # Azure Pipeline — Deploy MCP Server Application to App Service
 #
-# Compiles better-sqlite3 on ubuntu-latest (same Linux base as App Service)
-# with the same Node.js version as the App Service runtime.
-# Ships pre-built node_modules so no compilation is needed on the server.
+# Installs on ubuntu-latest with the same Node.js version as the App Service
+# runtime and ships node_modules in the zip, so the host never runs npm.
+# Nothing here is compiled: SQLite comes from node:sqlite, a core module.
 
 trigger:
   branches:
@@ -52,11 +52,10 @@ stages:
             inputs:
               versionSpec: $(nodeVersion)
 
-          # npm ci compiles better-sqlite3 from source on ubuntu-latest.
-          # ubuntu-latest uses the same glibc as App Service Linux, so the
-          # resulting binary works at runtime without any rebuild step.
+          # No native addons, so the tree is portable — the agent OS does not
+          # have to match App Service Linux for the deployed zip to run.
           - script: npm ci
-            displayName: 'npm ci (compiles native addons for Node 24 / Linux)'
+            displayName: 'npm ci'
             workingDirectory: '$(MCP_SERVER_PATH)'
 
           - script: npm run build

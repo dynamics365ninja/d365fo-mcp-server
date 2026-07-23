@@ -18,7 +18,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import Database from 'better-sqlite3';
+import Database from '../../src/database/sqlite.js';
 import { describe, it, expect } from 'vitest';
 import { KNOWLEDGE_BASE } from '../../src/tools/xppKnowledge';
 import { extractKnowledgeRefs } from '../../src/eval/audit/knowledgeRefs';

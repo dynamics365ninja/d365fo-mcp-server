@@ -21,7 +21,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import Database from 'better-sqlite3';
+import Database from '../../src/database/sqlite.js';
 import { XppMetadataParser } from '../../src/metadata/xmlParser';
 import { securityArtifactInfoTool } from '../../src/tools/securityArtifactInfo';
 

@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import Database from '../../src/database/sqlite.js';
 import {
   extractBaseEdtName,
   lookupBaseEdtFromIndex,

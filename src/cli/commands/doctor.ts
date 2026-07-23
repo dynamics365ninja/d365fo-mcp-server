@@ -99,26 +99,29 @@ function legacyEnvChecks(target: Target, label: string): CheckResult[] {
 }
 
 /**
- * better-sqlite3 is a native module, and npm 12 blocks install scripts that the
- * root package.json does not pre-approve in `allowScripts`. A blocked build
- * still exits 0 with only a warning, so the .node binding goes missing silently
- * and the install looks clean — the failure would otherwise first appear when
- * the server opens the index. Loading it here turns that into a named problem.
+ * The symbol index is SQLite, served by node:sqlite — core since Node 22, and
+ * the reason this package has no native dependency and installs without
+ * lifecycle scripts. Two things can still be absent on an unusual runtime: the
+ * module itself (Node older than our `engines` floor, which npm only warns
+ * about) and FTS5, which every search query needs and which a custom Node build
+ * can omit. Both would otherwise first surface as a failing tool call.
  */
-async function checkNativeBinding(): Promise<CheckResult> {
+async function checkSqliteEngine(): Promise<CheckResult> {
   try {
-    // Importing the module is not enough: better-sqlite3 resolves the addon
-    // lazily on first use, so a missing binding only surfaces when a database
-    // is actually opened. An in-memory one touches no disk.
-    const { default: Database } = await import('better-sqlite3');
-    new Database(':memory:').close();
-    return { severity: 'ok', message: 'better-sqlite3 native binding loads' };
+    const { default: Database } = await import('../../database/sqlite.js');
+    const db = new Database(':memory:');
+    try {
+      db.exec('CREATE VIRTUAL TABLE probe USING fts5(content)');
+    } finally {
+      db.close();
+    }
+    return { severity: 'ok', message: 'node:sqlite available with FTS5' };
   } catch (err) {
     const detail = err instanceof Error ? err.message.split('\n')[0] : String(err);
     return {
       severity: 'fail',
-      message: `better-sqlite3 native binding unavailable — ${detail}`,
-      fix: 'npm install-scripts approve better-sqlite3 && npm rebuild better-sqlite3',
+      message: `node:sqlite unusable — ${detail}`,
+      fix: `install Node 24 or newer (running ${process.version})`,
     };
   }
 }
@@ -176,18 +179,14 @@ export async function doctorCommand(): Promise<void> {
 
   // Install + build. A global npm install resolves its dependencies from the
   // parent node_modules, so a package-local one neither exists nor means
-  // anything there — the binding check below is the honest signal in both
-  // layouts, and the only one worth failing on.
+  // anything there — only a git checkout is worth checking.
   if (installMode === 'git') {
-    const hasNodeModules = fs.existsSync(resolve(repoRoot, 'node_modules'));
-    emit(hasNodeModules
+    emit(fs.existsSync(resolve(repoRoot, 'node_modules'))
       ? { severity: 'ok', message: 'Dependencies installed (node_modules)' }
       : { severity: 'fail', message: 'node_modules missing', fix: 'npm install' });
-    // Only meaningful once the dependencies exist — otherwise it just restates the failure above.
-    if (hasNodeModules) emit(await checkNativeBinding());
-  } else {
-    emit(await checkNativeBinding());
   }
+  // Core module, so this holds in both layouts and needs no dependencies present.
+  emit(await checkSqliteEngine());
   emit(fs.existsSync(paths.distEntry)
     ? { severity: 'ok', message: 'Server built (dist/index.js)' }
     : { severity: 'fail', message: 'dist/index.js missing — server not built', fix: 'npm run build' });

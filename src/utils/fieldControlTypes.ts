@@ -189,7 +189,7 @@ function getViewFieldControlMap(db: any, viewXml: string, depth = 0): FieldContr
  * Views are supported too, through the extra query→table hop described in
  * {@link getViewFieldControlMap}.
  *
- * @param db   read-only better-sqlite3 handle (symbolIndex.getReadDb())
+ * @param db   read-only SQLite handle (symbolIndex.getReadDb())
  * @param table table (or view) name
  */
 export function getFieldControlMap(db: any, table: string): FieldControlMap {

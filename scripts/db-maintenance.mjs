@@ -10,12 +10,12 @@
  *   node scripts/db-maintenance.mjs repair-fts-surgical  [--db-path PATH]
  *   node scripts/db-maintenance.mjs repair-dump          [--db-path PATH]
  */
-import { createRequire } from 'module';
 import { renameSync, existsSync, unlinkSync } from 'fs';
 import { parseArgs } from 'util';
 
-const require = createRequire(import.meta.url);
-const Database = require('better-sqlite3');
+// Runs through tsx (see the "db-maintenance" npm script) so it can share the
+// server's node:sqlite layer instead of carrying its own SQLite binding.
+import Database from '../src/database/sqlite.js';
 
 // ── CLI parsing ──────────────────────────────────────────────────────────────
 const { values, positionals } = parseArgs({

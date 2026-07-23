@@ -62,7 +62,7 @@ export interface ResolveResult {
   verifiedCount: number;
 }
 
-/** Minimal DB surface the resolver needs — satisfied by better-sqlite3. */
+/** Minimal DB surface the resolver needs — satisfied by src/database/sqlite.ts. */
 export interface ResolverDeps {
   db: {
     prepare(sql: string): {

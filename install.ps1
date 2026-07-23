@@ -165,7 +165,7 @@ function Update-Checkout([string]$dir) {
     try {
         Write-Step 'Installing dependencies (npm install)'
         npm install
-        if ($LASTEXITCODE -ne 0) { Fail 'npm install failed - see the error above (better-sqlite3 needs a prebuilt binary or Python + build tools).' }
+        if ($LASTEXITCODE -ne 0) { Fail 'npm install failed - see the error above.' }
 
         if ($env:D365FO_MCP_NO_WIZARD) {
             Write-Note 'Skipping the setup wizard (D365FO_MCP_NO_WIZARD set).'

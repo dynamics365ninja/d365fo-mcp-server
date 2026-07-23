@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import Database from '../../src/database/sqlite.js';
 import { getEdtInfoTool } from '../../src/tools/edtInfo';
 
 function makeDb(rows: Array<{ name: string; extends?: string; stringSize?: string; model?: string }>) {
