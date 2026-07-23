@@ -29,6 +29,10 @@ import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
 import { buildAxMapXml } from './mapXml.js';
 import { buildAxServiceXml, buildAxServiceGroupXml } from './serviceXml.js';
 import { recordCreatedArtifact } from './createdArtifactLedger.js';
+import {
+  reconcileTableCreateProperties,
+  renderTableCreateHonestyReport,
+} from './createTablePropertyHonesty.js';
 
 /**
  * Per-project-file mutex to serialise concurrent addToProject calls.
@@ -3766,6 +3770,35 @@ function rawLabelBpWarning(properties: unknown, objectName: string): string {
 }
 
 /**
+ * Post-write parameter honesty for a table create (cluster #35).
+ *
+ * The metadata writer — bridge or template — accepts `properties` it does not know
+ * how to write and reports ✅ anyway: `configurationKey` reached neither the smart
+ * nor the generic bridge create because C# SetAxTableProperty() has no case for it
+ * (corpus run 2026-07-22T16__L2-config-key-gated-table). Re-read what actually
+ * landed on disk, write back anything repairable in canonical element order, and
+ * return a report for whatever still could not be honoured. Best-effort by design:
+ * a read/write failure here must never turn a successful create into an error.
+ */
+async function reconcileCreatedTableProperties(
+  filePath: string | undefined,
+  properties: unknown,
+): Promise<string> {
+  if (!filePath || !properties || typeof properties !== 'object') return '';
+  try {
+    const onDisk = await fs.readFile(filePath, 'utf-8');
+    const reconciled = reconcileTableCreateProperties(onDisk, properties as Record<string, unknown>);
+    if (reconciled.patched.length > 0) {
+      await fs.writeFile(filePath, normalizeD365Xml(reconciled.xml), 'utf-8');
+    }
+    return renderTableCreateHonestyReport(reconciled);
+  } catch (e) {
+    console.error(`[create_d365fo_file] table property reconcile skipped: ${e}`);
+    return '';
+  }
+}
+
+/**
  * Create D365FO file handler function
  */
 export async function handleCreateD365File(
@@ -4608,6 +4641,12 @@ export async function handleCreateD365File(
               try { await bridgeRefreshProvider(context.bridge); } catch { /* best-effort */ }
 
               const rawLabelWarning = rawLabelBpWarning(args.properties, finalObjectName);
+              // #35: CreateSmartTable ignores every property its C# switch does not
+              // know (configurationKey, formRef, …) — repair or report, never drop.
+              const honestyReport = await reconcileCreatedTableProperties(
+                smartResult.filePath,
+                args.properties,
+              );
               const bp = smartResult.bpDefaults;
               const bpSummary = bp
                 ? `\n📋 BP defaults: CacheLookup=${bp.cacheLookup ?? '(n/a)'}, TitleField1=${bp.titleField1 ?? '(none)'}, ` +
@@ -4632,7 +4671,7 @@ export async function handleCreateD365File(
                     type: 'text',
                     text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)\n` +
                       `📁 ${smartResult.filePath}${projectMsg}\n` +
-                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${rawLabelWarning}`,
+                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}`,
                   },
                 ],
               };
@@ -4698,6 +4737,11 @@ export async function handleCreateD365File(
           try { await bridgeRefreshProvider(context.bridge); } catch { /* best-effort */ }
 
           const rawLabelWarning = rawLabelBpWarning(args.properties, finalObjectName);
+          // #35: C# CreateTable() runs the same SetAxTableProperty() switch as the
+          // smart path and ignores its return value just as thoroughly.
+          const honestyReport = args.objectType === 'table'
+            ? await reconcileCreatedTableProperties(bridgeResult.filePath, args.properties)
+            : '';
 
           // Record the freshly-created file for non-git undo (see smart-table path).
           if (!fileExisted) {
@@ -4715,7 +4759,7 @@ export async function handleCreateD365File(
                 type: 'text',
                 text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
-                  `🔧 API: ${bridgeResult.message}${rawLabelWarning}`,
+                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}`,
               },
             ],
           };
@@ -4857,6 +4901,16 @@ export async function handleCreateD365File(
       /<\/Method>\n(\t*)<Method>/g,
       '</Method>\n\n$1<Method>'
     );
+
+    // #35: the template writer knows a FIXED property list too — anything else the
+    // caller passed lands nowhere. Reconcile before the write so a repairable
+    // property is emitted in canonical order and the rest is reported, not dropped.
+    let tableHonestyReport = '';
+    if (args.objectType === 'table') {
+      const reconciled = reconcileTableCreateProperties(xmlContent, args.properties);
+      xmlContent = reconciled.xml;
+      tableHonestyReport = renderTableCreateHonestyReport(reconciled);
+    }
 
     // Form pattern gate: structural pattern violations (FP001-FP005, FP007)
     // block the write when FORM_PATTERN_ENFORCE is enabled (default).
@@ -5073,6 +5127,7 @@ export async function handleCreateD365File(
             `🔧 Type: ${objectFolder}\n` +
             bridgeValidation +
             formPatternWarnings +
+            tableHonestyReport +
             rawLabelBpWarning(args.properties, finalObjectName) +
             projectMessage +
             `\n${nextSteps}\n` +
