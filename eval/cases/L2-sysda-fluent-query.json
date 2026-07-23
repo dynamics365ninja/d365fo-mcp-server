@@ -7,7 +7,6 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L2-sysda-fluent-query/",
-  "golden_pending": true,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

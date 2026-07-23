@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 50,
-    "percent": 64.9
+    "covered": 54,
+    "percent": 70.1
   },
   "leaves": [
     {
@@ -192,7 +192,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L1-class-basic"
+        "L1-class-basic",
+        "L2-class-method-ops"
       ]
     },
     {
@@ -274,6 +275,7 @@
       "t": true,
       "covered": true,
       "cases": [
+        "L2-class-method-ops",
         "L2-form-modify-controls",
         "L2-table-modify-lifecycle",
         "L3-form-add-datasource-lines",
@@ -316,10 +318,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-sysda-fluent-query"
+      ]
     },
     {
       "id": "error-handling",
@@ -342,10 +346,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-sysextension-plugin"
+      ]
     },
     {
       "id": "performance",
@@ -386,14 +392,19 @@
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
+        "L2-class-method-ops",
         "L2-collections-map-list-container",
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
+        "L2-dotnet-interop-clrerror",
         "L2-interface-abstract-basic",
         "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
+        "L2-reflection-dict-fieldwalk",
+        "L2-sysda-fluent-query",
+        "L2-sysextension-plugin",
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
@@ -427,14 +438,19 @@
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
+        "L2-class-method-ops",
         "L2-collections-map-list-container",
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
+        "L2-dotnet-interop-clrerror",
         "L2-interface-abstract-basic",
         "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
+        "L2-reflection-dict-fieldwalk",
+        "L2-sysda-fluent-query",
+        "L2-sysextension-plugin",
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
@@ -506,10 +522,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-dotnet-interop-clrerror"
+      ]
     },
     {
       "id": "reflection-dict",
@@ -518,10 +536,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-reflection-dict-fieldwalk"
+      ]
     },
     {
       "id": "form",
@@ -1122,14 +1142,19 @@
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
+        "L2-class-method-ops",
         "L2-collections-map-list-container",
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
+        "L2-dotnet-interop-clrerror",
         "L2-interface-abstract-basic",
         "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
+        "L2-reflection-dict-fieldwalk",
+        "L2-sysda-fluent-query",
+        "L2-sysextension-plugin",
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",

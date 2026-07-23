@@ -8,8 +8,7 @@
     "AxTable"
   ],
   "golden_path": "eval/goldens/L2-class-method-ops/",
-  "golden_pending": true,
-  "ignore": [
+    "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"
   ],

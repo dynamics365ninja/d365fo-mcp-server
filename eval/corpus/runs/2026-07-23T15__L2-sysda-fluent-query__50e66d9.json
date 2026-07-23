@@ -1,0 +1,35 @@
+{
+  "run_id": "2026-07-23T15__L2-sysda-fluent-query__50e66d9",
+  "case_id": "L2-sysda-fluent-query",
+  "tier": 2,
+  "timestamp": "2026-07-23T15:54:55.421Z",
+  "server_git_sha": "50e66d9",
+  "generated_artifacts": [
+    "ConDemoSysDaReader.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS"
+}

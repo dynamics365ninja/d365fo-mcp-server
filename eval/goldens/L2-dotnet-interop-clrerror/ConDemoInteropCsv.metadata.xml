@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoInteropCsv</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+using System.Text;
+
+/// <summary>
+/// Builds delimited lines through .NET interop.
+/// </summary>
+public class ConDemoInteropCsv
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>buildLine</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds a comma separated line from the values of a container.
+    /// </summary>
+    /// <param name = "_values">The values that must be concatenated.</param>
+    /// <returns>A comma separated line.</returns>
+    public static server str buildLine(container _values)
+    {
+        str result;
+
+        new InteropPermission(InteropKind::ClrInterop).assert();
+
+        try
+        {
+            StringBuilder builder = new StringBuilder();
+            int           i;
+
+            for (i = 1; i <= conLen(_values); i++)
+            {
+                if (i > 1)
+                {
+                    builder.Append(',');
+                }
+
+                builder.Append(any2Str(conPeek(_values, i)));
+            }
+
+            result = builder.ToString();
+        }
+        catch (Exception::CLRError)
+        {
+            System.Exception clrException = CLRInterop::getLastException();
+
+            error(strFmt("@Contoso:DemoInteropCsvClrError", clrException.get_Message()));
+        }
+        finally
+        {
+            CodeAccessPermission::revertAssert();
+        }
+
+        return result;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

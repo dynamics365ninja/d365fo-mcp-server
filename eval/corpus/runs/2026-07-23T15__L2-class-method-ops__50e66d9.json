@@ -1,0 +1,74 @@
+{
+  "run_id": "2026-07-23T15__L2-class-method-ops__50e66d9",
+  "case_id": "L2-class-method-ops",
+  "tier": 2,
+  "timestamp": "2026-07-23T15:42:05.180Z",
+  "server_git_sha": "50e66d9",
+  "generated_artifacts": [
+    "ConDemoCalcData.metadata.xml",
+    "ConDemoCalcOps.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "rule": "BPErrorDeveloperDocumentationNotDefined",
+        "element": "AxTable ConDemoCalcData",
+        "note": "table create writer never emits DeveloperDocumentation; prepare(create) property-defaults section does not list it as required either"
+      },
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "element": "AxTable ConDemoCalcData",
+        "note": "case creates no form; unavoidable for this case"
+      },
+      {
+        "rule": "BPXmlDocNoDocumentationComments",
+        "element": "AxClass ConDemoCalcOps",
+        "note": "class declaration written verbatim from sourceCode; no doc-header scaffolding"
+      },
+      {
+        "rule": "BPXmlDocNoDocumentationComments",
+        "element": "AxClass ConDemoCalcOps.multiply",
+        "note": "add-method does NOT scaffold an XML doc header, while add-table-method / add-display-method DO - inconsistent writers"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "xppc 7.0.7858.27",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Build + golden pass; bp_clean fails and two modify writers misbehave. (1) add-table-method resolves the key field's EDT only from the SQLite symbol index, so for a table created moments earlier via the bridge (not yet indexed) it silently falls back to the FIELD NAME as the parameter type -> 'public static ConDemoCalcData find(ItemName _itemName ...)', which is uncompilable X++; it becomes correct (Name) only after an explicit update_symbol_index. (2) add-display-method's tool description promises [SysClientCacheDataMethodAttribute] but the generated stub has no attribute. (3) bridge replaceCode rejected a multi-line oldCode block ('oldCode not found') that literally exists in the file - almost certainly newline/indent normalization - and only the direct-XML fallback saved the operation. (4) bp_clean=0 is driven by writer defaults: table create emits no DeveloperDocumentation and add-method scaffolds no XML doc header (add-table-method/add-display-method do).",
+  "suggested_fix_area": "src/tools/modify (add-table-method EDT resolution: query the bridge/IMetadataProvider before falling back to the index, and FAIL instead of emitting the field name as a type); add-display-method template (emit [SysClientCacheDataMethodAttribute(true)] as documented, or fix the tool description); bridge ReplaceCode newline normalization; table create + add-method BP defaults (DeveloperDocumentation, XML doc header).",
+  "evidence_refs": [
+    "eval/goldens/L2-class-method-ops/ConDemoCalcOps.metadata.xml",
+    "eval/goldens/L2-class-method-ops/ConDemoCalcData.metadata.xml"
+  ]
+}

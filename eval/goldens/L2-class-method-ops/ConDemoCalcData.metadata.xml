@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L2-class-method-ops (ConDemoCalcData)
+  Captured: 2026-07-23, server SHA: 50e66d9
+  Platform: xppc 7.0.7858.27, EXTENSION_PREFIX=Con, model Contoso
+  Produced EXCLUSIVELY via d365fo_file action=create (declaration/fields only)
+  + action=modify operations (add-method, replace-code, remove-method,
+  add-table-method, add-display-method). Full build: 0 errors.
+  Verified element-by-element against ApplicationSuite/Foundation/AxTable/SalesParmSubTable.xml
+  and ApplicationPlatform/AxClass/SysGlobalCache.xml (top-level element order,
+  field XML shape, 4-space method-source indentation) and round-tripped through
+  IMetadataProvider (get_object_info) to prove nothing is silently dropped.
+-->
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCalcData</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>ConDemoCalcData</c> table.
+/// </summary>
+public class ConDemoCalcData extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Finds the <c>ConDemoCalcData</c> record for the given ItemName.
+    /// </summary>
+    /// <param name = "_itemName">The ItemName value to find.</param>
+    /// <param name = "_forUpdate">Select the record for update; optional.</param>
+    /// <returns>The matching <c>ConDemoCalcData</c> record; an empty buffer if none exists.</returns>
+    public static ConDemoCalcData find(Name _itemName, boolean _forUpdate = false)
+    {
+        ConDemoCalcData conDemoCalcData;
+
+        if (_itemName)
+        {
+            conDemoCalcData.selectForUpdate(_forUpdate);
+
+            select firstonly conDemoCalcData
+            where conDemoCalcData.ItemName == _itemName;
+        }
+
+        return conDemoCalcData;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>displayDoubleQty</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Display method returning <c>Qty</c>.
+    /// </summary>
+    /// <returns>The computed Qty value.</returns>
+    public display Qty displayDoubleQty()
+    {
+        return 2 * this.Qty;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>@SYS13887</Label>
+	<TableGroup>Main</TableGroup>
+	<TitleField1>ItemName</TitleField1>
+	<TitleField2>Qty</TitleField2>
+	<CacheLookup>Found</CacheLookup>
+	<DeleteActions />
+	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>AutoReport</Name>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>ItemName</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Qty</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoLookup</Name>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>ItemName</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Qty</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoIdentification</Name>
+			<AutoPopulate>Yes</AutoPopulate>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoSummary</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoBrowse</Name>
+			<Fields />
+		</AxTableFieldGroup>
+	</FieldGroups>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ItemName</Name>
+			<ExtendedDataType>Name</ExtendedDataType>
+			<Label>@SYS92116</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>Qty</Name>
+			<ExtendedDataType>Qty</ExtendedDataType>
+			<Label>@SYS323968</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

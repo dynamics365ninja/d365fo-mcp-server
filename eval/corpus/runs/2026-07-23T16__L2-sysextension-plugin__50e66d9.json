@@ -1,0 +1,59 @@
+{
+  "run_id": "2026-07-23T16__L2-sysextension-plugin__50e66d9",
+  "case_id": "L2-sysextension-plugin",
+  "tier": 2,
+  "timestamp": "2026-07-23T16:09:05.019Z",
+  "server_git_sha": "50e66d9",
+  "generated_artifacts": [
+    "ConDemoChannelAttribute.metadata.xml",
+    "ConDemoChannelHandler.metadata.xml",
+    "ConDemoChannelHandlerStore.metadata.xml",
+    "ConDemoChannelHandlerWeb.metadata.xml",
+    "ConDemoChannelType.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "VALIDATOR_GAP",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "SysExtensionAppClassFactory::getClassFromSysAttribute — FALSE POSITIVE arity-mismatch: validator demanded 3 args, real signature has _defaultInstantiation = null (default parameter). Ignored; xppc built clean."
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Two independent defects, neither of which affected the produced artifacts. (1) VALIDATOR_GAP: validate_code(mode=\"references\") arity check counts declared parameters without honouring X++ default-valued (optional) trailing parameters, so a legal 2-arg call to SysExtensionAppClassFactory::getClassFromSysAttribute(ClassName, SysAttribute, SysExtAppClassDefaultInstantiation = null) is reported as a blocking error. get_method reports the default correctly, so the signature data is present; the arity comparison discards it. Any SysExtension/SysOperation call that relies on optional args hits this. (2) TOOL_DEFECT (harness gap): labels(action=\"create\") writes the .label.txt + AxLabelFile descriptor but nothing ever compiles them — build_d365fo_project runs xppc only, never LabelC.exe — so freshly created labels stay unknown to the compiler and xppbp emits BPErrorUnknownLabel for every X++ label reference (and the label renders blank at runtime). Running LabelC.exe manually against the model cleared all 2 warnings, proving the labels themselves were correct.",
+  "suggested_fix_area": "src/tools/validation (reference resolver arity check: treat parameters with a default value as optional, compare against [required, total]); build pipeline (build_d365fo_project should invoke LabelC.exe for models whose AxLabelFile content changed, or labels(action=create) should trigger/prompt label compilation).",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxClass/ConDemoChannelHandler.xml",
+    "K:/AosService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxClass/BankDocumentTypeAttribute.xml",
+    "K:/AosService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxClass/BankDocumentDocTypeSummarizedTrans.xml",
+    "eval/goldens/L2-sysextension-plugin/"
+  ]
+}
