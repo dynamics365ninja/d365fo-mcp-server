@@ -2870,7 +2870,8 @@ while (mapEnumerator.moveNext())
       'Table fields of type UtcDateTime always hold UTC. Never store a value you converted to a user/company time zone — convert only at the edge (form display, report, file export)',
       'DateTimeUtil::utcNow() is the current UTC instant — the right default for stamping created/modified data',
       'DateTimeUtil::getSystemDateTime() honours the session date/time override (a user can set a session date); utcNow() does not. Use the session-aware one for BUSINESS decisions, utcNow() for audit stamps',
-      'For a business DATE use systemDateGet() (session-aware). NEVER use today(): it reads the AOS server clock, ignores both the session date and the user time zone, and is a BP error',
+      'For a business DATE prefer DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) — xppbp raises BPUpgradeCodeSystemDate on the older session-aware systemDateGet(), which still compiles but is deprecated (confirmed by a real BP run in the L2-datetime-timezone-range case)',
+      'NEVER use today(): it reads the AOS server clock, ignores both the session date and the user time zone, and is a BP error',
       'Convert for display with DateTimeUtil::applyTimeZoneOffset(utcValue, timeZone) and back with DateTimeUtil::removeTimeZoneOffset(localValue, timeZone) — applyTimeZoneOffset is UTC → local, removeTimeZoneOffset is local → UTC',
       'The time zone comes from DateTimeUtil::getUserPreferredTimeZone() (the Timezone kernel enum), or DateTimeUtil::getCompanyTimeZone() for company-scoped output. Do not hardcode Timezone::GMTCOORDINATEDUNIVERSALTIME',
       'Build a utcdatetime from parts with DateTimeUtil::newDateTime(date, timeOfDay, timeZone); split it with DateTimeUtil::date() and DateTimeUtil::time()',
@@ -2894,7 +2895,7 @@ utcdatetime displayValue = DateTimeUtil::applyTimeZoneOffset(
     request.SubmittedDateTime, userTimeZone);
 
 // A whole LOCAL day expressed as a UTC range
-date       businessDate = systemDateGet();
+date       businessDate = DateTimeUtil::getSystemDate(userTimeZone); // systemDateGet() -> BPUpgradeCodeSystemDate
 utcdatetime dayStartUtc  = DateTimeUtil::removeTimeZoneOffset(
     DateTimeUtil::newDateTime(businessDate, 0), userTimeZone);
 utcdatetime dayEndUtc    = DateTimeUtil::addSeconds(
