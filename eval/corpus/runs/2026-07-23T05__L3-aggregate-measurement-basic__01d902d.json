@@ -1,0 +1,43 @@
+{
+  "run_id": "2026-07-23T05__L3-aggregate-measurement-basic__01d902d",
+  "case_id": "L3-aggregate-measurement-basic",
+  "tier": 3,
+  "timestamp": "2026-07-23T05:41:32.887Z",
+  "server_git_sha": "01d902d",
+  "generated_artifacts": [
+    "/Tables/ConDemoRequestFact",
+    "/Data Entities/ConDemoRequestFactEntity",
+    "/Aggregate Measurements/ConDemoRequestMeasure"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Build/BP pass, but the aggregate-measurement create path emits a measure aggregation that D365FO silently discards. XmlTemplateGenerator.generateAxAggregateMeasurementXml (src/tools/createD365File.ts:2998-3040) writes <AggregateFunction>Avg</AggregateFunction> inside <AxMeasure>. Neither the element nor the value exists in the real AxMeasure contract: every Microsoft AxAggregateMeasurement uses <DefaultAggregate> with enum values Sum | DistinctCount | AverageOfChildren | Min | Max (0 occurrences of 'AggregateFunction' anywhere in PackagesLocalDirectory). The unknown element is dropped by the DataContract deserializer without any error, so the measure compiles with the DEFAULT aggregate instead of Avg. Proven by a controlled probe: rebuilding the identical file with <DefaultAggregate>AverageOfChildren</DefaultAggregate> grows the runtime metadata blob Contoso/bin/Contoso_AxAggregateMeasurement.md from 221 to 224 bytes, the delta being the extra property record 01 06 00 (DefaultAggregate = 6 = AverageOfChildren) that the tool-path artifact does not contain. The defect is doubled up in the knowledge base: get_knowledge(topic='aggregate-measurements') teaches the same invalid <AggregateFunction>Avg</AggregateFunction> shape in its 'Minimal measurement' example, so an agent that grounds correctly is taught the wrong contract and cannot satisfy the case's AggregateFunction=Avg requirement. Element ORDER inside AxMeasureGroup is fine (Name, Table, Attributes, Measures is a subsequence of the MS order Name, Table, Attributes, CalculatedMeasures, Dimensions, Measures); Usage, MeasureGroups, the AxDimensionAttribute and the AxMeasure name/field all survived deserialization. Secondary, lower-severity: (a) d365fo_file(modify, add-index) silently accepted a non-schema 'allowDuplicates' param -- honesty check caught and reported it correctly, but there is no way to set AlternateKey on an EXISTING index (modify-property rejects an Indexes/<name>/<prop> path with a table-property-only error), so the index had to be removed and re-added with indexAlternateKey; (b) the aggregate-measurement create path takes free-form 'properties' with no schema echo and no reference validation, so a wrong child name produces a green build. | RUN NOTES: Sandbox: model Contoso, EXTENSION_PREFIX Con, all three objects written via d365fo_file(action=create/modify) -- no hand-written XML in the scored artifacts. addToProject=false throughout: K:/repos/HBR-D365FO/src/d365fo/projects/ContosoDemo/ContosoDemo/ContosoDemo.rnrproj is invalid XML (orphaned <Content> around line 54), so project registration was skipped by instruction -- this also means the BP run (run_bp_check, modelName=Contoso, 0 warnings) did not see the objects through the project file, so bp_clean=1 is weakly evidenced. Verifying build used fullBuild=true (13 s, 0 errors, 1 unrelated PricingEngine external-reference warning). One xmlContent write was used ONLY as a throwaway diagnostic probe to prove the silent element drop; the tool-generated file was restored and rebuilt before the artifacts were scored. golden_pending: true -- no golden fabricated. Sandbox rolled back to the ConDemoNoteHeader fixture only.",
+  "suggested_fix_area": "src/tools/createD365File.ts XmlTemplateGenerator.generateAxAggregateMeasurementXml: rename the measure aggregation element to <DefaultAggregate> and map friendly inputs (Avg/Average -> AverageOfChildren, Count -> DistinctCount, Sum/Min/Max pass through), rejecting unknown values; mirror the same fix in src/tools/xppKnowledge.ts (aggregate-measurements topic example + the 'Measures need an aggregation (Sum/Count/Min/Max/Avg)' rule text). Optionally teach validate_code(mode='references', codeType='xml-any') about AxAggregateMeasurement child names so unknown-element drops fail the static gate. Separately: allow d365fo_file(modify, modify-property) to address index sub-properties, or add a modify-index operation."
+}

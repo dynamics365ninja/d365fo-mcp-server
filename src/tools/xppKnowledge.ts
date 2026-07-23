@@ -3188,7 +3188,7 @@ public class MyPostingLimits
     rules: [
       'AxAggregateMeasurement carries Name, Usage (StagedEntityStore for entity-store deployment) and one or more MeasureGroups',
       'Each AxMeasureGroup binds to exactly one Table (a real table or, more commonly, a denormalised entity) and lists Measures and Attributes (AxDimensionAttribute → KeyFields → DimensionField)',
-      'Measures need an aggregation (Sum / Count / Min / Max / Avg) — a field with no aggregation is a dimension attribute, not a measure',
+      'Measures need an aggregation — the element is <DefaultAggregate> (NOT AggregateFunction, which does not exist and is dropped silently, leaving the measure on Sum) and the legal values are Sum, DistinctCount, AverageOfChildren, Max, Min; a field with no aggregation is a dimension attribute, not a measure',
       'Model the fact source as a data entity or a view, not the raw transaction table: the entity store refresh reads it as-is, so joins done at query time cost every refresh',
       'Shared dimensions live in AxAggregateDimension elements and are referenced by attributes so multiple measure groups slice consistently',
       'Deployment is a runtime operation (Data management → Entity store → Refresh), not part of the build; a measurement that compiles can still be undeployed and therefore invisible to Power BI',
@@ -3222,7 +3222,7 @@ public class MyPostingLimits
 			<Measures>
 				<AxMeasure>
 					<Name>AvgDaysToClose</Name>
-					<AggregateFunction>Avg</AggregateFunction>
+					<DefaultAggregate>AverageOfChildren</DefaultAggregate>
 					<Field>DaysToClose</Field>
 				</AxMeasure>
 			</Measures>
