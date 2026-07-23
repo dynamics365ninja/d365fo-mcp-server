@@ -14,13 +14,12 @@ if [ ! -d "dist" ]; then
   exit 1
 fi
 
-# Verify better-sqlite3 native addon is loadable.
-# If this fails, the deployment was done without pre-compiled node_modules.
-# Fix: run the d365fo-mcp-app-deploy pipeline which compiles on ubuntu-latest
-# and ships pre-built binaries — App Service has no make/gcc to rebuild here.
-if ! node -e "require('better-sqlite3')" 2>/dev/null; then
-  echo "FATAL: better-sqlite3 binary is incompatible with Node $(node --version)."
-  echo "Deploy using the d365fo-mcp-app-deploy pipeline to ship pre-built binaries."
+# Verify node:sqlite is present. It is core since Node 24 (the `engines` floor),
+# so this can only fail if App Service is running an older runtime than the
+# linuxFxVersion in infrastructure/main.bicep declares.
+if ! node -e "require('node:sqlite')" 2>/dev/null; then
+  echo "FATAL: node:sqlite unavailable on Node $(node --version); Node 24+ required."
+  echo "Check linuxFxVersion (NODE|24-lts) on the App Service."
   exit 1
 fi
 
