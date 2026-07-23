@@ -1,0 +1,66 @@
+{
+  "run_id": "2026-07-23T10__L3-xds-policy-constrained-table__d8d1ad9",
+  "case_id": "L3-xds-policy-constrained-table",
+  "tier": 3,
+  "timestamp": "2026-07-23T10:25:36.917Z",
+  "server_git_sha": "d8d1ad9",
+  "generated_artifacts": [
+    "K:\\AosService\\PackagesLocalDirectory\\Contoso\\Contoso\\AxTable\\ConDemoTerritory.xml",
+    "K:\\AosService\\PackagesLocalDirectory\\Contoso\\Contoso\\AxTable\\ConDemoTerritoryLine.xml",
+    "K:\\AosService\\PackagesLocalDirectory\\Contoso\\Contoso\\AxQuery\\ConDemoTerritoryPolicyQuery.xml",
+    "K:\\AosService\\PackagesLocalDirectory\\Contoso\\Contoso\\AxSecurityPolicy\\ConDemoTerritoryPolicy.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "rule": "BPErrorLabelIsText",
+        "object": "ConDemoTerritoryPolicyQuery",
+        "detail": "Property 'Title' must have a label ID as its value — the query writer invents Title=<object name>"
+      },
+      {
+        "rule": "BPCheckAlternateKeyAbsent",
+        "object": "ConDemoTerritoryLine"
+      },
+      {
+        "rule": "BPErrorDeveloperDocumentationNotDefined",
+        "object": "ConDemoTerritoryLine"
+      },
+      {
+        "rule": "BPTableWithRecIdIndexMissingReplacementKey",
+        "object": "ConDemoTerritory"
+      },
+      {
+        "rule": "BPErrorDeveloperDocumentationNotDefined",
+        "object": "ConDemoTerritory"
+      },
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "object": "ConDemoTerritory"
+      },
+      {
+        "rule": "BPErrorLabelIsText_note",
+        "object": "-",
+        "detail": "7 case-owned warnings; 6 further warnings belong to the pre-existing ConDemoNoteHeader fixture and are excluded. Errors: 0."
+      }
+    ]
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "RE-RUN of 2026-07-23T05 against 01d902d. CONFIRMED FIXED: create(objectType=query) now emits <DynamicFields>Yes</DynamicFields> between <Name> and <Table> inside AxQuerySimpleRootDataSource, byte-identical in position to the platform analogues EssMyAccessPolicyQuery and EventAlertForUser. The element survives deserialization: a FULL build (fullBuild:true, 82 s, Errors: 0) now passes with an empty <Fields />, which is only legal when DynamicFields reads back as true - the previous run's full build failed here with 'The field list of the data source cannot be empty if the dynamic field is set to false'. The regenerated Contoso_AxQuery.md also carries the range (OwnerUserId / (currentUserId())) and Contoso_AxSecurityPolicy.md carries ConDemoTerritoryLine + its ConDemoTerritory TableRelation, so both children round-trip. STILL DEFECTIVE (why this is TOOL_DEFECT, not PASS): (1) there is still NO grounded route to author a query data-source RANGE. create(query) accepted properties.ranges[] and silently wrote <Ranges />, with no warning - the 8be57d7 'dropped optional parameter' honesty fix covers modify params only, not create properties.*; modify-property still rejects any Ranges path ('Supported: title, description, allowCrossCompany'). The range had to be written with an xmlContent overwrite, so the case is NOT 100% tool-path and the golden was deliberately NOT captured. (2) create(query) invents <Title>ConDemoTerritoryPolicyQuery</Title> from the object name - a literal, not a label id - which is a guaranteed BPErrorLabelIsText on every query the tool creates; none of the three platform policy queries inspected (EssMyAccessPolicyQuery, EventAlertForUser, DMFMyDefinitionGroups) emits <Title> at all. (3) create(security-policy) silently dropped properties.operation ('AllOperations', which platform writes as <Operation> between Label and PrimaryTable) and the child properties.constrainedTables[].constrained ('Yes', which EssMyAccessPolicy writes as <Constrained>Yes</Constrained> before <Name>); both are default-valued so the file still round-trips, but this is cluster #35 again. (4) add-index correctly reported allowDuplicates as an unrecognised parameter (8be57d7 working) but the retry with the correct name was swallowed by the idempotency check - 'already present, skipped' - so the corrected property never landed and the index had to be removed and re-added; an idempotent add that ignores changed properties is a silent no-op. ROUND-TRIP AUDIT (the four-run defect class): all four files were compared element-by-element against real platform elements and no misordered/invented/missing element remained - AxTableIndex correctly omits <AllowDuplicates> for a unique index (No is the serializer default; only Yes is written, verified across ApplicationFoundation/AxTable) and correctly writes <AlternateKey>Yes</AlternateKey>; AxTableRelation matches AuthenticationExtendedSessionTokenValidityConfiguration; AxSecurityPolicy element order matches EventInbox exactly. The only non-platform element left is the invented AxQuery <Title>. VALIDATOR_GAP observed (secondary): validate_code(references, xml-table) reports EDT 'UserId' as not found, but UserId is a kernel EDT used by 5+ ApplicationFoundation tables and compiles fine - kernel EDTs (UserId, RecId) are invisible to the index, so this is a false positive that would push an agent onto a wrong EDT. validate_code(references, xml-any) again resolved only 1 of the AxSecurityPolicy's 4 cross-references. ENV: ContosoDemo.rnrproj is still invalid XML, so every write used addToProject:false.",
+  "suggested_fix_area": "src/tools/generators/query: (a) support properties.ranges[] -> <AxQuerySimpleDataSourceRange>{Name,Field,Status?,Value} inside the data source's <Ranges>, and (b) stop inventing <Title> from the object name (omit it, as every platform policy query does, or require a label id). d365fo_file(action=create): extend the 8be57d7 dropped-parameter warning from modify params to create properties.* so ranges[]/operation/constrained are reported instead of dropped (cluster #35). bridge modify ops: add a query Ranges add/modify operation, and make add-index non-idempotent when the requested properties differ from the existing index instead of 'skipped'. src/tools/generators/securityPolicy: honour properties.operation and constrainedTables[].constrained. Reference resolver: seed the kernel/system EDTs (UserId, RecId, TableId, ...) so xml-table validation stops false-flagging them; teach xml-any the AxSecurityPolicy semantics (PrimaryTable, Query, ConstrainedTables/Name, TableRelation)."
+}
