@@ -1,0 +1,52 @@
+{
+  "run_id": "2026-07-23T16__L2-reflection-dict-fieldwalk__50e66d9",
+  "case_id": "L2-reflection-dict-fieldwalk",
+  "tier": 2,
+  "timestamp": "2026-07-23T16:33:56.383Z",
+  "server_git_sha": "50e66d9",
+  "generated_artifacts": [
+    "Contoso/AxClass/ConDemoReflectionUtil.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "KNOWLEDGE_GAP",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "get_knowledge(topic=\"reflection-dict\") ships a non-compiling example: both the rule line (\"DictClass: ... hasStaticMethod(), makeObject()\") and the \"Runtime enum label + guarded dynamic call\" example call hasStaticMethod() on the KERNEL class DictClass. xppc rejects it: \"ClassDoesNotContainMethod: Class 'DictClass' does not contain a definition for method 'hasStaticMethod'\". hasStaticMethod()/hasObjectMethod() live on the APPLICATION-layer wrapper SysDictClass (ApplicationPlatform, signature: boolean hasStaticMethod(IdentifierName methodName)), which derives from DictClass, so `new SysDictClass(_classId)` + inherited callStatic() is the compiling shape. The case instruction inherits the same error (\"constructs a DictClass ... after hasStaticMethod() returned true\"). Secondary: validate_code(mode=\"references\") passed the bad call silently — kernel Dict* types have no AOT XML and are absent from the symbol index, so member/arity checking degrades to a no-op there (the mirror image of the known kernel-type unknown-type false positive).",
+  "suggested_fix_area": "knowledge base: src knowledge topic 'reflection-dict' — correct the DictClass rule line and the guarded-dynamic-call example to SysDictClass (and note DictClass has no has*Method); plus eval/cases/L2-reflection-dict-fieldwalk.json instruction wording.",
+  "evidence_refs": [
+    "xppc error: ConDemoReflectionUtil.Method/runIfPresent (51,13) ClassDoesNotContainMethod DictClass.hasStaticMethod",
+    "search(type=\"method\",\"hasStaticMethod\") -> SysDictClass.hasStaticMethod(IdentifierName), ERXppClass, TaxableDocumentERClassSkeleton — no DictClass",
+    "eval/goldens/L2-reflection-dict-fieldwalk/DemoReflectionUtil.AxClass.metadata.xml"
+  ]
+}

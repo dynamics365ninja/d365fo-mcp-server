@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-sysextension-plugin (1 of 5): the extensible base enum keying the plug-in family. UseEnumValue=No is required by xppc alongside IsExtensible=true. Labels are real @Contoso:* label ids (label file created via labels(action=create)). Captured 2026-07-23, SHA 50e66d9. -->
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoChannelType</Name>
+	<Label>@Contoso:DemoChannelType</Label>
+	<UseEnumValue>No</UseEnumValue>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>Web</Name>
+			<Label>@Contoso:DemoChannelWeb</Label>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Store</Name>
+			<Label>@Contoso:DemoChannelStore</Label>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Partner</Name>
+			<Label>@Contoso:DemoChannelPartner</Label>
+		</AxEnumValue>
+	</EnumValues>
+	<IsExtensible>true</IsExtensible>
+</AxEnum>

@@ -8,7 +8,6 @@
     "AxEnum"
   ],
   "golden_path": "eval/goldens/L2-sysextension-plugin/",
-  "golden_pending": true,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

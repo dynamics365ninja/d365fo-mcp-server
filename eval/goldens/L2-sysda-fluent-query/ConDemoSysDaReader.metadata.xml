@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-sysda-fluent-query: SysDa fluent query API - SysDaQueryObject over CustTable with projection().add + whereClause(SysDaEqualsExpression), executed via SysDaSearchObject/SysDaSearchStatement.next(). Signatures confirmed against ApplicationPlatform via get_object_info. Captured 2026-07-23, SHA 50e66d9. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoSysDaReader</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Reads customer data through the SysDa fluent data access API instead of an X++ select statement.
+/// </summary>
+public class ConDemoSysDaReader
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>blockedCustomerAccounts</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Collects the account numbers of the customers that are not blocked.
+    /// </summary>
+    /// <returns>
+    /// A container that holds one account number per non blocked customer.
+    /// </returns>
+    /// <remarks>
+    /// The query is built with the SysDa fluent API and executed through a SysDaSearchObject.
+    /// </remarks>
+    public static container blockedCustomerAccounts()
+    {
+        CustTable               custTable;
+        container               accounts;
+        SysDaQueryObject        queryObject;
+        SysDaSearchObject       searchObject;
+        SysDaSearchStatement    searchStatement;
+
+        queryObject = new SysDaQueryObject(custTable);
+        queryObject.projection().add(fieldStr(CustTable, AccountNum));
+        queryObject.whereClause(new SysDaEqualsExpression(
+        new SysDaFieldExpression(custTable, fieldStr(CustTable, Blocked)),
+        new SysDaValueExpression(enum2int(CustVendorBlocked::No))));
+
+        searchObject    = new SysDaSearchObject(queryObject);
+        searchStatement = new SysDaSearchStatement();
+
+        while (searchStatement.next(searchObject))
+        {
+            accounts += custTable.AccountNum;
+        }
+
+        return accounts;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

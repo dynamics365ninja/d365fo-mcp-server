@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-sysextension-plugin (4 of 5): concrete handler decorated with the class-level attribute. The [ConDemoChannelAttribute(ConDemoChannelType::Web)] decoration lives INSIDE the Declaration CDATA - there is no AxClass element for it (verified against BankDocumentDocTypeSummarizedTrans.xml). Captured 2026-07-23, SHA 50e66d9. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoChannelHandlerWeb</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Channel handler for the web sales channel.
+/// </summary>
+[ConDemoChannelAttribute(ConDemoChannelType::Web)]
+public class ConDemoChannelHandlerWeb extends ConDemoChannelHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>describe</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Describes the web channel.
+    /// </summary>
+    /// <returns>A label describing the web channel.</returns>
+    public str describe()
+    {
+        return "@Contoso:DemoChannelWebDescription";
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

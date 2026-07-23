@@ -7,7 +7,6 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L2-dotnet-interop-clrerror/",
-  "golden_pending": true,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

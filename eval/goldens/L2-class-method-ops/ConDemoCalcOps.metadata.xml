@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L2-class-method-ops (ConDemoCalcOps)
+  Captured: 2026-07-23, server SHA: 50e66d9
+  Platform: xppc 7.0.7858.27, EXTENSION_PREFIX=Con, model Contoso
+  Produced EXCLUSIVELY via d365fo_file action=create (declaration/fields only)
+  + action=modify operations (add-method, replace-code, remove-method,
+  add-table-method, add-display-method). Full build: 0 errors.
+  Verified element-by-element against ApplicationSuite/Foundation/AxTable/SalesParmSubTable.xml
+  and ApplicationPlatform/AxClass/SysGlobalCache.xml (top-level element order,
+  field XML shape, 4-space method-source indentation) and round-tripped through
+  IMetadataProvider (get_object_info) to prove nothing is silently dropped.
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCalcOps</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoCalcOps
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>multiply</Name>
+				<Source><![CDATA[
+    public int multiply(int _a, int _b)
+    {
+        return _a * _b;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    public static ConDemoCalcOps construct()
+    {
+        return new ConDemoCalcOps();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

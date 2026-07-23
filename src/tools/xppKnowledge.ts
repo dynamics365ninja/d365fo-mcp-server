@@ -2130,7 +2130,9 @@ public void post()
       'Use "select/while select" for static, known-at-compile-time queries (cleaner, faster to read, compile-time field validation).',
     rules: [
       'SysDaQueryObject: root query builder — set table buffer via constructor: new SysDaQueryObject(custTable)',
-      'SysDaSearchObject / SysDaSearchStatement: execute query and populate buffers in a while loop via nextRecord()',
+      'SysDaSearchObject / SysDaSearchStatement: a SysDaQueryObject is NOT executable on its own — wrap it first (new SysDaSearchObject(queryObject)), then loop with searchStatement.next(searchObject). The iterator methods take a SysDaSearchObject, never the SysDaQueryObject',
+      'SysDaSearchStatement.next() compiles but the compiler marks it obsolete in favour of findNext() — prefer findNext() when you can verify the signature on your platform version',
+      'An X++ enum passed to SysDaValueExpression must go through enum2int() — the parameter is System.Object and will not accept the enum directly',
       'SysDaFindObject / SysDaFindStatement: firstOnly equivalent — returns true/false, populates buffer',
       'SysDaUpdateObject / SysDaUpdateStatement: set-based update without row-by-row fetch',
       'SysDaInsertObject / SysDaInsertStatement: set-based insert from another query result',
@@ -2149,8 +2151,10 @@ qe.whereClause(new SysDaEqualsExpression(
     new SysDaFieldExpression(custTable, fieldStr(CustTable, AccountNum)),
     new SysDaValueExpression('US-001')
 ));
-var so = new SysDaSearchStatement();
-while (so.nextRecord(qe))
+// A query object is not executable — wrap it in a search object first.
+var so = new SysDaSearchObject(qe);
+var ss = new SysDaSearchStatement();
+while (ss.next(so))
 {
     info(custTable.AccountNum);
 }`,
@@ -2167,8 +2171,9 @@ qJoin.whereClause(new SysDaEqualsExpression(
 ));
 qMain.joinClause(SysDaJoinKind::InnerJoin, qJoin);
 
-var so = new SysDaSearchStatement();
-while (so.nextRecord(qMain))
+var so = new SysDaSearchObject(qMain);
+var ss = new SysDaSearchStatement();
+while (ss.next(so))
 {
     info(custTable.AccountNum);
 }`,
@@ -3014,14 +3019,14 @@ public static server str buildCsvLine(container _values)
       'Always seed the Dict* object from an intrinsic, not a string: new DictTable(tableNum(CustTable)), new DictField(tableNum(CustTable), fieldNum(CustTable, AccountNum)), new DictClass(classNum(MyClass)), new DictEnum(enumNum(NoYes))',
       'DictTable: name(), label(), fieldCnt(), fieldCnt2Id(i) → field id, fieldObject(fieldId) → DictField, makeRecord() → an empty buffer of that table',
       'DictField: name(), label(), baseType() (Types enum), enumId(), typeId() — the way to render a generic field/value pair with the right label',
-      'DictClass: name(), callObject(methodName, object) / callStatic(methodName, …) for dynamic dispatch, hasStaticMethod(), makeObject()',
+      'DictClass (kernel): name(), callObject(methodName, object) / callStatic(methodName, …) for dynamic dispatch, makeObject(). It does NOT have hasStaticMethod()/hasObjectMethod() — those live on the application-layer SysDictClass',
       'DictEnum: value2Label(value), value2Symbol(value), symbol2Value(symbol), values() — the correct way to display an enum whose type is only known at runtime',
       'SysDictTable / SysDictField / SysDictClass are the APPLICATION-layer wrappers over the kernel classes; they add security-aware and convenience helpers (SysDictTable::recordCount(), getLabelOrName(), fieldsRecursive()) — reach for them when the kernel class lacks a helper',
       'fieldId2Name()/fieldName2Id()/tableId2Name()/tableName2Id() are the lightweight lookups when only a name↔id translation is needed — no Dict* object required',
       'Reflection defeats the cross-reference: a table or method reached only through a Dict* call is invisible to "find references" and survives a rename as a runtime error. Keep the reflective surface small and covered by tests',
       'Reflective loops over every field are expensive per call — resolve metadata ONCE outside the record loop, never per row',
       'Dict* reads metadata only. It cannot create or modify AOT elements at runtime; design-time metadata authoring is the Microsoft.Dynamics.AX.Metadata API, not X++',
-      'A dynamic call whose target does not exist throws at runtime — guard with hasStaticMethod()/hasObjectMethod() before callStatic()/callObject()',
+      'A dynamic call whose target does not exist throws at runtime — guard it, but the guard needs SysDictClass: new SysDictClass(classId).hasStaticMethod(name) before callStatic(). SysDictClass extends DictClass, so the same object does both the check and the call',
     ],
     examples: [
       {
@@ -3058,7 +3063,8 @@ public static str enumLabel(EnumId _enumId, int _value)
 // Dynamic dispatch — guarded, so a missing method is a handled case
 public static void runIfPresent(ClassId _classId, str _methodName)
 {
-    DictClass dictClass = new DictClass(_classId);
+    // SysDictClass, not DictClass: hasStaticMethod() is application-layer only.
+    SysDictClass dictClass = new SysDictClass(_classId);
 
     if (dictClass.hasStaticMethod(_methodName))
     {

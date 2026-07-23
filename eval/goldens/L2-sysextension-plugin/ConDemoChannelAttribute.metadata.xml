@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-sysextension-plugin (2 of 5): the factory attribute - extends SysAttribute implements SysExtensionIAttribute, with new(enum), parm method, parmCacheKey and useSingleton. Shape verified against the shipped ApplicationSuite/Foundation/AxClass/BankDocumentTypeAttribute.xml. Captured 2026-07-23, SHA 50e66d9. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoChannelAttribute</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Binds a channel handler implementation to a <c>ConDemoChannelType</c> value.
+/// </summary>
+public class ConDemoChannelAttribute extends SysAttribute implements SysExtensionIAttribute
+{
+    ConDemoChannelType channel;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Initializes a new instance of the <c>ConDemoChannelAttribute</c> class.
+    /// </summary>
+    /// <param name = "_channel">The channel the decorated class handles.</param>
+    public void new(ConDemoChannelType _channel)
+    {
+        super();
+
+        this.parmChannel(_channel);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmChannel</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the channel the decorated class handles.
+    /// </summary>
+    /// <param name = "_channel">The channel the decorated class handles.</param>
+    /// <returns>The channel the decorated class handles.</returns>
+    public ConDemoChannelType parmChannel(ConDemoChannelType _channel = channel)
+    {
+        channel = _channel;
+
+        return channel;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCacheKey</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the key used for storing cached data for this attribute.
+    /// </summary>
+    /// <returns>A string representing the cache key.</returns>
+    public str parmCacheKey()
+    {
+        return classStr(ConDemoChannelAttribute) + ';' + int2str(enum2int(channel));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>useSingleton</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Determines if the same instance should be returned by the extension framework.
+    /// </summary>
+    /// <returns>false, because a new instance is created for every invocation.</returns>
+    public boolean useSingleton()
+    {
+        return false;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

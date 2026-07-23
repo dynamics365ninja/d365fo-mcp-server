@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-sysextension-plugin (5 of 5): second concrete handler, proving the family resolves by enum value alone. Captured 2026-07-23, SHA 50e66d9. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoChannelHandlerStore</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Channel handler for the retail store sales channel.
+/// </summary>
+[ConDemoChannelAttribute(ConDemoChannelType::Store)]
+public class ConDemoChannelHandlerStore extends ConDemoChannelHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>describe</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Describes the retail store channel.
+    /// </summary>
+    /// <returns>A label describing the retail store channel.</returns>
+    public str describe()
+    {
+        return "@Contoso:DemoChannelStoreDescription";
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 50 | 77 | 64.9% |
+| total | 54 | 77 | 70.1% |
 
 ## Data model (11/12)
 
@@ -28,31 +28,31 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (16/21)
+## Code (20/21)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
-| Class | core | ✅ | ✅ | ✅ | L1-class-basic |
+| Class | core | ✅ | ✅ | ✅ | L1-class-basic, L2-class-method-ops |
 | Interface / abstract class | core | ✅ | ✅ | ✅ | L2-interface-abstract-basic |
 | Chain of Command extension | core | ✅ | ✅ | ✅ | L2-coc-extension |
 | Event handler subscription | core | ✅ | ✅ | ✅ | L2-event-handler-basic |
 | Delegate | core | ✅ | ✅ | ✅ | L2-delegate-basic |
 | Macro | total | ✅ | — | ✅ | Knowledge entry teaches the legacy status and the modern replacement; eval case authored, golden pending VM capture. |
-| Transactions (ttsbegin/ttscommit) | core | ✅ | ✅ | ✅ | L2-form-modify-controls, L2-table-modify-lifecycle, L3-form-add-datasource-lines +1 |
+| Transactions (ttsbegin/ttscommit) | core | ✅ | ✅ | ✅ | L2-class-method-ops, L2-form-modify-controls, L2-table-modify-lifecycle +2 |
 | X++ select grammar | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-basic |
 | Set-based operations | core | ✅ | ✅ | ✅ | L4-ssrs-report-basic |
-| SysDa fluent query API | total | ✅ | — | ✅ | Eval case authored (SysDa fluent select); golden pending VM capture. |
+| SysDa fluent query API | total | ✅ | ✅ | ✅ | L2-sysda-fluent-query |
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
-| SysExtension plug-in pattern | total | ✅ | — | ✅ | Eval case authored (attribute-driven SysExtension factory); golden pending VM capture. |
+| SysExtension plug-in pattern | total | ✅ | ✅ | ✅ | L2-sysextension-plugin |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +25 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +25 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +30 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +30 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
 | Date/time & time zones (utcdatetime, DateTimeUtil) | total | ✅ | ✅ | ✅ | L2-datetime-timezone-range |
-| .NET interop (CLRInterop, using alias, CLRError) | total | ✅ | — | ✅ | Knowledge entry written (audit hole C8 closed); eval case authored, golden pending VM capture. |
-| Reflection / Dict* metadata API | total | ✅ | — | ✅ | Knowledge entry written (audit hole C9 closed); eval case authored, golden pending VM capture. |
+| .NET interop (CLRInterop, using alias, CLRError) | total | ✅ | ✅ | ✅ | L2-dotnet-interop-clrerror |
+| Reflection / Dict* metadata API | total | ✅ | ✅ | ✅ | L2-reflection-dict-fieldwalk |
 
 ## UI (6/7)
 
@@ -126,7 +126,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L3-batch-basic |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +25 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +30 |
 
 ## Closure queue (uncovered, by frequency weight)
 
@@ -137,7 +137,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 2 | Currency & exchange rates | missing E |
 | 2 | Data entity extension | missing E |
 | 2 | Data management framework (DMF/DIXF) | missing E |
-| 2 | .NET interop (CLRInterop, using alias, CLRError) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |
 | 2 | EDT extension | missing E |
 | 2 | Feature management | missing E |
@@ -146,15 +145,12 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 2 | Parallel batch processing | missing E |
 | 2 | Posting engine (LedgerVoucher) | missing E |
 | 2 | Print management | missing E |
-| 2 | Reflection / Dict* metadata API | missing E |
 | 2 | Multi-dataset SSRS report | missing E |
-| 2 | SysExtension plug-in pattern | missing E |
 | 1 | Aggregate measurements / analytics | missing E |
 | 1 | Direct SQL execution | missing E |
 | 1 | Electronic Reporting (ER) | missing E |
 | 1 | Macro | missing E |
 | 1 | Power Platform / virtual entities | missing E |
-| 1 | SysDa fluent query API | missing E |
 | 1 | Tiles & KPIs | missing E |
 | 1 | Trade agreements & pricing | missing E |
 | 1 | Warehouse management (WHS) | missing E |

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-sysextension-plugin (3 of 5): the abstract base whose static construct() resolves the implementation via SysExtensionAppClassFactory::getClassFromSysAttribute - NO switch over the enum. Two-argument call is legal: the third parameter _defaultInstantiation defaults to null (verified with get_method). Captured 2026-07-23, SHA 50e66d9. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoChannelHandler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Abstract base for channel handlers resolved through the SysExtension framework.
+/// </summary>
+public abstract class ConDemoChannelHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>describe</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Describes the channel handled by this implementation.
+    /// </summary>
+    /// <returns>A label describing the channel.</returns>
+    public abstract str describe()
+    {
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Resolves the handler implementation decorated for the specified channel.
+    /// </summary>
+    /// <param name = "_channel">The channel to resolve a handler for.</param>
+    /// <returns>An instance of <c>ConDemoChannelHandler</c>; otherwise, null.</returns>
+    public static ConDemoChannelHandler construct(ConDemoChannelType _channel)
+    {
+        ConDemoChannelHandler handler = SysExtensionAppClassFactory::getClassFromSysAttribute(
+        classStr(ConDemoChannelHandler),
+        new ConDemoChannelAttribute(_channel)) as ConDemoChannelHandler;
+
+        return handler;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

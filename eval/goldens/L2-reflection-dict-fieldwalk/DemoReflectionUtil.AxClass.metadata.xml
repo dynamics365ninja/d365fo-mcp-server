@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-reflection-dict-fieldwalk: runtime metadata API (DictTable field walk with the DictTable built once outside the loop, DictField.label() + dynamic _record.(fieldId) read, DictEnum.value2Label, guarded SysDictClass.hasStaticMethod -> callStatic). NOTE: hasStaticMethod() lives on the application-layer SysDictClass, NOT on the kernel DictClass - the kernel class does not expose it and code using DictClass.hasStaticMethod does not compile. Captured 2026-07-23, SHA 50e66d9. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoReflectionUtil</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Utility methods that exercise the runtime metadata (reflection) API: DictTable, DictField,
+/// DictEnum and DictClass.
+/// </summary>
+public class ConDemoReflectionUtil
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>dumpRecord</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Writes every non-system field of the supplied record to the infolog, using the field label
+    /// and the dynamically read field value.
+    /// </summary>
+    /// <param name = "_record">The record buffer to dump.</param>
+    public static void dumpRecord(Common _record)
+    {
+        DictTable dictTable = new DictTable(_record.TableId);
+        int       i;
+
+        for (i = 1; i <= dictTable.fieldCnt(); i++)
+        {
+            FieldId   fieldId   = dictTable.fieldCnt2Id(i);
+            DictField dictField = dictTable.fieldObject(fieldId);
+
+            if (!dictField || dictField.isSystem())
+            {
+                continue;
+            }
+
+            info(strFmt('%1: %2', dictField.label(), _record.(fieldId)));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>enumLabel</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Resolves the label of an enum value whose enum type is only known at runtime.
+    /// </summary>
+    /// <param name = "_enumId">The id of the enum.</param>
+    /// <param name = "_value">The enum value.</param>
+    /// <returns>The label of the enum value.</returns>
+    public static str enumLabel(EnumId _enumId, int _value)
+    {
+        DictEnum dictEnum = new DictEnum(_enumId);
+
+        return dictEnum.value2Label(_value);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runIfPresent</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Calls a static method on the supplied class, but only when that method actually exists.
+    /// </summary>
+    /// <param name = "_classId">The id of the class to call.</param>
+    /// <param name = "_methodName">The name of the static method to call.</param>
+    public static void runIfPresent(ClassId _classId, str _methodName)
+    {
+        SysDictClass dictClass = new SysDictClass(_classId);
+
+        if (dictClass.hasStaticMethod(_methodName))
+        {
+            dictClass.callStatic(_methodName);
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
