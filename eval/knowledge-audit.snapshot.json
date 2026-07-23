@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-07-22T14:00:01.925Z",
-  "indexedAt": "2026-07-22T03:54:37.010Z",
+  "capturedAt": "2026-07-23T12:34:56.804Z",
+  "indexedAt": "2026-07-23T11:27:43.481Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
     "alerts-business-events|attribute|DataContractAttribute",
@@ -120,12 +120,12 @@
     "global-address-book|static-call|LogisticsElectronicAddressMethodType::Email",
     "global-address-book|static-call|NoYes::Yes",
     "inventory-management|declaration|InventDim",
+    "inventory-management|declaration|InventDimParm",
     "inventory-management|declaration|InventOnHand",
     "inventory-management|declaration|Qty",
     "inventory-management|static-call|InventDim::findOrCreate",
     "inventory-management|static-call|InventDimParm::activeDimFlag",
     "inventory-management|static-call|InventOnHand::newItemDim",
-    "inventory-management|static-call|InventTable::find",
     "multi-company|declaration|CustTable",
     "multi-company|static-call|CompanyInfo::current",
     "number-sequences|attribute|ExtensionOf",
