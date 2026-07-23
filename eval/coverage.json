@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 54,
-    "percent": 70.1
+    "covered": 56,
+    "percent": 72.7
   },
   "leaves": [
     {
@@ -62,10 +62,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-edt-extension-basic"
+      ]
     },
     {
       "id": "enum",
@@ -259,10 +261,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L1-macro-library-flight"
+      ]
     },
     {
       "id": "transactions",
@@ -389,6 +393,7 @@
         "L1-form-simplelistdetails",
         "L1-form-tableofcontents",
         "L1-form-workspace",
+        "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
@@ -398,6 +403,7 @@
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-dotnet-interop-clrerror",
+        "L2-edt-extension-basic",
         "L2-interface-abstract-basic",
         "L2-license-code-configkey",
         "L2-numberseq-basic",
@@ -435,6 +441,7 @@
         "L1-form-simplelistdetails",
         "L1-form-tableofcontents",
         "L1-form-workspace",
+        "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
@@ -444,6 +451,7 @@
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-dotnet-interop-clrerror",
+        "L2-edt-extension-basic",
         "L2-interface-abstract-basic",
         "L2-license-code-configkey",
         "L2-numberseq-basic",
@@ -1139,6 +1147,7 @@
         "L1-form-simplelistdetails",
         "L1-form-tableofcontents",
         "L1-form-workspace",
+        "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
@@ -1148,6 +1157,7 @@
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-dotnet-interop-clrerror",
+        "L2-edt-extension-basic",
         "L2-interface-abstract-basic",
         "L2-license-code-configkey",
         "L2-numberseq-basic",

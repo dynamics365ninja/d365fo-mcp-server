@@ -1,0 +1,48 @@
+{
+  "run_id": "2026-07-23T18__L1-macro-library-flight__b7abafe",
+  "case_id": "L1-macro-library-flight",
+  "tier": 1,
+  "timestamp": "2026-07-23T18:08:40.624Z",
+  "server_git_sha": "b7abafe",
+  "generated_artifacts": [
+    "ConDemoFlightReader.metadata.xml",
+    "ConDemoModuleFlights.metadata.xml"
+  ],
+  "build": {
+    "succeeded": false,
+    "errors": [],
+    "bp_checked": false,
+    "bpWarnings": null
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "DemoFlightReader.metadata.xml::AxClass/SourceCode/Declaration",
+        "expected": "public class PFXDemoFlightReader\n{\n    #PFXDemoModuleFlights\n}",
+        "actual": "public class PFXDemoFlightReader\n{\n}"
+      }
+    ]
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": null,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "createD365File.ts extractInnerClassMethods() rebuilds the class <Declaration> from only the lines it recognises as member variables (endsWith(\";\")). A macro include directive in the class declaration (e.g. #ConDemoModuleFlights, and by the same rule #localmacro/#endmacro/#define blocks) has no trailing semicolon, so it is silently dropped. The class then references #DemoFastPostingFlight with no library included and fails to compile (undefined macro). The AxMacroDictionary writer itself is correct: <Macros /> present, CRLF encoded as &#xD;, trailing &#xD; on the last #define — the macro artifact matched the golden byte-for-byte.",
+  "suggested_fix_area": "src/tools/createD365File.ts — extractInnerClassMethods()/splitXppClassSource() declaration reconstruction: preserve non-member declaration lines (lines starting with # — macro includes and #localmacro/#endmacro/#define/#if blocks, and using directives) in <Declaration> instead of keeping only endsWith(\";\") member vars.",
+  "evidence_refs": [
+    "eval/goldens/L1-macro-library-flight/ConDemoFlightReader.metadata.xml",
+    "src/tools/createD365File.ts:456-556"
+  ]
+}

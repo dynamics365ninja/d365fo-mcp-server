@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoFlightReader</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoFlightReader
+{
+    #ConDemoModuleFlights
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>isFastPostingEnabled</Name>
+				<Source><![CDATA[
+    public static boolean isFastPostingEnabled()
+    {
+        return Global::isFlightEnabled(#DemoFastPostingFlight);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
