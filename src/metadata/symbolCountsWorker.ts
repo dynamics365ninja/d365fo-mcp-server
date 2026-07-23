@@ -3,7 +3,7 @@
  *
  * COUNT(*) / GROUP BY over the symbols table is a full index scan — on a
  * 2 GB production database with a cold OS file cache it takes 30-60+ seconds.
- * better-sqlite3 is synchronous, so running it on the main thread blocks the
+ * node:sqlite is synchronous, so running it on the main thread blocks the
  * event loop and the MCP server cannot answer tools/list or the first tool
  * call; the client (VS Code Copilot) times out after 60 s and kills the
  * server. Running the scan here, on a separate thread with its own read-only
@@ -14,7 +14,7 @@
  */
 
 import { parentPort, workerData } from 'node:worker_threads';
-import Database from 'better-sqlite3';
+import Database from '../database/sqlite.js';
 
 const { dbPath } = workerData as { dbPath: string };
 

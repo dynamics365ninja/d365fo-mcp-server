@@ -200,7 +200,7 @@ Index refresh is automated via [Azure DevOps pipelines](PIPELINES.md); the App S
 |-------|-----------|
 | Runtime | Node.js ≥ 24, TypeScript 6 (strict) |
 | Transport | MCP SDK — stdio + Express 5 HTTP |
-| Storage | better-sqlite3 (WAL, FTS5) |
+| Storage | node:sqlite (WAL, FTS5) — core module, no native addon |
 | Bridge | .NET Framework 4.8, Microsoft.Dynamics.AX.Metadata DLLs |
 | Tests | Vitest — 1400+ tests, golden quality-gate suites |
 | CI/CD | GitHub Actions (app), Azure DevOps (metadata pipelines) |

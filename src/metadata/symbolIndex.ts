@@ -3,7 +3,7 @@
  * SQLite-based symbol indexing with FTS5 full-text search
  */
 
-import Database from 'better-sqlite3';
+import Database, { type Statement } from '../database/sqlite.js';
 import { Worker } from 'node:worker_threads';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -26,10 +26,10 @@ export interface SymbolCounts {
 }
 
 export class XppSymbolIndex {
-  public db: Database.Database; // Public for direct pragma access in build scripts
-  public labelsDb: Database.Database; // Separate DB for labels (performance optimization)
-  private stmtCache: Map<string, Database.Statement> = new Map();
-  private labelsStmtCache: Map<string, Database.Statement> = new Map();
+  public db: Database; // Public for direct pragma access in build scripts
+  public labelsDb: Database; // Separate DB for labels (performance optimization)
+  private stmtCache: Map<string, Statement> = new Map();
+  private labelsStmtCache: Map<string, Statement> = new Map();
   // Buffer for property_stats observations — flushed once per model (batch INSERT)
   // Key: "nodeType|property|value|model", Value: accumulated count
   private propStatBuffer: Map<string, number> = new Map();
@@ -43,8 +43,8 @@ export class XppSymbolIndex {
   // Read-only connection pool: WAL mode allows N readers + 1 writer without
   // blocking each other. Pool size: READ_POOL_SIZE env var (default 3, clamped 1-8).
   // Not used for :memory: databases (each connection would be a separate empty DB).
-  private readPool: Database.Database[] = [];
-  private labelsReadPool: Database.Database[] = [];
+  private readPool: Database[] = [];
+  private labelsReadPool: Database[] = [];
   private readPoolRR = 0;
   // Symbol-count scans are expensive (full index scan of 1M+ rows, 30-60 s
   // cold) — memoize the result and compute it off-thread (see getSymbolCounts).
@@ -53,7 +53,7 @@ export class XppSymbolIndex {
   private symbolCountsPromise: Promise<SymbolCounts> | null = null;
   // Per-connection prepared-statement cache.  Prepared statements are bound to
   // their originating connection and cannot be shared across connections.
-  private perConnStmtCache = new WeakMap<Database.Database, Map<string, Database.Statement>>();
+  private perConnStmtCache = new WeakMap<Database, Map<string, Statement>>();
 
   constructor(dbPath: string, labelsDbPath?: string) {
     this.dbPath = dbPath;
@@ -137,7 +137,7 @@ export class XppSymbolIndex {
    * Tool handlers should use this instead of accessing `db` directly
    * to benefit from read-pool parallelism and per-connection stmt caching.
    */
-  getReadDb(): Database.Database {
+  getReadDb(): Database {
     if (this.readPool.length === 0) return this.db;
     return this.readPool[this.readPoolRR++ % this.readPool.length];
   }
@@ -169,10 +169,10 @@ export class XppSymbolIndex {
    * for repeated queries — avoids re-preparing the same SQL on every call.
    */
   getReadStmt(
-    db: Database.Database,
+    db: Database,
     key: string,
     buildSql: () => string
-  ): Database.Statement {
+  ): Statement {
     let cache = this.perConnStmtCache.get(db);
     if (!cache) {
       cache = new Map();
@@ -1030,7 +1030,7 @@ export class XppSymbolIndex {
    * Get symbol count.
    *
    * WARNING: without a warm cache this is a full index scan — 30-60 s on a
-   * large production DB with a cold file cache, and better-sqlite3 blocks the
+   * large production DB with a cold file cache, and node:sqlite blocks the
    * event loop for the whole scan. Server request paths must use
    * getSymbolCounts() (off-thread) or getCachedSymbolCounts() instead; the
    * synchronous form is for build scripts and post-indexing logging where the
@@ -1325,7 +1325,7 @@ export class XppSymbolIndex {
    * the database being written and, when the drive is the likely cause, how
    * much room is left on it.
    *
-   * A full disk makes SQLite roll the transaction back itself, so better-sqlite3's
+   * A full disk makes SQLite roll the transaction back itself, so our transaction
    * wrapper then fails to COMMIT and the only thing the user sees is
    * "cannot commit - no transaction is active" with a stack inside the library —
    * no path, no mention of space. That message sent at least one user hunting
@@ -2153,7 +2153,7 @@ export class XppSymbolIndex {
         });
 
         for (const ep of entryPoints) {
-          // Skip malformed entry points — missing name causes "Too few parameter values" in better-sqlite3
+          // Skip malformed entry points — missing name causes a bind error in node:sqlite
           if (!ep.name) continue;
           // Safeguard: accessLevel may be an object in older JSONs extracted before
           // xmlParser normalisation was added. Serialize to string.

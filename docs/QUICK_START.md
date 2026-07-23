@@ -84,7 +84,6 @@ claude mcp add-json --scope user d365fo-mcp-tools '{"type":"http","url":"https:/
 | .NET SDK | pre-installed on D365FO VMs, else [dotnet.microsoft.com](https://dotnet.microsoft.com/download) | C# bridge (writes) |
 | Node.js 24.x LTS | [nodejs.org](https://nodejs.org), or `Install-D365SupportingSoftware -Name node.js` | installed for you by the one-liner |
 | Git | [git-scm.com](https://git-scm.com) | only for a git-checkout installation, or to work on the source |
-| Python 3.x | option in the Node.js installer | only if npm cannot fetch a prebuilt `better-sqlite3` binary and has to compile it |
 
 ## 2. Install
 

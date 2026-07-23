@@ -228,7 +228,7 @@ async function initializeServices() {
 
     // Yield event loop so any pending MCP protocol messages (initialize exchange,
     // roots/list, first tool call) can be queued before new Database() blocks.
-    // better-sqlite3 open is synchronous — a 1.5 GB file can stall the loop for
+    // Opening a SQLite database is synchronous — a 1.5 GB file can stall the loop for
     // several seconds, causing the first client request to time out and cancel.
     await new Promise<void>(r => setImmediate(r));
 

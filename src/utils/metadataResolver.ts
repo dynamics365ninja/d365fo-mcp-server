@@ -265,7 +265,7 @@ export async function resolveDbPathLocally(dbFilePath: string): Promise<string |
  * Query the symbol index DB to find what top-level types a given name exists as.
  * Ignores 'method' and 'field' rows — those are children, not top-level objects.
  *
- * @param db - better-sqlite3 Database instance (symbolIndex.db)
+ * @param db - SQLite Database instance (symbolIndex.db)
  * @param name - the object name to look up
  */
 export function detectObjectTypeInDb(
@@ -293,7 +293,7 @@ export function detectObjectTypeInDb(
  *
  * Returns an empty string when no mismatch is detected.
  *
- * @param db           - better-sqlite3 Database instance
+ * @param db           - SQLite Database instance
  * @param name         - the object name that was not found
  * @param expectedType - the type that was searched for (default: 'class')
  */

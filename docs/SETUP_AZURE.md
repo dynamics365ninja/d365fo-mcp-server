@@ -119,17 +119,15 @@ For a **manual one-time deploy** (from your Windows machine):
    cd d365fo-mcp-server
    npm install
    npm run build
-   # Include node_modules — must be compiled for Linux (native better-sqlite3 addon)
-   # If building on Windows, use WSL2 or a Linux Docker container for npm install
+   # node_modules is portable: the server has no native addons (SQLite comes from node:sqlite)
    Compress-Archive -Path dist, node_modules, package.json, package-lock.json, startup.sh `
      -DestinationPath deploy.zip
    ```
 
 2. Upload via the Portal: Web App → **Deployment Center** → **Deploy** → upload `deploy.zip`.
 
-> **Important:** `better-sqlite3` is a native module that must be compiled for Linux. `node_modules` built on Windows will crash the server.
-> Use the **Azure DevOps pipeline** (recommended) — it builds on `ubuntu-latest`, which shares the same glibc as App Service Linux, so the compiled binaries are compatible.
-> `SCM_DO_BUILD_DURING_DEPLOYMENT` is set to `false` because App Service Linux has no gcc/make to rebuild native addons.
+> **Note:** the server has no native addons, so a `node_modules` produced on Windows runs unchanged on App Service Linux — build the zip wherever is convenient.
+> `SCM_DO_BUILD_DURING_DEPLOYMENT` stays `false`: the dependencies are already in the zip and nothing needs compiling on the host.
 
 ---
 

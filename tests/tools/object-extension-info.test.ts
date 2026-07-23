@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import Database from 'better-sqlite3';
+import Database from '../../src/database/sqlite.js';
 import { getObjectInfoTool } from '../../src/tools/getObjectInfo';
 import {
   READER_DISPATCH,

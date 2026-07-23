@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import Database from '../../src/database/sqlite.js';
 import { tryBridgeSearch } from '../../src/bridge/bridgeAdapter';
 import type { BridgeClient } from '../../src/bridge/bridgeClient';
 import { rankExactFirst, exactMatchRank } from '../../src/utils/exactMatchRanking';

@@ -6,7 +6,7 @@
 import { BlobServiceClient } from '@azure/storage-blob';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import Database from 'better-sqlite3';
+import Database from './sqlite.js';
 
 interface DownloadOptions {
   connectionString?: string;
