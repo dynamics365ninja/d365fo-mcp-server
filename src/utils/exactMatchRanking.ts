@@ -45,3 +45,37 @@ export function rankExactFirst<T>(query: string, items: T[], nameOf: (item: T) =
     .sort((a, b) => (a.rank - b.rank) || (a.idx - b.idx))
     .map(entry => entry.item);
 }
+
+/**
+ * Ranking that keeps exact-name matches first but additionally prioritizes
+ * custom/ISV-model symbols directly after them, ahead of the far larger
+ * Microsoft standard corpus.
+ *
+ * Motivation: a broad keyword fills the C# bridge's fixed result window
+ * (`maxResults`) in provider-enumeration order, which is dominated by Microsoft
+ * standard objects, so custom matches that enumerate later get truncated and
+ * the search appears to "return only Microsoft objects". Surfacing custom hits
+ * into their own band guarantees they are visible regardless of window size.
+ *
+ * Tiers (lower first):
+ *   0 = exact name match (any model — an exact Microsoft hit still wins)
+ *   1 = custom-model hit
+ *   2 = everything else
+ * Within a tier the name-quality rank and original order are preserved (stable),
+ * so bridge/FTS relevance is untouched where it says nothing about equality.
+ */
+export function rankCustomFirst<T>(
+  query: string,
+  items: T[],
+  nameOf: (item: T) => string,
+  isCustom: (item: T) => boolean,
+): T[] {
+  return items
+    .map((item, idx) => {
+      const rank = exactMatchRank(query, nameOf(item));
+      const tier = rank <= 1 ? 0 : isCustom(item) ? 1 : 2;
+      return { item, idx, tier, rank };
+    })
+    .sort((a, b) => (a.tier - b.tier) || (a.rank - b.rank) || (a.idx - b.idx))
+    .map(entry => entry.item);
+}
