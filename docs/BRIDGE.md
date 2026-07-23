@@ -215,6 +215,24 @@ feed, add the public source explicitly:
 dotnet build -c Release -p:D365BinPath="<FrameworkDirectory>\bin" --source https://api.nuget.org/v3/index.json
 ```
 
+### Rebuilding while the bridge is running
+
+`bin/Release/D365MetadataBridge.exe` is locked by the running bridge child process, so a rebuild
+fails with `MSB3027`. Build to a scratch directory and drive that exe directly; the committed
+binary only needs replacing when the MCP server restarts:
+
+```powershell
+dotnet build -c Release -p:OutputPath=K:\tmp\bridge-work\
+```
+
+Without this the build appears to succeed against the old binary and the change silently does
+not take effect.
+
+### Driving the bridge by hand
+
+`BridgeRequest.Id` is typed as **string** — a numeric `id` is a JSON parse error, not a mismatched
+response. Each read method also has its own parameter name (`edtName`, not a generic `name`).
+
 ### Metamodel version mismatch
 
 The bridge compiles against the `Microsoft.Dynamics.*` assemblies in `D365BinPath` but loads
