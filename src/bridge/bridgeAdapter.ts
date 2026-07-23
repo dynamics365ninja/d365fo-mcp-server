@@ -15,6 +15,7 @@ import type { BridgeClient } from './bridgeClient.js';
 import * as debouncedRefresh from './debouncedRefresh.js';
 import { debugLog } from '../utils/logger.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
+import { parseXppDeclaration } from '../metadata/xppDeclaration.js';
 import { rankCustomFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
 import type {
   BridgeTableInfo,
@@ -159,6 +160,40 @@ export async function tryBridgeClass(
   }
 }
 
+/**
+ * The one-line signature shown per method in the compact class view.
+ *
+ * This used to be `source.split('\n')[0]`, which for any method whose body opens
+ * with an XML doc comment rendered the METHOD NAME as `/// <summary>`: on
+ * Foundation's CustVendVoucher, 14 of the first 15 methods came out that way
+ * (L2-datetime-timezone-range run). Every documented platform class was
+ * therefore unreadable through the default grounding path, while the sibling
+ * `options={members:"names"}` path answered correctly.
+ *
+ * The declaration is located with the shared X++ parser, which handles
+ * parameter lists wrapped across lines; only if that fails do we fall back to
+ * the first line that is neither blank, nor a comment, nor an attribute — and
+ * finally to the name the metadata itself carries, which is never wrong.
+ */
+export function methodSignatureLine(name: string, source?: string): string {
+  if (!source) return name;
+
+  const decl = parseXppDeclaration(source, name);
+  if (decl) {
+    const params = decl.parameters
+      .map(p => `${p.type} ${p.name}${p.defaultValue ? ` = ${p.defaultValue}` : ''}`)
+      .join(', ');
+    const mods = decl.modifiers.length ? `${decl.modifiers.join(' ')} ` : '';
+    return `${mods}${decl.returnType} ${decl.name}(${params})`;
+  }
+
+  const firstCode = source
+    .split('\n')
+    .map(l => l.trim())
+    .find(l => l && !l.startsWith('///') && !l.startsWith('//') && !l.startsWith('/*') && !l.startsWith('*') && !l.startsWith('['));
+  return firstCode || name;
+}
+
 function formatClass(cls: BridgeClassInfo, compact: boolean, methodOffset: number): string {
   const modifiers: string[] = [];
   if (cls.isFinal) modifiers.push('final');
@@ -188,9 +223,7 @@ function formatClass(cls: BridgeClassInfo, compact: boolean, methodOffset: numbe
 
   for (const m of visible) {
     if (compact) {
-      // Signature-only: extract first line of source for signature
-      const sig = m.source ? m.source.split('\n')[0].trim() : m.name;
-      out += `- \`${sig}\`\n`;
+      out += `- \`${methodSignatureLine(m.name, m.source)}\`\n`;
     } else {
       out += `### ${m.name}\n\n`;
       if (m.source) {

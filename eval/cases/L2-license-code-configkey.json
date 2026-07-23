@@ -8,7 +8,7 @@
     "AxConfigurationKey"
   ],
   "golden_path": "eval/goldens/L2-license-code-configkey/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

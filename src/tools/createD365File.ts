@@ -2938,6 +2938,7 @@ public final class ${contractName} extends BusinessEventsContract
 <AxMacroDictionary xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
 \t<Source>${source}</Source>
+\t<Macros />
 </AxMacroDictionary>`;
   }
 
@@ -2995,9 +2996,46 @@ public final class ${contractName} extends BusinessEventsContract
   }
 
   /**
+   * The aggregation of an <AxMeasure>, as the contract actually spells it.
+   *
+   * The element is <DefaultAggregate> — `AggregateFunction` appears NOWHERE in
+   * PackagesLocalDirectory, and an unknown child element is DROPPED SILENTLY by
+   * the deserializer: the L3-aggregate-measurement-basic run built green while
+   * the measure fell back to Sum, with nothing anywhere reporting the loss.
+   *
+   * The enum is not the SQL vocabulary either — the platform's 531 measures use
+   * only Sum (495), DistinctCount (23), AverageOfChildren (10), Max (2), Min (1).
+   * "Avg" and "Count" are accepted as aliases because that is what a caller
+   * (and every BI doc) reaches for; anything else is refused rather than written
+   * out to be dropped.
+   */
+  static resolveDefaultAggregate(value: string | undefined, measureName: string): string {
+    const LEGAL = ['Sum', 'DistinctCount', 'AverageOfChildren', 'Max', 'Min'];
+    const ALIASES: Record<string, string> = {
+      avg: 'AverageOfChildren',
+      average: 'AverageOfChildren',
+      averageofchildren: 'AverageOfChildren',
+      count: 'DistinctCount',
+      distinctcount: 'DistinctCount',
+      sum: 'Sum',
+      max: 'Max',
+      min: 'Min',
+    };
+    if (value === undefined || value === null || value === '') return 'Sum';
+    const resolved = ALIASES[String(value).trim().toLowerCase()];
+    if (!resolved) {
+      throw new Error(
+        `Measure "${measureName}": DefaultAggregate "${value}" is not a legal aggregation. ` +
+        `Use one of ${LEGAL.join(', ')} (Avg/Average map to AverageOfChildren, Count to DistinctCount).`
+      );
+    }
+    return resolved;
+  }
+
+  /**
    * Generate aggregate-measurement XML (AxAggregateMeasurement).
    * One measure group per fact table/entity: Attributes are the slicing keys,
-   * Measures the aggregated fields (Sum/Count/Min/Max/Avg).
+   * Measures the aggregated fields (see resolveDefaultAggregate for the enum).
    */
   static generateAxAggregateMeasurementXml(name: string, properties?: Record<string, any>): string {
     const usage = properties?.usage || 'StagedEntityStore';
@@ -3005,7 +3043,7 @@ public final class ${contractName} extends BusinessEventsContract
       name: string;
       table: string;
       attributes?: Array<{ name: string; field?: string; nameField?: string }>;
-      measures?: Array<{ name: string; field: string; aggregateFunction?: string }>;
+      measures?: Array<{ name: string; field: string; defaultAggregate?: string; aggregateFunction?: string }>;
     }> = Array.isArray(properties?.measureGroups) ? properties!.measureGroups : [];
 
     const groupXml = groups.map(group => {
@@ -3023,7 +3061,10 @@ public final class ${contractName} extends BusinessEventsContract
 
       const measures = (group.measures ?? []).map(measure => `\t\t\t\t<AxMeasure>
 \t\t\t\t\t<Name>${measure.name}</Name>
-\t\t\t\t\t<AggregateFunction>${measure.aggregateFunction ?? 'Sum'}</AggregateFunction>
+\t\t\t\t\t<DefaultAggregate>${XmlTemplateGenerator.resolveDefaultAggregate(
+        measure.defaultAggregate ?? measure.aggregateFunction,
+        measure.name,
+      )}</DefaultAggregate>
 \t\t\t\t\t<Field>${measure.field}</Field>
 \t\t\t\t</AxMeasure>`).join('\n');
 
@@ -3750,6 +3791,30 @@ export class ProjectFileManager {
       );
       return null;
     }
+  }
+}
+
+/**
+ * Bring a bridge-written artifact to the line endings the MS serializer uses.
+ *
+ * The bridge writes the XML skeleton with CRLF but leaves the X++ inside
+ * `<![CDATA[ ]]>` on bare LF, so a freshly created class is mixed-EOL (34 CRLF /
+ * 98 LF when the L2-collections-map-list-container run measured it) while every
+ * AxClass on disk is pure CRLF. It compiles either way, but the first
+ * `modify` re-serialises the whole file to CRLF — so the artifact CHANGES
+ * without anyone editing it, and a golden captured from a create churns on the
+ * next touch. Every modify path already writes through normalizeD365Xml; this
+ * closes the create half.
+ *
+ * Best-effort by design: a normalization failure must not fail a successful create.
+ */
+async function normalizeCreatedArtifactEol(filePath: string): Promise<void> {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const normalized = normalizeD365Xml(raw);
+    if (normalized !== raw) await fs.writeFile(filePath, normalized, 'utf-8');
+  } catch (err) {
+    console.error(`[create_d365fo_file] EOL normalization skipped for ${filePath}: ${err}`);
   }
 }
 
@@ -4593,6 +4658,7 @@ export async function handleCreateD365File(
 
             if (smartResult?.success && smartResult.filePath) {
               console.error(`[create_d365fo_file] ✅ Created via C# bridge (BP-smart): ${smartResult.filePath}`);
+              await normalizeCreatedArtifactEol(smartResult.filePath);
 
               let projectMsg = '';
               if (args.addToProject !== false) {
@@ -4687,6 +4753,7 @@ export async function handleCreateD365File(
         const bridgeResult = await bridgeCreateObject(context.bridge, bridgeParams);
         if (bridgeResult?.success && bridgeResult.filePath) {
           console.error(`[create_d365fo_file] ✅ Created via C# bridge: ${bridgeResult.filePath}`);
+          await normalizeCreatedArtifactEol(bridgeResult.filePath);
 
           // Add to .rnrproj if requested
           let projectMsg = '';

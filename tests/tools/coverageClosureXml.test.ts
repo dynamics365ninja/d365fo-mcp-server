@@ -30,6 +30,14 @@ describe('macro library (AxMacroDictionary)', () => {
     expect(xml).toContain("<Source>#define.DemoFastPostingFlight('DemoFastPostingFlight')</Source>");
   });
 
+  it('closes with the empty <Macros /> element the serializer always writes', () => {
+    // 649/649 platform macro dictionaries carry it (none has a non-empty <Macros>).
+    // Omitting it compiles, but VS re-adds it on first touch and the golden churns —
+    // caught by the L1-macro-library-flight re-run, same class as the &#xD; defect.
+    const xml = XmlTemplateGenerator.generate('macro', 'ConDemoModuleFlights', "#define.A('A')");
+    expect(xml).toContain('</Source>\n\t<Macros />\n</AxMacroDictionary>');
+  });
+
   it('XML-escapes the macro body (a #if.Never guard contains angle brackets)', () => {
     const xml = XmlTemplateGenerator.generate('macro', 'ConDemoGuards', '#define.Limit(a < b && c > d)');
     expect(xml).toContain('&lt;');
@@ -107,7 +115,7 @@ describe('aggregate measurement (AxAggregateMeasurement)', () => {
       name: 'ConDemoRequestGroup',
       table: 'ConDemoRequestFactEntity',
       attributes: [{ name: 'RequestType', nameField: 'RequestType' }],
-      measures: [{ name: 'AvgDaysToClose', field: 'DaysToClose', aggregateFunction: 'Avg' }],
+      measures: [{ name: 'AvgDaysToClose', field: 'DaysToClose', defaultAggregate: 'Avg' }],
     }],
   });
 
@@ -126,10 +134,29 @@ describe('aggregate measurement (AxAggregateMeasurement)', () => {
     expect(xml).toContain('<DimensionField>RequestType</DimensionField>');
   });
 
-  it('writes the measure with its aggregation', () => {
+  it('writes the measure with its aggregation, under the name the contract uses', () => {
+    // Pinned after the L3-aggregate-measurement-basic VM run: <AggregateFunction>
+    // exists nowhere in PackagesLocalDirectory and was dropped silently, leaving
+    // the measure on the Sum default while the build stayed green. The platform's
+    // 531 measures use only Sum/DistinctCount/AverageOfChildren/Max/Min.
     expect(xml).toContain('<Name>AvgDaysToClose</Name>');
-    expect(xml).toContain('<AggregateFunction>Avg</AggregateFunction>');
+    expect(xml).toContain('<DefaultAggregate>AverageOfChildren</DefaultAggregate>');
+    expect(xml).not.toContain('<AggregateFunction>');
     expect(xml).toContain('<Field>DaysToClose</Field>');
+    expect(xml.indexOf('<DefaultAggregate>')).toBeLessThan(xml.indexOf('<Field>DaysToClose</Field>'));
+  });
+
+  it('defaults to Sum and refuses an aggregation the enum does not have', () => {
+    const summed = XmlTemplateGenerator.generate('aggregate-measurement', 'ConDemoSum', undefined, {
+      measureGroups: [{ name: 'G', table: 'T', measures: [{ name: 'Total', field: 'Amount' }] }],
+    });
+    expect(summed).toContain('<DefaultAggregate>Sum</DefaultAggregate>');
+
+    expect(() =>
+      XmlTemplateGenerator.generate('aggregate-measurement', 'ConDemoBogus', undefined, {
+        measureGroups: [{ name: 'G', table: 'T', measures: [{ name: 'Total', field: 'Amount', defaultAggregate: 'Median' }] }],
+      }),
+    ).toThrow(/Median/);
   });
 });
 

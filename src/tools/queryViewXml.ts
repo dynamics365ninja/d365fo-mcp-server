@@ -23,7 +23,13 @@
  * datasource was silently never created).
  */
 export function buildAxQueryXml(queryName: string, properties?: Record<string, any>): string {
-  const title = properties?.title || properties?.label || queryName;
+  // <Title> is OPTIONAL (905 of the 4941 platform queries set it) and is a LABEL
+  // ID when set — only 3 of those 905 carry literal text. Defaulting it to the
+  // object name therefore put a literal in a label slot and earned every generated
+  // query a BPErrorLabelIsText (L3-xds-policy-constrained-table run). Emit it only
+  // when the caller supplies one.
+  const title: string | undefined = properties?.title || properties?.label;
+  const titleXml = title ? `\t<Title>${title}</Title>\n` : '';
   const dataSource: string | undefined = properties?.dataSource || properties?.table;
   const dataSourceName: string = properties?.dataSourceName || dataSource || '';
   const fields: Array<{ name: string; field?: string }> | undefined =
@@ -50,8 +56,7 @@ public class ${queryName} extends QueryRun
 \ti:type="AxQuerySimple">
 \t<Name>${queryName}</Name>
 ${classDeclaration}
-\t<Title>${title}</Title>
-\t<DataSources />
+${titleXml}\t<DataSources />
 </AxQuery>
 `;
   }
@@ -91,20 +96,40 @@ ${classDeclaration}
 \t\t\t\t</AxQuerySimpleDataSourceField>`).join('\n')}\n\t\t\t</Fields>\n`
     : '\t\t\t<Fields />\n';
 
+  // A range is the only way to make a query filter, and it was UNREACHABLE through
+  // the grounded path: `properties.ranges[]` was accepted and dropped without a
+  // warning, and `modify` has no range operation, so both L3-xds-policy-constrained-table
+  // runs had to fall back to a hand-written xmlContent overwrite — which disqualifies
+  // the artifacts from being frozen as a golden.
+  //
+  // Shape from the platform (ApplicationPlatform/AxQuery/BatchDelete.xml, and
+  // AcsAcib_IncomingQueueExternalError.xml for the Value variant): Name, Field and
+  // an OPTIONAL Value. `value` carries an X++ expression like `(currentUserId())`
+  // verbatim, which is how a per-user policy query is written.
+  const ranges: Array<{ name?: string; field?: string; value?: string }> | undefined =
+    Array.isArray(properties?.ranges) ? properties.ranges : undefined;
+  const rangesXml = ranges?.length
+    ? `\t\t\t<Ranges>\n${ranges.map(r => {
+        const field = r.field || r.name;
+        return `\t\t\t\t<AxQuerySimpleDataSourceRange>
+\t\t\t\t\t<Name>${r.name || field}</Name>
+\t\t\t\t\t<Field>${field}</Field>${r.value !== undefined && r.value !== '' ? `\n\t\t\t\t\t<Value>${r.value}</Value>` : ''}
+\t\t\t\t</AxQuerySimpleDataSourceRange>`;
+      }).join('\n')}\n\t\t\t</Ranges>\n`
+    : '\t\t\t<Ranges />\n';
+
   return `<?xml version="1.0" encoding="utf-8"?>
 <AxQuery xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
 \ti:type="AxQuerySimple">
 \t<Name>${queryName}</Name>
 ${classDeclaration}
-\t<Title>${title}</Title>
-\t<DataSources>
+${titleXml}\t<DataSources>
 \t\t<AxQuerySimpleRootDataSource>
 \t\t\t<Name>${dataSourceName}</Name>
 ${dynamicFieldsXml}\t\t\t<Table>${dataSource}</Table>
 \t\t\t<DataSources />
 \t\t\t<DerivedDataSources />
-${fieldsXml}\t\t\t<Ranges />
-\t\t\t<GroupBy />
+${fieldsXml}${rangesXml}\t\t\t<GroupBy />
 \t\t\t<Having />
 \t\t\t<OrderBy />
 \t\t</AxQuerySimpleRootDataSource>

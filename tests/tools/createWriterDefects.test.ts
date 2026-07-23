@@ -342,6 +342,46 @@ describe('#20 query with no explicit field list is marked dynamic', () => {
     expect(xml.indexOf('<DynamicFields>')).toBeLessThan(xml.indexOf('<DerivedDataSources />'));
   });
 
+  it('omits <Title> unless the caller gives one — the slot holds a label id', () => {
+    // 905 of the 4941 platform queries set <Title>, and only 3 of those carry
+    // literal text. Defaulting it to the object name put a literal in a label slot
+    // and earned every generated query a BPErrorLabelIsText.
+    const bare = buildAxQueryXml('ConDemoQuery', { dataSource: 'ConDemoNoteHeader' });
+    expect(bare).not.toContain('<Title>');
+
+    const labelled = buildAxQueryXml('ConDemoQuery', {
+      dataSource: 'ConDemoNoteHeader',
+      label: '@MyModule:QueryTitle',
+    });
+    expect(labelled).toContain('<Title>@MyModule:QueryTitle</Title>');
+  });
+
+  it('writes the data source ranges instead of dropping them', () => {
+    // The range was unreachable through the grounded path: properties.ranges[] was
+    // accepted and dropped without a warning and modify has no range op, so the
+    // L3-xds-policy-constrained-table runs needed an xmlContent fallback.
+    const xml = buildAxQueryXml('ConDemoQuery', {
+      dataSource: 'ConDemoTerritory',
+      ranges: [{ name: 'OwnerUserId', field: 'OwnerUserId', value: '(currentUserId())' }],
+    });
+    expect(xml).toContain('<AxQuerySimpleDataSourceRange>');
+    expect(xml).toContain('<Field>OwnerUserId</Field>');
+    expect(xml).toContain('<Value>(currentUserId())</Value>');
+    expect(xml).not.toContain('<Ranges />');
+    // Name, Field, Value — and the block still sits between Fields and GroupBy.
+    expect(xml.indexOf('<Ranges>')).toBeGreaterThan(xml.indexOf('<Fields'));
+    expect(xml.indexOf('</Ranges>')).toBeLessThan(xml.indexOf('<GroupBy />'));
+  });
+
+  it('a range with no value omits <Value> the way BatchDelete does', () => {
+    const xml = buildAxQueryXml('ConDemoQuery', {
+      dataSource: 'ConDemoTerritory',
+      ranges: [{ field: 'Status' }],
+    });
+    expect(xml).toContain('<Name>Status</Name>');
+    expect(xml).not.toContain('<Value>');
+  });
+
   it('an explicit field list stays static', () => {
     const xml = buildAxQueryXml('ConDemoQuery', {
       dataSource: 'ConDemoNoteHeader',

@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 46,
-    "percent": 59.7
+    "covered": 50,
+    "percent": 64.9
   },
   "leaves": [
     {
@@ -386,9 +386,12 @@
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
+        "L2-collections-map-list-container",
+        "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
+        "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-table-caching-basic",
@@ -424,9 +427,12 @@
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
+        "L2-collections-map-list-container",
+        "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
+        "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-table-caching-basic",
@@ -472,10 +478,12 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-collections-map-list-container"
+      ]
     },
     {
       "id": "datetime-timezones",
@@ -484,10 +492,12 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-datetime-timezone-range"
+      ]
     },
     {
       "id": "dotnet-interop",
@@ -843,10 +853,12 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-inventory-inventdim-onhand"
+      ]
     },
     {
       "id": "warehouse",
@@ -1062,10 +1074,12 @@
       "tier": "total",
       "weight": 0,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-license-code-configkey"
+      ]
     },
     {
       "id": "unit-testing",
@@ -1108,9 +1122,12 @@
         "L1-map-basic",
         "L1-table-basic",
         "L2-business-event-basic",
+        "L2-collections-map-list-container",
+        "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
+        "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-table-caching-basic",

@@ -1641,10 +1641,13 @@ inventDim.InventSiteId      = 'Site1';
 inventDim.InventLocationId  = 'WH1';
 inventDim = InventDim::findOrCreate(inventDim);
 
-inventOnHand = InventOnHand::newItemDim(
-    InventTable::find('ItemId'),
-    inventDim,
-    InventDimParm::activeDimFlag(inventDim));
+// newItemDim takes an ItemId - NOT an InventTable buffer - and an InventDimParm.
+// InventDimParm::activeDimFlag() takes an InventDimGroupSetup, so it is the wrong
+// call here; initFromInventDim() flags exactly the dimensions you filled in.
+InventDimParm inventDimParm;
+inventDimParm.initFromInventDim(inventDim);
+
+inventOnHand = InventOnHand::newItemDim('ItemId', inventDim, inventDimParm);
 
 Qty availPhysical = inventOnHand.availPhysical();`,
       },
@@ -2870,7 +2873,8 @@ while (mapEnumerator.moveNext())
       'Table fields of type UtcDateTime always hold UTC. Never store a value you converted to a user/company time zone — convert only at the edge (form display, report, file export)',
       'DateTimeUtil::utcNow() is the current UTC instant — the right default for stamping created/modified data',
       'DateTimeUtil::getSystemDateTime() honours the session date/time override (a user can set a session date); utcNow() does not. Use the session-aware one for BUSINESS decisions, utcNow() for audit stamps',
-      'For a business DATE use systemDateGet() (session-aware). NEVER use today(): it reads the AOS server clock, ignores both the session date and the user time zone, and is a BP error',
+      'For a business DATE prefer DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) — xppbp raises BPUpgradeCodeSystemDate on the older session-aware systemDateGet(), which still compiles but is deprecated (confirmed by a real BP run in the L2-datetime-timezone-range case)',
+      'NEVER use today(): it reads the AOS server clock, ignores both the session date and the user time zone, and is a BP error',
       'Convert for display with DateTimeUtil::applyTimeZoneOffset(utcValue, timeZone) and back with DateTimeUtil::removeTimeZoneOffset(localValue, timeZone) — applyTimeZoneOffset is UTC → local, removeTimeZoneOffset is local → UTC',
       'The time zone comes from DateTimeUtil::getUserPreferredTimeZone() (the Timezone kernel enum), or DateTimeUtil::getCompanyTimeZone() for company-scoped output. Do not hardcode Timezone::GMTCOORDINATEDUNIVERSALTIME',
       'Build a utcdatetime from parts with DateTimeUtil::newDateTime(date, timeOfDay, timeZone); split it with DateTimeUtil::date() and DateTimeUtil::time()',
@@ -2894,7 +2898,7 @@ utcdatetime displayValue = DateTimeUtil::applyTimeZoneOffset(
     request.SubmittedDateTime, userTimeZone);
 
 // A whole LOCAL day expressed as a UTC range
-date       businessDate = systemDateGet();
+date       businessDate = DateTimeUtil::getSystemDate(userTimeZone); // systemDateGet() -> BPUpgradeCodeSystemDate
 utcdatetime dayStartUtc  = DateTimeUtil::removeTimeZoneOffset(
     DateTimeUtil::newDateTime(businessDate, 0), userTimeZone);
 utcdatetime dayEndUtc    = DateTimeUtil::addSeconds(
@@ -3188,7 +3192,7 @@ public class MyPostingLimits
     rules: [
       'AxAggregateMeasurement carries Name, Usage (StagedEntityStore for entity-store deployment) and one or more MeasureGroups',
       'Each AxMeasureGroup binds to exactly one Table (a real table or, more commonly, a denormalised entity) and lists Measures and Attributes (AxDimensionAttribute → KeyFields → DimensionField)',
-      'Measures need an aggregation (Sum / Count / Min / Max / Avg) — a field with no aggregation is a dimension attribute, not a measure',
+      'Measures need an aggregation — the element is <DefaultAggregate> (NOT AggregateFunction, which does not exist and is dropped silently, leaving the measure on Sum) and the legal values are Sum, DistinctCount, AverageOfChildren, Max, Min; a field with no aggregation is a dimension attribute, not a measure',
       'Model the fact source as a data entity or a view, not the raw transaction table: the entity store refresh reads it as-is, so joins done at query time cost every refresh',
       'Shared dimensions live in AxAggregateDimension elements and are referenced by attributes so multiple measure groups slice consistently',
       'Deployment is a runtime operation (Data management → Entity store → Refresh), not part of the build; a measurement that compiles can still be undeployed and therefore invisible to Power BI',
@@ -3222,7 +3226,7 @@ public class MyPostingLimits
 			<Measures>
 				<AxMeasure>
 					<Name>AvgDaysToClose</Name>
-					<AggregateFunction>Avg</AggregateFunction>
+					<DefaultAggregate>AverageOfChildren</DefaultAggregate>
 					<Field>DaysToClose</Field>
 				</AxMeasure>
 			</Measures>

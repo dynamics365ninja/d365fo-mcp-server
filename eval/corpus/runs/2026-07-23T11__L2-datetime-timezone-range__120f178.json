@@ -1,0 +1,51 @@
+{
+  "run_id": "2026-07-23T11__L2-datetime-timezone-range__120f178",
+  "case_id": "L2-datetime-timezone-range",
+  "tier": 2,
+  "timestamp": "2026-07-23T11:37:37.485Z",
+  "server_git_sha": "120f178",
+  "generated_artifacts": [
+    "ConDemoTimeEntry.metadata.xml",
+    "ConDemoTimeEntryService.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "Case itself PASSES: full build 0 errors, 0 BP errors, both artifacts 100% grounded tool-path output, golden captured and self-checks green. Four defects surfaced along the way, none of which broke the case. (1) TOOL_DEFECT (highest value, reproducible on standard MS code): get_object_info(objectType=\"class\") default view reports the method NAME as `/// <summary>` for every method whose source begins with an XML doc comment - it extracts the first non-empty CDATA line instead of the signature. Verified on Foundation class CustVendVoucher (14 of the first 15 of 182 methods unusable) and on the freshly written ConDemoTimeEntryService (4/4). The sibling path options={members:\"names\"} returns correct signatures for the same classes, so the defect is isolated to the default class-metadata renderer's signature extractor. This degrades grounding for any documented class. (2) TOOL_DEFECT (round-trip fidelity, class writer): X++ inside <Source><![CDATA[...]]> is emitted with bare LF while the MS serializer writes CRLF everywhere (verified: every AxClass/AxTable in ApplicationSuite/Foundation is 100% CRLF, no BOM). d365fo_file(action=create, class) wrote all 4 method bodies in LF; a later modify(add-method) re-serialised the pre-existing methods to CRLF but wrote the NEWLY supplied body in LF - and did so even when the sourceCode payload itself used explicit \r\n, i.e. the writer normalises to LF rather than preserving input. Net effect: the file always ends with mixed line endings (final state: 3 methods CRLF, 1 method LF). Compiles fine, but a VS round-trip rewrites the whole file. (3) TOOL_DEFECT (class writer, formatting): the create path re-indents each CDATA line to a fixed indent instead of shifting by a constant offset, so multi-line expression continuations are flattened onto the statement's own indent (a 3-line DateTimeUtil::addSeconds(...) call came back with all 3 lines at 8 spaces). Worked around by rewriting the method with intermediate locals so no continuation lines exist. (4) TOOL_DEFECT (honesty, table create): d365fo_file(action=create, table) reported 'BP defaults: ... PrimaryIndex=SurrogateKey, ClusteredIndex=SurrogateKey' but wrote neither element - the values are only the metadata provider's implicit defaults on readback. Compare generate_object(mode=scaffold, table) which DOES emit ClusteredIndex/PrimaryIndex/ReplacementKey. The absent ReplacementKey is exactly what earns BPTableWithRecIdIndexMissingReplacementKey on this table. (5) KNOWLEDGE_GAP: get_knowledge(topic=\"datetime-timezones\") states 'For a business DATE use systemDateGet() (session-aware). NEVER use today()'. xppbp disagrees on the first half - BPUpgradeCodeSystemDate: 'Method systemdateget has been deprecated, use DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) instead.' The case instruction hard-codes systemDateGet(), so the implementation is spec-conformant and this is a warning not an error, but both the KB entry and the case text steer into a deprecation warning. (6) Minor UX/doc friction: the oracle's --actual-dir resolver only considers files ending in .metadata.xml, while real build output is <Name>.xml; the CLI usage text says 'a same-named file in <dir>'. Copying the artifacts under their build names scored every path as missing/extra (golden_match 0) until they were renamed to *.metadata.xml. bp_clean=0 is a case-design artefact, not a defect, same shape as the L2-config-key-gated-table record: the 4 warnings on the case objects are BPTableWithRecIdIndexMissingReplacementKey, BPErrorDeveloperDocumentationNotDefined, BPErrorTableMissingFormRef (all on ConDemoTimeEntry) and BPUpgradeCodeSystemDate (finding 5). None can be cleared without adding a form or contradicting the instruction; the case text demands zero BP ERRORS and errors were 0. The other 7 warnings in the xppbp run belong to the ConDemoNoteHeader fixture, not to this case.",
+  "suggested_fix_area": "get_object_info class-metadata renderer: skip leading /// doc-comment lines when extracting a method signature (reuse the members:\"names\" extractor); d365fo_file class writer: normalise CDATA X++ to CRLF like the MS serializer, and shift indentation by a constant offset instead of re-indenting each line; d365fo_file table create: either write PrimaryIndex/ClusteredIndex when reporting them as BP defaults, or stop reporting values that are not written; knowledge base datetime-timezones topic: systemDateGet() is flagged BPUpgradeCodeSystemDate - recommend DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) (and re-word the L2-datetime-timezone-range case accordingly); eval oracle CLI: accept <Name>.xml actual files in --actual-dir, or document the required *.metadata.xml naming",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxTable/ConDemoTimeEntry.xml",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxClass/ConDemoTimeEntryService.xml",
+    "K:/repos/d365fo-mcp-server/eval/goldens/L2-datetime-timezone-range/ConDemoTimeEntry.metadata.xml",
+    "K:/repos/d365fo-mcp-server/eval/goldens/L2-datetime-timezone-range/ConDemoTimeEntryService.metadata.xml",
+    "get_object_info(objectType=class, name=CustVendVoucher) -> 14/15 methods rendered as '/// <summary>'",
+    "run_bp_check(modelName=Contoso) -> Errors: 0, Warnings: 11 (4 on case objects, 7 on the ConDemoNoteHeader fixture)"
+  ]
+}

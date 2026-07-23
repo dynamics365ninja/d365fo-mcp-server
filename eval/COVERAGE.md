@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 46 | 77 | 59.7% |
+| total | 50 | 77 | 64.9% |
 
 ## Data model (11/12)
 
@@ -28,7 +28,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (14/21)
+## Code (16/21)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -45,12 +45,12 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | — | ✅ | Eval case authored (attribute-driven SysExtension factory); golden pending VM capture. |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +22 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +22 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +25 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +25 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
-| X++ collections & containers (List/Map/Set/Struct) | total | ✅ | — | ✅ | Knowledge entry written (audit hole C6 closed); eval case authored, golden pending VM capture. |
-| Date/time & time zones (utcdatetime, DateTimeUtil) | total | ✅ | — | ✅ | Knowledge entry written (audit hole C7 closed); eval case authored, golden pending VM capture. |
+| X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
+| Date/time & time zones (utcdatetime, DateTimeUtil) | total | ✅ | ✅ | ✅ | L2-datetime-timezone-range |
 | .NET interop (CLRInterop, using alias, CLRError) | total | ✅ | — | ✅ | Knowledge entry written (audit hole C8 closed); eval case authored, golden pending VM capture. |
 | Reflection / Dict* metadata API | total | ✅ | — | ✅ | Knowledge entry written (audit hole C9 closed); eval case authored, golden pending VM capture. |
 
@@ -75,7 +75,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Print management | total | ✅ | — | ✅ | Eval case authored (document node + settings resolution); golden pending VM capture. |
 | Electronic Reporting (ER) | total | ✅ | — | ✅ | Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture. |
 
-## Frameworks (6/16)
+## Frameworks (7/16)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -92,7 +92,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Multi-company / changeCompany | core | ✅ | ✅ | ✅ | L2-multi-company-changecompany |
 | Global address book | total | ✅ | — | ✅ | Eval case authored (party + primary postal address through the DirParty API); golden pending VM capture. |
 | Currency & exchange rates | total | ✅ | — | ✅ | Eval case authored (exchange-rate helper conversion + currency rounding); golden pending VM capture. |
-| Inventory (InventTrans / InventDim) | total | ✅ | — | ✅ | Eval case authored (InventDim/InventDimParm on-hand read); golden pending VM capture. |
+| Inventory (InventTrans / InventDim) | total | ✅ | ✅ | ✅ | L3-inventory-inventdim-onhand |
 | Warehouse management (WHS) | total | ✅ | — | ✅ | Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture. |
 | Trade agreements & pricing | total | ✅ | — | ✅ | Eval case authored (PriceDisc price/discount resolution); golden pending VM capture. |
 
@@ -110,7 +110,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Direct SQL execution | total | ✅ | — | ✅ | Eval case authored — the escape hatch WITH its guard rails (permission assert, no concatenated input). Golden pending VM capture. |
 | Aggregate measurements / analytics | total | ✅ | — | ✅ | Knowledge entry + create path added; eval case authored, golden pending VM capture. |
 
-## Security (4/6)
+## Security (5/6)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -119,22 +119,19 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Security role | core | ✅ | ✅ | ✅ | L4-entity-security, L4-master-security-slice |
 | Data-entity security | core | ✅ | ✅ | ✅ | L4-entity-security |
 | Extensible data security (XDS) | total | ✅ | — | ✅ | Create path added (d365fo_file objectType "security-policy"); eval case authored (policy + policy query + constrained table), golden pending VM capture. |
-| License codes | total | ✅ | — | ✅ | Exotic (ISV licensing only) but now closable: knowledge + create path added, eval case authored, golden pending VM capture. |
+| License codes | total | ✅ | ✅ | ✅ | L2-license-code-configkey |
 
 ## Quality (2/2)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L3-batch-basic |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +22 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +25 |
 
 ## Closure queue (uncovered, by frequency weight)
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
-| 3 | Date/time & time zones (utcdatetime, DateTimeUtil) | missing E |
-| 3 | Inventory (InventTrans / InventDim) | missing E |
-| 3 | X++ collections & containers (List/Map/Set/Struct) | missing E |
 | 2 | Async & retryable batch (BatchRetryable/runAsync) | missing E |
 | 2 | Configuration keys | missing E |
 | 2 | Currency & exchange rates | missing E |
@@ -162,11 +159,10 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 1 | Trade agreements & pricing | missing E |
 | 1 | Warehouse management (WHS) | missing E |
 | 1 | Extensible data security (XDS) | missing E |
-| 0 | License codes | missing E |
 
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-07-22._
+_Generated 2026-07-23._

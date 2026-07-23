@@ -1,0 +1,57 @@
+{
+  "run_id": "2026-07-23T06__L2-license-code-configkey__11db7ed",
+  "case_id": "L2-license-code-configkey",
+  "tier": 2,
+  "timestamp": "2026-07-23T06:18:55.609Z",
+  "server_git_sha": "11db7ed",
+  "generated_artifacts": [
+    "Contoso/AxLicenseCode/ConDemoIsvSuite.xml",
+    "Contoso/AxConfigurationKey/ConDemoIsvSuiteKey.xml",
+    "Contoso/AxConfigurationKey/ConDemoIsvSuiteReportsKey.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "PASS on all three scored dimensions. Secondary (non-blocking) finding: the READ side of configuration keys does not see freshly created keys. After d365fo_file(action=create) + update_symbol_index(filePath) for both keys, get_object_info(objectType=\"config-key\", ConDemoIsvSuiteReportsKey) reports 'Parent chain: - (root key)', no Label and no LicenseCode, while the same reader renders the full chain for platform keys (MCRCallCenter -> RetailChannels -> Retail). A bridge/cache refresh (update_symbol_index with no filePath) does not fix it. The on-disk XML does carry <ParentKey>/<LicenseCode> and xppc validated both links (a dangling ParentKey is a build error), so this is an indexing/read gap, not a writer defect - but it is a false negative that could steer a follow-up agent to 'repair' a correct ParentKey. Also confirmed fixed from the previous run: the writer no longer defaults PublicKey; PublicKey=700 was passed explicitly and built clean.",
+  "suggested_fix_area": "src/indexing (config-key incremental indexer: update_symbol_index inserts only the name symbol, not the Label/ParentKey/LicenseCode hierarchy rows the config-key reader joins on); secondary: eval harness note that ContosoDemo.rnrproj is invalid XML so addToProject must be false",
+  "evidence_refs": [
+    "build_d365fo_project(Contoso, fullBuild=true): Errors: 0, Warnings: 1 (unrelated ExternalReference PricingEngine assembly), 10s",
+    "run_bp_check(Contoso): 4 elements processed, 0 errors, 7 warnings - all 7 on the pre-existing ConDemoNoteHeader fixture, 0 on the case artifacts",
+    "Shape parity: Contoso/AxLicenseCode/ConDemoIsvSuite.xml element set+order identical to ApplicationFoundation/.../AxLicenseCode/LogisticsBasic.xml (Name, Group, Label, Package, PublicKey); config keys identical to ApplicationSuite/Foundation/AxConfigurationKey/EPSalesRep.xml (Name, Label, LicenseCode) and ApplicationFoundation/.../MCRCallCenter.xml (Name, Label, ParentKey)",
+    "PublicKey census over all 75 installed AxLicenseCode elements: slot 700 unused (highest occupied 655)",
+    "get_object_info(config-key, ConDemoIsvSuiteReportsKey) -> 'Parent chain: - (root key)' despite <ParentKey>ConDemoIsvSuiteKey</ParentKey> on disk",
+    "Golden captured byte-identical (md5 match) into eval/goldens/L2-license-code-configkey/; golden_pending flipped to false"
+  ]
+}
