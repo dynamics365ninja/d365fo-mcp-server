@@ -1,0 +1,47 @@
+{
+  "run_id": "2026-07-23T04__L2-license-code-configkey__e50e443",
+  "case_id": "L2-license-code-configkey",
+  "tier": 2,
+  "timestamp": "2026-07-23T04:53:11.021Z",
+  "server_git_sha": "e50e443",
+  "generated_artifacts": [
+    "Contoso/AxLicenseCode/ConDemoIsvSuite.xml",
+    "Contoso/AxConfigurationKey/ConDemoIsvSuiteKey.xml",
+    "Contoso/AxConfigurationKey/ConDemoIsvSuiteReportsKey.xml"
+  ],
+  "static_gate": {
+    "references": { "passed": true, "unresolved": [] },
+    "syntax": { "passed": true, "violations": [] }
+  },
+  "build": {
+    "succeeded": false,
+    "errors": [
+      {
+        "severity": "error",
+        "element": "AxLicenseCode/ConDemoIsvSuite/PublicKey",
+        "message": "Metadata Error: AxLicenseCode/ConDemoIsvSuite/PublicKey: Duplicate value '2' detected.",
+        "note": "PublicKey is globally unique across every installed model; slot 2 is owned by ApplicationFoundation/AxLicenseCode/LogisticsBasic.xml. Re-running the identical chain with PublicKey=700 (a free slot) builds clean in 12s with 0 errors."
+      }
+    ],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": null,
+  "systest": { "ran": false, "passed": null, "failures": [] },
+  "score": {
+    "build": 0,
+    "bp_clean": 1,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "KNOWLEDGE_GAP",
+  "root_cause_hypothesis": "get_knowledge(topic=\"license-codes\") teaches the AxLicenseCode shape with a literal PublicKey of 2 and never states that PublicKey is a globally unique ISV key slot enforced by xppc across all installed models. The case instruction was authored from that same knowledge and therefore hard-codes the colliding value, so a perfectly grounded agent is steered straight into 'Metadata Error: Duplicate value 2 detected'. Secondary: no query tool surfaces the set of used PublicKey slots, and validate_code(references) resolves 0 references in AxLicenseCode/AxConfigurationKey XML, so neither the knowledge layer nor the static gate can catch the collision before the build. The create/serialisation path itself is correct - the emitted XML is byte-identical in shape to ApplicationPlatform/AxLicenseCode/Asset.xml, the <LicenseCode> and <ParentKey> links are emitted, and the chain compiles with 0 BP warnings once the slot is free.",
+  "suggested_fix_area": "src/knowledge (license-codes topic: state PublicKey global uniqueness, drop the literal 2 from the example, point at the free-slot check); eval/cases/L2-license-code-configkey.json (stop mandating PublicKey=2); src/validation reference resolver (teach it AxLicenseCode/AxConfigurationKey refs: Label, LicenseCode, ParentKey, PublicKey collision); src/eval/oracle/cli.ts (--classification is written through unvalidated, accepting values outside the schema enum)",
+  "evidence_refs": [
+    "xppc: Metadata Error: AxLicenseCode/ConDemoIsvSuite/PublicKey: Duplicate value '2' detected.",
+    "K:/AosService/PackagesLocalDirectory/ApplicationFoundation/ApplicationFoundation/AxLicenseCode/LogisticsBasic.xml (owns PublicKey 2)",
+    "run_bp_check(Contoso): 4 elements processed, 0 errors, 7 warnings all on the pre-existing ConDemoNoteHeader fixture",
+    "K:/repos/HBR-D365FO/src/d365fo/projects/ContosoDemo/ContosoDemo/ContosoDemo.rnrproj corrupted by a prior run (3 orphaned <Content> blocks); current writer verified clean on a valid project copy"
+  ]
+}

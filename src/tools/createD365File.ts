@@ -3047,7 +3047,19 @@ public final class ${contractName} extends BusinessEventsContract
     const label     = properties?.label     || `@TODO:${name}Label`;
     const group     = properties?.group     || 'Module';
     const pkg       = properties?.package   || 'BusinessEssential';
-    const publicKey = properties?.publicKey ?? 2;
+    // PublicKey is a GLOBALLY unique ISV key slot: xppc fails the build with
+    // "Duplicate value 'N' detected" if any other installed model already owns
+    // the slot (all 74 platform license codes hold 74 distinct slots). There is
+    // therefore no safe default — defaulting to a literal collided with
+    // ApplicationFoundation/LogisticsBasic in the L2-license-code-configkey run.
+    const publicKey = properties?.publicKey;
+    if (publicKey === undefined || publicKey === null || publicKey === '') {
+      throw new Error(
+        'license-code requires properties.publicKey — the ISV key slot, which must be globally unique ' +
+        'across every installed model (the build fails with "Duplicate value \'N\' detected" otherwise). ' +
+        'Slots in use on a standard install: 1-11, 13, 14, 18, 19, 24-234 (sparse), 603-605, 634, 635, 654, 655.'
+      );
+    }
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxLicenseCode xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
