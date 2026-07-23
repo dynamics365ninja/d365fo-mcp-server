@@ -28,7 +28,6 @@ export interface SymbolCounts {
 export class XppSymbolIndex {
   public db: Database.Database; // Public for direct pragma access in build scripts
   public labelsDb: Database.Database; // Separate DB for labels (performance optimization)
-  private standardModels: string[] = [];
   private stmtCache: Map<string, Database.Statement> = new Map();
   private labelsStmtCache: Map<string, Database.Statement> = new Map();
   // Buffer for property_stats observations — flushed once per model (batch INSERT)
@@ -103,7 +102,6 @@ export class XppSymbolIndex {
     // optimize/ANALYZE intentionally NOT run here (slow on 500K+ rows) — the
     // pre-built DB already has persisted stats; use runPostBuildTasks() instead.
 
-    this.loadStandardModels();
     this.initializeDatabase();
 
     // Skip pool for :memory: — each new connection would be a separate empty DB.
@@ -243,14 +241,6 @@ export class XppSymbolIndex {
       relatedMethods: row.related_methods || undefined,
       apiPatterns: row.api_patterns || undefined,
     };
-  }
-
-  /**
-   * Kept for compatibility; standard-model determination now lives in
-   * isStandardModel() from modelClassifier (standard = not in CUSTOM_MODELS).
-   */
-  private loadStandardModels(): void {
-    this.standardModels = [];
   }
 
   private initializeDatabase(): void {
@@ -2836,8 +2826,14 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Get list of custom models (non-standard models)
-   * Filters out Microsoft's standard D365 F&O models loaded from config
+   * Get list of custom models (non-standard models).
+   *
+   * Standard-model determination is delegated to `isStandardModel()` from
+   * modelClassifier (CUSTOM_MODELS / EXTENSION_PREFIX / configured target model).
+   * The legacy `this.standardModels` array is always empty (see
+   * `loadStandardModels()`), so filtering against it used to return EVERY model
+   * — including Microsoft's — as "custom". Filtering via `isStandardModel()`
+   * restores the intended custom-only result.
    */
   getCustomModels(): string[] {
     const stmt = this.db.prepare(`
@@ -2849,7 +2845,73 @@ export class XppSymbolIndex {
     const rows = stmt.all() as { model: string }[];
     return rows
       .map(row => row.model)
-      .filter(model => !this.standardModels.includes(model));
+      .filter(model => !isStandardModel(model));
+  }
+
+  /**
+   * Full-text symbol search restricted to CUSTOM/ISV models.
+   *
+   * Broad keyword searches routed through the C# bridge fill their fixed result
+   * window (`maxResults`) in provider-enumeration order, which is dominated by
+   * the far larger Microsoft standard corpus — so custom matches that enumerate
+   * later get truncated and the search looks like it "only returns Microsoft
+   * objects". The search tool probes this method in parallel and splices the
+   * custom hits back in, ranked directly after exact-name matches.
+   *
+   * Index-safe: the FTS5 MATCH drives the query and the `model IN (...)` filter
+   * (idx_symbols_model) narrows to the small custom set. The LIKE fallback (only
+   * reached on an FTS5 syntax error) is also model-scoped, so the selective
+   * `model IN` predicate keeps it off a full `%query%` scan of the whole corpus.
+   */
+  searchCustomModelSymbols(query: string, types?: string[], limit: number = 15): XppSymbol[] {
+    const customModels = this.getCustomModels();
+    if (customModels.length === 0) return [];
+
+    const modelPlaceholders = customModels.map(() => '?').join(',');
+    const ftsQuery = this.sanitizeFtsQuery(query);
+    const db = this.getReadDb();
+
+    let sql = `
+      SELECT s.id, s.name, s.type, s.parent_name, s.signature, s.file_path, s.model, s.description
+      FROM symbols_fts fts
+      JOIN symbols s ON s.id = fts.rowid
+      WHERE symbols_fts MATCH ?
+        AND s.model IN (${modelPlaceholders})
+    `;
+    const params: any[] = [ftsQuery, ...customModels];
+    if (types && types.length > 0) {
+      sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
+      params.push(...types);
+    }
+    sql += ` ORDER BY rank LIMIT ?`;
+    params.push(limit);
+
+    try {
+      const stmt = db.prepare(sql);
+      return (stmt.all(...params) as any[]).map(row => this.rowToSymbol(row));
+    } catch {
+      // FTS5 syntax error (query contains *, ", (, ), -) → LIKE fallback, still model-scoped.
+      const escapeLikePattern = (value: string): string =>
+        value.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&');
+      let fb = `
+        SELECT s.id, s.name, s.type, s.parent_name, s.signature, s.file_path, s.model, s.description
+        FROM symbols s
+        WHERE s.name LIKE ? ESCAPE '\\'
+          AND s.model IN (${modelPlaceholders})
+      `;
+      const fbParams: any[] = [`%${escapeLikePattern(query)}%`, ...customModels];
+      if (types && types.length > 0) {
+        fb += ` AND s.type IN (${types.map(() => '?').join(',')})`;
+        fbParams.push(...types);
+      }
+      fb += ` ORDER BY s.name LIMIT ?`;
+      fbParams.push(limit);
+      try {
+        return (db.prepare(fb).all(...fbParams) as any[]).map(r => this.rowToSymbol(r));
+      } catch {
+        return [];
+      }
+    }
   }
 
   /**

@@ -15,7 +15,7 @@ import type { BridgeClient } from './bridgeClient.js';
 import * as debouncedRefresh from './debouncedRefresh.js';
 import { debugLog } from '../utils/logger.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
-import { rankExactFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
+import { rankCustomFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
 import type {
   BridgeTableInfo,
   BridgeClassInfo,
@@ -682,6 +682,15 @@ export interface BridgeSearchOptions {
    * window is spliced in and ranked first.
    */
   exactMatches?: Array<{ name: string; type: string }>;
+  /**
+   * Keyword hits from CUSTOM/ISV models the caller resolved from the SQLite
+   * index (model-scoped, FTS-driven). The bridge enumerates a single merged
+   * key list dominated by Microsoft standard objects and truncates at
+   * maxResults, so custom matches that enumerate later never reach the client.
+   * These are spliced in and ranked directly after the exact matches (ahead of
+   * Microsoft standard hits) so custom code is always visible.
+   */
+  customMatches?: Array<{ name: string; type: string }>;
 }
 
 export async function tryBridgeSearch(
@@ -707,11 +716,29 @@ export async function tryBridgeSearch(
       spliced.push({ ...cand, fromIndex: true });
     }
 
-    const merged = [...spliced, ...bridgeHits];
+    const key = (n: string, t: string) => `${n.toLowerCase()} ${t}`;
+    const exactKeys = new Set(spliced.map(s => key(s.name, s.type)));
+    const bridgeKeys = new Set(bridgeHits.map(r => key(r.name, r.type)));
+
+    // Custom/ISV matches truncated out of the Microsoft-dominated bridge window:
+    // splice the ones the window missed and flag them so they rank ahead of
+    // Microsoft standard hits (see BridgeSearchOptions.customMatches).
+    const customKeys = new Set((opts?.customMatches ?? []).map(c => key(c.name, c.type)));
+    const customSpliced = (opts?.customMatches ?? [])
+      .filter(c => !exactKeys.has(key(c.name, c.type)) && !bridgeKeys.has(key(c.name, c.type)))
+      .map(c => ({ name: c.name, type: c.type, fromIndex: true as const, custom: true as const }));
+    const splicedCustom = customSpliced.length;
+
+    const merged: Array<{ name: string; type: string; fromIndex?: boolean; custom?: boolean }> = [
+      ...spliced.map(s => ({ ...s })),
+      ...customSpliced,
+      ...bridgeHits.map(r => ({ name: r.name, type: r.type, custom: customKeys.has(key(r.name, r.type)) })),
+    ];
     if (merged.length === 0) return null;
 
     // Exact name matches first — the bridge itself returns provider order (#15).
-    const ranked = rankExactFirst(query, merged, r => r.name).slice(0, Math.max(maxResults, spliced.length));
+    const ranked = rankCustomFirst(query, merged, r => r.name, r => !!r.custom)
+      .slice(0, Math.max(maxResults, spliced.length + splicedCustom));
 
     let out = `# Search: "${query}"${objectType ? ` (type: ${objectType})` : ''}\n\n`;
     out += `**Results:** ${ranked.length}\n`;
@@ -725,6 +752,11 @@ export async function tryBridgeSearch(
     if (spliced.length > 0) {
       out += `\n_${spliced.length} exact match(es) came from the SQLite symbol index — ` +
         `the bridge's result window (maxResults=${maxResults}) did not contain them._\n`;
+    }
+
+    if (splicedCustom > 0) {
+      out += `\n_${splicedCustom} custom/ISV-model match(es) were spliced in from the ` +
+        `SQLite symbol index and prioritized (bridge window maxResults=${maxResults} had truncated them)._\n`;
     }
 
     return { content: [{ type: 'text', text: out }] };
