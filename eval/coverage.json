@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 49,
-    "percent": 63.6
+    "covered": 50,
+    "percent": 64.9
   },
   "leaves": [
     {
@@ -853,10 +853,12 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-inventory-inventdim-onhand"
+      ]
     },
     {
       "id": "warehouse",

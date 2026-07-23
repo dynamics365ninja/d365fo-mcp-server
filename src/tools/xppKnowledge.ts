@@ -1641,10 +1641,13 @@ inventDim.InventSiteId      = 'Site1';
 inventDim.InventLocationId  = 'WH1';
 inventDim = InventDim::findOrCreate(inventDim);
 
-inventOnHand = InventOnHand::newItemDim(
-    InventTable::find('ItemId'),
-    inventDim,
-    InventDimParm::activeDimFlag(inventDim));
+// newItemDim takes an ItemId - NOT an InventTable buffer - and an InventDimParm.
+// InventDimParm::activeDimFlag() takes an InventDimGroupSetup, so it is the wrong
+// call here; initFromInventDim() flags exactly the dimensions you filled in.
+InventDimParm inventDimParm;
+inventDimParm.initFromInventDim(inventDim);
+
+inventOnHand = InventOnHand::newItemDim('ItemId', inventDim, inventDimParm);
 
 Qty availPhysical = inventOnHand.availPhysical();`,
       },

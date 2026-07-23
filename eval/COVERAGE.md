@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 49 | 77 | 63.6% |
+| total | 50 | 77 | 64.9% |
 
 ## Data model (11/12)
 
@@ -75,7 +75,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Print management | total | ✅ | — | ✅ | Eval case authored (document node + settings resolution); golden pending VM capture. |
 | Electronic Reporting (ER) | total | ✅ | — | ✅ | Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture. |
 
-## Frameworks (6/16)
+## Frameworks (7/16)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -92,7 +92,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Multi-company / changeCompany | core | ✅ | ✅ | ✅ | L2-multi-company-changecompany |
 | Global address book | total | ✅ | — | ✅ | Eval case authored (party + primary postal address through the DirParty API); golden pending VM capture. |
 | Currency & exchange rates | total | ✅ | — | ✅ | Eval case authored (exchange-rate helper conversion + currency rounding); golden pending VM capture. |
-| Inventory (InventTrans / InventDim) | total | ✅ | — | ✅ | Eval case authored (InventDim/InventDimParm on-hand read); golden pending VM capture. |
+| Inventory (InventTrans / InventDim) | total | ✅ | ✅ | ✅ | L3-inventory-inventdim-onhand |
 | Warehouse management (WHS) | total | ✅ | — | ✅ | Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture. |
 | Trade agreements & pricing | total | ✅ | — | ✅ | Eval case authored (PriceDisc price/discount resolution); golden pending VM capture. |
 
@@ -132,7 +132,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
-| 3 | Inventory (InventTrans / InventDim) | missing E |
 | 2 | Async & retryable batch (BatchRetryable/runAsync) | missing E |
 | 2 | Configuration keys | missing E |
 | 2 | Currency & exchange rates | missing E |

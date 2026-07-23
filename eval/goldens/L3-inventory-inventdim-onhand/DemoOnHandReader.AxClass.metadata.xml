@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L3-inventory-inventdim-onhand: dimension-aware on-hand read via InventDim::findOrCreate + InventDimParm.initFromInventDim + InventOnHand::newItemDim. Captured 2026-07-23, SHA dbdd62a. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoOnHandReader</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Reads dimension-aware on-hand inventory through the supported
+/// <c>InventDim</c> / <c>InventDimParm</c> / <c>InventOnHand</c> API.
+/// </summary>
+public final class ConDemoOnHandReader
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>availableForSite</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the physically available on-hand quantity of an item on a single site.
+    /// </summary>
+    /// <param name = "_itemId">The item to read.</param>
+    /// <param name = "_siteId">The site the on-hand quantity is restricted to.</param>
+    /// <returns>The physically available quantity for the item on the given site.</returns>
+    public static InventQty availableForSite(ItemId _itemId, InventSiteId _siteId)
+    {
+        InventDim       inventDim;
+        InventDimParm   inventDimParm;
+        InventOnHand    inventOnHand;
+
+        inventDim.InventSiteId = _siteId;
+        inventDim = InventDim::findOrCreate(inventDim);
+
+        inventDimParm.initFromInventDim(inventDim);
+
+        inventOnHand = InventOnHand::newItemDim(_itemId, inventDim, inventDimParm);
+
+        return inventOnHand.availPhysical();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>hasPhysicalOnHand</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Indicates whether an item has any physical on-hand quantity across all dimensions.
+    /// </summary>
+    /// <param name = "_itemId">The item to probe.</param>
+    /// <returns>true if the item has a positive physical on-hand quantity; otherwise, false.</returns>
+    public static boolean hasPhysicalOnHand(ItemId _itemId)
+    {
+        InventDim       inventDim;
+        InventDimParm   inventDimParm;
+        InventOnHand    inventOnHand;
+
+        inventDim = InventDim::findOrCreate(inventDim);
+
+        inventDimParm.initFromInventDim(inventDim);
+
+        inventOnHand = InventOnHand::newItemDim(_itemId, inventDim, inventDimParm);
+
+        return inventOnHand.availPhysical() > 0;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
