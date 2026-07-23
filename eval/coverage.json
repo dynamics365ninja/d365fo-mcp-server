@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 46,
-    "percent": 59.7
+    "covered": 47,
+    "percent": 61
   },
   "leaves": [
     {
@@ -389,6 +389,7 @@
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
+        "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-table-caching-basic",
@@ -427,6 +428,7 @@
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
+        "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-table-caching-basic",
@@ -1062,10 +1064,12 @@
       "tier": "total",
       "weight": 0,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-license-code-configkey"
+      ]
     },
     {
       "id": "unit-testing",
@@ -1111,6 +1115,7 @@
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-interface-abstract-basic",
+        "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-table-caching-basic",

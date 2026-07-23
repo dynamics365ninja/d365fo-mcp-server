@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 46 | 77 | 59.7% |
+| total | 47 | 77 | 61% |
 
 ## Data model (11/12)
 
@@ -45,8 +45,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | — | ✅ | Eval case authored (attribute-driven SysExtension factory); golden pending VM capture. |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +22 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +22 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +23 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +23 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | — | ✅ | Knowledge entry written (audit hole C6 closed); eval case authored, golden pending VM capture. |
@@ -110,7 +110,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Direct SQL execution | total | ✅ | — | ✅ | Eval case authored — the escape hatch WITH its guard rails (permission assert, no concatenated input). Golden pending VM capture. |
 | Aggregate measurements / analytics | total | ✅ | — | ✅ | Knowledge entry + create path added; eval case authored, golden pending VM capture. |
 
-## Security (4/6)
+## Security (5/6)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -119,14 +119,14 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Security role | core | ✅ | ✅ | ✅ | L4-entity-security, L4-master-security-slice |
 | Data-entity security | core | ✅ | ✅ | ✅ | L4-entity-security |
 | Extensible data security (XDS) | total | ✅ | — | ✅ | Create path added (d365fo_file objectType "security-policy"); eval case authored (policy + policy query + constrained table), golden pending VM capture. |
-| License codes | total | ✅ | — | ✅ | Exotic (ISV licensing only) but now closable: knowledge + create path added, eval case authored, golden pending VM capture. |
+| License codes | total | ✅ | ✅ | ✅ | L2-license-code-configkey |
 
 ## Quality (2/2)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L3-batch-basic |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +22 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +23 |
 
 ## Closure queue (uncovered, by frequency weight)
 
@@ -162,11 +162,10 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 1 | Trade agreements & pricing | missing E |
 | 1 | Warehouse management (WHS) | missing E |
 | 1 | Extensible data security (XDS) | missing E |
-| 0 | License codes | missing E |
 
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-07-22._
+_Generated 2026-07-23._

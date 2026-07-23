@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxLicenseCode xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoIsvSuite</Name>
+	<Group>Module</Group>
+	<Label>@SYS27134</Label>
+	<Package>BusinessEssential</Package>
+	<PublicKey>700</PublicKey>
+</AxLicenseCode>
