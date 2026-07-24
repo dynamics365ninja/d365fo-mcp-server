@@ -2,7 +2,7 @@
 
 **Status:** implemented and in production use — see
 [eval/ROADMAP.md](../eval/ROADMAP.md) for current status and open work
-**Related:** [ARCHITECTURE.md](ARCHITECTURE.md) · [TESTING.md](TESTING.md) · [BRIDGE.md](BRIDGE.md) · [BACKLOG.md](BACKLOG.md) · [eval/README.md](../eval/README.md)
+**Related:** [ARCHITECTURE.md](ARCHITECTURE.md) · [TESTING.md](TESTING.md) · [eval/README.md](../eval/README.md)
 
 ---
 

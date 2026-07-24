@@ -4,7 +4,7 @@
      This file provides only the minimum static context needed when the MCP server
      is not yet connected or the prompt hasn't been loaded.
      Serves Claude Code too: copy it to a parent of your solution folders as
-     CLAUDE.md (docs/CLAUDE_CODE_SETUP.md, Step 3). -->
+     CLAUDE.md (docs/SETUP.md § Claude Code CLI, Step 3). -->
 
 ## Tool Priority
 

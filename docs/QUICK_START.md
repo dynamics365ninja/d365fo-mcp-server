@@ -79,11 +79,13 @@ claude mcp add-json --scope user d365fo-mcp-tools '{"type":"http","url":"https:/
 
 | Requirement | Where to get it | Needed for |
 |------------|----------------|------------|
-| Visual Studio 2022 ≥ 17.14 (or 2026) | Visual Studio Installer | all scenarios |
+| Visual Studio 2026 (or 2022 ≥ 17.14) | Visual Studio Installer | all scenarios |
 | GitHub Copilot extension | VS → Extensions | Copilot users |
 | .NET SDK | pre-installed on D365FO VMs, else [dotnet.microsoft.com](https://dotnet.microsoft.com/download) | C# bridge (writes) |
 | Node.js 24.x LTS | [nodejs.org](https://nodejs.org), or `Install-D365SupportingSoftware -Name node.js` | installed for you by the one-liner |
 | Git | [git-scm.com](https://git-scm.com) | only for a git-checkout installation, or to work on the source |
+
+> **From platform update 10.0.49 (PU74), Visual Studio 2026 is the only supported IDE for X++ development** (VS 2022 is no longer supported); earlier platform versions still use VS 2022 ≥ 17.14. [Details](https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/fin-ops/get-started/whats-new-platform-updates-10-0-49)
 
 ## 2. Install
 
@@ -137,7 +139,7 @@ npm run build-database
 2. Visual Studio → **Tools → Options → GitHub → Copilot** → enable **MCP server integration in agent mode**
 3. Copilot Chat → switch to **Agent Mode**
 
-Using Claude Code instead? [CLAUDE_CODE_SETUP.md](CLAUDE_CODE_SETUP.md) covers it end to end.
+Using Claude Code instead? [SETUP.md § Claude Code CLI](SETUP.md#claude-code-cli) covers it end to end.
 
 ### Then pick the scenario the wizard configured
 
@@ -265,4 +267,4 @@ A healthy startup logs `✅ C# bridge initialized (metadataAvailable: true, xref
 | Every setting and its environment variable | [CONFIGURATION.md](CONFIGURATION.md) |
 | Detailed setup scenarios A–F | [SETUP.md](SETUP.md) |
 | Azure deployment (admins) | [SETUP_AZURE.md](SETUP_AZURE.md) |
-| Claude Code CLI | [CLAUDE_CODE_SETUP.md](CLAUDE_CODE_SETUP.md) |
+| Claude Code CLI | [SETUP.md § Claude Code CLI](SETUP.md#claude-code-cli) |

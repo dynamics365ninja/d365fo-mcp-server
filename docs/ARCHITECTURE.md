@@ -45,7 +45,7 @@ Three complementary data sources, one rule: **bridge-first when live metadata ma
 | Labels (20M+ rows) | ✅ sole source | — | create/rename only |
 | Create / modify objects | — | — | ✅ 13 create types, 25 modify ops |
 
-Full tool-by-tool breakdown: [SQLITE_DEPENDENCY.md](SQLITE_DEPENDENCY.md)
+SQLite stays essential even with the bridge: it is the **only** data source on Azure/Linux (no bridge), the sole store for 20M+ labels (`IMetadataProvider` has no label API), and the engine for all bulk search, aggregation and pattern mining (the bridge reads one object at a time).
 
 ---
 
@@ -136,7 +136,17 @@ Key implementation points:
 - **Auto-invalidation** — after each write: bridge metadata cache + SQLite index are refreshed, so the next read sees the change.
 - **Graceful degradation** — bridge missing (Azure/Linux) → read tools fall back to SQLite; `xrefAvailable: false` → xref tools fall back to FTS.
 
-Protocol, error codes and troubleshooting: [BRIDGE.md](BRIDGE.md)
+### Bridge protocol & resilience
+
+Newline-delimited JSON-RPC over stdin/stdout. Read calls that time out or hit a dead pipe are retried after a health-checked respawn (`BRIDGE_MAX_RETRIES`, `BRIDGE_MAX_RESTARTS`); **write calls are never retried** — a timed-out write may already have applied. On startup the child sends `{"id":"ready", result:{ metadataAvailable, xrefAvailable }}`.
+
+| Error code | Meaning |
+|---|---|
+| `-32601` / `-32602` | unknown method / invalid params |
+| `-32000` / `-32001` | service not available / object not found |
+| `-32603` | internal error |
+
+**Troubleshooting:** `metadataAvailable: false` → D365FO not deployed to the package path, or a DLL version mismatch (check bridge stderr). `xrefAvailable: false` (non-critical, xref falls back to FTS) → SQL Server / `DYNAMICSXREFDB` unreachable; on UDE the server reads `CrossReferencesDbServerName`/`CrossReferencesDatabaseName` from the XPP config automatically. Building on UDE needs the DLL path: `dotnet build -c Release -p:D365BinPath="<FrameworkDirectory>\bin"`.
 
 ---
 
@@ -180,7 +190,7 @@ graph LR
 | Read-only | `read-only` | search/analysis | Azure App Service |
 | Write-only | `write-only` | file ops + bridge reads | hybrid local companion |
 
-Index refresh is automated via [Azure DevOps pipelines](PIPELINES.md); the App Service downloads updated databases from Blob Storage on restart.
+Index refresh is automated via [Azure DevOps pipelines](SETUP_AZURE.md#azure-devops-pipelines); the App Service downloads updated databases from Blob Storage on restart.
 
 ---
 

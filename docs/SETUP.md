@@ -2,7 +2,7 @@
 
 Everything a **developer** needs to connect GitHub Copilot (VS 2022 ≥ 17.14 / VS 2026) to the D365 F&O MCP Server.
 
-> Fast path: [QUICK_START.md](QUICK_START.md) · Azure deployment (admins): [SETUP_AZURE.md](SETUP_AZURE.md) · Claude Code: [CLAUDE_CODE_SETUP.md](CLAUDE_CODE_SETUP.md)
+> Fast path: [QUICK_START.md](QUICK_START.md) · Azure deployment (admins): [SETUP_AZURE.md](SETUP_AZURE.md) · Claude Code: [below](#claude-code-cli)
 
 > **Prefer a guided setup?** After `git clone` + `npm install`, run `npm run setup` — the interactive management CLI walks through the scenario choice below, builds the bridge and the index, and prints the `.mcp.json` block. `npm run doctor` verifies an existing installation. Day-to-day: `npx d365fo-mcp start|update|index|instance …` (each command also runs non-interactively with arguments). The PowerShell scripts referenced below keep working as before.
 
@@ -39,11 +39,13 @@ flowchart TD
 
 | Component | Version | Needed for |
 |-----------|---------|-----------|
-| Visual Studio 2022 / 2026 | ≥ 17.14 / any | MCP support |
+| Visual Studio 2026 / 2022 | 2026 (from 10.0.49) / ≥ 17.14 | MCP support |
 | GitHub Copilot extension | latest | agent mode |
 | Node.js + Python | 24.x LTS / 3.x | local & hybrid (native SQLite build) |
 | .NET SDK | any current | C# bridge — **all writes** (pre-installed on D365FO VMs) |
 | Git | any | local & hybrid |
+
+> **From platform update 10.0.49 (PU74), Visual Studio 2026 is the only supported IDE for X++ development** — Microsoft no longer supports VS 2022. Earlier platform versions still use VS 2022 ≥ 17.14. ([announcement](https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/fin-ops/get-started/whats-new-platform-updates-10-0-49))
 
 ## Enable MCP (one-time)
 
@@ -172,7 +174,7 @@ VS spawns the server as a subprocess — no HTTP, no manual start. Build the ind
 }
 ```
 
-The database paths and `workspace.solutionsPath` come from the config file; the `env` block only has to say which config to load. `workspace.solutionsPath` is scanned for `.rnrproj` files at startup; the MCP roots protocol delivers the open workspace automatically. Switch projects without restart via `get_workspace_info(projectPath=...)`. Details: [WORKSPACE_DETECTION.md](WORKSPACE_DETECTION.md)
+The database paths and `workspace.solutionsPath` come from the config file; the `env` block only has to say which config to load. `workspace.solutionsPath` is scanned for `.rnrproj` files at startup; the MCP roots protocol delivers the open workspace automatically. Switch projects without restart via `get_workspace_info(projectPath=...)`. Details: [MCP_CONFIG.md § Automatic workspace detection](MCP_CONFIG.md#automatic-workspace-detection)
 
 ## Scenario F — Multiple instances
 
@@ -241,7 +243,7 @@ dotnet build -c Release        # output: bin\Release\D365MetadataBridge.exe (aut
 | Restrictive NuGet feed | add `--source https://api.nuget.org/v3/index.json` |
 | After a D365FO version upgrade | rebuild to pick up new DLLs |
 
-Healthy startup: `✅ C# bridge initialized (metadataAvailable: true, xrefAvailable: true)`. `xrefAvailable: false` is non-critical (xref tools fall back to SQLite FTS). Full reference: [BRIDGE.md](BRIDGE.md)
+Healthy startup: `✅ C# bridge initialized (metadataAvailable: true, xrefAvailable: true)`. `xrefAvailable: false` is non-critical (xref tools fall back to SQLite FTS). Full reference: [ARCHITECTURE.md § C# Metadata Bridge](ARCHITECTURE.md#c-metadata-bridge)
 
 ---
 
@@ -262,13 +264,29 @@ The server searches from the working directory up to 5 parent levels.
 |---------|-----|
 | Tools don't appear in Copilot | VS ≥ 17.14 · MCP enabled on github.com **and** in VS options · Agent Mode active · restart VS after editing `.mcp.json` |
 | Copilot uses built-in file search instead of tools | `.github\copilot-instructions.md` must exist in a parent of the solution folder |
-| File created in the wrong model | use the two-level `D365FO_WORKSPACE_PATH`: `...\PackagesLocalDirectory\<Package>\<Model>` — see [WORKSPACE_DETECTION.md](WORKSPACE_DETECTION.md) |
+| File created in the wrong model | use the two-level `D365FO_WORKSPACE_PATH`: `...\PackagesLocalDirectory\<Package>\<Model>` — see [MCP_CONFIG.md § Automatic workspace detection](MCP_CONFIG.md#automatic-workspace-detection) |
 | Local companion won't start | `node --version` (24.x) · re-run `npm install && npm run build` · check the path in `args` |
 | Writes fail / bridge missing | build the bridge (above) · check `.NET 4.8` · see startup log flags |
 | No search results | Azure: open `/health` in a browser · local: `data/xpp-metadata.db` exists and is > 100 MB |
 
 ---
 
+## Claude Code CLI
+
+Same build as above — no Visual Studio required. Register the server with `claude mcp add-json`; the **`alwaysLoad`** flag loads the tool list at session start so Claude never routes X++ lookups to another tool.
+
+```powershell
+# Azure-hosted server (most teams)
+claude mcp add-json --scope user d365fo-mcp-tools '{"type":"http","url":"https://your-server.azurewebsites.net/mcp/","alwaysLoad":true}'
+
+# Local stdio (single developer)
+claude mcp add-json --scope user d365fo-mcp-tools '{"type":"stdio","command":"node","args":["K:\\d365fo-mcp-server\\dist\\index.js"],"env":{"D365FO_CONFIG":"K:\\d365fo-mcp-server\\config\\d365fo-mcp.json"},"alwaysLoad":true}'
+```
+
+For a team-shared, project-scoped config, create `.mcp.json` in the solution root using Claude Code's **`mcpServers`** key (not `servers`). Finally, copy `.github/copilot-instructions.md` to the parent of your solutions renamed to **`CLAUDE.md`** — Claude Code reads it automatically from the working directory upward.
+
+---
+
 ## Next steps
 
-[MCP_CONFIG.md](MCP_CONFIG.md) — every option · [MCP_TOOLS.md](MCP_TOOLS.md) — all 26 tools · [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) — real workflows · [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) — ISV/multi-model · [PIPELINES.md](PIPELINES.md) — automated index refresh
+[MCP_CONFIG.md](MCP_CONFIG.md) — every option · [MCP_TOOLS.md](MCP_TOOLS.md) — all 26 tools · [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) — real workflows · [CUSTOM_EXTENSIONS.md](CUSTOM_EXTENSIONS.md) — ISV/multi-model · [SETUP_AZURE.md § pipelines](SETUP_AZURE.md#azure-devops-pipelines) — automated index refresh

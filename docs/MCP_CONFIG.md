@@ -177,6 +177,16 @@ Notes:
 | Expecting workspace context over HTTP | use the hybrid stdio companion |
 | `modify` fails with "outside package roots" but `create` works | metadata is junctioned into PLD — add the junction target as `D365FO_CUSTOM_PACKAGES_PATH` and restart ([details](#symlink--junction-layouts)) |
 
+## Automatic workspace detection
+
+When you open a D365FO solution in VS 2022/2026 over **stdio**, the server detects your model automatically — no manual config:
+
+1. After the handshake the client sends a `roots/list` response with the open folder URI.
+2. The server finds the nearest `.rnrproj` (≤ 6 levels deep) and reads its `<Model>` element.
+3. All writes target that model. Fallback chain: `VSCODE_WORKSPACE_FOLDER_PATHS` → `process.cwd()`.
+
+Set `D365FO_SOLUTIONS_PATH` to the folder holding your `.rnrproj` files so the server lists every project and can switch between them without a restart — say *"switch to ContosoEDS project"* (Copilot calls `get_workspace_info` with `projectName`), or pass an exact `projectPath`. Over **HTTP** there is no subprocess, so pass the two-level `D365FO_WORKSPACE_PATH` (`…\PackagesLocalDirectory\<Package>\<Model>`) instead. Every resolved value and its source is shown by `get_workspace_info`.
+
 ## See also
 
-[SETUP.md](SETUP.md) · [BRIDGE.md](BRIDGE.md) · [WORKSPACE_DETECTION.md](WORKSPACE_DETECTION.md) · [SETUP_AZURE.md](SETUP_AZURE.md)
+[SETUP.md](SETUP.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [SETUP_AZURE.md](SETUP_AZURE.md)
