@@ -121,7 +121,7 @@ function serverEntry(url: string, apiKey: string | undefined, alwaysLoad: boolea
     url,
     ...(apiKey ? { headers: { 'X-Api-Key': apiKey } } : {}),
     // Without it Claude Code defers the tools and may answer X++ questions from
-    // built-in search instead (docs/CLAUDE_CODE_SETUP.md).
+    // built-in search instead (docs/SETUP.md § Claude Code CLI).
     ...(alwaysLoad ? { alwaysLoad: true } : {}),
   };
 }

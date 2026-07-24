@@ -31,7 +31,7 @@ Every new MCP tool requires changes in these files. Check each item before openi
 - [ ] Update tool count in `README.md` (headline + paragraph + MCP_TOOLS.md reference)
 - [ ] Update tool count in `docs/ARCHITECTURE.md` (tool totals in architecture description)
 - [ ] Update tool count in `docs/MCP_TOOLS.md` header
-- [ ] Update tool count in `docs/QUICK_START.md`, `docs/MCP_CONFIG.md`, `docs/CLAUDE_CODE_SETUP.md`
+- [ ] Update tool count in `docs/QUICK_START.md`, `docs/MCP_CONFIG.md`, `docs/SETUP.md`
 - [ ] Add tool to Core Tool Mapping table in `.github/copilot-instructions.md` if user-facing
 
 ## Prefer merging over adding (discriminator pattern)
