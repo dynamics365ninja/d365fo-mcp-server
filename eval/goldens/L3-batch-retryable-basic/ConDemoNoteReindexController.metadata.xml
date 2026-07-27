@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteReindexController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Controller for the <c>ConDemoNoteReindexService</c> operation. Defaults the execution mode
+/// to <c>SysOperationExecutionMode::ScheduledBatch</c> so the work runs in the batch server.
+/// </summary>
+class ConDemoNoteReindexController extends SysOperationServiceController
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Initializes a new instance of the <c>ConDemoNoteReindexController</c> class.
+    /// </summary>
+    protected void new()
+    {
+        super();
+
+        this.parmClassName(classStr(ConDemoNoteReindexService));
+        this.parmMethodName(methodStr(ConDemoNoteReindexService, process));
+        this.parmExecutionMode(SysOperationExecutionMode::ScheduledBatch);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Constructs a new instance of the <c>ConDemoNoteReindexController</c> class.
+    /// </summary>
+    /// <returns>The controller instance.</returns>
+    public static ConDemoNoteReindexController construct()
+    {
+        return new ConDemoNoteReindexController();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Entry point of the operation.
+    /// </summary>
+    /// <param name = "_args">The arguments passed by the caller.</param>
+    public static void main(Args _args)
+    {
+        ConDemoNoteReindexController controller = ConDemoNoteReindexController::construct();
+
+        controller.parmArgs(_args);
+        controller.startOperation();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

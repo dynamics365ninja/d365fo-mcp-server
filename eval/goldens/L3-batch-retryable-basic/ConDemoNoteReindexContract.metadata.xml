@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteReindexContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data contract for the <c>ConDemoNoteReindexService</c> retryable batch operation.
+/// </summary>
+[DataContractAttribute]
+public class ConDemoNoteReindexContract
+{
+    BatchGroupId    batchGroupId;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmBatchGroupId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the batch group the reindex operation is scheduled into.
+    /// </summary>
+    /// <param name = "_batchGroupId">The batch group identifier.</param>
+    /// <returns>The batch group identifier.</returns>
+    [DataMemberAttribute('BatchGroupId')]
+    public BatchGroupId parmBatchGroupId(BatchGroupId _batchGroupId = batchGroupId)
+    {
+        batchGroupId = _batchGroupId;
+
+        return batchGroupId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

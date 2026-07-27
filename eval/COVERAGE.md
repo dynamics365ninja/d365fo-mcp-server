@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 61 | 77 | 79.2% |
+| total | 62 | 77 | 80.5% |
 
 ## Data model (12/12)
 
@@ -75,13 +75,13 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Print management | total | ✅ | — | ✅ | Eval case authored (document node + settings resolution); golden pending VM capture. |
 | Electronic Reporting (ER) | total | ✅ | — | ✅ | Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture. |
 
-## Frameworks (10/16)
+## Frameworks (11/16)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysOperation / batch | core | ✅ | ✅ | ✅ | L3-batch-basic |
 | Parallel batch processing | total | ✅ | — | ✅ | Eval case authored (BatchHeader runtime tasks); golden pending VM capture. |
-| Async & retryable batch (BatchRetryable/runAsync) | total | ✅ | — | ✅ | Eval case authored (L3-batch-retryable-basic) — golden capture pending on the VM. |
+| Async & retryable batch (BatchRetryable/runAsync) | total | ✅ | ✅ | ✅ | L3-batch-retryable-basic |
 | Number sequences | core | ✅ | ✅ | ✅ | L2-numberseq-basic |
 | Financial dimensions | core | ✅ | ✅ | ✅ | L2-dimension-basic |
 | Posting engine (LedgerVoucher) | total | ✅ | — | ✅ | Eval case authored; it scores the STRUCTURE of the LedgerVoucher call chain, not a posted result (no ledger fixture). Golden pending VM capture. |
@@ -132,7 +132,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
-| 2 | Async & retryable batch (BatchRetryable/runAsync) | missing E |
 | 2 | Data entity extension | missing E |
 | 2 | Data management framework (DMF/DIXF) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |

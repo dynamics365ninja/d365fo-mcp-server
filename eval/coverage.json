@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 61,
-    "percent": 79.2
+    "covered": 62,
+    "percent": 80.5
   },
   "leaves": [
     {
@@ -747,10 +747,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-batch-retryable-basic"
+      ]
     },
     {
       "id": "number-sequences",

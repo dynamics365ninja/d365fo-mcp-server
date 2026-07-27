@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteReindexService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Retryable SysOperation service that reindexes <c>ConDemoNoteHeader</c> records.
+/// The work is idempotent, so the batch framework may safely re-run it after a transient fault.
+/// </summary>
+class ConDemoNoteReindexService extends SysOperationServiceBase implements BatchRetryable
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>process</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Iterates the demo note headers and reindexes them.
+    /// </summary>
+    /// <param name = "_contract">The data contract holding the operation parameters.</param>
+    public void process(ConDemoNoteReindexContract _contract)
+    {
+        ConDemoNoteHeader   demoNoteHeader;
+        BatchGroupId        batchGroupId;
+        Counter             processed;
+
+        batchGroupId = _contract.parmBatchGroupId();
+
+        while select NoteId, Subject from demoNoteHeader
+        {
+            processed++;
+        }
+
+        info(strFmt('%1 %2 (%3)', "@DMF:NumberOfRecordsProcessed", processed, batchGroupId));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isRetryable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Opts the task into automatic retry on transient faults.
+    /// </summary>
+    /// <returns>Always true - the operation is idempotent.</returns>
+    public boolean isRetryable()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
