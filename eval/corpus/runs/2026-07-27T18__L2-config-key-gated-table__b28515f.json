@@ -1,0 +1,83 @@
+{
+  "run_id": "2026-07-27T18__L2-config-key-gated-table__b28515f",
+  "case_id": "L2-config-key-gated-table",
+  "tier": 2,
+  "timestamp": "2026-07-27T18:02:03.461Z",
+  "server_git_sha": "b28515f",
+  "generated_artifacts": [
+    "ConDemoGatedSetting.metadata.xml",
+    "ConDemoGatedSettingMI.metadata.xml",
+    "ConDemoModuleKey.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "object": "AxMenuItemDisplay/ConDemoGatedSettingMI",
+        "rule": "BPErrorMenuItemNotCoveredByPrivilege"
+      },
+      {
+        "object": "AxTable/ConDemoGatedSetting",
+        "rule": "BPTableWithRecIdIndexMissingReplacementKey"
+      },
+      {
+        "object": "AxTable/ConDemoGatedSetting",
+        "rule": "BPErrorDeveloperDocumentationNotDefined"
+      },
+      {
+        "object": "AxTable/ConDemoGatedSetting",
+        "rule": "BPErrorTableMissingFormRef"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "KNOWLEDGE_GAP",
+  "platform_build": "xppc 7.0.7858.27",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "CASE OUTCOME: PASS on every asserted dimension - build 0 errors, BP 0 ERRORS (the case requirement), golden_match 1.\nClassified KNOWLEDGE_GAP only because the bp_clean dimension counts WARNINGS: 4 are attributable to this case. The full project run reported 11; the other 7 belong to the pre-existing ConDemoNoteHeader harness fixture, not to this case.\n\nCONFIG-KEY CHAIN PROVEN, NOT ASSUMED. Per the sweep precedent that a green build does not prove correct XML, the chain was verified by NEGATIVE test rather than inference. Repointing each ConfigurationKey at a non-existent key and rebuilding produced, in two separate builds:\n  Metadata Error: AxTable/ConDemoGatedSetting/ConfigurationKey: Configuration key ConBogusKeyXyz does not exist.\n  Metadata Error: AxMenuItemDisplay/ConDemoGatedSettingMI/ConfigurationKey: Configuration key ConBogusKeyXyz does not exist.\nBoth elements are therefore genuinely consumed by xppc (not silently dropped), and the AxConfigurationKey file we wrote is genuinely parsed and registered (the valid key validates clean). Both were reverted and the final build is green.\n\nWRITER-SHAPE AUDIT vs standard models (the AxTile / AxDataEntityView failure class):\n  AxConfigurationKey - EXACT match. 161 ApplicationSuite/Foundation + 11 ApplicationFoundation keys reduce to Name + Label, with ParentKey/LicenseCode/Enabled/EnabledByDefault/IsObsolete optional. Case mandates no parent key, so Name + Label is complete. No gap.\n  AxTable - element ORDER matches the standard convention (ConfigurationKey sorts before Label), verified against ApplicationFoundation/AxTable/BIDateDimensionValue.xml, itself a Main table with a ConfigurationKey. Index shape correct: AlternateKey=Yes with AllowDuplicates OMITTED is the standard serialization for a UNIQUE index; standard files emit AllowDuplicates only when Yes, and BIDateDimensionValue.xml shows both forms side by side. The bridge reads the index back as (unique). No gap.\n  AxMenuItemDisplay - root correctly carries BOTH xmlns:i and the default namespace Microsoft.Dynamics.AX.Metadata.V1, which is the exact class of bug that hit AxTile. Element order correct. Absent Object element is legal standard shape: 5 of 467 ApplicationFoundation display menu items omit it.\n\nONE NON-BLOCKING GAP FOUND: SubscriberAccessLevel is absent from our menu item. 194/200 sampled standard and 2/2 VS-authored custom (HBReavisCus) display menu items carry it. This is a MISSING PROPERTY SURFACE in d365fo_file (no parameter exposes it), NOT a dropped element: the file is provider-serialized output via IMetaMenuItemDisplayProvider.Create, builds clean and raises no BP error, and 6/200 standard files also omit it. Golden captured rather than held, since freezing now makes any future writer fix visible as a deliberate golden update.\n\nTOOL DEFECTS OBSERVED (none blocked the case; all worked around inside the grounded path):\n  1. add-index idempotency defeats the remediation advice the tool itself prints. The first add-index rejected allowDuplicates/alternateKey as unrecognised and correctly said \"Re-run with the correct parameter name(s)\" - but the index had ALREADY been written, so the corrected re-run hit the \"already present - skipped (idempotent)\" guard and silently applied nothing. The advertised recovery path is unreachable; remove-index + add-index was required. add-method updates in place when the name exists; add-index should do the same, or the param-name check should run BEFORE the write.\n  2. d365fo_file(action=modify) does not support menu-item types (objectType enum omits menu-item-display/action/output), so ConfigurationKey could only be set by re-running create with overwrite=true. Setting a single property should not require rewriting the object.\n  3. verify_d365fo_project has no configuration-key objectType even though d365fo_file(action=create) does - a created object cannot be verified by its own verifier.\n  4. labels(action=info) rejects the full new-format id it is documented to take: labelId \"@TaxTransactionInquiry:HeaderNote\" returned not found, while the same label resolved via labelId \"HeaderNote\" + labelFileId + model, and labels(action=search) printed the @File:Id form as the thing to use.\n  5. get_object_info surfaces no ConfigurationKey for either table or menu-item, so a gating property cannot be confirmed through the read path - only by reading the XML or by build failure. Reader coverage gap, not a write bug.\n  6. Cosmetic: table create reported \"BP defaults: ... PrimaryIndex=SurrogateKey, ClusteredIndex=SurrogateKey\" but wrote neither element. They are implicit provider defaults (the bridge reports them on read), so the message describes derived state as if it were written.\n  7. prepare(mode=create) reported all three objects as already existing in model Contoso from stale symbol-index entries left by a previous run, while disk had none of them - a false-positive collision check. NUANCE established at rollback time: undo_last_modification DOES purge index entries (\"Stale index entries cleaned up\") and DOES remove the .rnrproj entry, so the per-object undo path is clean. The stale entries therefore came from an earlier rollback done by whole-model wipe rather than per-object undo. Fix belongs in the wipe path, not in undo_last_modification.\n  8. d365fo_file(action=modify) wrote 7 .backup-timestamp files directly into PackagesLocalDirectory/Contoso/Contoso/AxTable/ because the package dir is not under git. These are AOT-folder pollution and must be swept by rollback.\n\nCONFIRMED VALIDATOR GAP (both halves of the evidence collected in this run): validate_code(mode=references, codeType=xml-table) does NOT resolve <ConfigurationKey>. The identical bogus key that xppc rejects with a hard \"Metadata Error: ... Configuration key ConBogusKeyXyz does not exist\" passes the static gate clean (\"all 2 reference(s) verified ... Safe to proceed\"). The static gate therefore cannot catch a dangling configuration-key reference on a table or menu item; only a full build can. This reproduces the gap first noted in the 2026-07-22 run (0e1e367) and is still open on b28515f.\n\nCORRECTIONS TO THE PRIOR RECORD FOR THIS CASE (eval/corpus/runs/2026-07-22T16__L2-config-key-gated-table__0e1e367.json, classification TOOL_DEFECT). BOTH of its two reported defects were re-tested on b28515f and NEITHER reproduces - the record is stale and should not be acted on:\n  Prior claim 1: \"d365fo_file(action=create, objectType=table) silently DROPS properties.configurationKey\". DISPROVEN on b28515f. A probe table created with properties.configurationKey=ConDemoModuleKey emitted <ConfigurationKey>ConDemoModuleKey</ConfigurationKey> at the correct sorted position (before Label). Either fixed since 0e1e367 or originally misdiagnosed. Practical consequence: the create+modify-property two-step used in this run is no longer necessary; one create call suffices.\n  Prior claim 2: \"modify(add-index) accepts indexAllowDuplicates but never writes AllowDuplicates ... it is a silent-drop\". DISPROVEN and it was a misdiagnosis, not a fix. Passing indexAllowDuplicates=true DOES write <AllowDuplicates>Yes</AllowDuplicates>. Passing false correctly OMITS the element, because No is the metadata default and standard files serialize AllowDuplicates only when Yes - verified against ApplicationFoundation/AxTable/BIDateDimensionValue.xml, which carries one AlternateKey index with no AllowDuplicates and four non-unique indexes each with AllowDuplicates=Yes. The writer is matching the standard convention exactly; the earlier report mistook correct default-omission for a dropped parameter.",
+  "suggested_fix_area": "Priority 1 - validate_code(mode=references, codeType=xml-table): resolve <ConfigurationKey> (and the same element on menu items) against the configuration-key index. This run has matched evidence that the static gate passes input the compiler hard-rejects, so the gate currently gives false assurance on exactly the property this case is about.\nPriority 2 - d365fo_file add-index: validate parameter names BEFORE writing, or make add-index update-in-place like add-method. The first call rejected allowDuplicates/alternateKey as unrecognised and told me to \"Re-run with the correct parameter name(s)\", but the index was already written, so the corrected re-run hit the idempotent-skip guard and applied nothing. The advertised recovery path is unreachable; remove-index + add-index was required.\nPriority 3 - d365fo_file(action=modify): extend objectType to menu-item-display/action/output (and configuration-key) so a single property edit does not require create with overwrite=true.\nPriority 4 - writer property surface: expose SubscriberAccessLevel for menu items, and consider defaulting DeveloperDocumentation, table FormRef and ReplacementKey when an AlternateKey exists - that would clear 3 of this case 4 BP warnings.\nPriority 5 - verify_d365fo_project and get_object_info coverage: add configuration-key to the verifier enum; surface ConfigurationKey in the table and menu-item readers.\nPriority 6 - eval harness hygiene: purge symbol-index entries in the WHOLE-MODEL WIPE rollback path (per-object undo_last_modification already does this correctly); sweep .backup-* files that modify writes into PackagesLocalDirectory; and clear stale XppMetadata/<model>/AxTable projections - 23 are left over from earlier eval cases and survive object rollback.\nPriority 7 - corpus hygiene: supersede eval/corpus/runs/2026-07-22T16__L2-config-key-gated-table__0e1e367.json - both defects it reports are non-reproducible on b28515f.\nPriority 8 - labels(action=info): accept the \"@LabelFile:LabelId\" form its own search output advertises.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxConfigurationKey/ConDemoModuleKey.xml (produced)",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxTable/ConDemoGatedSetting.xml (produced)",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxMenuItemDisplay/ConDemoGatedSettingMI.xml (produced)",
+    "K:/AosService/PackagesLocalDirectory/ApplicationFoundation/ApplicationFoundation/AxTable/BIDateDimensionValue.xml (shape ref: Main table with ConfigurationKey; unique vs non-unique index serialization side by side)",
+    "K:/AosService/PackagesLocalDirectory/ApplicationFoundation/ApplicationFoundation/AxMenuItemDisplay/AdminDashboard.xml (shape ref: ConfigurationKey before Label, dual namespace)",
+    "K:/AosService/PackagesLocalDirectory/ApplicationFoundation/ApplicationFoundation/AxMenuItemDisplay/ReleaseUpdateInfoCenter.xml (precedent: legal Object-less display menu item)",
+    "K:/AosService/PackagesLocalDirectory/HBReavisCus/HBReavisCus/AxMenuItemDisplay/HBC_ChangeJournal.xml (VS-authored custom menu item carrying SubscriberAccessLevel)",
+    "K:/AosService/PackagesLocalDirectory/ApplicationFoundation/ApplicationFoundation/AxConfigurationKey/LogisticsBasic.xml (shape ref: root key, no ParentKey)",
+    "negative test build 1: Metadata Error AxTable/ConDemoGatedSetting/ConfigurationKey ConBogusKeyXyz does not exist",
+    "negative test build 2: Metadata Error AxMenuItemDisplay/ConDemoGatedSettingMI/ConfigurationKey ConBogusKeyXyz does not exist",
+    "eval/corpus/runs/2026-07-22T16__L2-config-key-gated-table__0e1e367.json (prior record: both reported defects re-tested and non-reproducible on b28515f)",
+    "probe: table created with properties.configurationKey emitted ConfigurationKey correctly (disproves prior claim 1)",
+    "probe: add-index indexAllowDuplicates=true wrote AllowDuplicates=Yes (disproves prior claim 2)",
+    "probe: validate_code(references,xml-table) passed a bogus ConfigurationKey that xppc rejects (validator gap)"
+  ]
+}

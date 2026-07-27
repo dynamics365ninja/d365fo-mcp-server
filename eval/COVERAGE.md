@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 59 | 77 | 76.6% |
+| total | 60 | 77 | 77.9% |
 
 ## Data model (12/12)
 
@@ -45,8 +45,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | ✅ | ✅ | L2-sysextension-plugin |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +34 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +34 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +35 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +35 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
@@ -75,7 +75,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Print management | total | ✅ | — | ✅ | Eval case authored (document node + settings resolution); golden pending VM capture. |
 | Electronic Reporting (ER) | total | ✅ | — | ✅ | Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture. |
 
-## Frameworks (8/16)
+## Frameworks (9/16)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -88,7 +88,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Workflow | core | ✅ | ✅ | ✅ | L3-workflow-document-submit |
 | Business events & alerts | core | ✅ | ✅ | ✅ | L2-business-event-basic |
 | Feature management | total | ✅ | ✅ | ✅ | L2-feature-management-flight |
-| Configuration keys | total | ✅ | — | ✅ | Create path added (d365fo_file objectType "configuration-key"); eval case authored, golden pending VM capture. |
+| Configuration keys | total | ✅ | ✅ | ✅ | L2-config-key-gated-table |
 | Multi-company / changeCompany | core | ✅ | ✅ | ✅ | L2-multi-company-changecompany |
 | Global address book | total | ✅ | — | ✅ | Eval case authored (party + primary postal address through the DirParty API); golden pending VM capture. |
 | Currency & exchange rates | total | ✅ | — | ✅ | Eval case authored (exchange-rate helper conversion + currency rounding); golden pending VM capture. |
@@ -126,14 +126,13 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L3-batch-basic |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +34 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +35 |
 
 ## Closure queue (uncovered, by frequency weight)
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
 | 2 | Async & retryable batch (BatchRetryable/runAsync) | missing E |
-| 2 | Configuration keys | missing E |
 | 2 | Currency & exchange rates | missing E |
 | 2 | Data entity extension | missing E |
 | 2 | Data management framework (DMF/DIXF) | missing E |

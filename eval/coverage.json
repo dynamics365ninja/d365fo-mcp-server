@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 59,
-    "percent": 76.6
+    "covered": 60,
+    "percent": 77.9
   },
   "leaves": [
     {
@@ -399,6 +399,7 @@
         "L2-business-event-basic",
         "L2-class-method-ops",
         "L2-collections-map-list-container",
+        "L2-config-key-gated-table",
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
@@ -449,6 +450,7 @@
         "L2-business-event-basic",
         "L2-class-method-ops",
         "L2-collections-map-list-container",
+        "L2-config-key-gated-table",
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
@@ -839,10 +841,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-config-key-gated-table"
+      ]
     },
     {
       "id": "multi-company",
@@ -1163,6 +1167,7 @@
         "L2-business-event-basic",
         "L2-class-method-ops",
         "L2-collections-map-list-container",
+        "L2-config-key-gated-table",
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
