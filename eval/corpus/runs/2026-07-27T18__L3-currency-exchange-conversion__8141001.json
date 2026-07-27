@@ -1,0 +1,58 @@
+{
+  "run_id": "2026-07-27T18__L3-currency-exchange-conversion__8141001",
+  "case_id": "L3-currency-exchange-conversion",
+  "tier": 3,
+  "timestamp": "2026-07-27T18:28:18.262Z",
+  "server_git_sha": "8141001",
+  "generated_artifacts": [
+    "ConDemoCurrencyConverter.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Re-run of the 2026-07-27T16 ENV_FLAKE. That run failed with 8 xppc name-resolution errors (CurrencyCode, CurrencyExchangeRate, CurrencyExchange) because the Contoso sandbox Descriptor did not list the Currency package in ModuleReferences. Adding <d2p1:string>Currency</d2p1:string> to K:AosServicePackagesLocalDirectoryContosoDescriptorContoso.xml fully resolved the blocker: full build of Contoso completed in 11s with 0 errors, no AOS/service restart and no symbol-index rebuild were needed (xppc reads the Descriptor directly at compile time). Implementation re-derived grounded from scratch, not carried over: CurrencyExchangeHelper::newExchangeDate(LedgerRecId, TransDate) + calculateTransactionToAccounting / calculateTransactionToTransaction (crossRate 0 so both legs route through the accounting currency) and CurrencyExchange::round(Amount, CurrencyCode) for the Currency-table rounding rule. All member signatures and arities confirmed via get_method / get_object_info before writing. Writer-shape audit: AxClass element vocabulary of the generated file is identical to standard-model AxClass files (AxClass > Name, SourceCode > Declaration + Methods > Method > Name + Source) and the class round-trips through IMetadataProvider with all three mandated signatures intact, so the golden was frozen. One cosmetic writer quirk noted (see evidence_refs): the source writer re-indents statement lines to a fixed body indent and does not preserve the extra indentation of continuation lines in a multi-line call.",
+  "suggested_fix_area": "None blocking. Optional hardening: a preflight that derives required Descriptor ModuleReferences from the packages owning the symbols a case names, so a missing reference fails fast instead of surfacing as opaque xppc name-resolution errors (the ENV_FLAKE this run closes). Separately, the X++ source writer could preserve caller-supplied continuation-line indentation instead of flattening it to the body indent.",
+  "evidence_refs": [
+    "K:AosServicePackagesLocalDirectoryContosoDescriptorContoso.xml (Currency now present in ModuleReferences)",
+    "K:AosServicePackagesLocalDirectoryContosoContosoAxClassConDemoCurrencyConverter.xml (generated artifact)",
+    "eval/goldens/L3-currency-exchange-conversion/ConDemoCurrencyConverter.metadata.xml (golden captured this run)",
+    "eval/corpus/runs/2026-07-27T16__L3-currency-exchange-conversion__b28515f.json (prior ENV_FLAKE this run closes)",
+    "K:AosServicePackagesLocalDirectoryCurrencyCurrencyAxClassCurrencyExchange.xml (shape reference + CurrencyExchange::round source)",
+    "K:AosServicePackagesLocalDirectoryLedgerLedgerAxClassCurrencyExchangeHelper.xml (shape reference + helper signatures)",
+    "K:AosServicePackagesLocalDirectoryApplicationSuiteFoundationAxClassSettlementUtility.xml (shape reference)",
+    "writer quirk: continuation lines of calculateTransactionToTransaction(...) written at body indent 8 instead of the supplied 12 — cosmetic, no element loss",
+    "note: server binary in use was built at b28515f; server_git_sha 8141001 is the repo HEAD at scoring time (parallel sessions committed in between)"
+  ]
+}

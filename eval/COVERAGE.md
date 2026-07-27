@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 60 | 77 | 77.9% |
+| total | 61 | 77 | 79.2% |
 
 ## Data model (12/12)
 
@@ -75,7 +75,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Print management | total | ✅ | — | ✅ | Eval case authored (document node + settings resolution); golden pending VM capture. |
 | Electronic Reporting (ER) | total | ✅ | — | ✅ | Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture. |
 
-## Frameworks (9/16)
+## Frameworks (10/16)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -91,7 +91,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Configuration keys | total | ✅ | ✅ | ✅ | L2-config-key-gated-table |
 | Multi-company / changeCompany | core | ✅ | ✅ | ✅ | L2-multi-company-changecompany |
 | Global address book | total | ✅ | — | ✅ | Eval case authored (party + primary postal address through the DirParty API); golden pending VM capture. |
-| Currency & exchange rates | total | ✅ | — | ✅ | Eval case authored (exchange-rate helper conversion + currency rounding); golden pending VM capture. |
+| Currency & exchange rates | total | ✅ | ✅ | ✅ | L3-currency-exchange-conversion |
 | Inventory (InventTrans / InventDim) | total | ✅ | ✅ | ✅ | L3-inventory-inventdim-onhand |
 | Warehouse management (WHS) | total | ✅ | — | ✅ | Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture. |
 | Trade agreements & pricing | total | ✅ | — | ✅ | Eval case authored (PriceDisc price/discount resolution); golden pending VM capture. |
@@ -133,7 +133,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
 | 2 | Async & retryable batch (BatchRetryable/runAsync) | missing E |
-| 2 | Currency & exchange rates | missing E |
 | 2 | Data entity extension | missing E |
 | 2 | Data management framework (DMF/DIXF) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |

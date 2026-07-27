@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCurrencyConverter</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Converts amounts between currencies through the platform exchange-rate provider.
+/// </summary>
+/// <remarks>
+/// All conversions go through <c>CurrencyExchangeHelper</c> so that the exchange-rate type,
+/// triangulation and rounding rules configured for the legal entity are respected.
+/// Exchange rates are never read from the rate tables and applied by hand.
+/// </remarks>
+public class ConDemoCurrencyConverter
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>toAccountingCurrency</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Converts an amount expressed in a transaction currency into the accounting currency of the
+    /// current legal entity, using the exchange rate that is valid on the specified date.
+    /// </summary>
+    /// <param name = "_amount">The amount in the transaction currency.</param>
+    /// <param name = "_fromCurrency">The transaction currency of <paramref name = "_amount"/>.</param>
+    /// <param name = "_date">The date that is used to look up the exchange rate.</param>
+    /// <returns>The amount expressed in the accounting currency of the current legal entity.</returns>
+    public static AmountMST toAccountingCurrency(AmountCur _amount, CurrencyCode _fromCurrency, TransDate _date)
+    {
+        CurrencyExchangeHelper exchangeHelper = CurrencyExchangeHelper::newExchangeDate(Ledger::current(), _date);
+
+        return exchangeHelper.calculateTransactionToAccounting(_fromCurrency, _amount, true);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>convert</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Converts an amount from one transaction currency into another transaction currency, using the
+    /// exchange rates that are valid on the specified date.
+    /// </summary>
+    /// <param name = "_amount">The amount in the originating currency.</param>
+    /// <param name = "_from">The originating currency.</param>
+    /// <param name = "_to">The resulting currency.</param>
+    /// <param name = "_date">The date that is used to look up the exchange rates.</param>
+    /// <returns>The amount expressed in the resulting currency.</returns>
+    /// <remarks>
+    /// A cross rate of zero is passed on purpose so that the helper resolves both legs of the
+    /// conversion through the accounting currency of the ledger instead of a caller supplied rate.
+    /// </remarks>
+    public static AmountCur convert(AmountCur _amount, CurrencyCode _from, CurrencyCode _to, TransDate _date)
+    {
+        LedgerRecId             ledgerRecId    = Ledger::current();
+        CurrencyExchangeHelper  exchangeHelper = CurrencyExchangeHelper::newExchangeDate(ledgerRecId, _date);
+        CurrencyExchangeRate    crossRate      = 0;
+
+        return exchangeHelper.calculateTransactionToTransaction(
+        ledgerRecId,
+        _from,
+        _to,
+        _amount,
+        crossRate,
+        true);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>roundToCurrency</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Rounds an amount according to the rounding rule that is configured for the specified currency.
+    /// </summary>
+    /// <param name = "_amount">The amount to round.</param>
+    /// <param name = "_currency">The currency whose rounding rule is applied.</param>
+    /// <returns>The rounded amount.</returns>
+    /// <remarks>
+    /// The rounding precision is taken from the <c>Currency</c> table through
+    /// <c>CurrencyExchange::round</c>; no rounding unit is hard coded.
+    /// </remarks>
+    public static AmountCur roundToCurrency(AmountCur _amount, CurrencyCode _currency)
+    {
+        return CurrencyExchange::round(_amount, _currency);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

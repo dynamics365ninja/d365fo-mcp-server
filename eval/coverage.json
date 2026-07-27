@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 60,
-    "percent": 77.9
+    "covered": 61,
+    "percent": 79.2
   },
   "leaves": [
     {
@@ -881,10 +881,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-currency-exchange-conversion"
+      ]
     },
     {
       "id": "inventory",
