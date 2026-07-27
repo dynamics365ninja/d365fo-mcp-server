@@ -240,7 +240,7 @@ dotnet build -c Release        # output: bin\Release\D365MetadataBridge.exe (aut
 | Situation | Action |
 |-----------|--------|
 | UDE box (DLLs not in `PackagesLocalDirectory\bin`) | `dotnet build -c Release -p:D365BinPath="<FrameworkDirectory>\bin"` |
-| Restrictive NuGet feed | add `--source https://api.nuget.org/v3/index.json` |
+| `NU1101` restoring `System.Text.Json` / `Microsoft.NETFramework.ReferenceAssemblies.net48` | The bridge ships its own `NuGet.config` that merges nuget.org into whatever offline sources the VM already has, so this is usually already fixed. If it still fails (nuget.org blocked outright), restore once with `dotnet restore --source https://api.nuget.org/v3/index.json` |
 | After a D365FO version upgrade | rebuild to pick up new DLLs |
 
 Healthy startup: `✅ C# bridge initialized (metadataAvailable: true, xrefAvailable: true)`. `xrefAvailable: false` is non-critical (xref tools fall back to SQLite FTS). Full reference: [ARCHITECTURE.md § C# Metadata Bridge](ARCHITECTURE.md#c-metadata-bridge)
