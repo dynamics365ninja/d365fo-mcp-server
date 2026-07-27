@@ -1,6 +1,6 @@
 {
   "name": "d365fo-mcp",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "MCP Server for X++ Code Completion in D365 Finance & Operations",
   "type": "module",
   "main": "dist/index.js",
