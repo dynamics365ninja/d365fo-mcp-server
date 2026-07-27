@@ -32,23 +32,23 @@ export function stdioServer(store: SettingsStore, extraEnv?: Record<string, stri
 export function mcpJsonNote(servers: Record<string, unknown>, title = '.mcp.json'): void {
   const json = JSON.stringify({ servers }, null, 2);
   p.note(json, title);
-  // Also write the raw JSON to a file so it can be copied without terminal box
-  // characters. It goes to the data directory, not the package: an npm install
-  // replaces the package on every update, and may not even be writable.
+  // Also write the JSON to a file so it can be copied as-is into VS.
+  // It goes to the data directory, not the package: npm updates replace the
+  // package directory and may not be writable.
   const outPath = paths.mcpSuggestion;
   fs.mkdirSync(dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, json + '\n', 'utf8');
-  p.log.info(`Raw JSON written to: ${outPath}`);
+  p.log.info(`.mcp.json prepared at: ${outPath}`);
 }
 
 export function placementNote(): void {
   p.note(
-    'Place the block above in:\n' +
+    'Copy the generated .mcp.json to one of these locations:\n' +
     '  %USERPROFILE%\\.mcp.json          — all solutions (recommended)\n' +
     '  next to the .sln                 — that solution only\n\n' +
-    'Also copy .github\\copilot-instructions.md into a parent of your\n' +
-    'solution folders (mandatory for Copilot — see docs/SETUP.md).\n' +
-    'Restart Visual Studio after editing .mcp.json.',
+    'Make sure .github\\copilot-instructions.md exists in a parent folder\n' +
+    'of your solutions (mandatory for Copilot — see docs/SETUP.md).\n' +
+    'Restart Visual Studio after copying .mcp.json.',
     'Where it goes',
   );
 }

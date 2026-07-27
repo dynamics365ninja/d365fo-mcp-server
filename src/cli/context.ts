@@ -147,8 +147,8 @@ export const paths = {
   get instancesDir(): string { return resolve(currentDataRoot, 'instances'); },
   get defaultDb(): string { return resolve(currentDataRoot, 'data', 'xpp-metadata.db'); },
   get defaultLabelsDb(): string { return resolve(currentDataRoot, 'data', 'xpp-metadata-labels.db'); },
-  /** Where the wizard drops the ready-to-paste .mcp.json block. */
-  get mcpSuggestion(): string { return resolve(currentDataRoot, 'mcp-config-suggestion.json'); },
+  /** Where setup writes the ready-to-copy .mcp.json file. */
+  get mcpSuggestion(): string { return resolve(currentDataRoot, '.mcp.json'); },
 
   /**
    * Where `dotnet build` puts the bridge.
