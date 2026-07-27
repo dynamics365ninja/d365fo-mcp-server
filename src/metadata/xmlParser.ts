@@ -114,15 +114,17 @@ export function buildClassExtensionRecord(
 }
 
 export class XppMetadataParser {
-  private parser: Parser;
   private enhancedParser: EnhancedXppParser;
 
-  constructor() {
-    this.parser = new Parser({
+  private get parser(): Parser {
+    return new Parser({
       explicitArray: false,
       mergeAttrs: true,
       trim: true,
     });
+  }
+
+  constructor() {
     this.enhancedParser = new EnhancedXppParser();
   }
 
