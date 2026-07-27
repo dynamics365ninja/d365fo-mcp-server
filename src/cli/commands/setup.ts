@@ -16,7 +16,7 @@ import type { SectionId } from '../../config/settings.js';
 import { settingByPath, settingsInSection } from '../../config/settings.js';
 import { commandExists, runExe, runShell } from '../exec.js';
 import { pinBridgeExe } from '../bridgePath.js';
-import { finalizeStagedCopilotFiles, maybePrepareCopilotInstructions } from '../copilotFiles.js';
+import { maybePrepareCopilotInstructions } from '../copilotFiles.js';
 import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { checkRelease } from '../npmRegistry.js';
 import { askAdvanced, askSecrets, askSetting, askSettings } from '../settingsPrompt.js';
@@ -295,7 +295,7 @@ export async function setupCommand(): Promise<void> {
     const url = await askText({ message: 'Azure server URL', placeholder: 'https://your-server.azurewebsites.net/mcp/', required: true });
     await configureEnvironment(store, scenario);
     await configureWorkspace(store, scenario);
-    const copilotPlan = await maybePrepareCopilotInstructions(solutionsPath(store));
+    await maybePrepareCopilotInstructions(solutionsPath(store));
     await configureNaming(store);
     await askSecrets(store, ['behavior']);
     await askAdvanced(store, ['environment', 'workspace', 'naming', 'bridge', 'behavior', 'server']);
@@ -306,7 +306,6 @@ export async function setupCommand(): Promise<void> {
       'd365fo-azure': { url },
       'd365fo-local': stdioServer(store),
     });
-    finalizeStagedCopilotFiles(copilotPlan);
     placementNote();
     p.outro('Hybrid setup complete — no local index needed (Azure serves the search).');
     return;
@@ -316,7 +315,7 @@ export async function setupCommand(): Promise<void> {
   writeSetting(store, setting('server.mode'), 'full');
   await configureEnvironment(store, scenario);
   await configureWorkspace(store, scenario);
-  const copilotPlan = await maybePrepareCopilotInstructions(solutionsPath(store));
+  await maybePrepareCopilotInstructions(solutionsPath(store));
   await configureNaming(store);
   await configureIndex(store);
 
@@ -335,7 +334,6 @@ export async function setupCommand(): Promise<void> {
 
   if (scenario === 'local-http') {
     mcpJsonNote({ 'd365fo-mcp-tools': { url: `http://localhost:${port}/mcp/` } });
-    finalizeStagedCopilotFiles(copilotPlan);
     placementNote();
     p.outro('Done. Start the server with: d365fo-mcp start');
     return;
@@ -344,7 +342,6 @@ export async function setupCommand(): Promise<void> {
   // D / E — the IDE spawns dist/index.js itself and is pointed at the config
   // file; every other setting comes from there.
   mcpJsonNote({ 'd365fo-mcp-tools': stdioServer(store) });
-  finalizeStagedCopilotFiles(copilotPlan);
   placementNote();
   p.outro('Done. VS spawns the server automatically — no manual start needed.');
 }

@@ -8,7 +8,7 @@ import * as fs from 'node:fs';
 import { resolve } from 'node:path';
 import { settingByPath, settingsInSection } from '../../config/settings.js';
 import { pinBridgeExe } from '../bridgePath.js';
-import { finalizeStagedCopilotFiles, maybePrepareCopilotInstructions } from '../copilotFiles.js';
+import { maybePrepareCopilotInstructions } from '../copilotFiles.js';
 import { createInstance, getInstance, listInstances, normalizeInstanceLayout, suggestPort } from '../instances.js';
 import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { selectXppConfig } from './config.js';
@@ -115,7 +115,7 @@ export async function instanceAddCommand(name: string | undefined, portArg: stri
   // Copilot needs the instructions file just as much as it needs .mcp.json,
   // and an instance is somebody's only setup run — asking here is the only
   // chance scenario F gets.
-  const copilotPlan = await maybePrepareCopilotInstructions(
+  await maybePrepareCopilotInstructions(
     String(readSetting(store, settingByPath('workspace.solutionsPath')!) ?? ''),
   );
 
@@ -128,7 +128,6 @@ export async function instanceAddCommand(name: string | undefined, portArg: stri
     },
     `.mcp.json — keep the stdio entry OR the http one, not both`,
   );
-  finalizeStagedCopilotFiles(copilotPlan);
   placementNote();
 
   p.note(
