@@ -1,0 +1,76 @@
+{
+  "run_id": "2026-07-27T14__L2-virtual-entity-power-platform__b28515f",
+  "case_id": "L2-virtual-entity-power-platform",
+  "tier": 2,
+  "timestamp": "2026-07-27T14:50:48.993Z",
+  "server_git_sha": "b28515f",
+  "generated_artifacts": [
+    "/Tables/ConDemoVirtualSource",
+    "/DataEntities/ConDemoVirtualSourceEntity",
+    "/SecurityPrivileges/ConDemoVirtualSourceEntityMaintain (companion, required to clear the DataEntitySecurityPrivilegeCheck BP error; not in target_artifact_types so not captured into the golden)"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      "BPErrorPrivilegeNotCoveredByDuty: AxSecurityPrivilege ConDemoVirtualSourceEntityMaintain is not referenced on any duty",
+      "BPErrorDeveloperDocumentationNotDefined: AxTable ConDemoVirtualSource",
+      "BPErrorTableMissingFormRef: AxTable ConDemoVirtualSource"
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "The case PASSED on its own terms: build 0 errors, 0 BP errors, and every virtual-entity marker survived deserialization (IsPublic=Yes, PublicEntityName=ConDemoVirtualSource, PublicCollectionName=ConDemoVirtualSources, EntityCategory=Master, PrimaryKey=EntityKey -> AxDataEntityViewKey[EntityKey] over SourceCode, i.e. NOT RecId), each re-read through the bridge and confirmed in the compiled runtime metadata (Contoso_AxDataEntityView.md). The grounded path held end to end with NO overwrite=true: table via action=create, index via action=modify/add-index, ReplacementKey via modify-property, entity and privilege via action=create. The defect this run exposes is the AxDataEntityView CREATE WRITER completeness, which a green build cannot see. The produced entity XML omits four elements present in 3236/3236 AxDataEntityView files in ApplicationSuite/Foundation: SourceCode (the entity class Declaration, public class X extends common), FieldGroups (the five standard groups including AutoIdentification with AutoPopulate=Yes, which our OWN knowledge base names as the natural-key mechanism: Use AutoIdentification field group for natural key, maps to AlternateKey), empty DeleteActions and StateMachines. The deserializer defaults them silently, so xppc and xppbp stay green while the object diverges from 100 percent of standard models and, critically, has no class declaration to host the postLoad/mapEntityToDataSource/validateWrite overrides any real entity eventually needs. There is also no grounded repair route: d365fo_file(action=modify, objectType=data-entity, operation=add-field-group) is rejected with -Operation add-field-group on object type data-entity is not supported by the bridge-, so an agent that notices the gap can only fix it by hand-editing XML or overwrite=true - the exact escape hatch the loop forbids. SECONDARY (honesty) defect in d365fo_file(action=modify, operation=add-index): the first call with allowDuplicates/alternateKey correctly reported both parameters as IGNORED and named the right ones - good, honest behaviour - but the re-run with the corrected indexAllowDuplicates/indexAlternateKey hit the by-NAME idempotency guard and changed nothing, while the top-line banner still read -add-index ... applied via IMetadataProvider.Update()-. Only the indented sub-line said -already present ... skipped (idempotent)-. An agent that trusts the banner ships a table WITHOUT its AlternateKey. AlternateKey=Yes was only obtained via remove-index followed by add-index. bp_clean scored 0 on 3 warnings that are all case-scope artifacts, not model errors: BPErrorPrivilegeNotCoveredByDuty (the privilege exists solely to clear the DataEntitySecurityPrivilegeCheck BP ERROR the case forbids; no duty/role is in scope), plus BPErrorDeveloperDocumentationNotDefined and BPErrorTableMissingFormRef on the table (no form in scope, and DeveloperDocumentation would need a fresh label, which trips the known labelc.exe defect). The instruction requires zero BP ERRORS, which was met exactly.",
+  "suggested_fix_area": "1) src/generators (shared AxDataEntityView XML builder behind d365fo_file action=create/generate): emit the entity SourceCode/Declaration (public class <Name> extends common), the five standard FieldGroups with AutoIdentification/AutoPopulate=Yes pre-populated from the keyFields argument, and empty DeleteActions and StateMachines, in the MS element order (Name, SourceCode, Label, [SubscriberAccessLevel], DataManagementEnabled, DataManagementStagingTable, EntityCategory, IsPublic, PrimaryKey, PublicCollectionName, PublicEntityName, DeleteActions, FieldGroups, Fields, Keys, Mappings, Ranges, Relations, StateMachines, ViewMetadata) - verified against ApplicationCommon/AxDataEntityView/AgentFeedEntity.xml. 2) Bridge modify dispatcher: support add-field-group / add-field-to-field-group for objectType=data-entity, or make the rejection point at a create-time property instead of dead-ending. 3) add-index modify path: when an index of that name already exists, UPDATE its properties (AlternateKey, AllowDuplicates, fields) instead of skipping; at minimum change the top-line banner from -applied via IMetadataProvider.Update()- to -no change (index already present)- so the success text matches reality.",
+  "evidence_refs": [
+    "prepare(create, table ConDemoVirtualSource) token 7f62641f; prepare(create, data-entity ConDemoVirtualSourceEntity) token 4f76e167; prepare(create, security-privilege) token 0e5c3b6b - all three writes grounded, none used overwrite=true",
+    "get_knowledge(topic=power-platform-integration, detailed): virtual entities = Dataverse tables backed by F&O with no data copy; For custom entities add DataManagementEnabled=Yes, IsPublic=Yes, PublicEntityName/CollectionName; Use AutoIdentification field group for natural key (maps to AlternateKey)",
+    "validate_code(mode=references, xml-any) on the pre-write entity XML: all 1 reference verified, no hallucinated symbols. NOTE: only 1 reference was extracted from a 60-line entity XML - the xml-any reference extractor does not appear to walk DataSource/Table/DataField/PrimaryKey refs, so this gate gave near-zero coverage here",
+    "validate_code(mode=syntax, xml-any): no violations, 18 rule groups checked",
+    "d365fo_file(action=modify, add-index) call 1 with allowDuplicates/alternateKey: 2 parameter(s) did not reach the written XML ... IGNORED (not a recognised d365fo_file parameter) - honest failure with the correct suggestion",
+    "d365fo_file(action=modify, add-index) call 2 with corrected indexAllowDuplicates/indexAlternateKey: banner said applied via IMetadataProvider.Update() but sub-line said already present ... skipped (idempotent); XML unchanged. Fixed by remove-index then add-index, after which AlternateKey=Yes appears under AxTable/Indexes/AxTableIndex[VirtualSourceIdx]",
+    "d365fo_file(action=modify, objectType=data-entity, operation=add-field-group): Operation add-field-group on object type data-entity is not supported by the bridge",
+    "build_d365fo_project(Contoso, fullBuild) after the privilege: Errors 0, Warnings 1 (pre-existing unrelated Microsoft.Dynamics.Commerce.Runtime.Entities.AttributeBasedPricing ExternalReference warning); diagnostics include Generation Information: View dynamics://View/ConDemoVirtualSourceEntity",
+    "run_bp_check(Contoso) BEFORE the privilege: 1 ERROR - DataEntitySecurityPrivilegeCheck, the data entity ConDemoVirtualSourceEntity is not assigned to a security privilege; also BPTableWithRecIdIndexMissingReplacementKey, which independently PROVES xppbp read AlternateKey=Yes (Replacement Key is not specified even though at least one Alternate key exists)",
+    "run_bp_check(Contoso) AFTER privilege + ReplacementKey: Errors 0, Warnings 10 - 7 belong to the pre-existing ConDemoNoteHeader FIXTURE, 3 to this case; the entity itself has 0 warnings",
+    "Element-verification read back via the C# bridge, batch_get_info(data-entity ConDemoVirtualSourceEntity): Category Master, Public Name ConDemoVirtualSource, Collection ConDemoVirtualSources, OData Enabled Yes, mappings SourceCode->ConDemoVirtualSource.SourceCode and Description->ConDemoVirtualSource.Description",
+    "Element-verification in COMPILED runtime metadata K:/AosService/PackagesLocalDirectory/Contoso/bin/Contoso_AxDataEntityView.md string dump: SourceCode | EntityKey | @TaxTransactionInquiry:HeaderNote | ConDemoVirtualSourceEntity | EntityKey | ConDemoVirtualSources | ConDemoVirtualSource - the natural key survived deserialization; RecId is NOT the key",
+    "Element-verification in Contoso_AxTable.md: VirtualSourceIdx appears twice for ConDemoVirtualSource (index name + ReplacementKey), confirming modify-property survived deserialization",
+    "L4-bridge-drops-data-entity-primarytable-fields-on-create CHECK: NOT reproduced - the created AxDataEntityView carries a REAL ViewMetadata with AxQuerySimpleRootDataSource[ConDemoVirtualSource] over Table ConDemoVirtualSource and both fields, not an empty shell. It stayed away only because primaryTable + fields were passed explicitly, which is exactly the caller-must-know precondition that case encodes",
+    "Writer-completeness comparison against the real AOT: of 3236 AxDataEntityView files in ApplicationSuite/Foundation, 3236 contain SourceCode, 3236 FieldGroups, 3236 StateMachines, 3236 DeleteActions; only 881/3236 contain SubscriberAccessLevel (genuinely optional). The generated ConDemoVirtualSourceEntity.xml has none of the first four",
+    "AxTable element order verified against ApplicationSuite/Foundation/AxTable/CustGroup.xml: Label, TableGroup, TitleField1, TitleField2, CacheLookup, ReplacementKey, DeleteActions - matches the alphabetical property block. AxSecurityPrivilege verified against ApplicationSuite/Foundation/AxSecurityPrivilege/ACOCostCenterTypeEntityMaintain.xml: identical shape, only cosmetic EntryPoints open/close pair vs self-closing",
+    "No BOM on any generated file (first bytes 3c 3f 78), matching MS files (AgentFeedEntity.xml, ConDemoNoteHeader.xml also start 3c 3f 78) - the tool docs UTF-8 with BOM note is not what the AOT actually uses; no defect",
+    "verify_d365fo_project: all 3 objects present on disk and referenced in ContosoDemo.rnrproj",
+    "Golden CAPTURED this run into eval/goldens/L2-virtual-entity-power-platform/ (ConDemoVirtualSource.metadata.xml, ConDemoVirtualSourceEntity.metadata.xml); case spec golden_pending removed. Self-diff is tautologically 1 on a first capture - the golden will need a REFRESH once the AxDataEntityView writer emits SourceCode/FieldGroups/DeleteActions/StateMachines",
+    "HARNESS NOTE (not scored): eval:score --actual-dir silently scores every path as missing with 0 extra when the staged actual files do not end in .metadata.xml (resolveActualFile filters on that suffix). Renaming the two files turned a 55-missing mismatch into a clean match with no other change",
+    "TOOL NOTE (minor): labels(action=info, labelId=@TaxTransactionInquiry:HeaderNote) returns Label not found while labels(action=search, query=HeaderNote, labelFileId=TaxTransactionInquiry) returns it (model Foundation). prepare(create, table) also reports a mined default named AlternateKeyIndex set by 64 percent of standard tables, but no file in ApplicationSuite/Foundation/AxTable contains an AlternateKeyIndex element - the real element is index-level AlternateKey"
+  ]
+}
