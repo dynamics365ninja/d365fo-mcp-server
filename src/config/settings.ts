@@ -130,7 +130,7 @@ export const SETTINGS: Setting[] = [
     type: 'path',
     label: 'Packages root (PackagesLocalDirectory)',
     description:
-      'Root folder of all D365FO packages — the read-only reference the index is built from. ' +
+      'AOT packages folder (PackagesLocalDirectory) used as the read-only source for indexing. ' +
       'Machine-wide on a traditional VM; UDE resolves it from the XPP config instead.',
     placeholder: 'C:\\AOSService\\PackagesLocalDirectory',
   },

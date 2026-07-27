@@ -16,7 +16,19 @@ import { askConfirm, askSelect, askText, ensure, p } from './ui.js';
 /** "Label\n  description" — the uniform question layout. */
 function message(setting: Setting, suffix?: string): string {
   const head = suffix ? `${setting.label} ${suffix}` : setting.label;
-  return `${head}\n${c.dim(wrapText(setting.description, 76, '  '))}`;
+  if (setting.path === 'environment.type') return head;
+  return `${head}\n${c.dim(compactDescription(setting.description))}`;
+}
+
+function compactDescription(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  const primary = normalized.split(/(?<=[.!?])\s+/)[0] ?? normalized;
+  const wrapped = wrapText(primary, 76, '  ').split('\n');
+  if (wrapped.length <= 2) return wrapped.join('\n');
+
+  const lines = wrapped.slice(0, 2);
+  lines[1] = `${lines[1].replace(/\.*\s*$/, '')}...`;
+  return lines.join('\n');
 }
 
 function wrapText(text: string, width: number, indent: string): string {
