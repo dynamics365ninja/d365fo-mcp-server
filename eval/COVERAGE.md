@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 62 | 77 | 80.5% |
+| total | 63 | 77 | 81.8% |
 
 ## Data model (12/12)
 
@@ -96,7 +96,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Warehouse management (WHS) | total | ✅ | — | ✅ | Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture. |
 | Trade agreements & pricing | total | ✅ | — | ✅ | Eval case authored (PriceDisc price/discount resolution); golden pending VM capture. |
 
-## Integration (3/9)
+## Integration (4/9)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -106,7 +106,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Data management framework (DMF/DIXF) | total | ✅ | — | ✅ | Eval case authored (import-ready entity + staging hook); golden pending VM capture. |
 | Dual-write (Dataverse) | total | ✅ | — | ✅ | Eval case authored for the AOT half (business key + change tracking); the dual-write map itself is UI-authored. Golden pending VM capture. |
 | Power Platform / virtual entities | total | ✅ | — | ✅ | Eval case authored (entity marked up for virtual-entity exposure); golden pending VM capture. |
-| Reading Excel / CSV files | total | ✅ | — | ✅ | Eval case authored (CommaStreamIo + OpenXML stream readers); golden pending VM capture. |
+| Reading Excel / CSV files | total | ✅ | ✅ | ✅ | L3-file-csv-import |
 | Direct SQL execution | total | ✅ | ✅ | ✅ | L2-direct-sql-connection |
 | Aggregate measurements / analytics | total | ✅ | — | ✅ | Knowledge entry + create path added; eval case authored, golden pending VM capture. |
 
@@ -135,7 +135,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 2 | Data entity extension | missing E |
 | 2 | Data management framework (DMF/DIXF) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |
-| 2 | Reading Excel / CSV files | missing E |
 | 2 | Global address book | missing E |
 | 2 | Parallel batch processing | missing E |
 | 2 | Posting engine (LedgerVoucher) | missing E |

@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoFileImporter</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Reads an uploaded CSV or Excel data file that arrives as a stream from a browser upload
+/// and imports the parsed rows into the <c>ConDemoNoteHeader</c> table.
+/// </summary>
+class ConDemoFileImporter
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>readCsv</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Parses an uploaded CSV file with the <c>CommaStreamIo</c> stream reader.
+    /// </summary>
+    /// <param name = "_stream">
+    /// The stream that carries the uploaded file, as delivered by a file upload control.
+    /// </param>
+    /// <returns>
+    /// A container that holds one nested container per data row. The header row is skipped.
+    /// </returns>
+    /// <remarks>
+    /// The file is never read from a server file path, because the upload is only available as a stream.
+    /// </remarks>
+    public static container readCsv(System.IO.Stream _stream)
+    {
+        CommaStreamIo   commaStreamIo;
+        container       rows;
+        container       line;
+
+        if (_stream == null)
+        {
+            return rows;
+        }
+
+        commaStreamIo = CommaStreamIo::constructForRead(_stream);
+        commaStreamIo.inFieldDelimiter(',');
+
+        // The first record holds the column headings and is discarded.
+        commaStreamIo.read();
+
+        while (commaStreamIo.status() == IO_Status::Ok)
+        {
+            line = commaStreamIo.read();
+
+            if (commaStreamIo.status() != IO_Status::Ok || conLen(line) == 0)
+            {
+                break;
+            }
+
+            rows += [line];
+        }
+
+        return rows;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>readExcel</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Reads the first worksheet of an uploaded Excel workbook through the Open XML SDK.
+    /// </summary>
+    /// <param name = "_stream">
+    /// The stream that carries the uploaded workbook, as delivered by a file upload control.
+    /// </param>
+    /// <returns>
+    /// A container that holds one nested container per data row. The heading row is skipped.
+    /// </returns>
+    public static container readExcel(System.IO.Stream _stream)
+    {
+        DocumentFormat.OpenXml.Packaging.SpreadsheetDocument    spreadsheetDocument;
+        DocumentFormat.OpenXml.Packaging.WorkbookPart           workbookPart;
+        DocumentFormat.OpenXml.Packaging.WorksheetPart          worksheetPart;
+        DocumentFormat.OpenXml.Spreadsheet.Worksheet            worksheet;
+        DocumentFormat.OpenXml.Spreadsheet.SheetData            sheetData;
+        DocumentFormat.OpenXml.Spreadsheet.SharedStringTable    stringTable;
+        System.Collections.IEnumerable                          worksheetParts;
+        System.Collections.IEnumerator                          partEnumerator;
+        container                                               rows;
+
+        if (_stream == null)
+        {
+            return rows;
+        }
+
+        spreadsheetDocument = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument::Open(_stream, false);
+
+        try
+        {
+            workbookPart = spreadsheetDocument.get_WorkbookPart();
+
+            if (workbookPart != null)
+            {
+                stringTable    = ConDemoFileImporter::sharedStringTable(workbookPart);
+                worksheetParts = workbookPart.get_WorksheetParts();
+                partEnumerator = worksheetParts.GetEnumerator();
+
+                // Only the first worksheet of the workbook is imported.
+                if (partEnumerator.MoveNext())
+                {
+                    worksheetPart = partEnumerator.get_Current();
+                    worksheet     = worksheetPart.get_Worksheet();
+                    sheetData     = ConDemoFileImporter::findSheetData(worksheet);
+                    rows          = ConDemoFileImporter::readSheetData(sheetData, stringTable);
+                }
+            }
+        }
+        finally
+        {
+            spreadsheetDocument.Dispose();
+        }
+
+        return rows;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>importRows</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Inserts parsed file rows into the <c>ConDemoNoteHeader</c> table.
+    /// </summary>
+    /// <param name = "_rows">
+    /// A container that holds one nested container per data row.
+    /// </param>
+    public static void importRows(container _rows)
+    {
+        ConDemoNoteHeader   noteHeader;
+        RecordInsertList    insertList;
+        container           row;
+        int                 rowIndex;
+
+        if (conLen(_rows) == 0)
+        {
+            return;
+        }
+
+        insertList = new RecordInsertList(tableNum(ConDemoNoteHeader));
+
+        ttsbegin;
+
+        for (rowIndex = 1; rowIndex <= conLen(_rows); rowIndex++)
+        {
+            row = conPeek(_rows, rowIndex);
+
+            if (conLen(row) == 0)
+            {
+                continue;
+            }
+
+            noteHeader.clear();
+            noteHeader.NoteId = conPeek(row, 1);
+
+            if (conLen(row) >= 2)
+            {
+                noteHeader.Subject = conPeek(row, 2);
+            }
+
+            insertList.add(noteHeader);
+        }
+
+        insertList.insertDatabase();
+
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>sharedStringTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Retrieves the shared string table of a workbook.
+    /// </summary>
+    /// <param name = "_workbookPart">
+    /// The workbook part of the open spreadsheet document.
+    /// </param>
+    /// <returns>
+    /// The shared string table, or null when the workbook does not use shared strings.
+    /// </returns>
+    private static DocumentFormat.OpenXml.Spreadsheet.SharedStringTable sharedStringTable(DocumentFormat.OpenXml.Packaging.WorkbookPart _workbookPart)
+    {
+        DocumentFormat.OpenXml.Packaging.SharedStringTablePart sharedStringTablePart;
+
+        sharedStringTablePart = _workbookPart.get_SharedStringTablePart();
+
+        if (sharedStringTablePart == null)
+        {
+            return null;
+        }
+
+        return sharedStringTablePart.get_SharedStringTable();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findSheetData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Finds the sheet data element of a worksheet.
+    /// </summary>
+    /// <param name = "_worksheet">
+    /// The worksheet to search.
+    /// </param>
+    /// <returns>
+    /// The sheet data element, or null when the worksheet holds no rows.
+    /// </returns>
+    private static DocumentFormat.OpenXml.Spreadsheet.SheetData findSheetData(DocumentFormat.OpenXml.Spreadsheet.Worksheet _worksheet)
+    {
+        DocumentFormat.OpenXml.OpenXmlElementList   childElements;
+        DocumentFormat.OpenXml.OpenXmlElement       childElement;
+        int                                         elementIndex;
+        int                                         elementCount;
+
+        if (_worksheet == null)
+        {
+            return null;
+        }
+
+        childElements = _worksheet.get_ChildElements();
+        elementCount  = childElements.get_Count();
+
+        for (elementIndex = 0; elementIndex < elementCount; elementIndex++)
+        {
+            childElement = childElements.get_Item(elementIndex);
+
+            if (childElement is DocumentFormat.OpenXml.Spreadsheet.SheetData)
+            {
+                return childElement as DocumentFormat.OpenXml.Spreadsheet.SheetData;
+            }
+        }
+
+        return null;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>readSheetData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Converts the rows of a worksheet into a packed container.
+    /// </summary>
+    /// <param name = "_sheetData">
+    /// The sheet data element that holds the worksheet rows.
+    /// </param>
+    /// <param name = "_sharedStringTable">
+    /// The shared string table of the workbook.
+    /// </param>
+    /// <returns>
+    /// A container that holds one nested container per data row.
+    /// </returns>
+    private static container readSheetData(DocumentFormat.OpenXml.Spreadsheet.SheetData _sheetData, DocumentFormat.OpenXml.Spreadsheet.SharedStringTable _sharedStringTable)
+    {
+        DocumentFormat.OpenXml.OpenXmlElementList   rowElements;
+        DocumentFormat.OpenXml.OpenXmlElement       rowElement;
+        DocumentFormat.OpenXml.Spreadsheet.Row      row;
+        container                                   rows;
+        container                                   values;
+        int                                         rowIndex;
+        int                                         rowCount;
+
+        if (_sheetData == null)
+        {
+            return rows;
+        }
+
+        rowElements = _sheetData.get_ChildElements();
+        rowCount    = rowElements.get_Count();
+
+        // The element at position zero holds the column headings and is skipped.
+        for (rowIndex = 1; rowIndex < rowCount; rowIndex++)
+        {
+            rowElement = rowElements.get_Item(rowIndex);
+            row        = rowElement as DocumentFormat.OpenXml.Spreadsheet.Row;
+
+            if (row == null)
+            {
+                continue;
+            }
+
+            values = ConDemoFileImporter::readRow(row, _sharedStringTable);
+
+            if (conLen(values) > 0)
+            {
+                rows += [values];
+            }
+        }
+
+        return rows;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>readRow</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Converts the cells of a worksheet row into a container of strings.
+    /// </summary>
+    /// <param name = "_row">
+    /// The worksheet row to convert.
+    /// </param>
+    /// <param name = "_sharedStringTable">
+    /// The shared string table of the workbook.
+    /// </param>
+    /// <returns>
+    /// A container that holds one string per cell.
+    /// </returns>
+    private static container readRow(DocumentFormat.OpenXml.Spreadsheet.Row _row, DocumentFormat.OpenXml.Spreadsheet.SharedStringTable _sharedStringTable)
+    {
+        DocumentFormat.OpenXml.OpenXmlElementList   cellElements;
+        DocumentFormat.OpenXml.OpenXmlElement       cellElement;
+        DocumentFormat.OpenXml.Spreadsheet.Cell     cell;
+        container                                   values;
+        int                                         cellIndex;
+        int                                         cellCount;
+
+        cellElements = _row.get_ChildElements();
+        cellCount    = cellElements.get_Count();
+
+        for (cellIndex = 0; cellIndex < cellCount; cellIndex++)
+        {
+            cellElement = cellElements.get_Item(cellIndex);
+            cell        = cellElement as DocumentFormat.OpenXml.Spreadsheet.Cell;
+
+            if (cell != null)
+            {
+                values += [ConDemoFileImporter::cellValue(cell, _sharedStringTable)];
+            }
+        }
+
+        return values;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>cellValue</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Resolves the display value of a worksheet cell.
+    /// </summary>
+    /// <param name = "_cell">
+    /// The worksheet cell to resolve.
+    /// </param>
+    /// <param name = "_sharedStringTable">
+    /// The shared string table of the workbook.
+    /// </param>
+    /// <returns>
+    /// The cell value as a string.
+    /// </returns>
+    private static str cellValue(DocumentFormat.OpenXml.Spreadsheet.Cell _cell, DocumentFormat.OpenXml.Spreadsheet.SharedStringTable _sharedStringTable)
+    {
+        DocumentFormat.OpenXml.OpenXmlSimpleType    dataType;
+        str                                         value;
+
+        value = _cell.get_InnerText();
+
+        if (value == '')
+        {
+            return '';
+        }
+
+        dataType = _cell.get_DataType();
+
+        // A data type of 's' means the cell text is an index into the shared string table.
+        if (dataType != null && dataType.get_InnerText() == 's')
+        {
+            value = ConDemoFileImporter::sharedString(_sharedStringTable, str2int(value));
+        }
+
+        return value;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>sharedString</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Resolves an entry of the shared string table.
+    /// </summary>
+    /// <param name = "_sharedStringTable">
+    /// The shared string table of the workbook.
+    /// </param>
+    /// <param name = "_index">
+    /// The zero based index of the requested entry.
+    /// </param>
+    /// <returns>
+    /// The text of the shared string entry.
+    /// </returns>
+    private static str sharedString(DocumentFormat.OpenXml.Spreadsheet.SharedStringTable _sharedStringTable, int _index)
+    {
+        DocumentFormat.OpenXml.OpenXmlElementList   stringItems;
+
+        if (_sharedStringTable == null)
+        {
+            return int2Str(_index);
+        }
+
+        stringItems = _sharedStringTable.get_ChildElements();
+
+        if (_index < 0 || _index >= stringItems.get_Count())
+        {
+            return '';
+        }
+
+        return stringItems.get_Item(_index).get_InnerText();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
