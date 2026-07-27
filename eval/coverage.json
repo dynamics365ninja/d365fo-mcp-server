@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 63,
-    "percent": 81.8
+    "covered": 64,
+    "percent": 83.1
   },
   "leaves": [
     {
@@ -871,10 +871,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-gab-party-postaladdress"
+      ]
     },
     {
       "id": "currency",

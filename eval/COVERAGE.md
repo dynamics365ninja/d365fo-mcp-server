@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 63 | 77 | 81.8% |
+| total | 64 | 77 | 83.1% |
 
 ## Data model (12/12)
 
@@ -75,7 +75,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Print management | total | ✅ | — | ✅ | Eval case authored (document node + settings resolution); golden pending VM capture. |
 | Electronic Reporting (ER) | total | ✅ | — | ✅ | Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture. |
 
-## Frameworks (11/16)
+## Frameworks (12/16)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -90,7 +90,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Feature management | total | ✅ | ✅ | ✅ | L2-feature-management-flight |
 | Configuration keys | total | ✅ | ✅ | ✅ | L2-config-key-gated-table |
 | Multi-company / changeCompany | core | ✅ | ✅ | ✅ | L2-multi-company-changecompany |
-| Global address book | total | ✅ | — | ✅ | Eval case authored (party + primary postal address through the DirParty API); golden pending VM capture. |
+| Global address book | total | ✅ | ✅ | ✅ | L3-gab-party-postaladdress |
 | Currency & exchange rates | total | ✅ | ✅ | ✅ | L3-currency-exchange-conversion |
 | Inventory (InventTrans / InventDim) | total | ✅ | ✅ | ✅ | L3-inventory-inventdim-onhand |
 | Warehouse management (WHS) | total | ✅ | — | ✅ | Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture. |
@@ -135,7 +135,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 2 | Data entity extension | missing E |
 | 2 | Data management framework (DMF/DIXF) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |
-| 2 | Global address book | missing E |
 | 2 | Parallel batch processing | missing E |
 | 2 | Posting engine (LedgerVoucher) | missing E |
 | 2 | Print management | missing E |

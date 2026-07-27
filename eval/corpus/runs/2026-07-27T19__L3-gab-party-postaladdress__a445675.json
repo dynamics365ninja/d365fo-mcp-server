@@ -1,0 +1,53 @@
+{
+  "run_id": "2026-07-27T19__L3-gab-party-postaladdress__a445675",
+  "case_id": "L3-gab-party-postaladdress",
+  "tier": 3,
+  "timestamp": "2026-07-27T19:42:07.225Z",
+  "server_git_sha": "a445675",
+  "generated_artifacts": [
+    "ConDemoPartyBuilder.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "FALSE POSITIVE: arity-mismatch on DirPartyTable::createNew - validator ignores the optional 3rd parameter (DirPartyNumber _partyNumber = ''); the 2-arg call compiles clean"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "root_cause_hypothesis": "Case PASSes (full build green, BP 0/0, golden captured and matched). Two side findings: (1) validate_code(mode=\"references\") reported a false arity-mismatch on DirPartyTable::createNew because it does not honour default parameter values - 5th consecutive false positive from this validator; (2) case instruction named LogisticsAddressCity as the city parameter type, but that name resolves only to a TABLE (and a menu item), not an EDT - the City field of LogisticsPostalAddress uses LogisticsAddressCityName. Instruction corrected to LogisticsAddressCityName. (3) X++ source writer re-indented the multi-line select where-clause continuation (cosmetic, no shape loss).",
+  "suggested_fix_area": "validate_code references resolver: honour optional/default parameters when checking call arity (src/tools/validate-code / reference resolver arity check)",
+  "evidence_refs": [
+    "eval/goldens/L3-gab-party-postaladdress/ConDemoPartyBuilder.metadata.xml",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxClass/ConDemoPartyBuilder.xml"
+  ]
+}
