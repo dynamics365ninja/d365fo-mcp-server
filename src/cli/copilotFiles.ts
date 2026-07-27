@@ -6,8 +6,12 @@
  * built-in file tools and edits X++ behind the metadata provider's back. Both
  * files therefore have to be placed for a working install, so the wizards
  * offer to put this one down as well — either straight into the solutions
- * folder, or, when that is unknown, into a staging folder next to the
- * generated .mcp.json with a README naming the two destinations.
+ * folder, or, when that is unknown, into a staging folder with a README
+ * naming the two destinations.
+ *
+ * The README points at the one .mcp.json `mcpJsonNote()` writes in the data
+ * root rather than copying it: the staging folder sits in that same data
+ * root, so a second copy is only one more file to keep in sync.
  *
  * Shared by `setup` (scenarios B–E) and `instance add` (scenario F), which
  * both end on the same two-file placement step.
@@ -17,15 +21,10 @@ import { resolve } from 'node:path';
 import { dataRoot, paths, repoRoot } from './context.js';
 import { askConfirm, p } from './ui.js';
 
-export type CopilotFilePlan = { stagingDir?: string };
-
 /** The copy shipped with this installation — package root in both install modes. */
 const copilotSource = (): string => resolve(repoRoot, '.github', 'copilot-instructions.md');
 
-function writeCopilotSetupReadme(
-  targetDir: string,
-  opts: { includeLocalMcpCopy: boolean; copilotAlreadyPlaced: boolean },
-): void {
+function writeCopilotSetupReadme(targetDir: string, opts: { copilotAlreadyPlaced: boolean }): void {
   const readmePath = resolve(targetDir, 'README.md');
   const lines = [
     '# VS setup quick guide',
@@ -35,9 +34,7 @@ function writeCopilotSetupReadme(
     '1. Copy .mcp.json',
     '   - Recommended (all solutions): %USERPROFILE%\\.mcp.json',
     '   - Per solution: place .mcp.json next to your .sln file',
-    opts.includeLocalMcpCopy
-      ? '   - Local copy prepared here: .mcp.json'
-      : `   - Local copy path: ${paths.mcpSuggestion}`,
+    `   - Generated copy: ${paths.mcpSuggestion}`,
     '',
     '2. Copy .github/copilot-instructions.md',
     opts.copilotAlreadyPlaced
@@ -54,18 +51,17 @@ function writeCopilotSetupReadme(
  * Offer to place copilot-instructions.md, falling back to a staging folder.
  *
  * `solutionsPath` is what the user gave for workspace.solutionsPath; when it
- * is empty there is nowhere to copy to, so the files are staged instead and
- * the returned plan tells {@link finalizeStagedCopilotFiles} to complete it
- * once the .mcp.json exists.
+ * is empty there is nowhere to copy to, so the file is staged instead and the
+ * README says where it has to end up.
  */
-export async function maybePrepareCopilotInstructions(solutionsPath: string): Promise<CopilotFilePlan> {
+export async function maybePrepareCopilotInstructions(solutionsPath: string): Promise<void> {
   const source = copilotSource();
   if (!fs.existsSync(source)) {
     p.log.warn(
       'Cannot find copilot-instructions.md in this installation; skipping copy helper.\n' +
       `   Looked for: ${source}`,
     );
-    return {};
+    return;
   }
 
   const wantsDirectCopy = await askConfirm(
@@ -78,17 +74,17 @@ export async function maybePrepareCopilotInstructions(solutionsPath: string): Pr
     const targetDir = resolve(target, '.github');
     fs.mkdirSync(targetDir, { recursive: true });
     fs.copyFileSync(source, resolve(targetDir, 'copilot-instructions.md'));
-    writeCopilotSetupReadme(target, { includeLocalMcpCopy: false, copilotAlreadyPlaced: true });
+    writeCopilotSetupReadme(target, { copilotAlreadyPlaced: true });
     p.log.success(`Prepared: ${resolve(targetDir, 'copilot-instructions.md')}`);
     p.log.success(`Prepared: ${resolve(target, 'README.md')}`);
-    return {};
+    return;
   }
 
   const stageDir = resolve(dataRoot(), 'copilot-setup');
   const stageGitHubDir = resolve(stageDir, '.github');
   fs.mkdirSync(stageGitHubDir, { recursive: true });
   fs.copyFileSync(source, resolve(stageGitHubDir, 'copilot-instructions.md'));
-  writeCopilotSetupReadme(stageDir, { includeLocalMcpCopy: false, copilotAlreadyPlaced: false });
+  writeCopilotSetupReadme(stageDir, { copilotAlreadyPlaced: false });
 
   if (wantsDirectCopy && !target) {
     p.log.warn('Solutions folder is empty, so files were prepared in the local staging folder instead.');
@@ -96,16 +92,4 @@ export async function maybePrepareCopilotInstructions(solutionsPath: string): Pr
     p.log.info('Copy was skipped; files were prepared in a local staging folder for later use.');
   }
   p.log.info(`Staging folder: ${stageDir}`);
-  return { stagingDir: stageDir };
-}
-
-/** Add the generated .mcp.json to the staging folder — call after mcpJsonNote(). */
-export function finalizeStagedCopilotFiles(plan: CopilotFilePlan): void {
-  if (!plan.stagingDir) return;
-  const localMcp = paths.mcpSuggestion;
-  if (fs.existsSync(localMcp)) {
-    fs.copyFileSync(localMcp, resolve(plan.stagingDir, '.mcp.json'));
-    writeCopilotSetupReadme(plan.stagingDir, { includeLocalMcpCopy: true, copilotAlreadyPlaced: false });
-    p.log.success(`Prepared: ${resolve(plan.stagingDir, '.mcp.json')}`);
-  }
 }

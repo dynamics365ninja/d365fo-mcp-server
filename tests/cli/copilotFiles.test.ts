@@ -29,7 +29,7 @@ vi.mock('../../src/cli/ui.js', () => ({
   p: { log: { warn: vi.fn(), info: vi.fn(), success: vi.fn(), error: vi.fn(), step: vi.fn() } },
 }));
 
-const { finalizeStagedCopilotFiles, maybePrepareCopilotInstructions } = await import('../../src/cli/copilotFiles.js');
+const { maybePrepareCopilotInstructions } = await import('../../src/cli/copilotFiles.js');
 
 beforeEach(() => {
   tmpRoot = fs.mkdtempSync(resolve(os.tmpdir(), 'copilot-files-'));
@@ -46,13 +46,15 @@ afterEach(() => {
 });
 
 describe('maybePrepareCopilotInstructions', () => {
+  const stagingDir = () => resolve(installDir, 'copilot-setup');
+
   it('copies the instructions and writes a README into the solutions folder', async () => {
     const solutions = resolve(tmpRoot, 'repos');
     fs.mkdirSync(solutions);
 
-    const plan = await maybePrepareCopilotInstructions(solutions);
+    await maybePrepareCopilotInstructions(solutions);
 
-    expect(plan.stagingDir).toBeUndefined();
+    expect(fs.existsSync(stagingDir())).toBe(false);
     expect(fs.readFileSync(resolve(solutions, '.github', 'copilot-instructions.md'), 'utf8')).toBe('# rules\n');
     const readme = fs.readFileSync(resolve(solutions, 'README.md'), 'utf8');
     expect(readme).toContain('Already placed here');
@@ -67,23 +69,34 @@ describe('maybePrepareCopilotInstructions', () => {
     expect(fs.existsSync(resolve(solutions, '.github', 'copilot-instructions.md'))).toBe(true);
   });
 
-  it('stages the files when no solutions folder is configured', async () => {
-    const plan = await maybePrepareCopilotInstructions('   ');
+  it('stages the file when no solutions folder is configured', async () => {
+    await maybePrepareCopilotInstructions('   ');
 
-    expect(plan.stagingDir).toBe(resolve(installDir, 'copilot-setup'));
-    expect(fs.existsSync(resolve(plan.stagingDir!, '.github', 'copilot-instructions.md'))).toBe(true);
-    expect(fs.readFileSync(resolve(plan.stagingDir!, 'README.md'), 'utf8')).toContain('a parent folder');
+    expect(fs.existsSync(resolve(stagingDir(), '.github', 'copilot-instructions.md'))).toBe(true);
+    expect(fs.readFileSync(resolve(stagingDir(), 'README.md'), 'utf8')).toContain('a parent folder');
   });
 
-  it('stages the files when the user declines the copy', async () => {
+  it('stages the file when the user declines the copy', async () => {
     confirmAnswer = false;
     const solutions = resolve(tmpRoot, 'repos');
     fs.mkdirSync(solutions);
 
-    const plan = await maybePrepareCopilotInstructions(solutions);
+    await maybePrepareCopilotInstructions(solutions);
 
-    expect(plan.stagingDir).toBe(resolve(installDir, 'copilot-setup'));
+    expect(fs.existsSync(resolve(stagingDir(), '.github', 'copilot-instructions.md'))).toBe(true);
     expect(fs.existsSync(resolve(solutions, '.github'))).toBe(false);
+  });
+
+  it('points the staged README at the one .mcp.json instead of copying it', async () => {
+    // The staging folder lives inside the data directory the .mcp.json is
+    // written to, so a copy would be the same file twice, one of them stale.
+    fs.writeFileSync(resolve(installDir, '.mcp.json'), '{"servers":{}}\n');
+
+    await maybePrepareCopilotInstructions('');
+
+    expect(fs.existsSync(resolve(stagingDir(), '.mcp.json'))).toBe(false);
+    expect(fs.readFileSync(resolve(stagingDir(), 'README.md'), 'utf8'))
+      .toContain(resolve(installDir, '.mcp.json'));
   });
 
   it('skips without asking when the installation does not ship the file', async () => {
@@ -91,25 +104,8 @@ describe('maybePrepareCopilotInstructions', () => {
     // the wizard asked nothing and the user never learned a file was needed.
     fs.rmSync(resolve(packageRoot, '.github'), { recursive: true });
 
-    const plan = await maybePrepareCopilotInstructions(resolve(tmpRoot, 'repos'));
+    await maybePrepareCopilotInstructions(resolve(tmpRoot, 'repos'));
 
-    expect(plan.stagingDir).toBeUndefined();
-    expect(fs.existsSync(resolve(installDir, 'copilot-setup'))).toBe(false);
-  });
-});
-
-describe('finalizeStagedCopilotFiles', () => {
-  it('adds the generated .mcp.json to the staging folder and updates the README', async () => {
-    const plan = await maybePrepareCopilotInstructions('');
-    fs.writeFileSync(resolve(installDir, '.mcp.json'), '{"servers":{}}\n');
-
-    finalizeStagedCopilotFiles(plan);
-
-    expect(fs.readFileSync(resolve(plan.stagingDir!, '.mcp.json'), 'utf8')).toBe('{"servers":{}}\n');
-    expect(fs.readFileSync(resolve(plan.stagingDir!, 'README.md'), 'utf8')).toContain('prepared here');
-  });
-
-  it('does nothing when the copy went straight to the solutions folder', () => {
-    expect(() => finalizeStagedCopilotFiles({})).not.toThrow();
+    expect(fs.existsSync(stagingDir())).toBe(false);
   });
 });
