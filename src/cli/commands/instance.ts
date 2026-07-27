@@ -8,6 +8,7 @@ import * as fs from 'node:fs';
 import { resolve } from 'node:path';
 import { settingByPath, settingsInSection } from '../../config/settings.js';
 import { pinBridgeExe } from '../bridgePath.js';
+import { finalizeStagedCopilotFiles, maybePrepareCopilotInstructions } from '../copilotFiles.js';
 import { createInstance, getInstance, listInstances, normalizeInstanceLayout, suggestPort } from '../instances.js';
 import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { selectXppConfig } from './config.js';
@@ -104,11 +105,19 @@ export async function instanceAddCommand(name: string | undefined, portArg: stri
   p.log.step('Workspace and naming');
   await askSetting(store, settingByPath('workspace.modelName')!);
   await askSetting(store, settingByPath('workspace.path')!);
+  await askSetting(store, settingByPath('workspace.solutionsPath')!);
   await askSettings(store, settingsInSection('naming', 'basic'));
   p.log.step('Metadata index');
   await askSettings(store, settingsInSection('index', 'basic'));
   await askAdvanced(store, ['environment', 'workspace', 'index', 'server', 'bridge', 'behavior']);
   saveStore(store);
+
+  // Copilot needs the instructions file just as much as it needs .mcp.json,
+  // and an instance is somebody's only setup run — asking here is the only
+  // chance scenario F gets.
+  const copilotPlan = await maybePrepareCopilotInstructions(
+    String(readSetting(store, settingByPath('workspace.solutionsPath')!) ?? ''),
+  );
 
   // Both ways to reach this instance: the IDE spawning it over stdio with its
   // own config, or an HTTP client on the port it was given.
@@ -119,6 +128,7 @@ export async function instanceAddCommand(name: string | undefined, portArg: stri
     },
     `.mcp.json — keep the stdio entry OR the http one, not both`,
   );
+  finalizeStagedCopilotFiles(copilotPlan);
   placementNote();
 
   p.note(

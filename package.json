@@ -11,6 +11,7 @@
     "dist",
     "!dist/**/*.map",
     "!dist/eval/**",
+    ".github/copilot-instructions.md",
     "bridge/D365MetadataBridge",
     "!bridge/D365MetadataBridge/bin/**",
     "!bridge/D365MetadataBridge/obj/**"
