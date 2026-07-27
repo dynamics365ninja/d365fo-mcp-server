@@ -84,6 +84,12 @@ describe.skipIf(!isBuilt)('published package contents', () => {
     expect(packed).toContain('bridge/D365MetadataBridge/Program.cs');
   });
 
+  it('ships copilot-instructions.md, so the wizard can copy it into the solutions folder', () => {
+    // src/cli/commands/setup.ts reads it from <package>/.github/; without it
+    // the wizard skips the copy prompt entirely on an npm install.
+    expect(packed).toContain('.github/copilot-instructions.md');
+  });
+
   it('leaves build output of the bridge behind', () => {
     const artefacts = packed.filter(p => /^bridge\/.*\/(bin|obj)\//.test(p));
     expect(artefacts, 'bridge build output must not be published').toEqual([]);
