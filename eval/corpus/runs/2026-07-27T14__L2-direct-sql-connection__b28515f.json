@@ -1,0 +1,63 @@
+{
+  "run_id": "2026-07-27T14__L2-direct-sql-connection__b28515f",
+  "case_id": "L2-direct-sql-connection",
+  "tier": 2,
+  "timestamp": "2026-07-27T14:24:53.192Z",
+  "server_git_sha": "b28515f",
+  "generated_artifacts": [
+    "/Classes/ConDemoDirectSqlReader"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "VALIDATOR_GAP",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "DbBackend::Sql",
+        "CodeAccessPermission::revertAssert"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "validate_code(mode=\"references\") has no model of X++ KERNEL types, which exist only in the runtime and never as AOT metadata. Every direct-SQL member the case requires is a kernel symbol (Connection, Statement, ResultSet, SqlParams, DictTable, DbBackend, CodeAccessPermission, SqlStatementExecutePermission); get_object_info/search/batch_get_info return \"not found\" for all of them. The validator flagged exactly the two used in Type::Member position - DbBackend::Sql (reported as \"unknown-static-member ... checked inheritance chain and extensions\", a misleading message for a type that does not exist in the index at all) and CodeAccessPermission::revertAssert - while silently passing the same unknown types when they appear as local-variable declarations or in new X(). So the gate is both a false negative (any code using the documented direct-SQL escape hatch is told its identifiers do not exist) and internally inconsistent (unknown kernel type tolerated as a declaration, rejected as a static-call receiver). The code that tripped the gate compiled with 0 errors and 0 BP warnings, and every flagged member was independently proven live by find_references (DbBackend: 20 Foundation call sites; CodeAccessPermission::revertAssert in CustVendAgingCalculation.executeSql, DimensionValidationHelper.executeSQL, InventInventoryDataServiceQueueProcessHelper.deleteStatusReady). Following the gate literally would push an agent to abandon a correct, MS-idiomatic implementation.",
+  "suggested_fix_area": "src/tools/validation (reference resolver): seed a kernel/system-symbol allowlist (X++ system classes + system enums: Connection, UserConnection, Statement, ResultSet, ResultSetMetaData, SqlParams, SqlSystem, SqlDataDictionary, DictTable, DictField, DbBackend, CodeAccessPermission, SqlStatementExecutePermission, SqlDataDictionaryPermission, ...) so they resolve instead of erroring, or at minimum downgrade unknown-type/unknown-static-member to a warning when the receiver is not in the index at all (as opposed to present-but-missing-member) and stop reporting \"checked inheritance chain and extensions\" for a type that was never found.",
+  "evidence_refs": [
+    "validate_code(mode=\"references\") on the pre-write source: 2 errors, 0 warnings, 9 references verified OK - unknown-static-member DbBackend::Sql (line 27), unknown-type CodeAccessPermission (line 51)",
+    "validate_code(mode=\"syntax\"): no violations, 13 rule groups checked",
+    "batch_get_info: 1/8 resolved (only ConDemoNoteHeader); Connection, Statement, ResultSet, SqlStatementExecutePermission, CodeAccessPermission, DictTable, DbBackend all \"not found via bridge or symbol index\"",
+    "get_object_info(enum, DbBackend): \"Bridge returned no data\"",
+    "find_references(DbBackend, enum): 20 type-references across ApplicationSuite/Foundation",
+    "Grounding sources for the generated idiom: CostSheetCachePurgeJob.runTruncateTable (DictTable.name(DbBackend::Sql)), CustDefaultPartyLocationFeatureDisabled.getDeleteSql (strFmt over the SQL name), InventInventoryDataServiceQueueProcessHelper.deleteStatusReady (SqlParams::create + @param placeholders + Connection/Statement + assert/revertAssert/close/finalize), CreditCardCustPurge.getDatapointsByPercentile (ResultSet.getInt64 1-based)",
+    "build_d365fo_project(Contoso, fullBuild): Errors 0, Warnings 1 (pre-existing unrelated ExternalReference warning for Microsoft.Dynamics.Commerce.Runtime.Entities.AttributeBasedPricing)",
+    "run_bp_check(class:ConDemoDirectSqlReader): 0 warnings, 0 errors",
+    "Golden captured this run: eval/goldens/L2-direct-sql-connection/DemoDirectSqlReader.AxClass.metadata.xml; case spec golden_pending flipped true -> false",
+    "AxClass envelope byte-compared against K:/AosService/PackagesLocalDirectory/FinTag/FinTag/AxClass/FinTagFeature.xml: identical XML declaration, root element + xmlns:i, element order Name/SourceCode/Declaration/Methods/Method/Name/Source, tab indentation, CRLF, no BOM, no trailing newline",
+    "SECONDARY TOOL_DEFECT (rollback, not scored on this case): undo_last_modification(K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxClass/ConDemoDirectSqlReader.xml) deleted the file and removed its 5 <Content> lines from ContosoDemo.rnrproj correctly, but ALSO deleted the pre-existing line <Folder Include=\"Classes\\\"/> that was present in the pre-write backup (proved by diff: the create added exactly 5 lines at 71a72,76 and added no Folder line; after undo the file was missing that Folder line, 49d48). Its project-entry cleanup removes the AOT-folder declaration unconditionally instead of only when it created it, mutating project state beyond the session write. Restored by copying the byte-exact pre-run backup; final diff vs backup is empty, BOM ef bb bf intact, XML well-formed. Suggested fix area: the .rnrproj entry-removal path used by undo_last_modification."
+  ]
+}

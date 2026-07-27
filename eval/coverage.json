@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 56,
-    "percent": 72.7
+    "covered": 59,
+    "percent": 76.6
   },
   "leaves": [
     {
@@ -402,8 +402,10 @@
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
+        "L2-direct-sql-connection",
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
+        "L2-feature-management-flight",
         "L2-interface-abstract-basic",
         "L2-license-code-configkey",
         "L2-numberseq-basic",
@@ -450,8 +452,10 @@
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
+        "L2-direct-sql-connection",
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
+        "L2-feature-management-flight",
         "L2-interface-abstract-basic",
         "L2-license-code-configkey",
         "L2-numberseq-basic",
@@ -650,10 +654,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-tile-cue-over-query"
+      ]
     },
     {
       "id": "ssrs-report",
@@ -819,10 +825,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-feature-management-flight"
+      ]
     },
     {
       "id": "configuration-keys",
@@ -1007,10 +1015,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-direct-sql-connection"
+      ]
     },
     {
       "id": "aggregate-measurements",
@@ -1156,8 +1166,10 @@
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
+        "L2-direct-sql-connection",
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
+        "L2-feature-management-flight",
         "L2-interface-abstract-basic",
         "L2-license-code-configkey",
         "L2-numberseq-basic",

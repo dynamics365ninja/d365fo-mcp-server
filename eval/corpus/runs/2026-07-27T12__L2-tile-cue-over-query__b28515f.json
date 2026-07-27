@@ -1,0 +1,66 @@
+{
+  "run_id": "2026-07-27T12__L2-tile-cue-over-query__b28515f",
+  "case_id": "L2-tile-cue-over-query",
+  "tier": 2,
+  "timestamp": "2026-07-27T12:49:16.509Z",
+  "server_git_sha": "b28515f",
+  "generated_artifacts": [
+    "Contoso/AxQuery/ConDemoBlockedCustomersQuery.xml",
+    "Contoso/AxMenuItemDisplay/ConDemoBlockedCustomersMI.xml",
+    "Contoso/AxTile/ConDemoBlockedCustomersTile.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "bp_checked": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "rule": "BPErrorMenuItemNotCoveredByPrivilege",
+        "element": "AxMenuItemDisplay/ConDemoBlockedCustomersMI",
+        "text": "'AxMenuItemDisplay' 'ConDemoBlockedCustomersMI' is not covered by privilege.",
+        "note": "Only case-attributable warning. The other 7 warnings in the xppbp run belong to the ConDemoNoteHeader FIXTURE, not to this case."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "XmlTemplateGenerator.generateAxTileXml (src/tools/createD365File.ts:2901) cannot emit a valid AxTile. Three independent defects, each proven by DataContractSerializer round-trip against Microsoft.Dynamics.AX.Metadata.MetaModel.AxTile: (1) NAMESPACE: emits xmlns=\"Microsoft.Dynamics.AX.Metadata.V6\"; the AxTile data contract is V1 (764/764 platform AxTile files use V1). Effect: the WHOLE element fails to deserialize. This one is build-visible - xppc aborted with \"MetadataProvider Fatal Error: ... Expecting element AxTile from namespace ...V1 ... Encountered ...V6\". (2) WRONG ELEMENT NAME: emits <TileType>Count</TileType>. The metamodel property is Type (of enum type TileType); TileType is not a property and occurs 0 times in 764 platform files. Effect (namespace fixed, isolated in variant A): Type deserializes to the default Standard, so the tile is NOT a Cue even though Query is set - the exact failure the case declares fatal. SILENT: no build error, no BP warning. (3) ELEMENT ORDER: emits Name, Label, HelpText, Type, MenuItemName, MenuItemType, Query, Size, RefreshFrequency. The DataContract order is Name first then alphabetical. Effect (namespace and Type both fixed, isolated in variant B): MenuItemName, Query and Size are all DROPPED (Size falls back to Medium) because they sort after Type. SILENT. Secondary: (4) RefreshFrequency is emitted as the number 600; TileRefreshFrequency is an enum {AsFastAsPermissible, TenMinutes, TwentyFourHours}, so the value is discarded. (5) HelpText defaults to a fabricated \"@TODO:<Name>HelpText\" label id that does not exist in any label file. CONSEQUENCE FOR THIS RECORD: golden_match=1 is a CAPTURE artifact, not a pass. The AxQuery and AxMenuItemDisplay goldens were produced by the grounded path and are correct. The AxTile golden could NOT be produced by any grounded route (generate_object has no tile mode; d365fo_file action=modify does not support objectType tile), so it was written via a documented d365fo_file(action=create, overwrite=true, xmlContent=...) escape hatch after the writer output was proven inert. Re-running this case against the unfixed writer MUST fail golden_match on ConDemoBlockedCustomersTile.metadata.xml. Also observed (separate, lower severity): validate_code(mode=references, codeType=xml-any) does not resolve AxMenuItemDisplay <Object> (a hallucinated target form passes) and does not check label ids in <HelpText> (the fabricated @TODO id passed clean); validate_code(mode=syntax) has no AxTile property vocabulary, so TileType/V6/numeric RefreshFrequency all passed. labels(action=info) reports @TaxTransactionInquiry:HeaderNote as not found while labels(action=search) finds it.",
+  "suggested_fix_area": "src/tools/createD365File.ts :: XmlTemplateGenerator.generateAxTileXml (and the mirrored generator in generateD365Xml.ts, plus generateAxKpiXml which shares the V6-namespace/placeholder-label pattern). Extract AxTile to a shared builder like queryViewXml.ts, emit V1 namespace, rename TileType->Type, order Name-then-alphabetical, constrain RefreshFrequency/Size/Type to their metamodel enums, and drop the @TODO HelpText default. Secondary: teach validate_code(syntax) the AxTile element vocabulary and contract order so defects 2-4 are caught statically, and add AxMenuItemDisplay <Object> resolution to validate_code(references).",
+  "evidence_refs": [
+    "xppc build 1 (as produced by the grounded writer): FAILED, 1 error - MetadataProvider Fatal Error: Tile dynamics://Tile/ConDemoBlockedCustomersTile: ... cannot be deserialized as Microsoft.Dynamics.AX.Metadata.MetaModel.AxTile ... Expecting element AxTile from namespace Microsoft.Dynamics.AX.Metadata.V1 .. Encountered Element with name AxTile, namespace Microsoft.Dynamics.AX.Metadata.V6",
+    "xppc build 2 (canonical tile): SUCCEEDED, 0 errors, 1 pre-existing unrelated ExternalReference warning (Microsoft.Dynamics.Commerce.Runtime.Entities.AttributeBasedPricing).",
+    "DataContract round-trip of the writer output: Name=[] Label=[] Type=[Standard] MenuItemName=[] Query=[] Size=[Medium] - every element lost.",
+    "DataContract round-trip variant A (V1 ns, TileType kept): Type=[Standard] while Name/Label/MenuItemName/Query/Size resolve - isolates defect 2.",
+    "DataContract round-trip variant B (V1 ns, <Type>, writer element order): Type=[Count] but MenuItemName=[] Query=[] Size=[Medium] - isolates defect 3.",
+    "DataContract round-trip of the captured goldens: AxTile Name/Label/MenuItemName/Query/Size=Wide/Type=Count all resolve; AxMenuItemDisplay Object=CustTable ObjectType=Form (identical shape to MS ApplicationSuite/Foundation/AxMenuItemDisplay/CustTable.xml, where ObjectType=Form is the serialization default and is omitted in 7235 of 7649 files); AxQuery DS CustTable, DynamicFields=Yes, Ranges=1 (Blocked=All).",
+    "AOT corpus ground truth: 764 AxTile files, element histogram Name 764 / MenuItemName 756 / Type 432 / Label 333 / Size 305 ... TileType 0; xmlns V1 764/764; RefreshFrequency values only AsFastAsPermissible|TwentyFourHours.",
+    "Reflection over Microsoft.Dynamics.AX.Metadata.MetaModel.AxTile confirms property Type : TileType and no property named TileType; TileType enum = Standard|Count|KPI|Link; TileRefreshFrequency = AsFastAsPermissible|TenMinutes|TwentyFourHours."
+  ]
+}
