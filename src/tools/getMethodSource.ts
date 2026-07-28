@@ -12,6 +12,7 @@ import type { XppServerContext } from '../types/context.js';
 import type { XppMetadataParser } from '../metadata/xmlParser.js';
 import { tryBridgeMethodSource } from '../bridge/bridgeAdapter.js';
 import { canonicalSymbolName } from '../utils/symbolLookup.js';
+import { inheritedOwnerCandidates } from '../utils/inheritanceChain.js';
 
 const GetMethodSourceArgsSchema = z.object({
   className: z.string().describe('Name of the class containing the method'),
@@ -43,6 +44,12 @@ export async function getMethodSourceTool(request: CallToolRequest, context: Xpp
     const xmlResult = await tryXmlMethodSource(context, className, methodName);
     if (xmlResult) return xmlResult;
 
+    // Inherited methods: both readers above see declared members only, so a
+    // class that inherits the method rather than declaring it would report a
+    // false "not found". Retry against the declaring ancestor.
+    const inherited = await tryInheritedMethodSource(context, className, methodName);
+    if (inherited) return inherited;
+
     // Bridge and XML both unavailable — try fuzzy name suggestions from SQLite
     let hint = '';
     try {
@@ -72,7 +79,7 @@ export async function getMethodSourceTool(request: CallToolRequest, context: Xpp
     return {
       content: [{
         type: 'text',
-        text: `❌ Method **${className}.${methodName}** not found.${hint}\n\nUse \`get_object_info(objectType="class", name="${className}")\` to see all available methods.`,
+        text: `❌ Method **${className}.${methodName}** not found — neither ${className} nor any class it extends declares it.${hint}\n\nUse \`get_object_info(objectType="class", name="${className}")\` to see all available methods.`,
       }],
       isError: true,
     };
@@ -101,6 +108,57 @@ function resolveClassName(context: XppServerContext, requested: string): string 
   } catch {
     return requested; // DB not available — bridge/XML may still resolve it
   }
+}
+
+/**
+ * Retry the bridge and XML readers against the ancestors of `className`, for a
+ * method the class inherits rather than declares. Returns the declaring class's
+ * source, annotated so the caller cannot mistake it for a declared member.
+ */
+async function tryInheritedMethodSource(
+  context: XppServerContext,
+  className: string,
+  methodName: string,
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean } | null> {
+  let rdb: any;
+  try {
+    rdb = context.symbolIndex.getReadDb();
+  } catch {
+    return null; // DB not available — no chain to walk
+  }
+
+  const bridgeUsable = Boolean(context.bridge?.isReady && context.bridge?.metadataAvailable);
+  for (const ancestor of inheritedOwnerCandidates(rdb, className, methodName, bridgeUsable)) {
+    const fromBridge = await tryBridgeMethodSource(context.bridge, ancestor, methodName);
+    if (fromBridge) return annotateInherited(fromBridge as any, className, ancestor, methodName);
+
+    const fromXml = await tryXmlMethodSource(context, ancestor, methodName);
+    if (fromXml) return annotateInherited(fromXml, className, ancestor, methodName);
+  }
+  return null;
+}
+
+/** Insert the "inherited from" note under the result's `## Class.method` heading. */
+function annotateInherited(
+  result: { content: Array<{ type: 'text'; text: string }>; isError?: boolean },
+  requestedClass: string,
+  declaringClass: string,
+  methodName: string,
+): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+  const note =
+    `\n> ℹ️ **Inherited method.** \`${requestedClass}\` does not declare \`${methodName}\` — ` +
+    `it inherits it from \`${declaringClass}\`, whose source is shown below.\n` +
+    `> For CoC, wrap it on \`${declaringClass}\`; the wrapper then runs for **every** subclass, ` +
+    `so guard the body with \`if (this is ${requestedClass})\` when only that one is meant.\n`;
+
+  const [first, ...rest] = result.content;
+  if (!first || typeof first.text !== 'string') return result;
+  // The readers open with "## <Class>.<method>"; keep the note directly under it.
+  const nl = first.text.indexOf('\n');
+  const text = nl === -1
+    ? `${first.text}\n${note}`
+    : `${first.text.slice(0, nl + 1)}${note}${first.text.slice(nl + 1)}`;
+  return { ...result, content: [{ ...first, text }, ...rest] };
 }
 
 /**
