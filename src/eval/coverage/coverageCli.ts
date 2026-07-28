@@ -13,25 +13,7 @@
 import * as fs from 'fs';
 import { renderMarkdown, danglingReferences, type CoverageReport } from './coverage.js';
 import { buildReport, JSON_PATH, MD_PATH, README_PATH } from './sources.js';
-
-const BADGE_START = '<!-- coverage-badge:start -->';
-const BADGE_END = '<!-- coverage-badge:end -->';
-
-/**
- * Rewrites the README badge block from the report. The badge is the public
- * reliability number promised in the LinkedIn thread — it is generated, never
- * hand-edited, so it cannot quietly disagree with eval/coverage.json.
- */
-function withBadge(readme: string, report: CoverageReport): string {
-  const colour = report.core.percent >= 90 ? 'brightgreen' : report.core.percent >= 70 ? 'yellow' : 'orange';
-  const badge =
-    `[![Core coverage](https://img.shields.io/badge/core_coverage-${report.core.percent}%25-${colour}.svg)](eval/COVERAGE.md) ` +
-    `[![Total coverage](https://img.shields.io/badge/total_coverage-${report.total.percent}%25-lightgrey.svg)](eval/COVERAGE.md)`;
-  const start = readme.indexOf(BADGE_START);
-  const end = readme.indexOf(BADGE_END);
-  if (start < 0 || end < 0) return readme;
-  return `${readme.slice(0, start + BADGE_START.length)}\n${badge}\n${readme.slice(end)}`;
-}
+import { normalizeEol, stripGeneratedAt, withBadge } from './artifactCompare.js';
 
 /** Machine-readable artifact — the shape the README badge and CI read. */
 function toJson(report: CoverageReport) {
@@ -52,11 +34,6 @@ function toJson(report: CoverageReport) {
     })),
     orphans: report.orphans,
   };
-}
-
-/** The generation timestamp must not make --check fail on an unchanged run. */
-function stripGeneratedAt(md: string): string {
-  return md.replace(/^_Generated .*_$/m, '');
 }
 
 function main(): number {
@@ -85,11 +62,13 @@ function main(): number {
 
   if (check) {
     const stale: string[] = [];
-    if (!fs.existsSync(JSON_PATH) || fs.readFileSync(JSON_PATH, 'utf8') !== json) stale.push('eval/coverage.json');
+    if (!fs.existsSync(JSON_PATH) || normalizeEol(fs.readFileSync(JSON_PATH, 'utf8')) !== normalizeEol(json)) {
+      stale.push('eval/coverage.json');
+    }
     if (!fs.existsSync(MD_PATH) || stripGeneratedAt(fs.readFileSync(MD_PATH, 'utf8')) !== stripGeneratedAt(markdown)) {
       stale.push('eval/COVERAGE.md');
     }
-    if (readme !== readmeNext) stale.push('README.md (coverage badge)');
+    if (normalizeEol(readme) !== normalizeEol(readmeNext)) stale.push('README.md (coverage badge)');
     if (stale.length > 0) {
       console.error(`❌ stale coverage artifact(s): ${stale.join(', ')} — run \`npm run eval:coverage\` and commit.`);
       return 1;
