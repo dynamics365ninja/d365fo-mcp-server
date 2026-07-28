@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'child_process';
 import util from 'util';
 import path from 'path';
-import { access, writeFile, readFile, unlink, appendFile, readdir } from 'fs/promises';
+import { access, writeFile, readFile, unlink, appendFile, readdir, stat } from 'fs/promises';
 import { openSync as openSyncFs, closeSync as closeSyncFs } from 'fs';
 import os from 'os';
 import crypto from 'crypto';
@@ -182,6 +182,83 @@ function logFilePath(targetModel: string, queueIndex: number, customPackagesPath
     .digest('hex')
     .slice(0, 10);
   return path.join(os.tmpdir(), `d365build_log_${hash}.log`);
+}
+
+/**
+ * Written BY the build, so always newer than it — scanning them would make
+ * every cached result look stale and rebuild forever.
+ */
+const BUILD_OUTPUT_DIRS = new Set(['bin', 'xppmetadata']);
+
+/**
+ * True when any source file in the model package changed after `since` (epoch
+ * ms). Short-circuits on the first hit, so the "something changed" case — the
+ * one that must not be missed — is also the fast one.
+ *
+ * On a blown time budget or an unreadable tree it returns TRUE. Both failure
+ * directions are not equal: a needless rebuild costs minutes, while a wrongly
+ * reused result reports a compile that never happened.
+ */
+export async function hasSourceChangesSince(
+  modelDir: string,
+  since: number,
+  budgetMs = 3000,
+): Promise<boolean> {
+  const deadline = Date.now() + budgetMs;
+  const stack: string[] = [modelDir];
+  while (stack.length > 0) {
+    if (Date.now() > deadline) return true;
+    const dir = stack.pop()!;
+    let entries;
+    try {
+      // The directory's OWN mtime is what catches a DELETION: removing a class
+      // leaves no file to stat, but the parent's mtime moves. Without this a
+      // deleted source reads as "unchanged" and the stale result comes back.
+      if ((await stat(dir)).mtimeMs > since) return true;
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      // Unreadable subtree: can't prove it is unchanged.
+      return true;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (dir === modelDir && BUILD_OUTPUT_DIRS.has(entry.name.toLowerCase())) continue;
+        stack.push(full);
+        continue;
+      }
+      try {
+        if ((await stat(full)).mtimeMs > since) return true;
+      } catch { /* vanished mid-scan — ignore */ }
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a finished build result still describes what is on disk.
+ *
+ * A finished state left on disk used to be returned verbatim to the NEXT
+ * call, which then read as that call's own result. Observed 2026-07-28 while
+ * capturing the L2-coc-inherited-method golden: a wrapper was edited to a
+ * deliberately uncompilable signature, and the following build reported
+ * "✅ Build succeeded / Errors: 0" with byte-identical phase timings from the
+ * previous run. The poisoned file was written at 15:05:46; the build log had
+ * last been touched at 15:05:04 — 42 s EARLIER. Nothing had been compiled.
+ *
+ * That is the worst failure this tool can have: pass@build is the gate the
+ * whole eval loop leans on, and a green that describes a tree nobody compiled
+ * is indistinguishable from a real one without checking log timestamps by hand.
+ */
+export async function finishedResultStillDescribesDisk(
+  state: BuildJobState,
+  targetModel: string,
+  customPackagesPath: string,
+): Promise<boolean> {
+  if (!state.endTime) return false; // no idea when it finished — do not trust it
+  const endedAt = new Date(state.endTime).getTime();
+  if (!Number.isFinite(endedAt)) return false;
+  return !(await hasSourceChangesSince(path.join(customPackagesPath, targetModel), endedAt));
 }
 
 async function readBuildState(targetModel: string, customPackagesPath: string): Promise<BuildJobState | null> {
@@ -923,9 +1000,33 @@ export const buildProjectTool = async (params: any, _context: any) => {
         }
       }
 
-      // Build finished — return result and clear state
+      // Build finished. It may be this caller collecting the result they were
+      // handed off ("call again to collect"), or a fresh build request that
+      // merely arrived after an old state file. Only the disk can tell them
+      // apart: if sources changed since the build ended, the cached result
+      // describes a tree that no longer exists and must not be replayed as
+      // this call's success.
+      const stillCurrent = await finishedResultStillDescribesDisk(
+        existingState, targetModel, customPackagesPath,
+      );
       await clearBuildState(targetModel, customPackagesPath);
-      return await renderFinishedBuildResult(existingState, targetModel);
+      if (stillCurrent) {
+        const result = await renderFinishedBuildResult(existingState, targetModel);
+        // Say plainly that nothing was compiled just now, so a reader can never
+        // mistake a collected result for a fresh one.
+        const collected =
+          `ℹ️  Collected the result of the build that ended ${existingState.endTime} ` +
+          `(no source changes since — nothing was recompiled by this call).\n\n`;
+        return {
+          ...result,
+          content: [{ type: 'text', text: collected + (result.content[0]?.text ?? '') }],
+        };
+      }
+      // Sources moved on — fall through and build for real.
+      await buildLog(
+        'WARN',
+        `discarding finished build state for ${targetModel}: sources changed after ${existingState.endTime}`,
+      );
       } // end else (buildModeChanged)
     }
 
