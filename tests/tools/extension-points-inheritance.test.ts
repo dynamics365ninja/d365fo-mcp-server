@@ -129,16 +129,26 @@ async function pointsFor(objectName: string, bridge?: unknown): Promise<string> 
   return result.content?.[0]?.text ?? '';
 }
 
-/** Minimal IMetadataProvider stand-in returning the modifiers the AOT really has. */
+/**
+ * Minimal IMetadataProvider stand-in. Shaped like the real GetCompletionMembers,
+ * which reports the modifier inside the signature string (built from the
+ * declaration line) rather than as its own field — readClass cannot be used for
+ * this, since the C# MethodInfoModel behind it carries no visibility at all.
+ */
 const bridgeWithVisibility = (visibilities: Record<string, Record<string, string>>) => ({
   isReady: true,
   metadataAvailable: true,
-  readClass: async (name: string) => {
+  getCompletionMembers: async (name: string) => {
     const methods = visibilities[name];
     if (!methods) return null;
     return {
-      name,
-      methods: Object.entries(methods).map(([n, visibility]) => ({ name: n, visibility })),
+      symbolName: name,
+      symbolType: 'class',
+      members: Object.entries(methods).map(([n, visibility]) => ({
+        name: n,
+        kind: 'method',
+        signature: `${visibility} void ${n}()`,
+      })),
     };
   },
 });

@@ -36,19 +36,39 @@ async function readVisibility(
   for (const name of classNames) {
     let info;
     try {
-      info = await bridge.readClass(name);
+      // getCompletionMembers, NOT readClass: the C# MethodInfoModel behind
+      // readClass carries only name/source/isStatic, so BridgeMethodInfo's
+      // `visibility` is never populated and reading it yields nothing.
+      // GetCompletionMembers builds each signature from the declaration line,
+      // so the modifier is right there in the string.
+      info = await bridge.getCompletionMembers(name);
     } catch (e) {
-      console.error(`[analyzeExtensionPoints] readClass(${name}) failed: ${e}`);
+      console.error(`[analyzeExtensionPoints] getCompletionMembers(${name}) failed: ${e}`);
       continue;
     }
-    for (const m of info?.methods ?? []) {
+    for (const m of info?.members ?? []) {
+      if (m.kind !== 'method') continue;
       const key = m.name?.toLowerCase();
-      if (key && m.visibility && !byMethod.has(key)) {
-        byMethod.set(key, m.visibility.toLowerCase());
-      }
+      if (!key || byMethod.has(key)) continue;
+      const visibility = parseVisibility(m.signature);
+      if (visibility) byMethod.set(key, visibility);
     }
   }
   return byMethod;
+}
+
+/**
+ * Access modifier out of a declaration-line signature such as
+ * `private static ClassDescription description()`.
+ *
+ * Only the part before the parameter list is considered — a default parameter
+ * value is arbitrary X++ and could contain any of these words.
+ */
+function parseVisibility(signature?: string | null): string | undefined {
+  if (!signature) return undefined;
+  const head = signature.split('(')[0];
+  const m = /\b(public|protected|private|internal)\b/i.exec(head);
+  return m ? m[1].toLowerCase() : undefined;
 }
 
 /** Bridge visibility when known, else the snippet heuristic. */
