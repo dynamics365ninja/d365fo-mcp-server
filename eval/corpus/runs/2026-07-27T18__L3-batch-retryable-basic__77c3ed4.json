@@ -1,0 +1,37 @@
+{
+  "run_id": "2026-07-27T18__L3-batch-retryable-basic__77c3ed4",
+  "case_id": "L3-batch-retryable-basic",
+  "tier": 3,
+  "timestamp": "2026-07-27T18:42:38.575Z",
+  "server_git_sha": "77c3ed4",
+  "generated_artifacts": [
+    "ConDemoNoteReindexContract.metadata.xml",
+    "ConDemoNoteReindexController.metadata.xml",
+    "ConDemoNoteReindexService.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS"
+}

@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-feature-management-flight: the IFeatureMetadata implementation - singleton (private new + private static TypeNew + static instance()), all six interface members (label/summary/module/learnMoreUrl/isEnabledByDefault/canDisable) each [Hookable(false)], and the [ExportAttribute(identifierStr(...IFeatureMetadata))] registration. Member list confirmed against IFeatureMetadataV0 and MS FinTagFeature. Captured 2026-07-27, SHA b28515f. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoFastPostingFeature</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+using System.ComponentModel.Composition;
+using IFeatureMetadata = Microsoft.Dynamics.ApplicationPlatform.FeatureExposure.IFeatureMetadata;
+
+/// <summary>
+/// The <c>ConDemoFastPostingFeature</c> class exposes the fast posting behaviour in Feature management.
+/// </summary>
+[ExportAttribute(identifierStr(Microsoft.Dynamics.ApplicationPlatform.FeatureExposure.IFeatureMetadata))]
+public final class ConDemoFastPostingFeature implements IFeatureMetadata
+{
+    private static ConDemoFastPostingFeature instance;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+    private void new()
+    {
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>TypeNew</Name>
+				<Source><![CDATA[
+    private static void TypeNew()
+    {
+        instance = new ConDemoFastPostingFeature();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>instance</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets the singleton instance of the <c>ConDemoFastPostingFeature</c> class.
+    /// </summary>
+    /// <returns>The singleton feature instance.</returns>
+    [Hookable(false)]
+    public static ConDemoFastPostingFeature instance()
+    {
+        return ConDemoFastPostingFeature::instance;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>label</Name>
+				<Source><![CDATA[
+    [Hookable(false)]
+    public FeatureLabelId label()
+    {
+        return literalStr("@Contoso:DemoFastPostingFeatureLabel");
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>summary</Name>
+				<Source><![CDATA[
+    [Hookable(false)]
+    public FeatureLabelId summary()
+    {
+        return literalStr("@Contoso:DemoFastPostingFeatureSummary");
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>module</Name>
+				<Source><![CDATA[
+    [Hookable(false)]
+    public int module()
+    {
+        return FeatureModuleV0::GeneralLedger;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>learnMoreUrl</Name>
+				<Source><![CDATA[
+    [Hookable(false)]
+    public WebSiteURL learnMoreUrl()
+    {
+        return 'https://learn.microsoft.com/dynamics365/fin-ops-core/dev-itpro/sysadmin/feature-management/feature-management-overview';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isEnabledByDefault</Name>
+				<Source><![CDATA[
+    [Hookable(false)]
+    public boolean isEnabledByDefault()
+    {
+        return false;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canDisable</Name>
+				<Source><![CDATA[
+    [Hookable(false)]
+    public boolean canDisable()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isEnabled</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Determines whether the fast posting feature is enabled.
+    /// </summary>
+    /// <returns>true if the feature is enabled in Feature management; otherwise, false.</returns>
+    [Hookable(false)]
+    public static boolean isEnabled()
+    {
+        return FeatureStateProvider::isFeatureEnabled(ConDemoFastPostingFeature::instance());
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

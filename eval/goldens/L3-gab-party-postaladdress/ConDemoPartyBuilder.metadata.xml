@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPartyBuilder</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Creates global address book data through the supported <c>DirPartyTable</c> and <c>DirParty</c> APIs.
+/// </summary>
+public class ConDemoPartyBuilder
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>createOrganization</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Creates a new organization party in the global address book.
+    /// </summary>
+    /// <param name = "_name">The name of the organization.</param>
+    /// <returns>The record ID of the created <c>DirPartyTable</c> record.</returns>
+    public static RecId createOrganization(Name _name)
+    {
+        DirPartyTable   partyTable;
+
+        ttsbegin;
+
+        partyTable = DirPartyTable::createNew(DirPartyType::Organization, _name);
+
+        ttscommit;
+
+        return partyTable.RecId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addPrimaryAddress</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Attaches a primary postal address to a party through the global address book API.
+    /// </summary>
+    /// <param name = "_party">The record ID of the <c>DirPartyTable</c> record.</param>
+    /// <param name = "_countryRegion">The country or region of the postal address.</param>
+    /// <param name = "_city">The city of the postal address.</param>
+    public static void addPrimaryAddress(RecId _party, LogisticsAddressCountryRegionId _countryRegion, LogisticsAddressCityName _city)
+    {
+        DirParty                    dirParty;
+        DirPartyPostalAddressView   postalAddressView;
+
+        dirParty = DirParty::constructFromPartyRecId(_party);
+
+        postalAddressView.Party             = _party;
+        postalAddressView.CountryRegionId   = _countryRegion;
+        postalAddressView.City              = _city;
+        postalAddressView.IsPrimary         = NoYes::Yes;
+
+        ttsbegin;
+
+        dirParty.createOrUpdatePostalAddress(postalAddressView);
+
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>primaryCity</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Reads the city of the primary postal address of a party.
+    /// </summary>
+    /// <param name = "_party">The record ID of the <c>DirPartyTable</c> record.</param>
+    /// <returns>The city of the primary postal address; an empty string when none exists.</returns>
+    public static LogisticsAddressCityName primaryCity(RecId _party)
+    {
+        DirPartyPostalAddressView   postalAddressView;
+
+        select firstonly City from postalAddressView
+        where postalAddressView.Party        == _party
+        && postalAddressView.IsPrimary    == NoYes::Yes;
+
+        return postalAddressView.City;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

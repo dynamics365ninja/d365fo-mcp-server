@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L2-config-key-gated-table
+  Captured: 2026-07-27, server SHA: b28515f
+  Platform: xppc 7.0.7858.27
+  Environment: EXTENSION_PREFIX=Con -> configuration key name is ConDemoModuleKey
+
+  Shape verified against standard-model AxConfigurationKey files
+  (ApplicationSuite/Foundation, ApplicationFoundation): the minimal standard
+  shape is Name + Label, with ParentKey/LicenseCode/Enabled/EnabledByDefault/
+  IsObsolete all optional. This case mandates "no parent key", so Name + Label
+  is the complete and correct shape. No element gap vs the standard model.
+-->
+<AxConfigurationKey xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoModuleKey</Name>
+	<Label>@SYS333652</Label>
+</AxConfigurationKey>

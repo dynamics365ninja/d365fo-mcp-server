@@ -1,0 +1,101 @@
+{
+  "run_id": "2026-07-27T16__L3-currency-exchange-conversion__b28515f",
+  "case_id": "L3-currency-exchange-conversion",
+  "tier": 3,
+  "timestamp": "2026-07-27T16:18:54.220Z",
+  "server_git_sha": "b28515f",
+  "generated_artifacts": [
+    "ConDemoCurrencyConverter.metadata.xml"
+  ],
+  "build": {
+    "succeeded": false,
+    "bp_checked": false,
+    "errors": [
+      {
+        "object": "ConDemoCurrencyConverter.Method/toAccountingCurrency",
+        "line": 21,
+        "col": 5,
+        "message": "The name 'CurrencyCode' does not denote a class, a table, or an extended data type."
+      },
+      {
+        "object": "ConDemoCurrencyConverter.Method/convert",
+        "line": 42,
+        "col": 5,
+        "message": "The name 'CurrencyCode' does not denote a class, a table, or an extended data type."
+      },
+      {
+        "object": "ConDemoCurrencyConverter.Method/convert",
+        "line": 43,
+        "col": 5,
+        "message": "The name 'CurrencyCode' does not denote a class, a table, or an extended data type."
+      },
+      {
+        "object": "ConDemoCurrencyConverter.Method/roundToCurrency",
+        "line": 69,
+        "col": 5,
+        "message": "The name 'CurrencyCode' does not denote a class, a table, or an extended data type."
+      },
+      {
+        "object": "ConDemoCurrencyConverter.Method/toAccountingCurrency",
+        "line": 26,
+        "col": 16,
+        "message": "The name 'CurrencyCode' does not denote a class, a table, or an extended data type."
+      },
+      {
+        "object": "ConDemoCurrencyConverter.Method/convert",
+        "line": 49,
+        "col": 16,
+        "message": "The name 'CurrencyCode' does not denote a class, a table, or an extended data type."
+      },
+      {
+        "object": "ConDemoCurrencyConverter.Method/convert",
+        "line": 49,
+        "col": 16,
+        "message": "The name 'CurrencyExchangeRate' does not denote a class, a table, or an extended data type."
+      },
+      {
+        "object": "ConDemoCurrencyConverter.Method/roundToCurrency",
+        "line": 71,
+        "col": 16,
+        "message": "The name 'CurrencyExchange' does not designate a class or table."
+      }
+    ],
+    "bpWarnings": []
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": 0,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "ENV_FLAKE",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Sandbox provisioning gap, not a code or tool defect. The Contoso sandbox Descriptor (K:AosServicePackagesLocalDirectoryContosoDescriptorContoso.xml) lists ModuleReferences [ApplicationFoundation, ApplicationPlatform, ApplicationSuite, Directory, Ledger, ContactPerson] but NOT 'Currency'. xppc does not resolve package references transitively for directly-named types, so every symbol owned by the Currency package failed to resolve: CurrencyCode (EDT), CurrencyExchangeRate (EDT) and CurrencyExchange (class) all live in K:AosServicePackagesLocalDirectoryCurrencyCurrency. Symbols owned by the referenced Ledger package (CurrencyExchangeHelper, Ledger::current, LedgerRecId) resolved cleanly, which isolates the cause precisely. The case instruction mandates the exact signatures 'CurrencyCode _fromCurrency' etc., so the reference is unavoidable — the case cannot be implemented in this sandbox until the Descriptor declares Currency. Every model on this VM that uses currency types declares it explicitly (Foundation, Ledger, and the VM's own custom model HBReavisCus), confirming the required shape. The generated X++ is believed correct: all 3 helper members and their arities were confirmed against the live index and mirrored from real Foundation call sites (SettlementUtility.convertAmountCurToAmountCurCrossCompany, CustVendExchAdjSimulationDP.calculateNewAccountingCurrencyAmount) — but this is UNPROVEN because the build never got past name resolution. Golden intentionally NOT captured.",
+  "suggested_fix_area": "eval harness sandbox provisioning: add 'Currency' to Contoso Descriptor ModuleReferences (one line). Consider a preflight that derives required ModuleReferences from the packages owning the symbols a case's instruction names, and fails fast with that list instead of surfacing as 8 opaque xppc name-resolution errors.",
+  "evidence_refs": [
+    "K:AosServicePackagesLocalDirectoryContosoDescriptorContoso.xml (ModuleReferences: no Currency)",
+    "K:AosServicePackagesLocalDirectoryCurrencyCurrencyAxEdtCurrencyCode.xml (owner of failing symbol)",
+    "K:AosServicePackagesLocalDirectoryCurrencyCurrencyAxEdtCurrencyExchangeRate.xml",
+    "K:AosServicePackagesLocalDirectoryCurrencyCurrencyAxClassCurrencyExchange.xml",
+    "K:AosServicePackagesLocalDirectoryLedgerDescriptorLedger.xml (declares Currency explicitly)",
+    "K:AosServicePackagesLocalDirectoryHBReavisCusDescriptor (custom model, declares Currency explicitly)",
+    "K:AosServicePackagesLocalDirectoryApplicationSuiteFoundationAxClassSettlementUtility.xml (mirrored call site)",
+    "K:AosServicePackagesLocalDirectoryApplicationSuiteFoundationAxClassCustVendExchAdjSimulationDP.xml (mirrored call site)"
+  ]
+}

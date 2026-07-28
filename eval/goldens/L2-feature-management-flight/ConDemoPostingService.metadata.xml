@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-feature-management-flight: the feature-gated code path - static describe() branching on FeatureStateProvider::isFeatureEnabled(ConDemoFastPostingFeature::instance()) and returning a different label per branch. Captured 2026-07-27, SHA b28515f. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPostingService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>ConDemoPostingService</c> class exposes a code path that is gated by the fast posting feature.
+/// </summary>
+public final class ConDemoPostingService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>describe</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Describes the posting path that is currently active.
+    /// </summary>
+    /// <returns>A labelled description of the active posting path.</returns>
+    public static str describe()
+    {
+        if (FeatureStateProvider::isFeatureEnabled(ConDemoFastPostingFeature::instance()))
+        {
+            return "@Contoso:DemoPostingFastDescription";
+        }
+
+        return "@Contoso:DemoPostingStandardDescription";
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

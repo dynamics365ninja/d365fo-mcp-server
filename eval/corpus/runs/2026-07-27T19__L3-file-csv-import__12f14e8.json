@@ -1,0 +1,63 @@
+{
+  "run_id": "2026-07-27T19__L3-file-csv-import__12f14e8",
+  "case_id": "L3-file-csv-import",
+  "tier": 3,
+  "timestamp": "2026-07-27T19:30:01.347Z",
+  "server_git_sha": "12f14e8",
+  "generated_artifacts": [
+    "ConDemoFileImporter.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "IO_Status::Ok (line 38) — FALSE POSITIVE: kernel enum, has no AxEnum file and is not in the symbol index; used by ApplicationPlatform StreamIo.currentStatus itself",
+        "IO_Status::Ok (line 42) — same false positive",
+        "SpreadsheetDocument::Open (line 79) — FALSE POSITIVE: .NET static on DocumentFormat.OpenXml.Packaging.SpreadsheetDocument; the resolver strips the CLR namespace and looks the short name up as an X++ class",
+        "warning: declared type \"childElement\" not found — FALSE POSITIVE: parse artifact from the X++ \"is\" operator line \"if (childElement is DocumentFormat.OpenXml.Spreadsheet.SheetData)\""
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Case PASSES on all three scored dimensions (build 1 / bp_clean 1 / golden_match 1); the hypothesis below concerns two grounding-tool defects surfaced on the way, not a case failure. (1) TOOL_DEFECT — validate_code(mode=\"references\") reported 3 errors + 1 warning, all four false positives, on code that compiles clean with 0 xppc errors and 0 BP warnings. Cause A: kernel-defined enums are absent from the symbol index. IO_Status has no AxEnum XML anywhere in PackagesLocalDirectory yet is referenced by ApplicationPlatform own StreamIo/CommaStreamIo; the resolver treats \"not in index\" as \"does not exist\". Cause B: for a fully qualified CLR static call the resolver drops the namespace and resolves the short type name against X++ classes only, so DocumentFormat.OpenXml.Packaging.SpreadsheetDocument::Open is reported as an unknown static member of a nonexistent X++ class \"SpreadsheetDocument\". Cause C: the declaration scanner mis-parses the X++ \"is\" operator and treats the left operand identifier as a declared type. Net effect: on any file-IO / .NET-interop case the references gate is unusable as a hard gate, and an agent that obeys \"Fix all errors before writing\" would be pushed off the correct API. (2) KB_DEFECT — get_knowledge(topic=\"file-readers\") teaches an XLSX snippet that cannot compile: wbPart.get_WorksheetParts().get_Item(0). WorkbookPart.WorksheetParts is System.Collections.Generic.IEnumerable<WorksheetPart> (verified by reflection on ApplicationPlatform/bin/DocumentFormat.OpenXml.dll v2.5.5631.0) and exposes no indexer; only GetEnumerator() is available. The same snippet also calls DocumentFormat.OpenXml.OpenXmlReader::Create(wsPart) inside a doc.Dispose() finally without showing how rows are actually reached. Working code had to route through an IEnumerator, then walk Worksheet.get_ChildElements() looking for SheetData, exactly as ApplicationFoundation OXMLWorksheet_RU does. Also note the case instruction says CommaStreamIo while the KB entry teaches CommaTextStreamIo; both exist and CommaTextStreamIo extends CommaStreamIo, so the instruction is satisfiable, but the KB never mentions the base class the instruction names.",
+  "suggested_fix_area": "(a) validate_code(references): stop reporting unresolved for identifiers that are kernel/system types — either seed the index with the kernel enum + class list (IO_Status, RecordInsertList, ...) or downgrade unknown-type to a warning when no AxEnum/AxClass file exists anywhere; (b) validate_code(references): when a static-call receiver is a dotted CLR-style name (contains a namespace segment), skip X++ static-member resolution entirely instead of resolving the last segment; (c) validate_code(references): fix the declaration scanner so \"<ident> is <Type>\" is not read as a variable declaration; (d) knowledge base topic file-readers: replace get_WorksheetParts().get_Item(0) with the enumerator form and add the SheetData/Row/Cell + SharedStringTable walk (model it on ApplicationFoundation OXMLWorksheet_RU), and mention CommaStreamIo as the base reader alongside CommaTextStreamIo.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxClass/ConDemoFileImporter.xml (produced artifact)",
+    "K:/repos/d365fo-mcp-server/eval/goldens/L3-file-csv-import/ConDemoFileImporter.metadata.xml (golden captured this run)",
+    "K:/AosService/PackagesLocalDirectory/ApplicationPlatform/ApplicationPlatform/AxClass/StreamIo.xml:14 (IO_Status currentStatus = IO_Status::Ok — kernel enum, no AxEnum file exists)",
+    "K:/AosService/PackagesLocalDirectory/ApplicationPlatform/ApplicationPlatform/AxClass/CommaStreamIo.xml (constructForRead(System.IO.Stream), read(), inFieldDelimiter())",
+    "K:/AosService/PackagesLocalDirectory/ApplicationPlatform/bin/DocumentFormat.OpenXml.dll v2.5.5631.0 (reflection: WorkbookPart.WorksheetParts is IEnumerable<WorksheetPart>, no indexer; SpreadsheetDocument.Open(Stream,Boolean) exists; OpenXmlElementList has get_Item(int)/get_Count())",
+    "K:/AosService/PackagesLocalDirectory/ApplicationFoundation/ApplicationFoundation/AxClass/OXMLWorksheet_RU.xml:1470-1490 (ChildElements + IEnumerator + is/as SheetData pattern that was mirrored)",
+    "K:/AosService/PackagesLocalDirectory/ApplicationFoundation/ApplicationFoundation/AxClass/OXMLSpreadsheetDocument_RU.xml:115-118 (SpreadsheetDocument::Open over a stream)",
+    "K:/AosService/PackagesLocalDirectory/ApplicationFoundation/ApplicationFoundation/AxClass/BatchJobCopy.xml:140,151 (new RecordInsertList(tableNum(..)) + insertDatabase() inside tts)",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Descriptor/Contoso.xml (unchanged this run — ApplicationPlatform already referenced, owns both CommaStreamIo/IO_Status and DocumentFormat.OpenXml.dll)"
+  ]
+}

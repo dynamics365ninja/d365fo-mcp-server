@@ -1,0 +1,100 @@
+{
+  "run_id": "2026-07-27T23__L3-dmf-entity-import-slice__e8e2eb9",
+  "case_id": "L3-dmf-entity-import-slice",
+  "tier": 3,
+  "timestamp": "2026-07-27T23:42:46.882Z",
+  "server_git_sha": "e8e2eb9",
+  "generated_artifacts": [
+    "/Tables/ConDemoImportTarget",
+    "/DataEntities/ConDemoImportTargetEntity (INCOMPLETE: the case-required validateWrite() override and the postGetStagingData() staging hook could NOT be written - no grounded tool path emits X++ onto an AxDataEntityView)",
+    "/Tables/ConDemoImportTargetEntityStaging (companion, required because the create writer hard-codes DataManagementStagingTable=<Entity>Staging when dataManagementEnabled=true; without it the FULL build fails with a metadata error)",
+    "/SecurityPrivileges/ConDemoImportTargetEntityMaintain (companion, required to clear the DataEntitySecurityPrivilegeCheck BP ERROR; not in target_artifact_types)"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "rule": "BPErrorTablePrimaryKeyEditable",
+        "object": "AxTable ConDemoImportTarget/ImportTargetIdx/DocumentCode"
+      },
+      {
+        "rule": "BPErrorDeveloperDocumentationNotDefined",
+        "object": "AxTable ConDemoImportTarget"
+      },
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "object": "AxTable ConDemoImportTarget"
+      },
+      {
+        "rule": "BPErrorTablePrimaryKeyEditable",
+        "object": "AxTable ConDemoImportTargetEntityStaging/StagingIdx/DefinitionGroup"
+      },
+      {
+        "rule": "BPErrorTablePrimaryKeyEditable",
+        "object": "AxTable ConDemoImportTargetEntityStaging/StagingIdx/ExecutionId"
+      },
+      {
+        "rule": "BPErrorTablePrimaryKeyEditable",
+        "object": "AxTable ConDemoImportTargetEntityStaging/StagingIdx/DocumentCode"
+      },
+      {
+        "rule": "BPErrorTablePrimaryKeyNotMandatory",
+        "object": "AxTable ConDemoImportTargetEntityStaging/StagingIdx/DocumentCode"
+      },
+      {
+        "rule": "BPErrorDeveloperDocumentationNotDefined",
+        "object": "AxTable ConDemoImportTargetEntityStaging"
+      },
+      {
+        "rule": "BPErrorPrivilegeNotCoveredByDuty",
+        "object": "AxSecurityPrivilege ConDemoImportTargetEntityMaintain"
+      }
+    ]
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "xppc 7.0.7858.27",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "tableNum(ConDemoImportTarget) / fieldNum(ConDemoImportTarget, DocumentCode) - FALSE POSITIVE: table created minutes earlier, not yet indexed; cleared after update_symbol_index",
+        "DMFEntity::find arity-mismatch (1 arg vs indexed 2) - FALSE POSITIVE: 2nd parameter is 'boolean _forUpdate = false' (known default-parameter defect)"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "HARD BLOCKER, no grounded path: an AxDataEntityView cannot be given ANY X++ through the tool surface, so the two central deliverables of the case - the public boolean validateWrite() override and the DMF staging hook public static void postGetStagingData(DMFDefinitionGroupExecution) - were never written. Two independent defects combine. (1) WRITE PATH: createD365File.ts dispatches case data-entity to generateAxDataEntityXml(objectName, properties) and silently DROPS the sourceCode argument (same bug class as the table path already fixed at createD365File.ts:793). The shared builder dataEntityXml.ts buildAxDataEntityXml takes only (entityName, properties) and emits no SourceCode element at all. (2) REPAIR PATH: d365fo_file(action=modify, objectType=data-entity, operation=add-method) is rejected with -Operation add-method on object type data-entity is not supported by the bridge- : data-entity IS in the modify tool objectType enum (modifyD365File.ts:937) and in its advertised description, but is ABSENT from BRIDGE_MODIFY_TYPES (bridgeAdapter.ts:1210), so EVERY modify op on a data entity dead-ends. The tool advertises a capability it does not have; the only remaining route is hand-edited XML or overwrite=true, which the loop forbids. This is the same AxDataEntityView writer gap first recorded in 2026-07-27T14__L2-virtual-entity-power-platform, escalated from cosmetic to CASE-FATAL, because DMF entity behaviour lives in exactly that SourceCode block. THIRD DEFECT (build-breaking): buildAxDataEntityXml hard-codes DataManagementStagingTable to entityName+Staging whenever dataManagementEnabled=true, and an empty override falls back to that same default, so the caller cannot opt out. xppc DOES validate it: the FULL build failed with -Metadata Error: AxDataEntityView/ConDemoImportTargetEntity/DataManagementStagingTable: Table ConDemoImportTargetEntityStaging does not exist.- (negative test satisfied, the property is load-bearing). CRITICAL COROLLARY: the INCREMENTAL build of the very same XML reported Errors: 0 / Build succeeded twice - the Metadata Validation phase runs ONLY on fullBuild:true, so an incremental green build is a FALSE GREEN for every metadata-level reference error and must not be accepted as a case verdict. FOURTH DEFECT (false-clean BP): run_bp_check WITHOUT targetFilter returned -BP Check passed- with no processed-element line and zero findings, while the same model with a targetFilter returned 9 warnings and, before the privilege was added, a BP ERROR DataEntitySecurityPrivilegeCheck. Everything the tools CAN write was correct: the bridge table writer produced standard-shaped AxTable XML (AlternateKey=Yes, correct AxTableFieldEnum typing for DMFTransferStatus and NoYes), the entity round-tripped through IMetadataProvider losing nothing it did emit, and the full build is green with 0 BP errors. No Descriptor package had to be added: the entire DMF surface this case needs (DMFDefinitionGroupExecution, DMFEntity, DMFDefinitionGroupName, DMFExecutionId, DMFIsSelected, DMFTransferStatus) lives in ApplicationFoundation, which the Contoso sandbox already references.",
+  "suggested_fix_area": "1) src/tools/dataEntityXml.ts (buildAxDataEntityXml) + src/tools/createD365File.ts case data-entity: accept and emit sourceCode - SourceCode/Declaration (public class Name extends common) plus Methods, parsed exactly like the class and table paths - and add the still-missing FieldGroups (5 standard groups incl. AutoIdentification with AutoPopulate=Yes), empty DeleteActions and StateMachines, in the MS element order verified against ApplicationSuite/Foundation/AxDataEntityView/CashDiscountEntity.xml: Name, SourceCode, [ConfigurationKey, FormRef, Label, Tags], DataManagementEnabled, DataManagementStagingTable, EntityCategory, IsPublic, [Modules, PrimaryCompanyContext], PrimaryKey, PublicCollectionName, PublicEntityName, DeleteActions, FieldGroups, Fields, Keys, Mappings, Ranges, Relations, StateMachines, ViewMetadata. 2) src/bridge/bridgeAdapter.ts BRIDGE_MODIFY_TYPES: add data-entity (at least add-method, replace-code, modify-property, add-field-group), or stop advertising it in the modifyD365File objectType enum and tool description. 3) buildAxDataEntityXml: do not force DataManagementStagingTable when dataManagementEnabled=true - emit an empty element unless the caller names an EXISTING table, and warn in the response that xppc rejects a dangling staging table during full-build metadata validation. 4) build_d365fo_project: an incremental build skips Metadata Validation entirely - either default to fullBuild when the changed set contains metadata objects, or downgrade the incremental banner to -compiled (metadata validation NOT run, use fullBuild:true)-. 5) run_bp_check: the unfiltered invocation appears to process 0 elements yet reports -BP Check passed- - it must report the processed-element count and fail loudly when that count is 0. 6) generate_object(mode=pattern, pattern=data-entity) emits stale, wrong guidance: it doubles the suffix (ConDemoImportTargetEntityEntity) and tells the agent to create a data entity via create_d365fo_file(objectType=view) - a tool name that no longer exists and the WRONG object type.",
+  "evidence_refs": [
+    "prepare(create, table DemoImportTarget) token ac74a760; prepare(create, data-entity DemoImportTargetEntity) token 753962837f; prepare(create, table DemoImportTargetEntityStaging) token ff3e4356 - every write grounded, no overwrite=true, no hand-edited XML",
+    "get_knowledge(topic=data-management-framework, detailed) is CORRECT and sufficient for the metadata properties (DataManagementEnabled, DataManagementStagingTable, EntityCategory, staging XML block) but does NOT name the staging hook; the hook was grounded from the AOT instead",
+    "Staging hook confirmed against real code, not guessed: ApplicationSuite/Foundation/AxDataEntityView/CashDiscountEntity.xml and AgingPeriodDefinitionEntity.xml both declare: public static void postGetStagingData(DMFDefinitionGroupExecution _dmfDefinitionGroupExecution)",
+    "d365fo_file(action=modify, objectType=data-entity, operation=add-method) returned: Operation add-method on object type data-entity is not supported by the bridge. Source: BRIDGE_MODIFY_TYPES (src/bridge/bridgeAdapter.ts:1210) omits data-entity while modifyD365File.ts:937 lists it",
+    "src/tools/createD365File.ts:1550 - case data-entity returns this.generateAxDataEntityXml(objectName, properties); the sourceCode argument is not forwarded. src/tools/dataEntityXml.ts emits no SourceCode element at all",
+    "NEGATIVE TEST (load-bearing property vs bogus target): full build with DataManagementStagingTable=ConDemoImportTargetEntityStaging while that table did not exist produced Metadata Error ... Table ConDemoImportTargetEntityStaging does not exist, Errors: 1. After creating the staging table the same full build reports Errors: 0",
+    "FALSE-GREEN EVIDENCE: the identical XML built incrementally (233s and 237s) reported Errors: 0 / Build succeeded; the incremental build never runs the Metadata Validation phase that raises the error above",
+    "FALSE-CLEAN BP EVIDENCE: run_bp_check(modelName=Contoso) unfiltered returned BP Check passed with no processed-element line and 0 findings. run_bp_check(targetFilter=ConDemoImportTargetEntity, targetElementType=dataentityview) returned 1 elements processed plus BestPractices Error DataEntitySecurityPrivilegeCheck, Errors: 1",
+    "WRITER-SHAPE AUDIT (AxDataEntityView vocabulary): standard CashDiscountEntity.xml and CustCustomerV2Entity.xml top level = Name, SourceCode, [ConfigurationKey, FormRef, IsObsolete, Label, Tags], DataManagementEnabled, DataManagementStagingTable, EntityCategory, IsPublic, [Modules, PrimaryCompanyContext], PrimaryKey, PublicCollectionName, PublicEntityName, DeleteActions, FieldGroups, Fields, Keys, Mappings, Ranges, Relations, StateMachines, ViewMetadata. Generated ConDemoImportTargetEntity.xml MISSES SourceCode, DeleteActions, FieldGroups and StateMachines; the order of what it does emit is correct. get_object_info(data-entity) round-trip shows the deserializer keeps 100 percent of what was written, so the gap is never-written, not silently-dropped",
+    "WRITER-SHAPE AUDIT (AxTable, bridge writer): ConDemoImportTarget.xml and ConDemoImportTargetEntityStaging.xml match standard AxTable vocabulary and the DMF staging shape of ApplicationSuite/Foundation/AxTable/CashDiscountStaging.xml (TableGroup=Staging, DefinitionGroup/ExecutionId/IsSelected/TransferStatus control fields, AlternateKey StagingIdx). Only IsSystemGenerated=Yes and the DataEntity foreign-key relation are absent, both legitimate VS Generate-staging-table artefacts",
+    "Descriptor: NO package added. DMFDefinitionGroupExecution, DMFEntity, DMFDefinitionGroupName, DMFExecutionId, DMFIsSelected and DMFTransferStatus all resolve inside ApplicationFoundation, already referenced by K:/AosService/PackagesLocalDirectory/Contoso/Descriptor/Contoso.xml",
+    "validate_code(mode=references) on the (never-writable) postGetStagingData body: 3 errors, all false positives - 2x unknown-intrinsic-target on the table created minutes earlier (cleared by update_symbol_index) and 1x arity-mismatch on DMFEntity::find whose second parameter is boolean _forUpdate = false"
+  ]
+}

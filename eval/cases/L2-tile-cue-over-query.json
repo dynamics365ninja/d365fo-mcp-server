@@ -9,7 +9,6 @@
     "AxTile"
   ],
   "golden_path": "eval/goldens/L2-tile-cue-over-query/",
-  "golden_pending": true,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

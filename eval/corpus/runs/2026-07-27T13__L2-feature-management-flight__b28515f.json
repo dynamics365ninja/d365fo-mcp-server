@@ -1,0 +1,56 @@
+{
+  "run_id": "2026-07-27T13__L2-feature-management-flight__b28515f",
+  "case_id": "L2-feature-management-flight",
+  "tier": 2,
+  "timestamp": "2026-07-27T13:49:07.281Z",
+  "server_git_sha": "b28515f",
+  "generated_artifacts": [
+    "ConDemoFastPostingFeature.metadata.xml",
+    "ConDemoPostingService.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "platform_build": "X++ compiler 7.0.7858.27",
+  "root_cause_hypothesis": "Scorecard is all-green (build/bp_clean/golden all 1), but reaching a BP-clean state required stepping OUTSIDE the grounded tool path. TOOL_DEFECT: build_d365fo_project runs xppc.exe only and never invokes labelc.exe, so labels written by labels(action=\"create\") are never compiled into label resource assemblies. Evidence: after labels(create) + full build, Contoso had NO Resources/ folder at all (a working model, FleetManagement, has Resources/FLM.dll + per-language satellites), and xppbp reported 2x BPErrorUnknownLabel for @Contoso:DemoPostingFastDescription / @Contoso:DemoPostingStandardDescription even though both were correctly present in Contoso.en-US.label.txt. Running \"labelc.exe -Metadata=<pkgdir> -Output=<pkgdir>/Contoso -ModelModule=Contoso\" by hand produced Contoso.dll + en-US/ and BOTH warnings disappeared on the next xppbp run (10 -> 8 warnings), which isolates the cause to the missing labelc step. Impact is wider than BP noise: an uncompiled label does not resolve at runtime, so this feature would show the raw id \"@Contoso:DemoFastPostingFeatureLabel\" in the Feature management workspace. Affects every case that creates labels. DISPROVED sub-hypothesis (recorded so the improver does not chase it): the AxLabelFile descriptor Contoso_en-US.xml lacks the <Language> element that FleetManagement descriptors carry; adding <Language>en-US</Language> did NOT make labelc find the file (still \"0 label files\"). The earlier 0-files result was operator error - labelc -Names takes the ELEMENT name (Contoso_en-US), not the LabelFileId (Contoso); with -Names omitted it compiled 1 file. So the <Language> omission is NOT the defect and the label descriptor writer is not implicated. Secondary KNOWLEDGE_GAP (minor, non-blocking): get_knowledge(topic=\"feature-management\") states in prose that IFeatureMetadata has six members including learnMoreUrl(), but its copy-paste code example implements only five and OMITS learnMoreUrl(). An agent that follows the example rather than the prose ships an incomplete interface implementation, which is exactly the failure the case instruction warns about. Ground truth verified live: IFeatureMetadataV0 exposes label/module/summary/learnMoreUrl/isEnabledByDefault/canDisable, and MS FinTagFeature implements all six. Also unmentioned by the KB: FeatureStateProvider is marked InternalUseOnlyAttribute, so the KB-taught call FeatureStateProvider::isFeatureEnabled(...) - which this case mandates - emits 2 compile warnings per call site (4 total here). Build still succeeds with 0 errors, but the KB should say so. NOTE: FeatureStateProvider::isFeatureEnabled(IFeature) itself DOES exist and was verified against the live index, so this is not a hallucinated-member repeat of the sysda / reflection-dict cases.",
+  "suggested_fix_area": "PRIMARY: src/tools/build (build_d365fo_project) - invoke labelc.exe for the target model after xppc.exe (or expose a compileLabels flag / a separate tool), mirroring what the VS/msbuild D365FO build does; alternatively have labels(action=\"create\") trigger label compilation. SECONDARY: knowledge base feature-management topic - add learnMoreUrl() to the code example so prose and example agree, and document the FeatureStateProvider InternalUseOnly compile warning.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxClass/ConDemoFastPostingFeature.xml",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxClass/ConDemoPostingService.xml",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxLabelFile/LabelResources/en-US/Contoso.en-US.label.txt",
+    "K:/AosService/PackagesLocalDirectory/FinTag/FinTag/AxClass/FinTagFeature.xml (MS reference used for element verification)",
+    "eval/goldens/L2-feature-management-flight/"
+  ]
+}

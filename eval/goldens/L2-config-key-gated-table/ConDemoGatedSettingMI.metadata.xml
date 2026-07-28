@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L2-config-key-gated-table
+  Captured: 2026-07-27, server SHA: b28515f
+  Platform: xppc 7.0.7858.27
+  Environment: EXTENSION_PREFIX=Con -> menu item name is ConDemoGatedSettingMI
+
+  Root element correctly carries BOTH xmlns:i and the default namespace
+  xmlns="Microsoft.Dynamics.AX.Metadata.V1" - matching every standard
+  AxMenuItemDisplay. ConfigurationKey sorts before Label, as in the standard
+  model (e.g. ApplicationFoundation/AxMenuItemDisplay/AdminDashboard.xml).
+
+  <Object> is intentionally absent: this case creates no form, and an
+  Object-less display menu item is legal standard shape (5 of 467
+  ApplicationFoundation display menu items omit it, e.g.
+  ReleaseUpdateInfoCenter.xml, SysUpgradePartyPrimaryAddress.xml).
+
+  KNOWN WRITER COVERAGE GAP (non-blocking, see README.md): <SubscriberAccess-
+  Level> is absent. 194/200 sampled standard and 2/2 VS-authored custom
+  display menu items carry it; d365fo_file exposes no property for it. This
+  is a missing property surface, NOT a dropped element - the file is
+  provider-serialized output, builds clean and raises no BP error.
+-->
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>ConDemoGatedSettingMI</Name>
+	<ConfigurationKey>ConDemoModuleKey</ConfigurationKey>
+	<Label>@TaxTransactionInquiry:HeaderNote</Label>
+</AxMenuItemDisplay>

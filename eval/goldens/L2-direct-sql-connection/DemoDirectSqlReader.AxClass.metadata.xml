@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-direct-sql-connection: the direct-SQL escape hatch used with its guard rails - table SQL name resolved from metadata (DictTable.name(DbBackend::Sql)), values bound via SqlParams (no concatenation), SqlStatementExecutePermission asserted immediately before execute, CodeAccessPermission::revertAssert in a finally block. Captured 2026-07-27, SHA b28515f. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoDirectSqlReader</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Counts rows of the <c>ConDemoNoteHeader</c> table through the direct-SQL escape hatch.
+/// </summary>
+/// <remarks>
+/// Direct SQL bypasses the X++ data layer and is a last resort - prefer an X++ select or a set-based
+/// statement whenever one can express the query. When the escape hatch is genuinely needed, the guard
+/// rails are mandatory: the physical table name is resolved from metadata, every value is bound as a
+/// SQL parameter instead of being concatenated into the statement text, the statement text is asserted
+/// with <c>SqlStatementExecutePermission</c> immediately before execution, and the assert is reverted
+/// in a finally block.
+/// </remarks>
+public final class ConDemoDirectSqlReader
+{
+    const str DataAreaIdParm = 'dataAreaIdParm';
+    const str PartitionParm = 'partitionParm';
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>countNotes</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts the <c>ConDemoNoteHeader</c> rows of the current company and partition using direct SQL.
+    /// </summary>
+    /// <returns>
+    /// The number of <c>ConDemoNoteHeader</c> records stored for the current company and partition.
+    /// </returns>
+    /// <remarks>
+    /// Direct SQL does not apply the automatic company and partition filter that an X++ select applies,
+    /// so both are restricted explicitly - as bound parameters, never as concatenated text.
+    /// </remarks>
+    public static server int64 countNotes()
+    {
+        DictTable   dictTable = new DictTable(tableNum(ConDemoNoteHeader));
+        Connection  connection;
+        Statement   statement;
+        ResultSet   resultSet;
+        Map         sqlParameters;
+        str         sqlText;
+        int64       noteCount;
+
+        // The physical table name comes from metadata - never hardcode a table or database name.
+        // COUNT_BIG returns a bigint, which maps to the int64 read from the result set below.
+        sqlText = strFmt(@"SELECT COUNT_BIG(RECID) FROM %1 WHERE DATAAREAID = @%2 AND PARTITION = @%3",
+        dictTable.name(DbBackend::Sql),
+        DataAreaIdParm,
+        PartitionParm);
+
+        // Values are bound as SQL parameters - string concatenation here would be an injection vector.
+        sqlParameters = SqlParams::create();
+        sqlParameters.add(DataAreaIdParm, curExt());
+        sqlParameters.add(PartitionParm, getCurrentPartitionRecId());
+
+        connection = new Connection();
+        statement = connection.createStatement();
+
+        // Assert immediately before the execute and revert immediately after it.
+        new SqlStatementExecutePermission(sqlText).assert();
+
+        try
+        {
+            resultSet = statement.executeQueryWithParameters(sqlText, sqlParameters);
+
+            if (resultSet.next())
+            {
+                noteCount = resultSet.getInt64(1);
+            }
+        }
+        finally
+        {
+            CodeAccessPermission::revertAssert();
+
+            if (statement)
+            {
+                statement.close();
+            }
+
+            if (connection)
+            {
+                connection.finalize();
+            }
+        }
+
+        return noteCount;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
