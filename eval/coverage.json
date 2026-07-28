@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 64,
-    "percent": 83.1
+    "covered": 65,
+    "percent": 84.4
   },
   "leaves": [
     {
@@ -632,7 +632,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L4-ssrs-report-advanced"
+        "L4-ssrs-report-advanced",
+        "L4-ssrs-report-multidataset"
       ]
     },
     {
@@ -685,10 +686,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L4-ssrs-report-multidataset"
+      ]
     },
     {
       "id": "print-management",

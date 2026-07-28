@@ -1,0 +1,52 @@
+{
+  "run_id": "2026-07-28T09__L4-ssrs-report-multidataset__538cab2",
+  "case_id": "L4-ssrs-report-multidataset",
+  "tier": 4,
+  "timestamp": "2026-07-28T09:18:21.689Z",
+  "server_git_sha": "538cab2",
+  "generated_artifacts": [
+    "ConDemoNoteReportMulti.menuitem.metadata.xml",
+    "ConDemoNoteReportMulti.metadata.xml",
+    "ConDemoNoteReportMultiContract.metadata.xml",
+    "ConDemoNoteReportMultiController.metadata.xml",
+    "ConDemoNoteReportMultiDP.metadata.xml",
+    "ConDemoNoteReportMultiSummaryTmp.metadata.xml",
+    "ConDemoNoteReportMultiTmp.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "PASS"
+}

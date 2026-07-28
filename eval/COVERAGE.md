@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 64 | 77 | 83.1% |
+| total | 65 | 77 | 84.4% |
 
 ## Data model (12/12)
 
@@ -62,16 +62,16 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Form patterns (ListPage, DetailsMaster, …) | core | ✅ | ✅ | ✅ | L1-form-detailsmaster, L1-form-dialog, L1-form-listpage +5 |
 | Form extension | core | ✅ | ✅ | ✅ | L2-form-extension-basic |
 | FormRun lifecycle & data sources | core | ✅ | ✅ | ✅ | L2-form-modify-controls, L3-form-add-datasource-lines |
-| Menu items (display/action/output) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced |
+| Menu items (display/action/output) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-multidataset |
 | Menus & submenu nesting | core | ✅ | ✅ | ✅ | L4-master-security-slice |
 | Tiles & KPIs | total | ✅ | ✅ | ✅ | L2-tile-cue-over-query |
 
-## Reporting (1/4)
+## Reporting (2/4)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SSRS report (DP + contract + controller) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-basic |
-| Multi-dataset SSRS report | total | ✅ | — | ✅ | missing E |
+| Multi-dataset SSRS report | total | ✅ | ✅ | ✅ | L4-ssrs-report-multidataset |
 | Print management | total | ✅ | — | ✅ | Eval case authored (document node + settings resolution); golden pending VM capture. |
 | Electronic Reporting (ER) | total | ✅ | — | ✅ | Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture. |
 
@@ -138,7 +138,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 2 | Parallel batch processing | missing E |
 | 2 | Posting engine (LedgerVoucher) | missing E |
 | 2 | Print management | missing E |
-| 2 | Multi-dataset SSRS report | missing E |
 | 1 | Aggregate measurements / analytics | missing E |
 | 1 | Electronic Reporting (ER) | missing E |
 | 1 | Power Platform / virtual entities | missing E |
@@ -151,4 +150,4 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 - Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-07-27._
+_Generated 2026-07-28._
