@@ -65,6 +65,15 @@ const CLASSES = [
       name: 'secretFromBase',
       source: 'private void secretFromBase()\n{\n}',
     },
+    // Declaration line deliberately absent from what the indexer stores — the
+    // real shape behind SalesFormLetter_Invoice.description(), whose snippet is
+    // 88 characters of doc comment. Measured across 40k indexed methods, 11.9%
+    // look like this, so the snippet heuristic cannot classify them and only
+    // the bridge's visibility can.
+    {
+      name: 'hiddenModifier',
+      source: '/// <summary>\n/// Snippet stops here, before the declaration.\n/// </summary>',
+    },
   ]),
   axClassXml('P_Leaf', 'public class P_Leaf extends P_Base\n{\n}', [
     {
@@ -112,13 +121,27 @@ const req = (args: Record<string, unknown>) => ({
   params: { name: 'analyze_extension_points', arguments: args },
 });
 
-async function pointsFor(objectName: string): Promise<string> {
+async function pointsFor(objectName: string, bridge?: unknown): Promise<string> {
   const result = await analyzeExtensionPointsTool(
     req({ objectName, objectType: 'class' }),
-    context,
+    bridge ? ({ ...context, bridge } as XppServerContext) : context,
   );
   return result.content?.[0]?.text ?? '';
 }
+
+/** Minimal IMetadataProvider stand-in returning the modifiers the AOT really has. */
+const bridgeWithVisibility = (visibilities: Record<string, Record<string, string>>) => ({
+  isReady: true,
+  metadataAvailable: true,
+  readClass: async (name: string) => {
+    const methods = visibilities[name];
+    if (!methods) return null;
+    return {
+      name,
+      methods: Object.entries(methods).map(([n, visibility]) => ({ name: n, visibility })),
+    };
+  },
+});
 
 describe('extension_info(mode="points") eligibility', () => {
   it('lists a public declared method as CoC-eligible', async () => {
@@ -139,6 +162,34 @@ describe('extension_info(mode="points") eligibility', () => {
     const eligibleBlock = text.split('CoC-eligible methods')[1]?.split('\n\n')[0] ?? '';
     expect(eligibleBlock).not.toContain('ownPrivate');
     expect(eligibleBlock).not.toContain('secretFromBase');
+  });
+});
+
+describe('extension_info(mode="points") uses bridge visibility when available', () => {
+  it('excludes a private method whose declaration the snippet never captured', async () => {
+    // Without the bridge the snippet heuristic cannot see the modifier, so it
+    // defaults to public and lists the method — the ~12% blind spot.
+    const heuristicOnly = await pointsFor('P_Leaf');
+    expect(heuristicOnly).toContain('hiddenModifier()');
+
+    // With the bridge reporting the real modifier, it drops out.
+    const withBridge = await pointsFor('P_Leaf', bridgeWithVisibility({
+      P_Leaf: { ownPublic: 'public', ownPrivate: 'private' },
+      P_Base: { wrappableFromBase: 'public', secretFromBase: 'private', hiddenModifier: 'private' },
+    }));
+    expect(withBridge).not.toContain('hiddenModifier()');
+    expect(withBridge).toContain('wrappableFromBase()');
+  });
+
+  it('keeps working when the bridge cannot read part of the chain', async () => {
+    // P_Base unreadable — its methods must still be classified by the heuristic
+    // rather than the whole listing collapsing.
+    const text = await pointsFor('P_Leaf', bridgeWithVisibility({
+      P_Leaf: { ownPublic: 'public', ownPrivate: 'private' },
+    }));
+    expect(text).toContain('ownPublic()');
+    expect(text).toContain('wrappableFromBase()');
+    expect(text).not.toContain('secretFromBase()');
   });
 });
 

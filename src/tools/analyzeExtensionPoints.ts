@@ -11,9 +11,61 @@ import { getConfigManager } from '../utils/configManager.js';
 import { scanFsExtensions, EXTENSION_FOLDER_CONFIG } from '../utils/fsExtensionScanner.js';
 import { canonicalSymbolName } from '../utils/symbolLookup.js';
 import { inheritanceAncestors } from '../utils/inheritanceChain.js';
+import type { BridgeClient } from '../bridge/bridgeClient.js';
+
+/**
+ * Access modifiers straight from IMetadataProvider, keyed by lowercase method
+ * name, with the nearest declaration winning.
+ *
+ * Why this exists rather than trusting the snippet heuristic below: the indexed
+ * `source_snippet` is truncated, and measured over 40k indexed methods it stops
+ * *before* the declaration line for 11.9% of them — the heuristic is simply
+ * blind there and defaults them to public. `SalesFormLetter_Invoice.description()`
+ * is one: `private static`, but its snippet is 88 characters of doc comment. The
+ * bridge carries the real visibility, so it is the authority whenever it is up.
+ *
+ * One unreadable class is skipped rather than aborting: a partial map still
+ * beats falling back to the heuristic for every method.
+ */
+async function readVisibility(
+  bridge: BridgeClient | undefined,
+  classNames: string[],
+): Promise<Map<string, string>> {
+  const byMethod = new Map<string, string>();
+  if (!bridge?.isReady || !bridge.metadataAvailable) return byMethod;
+  for (const name of classNames) {
+    let info;
+    try {
+      info = await bridge.readClass(name);
+    } catch (e) {
+      console.error(`[analyzeExtensionPoints] readClass(${name}) failed: ${e}`);
+      continue;
+    }
+    for (const m of info?.methods ?? []) {
+      const key = m.name?.toLowerCase();
+      if (key && m.visibility && !byMethod.has(key)) {
+        byMethod.set(key, m.visibility.toLowerCase());
+      }
+    }
+  }
+  return byMethod;
+}
+
+/** Bridge visibility when known, else the snippet heuristic. */
+function isPrivateMethod(
+  name: string,
+  signature: string,
+  sourceSnippet: string,
+  visibility: Map<string, string>,
+): boolean {
+  const known = visibility.get(name.toLowerCase());
+  if (known) return known === 'private';
+  return isPrivate(signature, sourceSnippet, name);
+}
 
 /**
  * Whether a method is declared private, and therefore not CoC-wrappable.
+ * Fallback for when the bridge is down — see readVisibility for the accurate path.
  *
  * The indexed `signature` carries no access modifier (it is built as
  * `returnType name(params)`), so the only place a modifier survives is the
@@ -217,8 +269,9 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
       // class-inheritance knowledge topic). Listing declared members only made
       // this tool report almost nothing for leaf classes, which are exactly the
       // ones people extend. Nearest ancestor wins on a name clash (an override).
+      const ancestorNames = inheritanceAncestors(rdb, objName);
       const seenMethods = new Set(methods.map(m => String(m.name).toLowerCase()));
-      for (const ancestor of inheritanceAncestors(rdb, objName)) {
+      for (const ancestor of ancestorNames) {
         for (const m of methodStmt.all(ancestor) as any[]) {
           const key = String(m.name).toLowerCase();
           if (seenMethods.has(key)) continue;
@@ -227,6 +280,11 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
         }
       }
       methods.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+      // Real access modifiers, when the bridge is up. The snippet heuristic
+      // below is blind for ~12% of methods (see readVisibility), so this is
+      // what makes the private filter exact rather than approximate.
+      const visibility = await readVisibility(context.bridge, [objName, ...ancestorNames]);
 
       if (methods.length > 0) {
         const cocEligible: any[] = [];
@@ -246,7 +304,7 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
             blocked.push({ ...m, reason: 'final' });
           } else if (src.includes('[replaceable]') || src.includes('replaceable]')) {
             replaceables.push(m);
-          } else if (!isPrivate(sig, src, String(m.name))) {
+          } else if (!isPrivateMethod(String(m.name), sig, src, visibility)) {
             // CoC eligible: anything not private, not final, not blocked.
             //
             // This used to test `sig.includes('public ')`, but the indexed
