@@ -337,6 +337,7 @@ while (qr.next())
       'Extension class MUST be [ExtensionOf(classStr/tableStr/formStr(Target))]',
       'Extension class MUST be final',
       'Method signature MUST match the original exactly (use get_method(include="signature") tool)',
+      'The target may INHERIT the method rather than declare it — that compiles, and the signature is then validated against the declaring base class. See class-inheritance',
       'ALWAYS call next <methodName>() — skipping it breaks the chain for other extensions',
       'Cannot access private members of the original class',
       'Can wrap public and protected methods — instance AND static (a static wrapper must repeat the "static" modifier); cannot wrap private methods or constructors. Forms cannot have static-method CoC',
@@ -389,7 +390,7 @@ final class SalesFormLetter_MyModel_Extension
 }`,
       },
     ],
-    related: ['event-handlers', 'form-patterns', 'coc-authoring'],
+    related: ['event-handlers', 'form-patterns', 'coc-authoring', 'class-inheritance'],
   },
 
   // ── Event Handlers ──────────────────────────────────────────────────────
@@ -2099,7 +2100,7 @@ public void post()
 }`,
       },
     ],
-    related: ['coc', 'event-handlers'],
+    related: ['coc', 'event-handlers', 'class-inheritance'],
   },
 
   // ── X++ Class & Method Rules ─────────────────────────────────────────────
@@ -2123,7 +2124,106 @@ public void post()
       '"var" keyword only when the type is obvious from initialization; skip when ambiguous',
       'Declare variables close to first use, smallest scope; compiler rejects shadowing',
     ],
-    related: ['coc-authoring', 'coc'],
+    related: ['coc-authoring', 'coc', 'class-inheritance'],
+  },
+
+  // ── Class Inheritance ───────────────────────────────────────────────────
+  {
+    id: 'class-inheritance',
+    title: 'Class Inheritance (extends, super, abstract/final, is/as) — and how it meets CoC',
+    keywords: ['inheritance', 'inherit', 'inherited', 'extends', 'super', 'base class', 'derived class',
+      'subclass', 'superclass', 'ancestor', 'override', 'overriding', 'abstract', 'final class',
+      // NB: no 1–2 character keywords here. scoreEntry() does token.includes(k),
+      // so a keyword like "is" scores against any token containing it
+      // ("nonexistent") and the topic would match essentially every query.
+      'is operator', 'as operator', 'downcast', 'polymorphism', 'virtual',
+      'class hierarchy', 'parent class'],
+    summary:
+      'X++ has single class inheritance and every non-final method is virtual. The trap in D365FO is that ' +
+      'inheritance is invisible in metadata: the AOT stores only DECLARED members, so a subclass never lists ' +
+      'the methods it inherits — you have to walk Extends to find where a method really lives. CoC does cope ' +
+      'with inheritance: a wrapper may target a subclass for a method that subclass only inherits.',
+    rules: [
+      'Single inheritance only — a class may extend exactly one base class. For multiple contracts use interfaces (implements)',
+      'Every non-static, non-final method is virtual: there is no `virtual` and no `override` keyword — redeclaring the same signature in a subclass overrides it',
+      'super() calls the BASE implementation of the method you are currently in — not an arbitrary base method. In new() it must run before `this` is used',
+      'final class = cannot be subclassed; final method = cannot be overridden. abstract class = cannot be instantiated; an abstract method must be implemented by every concrete subclass',
+      'Override visibility must be at least as accessible as the base method; private methods are not overridable (see xpp-class-rules)',
+      '`is` tests the runtime type, `as` is a safe downcast that yields null on failure — prefer both over classId comparisons',
+      'METADATA TRAP: the AOT stores declared members only. get_object_info on a subclass does NOT list inherited methods, and a bridge/XML read of that one class cannot see them. Walk Extends to find the declaring class before concluding a method does not exist',
+      'CoC CAN wrap a method the augmented class only inherits — an extension whose [ExtensionOf] names the subclass, wrapping a method declared on its base class, compiles (verified against xppc)',
+      'Such a wrapper binds to the BASE declaration: its signature is validated against the base, and on a mismatch the compiler says "The augmented class \'<Base>\' provides a method by this name, but ... the parameter profile does not match" — it names the DECLARING class, not the one in your [ExtensionOf]. That is not a mistake in your attribute',
+      'Choosing the CoC target is therefore a SCOPE decision, not a correctness one: extend the subclass to affect only it, extend the declaring class to affect every subclass',
+      'Wrapping a name that exists nowhere in the chain fails with "The next method cannot be invoked in method \'X\' because it\'s not a Chain Of Command Method"',
+      'Subclassing a Microsoft class in your own model does NOT make standard code use your subclass — standard factories instantiate their own type. Use CoC, event handlers, or SysExtension where the base is designed for substitution',
+    ],
+    examples: [
+      {
+        label: 'Where a method actually lives (walk Extends before concluding "not found")',
+        code: `// Real chain in the AOT:
+//   SalesFormLetter_Invoice  extends  SalesFormLetter  extends  FormLetterServiceController
+//
+// promptAndRun() is declared on SalesFormLetter.
+// SalesFormLetter_Invoice INHERITS it but does not declare it, so a member
+// listing of the leaf class will not show it at all. "Not in the list" means
+// "not declared here", never "does not exist".`,
+      },
+      {
+        label: 'CoC on an inherited method — both targets compile, pick by scope',
+        code: `// (a) Narrow: only SalesFormLetter_Invoice is affected.
+[ExtensionOf(classStr(SalesFormLetter_Invoice))]
+final class SalesFormLetter_InvoiceMy_Extension
+{
+    // Signature must match the declaration on SalesFormLetter — that is what
+    // the compiler validates against, and what it names if you get it wrong.
+    public void promptAndRun()
+    {
+        next promptAndRun();
+    }
+}
+
+// (b) Broad: every subclass of SalesFormLetter is affected.
+[ExtensionOf(classStr(SalesFormLetter))]
+final class SalesFormLetterMy_Extension
+{
+    public void promptAndRun()
+    {
+        next promptAndRun();
+    }
+}`,
+      },
+      {
+        label: 'super() and constructor chaining',
+        code: `public class MyPostingBatch extends RunBaseBatch
+{
+    MyPostingBatch  chainedFrom;
+}
+
+public void new()
+{
+    super();            // base construction first — before touching this
+    chainedFrom = null;
+}
+
+public boolean canGoBatch()
+{
+    // super() here = RunBaseBatch's implementation of canGoBatch, not some
+    // other base method. Combine, do not replace, unless you mean to.
+    return super() && this.parmIsChained() == false;
+}`,
+      },
+      {
+        label: 'is / as instead of type ids',
+        code: `FormLetterServiceController  controller = this.buildController();
+
+if (controller is SalesFormLetter_Invoice)
+{
+    SalesFormLetter_Invoice invoice = controller as SalesFormLetter_Invoice;
+    invoice.parmShowDialog(false);
+}`,
+      },
+    ],
+    related: ['coc', 'coc-authoring', 'xpp-class-rules', 'sysextension', 'table-inheritance'],
   },
 
   // ── SysDa Framework ─────────────────────────────────────────────────────

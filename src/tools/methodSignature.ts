@@ -474,9 +474,12 @@ function formatOutput(
     output += `\n## Chain of Command Template\n\`\`\`xpp\n${signature.cocTemplate}\`\`\`\n`;
     output += `Replace \`OriginalClassName\` with \`${className}\`.\n`;
     if (inheritedBy) {
-      output += `\n⚠️ Target \`${className}\` — the class that declares the method — not \`${inheritedBy}\`. ` +
-        `The wrapper then runs for **every** subclass of \`${className}\`; if the change is meant for ` +
-        `\`${inheritedBy}\` only, guard the body with \`if (this is ${inheritedBy})\`.\n`;
+      output += `\n**Pick the target deliberately — both compile:**\n` +
+        `- \`[ExtensionOf(classStr(${inheritedBy}))]\` — wraps the inherited method for \`${inheritedBy}\` only. ` +
+        `The signature must still match \`${className}\`'s declaration exactly; the compiler validates against it ` +
+        `and names \`${className}\` in any mismatch error.\n` +
+        `- \`[ExtensionOf(classStr(${className}))]\` — wraps it at the declaration, so it runs for **every** ` +
+        `subclass of \`${className}\`.\n`;
     }
   } else {
     output += `\n> 💡 Pass \`includeCocTemplate: true\` to get the CoC extension template.\n`;
