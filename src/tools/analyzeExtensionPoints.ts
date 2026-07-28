@@ -10,6 +10,108 @@ import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { scanFsExtensions, EXTENSION_FOLDER_CONFIG } from '../utils/fsExtensionScanner.js';
 import { canonicalSymbolName } from '../utils/symbolLookup.js';
+import { inheritanceAncestors } from '../utils/inheritanceChain.js';
+import type { BridgeClient } from '../bridge/bridgeClient.js';
+
+/**
+ * Access modifiers straight from IMetadataProvider, keyed by lowercase method
+ * name, with the nearest declaration winning.
+ *
+ * Why this exists rather than trusting the snippet heuristic below: the indexed
+ * `source_snippet` is truncated, and measured over 40k indexed methods it stops
+ * *before* the declaration line for 11.9% of them — the heuristic is simply
+ * blind there and defaults them to public. `SalesFormLetter_Invoice.description()`
+ * is one: `private static`, but its snippet is 88 characters of doc comment. The
+ * bridge carries the real visibility, so it is the authority whenever it is up.
+ *
+ * One unreadable class is skipped rather than aborting: a partial map still
+ * beats falling back to the heuristic for every method.
+ */
+async function readVisibility(
+  bridge: BridgeClient | undefined,
+  classNames: string[],
+): Promise<Map<string, string>> {
+  const byMethod = new Map<string, string>();
+  if (!bridge?.isReady || !bridge.metadataAvailable) return byMethod;
+  for (const name of classNames) {
+    let info;
+    try {
+      // getCompletionMembers, NOT readClass: the C# MethodInfoModel behind
+      // readClass carries only name/source/isStatic, so BridgeMethodInfo's
+      // `visibility` is never populated and reading it yields nothing.
+      // GetCompletionMembers builds each signature from the declaration line,
+      // so the modifier is right there in the string.
+      info = await bridge.getCompletionMembers(name);
+    } catch (e) {
+      console.error(`[analyzeExtensionPoints] getCompletionMembers(${name}) failed: ${e}`);
+      continue;
+    }
+    for (const m of info?.members ?? []) {
+      if (m.kind !== 'method') continue;
+      const key = m.name?.toLowerCase();
+      if (!key || byMethod.has(key)) continue;
+      const visibility = parseVisibility(m.signature);
+      if (visibility) byMethod.set(key, visibility);
+    }
+  }
+  return byMethod;
+}
+
+/**
+ * Access modifier out of a declaration-line signature such as
+ * `private static ClassDescription description()`.
+ *
+ * Only the part before the parameter list is considered — a default parameter
+ * value is arbitrary X++ and could contain any of these words.
+ */
+function parseVisibility(signature?: string | null): string | undefined {
+  if (!signature) return undefined;
+  const head = signature.split('(')[0];
+  const m = /\b(public|protected|private|internal)\b/i.exec(head);
+  return m ? m[1].toLowerCase() : undefined;
+}
+
+/** Bridge visibility when known, else the snippet heuristic. */
+function isPrivateMethod(
+  name: string,
+  signature: string,
+  sourceSnippet: string,
+  visibility: Map<string, string>,
+): boolean {
+  const known = visibility.get(name.toLowerCase());
+  if (known) return known === 'private';
+  return isPrivate(signature, sourceSnippet, name);
+}
+
+/**
+ * Whether a method is declared private, and therefore not CoC-wrappable.
+ * Fallback for when the bridge is down — see readVisibility for the accurate path.
+ *
+ * The indexed `signature` carries no access modifier (it is built as
+ * `returnType name(params)`), so the only place a modifier survives is the
+ * stored source snippet. That snippet opens with the doc comment, so scan for
+ * the declaration line — the one naming the method before its parenthesis —
+ * rather than searching the whole blob, where the word "private" could easily
+ * come from prose in a `/// <remarks>`.
+ *
+ * Unknown means not private: X++ methods default to public, and hiding a
+ * genuine extension point is worse than listing one the compiler later rejects.
+ */
+function isPrivate(signature: string, sourceSnippet: string, methodName: string): boolean {
+  if (!sourceSnippet) return false;
+  const needle = methodName.toLowerCase();
+  for (const rawLine of sourceSnippet.split('\n')) {
+    const line = rawLine.toLowerCase();
+    const at = line.indexOf(needle);
+    if (at === -1) continue;
+    if (!/^\s*\(/.test(line.slice(at + needle.length))) continue; // not the declaration
+    if (line.trimStart().startsWith('///')) continue;             // doc comment
+    return /\bprivate\b/.test(line.slice(0, at));
+  }
+  // No declaration line inside the snippet — fall back to the signature, which
+  // only carries a modifier for the rare rows that stored one.
+  return /\bprivate\b/.test(signature);
+}
 
 // Standard D365FO table events available for subscription
 const TABLE_STANDARD_EVENTS = [
@@ -175,11 +277,34 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
 
     // For classes — analyze methods
     if (resolvedType === 'class' || resolvedType === 'auto') {
-      const methods = rdb.prepare(
+      const methodStmt = rdb.prepare(
         `SELECT name, signature, source_snippet FROM symbols
          WHERE parent_name = ? AND type = 'method'
          ORDER BY name`
-      ).all(objName) as any[];
+      );
+      const methods = methodStmt.all(objName) as any[];
+
+      // Inherited methods are extension points too — CoC can wrap a method the
+      // augmented class only inherits (verified against xppc; see the
+      // class-inheritance knowledge topic). Listing declared members only made
+      // this tool report almost nothing for leaf classes, which are exactly the
+      // ones people extend. Nearest ancestor wins on a name clash (an override).
+      const ancestorNames = inheritanceAncestors(rdb, objName);
+      const seenMethods = new Set(methods.map(m => String(m.name).toLowerCase()));
+      for (const ancestor of ancestorNames) {
+        for (const m of methodStmt.all(ancestor) as any[]) {
+          const key = String(m.name).toLowerCase();
+          if (seenMethods.has(key)) continue;
+          seenMethods.add(key);
+          methods.push({ ...m, inheritedFrom: ancestor });
+        }
+      }
+      methods.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+      // Real access modifiers, when the bridge is up. The snippet heuristic
+      // below is blind for ~12% of methods (see readVisibility), so this is
+      // what makes the private filter exact rather than approximate.
+      const visibility = await readVisibility(context.bridge, [objName, ...ancestorNames]);
 
       if (methods.length > 0) {
         const cocEligible: any[] = [];
@@ -199,8 +324,16 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
             blocked.push({ ...m, reason: 'final' });
           } else if (src.includes('[replaceable]') || src.includes('replaceable]')) {
             replaceables.push(m);
-          } else if (sig.includes('public ') || sig.includes('protected ')) {
-            cocEligible.push(m); // CoC eligible: public or protected, non-final
+          } else if (!isPrivateMethod(String(m.name), sig, src, visibility)) {
+            // CoC eligible: anything not private, not final, not blocked.
+            //
+            // This used to test `sig.includes('public ')`, but the indexed
+            // signature is built as `returnType name(params)` with NO access
+            // modifier (see symbolIndex.indexClasses), so that test could never
+            // be true and the tool reported ZERO eligible methods for every
+            // class in the AOT. X++ methods default to public, so "not private"
+            // is both correct and the only thing the index can actually answer.
+            cocEligible.push(m);
           }
         }
 
@@ -211,10 +344,16 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
             const status = wrappedBy
               ? `EXTENDED by ${wrappedBy.slice(0, 2).join(', ')}${wrappedBy.length > 2 ? '...' : ''}`
               : 'not yet extended';
-            output += `  ✓ ${m.name}()\t[${status}]\n`;
+            const origin = m.inheritedFrom ? `\tinherited from ${m.inheritedFrom}` : '';
+            output += `  ✓ ${m.name}()\t[${status}]${origin}\n`;
           }
           if (cocEligible.length > 20) {
             output += `  ... and ${cocEligible.length - 20} more methods\n`;
+          }
+          if (cocEligible.some(m => m.inheritedFrom)) {
+            output += `  ℹ️ Inherited entries can be wrapped either on ${objName} (affects only it) ` +
+              `or on the class that declares them (affects every subclass). Either way the wrapper ` +
+              `signature must match the DECLARING class.\n`;
           }
           output += '\n';
         }

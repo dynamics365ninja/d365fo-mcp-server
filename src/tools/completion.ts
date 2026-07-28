@@ -8,6 +8,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { validateWorkspacePath } from '../workspace/workspaceUtils.js';
 import { tryBridgeCompletion } from '../bridge/index.js';
+import { inheritanceAncestors } from '../utils/inheritanceChain.js';
 
 const CompletionArgsSchema = z.object({
   className: z.string().min(1, 'className is required').describe('Class or table name'),
@@ -22,8 +23,17 @@ export async function completionTool(request: CallToolRequest, context: XppServe
     const { symbolIndex, workspaceScanner } = context;
 
     // Bridge fast-path (C# IMetadataProvider) handles both classes and tables,
-    // so it runs before the table guard below.
-    const bridgeResult = await tryBridgeCompletion(context.bridge, args.className, args.prefix || undefined);
+    // so it runs before the table guard below. The ancestor list makes the
+    // listing include inherited members: the bridge reads one class and sees
+    // declared members only, so without it a subclass looks like it has none
+    // of what it inherits, and callers conclude the member does not exist.
+    let ancestors: string[] = [];
+    try {
+      ancestors = inheritanceAncestors(symbolIndex.getReadDb(), args.className);
+    } catch { /* DB unavailable — fall back to declared members only */ }
+    const bridgeResult = await tryBridgeCompletion(
+      context.bridge, args.className, args.prefix || undefined, ancestors,
+    );
     if (bridgeResult) return bridgeResult;
 
     // code_completion only supports classes; reject tables early.

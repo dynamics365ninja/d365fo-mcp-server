@@ -116,6 +116,14 @@ export interface BridgeMethodInfo {
   returnType?: string;
   source?: string;
   isStatic?: boolean;
+  /**
+   * ⚠️ Never sent by the bridge. The C# MethodInfoModel behind readClass carries
+   * only name/source/isStatic, so this is always undefined on bridge-sourced
+   * methods — it is populated exclusively by the XML parser path
+   * (xmlParser.parseClassFile). Reading it off a readClass result silently
+   * yields nothing; for a bridge-sourced modifier parse the declaration line out
+   * of getCompletionMembers().members[].signature instead.
+   */
   visibility?: string;
 }
 
@@ -638,6 +646,13 @@ export interface BridgeCompletionMember {
   name: string;
   signature?: string;
   kind: string;
+  /**
+   * Set by the caller (not the bridge) when the member was picked up from a
+   * base class rather than declared on the requested one. IMetadataProvider
+   * returns declared members only, so inherited members are merged in on the
+   * TypeScript side and tagged here.
+   */
+  inheritedFrom?: string;
 }
 
 export interface BridgeCompletionResult {
