@@ -160,14 +160,22 @@ describe('get_method(include="signature") on inherited methods', () => {
     expect(text).toContain('C_Base');
   });
 
-  it('points the CoC template at the declaring class, not the named one', async () => {
+  // Both [ExtensionOf] targets compile — verified against xppc on the VM by
+  // wrapping an inherited method from a subclass extension. The wrapper binds
+  // to the base declaration: breaking its signature makes the compiler report
+  // "The augmented class 'ConZzInhBase' provides a method by this name, but
+  // ... the parameter profile does not match", naming the DECLARING class even
+  // though [ExtensionOf] named the subclass. So the output must present the
+  // target as a scope choice, not steer to the base.
+  it('offers both CoC targets and does not steer away from the subclass', async () => {
     const result = await getMethodSignatureTool(
       sigReq({ className: 'A_Leaf', methodName: 'baseOnly', includeCocTemplate: true }),
       context,
     );
     const text = result.content?.[0]?.text ?? '';
-    expect(text).toContain('Replace `OriginalClassName` with `C_Base`');
-    expect(text).toContain('if (this is A_Leaf)');
+    expect(text).toContain('classStr(A_Leaf)');
+    expect(text).toContain('classStr(C_Base)');
+    expect(text).toMatch(/every.*subclass/i);
   });
 
   it('prefers the class itself over an ancestor that also declares the method', async () => {

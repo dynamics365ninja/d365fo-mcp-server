@@ -1205,7 +1205,9 @@
     }
   ],
   "orphans": {
-    "knowledge": [],
+    "knowledge": [
+      "class-inheritance"
+    ],
     "cases": [
       "L2-oracle-discriminator-random-wrapper-name",
       "L4-headerlines-document-slice"
