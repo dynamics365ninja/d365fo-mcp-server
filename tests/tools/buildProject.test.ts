@@ -5,8 +5,10 @@ const {
   accessMock, writeFileMock, appendFileMock, unlinkMock, readFileMock, readdirMock, statMock, spawnMock, execFileMock,
   cfgEnsureLoaded, cfgGetProjectPath, cfgGetPackagePath, cfgGetContext,
   cfgGetCustomPackagesPath, cfgGetMicrosoftPackagesPath,
-  cfgGetActiveXppConfig, cfgGetModelName,
+  cfgGetActiveXppConfig, cfgGetModelName, detectedRoots,
 } = vi.hoisted(() => {
+  // Mutable stand-in for the AosService drive scan (src/utils/packagesRoot).
+  const detectedRoots: string[] = [];
   const accessMock = vi.fn();
   const writeFileMock = vi.fn().mockResolvedValue(undefined);
   const appendFileMock = vi.fn().mockResolvedValue(undefined);
@@ -33,7 +35,7 @@ const {
     accessMock, writeFileMock, appendFileMock, unlinkMock, readFileMock, readdirMock, statMock, spawnMock, execFileMock,
     cfgEnsureLoaded, cfgGetProjectPath, cfgGetPackagePath, cfgGetContext,
     cfgGetCustomPackagesPath, cfgGetMicrosoftPackagesPath,
-    cfgGetActiveXppConfig, cfgGetModelName,
+    cfgGetActiveXppConfig, cfgGetModelName, detectedRoots,
   };
 });
 
@@ -68,6 +70,18 @@ vi.mock('../../src/utils/operationLocks.js', () => ({
   isOperationLockHeld: vi.fn().mockResolvedValue(false),
   forceReleaseLock: vi.fn().mockResolvedValue(undefined),
 }));
+// The drive scan reads the real filesystem, which the fs mocks above do not
+// serve — feed it the roots each test wants found instead.
+vi.mock('../../src/utils/packagesRoot.js', async () => {
+  const nodePath = await import('path');
+  return {
+    packagesRoots: () => [...detectedRoots],
+    findPackagesRoot: () => detectedRoots[0] ?? null,
+    packagesRootCandidates: (...rel: string[]) => detectedRoots.map(r => nodePath.join(r, ...rel)),
+    defaultPackagesRoot: () => detectedRoots[0] ?? 'C:\\AosService\\PackagesLocalDirectory',
+    describePackagesRootScan: () => `Detected packages roots: ${detectedRoots.join(', ')}`,
+  };
+});
 
 import path from 'path';
 import { buildProjectTool } from '../../src/tools/buildProject';
@@ -98,6 +112,7 @@ function allowPaths(paths: string[]) {
 describe('build_d365fo_project', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    detectedRoots.splice(0, detectedRoots.length, PKG);
     writeFileMock.mockResolvedValue(undefined);
     appendFileMock.mockResolvedValue(undefined);
     unlinkMock.mockResolvedValue(undefined);
@@ -166,7 +181,8 @@ describe('build_d365fo_project', () => {
   });
 
   it('returns error when packages path cannot be resolved', async () => {
-    // No CHE candidates accessible, no configManager paths
+    // No AosService on any drive, no configManager paths
+    detectedRoots.length = 0;
     accessMock.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
     const result = await buildProjectTool({ projectPath: PROJECT_PATH }, {});
@@ -174,6 +190,25 @@ describe('build_d365fo_project', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('Cannot resolve D365FO package paths');
     expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  // #769: the CHE fallback used to be a hardcoded C:/K:/J:/I: list, so a VM
+  // image that put AosService on another volume found neither the packages
+  // root nor xppc.exe.
+  it('builds from whatever drive the scan found AosService on', async () => {
+    const J_PKG  = 'J:\\AosService\\PackagesLocalDirectory';
+    const J_XPPC = path.join(J_PKG, 'bin', 'xppc.exe');
+    detectedRoots.splice(0, detectedRoots.length, J_PKG);
+    const child = makeFakeChild(43);
+    spawnMock.mockReturnValue(child);
+    allowPaths([PROJECT_PATH, J_XPPC, J_PKG]);
+
+    const result = await buildProjectTool({ projectPath: PROJECT_PATH, wait: false }, {});
+
+    expect(result.isError).toBeFalsy();
+    const [exe, args] = spawnMock.mock.calls[0];
+    expect(exe).toBe(J_XPPC);
+    expect(args).toContain(`-metadata=${J_PKG}`);
   });
 
   it('returns error when xppc.exe is not found', async () => {

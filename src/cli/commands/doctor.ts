@@ -16,6 +16,7 @@ import { checkRelease } from '../npmRegistry.js';
 import { conflictingLegacyValues, readPath, readSetting, type SettingsStore } from '../settingsStore.js';
 import { instanceTarget, rootTarget, type Target } from '../target.js';
 import { isXppConfigStale, listXppConfigs, xppConfigDir } from '../xppConfig.js';
+import { describePackagesRootScan, packagesRoots } from '../../utils/packagesRoot.js';
 
 type Severity = 'ok' | 'warn' | 'fail' | 'info';
 
@@ -81,6 +82,41 @@ function checkConfig(target: Target, label: string): CheckResult {
     message: `${label}: not configured — fine when everything comes from the .mcp.json env block`,
     fix: SETUP_COMMAND,
   };
+}
+
+/**
+ * The configured packages root against what the machine actually has.
+ *
+ * A packagePath pointing at a drive this image does not use is the failure
+ * behind "setup can't find the namespaces" (#769) — the index then builds from
+ * nothing and every lookup comes back empty, with no error saying why. Naming
+ * the detected volume turns that into a one-line fix.
+ */
+function checkPackagesRoot(store: SettingsStore, label: string): CheckResult[] {
+  if (!isWindows) return [];
+
+  const configured = String(readSetting(store, settingByPath('environment.packagePath')!) ?? '').trim();
+  const detected = packagesRoots();
+
+  if (!configured) {
+    // UDE resolves its roots from the XPP config, so silence here is normal.
+    if (detected.length === 0) return [];
+    return [{
+      severity: 'info',
+      message: `${label}: packages root not configured — the server will use ${detected[0]}`,
+    }];
+  }
+  if (fs.existsSync(configured)) {
+    return [{ severity: 'ok', message: `${label}: packages root OK (${configured})` }];
+  }
+  return [{
+    severity: 'fail',
+    message: `${label}: packages root does not exist (${configured})` +
+      (detected.length > 0 ? `\n   found instead: ${detected.join(', ')}` : `\n   ${describePackagesRootScan()}`),
+    fix: detected.length > 0
+      ? `set environment.packagePath to ${detected[0]} (${SETUP_COMMAND})`
+      : `point environment.packagePath at this machine's PackagesLocalDirectory (${SETUP_COMMAND})`,
+  }];
 }
 
 /** A legacy .env that disagrees with the config is a trap: the config wins. */
@@ -217,6 +253,7 @@ export async function doctorCommand(): Promise<void> {
   const root = rootTarget();
   emit(checkConfig(root, 'Root'));
   for (const r of legacyEnvChecks(root, 'Root')) emit(r);
+  for (const r of checkPackagesRoot(root.store, 'Root')) emit(r);
 
   // Database (root)
   emit(checkDb(root.store, paths.defaultDb, 'Root'));
@@ -255,6 +292,7 @@ export async function doctorCommand(): Promise<void> {
       emit(checkConfig(target, `Instance '${inst.name}'`));
       for (const r of layoutChecks(inst)) emit(r);
       for (const r of legacyEnvChecks(target, `Instance '${inst.name}'`)) emit(r);
+      for (const r of checkPackagesRoot(target.store, `Instance '${inst.name}'`)) emit(r);
       emit(checkDb(target.store, resolve(inst.dir, 'data', 'xpp-metadata.db'), `Instance '${inst.name}'`));
       if (isWindows && isXppConfigStale(target.store)) {
         emit({

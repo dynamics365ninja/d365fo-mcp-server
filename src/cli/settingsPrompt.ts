@@ -120,9 +120,12 @@ export async function askSetting(
       return list;
     }
     default: {
+      // A stored answer always wins; the caller's suggestion only fills an
+      // empty field, so re-running setup never overwrites a deliberate value
+      // with something merely detected.
       const raw = await askText({
         message: message(setting, required ? '' : c.dim('(Enter to skip)')),
-        initialValue: initialText(store, setting),
+        initialValue: initialText(store, setting) || opts?.initial || '',
         placeholder: setting.placeholder,
         required,
       });

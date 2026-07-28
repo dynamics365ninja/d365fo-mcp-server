@@ -131,7 +131,9 @@ export const SETTINGS: Setting[] = [
     label: 'Packages root (PackagesLocalDirectory)',
     description:
       'AOT packages folder (PackagesLocalDirectory) used as the read-only source for indexing. ' +
-      'Machine-wide on a traditional VM; UDE resolves it from the XPP config instead.',
+      'Machine-wide on a traditional VM; UDE resolves it from the XPP config instead. ' +
+      'Left empty, the server scans the machine\'s drives for AosService\\PackagesLocalDirectory — ' +
+      'which volume that is depends on the VM image (K:, C:, J:, …).',
     placeholder: 'C:\\AOSService\\PackagesLocalDirectory',
   },
   {

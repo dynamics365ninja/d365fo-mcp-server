@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs/promises';
 import { getConfigManager } from '../utils/configManager.js';
+import { defaultPackagesRoot } from '../utils/packagesRoot.js';
 import { withOperationLock } from '../utils/operationLocks.js';
 
 const execFileAsync = util.promisify(execFile);
@@ -40,7 +41,7 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
 
     const packagesRoot = params.packagePath
       || configManager.getPackagePath()
-      || 'K:\\AosService\\PackagesLocalDirectory';
+      || defaultPackagesRoot();
 
     // SysTestConsole.exe is the binary D365FO ships for running SysTest classes from the CLI
     // (`/test:<class> /xml:<file>`). xppbp.exe is the BP checker and cannot run tests.

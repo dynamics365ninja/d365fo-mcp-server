@@ -3,6 +3,7 @@ import util from 'util';
 import path from 'path';
 import fs from 'fs/promises';
 import { getConfigManager } from '../utils/configManager.js';
+import { defaultPackagesRoot, findPackagesRoot } from '../utils/packagesRoot.js';
 import { withOperationLock } from '../utils/operationLocks.js';
 
 const execFileAsync = util.promisify(execFile);
@@ -75,7 +76,7 @@ export const runBpCheckTool = async (params: any, _context: any) => {
 
     // Path resolution mirrors build_d365fo_project: (1) XPP config file if present — authoritative,
     // .mcp.json custom/microsoft packages paths are ignored in that case; (2) configManager
-    // (.mcp.json overrides, then XPP auto-detection); (3) well-known PackagesLocalDirectory probe (CHE).
+    // (.mcp.json overrides, then XPP auto-detection); (3) drive scan for AosService (CHE).
     // In UDE, customPackagesPath (ModelStoreFolder) is metadata root, microsoftPackagesPath
     // (FrameworkDirectory) is binaries root; in CHE both roles share packagesRoot.
     let customPackagesPath: string | null = null;
@@ -90,24 +91,17 @@ export const runBpCheckTool = async (params: any, _context: any) => {
     if (!microsoftPackagesPath) microsoftPackagesPath = await configManager.getMicrosoftPackagesPath();
 
     if (!microsoftPackagesPath) {
-      for (const candidate of [
-        'C:\\AOSService\\PackagesLocalDirectory',
-        'K:\\AOSService\\PackagesLocalDirectory',
-        'J:\\AOSService\\PackagesLocalDirectory',
-        'I:\\AOSService\\PackagesLocalDirectory',
-      ]) {
-        try { await fs.access(candidate); microsoftPackagesPath = candidate; break; } catch { /* next */ }
-      }
+      microsoftPackagesPath = findPackagesRoot();
     }
 
     if (!customPackagesPath && microsoftPackagesPath) customPackagesPath = microsoftPackagesPath;
 
-    // packagesRoot priority: explicit param → microsoft path → custom path → legacy env var → hardcoded default
+    // packagesRoot priority: explicit param → microsoft path → custom path → legacy env var → detected default
     const packagesRoot = params.packagePath
       || microsoftPackagesPath
       || customPackagesPath
       || configManager.getPackagePath()
-      || 'K:\\AosService\\PackagesLocalDirectory';
+      || defaultPackagesRoot();
 
     // xppbp.exe always lives in the Microsoft/framework packages Bin, not the custom model folder.
     const xppbpPath = path.join(packagesRoot, 'Bin', 'xppbp.exe');

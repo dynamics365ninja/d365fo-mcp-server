@@ -18,6 +18,7 @@ import { isCustomModel, isStandardModel, getCustomModels } from '../src/utils/mo
 import { readExtractedCustomModels } from '../src/utils/extractManifest.js';
 import { indexAllLabels } from '../src/metadata/labelParser.js';
 import { XppConfigProvider } from '../src/utils/xppConfigProvider.js';
+import { defaultPackagesRoot } from '../src/utils/packagesRoot.js';
 import { crossCheckPatternCatalog, formatCrossCheckReport } from '../src/knowledge/formPatterns/crossCheck.js';
 import { box, kv, sectionTitle, statusLine, spread, c, log, shortPath, supportsUnicode, sanitize } from '../src/utils/terminalUi.js';
 
@@ -41,7 +42,7 @@ const EXTRACT_MODE = process.env.EXTRACT_MODE || 'all';
 const CUSTOM_MODELS = getCustomModels();
 const FORCE_VACUUM = process.env.VACUUM === 'true';
 // Labels are indexed from PackagesLocalDirectory directly (not from extracted-metadata)
-const PACKAGES_PATH = process.env.D365FO_PACKAGE_PATH || process.env.PACKAGES_PATH || 'K:\\AosService\\PackagesLocalDirectory';
+const PACKAGES_PATH = process.env.D365FO_PACKAGE_PATH || process.env.PACKAGES_PATH || defaultPackagesRoot();
 const INCLUDE_LABELS = process.env.INCLUDE_LABELS !== 'false'; // default: true
 // Two-phase CI build: Phase 1 indexes symbols only (SKIP_FTS=true), Phase 2 runs build-fts
 const SKIP_FTS = process.env.SKIP_FTS === 'true';

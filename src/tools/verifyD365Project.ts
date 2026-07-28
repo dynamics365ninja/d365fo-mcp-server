@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { Parser } from 'xml2js';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
+import { defaultPackagesRoot } from '../utils/packagesRoot.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 
 const OBJECT_TYPES = [
@@ -147,9 +148,9 @@ export async function verifyD365ProjectTool(
       resolvedPackageName = args.packageName;
       if (envType === 'ude') {
         const customPath = await configManager.getCustomPackagesPath();
-        basePath = customPath || args.packagePath || configPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+        basePath = customPath || args.packagePath || configPackagePath || defaultPackagesRoot();
       } else {
-        basePath = args.packagePath || configPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+        basePath = args.packagePath || configPackagePath || defaultPackagesRoot();
       }
     } else if (envType === 'ude') {
       const customPath = await configManager.getCustomPackagesPath();
@@ -162,11 +163,11 @@ export async function verifyD365ProjectTool(
         basePath = resolved.rootPath;
       } else {
         resolvedPackageName = actualModelName;
-        basePath = customPath || args.packagePath || configPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+        basePath = customPath || args.packagePath || configPackagePath || defaultPackagesRoot();
       }
     } else {
       resolvedPackageName = actualModelName;
-      basePath = args.packagePath || configPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+      basePath = args.packagePath || configPackagePath || defaultPackagesRoot();
     }
 
     let projectIncludes: Set<string> | null = null;

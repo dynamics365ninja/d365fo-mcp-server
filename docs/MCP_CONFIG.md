@@ -97,7 +97,9 @@ Get-Content "C:\Temp\d365fo-bridge.log" -Encoding UTF8 -Wait -Tail 50
 
 ## Path resolution order
 
-**Write target (traditional):** tool argument `packagePath` → `D365FO_PACKAGE_PATH` → derived from `D365FO_WORKSPACE_PATH` → fallback `K:\AosService\PackagesLocalDirectory`
+**Write target (traditional):** tool argument `packagePath` → `D365FO_PACKAGE_PATH` → derived from `D365FO_WORKSPACE_PATH` → drive scan for `<drive>:\AosService\PackagesLocalDirectory`
+
+The drive scan walks C: to Z: and keeps every volume that has an `AosService\PackagesLocalDirectory`, preferring one that looks populated over an empty stub. That is what makes the server work unconfigured on any VM image — K: on cloud-hosted environments, C: on the downloadable VHD, J: on newer images — without a hardcoded drive letter anywhere. `d365fo-mcp doctor` prints what it found.
 
 **Write target (UDE):** explicit env paths → XPP config auto-detection (`%LOCALAPPDATA%\Microsoft\Dynamics365\XPPConfig\`, selected by `XPP_CONFIG_NAME` or newest) → `PACKAGES_PATH` fallback
 

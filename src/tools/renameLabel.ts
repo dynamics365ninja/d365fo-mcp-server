@@ -18,6 +18,7 @@ import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { getConfigManager } from '../utils/configManager.js';
+import { defaultPackagesRoot } from '../utils/packagesRoot.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { detectEol } from '../utils/eolUtils.js';
 import { isExtensionLabelFile } from '../metadata/labelParser.js';
@@ -200,21 +201,21 @@ export async function renameLabelTool(request: CallToolRequest, context: XppServ
       resolvedPackageName = args.packageName;
       if (envType === 'ude') {
         const customPath = await configManager.getCustomPackagesPath();
-        resolvedPackagePath = args.packagePath || customPath || configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+        resolvedPackagePath = args.packagePath || customPath || configManager.getPackagePath() || defaultPackagesRoot();
       } else {
-        resolvedPackagePath = args.packagePath || configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+        resolvedPackagePath = args.packagePath || configManager.getPackagePath() || defaultPackagesRoot();
       }
     } else if (envType === 'ude') {
       const customPath = await configManager.getCustomPackagesPath();
       const msPath = await configManager.getMicrosoftPackagesPath();
       const roots = [customPath, msPath].filter(Boolean) as string[];
-      resolvedPackagePath = args.packagePath || customPath || 'K:\\AosService\\PackagesLocalDirectory';
+      resolvedPackagePath = args.packagePath || customPath || defaultPackagesRoot();
       const resolver = new PackageResolver(roots);
       const resolved = await resolver.resolve(model);
       resolvedPackageName = resolved?.packageName || model;
       if (resolved?.rootPath) resolvedPackagePath = resolved.rootPath;
     } else {
-      resolvedPackagePath = args.packagePath || configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+      resolvedPackagePath = args.packagePath || configManager.getPackagePath() || defaultPackagesRoot();
       resolvedPackageName = model;
     }
 

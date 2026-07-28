@@ -54,6 +54,7 @@ import type {
   BridgeEventSubscriberResult,
   BridgeApiUsageCallersResult,
 } from './bridgeTypes.js';
+import { packagesRoots } from '../utils/packagesRoot.js';
 
 // Re-export types for convenience
 export type { BridgeReadyPayload, BridgeInfoPayload } from './bridgeTypes.js';
@@ -122,7 +123,7 @@ function sleep(ms: number): Promise<void> {
 export interface BridgeClientOptions {
   /** Path to the D365MetadataBridge.exe (auto-detected if omitted) */
   bridgeExePath?: string;
-  /** K:\AosService\PackagesLocalDirectory */
+  /** e.g. K:\AosService\PackagesLocalDirectory — the volume varies by VM image */
   packagesPath: string;
   /**
    * Optional secondary packages path.
@@ -973,11 +974,8 @@ function detectPackagesPath(): string | null {
   const candidates = [
     process.env.D365FO_PACKAGE_PATH ?? '',
     process.env.PACKAGES_PATH ?? '',
-    // Well-known fallback locations (traditional D365FO VM layouts)
-    'C:\\AosService\\PackagesLocalDirectory',
-    'C:\\AOSService\\PackagesLocalDirectory',
-    'J:\\AosService\\PackagesLocalDirectory',
-    'K:\\AosService\\PackagesLocalDirectory',
+    // Whatever AosService volumes this machine actually has (C:, J:, K:, …)
+    ...packagesRoots(),
   ].filter(Boolean);
 
   for (const p of candidates) {

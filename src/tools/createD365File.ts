@@ -9,6 +9,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { Parser, Builder } from 'xml2js';
 import { getConfigManager, fallbackPackagePath } from '../utils/configManager.js';
+import { describePackagesRootScan } from '../utils/packagesRoot.js';
 import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix, getExtensionNamingStyle } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
@@ -92,7 +93,7 @@ const CreateD365FileArgsSchema = z.object({
   packagePath: z
     .string()
     .optional()
-    .describe('Base package path (default: auto-detected from .mcp.json or well-known locations: C:\\, J:\\, K:\\AosService\\PackagesLocalDirectory)'),
+    .describe('Base package path (default: auto-detected from .mcp.json, or from the <drive>:\\AosService\\PackagesLocalDirectory found on this machine)'),
   sourceCode: z
     .string()
     .optional()
@@ -4394,10 +4395,7 @@ export async function handleCreateD365File(
           `Attempting to create: ${directory}\n\n` +
           `The packagePath in your .mcp.json points to a drive that is not accessible.\n` +
           `Update "packagePath" in .mcp.json to match your actual D365FO installation:\n\n` +
-          `Common paths:\n` +
-          `  C:\\AosService\\PackagesLocalDirectory\n` +
-          `  K:\\AosService\\PackagesLocalDirectory\n` +
-          `  J:\\AosService\\PackagesLocalDirectory\n\n` +
+          `${describePackagesRootScan()}\n\n` +
           `Current packagePath: ${basePath}\n` +
           `Current drive checked: ${driveOrRoot}${nonWindowsHint}`
         );
