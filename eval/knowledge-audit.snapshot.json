@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-07-23T12:34:56.804Z",
-  "indexedAt": "2026-07-23T11:27:43.481Z",
+  "capturedAt": "2026-07-28T11:15:48.861Z",
+  "indexedAt": "2026-07-28T06:46:19.478Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
     "alerts-business-events|attribute|DataContractAttribute",
@@ -21,6 +21,14 @@
     "caching|declaration|RecordViewCache",
     "caching|declaration|SysGlobalObjectCache",
     "caching|new|RecordViewCache",
+    "class-inheritance|attribute|ExtensionOf",
+    "class-inheritance|declaration|FormLetterServiceController",
+    "class-inheritance|declaration|SalesFormLetter_Invoice",
+    "class-inheritance|extends|FormLetterServiceController",
+    "class-inheritance|extends|RunBaseBatch",
+    "class-inheritance|extends|SalesFormLetter",
+    "class-inheritance|intrinsic|SalesFormLetter",
+    "class-inheritance|intrinsic|SalesFormLetter_Invoice",
     "coc-authoring|attribute|ExtensionOf",
     "coc-authoring|attribute|Hookable",
     "coc-authoring|attribute|Replaceable",

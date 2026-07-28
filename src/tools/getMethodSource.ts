@@ -148,8 +148,9 @@ function annotateInherited(
   const note =
     `\n> ℹ️ **Inherited method.** \`${requestedClass}\` does not declare \`${methodName}\` — ` +
     `it inherits it from \`${declaringClass}\`, whose source is shown below.\n` +
-    `> For CoC, wrap it on \`${declaringClass}\`; the wrapper then runs for **every** subclass, ` +
-    `so guard the body with \`if (this is ${requestedClass})\` when only that one is meant.\n`;
+    `> For CoC both targets compile: \`ExtensionOf(classStr(${requestedClass}))\` scopes the wrapper to ` +
+    `\`${requestedClass}\`, \`ExtensionOf(classStr(${declaringClass}))\` applies it to every subclass. ` +
+    `Either way the signature must match \`${declaringClass}\`'s declaration.\n`;
 
   const [first, ...rest] = result.content;
   if (!first || typeof first.text !== 'string') return result;
