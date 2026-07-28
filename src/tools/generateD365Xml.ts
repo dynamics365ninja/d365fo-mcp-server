@@ -15,6 +15,8 @@ import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
 import { buildAxDataEntityXml } from './dataEntityXml.js';
 import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
 import { buildAxEdtExtensionXml } from './edtExtensionXml.js';
+import { buildAxDataEntityViewExtensionXml } from './dataEntityViewExtensionXml.js';
+import { buildAxMenuItemExtensionXml, type AxMenuItemExtensionRootElement } from './menuItemExtensionXml.js';
 import { buildAxMapXml } from './mapXml.js';
 import { buildAxServiceXml, buildAxServiceGroupXml } from './serviceXml.js';
 
@@ -1032,17 +1034,17 @@ ${defaultParamGroupXml}
       case 'enum-extension':
         return this.generateAxEnumExtensionXml(objectName, properties);
       case 'data-entity-extension':
-        return this.generateAxSimpleExtensionXml('AxDataEntityViewExtension', objectName);
+        return this.generateAxDataEntityViewExtensionXml(objectName, properties);
       case 'menu-item-display':
       case 'menu-item-action':
       case 'menu-item-output':
         return this.generateAxMenuItemXml(objectType, objectName, properties);
       case 'menu-item-display-extension':
-        return this.generateAxSimpleExtensionXml('AxMenuItemDisplayExtension', objectName);
+        return this.generateAxMenuItemExtensionXml('AxMenuItemDisplayExtension', objectName, properties);
       case 'menu-item-action-extension':
-        return this.generateAxSimpleExtensionXml('AxMenuItemActionExtension', objectName);
+        return this.generateAxMenuItemExtensionXml('AxMenuItemActionExtension', objectName, properties);
       case 'menu-item-output-extension':
-        return this.generateAxSimpleExtensionXml('AxMenuItemOutputExtension', objectName);
+        return this.generateAxMenuItemExtensionXml('AxMenuItemOutputExtension', objectName, properties);
       case 'menu':
         return this.generateAxMenuXml(objectName, properties);
       case 'menu-extension':
@@ -1106,12 +1108,26 @@ ${defaultParamGroupXml}
     return buildAxEdtExtensionXml(name, properties);
   }
 
-  static generateAxSimpleExtensionXml(rootElement: string, name: string): string {
-    return `<?xml version="1.0" encoding="utf-8"?>
-<${rootElement} xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${name}</Name>
-\t<PropertyModifications />
-</${rootElement}>`;
+  /**
+   * Generate AxDataEntityViewExtension XML. Delegates to the shared builder so
+   * this cannot drift from createD365File.ts's copy — see
+   * dataEntityViewExtensionXml.ts for the property contract.
+   */
+  static generateAxDataEntityViewExtensionXml(name: string, properties?: Record<string, any>): string {
+    return buildAxDataEntityViewExtensionXml(name, properties);
+  }
+
+  /**
+   * Generate AxMenuItem{Display,Action,Output}Extension XML. Delegates to the
+   * shared builder so this cannot drift from createD365File.ts's copy — see
+   * menuItemExtensionXml.ts for the property-modification contract.
+   */
+  static generateAxMenuItemExtensionXml(
+    rootElement: AxMenuItemExtensionRootElement,
+    name: string,
+    properties?: Record<string, any>
+  ): string {
+    return buildAxMenuItemExtensionXml(rootElement, name, properties);
   }
 
   /**
