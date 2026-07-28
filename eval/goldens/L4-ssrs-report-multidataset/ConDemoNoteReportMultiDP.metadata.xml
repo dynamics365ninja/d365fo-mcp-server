@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteReportMultiDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data provider for the @TaxTransactionInquiry:HeaderNote report.
+/// Extends <c>SrsReportDataProviderBase</c> and populates the <c>ConDemoNoteReportMultiTmp</c> temporary table.
+/// </summary>
+[
+    SRSReportParameterAttribute(classStr(ConDemoNoteReportMultiContract))
+]
+public class ConDemoNoteReportMultiDP extends SrsReportDataProviderBase
+{
+    ConDemoNoteReportMultiTmp conDemoNoteReportMultiTmp;
+    ConDemoNoteReportMultiSummaryTmp conDemoNoteReportMultiSummaryTmp;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getConDemoNoteReportMultiTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the temporary table buffer used by the report dataset.
+    /// </summary>
+    /// <returns>The <c>ConDemoNoteReportMultiTmp</c> table buffer.</returns>
+    [SRSReportDataSetAttribute(tableStr(ConDemoNoteReportMultiTmp))]
+    public ConDemoNoteReportMultiTmp getConDemoNoteReportMultiTmp()
+    {
+        select conDemoNoteReportMultiTmp;
+        return conDemoNoteReportMultiTmp;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getConDemoNoteReportMultiSummaryTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the <c>ConDemoNoteReportMultiSummaryTmp</c> buffer for the "Summary" dataset.
+    /// </summary>
+    /// <returns>The <c>ConDemoNoteReportMultiSummaryTmp</c> table buffer.</returns>
+    [SRSReportDataSetAttribute(tableStr(ConDemoNoteReportMultiSummaryTmp))]
+    public ConDemoNoteReportMultiSummaryTmp getConDemoNoteReportMultiSummaryTmp()
+    {
+        select conDemoNoteReportMultiSummaryTmp;
+        return conDemoNoteReportMultiSummaryTmp;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main data processing method. Populates both temporary tables that back the
+    /// report datasets: the detail rows and the per-subject summary rows.
+    /// </summary>
+    public void processReport()
+    {
+        ConDemoNoteHeader   noteHeader;
+        ConDemoNoteHeader   noteHeaderSummary;
+
+        // Detail dataset - one row per note header.
+        insert_recordset conDemoNoteReportMultiTmp (NoteId, Subject)
+        select NoteId, Subject
+        from noteHeader;
+
+        // Summary dataset - one row per distinct subject with its line count.
+        while select Subject, count(RecId)
+        from noteHeaderSummary
+        group by Subject
+        {
+            conDemoNoteReportMultiSummaryTmp.clear();
+            conDemoNoteReportMultiSummaryTmp.Subject   = noteHeaderSummary.Subject;
+            conDemoNoteReportMultiSummaryTmp.LineCount = int642Str(noteHeaderSummary.RecId);
+            conDemoNoteReportMultiSummaryTmp.insert();
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
