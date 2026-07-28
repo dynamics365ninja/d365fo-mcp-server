@@ -164,3 +164,82 @@ describe('generate_object(scaffold, report) EDT resolution', () => {
     expect(text).toContain('CustAccount');
   });
 });
+
+/**
+ * Regression: the resolved EDT and the emitted AxTableField i:type were computed
+ * independently and never reconciled.
+ *
+ * b3d7856 made scaffold:report resolve EDTs from the index, which surfaced a second,
+ * older fault one function over. generateSmartReport carried its OWN duplicate
+ * resolveEdtBaseType whose comment claimed it was "same as generateSmartTable" — it was
+ * not: the shared copy returns undefined for a ROOT EDT with no string_size (the index
+ * stores extends=null for AxEdtInt64/Date/Real/String alike, so the primitive is genuinely
+ * unknowable from SQL), while the local copy collapsed that to 'String'.
+ *
+ * resolveFieldType() then mapped 'String' to undefined, and SmartXmlBuilder fell through
+ * to its EDT-NAME heuristic — `includes('count')` → AxTableFieldInt (Int32) — over
+ * PurchLineCount, which extends the Int64 root EDT NumberOfRecords. Full build:
+ *   Metadata Error: AxTable/…/Fields/LineCount/ExtendedDataType: Data type mismatch.
+ * Meanwhile AxReportDataSetField/DataType and the RDL rd:TypeName stayed System.String —
+ * the two halves were wrong in OPPOSITE directions from the same unreconciled pair.
+ * Evidence: eval/corpus/runs/2026-07-28T06__L4-ssrs-report-multidataset__b3d7856.json
+ *
+ * Both now read one cached primitive per EDT (bridge → index → heuristic), so they cannot
+ * disagree. Invisible to validate_code — only a full build ever caught it.
+ */
+describe('generate_object(scaffold, report) EDT/field-type reconciliation', () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  function createEdtChainStub(edts: Record<string, string>) {
+    const prepare = vi.fn((sql: string) => ({
+      get: vi.fn((param: string) =>
+        sql.includes('edt_metadata') && param in edts
+          ? { edt_name: param, extends: edts[param], enum_type: null, string_size: null }
+          : undefined
+      ),
+      all: vi.fn(() => []),
+    }));
+    return { getReadDb: vi.fn(() => ({ prepare })) } as any;
+  }
+
+  it('emits an Int64 field type for an Int64-rooted EDT instead of guessing Int32 from the name', async () => {
+    // "LineCount" is exactly the shape that broke: the name heuristic says Int32,
+    // the EDT chain says Int64. The EDT must win.
+    const symbolIndex = createEdtChainStub({ LineCount: 'Int64' });
+
+    const result = await handleGenerateSmartReport(
+      { name: 'DemoNoteReportMulti', fieldsHint: 'LineCount', modelName: 'MyModel' } as any,
+      symbolIndex
+    );
+
+    const text = result.content[0].text as string;
+    expect(text).toContain('AxTableFieldInt64');
+    expect(text).not.toContain('AxTableFieldInt<');
+    expect(text).not.toContain('"AxTableFieldInt"');
+  });
+
+  it('derives the dataset/RDL type from the same primitive as the table field', async () => {
+    const symbolIndex = createEdtChainStub({ LineCount: 'Int64' });
+
+    const result = await handleGenerateSmartReport(
+      { name: 'DemoNoteReportMulti', fieldsHint: 'LineCount', modelName: 'MyModel' } as any,
+      symbolIndex
+    );
+
+    const text = result.content[0].text as string;
+    // The half that used to stay System.String while the table field went Int32.
+    // Anchored on the field itself — System.String legitimately appears elsewhere in the
+    // RDL boilerplate, so a bare not-toContain would assert something untrue.
+    expect(text).toMatch(/<Name>LineCount<\/Name>[\s\S]{0,300}?System\.Int64/);
+    expect(text).not.toMatch(/<Name>LineCount<\/Name>[\s\S]{0,300}?System\.String/);
+  });
+});
