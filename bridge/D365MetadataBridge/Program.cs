@@ -416,7 +416,7 @@ Usage:
   D365MetadataBridge.exe [options]
 
 Options:
-  --packages-path <path>            Path to primary PackagesLocalDirectory (default: K:\AosService\PackagesLocalDirectory)
+  --packages-path <path>            Path to primary PackagesLocalDirectory (required; the server detects it per machine)
   --reference-packages-path <path>  UDE: secondary packages path (Microsoft FrameworkDirectory). Objects not found in
                                     the primary path are looked up here, enabling resolution of both custom and
                                     Microsoft-shipped metadata in UDE environments.

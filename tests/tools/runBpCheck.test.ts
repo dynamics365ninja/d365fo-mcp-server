@@ -5,7 +5,10 @@ const {
   accessMock, execFileMock,
   cfgEnsureLoaded, cfgGetModelName, cfgGetProjectPath, cfgGetPackagePath,
   cfgGetCustomPackagesPath, cfgGetMicrosoftPackagesPath, cfgGetActiveXppConfig,
+  detectedRoots,
 } = vi.hoisted(() => {
+  // Mutable stand-in for the AosService drive scan (src/utils/packagesRoot).
+  const detectedRoots: string[] = [];
   const accessMock = vi.fn();
   // execFile needs a callback-style API for util.promisify
   const execFileMock: any = vi.fn((_file: string, _args: string[], _opts: any, cb: Function) => {
@@ -22,6 +25,7 @@ const {
     accessMock, execFileMock,
     cfgEnsureLoaded, cfgGetModelName, cfgGetProjectPath, cfgGetPackagePath,
     cfgGetCustomPackagesPath, cfgGetMicrosoftPackagesPath, cfgGetActiveXppConfig,
+    detectedRoots,
   };
 });
 
@@ -45,6 +49,14 @@ vi.mock('../../src/utils/configManager.js', () => ({
 }));
 vi.mock('../../src/utils/operationLocks.js', () => ({
   withOperationLock: (_key: string, fn: () => any) => fn(),
+}));
+// The drive scan reads the real filesystem, which the fs/promises mock above
+// does not serve — feed it the roots each test wants found instead.
+vi.mock('../../src/utils/packagesRoot.js', () => ({
+  packagesRoots: () => [...detectedRoots],
+  findPackagesRoot: () => detectedRoots[0] ?? null,
+  defaultPackagesRoot: () => detectedRoots[0] ?? 'C:\\AosService\\PackagesLocalDirectory',
+  describePackagesRootScan: () => `Detected packages roots: ${detectedRoots.join(', ')}`,
 }));
 
 import path from 'path';
@@ -82,6 +94,7 @@ function capturedArgs(callIndex = 0): string[] {
 describe('run_bp_check — path resolution', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    detectedRoots.splice(0, detectedRoots.length, CHE_PKG);
     cfgEnsureLoaded.mockResolvedValue(undefined);
     cfgGetModelName.mockReturnValue('MyModel');
     cfgGetProjectPath.mockResolvedValue(null);
@@ -123,9 +136,10 @@ describe('run_bp_check — path resolution', () => {
       expect(compArg).toContain(CHE_PKG);
     });
 
-    it('probes K:\\AOSService\\PackagesLocalDirectory when C:\\ variant absent', async () => {
-      const K_PKG   = 'K:\\AOSService\\PackagesLocalDirectory';
+    it('follows the drive scan onto K: when C: has no AosService', async () => {
+      const K_PKG   = 'K:\\AosService\\PackagesLocalDirectory';
       const K_XPPBP = path.join(K_PKG, 'Bin', 'xppbp.exe');
+      detectedRoots.splice(0, detectedRoots.length, K_PKG);
       allowPaths([K_PKG, K_XPPBP]);
 
       const result = await runBpCheckTool({ modelName: 'MyModel' }, {});
@@ -133,6 +147,21 @@ describe('run_bp_check — path resolution', () => {
       expect(result.isError).toBeFalsy();
       const [exe] = execFileMock.mock.calls[0];
       expect(exe).toBe(K_XPPBP);
+    });
+
+    // #769: the candidate list used to be hardcoded to C:/K:/J:/I:, so a VM
+    // image that put AosService anywhere else resolved no xppbp at all.
+    it('follows the drive scan onto J: — the drive newer VM images use', async () => {
+      const J_PKG   = 'J:\\AosService\\PackagesLocalDirectory';
+      const J_XPPBP = path.join(J_PKG, 'Bin', 'xppbp.exe');
+      detectedRoots.splice(0, detectedRoots.length, J_PKG);
+      allowPaths([J_PKG, J_XPPBP]);
+
+      const result = await runBpCheckTool({ modelName: 'MyModel' }, {});
+
+      expect(result.isError).toBeFalsy();
+      const [exe] = execFileMock.mock.calls[0];
+      expect(exe).toBe(J_XPPBP);
     });
   });
 
@@ -266,6 +295,7 @@ describe('run_bp_check — CLI flag style fallback chain', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    detectedRoots.splice(0, detectedRoots.length, CHE_PKG);
     cfgEnsureLoaded.mockResolvedValue(undefined);
     cfgGetModelName.mockReturnValue('MyModel');
     cfgGetProjectPath.mockResolvedValue(null);
@@ -404,6 +434,7 @@ describe('run_bp_check — CLI flag style fallback chain', () => {
 describe('run_bp_check — violation detection', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    detectedRoots.splice(0, detectedRoots.length, CHE_PKG);
     cfgEnsureLoaded.mockResolvedValue(undefined);
     cfgGetModelName.mockReturnValue('MyModel');
     cfgGetProjectPath.mockResolvedValue(null);
@@ -474,6 +505,7 @@ describe('run_bp_check — violation detection', () => {
 describe('run_bp_check — targetFilter actually scopes (#25)', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    detectedRoots.splice(0, detectedRoots.length, CHE_PKG);
     cfgEnsureLoaded.mockResolvedValue(undefined);
     cfgGetModelName.mockReturnValue('MyModel');
     cfgGetProjectPath.mockResolvedValue(null);

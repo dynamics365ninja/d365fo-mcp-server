@@ -21,6 +21,7 @@ import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { checkRelease } from '../npmRegistry.js';
 import { askAdvanced, askSecrets, askSetting, askSettings } from '../settingsPrompt.js';
 import { migrateLegacyEnv, openStore, readSetting, saveStore, writeSetting, type SettingsStore } from '../settingsStore.js';
+import { findPackagesRoot } from '../../utils/packagesRoot.js';
 import { rootTarget } from '../target.js';
 import { askConfirm, askSelect, askText, p, requireFullInstall } from '../ui.js';
 import { listXppConfigs } from '../xppConfig.js';
@@ -199,7 +200,12 @@ async function configureEnvironment(store: SettingsStore, scenario: Scenario): P
     return 'ude';
   }
 
-  await askSetting(store, setting('environment.packagePath'), { required: true });
+  // Offer the AosService volume this machine actually has. Which drive that is
+  // differs per VM image (K:, C:, J:, …), and a wrong guess is what turns the
+  // rest of setup into "no namespaces found" (#769).
+  const detected = findPackagesRoot();
+  if (detected) p.log.success(`Found PackagesLocalDirectory at ${detected}`);
+  await askSetting(store, setting('environment.packagePath'), { required: true, initial: detected ?? undefined });
   await askSetting(store, setting('environment.customModels'), { required: true });
   return 'traditional';
 }

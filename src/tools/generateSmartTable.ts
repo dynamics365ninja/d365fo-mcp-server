@@ -11,6 +11,7 @@ import type { BridgeClient } from '../bridge/bridgeClient.js';
 import path from 'path';
 import fs from 'fs';
 import { getConfigManager } from '../utils/configManager.js';
+import { defaultPackagesRoot } from '../utils/packagesRoot.js';
 import { resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix } from '../utils/modelClassifier.js';
 import { ProjectFileManager } from './createD365File.js';
 import { extractModelFromProject, findProjectInSolution } from '../utils/projectUtils.js';
@@ -563,7 +564,7 @@ export async function handleGenerateSmartTable(
   // Falls back to the standard PackagesLocalDirectory for traditional environments.
   const customPackagesRoot = await configManager.getCustomPackagesPath();
   const resolvedPackagePath = argPackagePath || customPackagesRoot || configManager.getPackagePath();
-  // getPackagePath() already probes C:\ and K:\ well-known locations before returning null,
+  // getPackagePath() already scans the machine's drives for AosService before returning null,
   // so reaching here with null means neither location exists on this machine.
   // preview never writes, so it must not require a write location — demanding one
   // made "just show me the XML" fail on any machine without a D365FO install.
@@ -579,7 +580,7 @@ export async function handleGenerateSmartTable(
       'UDE environments: packagePath is not used — configure customPackagesPath/microsoftPackagesPath instead.'
     );
   }
-  const packagePath = resolvedPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+  const packagePath = resolvedPackagePath || defaultPackagesRoot();
 
   // Resolve project/solution path — fall back to configManager (from .mcp.json / auto-detection)
   let resolvedProjectPath = projectPath;

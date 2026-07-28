@@ -6,6 +6,7 @@ import { openSync as openSyncFs, closeSync as closeSyncFs } from 'fs';
 import os from 'os';
 import crypto from 'crypto';
 import { getConfigManager } from '../utils/configManager.js';
+import { describePackagesRootScan, findPackagesRoot, packagesRootCandidates } from '../utils/packagesRoot.js';
 import { forceReleaseLock } from '../utils/operationLocks.js';
 import { lookupErrorFix } from './d365foErrorHelp.js';
 import { generateRuntimeMetadata } from './generateMetadata.js';
@@ -397,13 +398,8 @@ async function findXppcExe(microsoftPackagesPath: string | null): Promise<string
     }
   } catch { /* ignore */ }
 
-  // CHE well-known locations
-  candidates.push(
-    'C:\\AOSService\\PackagesLocalDirectory\\bin\\xppc.exe',
-    'K:\\AOSService\\PackagesLocalDirectory\\bin\\xppc.exe',
-    'J:\\AOSService\\PackagesLocalDirectory\\bin\\xppc.exe',
-    'I:\\AOSService\\PackagesLocalDirectory\\bin\\xppc.exe',
-  );
+  // CHE: whichever volume this image put AosService on (C:, J:, K:, …)
+  candidates.push(...packagesRootCandidates('bin', 'xppc.exe'));
 
   for (const c of candidates) {
     try { await access(c); return c; } catch { /* next */ }
@@ -852,16 +848,9 @@ export const buildProjectTool = async (params: any, _context: any) => {
     if (!customPackagesPath)    customPackagesPath    = await configManager.getCustomPackagesPath();
     if (!microsoftPackagesPath) microsoftPackagesPath = await configManager.getMicrosoftPackagesPath() ?? configManager.getPackagePath();
 
-    // Priority 3: CHE fallback — probe well-known PackagesLocalDirectory locations
+    // Priority 3: CHE fallback — scan the machine's drives for AosService
     if (!microsoftPackagesPath) {
-      for (const candidate of [
-        'C:\\AOSService\\PackagesLocalDirectory',
-        'K:\\AOSService\\PackagesLocalDirectory',
-        'J:\\AOSService\\PackagesLocalDirectory',
-        'I:\\AOSService\\PackagesLocalDirectory',
-      ]) {
-        try { await access(candidate); microsoftPackagesPath = candidate; break; } catch { /* next */ }
-      }
+      microsoftPackagesPath = findPackagesRoot();
     }
 
     // In CHE, custom and Microsoft packages share the same PackagesLocalDirectory
@@ -878,7 +867,7 @@ export const buildProjectTool = async (params: any, _context: any) => {
             `Microsoft packages path: ${microsoftPackagesPath ?? '(not found)'}`,
             ``,
             `For UDE: ensure an XPP config is present at %LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig\\`,
-            `For CHE: ensure PackagesLocalDirectory exists at C:\\AOSService\\PackagesLocalDirectory (or K:\\, J:\\, I:\\)`,
+            `For CHE: ensure <drive>:\\AosService\\PackagesLocalDirectory exists. ${describePackagesRootScan()}`,
           ].join('\n'),
         }],
         isError: true,

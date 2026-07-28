@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { Parser } from 'xml2js';
 import { getConfigManager } from '../utils/configManager.js';
+import { defaultPackagesRoot } from '../utils/packagesRoot.js';
 import { withOperationLock } from '../utils/operationLocks.js';
 import { lookupSymbolNocase, type DbLike } from '../utils/symbolLookup.js';
 
@@ -309,7 +310,7 @@ export const dbSyncTool = async (params: any, context: any) => {
 
     const packagesRoot = params.packagePath
       || configManager.getPackagePath()
-      || 'K:\\AosService\\PackagesLocalDirectory';
+      || defaultPackagesRoot();
 
     // SyncEngine.exe location
     const syncEnginePath = path.join(packagesRoot, 'Bin', 'SyncEngine.exe');

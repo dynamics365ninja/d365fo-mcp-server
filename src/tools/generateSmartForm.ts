@@ -11,6 +11,7 @@ import { handleGetFormPatterns } from './getFormPatterns.js';
 import path from 'path';
 import fs from 'fs';
 import { getConfigManager } from '../utils/configManager.js';
+import { defaultPackagesRoot } from '../utils/packagesRoot.js';
 import { resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix } from '../utils/modelClassifier.js';
 import { ProjectFileManager } from './createD365File.js';
 import { extractModelFromProject, findProjectInSolution } from '../utils/projectUtils.js';
@@ -579,7 +580,7 @@ export async function handleGenerateSmartForm(
   // writes actually land) so the reported/fallback path matches the real write location.
   const configManager = getConfigManager();
   const customPackagesRoot = await configManager.getCustomPackagesPath();
-  const packagePath = customPackagesRoot || configManager.getPackagePath() || 'K:\\AosService\\PackagesLocalDirectory';
+  const packagePath = customPackagesRoot || configManager.getPackagePath() || defaultPackagesRoot();
 
   // Resolve project/solution path — fall back to configManager (from .mcp.json / auto-detection)
   let resolvedProjectPath = projectPath;

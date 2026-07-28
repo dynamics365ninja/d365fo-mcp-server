@@ -17,6 +17,7 @@ import { openInstanceStore, readPath, readSetting, saveStore, writeSetting } fro
 import { instanceTarget } from '../target.js';
 import { askConfirm, askSelect, askText, p } from '../ui.js';
 import { listXppConfigs, XppConfig, xppConfigDir } from '../xppConfig.js';
+import { findPackagesRoot } from '../../utils/packagesRoot.js';
 import { rebuildIndex } from './indexCmd.js';
 
 const dbPathSetting = settingByPath('index.dbPath')!;
@@ -99,7 +100,10 @@ export async function instanceAddCommand(name: string | undefined, portArg: stri
   if (envType === 'ude') {
     await selectXppConfig(store);
   } else {
-    await askSetting(store, settingByPath('environment.packagePath')!, { required: true });
+    await askSetting(store, settingByPath('environment.packagePath')!, {
+      required: true,
+      initial: findPackagesRoot() ?? undefined,
+    });
     await askSetting(store, settingByPath('environment.customModels')!, { required: true });
   }
   p.log.step('Workspace and naming');

@@ -37,11 +37,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
+import { defaultPackagesRoot } from '../src/utils/packagesRoot.js';
 
 const CASES = 'eval/cases';
 const GOLDENS = 'eval/goldens';
-const PACKAGES = process.env.D365FO_PACKAGE_PATH?.replace(/\\/g, '/')
-  ?? 'K:/AosService/PackagesLocalDirectory';
+const PACKAGES = (process.env.D365FO_PACKAGE_PATH ?? defaultPackagesRoot()).replace(/\\/g, '/');
 const MODEL = process.env.D365FO_MODEL_NAME ?? 'Contoso';
 const MODEL_ROOT = `${PACKAGES}/${MODEL}/${MODEL}`;
 const XPPC = `${PACKAGES}/bin/xppc.exe`;

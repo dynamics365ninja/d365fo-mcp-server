@@ -10,7 +10,7 @@
  * Relevant env vars:
  *   DB_PATH          Path to the SQLite database  (default: ./data/xpp-metadata.db)
  *   PACKAGES_PATH    Path to PackagesLocalDirectory for label indexing
- *                    (default: K:\AosService\PackagesLocalDirectory)
+ *                    (default: the AosService volume detected on this machine)
  *   INCLUDE_LABELS   Set to 'false' to skip label indexing  (default: true)
  *   EXTRACT_MODE     'all' | 'standard' | 'custom' — controls which model labels to index
  *                    (default: 'all')
@@ -28,6 +28,7 @@ import * as fsSync from 'fs';
 import { XppSymbolIndex } from '../src/metadata/symbolIndex.js';
 import { indexAllLabels } from '../src/metadata/labelParser.js';
 import { isCustomModel, isStandardModel } from '../src/utils/modelClassifier.js';
+import { defaultPackagesRoot } from '../src/utils/packagesRoot.js';
 import { fileURLToPath } from 'url';
 import * as path from 'path';
 
@@ -36,7 +37,7 @@ const __dirname = path.dirname(__filename);
 
 const OUTPUT_DB     = process.env.DB_PATH       || './data/xpp-metadata.db';
 const OUTPUT_LABELS_DB = process.env.LABELS_DB_PATH || './data/xpp-metadata-labels.db';
-const PACKAGES_PATH = process.env.PACKAGES_PATH || 'K:\\AosService\\PackagesLocalDirectory';
+const PACKAGES_PATH = process.env.PACKAGES_PATH || defaultPackagesRoot();
 const INCLUDE_LABELS = process.env.INCLUDE_LABELS !== 'false'; // default: true
 const EXTRACT_MODE  = process.env.EXTRACT_MODE  || 'all';
 

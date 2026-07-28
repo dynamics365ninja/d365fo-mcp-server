@@ -11,6 +11,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { autoDetectD365Project, detectD365Project, scanAllD365Projects, extractModelNameFromProject, detectGitBranch, isMicrosoftDemoModel, type D365ProjectInfo } from './workspaceDetector.js';
 import { registerCustomModel, getCustomModels } from './modelClassifier.js';
 import { XppConfigProvider, type XppEnvironmentConfig } from './xppConfigProvider.js';
+import { FALLBACK_PACKAGES_ROOT, findPackagesRoot } from './packagesRoot.js';
 import { debugLog } from './logger.js';
 
 export interface McpContext {
@@ -757,25 +758,17 @@ class ConfigManager {
       return normalizePath(this.xppConfig.customPackagesPath);
     }
 
-    // Last resort (Windows only): probe well-known PackagesLocalDirectory locations.
-    // Covers the two standard D365FO installation scenarios without requiring .mcp.json config:
-    //   C:\AosService\PackagesLocalDirectory  → VHD / local developer machine
-    //   K:\AosService\PackagesLocalDirectory  → cloud-hosted VM (standard Azure Dev/Test image)
-    if (process.platform === 'win32') {
-      const wellKnownCandidates = [
-        'C:\\AosService\\PackagesLocalDirectory',
-        'J:\\AosService\\PackagesLocalDirectory',
-        'K:\\AosService\\PackagesLocalDirectory',
-      ];
-      for (const candidate of wellKnownCandidates) {
-        if (existsSync(candidate)) {
-          if (!(this as any)._packagePathLoggedOnce) {
-            console.error(`[ConfigManager] ✅ Auto-probed packagePath: ${candidate}`);
-            (this as any)._packagePathLoggedOnce = true;
-          }
-          return candidate;
-        }
+    // Last resort (Windows only): scan the machine's drives for AosService.
+    // Covers every D365FO installation layout without requiring .mcp.json config —
+    // C: (VHD / local developer machine), K: (cloud-hosted VM), J: (newer images)
+    // and any other volume the image happened to use.
+    const probed = findPackagesRoot();
+    if (probed) {
+      if (!(this as any)._packagePathLoggedOnce) {
+        console.error(`[ConfigManager] ✅ Auto-probed packagePath: ${probed}`);
+        (this as any)._packagePathLoggedOnce = true;
       }
+      return probed;
     }
 
     return null;
@@ -980,7 +973,7 @@ class ConfigManager {
     } else if (this.autoDetectedProject?.packagePath) {
       packageSource = 'auto-detected from .rnrproj';
     } else if (packagePath) {
-      packageSource = 'well-known path probe';
+      packageSource = 'drive scan for AosService';
     }
 
     // Custom write path (D365FO_CUSTOM_PACKAGES_PATH / customPackagesPath in context)
@@ -1273,15 +1266,13 @@ export async function initializeConfig(
 
 /**
  * Fallback package path when configManager.getPackagePath() returns null.
- * This only happens when no config is loaded AND none of the well-known
- * candidate paths (C:, J:, K:) exist on the filesystem.
- * The value is a safe sentinel — callers will get a clear 'file not found'
- * rather than silently defaulting to a specific drive letter.
+ * This only happens when no config is loaded AND the drive scan found no
+ * AosService\PackagesLocalDirectory on any volume. The value is a safe
+ * sentinel — callers get a clear 'file not found' naming a real D365FO
+ * location rather than an empty path, and never a silently wrong drive.
  */
-const FALLBACK_PACKAGE_PATH = 'C:\\AosService\\PackagesLocalDirectory';
-
 export function fallbackPackagePath(): string {
-  return FALLBACK_PACKAGE_PATH;
+  return FALLBACK_PACKAGES_ROOT;
 }
 
 /**

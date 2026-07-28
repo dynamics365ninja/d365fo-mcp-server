@@ -37,6 +37,7 @@ import { ProjectFileManager } from './createD365File.js';
 import path from 'path';
 import fs from 'fs';
 import { getConfigManager } from '../utils/configManager.js';
+import { defaultPackagesRoot, describePackagesRootScan } from '../utils/packagesRoot.js';
 import { resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix } from '../utils/modelClassifier.js';
 import { extractModelFromProject, findProjectInSolution } from '../utils/projectUtils.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
@@ -279,11 +280,11 @@ export async function handleGenerateSmartReport(
   if (!resolvedPackagePath && process.platform === 'win32') {
     throw new Error(
       '❌ Cannot determine PackagesLocalDirectory path.\n\n' +
-      'Neither C:\\AosService\\PackagesLocalDirectory nor K:\\AosService\\PackagesLocalDirectory were found.\n\n' +
+      `${describePackagesRootScan()}\n\n` +
       'Add "packagePath" to your .mcp.json or pass packagePath to this tool call.'
     );
   }
-  const pkgPath = resolvedPackagePath || 'K:\\AosService\\PackagesLocalDirectory';
+  const pkgPath = resolvedPackagePath || defaultPackagesRoot();
 
   let resolvedProjectPath = projectPath;
   let resolvedSolutionPath = solutionPath;

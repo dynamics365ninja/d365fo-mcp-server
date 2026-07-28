@@ -23,10 +23,18 @@
 
   <!--
     D365FO bin directory — contains all Microsoft.Dynamics.*.dll assemblies.
-    Every D365FO development desktop has this directory available.
+    Every D365FO development desktop has this directory available, but WHICH
+    volume it sits on is decided by the VM image: K: on cloud-hosted
+    environments, C: on the downloadable VHD, J: on newer images (#769), and
+    nothing stops the next image from using another letter again.
 
-    Traditional VM:  K:\AosService\PackagesLocalDirectory\bin
-    Cloud-hosted:    C:\AosService\PackagesLocalDirectory\bin
+    So the drive is swept rather than guessed: the first
+    <drive>:\AosService\PackagesLocalDirectory\bin that exists wins, with the
+    historically standard letters tried first and the rest of the alphabet
+    after them. MSBuild has no loop at evaluation time, and the property has to
+    be resolved before Reference items are globbed — hence one line per letter.
+    A: and B: are left out on purpose (floppy letters stall the probe).
+
     UDE (Unified Developer Experience): path from .mcp.json microsoftPackagesPath/bin
 
     Override per-machine via:
@@ -36,6 +44,28 @@
   <PropertyGroup>
     <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('K:\AosService\PackagesLocalDirectory\bin')">K:\AosService\PackagesLocalDirectory\bin</D365BinPath>
     <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('C:\AosService\PackagesLocalDirectory\bin')">C:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('J:\AosService\PackagesLocalDirectory\bin')">J:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('I:\AosService\PackagesLocalDirectory\bin')">I:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('D:\AosService\PackagesLocalDirectory\bin')">D:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('E:\AosService\PackagesLocalDirectory\bin')">E:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('F:\AosService\PackagesLocalDirectory\bin')">F:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('G:\AosService\PackagesLocalDirectory\bin')">G:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('H:\AosService\PackagesLocalDirectory\bin')">H:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('L:\AosService\PackagesLocalDirectory\bin')">L:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('M:\AosService\PackagesLocalDirectory\bin')">M:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('N:\AosService\PackagesLocalDirectory\bin')">N:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('O:\AosService\PackagesLocalDirectory\bin')">O:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('P:\AosService\PackagesLocalDirectory\bin')">P:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('Q:\AosService\PackagesLocalDirectory\bin')">Q:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('R:\AosService\PackagesLocalDirectory\bin')">R:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('S:\AosService\PackagesLocalDirectory\bin')">S:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('T:\AosService\PackagesLocalDirectory\bin')">T:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('U:\AosService\PackagesLocalDirectory\bin')">U:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('V:\AosService\PackagesLocalDirectory\bin')">V:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('W:\AosService\PackagesLocalDirectory\bin')">W:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('X:\AosService\PackagesLocalDirectory\bin')">X:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('Y:\AosService\PackagesLocalDirectory\bin')">Y:\AosService\PackagesLocalDirectory\bin</D365BinPath>
+    <D365BinPath Condition="'$(D365BinPath)' == '' And Exists('Z:\AosService\PackagesLocalDirectory\bin')">Z:\AosService\PackagesLocalDirectory\bin</D365BinPath>
   </PropertyGroup>
 
   <!-- NuGet packages -->
