@@ -1,0 +1,108 @@
+{
+  "run_id": "2026-07-28T04__L4-ssrs-report-multidataset__39adafe",
+  "case_id": "L4-ssrs-report-multidataset",
+  "tier": 4,
+  "timestamp": "2026-07-28T04:51:00.460Z",
+  "server_git_sha": "39adafe",
+  "generated_artifacts": [
+    "ConDemoNoteReportMulti.menuitem.metadata.xml",
+    "ConDemoNoteReportMulti.metadata.xml",
+    "ConDemoNoteReportMultiContract.metadata.xml",
+    "ConDemoNoteReportMultiController.metadata.xml",
+    "ConDemoNoteReportMultiDP.metadata.xml",
+    "ConDemoNoteReportMultiSummaryTmp.metadata.xml",
+    "ConDemoNoteReportMultiTmp.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "object": "ConDemoNoteReportMultiController",
+        "type": "class",
+        "rule": "BPLocalVariableNotUsed",
+        "text": "The local variable 'contract' is not used. (scaffold-emitted prePromptModifyContract stub body is a comment)"
+      },
+      {
+        "object": "ConDemoNoteReportMultiTmp",
+        "type": "table",
+        "rule": "BPErrorTablePrimaryKeyEditable",
+        "text": "The primary key must not be editable."
+      },
+      {
+        "object": "ConDemoNoteReportMultiTmp",
+        "type": "table",
+        "rule": "BPErrorTablePrimaryKeyNotMandatory",
+        "text": "The primary key must be mandatory."
+      },
+      {
+        "object": "ConDemoNoteReportMultiTmp",
+        "type": "table",
+        "rule": "BPErrorTableMissingFormRef",
+        "text": "No form ref is specified."
+      },
+      {
+        "object": "ConDemoNoteReportMultiSummaryTmp",
+        "type": "table",
+        "rule": "BPErrorTablePrimaryKeyEditable",
+        "text": "The primary key must not be editable."
+      },
+      {
+        "object": "ConDemoNoteReportMultiSummaryTmp",
+        "type": "table",
+        "rule": "BPErrorTablePrimaryKeyNotMandatory",
+        "text": "The primary key must be mandatory."
+      },
+      {
+        "object": "ConDemoNoteReportMultiSummaryTmp",
+        "type": "table",
+        "rule": "BPErrorTableMissingFormRef",
+        "text": "No form ref is specified."
+      },
+      {
+        "object": "ConDemoNoteReportMulti",
+        "type": "menuitemoutput",
+        "rule": "BPErrorMenuItemNotCoveredByPrivilege",
+        "text": "'AxMenuItemOutput' 'ConDemoNoteReportMulti' is not covered by privilege."
+      }
+    ]
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "xppc 7.0.7858.27",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "The additionalDatasets feature itself is CORRECT: one call produced all 7 objects, both TempDB tmp tables, a DP with an [SRSReportDataSetAttribute] getter per tmp table, two <AxReportDataSet> entries and two RDL <DataSet>/<Tablix> pairs; a full build is clean (0 errors). The defect is in FIELD TYPING. generateSmartReport.suggestEdtFromFieldName() (src/tools/generateSmartReport.ts:1303-1327) is a hardcoded keyword ladder that NEVER consults the EDT index and falls through to 'String255'. The generateObject schema documents fieldsHint for scaffold:report as 'EDTs auto-suggested from the index' (identical wording to scaffold:table, which DOES hit the index), so this is a documented-vs-actual mismatch. Concretely, prepare(mode='create') returned Num/Name/Counter from the index for the very same field names NoteId/Subject/LineCount, yet the scaffold emitted <ExtendedDataType>String255</ExtendedDataType> for all three. The semantic damage is largest on the summary dataset: LineCount, a count, becomes a string field, its AxReportDataSetField DataType becomes System.String (so SSRS cannot format/aggregate it numerically), and the DP is forced to wrap the aggregate with int642Str(). Two frozen sibling goldens (L4-ssrs-report-basic, L4-ssrs-report-advanced) already bake in the same String255 shape, so this is a pre-existing behaviour, not a regression from this run. SECOND, INDEPENDENT FINDING (build-oracle blind spot, evidenced by negative test): xppc does NOT validate the AxReport dataset -> DP linkage. Replacing the Summary dataset's <Query> with 'SELECT * FROM ConBogusNoSuchDP.ConBogusNoSuchTmp' (a class and table that do not exist) still produced 'Build succeeded / Errors: 0' under a FULL build with Metadata Validation running ('Metadata: validate report' executed). The contrast case proves the oracle is otherwise live: pointing AxMenuItemOutput/Object at ConBogusNoSuchController in the same model failed with 'Metadata Error: AxMenuItemOutput/ConDemoNoteReportMulti/Object: Class ConBogusNoSuchController does not exist.' So for AxReport, pass@build is NOT evidence that the dataset wiring is right; correctness here was established by structural inspection + an element-vocabulary diff against standard multi-dataset RDP reports (ApplicationSuite/Foundation AgreementConfirmation.xml, AssetStatementRowSetup.xml), which matched. PROVENANCE CAVEAT: server_git_sha is stamped from live repo HEAD (39adafe), but the RUNNING MCP server binary was built from b28515f - a later commit rebuilt dist/ while the server process still holds the old modules. The behaviour recorded here is b28515f's.",
+  "suggested_fix_area": "src/tools/generateSmartReport.ts - replace the hardcoded suggestEdtFromFieldName() keyword ladder with the same index-backed EDT resolution generateSmartTable/prepare() use (suggest_edt), so scaffold:report matches its own documented fieldsHint contract; at minimum stop defaulting count/qty-like names to String255. Secondary: src/eval/oracle - the build dimension cannot certify AxReport dataset wiring, so an AxReport-aware structural assertion (dataset name/Query resolves to an existing DP class + [SRSReportDataSetAttribute] getter) belongs in validate_code or a report-specific check.",
+  "evidence_refs": [
+    "negative test A: AxReport/DataSets/AxReportDataSet[ConDemoNoteReportMultiSummaryTmp]/Query -> 'SELECT * FROM ConBogusNoSuchDP.ConBogusNoSuchTmp'; full build Errors: 0 (blind spot)",
+    "negative test B: AxMenuItemOutput/ConDemoNoteReportMulti/Object -> 'ConBogusNoSuchController'; full build Errors: 1, 'Metadata Error: ... does not exist' (oracle live)",
+    "src/tools/generateSmartReport.ts:1303-1327 suggestEdtFromFieldName() - hardcoded ladder, returns 'String255' as fallback, never queries edt index",
+    "src/server/toolSchemas/generateObject.ts - fieldsHint documented as '[scaffold:table|report] ... EDTs auto-suggested from the index'",
+    "prepare(mode=create) index suggestions for the same names: NoteId -> Num, Subject -> smmSubject/EventSubject, LineCount -> Counter",
+    "eval/goldens/L4-ssrs-report-basic/ConDemoNoteReportTmp.metadata.xml and eval/goldens/L4-ssrs-report-advanced/ConDemoNoteReportAdvTmp.metadata.xml already carry String255 (pre-existing, not a regression)",
+    "vocabulary diff vs K:\\AosService\\PackagesLocalDirectory\\ApplicationSuite\\Foundation\\AxReport\\AgreementConfirmation.xml and AssetStatementRowSetup.xml: no unexpected elements",
+    "golden NOT frozen - draft only, see eval/goldens/L4-ssrs-report-multidataset/README.md"
+  ]
+}
