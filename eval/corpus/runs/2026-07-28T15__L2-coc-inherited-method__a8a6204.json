@@ -1,0 +1,42 @@
+{
+  "run_id": "2026-07-28T15__L2-coc-inherited-method__a8a6204",
+  "case_id": "L2-coc-inherited-method",
+  "tier": 2,
+  "timestamp": "2026-07-28T15:11:40.000Z",
+  "server_git_sha": "a8a6204",
+  "generated_artifacts": [
+    "SalesFormLetter_InvoiceCon_Extension.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": false,
+    "bpWarnings": null
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": null,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "notes": [
+    "Golden captured from the file xppc actually compiled; full build with force:true, Errors: 0 (Metadata Validation 13,829 ms).",
+    "NEGATIVE TEST (build): poisoning the wrapper signature to promptAndRun(int) fails the build with 'The augmented class SalesFormLetter provides a method by this name, but this method cannot be used as a chain of command method since the parameter profile does not match the original method.' — the compiler names the DECLARING class even though [ExtensionOf] names the SUBCLASS. This is the case's central ground truth, re-confirmed live.",
+    "NEGATIVE TEST (oracle): golden_match drops to 0 for each of wrong declaring class, truncated chain, [ExtensionOf] retargeted at the base class, and facts deleted — 1 changed path each. The golden is load-bearing.",
+    "TOOL_DEFECT (build_d365fo_project, stale-result replay): after a wait-timeout handoff, a second call returned '✅ Build succeeded / Errors: 0' with byte-identical phase timings from the PREVIOUS build. Proof: the poisoned XML was written at 15:05:46 while the build log was last written 15:05:04, 42 s EARLIER. Nothing was compiled. force:true produced the real result (2 errors). A falsely-clean build that is invisible without checking log mtimes.",
+    "TOOL_DEFECT (prepare mode=change, inheritance-blind): prepare reported 'Method signature (symbol index): (not found in symbol index)' and 'CoC eligibility: (could not determine — method not found in symbol index)' for SalesFormLetter_Invoice.promptAndRun. get_method walks the chain correctly after PRs #780/#781/#782; prepare — the one-call aggregator agents are told to start from — still does not. Same defect class, unfixed surface."
+  ]
+}

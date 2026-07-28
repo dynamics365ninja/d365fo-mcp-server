@@ -2,14 +2,14 @@
   "core": {
     "tier": "core",
     "total": 44,
-    "covered": 43,
-    "percent": 97.7
+    "covered": 44,
+    "percent": 100
   },
   "total": {
     "tier": "all",
     "total": 78,
-    "covered": 66,
-    "percent": 84.6
+    "covered": 67,
+    "percent": 85.9
   },
   "leaves": [
     {
@@ -219,10 +219,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-coc-inherited-method"
+      ]
     },
     {
       "id": "coc-extension",
@@ -410,6 +412,7 @@
         "L1-table-basic",
         "L2-business-event-basic",
         "L2-class-method-ops",
+        "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
         "L2-datetime-timezone-range",
@@ -461,6 +464,7 @@
         "L1-table-basic",
         "L2-business-event-basic",
         "L2-class-method-ops",
+        "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
         "L2-datetime-timezone-range",
@@ -1191,6 +1195,7 @@
         "L1-table-basic",
         "L2-business-event-basic",
         "L2-class-method-ops",
+        "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
         "L2-datetime-timezone-range",
