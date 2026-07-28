@@ -1,0 +1,470 @@
+{
+  "generatedAt": "2026-07-28",
+  "method": "scripts/verify-goldens-build.ts — isolated full xppc build per case",
+  "compiler": "xppc 7.0.7858.27",
+  "model": "Contoso",
+  "clean": 65,
+  "total": 65,
+  "artifacts": 143,
+  "cases": [
+    {
+      "caseId": "L0-edt-basic",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L0-enum-basic",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-class-basic",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-form-basic",
+      "artifacts": 2,
+      "skipped": [
+        "AxTable/ConDemoNoteHeader"
+      ],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-form-detailsmaster",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-form-dialog",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-form-listpage",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-form-lookup",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-form-simplelistdetails",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-form-tableofcontents",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-form-workspace",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-macro-library-flight",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-map-basic",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-query-view-basic",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L1-table-basic",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-business-event-basic",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-class-method-ops",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-coc-extension",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-coc-inherited-method",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-collections-map-list-container",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-config-key-gated-table",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-datetime-timezone-range",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-delegate-basic",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-dimension-basic",
+      "artifacts": 1,
+      "skipped": [
+        "AxTable/ConDemoNoteHeader"
+      ],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-direct-sql-connection",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-dotnet-interop-clrerror",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-edt-extension-basic",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-enum-extension-empty-values",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-error-handling-infolog",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-event-handler-basic",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-feature-management-flight",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-form-extension-basic",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-form-modify-controls",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-form-over-view",
+      "artifacts": 4,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-interface-abstract-basic",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-license-code-configkey",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-multi-company-changecompany",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-numberseq-basic",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-occ-retry-basic",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-oracle-discriminator-random-wrapper-name",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-performance-set-based",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-reflection-dict-fieldwalk",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-sysda-fluent-query",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-sysextension-plugin",
+      "artifacts": 5,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-table-caching-basic",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-table-extension",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-table-inheritance-basic",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-table-modify-lifecycle",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-tile-cue-over-query",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-batch-basic",
+      "artifacts": 4,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-batch-retryable-basic",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-currency-exchange-conversion",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-custom-service-basic",
+      "artifacts": 5,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-data-entity-extension-field",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-file-csv-import",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-form-add-datasource-lines",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-form-detailstransaction",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-gab-party-postaladdress",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-inventory-inventdim-onhand",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-workflow-document-submit",
+      "artifacts": 5,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L4-entity-security",
+      "artifacts": 5,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L4-master-security-slice",
+      "artifacts": 8,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L4-ssrs-report-advanced",
+      "artifacts": 6,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L4-ssrs-report-basic",
+      "artifacts": 5,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L4-ssrs-report-multidataset",
+      "artifacts": 7,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    }
+  ]
+}
