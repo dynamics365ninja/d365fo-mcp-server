@@ -15,6 +15,7 @@ import type { BridgeClient } from '../bridge/bridgeClient.js';
 import type { XppMetadataParser } from '../metadata/xmlParser.js';
 import { parseXppDeclaration } from '../metadata/xppDeclaration.js';
 import { canonicalSymbolName } from '../utils/symbolLookup.js';
+import { inheritedOwnerCandidates } from '../utils/inheritanceChain.js';
 
 /** Object types that can own methods. */
 const OBJECT_TYPES = ['class', 'table', 'view', 'data-entity'] as const;
@@ -58,24 +59,7 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
     // here would scan every class/table/view row instead (~86k rows, 4–8 s warm).
     const className = canonicalSymbolName(rdb, args.className, OBJECT_TYPES) ?? args.className;
 
-    let classRow: any;
-    if (modelName) {
-      classRow = rdb.prepare(`
-        SELECT file_path, model, name, type
-        FROM symbols
-        WHERE type IN ${OBJECT_TYPES_SQL} AND name = ? AND model = ?
-        ORDER BY CASE type WHEN 'class' THEN 0 WHEN 'table' THEN 1 ELSE 2 END
-        LIMIT 1
-      `).get(className, modelName);
-    } else {
-      classRow = rdb.prepare(`
-        SELECT file_path, model, name, type
-        FROM symbols
-        WHERE type IN ${OBJECT_TYPES_SQL} AND name = ?
-        ORDER BY CASE type WHEN 'class' THEN 0 WHEN 'table' THEN 1 ELSE 2 END, model
-        LIMIT 1
-      `).get(className);
-    }
+    const classRow: any = loadOwnerRow(rdb, className, modelName);
 
     if (!classRow) {
       const typeMismatch = buildObjectTypeMismatchMessage(rdb, className);
@@ -118,6 +102,31 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
     );
     if (xmlSignature) return xmlSignature;
 
+    // 4. Inherited methods. Every reader above sees declared members only, so a
+    // class that inherits the method rather than declaring it reports a false
+    // "not found" — and for CoC that is the common case, because the class
+    // worth wrapping is usually a leaf. Retry the same readers against the
+    // declaring ancestor. Only when the class itself has no method row: if it
+    // does declare the method, its own (index-only) signature below is the
+    // right answer, not a base class's.
+    if (!methodRow) {
+      const bridgeUsable = Boolean(context.bridge?.isReady && context.bridge?.metadataAvailable);
+      for (const ancestor of inheritedOwnerCandidates(rdb, className, methodName, bridgeUsable)) {
+        const row: any = loadOwnerRow(rdb, ancestor);
+        const model = row?.model ?? classRow.model;
+
+        const inheritedBridge = await tryBridgeMethodSignature(
+          context.bridge, ancestor, methodName, model, includeCoc, className,
+        );
+        if (inheritedBridge) return inheritedBridge;
+
+        const inheritedXml = await tryXmlMethodSignature(
+          parser, row?.file_path, ancestor, methodName, model, includeCoc, row?.type, className,
+        );
+        if (inheritedXml) return inheritedXml;
+      }
+    }
+
     // Last resort: use SQLite signature column if available. No declaration is
     // parsed on this path, so the index's own `name` is the canonical spelling
     // to render rather than the caller's argument (#691).
@@ -151,7 +160,8 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
         content: [{
           type: 'text',
           text: `❌ Method **${className}.${methodName}** not found.\n\n` +
-            `The method is not in the symbol index and could not be retrieved via bridge or XML.\n` +
+            `Neither ${className} nor any class it extends declares it, and it could not be ` +
+            `retrieved via bridge or XML.\n` +
             `This is common for:\n` +
             `- **Delegate methods** (declared with the \`delegate\` keyword)\n` +
             `- **Event handler subscriptions** (\`[SubscribesTo]\` handlers in extension classes)\n\n` +
@@ -184,8 +194,38 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
 }
 
 /**
+ * Locate a method owner (class/table/view/data-entity) in the index. `name` is
+ * expected to be canonical, so this stays a BINARY probe on idx_name_type.
+ */
+function loadOwnerRow(rdb: any, name: string, modelName?: string): any {
+  try {
+    if (modelName) {
+      return rdb.prepare(`
+        SELECT file_path, model, name, type
+        FROM symbols
+        WHERE type IN ${OBJECT_TYPES_SQL} AND name = ? AND model = ?
+        ORDER BY CASE type WHEN 'class' THEN 0 WHEN 'table' THEN 1 ELSE 2 END
+        LIMIT 1
+      `).get(name, modelName);
+    }
+    return rdb.prepare(`
+      SELECT file_path, model, name, type
+      FROM symbols
+      WHERE type IN ${OBJECT_TYPES_SQL} AND name = ?
+      ORDER BY CASE type WHEN 'class' THEN 0 WHEN 'table' THEN 1 ELSE 2 END, model
+      LIMIT 1
+    `).get(name);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Try C# bridge for method signature. Returns null to signal fallback when
  * the bridge is unavailable.
+ *
+ * `inheritedBy` is the class the caller asked about when it differs from
+ * `className` (the declaring class this call is reading).
  */
 async function tryBridgeMethodSignature(
   bridge: BridgeClient | undefined,
@@ -193,6 +233,7 @@ async function tryBridgeMethodSignature(
   methodName: string,
   modelName: string,
   includeCoc: boolean,
+  inheritedBy?: string,
 ): Promise<any | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
@@ -203,7 +244,7 @@ async function tryBridgeMethodSignature(
     if (!signature) return null;
 
     const obsoleteWarning = detectObsolete(ms.source);
-    const result = formatOutput(className, signature, modelName, includeCoc, obsoleteWarning);
+    const result = formatOutput(className, signature, modelName, includeCoc, obsoleteWarning, inheritedBy);
     return result;
   } catch (e) {
     console.error(`[methodSignature] Bridge getMethodSource(${className}, ${methodName}) failed: ${e}`);
@@ -223,6 +264,7 @@ async function tryXmlMethodSignature(
   modelName: string,
   includeCoc: boolean,
   objectType?: string,
+  inheritedBy?: string,
 ): Promise<any | null> {
   if (!parser || !filePath) return null;
   try {
@@ -243,7 +285,7 @@ async function tryXmlMethodSignature(
     if (!signature) return null;
 
     const obsoleteWarning = detectObsolete(method.source);
-    const result = formatOutput(className, signature, modelName, includeCoc, obsoleteWarning);
+    const result = formatOutput(className, signature, modelName, includeCoc, obsoleteWarning, inheritedBy);
     return result;
   } catch (e) {
     console.error(`[methodSignature] XML parse for ${className}.${methodName} failed: ${e}`);
@@ -412,10 +454,15 @@ function formatOutput(
   signature: MethodSignature,
   modelName: string,
   includeCocTemplate: boolean = false,
-  obsoleteWarning: string = ''
+  obsoleteWarning: string = '',
+  inheritedBy?: string
 ): any {
   let output = `# Method: \`${className}.${signature.methodName}\`\n`;
   output += `**Model:** ${modelName}  **Returns:** ${signature.returnType}  **Modifiers:** ${signature.modifiers.join(', ') || 'none'}\n`;
+  if (inheritedBy) {
+    output += `\n> ℹ️ **Inherited method.** \`${inheritedBy}\` does not declare \`${signature.methodName}\` — ` +
+      `it inherits it from \`${className}\`, which is where the signature below comes from.\n`;
+  }
   if (obsoleteWarning) output += obsoleteWarning + '\n';
   output += `\n\`\`\`xpp\n${signature.signature}\n\`\`\`\n`;
 
@@ -426,6 +473,11 @@ function formatOutput(
   if (includeCocTemplate) {
     output += `\n## Chain of Command Template\n\`\`\`xpp\n${signature.cocTemplate}\`\`\`\n`;
     output += `Replace \`OriginalClassName\` with \`${className}\`.\n`;
+    if (inheritedBy) {
+      output += `\n⚠️ Target \`${className}\` — the class that declares the method — not \`${inheritedBy}\`. ` +
+        `The wrapper then runs for **every** subclass of \`${className}\`; if the change is meant for ` +
+        `\`${inheritedBy}\` only, guard the body with \`if (this is ${inheritedBy})\`.\n`;
+    }
   } else {
     output += `\n> 💡 Pass \`includeCocTemplate: true\` to get the CoC extension template.\n`;
   }
