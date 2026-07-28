@@ -1,0 +1,36 @@
+{
+  "run_id": "2026-07-28T09__L3-data-entity-extension-field__ce4fc57",
+  "case_id": "L3-data-entity-extension-field",
+  "tier": 3,
+  "timestamp": "2026-07-28T09:59:26.990Z",
+  "server_git_sha": "ce4fc57",
+  "generated_artifacts": [
+    "CustCustomerV3Entity.ConExtension.metadata.xml",
+    "CustTable.ConExtension.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": false,
+    "bpWarnings": null
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": null,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS"
+}

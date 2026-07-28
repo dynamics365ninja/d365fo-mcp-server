@@ -1,0 +1,48 @@
+{
+  "run_id": "2026-07-28T09__L4-ssrs-report-advanced__ce4fc57",
+  "case_id": "L4-ssrs-report-advanced",
+  "tier": 4,
+  "timestamp": "2026-07-28T09:41:34.500Z",
+  "server_git_sha": "ce4fc57",
+  "generated_artifacts": [
+    "ConDemoNoteReportAdv.menuitem.metadata.xml",
+    "ConDemoNoteReportAdv.metadata.xml",
+    "ConDemoNoteReportAdvContract.metadata.xml",
+    "ConDemoNoteReportAdvController.metadata.xml",
+    "ConDemoNoteReportAdvDP.metadata.xml",
+    "ConDemoNoteReportAdvTmp.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "PASS"
+}

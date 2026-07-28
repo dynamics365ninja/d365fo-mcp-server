@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 77,
-    "covered": 65,
-    "percent": 84.4
+    "covered": 66,
+    "percent": 85.7
   },
   "leaves": [
     {
@@ -954,10 +954,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-data-entity-extension-field"
+      ]
     },
     {
       "id": "custom-service",

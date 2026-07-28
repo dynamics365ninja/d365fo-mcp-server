@@ -1,66 +1,108 @@
-# Golden: L3-data-entity-extension-field — CAPTURED BUT `golden_pending` STAYS TRUE
+# Golden: L3-data-entity-extension-field — FROZEN
 
-Captured 2026-07-27 on the VM (xppc 7.0.7858.27). Build green, `run_bp_check` 0 errors
-and 0 case-scope warnings for BOTH artifacts.
+`golden_pending: false`. Re-captured 2026-07-28 on the VM (xppc 7.0.7858.27) after the
+extension writer landed in PR #776. Full build: `Errors: 0`.
 
-## Why `golden_pending` is NOT cleared — fix first, capture second
+The previous draft was held back under **fix first, capture second**: the entity extension
+had no grounded tool path at all, so the only way to produce it was hand-written XML.
+That is no longer true — both artifacts below are now verbatim tool output.
 
-`CustTable.ConExtension.metadata.xml` is verbatim tool output
-(`d365fo_file(action="create", objectType="table-extension")`, bridge
-`IMetaTableExtensionProvider.Create`). It matches the standard AxTableExtension
-vocabulary exactly (12/12 elements; 961/963 standard AxTableExtension files carry the
-same six mandatory ones). Nothing pending here.
+## What changed since the draft
 
-`CustCustomerV3Entity.ConExtension.metadata.xml` is the CORRECTED shape — **no grounded
-tool path can produce it today**:
+`CustCustomerV3Entity.ConExtension.metadata.xml` is now produced by
+`d365fo_file(action="create", objectType="data-entity-extension", properties.fields=[…])`
+and is **byte-identical to the hand-corrected shape the draft carried** (the only delta was
+a stray UTF-8 BOM on the hand-written file; no shipped `AxDataEntityViewExtension`, and no
+other file this tool writes, carries one).
 
-* `d365fo_file(action="create", objectType="data-entity-extension")` routes to
-  `GenerateD365XmlTool.generateAxSimpleExtensionXml('AxDataEntityViewExtension', name)`
-  (`src/tools/generateD365Xml.ts:1035`, `:1109`). That helper takes only `(rootElement, name)`
-  — it **ignores `properties` entirely** and emits a 4-line stub:
-  `<Name>` + `<PropertyModifications />`. The `fields` spec is dropped silently, with a
-  success banner and `⛔ TASK COMPLETE`.
-* `d365fo_file(action="modify", objectType="data-entity-extension", operation="add-field")`
-  → `Operation 'add-field' on object type 'data-entity-extension' is not supported by the bridge.`
+Before PR #776 that call routed to `generateAxSimpleExtensionXml(rootElement, name)`, which
+took no `properties` and emitted a 2-element stub (`Name` + `PropertyModifications`) behind a
+success banner. `d365fo_file(action="modify", …, operation="add-field")` was not supported by
+the bridge for this type, so there was no repair route either.
 
-So the only route to a working entity extension is hand-written XML / `overwrite=true` —
-the escape hatch the loop forbids. Refresh this golden (and drop `golden_pending`) once the
-writer emits the mapped field.
+`CustTable.ConExtension.metadata.xml` is unchanged — it was already verbatim tool output.
 
-## Ground truth the golden was checked against
+## Grounding the DataSource value
 
-Element census over all 396 `AxDataEntityViewExtension` files in
-`K:\AosService\PackagesLocalDirectory`: `Name` 395/396, `FieldGroupExtensions` 395,
-`Relations`/`PropertyModifications`/`Fields`/`DataSources` 394, `FieldGroups` 392,
-`Mappings` 388, `FieldModifications` 368. The stub emits 2 of those 9; the golden emits all 9.
-Reference file for the mapped-field shape:
+`<DataSource>CustTable</DataSource>` is the entity's ROOT data-source **name**, read from
+`ApplicationSuite\Foundation\AxDataEntityView\CustCustomerV3Entity.xml`:
+`ViewMetadata/DataSources/AxQuerySimpleRootDataSource/Name = CustTable` (Table = `CustTable`).
+It was not inferred from the entity name.
+
+Reference for the mapped-field shape:
 `ApplicationSuite\Foundation\AxDataEntityViewExtension\BankAccountEntity.CH_QRBill_Extension.xml`
 (`AxDataEntityViewField` with `i:type="AxDataEntityViewMappedField"`, Name/DataField/DataSource).
+Element census over all 396 `AxDataEntityViewExtension` files: `Name` 395/396,
+`FieldGroupExtensions` 395, `Relations`/`PropertyModifications`/`Fields`/`DataSources` 394,
+`FieldGroups` 392, `Mappings` 388, `FieldModifications` 368. The golden emits all 9.
 
-## The DataSource value, and the case's silent-failure premise
+## Oracle negative tests (this golden discriminates)
 
-`<DataSource>CustTable</DataSource>` is the entity's ROOT data source **name**, read from
-`ApplicationSuite\Foundation\AxDataEntityView\CustCustomerV3Entity.xml`:
-`ViewMetadata/DataSources/AxQuerySimpleRootDataSource/Name = CustTable` (Table = CustTable).
-It was NOT inferred from the entity name.
+Both re-verified against the frozen golden:
 
-NEGATIVE TESTS (each a real xppc full build) show the case instruction's premise —
-"a wrong DataSource value compiles but breaks at runtime" — is **FALSE on this build**:
+| Injected shape | `eval:score` result |
+|---|---|
+| `DataSource` → `DirPartyBaseEntity` (a real but wrong data source) | `1 changed` — the `DataSource` path alone |
+| the pre-fix 2-element stub | `4 missing` — `@type`, `Name`, `DataField`, `DataSource` of the mapped field |
 
-* `DataSource=CustGroup` (real table, not a data source of this entity) →
-  `Metadata Error: .../Fields/ConDemoLoyaltyCode/DataSource: Data source 'CustGroup' does not
-  exist or is not part of the first root data source in the query.`
-* `DataSource=DirPartyBaseEntity` (a REAL nested data source of this entity, wrong one) →
-  `Metadata Error: .../Fields/ConDemoLoyaltyCode/DataField: Field 'ConDemoLoyaltyCode' does not
-  exist on data source 'DirPartyBaseEntity'.`
+## The case instruction's premise was wrong — corrected
 
-Both flavours are compile-detected. The case text should be corrected.
+The case used to say a wrong `DataSource` "compiles but breaks at runtime". On xppc
+7.0.7858.27 it is a **hard compile error**, re-confirmed on this run with a real full build:
+
+```
+Metadata Error: AxDataEntityViewExtension/CustCustomerV3Entity.ConExtension/Fields/
+                ConDemoLoyaltyCode/DataField:
+                Field 'ConDemoLoyaltyCode' does not exist on data source 'DirPartyBaseEntity'.
+Errors: 1
+```
+
+(The 2026-07-27 draft additionally recorded `DataSource=CustGroup` — a table that is not a
+data source of this entity at all — failing with
+`Data source 'CustGroup' does not exist or is not part of the first root data source in the query.`)
+The instruction text has been corrected accordingly.
+
+## BP coverage is genuinely partial — `bp_clean: null`, not 0
+
+`run_bp_check` was run per object with an explicit `targetFilter`:
+
+| Target | Element type | Result |
+|---|---|---|
+| `CustTable.ConExtension` | `tableextension` | 0 warnings, 0 errors |
+| `CustCustomerV3Entity.ConExtension` | `dataentityviewextension` | **not checkable** |
+
+xppbp has no `DataEntityViewExtension` element type. Its supported list is Class, Table, Form,
+View, Enum, ExtendedDataType, Menu, ConfigurationKey, LicenseCode, Macro, Map, Query, Service,
+ServiceGroup, MenuItem{Display,Action,Output}, SecurityPrivilege, Infopart, IgnoreList, Report,
+AggregateDimension, AggregateMeasurement, SecurityRole, DataEntityView, AggregateDataEntity,
+SecurityDuty, CompositeDataEntityView, **TableExtension, FormExtension, MenuExtension** — entity
+view extensions are absent. Targeting the merged base entity instead
+(`DataEntityView:CustCustomerV3Entity`) also fails: xppbp runs scoped to the sandbox model and
+the base entity lives in `Foundation` (`DataEntityView 'CustCustomerV3Entity' not found`).
+
+Since the artifact under test is precisely the one xppbp cannot see, the corpus record carries
+`bp_clean: null` (BP not checked) rather than a `0` that would mint a false clean for the case
+as a whole.
+
+**Tool defect found while measuring this:** `run_bp_check` with an unsupported
+`targetElementType` returns the banner `✅ BP Check passed` with `Warnings: 0 / Errors: 0`,
+while the body of the same response says `The element type 'dataentityviewextension' is
+invalid.` Nothing was checked. This is the same false-clean class as the already-documented
+filterless `run_bp_check`.
+
+## Other observation
+
+`d365fo_file(action="create")` auto-applies `EXTENSION_PREFIX` to **objectName only**, never to
+`properties.fields[].name`. Passing `DemoLoyaltyCode` yields `CustTable.ConExtension` (prefixed)
+containing an **unprefixed** field `DemoLoyaltyCode` — which in a real model is a cross-model
+collision risk, since extension fields must be prefixed. The caller has to hand-build the field
+prefix (`ConDemoLoyaltyCode`) even though the tool documents "NEVER hand-build the prefix" for
+object names.
 
 ## Descriptor prerequisite (not part of the golden)
 
 Extending `CustCustomerV3Entity` forces xppc to validate the WHOLE merged entity inside the
-sandbox model's reference closure. `Contoso\Descriptor\Contoso.xml` needed two ModuleReferences
-added — `Dimensions` (owns `DimensionSetEntity`) and `PersonnelCore` (owns EDT
-`HcmPersonnelNumberId`) — otherwise the build fails with 6 metadata errors attributed to
-`AxDataEntityViewExtension/CustCustomerV3Entity.ConExtension/...` even though the extension
-itself names neither type.
+sandbox model's reference closure. `Contoso\Descriptor\Contoso.xml` needs the ModuleReferences
+`Dimensions` (owns `DimensionSetEntity`) and `PersonnelCore` (owns EDT `HcmPersonnelNumberId`);
+without them the build fails with 6 metadata errors attributed to this extension even though it
+names neither type. Both were already present for this run.
