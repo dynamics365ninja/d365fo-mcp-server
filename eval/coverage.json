@@ -1,15 +1,15 @@
 {
   "core": {
     "tier": "core",
-    "total": 43,
+    "total": 44,
     "covered": 43,
-    "percent": 100
+    "percent": 97.7
   },
   "total": {
     "tier": "all",
-    "total": 77,
+    "total": 78,
     "covered": 66,
-    "percent": 85.7
+    "percent": 84.6
   },
   "leaves": [
     {
@@ -211,6 +211,18 @@
       "cases": [
         "L2-interface-abstract-basic"
       ]
+    },
+    {
+      "id": "class-inheritance",
+      "label": "Class inheritance (extends chain, virtual dispatch)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
     },
     {
       "id": "coc-extension",
@@ -1205,9 +1217,7 @@
     }
   ],
   "orphans": {
-    "knowledge": [
-      "class-inheritance"
-    ],
+    "knowledge": [],
     "cases": [
       "L2-oracle-discriminator-random-wrapper-name",
       "L4-headerlines-document-slice"

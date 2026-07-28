@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 43 | 43 | **100%** |
-| total | 66 | 77 | 85.7% |
+| core | 43 | 44 | **97.7%** |
+| total | 66 | 78 | 84.6% |
 
 ## Data model (12/12)
 
@@ -28,12 +28,13 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (21/21)
+## Code (21/22)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | Class | core | ✅ | ✅ | ✅ | L1-class-basic, L2-class-method-ops |
 | Interface / abstract class | core | ✅ | ✅ | ✅ | L2-interface-abstract-basic |
+| Class inheritance (extends chain, virtual dispatch) | core | ✅ | — | ✅ | The mirror of table-inheritance for code. Added after the tool path was found to walk ZERO levels of the extends chain: an inherited method was reported as non-existent, so agents concluded a CoC wrap was impossible (PRs #780/#781/#782). Case authored; golden pending VM capture. |
 | Chain of Command extension | core | ✅ | ✅ | ✅ | L2-coc-extension |
 | Event handler subscription | core | ✅ | ✅ | ✅ | L2-event-handler-basic |
 | Delegate | core | ✅ | ✅ | ✅ | L2-delegate-basic |
@@ -132,6 +133,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
+| 4 | Class inheritance (extends chain, virtual dispatch) | missing E |
 | 2 | Data management framework (DMF/DIXF) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |
 | 2 | Parallel batch processing | missing E |
@@ -146,7 +148,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 ## Orphans
 
-- Knowledge entries no leaf claims (**unproven knowledge**): class-inheritance
+- Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
 _Generated 2026-07-28._

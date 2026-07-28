@@ -123,6 +123,12 @@ export const TAXONOMY: CoverageLeaf[] = [
     aotTypes: ['class'], knowledgeIds: ['xpp-class-rules'], caseIds: ['L2-interface-abstract-basic'],
   },
   {
+    id: 'class-inheritance', label: 'Class inheritance (extends chain, virtual dispatch)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class', 'class-extension'], knowledgeIds: ['class-inheritance'],
+    caseIds: ['L2-coc-inherited-method'],
+    note: 'The mirror of table-inheritance for code. Added after the tool path was found to walk ZERO levels of the extends chain: an inherited method was reported as non-existent, so agents concluded a CoC wrap was impossible (PRs #780/#781/#782). Case authored; golden pending VM capture.',
+  },
+  {
     id: 'coc-extension', label: 'Chain of Command extension', domain: 'Code', source: 'aot', tier: 'core', weight: 5,
     aotTypes: ['class-extension'], knowledgeIds: ['coc', 'coc-authoring'], caseIds: ['L2-coc-extension'],
   },
