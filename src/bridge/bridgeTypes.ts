@@ -638,6 +638,13 @@ export interface BridgeCompletionMember {
   name: string;
   signature?: string;
   kind: string;
+  /**
+   * Set by the caller (not the bridge) when the member was picked up from a
+   * base class rather than declared on the requested one. IMetadataProvider
+   * returns declared members only, so inherited members are merged in on the
+   * TypeScript side and tagged here.
+   */
+  inheritedFrom?: string;
 }
 
 export interface BridgeCompletionResult {

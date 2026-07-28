@@ -2216,11 +2216,37 @@ export async function tryBridgeCompletion(
   bridge: BridgeClient | undefined,
   symbolName: string,
   prefix?: string,
+  ancestors?: string[],
 ): Promise<ToolResult | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     const result = await bridge.getCompletionMembers(symbolName);
     if (!result || !result.members || result.members.length === 0) return null;
+
+    // IMetadataProvider returns DECLARED members only, so a subclass lists
+    // nothing it inherits and the reader concludes the member does not exist.
+    // Merge the base classes in, nearest first; a name already present wins,
+    // since that is the subclass's own override.
+    if (ancestors?.length) {
+      const seen = new Set(result.members.map(m => m.name.toLowerCase()));
+      for (const ancestor of ancestors) {
+        let inherited: BridgeCompletionResult | null = null;
+        try {
+          inherited = await bridge.getCompletionMembers(ancestor);
+        } catch (e) {
+          // One unreadable link must not discard the members already merged.
+          console.error(`[BridgeAdapter] getCompletionMembers(${ancestor}) failed: ${e}`);
+          continue;
+        }
+        for (const m of inherited?.members ?? []) {
+          const key = m.name.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          result.members.push({ ...m, inheritedFrom: inherited?.symbolName || ancestor });
+        }
+      }
+    }
+
     return { content: [{ type: 'text', text: formatCompletion(result, prefix) }] };
   } catch (e) {
     console.error(`[BridgeAdapter] getCompletionMembers(${symbolName}) failed: ${e}`);
@@ -2250,9 +2276,15 @@ function formatCompletion(r: BridgeCompletionResult, prefix?: string): string {
   const fieldMembers = members.filter(m => m.kind === 'field');
 
   if (methodMembers.length > 0) {
+    const inheritedCount = methodMembers.filter(m => m.inheritedFrom).length;
     out += `## Methods (${methodMembers.length})\n`;
     for (const m of methodMembers) {
-      out += m.signature ? `- \`${m.signature}\`\n` : `- ${m.name}\n`;
+      const body = m.signature ? `\`${m.signature}\`` : m.name;
+      out += m.inheritedFrom ? `- ${body} _(inherited from ${m.inheritedFrom})_\n` : `- ${body}\n`;
+    }
+    if (inheritedCount > 0) {
+      out += `\n> ${inheritedCount} of these are inherited — callable on ${r.symbolName}, but ` +
+        `declared on a base class. To read or wrap one, target the class named beside it.\n`;
     }
   }
 
