@@ -25,6 +25,10 @@ import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { XppSymbolIndex } from '../metadata/symbolIndex.js';
 import { SmartXmlBuilder, TableFieldSpec } from '../utils/smartXmlBuilder.js';
 import { XmlTemplateGenerator } from './createD365File.js';
+import {
+  resolveBestEdt,
+  suggestEdtFromFieldName as heuristicEdtFromFieldName,
+} from './generateSmartTable.js';
 import { ProjectFileManager } from './createD365File.js';
 import path from 'path';
 import fs from 'fs';
@@ -384,8 +388,8 @@ export async function handleGenerateSmartReport(
   if (structuredFields && structuredFields.length > 0 && reportFields.length === 0) {
     reportFields = structuredFields.map(f => ({
       ...f,
-      edt: f.edt || suggestEdtFromFieldName(f.name),
-      dataType: f.dataType || resolveRdlDataType(f.edt || suggestEdtFromFieldName(f.name), rdb),
+      edt: f.edt || suggestEdtFromFieldName(f.name, rdb),
+      dataType: f.dataType || resolveRdlDataType(f.edt || suggestEdtFromFieldName(f.name, rdb), rdb),
     }));
     log(`Using ${reportFields.length} structured fields`);
   }
@@ -394,7 +398,7 @@ export async function handleGenerateSmartReport(
   if (fieldsHint && reportFields.length === 0) {
     const hints = fieldsHint.split(',').map(s => s.trim()).filter(Boolean);
     reportFields = hints.map(h => {
-      const edt = suggestEdtFromFieldName(h);
+      const edt = suggestEdtFromFieldName(h, rdb);
       return {
         name: h,
         edt,
@@ -438,13 +442,13 @@ export async function handleGenerateSmartReport(
     if (ds.fields && ds.fields.length > 0) {
       dsFields = ds.fields.map((f: ReportFieldSpec) => ({
         ...f,
-        edt: f.edt || suggestEdtFromFieldName(f.name),
-        dataType: f.dataType || resolveRdlDataType(f.edt || suggestEdtFromFieldName(f.name), rdb),
+        edt: f.edt || suggestEdtFromFieldName(f.name, rdb),
+        dataType: f.dataType || resolveRdlDataType(f.edt || suggestEdtFromFieldName(f.name, rdb), rdb),
       }));
     } else if (ds.fieldsHint) {
       const hints = ds.fieldsHint.split(',').map((s: string) => s.trim()).filter(Boolean);
       dsFields = hints.map((h: string) => {
-        const edt = suggestEdtFromFieldName(h);
+        const edt = suggestEdtFromFieldName(h, rdb);
         return { name: h, edt, dataType: resolveRdlDataType(edt, rdb) };
       });
     }
@@ -1298,32 +1302,34 @@ function injectGroupedTablix(
 }
 
 /**
- * Suggest EDT based on field name heuristics (shared with generateSmartTable).
+ * Resolve the EDT for a report field name.
+ *
+ * Regression: this used to be a private hardcoded keyword ladder ending in
+ * `return 'String255'` that never touched the DB — despite a doc comment claiming
+ * it was "shared with generateSmartTable" and a tool schema that documents
+ * `fieldsHint` identically for scaffold:table and scaffold:report ("EDTs
+ * auto-suggested from the index"). Only the table side actually hit the index.
+ * Effect: `prepare(mode="create")` resolved NoteId→Num, Subject→smmSubject,
+ * LineCount→Counter while the report writer emitted String255 for all three; a
+ * count then became a string, its AxReportDataSetField/DataType became
+ * System.String (no SSRS numeric formatting or aggregation) and the DP had to
+ * wrap the aggregate in int642Str().
+ * Evidence: eval/corpus/runs/2026-07-28T04__L4-ssrs-report-multidataset__39adafe.json
+ *
+ * Now genuinely shared: resolveBestEdt does edt_metadata exact → canonical →
+ * fuzzy-with-confidence and falls back to generateSmartTable's heuristic ladder,
+ * which is a superset of the one deleted here. Without a DB (Azure/Linux) the
+ * heuristic is used directly, so the two paths agree in both cases.
  */
-function suggestEdtFromFieldName(fieldName: string): string {
-  const n = fieldName.toLowerCase();
-  if (n === 'recid') return 'RecId';
-  if (n === 'accountnum' || n === 'accountnumber') return 'CustAccount';
-  if (n.includes('custaccount') || n.includes('customeraccount')) return 'CustAccount';
-  if (n.includes('vendaccount') || (n.includes('vendor') && n.includes('account'))) return 'VendAccount';
-  if (n === 'name' || n === 'itemname') return 'Name';
-  if (n.includes('name')) return 'Name';
-  if (n === 'description' || n === 'desc') return 'Description';
-  if (n.includes('description')) return 'Description';
-  if (n.includes('amount') || n.includes('balance')) return 'AmountMST';
-  if (n.includes('quantity') || n.includes('qty')) return 'Qty';
-  if (n.includes('price')) return 'PriceUnit';
-  if (n === 'fromdate' || n === 'validfrom') return 'TransDate';
-  if (n === 'todate' || n === 'validto') return 'TransDate';
-  if (n.includes('date')) return 'TransDate';
-  if (n.includes('itemid') || n === 'item') return 'ItemId';
-  if (n.includes('custgroup')) return 'CustGroupId';
-  if (n.includes('cust')) return 'CustAccount';
-  if (n.includes('vend')) return 'VendAccount';
-  if (n.includes('percent') || n.includes('pct')) return 'Percent';
-  if (n.includes('zone')) return 'WHSZoneId';
-  if (n.includes('warehouse') || n === 'whs') return 'InventLocationId';
-  return 'String255';
+function suggestEdtFromFieldName(fieldName: string, db?: any): string {
+  if (db) {
+    try {
+      return resolveBestEdt(fieldName, db);
+    } catch {
+      /* DB unusable — fall through to the shared heuristic */
+    }
+  }
+  return heuristicEdtFromFieldName(fieldName);
 }
 
 /**

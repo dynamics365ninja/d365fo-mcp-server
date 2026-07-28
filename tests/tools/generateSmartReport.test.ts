@@ -85,3 +85,82 @@ describe('generate_object(scaffold, report) contract mandatory param', () => {
     expect(text).toContain('checkFailed');
   });
 });
+
+/**
+ * Regression: scaffold:report ignored the EDT index.
+ *
+ * suggestEdtFromFieldName() in generateSmartReport.ts was a private hardcoded keyword
+ * ladder ending in `return 'String255'` that never queried the DB — while its doc comment
+ * claimed it was "shared with generateSmartTable" and the tool schema documents fieldsHint
+ * identically for scaffold:table and scaffold:report ("EDTs auto-suggested from the index").
+ * Only the table side actually hit the index (resolveBestEdt).
+ *
+ * Observed on the VM (eval/corpus/runs/2026-07-28T04__L4-ssrs-report-multidataset__39adafe.json):
+ * prepare(mode="create") resolved NoteId→Num, Subject→smmSubject, LineCount→Counter, yet the
+ * report writer emitted String255 for all three. Worst case is a count becoming a string —
+ * AxReportDataSetField/DataType turns into System.String, killing SSRS numeric formatting and
+ * aggregation and forcing the DP to wrap the aggregate in int642Str().
+ */
+describe('generate_object(scaffold, report) EDT resolution', () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  /** Stub whose edt_metadata table contains exactly `edts`, answered by SQL shape. */
+  function createIndexedSymbolIndexStub(edts: Record<string, string>) {
+    const known = new Set(Object.keys(edts));
+    const prepare = vi.fn((sql: string) => ({
+      get: vi.fn((param: string) => {
+        if (sql.includes('extends') || sql.includes('edt_metadata WHERE edt_name = ?')) {
+          return known.has(param)
+            ? { edt_name: param, extends: edts[param] }
+            : undefined;
+        }
+        return undefined;
+      }),
+      all: vi.fn(() => []),
+    }));
+    return { getReadDb: vi.fn(() => ({ prepare })) } as any;
+  }
+
+  it('resolves a field name that IS an EDT through the index instead of defaulting to String255', async () => {
+    const symbolIndex = createIndexedSymbolIndexStub({
+      Num: 'String',
+      Counter: 'Integer',
+    });
+
+    const result = await handleGenerateSmartReport(
+      {
+        name: 'DemoNoteReport',
+        fieldsHint: 'Num, Counter',
+        modelName: 'MyModel',
+      } as any,
+      symbolIndex
+    );
+
+    const text = result.content[0].text as string;
+    expect(text).toContain('<ExtendedDataType>Num</ExtendedDataType>');
+    expect(text).toContain('<ExtendedDataType>Counter</ExtendedDataType>');
+    // The whole point: neither field silently became the generic string default.
+    expect(text).not.toContain('<ExtendedDataType>String255</ExtendedDataType>');
+  });
+
+  it('still falls back to the shared heuristic when the index knows nothing', async () => {
+    const symbolIndex = createIndexedSymbolIndexStub({});
+
+    const result = await handleGenerateSmartReport(
+      { name: 'DemoNoteReport', fieldsHint: 'CustAccount', modelName: 'MyModel' } as any,
+      symbolIndex
+    );
+
+    const text = result.content[0].text as string;
+    expect(text).toContain('CustAccount');
+  });
+});
