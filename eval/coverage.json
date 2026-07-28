@@ -1,15 +1,15 @@
 {
   "core": {
     "tier": "core",
-    "total": 43,
-    "covered": 43,
+    "total": 44,
+    "covered": 44,
     "percent": 100
   },
   "total": {
     "tier": "all",
-    "total": 77,
-    "covered": 66,
-    "percent": 85.7
+    "total": 78,
+    "covered": 67,
+    "percent": 85.9
   },
   "leaves": [
     {
@@ -213,6 +213,20 @@
       ]
     },
     {
+      "id": "class-inheritance",
+      "label": "Class inheritance (extends chain, virtual dispatch)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-coc-inherited-method"
+      ]
+    },
+    {
       "id": "coc-extension",
       "label": "Chain of Command extension",
       "domain": "Code",
@@ -398,6 +412,7 @@
         "L1-table-basic",
         "L2-business-event-basic",
         "L2-class-method-ops",
+        "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
         "L2-datetime-timezone-range",
@@ -449,6 +464,7 @@
         "L1-table-basic",
         "L2-business-event-basic",
         "L2-class-method-ops",
+        "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
         "L2-datetime-timezone-range",
@@ -1179,6 +1195,7 @@
         "L1-table-basic",
         "L2-business-event-basic",
         "L2-class-method-ops",
+        "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
         "L2-datetime-timezone-range",
@@ -1205,9 +1222,7 @@
     }
   ],
   "orphans": {
-    "knowledge": [
-      "class-inheritance"
-    ],
+    "knowledge": [],
     "cases": [
       "L2-oracle-discriminator-random-wrapper-name",
       "L4-headerlines-document-slice"

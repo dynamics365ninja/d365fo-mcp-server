@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>SalesFormLetter_InvoiceCon_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[ExtensionOf(classStr(SalesFormLetter_Invoice))]
+final class SalesFormLetter_InvoiceCon_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>promptAndRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Chain of Command wrapper for a method the augmented class only inherits.
+    /// </summary>
+    public void promptAndRun()
+    {
+        // Declared on: SalesFormLetter
+        // Chain: SalesFormLetter_Invoice -> SalesFormLetter -> FormLetterServiceController -> SysOperationServiceController -> SysOperationController
+        next promptAndRun();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

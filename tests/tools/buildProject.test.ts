@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // --- hoisted mocks -----------------------------------------------------------
 const {
-  accessMock, writeFileMock, appendFileMock, unlinkMock, readFileMock, readdirMock, spawnMock, execFileMock,
+  accessMock, writeFileMock, appendFileMock, unlinkMock, readFileMock, readdirMock, statMock, spawnMock, execFileMock,
   cfgEnsureLoaded, cfgGetProjectPath, cfgGetPackagePath, cfgGetContext,
   cfgGetCustomPackagesPath, cfgGetMicrosoftPackagesPath,
   cfgGetActiveXppConfig, cfgGetModelName,
@@ -13,6 +13,9 @@ const {
   const unlinkMock = vi.fn().mockResolvedValue(undefined);
   const readFileMock = vi.fn();
   const readdirMock = vi.fn().mockRejectedValue(new Error('not found'));
+  // Source-staleness scan (hasSourceChangesSince). mtimeMs 0 = "older than any
+  // build", so a mocked tree never looks modified unless a test says so.
+  const statMock = vi.fn().mockResolvedValue({ mtimeMs: 0 });
   const spawnMock = vi.fn();
   // execFile needs to call its callback for util.promisify to work
   const execFileMock: any = vi.fn((_file: string, _args: string[], _opts: any, cb: Function) => {
@@ -27,7 +30,7 @@ const {
   const cfgGetActiveXppConfig = vi.fn().mockResolvedValue(null);
   const cfgGetModelName = vi.fn().mockReturnValue(null);
   return {
-    accessMock, writeFileMock, appendFileMock, unlinkMock, readFileMock, readdirMock, spawnMock, execFileMock,
+    accessMock, writeFileMock, appendFileMock, unlinkMock, readFileMock, readdirMock, statMock, spawnMock, execFileMock,
     cfgEnsureLoaded, cfgGetProjectPath, cfgGetPackagePath, cfgGetContext,
     cfgGetCustomPackagesPath, cfgGetMicrosoftPackagesPath,
     cfgGetActiveXppConfig, cfgGetModelName,
@@ -46,6 +49,7 @@ vi.mock('fs/promises', () => ({
   readFile: readFileMock,
   appendFile: appendFileMock,
   readdir: readdirMock,
+  stat: statMock,
 }));
 vi.mock('../../src/utils/configManager.js', () => ({
   getConfigManager: () => ({
@@ -98,6 +102,10 @@ describe('build_d365fo_project', () => {
     appendFileMock.mockResolvedValue(undefined);
     unlinkMock.mockResolvedValue(undefined);
     readdirMock.mockRejectedValue(new Error('not found'));
+    // resetAllMocks() above wipes the hoisted implementation, and an unarmed
+    // stat resolves undefined — which the staleness scan reads as "unreadable,
+    // assume changed", so every finished result would be refused and rebuilt.
+    statMock.mockResolvedValue({ mtimeMs: 0 });
     cfgGetProjectPath.mockResolvedValue(PROJECT_PATH);
     cfgGetPackagePath.mockReturnValue(null);
     cfgGetContext.mockReturnValue({});
@@ -237,6 +245,10 @@ describe('build_d365fo_project', () => {
       throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
     });
 
+    // Model tree readable and unchanged since the build — otherwise the result
+    // is (correctly) refused as stale and a fresh build starts.
+    readdirMock.mockResolvedValue([]);
+
     const result = await buildProjectTool({ projectPath: PROJECT_PATH }, {});
 
     expect(result.content[0].text).toContain('succeeded');
@@ -263,6 +275,8 @@ describe('build_d365fo_project', () => {
       if (p.includes('d365build_log')) return 'error AX0001: Something broke';
       throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
     });
+
+    readdirMock.mockResolvedValue([]);
 
     const result = await buildProjectTool({ projectPath: PROJECT_PATH }, {});
 

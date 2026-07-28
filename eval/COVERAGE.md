@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 43 | 43 | **100%** |
-| total | 66 | 77 | 85.7% |
+| core | 44 | 44 | **100%** |
+| total | 67 | 78 | 85.9% |
 
 ## Data model (12/12)
 
@@ -28,12 +28,13 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (21/21)
+## Code (22/22)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | Class | core | ✅ | ✅ | ✅ | L1-class-basic, L2-class-method-ops |
 | Interface / abstract class | core | ✅ | ✅ | ✅ | L2-interface-abstract-basic |
+| Class inheritance (extends chain, virtual dispatch) | core | ✅ | ✅ | ✅ | L2-coc-inherited-method |
 | Chain of Command extension | core | ✅ | ✅ | ✅ | L2-coc-extension |
 | Event handler subscription | core | ✅ | ✅ | ✅ | L2-event-handler-basic |
 | Delegate | core | ✅ | ✅ | ✅ | L2-delegate-basic |
@@ -45,8 +46,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | ✅ | ✅ | L2-sysextension-plugin |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +35 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +35 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +36 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +36 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
@@ -126,7 +127,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L3-batch-basic |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +35 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +36 |
 
 ## Closure queue (uncovered, by frequency weight)
 
@@ -146,7 +147,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 ## Orphans
 
-- Knowledge entries no leaf claims (**unproven knowledge**): class-inheritance
+- Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
 _Generated 2026-07-28._
