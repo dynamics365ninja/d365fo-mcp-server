@@ -146,7 +146,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 ## Orphans
 
-- Knowledge entries no leaf claims (**unproven knowledge**): none
+- Knowledge entries no leaf claims (**unproven knowledge**): class-inheritance
 - Eval cases no leaf claims (**unmapped proof**): L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
 _Generated 2026-07-28._
