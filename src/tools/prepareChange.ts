@@ -24,6 +24,7 @@ import { createProvenanceToken } from '../utils/provenanceStore.js';
 import { tryBridgeCocExtensions } from '../bridge/bridgeAdapter.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { lookupSymbolNocase } from '../utils/symbolLookup.js';
+import { findDeclaringAncestor } from '../utils/inheritanceChain.js';
 import { rankContext, renderRankedContext } from '../workspace/contextRanker.js';
 
 // Schema
@@ -75,34 +76,79 @@ async function resolveObject(
   }
 }
 
-/** Look up method signature directly from the symbol index. */
-async function fetchMethodSignature(
+interface MethodLookup {
+  row: { signature: string; tags: string };
+  /** Class the row was actually read from. */
+  owner: string;
+  /** True when `owner` is an ancestor rather than the object the caller named. */
+  inherited: boolean;
+}
+
+/**
+ * Method row for `objectName::methodName`, falling back to the ancestor that
+ * DECLARES it.
+ *
+ * `parent_name = ?` matches declared members only, so a leaf class reported a
+ * bare "not found" for everything it inherits — and prepare is the aggregator
+ * agents are told to start from, so that read as "the method does not exist"
+ * and the CoC path was abandoned. The class worth wrapping is usually a leaf
+ * (SalesFormLetter_Invoice does not declare `promptAndRun`; SalesFormLetter
+ * does), which made the miss the common case rather than an edge one.
+ *
+ * Index-safe: the extra probe reuses `findDeclaringAncestor`, which walks
+ * `extends_class` and keeps `parent_name` BINARY on idx_parent_type_name.
+ */
+function readMethodRow(
+  context: XppServerContext,
   objectName: string,
   methodName: string,
-  context: XppServerContext,
-): Promise<string> {
+): MethodLookup | undefined {
   try {
     const db = context.symbolIndex.getReadDb();
     // parent_name stays BINARY (canonical casing resolved upstream) so the
     // probe uses idx_parent_type_name; NOCASE applies only to the method name
     // within that object's few hundred method rows.
-    const row = db.prepare(
+    const stmt = db.prepare(
       `SELECT signature, tags FROM symbols
        WHERE parent_name = ? AND type = 'method' AND name = ? COLLATE NOCASE
        LIMIT 1`,
-    ).get(objectName, methodName) as { signature: string; tags: string } | undefined;
-    if (row) {
-      const lines = [`Signature : ${row.signature ?? '(unavailable)'}`];
-      const tags = row.tags ?? '';
-      if (tags.includes('hookable:false')) lines.push('⛔ [Hookable(false)] — CoC is blocked.');
-      if (tags.includes('wrappable:false')) lines.push('⛔ [Wrappable(false)] — wrapping is blocked.');
-      if (/\bfinal\b/i.test(row.signature ?? '')) {
-        lines.push('⚠️  Method is final — requires [Wrappable(true)] to enable CoC.');
-      }
-      return lines.join('\n');
-    }
+    );
+    const own = stmt.get(objectName, methodName) as MethodLookup['row'] | undefined;
+    if (own) return { row: own, owner: objectName, inherited: false };
+
+    const declaring = findDeclaringAncestor(db, objectName, methodName);
+    if (!declaring) return undefined;
+    const inheritedRow = stmt.get(declaring, methodName) as MethodLookup['row'] | undefined;
+    return inheritedRow ? { row: inheritedRow, owner: declaring, inherited: true } : undefined;
   } catch {
     // ignore DB errors
+    return undefined;
+  }
+}
+
+/** Look up method signature from the symbol index, including inherited methods. */
+async function fetchMethodSignature(
+  objectName: string,
+  methodName: string,
+  context: XppServerContext,
+): Promise<string> {
+  const found = readMethodRow(context, objectName, methodName);
+  if (found) {
+    const { row, owner, inherited } = found;
+    const lines = [`Signature : ${row.signature ?? '(unavailable)'}`];
+    if (inherited) {
+      lines.push(
+        `ℹ️  Inherited — \`${objectName}\` does not declare \`${methodName}\`; ` +
+        `it is declared on \`${owner}\`, which is where this signature comes from.`,
+      );
+    }
+    const tags = row.tags ?? '';
+    if (tags.includes('hookable:false')) lines.push('⛔ [Hookable(false)] — CoC is blocked.');
+    if (tags.includes('wrappable:false')) lines.push('⛔ [Wrappable(false)] — wrapping is blocked.');
+    if (/\bfinal\b/i.test(row.signature ?? '')) {
+      lines.push('⚠️  Method is final — requires [Wrappable(true)] to enable CoC.');
+    }
+    return lines.join('\n');
   }
   return '(not found in symbol index)';
 }
@@ -154,24 +200,26 @@ async function fetchEligibility(
   context: XppServerContext,
 ): Promise<string> {
   if (!methodName) return 'No specific method targeted — check base class documentation.';
-  try {
-    const db = context.symbolIndex.getReadDb();
-    const row = db.prepare(
-      `SELECT signature, tags FROM symbols
-       WHERE parent_name = ? AND type = 'method' AND name = ? COLLATE NOCASE
-       LIMIT 1`,
-    ).get(objectName, methodName) as { signature: string; tags: string } | undefined;
-    if (row) {
-      const tags = row.tags ?? '';
-      if (tags.includes('hookable:false')) return '⛔ [Hookable(false)] — CoC is blocked on this method.';
-      if (tags.includes('wrappable:false')) return '⛔ [Wrappable(false)] — wrapping is blocked on this method.';
-      if (/\bfinal\b/i.test(row.signature ?? '')) {
-        return '⚠️  Method is final — requires [Wrappable(true)] attribute to enable CoC.';
-      }
-      return '✅ Method appears CoC-eligible.';
+  const found = readMethodRow(context, objectName, methodName);
+  if (found) {
+    const { row, owner, inherited } = found;
+    const tags = row.tags ?? '';
+    if (tags.includes('hookable:false')) return '⛔ [Hookable(false)] — CoC is blocked on this method.';
+    if (tags.includes('wrappable:false')) return '⛔ [Wrappable(false)] — wrapping is blocked on this method.';
+    if (/\bfinal\b/i.test(row.signature ?? '')) {
+      return '⚠️  Method is final — requires [Wrappable(true)] attribute to enable CoC.';
     }
-  } catch {
-    // ignore
+    if (!inherited) return '✅ Method appears CoC-eligible.';
+    // An inherited method is wrappable on either class, verified against xppc:
+    // both targets compile. They differ only in scope, and a signature mismatch
+    // is reported against the DECLARING class whichever one is named.
+    return [
+      `✅ Method appears CoC-eligible — inherited from \`${owner}\`.`,
+      `Pick the target deliberately; both compile:`,
+      `- \`[ExtensionOf(classStr(${objectName}))]\` — wraps it for \`${objectName}\` only.`,
+      `- \`[ExtensionOf(classStr(${owner}))]\` — wraps it at the declaration, so it runs for **every** subclass of \`${owner}\`.`,
+      `Either way the signature must match \`${owner}\`'s declaration exactly — the compiler validates against it and names \`${owner}\` in any mismatch error.`,
+    ].join('\n');
   }
   return '(could not determine — method not found in symbol index)';
 }
