@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 43 | 43 | **100%** |
-| total | 65 | 77 | 84.4% |
+| total | 66 | 77 | 85.7% |
 
 ## Data model (12/12)
 
@@ -96,12 +96,12 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Warehouse management (WHS) | total | ✅ | — | ✅ | Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture. |
 | Trade agreements & pricing | total | ✅ | — | ✅ | Eval case authored (PriceDisc price/discount resolution); golden pending VM capture. |
 
-## Integration (4/9)
+## Integration (5/9)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | Data entity (OData) | core | ✅ | ✅ | ✅ | L4-entity-security |
-| Data entity extension | total | ✅ | — | ✅ | Eval case authored (table extension field surfaced on a standard entity); golden pending VM capture. |
+| Data entity extension | total | ✅ | ✅ | ✅ | L3-data-entity-extension-field |
 | Custom services / OData actions | core | ✅ | ✅ | ✅ | L3-custom-service-basic |
 | Data management framework (DMF/DIXF) | total | ✅ | — | ✅ | Eval case authored (import-ready entity + staging hook); golden pending VM capture. |
 | Dual-write (Dataverse) | total | ✅ | — | ✅ | Eval case authored for the AOT half (business key + change tracking); the dual-write map itself is UI-authored. Golden pending VM capture. |
@@ -132,7 +132,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
-| 2 | Data entity extension | missing E |
 | 2 | Data management framework (DMF/DIXF) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |
 | 2 | Parallel batch processing | missing E |

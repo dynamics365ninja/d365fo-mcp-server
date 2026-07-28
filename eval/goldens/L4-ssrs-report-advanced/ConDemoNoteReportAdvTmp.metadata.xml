@@ -1,5 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Golden for L4-ssrs-report-advanced (1 of 6): tmp table, generated via generate_object(scaffold, report, contractParams=[...]). Captured 2026-07-01, SHA 6e53a07. -->
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L4-ssrs-report-advanced (1 of 6): tmp table, generated via generate_object(scaffold, report, contractParams=[...]). Captured 2026-07-01, SHA 6e53a07. Re-captured 2026-07-28 after b3d7856+b6f50c9 taught scaffold:report to consult the EDT index: NoteId and Subject were String255 (the hardcoded fallback), they are now PlCorrNoteId and smmSubject. Those two ExtendedDataType values are the ONLY structural delta across all 6 artifacts. -->
 <AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>ConDemoNoteReportAdvTmp</Name>
 	<SourceCode>
@@ -65,12 +65,12 @@ public class ConDemoNoteReportAdvTmp extends common
 		<AxTableField xmlns=""
 				i:type="AxTableFieldString">
 			<Name>NoteId</Name>
-			<ExtendedDataType>String255</ExtendedDataType>
+			<ExtendedDataType>PlCorrNoteId</ExtendedDataType>
 		</AxTableField>
 		<AxTableField xmlns=""
 				i:type="AxTableFieldString">
 			<Name>Subject</Name>
-			<ExtendedDataType>String255</ExtendedDataType>
+			<ExtendedDataType>smmSubject</ExtendedDataType>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
