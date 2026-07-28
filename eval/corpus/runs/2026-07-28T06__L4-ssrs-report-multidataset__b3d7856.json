@@ -1,0 +1,65 @@
+{
+  "run_id": "2026-07-28T06__L4-ssrs-report-multidataset__b3d7856",
+  "case_id": "L4-ssrs-report-multidataset",
+  "tier": 4,
+  "timestamp": "2026-07-28T06:01:44.141Z",
+  "server_git_sha": "b3d7856",
+  "generated_artifacts": [
+    "ConDemoNoteReportMulti.menuitem.metadata.xml",
+    "ConDemoNoteReportMulti.metadata.xml",
+    "ConDemoNoteReportMultiContract.metadata.xml",
+    "ConDemoNoteReportMultiController.metadata.xml",
+    "ConDemoNoteReportMultiDP.metadata.xml",
+    "ConDemoNoteReportMultiSummaryTmp.metadata.xml",
+    "ConDemoNoteReportMultiTmp.metadata.xml"
+  ],
+  "build": {
+    "succeeded": false,
+    "errors": [
+      "Metadata Error: AxTable/ConDemoNoteReportMultiSummaryTmp/Fields/LineCount/ExtendedDataType: Data type mismatch. (xppc 7.0.7858.27, full build, Errors: 1)"
+    ],
+    "bp_checked": false,
+    "bpWarnings": null
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 0,
+    "bp_clean": null,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "xppc 7.0.7858.27",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "REGRESSION introduced by the very commit under test (b3d7856). Provenance is trustworthy here: live repo HEAD is b3d7856 on branch fix/report-edt-index and dist/tools/generateSmartReport.js was rebuilt at 05:29 from the 05:24 commit, so server_git_sha is accurate for once - confirmed behaviourally, not merely by timestamp.\n\nSTEP-0 PROBE (the half that works): the EDT index is now genuinely consulted by scaffold:report. Detail tmp NoteId -> PlCorrNoteId, Subject -> smmSubject; summary tmp LineCount -> PurchLineCount. No String255 anywhere. Parity with the table path is exact: generate_object(mode=fields) on the same three names returns byte-identical PlCorrNoteId / smmSubject / PurchLineCount, so suggestEdtFromFieldName really is shared now. The Num/Name pair in the L4-ssrs-report-basic golden came from copying the source table own fields, not from name resolution, so it is not a counter-example.\n\nTHE DEFECT: the resolved EDT and the AxTableField element type (i:type) are computed INDEPENDENTLY and never reconciled, so they can contradict each other. For LineCount the writer emitted i:type=AxTableFieldInt (Int32) while binding ExtendedDataType=PurchLineCount, which extends NumberOfRecords and is Int64. xppc rejects the combination. Before b3d7856 this same field was String255 + AxTableFieldString - internally consistent, so it built clean. Widening the EDT resolver without teaching the i:type chooser about the resolved EDT turned a cosmetic typing defect into a hard build break.\n\nCONFIRMED BY POSITIVE PROBE: flipping only i:type from AxTableFieldInt to AxTableFieldInt64 on that one field, changing nothing else, produced Errors: 0 on a fresh full build (33s, new Write Runtime Metadata phase, vs the 68s failing build - phase timings differ so it is not a stale result). That isolates the fault to the Int32-vs-Int64 disagreement and rules out the EDT choice itself, the report XML and the DP code.\n\nWHY THE i:type CHOOSER GUESSES: generateSmartReport.ts carries its OWN duplicate copy of resolveEdtBaseType (line 1359) whose doc comment claims it is the same as generateSmartTable - it is not. The generateSmartTable copy (line 1131) has an explicit ROOT-EDT branch: when edt_metadata.extends is NULL it returns undefined unless string_size is set, so the caller falls back to a name heuristic; its comment calls this the number-one scaffold-turned-my-date-or-amount-field-into-a-string bug. The generateSmartReport copy lacks that branch and returns String outright. NumberOfRecords IS such a root EDT (verified in edt_metadata: extends=NULL, enum_type=NULL, string_size=NULL - the index has no column at all recording a root EDT primitive). So b3d7856 shared suggestEdtFromFieldName but left resolveEdtBaseType duplicated and stale - the same comment-versus-reality mismatch it was written to remove, one function over.\n\nSECOND, SEPARATE SYMPTOM OF THE SAME ROOT CAUSE: because that stale copy returns String for PurchLineCount, AxReportDataSetField/DataType and the RDL rd:TypeName for LineCount are still System.String. So even had the build passed, the exact damage this case exists to catch - a count SSRS cannot format or aggregate numerically - is NOT yet fixed. The table field type and the RDL type are wrong in opposite directions (Int32 vs String) from the same unreconciled pair.\n\nCARRIED FORWARD from the previous run (still true, independent of this regression): pass@build does not certify AxReport dataset wiring - a dataset repointed at a non-existent DP still built with Errors: 0 under a full build with Metadata: validate report running.",
+  "suggested_fix_area": "src/tools/generateSmartReport.ts - (1) DELETE the duplicate resolveEdtBaseType at ~line 1359 and import the exported one from generateSmartTable, which already handles the root-EDT case; the doc comment already claims they are the same, so make it true. That alone fixes AxReportDataSetField/DataType and the RDL rd:TypeName for LineCount.\n(2) The real fix for the build break: derive the AxTableField i:type FROM the resolved EDT primitive instead of from an independent name heuristic, so ExtendedDataType and i:type can never disagree. NumberOfRecords and PurchLineCount are Int64, so the field must be AxTableFieldInt64. The C# bridge already reports Base Type: Int64 (Extends: NumberOfRecords) for PurchLineCount, so ground truth is available even though edt_metadata cannot express it.\n(3) Consider indexing a root EDT primitive type (an edt_metadata base_type or edt_type column). Both resolvers currently guess by name because the index physically cannot answer what primitive NumberOfRecords is - the shared upstream cause.\n(4) NOTE the same unreconciled pair exists on the TABLE path - generate_object(mode=fields) also returned AxTableFieldInt + PurchLineCount here. scaffold:table is latently exposed to the identical build break; it simply has no golden exercising an Int64-rooted EDT. Fix it in the shared code, not only in the report writer.\n(5) Regression guard: this fault class is invisible to validate_code (both modes passed clean) and only a FULL build catches it. Worth an assertion that the emitted i:type matches the resolved EDT primitive.",
+  "evidence_refs": [
+    "xppc full build (as-generated, 68s): Metadata Error: AxTable/ConDemoNoteReportMultiSummaryTmp/Fields/LineCount/ExtendedDataType: Data type mismatch. Errors: 1",
+    "positive probe (i:type AxTableFieldInt -> AxTableFieldInt64 only): fresh full build Errors: 0, 33s, Write Runtime Metadata phase present - phase timings differ from the failing build, so not stale",
+    "as-generated AxTable/ConDemoNoteReportMultiSummaryTmp: AxTableField i:type=AxTableFieldInt / Name=LineCount / ExtendedDataType=PurchLineCount",
+    "edt_metadata probe: PurchLineCount extends=NumberOfRecords; NumberOfRecords extends=NULL, enum_type=NULL, string_size=NULL (root EDT, primitive not recorded)",
+    "C# bridge get_object_info(edt, PurchLineCount): Base Type: Int64 (Extends: NumberOfRecords) - ground truth via bridge, not via edt_metadata",
+    "src/tools/generateSmartTable.ts:1131-1161 resolveEdtBaseType - HAS the root-EDT branch (returns undefined unless string_size set)",
+    "src/tools/generateSmartReport.ts:1359-1377 resolveEdtBaseType - duplicate, LACKS that branch, returns String at line 1373; doc comment falsely says same as generateSmartTable",
+    "AxReport LineCount: DataType=System.String and RDL rd:TypeName=System.String - still wrong after the fix",
+    "step-0 parity check: generate_object(mode=fields) on NoteId/Subject/LineCount returns PlCorrNoteId / smmSubject / PurchLineCount - identical to scaffold:report",
+    "prior run 2026-07-28T04__L4-ssrs-report-multidataset__39adafe.json (branch eval/ssrs-multidataset-capture): same case, String255 shape, build PASSED",
+    "golden NOT captured - case remains golden_pending: true"
+  ],
+  "notes": "Golden deliberately NOT captured and golden_pending left true. The artifacts do not build, so there is nothing valid to freeze; capturing would enshrine an i:type/ExtendedDataType contradiction. Fix first, capture second still stands. The Multi-dataset SSRS leaf stays open. Scope note: only L4-ssrs-report-advanced carries the old String255 shape from scaffold:report; L4-ssrs-report-basic builds its tmp table via the table path and is unaffected."
+}

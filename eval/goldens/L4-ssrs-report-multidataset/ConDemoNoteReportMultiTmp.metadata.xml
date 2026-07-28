@@ -64,12 +64,12 @@ public class ConDemoNoteReportMultiTmp extends common
 		<AxTableField xmlns=""
 				i:type="AxTableFieldString">
 			<Name>NoteId</Name>
-			<ExtendedDataType>String255</ExtendedDataType>
+			<ExtendedDataType>PlCorrNoteId</ExtendedDataType>
 		</AxTableField>
 		<AxTableField xmlns=""
 				i:type="AxTableFieldString">
 			<Name>Subject</Name>
-			<ExtendedDataType>String255</ExtendedDataType>
+			<ExtendedDataType>smmSubject</ExtendedDataType>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

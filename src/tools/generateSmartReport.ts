@@ -25,6 +25,14 @@ import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { XppSymbolIndex } from '../metadata/symbolIndex.js';
 import { SmartXmlBuilder, TableFieldSpec } from '../utils/smartXmlBuilder.js';
 import { XmlTemplateGenerator } from './createD365File.js';
+import {
+  resolveBestEdt,
+  suggestEdtFromFieldName as heuristicEdtFromFieldName,
+  resolveEdtBaseType as sharedResolveEdtBaseType,
+  heuristicEdtBaseType,
+  bridgeEdtBaseType,
+} from './generateSmartTable.js';
+import type { BridgeClient } from '../bridge/bridgeClient.js';
 import { ProjectFileManager } from './createD365File.js';
 import path from 'path';
 import fs from 'fs';
@@ -238,7 +246,8 @@ Examples:
 
 export async function handleGenerateSmartReport(
   args: GenerateSmartReportArgs,
-  symbolIndex: XppSymbolIndex
+  symbolIndex: XppSymbolIndex,
+  bridge?: BridgeClient
 ): Promise<any> {
   const {
     name,
@@ -333,6 +342,22 @@ export async function handleGenerateSmartReport(
 
   const rdb = symbolIndex.getReadDb();
 
+  // ONE resolved primitive per EDT, shared by every consumer: the AxTableField i:type
+  // (resolveFieldType) and the dataset/RDL type (resolveRdlDataType). They used to be
+  // derived independently and could disagree — an Int32 i:type over an Int64 EDT is a
+  // hard "Data type mismatch" build error, while the RDL stayed System.String.
+  const edtPrimitiveCache = new Map<string, string | undefined>();
+  const primitiveOf = async (edt: string | undefined): Promise<string | undefined> => {
+    if (!edt) return undefined;
+    if (!edtPrimitiveCache.has(edt)) {
+      edtPrimitiveCache.set(edt, await resolveEdtPrimitive(edt, rdb, bridge));
+    }
+    return edtPrimitiveCache.get(edt);
+  };
+  /** Cache read for the later sync passes — every EDT has been through primitiveOf by then. */
+  const primitiveOfSync = (edt: string | undefined): string | undefined =>
+    edt ? edtPrimitiveCache.get(edt) : undefined;
+
   let reportFields: ReportFieldSpec[] = [];
 
   // Strategy 1: copyFrom — read fields from existing report's TmpTable
@@ -364,13 +389,14 @@ export async function handleGenerateSmartReport(
           `SELECT name, signature FROM symbols WHERE type = 'field' AND parent_name = ? ORDER BY name`
         ).all(srcTmpTable) as Array<{ name: string; signature: string }>;
 
-        reportFields = dbFields
-          .filter(f => !['RecId', 'RecVersion', 'DataAreaId', 'Partition', 'TableId'].includes(f.name))
-          .map(f => ({
+        for (const f of dbFields) {
+          if (['RecId', 'RecVersion', 'DataAreaId', 'Partition', 'TableId'].includes(f.name)) continue;
+          reportFields.push({
             name: f.name,
             edt: f.signature || undefined,
-            dataType: resolveRdlDataType(f.signature, rdb),
-          }));
+            dataType: resolveRdlDataType(await primitiveOf(f.signature || undefined)),
+          });
+        }
         log(`Copied ${reportFields.length} fields from ${srcTmpTable}`);
       } else {
         log(`⚠ Could not find TmpTable for "${copyFrom}" — falling back to fieldsHint`);
@@ -382,25 +408,28 @@ export async function handleGenerateSmartReport(
 
   // Strategy 2: structuredFields (explicit specs from the caller)
   if (structuredFields && structuredFields.length > 0 && reportFields.length === 0) {
-    reportFields = structuredFields.map(f => ({
-      ...f,
-      edt: f.edt || suggestEdtFromFieldName(f.name),
-      dataType: f.dataType || resolveRdlDataType(f.edt || suggestEdtFromFieldName(f.name), rdb),
-    }));
+    for (const f of structuredFields) {
+      const edt = f.edt || suggestEdtFromFieldName(f.name, rdb);
+      reportFields.push({
+        ...f,
+        edt,
+        dataType: f.dataType || resolveRdlDataType(await primitiveOf(edt)),
+      });
+    }
     log(`Using ${reportFields.length} structured fields`);
   }
 
   // Strategy 3: fieldsHint — parse comma-separated names, suggest EDTs
   if (fieldsHint && reportFields.length === 0) {
     const hints = fieldsHint.split(',').map(s => s.trim()).filter(Boolean);
-    reportFields = hints.map(h => {
-      const edt = suggestEdtFromFieldName(h);
-      return {
+    for (const h of hints) {
+      const edt = suggestEdtFromFieldName(h, rdb);
+      reportFields.push({
         name: h,
         edt,
-        dataType: resolveRdlDataType(edt, rdb),
-      };
-    });
+        dataType: resolveRdlDataType(await primitiveOf(edt)),
+      });
+    }
     log(`Parsed ${reportFields.length} fields from fieldsHint`);
   }
 
@@ -431,34 +460,38 @@ export async function handleGenerateSmartReport(
     fields: ReportFieldSpec[];
     tableFields: TableFieldSpec[];
   };
-  const resolvedExtraDatasets: ResolvedExtraDataset[] = additionalDatasets.map((ds: { name: string; fieldsHint?: string; fields?: ReportFieldSpec[] }) => {
+  const resolvedExtraDatasets: ResolvedExtraDataset[] = [];
+  for (const ds of additionalDatasets as Array<{ name: string; fieldsHint?: string; fields?: ReportFieldSpec[] }>) {
     const cap = ds.name.charAt(0).toUpperCase() + ds.name.slice(1);
     const dsTmpName = `${finalName}${cap}Tmp`;
-    let dsFields: ReportFieldSpec[] = [];
+    const dsFields: ReportFieldSpec[] = [];
     if (ds.fields && ds.fields.length > 0) {
-      dsFields = ds.fields.map((f: ReportFieldSpec) => ({
-        ...f,
-        edt: f.edt || suggestEdtFromFieldName(f.name),
-        dataType: f.dataType || resolveRdlDataType(f.edt || suggestEdtFromFieldName(f.name), rdb),
-      }));
+      for (const f of ds.fields) {
+        const edt = f.edt || suggestEdtFromFieldName(f.name, rdb);
+        dsFields.push({
+          ...f,
+          edt,
+          dataType: f.dataType || resolveRdlDataType(await primitiveOf(edt)),
+        });
+      }
     } else if (ds.fieldsHint) {
       const hints = ds.fieldsHint.split(',').map((s: string) => s.trim()).filter(Boolean);
-      dsFields = hints.map((h: string) => {
-        const edt = suggestEdtFromFieldName(h);
-        return { name: h, edt, dataType: resolveRdlDataType(edt, rdb) };
-      });
+      for (const h of hints) {
+        const edt = suggestEdtFromFieldName(h, rdb);
+        dsFields.push({ name: h, edt, dataType: resolveRdlDataType(await primitiveOf(edt)) });
+      }
     }
-    return {
+    resolvedExtraDatasets.push({
       name: ds.name,
       tmpTableName: dsTmpName,
       fields: dsFields,
       tableFields: dsFields.map((f: ReportFieldSpec) => ({
         name: f.name,
         edt: f.edt,
-        type: resolveFieldType(f.edt, rdb),
+        type: resolveFieldType(primitiveOfSync(f.edt)),
       })),
-    };
-  });
+    });
+  }
 
   const generatedObjects: Array<{
     objectType: string;
@@ -471,7 +504,7 @@ export async function handleGenerateSmartReport(
   const tableFields: TableFieldSpec[] = reportFields.map(f => ({
     name: f.name,
     edt: f.edt,
-    type: resolveFieldType(f.edt, rdb),
+    type: resolveFieldType(primitiveOfSync(f.edt)),
   }));
 
   const builder = new SmartXmlBuilder(symbolIndex);
@@ -1298,40 +1331,40 @@ function injectGroupedTablix(
 }
 
 /**
- * Suggest EDT based on field name heuristics (shared with generateSmartTable).
+ * Resolve the EDT for a report field name.
+ *
+ * Regression: this used to be a private hardcoded keyword ladder ending in
+ * `return 'String255'` that never touched the DB — despite a doc comment claiming
+ * it was "shared with generateSmartTable" and a tool schema that documents
+ * `fieldsHint` identically for scaffold:table and scaffold:report ("EDTs
+ * auto-suggested from the index"). Only the table side actually hit the index.
+ * Effect: `prepare(mode="create")` resolved NoteId→Num, Subject→smmSubject,
+ * LineCount→Counter while the report writer emitted String255 for all three; a
+ * count then became a string, its AxReportDataSetField/DataType became
+ * System.String (no SSRS numeric formatting or aggregation) and the DP had to
+ * wrap the aggregate in int642Str().
+ * Evidence: eval/corpus/runs/2026-07-28T04__L4-ssrs-report-multidataset__39adafe.json
+ *
+ * Now genuinely shared: resolveBestEdt does edt_metadata exact → canonical →
+ * fuzzy-with-confidence and falls back to generateSmartTable's heuristic ladder,
+ * which is a superset of the one deleted here. Without a DB (Azure/Linux) the
+ * heuristic is used directly, so the two paths agree in both cases.
  */
-function suggestEdtFromFieldName(fieldName: string): string {
-  const n = fieldName.toLowerCase();
-  if (n === 'recid') return 'RecId';
-  if (n === 'accountnum' || n === 'accountnumber') return 'CustAccount';
-  if (n.includes('custaccount') || n.includes('customeraccount')) return 'CustAccount';
-  if (n.includes('vendaccount') || (n.includes('vendor') && n.includes('account'))) return 'VendAccount';
-  if (n === 'name' || n === 'itemname') return 'Name';
-  if (n.includes('name')) return 'Name';
-  if (n === 'description' || n === 'desc') return 'Description';
-  if (n.includes('description')) return 'Description';
-  if (n.includes('amount') || n.includes('balance')) return 'AmountMST';
-  if (n.includes('quantity') || n.includes('qty')) return 'Qty';
-  if (n.includes('price')) return 'PriceUnit';
-  if (n === 'fromdate' || n === 'validfrom') return 'TransDate';
-  if (n === 'todate' || n === 'validto') return 'TransDate';
-  if (n.includes('date')) return 'TransDate';
-  if (n.includes('itemid') || n === 'item') return 'ItemId';
-  if (n.includes('custgroup')) return 'CustGroupId';
-  if (n.includes('cust')) return 'CustAccount';
-  if (n.includes('vend')) return 'VendAccount';
-  if (n.includes('percent') || n.includes('pct')) return 'Percent';
-  if (n.includes('zone')) return 'WHSZoneId';
-  if (n.includes('warehouse') || n === 'whs') return 'InventLocationId';
-  return 'String255';
+function suggestEdtFromFieldName(fieldName: string, db?: any): string {
+  if (db) {
+    try {
+      return resolveBestEdt(fieldName, db);
+    } catch {
+      /* DB unusable — fall through to the shared heuristic */
+    }
+  }
+  return heuristicEdtFromFieldName(fieldName);
 }
 
 /**
  * Resolve .NET data type for RDL from an EDT name by checking edt_metadata.
  */
-function resolveRdlDataType(edtName: string | undefined, db: any): string {
-  if (!edtName) return 'System.String';
-  const baseType = resolveEdtBaseType(edtName, db);
+function resolveRdlDataType(baseType: string | undefined): string {
   switch (baseType) {
     case 'Real':        return 'System.Double';
     case 'Integer':     return 'System.Int32';
@@ -1348,34 +1381,42 @@ function resolveRdlDataType(edtName: string | undefined, db: any): string {
 }
 
 /**
- * Walk EDT extends chain to find primitive base type (same as generateSmartTable).
+ * Resolve an EDT's primitive base type — bridge first, then index, then name heuristic.
+ *
+ * Regression this replaces: a private duplicate of resolveEdtBaseType lived here whose
+ * doc comment claimed it was "same as generateSmartTable". It was not. The shared copy
+ * returns `undefined` for a ROOT EDT with no string_size — the index stores extends=null
+ * for AxEdtInt64/Date/Real/String alike, so its primitive is genuinely unknowable from
+ * SQL — while this copy collapsed exactly that case to 'String'.
+ *
+ * The damage was silent and only a full build caught it: resolveFieldType() mapped the
+ * bogus 'String' to `undefined`, SmartXmlBuilder.getAxTableFieldType() then fell through
+ * to its EDT-NAME heuristic (`includes('count')` → AxTableFieldInt, Int32), and the field
+ * was emitted with an Int32 i:type over `PurchLineCount`, which extends the Int64 root EDT
+ * NumberOfRecords:
+ *   Metadata Error: AxTable/…/Fields/LineCount/ExtendedDataType: Data type mismatch.
+ * The resolved EDT and the i:type were computed independently and never reconciled.
+ * Evidence: eval/corpus/runs/2026-07-28T06__L4-ssrs-report-multidataset__b3d7856.json
+ *
+ * Same chain as generateSmartTable's field pass, and for the same reason: only the live
+ * IMetadataProvider can read a root EDT's primitive off the AxEdt itself. Always returns
+ * a concrete type so callers never leave SmartXmlBuilder guessing from the name.
  */
-function resolveEdtBaseType(edtName: string, db: any, depth = 0): string {
-  const PRIMITIVES = new Set([
-    'String', 'Integer', 'Int64', 'Real', 'Date', 'UtcDateTime', 'DateTime',
-    'Enum', 'Container', 'Guid', 'GUID',
-  ]);
-  if (depth > 8) return 'String';
-  if (PRIMITIVES.has(edtName)) return edtName;
-  try {
-    const row = db.prepare(
-      `SELECT extends, enum_type FROM edt_metadata WHERE edt_name = ? LIMIT 1`
-    ).get(edtName) as { extends: string | null; enum_type: string | null } | undefined;
-    if (!row) return 'String';
-    // Enum-based EDT: extends is null but enum_type is set (e.g. SalesStatus, PurchStatus)
-    if (row.enum_type && !row.extends) return 'Enum';
-    if (!row.extends) return 'String';
-    if (PRIMITIVES.has(row.extends)) return row.extends;
-    return resolveEdtBaseType(row.extends, db, depth + 1);
-  } catch { return 'String'; }
+async function resolveEdtPrimitive(
+  edtName: string | undefined,
+  db: any,
+  bridge?: BridgeClient
+): Promise<string | undefined> {
+  if (!edtName) return undefined;
+  return (await bridgeEdtBaseType(bridge, edtName))
+      ?? sharedResolveEdtBaseType(edtName, db)
+      ?? heuristicEdtBaseType(edtName);
 }
 
 /**
  * Resolve AxTableField type from EDT (for SmartXmlBuilder).
  */
-function resolveFieldType(edtName: string | undefined, db: any): string | undefined {
-  if (!edtName) return undefined;
-  const base = resolveEdtBaseType(edtName, db);
+function resolveFieldType(base: string | undefined): string | undefined {
   // SmartXmlBuilder uses these type strings to pick AxTableFieldXxx
   switch (base) {
     case 'Real':        return 'Real';

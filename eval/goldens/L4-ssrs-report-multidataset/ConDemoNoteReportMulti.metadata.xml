@@ -85,7 +85,7 @@
 			<AxReportDataSetField>
 				<Name>LineCount</Name>
 				<Alias>ConDemoNoteReportMultiSummaryTmp.1.LineCount</Alias>
-				<DataType>System.String</DataType>
+				<DataType>System.Int64</DataType>
 				<DisplayWidth>Auto</DisplayWidth>
 				<UserDefined>false</UserDefined>
 			</AxReportDataSetField>
@@ -219,12 +219,12 @@
         <ConnectString />
         <IntegratedSecurity>true</IntegratedSecurity>
       </ConnectionProperties>
-      <rd:DataSourceID>e89fdf66-070c-457b-a911-0d7f15f31e17</rd:DataSourceID>
+      <rd:DataSourceID>e2bee721-cff2-4421-8c6d-3b3465f60a60</rd:DataSourceID>
     </DataSource>
   </DataSources>
   <DataSets>
     <DataSet Name="ConDemoNoteReportMultiTmp">
-      <rd:DataSetID>f587958b-961a-4279-b11e-5adf56840530</rd:DataSetID>
+      <rd:DataSetID>57c4fdf0-0321-4cab-8908-96143ca249b9</rd:DataSetID>
       <Query>
         <DataSourceName>AutoGen__ReportDataProvider</DataSourceName>
         <QueryParameters>
@@ -272,7 +272,7 @@
       </rd:DataSetInfo>
     </DataSet>
     <DataSet Name="ConDemoNoteReportMultiSummaryTmp">
-      <rd:DataSetID>0a29c241-afbe-4b9a-bb58-42f5951d9b48</rd:DataSetID>
+      <rd:DataSetID>39672a2d-8ffb-4589-8252-ad40454bd645</rd:DataSetID>
       <Query>
         <DataSourceName>AutoGen__ReportDataProvider</DataSourceName>
         <QueryParameters>
@@ -308,7 +308,7 @@
         </Field>
         <Field Name="LineCount">
           <DataField>ConDemoNoteReportMultiSummaryTmp.1.LineCount</DataField>
-          <rd:TypeName>System.String</rd:TypeName>
+          <rd:TypeName>System.Int64</rd:TypeName>
         </Field>
       </Fields>
       <rd:DataSetInfo>
@@ -594,7 +594,7 @@
   </ReportParametersLayout>
   <Language>en-US</Language>
   <rd:ReportUnitType>Inch</rd:ReportUnitType>
-  <rd:ReportID>c1067ad5-d650-46f8-8973-87c806c5f804</rd:ReportID>
+  <rd:ReportID>26b3e577-7303-47a5-aebe-d7b182ca6431</rd:ReportID>
 </Report>]]></Text>
 			<DisableIndividualTransformation>
 				<Name>DisableIndividualTransformation</Name>

@@ -64,12 +64,12 @@ public class ConDemoNoteReportMultiSummaryTmp extends common
 		<AxTableField xmlns=""
 				i:type="AxTableFieldString">
 			<Name>Subject</Name>
-			<ExtendedDataType>String255</ExtendedDataType>
+			<ExtendedDataType>smmSubject</ExtendedDataType>
 		</AxTableField>
 		<AxTableField xmlns=""
-				i:type="AxTableFieldString">
+				i:type="AxTableFieldInt64">
 			<Name>LineCount</Name>
-			<ExtendedDataType>String255</ExtendedDataType>
+			<ExtendedDataType>PurchLineCount</ExtendedDataType>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

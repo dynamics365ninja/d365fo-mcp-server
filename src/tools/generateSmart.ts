@@ -28,7 +28,7 @@ type SmartHandler = (args: any, context: XppServerContext) => Promise<any>;
 export const GENERATE_SMART_DISPATCH: Record<GenerateSmartType, SmartHandler> = {
   table:  (args, ctx) => handleGenerateSmartTable(args, ctx.symbolIndex, ctx.bridge),
   form:   (args, ctx) => handleGenerateSmartForm(args, ctx.symbolIndex),
-  report: (args, ctx) => handleGenerateSmartReport(args, ctx.symbolIndex),
+  report: (args, ctx) => handleGenerateSmartReport(args, ctx.symbolIndex, ctx.bridge),
 };
 
 const GenerateSmartArgsSchema = z

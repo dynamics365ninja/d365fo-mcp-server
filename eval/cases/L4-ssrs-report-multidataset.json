@@ -13,7 +13,7 @@
     "AxReport"
   ],
   "golden_path": "eval/goldens/L4-ssrs-report-multidataset/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo",

@@ -54,27 +54,25 @@ public class ConDemoNoteReportMultiDP extends SrsReportDataProviderBase
 				<Name>processReport</Name>
 				<Source><![CDATA[
     /// <summary>
-    /// Main data processing method. Populates both temporary tables that back the
-    /// report datasets: the detail rows and the per-subject summary rows.
+    /// Main data processing method. Populates both report temporary tables:
+    /// the detail rows from <c>ConDemoNoteHeader</c> and one summary row per distinct subject.
     /// </summary>
     public void processReport()
     {
-        ConDemoNoteHeader   noteHeader;
-        ConDemoNoteHeader   noteHeaderSummary;
+        ConDemoNoteHeader   detailSource;
+        ConDemoNoteHeader   summarySource;
 
-        // Detail dataset - one row per note header.
         insert_recordset conDemoNoteReportMultiTmp (NoteId, Subject)
         select NoteId, Subject
-        from noteHeader;
+        from detailSource;
 
-        // Summary dataset - one row per distinct subject with its line count.
         while select Subject, count(RecId)
-        from noteHeaderSummary
-        group by Subject
+        from summarySource
+        group by summarySource.Subject
         {
             conDemoNoteReportMultiSummaryTmp.clear();
-            conDemoNoteReportMultiSummaryTmp.Subject   = noteHeaderSummary.Subject;
-            conDemoNoteReportMultiSummaryTmp.LineCount = int642Str(noteHeaderSummary.RecId);
+            conDemoNoteReportMultiSummaryTmp.Subject   = summarySource.Subject;
+            conDemoNoteReportMultiSummaryTmp.LineCount = summarySource.RecId;
             conDemoNoteReportMultiSummaryTmp.insert();
         }
     }
