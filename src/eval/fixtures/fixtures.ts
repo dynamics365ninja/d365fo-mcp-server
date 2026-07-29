@@ -1,7 +1,7 @@
 /**
  * Harness-level eval fixtures — the INPUT/OUTPUT classifier, fixture loader, and
- * rollback-exclusion partition (VM-free, pure). See eval/ROADMAP.md step 1,
- * docs/AGENT_EVAL_LOOP.md §4a/§11, and eval/fixtures/README.md.
+ * rollback-exclusion partition (VM-free, pure). See docs/AGENT_EVAL_LOOP.md
+ * §4a/§11 and eval/fixtures/README.md.
  *
  * Problem this solves. A handful of `ConDemo*` objects (chiefly the table
  * `ConDemoNoteHeader`) are SHARED across cases: one case creates them, ~18 others

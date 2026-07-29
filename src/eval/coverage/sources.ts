@@ -1,5 +1,5 @@
 /**
- * Live inputs for the coverage matrix (ROADMAP P3).
+ * Live inputs for the coverage matrix.
  *
  * Kept apart from the CLI so tests can build the same report without the CLI's
  * process.exit, and apart from coverage.ts so that module stays pure.

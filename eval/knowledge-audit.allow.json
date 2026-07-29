@@ -1,5 +1,5 @@
 {
-  "_comment": "Knowledge-audit allowlist (ROADMAP P1). Names that legitimately never appear in the symbol index because they are not AOT metadata elements: X++ kernel (system) classes/enums shipped with the runtime rather than PackagesLocalDirectory, and .NET types reached through CLR interop. Every entry must state WHY. Fully-qualified System.* / Microsoft.* names are accepted without an entry. Do NOT add an entry to silence a defect — a hallucinated type is not a kernel type.",
+  "_comment": "Knowledge-audit allowlist. Names that legitimately never appear in the symbol index because they are not AOT metadata elements: X++ kernel (system) classes/enums shipped with the runtime rather than PackagesLocalDirectory, and .NET types reached through CLR interop. Every entry must state WHY. Fully-qualified System.* / Microsoft.* names are accepted without an entry. Do NOT add an entry to silence a defect — a hallucinated type is not a kernel type.",
   "DateTimeUtil": "X++ kernel class (system runtime, no AOT metadata element).",
   "Query": "X++ kernel class — runtime query object model.",
   "QueryRun": "X++ kernel class — runtime query object model.",

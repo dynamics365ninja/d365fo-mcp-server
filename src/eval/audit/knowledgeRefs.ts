@@ -1,5 +1,5 @@
 /**
- * Knowledge-base reference extraction (ROADMAP P1).
+ * Knowledge-base reference extraction.
  *
  * Pulls every *named AOT type / API* out of the embedded KNOWLEDGE_BASE
  * (src/tools/xppKnowledge.ts) so it can be resolved against the real symbol

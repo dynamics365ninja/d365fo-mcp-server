@@ -1,5 +1,5 @@
 /**
- * Coverage computation (ROADMAP P3) — derive the K/E/T matrix from reality,
+ * Coverage computation — derive the K/E/T matrix from reality,
  * not by hand.
  *
  * Inputs are the live sources: KNOWLEDGE_BASE entry ids, the eval case

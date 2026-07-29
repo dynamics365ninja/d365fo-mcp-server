@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-07-28",
+  "generatedAt": "2026-07-29",
   "method": "scripts/verify-goldens-build.ts — isolated full xppc build per case",
   "compiler": "xppc 7.0.7858.27",
   "model": "Contoso",
-  "clean": 65,
+  "clean": 57,
   "total": 65,
   "artifacts": 143,
   "cases": [
@@ -34,15 +34,19 @@
       "skipped": [
         "AxTable/ConDemoNoteHeader"
       ],
-      "ok": true,
-      "errors": []
+      "ok": false,
+      "errors": [
+        "Metadata Error: AxForm/ConDemoNoteHeaderList/Design/Controls/Grid/DataGroup: Field group 'Overview' does not exist."
+      ]
     },
     {
       "caseId": "L1-form-detailsmaster",
       "artifacts": 1,
       "skipped": [],
-      "ok": true,
-      "errors": []
+      "ok": false,
+      "errors": [
+        "Metadata Error: AxForm/ConDemoNoteHeaderMaster/Design/Controls/Tab/Controls/FormTabPageDetail/Controls/DetailTab/Controls/TabPageOverview/Controls/OverviewGroup/DataGroup: Field group 'Overview' does not exist."
+      ]
     },
     {
       "caseId": "L1-form-dialog",
@@ -69,8 +73,10 @@
       "caseId": "L1-form-simplelistdetails",
       "artifacts": 1,
       "skipped": [],
-      "ok": true,
-      "errors": []
+      "ok": false,
+      "errors": [
+        "Metadata Error: AxForm/ConDemoNoteHeaderDetails/Design/Controls/DetailsHeader/Controls/Overview/DataGroup: Field group 'Overview' does not exist."
+      ]
     },
     {
       "caseId": "L1-form-tableofcontents",
@@ -83,8 +89,13 @@
       "caseId": "L1-form-workspace",
       "artifacts": 1,
       "skipped": [],
-      "ok": true,
-      "errors": []
+      "ok": false,
+      "errors": [
+        "FormPatternValidation Error: AxForm/ConDemoNoteHeaderWorkspace/Design/ViewEditMode: Property 'ViewEditMode' on control AxForm/ConDemoNoteHeaderWorkspace/Design must have value 'View' per pattern 'Workspace Tabbed'.",
+        "FormPatternValidation Error: AxForm/ConDemoNoteHeaderWorkspace/Design/ShowNewButton: Property 'ShowNewButton' on control AxForm/ConDemoNoteHeaderWorkspace/Design must have value 'No' per pattern 'Workspace Tabbed'.",
+        "FormPatternValidation Error: AxForm/ConDemoNoteHeaderWorkspace/Design/ShowDeleteButton: Property 'ShowDeleteButton' on control AxForm/ConDemoNoteHeaderWorkspace/Design must have value 'No' per pattern 'Workspace Tabbed'.",
+        "FormPatternValidation Error: AxForm/ConDemoNoteHeaderWorkspace/Design/Controls/PanoramaBody/Style: Property 'Style' on control AxForm/ConDemoNoteHeaderWorkspace/Design/Controls/PanoramaBody must have value 'Tabs' per pattern 'Workspace Tabbed'."
+      ]
     },
     {
       "caseId": "L1-macro-library-flight",
@@ -97,8 +108,11 @@
       "caseId": "L1-map-basic",
       "artifacts": 1,
       "skipped": [],
-      "ok": true,
-      "errors": []
+      "ok": false,
+      "errors": [
+        "Metadata Error: AxMap/ConDemoNoteMap/Fields/CreatedDateTime/Name: Invalid field name; 'CreatedDateTime' is reserved for system fields.",
+        "Metadata Error: AxMap/ConDemoNoteMap/Mappings/ConDemoNoteHeader/Connections/CreatedDateTime/MapFieldTo: Field 'CreatedDateTime' does not exist."
+      ]
     },
     {
       "caseId": "L1-query-view-basic",
@@ -288,8 +302,10 @@
       "caseId": "L2-oracle-discriminator-random-wrapper-name",
       "artifacts": 1,
       "skipped": [],
-      "ok": true,
-      "errors": []
+      "ok": false,
+      "errors": [
+        "Metadata Error: AxFormExtension/CustGroup.ConExtension/Controls/FormExtensionControlr2xt3flz5/Grid_ConHasNotes/DataField: Field 'ConHasNotes' does not exist on data source 'CustGroup'."
+      ]
     },
     {
       "caseId": "L2-performance-set-based",
@@ -407,8 +423,10 @@
       "caseId": "L3-form-detailstransaction",
       "artifacts": 2,
       "skipped": [],
-      "ok": true,
-      "errors": []
+      "ok": false,
+      "errors": [
+        "Metadata Error: AxTable/ConDemoNoteHeaderLine/Fields/LineNum/ExtendedDataType: Data type mismatch."
+      ]
     },
     {
       "caseId": "L3-gab-party-postaladdress",
@@ -435,8 +453,10 @@
       "caseId": "L4-entity-security",
       "artifacts": 5,
       "skipped": [],
-      "ok": true,
-      "errors": []
+      "ok": false,
+      "errors": [
+        "Metadata Error: AxMenuItemDisplay/ConDemoNoteHeaderDisplay/Object: Form 'ConDemoNoteHeaderList' does not exist."
+      ]
     },
     {
       "caseId": "L4-master-security-slice",

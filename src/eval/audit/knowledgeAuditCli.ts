@@ -1,5 +1,5 @@
 /**
- * Knowledge-audit CLI (ROADMAP P1).
+ * Knowledge-audit CLI.
  *
  *   npm run eval:knowledge-audit            # verify against the committed snapshot (CI, VM-free)
  *   npm run eval:knowledge-audit -- --capture   # re-audit against the real symbol index (VM only)

@@ -1,9 +1,8 @@
 # Harness-level eval fixtures
 
 Shared **INPUT** objects that must exist *before* a case runs and must survive
-the per-case rollback. This directory is the fix for
-[eval/ROADMAP.md](../ROADMAP.md) step 1 ("Make `ConDemoNoteHeader` a
-harness-level fixture") and is wired into the implementer protocol at
+the per-case rollback. This directory is the fix for "make `ConDemoNoteHeader` a
+harness-level fixture" and is wired into the implementer protocol at
 [docs/AGENT_EVAL_LOOP.md](../../docs/AGENT_EVAL_LOOP.md) §4a / §11.
 
 ## Why this exists (root cause)

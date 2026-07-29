@@ -1,5 +1,5 @@
 /**
- * Coverage matrix tests (ROADMAP P2/P3) — VM-free.
+ * Coverage matrix tests — VM-free.
  *
  * The point of the matrix is that it is *derived*: these tests pin the
  * derivation rules (golden_pending proves nothing, dangling references are

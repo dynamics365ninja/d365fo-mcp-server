@@ -1,7 +1,8 @@
 # Self-improving agent eval loop — design spec
 
 **Status:** implemented and in production use — see
-[eval/ROADMAP.md](../eval/ROADMAP.md) for current status and open work
+[eval/COVERAGE.md](../eval/COVERAGE.md) for live coverage and
+[eval/README.md](../eval/README.md) for open work
 **Related:** [ARCHITECTURE.md](ARCHITECTURE.md) · [TESTING.md](TESTING.md) · [eval/README.md](../eval/README.md)
 
 ---
@@ -307,8 +308,8 @@ L0–L4 across a broad set of use-cases (form patterns, extensibility
 mechanisms, OOP mechanics, SSRS, etc.).
 
 Breadth is intentionally open-ended beyond this — see
-[eval/ROADMAP.md](../eval/ROADMAP.md) for what's still uncovered and any
-remaining lower-priority work.
+[eval/COVERAGE.md](../eval/COVERAGE.md) for what's still uncovered and
+[eval/README.md](../eval/README.md) for the standing work queues.
 
 ---
 

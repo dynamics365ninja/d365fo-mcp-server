@@ -40,7 +40,7 @@ jobs:
 
       # Knowledge content is gated the same fail-closed way generated code is:
       # every named AOT type/API in KNOWLEDGE_BASE must be covered by a
-      # snapshot captured against the real symbol index on the VM (ROADMAP P1).
+      # snapshot captured against the real symbol index on the VM.
       - name: Knowledge audit (snapshot verify)
         run: npm run eval:knowledge-audit
 

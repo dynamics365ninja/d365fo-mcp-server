@@ -1,5 +1,5 @@
 /**
- * Shared symbol-index lookup for the knowledge audit (ROADMAP P1).
+ * Shared symbol-index lookup for the knowledge audit.
  *
  * Extracted from knowledgeAuditCli so the CLI (`--capture`) and the CI test
  * (tests/knowledge/apiSymbols.test.ts) resolve knowledge references through the
