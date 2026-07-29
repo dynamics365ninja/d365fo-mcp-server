@@ -1,0 +1,68 @@
+{
+  "run_id": "2026-07-29T07__L3-parallel-batch-tasks__d1ccb46",
+  "case_id": "L3-parallel-batch-tasks",
+  "tier": 3,
+  "timestamp": "2026-07-29T07:41:39.142Z",
+  "server_git_sha": "d1ccb46",
+  "generated_artifacts": [
+    "Contoso/Contoso/AxClass/ConDemoParallelContract.xml",
+    "Contoso/Contoso/AxClass/ConDemoParallelWorker.xml",
+    "Contoso/Contoso/AxClass/ConDemoParallelScheduler.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "rule": "BPUpgradeCodeSysEntryPointAttribute",
+        "severity": "warning",
+        "object": "ConDemoParallelWorker.processBundle",
+        "message": "SysEntryPoint attribute has been deprecated, you can safely remove the attribute.",
+        "inScope": false,
+        "note": "Mandated verbatim by the case instruction ([SysEntryPointAttribute] on processBundle); also emitted by xppc as a compile warning. 0 BP errors."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "xppc 7.0.7858.27",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Case deliverables all produced, full build clean (0 errors), golden match. Two tool-path gaps observed. (1) PRIMARY TOOL_DEFECT: build_d365fo_project never runs labelc.exe, so labels created via labels(action=\"create\") are never compiled into <Package>/Resources/<LabelFile>.dll. Contoso had no Resources/ folder at all after two full builds. Consequence: xppbp reported BPErrorUnknownLabel for @Contoso:DemoParallelBundleProcessed and @Contoso:DemoParallelTaskCaption, plus 5 cascading bogus BPUnusedStrFmtArgument warnings (it cannot see the %n placeholders inside the unresolved label text). Proven deterministically: running bin\\labelc.exe -metadata=K:\\AosService\\PackagesLocalDirectory -output=...\\Contoso\\Resources -modelmodule=Contoso (the exact command VS records in HBReavis/CompileLabels.xml) made all 6 warnings disappear with no source change. The grounded tool path alone cannot reach a label-clean BP result. (2) SECONDARY: d365fo_file(action=\"modify\", operation=\"replace-code\") cannot target a class Declaration - the C# bridge answers \"oldCode not found in <Class>\" for text that is verbatim in <Declaration>, and the tool silently falls back to a direct XML edit (and drops a .backup-<ts> file inside the AxClass AOT folder, which is residue the metadata store then sees). Reproduced 3/3 times on 3 different classes. The remaining bp_clean:0 is NOT a defect: the single surviving warning is BPUpgradeCodeSysEntryPointAttribute, which the case instruction requires verbatim. Zero BP errors, as the case demands.",
+  "suggested_fix_area": "src/tools/build (build_d365fo_project): run bin/labelc.exe -metadata=<packagesRoot> -output=<packagesRoot>/<Package>/Resources -modelmodule=<Model> before/after xppc, as Visual Studio does, and surface its diagnostics; alternatively have labels(action=\"create\") trigger it. Secondary: src/tools/file modify/replace-code - make the bridge search the Declaration as well as Methods, and write the auto-backup outside the AxClass folder.",
+  "evidence_refs": [
+    "eval/goldens/L3-parallel-batch-tasks/ (frozen golden, 3 artifacts, captured 2026-07-29)",
+    "run_bp_check(targetFilter=ConDemoParallelWorker) BEFORE labelc: BPErrorUnknownLabel:1 BPUnusedStrFmtArgument:3 BPUpgradeCodeSysEntryPointAttribute:1 BPXmlDocNoDocumentationComments:1 (6 warnings, 0 errors)",
+    "run_bp_check(targetFilter=ConDemoParallelScheduler) BEFORE labelc: BPErrorUnknownLabel:1 BPUnusedStrFmtArgument:2 BPXmlDocNoDocumentationComments:1 (4 warnings, 0 errors)",
+    "run_bp_check AFTER labelc.exe + class XmlDoc: Contract 0/0, Scheduler 0/0, Worker 1 warning (BPUpgradeCodeSysEntryPointAttribute), 0 errors",
+    "K:\\AosService\\PackagesLocalDirectory\\HBReavis\\CompileLabels.xml (the labelc.exe command line VS runs; no equivalent file exists for Contoso)",
+    "Negative probe ConParallelNegProbe (full build FAILED as designed): \"Type mismatch in BatchHeader.addRuntimeTask argument 1. The expected type is Batchable, but the actual type is ConDemoParallelContract.\" + \"The instance method designated by argument processBundleDoesNotExist does not exist.\" - proves the clean build really type-checks the fan-out and methodStr, so build:1 is meaningful evidence.",
+    "Full build (fullBuild:true) x3: 0 errors, 2 warnings (1 unrelated Commerce PricingEngine external reference, 1 SysEntryPointAttribute obsolete)"
+  ]
+}
