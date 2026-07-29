@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-parallel-batch-tasks (artifact 1 of 3: data contract)
+  Captured: 2026-07-29, server SHA: d1ccb46
+  Platform: xppc 7.0.7858.27
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoParallelContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Serializable data contract that carries the note ID bounds of one parallel batch bundle.
+/// </summary>
+[DataContractAttribute]
+class ConDemoParallelContract
+{
+    Num fromNoteId;
+    Num toNoteId;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmFromNoteId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the first note ID of the bundle that one parallel batch task handles.
+    /// </summary>
+    /// <param name = "_fromNoteId">The first note ID of the bundle.</param>
+    /// <returns>The first note ID of the bundle.</returns>
+    [DataMemberAttribute,
+    SysOperationLabelAttribute(literalStr("@Contoso:DemoParallelBundleFrom")),
+    SysOperationDisplayOrderAttribute('1')]
+    public Num parmFromNoteId(Num _fromNoteId = fromNoteId)
+    {
+        fromNoteId = _fromNoteId;
+        return fromNoteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToNoteId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the last note ID of the bundle that one parallel batch task handles.
+    /// </summary>
+    /// <param name = "_toNoteId">The last note ID of the bundle.</param>
+    /// <returns>The last note ID of the bundle.</returns>
+    [DataMemberAttribute,
+    SysOperationLabelAttribute(literalStr("@Contoso:DemoParallelBundleTo")),
+    SysOperationDisplayOrderAttribute('2')]
+    public Num parmToNoteId(Num _toNoteId = toNoteId)
+    {
+        toNoteId = _toNoteId;
+        return toNoteId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

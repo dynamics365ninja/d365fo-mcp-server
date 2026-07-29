@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPrintMgmtRunner</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Resolves print management settings for demo confirmation documents and prints them.
+/// </summary>
+public class ConDemoPrintMgmtRunner
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>printFor</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Prints the demo confirmation document that is identified by the specified document number.
+    /// </summary>
+    /// <param name = "_documentId">
+    /// The identifier of the document that must be printed.
+    /// </param>
+    /// <remarks>
+    /// The print destination is always taken from the print management setup that is resolved through
+    /// <c>ConDemoPrintMgmtDocType</c> and the <c>PrintMgmtSettings</c> table. No print destination is
+    /// constructed by hand.
+    /// </remarks>
+    public static void printFor(Num _documentId)
+    {
+        ConDemoPrintMgmtDocType     demoDocType;
+        PrintMgmtReportFormatName   reportFormatName;
+        PrintMgmtSettings           printMgmtSettings;
+        PrintMgmtReportFormat       printMgmtReportFormat;
+        PrintMgmtPrintSettingDetail printSettingDetail;
+        SrsReportRunController      controller;
+        SrsReportDataContract       reportContract;
+        SRSPrintDestinationSettings printDestinationSettings;
+
+        demoDocType      = ConDemoPrintMgmtDocType::newDemoDocType();
+        reportFormatName = demoDocType.getDefaultReportFormat();
+
+        select firstonly printMgmtSettings
+        join printMgmtReportFormat
+        where printMgmtReportFormat.RecId == printMgmtSettings.ReportFormat
+        && printMgmtReportFormat.Name == reportFormatName;
+
+        if (!printMgmtSettings.RecId)
+        {
+            info(strFmt("@Contoso:DemoPrintNoSettingConfigured", _documentId));
+            return;
+        }
+
+        controller = new SrsReportRunController();
+        controller.parmReportName(reportFormatName);
+        controller.parmShowDialog(false);
+
+        reportContract           = controller.parmReportContract();
+        printDestinationSettings = reportContract.parmPrintSettings();
+        printDestinationSettings.unpack(printMgmtSettings.PrintJobSettings);
+
+        printSettingDetail = new PrintMgmtPrintSettingDetail();
+        printSettingDetail.parmReportFormatName(printMgmtReportFormat.Name);
+        printSettingDetail.parmInstanceName(printMgmtSettings.Description);
+        printSettingDetail.parmNumberOfCopies(printMgmtSettings.NumberOfCopies);
+        printSettingDetail.parmPrintJobSettings(printDestinationSettings);
+
+        reportContract.parmPrintSettings(printSettingDetail.parmPrintJobSettings());
+
+        controller.startOperation();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

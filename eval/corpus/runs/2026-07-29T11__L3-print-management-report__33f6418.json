@@ -1,0 +1,37 @@
+{
+  "run_id": "2026-07-29T11__L3-print-management-report__33f6418",
+  "case_id": "L3-print-management-report",
+  "tier": 3,
+  "timestamp": "2026-07-29T11:11:57.123Z",
+  "server_git_sha": "33f6418",
+  "generated_artifacts": [
+    "ConDemoPrintDocType.metadata.xml",
+    "ConDemoPrintMgmtDocType.metadata.xml",
+    "ConDemoPrintMgmtRunner.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS"
+}

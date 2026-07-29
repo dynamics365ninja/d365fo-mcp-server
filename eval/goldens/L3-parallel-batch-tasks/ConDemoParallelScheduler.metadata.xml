@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-parallel-batch-tasks (artifact 3 of 3: BatchHeader fan-out scheduler)
+  Captured: 2026-07-29, server SHA: d1ccb46
+  Platform: xppc 7.0.7858.27
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoParallelScheduler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Fans the <c>ConDemoNoteHeader</c> processing out into one parallel batch task per bundle.
+/// </summary>
+class ConDemoParallelScheduler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>scheduleAll</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Partitions the <c>ConDemoNoteHeader</c> rows into bundles and schedules one batch task
+    /// per bundle on a single batch job, so that the bundles are processed in parallel.
+    /// </summary>
+    public static void scheduleAll()
+    {
+        BatchHeader batchHeader;
+        ConDemoNoteHeader noteHeader;
+        Num bundleFromNoteId;
+        Num bundleToNoteId;
+        RecId inheritFromTaskId;
+        int rowsInBundle;
+        int bundleCount;
+
+        batchHeader = BatchHeader::construct();
+        inheritFromTaskId = ConDemoParallelScheduler::currentBatchTaskId();
+
+        while select NoteId from noteHeader
+        order by NoteId
+        {
+            if (rowsInBundle == 0)
+            {
+                bundleFromNoteId = noteHeader.NoteId;
+            }
+
+            bundleToNoteId = noteHeader.NoteId;
+            rowsInBundle++;
+
+            if (rowsInBundle >= ConDemoParallelScheduler::bundleSize())
+            {
+                ConDemoParallelScheduler::addBundleTask(batchHeader, bundleFromNoteId, bundleToNoteId, inheritFromTaskId);
+                bundleCount++;
+                rowsInBundle = 0;
+            }
+        }
+
+        if (rowsInBundle > 0)
+        {
+            ConDemoParallelScheduler::addBundleTask(batchHeader, bundleFromNoteId, bundleToNoteId, inheritFromTaskId);
+            bundleCount++;
+        }
+
+        if (bundleCount > 0)
+        {
+            batchHeader.parmCaption(literalStr("@Contoso:DemoParallelJobCaption"));
+            batchHeader.save();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addBundleTask</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Adds one runtime batch task for a single bundle to the batch job.
+    /// </summary>
+    /// <param name = "_batchHeader">The batch job that collects the parallel tasks.</param>
+    /// <param name = "_fromNoteId">The first note ID of the bundle.</param>
+    /// <param name = "_toNoteId">The last note ID of the bundle.</param>
+    /// <param name = "_inheritFromTaskId">The batch task the new task inherits its settings from.</param>
+    private static void addBundleTask(
+    BatchHeader _batchHeader,
+    Num _fromNoteId,
+    Num _toNoteId,
+    RecId _inheritFromTaskId)
+    {
+        SysOperationServiceController controller;
+        ConDemoParallelContract contract;
+
+        controller = new SysOperationServiceController(
+        classStr(ConDemoParallelWorker),
+        methodStr(ConDemoParallelWorker, processBundle),
+        SysOperationExecutionMode::Synchronous);
+
+        contract = controller.getDataContractObject('_contract') as ConDemoParallelContract;
+        contract.parmFromNoteId(_fromNoteId);
+        contract.parmToNoteId(_toNoteId);
+
+        controller.batchInfo().parmCaption(strFmt("@Contoso:DemoParallelTaskCaption", _fromNoteId, _toNoteId));
+
+        _batchHeader.addRuntimeTask(controller, _inheritFromTaskId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>currentBatchTaskId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets the record ID of the currently executing batch task, or zero when not running in batch.
+    /// </summary>
+    /// <returns>The record ID of the currently executing batch task.</returns>
+    private static RecId currentBatchTaskId()
+    {
+        Batch currentTask = BatchHeader::getCurrentBatchTask();
+
+        return currentTask.RecId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>bundleSize</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets the number of <c>ConDemoNoteHeader</c> rows that one parallel batch task processes.
+    /// </summary>
+    /// <returns>The bundle size.</returns>
+    private static int bundleSize()
+    {
+        return 100;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
