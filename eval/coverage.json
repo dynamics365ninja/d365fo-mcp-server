@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 78,
-    "covered": 67,
-    "percent": 85.9
+    "covered": 68,
+    "percent": 87.2
   },
   "leaves": [
     {
@@ -754,10 +754,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-parallel-batch-tasks"
+      ]
     },
     {
       "id": "async-retryable-batch",

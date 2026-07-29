@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-parallel-batch-tasks (artifact 2 of 3: SysOperation worker service)
+  Captured: 2026-07-29, server SHA: d1ccb46
+  Platform: xppc 7.0.7858.27
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoParallelWorker</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// SysOperation service that processes one bundle of <c>ConDemoNoteHeader</c> rows per batch task.
+/// </summary>
+class ConDemoParallelWorker
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processBundle</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Processes exactly the <c>ConDemoNoteHeader</c> bundle that the contract identifies.
+    /// </summary>
+    /// <param name = "_contract">The data contract that carries the bundle bounds.</param>
+    /// <remarks>
+    /// One parallel batch task invokes this method once, for one bundle only, so that the
+    /// bundles scheduled by <c>ConDemoParallelScheduler</c> are processed concurrently.
+    /// </remarks>
+    [SysEntryPointAttribute]
+    public void processBundle(ConDemoParallelContract _contract)
+    {
+        ConDemoNoteHeader noteHeader;
+        Num fromNoteId;
+        Num toNoteId;
+        int processed;
+
+        fromNoteId = _contract.parmFromNoteId();
+        toNoteId = _contract.parmToNoteId();
+
+        while select noteHeader
+        where noteHeader.NoteId >= fromNoteId
+        && noteHeader.NoteId <= toNoteId
+        {
+            processed++;
+        }
+
+        info(strFmt("@Contoso:DemoParallelBundleProcessed", processed, fromNoteId, toNoteId));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
