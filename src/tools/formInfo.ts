@@ -14,6 +14,7 @@ import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
 import { tryBridgeForm } from '../bridge/bridgeAdapter.js';
+import { readIndexedXml } from '../utils/indexedXmlLookup.js';
 import { assertWritePathAllowed } from '../utils/pathContainment.js';
 
 const GetFormInfoArgsSchema = z.object({
@@ -111,6 +112,21 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
 
     const bridgeResult = await tryBridgeForm(context.bridge, formName);
     if (bridgeResult) return bridgeResult;
+
+    // Symbol index → form XML. A silent bridge is not proof the form is missing:
+    // it also happens when the bridge is down or its provider does not cover that
+    // package, while `search` still resolves the form.
+    const indexed = await readIndexedXml(
+      context.symbolIndex.getReadDb(), formName, ['form'], args.modelName,
+    );
+    if (indexed) {
+      try {
+        return await parseAndFormatForm(
+          indexed.ref.name, indexed.ref.model, indexed.xml,
+          includeControls, includeDataSources, includeMethods, searchControl,
+        );
+      } catch { /* not a usable AxForm XML — fall through to the error below */ }
+    }
 
     // Determine why the bridge returned nothing to give an actionable error message.
     let bridgeNote: string;

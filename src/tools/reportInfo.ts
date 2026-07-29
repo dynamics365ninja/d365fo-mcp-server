@@ -15,6 +15,7 @@ import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
 import { tryBridgeReport } from '../bridge/bridgeAdapter.js';
+import { readIndexedXml, bridgeUnavailableNote } from '../utils/indexedXmlLookup.js';
 import { assertWritePathAllowed } from '../utils/pathContainment.js';
 
 const GetReportInfoArgsSchema = z.object({
@@ -115,29 +116,34 @@ export async function getReportInfoTool(request: CallToolRequest, context: XppSe
         };
       }
 
-      const xmlObj = await parseStringPromise(xmlContent, { explicitArray: true, mergeAttrs: false, trim: true });
-      const axReport = xmlObj?.AxReport;
-      if (!axReport) {
+      const parsed = await buildReportResponse(
+        xmlContent, reportName, 'Unknown', explicitFilePath, includeFields ?? true, includeRdl ?? false,
+      );
+      if (!parsed) {
         return { content: [{ type: 'text', text: `❌ File does not contain a valid <AxReport> root element.` }], isError: true };
       }
+      return parsed;
+    }
 
-      const info: ReportInfo = {
-        name:                first(axReport.Name) ?? reportName,
-        model:               'Unknown',
-        filePath:            explicitFilePath,
-        hasDataMethods:      !!axReport.DataMethods && axReport.DataMethods[0] !== '',
-        embeddedImageCount:  countItems(axReport.EmbeddedImages?.[0], 'AxReportEmbeddedImage'),
-        dataSets:            extractDataSets(axReport, includeFields ?? true),
-        designs:             extractDesigns(axReport, includeRdl ?? false),
-      };
-
-      return formatOutput(info, includeFields ?? true, includeRdl ?? false);
+    // 3. Symbol index → report XML. A silent bridge is not proof the report is
+    //    missing — it also happens when the bridge is down or its provider does not
+    //    cover that package, while `search` still resolves the report.
+    const indexed = await readIndexedXml(
+      context.symbolIndex.getReadDb(), reportName, ['report'], args.modelName,
+    );
+    if (indexed) {
+      const parsed = await buildReportResponse(
+        indexed.xml, indexed.ref.name, indexed.ref.model, indexed.ref.localPath ?? '',
+        includeFields ?? true, includeRdl ?? false,
+      );
+      if (parsed) return parsed;
     }
 
     return {
       content: [{
         type: 'text',
-        text: `❌ Report "${reportName}" not found via bridge.\n\n` +
+        text: `❌ Report "${reportName}" not found via bridge or symbol index.` +
+          bridgeUnavailableNote(context.bridge) + `\n` +
           `If this is a newly-created report, pass the explicit \`filePath\` parameter:\n` +
           `  get_object_info(objectType="report", name="${reportName}", options={filePath:"<absolute path to .xml>"})`,
       }],
@@ -152,6 +158,41 @@ export async function getReportInfoTool(request: CallToolRequest, context: XppSe
       isError: true,
     };
   }
+}
+
+/**
+ * Parse AxReport XML and render the tool response.
+ * Shared by the explicit-filePath bypass and the symbol-index fallback.
+ * Returns null when the XML has no <AxReport> root.
+ */
+async function buildReportResponse(
+  xmlContent: string,
+  reportName: string,
+  model: string,
+  filePath: string,
+  includeFields: boolean,
+  includeRdl: boolean,
+) {
+  let axReport: any;
+  try {
+    const xmlObj = await parseStringPromise(xmlContent, { explicitArray: true, mergeAttrs: false, trim: true });
+    axReport = xmlObj?.AxReport;
+  } catch {
+    return null;
+  }
+  if (!axReport) return null;
+
+  const info: ReportInfo = {
+    name:                first(axReport.Name) ?? reportName,
+    model,
+    filePath,
+    hasDataMethods:      !!axReport.DataMethods && axReport.DataMethods[0] !== '',
+    embeddedImageCount:  countItems(axReport.EmbeddedImages?.[0], 'AxReportEmbeddedImage'),
+    dataSets:            extractDataSets(axReport, includeFields),
+    designs:             extractDesigns(axReport, includeRdl),
+  };
+
+  return formatOutput(info, includeFields, includeRdl);
 }
 
 function first(arr: any): string | undefined {

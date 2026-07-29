@@ -2,14 +2,18 @@
  * Data Entity Info Tool
  * Retrieve rich D365FO-specific metadata for data entities (OData, DMF, staging, sources).
  *
- * PRIMARY: C# bridge (IMetadataProvider) — 100% reliable, always available on VM.
- * SQLite "did you mean?" kept only on error path.
+ * Read-path priority:
+ *   1. C# bridge readDataEntity (IMetadataProvider) — live metadata.
+ *   2. get_object_info(view) reader — data entities are indexed as type 'view', so its
+ *      extracted-metadata / XML / disk chain answers when the bridge is silent.
+ *   3. Fuzzy "did you mean?" suggestions from the index.
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { tryBridgeDataEntity } from '../bridge/bridgeAdapter.js';
+import { getViewInfoTool } from './viewInfo.js';
 
 const DataEntityInfoArgsSchema = z.object({
   entityName: z.string().describe('Name of the data entity (AxDataEntityView)'),
@@ -23,7 +27,15 @@ export async function dataEntityInfoTool(request: CallToolRequest, context: XppS
     const bridgeResult = await tryBridgeDataEntity(context.bridge, args.entityName);
     if (bridgeResult) return bridgeResult;
 
-    // Bridge returned nothing — try fuzzy name suggestions from DB
+    // Bridge silent — reuse the view reader's symbol-index/XML/disk chain.
+    // Data entities are AxDataEntityView files and are indexed as type 'view'.
+    const viaView = await getViewInfoTool(
+      { method: 'tools/call', params: { name: 'get_view_info', arguments: { viewName: args.entityName } } },
+      context,
+    ) as { content: Array<{ type: string; text: string }>; isError?: boolean };
+    if (!viaView?.isError) return viaView;
+
+    // Nothing resolved — fuzzy name suggestions from DB
     let text = `Data entity not found: ${args.entityName}\n`;
     try {
       const db = context.symbolIndex.getReadDb();

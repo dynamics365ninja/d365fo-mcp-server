@@ -27,6 +27,7 @@ const {
   mockTryBridgeForm,
   mockTryBridgeQuery,
   mockTryBridgeView,
+  mockTryBridgeDataEntity,
   mockTryBridgeReport,
   mockTryBridgeTable,
 } = vi.hoisted(() => ({
@@ -35,6 +36,7 @@ const {
   mockTryBridgeForm: vi.fn(async () => null),
   mockTryBridgeQuery: vi.fn(async () => null),
   mockTryBridgeView: vi.fn(async () => null),
+  mockTryBridgeDataEntity: vi.fn(async () => null),
   mockTryBridgeReport: vi.fn(async () => null),
   mockTryBridgeTable: vi.fn(async () => null),
 }));
@@ -46,6 +48,7 @@ vi.mock('../../src/bridge/bridgeAdapter', () => ({
   tryBridgeForm: mockTryBridgeForm,
   tryBridgeQuery: mockTryBridgeQuery,
   tryBridgeView: mockTryBridgeView,
+  tryBridgeDataEntity: mockTryBridgeDataEntity,
   tryBridgeReport: mockTryBridgeReport,
   tryBridgeMethodSource: vi.fn(async () => null),
 }));
@@ -386,6 +389,38 @@ describe('get_object_info (view)', () => {
     const result = await getObjectInfoTool(req('get_object_info', { objectType: 'view', name:'NoView' }), ctx);
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/not found|no.*view/i);
+  });
+
+  it('falls back to the data-entity bridge reader (data entities are indexed as views)', async () => {
+    mockTryBridgeDataEntity.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '# Data Entity: `CustCustomerV3Entity`\n' }],
+    } as any);
+
+    const result = await getObjectInfoTool(req('get_object_info', { objectType: 'view', name:'CustCustomerV3Entity' }), ctx);
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain('CustCustomerV3Entity');
+  });
+
+  it('falls back to the symbol index when the bridge has no view (search finds it, bridge does not)', async () => {
+    // Bridge readers return null (package not on this box / bridge without metadata),
+    // but the symbol index knows the view — it must not be reported as "not found".
+    ctx.symbolIndex.db.prepare = vi.fn((sql: string) => {
+      if (/FROM symbols s/.test(sql)) {
+        return makeStmt([{
+          name: 'TaxTransDeclarationView', type: 'view', model: 'Tax',
+          extends_class: null, file_path: '/Views/TaxTransDeclarationView.xml',
+        }]);
+      }
+      if (/type = 'field'/.test(sql)) {
+        return makeStmt([{ name: 'TaxCode', signature: 'TaxTrans.TaxCode' }]);
+      }
+      return makeStmt();
+    }) as any;
+
+    const result = await getObjectInfoTool(req('get_object_info', { objectType: 'view', name:'TaxTransDeclarationView' }), ctx);
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain('TaxTransDeclarationView');
+    expect(result.content[0].text).toContain('TaxCode');
   });
 
   it('returns error when viewName is missing', async () => {
