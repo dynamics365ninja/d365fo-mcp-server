@@ -5,8 +5,12 @@ import fs from 'fs/promises';
 import { getConfigManager } from '../utils/configManager.js';
 import { defaultPackagesRoot, findPackagesRoot } from '../utils/packagesRoot.js';
 import { withOperationLock } from '../utils/operationLocks.js';
+import { compileModelLabels } from './compileLabels.js';
 
 const execFileAsync = util.promisify(execFile);
+
+// Label compilation is a precondition for the checker, not a separate concern —
+// see compileLabels.ts for why an uncompiled label reads as a source defect.
 
 // Keyword that xppbp.exe prints when it doesn't recognise the arguments
 const HELP_TEXT_PATTERN = /^usage:|BPCheck Tool|^xppbp\.exe|unrecognized|missing required|X\+\+ Best Practice Options/im;
@@ -118,6 +122,21 @@ export const runBpCheckTool = async (params: any, _context: any) => {
     // binaries + framework metadata (UDE: Microsoft packages root; CHE: same as metadataPath).
     const metadataPath = customPackagesPath || packagesRoot;
     const compilerMetadataPath = microsoftPackagesPath || packagesRoot;
+
+    // xppbp resolves @Model:Id against the compiled label assembly, so labels
+    // that exist only as text in AxLabelFile are reported as BPErrorUnknownLabel
+    // (with BPUnusedStrFmtArgument cascading from them). A BP check can be run
+    // without a build in between — recompile stale labels here too, otherwise
+    // creating a label and checking it immediately still produces the bogus
+    // errors this costs about a second to prevent.
+    const labelResult = await compileModelLabels(compilerMetadataPath, metadataPath, modelName);
+    if (!labelResult.success) {
+      console.error(`[run_bp_check] label compilation failed: ${labelResult.message}`);
+    }
+    const labelNote = labelResult.success
+      ? ''
+      : `\n⚠️ Labels could not be compiled (${labelResult.message}) — any BPErrorUnknownLabel ` +
+        `below may be an artefact of that, not of the source.\n`;
 
     /**
      * xppbp.exe CLI flag styles vary by version — tried in order (A → B → C), stopping at
@@ -289,6 +308,7 @@ export const runBpCheckTool = async (params: any, _context: any) => {
           (resolvedProjectPath ? `\nProject: ${resolvedProjectPath}` : '') +
           (targetFilter ? `\nFilter: ${(targetElementType ?? 'class').toLowerCase()}:${targetFilter}` : '') +
           scopeNote +
+          labelNote +
           `\n\n${details}`
       }]
     };

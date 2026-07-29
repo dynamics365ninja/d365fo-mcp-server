@@ -6,10 +6,12 @@ import { openSync as openSyncFs, closeSync as closeSyncFs } from 'fs';
 import os from 'os';
 import crypto from 'crypto';
 import { getConfigManager } from '../utils/configManager.js';
-import { describePackagesRootScan, findPackagesRoot, packagesRootCandidates } from '../utils/packagesRoot.js';
+import { describePackagesRootScan, findPackagesRoot } from '../utils/packagesRoot.js';
+import { findFrameworkTool } from '../utils/frameworkBin.js';
 import { forceReleaseLock } from '../utils/operationLocks.js';
 import { lookupErrorFix } from './d365foErrorHelp.js';
 import { generateRuntimeMetadata } from './generateMetadata.js';
+import { compileModelLabels, type CompileLabelsResult } from './compileLabels.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -381,30 +383,7 @@ async function getModelFromRnrproj(projectPath: string): Promise<string | null> 
 }
 
 async function findXppcExe(microsoftPackagesPath: string | null): Promise<string | null> {
-  const candidates: string[] = [];
-
-  if (microsoftPackagesPath) {
-    candidates.push(path.join(microsoftPackagesPath, 'bin', 'xppc.exe'));
-  }
-
-  // Search AppData for any installed UDE version
-  const appDataLocal = process.env.LOCALAPPDATA ||
-    path.join(process.env.USERPROFILE || 'C:\\Users\\Default', 'AppData', 'Local');
-  const d365Base = path.join(appDataLocal, 'Microsoft', 'Dynamics365');
-  try {
-    const versions = await readdir(d365Base);
-    for (const ver of versions.sort().reverse()) {
-      candidates.push(path.join(d365Base, ver, 'PackagesLocalDirectory', 'bin', 'xppc.exe'));
-    }
-  } catch { /* ignore */ }
-
-  // CHE: whichever volume this image put AosService on (C:, J:, K:, …)
-  candidates.push(...packagesRootCandidates('bin', 'xppc.exe'));
-
-  for (const c of candidates) {
-    try { await access(c); return c; } catch { /* next */ }
-  }
-  return null;
+  return findFrameworkTool(microsoftPackagesPath, 'xppc.exe');
 }
 
 /**
@@ -464,6 +443,28 @@ async function killOrphanedBuildProcesses(): Promise<void> {
   await execFileAsync('taskkill', ['/F', '/IM', 'xppc.exe'], { timeout: 10_000, windowsHide: true })
     .then(({ stdout }) => console.error(`[build_d365fo_project] killed xppc.exe: ${stdout.trim() || '(no output)'}`))
     .catch(() => {});
+}
+
+/**
+ * The label-compilation outcome as it should appear at the top of the build
+ * log. A clean run is silent — nothing was wrong, and a note per build would
+ * only crowd out the compiler output. A FAILED run is loud and says what it
+ * costs, because the symptom it produces (`BPErrorUnknownLabel` on a label
+ * that plainly exists, plus the `BPUnusedStrFmtArgument` warnings that cascade
+ * from it) otherwise reads as broken source code.
+ */
+export function describeLabelCompilation(modelName: string, result: CompileLabelsResult): string {
+  if (result.success) {
+    return result.skipped ? '' : `✅ Labels compiled for ${modelName} — ${result.message}\n\n`;
+  }
+  return [
+    `⚠️ Label compilation FAILED for ${modelName} — ${result.message}`,
+    `   Labels stay uncompiled, so references to them can be reported as`,
+    `   BPErrorUnknownLabel (with BPUnusedStrFmtArgument cascading from them)`,
+    `   even though the source is correct. Fix labelc before trusting those.`,
+    '',
+    '',
+  ].join('\n');
 }
 
 /** Passed through the entire queue so the close handler can launch the next model without re-resolving paths. */
@@ -528,7 +529,24 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
 
   await buildLog('INFO', `xppc.exe args: ${xppcArgs.join(' ')}`);
 
-  const logFd = openSyncFs(state.logFile, 'w');
+  // Labels first — see compileLabels.ts. xppc and xppbp resolve @Model:Id
+  // against the compiled resource assembly, so compiling labels afterwards
+  // would leave THIS build reporting unknown-label errors for labels that are
+  // perfectly well defined, and only clear them on the next one.
+  const labelResult = await compileModelLabels(microsoftPackagesPath, customPackagesPath, modelName, !!useFullBuild);
+  const labelHeader = describeLabelCompilation(modelName, labelResult);
+  if (labelResult.skipped && labelResult.success) {
+    await buildLog('INFO', `labelc skipped for ${modelName}: ${labelResult.message}`);
+  } else if (labelResult.success) {
+    await buildLog('INFO', `labelc compiled ${modelName} labels: ${labelResult.message}`);
+  } else {
+    await buildLog('WARN', `labelc did not compile ${modelName} labels: ${labelResult.message}`);
+  }
+
+  // Truncate the log with the label outcome, then append xppc's output to it,
+  // so a single tail read shows the whole build in the order it happened.
+  await writeFile(state.logFile, labelHeader, 'utf-8');
+  const logFd = openSyncFs(state.logFile, 'a');
 
   const child = spawn(xppcExe, xppcArgs, {
     detached: false,
