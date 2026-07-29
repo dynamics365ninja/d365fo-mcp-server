@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 78,
-    "covered": 69,
-    "percent": 88.5
+    "covered": 70,
+    "percent": 89.7
   },
   "leaves": [
     {
@@ -812,10 +812,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L4-posting-ledgervoucher-slice"
+      ]
     },
     {
       "id": "workflow",
