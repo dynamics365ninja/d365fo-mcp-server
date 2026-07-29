@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPrintDocType</Name>
+	<Label>@Contoso:DemoPrintDocTypeName</Label>
+	<UseEnumValue>No</UseEnumValue>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>DemoConfirmation</Name>
+			<Label>@Contoso:DemoPrintDocTypeConfirmation</Label>
+		</AxEnumValue>
+	</EnumValues>
+	<IsExtensible>true</IsExtensible>
+</AxEnum>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPrintMgmtDocType</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Registers the demo confirmation document node in print management.
+/// </summary>
+public class ConDemoPrintMgmtDocType extends PrintMgmtDocType
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Initializes a new instance of the <c>ConDemoPrintMgmtDocType</c> class.
+    /// </summary>
+    protected void new()
+    {
+        super();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>newDemoDocType</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Creates an instance of the <c>ConDemoPrintMgmtDocType</c> class.
+    /// </summary>
+    /// <returns>
+    /// An instance of the <c>ConDemoPrintMgmtDocType</c> class.
+    /// </returns>
+    public static ConDemoPrintMgmtDocType newDemoDocType()
+    {
+        return new ConDemoPrintMgmtDocType();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getDemoDocumentType</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Retrieves the demo document type that this node registers.
+    /// </summary>
+    /// <returns>
+    /// The <c>ConDemoPrintDocType</c> element that is handled by this node.
+    /// </returns>
+    public ConDemoPrintDocType getDemoDocumentType()
+    {
+        return ConDemoPrintDocType::DemoConfirmation;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getDefaultReportFormat</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Retrieves the default report format for the demo confirmation document.
+    /// </summary>
+    /// <returns>
+    /// The name of the SSRS report design that prints the demo confirmation document.
+    /// </returns>
+    public PrintMgmtReportFormatName getDefaultReportFormat()
+    {
+        return 'ConDemoConfirmation.Report';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getDisplayName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Retrieves the description of the demo confirmation document node.
+    /// </summary>
+    /// <returns>
+    /// The description that is shown for the node in the print management setup.
+    /// </returns>
+    public str getDisplayName()
+    {
+        return "@Contoso:DemoPrintMgmtNodeDescription";
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

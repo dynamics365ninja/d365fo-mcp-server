@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 44 | 44 | **100%** |
-| total | 68 | 78 | 87.2% |
+| total | 69 | 78 | 88.5% |
 
 ## Data model (12/12)
 
@@ -67,13 +67,13 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Menus & submenu nesting | core | ✅ | ✅ | ✅ | L4-master-security-slice |
 | Tiles & KPIs | total | ✅ | ✅ | ✅ | L2-tile-cue-over-query |
 
-## Reporting (2/4)
+## Reporting (3/4)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SSRS report (DP + contract + controller) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-basic |
 | Multi-dataset SSRS report | total | ✅ | ✅ | ✅ | L4-ssrs-report-multidataset |
-| Print management | total | ✅ | — | ✅ | Eval case authored (document node + settings resolution); golden pending VM capture. |
+| Print management | total | ✅ | ✅ | ✅ | L3-print-management-report |
 | Electronic Reporting (ER) | total | ✅ | — | ✅ | Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture. |
 
 ## Frameworks (13/16)
@@ -136,7 +136,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | 2 | Data management framework (DMF/DIXF) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |
 | 2 | Posting engine (LedgerVoucher) | missing E |
-| 2 | Print management | missing E |
 | 1 | Aggregate measurements / analytics | missing E |
 | 1 | Electronic Reporting (ER) | missing E |
 | 1 | Power Platform / virtual entities | missing E |
