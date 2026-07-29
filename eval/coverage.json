@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 78,
-    "covered": 70,
-    "percent": 89.7
+    "covered": 71,
+    "percent": 91
   },
   "leaves": [
     {
@@ -730,10 +730,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-electronic-reporting-integration"
+      ]
     },
     {
       "id": "sysoperation",

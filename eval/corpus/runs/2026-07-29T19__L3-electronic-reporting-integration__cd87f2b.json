@@ -1,0 +1,60 @@
+{
+  "run_id": "2026-07-29T19__L3-electronic-reporting-integration__cd87f2b",
+  "case_id": "L3-electronic-reporting-integration",
+  "tier": 3,
+  "timestamp": "2026-07-29T19:02:14.982Z",
+  "server_git_sha": "cd87f2b",
+  "generated_artifacts": [
+    "/Classes/ConDemoErDataProvider"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "platform_build": "xppc 7.0.7858.27; PackagesLocalDirectory K:/AosService; model Contoso; EXTENSION_PREFIX=Con",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Run PASSES all scored dimensions (build 1 / bp_clean 1 / golden_match 1; no systest for this case). The single AxClass ConDemoErDataProvider was produced entirely through prepare(create) -> search / get_object_info / get_method / find_references -> validate_code(references+syntax) -> d365fo_file(action=create); no hand-authored XML, and the ER model, mapping and format were correctly left out of the AOT per the case scope limit. Three non-blocking defects observed. (1) KNOWLEDGE_GAP (primary): get_knowledge(topic=electronic-reporting) states two rules that are false against this AOT - [a] \"To extend ER model mapping: implement IERModelMappingExtension on your class\": search finds NO symbol IERModelMappingExtension or ERModelMappingExtension anywhere in the index; [b] \"For custom data sources: create a class implementing ERIDataSourceProvider and register it\": ERIDataSourceProvider is an ER DESIGNER interface with the single member \"public ERIDataSource getDataSource()\", find_references returns exactly ONE consumer in the whole AOT (ERLookupRootComponentUIBuilder.getDataSource), and its return type ERIDataSource is not an X++ type at all, so an application data-source class implementing it would not compile. The correct grounded answer, which the KB never states, is that an ER application data source is a PLAIN public X++ class: ER binds it in the model-mapping designer via the data-source type \"Dynamics 365 for Operations \\ Class\", handled framework-side by ERClassDataSourceHandler / ERClassDataSourceHandlerExtension (ElectronicReporting model). There is no registration API to call. Following the KB literally produces a non-compiling class. (2) VALIDATOR_GAP: validate_code(mode=\"references\") reported \"all 18 reference(s) verified ... Safe to proceed\" for a class body that xppc then rejected TWICE - first \"The name TaxAmountCur does not denote a class, a table, or an extended data type\" (5 errors), then \"A reference to Dynamics.AX.FiscalBooks ... is required to compile this module\" on a plain select from CustInvoiceJour. Both symbols EXIST in the index (TaxAmountCur -> model Tax; CustInvoiceJour -> model Foundation) but are NOT VISIBLE from the target model: the resolver checks existence only and ignores the sandbox Descriptor ModuleReferences. This is the 7th consecutive false result from that tool and the expensive kind - it green-lights a write that costs a full build cycle. The second variant is subtler: CustInvoiceJour lives in an ALREADY-REFERENCED package (ApplicationSuite/Foundation), yet ANY select on it demands the FiscalBooks package because FiscalBooks contributes a table extension; isolated with a 6-line throwaway probe class (select firstonly RecId, InvoiceId from CustInvoiceJour -> same FiscalBooks error). (3) Minor build-diagnostics defect: xppc method locations come back with a stray backtick prefix in the element path (dynamics://Class/ConDemoErDataProvider/Method/[backtick]getInvoiceTotals) and the reported line/col pair was identical, (43,5)-(43,38), for two DIFFERENT statements across successive builds, which cost one wasted edit cycle before the probe isolated the real trigger. Design decision recorded for the golden: the provider reads FMRental / FMRentalCharge (FleetManagement, already in ModuleReferences) instead of CustInvoiceJour, so NO package reference had to be added - Contoso/Descriptor/Contoso.xml ModuleReferences is left exactly as found (ApplicationFoundation, ApplicationPlatform, ApplicationSuite, FleetManagement, Directory, Ledger, ContactPerson, Currency, Dimensions, PersonnelCore, GeneralLedger, SourceDocumentationTypes). A CustInvoiceJour-based golden would have required FiscalBooks + Tax and would not reproduce on a clean sandbox.",
+  "suggested_fix_area": "1) src/knowledge (topic \"electronic-reporting\"): drop the two invented rules (IERModelMappingExtension; \"implement ERIDataSourceProvider and register it\") and replace them with the verified application-data-source contract - a plain public class with a static construct(), bound in the ER model-mapping designer as the data-source type \"Dynamics 365 for Operations \\ Class\"; name ERClassDataSourceHandler as the framework consumer and keep the (correct) ERObjectsFactory / ERIFormatMappingRun rules for running a format. 2) src/validation/resolveReferences: after resolving a symbol, compare its OWNING PACKAGE with the target model Descriptor ModuleReferences and emit a distinct \"not visible from model\" diagnostic; for a table buffer also check the packages of all its TABLE EXTENSIONS (the FiscalBooks / CustInvoiceJour case), because xppc requires those references too. 3) src/tools/build diagnostics parsing: strip the stray backtick from dynamics:// method paths and prefer the raw xppc span over the re-derived line number, which was stale and misleading across successive edits.",
+  "evidence_refs": [
+    "build #1 (5 errors): \"The name TaxAmountCur does not denote a class, a table, or an extended data type\" - after validate_code(references) reported all 18 refs verified",
+    "build #3 (1 error): \"A reference to Dynamics.AX.FiscalBooks, Version=0.0.0.0 ... is required to compile this module\", located in ConDemoErDataProvider.getInvoiceTotals",
+    "probe class ConDemoErProbe (select firstonly RecId, InvoiceId from CustInvoiceJour) reproduced the FiscalBooks error; the same probe over FMRental / FMRentalCharge + Ledger::accountingCurrency() compiled clean",
+    "final full build (force + fullBuild): Errors: 0, Warnings: 1 (unrelated Commerce PricingEngine external assembly, present on every build of this VM)",
+    "run_bp_check(targetFilter=ConDemoErDataProvider, targetElementType=class): \"1 elements processed.\" Warnings: 0 Errors: 0",
+    "negative probe A - getInvoiceTotals return type container -> str: build FAILED, \"Cannot implicitly convert from type container to type str\"; restored, sha256 c8faa399d0343bceaaa030a3f2f44efb0fbc3b8b8f5c26b35f6ae652d81644c3 unchanged",
+    "negative probe B - label id swapped to @Contoso:ErInvoiceTotalsCaptionBogus: build still succeeded, filtered BP reported BPErrorUnknownLabel: 1 with \"1 elements processed.\"; restored, BP clean again, same sha256",
+    "get_object_info(members=names) after the write listed all 11 methods with exact signatures incl. \"public container getInvoiceTotals(Num _documentId)\" - nothing dropped by the deserializer",
+    "find_references(ERIDataSourceProvider): 1 reference in the entire AOT (ERLookupRootComponentUIBuilder.getDataSource)",
+    "search(IERModelMappingExtension) and search(ERModelMappingExtension): no X++ symbols found"
+  ]
+}

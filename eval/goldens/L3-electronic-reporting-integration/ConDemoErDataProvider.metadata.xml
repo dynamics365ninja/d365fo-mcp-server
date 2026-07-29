@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoErDataProvider</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Supplies the aggregated vehicle rental values that Electronic Reporting reads while it renders
+/// the demo rental invoice format.
+/// </summary>
+/// <remarks>
+/// Developer documentation - ER binding: the ER model mapping "Demo rental invoice (mapping)" of the
+/// ER data model "Demo rental invoice model" binds this class through its model mapping data source
+/// "DemoErInvoiceProvider", which is declared with the data source type
+/// "Dynamics 365 for Operations \ Class" over class <c>ConDemoErDataProvider</c>. The ER data model,
+/// the model mapping and the format are configured in the Electronic reporting designer and are not
+/// AOT elements, so they are not part of this model.
+/// </remarks>
+public class ConDemoErDataProvider
+{
+    private FMRentalId       documentId;
+    private str              documentTitle;
+    private str              totalsCaption;
+    private TransDate        documentDate;
+    private CurrencyCode     currencyCode;
+    private FMVehicleTotal   vehicleAmount;
+    private FMExtendedAmount chargesAmount;
+    private FMQuantity       chargesQuantity;
+    private FMExtendedAmount totalAmount;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Creates an instance of the <c>ConDemoErDataProvider</c> class.
+    /// </summary>
+    /// <returns>An instance of the <c>ConDemoErDataProvider</c> class.</returns>
+    public static ConDemoErDataProvider construct()
+    {
+        // ER instantiates this class without arguments: the ER model mapping data source
+        // "DemoErInvoiceProvider" is declared with the data source type
+        // "Dynamics 365 for Operations \ Class" over class ConDemoErDataProvider.
+        return new ConDemoErDataProvider();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getInvoiceTotals</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Aggregates the rental values of the specified document.
+    /// </summary>
+    /// <param name = "_documentId">The number of the rental document.</param>
+    /// <returns>A container that holds every value the Electronic reporting format consumes.</returns>
+    /// <remarks>
+    /// The same values stay available through the public parm methods of this class after the call.
+    /// </remarks>
+    public container getInvoiceTotals(Num _documentId)
+    {
+        FMRental       rentalHeader;
+        FMRentalCharge rentalCharge;
+
+        // ER binding: the model mapping data source "DemoErInvoiceProvider" of the ER data model
+        // "Demo rental invoice model" calls getInvoiceTotals() once per document and then reads every
+        // single value through the public parm methods of this class.
+        documentId = _documentId;
+
+        // Every string that leaves this class comes from a label, so the ER output follows the
+        // language of the running user instead of a hard coded text.
+        documentTitle = "@Contoso:ErInvoiceDocumentTitle";
+        totalsCaption = "@Contoso:ErInvoiceTotalsCaption";
+
+        select firstonly RecId, StartDate, VehicleRateTotal from rentalHeader
+        where rentalHeader.RentalId == _documentId;
+
+        documentDate  = DateTimeUtil::date(rentalHeader.StartDate);
+        currencyCode  = Ledger::accountingCurrency();
+        vehicleAmount = rentalHeader.VehicleRateTotal;
+
+        // The charge lines of the document are aggregated in one set based statement instead of a
+        // while select loop, so the provider stays cheap when ER renders many documents.
+        select sum(ExtendedAmount), sum(Quantity) from rentalCharge
+        where rentalCharge.RentalId == _documentId;
+
+        chargesAmount   = rentalCharge.ExtendedAmount;
+        chargesQuantity = rentalCharge.Quantity;
+        totalAmount     = vehicleAmount + chargesAmount;
+
+        if (!rentalHeader.RecId)
+        {
+            warning(strFmt("@Contoso:ErInvoiceDocumentNotFound", _documentId));
+        }
+
+        return [documentId, documentTitle, totalsCaption, documentDate, currencyCode, vehicleAmount, chargesAmount, chargesQuantity, totalAmount];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDocumentId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the number of the document that the aggregated values belong to.
+    /// </summary>
+    /// <param name = "_documentId">The number of the document.</param>
+    /// <returns>The number of the document.</returns>
+    public FMRentalId parmDocumentId(FMRentalId _documentId = documentId)
+    {
+        documentId = _documentId;
+
+        return documentId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDocumentTitle</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the title that the Electronic reporting format prints for the document.
+    /// </summary>
+    /// <param name = "_documentTitle">The title of the document.</param>
+    /// <returns>The title of the document.</returns>
+    public str parmDocumentTitle(str _documentTitle = documentTitle)
+    {
+        documentTitle = _documentTitle;
+
+        return documentTitle;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTotalsCaption</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the caption that the Electronic reporting format prints above the totals.
+    /// </summary>
+    /// <param name = "_totalsCaption">The caption of the totals block.</param>
+    /// <returns>The caption of the totals block.</returns>
+    public str parmTotalsCaption(str _totalsCaption = totalsCaption)
+    {
+        totalsCaption = _totalsCaption;
+
+        return totalsCaption;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDocumentDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the date of the document.
+    /// </summary>
+    /// <param name = "_documentDate">The date of the document.</param>
+    /// <returns>The date of the document.</returns>
+    public TransDate parmDocumentDate(TransDate _documentDate = documentDate)
+    {
+        documentDate = _documentDate;
+
+        return documentDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCurrencyCode</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the currency of the aggregated amounts.
+    /// </summary>
+    /// <param name = "_currencyCode">The currency of the amounts.</param>
+    /// <returns>The currency of the amounts.</returns>
+    public CurrencyCode parmCurrencyCode(CurrencyCode _currencyCode = currencyCode)
+    {
+        currencyCode = _currencyCode;
+
+        return currencyCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVehicleAmount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the vehicle rate amount of the document.
+    /// </summary>
+    /// <param name = "_vehicleAmount">The vehicle rate amount of the document.</param>
+    /// <returns>The vehicle rate amount of the document.</returns>
+    public FMVehicleTotal parmVehicleAmount(FMVehicleTotal _vehicleAmount = vehicleAmount)
+    {
+        vehicleAmount = _vehicleAmount;
+
+        return vehicleAmount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmChargesAmount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the aggregated charge amount of the document.
+    /// </summary>
+    /// <param name = "_chargesAmount">The aggregated charge amount of the document.</param>
+    /// <returns>The aggregated charge amount of the document.</returns>
+    public FMExtendedAmount parmChargesAmount(FMExtendedAmount _chargesAmount = chargesAmount)
+    {
+        chargesAmount = _chargesAmount;
+
+        return chargesAmount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmChargesQuantity</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the aggregated charge quantity of the document.
+    /// </summary>
+    /// <param name = "_chargesQuantity">The aggregated charge quantity of the document.</param>
+    /// <returns>The aggregated charge quantity of the document.</returns>
+    public FMQuantity parmChargesQuantity(FMQuantity _chargesQuantity = chargesQuantity)
+    {
+        chargesQuantity = _chargesQuantity;
+
+        return chargesQuantity;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTotalAmount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the total amount of the document.
+    /// </summary>
+    /// <param name = "_totalAmount">The total amount of the document.</param>
+    /// <returns>The total amount of the document.</returns>
+    public FMExtendedAmount parmTotalAmount(FMExtendedAmount _totalAmount = totalAmount)
+    {
+        totalAmount = _totalAmount;
+
+        return totalAmount;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
