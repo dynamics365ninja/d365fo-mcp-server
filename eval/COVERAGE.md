@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 44 | 44 | **100%** |
-| total | 69 | 78 | 88.5% |
+| total | 71 | 78 | 91% |
 
 ## Data model (12/12)
 
@@ -67,16 +67,16 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Menus & submenu nesting | core | ✅ | ✅ | ✅ | L4-master-security-slice |
 | Tiles & KPIs | total | ✅ | ✅ | ✅ | L2-tile-cue-over-query |
 
-## Reporting (3/4)
+## Reporting (4/4)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SSRS report (DP + contract + controller) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-basic |
 | Multi-dataset SSRS report | total | ✅ | ✅ | ✅ | L4-ssrs-report-multidataset |
 | Print management | total | ✅ | ✅ | ✅ | L3-print-management-report |
-| Electronic Reporting (ER) | total | ✅ | — | ✅ | Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture. |
+| Electronic Reporting (ER) | total | ✅ | ✅ | ✅ | L3-electronic-reporting-integration |
 
-## Frameworks (13/16)
+## Frameworks (14/16)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -85,7 +85,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Async & retryable batch (BatchRetryable/runAsync) | total | ✅ | ✅ | ✅ | L3-batch-retryable-basic |
 | Number sequences | core | ✅ | ✅ | ✅ | L2-numberseq-basic |
 | Financial dimensions | core | ✅ | ✅ | ✅ | L2-dimension-basic |
-| Posting engine (LedgerVoucher) | total | ✅ | — | ✅ | Eval case authored; it scores the STRUCTURE of the LedgerVoucher call chain, not a posted result (no ledger fixture). Golden pending VM capture. |
+| Posting engine (LedgerVoucher) | total | ✅ | ✅ | ✅ | L4-posting-ledgervoucher-slice |
 | Workflow | core | ✅ | ✅ | ✅ | L3-workflow-document-submit |
 | Business events & alerts | core | ✅ | ✅ | ✅ | L2-business-event-basic |
 | Feature management | total | ✅ | ✅ | ✅ | L2-feature-management-flight |
@@ -135,9 +135,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | ---: | --- | --- |
 | 2 | Data management framework (DMF/DIXF) | missing E |
 | 2 | Dual-write (Dataverse) | missing E |
-| 2 | Posting engine (LedgerVoucher) | missing E |
 | 1 | Aggregate measurements / analytics | missing E |
-| 1 | Electronic Reporting (ER) | missing E |
 | 1 | Power Platform / virtual entities | missing E |
 | 1 | Trade agreements & pricing | missing E |
 | 1 | Warehouse management (WHS) | missing E |

@@ -7,7 +7,7 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L3-electronic-reporting-integration/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

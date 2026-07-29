@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoVoucherPoster</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Posts a balanced two-line voucher through the ledger posting engine.
+/// </summary>
+public class ConDemoVoucherPoster
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>postPair</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Posts a balanced pair of ledger voucher transactions for the supplied journal line.
+    /// </summary>
+    /// <param name = "_source">
+    /// The <c>LedgerJournalTrans</c> record that supplies the accounts, the currency and the amount.
+    /// </param>
+    public static void postPair(LedgerJournalTrans _source)
+    {
+        LedgerVoucher               ledgerVoucher;
+        LedgerVoucherObject         voucherObject;
+        LedgerVoucherTransObject    debitTrans;
+        LedgerVoucherTransObject    creditTrans;
+        CurrencyExchangeHelper      exchangeHelper;
+        LedgerJournalTable          journalTable;
+        LedgerJournalName           journalName;
+        NumberSeq                   voucherSeq;
+        Voucher                     voucher;
+        TransDate                   transDate;
+        AmountCur                   debitAmount;
+        AmountCur                   creditAmount;
+
+        journalTable = LedgerJournalTable::find(_source.JournalNum);
+        journalName  = LedgerJournalName::find(journalTable.JournalName);
+
+        debitAmount  = _source.AmountCurDebit;
+        creditAmount = _source.AmountCurCredit;
+
+        // The pair must net to zero. An unbalanced pair is a labelled error, never a silent return.
+        if (debitAmount - creditAmount != 0)
+        {
+            throw error(strFmt("@Contoso:DemoVoucherNotBalanced", _source.Voucher, debitAmount, creditAmount));
+        }
+
+        transDate = _source.TransDate ? _source.TransDate : DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+
+        ttsbegin;
+
+        // The voucher number is drawn from the journal name number sequence - never a hand-built string.
+        voucherSeq = NumberSeq::newGetVoucherFromId(journalName.NumberSequenceTable);
+        voucher    = voucherSeq.voucher();
+
+        // DetailSummary and SysModule come from the journal name context, not from a hard-coded constant.
+        ledgerVoucher = LedgerVoucher::newLedgerPost(
+        journalName.DetailSummary,
+        journalName.getSysModuleForJournal(),
+        '');
+
+        voucherObject = LedgerVoucherObject::newVoucher(
+        voucher,
+        transDate,
+        journalName.getSysModuleForJournal(),
+        LedgerTransType::GeneralJournal);
+
+        ledgerVoucher.addVoucher(voucherObject);
+
+        exchangeHelper = CurrencyExchangeHelper::newExchangeDate(Ledger::current(), transDate);
+
+        // Debit leg - positive amount on the primary ledger dimension.
+        debitTrans = LedgerVoucherTransObject::newTransactionAmountDefault(
+        voucherObject,
+        LedgerPostingType::LedgerJournal,
+        _source.LedgerDimension,
+        _source.CurrencyCode,
+        debitAmount,
+        exchangeHelper);
+        ledgerVoucher.addTrans(debitTrans);
+
+        // Credit leg - the same amount negated on the offset dimension, so the voucher nets to zero.
+        creditTrans = LedgerVoucherTransObject::newTransactionAmountDefault(
+        voucherObject,
+        LedgerPostingType::LedgerJournal,
+        _source.OffsetLedgerDimension,
+        _source.CurrencyCode,
+        -debitAmount,
+        exchangeHelper);
+        ledgerVoucher.addTrans(creditTrans);
+
+        // end() runs the posting engine balance check and writes the voucher.
+        ledgerVoucher.end();
+
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

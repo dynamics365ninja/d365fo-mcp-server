@@ -1,0 +1,58 @@
+{
+  "run_id": "2026-07-29T18__L4-posting-ledgervoucher-slice__0625373",
+  "case_id": "L4-posting-ledgervoucher-slice",
+  "tier": 4,
+  "timestamp": "2026-07-29T18:12:58.033Z",
+  "server_git_sha": "0625373",
+  "generated_artifacts": [
+    "ConDemoVoucherPoster.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "PASS",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "FALSE POSITIVE arity-mismatch: LedgerJournalTable::find (1 arg vs indexed 2) - _forUpdate has a default",
+        "FALSE POSITIVE arity-mismatch: LedgerJournalName::find (1 arg vs indexed 3) - _forupdate/_concurrencyModel have defaults",
+        "FALSE POSITIVE arity-mismatch: LedgerVoucherObject::newVoucher (4 args vs indexed 10) - params 2-10 have defaults",
+        "FALSE POSITIVE arity-mismatch: NumberSeq::newGetVoucherFromId (1 arg vs indexed 0) - index holds a degraded signature 'void newGetVoucherFromId()' for this server-modified multi-line method"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Run PASSES all scored dimensions (build/bp_clean/golden_match). Three non-blocking defects observed. (1) VALIDATOR_GAP: validate_code(mode=references) raised 4/4 false-positive arity-mismatch errors - the reference resolver compares the call's argument count against the full indexed parameter list and ignores X++ default parameter values, so every call that omits an optional argument is reported as an error. Six consecutive false positives now on record. (2) TOOL_DEFECT (index): NumberSeq::newGetVoucherFromId is stored in the SQLite symbol index as 'void newGetVoucherFromId()' (signature lost); get_method(include=signature) returned that degraded form and only get_method(include=source) via the bridge exposed the real signature. Likely the multi-line 'public static server' declaration with //<GEERU> pragma comments defeats the signature parser. (3) ENV_FLAKE: sandbox Descriptor Contoso.xml ModuleReferences lacked GeneralLedger and SourceDocumentationTypes; 12 'does not denote a class, a table, or an extended data type' errors on DetailSummary, LedgerTransType, LedgerPostingType, AmountCurDebit/Credit, CurrentOperationsTax, AcknowledgementDate. Note CurrentOperationsTax and AcknowledgementDate are needed only because they appear in newVoucher's DEFAULT parameter expressions - xppc requires those types to be visible even when the arguments are omitted. Both references added manually; kept in place. Cosmetic: the class writer flattened continuation lines of multi-line calls from 8 to 4 relative spaces (harmless - the oracle re-derives indentation from brace depth).",
+  "suggested_fix_area": "src/validation/resolveReferences (arity check must subtract parameters that carry default values before reporting arity-mismatch); symbol-index method signature extraction for 'server'-modified multi-line declarations containing pragma comments; eval sandbox Descriptor ModuleReferences bootstrap (GeneralLedger + SourceDocumentationTypes for any ledger/posting case); d365fo_file class writer indentation normalisation of continuation lines.",
+  "evidence_refs": [
+    "eval/goldens/L4-posting-ledgervoucher-slice/ConDemoVoucherPoster.metadata.xml",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Descriptor/Contoso.xml (added GeneralLedger, SourceDocumentationTypes)",
+    "run_bp_check output: '1 elements processed.' Warnings: 0 Errors: 0 (filter class:ConDemoVoucherPoster)",
+    "negative test: replacing addVoucher() with addVoucherNegativeProbe() made the full build fail with ClassDoesNotContainMethod, proving the green build is not a cached replay"
+  ]
+}

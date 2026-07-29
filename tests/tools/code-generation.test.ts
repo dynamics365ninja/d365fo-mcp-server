@@ -10,8 +10,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { codeGenTool } from '../../src/tools/codeGen';
 import { completionTool } from '../../src/tools/completion';
-import { handleGenerateD365Xml } from '../../src/tools/generateD365Xml';
-import { XmlTemplateGenerator } from '../../src/tools/createD365File';
+import { handleGenerateD365Xml, XmlTemplateGenerator as generateGenerator } from '../../src/tools/generateD365Xml';
+import { XmlTemplateGenerator, XmlTemplateGenerator as createGenerator } from '../../src/tools/createD365File';
 import { handleGenerateSmartTable, selectUnbuildableEdts } from '../../src/tools/generateSmartTable';
 import { handleGenerateSmartForm } from '../../src/tools/generateSmartForm';
 import { handleSuggestEdt } from '../../src/tools/suggestEdt';
@@ -379,6 +379,62 @@ describe('XmlTemplateGenerator.generateAxDataEntityXml', () => {
     });
     expect(xml).toMatch(/<Name>DisplayName<\/Name>\s*<DataField>Txt<\/DataField>/);
     expect(xml).toMatch(/<Name>Txt<\/Name>\s*<Field>Txt<\/Field>/);
+  });
+});
+
+// ─── generate('data-entity', …) drops the caller's X++ ──────────────────────
+
+/**
+ * Regression: eval/corpus/runs/2026-07-29T12__L3-dualwrite-entity-mapping__483852c.json
+ * and the L3-dmf-entity-import-slice blocker — X++ handed to
+ * d365fo_file(action="create", objectType="data-entity") was silently dropped, so
+ * validateWrite()/postLoad() overrides never reached <SourceCode>. Both dispatchers
+ * (createD365File.ts and generateD365Xml.ts) must split it and pass it to the
+ * shared builder.
+ */
+describe.each([
+  ['createD365File', createGenerator],
+  ['generateD365Xml', generateGenerator],
+])('%s.generate("data-entity") — X++ passthrough', (_name, Generator: any) => {
+  const xpp = `public class ConDemoImportTargetEntity extends common
+{
+}
+
+public boolean validateWrite()
+{
+    boolean ret = super();
+    return ret;
+}`;
+
+  it('splits the caller X++ into Declaration + Methods instead of dropping it', () => {
+    const xml = Generator.generate('data-entity', 'ConDemoImportTargetEntity', xpp, {
+      primaryTable: 'ConDemoImportTarget',
+      fields: [{ name: 'DocumentCode' }],
+    });
+    expect(xml).toContain('public class ConDemoImportTargetEntity extends common');
+    expect(xml).toContain('<Name>validateWrite</Name>');
+    expect(xml).toContain('boolean ret = super();');
+    // Passing source implies the AOT-canonical skeleton.
+    expect(xml).toContain('\t<DeleteActions />\n');
+    expect(xml).toContain('\t<StateMachines />\n');
+  });
+
+  it('also accepts the X++ inside properties.sourceCode', () => {
+    const xml = Generator.generate('data-entity', 'ConDemoImportTargetEntity', undefined, {
+      primaryTable: 'ConDemoImportTarget',
+      fields: [{ name: 'DocumentCode' }],
+      sourceCode: xpp,
+    });
+    expect(xml).toContain('<Name>validateWrite</Name>');
+  });
+
+  it('emits no <SourceCode> at entity level when no X++ is supplied (backward compat)', () => {
+    const xml = Generator.generate('data-entity', 'ConDemoImportTargetEntity', undefined, {
+      primaryTable: 'ConDemoImportTarget',
+      fields: [{ name: 'DocumentCode' }],
+    });
+    expect(xml).not.toMatch(/^\t<SourceCode>/m);
+    expect(xml).not.toMatch(/^\t<DeleteActions \/>/m);
   });
 });
 
