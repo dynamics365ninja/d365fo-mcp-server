@@ -3,8 +3,8 @@
  *
  * Gap: eval case L3-custom-service-basic was blocked because d365fo_file's
  * objectType enum had no `service` / `service-group`, so a custom service could
- * not be created through the grounded tool path at all (eval/ROADMAP.md,
- * findings from the Contoso golden-capture run 2026-07-20).
+ * not be created through the grounded tool path at all (findings from the
+ * Contoso golden-capture run 2026-07-20).
  *
  * Element shapes here are pinned to the real AOT on the dev VM
  * (ApplicationSuite/Foundation/AxService/DimensionService.xml and
@@ -130,7 +130,7 @@ describe('buildAxServiceGroupXml', () => {
 
 /**
  * Caller-wiring hazard, same class as
- * `L4-bridge-drops-data-entity-primarytable-fields-on-create` in eval/ROADMAP.md.
+ * `L4-bridge-drops-data-entity-primarytable-fields-on-create` in eval/cases/.
  *
  * `d365fo_file(create)` prefixes only `objectName` (DemoNoteService →
  * ContosoDemoNoteService). Cross-references inside `properties` are written

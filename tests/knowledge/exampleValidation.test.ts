@@ -1,5 +1,5 @@
 /**
- * Knowledge-base example BP gate (audit 2026-07-20 roadmap, VM-free half of
+ * Knowledge-base example BP gate (2026-07-20 knowledge audit, VM-free half of
  * "route knowledge code examples through validate_code").
  *
  * Every code example in KNOWLEDGE_BASE is routed through the same offline
@@ -14,7 +14,8 @@
  * being asserted to fire (a stale allow entry fails too).
  *
  * NOTE: this is the offline BP slice only. Proving the surrounding X++ actually
- * *compiles* needs a real build on the VM and stays tracked in eval/ROADMAP.md.
+ * *compiles* needs a real build on the VM and stays tracked in eval/README.md
+ * ("Status & open work").
  */
 
 import { describe, it, expect } from 'vitest';

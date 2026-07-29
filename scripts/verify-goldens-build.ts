@@ -6,6 +6,10 @@
  *   npx tsx scripts/verify-goldens-build.ts --baseline # sandbox only, no goldens
  *   npx tsx scripts/verify-goldens-build.ts --limit 5  # smoke test
  *
+ * Writes the committed record eval/golden-build-verification.json (run
+ * `--baseline` first: if the sandbox does not compile clean on its own, no
+ * per-case result means anything).
+ *
  * VM-only: needs PackagesLocalDirectory and xppc.exe.
  *
  * WHY THIS EXISTS
@@ -46,11 +50,41 @@ const MODEL = process.env.D365FO_MODEL_NAME ?? 'Contoso';
 const MODEL_ROOT = `${PACKAGES}/${MODEL}/${MODEL}`;
 const XPPC = `${PACKAGES}/bin/xppc.exe`;
 const LOG = path.join(process.cwd(), '.xppc-verify.log');
-const OUT = path.join(process.cwd(), 'golden-verify-results.json');
+const OUT = path.join(process.cwd(), 'eval', 'golden-build-verification.json');
+const PARTIAL_OUT = path.join(process.cwd(), '.golden-build-verification.partial.json');
 
 interface Artifact { root: string; name: string; xml: string }
 interface CaseResult {
   caseId: string; artifacts: number; skipped: string[]; ok: boolean; errors: string[];
+}
+
+/** Which compiler produced the verdict — a golden is only clean against a version. */
+function compilerVersion(): string {
+  const proc = spawnSync(
+    'powershell',
+    ['-NoProfile', '-Command', `(Get-Item '${XPPC}').VersionInfo.FileVersion`],
+    { encoding: 'utf-8' },
+  );
+  return proc.stdout?.trim() || 'unknown';
+}
+
+/**
+ * The committed record: counters up front, per-case detail (incl. skips) below.
+ * A partial (`--limit`) run goes to a scratch file — the committed record must
+ * only ever mean "every captured case, verified", never a smoke test.
+ */
+function writeResults(results: CaseResult[], compiler: string, out: string): void {
+  const record = {
+    generatedAt: new Date().toISOString().slice(0, 10),
+    method: 'scripts/verify-goldens-build.ts — isolated full xppc build per case',
+    compiler: `xppc ${compiler}`,
+    model: MODEL,
+    clean: results.filter(r => r.ok).length,
+    total: results.length,
+    artifacts: results.reduce((n, r) => n + r.artifacts, 0),
+    cases: results,
+  };
+  fs.writeFileSync(out, JSON.stringify(record, null, 2), 'utf8');
 }
 
 function artifactsFor(caseId: string): Artifact[] {
@@ -109,8 +143,12 @@ function main(): void {
   const limit = limitIdx >= 0 ? Number(argv[limitIdx + 1]) : 0;
 
   let ids = capturedCases();
+  const partial = limit > 0 && limit < ids.length;
   if (limit > 0) ids = ids.slice(0, limit);
-  console.log(`verifying ${ids.length} captured case(s), isolated, full build each\n`);
+  const out = partial ? PARTIAL_OUT : OUT;
+  const compiler = compilerVersion();
+  console.log(`verifying ${ids.length} captured case(s), isolated, full build each (xppc ${compiler})`);
+  console.log(`→ ${out}${partial ? '  (partial run — the committed record is left alone)' : ''}\n`);
 
   const results: CaseResult[] = [];
   for (const [i, caseId] of ids.entries()) {
@@ -134,7 +172,7 @@ function main(): void {
     const note = skipped.length ? `, ${skipped.length} pre-existing skipped` : '';
     console.log(`${String(i + 1).padStart(2)}/${ids.length} ${ok ? '✅' : '❌'} ${caseId}  (${arts.length} artifact(s)${note})`);
     for (const e of errors.slice(0, 4)) console.log(`        ${e.slice(0, 170)}`);
-    fs.writeFileSync(OUT, JSON.stringify(results, null, 2), 'utf8');
+    writeResults(results, compiler, out);
   }
 
   const failed = results.filter(r => !r.ok);

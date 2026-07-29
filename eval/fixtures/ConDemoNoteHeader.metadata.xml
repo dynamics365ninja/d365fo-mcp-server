@@ -8,7 +8,7 @@
   must survive the per-case rollback. See docs/AGENT_EVAL_LOOP.md §4a/§11 and
   eval/fixtures/README.md for the provisioning + rollback-exclusion contract.
 
-  Why it lives here (root cause, eval/ROADMAP.md step 1): the table was
+  Why it lives here (root cause): the table was
   originally created only as artifact 1 of case L1-form-basic. The implementer
   protocol rolls back every case after scoring, so the shared table could never
   survive — each rollback re-broke every dependent case. Separating the fixture

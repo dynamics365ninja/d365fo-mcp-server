@@ -1,7 +1,7 @@
 /**
- * Coverage taxonomy (ROADMAP P2) — the definition of "100%".
+ * Coverage taxonomy — the definition of "100%".
  *
- * Three sources, per the roadmap:
+ * Three sources:
  *  1. AOT element types the metadata parser knows about — the mechanically
  *     complete list of everything developable (`source: 'aot'`). The
  *     `aotTypes` of these leaves are the internal type names used by the
@@ -10,7 +10,7 @@
  *  2. Cross-cutting X++ development topics that are not AOT elements
  *     (transactions, CoC rules, performance, …) — `source: 'topic'`.
  *  3. Real-world frequency `weight` (0–5): how often a leaf shows up in
- *     customization work. Weights order the P7 closure queue; they are not
+ *     customization work. Weights order the closure queue; they are not
  *     used to fudge the percentage.
  *
  * Two published tiers:

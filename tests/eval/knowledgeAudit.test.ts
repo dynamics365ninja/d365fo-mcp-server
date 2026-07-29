@@ -1,5 +1,5 @@
 /**
- * Knowledge-audit unit tests (ROADMAP P1) — VM-free.
+ * Knowledge-audit unit tests — VM-free.
  *
  * Two things are pinned here: the *extractor* (what counts as a named AOT
  * reference in knowledge prose/code) and the *gate* (a knowledge edit that has

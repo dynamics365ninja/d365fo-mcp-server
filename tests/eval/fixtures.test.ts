@@ -1,7 +1,7 @@
 /**
  * Harness-level fixture classifier / loader / rollback-exclusion gate (VM-free).
  *
- * Locks in the INPUT/OUTPUT split of eval/ROADMAP.md step 1: ConDemoNoteHeader is
+ * Locks in the INPUT/OUTPUT split of eval/fixtures/README.md: ConDemoNoteHeader is
  * the one provisioned fixture, every other ConDemo / DemoNote name is a case
  * OUTPUT, and any NEW case that quietly introduces a shared (cross-case)
  * dependency without a recorded decision fails the `unresolved` assertion — so

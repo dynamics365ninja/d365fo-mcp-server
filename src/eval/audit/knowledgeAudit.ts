@@ -1,5 +1,5 @@
 /**
- * Knowledge-base audit (ROADMAP P1) — resolve every AOT reference extracted
+ * Knowledge-base audit — resolve every AOT reference extracted
  * from KNOWLEDGE_BASE against the real symbol index, so knowledge content is
  * gated the same fail-closed way generated code is.
  *

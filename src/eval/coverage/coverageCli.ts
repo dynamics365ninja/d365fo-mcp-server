@@ -1,5 +1,5 @@
 /**
- * Coverage CLI (ROADMAP P3/P4) — VM-free.
+ * Coverage CLI — VM-free.
  *
  *   npm run eval:coverage            # regenerate eval/COVERAGE.md + eval/coverage.json
  *   npm run eval:coverage -- --check # CI gate: fail if the artifacts are stale or a leaf points at something that no longer exists
