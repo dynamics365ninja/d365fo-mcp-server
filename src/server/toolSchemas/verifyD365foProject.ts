@@ -41,7 +41,7 @@ export const verifyD365foProjectTool = {
           description: 'Model name. Auto-detected from mcp.json if omitted.',
         },
         packageName: { type: 'string', description: 'Package name. Auto-resolved from model name if omitted.' },
-        packagePath: { type: 'string', description: 'Base package path (default: K:\\AosService\\PackagesLocalDirectory)' },
+        packagePath: { type: 'string', description: 'Base package path (default: auto-detected PackagesLocalDirectory)' },
       },
     },
   };

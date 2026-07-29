@@ -11,7 +11,7 @@ import type { BridgeClient } from '../bridge/bridgeClient.js';
 import path from 'path';
 import fs from 'fs';
 import { getConfigManager } from '../utils/configManager.js';
-import { defaultPackagesRoot } from '../utils/packagesRoot.js';
+import { defaultPackagesRoot, describePackagesRootScan } from '../utils/packagesRoot.js';
 import { resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix } from '../utils/modelClassifier.js';
 import { ProjectFileManager } from './createD365File.js';
 import { extractModelFromProject, findProjectInSolution } from '../utils/projectUtils.js';
@@ -570,8 +570,8 @@ export async function handleGenerateSmartTable(
   // made "just show me the XML" fail on any machine without a D365FO install.
   if (!resolvedPackagePath && process.platform === 'win32' && !preview) {
     throw new Error(
-      '\u274c Cannot determine PackagesLocalDirectory path.\n\n' +
-      'Neither C:\\AosService\\PackagesLocalDirectory nor K:\\AosService\\PackagesLocalDirectory were found.\n\n' +
+      '❌ Cannot determine PackagesLocalDirectory path.\n\n' +
+      `${describePackagesRootScan()}\n\n` +
       'If your D365FO installation is on a different drive, add one of the following to your .mcp.json:\n' +
       '  \u2022 "packagePath": "<drive>:\\\\AosService\\\\PackagesLocalDirectory"\n' +
       '  \u2022 "workspacePath": "<drive>:\\\\AosService\\\\PackagesLocalDirectory\\\\YourModel"\n' +
