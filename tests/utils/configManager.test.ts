@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../../src/utils/configManager';
+import { resetPackagesRootCache } from '../../src/utils/packagesRoot';
 
 // Prevent real file I/O during unit tests
 vi.mock('fs/promises', () => ({
@@ -171,14 +172,20 @@ describe('explicit modelName overrides workspacePath last-segment extraction', (
 
 describe('no workspacePath configured', () => {
   it('getPackagePath returns null when no path and not on Windows', () => {
-    // Non-Windows platform → well-known probe is skipped
+    // Non-Windows platform → the AosService drive scan is skipped entirely.
+    // The scan memoises its result for the process lifetime, so the cache has to
+    // be dropped on both sides of the override: once so this test scans as Linux
+    // rather than reusing a Windows result, and once afterwards so the empty
+    // Linux result does not leak into whatever runs next.
     const origPlatform = process.platform;
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    resetPackagesRootCache();
 
     const mgr = makeManager({});
     expect(mgr.getPackagePath()).toBeNull();
 
     Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true });
+    resetPackagesRootCache();
   });
 
   it('getModelName falls back to D365FO_MODEL_NAME env var', () => {

@@ -54,7 +54,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         },
         packagePath: {
           type: 'string',
-          description: 'Base package path (default: K:\\AosService\\PackagesLocalDirectory). [modify] also locates objects outside the default dir; for models outside bridge startup roots set D365FO_CUSTOM_PACKAGES_PATH or pass filePath.'
+          description: 'Base package path (default: auto-detected PackagesLocalDirectory). [modify] also locates objects outside the default dir; for models outside bridge startup roots set D365FO_CUSTOM_PACKAGES_PATH or pass filePath.'
         },
         sourceCode: {
           type: 'string',

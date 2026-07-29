@@ -49,7 +49,13 @@ export interface ProbeIo {
 }
 
 const realIo: ProbeIo = {
-  platform: process.platform,
+  // Read through to process.platform on every access rather than snapshotting it
+  // at import time — a frozen copy makes the scan ignore a platform override, so
+  // the "not on Windows" path can only be exercised on a non-Windows machine and
+  // the corresponding test silently passes on CI while failing on a real VM.
+  get platform(): NodeJS.Platform {
+    return process.platform;
+  },
   isDirectory(target: string): boolean {
     try {
       return fs.statSync(target).isDirectory();

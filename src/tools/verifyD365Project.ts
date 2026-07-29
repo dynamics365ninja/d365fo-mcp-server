@@ -89,7 +89,7 @@ const VerifyD365ProjectArgsSchema = z.object({
   packagePath: z
     .string()
     .optional()
-    .describe('Base package path (default: K:\\AosService\\PackagesLocalDirectory)'),
+    .describe('Base package path (default: auto-detected PackagesLocalDirectory)'),
 });
 
 /** Read all Content Include values from a .rnrproj XML file. */
