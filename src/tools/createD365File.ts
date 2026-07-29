@@ -1550,8 +1550,20 @@ ${defaultParamGroupXml}
         return this.generateAxViewXml(objectName, properties);
       case 'map':
         return this.generateAxMapXml(objectName, properties);
-      case 'data-entity':
-        return this.generateAxDataEntityXml(objectName, properties);
+      case 'data-entity': {
+        // X++ passed for a data entity used to be dropped on the floor: the
+        // caller got a ✅ and an entity with no <SourceCode> at all. Split it
+        // here (the builder deliberately does no X++ parsing) so validateWrite /
+        // postLoad overrides survive. Accepts the top-level sourceCode arg or
+        // properties.sourceCode; explicit declaration/methods still win.
+        const entitySource = sourceCode ?? (properties as any)?.sourceCode;
+        let entityProps = properties;
+        if (typeof entitySource === 'string' && entitySource.trim()) {
+          const parsed = XmlTemplateGenerator.parseSourceForBridge(entitySource, objectName);
+          entityProps = { declaration: parsed.declaration, methods: parsed.methods, ...properties };
+        }
+        return this.generateAxDataEntityXml(objectName, entityProps);
+      }
       case 'report':
         return this.generateAxReportXml(objectName, properties);
       case 'edt':

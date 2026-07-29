@@ -54,7 +54,9 @@ const GenerateD365XmlArgsSchema = z.object({
 /**
  * XML Template Generator for D365FO Objects
  */
-class XmlTemplateGenerator {
+// Exported so tests can assert this mirror stays in step with createD365File.ts's
+// copy — the two dispatchers have drifted before (see dataEntityXml.ts header).
+export class XmlTemplateGenerator {
 
   /**
    * Split X++ class source into the Declaration block (class header + field
@@ -1019,8 +1021,24 @@ ${defaultParamGroupXml}
         return this.generateAxViewXml(objectName, properties);
       case 'map':
         return this.generateAxMapXml(objectName, properties);
-      case 'data-entity':
-        return this.generateAxDataEntityXml(objectName, properties);
+      case 'data-entity': {
+        // Mirrors createD365File.ts: X++ handed in for a data entity used to be
+        // dropped, producing an entity with no <SourceCode>. Split it here — the
+        // shared builder deliberately does no X++ parsing.
+        const entitySource = sourceCode ?? (properties as any)?.sourceCode;
+        let entityProps = properties;
+        if (typeof entitySource === 'string' && entitySource.trim()) {
+          const split = XmlTemplateGenerator.splitXppClassSource(
+            decodeXmlEntitiesFromXppSource(entitySource),
+          );
+          entityProps = {
+            declaration: split.declaration,
+            methods: split.methods.map(m => ({ ...m, source: reindentXppSource(m.source) })),
+            ...properties,
+          };
+        }
+        return this.generateAxDataEntityXml(objectName, entityProps);
+      }
       case 'report':
         return this.generateAxReportXml(objectName, properties);
       case 'edt':
