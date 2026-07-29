@@ -92,11 +92,22 @@ In the Azure Portal, go to the App Service → **Settings** → **Environment va
 | `SCM_DO_BUILD_DURING_DEPLOYMENT` | `false` | Pre-built `node_modules` are shipped in the deploy zip — Oryx must NOT run `npm ci` (no gcc/make on App Service Linux) |
 | `WEBSITE_NODE_DEFAULT_VERSION` | `~24` | |
 
-**Optional — Authentication (recommended for private projects):**
+**Required — Authentication:**
+
+An App Service is reachable from the public internet the moment it is created, and its hostname is predictable: it is derived from the resource group name (`d365fo-mcp-server-<customer>.azurewebsites.net`) and published in Certificate Transparency logs. Without a key, **anyone who reaches that URL can read your entire indexed model** — X++ source snippets, extension and event-handler wiring, security roles and privileges, and label text.
+
+The server therefore refuses to start in HTTP mode when `NODE_ENV=production` and no key is configured.
 
 | Setting | Value | Notes |
 |---------|-------|-------|
-| `API_KEY` | e.g. `my-secret-key-here` | When set, all `/mcp` requests must include `X-Api-Key` header. `/health` is always public. Generate a strong random key (e.g. `openssl rand -hex 32`). Leave empty to disable. |
+| `API_KEY` | `openssl rand -hex 32` | All `/mcp` requests must include an `X-Api-Key` header (or `Authorization: Bearer <key>`). `/health` and `/` stay public so Azure probes work. |
+
+<details>
+<summary>Deployments that authenticate upstream</summary>
+
+If you front the App Service with **Easy Auth / Entra ID**, a **Private Endpoint**, or an authenticating reverse proxy, set `ALLOW_UNAUTHENTICATED=true` to acknowledge that and skip the startup check. Do not set it to silence the error — it disables the only authentication this server performs.
+
+</details>
 
 Set the **Startup Command** under **Settings → Configuration**:
 

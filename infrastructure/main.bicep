@@ -5,8 +5,12 @@
 // App name is derived from the resource group name — no need to set it separately.
 var appName = resourceGroup().name
 
-@description('Azure region for resources')
-param location string = resourceGroup().location
+// Portal one-click deploy passes an empty location when the user does not pick
+// one, so resolve the fallback here rather than in the parameter default.
+@description('Azure region for resources. Leave empty to inherit the resource group location.')
+param location string = ''
+
+var resolvedLocation = empty(location) ? resourceGroup().location : location
 
 @description('App Service Plan SKU — B3 recommended (4 vCPU / 7 GB RAM); B1/B2 for dev/test')
 @allowed([
@@ -32,9 +36,13 @@ param storageSku string = 'Standard_LRS'
 @description('Comma-separated label languages to index. Each language adds ~125 MB. Examples: en-US,cs,de  or  en-US')
 param labelLanguages string = 'en-US,cs,sk,de'
 
-@description('API key for authenticating MCP requests. When set, clients must send X-Api-Key header. Leave empty to disable auth.')
+// Required — no default. A blank key disables authentication entirely, and this
+// App Service is reachable on the public internet, so the deployment must fail
+// rather than silently publish the indexed X++ source to anonymous callers.
+@description('API key for authenticating MCP requests. Clients must send it as X-Api-Key (or Authorization: Bearer). Generate a strong random value, e.g. `openssl rand -hex 32`.')
 @secure()
-param apiKey string = ''
+@minLength(32)
+param apiKey string
 
 var appServicePlanName = '${appName}-plan'
 var appServiceName = appName
@@ -45,7 +53,7 @@ var appServiceTier = startsWith(appServiceSku, 'B') ? 'Basic' : 'PremiumV3'
 // Storage Account for SQLite databases
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: storageAccountName
-  location: location
+  location: resolvedLocation
   sku: {
     name: storageSku
   }
@@ -84,7 +92,7 @@ resource packagesContainer 'Microsoft.Storage/storageAccounts/blobServices/conta
 // App Service Plan (Linux)
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-01-01' = {
   name: appServicePlanName
-  location: location
+  location: resolvedLocation
   sku: {
     name: appServiceSku
     tier: appServiceTier
@@ -99,7 +107,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-01-01' = {
 // App Service (Web App)
 resource appService 'Microsoft.Web/sites@2023-01-01' = {
   name: appServiceName
-  location: location
+  location: resolvedLocation
   kind: 'app,linux'
   identity: {
     type: 'SystemAssigned'

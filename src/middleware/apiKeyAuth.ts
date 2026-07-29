@@ -11,8 +11,11 @@ import { timingSafeEqual } from 'node:crypto';
  *   1. `X-Api-Key` header          — preferred for MCP clients
  *   2. `Authorization: Bearer <key>` header — works with tools that only support Bearer
  *
- * If `API_KEY` is NOT set, the middleware is a pass-through (no-op) so
- * existing deployments keep working without changes.
+ * If `API_KEY` is NOT set, the middleware is a pass-through (no-op) so local
+ * development over stdio/localhost keeps working without ceremony. That
+ * pass-through is safe only because `authStartupError()` refuses to bind the
+ * HTTP listener in production without either a key or an explicit opt-out —
+ * see that function for why the two must be read together.
  *
  * Timing-safe comparison is used to prevent timing side-channel attacks.
  *
@@ -57,6 +60,42 @@ function extractApiKey(req: Request): string | null {
   }
 
   return null;
+}
+
+/**
+ * Startup guard for HTTP mode: production must not serve unauthenticated.
+ *
+ * `apiKeyAuth` degrades to a pass-through when `API_KEY` is empty, and the
+ * server binds `0.0.0.0` by default, so an App Service deployed without a key
+ * exposes every read tool — including the `source_snippet` fields that carry
+ * the customer's own X++ — to anonymous callers. Rather than fail open, refuse
+ * to start.
+ *
+ * Deliberately scoped to `NODE_ENV=production` so local development and tests
+ * are unaffected. `ALLOW_UNAUTHENTICATED=true` is the documented opt-out for
+ * deployments that terminate authentication upstream (App Service Easy Auth,
+ * a Private Endpoint, or an authenticating reverse proxy) and genuinely do not
+ * need a key of their own.
+ *
+ * Returns the operator-facing error message, or null when startup may proceed.
+ */
+export function authStartupError(env: NodeJS.ProcessEnv = process.env): string | null {
+  if (env.NODE_ENV !== 'production') return null;
+  if (env.ALLOW_UNAUTHENTICATED === 'true') return null;
+  if (env.API_KEY?.trim()) return null;
+
+  return [
+    'Refusing to start: HTTP mode in production with no API_KEY.',
+    '',
+    'Without a key every request is served unauthenticated, and this server',
+    'binds 0.0.0.0 — anyone who reaches the URL can read your indexed X++',
+    'source, security roles, and labels.',
+    '',
+    'Fix (either one):',
+    '  • Set API_KEY to a strong random value:  openssl rand -hex 32',
+    '  • Set ALLOW_UNAUTHENTICATED=true if authentication is already enforced',
+    '    upstream (Easy Auth, Private Endpoint, authenticating proxy).',
+  ].join('\n');
 }
 
 /**

@@ -117,7 +117,7 @@ Transport, timeouts and logging of the MCP server process.
 | `server.operationLockPollMs` | advanced | `OPERATION_LOCK_POLL_MS` | `250` | How often the waiting process re-checks the lock. |
 | `server.operationLockStaleMs` | advanced | `OPERATION_LOCK_STALE_MS` | `1200000` | A lock older than this is treated as left behind by a crashed process and broken. |
 | `server.slowCallLogMs` | advanced | `SLOW_CALL_LOG_MS` | `10000` | Writes one line per tool call that exceeds this, with the tool name and a short argument digest. Aggregate metrics cannot say which specific call cost five minutes; this can. Set LOG_FILE to keep the lines. |
-| `server.apiKey` | secret | `API_KEY` | — | When set, every HTTP request must present this key. Leave empty for a localhost-only server; set it whenever the port is reachable from another machine. |
+| `server.apiKey` | secret | `API_KEY` | — | Every HTTP request must present this key as X-Api-Key (or Authorization: Bearer). Required in production — the server refuses to start without it, because an unauthenticated listener serves your indexed X++ source to anyone who can reach the port. May be left empty only for a localhost-only development server. Generate with `openssl rand -hex 32`. |
 
 ### C# bridge
 

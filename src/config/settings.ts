@@ -11,8 +11,9 @@
  * Everything else — the wizard, the config loader, the doctor and the docs
  * table — is generated from this list, so a new setting only has to be added
  * here. Purely operational variables the user should never have to set
- * (NODE_ENV, WEBSITES_PORT, CI/TERM detection, ENV_FILE, MCP_STDIO_MODE) are
- * deliberately absent: they are runtime/platform inputs, not configuration.
+ * (NODE_ENV, WEBSITES_PORT, CI/TERM detection, ENV_FILE, MCP_STDIO_MODE,
+ * ALLOW_UNAUTHENTICATED) are deliberately absent: they are runtime/platform
+ * inputs, not configuration.
  */
 
 export type SettingType = 'string' | 'path' | 'boolean' | 'int' | 'list' | 'enum';
@@ -828,8 +829,10 @@ export const SETTINGS: Setting[] = [
     type: 'string',
     label: 'API key required from HTTP clients',
     description:
-      'When set, every HTTP request must present this key. Leave empty for a localhost-only server; set it whenever ' +
-      'the port is reachable from another machine.',
+      'Every HTTP request must present this key as X-Api-Key (or Authorization: Bearer). Required in production — ' +
+      'the server refuses to start without it, because an unauthenticated listener serves your indexed X++ source to ' +
+      'anyone who can reach the port. May be left empty only for a localhost-only development server. Generate with ' +
+      '`openssl rand -hex 32`.',
   },
   {
     path: 'behavior.groundingSecret',

@@ -22,7 +22,7 @@ import { initializeDatabase } from './database/download.js';
 import { initializeConfig, getConfigManager } from './utils/configManager.js';
 import { SERVER_MODE, LOCAL_TOOLS, TOOL_PROFILE, EXTRA_TOOLS, isToolEnabled } from './server/serverMode.js';
 import { TOOL_ANNOTATIONS } from './server/toolAnnotations.js';
-import { apiKeyAuth } from './middleware/apiKeyAuth.js';
+import { apiKeyAuth, authStartupError } from './middleware/apiKeyAuth.js';
 import { VERSION } from './version.js';
 import { setInitializeParams } from './utils/stdioSessionInfo.js';
 import { setModelObjectNameSource } from './utils/modelPrefixInference.js';
@@ -693,6 +693,16 @@ async function main() {
     // Branded banner first — connection details are known immediately, before
     // the (potentially long) database load. Symbol counts are intentionally NOT
     // shown here; they appear once during the load (`✓ Loaded … symbols`).
+    // Fail closed before anything binds: a production listener with no API_KEY
+    // would serve the whole read surface to anonymous callers.
+    const authError = authStartupError();
+    if (authError) {
+      console.error('');
+      console.error(authError);
+      console.error('');
+      process.exit(1);
+    }
+
     const host = process.env.HOST || '0.0.0.0';
     const W = 50;
     console.log('');
@@ -704,6 +714,9 @@ async function main() {
     }
     console.log('');
     console.log(kv('Mode', `HTTP ${c.dim(glyph.dot)} ${SERVER_MODE}`));
+    console.log(kv('Auth', process.env.API_KEY?.trim()
+      ? `API key ${c.dim(glyph.dot)} X-Api-Key`
+      : c.yellow('disabled — anyone who can reach this port has full read access')));
     console.log(kv('Endpoint', c.cyan(`http://${host}:${PORT}/mcp`)));
     console.log(kv('Health', c.cyan(`http://localhost:${PORT}/health`)));
     console.log(kv('Runtime', `Node ${process.version} ${c.dim(glyph.dot)} pid ${process.pid}`));
