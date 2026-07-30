@@ -18,7 +18,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         action: {
           type: 'string',
           enum: ['create', 'modify', 'generate'],
-          description: 'create = new object file (write); modify = edit existing object (write); generate = XML text only (no write).',
+          description: 'See the three bullets above — create and modify write, generate does not.',
         },
         objectType: {
           type: 'string',
@@ -58,7 +58,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         },
         sourceCode: {
           type: 'string',
-          description: 'X++ source for the object. FOR CLASSES the content is auto-split: <Declaration> = the class line + ALL member variables inside the outer { }; <Methods> = each method AFTER the closing }. CRITICAL: member variables MUST sit inside the class { }, methods after — never reversed.'
+          description: 'X++ source for the object. FOR CLASSES the content is auto-split: <Declaration> = the class line + ALL member variables inside the outer { }; <Methods> = each method AFTER the closing }.'
         },
         properties: {
           type: 'object',
@@ -76,7 +76,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             '• security-duty: label, privileges[]\n' +
             '• security-role: label, duties[], privileges[]\n' +
             '• menu-item-*: label, object, objectType\n' +
-            '• data-entity: primaryTable, fields[{name,dataField?}], dataManagementEnabled? (default false; true needs a staging table)\n' +
+            '• data-entity: primaryTable, fields[{name,dataField?}], primaryKey?, primaryKeyFields?[], isPublic?, entityCategory?, dynamicFields?, allowRowVersionChangeTracking? (dual-write: set on the source TABLES too), dataManagementEnabled? (needs staging table)\n' +
             '• map: label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}], mappingTable?, mappings?[{mapField,mapFieldTo}] (one connection/field by default)\n' +
             '• query: title?, dataSource (root table; table also works), dataSourceName?, fields?[{name,field?}]\n' +
             '• view: query (existing AxQuery), fields[{name,dataField?}] — dataSource defaults to query\n' +

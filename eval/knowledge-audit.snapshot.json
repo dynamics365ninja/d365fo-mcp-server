@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-07-28T11:15:48.861Z",
-  "indexedAt": "2026-07-28T06:46:19.478Z",
+  "capturedAt": "2026-07-30T05:28:34.893Z",
+  "indexedAt": "2026-07-29T18:58:39.113Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
     "alerts-business-events|attribute|DataContractAttribute",
@@ -83,6 +83,7 @@
     "electronic-reporting|declaration|ERIFormatMappingRun",
     "electronic-reporting|declaration|ERModelDefinitionInputParametersAction",
     "electronic-reporting|new|ERModelDefinitionInputParametersAction",
+    "electronic-reporting|static-call|ERModelDefinitionInputParametersAction::addParameter",
     "electronic-reporting|static-call|ERObjectsFactory::createFormatMappingRunByFormatMappingId",
     "error-handling|static-call|CLRInterop::getLastException",
     "error-handling|static-call|Exception::CLRError",
