@@ -8,6 +8,7 @@ import { Worker } from 'node:worker_threads';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { XppSymbol } from './types.js';
+import { renderMethodSignature } from './xppDeclaration.js';
 import { isStandardModel } from '../utils/modelClassifier.js';
 import { c, log } from '../utils/terminalUi.js';
 
@@ -1706,13 +1707,12 @@ export class XppSymbolIndex {
         // Add method symbols with enhanced metadata
         if (classData.methods && Array.isArray(classData.methods)) {
           for (const method of classData.methods) {
-            const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') || '';
             
             this.addSymbol({
               name: method.name,
               type: 'method',
               parentName: classData.name,
-              signature: `${method.returnType} ${method.name}(${params})`,
+              signature: renderMethodSignature(method),
               filePath: sourceFilePath,
               model,
               description: method.documentation,
@@ -1778,12 +1778,11 @@ export class XppSymbolIndex {
         // Add method symbols (parallel to indexClasses)
         if (tableData.methods && Array.isArray(tableData.methods)) {
           for (const method of tableData.methods) {
-            const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') || '';
             this.addSymbol({
               name: method.name,
               type: 'method',
               parentName: tableData.name,
-              signature: `${method.returnType} ${method.name}(${params})`,
+              signature: renderMethodSignature(method),
               filePath: sourceFilePath,
               model,
               description: method.documentation,
@@ -2100,12 +2099,11 @@ export class XppSymbolIndex {
         // Add method symbols (views and data-entities can have display/computed methods)
         if (viewData.methods && Array.isArray(viewData.methods)) {
           for (const method of viewData.methods) {
-            const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') || '';
             this.addSymbol({
               name: method.name,
               type: 'method',
               parentName: viewName,
-              signature: `${method.returnType} ${method.name}(${params})`,
+              signature: renderMethodSignature(method),
               filePath: sourceFilePath,
               model,
               description: method.documentation,

@@ -336,6 +336,7 @@ export class XppMetadataParser {
         visibility: this.parseVisibility(method.Visibility),
         returnType: decl?.returnType || method.ReturnType || 'void',
         parameters: this.toParameterInfo(decl),
+        parametersUnknown: decl === null,
         isStatic: decl?.modifiers.includes('static') ?? false,
         source: source,
         documentation: method.DeveloperDocumentation || undefined,
@@ -536,9 +537,17 @@ export class XppMetadataParser {
     return Array.isArray(value) ? value : [value];
   }
 
-  /** Declaration parameters narrowed to the shape XppMethodInfo carries. */
+  /**
+   * Declaration parameters narrowed to the shape XppMethodInfo carries.
+   * A null decl yields `[]`; the `parametersUnknown` flag set alongside is what
+   * tells that apart from a genuinely empty list, so don't read this alone.
+   */
   private toParameterInfo(decl: XppDeclaration | null): XppParameterInfo[] {
-    return decl?.parameters.map(p => ({ type: p.type, name: p.name })) ?? [];
+    return decl?.parameters.map(p => (
+      p.defaultValue
+        ? { type: p.type, name: p.name, defaultValue: p.defaultValue }
+        : { type: p.type, name: p.name }
+    )) ?? [];
   }
 
   /**
@@ -676,6 +685,7 @@ export class XppMetadataParser {
         visibility: 'public', // Forms typically have public methods
         returnType: decl?.returnType || 'void',
         parameters: this.toParameterInfo(decl),
+        parametersUnknown: decl === null,
         isStatic: decl?.modifiers.includes('static') ?? false,
         source,
         sourceSnippet: source.split('\n').slice(0, 10).join('\n'),

@@ -28,6 +28,34 @@ export interface XppDeclaration {
   parameters: XppDeclarationParameter[];
 }
 
+/** Rendered for a parameter list that could not be read; not legal X++, so it can't collide with a real one. */
+export const UNKNOWN_PARAMETER_LIST = '...';
+
+/** The subset of a method that `renderMethodSignature` needs. */
+export interface RenderableMethod {
+  name: string;
+  returnType?: string;
+  parameters?: ReadonlyArray<{ type: string; name: string; defaultValue?: string }> | null;
+  /** See XppMethodInfo.parametersUnknown. */
+  parametersUnknown?: boolean;
+}
+
+/**
+ * Render `ReturnType name(Type _a, Type _b = default)` for the symbol index.
+ *
+ * Defaults are kept and an unreadable list renders as `(...)`, never `()` —
+ * resolve_references reads this string back and gates writes on it, so `()` is
+ * a positive claim of zero parameters that consumers act on.
+ */
+export function renderMethodSignature(method: RenderableMethod): string {
+  const params = method.parametersUnknown
+    ? UNKNOWN_PARAMETER_LIST
+    : (method.parameters ?? [])
+      .map(p => `${p.type} ${p.name}${p.defaultValue ? ` = ${p.defaultValue}` : ''}`)
+      .join(', ');
+  return `${method.returnType ?? 'void'} ${method.name}(${params})`;
+}
+
 export interface XppClassHeader {
   kind: 'class' | 'interface';
   name: string;
@@ -144,6 +172,19 @@ function isNameToken(t: string): boolean {
 }
 
 /**
+ * Slice `raw` from `from`, trimmed to the extent that still carries content in
+ * the blanked twin — comments became whitespace there and so drop out, while
+ * string literals survive (their quotes are not blanked).
+ */
+function sliceByBlankedExtent(raw: string, blanked: string, from: number): string {
+  let start = from;
+  while (start < blanked.length && /\s/.test(blanked[start])) start++;
+  let end = blanked.length;
+  while (end > start && /\s/.test(blanked[end - 1])) end--;
+  return raw.slice(start, end).replace(/\s+/g, ' ');
+}
+
+/**
  * Parse one "Type _name [= default]" parameter; null when it doesn't look like
  * a declared parameter (which is how a call's arguments are told apart from a
  * declaration's parameter list).
@@ -158,8 +199,11 @@ function parseParameter(raw: string, blanked: string): XppDeclarationParameter |
     else if (c === ')' || c === ']') depth--;
     else if (c === '=' && depth === 0) { eq = i; break; }
   }
-  const left = (eq >= 0 ? raw.slice(0, eq) : raw).trim().replace(/\s+/g, ' ');
-  const defaultValue = eq >= 0 ? raw.slice(eq + 1).trim().replace(/\s+/g, ' ') : undefined;
+  // Type and name come off the blanked twin: the standard models interleave
+  // pragma comments inside wrapped parameter lists, and read raw those look
+  // like a leading type token, failing the parameter and discarding the lot.
+  const left = (eq >= 0 ? blanked.slice(0, eq) : blanked).trim().replace(/\s+/g, ' ');
+  const defaultValue = eq >= 0 ? sliceByBlankedExtent(raw, blanked, eq + 1) : undefined;
 
   const tokens = left.split(' ').filter(Boolean);
   if (tokens.length < 2) return null;

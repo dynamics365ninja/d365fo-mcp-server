@@ -64,10 +64,58 @@ describe('XppMetadataParser method declarations', () => {
     const method = result.data!.methods.find(m => m.name === 'construct')!;
     expect(method.returnType).toBe('PurchFormLetter_Invoice');
     expect(method.isStatic).toBe(true);
+    // Defaults are carried: dropping them makes an optional parameter look required.
     expect(method.parameters).toEqual([
-      { type: 'IdentifierName', name: '_className' },
-      { type: 'IdentifierName', name: '_methodName' },
-      { type: 'SysOperationExecutionMode', name: '_executionMode' },
+      { type: 'IdentifierName', name: '_className', defaultValue: 'classStr(FormletterService)' },
+      {
+        type: 'IdentifierName',
+        name: '_methodName',
+        defaultValue: 'methodStr(FormletterService, postPurchaseOrderInvoice)',
+      },
+      {
+        type: 'SysOperationExecutionMode',
+        name: '_executionMode',
+        defaultValue: 'SysOperationExecutionMode::Synchronous',
+      },
+    ]);
+    expect(method.parametersUnknown).toBe(false);
+  });
+
+  it('flags an unreadable declaration as unknown rather than zero-parameter', async () => {
+    const file = await writeClass('MysteryClass', [{ name: 'mystery', source: '    return 1 + 2;' }]);
+
+    const result = await new XppMetadataParser().parseClassFile(file, 'TestModel');
+
+    expect(result.success).toBe(true);
+    const method = result.data!.methods.find(m => m.name === 'mystery')!;
+    expect(method.parameters).toEqual([]);
+    expect(method.parametersUnknown).toBe(true);
+  });
+
+  it('reads parameter types past a pragma comment interleaved in the list', async () => {
+    // Read off raw text, `//<GEERU><GEEU>` looks like a type token, the parameter
+    // fails to validate, and all-or-nothing discards the whole declaration.
+    const source = [
+      'public static server NumberSeq newGetVoucherFromId(RefRecId _voucherSequenceId,',
+      '    boolean _makeDecisionLater = false,',
+      '    //<GEERU><GEEU>',
+      '    UnknownNoYes _allowManual = UnknownNoYes::Unknown',
+      '    //</GEERU></GEEU>',
+      '    )',
+      '{',
+      '    return null;',
+      '}',
+    ].join('\n');
+    const file = await writeClass('NumberSeq', [{ name: 'newGetVoucherFromId', source }]);
+
+    const result = await new XppMetadataParser().parseClassFile(file, 'TestModel');
+
+    const method = result.data!.methods.find(m => m.name === 'newGetVoucherFromId')!;
+    expect(method.parametersUnknown).toBe(false);
+    expect(method.parameters).toEqual([
+      { type: 'RefRecId', name: '_voucherSequenceId' },
+      { type: 'boolean', name: '_makeDecisionLater', defaultValue: 'false' },
+      { type: 'UnknownNoYes', name: '_allowManual', defaultValue: 'UnknownNoYes::Unknown' },
     ]);
   });
 
