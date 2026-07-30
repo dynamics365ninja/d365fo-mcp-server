@@ -12,6 +12,7 @@ import { forceReleaseLock } from '../utils/operationLocks.js';
 import { lookupErrorFix } from './d365foErrorHelp.js';
 import { generateRuntimeMetadata } from './generateMetadata.js';
 import { compileModelLabels, type CompileLabelsResult } from './compileLabels.js';
+import { readModuleReferences } from '../metadata/modelDescriptor.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -405,21 +406,14 @@ async function resolveBuildQueue(
     if (visited.has(modelName.toLowerCase())) return;
     visited.add(modelName.toLowerCase());
 
-    // Read descriptor
-    const descriptorPath = path.join(customPackagesPath, modelName, 'Descriptor', `${modelName}.xml`);
-    let content: string;
-    try {
-      content = await readFile(descriptorPath, 'utf-8');
-    } catch {
+    // Shared reader: resolve_references reads the same element to decide type
+    // visibility, and one parser keeps the two from drifting apart.
+    const refs = await readModuleReferences(customPackagesPath, modelName);
+    if (refs === null) {
       // No descriptor — still include this model but can't follow its deps
       order.push(modelName);
       return;
     }
-
-    // Extract all <d2p1:string> entries inside <ModuleReferences>
-    const refs = Array.from(content.matchAll(/<d2p1:string>\s*([^<\s]+)\s*<\/d2p1:string>/g))
-      .map(m => m[1].trim())
-      .filter(Boolean);
 
     // Visit custom/ISV dependencies first (skip Microsoft standard models)
     for (const ref of refs) {

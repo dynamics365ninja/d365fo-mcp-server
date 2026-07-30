@@ -4,6 +4,7 @@ import { XppMetadataParser } from '../metadata/xmlParser.js';
 import { parseLabelFile } from '../metadata/labelParser.js';
 import type { XppServerContext } from '../types/context.js';
 import type { XppSymbol } from '../metadata/types.js';
+import { renderMethodSignature } from '../metadata/xppDeclaration.js';
 import { bridgeRefreshProvider } from '../bridge/index.js';
 
 // Tool registration (name, description, inputSchema) lives inline in
@@ -317,12 +318,11 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
           });
           insertedCount++;
           for (const method of classData.methods ?? []) {
-            const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') ?? '';
             symbolIndex.addSymbol({
               name: method.name,
               type: 'method',
               parentName: classData.name,
-              signature: `${method.returnType} ${method.name}(${params})`,
+              signature: renderMethodSignature(method),
               filePath,
               model,
               source: method.source,
@@ -365,12 +365,11 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
           // them, and the delete above just removed them; skipping them here
           // would silently drop a table's methods on every incremental reindex.
           for (const method of tableData.methods ?? []) {
-            const params = method.parameters?.map((p: any) => `${p.type} ${p.name}`).join(', ') ?? '';
             symbolIndex.addSymbol({
               name: method.name,
               type: 'method',
               parentName: tableData.name,
-              signature: `${method.returnType} ${method.name}(${params})`,
+              signature: renderMethodSignature(method),
               filePath,
               model,
               source: method.source,

@@ -260,6 +260,23 @@ describe('resolveXppReferences — arity checks', () => {
     expect(errors[0].kind).toBe('arity-mismatch');
   });
 
+  // `CustTable custTable;` is the universal convention and differs from the type
+  // only in the first letter's case, so a declaredNames guard on the `::` path
+  // skipped the check for almost every real method body.
+  it('still checks Type::member when a local is named after the type', () => {
+    const code = `public class ConDemoProbe
+{
+    public void run()
+    {
+        CustTable custTable;
+        custTable = CustTable::find("c1", true, 42);
+    }
+}`;
+    const errors = errorsOf(code);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].kind).toBe('arity-mismatch');
+  });
+
   // A default whose VALUE contains parens (`= curUserId()`) must still count as
   // optional — splitTopLevel keeps them balanced.
   it('treats a trailing function-call default as optional (#18)', () => {
@@ -271,6 +288,153 @@ describe('resolveXppReferences — arity checks', () => {
     const errors = errorsOf('ContosoBase::activateFrom();'); // 0 args, min is 1
     expect(errors).toHaveLength(1);
     expect(errors[0].kind).toBe('arity-mismatch');
+  });
+
+  // `(...)` is renderMethodSignature's marker for a declaration the indexer
+  // could not read. Reading it as zero parameters made every real call a
+  // mismatch (NumberSeq::newGetVoucherFromId, indexed as `()`).
+  it('makes no arity claim against an unknown parameter list', () => {
+    const scratch = new XppSymbolIndex(':memory:', ':memory:');
+    try {
+      scratch.addSymbol({
+        name: 'Opaque', type: 'class', filePath: '/x.xml', model: 'Test',
+      } as any);
+      scratch.addSymbol({
+        name: 'mystery', type: 'method', parentName: 'Opaque',
+        signature: 'void mystery(...)', filePath: '/x.xml', model: 'Test',
+      } as any);
+      const d = makeDeps(scratch.getReadDb());
+      for (const call of ['Opaque::mystery();', 'Opaque::mystery(1);', 'Opaque::mystery(1, 2, 3);']) {
+        expect(resolveXppReferences(call, d).violations.filter(v => v.kind === 'arity-mismatch'))
+          .toEqual([]);
+      }
+    } finally {
+      scratch.close();
+    }
+  });
+
+  // The signature already in the index dropped defaults, so it under-reports the
+  // optional count. The stored declaration is authoritative and needs no reindex.
+  it('derives arity from the stored declaration, not the rendered signature', () => {
+    const scratch = new XppSymbolIndex(':memory:', ':memory:');
+    try {
+      scratch.addSymbol({
+        name: 'Legacy', type: 'class', filePath: '/x.xml', model: 'Test',
+      } as any);
+      scratch.addSymbol({
+        name: 'find', type: 'method', parentName: 'Legacy',
+        signature: 'Legacy find(LegacyId _id, boolean _forUpdate)',
+        source: 'static Legacy find(LegacyId _id, boolean _forUpdate = false)\n{\n    return null;\n}',
+        filePath: '/x.xml', model: 'Test',
+      } as any);
+      const d = makeDeps(scratch.getReadDb());
+      expect(resolveXppReferences('Legacy::find(id);', d)
+        .violations.filter(v => v.kind === 'arity-mismatch')).toEqual([]);
+
+      const tooMany = resolveXppReferences('Legacy::find(id, true, 1);', d)
+        .violations.filter(v => v.kind === 'arity-mismatch');
+      expect(tooMany).toHaveLength(1);
+      expect(tooMany[0].detail).toContain('_forUpdate = false');
+    } finally {
+      scratch.close();
+    }
+  });
+
+  // A stored declaration this parser refuses to read is the case that rendered
+  // as `()`, so the signature must not be trusted as a fallback.
+  it('stays silent when the stored declaration is unreadable', () => {
+    const scratch = new XppSymbolIndex(':memory:', ':memory:');
+    try {
+      scratch.addSymbol({
+        name: 'Murky', type: 'class', filePath: '/x.xml', model: 'Test',
+      } as any);
+      scratch.addSymbol({
+        name: 'go', type: 'method', parentName: 'Murky',
+        signature: 'void go()',
+        source: '    return 1 + 2;',
+        filePath: '/x.xml', model: 'Test',
+      } as any);
+      const d = makeDeps(scratch.getReadDb());
+      expect(resolveXppReferences('Murky::go(1, 2);', d)
+        .violations.filter(v => v.kind === 'arity-mismatch')).toEqual([]);
+    } finally {
+      scratch.close();
+    }
+  });
+});
+
+// ─── Model visibility ────────────────────────────────────────────────────────
+
+describe('resolveXppReferences — Descriptor visibility', () => {
+  const ROOT = 'K:\\AosService\\PackagesLocalDirectory';
+  const visibility = {
+    model: 'Contoso',
+    packagesRoot: ROOT,
+    visiblePackages: new Set(['contoso', 'applicationsuite']),
+    packageOf: (filePath: string) => {
+      const lower = filePath.toLowerCase();
+      const prefix = ROOT.toLowerCase() + '\\';
+      if (!lower.startsWith(prefix)) return null;
+      return filePath.slice(prefix.length).split('\\')[0] || null;
+    },
+  };
+
+  let scoped: XppSymbolIndex;
+  let scopedDeps: ResolverDeps;
+
+  beforeAll(() => {
+    scoped = new XppSymbolIndex(':memory:', ':memory:');
+    const add = (name: string, type: string, pkg: string) => scoped.addSymbol({
+      name, type, filePath: `${ROOT}\\${pkg}\\AxTable\\${name}.xml`, model: pkg,
+    } as any);
+    add('TaxAmountCur', 'edt', 'Tax');            // indexed, package not referenced
+    add('CustTable', 'table', 'ApplicationSuite'); // referenced
+    // Same name in two packages, one of them reachable ⇒ must stay silent.
+    add('SharedName', 'class', 'Tax');
+    scoped.addSymbol({
+      name: 'SharedName', type: 'class',
+      filePath: `${ROOT}\\ApplicationSuite\\AxClass\\SharedName.xml`, model: 'ApplicationSuite',
+    } as any);
+    // Outside the packages root ⇒ cannot tell which package owns it.
+    scoped.addSymbol({
+      name: 'WorkspaceType', type: 'class', filePath: 'K:\\src\\WorkspaceType.xml', model: 'Other',
+    } as any);
+    scopedDeps = { ...makeDeps(scoped.getReadDb()), visibility };
+  });
+
+  afterAll(() => scoped.close());
+
+  const kindsOf = (code: string, d = scopedDeps) =>
+    resolveXppReferences(code, d).violations.map(v => v.kind);
+
+  it('reports a type whose only package the model does not reference', () => {
+    const violations = resolveXppReferences('TaxAmountCur amount;', scopedDeps).violations;
+    expect(violations.map(v => v.kind)).toEqual(['not-visible-from-model']);
+    expect(violations[0].severity).toBe('error');
+    expect(violations[0].detail).toContain('Tax');
+    expect(violations[0].detail).toContain('Contoso');
+  });
+
+  it('accepts a type from a referenced package', () => {
+    expect(kindsOf('CustTable custTable;')).toEqual([]);
+  });
+
+  it('stays silent when any occurrence of the name is reachable', () => {
+    expect(kindsOf('SharedName x;')).toEqual([]);
+  });
+
+  it('stays silent when the indexed path is outside the packages root', () => {
+    expect(kindsOf('WorkspaceType x;')).toEqual([]);
+  });
+
+  it('runs no check at all without an oracle', () => {
+    const noOracle = makeDeps(scoped.getReadDb());
+    expect(kindsOf('TaxAmountCur amount;', noOracle)).toEqual([]);
+  });
+
+  it('reports an invisible type once, not per occurrence', () => {
+    const code = 'TaxAmountCur a;\nTaxAmountCur b;\nTaxAmountCur c;';
+    expect(kindsOf(code)).toEqual(['not-visible-from-model']);
   });
 });
 

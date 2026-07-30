@@ -192,7 +192,8 @@ export async function validateCodeTool(request: CallToolRequest, context: XppSer
           content: [{
             type: 'text' as const,
             text: `✅ resolve_references: all ${verified} reference(s) verified against the index${contextName ? ` in ${contextName}` : ''}.\n` +
-              `No hallucinated symbols detected. Safe to proceed with the write operation.`,
+              `No hallucinated symbols detected. This is a name-existence check, not a compile — ` +
+              `build_d365fo_project remains the only proof it compiles.`,
           }],
         };
       }

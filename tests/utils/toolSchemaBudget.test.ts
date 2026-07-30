@@ -30,10 +30,14 @@ const CHARS_PER_TOKEN = 4;
 // (findings #36), generate_object scaffold `fields[]`/`preview` (#21), and the
 // five coverage-closure objectTypes (macro, configuration-key, security-policy,
 // aggregate-measurement, license-code) that took the T flag green on the last
-// create-path holes in the taxonomy.
+// create-path holes in the taxonomy, then the data-entity writer properties
+// (primaryKey, isPublic, entityCategory, dynamicFields,
+// allowRowVersionChangeTracking) that were implemented but unadvertised — paid
+// for in part by dropping the member-variable rule from `sourceCode`, where it
+// was the third statement of the same thing.
 // Headroom is small on purpose so creep is caught early.
 const TOTAL_BUDGET = 63_300;
-const LARGEST_TOOL_BUDGET = 9_800;
+const LARGEST_TOOL_BUDGET = 9_900;
 
 async function getTools(): Promise<Array<{ name: string }>> {
   const ctx: any = { symbolIndex: {}, parser: {} };

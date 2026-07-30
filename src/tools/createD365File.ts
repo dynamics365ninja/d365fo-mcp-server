@@ -24,7 +24,7 @@ import { gateOnReferenceErrors } from './resolveReferences.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
 import { renderAxTableProperties } from '../utils/axTablePropertyOrder.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
-import { buildAxDataEntityXml } from './dataEntityXml.js';
+import { buildAxDataEntityXml, isYes } from './dataEntityXml.js';
 import { resolveEdtBaseType, resolveEdtEnumType, heuristicEdtBaseType, isEnumName, bridgeEdtBaseType } from './generateSmartTable.js';
 import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
 import { buildAxMapXml } from './mapXml.js';
@@ -750,7 +750,18 @@ ${methodsXml}\t</SourceCode>
       TableGroup: properties?.tableGroup || 'Main',
       TitleField1: properties?.titleField1,
       TitleField2: properties?.titleField2,
+      // Dual-write's table-side prerequisite; without it the entity syncs once
+      // and then stops seeing changes.
+      AllowRowVersionChangeTracking:
+        isYes(properties?.allowRowVersionChangeTracking) ? 'Yes' : undefined,
       CacheLookup: properties?.cacheLookup,
+      // Audit system fields — NoYes, ranked but previously unreachable.
+      CreatedBy: isYes(properties?.createdBy) ? 'Yes' : undefined,
+      CreatedDateTime: isYes(properties?.createdDateTime) ? 'Yes' : undefined,
+      CreatedTransactionId: isYes(properties?.createdTransactionId) ? 'Yes' : undefined,
+      ModifiedBy: isYes(properties?.modifiedBy) ? 'Yes' : undefined,
+      ModifiedDateTime: isYes(properties?.modifiedDateTime) ? 'Yes' : undefined,
+      ModifiedTransactionId: isYes(properties?.modifiedTransactionId) ? 'Yes' : undefined,
       ClusteredIndex: properties?.clusteredIndex,
       PrimaryIndex: primaryIndex,
       // ReplacementKey mirrors PrimaryIndex unless the caller says otherwise.

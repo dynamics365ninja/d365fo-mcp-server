@@ -18,7 +18,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         action: {
           type: 'string',
           enum: ['create', 'modify', 'generate'],
-          description: 'create = new object file (write); modify = edit existing object (write); generate = XML text only (no write).',
+          description: 'One of the three modes described above.',
         },
         objectType: {
           type: 'string',
@@ -42,7 +42,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         },
         objectName: {
           type: 'string',
-          description: 'Base name WITHOUT model prefix — the tool prepends EXTENSION_PREFIX (or modelName) and detects an existing prefix. Extension classes: pass "{Base}_Extension" with NO prefix infix (produces e.g. "SalesFormLetterMY_Extension"). NEVER hand-build the prefix.'
+          description: 'Base name WITHOUT model prefix — the tool prepends EXTENSION_PREFIX (or modelName) and detects an existing prefix. Extension classes: pass "{Base}_Extension" with NO prefix infix. NEVER hand-build the prefix.'
         },
         modelName: {
           type: 'string',
@@ -58,14 +58,14 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         },
         sourceCode: {
           type: 'string',
-          description: 'X++ source for the object. FOR CLASSES the content is auto-split: <Declaration> = the class line + ALL member variables inside the outer { }; <Methods> = each method AFTER the closing }. CRITICAL: member variables MUST sit inside the class { }, methods after — never reversed.'
+          description: 'X++ source for the object. FOR CLASSES the content is auto-split: <Declaration> = the class line + ALL member variables inside the outer { }; <Methods> = each method AFTER the closing }.'
         },
         properties: {
           type: 'object',
           description:
             'Additional properties by objectType:\n' +
             '• class: extends, implements, isFinal, isAbstract\n' +
-            '• table: label, tableGroup, tableType, titleField1/2, fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?}] — enum fields need enumType (+ optionally fieldType:"AxTableFieldEnum")\n' +
+            '• table: label, tableGroup, tableType, titleField1/2, cacheLookup?, primaryIndex?, allowRowVersionChangeTracking? (dual-write), created/modifiedBy/DateTime?, fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?}] — enum fields need enumType (+ optionally fieldType:"AxTableFieldEnum")\n' +
             '• enum: label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}]\n' +
             '• enum-extension: enumValues[{name,label?,value?,countryRegionCodes?}]\n' +
             '• table-extension: fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need fieldType:"AxTableFieldEnum" + enumType\n' +
@@ -76,7 +76,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             '• security-duty: label, privileges[]\n' +
             '• security-role: label, duties[], privileges[]\n' +
             '• menu-item-*: label, object, objectType\n' +
-            '• data-entity: primaryTable, fields[{name,dataField?}], dataManagementEnabled? (default false; true needs a staging table)\n' +
+            '• data-entity: primaryTable, fields[{name,dataField?}], primaryKey?, primaryKeyFields?[], isPublic?, entityCategory?, dynamicFields?, allowRowVersionChangeTracking? (dual-write: set on the source TABLES too), dataManagementEnabled? (needs staging table)\n' +
             '• map: label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}], mappingTable?, mappings?[{mapField,mapFieldTo}] (one connection/field by default)\n' +
             '• query: title?, dataSource (root table; table also works), dataSourceName?, fields?[{name,field?}]\n' +
             '• view: query (existing AxQuery), fields[{name,dataField?}] — dataSource defaults to query\n' +

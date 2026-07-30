@@ -27,7 +27,18 @@
 
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { distinctSymbolTypesNocase, lookupSymbolNocase } from '../utils/symbolLookup.js';
+import { canonicalSymbolName, distinctSymbolTypesNocase, lookupSymbolNocase } from '../utils/symbolLookup.js';
+import {
+  UNKNOWN_PARAMETER_LIST,
+  parseXppDeclaration,
+  renderMethodSignature,
+} from '../metadata/xppDeclaration.js';
+import {
+  getModelVisibility,
+  packagesRootFromPath,
+  type ModelVisibility,
+} from '../metadata/modelDescriptor.js';
+import { getConfigManager } from '../utils/configManager.js';
 
 export const resolveReferencesArgsSchema = z.object({
   code: z.string().describe(
@@ -49,7 +60,8 @@ export interface ReferenceViolation {
     | 'unknown-field'
     | 'unknown-label'
     | 'unknown-intrinsic-target'
-    | 'arity-mismatch';
+    | 'arity-mismatch'
+    | 'not-visible-from-model';
   severity: 'error' | 'warning';
   line: number;
   identifier: string;
@@ -75,6 +87,11 @@ export interface ResolverDeps {
     labelFileId?: string,
   ): Array<{ labelId: string; labelFileId: string }>;
   getLabelFileIds(): Array<{ labelFileId: string }>;
+  /**
+   * Optional Descriptor-backed answer to "may the target model see this type?".
+   * Presence in the index is not visibility. Absent, the check is not run.
+   */
+  visibility?: ModelVisibility;
 }
 
 const XPP_KEYWORDS = new Set([
@@ -288,7 +305,11 @@ function menuItemExists(deps: ResolverDeps, name: string): boolean {
   }
 }
 
-interface MethodRow { signature: string | null }
+interface MethodRow {
+  signature: string | null;
+  /** X++ body as indexed — arityOf() re-derives the parameter list from it. */
+  source: string | null;
+}
 
 /** Look up a method on an object, walking the extends_class chain (classes). */
 function findMethod(
@@ -305,7 +326,7 @@ function findMethod(
     const ownerHit = lookupSymbolNocase(deps.db, ownerName);
     const owner = ownerHit?.name ?? ownerName;
     const row = deps.db.prepare(
-      `SELECT signature FROM symbols
+      `SELECT signature, source FROM symbols
        WHERE parent_name = ? AND type = 'method' AND name = ? COLLATE NOCASE
        LIMIT 1`,
     ).get(owner, methodName) as MethodRow | undefined;
@@ -334,7 +355,7 @@ function findMethod(
             (typeof m === 'string' ? m : (m as { name?: string })?.name ?? '')
               .toLowerCase() === target,
           )) {
-            return { signature: null };
+            return { signature: null, source: null };
           }
         } catch { /* malformed JSON — skip */ }
       }
@@ -346,6 +367,58 @@ function findMethod(
     }
   } catch { /* DB error — treat as not found */ }
   return undefined;
+}
+
+/**
+ * Report a top-level type that IS in the index but lives in a package the target
+ * model does not reference. Silent whenever the answer would be a guess; it only
+ * fires when EVERY indexed occurrence is provably out of reach.
+ *
+ * `lookupSymbolsNocase` with a multi-row limit is NOT usable here: a type name
+ * never yields that many top-level rows, so its short-circuit never fires and
+ * the FTS5 fallback runs to exhaustion — measured 45 ms → 5003 ms for one class
+ * body. Canonicalize at limit 1, then probe BINARY `name = ?` on idx_name_type.
+ * A differently cased duplicate elsewhere is missed, which only makes the check
+ * quieter — the direction it must fail in.
+ */
+function checkModelVisibility(
+  deps: ResolverDeps,
+  typeName: string,
+  line: number,
+): ReferenceViolation | undefined {
+  const vis = deps.visibility;
+  if (!vis) return undefined;
+  let hits: Array<{ file_path: string | null }>;
+  try {
+    const canonical = canonicalSymbolName(deps.db, typeName);
+    if (!canonical) return undefined;
+    hits = deps.db
+      .prepare('SELECT file_path FROM symbols WHERE name = ? AND parent_name IS NULL LIMIT 16')
+      .all(canonical) as Array<{ file_path: string | null }>;
+  } catch {
+    return undefined;
+  }
+  if (hits.length === 0) return undefined;
+
+  const packages = new Set<string>();
+  for (const hit of hits) {
+    const pkg = hit.file_path ? vis.packageOf(hit.file_path) : null;
+    if (!pkg) return undefined;                                  // cannot tell
+    if (vis.visiblePackages.has(pkg.toLowerCase())) return undefined; // reachable
+    packages.add(pkg);
+  }
+
+  return {
+    kind: 'not-visible-from-model',
+    severity: 'error',
+    line,
+    identifier: typeName,
+    detail:
+      `"${typeName}" is indexed, but only in package ${[...packages].join(' / ')}, which model ` +
+      `${vis.model} does not reference. xppc will reject it ("does not denote a class, a table, ` +
+      `or an extended data type"). Add the package to ${vis.model}'s Descriptor ModuleReferences, ` +
+      `or use a type from a referenced package.`,
+  };
 }
 
 /** Check a field on a table: indexed fields, system fields, extension fields. */
@@ -391,16 +464,56 @@ function fieldExists(deps: ResolverDeps, tableName: string, fieldName: string): 
 
 interface Arity { min: number; max: number }
 
-/** Parse "ReturnType name(Type a, Type b = x)" → {min, max}. */
+/**
+ * Parse "ReturnType name(Type a, Type b = x)" → {min, max}; undefined when the
+ * signature licenses no arity claim. `(...)` is renderMethodSignature's marker
+ * for a declaration it could not read and must not be read as zero parameters.
+ */
 function parseSignatureArity(signature: string): Arity | undefined {
   const open = signature.indexOf('(');
   const close = signature.lastIndexOf(')');
   if (open === -1 || close === -1 || close < open) return undefined;
   const inner = signature.slice(open + 1, close).trim();
+  if (inner === UNKNOWN_PARAMETER_LIST) return undefined;
   if (inner === '') return { min: 0, max: 0 };
   const params = splitTopLevel(inner);
   const optional = params.filter(p => p.includes('=')).length;
   return { min: params.length - optional, max: params.length };
+}
+
+/**
+ * Arity to hold a call against: the method's own declaration first, the rendered
+ * `signature` only as a fallback.
+ *
+ * The rendering that produced the rows already in the index dropped parameter
+ * defaults, so `CustTable::find` is stored as `find(CustAccount, boolean)` and
+ * the legal `find(_account)` reads as a mismatch. Fixing the renderer fixes
+ * future rows; parsing the stored declaration fixes today's, with no reindex.
+ *
+ * Returns the text to quote alongside, so the diagnostic shows whichever list
+ * the verdict came from.
+ */
+function arityOf(method: MethodRow, methodName: string): { arity: Arity; shown: string } | undefined {
+  if (method.source) {
+    const decl = parseXppDeclaration(method.source, methodName);
+    if (decl) {
+      const optional = decl.parameters.filter(p => p.defaultValue !== undefined).length;
+      return {
+        arity: { min: decl.parameters.length - optional, max: decl.parameters.length },
+        shown: renderMethodSignature({
+          name: decl.name,
+          returnType: decl.returnType,
+          parameters: decl.parameters,
+        }),
+      };
+    }
+    // An unreadable stored declaration is exactly the case that rendered as
+    // `()`, so falling through to the signature would trust that lie.
+    return undefined;
+  }
+  if (!method.signature) return undefined;
+  const arity = parseSignatureArity(method.signature);
+  return arity ? { arity, shown: method.signature.trim() } : undefined;
 }
 
 /** Split on top-level commas (ignores commas inside (), [], <>). */
@@ -512,6 +625,23 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
       || lookupTypes(name).length > 0;
   };
 
+  // Memoised per call and reported once per type — a name commonly appears as
+  // both a declared buffer and a `Type::member` receiver. True when invisible,
+  // so callers can skip the checks that assume the type is usable.
+  const visibilityVerdicts = new Map<string, ReferenceViolation | null>();
+  const reportIfInvisible = (name: string, line: number): boolean => {
+    if (!deps.visibility) return false;
+    const lower = name.toLowerCase();
+    if (XPP_BUILTIN_TYPES.has(lower) || KERNEL_TYPES.has(lower)) return false;
+    let verdict = visibilityVerdicts.get(lower);
+    if (verdict === undefined) {
+      verdict = checkModelVisibility(deps, name, line) ?? null;
+      visibilityVerdicts.set(lower, verdict);
+      if (verdict) violations.push(verdict);
+    }
+    return verdict !== null;
+  };
+
   // 1. Label references (from original string literals)
   for (const s of strings) {
     const modern = s.value.match(/^@([A-Za-z][A-Za-z0-9_]*):([A-Za-z0-9_]+)$/);
@@ -619,7 +749,9 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     const line = lineOf(cleaned, m.index ?? 0);
     const lower = typeName.toLowerCase();
 
-    if (locals.declaredNames.has(lower)) continue;
+    // No declaredNames guard, unlike the instance path: `::` only ever applies
+    // to a type, and `CustTable custTable;` differs only in the first letter's
+    // case — so the guard disabled this check for the commonest code there is.
     if (KERNEL_TYPES.has(lower)) { verifiedCount++; continue; } // no metadata for kernel statics
 
     const types = lookupTypes(typeName);
@@ -633,6 +765,8 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
       });
       continue;
     }
+    // Indexed is not the same as reachable from the model being compiled.
+    if (reportIfInvisible(typeName, line)) continue;
     if (types.includes('enum')) {
       // Enum values are not indexed as symbols — the enum itself is proven.
       verifiedCount++;
@@ -652,14 +786,15 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     }
     verifiedCount++;
 
-    // Arity check when the call site and the signature are both parseable
-    if (method.signature) {
-      const arity = parseSignatureArity(method.signature);
+    // Arity check when the call site and the declaration are both parseable
+    {
+      const resolved = arityOf(method, member);
       const callOpen = cleaned.indexOf('(', (m.index ?? 0) + m[0].length);
       const between = callOpen === -1
         ? ''
         : cleaned.slice((m.index ?? 0) + m[0].length, callOpen);
-      if (arity && callOpen !== -1 && between.trim() === '') {
+      if (resolved && callOpen !== -1 && between.trim() === '') {
+        const { arity, shown } = resolved;
         const argsText = extractCallArgs(cleaned, callOpen);
         if (argsText !== undefined) {
           const n = countCallArgs(argsText);
@@ -669,9 +804,9 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
               severity: 'error',
               line,
               identifier: `${typeName}::${member}`,
-              detail: `Call passes ${n} argument(s), but the indexed signature expects ${
+              detail: `Call passes ${n} argument(s), but the declaration expects ${
                 arity.min === arity.max ? arity.min : `${arity.min}–${arity.max}`
-              }: ${method.signature.trim()}`,
+              }: ${shown}`,
             });
           }
         }
@@ -686,7 +821,7 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     if (reportedTypes.has(lower)) continue;
     reportedTypes.add(lower);
     if (isKnownType(typeName)) {
-      verifiedCount++;
+      if (!reportIfInvisible(typeName, 0)) verifiedCount++;
     } else {
       violations.push({
         kind: 'unknown-type',
@@ -750,6 +885,25 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
   return { violations, verifiedCount };
 }
 
+/**
+ * Descriptor visibility oracle for the configured target model, or undefined.
+ * Resolution stays limited to values already in the loaded configuration: this
+ * runs on every resolve_references call, and ConfigManager's drive-probing
+ * discovery would be exactly the blocking scan that gets the server killed.
+ */
+export function resolverModelVisibility(): ModelVisibility | undefined {
+  try {
+    const ctx = getConfigManager().getContext();
+    const model = (ctx?.modelName ?? process.env.D365FO_MODEL_NAME ?? '').trim();
+    if (!model) return undefined;
+    const root = packagesRootFromPath(ctx?.packagePath)
+      ?? packagesRootFromPath(ctx?.workspacePath);
+    return getModelVisibility(root, model) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** True when the label file id is present in the labels index. */
 function labelFileExists(deps: ResolverDeps, fileId: string): boolean {
   try {
@@ -782,6 +936,7 @@ export function gateOnReferenceErrors(
       db: symbolIndex.getReadDb(),
       getLabelById: symbolIndex.getLabelById.bind(symbolIndex),
       getLabelFileIds: symbolIndex.getLabelFileIds.bind(symbolIndex),
+      visibility: resolverModelVisibility(),
     });
   } catch {
     return null; // never block writes on resolver failure
@@ -824,6 +979,7 @@ export async function resolveReferencesTool(
       db: context.symbolIndex.getReadDb(),
       getLabelById: context.symbolIndex.getLabelById.bind(context.symbolIndex),
       getLabelFileIds: context.symbolIndex.getLabelFileIds.bind(context.symbolIndex),
+      visibility: resolverModelVisibility(),
     });
   } catch (error) {
     return {
@@ -845,7 +1001,10 @@ export async function resolveReferencesTool(
         type: 'text',
         text:
           `✅ resolve_references: all ${result.verifiedCount} reference(s) verified against the index${suffix}.\n` +
-          `No hallucinated symbols detected. Safe to proceed with the write operation.`,
+          `No hallucinated symbols detected. This is a name-existence check, not a compile: ` +
+          `arity/type compatibility, table extensions contributed by unreferenced packages, ` +
+          `and anything the index could not read are outside its reach. ` +
+          `build_d365fo_project remains the only proof it compiles.`,
       }],
     };
   }
@@ -865,7 +1024,11 @@ export async function resolveReferencesTool(
     lines.push('');
   }
   if (errors.length > 0) {
-    lines.push('**Fix all errors before writing** — these identifiers do not exist in the indexed codebase.');
+    lines.push(
+      '**Fix all errors before writing** — these identifiers could not be resolved against the ' +
+      'indexed codebase (`not-visible-from-model` means the name exists but its package is not ' +
+      'referenced by the target model).',
+    );
   } else {
     lines.push('Warnings are informational (kernel classes and new labels are not indexable). Review, then proceed.');
   }

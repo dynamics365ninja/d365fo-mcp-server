@@ -346,7 +346,8 @@ describe('update_symbol_index table re-indexing preserves field EDT/EnumType', (
       name: 'find',
       type: 'method',
       parentName: 'MyTable',
-      signature: 'MyTable find(ContosoMyId _myId, boolean _forUpdate)',
+      // `= false` is kept: without it `find(_myId)` reads as an arity mismatch.
+      signature: 'MyTable find(ContosoMyId _myId, boolean _forUpdate = false)',
       filePath,
       model: 'MyModel',
     });

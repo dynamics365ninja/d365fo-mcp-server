@@ -1504,7 +1504,7 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Table '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Tables, objectName);
                     if (!SetAxTableProperty(obj, propertyPath, propertyValue))
-                        throw new ArgumentException($"Unknown AxTable property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation, configurationKey, formRef, tableGroup, cacheLookup, clusteredIndex, primaryIndex, replacementKey, saveDataPerCompany, tableType, supportInheritance, instanceRelationType, extends, titleField1, titleField2.");
+                        throw new ArgumentException($"Unknown AxTable property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation, configurationKey, formRef, tableGroup, cacheLookup, clusteredIndex, primaryIndex, replacementKey, saveDataPerCompany, allowRowVersionChangeTracking, createdBy, createdDateTime, createdTransactionId, modifiedBy, modifiedDateTime, modifiedTransactionId, tableType, supportInheritance, instanceRelationType, extends, titleField1, titleField2.");
                     ((IMetaTableProvider)_provider.Tables).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -1546,6 +1546,16 @@ namespace D365MetadataBridge.Services
                     if (!SetAxViewProperty(obj, propertyPath, propertyValue))
                         throw new ArgumentException($"Unknown AxView property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation.");
                     ((IMetaViewProvider)_provider.Views).Update(obj, msi);
+                    return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
+                }
+                case "data-entity":
+                {
+                    var obj = _provider.DataEntityViews.Read(objectName)
+                        ?? throw new ArgumentException($"Data entity '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.DataEntityViews, objectName);
+                    if (!SetAxDataEntityViewProperty(obj, propertyPath, propertyValue))
+                        throw new ArgumentException($"Unknown AxDataEntityView property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation, primaryKey, isPublic, publicEntityName, publicCollectionName, dataManagementEnabled, dataManagementStagingTable, entityCategory, allowRowVersionChangeTracking, allowRetention.");
+                    ((IMetaDataEntityViewProvider)_provider.DataEntityViews).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
                 case "menu-item-action":
@@ -2642,6 +2652,16 @@ namespace D365MetadataBridge.Services
                 case "savedatapercompany":
                     tbl.SaveDataPerCompany = ParseNoYes(value);
                     break;
+                // Dual-write's table-side change-tracking prerequisite.
+                case "allowrowversionchangetracking":
+                    tbl.AllowRowVersionChangeTracking = ParseNoYes(value);
+                    break;
+                case "createdby": tbl.CreatedBy = ParseNoYes(value); break;
+                case "createddatetime": tbl.CreatedDateTime = ParseNoYes(value); break;
+                case "createdtransactionid": tbl.CreatedTransactionId = ParseNoYes(value); break;
+                case "modifiedby": tbl.ModifiedBy = ParseNoYes(value); break;
+                case "modifieddatetime": tbl.ModifiedDateTime = ParseNoYes(value); break;
+                case "modifiedtransactionid": tbl.ModifiedTransactionId = ParseNoYes(value); break;
                 case "tabletype":
                     if (!Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.TableType>(value, true, out var tt))
                         throw new ArgumentException(
@@ -2720,6 +2740,39 @@ namespace D365MetadataBridge.Services
                     break;
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxQuery property: {prop}");
+                    return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// AxDataEntityView property setter. AllowRowVersionChangeTracking is
+        /// dual-write's change-tracking switch and is also required on every
+        /// source table.
+        /// </summary>
+        private bool SetAxDataEntityViewProperty(AxDataEntityView e, string prop, string value)
+        {
+            switch (prop.ToLowerInvariant())
+            {
+                case "label": e.Label = value; break;
+                case "developerdocumentation": e.DeveloperDocumentation = value; break;
+                case "primarykey": e.PrimaryKey = value; break;
+                case "publicentityname": e.PublicEntityName = value; break;
+                case "publiccollectionname": e.PublicCollectionName = value; break;
+                case "datamanagementstagingtable": e.DataManagementStagingTable = value; break;
+                case "ispublic": e.IsPublic = ParseNoYes(value); break;
+                case "datamanagementenabled": e.DataManagementEnabled = ParseNoYes(value); break;
+                case "allowrowversionchangetracking": e.AllowRowVersionChangeTracking = ParseNoYes(value); break;
+                case "allowretention": e.AllowRetention = ParseNoYes(value); break;
+                case "entitycategory":
+                    if (!Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntityCategory>(value, true, out var ec))
+                        throw new ArgumentException(
+                            $"'{value}' is not a valid EntityCategory. Valid values: " +
+                            string.Join(", ", Enum.GetNames(typeof(Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntityCategory))) + ".");
+                    e.EntityCategory = ec;
+                    break;
+                default:
+                    Console.Error.WriteLine($"[WriteService] Unknown AxDataEntityView property: {prop}");
                     return false;
             }
             return true;

@@ -1493,16 +1493,20 @@ MySalesConfirmedBusinessEvent::newFromContract(contract).send();`,
     summary:
       'Electronic Reporting (ER) is the D365FO framework for configurable business document generation ' +
       '(invoices, SEPA, VAT files). From X++ you can: (1) run an ER format programmatically, ' +
-      '(2) extend an ER model mapping via CoC, (3) pass data from X++ to ER via a custom ER data source.',
+      '(2) expose X++ data to a format by binding a plain class as a model-mapping data source. ' +
+      'The model, mapping and format are configured in the UI and are NOT AOT elements.',
     rules: [
       'Run ER format from X++: use ERObjectsFactory to get an ERIFormatMappingRun (note the ERI… prefix — there is no IERFormatMappingRun), then call run()',
-      'Pass parameters to ER: build an ERModelDefinitionInputParametersAction (addParameter/applyTo) and hand it to withParameter()',
+      'ERObjectsFactory::createFormatMappingRunByFormatMappingId(ERFormatMappingID, str _fileName, boolean _showPromptDialog, boolean _showInfologMessage, boolean _forceRunDraft) — 5 arguments, all required',
+      'Pass parameters: ERModelDefinitionInputParametersAction::addParameter(str, anytype) then applyTo(_parameters), where _parameters comes from formatRun.getDatasourceDefinitionParameters(); run unattended via runUnattended(_parameters)',
+      'Many ERI… names (ERIDataSource, ERIModelDefinitionParameters, ERIModelDefinitionParamsAction) are .NET types from Microsoft.Dynamics365.LocalizationFramework, NOT AOT artifacts — search() cannot find them; only ERI… names with an AxClass file (ERIFormatMappingRun, ERIDataSourceProvider) are verifiable',
+      'To expose X++ data to a format: write an ORDINARY public class with a static construct() and public parm methods, then bind it in the model mapping as data source type "Dynamics 365 for Operations \\ Class". No interface to implement, no registration — ER reflects over the public members',
+      'ERIDataSourceProvider exists but declares only `ERIDataSource getDataSource()` and nothing in the AOT implements it — do not build on it',
+      'Every string a format reads must come from a label, and the class DeveloperDocumentation should name the model mapping data source that binds it',
       'NEVER modify ER configurations in code — use ER designer in D365FO UI or import from LCS',
       'ER configurations are stored in ERSolutionTable / ERVendorTable — do NOT touch DB directly',
-      'To extend ER model mapping: implement IERModelMappingExtension on your class (CoC not possible for ER)',
-      'For custom data sources: create a class implementing ERIDataSourceProvider and register it',
+      'ER classes ARE extensible by CoC (ERParameters, ERInvoicingServiceParameters and others carry class extensions); what cannot be edited in code is the configuration, not the framework',
       'ER format file path: System administration > Electronic reporting > Reporting configurations',
-      'For testing: use ERObjectsFactory::createFormatMappingRunByFormatMappingId()',
       'Country-specific ER formats loaded via localization features — check ERSolutionRepositoryTable',
     ],
     examples: [
@@ -1511,7 +1515,7 @@ MySalesConfirmedBusinessEvent::newFromContract(contract).send();`,
         code: `// Run an ER format programmatically and return the output as a file
 using Microsoft.Dynamics365.LocalizationFramework;
 
-public static void runErFormat(ERFormatMappingId _formatMappingId, FilePath _outputPath)
+public static void runErFormat(ERFormatMappingID _formatMappingId, FilePath _outputPath)
 {
     ERIFormatMappingRun formatRun = ERObjectsFactory::createFormatMappingRunByFormatMappingId(
         _formatMappingId,
@@ -1520,12 +1524,50 @@ public static void runErFormat(ERFormatMappingId _formatMappingId, FilePath _out
         false,              // _showInfologMessage
         false);             // _forceRunDraft
 
-    // Optionally push user-input parameter values into the model definition
+    // Push parameter values through the run's own definition parameters.
     ERModelDefinitionInputParametersAction paramsAction = new ERModelDefinitionInputParametersAction();
-    formatRun.withParameter(paramsAction);
+    paramsAction.addParameter('DocumentId', _documentId);
+    paramsAction.applyTo(formatRun.getDatasourceDefinitionParameters());
 
-    // Run and get output
     formatRun.run();
+}`,
+      },
+      {
+        label: 'Class bound as a model-mapping data source',
+        code: `/// <summary>
+/// ER binding: model mapping "Demo rental invoice (mapping)" binds this class through its data
+/// source "DemoErInvoiceProvider", declared as "Dynamics 365 for Operations \\ Class".
+/// </summary>
+public class ConDemoErDataProvider
+{
+    private Num documentId;
+    private Amount totalAmount;
+
+    // No base class and no interface: ER reflects over the public members, so
+    // anything the format reads must be public — protected state is unreachable.
+    public static ConDemoErDataProvider construct()
+    {
+        return new ConDemoErDataProvider();
+    }
+
+    public container getInvoiceTotals(Num _documentId)
+    {
+        documentId = _documentId;
+        // ... aggregate ...
+        return [documentId, totalAmount];
+    }
+
+    public Num parmDocumentId(Num _documentId = documentId)
+    {
+        documentId = _documentId;
+        return documentId;
+    }
+
+    // Every string the format reads comes from a label, never a literal.
+    public Description parmTotalsCaption()
+    {
+        return "@ConDemo:ErInvoiceTotals";
+    }
 }`,
       },
     ],
@@ -1789,6 +1831,8 @@ else
       'Virtual entities expose F&O data in Dataverse without data duplication.',
     rules: [
       'Dual-write operates on data entities — ensure entities are OData-enabled and public',
+      'Change tracking is a TWO-SIDED prerequisite and the entity half is not enough: the AxDataEntityView needs <AllowRowVersionChangeTracking>Yes</…> AND every source AxTable it reads needs the same element. Miss the table half and the entity syncs on the initial load, then silently stops picking up changes',
+      'The element is AllowRowVersionChangeTracking on BOTH artifacts — NOT ChangeTrackingEnabled, which is not a MetaModel.AxDataEntityView property at all; on AxTable it sits directly before <CacheLookup>, after the Title/label block',
       'Table maps define column-level mappings between F&O entity fields and Dataverse table columns',
       'Initial sync: always run from the side with the most complete data set',
       'Error handling: dual-write has a retry mechanism — failed records go to an error queue',

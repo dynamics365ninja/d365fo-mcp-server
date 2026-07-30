@@ -12,7 +12,7 @@ import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils
 import { reindentXppSource } from '../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
-import { buildAxDataEntityXml } from './dataEntityXml.js';
+import { buildAxDataEntityXml, isYes } from './dataEntityXml.js';
 import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
 import { buildAxEdtExtensionXml } from './edtExtensionXml.js';
 import { buildAxDataEntityViewExtensionXml } from './dataEntityViewExtensionXml.js';
@@ -323,6 +323,17 @@ ${methodsXml}\t</SourceCode>
     const titleField2Xml = titleField2
       ? `\t<TitleField2>${titleField2}</TitleField2>\n`
       : '';
+    // Canonical order: Title block → these → collections. See axTablePropertyOrder.
+    const noYes = (key: string, tag: string) =>
+      isYes(properties?.[key]) ? `\t<${tag}>Yes</${tag}>\n` : '';
+    const extendedXml =
+      noYes('allowRowVersionChangeTracking', 'AllowRowVersionChangeTracking') +
+      noYes('createdBy', 'CreatedBy') +
+      noYes('createdDateTime', 'CreatedDateTime') +
+      noYes('createdTransactionId', 'CreatedTransactionId') +
+      noYes('modifiedBy', 'ModifiedBy') +
+      noYes('modifiedDateTime', 'ModifiedDateTime') +
+      noYes('modifiedTransactionId', 'ModifiedTransactionId');
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
@@ -337,7 +348,7 @@ public class ${tableName} extends common
 \t</SourceCode>
 \t<Label>${label}</Label>
 \t<TableGroup>${tableGroup}</TableGroup>
-${titleField1Xml}${titleField2Xml}\t<DeleteActions />
+${titleField1Xml}${titleField2Xml}${extendedXml}\t<DeleteActions />
 \t<FieldGroups>
 \t\t<AxTableFieldGroup>
 \t\t\t<Name>AutoReport</Name>
