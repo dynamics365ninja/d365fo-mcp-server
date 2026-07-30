@@ -9,7 +9,8 @@
  * They prove the non-git ledger fallback:
  *   - deletes a file the create tool recorded creating this session,
  *   - refuses to delete a file that was NOT recorded (safety),
- *   - cleans the file's <Content Include> from the .rnrproj.
+ *   - cleans the file's <Content Include> from the .rnrproj, dropping the
+ *     <Folder Include> only when addToProject is recorded as having added it.
  *
  * Corpus: eval/corpus/runs/2026-07-21T__L3-custom-service-basic__a2a4131.json
  */
@@ -99,7 +100,33 @@ describe('undo_last_modification — non-git ledger fallback', () => {
 
     const proj = fs.readFileSync(projectPath, 'utf-8');
     expect(proj).not.toContain('AxService\\ConDemoNoteService');
-    // The now-orphaned folder entry is dropped too.
+    // The folder entry stays: nothing recorded adding it, so it may predate the run.
+    // Corpus 2026-07-30T11__L3-dualwrite-entity-mapping — pruning it on the
+    // "no Content of this type remains" test alone deleted three pre-existing orphans.
+    expect(proj).toContain('Services\\"');
+  });
+
+  it('drops the <Folder Include> when addToProject added it in this session', async () => {
+    const filePath = path.join(tmpDir, 'ConDemoNoteService.xml');
+    fs.writeFileSync(filePath, '<AxService><Name>ConDemoNoteService</Name></AxService>', 'utf-8');
+
+    const projectPath = path.join(tmpDir, 'Contoso.rnrproj');
+    fs.writeFileSync(projectPath, [
+      '<?xml version="1.0" encoding="utf-8"?>',
+      '<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">',
+      '  <ItemGroup />',
+      '</Project>',
+    ].join('\n'), 'utf-8');
+
+    const { ProjectFileManager } = await import('../../src/tools/createD365File');
+    await new ProjectFileManager().addToProject(projectPath, 'service', 'ConDemoNoteService', filePath);
+    expect(fs.readFileSync(projectPath, 'utf-8')).toContain('Services\\');
+
+    recordCreatedArtifact({ filePath, objectType: 'service', objectName: 'ConDemoNoteService', projectPath });
+    await undoLastModificationTool({ filePath }, {} as any);
+
+    const proj = fs.readFileSync(projectPath, 'utf-8');
+    expect(proj).not.toContain('AxService\\ConDemoNoteService');
     expect(proj).not.toContain('Services\\');
   });
 });

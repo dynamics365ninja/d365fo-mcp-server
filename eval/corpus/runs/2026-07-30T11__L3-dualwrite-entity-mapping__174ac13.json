@@ -1,0 +1,68 @@
+{
+  "run_id": "2026-07-30T11__L3-dualwrite-entity-mapping__174ac13",
+  "case_id": "L3-dualwrite-entity-mapping",
+  "tier": 3,
+  "timestamp": "2026-07-30T11:36:38.000Z",
+  "server_git_sha": "174ac13",
+  "generated_artifacts": [
+    "ConDemoSyncCustomer.metadata.xml",
+    "ConDemoSyncCustomerEntity.metadata.xml",
+    "ConDemoSyncCustomerEntityMaintain.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "code": "BPErrorDeveloperDocumentationNotDefined",
+        "element": "AxTable/ConDemoSyncCustomer"
+      },
+      {
+        "code": "BPErrorTableMissingFormRef",
+        "element": "AxTable/ConDemoSyncCustomer"
+      },
+      {
+        "code": "BPErrorPrivilegeNotCoveredByDuty",
+        "element": "AxSecurityPrivilege/ConDemoSyncCustomerEntityMaintain"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "platform_build": "7.0.7858.27",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "CONFIRMING RUN of the frozen golden - no case-caused failure. All three artifacts came out BYTE-IDENTICAL to the goldens through the grounded path with zero hand-authored XML: table = d365fo_file(action=create, properties {label,tableGroup,titleField1,titleField2,allowRowVersionChangeTracking,cacheLookup,modifiedDateTime,replacementKey,fields}) then modify/add-index (indexAlternateKey=true, indexAllowDuplicates=false); entity = create with standardStructure:true + entityCategory Master + primaryKeyFields [CustomerCode]; privilege = create with dataEntity + accessLevel maintain. The 2026-07-30 07:36 residual diff AxDataEntityView/DataManagementEnabled is CLOSED: the fix in src/tools/dataEntityXml.ts (87afe42) emits the DataManagement pair only when dataManagementEnabled === true, and the live server confirmed it - golden_match went 0 -> 1 with no other change to the call sequence. Build freshness proven, not assumed: force+fullBuild, log d365build_log_468637da55.log written 11:29:54.990 and Contoso/bin/*.md rewritten 11:29:54.24-.35 against a 2026-07-30 07:44:08 baseline; 'Errors: 0', 1 unrelated ExternalReference warning (Commerce AttributeBasedPricing assembly not found). Runtime metadata Contoso_AxDataEntityView.md carries EntityKey over CustomerCode (not RecId) and ConDemoSyncCustomers; Contoso_AxTable.md carries SyncCustomerIdx twice (index + ReplacementKey), so the business key survived deserialization. bp_clean:0 is the three golden-documented, out-of-scope warnings only (0 BP errors = the case's own gate), each proven to have run by a '1 elements processed.' line. THREE PRE-EXISTING DEFECTS REPRODUCED (none newly introduced; all already on the 07:36 record): (1) prepare(mode=create) reported a false collision for BOTH ConDemoSyncCustomer ('already exists as table in model Contoso') and ConDemoSyncCustomerEntity ('already exists as view'), while neither file existed under Contoso/Contoso/Ax*; only stale symbol-index rows from a previous run's rollback plus build residue in Contoso/XppMetadata/Contoso survive. An agent obeying the collision warning would abandon a valid case. (2) modify/add-index wrote ConDemoSyncCustomer.xml.backup-2026-07-30T11-25-49 INTO the AxTable AOT folder (createBackup was not requested; it auto-enables because the sandbox is not under git) - a rollback hazard and a stray file inside a metadata directory. (3) validate_code(mode=references, codeType=xml-any) verified only '1 reference' in the entity XML that names the table ConDemoSyncCustomer twice, two DataFields, two query fields and a label, and likewise 1 in the privilege XML that names the entity plus a label - reference coverage for AxDataEntityView/AxSecurityPrivilege is essentially absent, so a hallucinated table or field would pass this gate.",
+  "suggested_fix_area": "None for this case's own path (writer + knowledge fixes verified end-to-end; golden frozen and reproduced byte-for-byte). Remaining, independent: symbol-index deletion hygiene so a rolled-back object stops producing false prepare() collisions (collision check + index row removal on file delete); modify's auto-backup should write outside the AOT folder instead of dropping *.backup-<timestamp> next to the metadata file (src/tools/modifyD365File.ts); validate_code xml-any reference resolver coverage for AxDataEntityView (DataSource/Table/DataField/Field/Label) and AxSecurityPrivilege (DataEntityPermissions/Name) in src/tools/validateCode.ts.",
+  "evidence_refs": [
+    "eval/goldens/L3-dualwrite-entity-mapping/README.md",
+    "eval/corpus/runs/2026-07-30T07__L3-dualwrite-entity-mapping__1f842a6.json",
+    "Temp/2/d365build_log_468637da55.log (mtime 2026-07-30 11:29:54.990)"
+  ]
+}
