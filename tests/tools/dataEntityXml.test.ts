@@ -9,9 +9,15 @@
  * with no path that ever creates that staging table, so the very next full
  * build failed: "Metadata Error: AxDataEntityView/.../DataManagementStagingTable:
  * Table '<Name>Staging' does not exist." Every data entity this tool ever
- * created was build-broken by default. Fixed by defaulting
- * DataManagementEnabled=No (self-closed, empty DataManagementStagingTable)
- * unless the caller explicitly opts in via properties.dataManagementEnabled.
+ * created was build-broken by default.
+ *
+ * Follow-up: eval/corpus/runs/2026-07-30T07__L3-dualwrite-entity-mapping__1f842a6.json
+ * — the first fix wrote an explicit <DataManagementEnabled>No</…> +
+ * <DataManagementStagingTable /> pair instead, the sole residual golden diff of
+ * that run. AOT census: 0 of 2662 shipped entities write either default form
+ * (1793 write Yes + a named staging table, 869 omit both), reflection gives
+ * NoYes.No / "" as the metamodel defaults, and a bridge round-trip drops both.
+ * Both elements are now omitted unless the caller opts in.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -35,21 +41,20 @@ function topLevelElements(xml: string): string[] {
 }
 
 describe('buildAxDataEntityXml — DataManagementEnabled defaulting', () => {
-  it('defaults DataManagementEnabled=No with an empty staging table (skeleton branch: no primaryTable/fields)', () => {
+  it('omits both data-management elements (skeleton branch: no primaryTable/fields)', () => {
     const xml = buildAxDataEntityXml('ConSmallItemEntity');
-    expect(xml).toContain('<DataManagementEnabled>No</DataManagementEnabled>');
-    expect(xml).toContain('<DataManagementStagingTable />');
+    expect(xml).not.toContain('<DataManagementEnabled>');
+    expect(xml).not.toContain('<DataManagementStagingTable');
     expect(xml).not.toContain('ConSmallItemEntityStaging');
-    expect(xml).not.toContain('<DataManagementEnabled>Yes</DataManagementEnabled>');
   });
 
-  it('defaults DataManagementEnabled=No with an empty staging table (full branch: primaryTable + fields given)', () => {
+  it('omits both data-management elements (full branch: primaryTable + fields given)', () => {
     const xml = buildAxDataEntityXml('ConSmallItemEntity', {
       primaryTable: 'ConSmallItem',
       fields: [{ name: 'ItemId' }, { name: 'Name' }],
     });
-    expect(xml).toContain('<DataManagementEnabled>No</DataManagementEnabled>');
-    expect(xml).toContain('<DataManagementStagingTable />');
+    expect(xml).not.toContain('<DataManagementEnabled>');
+    expect(xml).not.toContain('<DataManagementStagingTable');
     expect(xml).not.toContain('Staging<');
     // The real fix this case was originally mined for (primaryTable/fields honoured) still works.
     expect(xml).toContain('<DataField>ItemId</DataField>');
@@ -135,6 +140,7 @@ describe('buildAxDataEntityXml — element order matches the shipped AOT seriali
       primaryTable: 'T',
       fields: [{ name: 'A' }],
       allowRowVersionChangeTracking: true,
+      dataManagementEnabled: true,
       standardStructure: true,
     });
     const e = topLevelElements(xml);
@@ -172,16 +178,9 @@ describe('buildAxDataEntityXml — element order matches the shipped AOT seriali
       publicCollectionName: 'ConDemoSyncCustomers',
       standardStructure: true,
     });
-    // The golden omits the two DataManagementEnabled=No default lines (the platform
-    // serializer drops NoYes defaults); this writer emits them explicitly and must keep
-    // doing so — see the DataManagementEnabled regression block above. Everything else,
-    // including element order and indentation, must match byte for byte.
-    const normalise = (s: string) =>
-      s
-        .replace(/\r\n/g, '\n') // the golden is checked in with the VM's line endings
-        .replace(/^\t<DataManagementEnabled>No<\/DataManagementEnabled>\n/m, '')
-        .replace(/^\t<DataManagementStagingTable \/>\n/m, '')
-        .replace(/\s+$/, '');
+    // Byte for byte, element order and indentation included — no normalisation
+    // beyond line endings and the trailing newline.
+    const normalise = (s: string) => s.replace(/\r\n/g, '\n').replace(/\s+$/, '');
     expect(normalise(xml)).toBe(normalise(golden));
   });
 });
@@ -347,12 +346,12 @@ describe('buildAxDataEntityXml — canonical structure (SourceCode / FieldGroups
 describe('buildAxDataEntityXml — backward compatibility (byte-identical without the new properties)', () => {
   // Frozen copies of the output this builder produced before the opt-in properties
   // were added (commit 7e5c59d). Any drift here is a silent break for every existing caller.
+  // One deliberate deviation since: the two DataManagementEnabled=No/empty default lines
+  // are gone from the skeleton (see the header — 0 of 2662 shipped entities write them).
   const BASELINE_SKELETON = `<?xml version="1.0" encoding="utf-8"?>
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>ConSmallItemEntity</Name>
 \t<Label>ConSmallItemEntity</Label>
-\t<DataManagementEnabled>No</DataManagementEnabled>
-\t<DataManagementStagingTable />
 \t<EntityCategory>Transaction</EntityCategory>
 \t<IsPublic>Yes</IsPublic>
 \t<PublicCollectionName>ConSmallItemEntityCollection</PublicCollectionName>

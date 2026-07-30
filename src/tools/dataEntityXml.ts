@@ -36,9 +36,13 @@
  *                                     too or the build fails with "Change tracking cannot be
  *                                     enabled since the Allow Row Version Change Tracking
  *                                     property is not set to Yes for the table".
- * properties.dataManagementEnabled – opt IN to data-management/DIXF staging (default: false —
- *                                     see below). When true, properties.dataManagementStagingTable
- *                                     overrides the default `${entityName}Staging` name.
+ * properties.dataManagementEnabled – opt IN to data-management/DIXF staging. Off ⇒ both
+ *                                     <DataManagementEnabled> and <DataManagementStagingTable>
+ *                                     are omitted: 0 of 2662 shipped entities write the
+ *                                     defaults (No / empty) and a bridge round-trip drops
+ *                                     them. When true, properties.dataManagementStagingTable
+ *                                     overrides the default `${entityName}Staging` name;
+ *                                     Yes without a staging table fails the build.
  * properties.standardStructure     – opt IN to the AOT-canonical entity skeleton: <SourceCode>
  *                                     (declaration + methods), the five standard <FieldGroups>,
  *                                     and empty <DeleteActions /> / <StateMachines />. Present in
@@ -77,13 +81,15 @@
  * hence AllowRowVersionChangeTracking before DataManagementEnabled, and
  * DeleteActions/FieldGroups before Fields.)
  *
- * DataManagementEnabled defaults to "No" (regression: this used to hard-code
- * "Yes" + DataManagementStagingTable=`${entityName}Staging` unconditionally —
- * every generated entity then failed its very next build with "Table
- * '<Name>Staging' does not exist", since this tool has no path that creates a
- * staging table. Enabling data-management for a real staging scenario is an
- * explicit opt-in via properties.dataManagementEnabled — the caller is then
- * responsible for the staging table existing (create it as its own table).
+ * DataManagementEnabled is OMITTED unless opted in (regression: this used to
+ * hard-code "Yes" + DataManagementStagingTable=`${entityName}Staging`
+ * unconditionally — every generated entity then failed its very next build with
+ * "Table '<Name>Staging' does not exist", since this tool has no path that
+ * creates a staging table; the first fix over-corrected to an explicit
+ * No/empty pair that no shipped file writes). Enabling data-management for a
+ * real staging scenario is an explicit opt-in via
+ * properties.dataManagementEnabled — the caller is then responsible for the
+ * staging table existing (create it as its own table).
  */
 
 /** The five field groups every shipped data entity carries (5810/5859). */
@@ -198,12 +204,11 @@ export function buildAxDataEntityXml(entityName: string, properties?: Record<str
     : '';
   const stateMachinesXml = standardStructure ? '\t<StateMachines />\n' : '';
 
-  const dataManagementEnabled = properties?.dataManagementEnabled === true;
-  const dataManagementXml = dataManagementEnabled
+  // Omitted unless opted in — same NoYes-default rule as IsPublic above.
+  const dataManagementXml = properties?.dataManagementEnabled === true
     ? `\t<DataManagementEnabled>Yes</DataManagementEnabled>\n` +
       `\t<DataManagementStagingTable>${properties?.dataManagementStagingTable || `${entityName}Staging`}</DataManagementStagingTable>\n`
-    : `\t<DataManagementEnabled>No</DataManagementEnabled>\n` +
-      `\t<DataManagementStagingTable />\n`;
+    : '';
 
   if (!primaryTable || !fields || fields.length === 0) {
     return `<?xml version="1.0" encoding="utf-8"?>
