@@ -260,6 +260,23 @@ describe('resolveXppReferences — arity checks', () => {
     expect(errors[0].kind).toBe('arity-mismatch');
   });
 
+  // `CustTable custTable;` is the universal convention and differs from the type
+  // only in the first letter's case, so a declaredNames guard on the `::` path
+  // skipped the check for almost every real method body.
+  it('still checks Type::member when a local is named after the type', () => {
+    const code = `public class ConDemoProbe
+{
+    public void run()
+    {
+        CustTable custTable;
+        custTable = CustTable::find("c1", true, 42);
+    }
+}`;
+    const errors = errorsOf(code);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].kind).toBe('arity-mismatch');
+  });
+
   // A default whose VALUE contains parens (`= curUserId()`) must still count as
   // optional — splitTopLevel keeps them balanced.
   it('treats a trailing function-call default as optional (#18)', () => {

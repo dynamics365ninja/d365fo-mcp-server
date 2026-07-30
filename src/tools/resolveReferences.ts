@@ -749,7 +749,9 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     const line = lineOf(cleaned, m.index ?? 0);
     const lower = typeName.toLowerCase();
 
-    if (locals.declaredNames.has(lower)) continue;
+    // No declaredNames guard, unlike the instance path: `::` only ever applies
+    // to a type, and `CustTable custTable;` differs only in the first letter's
+    // case — so the guard disabled this check for the commonest code there is.
     if (KERNEL_TYPES.has(lower)) { verifiedCount++; continue; } // no metadata for kernel statics
 
     const types = lookupTypes(typeName);
