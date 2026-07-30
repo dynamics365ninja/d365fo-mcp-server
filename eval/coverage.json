@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 78,
-    "covered": 71,
-    "percent": 91
+    "covered": 72,
+    "percent": 92.3
   },
   "leaves": [
     {
@@ -1018,10 +1018,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-dualwrite-entity-mapping"
+      ]
     },
     {
       "id": "power-platform",
