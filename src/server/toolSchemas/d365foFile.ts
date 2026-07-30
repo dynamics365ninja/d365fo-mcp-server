@@ -18,7 +18,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         action: {
           type: 'string',
           enum: ['create', 'modify', 'generate'],
-          description: 'See the three bullets above — create and modify write, generate does not.',
+          description: 'One of the three modes described above.',
         },
         objectType: {
           type: 'string',
@@ -42,7 +42,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
         },
         objectName: {
           type: 'string',
-          description: 'Base name WITHOUT model prefix — the tool prepends EXTENSION_PREFIX (or modelName) and detects an existing prefix. Extension classes: pass "{Base}_Extension" with NO prefix infix (produces e.g. "SalesFormLetterMY_Extension"). NEVER hand-build the prefix.'
+          description: 'Base name WITHOUT model prefix — the tool prepends EXTENSION_PREFIX (or modelName) and detects an existing prefix. Extension classes: pass "{Base}_Extension" with NO prefix infix. NEVER hand-build the prefix.'
         },
         modelName: {
           type: 'string',
@@ -65,7 +65,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
           description:
             'Additional properties by objectType:\n' +
             '• class: extends, implements, isFinal, isAbstract\n' +
-            '• table: label, tableGroup, tableType, titleField1/2, fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?}] — enum fields need enumType (+ optionally fieldType:"AxTableFieldEnum")\n' +
+            '• table: label, tableGroup, tableType, titleField1/2, cacheLookup?, primaryIndex?, allowRowVersionChangeTracking? (dual-write), created/modifiedBy/DateTime?, fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?}] — enum fields need enumType (+ optionally fieldType:"AxTableFieldEnum")\n' +
             '• enum: label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}]\n' +
             '• enum-extension: enumValues[{name,label?,value?,countryRegionCodes?}]\n' +
             '• table-extension: fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need fieldType:"AxTableFieldEnum" + enumType\n' +

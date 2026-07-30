@@ -755,6 +755,13 @@ ${methodsXml}\t</SourceCode>
       AllowRowVersionChangeTracking:
         isYes(properties?.allowRowVersionChangeTracking) ? 'Yes' : undefined,
       CacheLookup: properties?.cacheLookup,
+      // Audit system fields — NoYes, ranked but previously unreachable.
+      CreatedBy: isYes(properties?.createdBy) ? 'Yes' : undefined,
+      CreatedDateTime: isYes(properties?.createdDateTime) ? 'Yes' : undefined,
+      CreatedTransactionId: isYes(properties?.createdTransactionId) ? 'Yes' : undefined,
+      ModifiedBy: isYes(properties?.modifiedBy) ? 'Yes' : undefined,
+      ModifiedDateTime: isYes(properties?.modifiedDateTime) ? 'Yes' : undefined,
+      ModifiedTransactionId: isYes(properties?.modifiedTransactionId) ? 'Yes' : undefined,
       ClusteredIndex: properties?.clusteredIndex,
       PrimaryIndex: primaryIndex,
       // ReplacementKey mirrors PrimaryIndex unless the caller says otherwise.

@@ -1504,7 +1504,7 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Table '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Tables, objectName);
                     if (!SetAxTableProperty(obj, propertyPath, propertyValue))
-                        throw new ArgumentException($"Unknown AxTable property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation, configurationKey, formRef, tableGroup, cacheLookup, clusteredIndex, primaryIndex, replacementKey, saveDataPerCompany, allowRowVersionChangeTracking, tableType, supportInheritance, instanceRelationType, extends, titleField1, titleField2.");
+                        throw new ArgumentException($"Unknown AxTable property '{propertyPath}' — nothing was written. Supported: label, developerDocumentation, configurationKey, formRef, tableGroup, cacheLookup, clusteredIndex, primaryIndex, replacementKey, saveDataPerCompany, allowRowVersionChangeTracking, createdBy, createdDateTime, createdTransactionId, modifiedBy, modifiedDateTime, modifiedTransactionId, tableType, supportInheritance, instanceRelationType, extends, titleField1, titleField2.");
                     ((IMetaTableProvider)_provider.Tables).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -2656,6 +2656,12 @@ namespace D365MetadataBridge.Services
                 case "allowrowversionchangetracking":
                     tbl.AllowRowVersionChangeTracking = ParseNoYes(value);
                     break;
+                case "createdby": tbl.CreatedBy = ParseNoYes(value); break;
+                case "createddatetime": tbl.CreatedDateTime = ParseNoYes(value); break;
+                case "createdtransactionid": tbl.CreatedTransactionId = ParseNoYes(value); break;
+                case "modifiedby": tbl.ModifiedBy = ParseNoYes(value); break;
+                case "modifieddatetime": tbl.ModifiedDateTime = ParseNoYes(value); break;
+                case "modifiedtransactionid": tbl.ModifiedTransactionId = ParseNoYes(value); break;
                 case "tabletype":
                     if (!Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.TableType>(value, true, out var tt))
                         throw new ArgumentException(
