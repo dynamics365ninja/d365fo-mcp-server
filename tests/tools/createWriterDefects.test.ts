@@ -170,6 +170,17 @@ describe('#13 AxTable canonical element order', () => {
     expect(xml).not.toContain('<TitleField1></TitleField1>');
     expect(xml).not.toContain('<TitleField1>');
     expect(xml).toContain('<Label>ConDemoAgentNote</Label>');
+    expect(xml).not.toContain('<AllowRowVersionChangeTracking>');
+  });
+
+  it('emits AllowRowVersionChangeTracking in canonical position when asked', () => {
+    const xml = XmlTemplateGenerator.generateAxTableXml('ConDemoAgentNote', {
+      titleField1: 'Subject', allowRowVersionChangeTracking: true,
+    });
+    expect(xml).toContain('<AllowRowVersionChangeTracking>Yes</AllowRowVersionChangeTracking>');
+    expect(xml.indexOf('<TitleField1>')).toBeLessThan(xml.indexOf('<AllowRowVersionChangeTracking>'));
+    expect(xml.indexOf('<AllowRowVersionChangeTracking>')).toBeLessThan(xml.indexOf('<DeleteActions'));
+    expect(runRules(xml, 'xml-table').filter(v => v.rule === 'XML006')).toHaveLength(0);
   });
 
   it('validate_code(xml-table) FLAGS a misordered document (it used to report "no violations")', () => {
@@ -323,6 +334,23 @@ describe('#37 upsertAxTableProperty inserts in canonical order', () => {
     expect(axTableElementRank('Label')).toBeLessThan(axTableElementRank('Fields'));
     expect(axTableElementRank('SomethingElse')).toBe(Number.MAX_SAFE_INTEGER);
     expect(AX_TABLE_ELEMENT_ORDER[0]).toBe('ConfigurationKey');
+  });
+
+  // Dual-write's table-side prerequisite. The rank lookup doubles as the
+  // writer's whitelist, so an unranked name is dropped rather than misordered.
+  it('places AllowRowVersionChangeTracking after the Title block, before CacheLookup', () => {
+    expect(axTableElementRank('AllowRowVersionChangeTracking'))
+      .toBeGreaterThan(axTableElementRank('TitleField2'));
+    expect(axTableElementRank('AllowRowVersionChangeTracking'))
+      .toBeLessThan(axTableElementRank('CacheLookup'));
+    expect(axTableElementRank('AllowRetention'))
+      .toBeLessThan(axTableElementRank('AllowRowVersionChangeTracking'));
+
+    const out = upsertAxTableProperty(table, 'AllowRowVersionChangeTracking', 'Yes');
+    expect(out).not.toBeNull();
+    expect(out!).toContain('<AllowRowVersionChangeTracking>Yes</AllowRowVersionChangeTracking>');
+    expect(out!.indexOf('<TableGroup>')).toBeLessThan(out!.indexOf('<AllowRowVersionChangeTracking>'));
+    expect(runRules(out!, 'xml-table').filter(v => v.rule === 'XML006')).toHaveLength(0);
   });
 });
 

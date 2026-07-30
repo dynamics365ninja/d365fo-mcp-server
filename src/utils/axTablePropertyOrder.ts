@@ -33,6 +33,11 @@ export const AX_TABLE_MANDATORY_PROPERTIES = [
 
 /** Block 2 — extended properties, alphabetical, written only when set. */
 export const AX_TABLE_EXTENDED_PROPERTIES = [
+  // 3,962 of the 18,337 shipped tables set AllowRowVersionChangeTracking (157
+  // AllowRetention), both directly before CacheLookup. This list doubles as the
+  // writer's whitelist, so an absent name is dropped, not just misordered.
+  'AllowRetention',
+  'AllowRowVersionChangeTracking',
   'CacheLookup',
   'ClusteredIndex',
   'CreatedBy',

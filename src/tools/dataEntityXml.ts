@@ -96,7 +96,7 @@ const STANDARD_FIELD_GROUPS: Array<{ name: string; autoPopulate?: boolean }> = [
 ];
 
 /** NoYes-ish inputs: true / "Yes" / "true" / 1 all mean Yes. */
-function isYes(value: unknown): boolean {
+export function isYes(value: unknown): boolean {
   if (value === true) return true;
   if (typeof value === 'number') return value === 1;
   if (typeof value === 'string') {
