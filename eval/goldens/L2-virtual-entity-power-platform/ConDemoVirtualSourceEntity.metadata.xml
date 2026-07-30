@@ -2,8 +2,6 @@
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>ConDemoVirtualSourceEntity</Name>
 	<Label>@TaxTransactionInquiry:HeaderNote</Label>
-	<DataManagementEnabled>No</DataManagementEnabled>
-	<DataManagementStagingTable />
 	<EntityCategory>Master</EntityCategory>
 	<IsPublic>Yes</IsPublic>
 	<PrimaryKey>EntityKey</PrimaryKey>

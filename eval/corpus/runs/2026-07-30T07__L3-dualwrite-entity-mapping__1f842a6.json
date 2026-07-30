@@ -1,0 +1,45 @@
+{
+  "run_id": "2026-07-30T07__L3-dualwrite-entity-mapping__1f842a6",
+  "case_id": "L3-dualwrite-entity-mapping",
+  "tier": 3,
+  "timestamp": "2026-07-30T07:42:06.678Z",
+  "server_git_sha": "1f842a6",
+  "generated_artifacts": [
+    "ConDemoSyncCustomer.metadata.xml",
+    "ConDemoSyncCustomerEntity.metadata.xml",
+    "ConDemoSyncCustomerEntityMaintain.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [
+      "DemoSyncCustomerEntity.metadata.xml::AxDataEntityView/DataManagementEnabled"
+    ],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "The dual-write writer gaps from the 2026-07-29 draft capture are fixed and verified: AxTable now emits AllowRowVersionChangeTracking (create writer, byte-identical to the golden incl. property order) and AxDataEntityView now emits it too, so the whole case is reachable through the grounded tool path with NO hand-authored XML (table = create + modify/add-index; entity = create with standardStructure:true; privilege = create). The single residual golden diff is buildAxDataEntityXml() in src/tools/dataEntityXml.ts emitting <DataManagementEnabled>No</DataManagementEnabled> + <DataManagementStagingTable /> UNCONDITIONALLY (dataManagementEnabled === true is the only branch; false and undefined both write the 'No' block). Census on the real AOT: 0 of 3236 ApplicationSuite/Foundation AxDataEntityView files carry either element in its default form, 2890 carry DataManagementEnabled=Yes; and a bridge round-trip (IMetadataProvider.Update) DROPS both, which proves the platform serializer treats them as omitted defaults - exactly as the same function already reasons about IsPublic. Semantically harmless (build 0 errors, BP 0 errors) but it is a real one-element mismatch, so golden_pending stays true. SECOND, INDEPENDENT DEFECT found this run: modify-property EntityCategory=Master on a data-entity reports \"applied via IMetadataProvider.Update()\" but the value is UNREPRESENTABLE through the bridge - Master is the enum default, so the serializer omits it and the element vanishes from the file the tool just claimed to update. The case pins EntityCategory=Master explicitly, so only the file-writer (create) path can satisfy it. THIRD: d365fo_file(action=\"generate\", objectType=\"table\") - the documented Azure/Linux fallback - runs a different, stub generator (XmlTemplateGenerator.generateAxTableXml in src/tools/generateD365Xml.ts) that hard-codes <Fields /> and <Indexes /> and silently ignores properties.fields, cacheLookup, replacementKey, primaryIndex, configurationKey and tableType, and omits <FullTextIndexes/>/<Mappings/>/<StateMachines/>. On Azure/Linux this produces a FIELDLESS table from the same arguments that produce the golden on Windows. FOURTH: entity-writer properties standardStructure / declaration / methods / fieldGroups / publicEntityName / publicCollectionName / label are absent from the data-entity line of the d365fo_file tool schema, so the grounded agent cannot discover standardStructure - without it create omits SourceCode, FieldGroups, DeleteActions and StateMachines (present in 5859/5859 shipped entities). FIFTH (validator): validate_code(mode=\"references\", codeType=\"xml-any\") accepted structurally INVALID XML (a </Fields> closing a <DataSources> block) without complaint and verified only 1 reference in an AxDataEntityView that names a table, two data fields and a label. SIXTH (index hygiene): prepare(mode=\"create\") reported collisions for both ConDemoSyncCustomer and ConDemoSyncCustomerEntity although neither existed on disk - a previous run's rollback deleted the files but left the symbol-index rows, so every re-run of a case starts with a false collision warning. Measurement integrity: the green build is real - force+fullBuild, log and Contoso/bin/*.md both rewritten at 07:36:02 (baseline 2026-07-29 19:09:47), and a negative probe (table AllowRowVersionChangeTracking removed) flipped the same full build to Errors: 1 with the cross-object metadata error, proving the entity property is genuinely deserialized. BP was proven to run: '1 elements processed.' in all three per-element checks (entity 0/0, table 2 warnings, privilege 1 warning; 0 BP errors overall = the case's own gate). Runtime metadata Contoso_AxDataEntityView.md confirms EntityKey over CustomerCode, not RecId.",
+  "suggested_fix_area": "src/tools/dataEntityXml.ts buildAxDataEntityXml (emit the DataManagement block only when dataManagementEnabled is truthy, mirroring the existing IsPublic omission); src/tools/modifyD365File.ts modify-property (warn when the requested value equals the metamodel default and will therefore not survive serialization, instead of reporting success); src/tools/generateD365Xml.ts generateAxTableXml (delegate to the create-path builder in src/tools/createD365File.ts XmlTemplateGenerator.generateAxTableXml so the Azure/Linux fallback is not lossy); src/server/toolSchemas/d365foFile.ts data-entity property line (document standardStructure + publicEntityName/publicCollectionName/label); src/tools/validateCode.ts xml-any reference resolver (well-formedness check + AxDataEntityView ref coverage); symbol-index deletion hygiene on rollback."
+}

@@ -8,17 +8,21 @@
 
   Supersedes the 2026-06-30 hand-written golden. d365fo_file(create, data-entity)
   now honours primaryTable/fields, so Fields/Keys/ViewMetadata come from the tool.
-  DataManagementEnabled is No: the old golden said Yes and pointed
-  DataManagementStagingTable at ConDemoNoteHeaderEntityStaging, an object that does
-  not exist in the fixture model - a claim no correct run could ever reproduce.
   The case requires a PUBLIC entity (IsPublic=Yes, for OData); it does not ask for
-  a DMF staging table.
+  a DMF staging table. The 2026-06-30 golden said DataManagementEnabled=Yes and
+  pointed DataManagementStagingTable at ConDemoNoteHeaderEntityStaging, an object
+  that does not exist in the fixture model - a claim no correct run could reproduce.
+
+  2026-07-30: the two default lines <DataManagementEnabled>No</> and
+  <DataManagementStagingTable /> were removed. They came from the writer, not the
+  platform: 0 of 2662 shipped AxDataEntityView files carry either default form and
+  a bridge round-trip drops both. src/tools/dataEntityXml.ts now omits them, so
+  this is what the same grounded path emits. Semantically unchanged - reflection
+  gives NoYes.No / "" as the metamodel defaults.
 -->
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>ConDemoNoteHeaderEntity</Name>
 	<Label>@TaxTransactionInquiry:HeaderNote</Label>
-	<DataManagementEnabled>No</DataManagementEnabled>
-	<DataManagementStagingTable />
 	<EntityCategory>Master</EntityCategory>
 	<IsPublic>Yes</IsPublic>
 	<PrimaryKey>EntityKey</PrimaryKey>

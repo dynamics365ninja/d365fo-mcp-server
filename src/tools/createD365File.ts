@@ -32,7 +32,7 @@ import { buildAxEdtExtensionXml } from './edtExtensionXml.js';
 import { buildAxDataEntityViewExtensionXml } from './dataEntityViewExtensionXml.js';
 import { buildAxMenuItemExtensionXml, type AxMenuItemExtensionRootElement } from './menuItemExtensionXml.js';
 import { buildAxServiceXml, buildAxServiceGroupXml } from './serviceXml.js';
-import { recordCreatedArtifact } from './createdArtifactLedger.js';
+import { recordCreatedArtifact, recordCreatedProjectFolder, takeCreatedProjectFolder } from './createdArtifactLedger.js';
 import {
   reconcileTableCreateProperties,
   renderTableCreateHonestyReport,
@@ -3514,6 +3514,8 @@ export class ProjectFileManager {
       folderGroup.Folder.push({
         $: { Include: `${displayFolderName}\\` },
       });
+      // Only an entry WE added may be pruned again on undo — see the ledger.
+      recordCreatedProjectFolder(projectPath, displayFolderName);
     }
 
     // D365FO .rnrproj standard:
@@ -3570,9 +3572,10 @@ export class ProjectFileManager {
 
   /**
    * Reverse of {@link addToProject}: remove the <Content Include> entry that
-   * addToProject wrote for `objectName`, and drop the now-orphaned <Folder Include>
-   * when no other Content of the same AOT type remains. Used by undo_last_modification
-   * to clean the .rnrproj after deleting a file it created in a non-git sandbox.
+   * addToProject wrote for `objectName`, and drop the <Folder Include> it added when
+   * no other Content of the same AOT type remains. A folder entry that was already in
+   * the project is left alone. Used by undo_last_modification to clean the .rnrproj
+   * after deleting a file it created in a non-git sandbox.
    * Returns true when an entry was removed, false when nothing matched.
    */
   async removeFromProject(
@@ -3630,14 +3633,17 @@ export class ProjectFileManager {
 
     if (!removed) return false;
 
-    // Drop the "<Type>\" folder entry only when no remaining Content of this AOT
-    // type references it — never touch a folder still hosting sibling objects.
+    // Drop the "<Type>\" folder entry only when THIS session added it and no
+    // remaining Content of this AOT type references it. Both conditions matter:
+    // the second protects folders still hosting siblings, the first protects
+    // orphan entries that were in the project before we touched it.
+    const weAddedFolder = takeCreatedProjectFolder(projectPath, displayFolderName);
     const stillUsesFolder = itemGroups.some((group: any) => {
       if (group.Content === undefined) return false;
       const contents = Array.isArray(group.Content) ? group.Content : [group.Content];
       return contents.some((c: any) => typeof c?.$?.Include === 'string' && c.$.Include.startsWith(`${axFolderPrefix}\\`));
     });
-    if (!stillUsesFolder) {
+    if (weAddedFolder && !stillUsesFolder) {
       for (const group of itemGroups) {
         if (group.Folder === undefined) continue;
         const folders = Array.isArray(group.Folder) ? group.Folder : [group.Folder];
