@@ -1832,13 +1832,9 @@ namespace D365MetadataBridge.Services
         // TABLE INDEX OPERATIONS
         // ========================
 
-        /// <summary>Adds an index to a table.</summary>
+        /// <summary>Adds an index to a table or table-extension.</summary>
         public object AddIndex(string tableName, string indexName, List<string>? fields, bool allowDuplicates, bool alternateKey)
         {
-            var axTable = _provider.Tables.Read(tableName)
-                ?? throw new ArgumentException($"Table '{tableName}' not found");
-            var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
-
             var axIdx = new AxTableIndex { Name = indexName };
             axIdx.AllowDuplicates = allowDuplicates ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
             if (alternateKey)
@@ -1848,31 +1844,67 @@ namespace D365MetadataBridge.Services
                 foreach (var f in fields)
                     axIdx.AddField(new AxTableIndexField { DataField = f });
             }
-            axTable.AddIndex(axIdx);
 
-            ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-            return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableProvider.Update" };
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                axTable.AddIndex(axIdx);
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableProvider.Update" };
+            }
+
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                ((dynamic)axExt).Indexes.Add(axIdx);
+                ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
+                return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
         }
 
-        /// <summary>Removes an index from a table.</summary>
+        /// <summary>Removes an index from a table or table-extension.</summary>
         public object RemoveIndex(string tableName, string indexName)
         {
-            var axTable = _provider.Tables.Read(tableName)
-                ?? throw new ArgumentException($"Table '{tableName}' not found");
-            var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
-
-            AxTableIndex? toRemove = null;
-            foreach (AxTableIndex idx in axTable.Indexes)
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
             {
-                if (string.Equals(idx.Name, indexName, StringComparison.OrdinalIgnoreCase))
-                { toRemove = idx; break; }
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                AxTableIndex? toRemove = null;
+                foreach (AxTableIndex idx in axTable.Indexes)
+                {
+                    if (string.Equals(idx.Name, indexName, StringComparison.OrdinalIgnoreCase))
+                    { toRemove = idx; break; }
+                }
+                if (toRemove == null)
+                    throw new InvalidOperationException($"Index '{indexName}' not found on table '{tableName}'");
+                axTable.Indexes.Remove(toRemove);
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "remove-index", objectName = tableName, indexName, api = "IMetaTableProvider.Update" };
             }
-            if (toRemove == null)
-                throw new InvalidOperationException($"Index '{indexName}' not found on table '{tableName}'");
-            axTable.Indexes.Remove(toRemove);
 
-            ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-            return new { success = true, operation = "remove-index", objectName = tableName, indexName, api = "IMetaTableProvider.Update" };
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                dynamic dExt = axExt;
+                object? toRemove = null;
+                foreach (var idx in dExt.Indexes)
+                {
+                    if (string.Equals(((AxTableIndex)idx).Name, indexName, StringComparison.OrdinalIgnoreCase))
+                    { toRemove = idx; break; }
+                }
+                if (toRemove == null)
+                    throw new InvalidOperationException($"Index '{indexName}' not found on table-extension '{tableName}'");
+                dExt.Indexes.Remove(toRemove);
+                ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
+                return new { success = true, operation = "remove-index", objectName = tableName, indexName, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
         }
 
         // ========================
@@ -1895,10 +1927,6 @@ namespace D365MetadataBridge.Services
             List<WriteRelationConstraint>? constraints,
             string? cardinality = null, string? relatedTableCardinality = null, string? relationshipType = null)
         {
-            var axTable = _provider.Tables.Read(tableName)
-                ?? throw new ArgumentException($"Table '{tableName}' not found");
-            var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
-
             var axRel = new AxTableRelation { Name = relationName, RelatedTable = relatedTable };
             SetEnumProperty(axRel, "Cardinality", cardinality);
             SetEnumProperty(axRel, "RelatedTableCardinality", relatedTableCardinality);
@@ -1915,38 +1943,81 @@ namespace D365MetadataBridge.Services
                     });
                 }
             }
-            axTable.AddRelation(axRel);
 
-            ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-            return new
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
             {
-                success = true, operation = "add-relation", objectName = tableName, relationName, relatedTable,
-                cardinality = axRel.Cardinality.ToString(),
-                relatedTableCardinality = axRel.RelatedTableCardinality.ToString(),
-                relationshipType = axRel.RelationshipType.ToString(),
-                api = "IMetaTableProvider.Update",
-            };
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                axTable.AddRelation(axRel);
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new
+                {
+                    success = true, operation = "add-relation", objectName = tableName, relationName, relatedTable,
+                    cardinality = axRel.Cardinality.ToString(),
+                    relatedTableCardinality = axRel.RelatedTableCardinality.ToString(),
+                    relationshipType = axRel.RelationshipType.ToString(),
+                    api = "IMetaTableProvider.Update",
+                };
+            }
+
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                ((dynamic)axExt).Relations.Add(axRel);
+                ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
+                return new
+                {
+                    success = true, operation = "add-relation", objectName = tableName, relationName, relatedTable,
+                    cardinality = axRel.Cardinality.ToString(),
+                    relatedTableCardinality = axRel.RelatedTableCardinality.ToString(),
+                    relationshipType = axRel.RelationshipType.ToString(),
+                    api = "IMetaTableExtensionProvider.Update",
+                };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
         }
 
-        /// <summary>Removes a relation from a table.</summary>
+        /// <summary>Removes a relation from a table or table-extension.</summary>
         public object RemoveRelation(string tableName, string relationName)
         {
-            var axTable = _provider.Tables.Read(tableName)
-                ?? throw new ArgumentException($"Table '{tableName}' not found");
-            var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
-
-            AxTableRelation? toRemove = null;
-            foreach (AxTableRelation rel in axTable.Relations)
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
             {
-                if (string.Equals(rel.Name, relationName, StringComparison.OrdinalIgnoreCase))
-                { toRemove = rel; break; }
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                AxTableRelation? toRemove = null;
+                foreach (AxTableRelation rel in axTable.Relations)
+                {
+                    if (string.Equals(rel.Name, relationName, StringComparison.OrdinalIgnoreCase))
+                    { toRemove = rel; break; }
+                }
+                if (toRemove == null)
+                    throw new InvalidOperationException($"Relation '{relationName}' not found on table '{tableName}'");
+                axTable.Relations.Remove(toRemove);
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "remove-relation", objectName = tableName, relationName, api = "IMetaTableProvider.Update" };
             }
-            if (toRemove == null)
-                throw new InvalidOperationException($"Relation '{relationName}' not found on table '{tableName}'");
-            axTable.Relations.Remove(toRemove);
 
-            ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-            return new { success = true, operation = "remove-relation", objectName = tableName, relationName, api = "IMetaTableProvider.Update" };
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                dynamic dExt = axExt;
+                object? toRemove = null;
+                foreach (var rel in dExt.Relations)
+                {
+                    if (string.Equals(((AxTableRelation)rel).Name, relationName, StringComparison.OrdinalIgnoreCase))
+                    { toRemove = rel; break; }
+                }
+                if (toRemove == null)
+                    throw new InvalidOperationException($"Relation '{relationName}' not found on table-extension '{tableName}'");
+                dExt.Relations.Remove(toRemove);
+                ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
+                return new { success = true, operation = "remove-relation", objectName = tableName, relationName, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
         }
 
         // ========================
