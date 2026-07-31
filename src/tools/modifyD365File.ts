@@ -710,6 +710,87 @@ async function directXmlAddIndex(
   }
 }
 
+/**
+ * Direct XML fallback for add-data-source on a FORM EXTENSION.
+ *
+ * The C# bridge's AddDataSource only ever resolves objectType "form" via
+ * _provider.Forms.Read(name) — there is no "form-extension" case at all, so it
+ * throws "add-data-source not supported for objectType 'form-extension'" for
+ * every call against an extension (unlike add-control, which already has a
+ * working direct-XML fallback for exactly this gap). This mirrors that same
+ * fallback shape for data sources: writes an <AxFormDataSource> element
+ * straight into the extension's <DataSources> collection, in the field order
+ * confirmed against a real Microsoft-shipped AxForm data source (Fields,
+ * ReferencedDataSources, JoinSource, LinkType, DataSourceLinks,
+ * DerivedDataSources) — AutoSearch/AllowCheck/InsertIfEmpty are left out since
+ * they're optional and only ever appear when a designer tool re-serializes an
+ * already-materialized default.
+ */
+async function directXmlAddDataSource(
+  filePath: string,
+  dsName: string,
+  table: string,
+  joinSource?: string,
+  linkType?: string,
+): Promise<{ success: boolean; message: string } | null> {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Only form extensions carry a <DataSources> collection shaped like this —
+    // bail on any other file shape so a mis-typed objectType never corrupts it.
+    if (!/<AxFormExtension\b/.test(content)) return null;
+
+    // Idempotency: a data source with this Name, or one already bound to the
+    // same table, already exists → skip (mirrors the bridge's own dedup logic).
+    if (new RegExp(`<AxFormDataSource[^>]*>\\s*<Name>${dsName}</Name>`).test(content)) {
+      return {
+        success: true,
+        message: `✅ Data source '${dsName}' already present in ${filePath} — skipped (idempotent).`,
+      };
+    }
+    if (new RegExp(`<Table>${table}</Table>`).test(content)) {
+      return {
+        success: true,
+        message: `✅ A data source already binds table '${table}' in ${filePath} — skipped (idempotent).`,
+      };
+    }
+
+    const newElement =
+      `\t\t<AxFormDataSource xmlns="">\n` +
+      `\t\t\t<Name>${dsName}</Name>\n` +
+      `\t\t\t<Table>${table}</Table>\n` +
+      `\t\t\t<Fields />\n` +
+      `\t\t\t<ReferencedDataSources />\n` +
+      (joinSource ? `\t\t\t<JoinSource>${joinSource}</JoinSource>\n` : '') +
+      (linkType ? `\t\t\t<LinkType>${linkType}</LinkType>\n` : '') +
+      `\t\t\t<DataSourceLinks />\n` +
+      `\t\t\t<DerivedDataSources />\n` +
+      `\t\t</AxFormDataSource>`;
+
+    let updated: string;
+    if (content.includes('<DataSources />')) {
+      updated = content.replace('<DataSources />', `<DataSources>\n${newElement}\n\t</DataSources>`);
+    } else if (content.includes('</DataSources>')) {
+      updated = content.replace('</DataSources>', `${newElement}\n\t</DataSources>`);
+    } else {
+      return null; // no <DataSources> collection — not a form-extension shape we recognise
+    }
+
+    if (updated === content) return null;
+
+    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    console.error(`[modify_d365fo_file] ✅ directXmlAddDataSource: added '${dsName}' to ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Data source '${dsName}' added via direct XML fallback (bridge has no form-extension support for add-data-source). File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddDataSource failed: ${err}`);
+    return null;
+  }
+}
+
 /** DeleteAction values accepted by the AxTable serialiser. */
 export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRestricted'] as const;
 
@@ -2163,6 +2244,19 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             (args as any).joinSource,
             (args as any).linkType,
           );
+          // Fallback: the bridge's AddDataSource has no "form-extension" case at
+          // all (only "form" via _provider.Forms), so it always throws for an
+          // extension target. Write the data source element straight into the XML.
+          if (objectType === 'form-extension' && (!bridgeResult || !bridgeResult.success)) {
+            const xmlFallbackResult = await directXmlAddDataSource(
+              actualFilePath,
+              (args as any).dataSourceName,
+              (args as any).dataSourceTable,
+              (args as any).joinSource,
+              (args as any).linkType,
+            );
+            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+          }
         }
         break;
       }
