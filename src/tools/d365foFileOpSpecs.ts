@@ -82,6 +82,19 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   fieldHelpText: { type: 'string', description: 'Field help text.' },
   fieldEnumType: { type: 'string', description: 'Enum name to set on an enum-typed field.' },
   fieldStringSize: { type: 'string', description: 'String size to set on a string-typed field.' },
+  dataField: {
+    type: 'string',
+    description:
+      'add-field on a data-entity-extension: source table field name for the mapped field ' +
+      '(e.g. "MyField"). Required alongside dataSource — used instead of fieldType/fieldBaseType, ' +
+      'since a data-entity mapped field (AxDataEntityViewMappedField) has no EDT/base-type of its own.',
+  },
+  dataSource: {
+    type: 'string',
+    description:
+      'add-field on a data-entity-extension: source data-source/table name on the entity for the ' +
+      'mapped field (e.g. "MyTable"). Required alongside dataField.',
+  },
   fields: {
     type: 'array of { name, edt?, type?, mandatory?, label? }',
     description:
@@ -289,8 +302,12 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'method. Form control overrides: methodName="ControlName.methodName".',
   },
   'add-field': {
-    required: ['fieldName', 'fieldType'],
-    optional: ['fieldBaseType', 'fieldMandatory', 'fieldLabel'],
+    required: ['fieldName'],
+    optional: ['fieldType', 'fieldBaseType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource'],
+    mutationOneOf: ['fieldType', 'dataField'],
+    note:
+      'Table/table-extension: pass fieldType (EDT). data-entity-extension: pass dataField + dataSource ' +
+      'instead — the mapped field has no EDT of its own, it just points at a source table field.',
   },
   'modify-field': {
     required: ['fieldName'],
@@ -557,7 +574,10 @@ export function renderOpSpec(operation: string): string {
   const op = D365FO_FILE_OP_SPECS[operation];
   if (!op) return `Unknown operation '${operation}'. Valid operations: ${Object.keys(D365FO_FILE_OP_SPECS).join(', ')}.`;
   const lines = [
-    `Parameter spec for operation '${operation}' (pass inside \`params\` or flat at top level):`,
+    `Parameter spec for operation '${operation}' — pass these nested inside \`params\`: {${[...op.required, ...op.optional].join(', ')}}. ` +
+    `(A few pre-refactor names also work flat at top level for legacy callers, but that is not guaranteed for ` +
+    `any of the params below — many MCP clients validate against the base wire schema and silently drop ` +
+    `anything else before it reaches this server. Nest inside \`params\` to be safe.)`,
     ...op.required.map(p => renderParamLine(p, 'REQUIRED')),
     ...op.optional.map(p => renderParamLine(p, 'optional')),
   ];

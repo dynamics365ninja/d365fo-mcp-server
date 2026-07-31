@@ -1211,6 +1211,7 @@ const BRIDGE_MODIFY_TYPES = new Set([
   'class', 'table', 'enum', 'edt',
   'form', 'query', 'view', 'data-entity',
   'class-extension', 'table-extension', 'form-extension', 'enum-extension',
+  'data-entity-extension',
   'menu-item-action', 'menu-item-display', 'menu-item-output',
   'menu',
 ]);

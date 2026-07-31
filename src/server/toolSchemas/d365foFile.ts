@@ -146,9 +146,14 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
           type: 'object',
           additionalProperties: true,
           description:
-            '[modify] Operation-specific parameters as ONE object. Common shapes: ' +
+            '[modify] Operation-specific parameters as ONE object — nest here; ' +
+            'some legacy names also work flat at top level, but new callers should not rely on that (many ' +
+            'clients validate against the base schema and drop anything else before it reaches this server). ' +
+            'Common shapes: ' +
             'add-method {methodName, sourceCode} · replace-code {oldCode, newCode, methodName?} · ' +
-            'add-field {fieldName, fieldType(EDT), fieldBaseType?} · rename-field {fieldName, fieldNewName} · ' +
+            'add-field (table/table-extension) {fieldName, fieldType(EDT), fieldBaseType?}; ' +
+            '(data-entity-extension) {fieldName, dataField, dataSource} · ' +
+            'rename-field {fieldName, fieldNewName} · ' +
             'add-index {indexName, indexFields[{fieldName}]} · add-relation {relationName, relatedTable, relationConstraints?} · ' +
             'add-field-group {fieldGroupName, fieldGroupFields?} · add-data-source {dataSourceName, dataSourceTable} · ' +
             'add-control {controlName, parentControl, controlDataSource?, controlDataField?} · ' +
@@ -156,7 +161,7 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'modify-property {propertyPath, propertyValue} · add-table-method {tableMethodType, tableKeyField?} · ' +
             'add-display-method {methodName, displayMethodReturnEdt}. ' +
             'A missing/wrong parameter returns the COMPLETE spec (names, types, descriptions) for that operation — ' +
-            'follow the error guidance instead of guessing. Same keys also accepted flat at top level.',
+            'follow the error guidance instead of guessing.',
         },
         createBackup: {
           type: 'boolean',

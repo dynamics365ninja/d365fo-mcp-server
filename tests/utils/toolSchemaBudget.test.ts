@@ -23,21 +23,31 @@ import { createXppMcpServer } from '../../src/server/mcpServer';
 // the human-readable log line, never for assertions.
 const CHARS_PER_TOKEN = 4;
 
-// Ceilings in characters of serialized JSON. Current actual ≈ 63,175 · largest
-// tool d365fo_file ≈ 9,6xx (ahead of generate_object ≈ 8,5xx). Raised
-// deliberately whenever a genuinely new AOT capability lands — `service` +
-// `service-group` objectTypes, then d365fo_file's add-/remove-delete-action
-// (findings #36), generate_object scaffold `fields[]`/`preview` (#21), and the
-// five coverage-closure objectTypes (macro, configuration-key, security-policy,
-// aggregate-measurement, license-code) that took the T flag green on the last
-// create-path holes in the taxonomy, then the data-entity writer properties
-// (primaryKey, isPublic, entityCategory, dynamicFields,
-// allowRowVersionChangeTracking) that were implemented but unadvertised — paid
-// for in part by dropping the member-variable rule from `sourceCode`, where it
-// was the third statement of the same thing.
+// Ceilings in characters of serialized JSON. Current actual ≈ 63,459 (measured
+// against the full 26-tool list — CI runs unfiltered; a local write-only-mode
+// run only sees 13 tools and reads much lower, so don't judge this ceiling
+// against that) · largest tool d365fo_file ≈ 10,0xx (ahead of generate_object
+// ≈ 8,5xx). Raised deliberately whenever a genuinely new AOT capability lands —
+// `service` + `service-group` objectTypes, then d365fo_file's
+// add-/remove-delete-action (findings #36), generate_object scaffold
+// `fields[]`/`preview` (#21), and the five coverage-closure objectTypes (macro,
+// configuration-key, security-policy, aggregate-measurement, license-code) that
+// took the T flag green on the last create-path holes in the taxonomy, then the
+// data-entity writer properties (primaryKey, isPublic, entityCategory,
+// dynamicFields, allowRowVersionChangeTracking) that were implemented but
+// unadvertised — paid for in part by dropping the member-variable rule from
+// `sourceCode`, where it was the third statement of the same thing. Then
+// add-field support for data-entity-extension (mapped fields have no EDT of
+// their own — dataField/dataSource instead) plus clarifying that `params` (not
+// flat top-level) is the only nesting new callers should rely on, after a
+// caller whose MCP client enforces the base schema strictly lost several turns
+// to flat-param calls being silently dropped with a misleading "required
+// params missing" error — this last change pushed the total past the old
+// 63,300 ceiling (measured 63,459 in CI's unfiltered 26-tool run; the per-tool
+// bump alone wasn't enough since the total is summed across all 26 schemas).
 // Headroom is small on purpose so creep is caught early.
-const TOTAL_BUDGET = 63_300;
-const LARGEST_TOOL_BUDGET = 9_900;
+const TOTAL_BUDGET = 63_600;
+const LARGEST_TOOL_BUDGET = 10_100;
 
 async function getTools(): Promise<Array<{ name: string }>> {
   const ctx: any = { symbolIndex: {}, parser: {} };

@@ -791,6 +791,70 @@ async function directXmlAddDataSource(
   }
 }
 
+/**
+ * Direct XML fallback for add-field on a DATA-ENTITY-EXTENSION.
+ *
+ * The bridge has no AddField path for data-entity(-extension) objects at all —
+ * AxDataEntityViewMappedField (Name/DataField/DataSource/Label) is structurally
+ * unlike an AxTableField (EDT/mandatory/base-type), so bridgeAddField's generic
+ * table/table-extension resolution doesn't apply here. This writes the mapped
+ * field element straight into the extension's <Fields> collection, matching the
+ * shape Microsoft's own tooling produces for AxDataEntityViewExtension.
+ */
+async function directXmlAddDataEntityExtensionField(
+  filePath: string,
+  fieldName: string,
+  dataField: string,
+  dataSource: string,
+  label?: string,
+): Promise<{ success: boolean; message: string } | null> {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Only data-entity extensions carry a <Fields> collection of mapped fields
+    // shaped like this — bail on any other file shape.
+    if (!/<AxDataEntityViewExtension\b/.test(content)) return null;
+
+    // Idempotency: a field with this Name already present → skip.
+    if (new RegExp(`<Name>${fieldName}</Name>`).test(content)) {
+      return {
+        success: true,
+        message: `✅ Field '${fieldName}' already present in ${filePath} — skipped (idempotent).`,
+      };
+    }
+
+    const newElement =
+      `\t\t<AxDataEntityViewField xmlns="" i:type="AxDataEntityViewMappedField">\n` +
+      `\t\t\t<Name>${fieldName}</Name>\n` +
+      `\t\t\t<DataField>${dataField}</DataField>\n` +
+      `\t\t\t<DataSource>${dataSource}</DataSource>\n` +
+      (label ? `\t\t\t<Label>${label}</Label>\n` : '') +
+      `\t\t</AxDataEntityViewField>`;
+
+    let updated: string;
+    if (content.includes('<Fields />')) {
+      updated = content.replace('<Fields />', `<Fields>\n${newElement}\n\t</Fields>`);
+    } else if (content.includes('</Fields>')) {
+      updated = content.replace('</Fields>', `${newElement}\n\t</Fields>`);
+    } else {
+      return null; // no <Fields> collection — not a shape we recognise
+    }
+
+    if (updated === content) return null;
+
+    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    console.error(`[modify_d365fo_file] ✅ directXmlAddDataEntityExtensionField: added '${fieldName}' to ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Field '${fieldName}' added via direct XML fallback (bridge has no data-entity-extension support for add-field). File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddDataEntityExtensionField failed: ${err}`);
+    return null;
+  }
+}
+
 /** DeleteAction values accepted by the AxTable serialiser. */
 export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRestricted'] as const;
 
@@ -1266,6 +1330,15 @@ const ModifyD365FileArgsSchema = z.object({
   ),
   linkType: z.string().optional().describe(
     'Optional join/link type when joinSource is set (add-data-source): InnerJoin | OuterJoin | ExistJoin | NotExistJoin | Delayed | Active | Passive.'
+  ),
+
+  // For add-field on data-entity-extension: the mapped field's source binding.
+  // fieldName (already defined above) is the entity-facing field name.
+  dataField: z.string().optional().describe(
+    'Source table field name for add-field on a data-entity-extension (e.g. "MyField"). Required alongside dataSource.'
+  ),
+  dataSource: z.string().optional().describe(
+    'Source data-source/table name on the entity for add-field on a data-entity-extension (e.g. "MyTable"). Required alongside dataField.'
   ),
 
   // For modify-property
@@ -1792,6 +1865,20 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         break;
       }
       case 'add-field': {
+        // data-entity-extension fields are AxDataEntityViewMappedField (Name/DataField/
+        // DataSource/Label) — structurally unlike an AxTableField, and the bridge has no
+        // provider path for this type at all. Handled entirely via direct XML, before the
+        // table-field branch below (which needs fieldType/EDT resolution that doesn't apply here).
+        if (objectType === 'data-entity-extension' && args.fieldName && (args as any).dataField && (args as any).dataSource) {
+          bridgeResult = await directXmlAddDataEntityExtensionField(
+            actualFilePath,
+            args.fieldName,
+            (args as any).dataField,
+            (args as any).dataSource,
+            args.fieldLabel,
+          );
+          break;
+        }
         if (args.fieldName && args.fieldType) {
           // fieldType is the EDT name; fieldBaseType is the primitive base type.
           // When fieldBaseType is omitted, auto-resolve it from the symbol index so the
