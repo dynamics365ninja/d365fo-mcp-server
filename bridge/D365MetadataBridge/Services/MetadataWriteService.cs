@@ -1858,8 +1858,10 @@ namespace D365MetadataBridge.Services
             if (axExt != null)
             {
                 var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
-                ((dynamic)axExt).Indexes.Add(axIdx);
-                ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
+                axExt.Indexes.Add(axIdx);
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
                 return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableExtensionProvider.Update" };
             }
 
@@ -1890,17 +1892,18 @@ namespace D365MetadataBridge.Services
             if (axExt != null)
             {
                 var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
-                dynamic dExt = axExt;
-                object? toRemove = null;
-                foreach (var idx in dExt.Indexes)
+                AxTableIndex? toRemove = null;
+                foreach (AxTableIndex idx in axExt.Indexes)
                 {
-                    if (string.Equals(((AxTableIndex)idx).Name, indexName, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(idx.Name, indexName, StringComparison.OrdinalIgnoreCase))
                     { toRemove = idx; break; }
                 }
                 if (toRemove == null)
                     throw new InvalidOperationException($"Index '{indexName}' not found on table-extension '{tableName}'");
-                dExt.Indexes.Remove(toRemove);
-                ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
+                axExt.Indexes.Remove(toRemove);
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
                 return new { success = true, operation = "remove-index", objectName = tableName, indexName, api = "IMetaTableExtensionProvider.Update" };
             }
 
@@ -1964,8 +1967,10 @@ namespace D365MetadataBridge.Services
             if (axExt != null)
             {
                 var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
-                ((dynamic)axExt).Relations.Add(axRel);
-                ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
+                axExt.Relations.Add(axRel);
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
                 return new
                 {
                     success = true, operation = "add-relation", objectName = tableName, relationName, relatedTable,
@@ -2003,17 +2008,18 @@ namespace D365MetadataBridge.Services
             if (axExt != null)
             {
                 var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
-                dynamic dExt = axExt;
-                object? toRemove = null;
-                foreach (var rel in dExt.Relations)
+                AxTableRelation? toRemove = null;
+                foreach (AxTableRelation rel in axExt.Relations)
                 {
-                    if (string.Equals(((AxTableRelation)rel).Name, relationName, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(rel.Name, relationName, StringComparison.OrdinalIgnoreCase))
                     { toRemove = rel; break; }
                 }
                 if (toRemove == null)
                     throw new InvalidOperationException($"Relation '{relationName}' not found on table-extension '{tableName}'");
-                dExt.Relations.Remove(toRemove);
-                ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
+                axExt.Relations.Remove(toRemove);
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
                 return new { success = true, operation = "remove-relation", objectName = tableName, relationName, api = "IMetaTableExtensionProvider.Update" };
             }
 
