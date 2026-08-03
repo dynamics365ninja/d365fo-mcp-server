@@ -1,0 +1,40 @@
+{
+  "run_id": "2026-08-03T19__L2-virtual-entity-power-platform__6257ed4",
+  "case_id": "L2-virtual-entity-power-platform",
+  "tier": 2,
+  "timestamp": "2026-08-03T19:19:06.584Z",
+  "server_git_sha": "6257ed4",
+  "generated_artifacts": [
+    "ConDemoVirtualSource.metadata.xml",
+    "ConDemoVirtualSourceEntity.metadata.xml",
+    "/SecurityPrivileges/ConDemoVirtualSourceEntityMaintain (companion, required to clear DataEntitySecurityPrivilegeCheck BP error; not in target_artifact_types)"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS"
+}
