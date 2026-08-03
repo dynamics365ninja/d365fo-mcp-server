@@ -353,6 +353,208 @@ describe('update_symbol_index table re-indexing preserves field EDT/EnumType', (
     });
     expect(findMethod.source).toContain('select firstonly myTable');
   });
+
+  it('carries the table label as signature and full method enrichment, matching indexTables', async () => {
+    // Regression (#801 follow-up): the incremental table branch set no signature
+    // on the table row (indexTables stores the label there) and only carried
+    // source/sourceSnippet for methods — description/tags/complexity/usedTypes/
+    // methodCalls/inlineComments (all present on the parsed method already) were
+    // silently dropped on every incremental resync.
+    const filePath = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTable\\MyTable.xml';
+    existsSyncMock.mockReturnValue(true);
+    readFilePromiseMock.mockResolvedValue(`<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>MyTable</Name>
+  <Label>My table</Label>
+  <SourceCode>
+    <Methods>
+      <Method>
+        <Name>find</Name>
+        <DeveloperDocumentation>Finds a row by id.</DeveloperDocumentation>
+        <Source><![CDATA[public static MyTable find(ContosoMyId _myId)
+{
+    MyTable myTable;
+    select firstonly myTable where myTable.MyId == _myId;
+    return myTable;
+}]]></Source>
+      </Method>
+    </Methods>
+  </SourceCode>
+  <Fields />
+</AxTable>`);
+
+    const result = await updateSymbolIndexTool({ filePath }, context);
+
+    expect(result.isError).toBeFalsy();
+    const addSymbolCalls = (context.symbolIndex.addSymbol as any).mock.calls.map((c: any[]) => c[0]);
+
+    const tableSymbol = addSymbolCalls.find((s: any) => s.type === 'table' && s.name === 'MyTable');
+    expect(tableSymbol?.signature).toBe('My table');
+
+    const findMethod = addSymbolCalls.find((s: any) => s.type === 'method' && s.name === 'find');
+    expect(findMethod?.description).toBe('Finds a row by id.');
+    // The remaining enrichment fields are derived by enhancedParser.parseMethodEnhanced
+    // (tags/complexity/usedTypes/methodCalls/inlineComments) — asserting they're
+    // wired through (not asserting exact values, which are analysis-derived).
+    expect(findMethod).toHaveProperty('complexity');
+    expect(findMethod).toHaveProperty('sourceSnippet');
+  });
+});
+
+describe('update_symbol_index class re-indexing preserves enrichment metadata', () => {
+  // Regression (#801 follow-up): the class branch already re-inserted methods,
+  // but dropped every enrichment column the full build (indexClasses) writes —
+  // description fallback, tags, usedTypes at the class level, and
+  // description/tags/complexity/usedTypes/methodCalls/inlineComments at the
+  // method level — even though parseClassFile computes all of them already.
+  let context: XppServerContext;
+
+  beforeEach(() => {
+    context = createContext();
+    vi.clearAllMocks();
+  });
+
+  it('carries class-level tags/usedTypes/description and method-level enrichment, matching indexClasses', async () => {
+    const filePath = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxClass\\MyHelper.xml';
+    existsSyncMock.mockReturnValue(true);
+    readFilePromiseMock.mockResolvedValue(`<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>MyHelper</Name>
+  <SourceCode>
+    <Declaration><![CDATA[class MyHelper
+{
+}]]></Declaration>
+    <Methods>
+      <Method>
+        <Name>doWork</Name>
+        <DeveloperDocumentation>Does the work.</DeveloperDocumentation>
+        <Source><![CDATA[public void doWork()
+{
+    MyTable myTable;
+    select firstonly myTable;
+}]]></Source>
+      </Method>
+    </Methods>
+  </SourceCode>
+</AxClass>`);
+
+    const result = await updateSymbolIndexTool({ filePath }, context);
+
+    expect(result.isError).toBeFalsy();
+    const addSymbolCalls = (context.symbolIndex.addSymbol as any).mock.calls.map((c: any[]) => c[0]);
+
+    const classSymbol = addSymbolCalls.find((s: any) => s.type === 'class' && s.name === 'MyHelper');
+    // "Helper"-suffixed class name drives generateClassTags' naming-pattern tag.
+    expect(classSymbol?.tags).toContain('utility');
+    expect(classSymbol?.description).toBeTruthy();
+
+    const methodSymbol = addSymbolCalls.find((s: any) => s.type === 'method' && s.name === 'doWork');
+    expect(methodSymbol?.description).toBe('Does the work.');
+    expect(methodSymbol).toHaveProperty('complexity');
+    expect(methodSymbol).toHaveProperty('sourceSnippet');
+    // MyTable is referenced in the method body — extractUsedTypes/extractMethodCalls
+    // should have picked it up.
+    expect(methodSymbol?.usedTypes).toContain('MyTable');
+  });
+});
+
+describe('update_symbol_index view/data-entity re-indexing preserves fields and methods', () => {
+  // Regression (#801): views and data entities had no rebuild branch at all —
+  // the generic tx() fallback re-inserted only a bare object row, so every
+  // field and method symbol previously indexed for the view was permanently
+  // lost on incremental resync, while the tool still reported success.
+  let context: XppServerContext;
+
+  beforeEach(() => {
+    context = createContext();
+    vi.clearAllMocks();
+  });
+
+  it('re-inserts view fields and methods for an AxView file', async () => {
+    const filePath = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxView\\MyView.xml';
+    existsSyncMock.mockReturnValue(true);
+    readFilePromiseMock.mockResolvedValue(`<?xml version="1.0" encoding="utf-8"?>
+<AxView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>MyView</Name>
+  <Label>My view</Label>
+  <Fields>
+    <AxViewField>
+      <Name>MyId</Name>
+      <DataSource>MyTable</DataSource>
+      <DataField>MyId</DataField>
+    </AxViewField>
+  </Fields>
+  <SourceCode>
+    <Methods>
+      <Method>
+        <Name>displayMyLabel</Name>
+        <Source><![CDATA[display Name displayMyLabel()
+{
+    return "hello";
+}]]></Source>
+      </Method>
+    </Methods>
+  </SourceCode>
+</AxView>`);
+
+    const result = await updateSymbolIndexTool({ filePath }, context);
+
+    expect(result.isError).toBeFalsy();
+    const addSymbolCalls = (context.symbolIndex.addSymbol as any).mock.calls.map((c: any[]) => c[0]);
+
+    const viewSymbol = addSymbolCalls.find((s: any) => s.type === 'view' && s.name === 'MyView');
+    expect(viewSymbol).toBeDefined();
+
+    const fieldSymbol = addSymbolCalls.find((s: any) => s.type === 'field' && s.name === 'MyId');
+    expect(fieldSymbol).toMatchObject({ parentName: 'MyView', filePath, model: 'MyModel' });
+
+    const methodSymbol = addSymbolCalls.find((s: any) => s.type === 'method' && s.name === 'displayMyLabel');
+    expect(methodSymbol).toMatchObject({ parentName: 'MyView', filePath, model: 'MyModel' });
+    expect(methodSymbol.source).toContain('return "hello"');
+  });
+
+  it('re-inserts data entity fields and methods for an AxDataEntityView file', async () => {
+    const filePath = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxDataEntityView\\MyEntity.xml';
+    existsSyncMock.mockReturnValue(true);
+    readFilePromiseMock.mockResolvedValue(`<?xml version="1.0" encoding="utf-8"?>
+<AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>MyEntity</Name>
+  <Label>My entity</Label>
+  <Fields>
+    <AxDataEntityViewField>
+      <Name>MyId</Name>
+      <DataSource>MyTable</DataSource>
+      <DataField>MyId</DataField>
+    </AxDataEntityViewField>
+  </Fields>
+  <SourceCode>
+    <Methods>
+      <Method>
+        <Name>initializeEntityDataSource</Name>
+        <Source><![CDATA[public void initializeEntityDataSource()
+{
+    super();
+}]]></Source>
+      </Method>
+    </Methods>
+  </SourceCode>
+</AxDataEntityView>`);
+
+    const result = await updateSymbolIndexTool({ filePath }, context);
+
+    expect(result.isError).toBeFalsy();
+    const addSymbolCalls = (context.symbolIndex.addSymbol as any).mock.calls.map((c: any[]) => c[0]);
+
+    // Full builds store data entities as type 'view' (indexViews) — parity (#801).
+    const entitySymbol = addSymbolCalls.find((s: any) => s.type === 'view' && s.name === 'MyEntity');
+    expect(entitySymbol).toBeDefined();
+
+    const fieldSymbol = addSymbolCalls.find((s: any) => s.type === 'field' && s.name === 'MyId');
+    expect(fieldSymbol).toMatchObject({ parentName: 'MyEntity', filePath, model: 'MyModel' });
+
+    const methodSymbol = addSymbolCalls.find((s: any) => s.type === 'method' && s.name === 'initializeEntityDataSource');
+    expect(methodSymbol).toMatchObject({ parentName: 'MyEntity', filePath, model: 'MyModel' });
+  });
 });
 
 describe('update_symbol_index security object re-indexing populates coverage tables', () => {
