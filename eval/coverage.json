@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 78,
-    "covered": 73,
-    "percent": 93.6
+    "covered": 74,
+    "percent": 94.9
   },
   "leaves": [
     {
@@ -1034,10 +1034,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-virtual-entity-power-platform"
+      ]
     },
     {
       "id": "file-io",

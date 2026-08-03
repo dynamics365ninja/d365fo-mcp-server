@@ -8,7 +8,7 @@
     "AxDataEntityView"
   ],
   "golden_path": "eval/goldens/L2-virtual-entity-power-platform/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

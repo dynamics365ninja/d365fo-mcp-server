@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 44 | 44 | **100%** |
-| total | 73 | 78 | 93.6% |
+| total | 74 | 78 | 94.9% |
 
 ## Data model (12/12)
 
@@ -97,7 +97,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Warehouse management (WHS) | total | ✅ | — | ✅ | Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture. |
 | Trade agreements & pricing | total | ✅ | — | ✅ | Eval case authored (PriceDisc price/discount resolution); golden pending VM capture. |
 
-## Integration (7/9)
+## Integration (8/9)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -106,7 +106,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Custom services / OData actions | core | ✅ | ✅ | ✅ | L3-custom-service-basic |
 | Data management framework (DMF/DIXF) | total | ✅ | ✅ | ✅ | L3-dmf-entity-import-slice |
 | Dual-write (Dataverse) | total | ✅ | ✅ | ✅ | L3-dualwrite-entity-mapping |
-| Power Platform / virtual entities | total | ✅ | — | ✅ | Eval case authored (entity marked up for virtual-entity exposure); golden pending VM capture. |
+| Power Platform / virtual entities | total | ✅ | ✅ | ✅ | L2-virtual-entity-power-platform |
 | Reading Excel / CSV files | total | ✅ | ✅ | ✅ | L3-file-csv-import |
 | Direct SQL execution | total | ✅ | ✅ | ✅ | L2-direct-sql-connection |
 | Aggregate measurements / analytics | total | ✅ | — | ✅ | Knowledge entry + create path added; eval case authored, golden pending VM capture. |
@@ -134,7 +134,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
 | 1 | Aggregate measurements / analytics | missing E |
-| 1 | Power Platform / virtual entities | missing E |
 | 1 | Trade agreements & pricing | missing E |
 | 1 | Warehouse management (WHS) | missing E |
 | 1 | Extensible data security (XDS) | missing E |
