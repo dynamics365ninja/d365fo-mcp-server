@@ -206,6 +206,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'table-extension only: true = extend an existing base-table group (<FieldGroupExtensions>); ' +
       'false = add to a group defined in the extension.',
   },
+  // table mappings (AxMap membership)
+  mapName: { type: 'string', description: 'Name of the AxMap the table takes part in.' },
+  mappingTable: { type: 'string', description: 'Mapped table name (defaults to mapName).' },
+  mappingConnections: {
+    type: 'array of {mapField, mapFieldTo}',
+    description: 'Field pairings: mapField is on the MAP, mapFieldTo on this table. Both required.',
+  },
   // form data sources
   dataSourceName: { type: 'string', description: 'Data source reference name (e.g. "MyTable_1").' },
   dataSourceTable: { type: 'string', description: 'Base table for the data source (e.g. "MyTable").' },
@@ -327,6 +334,18 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     optional: ['indexAllowDuplicates', 'indexAlternateKey', 'indexEnabled'],
   },
   'remove-index': { required: ['indexName'], optional: [] },
+  'add-full-text-index': {
+    required: ['indexName', 'indexFields'],
+    optional: [],
+    note: '<FullTextIndexes> is a separate collection from <Indexes> with its own element type — add-index cannot reach it. Table and table-extension.',
+  },
+  'remove-full-text-index': { required: ['indexName'], optional: [] },
+  'add-table-mapping': {
+    required: ['mapName'],
+    optional: ['mappingTable', 'mappingConnections'],
+    note: 'Records that the table takes part in an AxMap. mapName is the MAP; each connection pairs mapField (on the map) with mapFieldTo (on this table). Table and table-extension.',
+  },
+  'remove-table-mapping': { required: ['mapName'], optional: [] },
   'add-relation': {
     required: ['relationName', 'relatedTable'],
     optional: ['relationConstraints', 'relationCardinality', 'relatedTableCardinality', 'relationshipType'],

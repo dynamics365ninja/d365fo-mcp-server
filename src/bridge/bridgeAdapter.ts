@@ -1190,6 +1190,8 @@ const BRIDGE_MODIFY_OPS = new Set([
   'add-method', 'remove-method', 'replace-code',
   'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'remove-field',
   'add-index', 'remove-index',
+  'add-full-text-index', 'remove-full-text-index',
+  'add-table-mapping', 'remove-table-mapping',
   'add-relation', 'remove-relation',
   // No C# op backs these — they are served by a direct-XML writer, but they still
   // pass through the same modify gate.
@@ -1210,7 +1212,7 @@ const BRIDGE_MODIFY_OPS = new Set([
 const BRIDGE_MODIFY_TYPES = new Set([
   'class', 'table', 'enum', 'edt',
   'form', 'query', 'view', 'data-entity',
-  'class-extension', 'table-extension', 'form-extension', 'enum-extension',
+  'class-extension', 'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
   'menu-item-action', 'menu-item-display', 'menu-item-output',
   'menu',
 ]);
@@ -1495,6 +1497,98 @@ export async function bridgeRemoveIndex(
     };
   } catch (e) {
     console.error(`[BridgeAdapter] removeIndex(${tableName}, ${indexName}) failed: ${e}`);
+    return { success: false, message: String(e) };
+  }
+}
+
+/**
+ * Adds a full-text index to a table or table-extension via the C# bridge.
+ *
+ * <FullTextIndexes> is a separate collection with a separate element type
+ * (AxTableFullTextIndex), so add-index could never reach it.
+ */
+export async function bridgeAddFullTextIndex(
+  bridge: BridgeClient | undefined,
+  tableName: string,
+  indexName: string,
+  fields?: string[],
+): Promise<{ success: boolean; message: string } | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const result = await bridge.addFullTextIndex(tableName, indexName, fields);
+    return {
+      success: result.success,
+      message: result.success
+        ? `✅ Full-text index '${indexName}' added via ${result.api}`
+        : `Bridge addFullTextIndex returned success=false`,
+    };
+  } catch (e) {
+    console.error(`[BridgeAdapter] addFullTextIndex(${tableName}, ${indexName}) failed: ${e}`);
+    return { success: false, message: String(e) };
+  }
+}
+
+/** Removes a full-text index from a table or table-extension via the C# bridge. */
+export async function bridgeRemoveFullTextIndex(
+  bridge: BridgeClient | undefined,
+  tableName: string,
+  indexName: string,
+): Promise<{ success: boolean; message: string } | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const result = await bridge.removeFullTextIndex(tableName, indexName);
+    return {
+      success: result.success,
+      message: result.success
+        ? `✅ Full-text index '${indexName}' removed via ${result.api}`
+        : `Bridge removeFullTextIndex returned success=false`,
+    };
+  } catch (e) {
+    console.error(`[BridgeAdapter] removeFullTextIndex(${tableName}, ${indexName}) failed: ${e}`);
+    return { success: false, message: String(e) };
+  }
+}
+
+/** Adds a Map membership to a table or table-extension via the C# bridge. */
+export async function bridgeAddTableMapping(
+  bridge: BridgeClient | undefined,
+  tableName: string,
+  mapName: string,
+  mappingTable?: string,
+  connections?: Array<{ mapField?: string; mapFieldTo?: string }>,
+): Promise<{ success: boolean; message: string } | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const result = await bridge.addTableMapping(tableName, mapName, mappingTable, connections);
+    return {
+      success: result.success,
+      message: result.success
+        ? `✅ Mapping '${mapName}' added via ${result.api}`
+        : `Bridge addTableMapping returned success=false`,
+    };
+  } catch (e) {
+    console.error(`[BridgeAdapter] addTableMapping(${tableName}, ${mapName}) failed: ${e}`);
+    return { success: false, message: String(e) };
+  }
+}
+
+/** Removes a Map membership from a table or table-extension via the C# bridge. */
+export async function bridgeRemoveTableMapping(
+  bridge: BridgeClient | undefined,
+  tableName: string,
+  mapName: string,
+): Promise<{ success: boolean; message: string } | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const result = await bridge.removeTableMapping(tableName, mapName);
+    return {
+      success: result.success,
+      message: result.success
+        ? `✅ Mapping '${mapName}' removed via ${result.api}`
+        : `Bridge removeTableMapping returned success=false`,
+    };
+  } catch (e) {
+    console.error(`[BridgeAdapter] removeTableMapping(${tableName}, ${mapName}) failed: ${e}`);
     return { success: false, message: String(e) };
   }
 }

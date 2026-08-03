@@ -1588,9 +1588,86 @@ namespace D365MetadataBridge.Services
                     ((IMetaMenuItemOutputProvider)_provider.MenuItemOutputs).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
+                // ── Extensions ───────────────────────────────────────────────────────
+                // An extension never sets a property directly: it records an override as an
+                // <AxPropertyModification> Name/Value pair, which the AOS applies over the base
+                // object at load. So there is no per-property whitelist here — the metamodel of
+                // the BASE object decides what is legal, and an unknown name is caught by the
+                // compiler, not by us guessing which names exist.
+                case "table-extension":
+                {
+                    var obj = _provider.TableExtensions.Read(objectName)
+                        ?? throw new ArgumentException($"Table extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.TableExtensions, objectName);
+                    var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                        ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+
+                    // "Relations/<RelationName>/<Property>" targets a BASE-table relation and
+                    // lands in <RelationModifications> instead. add-relation cannot express this
+                    // (its properties belong to a relation the extension owns), which is why
+                    // BPErrorTableRelationshipPropertiesCompleteness on an extended relation had
+                    // no repair path at all (findings #5 / #35).
+                    var relationTarget = ParseRelationPropertyPath(propertyPath);
+                    if (relationTarget != null)
+                    {
+                        var (relName, relProp) = relationTarget.Value;
+                        var relMod = GetOrAddExtensionModification(obj.RelationModifications, relName);
+                        UpsertPropertyModification(relMod.PropertyModifications, relProp, propertyValue);
+                        extProvider.Update(obj, msi);
+                        return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, target = "RelationModifications", relationName = relName, api = "IMetaTableExtensionProvider.Update" };
+                    }
+
+                    UpsertPropertyModification(obj.PropertyModifications, propertyPath, propertyValue);
+                    extProvider.Update(obj, msi);
+                    return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, target = "PropertyModifications", api = "IMetaTableExtensionProvider.Update" };
+                }
+                case "form-extension":
+                {
+                    var obj = _provider.FormExtensions.Read(objectName)
+                        ?? throw new ArgumentException($"Form extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.FormExtensions, objectName);
+                    UpsertPropertyModification(obj.PropertyModifications, propertyPath, propertyValue);
+                    ((IMetaFormExtensionProvider)_provider.FormExtensions).Update(obj, msi);
+                    return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, target = "PropertyModifications", api = "IMetaFormExtensionProvider.Update" };
+                }
+                case "enum-extension":
+                {
+                    var obj = _provider.EnumExtensions.Read(objectName)
+                        ?? throw new ArgumentException($"Enum extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.EnumExtensions, objectName);
+                    UpsertPropertyModification(obj.PropertyModifications, propertyPath, propertyValue);
+                    var extProvider = _provider.EnumExtensions as IMetaEnumExtensionProvider
+                        ?? throw new InvalidOperationException("IMetaEnumExtensionProvider not available");
+                    extProvider.Update(obj, msi);
+                    return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, target = "PropertyModifications", api = "IMetaEnumExtensionProvider.Update" };
+                }
+                case "edt-extension":
+                {
+                    var obj = _provider.EdtExtensions.Read(objectName)
+                        ?? throw new ArgumentException($"EDT extension '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.EdtExtensions, objectName);
+                    UpsertPropertyModification(obj.PropertyModifications, propertyPath, propertyValue);
+                    var extProvider = _provider.EdtExtensions as IMetaEdtExtensionProvider
+                        ?? throw new InvalidOperationException("IMetaEdtExtensionProvider not available");
+                    extProvider.Update(obj, msi);
+                    return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, target = "PropertyModifications", api = "IMetaEdtExtensionProvider.Update" };
+                }
                 default:
                     throw new ArgumentException($"modify-property not supported for objectType '{objectType}' via bridge");
             }
+        }
+
+        /// <summary>
+        /// Recognises "Relations/&lt;RelationName&gt;/&lt;Property&gt;" (or the dotted spelling)
+        /// and splits it. Anything else returns null and is treated as a plain object-level
+        /// property, so an ordinary path can never be mistaken for a relation override.
+        /// </summary>
+        private static (string RelationName, string Property)? ParseRelationPropertyPath(string propertyPath)
+        {
+            var parts = propertyPath.Split(new[] { '/', '.' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 3) return null;
+            if (!string.Equals(parts[0], "Relations", StringComparison.OrdinalIgnoreCase)) return null;
+            return (parts[1], parts[2]);
         }
 
         /// <summary>
@@ -1908,6 +1985,185 @@ namespace D365MetadataBridge.Services
             }
 
             throw new ArgumentException($"Table or table-extension '{tableName}' not found");
+        }
+
+        // ========================
+        // TABLE FULL-TEXT INDEX OPERATIONS
+        // ========================
+
+        /// <summary>
+        /// Adds a full-text index to a table or table-extension.
+        ///
+        /// A separate collection from &lt;Indexes&gt; with a separate element type
+        /// (AxTableFullTextIndex), so add-index could never reach it. ChangeTracking is left at
+        /// the metamodel default rather than guessed — it drives how the AOS maintains the
+        /// index and is not something to pick on the caller's behalf.
+        /// </summary>
+        public object AddFullTextIndex(string tableName, string indexName, List<string>? fields)
+        {
+            var axIdx = new AxTableFullTextIndex { Name = indexName };
+            if (fields != null)
+            {
+                foreach (var f in fields)
+                    axIdx.Fields.Add(new AxTableIndexField { DataField = f });
+            }
+
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                axTable.FullTextIndexes.Add(axIdx);
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "add-full-text-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableProvider.Update" };
+            }
+
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                axExt.FullTextIndexes.Add(axIdx);
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
+                return new { success = true, operation = "add-full-text-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
+        }
+
+        /// <summary>Removes a full-text index from a table or table-extension.</summary>
+        public object RemoveFullTextIndex(string tableName, string indexName)
+        {
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                var toRemove = FindFullTextIndex(axTable.FullTextIndexes, indexName)
+                    ?? throw new InvalidOperationException($"Full-text index '{indexName}' not found on table '{tableName}'");
+                axTable.FullTextIndexes.Remove(toRemove);
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "remove-full-text-index", objectName = tableName, indexName, api = "IMetaTableProvider.Update" };
+            }
+
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                var toRemove = FindFullTextIndex(axExt.FullTextIndexes, indexName)
+                    ?? throw new InvalidOperationException($"Full-text index '{indexName}' not found on table-extension '{tableName}'");
+                axExt.FullTextIndexes.Remove(toRemove);
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
+                return new { success = true, operation = "remove-full-text-index", objectName = tableName, indexName, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
+        }
+
+        private static AxTableFullTextIndex? FindFullTextIndex(IEnumerable<AxTableFullTextIndex> indexes, string indexName)
+        {
+            foreach (AxTableFullTextIndex idx in indexes)
+            {
+                if (string.Equals(idx.Name, indexName, StringComparison.OrdinalIgnoreCase))
+                    return idx;
+            }
+            return null;
+        }
+
+        // ========================
+        // TABLE MAPPING OPERATIONS
+        // ========================
+
+        /// <summary>
+        /// Adds a Map membership to a table or table-extension: which AxMap the table takes
+        /// part in, and how its fields line up with the map's.
+        ///
+        /// AxTableMapping.Name is the MAP's name and MappingTable is the mapped table; each
+        /// connection is MapField (the field on the map) → MapFieldTo (the field on this
+        /// table). Both are required per connection — a half-filled connection serialises and
+        /// then fails to compile.
+        /// </summary>
+        public object AddTableMapping(string tableName, string mapName, string? mappingTable,
+            List<WriteMappingConnection>? connections)
+        {
+            var axMapping = new AxTableMapping { Name = mapName, MappingTable = mappingTable ?? mapName };
+            if (connections != null)
+            {
+                foreach (var c in connections)
+                {
+                    if (string.IsNullOrEmpty(c.MapField) || string.IsNullOrEmpty(c.MapFieldTo))
+                        throw new ArgumentException(
+                            $"Mapping connection on '{mapName}' needs both mapField and mapFieldTo — got mapField='{c.MapField}', mapFieldTo='{c.MapFieldTo}'.");
+                    axMapping.Connections.Add(new AxTableMappingConnection
+                    {
+                        MapField = c.MapField,
+                        MapFieldTo = c.MapFieldTo,
+                    });
+                }
+            }
+
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                axTable.Mappings.Add(axMapping);
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "add-table-mapping", objectName = tableName, mapName, connectionCount = connections?.Count ?? 0, api = "IMetaTableProvider.Update" };
+            }
+
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                axExt.Mappings.Add(axMapping);
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
+                return new { success = true, operation = "add-table-mapping", objectName = tableName, mapName, connectionCount = connections?.Count ?? 0, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
+        }
+
+        /// <summary>Removes a Map membership from a table or table-extension.</summary>
+        public object RemoveTableMapping(string tableName, string mapName)
+        {
+            var axTable = _provider.Tables.Read(tableName);
+            if (axTable != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
+                var toRemove = FindMapping(axTable.Mappings, mapName)
+                    ?? throw new InvalidOperationException($"Mapping '{mapName}' not found on table '{tableName}'");
+                axTable.Mappings.Remove(toRemove);
+                ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
+                return new { success = true, operation = "remove-table-mapping", objectName = tableName, mapName, api = "IMetaTableProvider.Update" };
+            }
+
+            var axExt = _provider.TableExtensions.Read(tableName);
+            if (axExt != null)
+            {
+                var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
+                var toRemove = FindMapping(axExt.Mappings, mapName)
+                    ?? throw new InvalidOperationException($"Mapping '{mapName}' not found on table-extension '{tableName}'");
+                axExt.Mappings.Remove(toRemove);
+                var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
+                    ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+                extProvider.Update(axExt, msi);
+                return new { success = true, operation = "remove-table-mapping", objectName = tableName, mapName, api = "IMetaTableExtensionProvider.Update" };
+            }
+
+            throw new ArgumentException($"Table or table-extension '{tableName}' not found");
+        }
+
+        private static AxTableMapping? FindMapping(IEnumerable<AxTableMapping> mappings, string mapName)
+        {
+            foreach (AxTableMapping m in mappings)
+            {
+                if (string.Equals(m.Name, mapName, StringComparison.OrdinalIgnoreCase))
+                    return m;
+            }
+            return null;
         }
 
         // ========================
@@ -2681,9 +2937,57 @@ namespace D365MetadataBridge.Services
         // ========================
 
         /// <summary>
-        /// Adds or updates a FieldModification entry in a table-extension.
-        /// Allows overriding Label / Mandatory on a base-table field.
-        /// SDK does not expose FieldModifications collection statically — use fully dynamic access.
+        /// Sets a property override, creating the entry or updating it in place.
+        ///
+        /// Every "modification" collection on an extension — PropertyModifications,
+        /// FieldModifications, RelationModifications — bottoms out in AxPropertyModification,
+        /// a flat { Name, Value } pair. Overrides are values in that list, never CLR
+        /// properties on the modification object: an AxExtensionModification has exactly
+        /// Name, Parent and PropertyModifications and nothing else.
+        /// </summary>
+        private static void UpsertPropertyModification(
+            Microsoft.Dynamics.AX.Metadata.Core.Collections.KeyedObjectCollection<AxPropertyModification> mods,
+            string name, string value)
+        {
+            foreach (AxPropertyModification pm in mods)
+            {
+                if (string.Equals(pm.Name, name, StringComparison.OrdinalIgnoreCase))
+                { pm.Value = value; return; }
+            }
+            mods.Add(new AxPropertyModification { Name = name, Value = value });
+        }
+
+        /// <summary>
+        /// Finds or creates the AxExtensionModification carrying overrides for one member
+        /// (a base-table field, or a base-table relation) of an extension.
+        /// The collections are keyed, so a duplicate Add fails inside the SDK.
+        /// </summary>
+        private static AxExtensionModification GetOrAddExtensionModification(
+            Microsoft.Dynamics.AX.Metadata.Core.Collections.KeyedObjectCollection<AxExtensionModification> mods,
+            string memberName)
+        {
+            foreach (AxExtensionModification m in mods)
+            {
+                if (string.Equals(m.Name, memberName, StringComparison.OrdinalIgnoreCase))
+                    return m;
+            }
+            var created = new AxExtensionModification { Name = memberName };
+            mods.Add(created);
+            return created;
+        }
+
+        /// <summary>
+        /// Adds or updates a FieldModification entry in a table-extension — overriding Label
+        /// or Mandatory on a base-table field.
+        ///
+        /// This used to run on `dynamic`, on the stated belief that the SDK "does not expose
+        /// FieldModifications statically". It does: AxTableExtension.FieldModifications is a
+        /// KeyedObjectCollection&lt;AxExtensionModification&gt;. Worse, the dynamic code then
+        /// assigned `.Label` and `.Mandatory` on that element — properties AxExtensionModification
+        /// does not have — and neither AxTableFieldModification nor AxTableExtensionFieldModification
+        /// exists in the metamodel to supply them. Every call therefore threw
+        /// RuntimeBinderException at the point of assignment; nothing in CI compiles the bridge,
+        /// so it never surfaced. Overrides are AxPropertyModification { Name, Value } entries.
         /// </summary>
         public object AddFieldModification(string extensionName, string fieldName,
             string? fieldLabel, bool? fieldMandatory)
@@ -2692,53 +2996,26 @@ namespace D365MetadataBridge.Services
                 ?? throw new ArgumentException($"Table extension '{extensionName}' not found");
             var msi = GetModelSaveInfoForObject(_provider.TableExtensions, extensionName);
 
-            // AxTableExtension.FieldModifications and the element type are not always
-            // statically available — use fully dynamic access (same pattern as Methods).
-            dynamic dynExt = axExt;
-            dynamic fmCollection = dynExt.FieldModifications;
+            if (fieldLabel == null && !fieldMandatory.HasValue)
+                throw new ArgumentException(
+                    $"add-field-modification on '{extensionName}' was given neither fieldLabel nor fieldMandatory — nothing to override.");
 
-            // Check if a modification for this field already exists
-            dynamic? existing = null;
-            foreach (dynamic fm in fmCollection)
+            var mod = GetOrAddExtensionModification(axExt.FieldModifications, fieldName);
+            var applied = new List<string>();
+            if (fieldLabel != null)
             {
-                if (string.Equals((string)fm.Name, fieldName, StringComparison.OrdinalIgnoreCase))
-                { existing = fm; break; }
+                UpsertPropertyModification(mod.PropertyModifications, "Label", fieldLabel);
+                applied.Add("Label");
             }
-
-            if (existing == null)
-            {
-                // Create new field modification entry — use the element type from the collection
-                var assembly = typeof(AxClass).Assembly;
-                // Try known type names: AxTableFieldModification, AxTableExtensionFieldModification
-                Type? fmType = assembly.GetType("Microsoft.Dynamics.AX.Metadata.MetaModel.AxTableFieldModification")
-                    ?? assembly.GetType("Microsoft.Dynamics.AX.Metadata.MetaModel.AxTableExtensionFieldModification");
-                if (fmType == null)
-                {
-                    // Fallback: discover from collection's generic type argument
-                    var collType = fmCollection.GetType();
-                    if (collType.IsGenericType)
-                    {
-                        var args = collType.GetGenericArguments();
-                        if (args.Length > 0) fmType = args[0];
-                    }
-                }
-                if (fmType == null)
-                    throw new InvalidOperationException("Cannot determine FieldModification element type — use xmlContent fallback");
-
-                existing = Activator.CreateInstance(fmType)!;
-                existing.Name = fieldName;
-                fmCollection.Add(existing);
-            }
-
-            if (fieldLabel != null) existing.Label = fieldLabel;
             if (fieldMandatory.HasValue)
-                existing.Mandatory = fieldMandatory.Value
-                    ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes
-                    : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
+            {
+                UpsertPropertyModification(mod.PropertyModifications, "Mandatory", fieldMandatory.Value ? "Yes" : "No");
+                applied.Add("Mandatory");
+            }
 
             ((IMetaTableExtensionProvider)_provider.TableExtensions).Update(axExt, msi);
             return new { success = true, operation = "add-field-modification", objectName = extensionName, fieldName,
-                fieldLabel, fieldMandatory, api = "IMetaTableExtensionProvider.Update" };
+                fieldLabel, fieldMandatory, applied, api = "IMetaTableExtensionProvider.Update" };
         }
 
         // ========================
@@ -4224,6 +4501,19 @@ namespace D365MetadataBridge.Services
 
         [System.Text.Json.Serialization.JsonPropertyName("relatedField")]
         public string? RelatedField { get; set; }
+    }
+
+    /// <summary>
+    /// One field pairing of an AxTableMapping: mapField is the field on the MAP,
+    /// mapFieldTo the field on the table being mapped.
+    /// </summary>
+    public class WriteMappingConnection
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("mapField")]
+        public string? MapField { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("mapFieldTo")]
+        public string? MapFieldTo { get; set; }
     }
 
     public class WriteEnumValueParam

@@ -23,6 +23,8 @@ import {
   bridgeAddMethod, bridgeRemoveMethod, bridgeAddField, bridgeSetProperty, bridgeReplaceCode,
   bridgeModifyField, bridgeRenameField, bridgeRemoveField, bridgeReplaceAllFields,
   bridgeAddIndex, bridgeRemoveIndex, bridgeAddRelation, bridgeRemoveRelation,
+  bridgeAddFullTextIndex, bridgeRemoveFullTextIndex,
+  bridgeAddTableMapping, bridgeRemoveTableMapping,
   bridgeAddFieldGroup, bridgeRemoveFieldGroup, bridgeAddFieldToFieldGroup,
   bridgeAddEnumValue, bridgeModifyEnumValue, bridgeRemoveEnumValue,
   bridgeAddControl, bridgeAddDataSource,
@@ -959,6 +961,8 @@ const ModifyD365FileArgsSchema = z.object({
     'add-method', 'remove-method', 'replace-code',
     'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'remove-field',
     'add-index', 'remove-index',
+    'add-full-text-index', 'remove-full-text-index',
+    'add-table-mapping', 'remove-table-mapping',
     'add-relation', 'remove-relation',
     'add-delete-action', 'remove-delete-action',
     'add-field-group', 'remove-field-group', 'add-field-to-field-group',
@@ -1150,6 +1154,16 @@ const ModifyD365FileArgsSchema = z.object({
   indexEnabled: z.union([z.boolean(), z.string()]).optional().describe(
     'Whether index is enabled (default: true). Accepts true/false or the XML spelling "Yes"/"No".'
   ),
+
+  // For add-table-mapping / remove-table-mapping (table, table-extension).
+  // <Mappings> records which AxMap the table takes part in — a different collection and a
+  // different element type from <Relations>, so add-relation cannot express it.
+  mapName: z.string().optional().describe('Name of the AxMap this table takes part in (add-table-mapping / remove-table-mapping).'),
+  mappingTable: z.string().optional().describe('Mapped table name for add-table-mapping. Defaults to mapName.'),
+  mappingConnections: z.array(z.object({
+    mapField: z.string().describe('Field name on the MAP.'),
+    mapFieldTo: z.string().describe('Field name on THIS table.'),
+  })).optional().describe('Field pairings for add-table-mapping. Both sides are required per connection.'),
 
   // For add-relation / remove-relation (table, table-extension)
   relationName: z.string().optional().describe('Relation name for add-relation / remove-relation.'),
@@ -1859,6 +1873,53 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             context.bridge,
             objectName,
             (args as any).indexName,
+          );
+        }
+        break;
+      }
+      case 'add-full-text-index': {
+        if ((args as any).indexName) {
+          // indexFields carries the same [{fieldName}] shape add-index documents.
+          const fullTextFields: string[] | undefined = Array.isArray((args as any).indexFields)
+            ? (args as any).indexFields.map((f: any) => (typeof f === 'string' ? f : f?.fieldName)).filter(Boolean)
+            : undefined;
+          bridgeResult = await bridgeAddFullTextIndex(
+            context.bridge,
+            objectName,
+            (args as any).indexName,
+            fullTextFields,
+          );
+        }
+        break;
+      }
+      case 'remove-full-text-index': {
+        if ((args as any).indexName) {
+          bridgeResult = await bridgeRemoveFullTextIndex(
+            context.bridge,
+            objectName,
+            (args as any).indexName,
+          );
+        }
+        break;
+      }
+      case 'add-table-mapping': {
+        if ((args as any).mapName) {
+          bridgeResult = await bridgeAddTableMapping(
+            context.bridge,
+            objectName,
+            (args as any).mapName,
+            (args as any).mappingTable,
+            (args as any).mappingConnections,
+          );
+        }
+        break;
+      }
+      case 'remove-table-mapping': {
+        if ((args as any).mapName) {
+          bridgeResult = await bridgeRemoveTableMapping(
+            context.bridge,
+            objectName,
+            (args as any).mapName,
           );
         }
         break;
