@@ -32,6 +32,8 @@
     "config:docs": "tsx scripts/generate-config-docs.ts",
     "build": "tsc && npm run build:scripts",
     "build:scripts": "esbuild scripts/extract-metadata.ts scripts/build-database.ts scripts/build-fts.ts --bundle --platform=node --format=esm --target=node24 --packages=external --outdir=dist/scripts && esbuild src/metadata/symbolCountsWorker.ts --bundle --platform=node --format=esm --target=node24 --packages=external --outdir=dist/scripts",
+    "bridge:build": "node scripts/bridgeBuild.mjs",
+    "bridge:attest": "node scripts/bridgeAttest.mjs check",
     "prepublishOnly": "npm run build",
     "start": "node dist/index.js",
     "test": "vitest",

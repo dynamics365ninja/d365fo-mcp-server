@@ -743,6 +743,31 @@ export class BridgeClient extends EventEmitter {
     return this.call<BridgeWriteResult>('removeIndex', { objectName: tableName, indexName });
   }
 
+  /** Add a full-text index to a table or table-extension (a separate collection from Indexes) */
+  async addFullTextIndex(tableName: string, indexName: string, fields?: string[]): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addFullTextIndex', { objectName: tableName, indexName, fields });
+  }
+
+  /** Remove a full-text index from a table or table-extension */
+  async removeFullTextIndex(tableName: string, indexName: string): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('removeFullTextIndex', { objectName: tableName, indexName });
+  }
+
+  /** Add a Map membership to a table or table-extension */
+  async addTableMapping(
+    tableName: string,
+    mapName: string,
+    mappingTable?: string,
+    connections?: Array<{ mapField?: string; mapFieldTo?: string }>,
+  ): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addTableMapping', { objectName: tableName, mapName, mappingTable, connections });
+  }
+
+  /** Remove a Map membership from a table or table-extension */
+  async removeTableMapping(tableName: string, mapName: string): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('removeTableMapping', { objectName: tableName, mapName });
+  }
+
   /**
    * Add a relation to a table.
    *
@@ -784,8 +809,8 @@ export class BridgeClient extends EventEmitter {
   }
 
   /** Add a field reference to an existing field group */
-  async addFieldToFieldGroup(tableName: string, groupName: string, fieldName: string): Promise<BridgeWriteResult> {
-    return this.call<BridgeWriteResult>('addFieldToFieldGroup', { objectName: tableName, fieldGroupName: groupName, fieldName });
+  async addFieldToFieldGroup(tableName: string, groupName: string, fieldName: string, extendBaseFieldGroup?: boolean): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addFieldToFieldGroup', { objectName: tableName, fieldGroupName: groupName, fieldName, extendBaseFieldGroup });
   }
 
   /** Modify properties of an existing field on a table */

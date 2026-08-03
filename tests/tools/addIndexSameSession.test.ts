@@ -78,11 +78,44 @@ public class ConDemoTicket extends common
 \t<StateMachines />
 </AxTable>`;
 
-const { mockWriteFile } = vi.hoisted(() => ({ mockWriteFile: vi.fn(async () => {}) }));
+/**
+ * The same starting point one level up: a table EXTENSION created this session.
+ * Shape copied from eval/goldens/L2-table-extension/CustGroup.ConExtension.metadata.xml —
+ * an AxTableExtension carries the same <Indexes> collection an AxTable does.
+ */
+const TABLE_EXTENSION_NO_INDEX_XML = `<?xml version="1.0" encoding="utf-8"?>
+<AxTableExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>CustGroup.MyModelExtension</Name>
+\t<FieldGroupExtensions />
+\t<FieldGroups />
+\t<FieldModifications />
+\t<Fields>
+\t\t<AxTableField xmlns="" i:type="AxTableFieldString">
+\t\t\t<Name>TicketId</Name>
+\t\t\t<ExtendedDataType>Num</ExtendedDataType>
+\t\t</AxTableField>
+\t</Fields>
+\t<FullTextIndexes />
+\t<Indexes />
+\t<Mappings />
+\t<PropertyModifications />
+\t<RelationExtensions />
+\t<RelationModifications />
+\t<Relations />
+</AxTableExtension>`;
+
+/**
+ * Which fixture readFile serves — switched per describe block. Held in a vi.hoisted
+ * box because vi.mock factories are lifted above these declarations.
+ */
+const { fixture, mockWriteFile } = vi.hoisted(() => ({
+  fixture: { xml: '' },
+  mockWriteFile: vi.fn(async () => {}),
+}));
 
 vi.mock('fs/promises', () => ({
   readFile: vi.fn(async (p: string) => {
-    if (typeof p === 'string' && p.endsWith('.xml')) return TABLE_NO_INDEX_XML;
+    if (typeof p === 'string' && p.endsWith('.xml')) return fixture.xml;
     if (typeof p === 'string' && p.endsWith('.rnrproj')) return `<Project><ItemGroup></ItemGroup></Project>`;
     throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
   }),
@@ -190,6 +223,7 @@ describe('add-index on a same-session table (bridge cannot resolve it)', () => {
 
   beforeEach(() => {
     ctx = buildContext();
+    fixture.xml = TABLE_NO_INDEX_XML;
     mockBridgeAddIndex.mockReset();
     mockBridgeRefreshProvider.mockClear();
     mockWriteFile.mockClear();
@@ -262,6 +296,85 @@ describe('add-index on a same-session table (bridge cannot resolve it)', () => {
 
     expect(result.isError).toBeFalsy();
     // The bridge wrote the index through the provider — no direct-XML write of it.
+    expect(capturedIndexXml()).toBeUndefined();
+  });
+});
+
+/**
+ * Same defect, one level up. #799 taught the C# AddIndex to fall back from Tables to
+ * TableExtensions, but the provider still resolves against metadata roots fixed at
+ * bridge startup — so an extension CREATED THIS SESSION is exactly as unresolvable as
+ * the table above, and the direct-XML fallback used to refuse it: its shape guard was
+ * /<AxTable\b/, and `\b` does not match `<AxTableExtension` (E is a word character).
+ */
+describe('add-index on a same-session table-EXTENSION', () => {
+  let ctx: XppServerContext;
+
+  const EXT_FILE_PATH =
+    'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTableExtension\\CustGroup.MyModelExtension.xml';
+
+  const addIndexToExtensionReq = (extra: Record<string, unknown> = {}) =>
+    req({
+      objectType: 'table-extension',
+      objectName: 'CustGroup.MyModelExtension',
+      operation: 'add-index',
+      indexName: 'TicketIdx',
+      indexFields: [{ fieldName: 'TicketId' }],
+      filePath: EXT_FILE_PATH,
+      ...extra,
+    });
+
+  const RESOLUTION_FAILURE = {
+    success: false,
+    message: "Table or table-extension 'CustGroup.MyModelExtension' not found",
+  };
+
+  beforeEach(() => {
+    ctx = buildContext();
+    fixture.xml = TABLE_EXTENSION_NO_INDEX_XML;
+    mockBridgeAddIndex.mockReset();
+    mockBridgeRefreshProvider.mockClear();
+    mockWriteFile.mockClear();
+  });
+
+  it('completes via the direct-XML fallback instead of dead-ending', async () => {
+    mockBridgeAddIndex.mockResolvedValue(RESOLUTION_FAILURE);
+
+    const result = await modifyD365FileTool(addIndexToExtensionReq(), ctx);
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text as string).toMatch(/direct XML fallback/i);
+  });
+
+  it('writes the AxTableIndex into the extension\'s own <Indexes> collection', async () => {
+    mockBridgeAddIndex.mockResolvedValue(RESOLUTION_FAILURE);
+
+    await modifyD365FileTool(addIndexToExtensionReq(), ctx);
+
+    const xml = capturedIndexXml();
+    expect(xml).toBeTruthy();
+    // Still an AxTableExtension, with the index inside <Indexes> — not appended to
+    // FullTextIndexes, RelationExtensions or any of the neighbouring collections.
+    expect(xml).toContain('<AxTableExtension');
+    expect(xml).toMatch(/<Indexes>[\s\S]*<AxTableIndex>[\s\S]*<\/AxTableIndex>[\s\S]*<\/Indexes>/);
+    expect(xml).toMatch(/<Name>TicketIdx<\/Name>/);
+    expect(xml).not.toContain('<Indexes />');
+    // The collections that must NOT have been touched are still self-closing.
+    expect(xml).toContain('<FullTextIndexes />');
+    expect(xml).toContain('<RelationExtensions />');
+  });
+
+  it('leaves a shape that carries no <Indexes> collection alone', async () => {
+    // An AxClass has no <Indexes> anywhere — the guard must refuse rather than
+    // invent one, so a mis-typed objectType can never corrupt an unrelated file.
+    fixture.xml = `<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>MyClass</Name>
+</AxClass>`;
+    mockBridgeAddIndex.mockResolvedValue(RESOLUTION_FAILURE);
+
+    await modifyD365FileTool(addIndexToExtensionReq(), ctx);
+
     expect(capturedIndexXml()).toBeUndefined();
   });
 });

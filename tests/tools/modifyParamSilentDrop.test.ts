@@ -35,12 +35,13 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 const {
   mockBridgeModifyField, mockBridgeAddRelation, mockBridgeAddIndex,
-  mockBridgeAddDataSource, mockBridgeRefreshProvider,
+  mockBridgeAddDataSource, mockBridgeAddFieldToFieldGroup, mockBridgeRefreshProvider,
 } = vi.hoisted(() => ({
   mockBridgeModifyField: vi.fn(),
   mockBridgeAddRelation: vi.fn(),
   mockBridgeAddIndex: vi.fn(),
   mockBridgeAddDataSource: vi.fn(),
+  mockBridgeAddFieldToFieldGroup: vi.fn(),
   mockBridgeRefreshProvider: vi.fn(async () => ({ success: true, elapsedMs: 1 })),
 }));
 
@@ -52,6 +53,7 @@ vi.mock('../../src/bridge/bridgeAdapter', async (orig) => {
     bridgeAddRelation: mockBridgeAddRelation,
     bridgeAddIndex: mockBridgeAddIndex,
     bridgeAddDataSource: mockBridgeAddDataSource,
+    bridgeAddFieldToFieldGroup: mockBridgeAddFieldToFieldGroup,
     bridgeRefreshProvider: mockBridgeRefreshProvider,
     bridgeValidateAfterWrite: vi.fn(async () => null),
   };
@@ -446,6 +448,54 @@ describe('#27 — NoYes-shaped index flags accept the XML spelling', () => {
     const xml = writtenXml()!;
     expect(xml).toContain('<AllowDuplicates>No</AllowDuplicates>');
     expect(xml).toContain('<AlternateKey>Yes</AlternateKey>');
+  });
+});
+
+/**
+ * Same cluster, found by auditing #799: `extendBaseFieldGroup` was declared in the Zod
+ * schema AND registered as an accepted optional of add-field-to-field-group — so
+ * findIgnoredParams stayed quiet — while no implementation ever read it. The field
+ * silently went to the extension's own <FieldGroups> instead of <FieldGroupExtensions>,
+ * which means it never appears on the base table's forms. Issue #803.
+ */
+describe('#803 — extendBaseFieldGroup must reach the bridge, not be dropped', () => {
+  beforeEach(() => {
+    mockBridgeAddFieldToFieldGroup.mockReset();
+    mockBridgeAddFieldToFieldGroup.mockResolvedValue({
+      success: true,
+      message: "✅ Field 'ConNotePriority' added to group 'Overview' in <FieldGroupExtensions> (extending the base-table group) via IMetaTableExtensionProvider.Update",
+    });
+  });
+
+  const addFieldToGroupReq = (extra: Record<string, unknown> = {}) =>
+    req({
+      objectType: 'table-extension',
+      objectName: 'CustGroup.ConExtension',
+      operation: 'add-field-to-field-group',
+      fieldGroupName: 'Overview',
+      fieldName: 'ConNotePriority',
+      ...extra,
+    });
+
+  it('forwards extendBaseFieldGroup=true to the bridge call', async () => {
+    await modifyD365FileTool(addFieldToGroupReq({ extendBaseFieldGroup: true }), buildContext());
+
+    expect(mockBridgeAddFieldToFieldGroup).toHaveBeenCalledWith(
+      expect.anything(), 'CustGroup.ConExtension', 'Overview', 'ConNotePriority', true,
+    );
+  });
+
+  it('leaves it undefined when the caller did not ask for it', async () => {
+    await modifyD365FileTool(addFieldToGroupReq(), buildContext());
+
+    expect(mockBridgeAddFieldToFieldGroup).toHaveBeenCalledWith(
+      expect.anything(), 'CustGroup.ConExtension', 'Overview', 'ConNotePriority', undefined,
+    );
+  });
+
+  it('is registered as a known param of the op, not an unknown key', () => {
+    expect(findIgnoredParams('add-field-to-field-group',
+      ['fieldGroupName', 'fieldName', 'extendBaseFieldGroup'])).toEqual([]);
   });
 });
 
