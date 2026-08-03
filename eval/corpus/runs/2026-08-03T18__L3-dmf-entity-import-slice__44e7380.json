@@ -1,0 +1,77 @@
+{
+  "run_id": "2026-08-03T18__L3-dmf-entity-import-slice__44e7380",
+  "case_id": "L3-dmf-entity-import-slice",
+  "tier": 3,
+  "timestamp": "2026-08-03T18:44:47.195Z",
+  "server_git_sha": "44e7380",
+  "generated_artifacts": [
+    "ConDemoImportTarget.metadata.xml",
+    "ConDemoImportTargetEntity.metadata.xml",
+    "/Tables/ConDemoImportTargetEntityStaging (companion, required by DataManagementStagingTable; not in target_artifact_types)",
+    "/SecurityPrivileges/ConDemoImportTargetEntityMaintain (companion, required to clear DataEntitySecurityPrivilegeCheck BP error; not in target_artifact_types)"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "code": "BPErrorTablePrimaryKeyEditable",
+        "element": "AxTable/ConDemoImportTarget/ImportTargetIdx/DocumentCode"
+      },
+      {
+        "code": "BPErrorDeveloperDocumentationNotDefined",
+        "element": "AxTable/ConDemoImportTarget"
+      },
+      {
+        "code": "BPErrorTableMissingFormRef",
+        "element": "AxTable/ConDemoImportTarget"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "platform_build": "xppc 7.0.7858.27",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": [
+        "validate_code xml-table on ConDemoImportTargetEntityStaging flagged EnumType NoYes as unknown - false positive, NoYes is the standard kernel enum used verbatim in the shipped reference CashDiscountStaging.xml this table was modeled on; build proves it resolves with 0 errors",
+        "validate_code xpp on the entity sourceCode flagged @SYS23986 as an unknown label and ConDemoImportTargetEntityStaging as an unknown type - both false positives"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "RE-CAPTURE confirming both TOOL_DEFECTs recorded in the 2026-07-27T23 draft (server SHA e8e2eb9) are fixed on current main (44e7380), verified live against the running MCP server, not assumed from the draft README claim. First, d365fo_file action=create objectType=data-entity with sourceCode containing validateWrite plus postGetStagingData no longer drops the X++: the written ConDemoImportTargetEntity.xml carries a full SourceCode Declaration plus Methods block with both methods verbatim, confirmed by reading the file back after create rather than trusting the tool success message. createD365File.ts data-entity case now splits sourceCode via parseSourceForBridge and forwards declaration and methods into buildAxDataEntityXml in dataEntityXml.ts, which now supports standardStructure, declaration, methods and fieldGroups, implied automatically once declaration or methods are passed, matching the fix location the draft suggested_fix_area named. Second, the BRIDGE_MODIFY_TYPES gap is now moot for this case path since create carried the X++ directly and no add-method modify call was needed, but confirmed present in the built dist bridge adapter regardless: BRIDGE_MODIFY_TYPES now includes data-entity. Both objects built clean on a full build with fullBuild true, not incremental, so the Metadata Validation phase ran, 0 errors, 1 unrelated Commerce PricingEngine ExternalReference warning. All four objects, table, entity, staging table and privilege, were BP-checked clean of ERRORS via targetFilter scoped run_bp_check calls; the unfiltered call is documented elsewhere as a false passed result, so only filtered calls were trusted here, and each one reported an explicit elements processed line so absence of findings is real. Residual bp_clean 0 is exactly the 3 out-of-scope warnings already documented in the draft, BPErrorTablePrimaryKeyEditable, BPErrorDeveloperDocumentationNotDefined and BPErrorTableMissingFormRef; none are BP ERRORS since xppbp reports them as BestPractices Warning lines, so the case own gate of zero BP errors is satisfied. Classified PASS rather than KNOWLEDGE_GAP following the same convention the frozen L3-dualwrite-entity-mapping golden used for an identical warning shape. golden_match is 1 against the golden captured this session, the two target_artifact_types files byte identical to what the grounded tool path wrote, after the prior DRAFT golden, which was missing SourceCode, FieldGroups, DeleteActions and StateMachines, was overwritten with the working capture.",
+  "suggested_fix_area": "None for this case path; both previously blocking writer and bridge defects are fixed and reproduced working end to end with zero hand authored XML: prepare, then validate_code references plus syntax, then d365fo_file create for all four objects, table, staging table, data entity with embedded X++, and security privilege. Residual minor items, none case blocking: validate_code references still false positives on the kernel enum NoYes and on legacy SYS labels or newly created same session tables, documented elsewhere as a recurring validator gap; run_bp_check requires an explicit targetElementType value from a fixed vocabulary such as DataEntityView rather than the d365fo_file objectType convention, and passing the wrong one silently returns a misleading BP Check passed result with the explanation buried in the body instead of failing loudly, which is easy to miss and was caught here only by checking for an elements processed line.",
+  "evidence_refs": [
+    "eval/cases/L3-dmf-entity-import-slice.json",
+    "eval/goldens/L3-dmf-entity-import-slice/README.md prior DRAFT, now superseded by the rewritten README",
+    "eval/corpus/runs/2026-07-27T23__L3-dmf-entity-import-slice__e8e2eb9.json prior blocked draft run, same case, server SHA e8e2eb9",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxDataEntityView/ConDemoImportTargetEntity.xml, rolled back after run, read back post-create to confirm SourceCode with both methods actually persisted",
+    "dist/bridge/bridgeAdapter.js lines 1080 to 1086 show BRIDGE_MODIFY_TYPES includes data-entity; dist/tools/dataEntityXml.js lines 132 to 186 show buildSourceCodeXml and standardStructure; dist/tools/createD365File.js lines 1418 to 1431 show the data-entity case forwarding sourceCode via parseSourceForBridge, all read directly from the dist the running MCP server loads",
+    "build_d365fo_project fullBuild true reported Build succeeded, Errors 0, Warnings 1 unrelated Commerce PricingEngine assembly",
+    "run_bp_check targetFilter ConDemoImportTarget targetElementType table reported 3 warnings 0 errors; targetFilter ConDemoImportTargetEntity targetElementType DataEntityView reported 0 warnings 0 errors and 1 elements processed; targetFilter ConDemoImportTargetEntityStaging targetElementType table reported 2 warnings 0 errors; targetFilter ConDemoImportTargetEntityMaintain targetElementType SecurityPrivilege reported 1 warning 0 errors",
+    "npm run eval:score for L3-dmf-entity-import-slice with actual-dir pointing at a scratch directory containing ConDemoImportTarget.metadata.xml and ConDemoImportTargetEntity.metadata.xml, bp-warnings 3, classification PASS, write, reported golden match with no structural deltas"
+  ]
+}

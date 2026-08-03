@@ -20,6 +20,7 @@ public class ConDemoImportTarget extends common
 	<ClusteredIndex>ImportTargetIdx</ClusteredIndex>
 	<PrimaryIndex>ImportTargetIdx</PrimaryIndex>
 	<ReplacementKey>ImportTargetIdx</ReplacementKey>
+	<SaveDataPerCompany>Yes</SaveDataPerCompany>
 	<DeleteActions />
 	<FieldGroups>
 		<AxTableFieldGroup>
@@ -66,18 +67,18 @@ public class ConDemoImportTarget extends common
 	</FieldGroups>
 	<Fields>
 		<AxTableField xmlns=""
-			i:type="AxTableFieldString">
+				i:type="AxTableFieldString">
 			<Name>DocumentCode</Name>
 			<ExtendedDataType>Num</ExtendedDataType>
 			<Mandatory>Yes</Mandatory>
 		</AxTableField>
 		<AxTableField xmlns=""
-			i:type="AxTableFieldString">
+				i:type="AxTableFieldString">
 			<Name>Description</Name>
 			<ExtendedDataType>Name</ExtendedDataType>
 		</AxTableField>
 		<AxTableField xmlns=""
-			i:type="AxTableFieldReal">
+				i:type="AxTableFieldReal">
 			<Name>Amount</Name>
 			<ExtendedDataType>AmountCur</ExtendedDataType>
 		</AxTableField>
@@ -87,6 +88,7 @@ public class ConDemoImportTarget extends common
 		<AxTableIndex>
 			<Name>ImportTargetIdx</Name>
 			<AlternateKey>Yes</AlternateKey>
+			<AllowDuplicates>No</AllowDuplicates>
 			<Fields>
 				<AxTableIndexField>
 					<DataField>DocumentCode</DataField>

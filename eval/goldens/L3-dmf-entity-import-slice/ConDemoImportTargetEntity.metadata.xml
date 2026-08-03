@@ -1,6 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>ConDemoImportTargetEntity</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoImportTargetEntity extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>validateWrite</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Rejects a non-positive Amount with a labelled error.
+    /// </summary>
+    /// <returns>true if the write is valid; otherwise, false.</returns>
+    public boolean validateWrite()
+    {
+        boolean ret;
+
+        ret = super();
+
+        if (ret && this.Amount <= 0)
+        {
+            ret = checkFailed("@SYS23986");
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>postGetStagingData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// DMF staging post-load hook: normalizes DocumentCode to upper case in the staging table.
+    /// </summary>
+    /// <param name = "_dmfDefinitionGroupExecution">The execution context for import.</param>
+    public static void postGetStagingData(DMFDefinitionGroupExecution _dmfDefinitionGroupExecution)
+    {
+        ConDemoImportTargetEntityStaging stagingTable;
+
+        ttsbegin;
+        while select forupdate stagingTable
+        where stagingTable.DefinitionGroup == _dmfDefinitionGroupExecution.DefinitionGroup
+        && stagingTable.ExecutionId == _dmfDefinitionGroupExecution.ExecutionId
+        {
+            stagingTable.DocumentCode = strUpr(stagingTable.DocumentCode);
+            stagingTable.update();
+        }
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
 	<Label>@TaxTransactionInquiry:HeaderNote</Label>
 	<DataManagementEnabled>Yes</DataManagementEnabled>
 	<DataManagementStagingTable>ConDemoImportTargetEntityStaging</DataManagementStagingTable>
@@ -9,6 +66,30 @@
 	<PrimaryKey>EntityKey</PrimaryKey>
 	<PublicCollectionName>ConDemoImportTargets</PublicCollectionName>
 	<PublicEntityName>ConDemoImportTarget</PublicEntityName>
+	<DeleteActions />
+	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>AutoReport</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoLookup</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoIdentification</Name>
+			<AutoPopulate>Yes</AutoPopulate>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoSummary</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoBrowse</Name>
+			<Fields />
+		</AxTableFieldGroup>
+	</FieldGroups>
 	<Fields>
 		<AxDataEntityViewField xmlns=""
 			i:type="AxDataEntityViewMappedField">
@@ -42,6 +123,7 @@
 	<Mappings />
 	<Ranges />
 	<Relations />
+	<StateMachines />
 	<ViewMetadata>
 		<Name>Metadata</Name>
 		<SourceCode>

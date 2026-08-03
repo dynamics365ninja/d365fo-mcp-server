@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 44 | 44 | **100%** |
-| total | 72 | 78 | 92.3% |
+| total | 73 | 78 | 93.6% |
 
 ## Data model (12/12)
 
@@ -97,14 +97,14 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Warehouse management (WHS) | total | ✅ | — | ✅ | Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture. |
 | Trade agreements & pricing | total | ✅ | — | ✅ | Eval case authored (PriceDisc price/discount resolution); golden pending VM capture. |
 
-## Integration (6/9)
+## Integration (7/9)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | Data entity (OData) | core | ✅ | ✅ | ✅ | L4-entity-security |
 | Data entity extension | total | ✅ | ✅ | ✅ | L3-data-entity-extension-field |
 | Custom services / OData actions | core | ✅ | ✅ | ✅ | L3-custom-service-basic |
-| Data management framework (DMF/DIXF) | total | ✅ | — | ✅ | Eval case authored (import-ready entity + staging hook); golden pending VM capture. |
+| Data management framework (DMF/DIXF) | total | ✅ | ✅ | ✅ | L3-dmf-entity-import-slice |
 | Dual-write (Dataverse) | total | ✅ | ✅ | ✅ | L3-dualwrite-entity-mapping |
 | Power Platform / virtual entities | total | ✅ | — | ✅ | Eval case authored (entity marked up for virtual-entity exposure); golden pending VM capture. |
 | Reading Excel / CSV files | total | ✅ | ✅ | ✅ | L3-file-csv-import |
@@ -133,7 +133,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
-| 2 | Data management framework (DMF/DIXF) | missing E |
 | 1 | Aggregate measurements / analytics | missing E |
 | 1 | Power Platform / virtual entities | missing E |
 | 1 | Trade agreements & pricing | missing E |
@@ -145,4 +144,4 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 - Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-07-30._
+_Generated 2026-08-03._
