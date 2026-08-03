@@ -250,11 +250,6 @@ export async function indexAllLabels(
   let skippedNoLabels = 0;
 
   for (const packageOrModel of models) {
-    if (modelFilter && !modelFilter(packageOrModel)) {
-      skippedByFilter++;
-      continue;
-    }
-
     const packageDir = path.join(packagesPath, packageOrModel);
 
     // A package dir can contain multiple model subdirectories, each with its own AxLabelFile.
@@ -293,6 +288,15 @@ export async function indexAllLabels(
     }
 
     for (const { modelDir, modelName } of modelDirs) {
+      // Keyed on the resolved MODEL name (e.g. "Docentric AX"), not the top-level PACKAGE
+      // folder name (e.g. "DocentricAX") — the two can differ, and clearLabelsForModels()
+      // deletes by the same model name, so filtering here on anything else silently drops
+      // that model's labels on every subsequent incremental build (#802).
+      if (modelFilter && !modelFilter(modelName)) {
+        skippedByFilter++;
+        continue;
+      }
+
       const count = await indexModelLabels(symbolIndex, modelDir, modelName, {
         skipFtsRebuild: true,
         keepTriggers: incrementalFts,
