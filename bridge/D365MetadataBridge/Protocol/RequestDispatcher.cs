@@ -457,11 +457,18 @@ namespace D365MetadataBridge.Protocol
                                 ?? throw new ArgumentException("Missing: objectName");
                             var fieldName = request.GetStringParam("fieldName")
                                 ?? throw new ArgumentException("Missing: fieldName");
+                            // dataField/dataSource select the data-entity-extension mapped-field
+                            // path inside AddField; both are absent for table/table-extension.
+                            // This is the single-op RPC that BridgeClient.addField() calls —
+                            // it must forward the same parameters as the batch-modify case below.
                             return _writeService!.AddField(tableName, fieldName,
                                 request.GetStringParam("fieldType") ?? "String",
                                 request.GetStringParam("edt"),
                                 request.GetBoolParam("mandatory") ?? false,
-                                request.GetStringParam("label"));
+                                request.GetStringParam("label"),
+                                request.GetStringParam("dataField"),
+                                request.GetStringParam("dataSource"),
+                                request.GetStringParam("fieldGroupName"));
                         });
 
                     case "setproperty":
@@ -911,12 +918,17 @@ namespace D365MetadataBridge.Protocol
 
                             case "addfield":
                             case "add-field":
+                                // dataField/dataSource select the data-entity-extension mapped-field
+                                // path inside AddField; both are absent for table/table-extension.
                                 writeResult = _writeService.AddField(objectName,
                                     S("fieldName") ?? throw new ArgumentException("Missing: fieldName"),
                                     S("fieldType") ?? "String",
                                     S("edt"),
                                     B("mandatory") ?? false,
-                                    S("label"));
+                                    S("label"),
+                                    S("dataField"),
+                                    S("dataSource"),
+                                    S("fieldGroupName"));
                                 break;
 
                             case "modifyfield":

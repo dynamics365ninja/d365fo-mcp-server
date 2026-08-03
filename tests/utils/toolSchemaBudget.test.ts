@@ -35,6 +35,11 @@ const CHARS_PER_TOKEN = 4;
 // allowRowVersionChangeTracking) that were implemented but unadvertised — paid
 // for in part by dropping the member-variable rule from `sourceCode`, where it
 // was the third statement of the same thing.
+//
+// data-entity-extension add-field deliberately does NOT raise these. `params` is
+// additionalProperties:true, so dataField/dataSource/fieldGroupName cost nothing
+// on the wire — only the prose naming them does, and that was paid for by
+// tightening the `params` description rather than by moving the ceiling.
 // Headroom is small on purpose so creep is caught early.
 const TOTAL_BUDGET = 63_300;
 const LARGEST_TOOL_BUDGET = 9_900;

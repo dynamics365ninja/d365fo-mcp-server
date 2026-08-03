@@ -39,6 +39,7 @@ import {
   AX_TABLE_NON_EXISTENT_PROPERTIES,
 } from '../utils/axTablePropertyOrder.js';
 import { upsertAxFormDesignProperty } from '../utils/axFormDesignProperties.js';
+import { buildAxDataEntityViewFieldXml } from './dataEntityViewExtensionXml.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import {
@@ -720,6 +721,192 @@ async function directXmlAddIndex(
   }
 }
 
+/**
+ * Locates ONE top-level collection element inside a root element's body, e.g.
+ * `<Fields>` directly under `<AxDataEntityViewExtension>`.
+ *
+ * A plain `content.replace('</Fields>', …)` is wrong here and silently so: an
+ * AxDataEntityViewExtension carries `<FieldGroupExtensions>` BEFORE `<Fields>`, and
+ * each `<AxTableFieldGroupExtension>` inside it has a nested `<Fields>` of its own.
+ * The first `</Fields>` in the file therefore closes the field GROUP, and the new
+ * element lands in a collection the deserializer will not read it from.
+ *
+ * Depth-counts from the root's opening tag so only a DIRECT child matches.
+ * Returns the insertion offset (just before the collection's closing tag), or a
+ * `selfClosingAt` range when the collection is `<Fields />` and must be expanded.
+ */
+export function findTopLevelCollection(
+  content: string,
+  rootElement: string,
+  collection: string,
+): { insertAt: number } | { selfClosingAt: [number, number] } | null {
+  const rootOpen = new RegExp(`<${rootElement}\\b[^>]*>`).exec(content);
+  if (!rootOpen) return null;
+
+  let pos = rootOpen.index + rootOpen[0].length;
+  let depth = 0;
+  const tagRe = /<(\/?)([A-Za-z_][\w.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
+  tagRe.lastIndex = pos;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(content)) !== null) {
+    const [full, closing, name, , selfClosing] = m;
+    if (closing) {
+      if (name === rootElement && depth === 0) return null;
+      depth--;
+      continue;
+    }
+    if (selfClosing) {
+      if (depth === 0 && name === collection) {
+        return { selfClosingAt: [m.index, m.index + full.length] };
+      }
+      continue;
+    }
+    if (depth === 0 && name === collection) {
+      // Walk to this element's matching close tag at the same depth.
+      let inner = 1;
+      const innerRe = new RegExp(tagRe.source, 'g');
+      innerRe.lastIndex = m.index + full.length;
+      let im: RegExpExecArray | null;
+      while ((im = innerRe.exec(content)) !== null) {
+        if (im[4]) continue;            // self-closing: no depth change
+        if (im[1]) {
+          inner--;
+          if (inner === 0) return { insertAt: im.index };
+        } else {
+          inner++;
+        }
+      }
+      return null;
+    }
+    depth++;
+  }
+  return null;
+}
+
+/**
+ * Appends `fieldName` to a base-entity field group inside <FieldGroupExtensions>,
+ * creating the <AxTableFieldGroupExtension> entry when the group is not there yet.
+ *
+ * <FieldGroups> (groups the extension OWNS) and <FieldGroupExtensions> (appending to a
+ * group the BASE entity owns) are not interchangeable — picking the wrong one is silent,
+ * the field lands in the file and never surfaces. This only ever touches the latter.
+ */
+function upsertDataEntityFieldGroupExtension(
+  content: string,
+  groupName: string,
+  fieldName: string,
+): string | null {
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const entry = `\t\t\t\t<AxTableFieldGroupField>\n\t\t\t\t\t<DataField>${fieldName}</DataField>\n\t\t\t\t</AxTableFieldGroupField>`;
+
+  // Scope every probe to THIS group's own block. Searching the whole file for
+  // <DataField>{fieldName}</DataField> also finds the mapped field just written into
+  // <Fields> — the group would then look "already registered" and silently stay empty.
+  const blockRe = new RegExp(
+    `<AxTableFieldGroupExtension>\\s*<Name>${escapeRe(groupName)}</Name>[\\s\\S]*?</AxTableFieldGroupExtension>`,
+  );
+  const block = blockRe.exec(content);
+  if (block) {
+    if (new RegExp(`<DataField>${escapeRe(fieldName)}</DataField>`).test(block[0])) {
+      return content; // already registered in this group
+    }
+    const updatedBlock = block[0].includes('<Fields />')
+      ? block[0].replace('<Fields />', `<Fields>\n${entry}\n\t\t\t</Fields>`)
+      : block[0].replace('</Fields>', `${entry}\n\t\t\t</Fields>`);
+    return content.slice(0, block.index) + updatedBlock + content.slice(block.index + block[0].length);
+  }
+
+  const newGroup =
+    `\t\t<AxTableFieldGroupExtension>\n` +
+    `\t\t\t<Name>${groupName}</Name>\n` +
+    `\t\t\t<Fields>\n${entry}\n\t\t\t</Fields>\n` +
+    `\t\t</AxTableFieldGroupExtension>`;
+
+  const target = findTopLevelCollection(content, 'AxDataEntityViewExtension', 'FieldGroupExtensions');
+  if (!target) return null;
+  if ('selfClosingAt' in target) {
+    const [from, to] = target.selfClosingAt;
+    return `${content.slice(0, from)}<FieldGroupExtensions>\n${newGroup}\n\t</FieldGroupExtensions>${content.slice(to)}`;
+  }
+  return `${content.slice(0, target.insertAt)}${newGroup}\n\t${content.slice(target.insertAt)}`;
+}
+
+/**
+ * Direct XML fallback for add-field on a DATA-ENTITY-EXTENSION.
+ *
+ * The bridge handles this via IMetaDataEntityViewExtensionProvider; this is the
+ * same-session escape hatch that add-index and add-control already have — the
+ * provider resolves against metadata roots fixed at startup, so an extension
+ * created THIS session is invisible to it.
+ *
+ * The element itself comes from the shared builder (dataEntityViewExtensionXml.ts)
+ * so the modify path cannot drift from the create path: sub-element ORDER is not
+ * cosmetic, the deserializer drops children it meets out of order, and Label must
+ * precede the DataField/DataSource binding pair.
+ */
+async function directXmlAddDataEntityExtensionField(
+  filePath: string,
+  fieldName: string,
+  dataField: string,
+  dataSource: string,
+  label?: string,
+  fieldGroupName?: string,
+): Promise<{ success: boolean; message: string } | null> {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Only data-entity extensions carry a <Fields> collection of mapped fields
+    // shaped like this — bail on any other file shape.
+    if (!/<AxDataEntityViewExtension\b/.test(content)) return null;
+
+    // Idempotency: scoped to the mapped-field elements. Matching a bare
+    // <Name>…</Name> anywhere in the file also hits the extension's own name, every
+    // field-group name and every AxPropertyModification — a false hit there answers
+    // "already present" and writes nothing.
+    const escapedName = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`<AxDataEntityViewField\\b[^>]*>\\s*<Name>${escapedName}</Name>`).test(content)) {
+      return {
+        success: true,
+        message: `✅ Field '${fieldName}' already present in ${filePath} — skipped (idempotent).`,
+      };
+    }
+
+    const newElement = buildAxDataEntityViewFieldXml({ name: fieldName, dataField, dataSource, label });
+
+    const target = findTopLevelCollection(content, 'AxDataEntityViewExtension', 'Fields');
+    if (!target) return null;
+
+    let updated: string;
+    if ('selfClosingAt' in target) {
+      const [from, to] = target.selfClosingAt;
+      updated = `${content.slice(0, from)}<Fields>\n${newElement}\n\t</Fields>${content.slice(to)}`;
+    } else {
+      updated = `${content.slice(0, target.insertAt)}${newElement}\n\t${content.slice(target.insertAt)}`;
+    }
+
+    if (fieldGroupName) {
+      updated = upsertDataEntityFieldGroupExtension(updated, fieldGroupName, fieldName) ?? updated;
+    }
+
+    if (updated === content) return null;
+
+    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    console.error(`[modify_d365fo_file] ✅ directXmlAddDataEntityExtensionField: added '${fieldName}' to ${filePath}`);
+    return {
+      success: true,
+      message:
+        `✅ Mapped field '${fieldName}' (${dataSource}.${dataField}) added via direct XML fallback ` +
+        `(the bridge could not resolve the same-session extension)` +
+        (fieldGroupName ? ` and registered in field group '${fieldGroupName}'` : '') +
+        `. File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddDataEntityExtensionField failed: ${err}`);
+    return null;
+  }
+}
+
 /** DeleteAction values accepted by the AxTable serialiser. */
 export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRestricted'] as const;
 
@@ -1207,6 +1394,15 @@ const ModifyD365FileArgsSchema = z.object({
   ),
   linkType: z.string().optional().describe(
     'Optional join/link type when joinSource is set (add-data-source): InnerJoin | OuterJoin | ExistJoin | NotExistJoin | Delayed | Active | Passive.'
+  ),
+
+  // For add-field on data-entity-extension: the mapped field's source binding.
+  // fieldName (already defined above) is the entity-facing field name.
+  dataField: z.string().optional().describe(
+    'Source table field name for add-field on a data-entity-extension (e.g. "MyField"). Required alongside dataSource.'
+  ),
+  dataSource: z.string().optional().describe(
+    'Source data-source/table name on the entity for add-field on a data-entity-extension (e.g. "MyTable"). Required alongside dataField.'
   ),
 
   // For modify-property
@@ -1733,6 +1929,76 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         break;
       }
       case 'add-field': {
+        // A data-entity-extension field is an AxDataEntityViewMappedField
+        // (Name/DataField/DataSource/Label/Mandatory) — it has no EDT and no base type,
+        // so none of the fieldType/fieldBaseType resolution below applies. It goes
+        // through the same bridge op with the mapped-field binding attached; the bridge
+        // routes on that binding, not on the object name.
+        if (objectType === 'data-entity-extension' && args.fieldName) {
+          const dataField = (args as any).dataField as string | undefined;
+          const dataSource = (args as any).dataSource as string | undefined;
+          if (!dataField || !dataSource) {
+            return {
+              content: [{
+                type: 'text',
+                text:
+                  `❌ add-field on a data-entity-extension needs BOTH dataField and dataSource — ` +
+                  `nothing was written.\n` +
+                  `A mapped field has no EDT of its own: it names an entity-side field (fieldName) that ` +
+                  `points at dataField on the entity data source dataSource.\n` +
+                  `Half of the binding serialises fine and then fails to compile, so it is refused here.\n` +
+                  `\n${renderOpSpec('add-field')}`,
+              }],
+              isError: true,
+            };
+          }
+          bridgeResult = await bridgeAddField(
+            context.bridge,
+            objectName,
+            args.fieldName,
+            '',              // no base type — the mapped-field path ignores it
+            undefined,       // no EDT
+            args.fieldMandatory,
+            args.fieldLabel,
+            { dataField, dataSource, fieldGroupName: (args as any).fieldGroupName },
+          );
+          // Same-session fallback, same shape as add-index/add-control: the bridge
+          // provider resolves against metadata roots fixed at startup, so an extension
+          // CREATED THIS SESSION reports "not found" no matter what (ec07ca3).
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlAddDataEntityExtensionField(
+              actualFilePath,
+              args.fieldName,
+              dataField,
+              dataSource,
+              args.fieldLabel,
+              (args as any).fieldGroupName,
+            );
+            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+          }
+          break;
+        }
+        // Everything else is an AxTableField. `required` on add-field is only fieldName
+        // (the mapped-field path above has no fieldType at all), so the type-specific half
+        // of the contract is enforced here instead of silently falling through to a null
+        // bridge result and a generic "required parameters may be missing".
+        if (args.fieldName && !args.fieldType) {
+          const mappedOnly = (args as any).dataField || (args as any).dataSource;
+          return {
+            content: [{
+              type: 'text',
+              text:
+                (mappedOnly
+                  ? `❌ dataField/dataSource describe a data-entity mapped field and do not apply to ` +
+                    `objectType="${objectType}" — nothing was written.\n` +
+                    `On a table or table-extension a field needs fieldType (its EDT).\n`
+                  : `❌ add-field on objectType="${objectType}" requires fieldType (the EDT) — ` +
+                    `nothing was written.\n`) +
+                `\n${renderOpSpec('add-field')}`,
+            }],
+            isError: true,
+          };
+        }
         if (args.fieldName && args.fieldType) {
           // fieldType is the EDT name; fieldBaseType is the primitive base type.
           // When fieldBaseType is omitted, auto-resolve it from the symbol index so the

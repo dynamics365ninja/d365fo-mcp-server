@@ -1439,12 +1439,33 @@ namespace D365MetadataBridge.Services
         }
 
         /// <summary>
-        /// Adds a field to a table.
-        /// Read → add field → Update.
+        /// Adds a field to a table, a table-extension, or a data-entity-view-extension.
+        ///
+        /// The data-entity case is structurally different and therefore keyed off its own
+        /// parameter pair rather than the object name: a mapped field is an
+        /// AxDataEntityViewMappedField (Name/DataField/DataSource/Label/Mandatory), which
+        /// carries NO EDT and no base type — it only points at a field on one of the
+        /// entity's data sources. Confirmed against this VM's metamodel:
+        /// AxDataEntityViewExtension.Fields is KeyedObjectCollection&lt;AxDataEntityViewField&gt;,
+        /// AxDataEntityViewMappedField derives from AxDataEntityViewField, and
+        /// IMetaDataEntityViewExtensionProvider implements
+        /// ISingleKeyedMetadataProvider&lt;AxDataEntityViewExtension&gt; directly (no cast needed,
+        /// unlike Forms/Tables where Update is an explicit interface member).
+        ///
+        /// fieldGroupName is optional and appends the new field to a BASE-entity field group
+        /// via &lt;FieldGroupExtensions&gt; (AutoReport is what the shipped extensions use). It is
+        /// not defaulted: guessing a group that the base entity does not have is a compile
+        /// error, and a field is perfectly valid over OData without one.
         /// </summary>
         public object AddField(string tableName, string fieldName, string fieldType,
-            string? edt, bool mandatory, string? label)
+            string? edt, bool mandatory, string? label,
+            string? dataField = null, string? dataSource = null, string? fieldGroupName = null)
         {
+            if (!string.IsNullOrEmpty(dataSource) || !string.IsNullOrEmpty(dataField))
+            {
+                return AddDataEntityMappedField(tableName, fieldName, dataField, dataSource, label, mandatory, fieldGroupName);
+            }
+
             var param = new WriteFieldParam
             {
                 Name = fieldName,
@@ -1478,6 +1499,73 @@ namespace D365MetadataBridge.Services
             }
 
             throw new ArgumentException($"Table or table-extension '{tableName}' not found");
+        }
+
+        /// <summary>
+        /// add-field on a data-entity-view-extension: appends an AxDataEntityViewMappedField
+        /// to &lt;Fields&gt;, optionally registering it in a base-entity field group.
+        /// </summary>
+        private object AddDataEntityMappedField(string extensionName, string fieldName,
+            string? dataField, string? dataSource, string? label, bool mandatory, string? fieldGroupName)
+        {
+            // Both halves of the binding are required. A mapped field with only one of them
+            // serialises fine and then fails to compile — the worst of both outcomes, which is
+            // why this is rejected here rather than written half-bound.
+            if (string.IsNullOrEmpty(dataSource))
+                throw new ArgumentException("add-field on a data-entity-extension requires dataSource (the entity data-source the field reads from) alongside dataField.");
+            if (string.IsNullOrEmpty(dataField))
+                throw new ArgumentException("add-field on a data-entity-extension requires dataField (the source table field) alongside dataSource.");
+
+            var axExt = _provider.DataEntityViewExtensions.Read(extensionName)
+                ?? throw new ArgumentException($"Data entity view extension '{extensionName}' not found");
+            var msi = GetModelSaveInfoForObject(_provider.DataEntityViewExtensions, extensionName);
+
+            foreach (AxDataEntityViewField existing in axExt.Fields)
+            {
+                if (string.Equals(existing.Name, fieldName, StringComparison.OrdinalIgnoreCase))
+                    return new { success = true, operation = "add-field", objectName = extensionName, fieldName, skipped = true, reason = $"field '{fieldName}' already exists", api = "IMetaDataEntityViewExtensionProvider.Update" };
+            }
+
+            var mapped = new AxDataEntityViewMappedField
+            {
+                Name = fieldName,
+                DataField = dataField,
+                DataSource = dataSource
+            };
+            if (!string.IsNullOrEmpty(label)) mapped.Label = label;
+            if (mandatory) mapped.Mandatory = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.AutoNoYes.Yes;
+            axExt.Fields.Add(mapped);
+
+            var groupAdded = false;
+            if (!string.IsNullOrEmpty(fieldGroupName))
+            {
+                var group = axExt.FieldGroupExtensions
+                    .FirstOrDefault(g => string.Equals(g.Name, fieldGroupName, StringComparison.OrdinalIgnoreCase));
+                if (group == null)
+                {
+                    group = new AxTableFieldGroupExtension { Name = fieldGroupName };
+                    axExt.FieldGroupExtensions.Add(group);
+                }
+                if (!group.Fields.Any(f => string.Equals(f.DataField, fieldName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    group.Fields.Add(new AxTableFieldGroupField { DataField = fieldName });
+                    groupAdded = true;
+                }
+            }
+
+            _provider.DataEntityViewExtensions.Update(axExt, msi);
+            return new
+            {
+                success = true,
+                operation = "add-field",
+                objectType = "data-entity-extension",
+                objectName = extensionName,
+                fieldName,
+                dataField,
+                dataSource,
+                fieldGroupName = groupAdded ? fieldGroupName : null,
+                api = "IMetaDataEntityViewExtensionProvider.Update"
+            };
         }
 
         /// <summary>

@@ -149,17 +149,17 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
           type: 'object',
           additionalProperties: true,
           description:
-            '[modify] Operation-specific parameters as ONE object. Common shapes: ' +
+            '[modify] Operation-specific parameters as ONE object — NEST them here. Common shapes: ' +
             'add-method {methodName, sourceCode} · replace-code {oldCode, newCode, methodName?} · ' +
-            'add-field {fieldName, fieldType(EDT), fieldBaseType?} · rename-field {fieldName, fieldNewName} · ' +
+            'add-field {fieldName, fieldType(EDT), fieldBaseType?}; data-entity-ext ' +
+            '{fieldName, dataField, dataSource} · rename-field {fieldName, fieldNewName} · ' +
             'add-index {indexName, indexFields[{fieldName}]} · add-relation {relationName, relatedTable, relationConstraints?} · ' +
             'add-field-group {fieldGroupName, fieldGroupFields?} · add-data-source {dataSourceName, dataSourceTable} · ' +
             'add-control {controlName, parentControl, controlDataSource?, controlDataField?} · ' +
             'enum ops {enumValueName, enumValueNewName?(modify-enum-value rename), enumValueLabel?, enumValueInt?} · add-menu-item-to-menu {menuItemToAdd} · ' +
             'modify-property {propertyPath, propertyValue} · add-table-method {tableMethodType, tableKeyField?} · ' +
             'add-display-method {methodName, displayMethodReturnEdt}. ' +
-            'A missing/wrong parameter returns the COMPLETE spec for that operation — follow it instead of guessing. ' +
-            'Same keys also accepted flat at top level.',
+            'A missing/wrong parameter returns the COMPLETE spec for that operation — follow it instead of guessing.',
         },
         createBackup: {
           type: 'boolean',

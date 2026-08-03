@@ -84,6 +84,32 @@ const FIELD_PRESENTATION_PROPERTIES: Array<[keyof AxDataEntityViewExtensionField
 ];
 
 /**
+ * ONE <AxDataEntityViewField> element, indented for the <Fields> collection.
+ *
+ * Exported so the modify path (add-field on an existing extension) emits the same
+ * bytes as the create path instead of growing a second copy of the element order —
+ * order is not cosmetic here, the metadata deserializer silently drops children it
+ * meets out of order.
+ */
+export function buildAxDataEntityViewFieldXml(
+  field: AxDataEntityViewExtensionFieldSpec,
+  defaultDataSource?: string
+): string {
+  let xml = '\t\t<AxDataEntityViewField xmlns=""';
+  xml += '\n\t\t\ti:type="AxDataEntityViewMappedField">';
+  xml += `\n\t\t\t<Name>${escapeXmlText(field.name)}</Name>`;
+  for (const [key, element] of FIELD_PRESENTATION_PROPERTIES) {
+    const value = field[key];
+    if (value === undefined || value === null || value === '') continue;
+    xml += `\n\t\t\t<${element}>${escapeXmlText(String(value))}</${element}>`;
+  }
+  xml += `\n\t\t\t<DataField>${escapeXmlText(field.dataField || field.name)}</DataField>`;
+  xml += `\n\t\t\t<DataSource>${escapeXmlText(String(field.dataSource || defaultDataSource))}</DataSource>`;
+  xml += '\n\t\t</AxDataEntityViewField>';
+  return xml;
+}
+
+/**
  * @param name  Full extension element name, dot notation: BaseEntity.<Prefix>Extension
  * @param properties
  *   - `fields`: [{ name, dataField?, dataSource?, … }] mapped fields added to the entity.
@@ -109,17 +135,7 @@ export function buildAxDataEntityViewExtensionXml(
   if (emittable.length > 0) {
     fieldsXml = '\t<Fields>';
     for (const f of emittable) {
-      fieldsXml += '\n\t\t<AxDataEntityViewField xmlns=""';
-      fieldsXml += '\n\t\t\ti:type="AxDataEntityViewMappedField">';
-      fieldsXml += `\n\t\t\t<Name>${escapeXmlText(f.name)}</Name>`;
-      for (const [key, element] of FIELD_PRESENTATION_PROPERTIES) {
-        const value = f[key];
-        if (value === undefined || value === null || value === '') continue;
-        fieldsXml += `\n\t\t\t<${element}>${escapeXmlText(String(value))}</${element}>`;
-      }
-      fieldsXml += `\n\t\t\t<DataField>${escapeXmlText(f.dataField || f.name)}</DataField>`;
-      fieldsXml += `\n\t\t\t<DataSource>${escapeXmlText(String(f.dataSource || defaultDataSource))}</DataSource>`;
-      fieldsXml += '\n\t\t</AxDataEntityViewField>';
+      fieldsXml += `\n${buildAxDataEntityViewFieldXml(f, defaultDataSource)}`;
     }
     fieldsXml += '\n\t</Fields>';
   }

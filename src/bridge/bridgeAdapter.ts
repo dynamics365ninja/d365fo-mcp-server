@@ -1213,6 +1213,7 @@ const BRIDGE_MODIFY_TYPES = new Set([
   'class', 'table', 'enum', 'edt',
   'form', 'query', 'view', 'data-entity',
   'class-extension', 'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
+  'data-entity-extension',
   'menu-item-action', 'menu-item-display', 'menu-item-output',
   'menu',
 ]);
@@ -1344,7 +1345,12 @@ export async function bridgeAddMethod(
 }
 
 /**
- * Adds a field to a table via the C# bridge (IMetadataProvider.Update()).
+ * Adds a field to a table, table-extension or data-entity-view-extension via the C#
+ * bridge (IMetadataProvider.Update()).
+ *
+ * `mapped` carries the data-entity mapped-field binding. A mapped field has no EDT and
+ * no base type — it points at a field on one of the entity's data sources — so passing
+ * it switches the bridge to the AxDataEntityViewMappedField path.
  */
 export async function bridgeAddField(
   bridge: BridgeClient | undefined,
@@ -1354,11 +1360,15 @@ export async function bridgeAddField(
   edt?: string,
   mandatory?: boolean,
   label?: string,
+  mapped?: { dataField?: string; dataSource?: string; fieldGroupName?: string },
 ): Promise<{ success: boolean; message: string } | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
 
   try {
-    const result = await bridge.addField(tableName, fieldName, fieldType, edt, mandatory, label);
+    const result = await bridge.addField(
+      tableName, fieldName, fieldType, edt, mandatory, label,
+      mapped?.dataField, mapped?.dataSource, mapped?.fieldGroupName,
+    );
     return {
       success: result.success,
       message: result.success

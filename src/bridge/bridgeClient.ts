@@ -713,9 +713,13 @@ export class BridgeClient extends EventEmitter {
     return this.call<BridgeWriteResult>('addMethod', { objectType, objectName, methodName, sourceCode });
   }
 
-  /** Add a field to a table via IMetadataProvider.Update() */
-  async addField(objectName: string, fieldName: string, fieldType: string, edt?: string, mandatory?: boolean, label?: string): Promise<BridgeWriteResult> {
-    return this.call<BridgeWriteResult>('addField', { objectName, fieldName, fieldType, edt, mandatory, label });
+  /**
+   * Add a field to a table, table-extension or data-entity-view-extension via
+   * IMetadataProvider.Update(). dataField/dataSource select the data-entity mapped-field
+   * path on the bridge side; fieldGroupName additionally appends it to a base-entity group.
+   */
+  async addField(objectName: string, fieldName: string, fieldType: string, edt?: string, mandatory?: boolean, label?: string, dataField?: string, dataSource?: string, fieldGroupName?: string): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addField', { objectName, fieldName, fieldType, edt, mandatory, label, dataField, dataSource, fieldGroupName });
   }
 
   /** Set a property on any object via IMetadataProvider.Update() */
