@@ -1517,6 +1517,11 @@ export async function bridgeAddRelation(
     // what it set, so the response says whether the on-disk fallback is still needed.
     const r = result as unknown as Record<string, unknown>;
     const propertiesWritten = typeof r.relationshipType === 'string';
+    // On a table-extension the bridge routes a relation the BASE table already owns into
+    // <RelationExtensions> and says so in `note` — the constraints landed, but the three
+    // relation properties belong to the base relation and were deliberately not written.
+    // Surfacing it verbatim is what stops that from reading as a plain "✅ added".
+    const note = typeof r.note === 'string' ? ` ${r.note}` : '';
     return {
       success: result.success,
       propertiesWritten,
@@ -1524,7 +1529,7 @@ export async function bridgeAddRelation(
         ? `✅ Relation '${relationName}' added via ${result.api}` +
           (propertiesWritten
             ? ` (Cardinality=${r.cardinality}, RelatedTableCardinality=${r.relatedTableCardinality}, RelationshipType=${r.relationshipType})`
-            : '')
+            : '') + note
         : `Bridge addRelation returned success=false`,
     };
   } catch (e) {

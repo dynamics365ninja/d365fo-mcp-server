@@ -1967,13 +1967,80 @@ namespace D365MetadataBridge.Services
             if (axExt != null)
             {
                 var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
-                axExt.Relations.Add(axRel);
                 var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
                     ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
+
+                // An extension has TWO relation collections and the caller's intent decides
+                // which one is correct:
+                //   <Relations>          — a brand-new relation the extension itself defines.
+                //   <RelationExtensions> — extra constraints bolted onto a relation the BASE
+                //                          table already owns.
+                // Writing a new <AxTableRelation> under a name the base table already uses is
+                // not "also fine": it is a second, competing relation of the same name. So when
+                // the name resolves on the base table, route to RelationExtensions instead —
+                // extending a shipped relation is the far more common ask, and it had no path
+                // at all before (#803).
+                if (BaseTableOwnsRelation(tableName, relationName))
+                {
+                    AxTableRelationExtension? relExt = null;
+                    foreach (AxTableRelationExtension re in axExt.RelationExtensions)
+                    {
+                        if (string.Equals(re.Name, relationName, StringComparison.OrdinalIgnoreCase))
+                        { relExt = re; break; }
+                    }
+                    if (relExt == null)
+                    {
+                        // KeyedObjectCollection — a duplicate key fails inside the SDK, so only
+                        // create the entry when this extension does not already carry one.
+                        relExt = new AxTableRelationExtension { Name = relationName };
+                        axExt.RelationExtensions.Add(relExt);
+                    }
+
+                    var added = new List<string>();
+                    if (constraints != null)
+                    {
+                        foreach (var c in constraints)
+                        {
+                            var field = c.Field ?? "";
+                            var already = false;
+                            foreach (AxTableRelationConstraint existing in relExt.RelationConstraints)
+                            {
+                                if (string.Equals(existing.Name, field, StringComparison.OrdinalIgnoreCase))
+                                { already = true; break; }
+                            }
+                            if (already) continue;
+                            relExt.RelationConstraints.Add(new AxTableRelationConstraintField
+                            {
+                                Name = field,
+                                Field = field,
+                                RelatedField = c.RelatedField ?? ""
+                            });
+                            added.Add(field);
+                        }
+                    }
+
+                    extProvider.Update(axExt, msi);
+                    // Cardinality / RelatedTableCardinality / RelationshipType are properties of
+                    // the BASE relation and an AxTableRelationExtension has nowhere to put them.
+                    // They are reported as skipped rather than echoed back, so neither the caller
+                    // nor the TS-side property patch can mistake them for written.
+                    return new
+                    {
+                        success = true, operation = "add-relation", objectName = tableName, relationName, relatedTable,
+                        target = "RelationExtensions",
+                        constraintsAdded = added,
+                        note = $"'{relationName}' is owned by the base table — the constraints were appended through <RelationExtensions>. " +
+                               "Cardinality / RelatedTableCardinality / RelationshipType belong to the base relation and were NOT written; change them on the base table if they are wrong.",
+                        api = "IMetaTableExtensionProvider.Update",
+                    };
+                }
+
+                axExt.Relations.Add(axRel);
                 extProvider.Update(axExt, msi);
                 return new
                 {
                     success = true, operation = "add-relation", objectName = tableName, relationName, relatedTable,
+                    target = "Relations",
                     cardinality = axRel.Cardinality.ToString(),
                     relatedTableCardinality = axRel.RelatedTableCardinality.ToString(),
                     relationshipType = axRel.RelationshipType.ToString(),
@@ -1982,6 +2049,29 @@ namespace D365MetadataBridge.Services
             }
 
             throw new ArgumentException($"Table or table-extension '{tableName}' not found");
+        }
+
+        /// <summary>
+        /// Does the table a given extension extends already own a relation of this name?
+        ///
+        /// The base table is the extension name up to the first dot ("CustTable.FooExtension"
+        /// → "CustTable"); an extension name always has one, a table name never can. A base
+        /// table that cannot be read (outside the provider's roots) is reported as NOT owning
+        /// the relation, so the caller falls back to the previous behaviour rather than
+        /// silently doing nothing.
+        /// </summary>
+        private bool BaseTableOwnsRelation(string extensionName, string relationName)
+        {
+            var dot = extensionName.IndexOf('.');
+            if (dot <= 0) return false;
+            var baseTable = _provider.Tables.Read(extensionName.Substring(0, dot));
+            if (baseTable == null) return false;
+            foreach (AxTableRelation rel in baseTable.Relations)
+            {
+                if (string.Equals(rel.Name, relationName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>Removes a relation from a table or table-extension.</summary>
