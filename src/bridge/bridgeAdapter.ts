@@ -1612,14 +1612,22 @@ export async function bridgeAddFieldToFieldGroup(
   tableName: string,
   groupName: string,
   fieldName: string,
+  extendBaseFieldGroup?: boolean,
 ): Promise<{ success: boolean; message: string } | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
-    const result = await bridge.addFieldToFieldGroup(tableName, groupName, fieldName);
+    const result = await bridge.addFieldToFieldGroup(tableName, groupName, fieldName, extendBaseFieldGroup);
+    // An OLD bridge binary silently ignores extendBaseFieldGroup and writes to
+    // <FieldGroups> instead — the field then lands in the file but never surfaces on
+    // the base table's forms. The C# echoes the flag back, so say which collection
+    // actually received it rather than letting the caller assume.
+    const target = (result as unknown as Record<string, unknown>).extendBaseFieldGroup === true
+      ? '<FieldGroupExtensions> (extending the base-table group)'
+      : '<FieldGroups>';
     return {
       success: result.success,
       message: result.success
-        ? `✅ Field '${fieldName}' added to group '${groupName}' via ${result.api}`
+        ? `✅ Field '${fieldName}' added to group '${groupName}' in ${target} via ${result.api}`
         : `Bridge addFieldToFieldGroup returned success=false`,
     };
   } catch (e) {

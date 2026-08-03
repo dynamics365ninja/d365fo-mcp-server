@@ -998,7 +998,8 @@ namespace D365MetadataBridge.Protocol
                             case "add-field-to-field-group":
                                 writeResult = _writeService.AddFieldToFieldGroup(objectName,
                                     S("fieldGroupName") ?? S("groupName") ?? throw new ArgumentException("Missing: fieldGroupName"),
-                                    S("fieldName") ?? throw new ArgumentException("Missing: fieldName"));
+                                    S("fieldName") ?? throw new ArgumentException("Missing: fieldName"),
+                                    B("extendBaseFieldGroup") ?? false);
                                 break;
 
                             case "addenumvalue":

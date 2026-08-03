@@ -655,9 +655,17 @@ async function directXmlAddIndex(
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
 
-    // Only tables carry an <Indexes> collection — bail on any other shape so a
-    // mis-typed objectType never corrupts a non-table file.
-    if (!/<AxTable\b/.test(content)) return null;
+    // Only tables and table-extensions carry an <Indexes> collection — bail on any
+    // other shape so a mis-typed objectType never corrupts an unrelated file.
+    //
+    // AxTableExtension is included deliberately: the bridge gained a table-extension
+    // path for AddIndex (#799), but its provider still resolves against metadata roots
+    // fixed at startup, so an extension CREATED THIS SESSION is unresolvable there —
+    // the very hole this fallback exists to close. The extension's <Indexes> collection
+    // holds the same <AxTableIndex> element as a table's, so the patch below is
+    // shape-identical. Note `\b` does NOT match `<AxTableExtension` (E is a word char),
+    // which is why the extension needs its own alternative rather than a looser pattern.
+    if (!/<AxTable\b/.test(content) && !/<AxTableExtension\b/.test(content)) return null;
 
     // Idempotent: if an index with this name already exists, report success
     // rather than writing a duplicate (mirrors directXmlAddControl).
@@ -1964,6 +1972,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             objectName,
             (args as any).fieldGroupName,
             args.fieldName,
+            (args as any).extendBaseFieldGroup,
           );
         }
         break;

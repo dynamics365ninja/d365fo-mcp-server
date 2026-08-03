@@ -784,8 +784,8 @@ export class BridgeClient extends EventEmitter {
   }
 
   /** Add a field reference to an existing field group */
-  async addFieldToFieldGroup(tableName: string, groupName: string, fieldName: string): Promise<BridgeWriteResult> {
-    return this.call<BridgeWriteResult>('addFieldToFieldGroup', { objectName: tableName, fieldGroupName: groupName, fieldName });
+  async addFieldToFieldGroup(tableName: string, groupName: string, fieldName: string, extendBaseFieldGroup?: boolean): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addFieldToFieldGroup', { objectName: tableName, fieldGroupName: groupName, fieldName, extendBaseFieldGroup });
   }
 
   /** Modify properties of an existing field on a table */
