@@ -312,9 +312,11 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
             signature: classData.extends ? `extends ${classData.extends}` : undefined,
             filePath,
             model,
-            description: classData.documentation,
+            description: classData.description || classData.documentation,
+            tags: classData.tags?.join(', '),
             extendsClass: classData.extends,
             implementsInterfaces: classData.implements?.join(', '),
+            usedTypes: classData.usedTypes?.join(', '),
           });
           insertedCount++;
           for (const method of classData.methods ?? []) {
@@ -325,7 +327,14 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
               signature: renderMethodSignature(method),
               filePath,
               model,
+              description: method.documentation,
+              tags: method.tags?.join(', '),
+              sourceSnippet: method.sourceSnippet,
               source: method.source,
+              complexity: method.complexity,
+              usedTypes: method.usedTypes?.join(', '),
+              methodCalls: method.methodCalls?.join(', '),
+              inlineComments: method.inlineComments,
             });
             insertedCount++;
           }
@@ -343,6 +352,7 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
           symbolIndex.addSymbol({
             name: tableData.name,
             type: 'table',
+            signature: tableData.label || undefined,
             filePath,
             model,
           });
@@ -372,8 +382,67 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
               signature: renderMethodSignature(method),
               filePath,
               model,
-              source: method.source,
+              description: method.documentation,
+              tags: method.tags?.join(', '),
               sourceSnippet: method.sourceSnippet,
+              source: method.source,
+              complexity: method.complexity,
+              usedTypes: method.usedTypes?.join(', '),
+              methodCalls: method.methodCalls?.join(', '),
+              inlineComments: method.inlineComments,
+            });
+            insertedCount++;
+          }
+        });
+        insert();
+      } else {
+        tx();
+      }
+    } else if (objectType === 'view') {
+      // #801: views/data entities (axview and axdataentityview both classify as
+      // 'view', see AOT_FOLDER_TYPE_MAP above) had no rebuild branch, so a resync
+      // deleted every field/method symbol and re-inserted a single bare object
+      // row — silently reporting success. Mirrors indexViews (the full build).
+      const result = await parser.parseViewFile(filePath, model);
+      if (result.success && result.data) {
+        const viewData = result.data;
+        const insert = symbolIndex.db.transaction(() => {
+          symbolIndex.addSymbol({
+            name: viewData.name,
+            type: 'view',
+            signature: viewData.type || undefined,
+            filePath,
+            model,
+            description: viewData.label,
+          });
+          insertedCount++;
+          for (const field of viewData.fields ?? []) {
+            symbolIndex.addSymbol({
+              name: field.name,
+              type: 'field',
+              parentName: viewData.name,
+              signature: field.dataMethod || field.dataField || undefined,
+              filePath,
+              model,
+            });
+            insertedCount++;
+          }
+          for (const method of viewData.methods ?? []) {
+            symbolIndex.addSymbol({
+              name: method.name,
+              type: 'method',
+              parentName: viewData.name,
+              signature: renderMethodSignature(method),
+              filePath,
+              model,
+              description: method.documentation,
+              tags: method.tags?.join(', '),
+              sourceSnippet: method.sourceSnippet,
+              source: method.source,
+              complexity: method.complexity,
+              usedTypes: method.usedTypes?.join(', '),
+              methodCalls: method.methodCalls?.join(', '),
+              inlineComments: method.inlineComments,
             });
             insertedCount++;
           }
