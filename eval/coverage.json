@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 78,
-    "covered": 72,
-    "percent": 92.3
+    "covered": 73,
+    "percent": 93.6
   },
   "leaves": [
     {
@@ -1006,10 +1006,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-dmf-entity-import-slice"
+      ]
     },
     {
       "id": "dual-write",

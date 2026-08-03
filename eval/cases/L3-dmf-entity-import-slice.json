@@ -8,7 +8,7 @@
     "AxDataEntityView"
   ],
   "golden_path": "eval/goldens/L3-dmf-entity-import-slice/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"
