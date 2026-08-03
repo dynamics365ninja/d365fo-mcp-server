@@ -1190,6 +1190,8 @@ const BRIDGE_MODIFY_OPS = new Set([
   'add-method', 'remove-method', 'replace-code',
   'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'remove-field',
   'add-index', 'remove-index',
+  'add-full-text-index', 'remove-full-text-index',
+  'add-table-mapping', 'remove-table-mapping',
   'add-relation', 'remove-relation',
   // No C# op backs these — they are served by a direct-XML writer, but they still
   // pass through the same modify gate.
@@ -1210,7 +1212,7 @@ const BRIDGE_MODIFY_OPS = new Set([
 const BRIDGE_MODIFY_TYPES = new Set([
   'class', 'table', 'enum', 'edt',
   'form', 'query', 'view', 'data-entity',
-  'class-extension', 'table-extension', 'form-extension', 'enum-extension',
+  'class-extension', 'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
   'data-entity-extension',
   'menu-item-action', 'menu-item-display', 'menu-item-output',
   'menu',
@@ -1343,7 +1345,12 @@ export async function bridgeAddMethod(
 }
 
 /**
- * Adds a field to a table via the C# bridge (IMetadataProvider.Update()).
+ * Adds a field to a table, table-extension or data-entity-view-extension via the C#
+ * bridge (IMetadataProvider.Update()).
+ *
+ * `mapped` carries the data-entity mapped-field binding. A mapped field has no EDT and
+ * no base type — it points at a field on one of the entity's data sources — so passing
+ * it switches the bridge to the AxDataEntityViewMappedField path.
  */
 export async function bridgeAddField(
   bridge: BridgeClient | undefined,
@@ -1353,11 +1360,15 @@ export async function bridgeAddField(
   edt?: string,
   mandatory?: boolean,
   label?: string,
+  mapped?: { dataField?: string; dataSource?: string; fieldGroupName?: string },
 ): Promise<{ success: boolean; message: string } | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
 
   try {
-    const result = await bridge.addField(tableName, fieldName, fieldType, edt, mandatory, label);
+    const result = await bridge.addField(
+      tableName, fieldName, fieldType, edt, mandatory, label,
+      mapped?.dataField, mapped?.dataSource, mapped?.fieldGroupName,
+    );
     return {
       success: result.success,
       message: result.success
@@ -1501,6 +1512,98 @@ export async function bridgeRemoveIndex(
 }
 
 /**
+ * Adds a full-text index to a table or table-extension via the C# bridge.
+ *
+ * <FullTextIndexes> is a separate collection with a separate element type
+ * (AxTableFullTextIndex), so add-index could never reach it.
+ */
+export async function bridgeAddFullTextIndex(
+  bridge: BridgeClient | undefined,
+  tableName: string,
+  indexName: string,
+  fields?: string[],
+): Promise<{ success: boolean; message: string } | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const result = await bridge.addFullTextIndex(tableName, indexName, fields);
+    return {
+      success: result.success,
+      message: result.success
+        ? `✅ Full-text index '${indexName}' added via ${result.api}`
+        : `Bridge addFullTextIndex returned success=false`,
+    };
+  } catch (e) {
+    console.error(`[BridgeAdapter] addFullTextIndex(${tableName}, ${indexName}) failed: ${e}`);
+    return { success: false, message: String(e) };
+  }
+}
+
+/** Removes a full-text index from a table or table-extension via the C# bridge. */
+export async function bridgeRemoveFullTextIndex(
+  bridge: BridgeClient | undefined,
+  tableName: string,
+  indexName: string,
+): Promise<{ success: boolean; message: string } | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const result = await bridge.removeFullTextIndex(tableName, indexName);
+    return {
+      success: result.success,
+      message: result.success
+        ? `✅ Full-text index '${indexName}' removed via ${result.api}`
+        : `Bridge removeFullTextIndex returned success=false`,
+    };
+  } catch (e) {
+    console.error(`[BridgeAdapter] removeFullTextIndex(${tableName}, ${indexName}) failed: ${e}`);
+    return { success: false, message: String(e) };
+  }
+}
+
+/** Adds a Map membership to a table or table-extension via the C# bridge. */
+export async function bridgeAddTableMapping(
+  bridge: BridgeClient | undefined,
+  tableName: string,
+  mapName: string,
+  mappingTable?: string,
+  connections?: Array<{ mapField?: string; mapFieldTo?: string }>,
+): Promise<{ success: boolean; message: string } | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const result = await bridge.addTableMapping(tableName, mapName, mappingTable, connections);
+    return {
+      success: result.success,
+      message: result.success
+        ? `✅ Mapping '${mapName}' added via ${result.api}`
+        : `Bridge addTableMapping returned success=false`,
+    };
+  } catch (e) {
+    console.error(`[BridgeAdapter] addTableMapping(${tableName}, ${mapName}) failed: ${e}`);
+    return { success: false, message: String(e) };
+  }
+}
+
+/** Removes a Map membership from a table or table-extension via the C# bridge. */
+export async function bridgeRemoveTableMapping(
+  bridge: BridgeClient | undefined,
+  tableName: string,
+  mapName: string,
+): Promise<{ success: boolean; message: string } | null> {
+  if (!bridge?.isReady || !bridge.metadataAvailable) return null;
+  try {
+    const result = await bridge.removeTableMapping(tableName, mapName);
+    return {
+      success: result.success,
+      message: result.success
+        ? `✅ Mapping '${mapName}' removed via ${result.api}`
+        : `Bridge removeTableMapping returned success=false`,
+    };
+  } catch (e) {
+    console.error(`[BridgeAdapter] removeTableMapping(${tableName}, ${mapName}) failed: ${e}`);
+    return { success: false, message: String(e) };
+  }
+}
+
+/**
  * Adds a relation to a table via the C# bridge.
  */
 export async function bridgeAddRelation(
@@ -1518,6 +1621,11 @@ export async function bridgeAddRelation(
     // what it set, so the response says whether the on-disk fallback is still needed.
     const r = result as unknown as Record<string, unknown>;
     const propertiesWritten = typeof r.relationshipType === 'string';
+    // On a table-extension the bridge routes a relation the BASE table already owns into
+    // <RelationExtensions> and says so in `note` — the constraints landed, but the three
+    // relation properties belong to the base relation and were deliberately not written.
+    // Surfacing it verbatim is what stops that from reading as a plain "✅ added".
+    const note = typeof r.note === 'string' ? ` ${r.note}` : '';
     return {
       success: result.success,
       propertiesWritten,
@@ -1525,7 +1633,7 @@ export async function bridgeAddRelation(
         ? `✅ Relation '${relationName}' added via ${result.api}` +
           (propertiesWritten
             ? ` (Cardinality=${r.cardinality}, RelatedTableCardinality=${r.relatedTableCardinality}, RelationshipType=${r.relationshipType})`
-            : '')
+            : '') + note
         : `Bridge addRelation returned success=false`,
     };
   } catch (e) {
@@ -1613,14 +1721,22 @@ export async function bridgeAddFieldToFieldGroup(
   tableName: string,
   groupName: string,
   fieldName: string,
+  extendBaseFieldGroup?: boolean,
 ): Promise<{ success: boolean; message: string } | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
-    const result = await bridge.addFieldToFieldGroup(tableName, groupName, fieldName);
+    const result = await bridge.addFieldToFieldGroup(tableName, groupName, fieldName, extendBaseFieldGroup);
+    // An OLD bridge binary silently ignores extendBaseFieldGroup and writes to
+    // <FieldGroups> instead — the field then lands in the file but never surfaces on
+    // the base table's forms. The C# echoes the flag back, so say which collection
+    // actually received it rather than letting the caller assume.
+    const target = (result as unknown as Record<string, unknown>).extendBaseFieldGroup === true
+      ? '<FieldGroupExtensions> (extending the base-table group)'
+      : '<FieldGroups>';
     return {
       success: result.success,
       message: result.success
-        ? `✅ Field '${fieldName}' added to group '${groupName}' via ${result.api}`
+        ? `✅ Field '${fieldName}' added to group '${groupName}' in ${target} via ${result.api}`
         : `Bridge addFieldToFieldGroup returned success=false`,
     };
   } catch (e) {

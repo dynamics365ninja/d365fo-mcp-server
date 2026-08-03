@@ -713,9 +713,13 @@ export class BridgeClient extends EventEmitter {
     return this.call<BridgeWriteResult>('addMethod', { objectType, objectName, methodName, sourceCode });
   }
 
-  /** Add a field to a table via IMetadataProvider.Update() */
-  async addField(objectName: string, fieldName: string, fieldType: string, edt?: string, mandatory?: boolean, label?: string): Promise<BridgeWriteResult> {
-    return this.call<BridgeWriteResult>('addField', { objectName, fieldName, fieldType, edt, mandatory, label });
+  /**
+   * Add a field to a table, table-extension or data-entity-view-extension via
+   * IMetadataProvider.Update(). dataField/dataSource select the data-entity mapped-field
+   * path on the bridge side; fieldGroupName additionally appends it to a base-entity group.
+   */
+  async addField(objectName: string, fieldName: string, fieldType: string, edt?: string, mandatory?: boolean, label?: string, dataField?: string, dataSource?: string, fieldGroupName?: string): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addField', { objectName, fieldName, fieldType, edt, mandatory, label, dataField, dataSource, fieldGroupName });
   }
 
   /** Set a property on any object via IMetadataProvider.Update() */
@@ -741,6 +745,31 @@ export class BridgeClient extends EventEmitter {
   /** Remove an index from a table */
   async removeIndex(tableName: string, indexName: string): Promise<BridgeWriteResult> {
     return this.call<BridgeWriteResult>('removeIndex', { objectName: tableName, indexName });
+  }
+
+  /** Add a full-text index to a table or table-extension (a separate collection from Indexes) */
+  async addFullTextIndex(tableName: string, indexName: string, fields?: string[]): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addFullTextIndex', { objectName: tableName, indexName, fields });
+  }
+
+  /** Remove a full-text index from a table or table-extension */
+  async removeFullTextIndex(tableName: string, indexName: string): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('removeFullTextIndex', { objectName: tableName, indexName });
+  }
+
+  /** Add a Map membership to a table or table-extension */
+  async addTableMapping(
+    tableName: string,
+    mapName: string,
+    mappingTable?: string,
+    connections?: Array<{ mapField?: string; mapFieldTo?: string }>,
+  ): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addTableMapping', { objectName: tableName, mapName, mappingTable, connections });
+  }
+
+  /** Remove a Map membership from a table or table-extension */
+  async removeTableMapping(tableName: string, mapName: string): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('removeTableMapping', { objectName: tableName, mapName });
   }
 
   /**
@@ -784,8 +813,8 @@ export class BridgeClient extends EventEmitter {
   }
 
   /** Add a field reference to an existing field group */
-  async addFieldToFieldGroup(tableName: string, groupName: string, fieldName: string): Promise<BridgeWriteResult> {
-    return this.call<BridgeWriteResult>('addFieldToFieldGroup', { objectName: tableName, fieldGroupName: groupName, fieldName });
+  async addFieldToFieldGroup(tableName: string, groupName: string, fieldName: string, extendBaseFieldGroup?: boolean): Promise<BridgeWriteResult> {
+    return this.call<BridgeWriteResult>('addFieldToFieldGroup', { objectName: tableName, fieldGroupName: groupName, fieldName, extendBaseFieldGroup });
   }
 
   /** Modify properties of an existing field on a table */

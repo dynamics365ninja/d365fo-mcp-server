@@ -911,12 +911,17 @@ namespace D365MetadataBridge.Protocol
 
                             case "addfield":
                             case "add-field":
+                                // dataField/dataSource select the data-entity-extension mapped-field
+                                // path inside AddField; both are absent for table/table-extension.
                                 writeResult = _writeService.AddField(objectName,
                                     S("fieldName") ?? throw new ArgumentException("Missing: fieldName"),
                                     S("fieldType") ?? "String",
                                     S("edt"),
                                     B("mandatory") ?? false,
-                                    S("label"));
+                                    S("label"),
+                                    S("dataField"),
+                                    S("dataSource"),
+                                    S("fieldGroupName"));
                                 break;
 
                             case "modifyfield":
@@ -963,6 +968,33 @@ namespace D365MetadataBridge.Protocol
                                     S("indexName") ?? throw new ArgumentException("Missing: indexName"));
                                 break;
 
+                            case "addfulltextindex":
+                            case "add-full-text-index":
+                                writeResult = _writeService.AddFullTextIndex(objectName,
+                                    S("indexName") ?? throw new ArgumentException("Missing: indexName"),
+                                    op.GetTypedParam<System.Collections.Generic.List<string>>("fields"));
+                                break;
+
+                            case "removefulltextindex":
+                            case "remove-full-text-index":
+                                writeResult = _writeService.RemoveFullTextIndex(objectName,
+                                    S("indexName") ?? throw new ArgumentException("Missing: indexName"));
+                                break;
+
+                            case "addtablemapping":
+                            case "add-table-mapping":
+                                writeResult = _writeService.AddTableMapping(objectName,
+                                    S("mapName") ?? throw new ArgumentException("Missing: mapName"),
+                                    S("mappingTable"),
+                                    op.GetTypedParam<System.Collections.Generic.List<WriteMappingConnection>>("connections"));
+                                break;
+
+                            case "removetablemapping":
+                            case "remove-table-mapping":
+                                writeResult = _writeService.RemoveTableMapping(objectName,
+                                    S("mapName") ?? throw new ArgumentException("Missing: mapName"));
+                                break;
+
                             case "addrelation":
                             case "add-relation":
                                 writeResult = _writeService.AddRelation(objectName,
@@ -998,7 +1030,8 @@ namespace D365MetadataBridge.Protocol
                             case "add-field-to-field-group":
                                 writeResult = _writeService.AddFieldToFieldGroup(objectName,
                                     S("fieldGroupName") ?? S("groupName") ?? throw new ArgumentException("Missing: fieldGroupName"),
-                                    S("fieldName") ?? throw new ArgumentException("Missing: fieldName"));
+                                    S("fieldName") ?? throw new ArgumentException("Missing: fieldName"),
+                                    B("extendBaseFieldGroup") ?? false);
                                 break;
 
                             case "addenumvalue":

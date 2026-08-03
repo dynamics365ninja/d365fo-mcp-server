@@ -23,6 +23,8 @@ import {
   bridgeAddMethod, bridgeRemoveMethod, bridgeAddField, bridgeSetProperty, bridgeReplaceCode,
   bridgeModifyField, bridgeRenameField, bridgeRemoveField, bridgeReplaceAllFields,
   bridgeAddIndex, bridgeRemoveIndex, bridgeAddRelation, bridgeRemoveRelation,
+  bridgeAddFullTextIndex, bridgeRemoveFullTextIndex,
+  bridgeAddTableMapping, bridgeRemoveTableMapping,
   bridgeAddFieldGroup, bridgeRemoveFieldGroup, bridgeAddFieldToFieldGroup,
   bridgeAddEnumValue, bridgeModifyEnumValue, bridgeRemoveEnumValue,
   bridgeAddControl, bridgeAddDataSource,
@@ -37,6 +39,7 @@ import {
   AX_TABLE_NON_EXISTENT_PROPERTIES,
 } from '../utils/axTablePropertyOrder.js';
 import { upsertAxFormDesignProperty } from '../utils/axFormDesignProperties.js';
+import { buildAxDataEntityViewFieldXml } from './dataEntityViewExtensionXml.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import {
@@ -655,9 +658,17 @@ async function directXmlAddIndex(
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
 
-    // Only tables carry an <Indexes> collection — bail on any other shape so a
-    // mis-typed objectType never corrupts a non-table file.
-    if (!/<AxTable\b/.test(content)) return null;
+    // Only tables and table-extensions carry an <Indexes> collection — bail on any
+    // other shape so a mis-typed objectType never corrupts an unrelated file.
+    //
+    // AxTableExtension is included deliberately: the bridge gained a table-extension
+    // path for AddIndex (#799), but its provider still resolves against metadata roots
+    // fixed at startup, so an extension CREATED THIS SESSION is unresolvable there —
+    // the very hole this fallback exists to close. The extension's <Indexes> collection
+    // holds the same <AxTableIndex> element as a table's, so the patch below is
+    // shape-identical. Note `\b` does NOT match `<AxTableExtension` (E is a word char),
+    // which is why the extension needs its own alternative rather than a looser pattern.
+    if (!/<AxTable\b/.test(content) && !/<AxTableExtension\b/.test(content)) return null;
 
     // Idempotent: if an index with this name already exists, report success
     // rather than writing a duplicate (mirrors directXmlAddControl).
@@ -711,95 +722,127 @@ async function directXmlAddIndex(
 }
 
 /**
- * Direct XML fallback for add-data-source on a FORM EXTENSION.
+ * Locates ONE top-level collection element inside a root element's body, e.g.
+ * `<Fields>` directly under `<AxDataEntityViewExtension>`.
  *
- * The C# bridge's AddDataSource only ever resolves objectType "form" via
- * _provider.Forms.Read(name) — there is no "form-extension" case at all, so it
- * throws "add-data-source not supported for objectType 'form-extension'" for
- * every call against an extension (unlike add-control, which already has a
- * working direct-XML fallback for exactly this gap). This mirrors that same
- * fallback shape for data sources: writes an <AxFormDataSource> element
- * straight into the extension's <DataSources> collection, in the field order
- * confirmed against a real Microsoft-shipped AxForm data source (Fields,
- * ReferencedDataSources, JoinSource, LinkType, DataSourceLinks,
- * DerivedDataSources) — AutoSearch/AllowCheck/InsertIfEmpty are left out since
- * they're optional and only ever appear when a designer tool re-serializes an
- * already-materialized default.
+ * A plain `content.replace('</Fields>', …)` is wrong here and silently so: an
+ * AxDataEntityViewExtension carries `<FieldGroupExtensions>` BEFORE `<Fields>`, and
+ * each `<AxTableFieldGroupExtension>` inside it has a nested `<Fields>` of its own.
+ * The first `</Fields>` in the file therefore closes the field GROUP, and the new
+ * element lands in a collection the deserializer will not read it from.
+ *
+ * Depth-counts from the root's opening tag so only a DIRECT child matches.
+ * Returns the insertion offset (just before the collection's closing tag), or a
+ * `selfClosingAt` range when the collection is `<Fields />` and must be expanded.
  */
-async function directXmlAddDataSource(
-  filePath: string,
-  dsName: string,
-  table: string,
-  joinSource?: string,
-  linkType?: string,
-): Promise<{ success: boolean; message: string } | null> {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+export function findTopLevelCollection(
+  content: string,
+  rootElement: string,
+  collection: string,
+): { insertAt: number } | { selfClosingAt: [number, number] } | null {
+  const rootOpen = new RegExp(`<${rootElement}\\b[^>]*>`).exec(content);
+  if (!rootOpen) return null;
 
-    // Only form extensions carry a <DataSources> collection shaped like this —
-    // bail on any other file shape so a mis-typed objectType never corrupts it.
-    if (!/<AxFormExtension\b/.test(content)) return null;
-
-    // Idempotency: a data source with this Name, or one already bound to the
-    // same table, already exists → skip (mirrors the bridge's own dedup logic).
-    if (new RegExp(`<AxFormDataSource[^>]*>\\s*<Name>${dsName}</Name>`).test(content)) {
-      return {
-        success: true,
-        message: `✅ Data source '${dsName}' already present in ${filePath} — skipped (idempotent).`,
-      };
+  let pos = rootOpen.index + rootOpen[0].length;
+  let depth = 0;
+  const tagRe = /<(\/?)([A-Za-z_][\w.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
+  tagRe.lastIndex = pos;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(content)) !== null) {
+    const [full, closing, name, , selfClosing] = m;
+    if (closing) {
+      if (name === rootElement && depth === 0) return null;
+      depth--;
+      continue;
     }
-    if (new RegExp(`<Table>${table}</Table>`).test(content)) {
-      return {
-        success: true,
-        message: `✅ A data source already binds table '${table}' in ${filePath} — skipped (idempotent).`,
-      };
+    if (selfClosing) {
+      if (depth === 0 && name === collection) {
+        return { selfClosingAt: [m.index, m.index + full.length] };
+      }
+      continue;
     }
-
-    const newElement =
-      `\t\t<AxFormDataSource xmlns="">\n` +
-      `\t\t\t<Name>${dsName}</Name>\n` +
-      `\t\t\t<Table>${table}</Table>\n` +
-      `\t\t\t<Fields />\n` +
-      `\t\t\t<ReferencedDataSources />\n` +
-      (joinSource ? `\t\t\t<JoinSource>${joinSource}</JoinSource>\n` : '') +
-      (linkType ? `\t\t\t<LinkType>${linkType}</LinkType>\n` : '') +
-      `\t\t\t<DataSourceLinks />\n` +
-      `\t\t\t<DerivedDataSources />\n` +
-      `\t\t</AxFormDataSource>`;
-
-    let updated: string;
-    if (content.includes('<DataSources />')) {
-      updated = content.replace('<DataSources />', `<DataSources>\n${newElement}\n\t</DataSources>`);
-    } else if (content.includes('</DataSources>')) {
-      updated = content.replace('</DataSources>', `${newElement}\n\t</DataSources>`);
-    } else {
-      return null; // no <DataSources> collection — not a form-extension shape we recognise
+    if (depth === 0 && name === collection) {
+      // Walk to this element's matching close tag at the same depth.
+      let inner = 1;
+      const innerRe = new RegExp(tagRe.source, 'g');
+      innerRe.lastIndex = m.index + full.length;
+      let im: RegExpExecArray | null;
+      while ((im = innerRe.exec(content)) !== null) {
+        if (im[4]) continue;            // self-closing: no depth change
+        if (im[1]) {
+          inner--;
+          if (inner === 0) return { insertAt: im.index };
+        } else {
+          inner++;
+        }
+      }
+      return null;
     }
-
-    if (updated === content) return null;
-
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
-    console.error(`[modify_d365fo_file] ✅ directXmlAddDataSource: added '${dsName}' to ${filePath}`);
-    return {
-      success: true,
-      message: `✅ Data source '${dsName}' added via direct XML fallback (bridge has no form-extension support for add-data-source). File: ${filePath}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlAddDataSource failed: ${err}`);
-    return null;
+    depth++;
   }
+  return null;
+}
+
+/**
+ * Appends `fieldName` to a base-entity field group inside <FieldGroupExtensions>,
+ * creating the <AxTableFieldGroupExtension> entry when the group is not there yet.
+ *
+ * <FieldGroups> (groups the extension OWNS) and <FieldGroupExtensions> (appending to a
+ * group the BASE entity owns) are not interchangeable — picking the wrong one is silent,
+ * the field lands in the file and never surfaces. This only ever touches the latter.
+ */
+function upsertDataEntityFieldGroupExtension(
+  content: string,
+  groupName: string,
+  fieldName: string,
+): string | null {
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const entry = `\t\t\t\t<AxTableFieldGroupField>\n\t\t\t\t\t<DataField>${fieldName}</DataField>\n\t\t\t\t</AxTableFieldGroupField>`;
+
+  // Scope every probe to THIS group's own block. Searching the whole file for
+  // <DataField>{fieldName}</DataField> also finds the mapped field just written into
+  // <Fields> — the group would then look "already registered" and silently stay empty.
+  const blockRe = new RegExp(
+    `<AxTableFieldGroupExtension>\\s*<Name>${escapeRe(groupName)}</Name>[\\s\\S]*?</AxTableFieldGroupExtension>`,
+  );
+  const block = blockRe.exec(content);
+  if (block) {
+    if (new RegExp(`<DataField>${escapeRe(fieldName)}</DataField>`).test(block[0])) {
+      return content; // already registered in this group
+    }
+    const updatedBlock = block[0].includes('<Fields />')
+      ? block[0].replace('<Fields />', `<Fields>\n${entry}\n\t\t\t</Fields>`)
+      : block[0].replace('</Fields>', `${entry}\n\t\t\t</Fields>`);
+    return content.slice(0, block.index) + updatedBlock + content.slice(block.index + block[0].length);
+  }
+
+  const newGroup =
+    `\t\t<AxTableFieldGroupExtension>\n` +
+    `\t\t\t<Name>${groupName}</Name>\n` +
+    `\t\t\t<Fields>\n${entry}\n\t\t\t</Fields>\n` +
+    `\t\t</AxTableFieldGroupExtension>`;
+
+  const target = findTopLevelCollection(content, 'AxDataEntityViewExtension', 'FieldGroupExtensions');
+  if (!target) return null;
+  if ('selfClosingAt' in target) {
+    const [from, to] = target.selfClosingAt;
+    return `${content.slice(0, from)}<FieldGroupExtensions>\n${newGroup}\n\t</FieldGroupExtensions>${content.slice(to)}`;
+  }
+  return `${content.slice(0, target.insertAt)}${newGroup}\n\t${content.slice(target.insertAt)}`;
 }
 
 /**
  * Direct XML fallback for add-field on a DATA-ENTITY-EXTENSION.
  *
- * The bridge has no AddField path for data-entity(-extension) objects at all —
- * AxDataEntityViewMappedField (Name/DataField/DataSource/Label) is structurally
- * unlike an AxTableField (EDT/mandatory/base-type), so bridgeAddField's generic
- * table/table-extension resolution doesn't apply here. This writes the mapped
- * field element straight into the extension's <Fields> collection, matching the
- * shape Microsoft's own tooling produces for AxDataEntityViewExtension.
+ * The bridge handles this via IMetaDataEntityViewExtensionProvider; this is the
+ * same-session escape hatch that add-index and add-control already have — the
+ * provider resolves against metadata roots fixed at startup, so an extension
+ * created THIS session is invisible to it.
+ *
+ * The element itself comes from the shared builder (dataEntityViewExtensionXml.ts)
+ * so the modify path cannot drift from the create path: sub-element ORDER is not
+ * cosmetic, the deserializer drops children it meets out of order, and Label must
+ * precede the DataField/DataSource binding pair.
  */
 async function directXmlAddDataEntityExtensionField(
   filePath: string,
@@ -807,6 +850,7 @@ async function directXmlAddDataEntityExtensionField(
   dataField: string,
   dataSource: string,
   label?: string,
+  fieldGroupName?: string,
 ): Promise<{ success: boolean; message: string } | null> {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
@@ -816,29 +860,33 @@ async function directXmlAddDataEntityExtensionField(
     // shaped like this — bail on any other file shape.
     if (!/<AxDataEntityViewExtension\b/.test(content)) return null;
 
-    // Idempotency: a field with this Name already present → skip.
-    if (new RegExp(`<Name>${fieldName}</Name>`).test(content)) {
+    // Idempotency: scoped to the mapped-field elements. Matching a bare
+    // <Name>…</Name> anywhere in the file also hits the extension's own name, every
+    // field-group name and every AxPropertyModification — a false hit there answers
+    // "already present" and writes nothing.
+    const escapedName = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`<AxDataEntityViewField\\b[^>]*>\\s*<Name>${escapedName}</Name>`).test(content)) {
       return {
         success: true,
         message: `✅ Field '${fieldName}' already present in ${filePath} — skipped (idempotent).`,
       };
     }
 
-    const newElement =
-      `\t\t<AxDataEntityViewField xmlns="" i:type="AxDataEntityViewMappedField">\n` +
-      `\t\t\t<Name>${fieldName}</Name>\n` +
-      `\t\t\t<DataField>${dataField}</DataField>\n` +
-      `\t\t\t<DataSource>${dataSource}</DataSource>\n` +
-      (label ? `\t\t\t<Label>${label}</Label>\n` : '') +
-      `\t\t</AxDataEntityViewField>`;
+    const newElement = buildAxDataEntityViewFieldXml({ name: fieldName, dataField, dataSource, label });
+
+    const target = findTopLevelCollection(content, 'AxDataEntityViewExtension', 'Fields');
+    if (!target) return null;
 
     let updated: string;
-    if (content.includes('<Fields />')) {
-      updated = content.replace('<Fields />', `<Fields>\n${newElement}\n\t</Fields>`);
-    } else if (content.includes('</Fields>')) {
-      updated = content.replace('</Fields>', `${newElement}\n\t</Fields>`);
+    if ('selfClosingAt' in target) {
+      const [from, to] = target.selfClosingAt;
+      updated = `${content.slice(0, from)}<Fields>\n${newElement}\n\t</Fields>${content.slice(to)}`;
     } else {
-      return null; // no <Fields> collection — not a shape we recognise
+      updated = `${content.slice(0, target.insertAt)}${newElement}\n\t${content.slice(target.insertAt)}`;
+    }
+
+    if (fieldGroupName) {
+      updated = upsertDataEntityFieldGroupExtension(updated, fieldGroupName, fieldName) ?? updated;
     }
 
     if (updated === content) return null;
@@ -847,7 +895,11 @@ async function directXmlAddDataEntityExtensionField(
     console.error(`[modify_d365fo_file] ✅ directXmlAddDataEntityExtensionField: added '${fieldName}' to ${filePath}`);
     return {
       success: true,
-      message: `✅ Field '${fieldName}' added via direct XML fallback (bridge has no data-entity-extension support for add-field). File: ${filePath}`,
+      message:
+        `✅ Mapped field '${fieldName}' (${dataSource}.${dataField}) added via direct XML fallback ` +
+        `(the bridge could not resolve the same-session extension)` +
+        (fieldGroupName ? ` and registered in field group '${fieldGroupName}'` : '') +
+        `. File: ${filePath}`,
     };
   } catch (err) {
     console.error(`[modify_d365fo_file] directXmlAddDataEntityExtensionField failed: ${err}`);
@@ -1096,6 +1148,8 @@ const ModifyD365FileArgsSchema = z.object({
     'add-method', 'remove-method', 'replace-code',
     'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'remove-field',
     'add-index', 'remove-index',
+    'add-full-text-index', 'remove-full-text-index',
+    'add-table-mapping', 'remove-table-mapping',
     'add-relation', 'remove-relation',
     'add-delete-action', 'remove-delete-action',
     'add-field-group', 'remove-field-group', 'add-field-to-field-group',
@@ -1287,6 +1341,16 @@ const ModifyD365FileArgsSchema = z.object({
   indexEnabled: z.union([z.boolean(), z.string()]).optional().describe(
     'Whether index is enabled (default: true). Accepts true/false or the XML spelling "Yes"/"No".'
   ),
+
+  // For add-table-mapping / remove-table-mapping (table, table-extension).
+  // <Mappings> records which AxMap the table takes part in — a different collection and a
+  // different element type from <Relations>, so add-relation cannot express it.
+  mapName: z.string().optional().describe('Name of the AxMap this table takes part in (add-table-mapping / remove-table-mapping).'),
+  mappingTable: z.string().optional().describe('Mapped table name for add-table-mapping. Defaults to mapName.'),
+  mappingConnections: z.array(z.object({
+    mapField: z.string().describe('Field name on the MAP.'),
+    mapFieldTo: z.string().describe('Field name on THIS table.'),
+  })).optional().describe('Field pairings for add-table-mapping. Both sides are required per connection.'),
 
   // For add-relation / remove-relation (table, table-extension)
   relationName: z.string().optional().describe('Relation name for add-relation / remove-relation.'),
@@ -1865,19 +1929,75 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         break;
       }
       case 'add-field': {
-        // data-entity-extension fields are AxDataEntityViewMappedField (Name/DataField/
-        // DataSource/Label) — structurally unlike an AxTableField, and the bridge has no
-        // provider path for this type at all. Handled entirely via direct XML, before the
-        // table-field branch below (which needs fieldType/EDT resolution that doesn't apply here).
-        if (objectType === 'data-entity-extension' && args.fieldName && (args as any).dataField && (args as any).dataSource) {
-          bridgeResult = await directXmlAddDataEntityExtensionField(
-            actualFilePath,
+        // A data-entity-extension field is an AxDataEntityViewMappedField
+        // (Name/DataField/DataSource/Label/Mandatory) — it has no EDT and no base type,
+        // so none of the fieldType/fieldBaseType resolution below applies. It goes
+        // through the same bridge op with the mapped-field binding attached; the bridge
+        // routes on that binding, not on the object name.
+        if (objectType === 'data-entity-extension' && args.fieldName) {
+          const dataField = (args as any).dataField as string | undefined;
+          const dataSource = (args as any).dataSource as string | undefined;
+          if (!dataField || !dataSource) {
+            return {
+              content: [{
+                type: 'text',
+                text:
+                  `❌ add-field on a data-entity-extension needs BOTH dataField and dataSource — ` +
+                  `nothing was written.\n` +
+                  `A mapped field has no EDT of its own: it names an entity-side field (fieldName) that ` +
+                  `points at dataField on the entity data source dataSource.\n` +
+                  `Half of the binding serialises fine and then fails to compile, so it is refused here.\n` +
+                  `\n${renderOpSpec('add-field')}`,
+              }],
+              isError: true,
+            };
+          }
+          bridgeResult = await bridgeAddField(
+            context.bridge,
+            objectName,
             args.fieldName,
-            (args as any).dataField,
-            (args as any).dataSource,
+            '',              // no base type — the mapped-field path ignores it
+            undefined,       // no EDT
+            args.fieldMandatory,
             args.fieldLabel,
+            { dataField, dataSource, fieldGroupName: (args as any).fieldGroupName },
           );
+          // Same-session fallback, same shape as add-index/add-control: the bridge
+          // provider resolves against metadata roots fixed at startup, so an extension
+          // CREATED THIS SESSION reports "not found" no matter what (ec07ca3).
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlAddDataEntityExtensionField(
+              actualFilePath,
+              args.fieldName,
+              dataField,
+              dataSource,
+              args.fieldLabel,
+              (args as any).fieldGroupName,
+            );
+            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+          }
           break;
+        }
+        // Everything else is an AxTableField. `required` on add-field is only fieldName
+        // (the mapped-field path above has no fieldType at all), so the type-specific half
+        // of the contract is enforced here instead of silently falling through to a null
+        // bridge result and a generic "required parameters may be missing".
+        if (args.fieldName && !args.fieldType) {
+          const mappedOnly = (args as any).dataField || (args as any).dataSource;
+          return {
+            content: [{
+              type: 'text',
+              text:
+                (mappedOnly
+                  ? `❌ dataField/dataSource describe a data-entity mapped field and do not apply to ` +
+                    `objectType="${objectType}" — nothing was written.\n` +
+                    `On a table or table-extension a field needs fieldType (its EDT).\n`
+                  : `❌ add-field on objectType="${objectType}" requires fieldType (the EDT) — ` +
+                    `nothing was written.\n`) +
+                `\n${renderOpSpec('add-field')}`,
+            }],
+            isError: true,
+          };
         }
         if (args.fieldName && args.fieldType) {
           // fieldType is the EDT name; fieldBaseType is the primitive base type.
@@ -2023,6 +2143,53 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         }
         break;
       }
+      case 'add-full-text-index': {
+        if ((args as any).indexName) {
+          // indexFields carries the same [{fieldName}] shape add-index documents.
+          const fullTextFields: string[] | undefined = Array.isArray((args as any).indexFields)
+            ? (args as any).indexFields.map((f: any) => (typeof f === 'string' ? f : f?.fieldName)).filter(Boolean)
+            : undefined;
+          bridgeResult = await bridgeAddFullTextIndex(
+            context.bridge,
+            objectName,
+            (args as any).indexName,
+            fullTextFields,
+          );
+        }
+        break;
+      }
+      case 'remove-full-text-index': {
+        if ((args as any).indexName) {
+          bridgeResult = await bridgeRemoveFullTextIndex(
+            context.bridge,
+            objectName,
+            (args as any).indexName,
+          );
+        }
+        break;
+      }
+      case 'add-table-mapping': {
+        if ((args as any).mapName) {
+          bridgeResult = await bridgeAddTableMapping(
+            context.bridge,
+            objectName,
+            (args as any).mapName,
+            (args as any).mappingTable,
+            (args as any).mappingConnections,
+          );
+        }
+        break;
+      }
+      case 'remove-table-mapping': {
+        if ((args as any).mapName) {
+          bridgeResult = await bridgeRemoveTableMapping(
+            context.bridge,
+            objectName,
+            (args as any).mapName,
+          );
+        }
+        break;
+      }
       case 'add-relation': {
         if ((args as any).relationName && (args as any).relatedTable) {
           // relationConstraints is documented as [{ fieldName, relatedFieldName }], but the
@@ -2132,6 +2299,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             objectName,
             (args as any).fieldGroupName,
             args.fieldName,
+            (args as any).extendBaseFieldGroup,
           );
         }
         break;
@@ -2331,19 +2499,6 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             (args as any).joinSource,
             (args as any).linkType,
           );
-          // Fallback: the bridge's AddDataSource has no "form-extension" case at
-          // all (only "form" via _provider.Forms), so it always throws for an
-          // extension target. Write the data source element straight into the XML.
-          if (objectType === 'form-extension' && (!bridgeResult || !bridgeResult.success)) {
-            const xmlFallbackResult = await directXmlAddDataSource(
-              actualFilePath,
-              (args as any).dataSourceName,
-              (args as any).dataSourceTable,
-              (args as any).joinSource,
-              (args as any).linkType,
-            );
-            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
-          }
         }
         break;
       }

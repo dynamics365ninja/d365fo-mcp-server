@@ -219,6 +219,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'table-extension only: true = extend an existing base-table group (<FieldGroupExtensions>); ' +
       'false = add to a group defined in the extension.',
   },
+  // table mappings (AxMap membership)
+  mapName: { type: 'string', description: 'Name of the AxMap the table takes part in.' },
+  mappingTable: { type: 'string', description: 'Mapped table name (defaults to mapName).' },
+  mappingConnections: {
+    type: 'array of {mapField, mapFieldTo}',
+    description: 'Field pairings: mapField is on the MAP, mapFieldTo on this table. Both required.',
+  },
   // form data sources
   dataSourceName: { type: 'string', description: 'Data source reference name (e.g. "MyTable_1").' },
   dataSourceTable: { type: 'string', description: 'Base table for the data source (e.g. "MyTable").' },
@@ -303,11 +310,14 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldBaseType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource'],
+    optional: ['fieldType', 'fieldBaseType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName'],
     mutationOneOf: ['fieldType', 'dataField'],
     note:
-      'Table/table-extension: pass fieldType (EDT). data-entity-extension: pass dataField + dataSource ' +
-      'instead — the mapped field has no EDT of its own, it just points at a source table field.',
+      'Table/table-extension: fieldType (EDT) is REQUIRED. data-entity-extension: pass dataField AND ' +
+      'dataSource instead — BOTH, or nothing is written; a mapped field has no EDT of its own, it points ' +
+      'at dataField on the entity data source dataSource. fieldGroupName is optional and only applies to ' +
+      'a data-entity-extension: it appends the field to that BASE-entity field group (shipped extensions ' +
+      'use AutoReport). It is not defaulted — a group the base entity does not have is a compile error.',
   },
   'modify-field': {
     required: ['fieldName'],
@@ -344,6 +354,18 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     optional: ['indexAllowDuplicates', 'indexAlternateKey', 'indexEnabled'],
   },
   'remove-index': { required: ['indexName'], optional: [] },
+  'add-full-text-index': {
+    required: ['indexName', 'indexFields'],
+    optional: [],
+    note: '<FullTextIndexes> is a separate collection from <Indexes> with its own element type — add-index cannot reach it. Table and table-extension.',
+  },
+  'remove-full-text-index': { required: ['indexName'], optional: [] },
+  'add-table-mapping': {
+    required: ['mapName'],
+    optional: ['mappingTable', 'mappingConnections'],
+    note: 'Records that the table takes part in an AxMap. mapName is the MAP; each connection pairs mapField (on the map) with mapFieldTo (on this table). Table and table-extension.',
+  },
+  'remove-table-mapping': { required: ['mapName'], optional: [] },
   'add-relation': {
     required: ['relationName', 'relatedTable'],
     optional: ['relationConstraints', 'relationCardinality', 'relatedTableCardinality', 'relationshipType'],
@@ -574,10 +596,10 @@ export function renderOpSpec(operation: string): string {
   const op = D365FO_FILE_OP_SPECS[operation];
   if (!op) return `Unknown operation '${operation}'. Valid operations: ${Object.keys(D365FO_FILE_OP_SPECS).join(', ')}.`;
   const lines = [
-    `Parameter spec for operation '${operation}' — pass these nested inside \`params\`: {${[...op.required, ...op.optional].join(', ')}}. ` +
-    `(A few pre-refactor names also work flat at top level for legacy callers, but that is not guaranteed for ` +
-    `any of the params below — many MCP clients validate against the base wire schema and silently drop ` +
-    `anything else before it reaches this server. Nest inside \`params\` to be safe.)`,
+    `Parameter spec for operation '${operation}' — pass these NESTED inside \`params\`. ` +
+    `(Flat top-level keys still work for a few legacy names, but do not rely on it: strict MCP clients ` +
+    `validate against the base wire schema and drop anything undeclared before it reaches this server, ` +
+    `which then surfaces as a "required parameters missing" error that names the wrong cause.)`,
     ...op.required.map(p => renderParamLine(p, 'REQUIRED')),
     ...op.optional.map(p => renderParamLine(p, 'optional')),
   ];

@@ -121,6 +121,8 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'remove-field',
             'add-display-method', 'add-table-method',
             'add-index', 'remove-index',
+            'add-full-text-index', 'remove-full-text-index',
+            'add-table-mapping', 'remove-table-mapping',
             'add-relation', 'remove-relation',
             'add-delete-action', 'remove-delete-action',
             'add-field-group', 'remove-field-group', 'add-field-to-field-group',
@@ -132,36 +134,32 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
           ],
           description:
             '[modify] REQUIRED. Modification to perform. Non-obvious ones:\n' +
-            'add-method: adds OR updates in place when the method name exists (position preserved).\n' +
-            'replace-code: surgical oldCode→newCode replacement; preferred for rewriting a known method. Form control overrides: methodName="ControlName.methodName".\n' +
+            'add-method: adds OR updates in place if the name exists (position kept).\n' +
+            'replace-code: surgical oldCode→newCode; preferred for rewriting a known method. Control overrides: methodName="Control.method".\n' +
             'rename-field: also fixes index DataField refs and TitleField1/2.\n' +
-            'replace-all-fields: atomic rewrite of ALL fields (corrupted field names).\n' +
+            'replace-all-fields: atomic rewrite of ALL fields.\n' +
             'add-display-method: display method with [SysClientCacheDataMethodAttribute].\n' +
-            'add-table-method: canonical find/exist/findByRecId/validateWrite/validateDelete/initValue boilerplate.\n' +
+            'add-table-method: canonical find/exist/findByRecId/validate*/initValue boilerplate.\n' +
             'add-field-modification: override base-table field label/mandatory in a table-extension.\n' +
-            'add-delete-action: table DeleteActions entry — deleteActionName + optional deleteActionTable/deleteActionType (None|Restricted|Cascade|CascadeRestricted).\n' +
-            'modify-property: any object-level property (TableGroup, TitleField1, TableType, Extends…) — see propertyPath.'
+            'add-delete-action: DeleteActions entry — deleteActionName + optional deleteActionTable/deleteActionType.\n' +
+            'add-full-text-index/add-table-mapping: the <FullTextIndexes>/<Mappings> collections.\n' +
+            'modify-property: any object-level property (TableGroup, TitleField1, Extends…) — see propertyPath; on an *-extension it becomes a PropertyModification.'
         },
         params: {
           type: 'object',
           additionalProperties: true,
           description:
-            '[modify] Operation-specific parameters as ONE object — nest here; ' +
-            'some legacy names also work flat at top level, but new callers should not rely on that (many ' +
-            'clients validate against the base schema and drop anything else before it reaches this server). ' +
-            'Common shapes: ' +
+            '[modify] Operation-specific parameters as ONE object — NEST them here. Common shapes: ' +
             'add-method {methodName, sourceCode} · replace-code {oldCode, newCode, methodName?} · ' +
-            'add-field (table/table-extension) {fieldName, fieldType(EDT), fieldBaseType?}; ' +
-            '(data-entity-extension) {fieldName, dataField, dataSource} · ' +
-            'rename-field {fieldName, fieldNewName} · ' +
+            'add-field {fieldName, fieldType(EDT), fieldBaseType?}; data-entity-ext ' +
+            '{fieldName, dataField, dataSource} · rename-field {fieldName, fieldNewName} · ' +
             'add-index {indexName, indexFields[{fieldName}]} · add-relation {relationName, relatedTable, relationConstraints?} · ' +
             'add-field-group {fieldGroupName, fieldGroupFields?} · add-data-source {dataSourceName, dataSourceTable} · ' +
             'add-control {controlName, parentControl, controlDataSource?, controlDataField?} · ' +
             'enum ops {enumValueName, enumValueNewName?(modify-enum-value rename), enumValueLabel?, enumValueInt?} · add-menu-item-to-menu {menuItemToAdd} · ' +
             'modify-property {propertyPath, propertyValue} · add-table-method {tableMethodType, tableKeyField?} · ' +
             'add-display-method {methodName, displayMethodReturnEdt}. ' +
-            'A missing/wrong parameter returns the COMPLETE spec (names, types, descriptions) for that operation — ' +
-            'follow the error guidance instead of guessing.',
+            'A missing/wrong parameter returns the COMPLETE spec for that operation — follow it instead of guessing.',
         },
         createBackup: {
           type: 'boolean',
