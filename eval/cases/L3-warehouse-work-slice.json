@@ -7,7 +7,7 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L3-warehouse-work-slice/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

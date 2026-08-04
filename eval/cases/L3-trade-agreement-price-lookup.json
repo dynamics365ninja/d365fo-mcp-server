@@ -7,7 +7,7 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L3-trade-agreement-price-lookup/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

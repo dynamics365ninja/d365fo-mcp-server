@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 78,
-    "covered": 74,
-    "percent": 94.9
+    "covered": 78,
+    "percent": 100
   },
   "leaves": [
     {
@@ -940,10 +940,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-warehouse-work-slice"
+      ]
     },
     {
       "id": "trade-agreements",
@@ -952,10 +954,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-trade-agreement-price-lookup"
+      ]
     },
     {
       "id": "data-entity",
@@ -1076,10 +1080,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-aggregate-measurement-basic"
+      ]
     },
     {
       "id": "security-privilege",
@@ -1147,10 +1153,12 @@
       "tier": "total",
       "weight": 1,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-xds-policy-constrained-table"
+      ]
     },
     {
       "id": "license-code",
