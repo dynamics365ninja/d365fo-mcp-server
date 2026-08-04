@@ -36,20 +36,27 @@
   <circle cx="44" cy="129" r="5" fill="#2563eb"/>
   <text x="58" y="133" font-size="12.5" font-weight="700" fill="#33415c" letter-spacing="1.2">CLIENTS</text>
 
-  <rect x="42" y="148" width="214" height="74" rx="9" fill="#ffffff" stroke="#2563eb"/>
-  <text x="56" y="171" font-size="13" font-weight="600" fill="#1d4ed8">Visual Studio 2022 / 2026</text>
-  <text x="56" y="189" font-size="10.5" fill="#475569">GitHub Copilot — Agent Mode</text>
-  <text x="56" y="206" font-size="10.5" fill="#475569">MCP client (.mcp.json)</text>
+  <rect x="42" y="146" width="214" height="56" rx="9" fill="#ffffff" stroke="#2563eb"/>
+  <text x="56" y="165" font-size="12.5" font-weight="600" fill="#1d4ed8">Visual Studio 2026</text>
+  <text x="56" y="181" font-size="10" fill="#475569">GitHub Copilot — Agent Mode</text>
+  <text x="56" y="195" font-size="10" fill="#475569">MCP client (.mcp.json)</text>
 
-  <rect x="42" y="232" width="214" height="74" rx="9" fill="#ffffff" stroke="#2563eb"/>
-  <text x="56" y="255" font-size="13" font-weight="600" fill="#1d4ed8">Claude Code</text>
-  <text x="56" y="273" font-size="10.5" fill="#475569">CLI · VS Code extension</text>
-  <text x="56" y="290" font-size="10.5" fill="#475569">CLAUDE.md instructions</text>
+  <rect x="42" y="210" width="214" height="56" rx="9" fill="#ffffff" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="56" y="229" font-size="12.5" font-weight="600" fill="#1d4ed8">VS Code</text>
+  <rect x="180" y="217" width="62" height="15" rx="7.5" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="211" y="228" text-anchor="middle" font-size="8.5" font-weight="600" fill="#1d4ed8">preferred</text>
+  <text x="56" y="245" font-size="10" fill="#475569">GitHub Copilot · Claude Code ext.</text>
+  <text x="56" y="259" font-size="10" fill="#475569">MCP client (.mcp.json)</text>
 
-  <rect x="42" y="316" width="214" height="74" rx="9" fill="#ffffff" stroke="#2563eb"/>
-  <text x="56" y="339" font-size="13" font-weight="600" fill="#1d4ed8">Any MCP client</text>
-  <text x="56" y="357" font-size="10.5" fill="#475569">stdio or HTTP transport</text>
-  <text x="56" y="374" font-size="10.5" fill="#475569">custom agents · scripts</text>
+  <rect x="42" y="274" width="214" height="56" rx="9" fill="#ffffff" stroke="#2563eb"/>
+  <text x="56" y="293" font-size="12.5" font-weight="600" fill="#1d4ed8">Claude Code</text>
+  <text x="56" y="309" font-size="10" fill="#475569">CLI · desktop · IDE extension</text>
+  <text x="56" y="323" font-size="10" fill="#475569">CLAUDE.md instructions</text>
+
+  <rect x="42" y="338" width="214" height="56" rx="9" fill="#ffffff" stroke="#2563eb"/>
+  <text x="56" y="357" font-size="12.5" font-weight="600" fill="#1d4ed8">Any MCP client</text>
+  <text x="56" y="373" font-size="10" fill="#475569">stdio or HTTP transport</text>
+  <text x="56" y="387" font-size="10" fill="#475569">custom agents · scripts</text>
 
   <rect x="24" y="424" width="250" height="224" rx="12" fill="#f0f9ff" stroke="#bae6fd" filter="url(#card)"/>
   <circle cx="44" cy="449" r="5" fill="#0284c7"/>
@@ -65,13 +72,14 @@
   <text x="56" y="608" font-size="10.5" fill="#475569">+ C# bridge on the dev VM</text>
   <text x="56" y="624" font-size="10.5" fill="#475569">search → Azure · writes → local</text>
 
-  <line x1="274" y1="255" x2="316" y2="255" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
-  <text x="295" y="246" text-anchor="middle" font-size="10" fill="#64748b">tools/call</text>
-
   <rect x="300" y="104" width="720" height="558" rx="12" fill="#eef0fb" stroke="#b9bfe8" filter="url(#card)"/>
   <circle cx="320" cy="129" r="5" fill="#6366f1"/>
   <text x="334" y="133" font-size="13" font-weight="700" fill="#312e81" letter-spacing="1.2">MCP SERVER CORE</text>
   <text x="1000" y="133" text-anchor="end" font-size="10.5" fill="#5b5fa8">Node.js ≥ 24 · TypeScript (strict) · MCP SDK</text>
+
+  <!-- drawn after the core panel so the arrowhead lands on top of it, not underneath -->
+  <line x1="266" y1="270" x2="316" y2="270" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="291" y="261" text-anchor="middle" font-size="10" fill="#64748b">tools/call</text>
 
   <rect x="320" y="148" width="680" height="60" rx="9" fill="#ffffff" stroke="#6366f1"/>
   <text x="334" y="170" font-size="12.5" font-weight="600" fill="#4338ca">Transport &amp; middleware</text>

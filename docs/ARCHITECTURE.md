@@ -9,7 +9,8 @@ How the server turns a private D365FO codebase into grounded AI context — and 
 ```mermaid
 graph TB
     subgraph Clients
-        VS[VS 2022/2026 + Copilot]
+        VSC[VS Code + Copilot / Claude Code]
+        VS[VS 2026 + Copilot]
         CC[Claude Code CLI]
     end
 
@@ -25,7 +26,7 @@ graph TB
         BRIDGE[C# Bridge\nIMetadataProvider + DYNAMICSXREFDB]
     end
 
-    VS & CC -->|JSON-RPC| TRANSPORT --> TOOLS
+    VSC & VS & CC -->|JSON-RPC| TRANSPORT --> TOOLS
     TOOLS --> GATES
     TOOLS --> DB & LDB
     TOOLS -->|Windows VM| BRIDGE
