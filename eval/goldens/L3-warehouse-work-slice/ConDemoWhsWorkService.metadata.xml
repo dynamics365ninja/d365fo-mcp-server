@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoWhsWorkService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Warehouse (WHS) work-creation slice: resolves the applicable work template and
+/// creates warehouse work through the WhsWorkCreate/WHSWorkCreateWave framework
+/// (never by inserting directly into WHSWorkTable/WHSWorkLine), and reads work
+/// header status through an indexed lookup.
+/// </summary>
+public final class ConDemoWhsWorkService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>createWorkForLoad</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Creates warehouse work for a load by driving the load's warehouse wave through
+    /// the <c>WHSWorkCreateWave</c> framework: <c>WHSWorkCreateWave::constructNoThrow</c>
+    /// selects the concrete work-creation processor for the wave's template type,
+    /// <c>createTempTable</c> allocates the load lines into <c>WHSTmpWorkLine</c>, and
+    /// <c>processTempTable</c> resolves the applicable <c>WHSWorkTemplateTable</c> record
+    /// (by work transaction type and template priority) and creates the work header/lines
+    /// from it. No row is ever inserted into <c>WHSWorkTable</c> or <c>WHSWorkLine</c> directly.
+    /// </summary>
+    /// <param name="_loadId">The warehouse load to create work for.</param>
+    /// <returns>The <c>WHSWorkId</c> of a work header created for the load's wave.</returns>
+    public static WHSWorkId createWorkForLoad(WHSLoadId _loadId)
+    {
+        WHSLoadTable        whsLoadTable;
+        WHSWaveLine         whsWaveLine;
+        WHSWaveTable        whsWaveTable;
+        WHSWorkCreateWave   whsWorkCreateWave;
+        WHSWorkBuildId      workBuildId;
+        WHSWorkTable        whsWorkTable;
+
+        whsLoadTable = WHSLoadTable::find(_loadId);
+
+        if (!whsLoadTable.RecId)
+        {
+            throw error(strFmt("@Contoso:WhsWorkServiceLoadNotFound", _loadId));
+        }
+
+        select firstonly whsWaveLine
+        where whsWaveLine.LoadId == _loadId;
+
+        if (!whsWaveLine.RecId)
+        {
+            throw error(strFmt("@Contoso:WhsWorkServiceNoWaveForLoad", _loadId));
+        }
+
+        ttsbegin;
+
+        whsWaveTable = WHSWaveTable::find(whsWaveLine.WaveId, true);
+
+        whsWorkCreateWave = WHSWorkCreateWave::constructNoThrow(whsWaveTable, '');
+
+        if (!whsWorkCreateWave)
+        {
+            throw error(strFmt("@Contoso:WhsWorkServiceNoEligibleWorkCreator", _loadId));
+        }
+
+        whsWorkCreateWave.createTempTable();
+        workBuildId = whsWorkCreateWave.processTempTable();
+
+        ttscommit;
+
+        select firstonly WorkId from whsWorkTable
+        index hint WorkBuildIdIdx
+        where whsWorkTable.WorkBuildId == workBuildId;
+
+        return whsWorkTable.WorkId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isWorkClosed</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Determines whether the warehouse work header identified by <paramref name="_workId"/>
+    /// is closed, reading <c>WHSWorkTable.WorkStatus</c> through an indexed, firstonly
+    /// select on the table's unique <c>WorkIdx</c> index (WorkId).
+    /// </summary>
+    /// <param name="_workId">The warehouse work id to check.</param>
+    /// <returns><c>true</c> if the work header's status is <c>WHSWorkStatus::Closed</c>; otherwise, <c>false</c>.</returns>
+    public static boolean isWorkClosed(WHSWorkId _workId)
+    {
+        WHSWorkTable whsWorkTable;
+
+        select firstonly WorkStatus from whsWorkTable
+        index hint WorkIdx
+        where whsWorkTable.WorkId == _workId;
+
+        return whsWorkTable.WorkStatus == WHSWorkStatus::Closed;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 44 | 44 | **100%** |
-| total | 74 | 78 | 94.9% |
+| total | 78 | 78 | 100% |
 
 ## Data model (12/12)
 
@@ -76,7 +76,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Print management | total | ✅ | ✅ | ✅ | L3-print-management-report |
 | Electronic Reporting (ER) | total | ✅ | ✅ | ✅ | L3-electronic-reporting-integration |
 
-## Frameworks (14/16)
+## Frameworks (16/16)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -94,10 +94,10 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Global address book | total | ✅ | ✅ | ✅ | L3-gab-party-postaladdress |
 | Currency & exchange rates | total | ✅ | ✅ | ✅ | L3-currency-exchange-conversion |
 | Inventory (InventTrans / InventDim) | total | ✅ | ✅ | ✅ | L3-inventory-inventdim-onhand |
-| Warehouse management (WHS) | total | ✅ | — | ✅ | Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture. |
-| Trade agreements & pricing | total | ✅ | — | ✅ | Eval case authored (PriceDisc price/discount resolution); golden pending VM capture. |
+| Warehouse management (WHS) | total | ✅ | ✅ | ✅ | L3-warehouse-work-slice |
+| Trade agreements & pricing | total | ✅ | ✅ | ✅ | L3-trade-agreement-price-lookup |
 
-## Integration (8/9)
+## Integration (9/9)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -109,9 +109,9 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Power Platform / virtual entities | total | ✅ | ✅ | ✅ | L2-virtual-entity-power-platform |
 | Reading Excel / CSV files | total | ✅ | ✅ | ✅ | L3-file-csv-import |
 | Direct SQL execution | total | ✅ | ✅ | ✅ | L2-direct-sql-connection |
-| Aggregate measurements / analytics | total | ✅ | — | ✅ | Knowledge entry + create path added; eval case authored, golden pending VM capture. |
+| Aggregate measurements / analytics | total | ✅ | ✅ | ✅ | L3-aggregate-measurement-basic |
 
-## Security (5/6)
+## Security (6/6)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -119,7 +119,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Security duty | core | ✅ | ✅ | ✅ | L4-entity-security, L4-master-security-slice |
 | Security role | core | ✅ | ✅ | ✅ | L4-entity-security, L4-master-security-slice |
 | Data-entity security | core | ✅ | ✅ | ✅ | L4-entity-security |
-| Extensible data security (XDS) | total | ✅ | — | ✅ | Create path added (d365fo_file objectType "security-policy"); eval case authored (policy + policy query + constrained table), golden pending VM capture. |
+| Extensible data security (XDS) | total | ✅ | ✅ | ✅ | L3-xds-policy-constrained-table |
 | License codes | total | ✅ | ✅ | ✅ | L2-license-code-configkey |
 
 ## Quality (2/2)
@@ -131,16 +131,11 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 ## Closure queue (uncovered, by frequency weight)
 
-| Weight | Leaf | Missing |
-| ---: | --- | --- |
-| 1 | Aggregate measurements / analytics | missing E |
-| 1 | Trade agreements & pricing | missing E |
-| 1 | Warehouse management (WHS) | missing E |
-| 1 | Extensible data security (XDS) | missing E |
+Nothing uncovered.
 
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-08-03._
+_Generated 2026-08-04._

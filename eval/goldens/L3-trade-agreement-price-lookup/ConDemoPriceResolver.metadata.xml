@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPriceResolver</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Resolves sales prices and line discounts through the PriceDisc trade-agreement framework.
+/// </summary>
+class ConDemoPriceResolver
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>salesPrice</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Resolves the effective sales price for an item/customer/quantity/date combination
+    /// through the <c>PriceDisc</c> trade-agreement framework.
+    /// </summary>
+    /// <param name = "_itemId">The item to price.</param>
+    /// <param name = "_customer">The customer account the price is resolved for.</param>
+    /// <param name = "_qty">The order quantity, used to resolve quantity-break agreements.</param>
+    /// <param name = "_date">The transaction date, used for agreement date effectivity.</param>
+    /// <returns>The resolved <c>Price</c>.</returns>
+    public static Price salesPrice(ItemId _itemId, CustAccount _customer, Qty _qty, TransDate _date)
+    {
+        CustTable custTable = CustTable::find(_customer);
+        InventTableModule inventTableModule = InventTableModule::find(_itemId, ModuleInventPurchSales::Sales);
+        InventDim inventDim;
+        PriceDiscParameters parameters = PriceDiscParameters::construct();
+        PriceDisc priceDisc;
+
+        parameters.parmModuleType(ModuleInventPurchSales::Sales);
+        parameters.parmItemId(_itemId);
+        parameters.parmInventDim(inventDim);
+        parameters.parmUnitID(inventTableModule.UnitId);
+        parameters.parmPriceDiscDate(_date);
+        parameters.parmQty(_qty);
+        parameters.parmAccountNum(_customer);
+        parameters.parmCurrencyCode(custTable.Currency);
+
+        priceDisc = PriceDisc::newFromPriceDiscParameters(parameters);
+        priceDisc.findPrice(custTable.PriceGroup);
+
+        return priceDisc.price();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lineDiscountPercent</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Resolves the effective sales line discount percentage for an item/customer/quantity/date
+    /// combination through the <c>PriceDisc</c> trade-agreement framework.
+    /// </summary>
+    /// <param name = "_itemId">The item to price.</param>
+    /// <param name = "_customer">The customer account the discount is resolved for.</param>
+    /// <param name = "_qty">The order quantity, used to resolve quantity-break agreements.</param>
+    /// <param name = "_date">The transaction date, used for agreement date effectivity.</param>
+    /// <returns>The resolved line discount <c>Percent</c>.</returns>
+    public static Percent lineDiscountPercent(ItemId _itemId, CustAccount _customer, Qty _qty, TransDate _date)
+    {
+        CustTable custTable = CustTable::find(_customer);
+        InventTableModule inventTableModule = InventTableModule::find(_itemId, ModuleInventPurchSales::Sales);
+        InventDim inventDim;
+        PriceDiscParameters parameters = PriceDiscParameters::construct();
+        PriceDisc priceDisc;
+
+        parameters.parmModuleType(ModuleInventPurchSales::Sales);
+        parameters.parmItemId(_itemId);
+        parameters.parmInventDim(inventDim);
+        parameters.parmUnitID(inventTableModule.UnitId);
+        parameters.parmPriceDiscDate(_date);
+        parameters.parmQty(_qty);
+        parameters.parmAccountNum(_customer);
+        parameters.parmCurrencyCode(custTable.Currency);
+
+        priceDisc = PriceDisc::newFromPriceDiscParameters(parameters);
+        priceDisc.findLineDisc(inventTableModule.LineDisc, custTable.LineDisc);
+
+        return priceDisc.lineDiscPct();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

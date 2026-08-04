@@ -1,0 +1,86 @@
+{
+  "run_id": "2026-08-03T19__L3-aggregate-measurement-basic__dffe0dc",
+  "case_id": "L3-aggregate-measurement-basic",
+  "tier": 3,
+  "timestamp": "2026-08-03T19:49:34.891Z",
+  "server_git_sha": "dffe0dc",
+  "generated_artifacts": [
+    "ConDemoRequestFact.metadata.xml",
+    "ConDemoRequestFactEntity.metadata.xml",
+    "ConDemoRequestMeasure.metadata.xml",
+    "/SecurityPrivileges/ConDemoRequestFactEntityMaintain (companion, required to clear DataEntitySecurityPrivilegeCheck BP error; not in target_artifact_types)"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "code": "BPErrorTableFieldNotDefinedUsingType",
+        "element": "AxTable/ConDemoRequestFact/DaysToClose"
+      },
+      {
+        "code": "BPErrorTablePrimaryKeyEditable",
+        "element": "AxTable/ConDemoRequestFact/RequestFactIdx/RequestCode"
+      },
+      {
+        "code": "BPErrorLabelNotDefined",
+        "element": "AxTable/ConDemoRequestFact/DaysToClose"
+      },
+      {
+        "code": "BPErrorDeveloperDocumentationNotDefined",
+        "element": "AxTable/ConDemoRequestFact"
+      },
+      {
+        "code": "BPErrorTableMissingFormRef",
+        "element": "AxTable/ConDemoRequestFact"
+      },
+      {
+        "code": "BPMeasureGroupWithOnlyOneMeasure",
+        "element": "AxAggregateMeasurement/ConDemoRequestMeasure/MeasureGroup/ConDemoRequestMeasureGroup"
+      },
+      {
+        "code": "BPUnrelatedMeasureGroup",
+        "element": "AxAggregateMeasurement/ConDemoRequestMeasure/MeasureGroup/ConDemoRequestMeasureGroup"
+      }
+    ]
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "platform_build": "xppc 7.0.7858.27",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "FIRST CAPTURE, no prior draft for this case. Built ConDemoRequestFact (AxTable, TableGroup Main, RequestCode EDT Num mandatory, RequestType EDT Name, DaysToClose Integer, unique alternate-key index RequestFactIdx on RequestCode set as PrimaryIndex/ClusteredIndex/ReplacementKey), ConDemoRequestFactEntity (AxDataEntityView over that table, public, EntityCategory Master, PrimaryKey EntityKey over RequestCode, standardStructure true so SourceCode/FieldGroups/DeleteActions/StateMachines are the full standard shape matching the two sibling goldens L3-dmf-entity-import-slice and L2-virtual-entity-power-platform), and ConDemoRequestMeasure (AxAggregateMeasurement, Usage StagedEntityStore, one AxMeasureGroup named ConDemoRequestMeasureGroup whose Table element is ConDemoRequestFactEntity, the ENTITY not the raw table, satisfying the case explicit fail condition) plus the companion ConDemoRequestFactEntityMaintain security privilege the DataEntitySecurityPrivilegeCheck BP rule requires. get_knowledge(topic=aggregate-measurements) was consulted first per the case instruction and its example (DefaultAggregate element, AverageOfChildren value, Table pointing at the entity) matched exactly what generateAxAggregateMeasurementXml produced. Passing defaultAggregate: Avg to d365fo_file resolved correctly to DefaultAggregate=AverageOfChildren via resolveDefaultAggregate alias table (source comment at src/tools/createD365File.ts around line 3073 explicitly documents this exact case id as the scenario the alias exists for, i.e. that defect was already fixed on a prior session before this capture). The written AxAggregateMeasurement XML omits the empty CalculatedMeasures and Dimensions collections that shipped AxAggregateMeasurement files carry (e.g. AssetTransactionMeasure.xml, PayrollBIWorkerMeasurement.xml) -- the deserializer defaults them with no build or BP consequence observed (0 errors, no BP rule flagged the omission), so this is noted as a minor writer-shape gap, not a case blocker. A collision-check false positive was hit for all three object names (ConDemoRequestFact, ConDemoRequestFactEntity, ConDemoRequestMeasure) in prepare() SQLite symbol index, tracing to stale XppMetadata build-cache files (197121-byte placeholder xml files under XppMetadata/Contoso/AxTable and AxDataEntityView) left over from an earlier, rolled-back attempt at this same case; the real AOT source folders (Contoso/Contoso/AxTable etc) held none of these objects before this run. update_symbol_index after each create reported Removed N stale entries / Inserted N symbols, confirming the index self-corrected once the real object existed; this was not a create-time blocker, only a pre-emptive collision warning that needed disk verification rather than blind trust before proceeding. Full build (fullBuild true) succeeded with 0 errors and the single pre-existing unrelated Commerce PricingEngine warning. run_bp_check filtered per object with an explicit targetElementType (table, DataEntityView, AggregateMeasurement, SecurityPrivilege) reported 0 BP errors on all four objects, satisfying the case zero-BP-errors gate; residual warnings are the same out-of-scope table pattern warnings every Demo table in this catalog carries, plus two aggregate-measurement warnings inherent to the case own scope (exactly one measure and one dimension attribute), and the companion privilege usual BPErrorPrivilegeNotCoveredByDuty. Classified PASS on the same convention the two sibling L3/L2 goldens used for an identical warning shape (bp_clean 0 from warnings, zero errors, case own gate satisfied). golden_match is null because this is a first-time capture with no prior golden to diff against; the golden folder is created from this run own manually-verified output.",
+  "suggested_fix_area": "None blocking for this case path; get_knowledge, prepare, validate_code(references), and d365fo_file(create) for table/data-entity/aggregate-measurement/security-privilege all worked as documented and produced a build- and BP-error-clean result on the first attempt this session (the DefaultAggregate alias defect the code comment references was already fixed before this run started). Two minor, non-blocking items worth tracking: (1) generateAxAggregateMeasurementXml omits empty CalculatedMeasures and Dimensions collections present in the sampled shipped AxAggregateMeasurement files -- cosmetic/schema-completeness gap only, no observed build or BP effect, candidate for the same kind of standardStructure-style opt-in the AxDataEntityView writer got; (2) prepare() SQLite symbol index surfaced 3 false-positive collisions from stale XppMetadata build-cache residue of an earlier rolled-back run of this same case -- not a create blocker, but worth a passive note that XppMetadata cache staleness can produce misleading prepare() collision warnings independent of the real AOT source tree.",
+  "evidence_refs": [
+    "eval/cases/L3-aggregate-measurement-basic.json",
+    "eval/goldens/L3-dmf-entity-import-slice/README.md and eval/goldens/L2-virtual-entity-power-platform/README.md, used as the format/workflow reference this run followed",
+    "get_knowledge(topic=aggregate-measurements) consulted first per case instruction; its DefaultAggregate/AverageOfChildren/Table-as-entity guidance matched the writer output exactly",
+    "src/tools/createD365File.ts around line 3073 resolveDefaultAggregate and around line 3101 generateAxAggregateMeasurementXml, read directly to confirm the Avg to AverageOfChildren alias and the Table element source",
+    "K:/AosService/PackagesLocalDirectory/Contoso/Contoso/AxTable/ConDemoRequestFact.xml, AxDataEntityView/ConDemoRequestFactEntity.xml, AxAggregateMeasurement/ConDemoRequestMeasure.xml, AxSecurityPrivilege/ConDemoRequestFactEntityMaintain.xml -- all read back from disk post-create to confirm actual written content, not just the tool success message",
+    "K:/AosService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxAggregateMeasurement/AssetTransactionMeasure.xml and PayrollBIWorkerMeasurement.xml, read as shipped reference examples for the CalculatedMeasures/Dimensions completeness observation",
+    "build_d365fo_project fullBuild true reported Build succeeded, Errors 0, Warnings 1 (unrelated Commerce PricingEngine ExternalReference)",
+    "run_bp_check targetFilter ConDemoRequestFact targetElementType table: 5 warnings 0 errors; targetFilter ConDemoRequestFactEntity targetElementType DataEntityView: 0 warnings 0 errors, 1 elements processed; targetFilter ConDemoRequestMeasure targetElementType AggregateMeasurement: 2 warnings 0 errors; targetFilter ConDemoRequestFactEntityMaintain targetElementType SecurityPrivilege: 1 warning 0 errors",
+    "npm run eval:score for L3-aggregate-measurement-basic with actual-dir pointing at a scratch directory containing the three target_artifact_types files, bp-warnings 7, classification PASS, write -- golden_match null (golden_pending, first capture)"
+  ]
+}

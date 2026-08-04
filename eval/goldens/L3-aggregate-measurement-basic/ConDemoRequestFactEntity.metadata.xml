@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRequestFactEntity</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoRequestFactEntity extends common
+{
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+	<Label>@TaxTransactionInquiry:HeaderNote</Label>
+	<EntityCategory>Master</EntityCategory>
+	<IsPublic>Yes</IsPublic>
+	<PrimaryKey>EntityKey</PrimaryKey>
+	<PublicCollectionName>ConDemoRequestFactEntities</PublicCollectionName>
+	<PublicEntityName>ConDemoRequestFactEntity</PublicEntityName>
+	<DeleteActions />
+	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>AutoReport</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoLookup</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoIdentification</Name>
+			<AutoPopulate>Yes</AutoPopulate>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoSummary</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoBrowse</Name>
+			<Fields />
+		</AxTableFieldGroup>
+	</FieldGroups>
+	<Fields>
+		<AxDataEntityViewField xmlns=""
+			i:type="AxDataEntityViewMappedField">
+			<Name>RequestCode</Name>
+			<DataField>RequestCode</DataField>
+			<DataSource>ConDemoRequestFact</DataSource>
+		</AxDataEntityViewField>
+		<AxDataEntityViewField xmlns=""
+			i:type="AxDataEntityViewMappedField">
+			<Name>RequestType</Name>
+			<DataField>RequestType</DataField>
+			<DataSource>ConDemoRequestFact</DataSource>
+		</AxDataEntityViewField>
+		<AxDataEntityViewField xmlns=""
+			i:type="AxDataEntityViewMappedField">
+			<Name>DaysToClose</Name>
+			<DataField>DaysToClose</DataField>
+			<DataSource>ConDemoRequestFact</DataSource>
+		</AxDataEntityViewField>
+	</Fields>
+	<Keys>
+		<AxDataEntityViewKey>
+			<Name>EntityKey</Name>
+			<Fields>
+				<AxDataEntityViewKeyField>
+					<DataField>RequestCode</DataField>
+				</AxDataEntityViewKeyField>
+			</Fields>
+		</AxDataEntityViewKey>
+	</Keys>
+	<Mappings />
+	<Ranges />
+	<Relations />
+	<StateMachines />
+	<ViewMetadata>
+		<Name>Metadata</Name>
+		<SourceCode>
+			<Methods>
+				<Method>
+					<Name>classDeclaration</Name>
+					<Source><![CDATA[
+[Query]
+public class Metadata extends QueryRun
+{
+}
+]]></Source>
+				</Method>
+			</Methods>
+		</SourceCode>
+		<DataSources>
+			<AxQuerySimpleRootDataSource>
+				<Name>ConDemoRequestFact</Name>
+				<Table>ConDemoRequestFact</Table>
+				<DataSources />
+				<DerivedDataSources />
+				<Fields>
+					<AxQuerySimpleDataSourceField>
+						<Name>RequestCode</Name>
+						<Field>RequestCode</Field>
+					</AxQuerySimpleDataSourceField>
+					<AxQuerySimpleDataSourceField>
+						<Name>RequestType</Name>
+						<Field>RequestType</Field>
+					</AxQuerySimpleDataSourceField>
+					<AxQuerySimpleDataSourceField>
+						<Name>DaysToClose</Name>
+						<Field>DaysToClose</Field>
+					</AxQuerySimpleDataSourceField>
+				</Fields>
+				<Ranges />
+				<GroupBy />
+				<Having />
+				<OrderBy />
+			</AxQuerySimpleRootDataSource>
+		</DataSources>
+	</ViewMetadata>
+</AxDataEntityView>

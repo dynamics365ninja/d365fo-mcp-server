@@ -1,0 +1,33 @@
+{
+  "run_id": "2026-08-04T04__L3-xds-policy-constrained-table__dffe0dc",
+  "case_id": "L3-xds-policy-constrained-table",
+  "tier": 3,
+  "timestamp": "2026-08-04T04:43:16.777Z",
+  "server_git_sha": "dffe0dc",
+  "generated_artifacts": [
+    "ConDemoTerritory.metadata.xml",
+    "ConDemoTerritoryLine.metadata.xml",
+    "ConDemoTerritoryPolicy.metadata.xml",
+    "ConDemoTerritoryPolicyQuery.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": false,
+    "bpWarnings": null
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": null,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS"
+}

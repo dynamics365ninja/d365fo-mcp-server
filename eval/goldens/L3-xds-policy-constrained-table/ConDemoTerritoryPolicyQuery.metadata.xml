@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxQuery xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
+	i:type="AxQuerySimple">
+	<Name>ConDemoTerritoryPolicyQuery</Name>
+	<SourceCode>
+		<Methods>
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// XDS policy query for ConDemoTerritory - restricts territories to the ones owned by the current user.
+/// </summary>
+[Query]
+public class ConDemoTerritoryPolicyQuery extends QueryRun
+{
+}
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Title>Demo Territory Policy Query</Title>
+	<DataSources>
+		<AxQuerySimpleRootDataSource>
+			<Name>ConDemoTerritory</Name>
+			<DynamicFields>Yes</DynamicFields>
+			<Table>ConDemoTerritory</Table>
+			<DataSources />
+			<DerivedDataSources />
+			<Fields />
+			<Ranges>
+				<AxQuerySimpleDataSourceRange>
+					<Name>OwnerUserId</Name>
+					<Field>OwnerUserId</Field>
+					<Value>(currentUserId())</Value>
+				</AxQuerySimpleDataSourceRange>
+			</Ranges>
+			<GroupBy />
+			<Having />
+			<OrderBy />
+		</AxQuerySimpleRootDataSource>
+	</DataSources>
+</AxQuery>

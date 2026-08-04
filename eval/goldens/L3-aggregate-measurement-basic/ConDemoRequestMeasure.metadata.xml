@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxAggregateMeasurement xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V2">
+	<Name>ConDemoRequestMeasure</Name>
+	<Usage>StagedEntityStore</Usage>
+	<MeasureGroups>
+		<AxMeasureGroup xmlns="">
+			<Name>ConDemoRequestMeasureGroup</Name>
+			<Table>ConDemoRequestFactEntity</Table>
+			<Attributes>
+				<AxDimensionAttribute>
+					<Name>RequestType</Name>
+					<KeyFields>
+						<AxDimensionFieldReference>
+							<DimensionField>RequestType</DimensionField>
+						</AxDimensionFieldReference>
+					</KeyFields>
+				</AxDimensionAttribute>
+			</Attributes>
+			<Measures>
+				<AxMeasure>
+					<Name>AvgDaysToClose</Name>
+					<DefaultAggregate>AverageOfChildren</DefaultAggregate>
+					<Field>DaysToClose</Field>
+				</AxMeasure>
+			</Measures>
+		</AxMeasureGroup>
+	</MeasureGroups>
+</AxAggregateMeasurement>

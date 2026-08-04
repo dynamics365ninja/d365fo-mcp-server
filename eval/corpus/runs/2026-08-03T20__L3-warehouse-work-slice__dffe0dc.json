@@ -1,0 +1,30 @@
+{
+  "run_id": "2026-08-03T20__L3-warehouse-work-slice__dffe0dc",
+  "case_id": "L3-warehouse-work-slice",
+  "tier": 3,
+  "timestamp": "2026-08-03T20:30:17.745Z",
+  "server_git_sha": "dffe0dc",
+  "generated_artifacts": [
+    "ConDemoWhsWorkService.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": false,
+    "bpWarnings": null
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": null,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS"
+}
