@@ -175,6 +175,33 @@ Read concurrency: WAL mode, read-connection pool with per-connection prepared-st
 
 ---
 
+## Self-improving eval loop
+
+The gates above say whether a *single* write is grounded. The eval loop answers the larger question — is the server getting better at producing X++ that compiles, is BP-clean, and matches the intended metadata shape? Full spec: [AGENT_EVAL_LOOP.md](AGENT_EVAL_LOOP.md).
+
+```mermaid
+graph TB
+    IMPL["Implementer agent\non the VM — full mode + bridge\ngrounded MCP tools only"] -->|run records| CORP[("Corpus\none NDJSON record per run\nheld-out split")]
+    CORP -->|clustered failures| IMPV["Improver agent\nin the repo — reproduce as a\nminimal test → fix → validate"]
+    IMPV -->|pull request, humans merge| SRV["mcp-server\ntools · knowledge · validators"]
+    SRV -.->|next run tests the fix| IMPL
+```
+
+Two agents, one shared store, **no shared in-memory state** — either can run on its own cadence. The split is deliberate: the VM has the platform and the compiler, the repo is where TypeScript edits, golden tests and CI belong. Mixing them couples slow platform builds to fast unit-test iteration.
+
+| Element | What it is |
+|---|---|
+| Case catalog | 80 cases in `eval/cases/`, tiered L0–L4, each with a JSON spec validated against `schema.json` |
+| Primary oracle | **golden metadata** — a diff of produced XML against the case's captured golden, not merely "it compiled" |
+| Runtime oracle | `run_systest_class` against `eval/systests/<id>.xml` — a SysTest references only standard objects, so it fails when a CoC wrapper is missing or wrong, which a golden cannot detect |
+| Fixtures | shared INPUT objects (e.g. `ConDemoNoteHeader`) live in `eval/fixtures/`, re-provisioned per run and excluded from rollback — case OUTPUTS are never pre-provisioned |
+| Isolation | every run works in a throwaway sandbox model and rolls back, so runs never pollute each other or the index |
+| Coverage | a taxonomy leaf counts as covered only when **K**nowledge teaches it, an **E**val case with a captured golden proves it, and the **T**ool path can build it — currently core 44/44, total 78/78 ([eval/COVERAGE.md](../eval/COVERAGE.md)) |
+
+The loop is an eval and self-improvement harness, **not** a production code generator and **not** auto-merge — the improver opens PRs that humans review.
+
+---
+
 ## Deployment
 
 ```mermaid

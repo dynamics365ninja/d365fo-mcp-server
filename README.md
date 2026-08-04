@@ -120,6 +120,7 @@ Deployment guide: [docs/SETUP_AZURE.md](docs/SETUP_AZURE.md) — includes CI/CD 
 | [Claude Code setup](docs/SETUP.md#claude-code-cli) | [Configuration](docs/CONFIGURATION.md) | [Testing](docs/TESTING.md) |
 | [Usage examples](docs/USAGE_EXAMPLES.md) — real tool chains | [Architecture](docs/ARCHITECTURE.md) | [Custom / ISV models](docs/CUSTOM_EXTENSIONS.md) |
 | | | [Coverage](eval/COVERAGE.md) — what the badge counts |
+| | | [Eval loop](docs/AGENT_EVAL_LOOP.md) — the self-improvement harness |
 
 ## License
 

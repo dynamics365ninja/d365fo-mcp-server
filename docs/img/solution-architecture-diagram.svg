@@ -1,11 +1,12 @@
 <svg viewBox="0 0 1320 940" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Helvetica, Arial, sans-serif" role="img">
   <title>d365fo-mcp-server solution architecture</title>
-  <desc>Clients call the MCP server core, which routes reads bridge-first or to SQLite and routes writes through a four-gate grounding chain before the write path — the C# bridge for the types IMetadataProvider can express, validated XML writers for the rest — commits to the D365FO VM. A build-time index pipeline produces the SQLite databases.</desc>
+  <desc>Clients call the MCP server core, which routes reads bridge-first or to SQLite and routes writes through a four-gate grounding chain before the write path — the C# bridge for the types IMetadataProvider can express, validated XML writers for the rest — commits to the D365FO VM. A build-time index pipeline produces the SQLite databases. A self-improving eval loop closes back on the server: an implementer agent runs cases on the VM through the grounded tool path, writes run records to a shared corpus, and an improver agent turns clustered failures into reviewed pull requests.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#64748b"/></marker>
     <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#15803d"/></marker>
     <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ea580c"/></marker>
     <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#dc2626"/></marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7c3aed"/></marker>
     <linearGradient id="gHead" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1e2a4a"/><stop offset="1" stop-color="#312e81"/></linearGradient>
     <linearGradient id="gBridge" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b2bd6"/><stop offset="1" stop-color="#3b1fa3"/></linearGradient>
     <filter id="card" x="-4%" y="-4%" width="108%" height="112%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e293b" flood-opacity="0.12"/></filter>
@@ -17,6 +18,9 @@
   <text x="48" y="48" font-size="21" font-weight="700" fill="#ffffff">d365fo-mcp-server</text>
   <text x="48" y="68" font-size="12" fill="#aab6d3">Grounded AI development for Dynamics 365 Finance &amp; Operations</text>
   <g>
+    <rect x="724" y="32" width="128" height="38" rx="8" fill="#ffffff" fill-opacity="0.10" stroke="#5b6aa8"/>
+    <text x="788" y="50" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">100%</text>
+    <text x="788" y="64" text-anchor="middle" font-size="9.5" fill="#aab6d3">core eval coverage</text>
     <rect x="864" y="32" width="128" height="38" rx="8" fill="#ffffff" fill-opacity="0.10" stroke="#5b6aa8"/>
     <text x="928" y="50" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">580K+</text>
     <text x="928" y="64" text-anchor="middle" font-size="9.5" fill="#aab6d3">symbols indexed</text>
@@ -166,9 +170,36 @@
   <text x="1076" y="360" font-size="10" fill="#475569">GitHub Actions — app CI · 2500+ tests</text>
   <text x="1076" y="376" font-size="10" fill="#475569">eval gate — goldens · knowledge audit</text>
 
-  <text x="1100" y="424" text-anchor="middle" font-size="10" fill="#15803d">produces both databases</text>
-  <text x="1052" y="468" font-size="9.5" fill="#15803d">reads AOT XML</text>
-  <text x="1052" y="481" font-size="9.5" fill="#15803d">at index build</text>
+  <text x="560" y="668" font-size="10" fill="#15803d">produces both databases</text>
+  <text x="1024" y="706" text-anchor="end" font-size="9.5" fill="#15803d">reads AOT XML</text>
+  <text x="1024" y="718" text-anchor="end" font-size="9.5" fill="#15803d">at index build</text>
+
+  <rect x="1044" y="424" width="252" height="238" rx="12" fill="#f5f3ff" stroke="#ddd6fe" filter="url(#card)"/>
+  <circle cx="1064" cy="447" r="5" fill="#7c3aed"/>
+  <text x="1078" y="451" font-size="12.5" font-weight="700" fill="#5b21b6" letter-spacing="1.2">EVAL LOOP</text>
+  <text x="1064" y="468" font-size="10" fill="#6d5bb5">self-improving harness · 80 cases</text>
+
+  <rect x="1064" y="476" width="212" height="54" rx="8" fill="#ffffff" stroke="#a78bfa"/>
+  <text x="1076" y="494" font-size="11.5" font-weight="600" fill="#6d28d9">Implementer agent</text>
+  <text x="1076" y="509" font-size="9" fill="#475569">on the VM — MCP client, grounded</text>
+  <text x="1076" y="522" font-size="9" fill="#475569">tools only · build → golden diff → SysTest</text>
+
+  <line x1="1170" y1="530" x2="1170" y2="542" stroke="#7c3aed" stroke-width="1.4" marker-end="url(#arrowViolet)"/>
+  <text x="1180" y="540" font-size="8.5" fill="#7c3aed">run records</text>
+
+  <rect x="1064" y="544" width="212" height="38" rx="8" fill="#ffffff" stroke="#a78bfa"/>
+  <text x="1076" y="561" font-size="11.5" font-weight="600" fill="#6d28d9">Corpus</text>
+  <text x="1076" y="575" font-size="9" fill="#475569">one NDJSON record per run · held-out split</text>
+
+  <line x1="1170" y1="582" x2="1170" y2="594" stroke="#7c3aed" stroke-width="1.4" marker-end="url(#arrowViolet)"/>
+  <text x="1180" y="592" font-size="8.5" fill="#7c3aed">clustered failures</text>
+
+  <rect x="1064" y="596" width="212" height="54" rx="8" fill="#ffffff" stroke="#a78bfa"/>
+  <text x="1076" y="614" font-size="11.5" font-weight="600" fill="#6d28d9">Improver agent</text>
+  <text x="1076" y="629" font-size="9" fill="#475569">in the repo — reproduce → fix →</text>
+  <text x="1076" y="642" font-size="9" fill="#475569">pull request (humans review and merge)</text>
+
+  <path d="M1064 623 L1004 623" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-dasharray="2 3" marker-end="url(#arrowViolet)"/>
 
   <rect x="24" y="690" width="1272" height="226" rx="12" fill="#f8fafc" stroke="#cbd5e1" filter="url(#card)"/>
   <circle cx="44" cy="715" r="5" fill="#0e7490"/>
@@ -212,12 +243,14 @@
   <line x1="858" y1="796" x2="898" y2="796" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
 
   <path d="M1086 736 L1086 700 L1032 700 L1032 190 L1064 190" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
-  <path d="M1240 388 L1240 678 L185 678 L185 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
-  <path d="M1248 388 L1248 686 L415 686 L415 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
+  <path d="M1240 388 L1240 412 L1304 412 L1304 674 L185 674 L185 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
+  <path d="M1248 388 L1248 418 L1312 418 L1312 682 L415 682 L415 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
 
-  <rect x="80" y="862" width="404" height="42" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+  <rect x="80" y="862" width="640" height="42" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
   <line x1="96" y1="883" x2="132" y2="883" stroke="#64748b" stroke-width="1.6"/>
   <text x="140" y="887" font-size="10" fill="#475569">runtime flow</text>
   <line x1="236" y1="883" x2="272" y2="883" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4"/>
   <text x="280" y="887" font-size="10" fill="#475569">build-time flow (index refresh)</text>
+  <line x1="496" y1="883" x2="532" y2="883" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="2 3"/>
+  <text x="540" y="887" font-size="10" fill="#475569">improvement flow (eval loop)</text>
 </svg>
