@@ -1,6 +1,6 @@
 <svg viewBox="0 0 1320 940" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Helvetica, Arial, sans-serif" role="img">
   <title>d365fo-mcp-server solution architecture</title>
-  <desc>Clients call the MCP server core, which routes reads bridge-first or to SQLite and routes writes through a four-gate grounding chain before the C# bridge writes to the D365FO VM. A build-time index pipeline produces the SQLite databases.</desc>
+  <desc>Clients call the MCP server core, which routes reads bridge-first or to SQLite and routes writes through a four-gate grounding chain before the write path — the C# bridge for the types IMetadataProvider can express, validated XML writers for the rest — commits to the D365FO VM. A build-time index pipeline produces the SQLite databases.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#64748b"/></marker>
     <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#15803d"/></marker>
@@ -111,13 +111,13 @@
     <circle cx="686" cy="436" r="9" fill="#ea580c"/><text x="686" y="440" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">3</text>
     <text x="702" y="440" font-size="11" font-weight="600" fill="#9a3412">Best practices</text>
     <text x="680" y="462" font-size="9" fill="#7c2d12">validate_code · syntax</text>
-    <text x="680" y="476" font-size="9" fill="#7c2d12">13 + mined rules</text>
+    <text x="680" y="476" font-size="9" fill="#7c2d12">11 static + 4 mined rules</text>
 
     <rect x="838" y="420" width="152" height="74" rx="8" fill="#ffffff" stroke="#fdba74"/>
     <circle cx="854" cy="436" r="9" fill="#ea580c"/><text x="854" y="440" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">4</text>
     <text x="870" y="440" font-size="11" font-weight="600" fill="#9a3412">Form patterns</text>
     <text x="848" y="462" font-size="9" fill="#7c2d12">object_patterns · validate</text>
-    <text x="848" y="476" font-size="9" fill="#7c2d12">FP001–FP010</text>
+    <text x="848" y="476" font-size="9" fill="#7c2d12">FP000–FP010</text>
 
     <line x1="486" y1="457" x2="502" y2="457" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
     <line x1="654" y1="457" x2="670" y2="457" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
@@ -141,6 +141,7 @@
   <text x="908" y="567" text-anchor="middle" font-size="9" fill="#3f6212">IMetadataProvider · + .rnrproj</text>
   <text x="775" y="540" text-anchor="middle" font-size="10" fill="#15803d">pass</text>
 
+  <text x="334" y="602" font-size="10" fill="#9a3412">The bridge is the primary writer; object types IMetadataProvider cannot express go through validated XML writers — same gates either way</text>
   <text x="334" y="620" font-size="10" fill="#9a3412">Recommendations only warn · structural violations (FP001–FP005, FP007) block the write</text>
   <text x="334" y="638" font-size="10" fill="#9a3412">All gates env-switchable: GROUNDING_ENFORCE · FORM_PATTERN_ENFORCE</text>
 
@@ -159,10 +160,11 @@
   <text x="1076" y="274" font-size="10" fill="#475569">SQLite + FTS5 · pattern mining</text>
   <line x1="1170" y1="292" x2="1170" y2="304" stroke="#15803d" stroke-width="1.4" marker-end="url(#arrowGreen)"/>
 
-  <rect x="1064" y="306" width="212" height="74" rx="8" fill="#ffffff" stroke="#86c79c"/>
+  <rect x="1064" y="306" width="212" height="82" rx="8" fill="#ffffff" stroke="#86c79c"/>
   <text x="1076" y="328" font-size="12" font-weight="600" fill="#15803d">Automation</text>
-  <text x="1076" y="346" font-size="10" fill="#475569">Azure DevOps — extract→build→upload</text>
-  <text x="1076" y="362" font-size="10" fill="#475569">GitHub Actions — app CI · 1400+ tests</text>
+  <text x="1076" y="344" font-size="10" fill="#475569">Azure DevOps — extract→build→upload</text>
+  <text x="1076" y="360" font-size="10" fill="#475569">GitHub Actions — app CI · 2500+ tests</text>
+  <text x="1076" y="376" font-size="10" fill="#475569">eval gate — goldens · knowledge audit</text>
 
   <text x="1100" y="424" text-anchor="middle" font-size="10" fill="#15803d">produces both databases</text>
   <text x="1052" y="468" font-size="9.5" fill="#15803d">reads AOT XML</text>
@@ -190,7 +192,7 @@
   <text x="699" y="762" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">C# Metadata Bridge</text>
   <text x="699" y="782" text-anchor="middle" font-size="10.5" fill="#ddd6fe">D365MetadataBridge.exe · .NET Framework 4.8</text>
   <text x="699" y="799" text-anchor="middle" font-size="10.5" fill="#ddd6fe">JSON-RPC over stdio · IMetadataProvider</text>
-  <text x="699" y="816" text-anchor="middle" font-size="10.5" fill="#ddd6fe">sole write path · 13 create · 25 modify ops</text>
+  <text x="699" y="816" text-anchor="middle" font-size="10.5" fill="#ddd6fe">primary write path · 13 create · 31 modify ops</text>
   <text x="699" y="840" text-anchor="middle" font-size="9.5" fill="#c4b5fd">Windows VM only — graceful fallback to SQLite elsewhere</text>
 
   <rect x="898" y="736" width="376" height="120" rx="9" fill="#eff6ff" stroke="#3b82f6"/>
@@ -210,8 +212,8 @@
   <line x1="858" y1="796" x2="898" y2="796" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
 
   <path d="M1086 736 L1086 700 L1032 700 L1032 190 L1064 190" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
-  <path d="M1240 380 L1240 678 L185 678 L185 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
-  <path d="M1248 380 L1248 686 L415 686 L415 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
+  <path d="M1240 388 L1240 678 L185 678 L185 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
+  <path d="M1248 388 L1248 686 L415 686 L415 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
 
   <rect x="80" y="862" width="404" height="42" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
   <line x1="96" y1="883" x2="132" y2="883" stroke="#64748b" stroke-width="1.6"/>

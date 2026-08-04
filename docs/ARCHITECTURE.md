@@ -43,7 +43,7 @@ Three complementary data sources, one rule: **bridge-first when live metadata ma
 | Method signatures / source | ✅ snapshot | ✅ on demand | ✅ live |
 | Cross-references (callers) | ~ FTS approximation | — | ✅ exact (`DYNAMICSXREFDB`) |
 | Labels (20M+ rows) | ✅ sole source | — | create/rename only |
-| Create / modify objects | — | — | ✅ 13 create types, 25 modify ops |
+| Create / modify objects | validated XML writers for types the provider cannot express | — | ✅ 13 create types, 31 modify ops |
 
 SQLite stays essential even with the bridge: it is the **only** data source on Azure/Linux (no bridge), the sole store for 20M+ labels (`IMetadataProvider` has no label API), and the engine for all bulk search, aggregation and pattern mining (the bridge reads one object at a time).
 
@@ -85,8 +85,8 @@ Generated code must *prove* itself before touching disk. All gates are fail-clos
 |------|------------------|-------------|--------|
 | Provenance | `prepare` (mode=change/create) issues a grounding token (30 min TTL, object-bound). In-memory by default; with `GROUNDING_SECRET` set on both instances the token is HMAC-signed and portable, so the hybrid write-only companion (and scaled-out App Service) can validate it — without the secret, write-only mode bypasses enforcement | write called without a valid token | `GROUNDING_ENFORCE` + `GROUNDING_SECRET` |
 | References | `validate_code(mode="references")` — every type, field, method (incl. arity), enum, label checked against the index | any identifier unresolved | `GROUNDING_ENFORCE` |
-| Best practices | `validate_code(mode="syntax")` — 13 static rules + data-driven XML rules mined from standard models (`property_stats`) | error-severity violations | — (advisory in output) |
-| Form patterns | `object_patterns (domain=form, action=validate)` — rules FP001–FP010 against the curated pattern catalog | structural violations (FP001–FP005, FP007) | `FORM_PATTERN_ENFORCE` |
+| Best practices | `validate_code(mode="syntax")` — 11 static rules (BP, COC, SEL, TTS, XML001/006/007) + 4 data-driven XML rules (XML002–XML005) mined from standard models (`property_stats`) | error-severity violations | — (advisory in output) |
+| Form patterns | `object_patterns (domain=form, action=validate)` — rules FP000–FP010 against the curated pattern catalog | structural violations (FP001–FP005, FP007) | `FORM_PATTERN_ENFORCE` |
 
 Supporting reliability mechanisms:
 
@@ -103,10 +103,10 @@ Supporting reliability mechanisms:
 flowchart LR
     CAT["Curated catalog\n~19 patterns + ~20 sub-patterns\nsrc/knowledge/formPatterns"] --> ADV[object_patterns\ndomain=form, action=analyze]
     CAT --> SPEC[object_patterns\ndomain=form, action=spec]
-    CAT --> VAL[object_patterns domain=form, action=validate\nFP001–FP010]
+    CAT --> VAL[object_patterns domain=form, action=validate\nFP000–FP010]
     MINE[("form_patterns table\nmined from real forms\nduring build-database")] --> ADV
     MINE -->|cross-check report| CAT
-    ADV --> GEN["generate_smart_form\nclone reference form\n+ re-bind datasources"]
+    ADV --> GEN["generate_object objectType=form\nclone reference form\n+ re-bind datasources"]
     GEN --> VAL
     VAL -->|gate| WRITE[d365fo_file action=create]
 ```
@@ -117,13 +117,21 @@ The catalog encodes Microsoft's form patterns as data (required containers, orde
 
 ## C# Metadata Bridge
 
-A .NET Framework 4.8 process (`D365MetadataBridge.exe`) spawned by the server, speaking JSON-RPC over stdin/stdout. It is the **sole write path** — no XML string manipulation ever touches metadata files.
+A .NET Framework 4.8 process (`D365MetadataBridge.exe`) spawned by the server, speaking JSON-RPC over stdin/stdout. It is the **primary write path**: whenever `IMetadataProvider` can express the object, the bridge writes it and no string manipulation touches the XML.
+
+It is not the *only* write path. Two cases fall through to purpose-built XML writers, and both are deliberate:
+
+- **Object types outside `BRIDGE_CREATE_TYPES`** (13 of the 39 create types route to the bridge). `security-privilege`/`duty`/`role` and `query`/`view` are excluded on purpose — the bridge's generic `properties: Dictionary<string,string>` channel cannot carry the structured collections they need (EntryPoints, Privileges, Duties, query data sources), so a bridge create would "succeed" and produce a functionally broken object. `securityPrivilegeXml.ts`, `queryViewXml.ts` and friends build these correctly instead.
+- **Modify operations with no backing C# op** — `add-delete-action`, `remove-delete-action`, `modify-property` on some types, `add-menu-item-to-menu`, `add-control`, `add-index` and the data-entity-extension field writer fall back to the `directXml*` helpers in `modifyD365File.ts` (see also `dataEntityViewExtensionXml.ts`).
+
+The distinction matters for correctness, not for safety: **every write goes through the same grounding gates and the same path-containment check**, whichever writer commits it. The XML writers are structured builders with ambiguity guards (they refuse to guess when a target tag matches more than once), not blind string replacement.
 
 ```mermaid
 graph LR
     TS[bridgeClient.ts\nspawn + JSON-RPC + restarts] --> EXE[D365MetadataBridge.exe]
+    TS -.->|types the provider cannot express| XMLW[XML writers\nsecurityPrivilegeXml · queryViewXml\ndirectXml fallbacks]
     EXE --> READ[MetadataReadService\nclasses, tables, forms, reports]
-    EXE --> WRITE[MetadataWriteService\n13 create types · 25 modify ops]
+    EXE --> WRITE[MetadataWriteService\n13 create types · 31 modify ops]
     EXE --> XREF[CrossReferenceService\nCoC, event handlers, callers]
     READ & WRITE --> PROV[IMetadataProvider / DiskProvider]
     XREF --> SQL[(DYNAMICSXREFDB)]
@@ -208,9 +216,9 @@ Index refresh is automated via [Azure DevOps pipelines](SETUP_AZURE.md#azure-dev
 
 | Layer | Technology |
 |-------|-----------|
-| Runtime | Node.js ≥ 24, TypeScript 6 (strict) |
+| Runtime | Node.js ≥ 24, TypeScript 7 (strict) |
 | Transport | MCP SDK — stdio + Express 5 HTTP |
 | Storage | node:sqlite (WAL, FTS5) — core module, no native addon |
 | Bridge | .NET Framework 4.8, Microsoft.Dynamics.AX.Metadata DLLs |
-| Tests | Vitest — 1400+ tests, golden quality-gate suites |
-| CI/CD | GitHub Actions (app), Azure DevOps (metadata pipelines) |
+| Tests | Vitest — 2500+ tests, golden quality-gate suites |
+| CI/CD | GitHub Actions — app CI + `eval-gate` (bridge attestation, golden regression, knowledge audit, coverage matrix); Azure DevOps (metadata pipelines) |
