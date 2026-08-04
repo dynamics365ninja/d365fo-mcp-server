@@ -8,6 +8,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Prevent findD365FileOnDisk from triggering a filesystem scan (autoDetectProject)
+// which would cause the get_data_entity_info tests to hang for 30 s.
+vi.mock('../../src/tools/modifyD365File', async (orig) => {
+  const actual = await orig<typeof import('../../src/tools/modifyD365File')>();
+  return { ...actual, findD365FileOnDisk: vi.fn(async () => null) };
+});
+
 import { findCocExtensionsTool } from '../../src/tools/findCocExtensions';
 import { findEventHandlersTool } from '../../src/tools/findEventHandlers';
 import { tableExtensionInfoTool } from '../../src/tools/tableExtensionInfo';
