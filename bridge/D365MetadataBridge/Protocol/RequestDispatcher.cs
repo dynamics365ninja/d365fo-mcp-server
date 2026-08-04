@@ -535,6 +535,53 @@ namespace D365MetadataBridge.Protocol
                             return _writeService!.RemoveIndex(tableName, indexName);
                         });
 
+                    // This is the single-op RPC that BridgeClient.addFullTextIndex()/
+                    // addTableMapping() actually call — it must carry the same four cases
+                    // HandleBatchModify() has below, or every real request dies with
+                    // "-32601 Unknown method" no matter how correct the C# write path is.
+                    case "addfulltextindex":
+                        return HandleWrite(request, () =>
+                        {
+                            var tableName = request.GetStringParam("objectName")
+                                ?? throw new ArgumentException("Missing: objectName");
+                            var indexName = request.GetStringParam("indexName")
+                                ?? throw new ArgumentException("Missing: indexName");
+                            return _writeService!.AddFullTextIndex(tableName, indexName,
+                                request.GetParam<System.Collections.Generic.List<string>>("fields"));
+                        });
+
+                    case "removefulltextindex":
+                        return HandleWrite(request, () =>
+                        {
+                            var tableName = request.GetStringParam("objectName")
+                                ?? throw new ArgumentException("Missing: objectName");
+                            var indexName = request.GetStringParam("indexName")
+                                ?? throw new ArgumentException("Missing: indexName");
+                            return _writeService!.RemoveFullTextIndex(tableName, indexName);
+                        });
+
+                    case "addtablemapping":
+                        return HandleWrite(request, () =>
+                        {
+                            var tableName = request.GetStringParam("objectName")
+                                ?? throw new ArgumentException("Missing: objectName");
+                            var mapName = request.GetStringParam("mapName")
+                                ?? throw new ArgumentException("Missing: mapName");
+                            return _writeService!.AddTableMapping(tableName, mapName,
+                                request.GetStringParam("mappingTable"),
+                                request.GetParam<System.Collections.Generic.List<WriteMappingConnection>>("connections"));
+                        });
+
+                    case "removetablemapping":
+                        return HandleWrite(request, () =>
+                        {
+                            var tableName = request.GetStringParam("objectName")
+                                ?? throw new ArgumentException("Missing: objectName");
+                            var mapName = request.GetStringParam("mapName")
+                                ?? throw new ArgumentException("Missing: mapName");
+                            return _writeService!.RemoveTableMapping(tableName, mapName);
+                        });
+
                     case "addrelation":
                         return HandleWrite(request, () =>
                         {
@@ -595,7 +642,12 @@ namespace D365MetadataBridge.Protocol
                                 ?? throw new ArgumentException("Missing: fieldGroupName");
                             var fieldName = request.GetStringParam("fieldName")
                                 ?? throw new ArgumentException("Missing: fieldName");
-                            return _writeService!.AddFieldToFieldGroup(tableName, groupName, fieldName);
+                            // This is the single-op RPC BridgeClient.addFieldToFieldGroup() actually
+                            // calls — dropping extendBaseFieldGroup here silently reverts every
+                            // caller to the extension-owns-the-group path (see HandleBatchModify()
+                            // below, which forwards it correctly).
+                            return _writeService!.AddFieldToFieldGroup(tableName, groupName, fieldName,
+                                request.GetBoolParam("extendBaseFieldGroup") ?? false);
                         });
 
                     case "modifyfield":
