@@ -1,11 +1,12 @@
 <svg viewBox="0 0 1320 940" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Helvetica, Arial, sans-serif" role="img">
   <title>d365fo-mcp-server solution architecture</title>
-  <desc>Clients call the MCP server core, which routes reads bridge-first or to SQLite and routes writes through a four-gate grounding chain before the C# bridge writes to the D365FO VM. A build-time index pipeline produces the SQLite databases.</desc>
+  <desc>Clients call the MCP server core, which routes reads bridge-first or to SQLite and routes writes through a four-gate grounding chain before the write path — the C# bridge for the types IMetadataProvider can express, validated XML writers for the rest — commits to the D365FO VM. A build-time index pipeline produces the SQLite databases. A self-improving eval loop closes back on the server: an implementer agent runs cases on the VM through the grounded tool path, writes run records to a shared corpus, and an improver agent turns clustered failures into reviewed pull requests.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#64748b"/></marker>
     <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#15803d"/></marker>
     <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ea580c"/></marker>
     <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#dc2626"/></marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7c3aed"/></marker>
     <linearGradient id="gHead" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1e2a4a"/><stop offset="1" stop-color="#312e81"/></linearGradient>
     <linearGradient id="gBridge" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5b2bd6"/><stop offset="1" stop-color="#3b1fa3"/></linearGradient>
     <filter id="card" x="-4%" y="-4%" width="108%" height="112%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e293b" flood-opacity="0.12"/></filter>
@@ -17,6 +18,9 @@
   <text x="48" y="48" font-size="21" font-weight="700" fill="#ffffff">d365fo-mcp-server</text>
   <text x="48" y="68" font-size="12" fill="#aab6d3">Grounded AI development for Dynamics 365 Finance &amp; Operations</text>
   <g>
+    <rect x="724" y="32" width="128" height="38" rx="8" fill="#ffffff" fill-opacity="0.10" stroke="#5b6aa8"/>
+    <text x="788" y="50" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">100%</text>
+    <text x="788" y="64" text-anchor="middle" font-size="9.5" fill="#aab6d3">core eval coverage</text>
     <rect x="864" y="32" width="128" height="38" rx="8" fill="#ffffff" fill-opacity="0.10" stroke="#5b6aa8"/>
     <text x="928" y="50" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">580K+</text>
     <text x="928" y="64" text-anchor="middle" font-size="9.5" fill="#aab6d3">symbols indexed</text>
@@ -32,20 +36,27 @@
   <circle cx="44" cy="129" r="5" fill="#2563eb"/>
   <text x="58" y="133" font-size="12.5" font-weight="700" fill="#33415c" letter-spacing="1.2">CLIENTS</text>
 
-  <rect x="42" y="148" width="214" height="74" rx="9" fill="#ffffff" stroke="#2563eb"/>
-  <text x="56" y="171" font-size="13" font-weight="600" fill="#1d4ed8">Visual Studio 2022 / 2026</text>
-  <text x="56" y="189" font-size="10.5" fill="#475569">GitHub Copilot — Agent Mode</text>
-  <text x="56" y="206" font-size="10.5" fill="#475569">MCP client (.mcp.json)</text>
+  <rect x="42" y="146" width="214" height="56" rx="9" fill="#ffffff" stroke="#2563eb"/>
+  <text x="56" y="165" font-size="12.5" font-weight="600" fill="#1d4ed8">Visual Studio 2026</text>
+  <text x="56" y="181" font-size="10" fill="#475569">GitHub Copilot — Agent Mode</text>
+  <text x="56" y="195" font-size="10" fill="#475569">MCP client (.mcp.json)</text>
 
-  <rect x="42" y="232" width="214" height="74" rx="9" fill="#ffffff" stroke="#2563eb"/>
-  <text x="56" y="255" font-size="13" font-weight="600" fill="#1d4ed8">Claude Code</text>
-  <text x="56" y="273" font-size="10.5" fill="#475569">CLI · VS Code extension</text>
-  <text x="56" y="290" font-size="10.5" fill="#475569">CLAUDE.md instructions</text>
+  <rect x="42" y="210" width="214" height="56" rx="9" fill="#ffffff" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="56" y="229" font-size="12.5" font-weight="600" fill="#1d4ed8">VS Code</text>
+  <rect x="180" y="217" width="62" height="15" rx="7.5" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="211" y="228" text-anchor="middle" font-size="8.5" font-weight="600" fill="#1d4ed8">preferred</text>
+  <text x="56" y="245" font-size="10" fill="#475569">GitHub Copilot · Claude Code ext.</text>
+  <text x="56" y="259" font-size="10" fill="#475569">MCP client (.mcp.json)</text>
 
-  <rect x="42" y="316" width="214" height="74" rx="9" fill="#ffffff" stroke="#2563eb"/>
-  <text x="56" y="339" font-size="13" font-weight="600" fill="#1d4ed8">Any MCP client</text>
-  <text x="56" y="357" font-size="10.5" fill="#475569">stdio or HTTP transport</text>
-  <text x="56" y="374" font-size="10.5" fill="#475569">custom agents · scripts</text>
+  <rect x="42" y="274" width="214" height="56" rx="9" fill="#ffffff" stroke="#2563eb"/>
+  <text x="56" y="293" font-size="12.5" font-weight="600" fill="#1d4ed8">Claude Code</text>
+  <text x="56" y="309" font-size="10" fill="#475569">CLI · desktop · IDE extension</text>
+  <text x="56" y="323" font-size="10" fill="#475569">CLAUDE.md instructions</text>
+
+  <rect x="42" y="338" width="214" height="56" rx="9" fill="#ffffff" stroke="#2563eb"/>
+  <text x="56" y="357" font-size="12.5" font-weight="600" fill="#1d4ed8">Any MCP client</text>
+  <text x="56" y="373" font-size="10" fill="#475569">stdio or HTTP transport</text>
+  <text x="56" y="387" font-size="10" fill="#475569">custom agents · scripts</text>
 
   <rect x="24" y="424" width="250" height="224" rx="12" fill="#f0f9ff" stroke="#bae6fd" filter="url(#card)"/>
   <circle cx="44" cy="449" r="5" fill="#0284c7"/>
@@ -61,13 +72,14 @@
   <text x="56" y="608" font-size="10.5" fill="#475569">+ C# bridge on the dev VM</text>
   <text x="56" y="624" font-size="10.5" fill="#475569">search → Azure · writes → local</text>
 
-  <line x1="274" y1="255" x2="316" y2="255" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
-  <text x="295" y="246" text-anchor="middle" font-size="10" fill="#64748b">tools/call</text>
-
   <rect x="300" y="104" width="720" height="558" rx="12" fill="#eef0fb" stroke="#b9bfe8" filter="url(#card)"/>
   <circle cx="320" cy="129" r="5" fill="#6366f1"/>
   <text x="334" y="133" font-size="13" font-weight="700" fill="#312e81" letter-spacing="1.2">MCP SERVER CORE</text>
   <text x="1000" y="133" text-anchor="end" font-size="10.5" fill="#5b5fa8">Node.js ≥ 24 · TypeScript (strict) · MCP SDK</text>
+
+  <!-- drawn after the core panel so the arrowhead lands on top of it, not underneath -->
+  <line x1="266" y1="270" x2="316" y2="270" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="291" y="261" text-anchor="middle" font-size="10" fill="#64748b">tools/call</text>
 
   <rect x="320" y="148" width="680" height="60" rx="9" fill="#ffffff" stroke="#6366f1"/>
   <text x="334" y="170" font-size="12.5" font-weight="600" fill="#4338ca">Transport &amp; middleware</text>
@@ -111,13 +123,13 @@
     <circle cx="686" cy="436" r="9" fill="#ea580c"/><text x="686" y="440" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">3</text>
     <text x="702" y="440" font-size="11" font-weight="600" fill="#9a3412">Best practices</text>
     <text x="680" y="462" font-size="9" fill="#7c2d12">validate_code · syntax</text>
-    <text x="680" y="476" font-size="9" fill="#7c2d12">13 + mined rules</text>
+    <text x="680" y="476" font-size="9" fill="#7c2d12">11 static + 4 mined rules</text>
 
     <rect x="838" y="420" width="152" height="74" rx="8" fill="#ffffff" stroke="#fdba74"/>
     <circle cx="854" cy="436" r="9" fill="#ea580c"/><text x="854" y="440" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">4</text>
     <text x="870" y="440" font-size="11" font-weight="600" fill="#9a3412">Form patterns</text>
     <text x="848" y="462" font-size="9" fill="#7c2d12">object_patterns · validate</text>
-    <text x="848" y="476" font-size="9" fill="#7c2d12">FP001–FP010</text>
+    <text x="848" y="476" font-size="9" fill="#7c2d12">FP000–FP010</text>
 
     <line x1="486" y1="457" x2="502" y2="457" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
     <line x1="654" y1="457" x2="670" y2="457" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
@@ -141,6 +153,7 @@
   <text x="908" y="567" text-anchor="middle" font-size="9" fill="#3f6212">IMetadataProvider · + .rnrproj</text>
   <text x="775" y="540" text-anchor="middle" font-size="10" fill="#15803d">pass</text>
 
+  <text x="334" y="602" font-size="10" fill="#9a3412">The bridge is the primary writer; object types IMetadataProvider cannot express go through validated XML writers — same gates either way</text>
   <text x="334" y="620" font-size="10" fill="#9a3412">Recommendations only warn · structural violations (FP001–FP005, FP007) block the write</text>
   <text x="334" y="638" font-size="10" fill="#9a3412">All gates env-switchable: GROUNDING_ENFORCE · FORM_PATTERN_ENFORCE</text>
 
@@ -159,14 +172,42 @@
   <text x="1076" y="274" font-size="10" fill="#475569">SQLite + FTS5 · pattern mining</text>
   <line x1="1170" y1="292" x2="1170" y2="304" stroke="#15803d" stroke-width="1.4" marker-end="url(#arrowGreen)"/>
 
-  <rect x="1064" y="306" width="212" height="74" rx="8" fill="#ffffff" stroke="#86c79c"/>
+  <rect x="1064" y="306" width="212" height="82" rx="8" fill="#ffffff" stroke="#86c79c"/>
   <text x="1076" y="328" font-size="12" font-weight="600" fill="#15803d">Automation</text>
-  <text x="1076" y="346" font-size="10" fill="#475569">Azure DevOps — extract→build→upload</text>
-  <text x="1076" y="362" font-size="10" fill="#475569">GitHub Actions — app CI · 1400+ tests</text>
+  <text x="1076" y="344" font-size="10" fill="#475569">Azure DevOps — extract→build→upload</text>
+  <text x="1076" y="360" font-size="10" fill="#475569">GitHub Actions — app CI · 2500+ tests</text>
+  <text x="1076" y="376" font-size="10" fill="#475569">eval gate — goldens · knowledge audit</text>
 
-  <text x="1100" y="424" text-anchor="middle" font-size="10" fill="#15803d">produces both databases</text>
-  <text x="1052" y="468" font-size="9.5" fill="#15803d">reads AOT XML</text>
-  <text x="1052" y="481" font-size="9.5" fill="#15803d">at index build</text>
+  <text x="560" y="668" font-size="10" fill="#15803d">produces both databases</text>
+  <text x="1024" y="706" text-anchor="end" font-size="9.5" fill="#15803d">reads AOT XML</text>
+  <text x="1024" y="718" text-anchor="end" font-size="9.5" fill="#15803d">at index build</text>
+
+  <rect x="1044" y="424" width="252" height="238" rx="12" fill="#f5f3ff" stroke="#ddd6fe" filter="url(#card)"/>
+  <circle cx="1064" cy="447" r="5" fill="#7c3aed"/>
+  <text x="1078" y="451" font-size="12.5" font-weight="700" fill="#5b21b6" letter-spacing="1.2">EVAL LOOP</text>
+  <text x="1064" y="468" font-size="10" fill="#6d5bb5">self-improving harness · 80 cases</text>
+
+  <rect x="1064" y="476" width="212" height="54" rx="8" fill="#ffffff" stroke="#a78bfa"/>
+  <text x="1076" y="494" font-size="11.5" font-weight="600" fill="#6d28d9">Implementer agent</text>
+  <text x="1076" y="509" font-size="9" fill="#475569">on the VM — MCP client, grounded</text>
+  <text x="1076" y="522" font-size="9" fill="#475569">tools only · build → golden diff → SysTest</text>
+
+  <line x1="1170" y1="530" x2="1170" y2="542" stroke="#7c3aed" stroke-width="1.4" marker-end="url(#arrowViolet)"/>
+  <text x="1180" y="540" font-size="8.5" fill="#7c3aed">run records</text>
+
+  <rect x="1064" y="544" width="212" height="38" rx="8" fill="#ffffff" stroke="#a78bfa"/>
+  <text x="1076" y="561" font-size="11.5" font-weight="600" fill="#6d28d9">Corpus</text>
+  <text x="1076" y="575" font-size="9" fill="#475569">one NDJSON record per run · held-out split</text>
+
+  <line x1="1170" y1="582" x2="1170" y2="594" stroke="#7c3aed" stroke-width="1.4" marker-end="url(#arrowViolet)"/>
+  <text x="1180" y="592" font-size="8.5" fill="#7c3aed">clustered failures</text>
+
+  <rect x="1064" y="596" width="212" height="54" rx="8" fill="#ffffff" stroke="#a78bfa"/>
+  <text x="1076" y="614" font-size="11.5" font-weight="600" fill="#6d28d9">Improver agent</text>
+  <text x="1076" y="629" font-size="9" fill="#475569">in the repo — reproduce → fix →</text>
+  <text x="1076" y="642" font-size="9" fill="#475569">pull request (humans review and merge)</text>
+
+  <path d="M1064 623 L1004 623" fill="none" stroke="#7c3aed" stroke-width="1.8" stroke-dasharray="2 3" marker-end="url(#arrowViolet)"/>
 
   <rect x="24" y="690" width="1272" height="226" rx="12" fill="#f8fafc" stroke="#cbd5e1" filter="url(#card)"/>
   <circle cx="44" cy="715" r="5" fill="#0e7490"/>
@@ -190,7 +231,7 @@
   <text x="699" y="762" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">C# Metadata Bridge</text>
   <text x="699" y="782" text-anchor="middle" font-size="10.5" fill="#ddd6fe">D365MetadataBridge.exe · .NET Framework 4.8</text>
   <text x="699" y="799" text-anchor="middle" font-size="10.5" fill="#ddd6fe">JSON-RPC over stdio · IMetadataProvider</text>
-  <text x="699" y="816" text-anchor="middle" font-size="10.5" fill="#ddd6fe">sole write path · 13 create · 25 modify ops</text>
+  <text x="699" y="816" text-anchor="middle" font-size="10.5" fill="#ddd6fe">primary write path · 13 create · 31 modify ops</text>
   <text x="699" y="840" text-anchor="middle" font-size="9.5" fill="#c4b5fd">Windows VM only — graceful fallback to SQLite elsewhere</text>
 
   <rect x="898" y="736" width="376" height="120" rx="9" fill="#eff6ff" stroke="#3b82f6"/>
@@ -210,12 +251,14 @@
   <line x1="858" y1="796" x2="898" y2="796" stroke="#64748b" stroke-width="1.6" marker-end="url(#arrow)"/>
 
   <path d="M1086 736 L1086 700 L1032 700 L1032 190 L1064 190" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
-  <path d="M1240 380 L1240 678 L185 678 L185 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
-  <path d="M1248 380 L1248 686 L415 686 L415 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
+  <path d="M1240 388 L1240 412 L1304 412 L1304 674 L185 674 L185 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
+  <path d="M1248 388 L1248 418 L1312 418 L1312 682 L415 682 L415 736" fill="none" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrowGreen)"/>
 
-  <rect x="80" y="862" width="404" height="42" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+  <rect x="80" y="862" width="640" height="42" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
   <line x1="96" y1="883" x2="132" y2="883" stroke="#64748b" stroke-width="1.6"/>
   <text x="140" y="887" font-size="10" fill="#475569">runtime flow</text>
   <line x1="236" y1="883" x2="272" y2="883" stroke="#15803d" stroke-width="1.4" stroke-dasharray="5 4"/>
   <text x="280" y="887" font-size="10" fill="#475569">build-time flow (index refresh)</text>
+  <line x1="496" y1="883" x2="532" y2="883" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="2 3"/>
+  <text x="540" y="887" font-size="10" fill="#475569">improvement flow (eval loop)</text>
 </svg>
