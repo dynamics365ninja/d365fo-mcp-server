@@ -15,9 +15,19 @@ import { timingSafeEqual } from 'node:crypto';
  * existing deployments keep working without changes.
  *
  * Timing-safe comparison is used to prevent timing side-channel attacks.
+ *
+ * The key is read per request rather than snapshotted at module load. ESM
+ * evaluates this module as part of the entry point's import graph, which under
+ * the old ordering happened before the configuration was loaded onto
+ * process.env — so a key set in .env or config/secrets.json read as "no key
+ * configured" and authentication silently disabled itself. src/bootstrapEnv.ts
+ * fixes that ordering; reading late means this file no longer depends on it.
  */
 
-const API_KEY = process.env.API_KEY?.trim();
+function configuredApiKey(): string | undefined {
+  const key = process.env.API_KEY?.trim();
+  return key ? key : undefined;
+}
 
 /** Paths that never require authentication */
 const PUBLIC_PATHS = new Set(['/', '/health']);
@@ -54,8 +64,10 @@ function extractApiKey(req: Request): string | null {
  * Mount BEFORE any route handlers.
  */
 export function apiKeyAuth(req: Request, res: Response, next: NextFunction): void {
+  const apiKey = configuredApiKey();
+
   // No API_KEY configured → auth disabled, pass through
-  if (!API_KEY) {
+  if (!apiKey) {
     next();
     return;
   }
@@ -68,7 +80,7 @@ export function apiKeyAuth(req: Request, res: Response, next: NextFunction): voi
 
   const provided = extractApiKey(req);
 
-  if (!provided || !safeCompare(provided, API_KEY)) {
+  if (!provided || !safeCompare(provided, apiKey)) {
     res.status(401).json({
       error: 'Unauthorized',
       message: 'Missing or invalid API key. Provide it via X-Api-Key header or Authorization: Bearer <key>.',

@@ -3,9 +3,10 @@
  * Main entry point
  */
 
-// Load .env — supports ENV_FILE env var for multi-instance setups (see src/utils/loadEnv.ts).
-import { loadEnv } from './utils/loadEnv.js';
-loadEnv(import.meta.url);
+// Load configuration onto process.env — MUST stay the first import: ESM
+// evaluates imports before any module body, so anything above this line is
+// evaluated before the configuration exists (see src/bootstrapEnv.ts).
+import './bootstrapEnv.js';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import express from 'express';
