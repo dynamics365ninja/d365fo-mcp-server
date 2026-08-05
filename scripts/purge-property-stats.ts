@@ -29,8 +29,8 @@
  * it to CUSTOM_MODELS and re-run.
  */
 
-import { loadEnv } from '../src/utils/loadEnv.js';
-loadEnv(import.meta.url);
+// Load configuration onto process.env — MUST stay the first import (see src/bootstrapEnv.ts).
+import '../src/bootstrapEnv.js';
 import { XppSymbolIndex } from '../src/metadata/symbolIndex.js';
 import { readExtractedCustomModels } from '../src/utils/extractManifest.js';
 import { c, log, kv, shortPath } from '../src/utils/terminalUi.js';

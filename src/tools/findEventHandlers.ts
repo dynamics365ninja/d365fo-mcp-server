@@ -18,6 +18,52 @@ const FindEventHandlersArgsSchema = z.object({
     .describe('Filter by handler type (static=SubscribesTo delegates, delegate=delegate += syntax, all=both)'),
 });
 
+/**
+ * Methods whose body matches `pattern`, narrowed to those that mention
+ * `targetName` at all.
+ *
+ * The static-handler search above already goes through symbols_fts; the delegate
+ * search did not, and it carried both halves of the same defect the EDT and
+ * api-usage queries had. `source_snippet LIKE '%X%.on%'` cannot use an index, and
+ * ORDER BY forces every match to be read and sorted before LIMIT 20 applies —
+ * so the cost is paid over all 627 K method rows, each carrying source_snippet
+ * in overflow pages. Measured on the 2 GB index (warm): 3.2 s and 2.3 s for the
+ * two patterns, i.e. ~5.5 s of blocked event loop per call, since node:sqlite is
+ * synchronous.
+ *
+ * The FTS pre-filter is also more accurate here, not just faster. LIKE matches
+ * substrings, so `%SalesTable%.on%` reported SalesLine.setAddressFromSalesTable_BR
+ * — a method that merely has the name inside a longer identifier and subscribes
+ * to nothing. FTS matches tokens, so it drops exactly that row. Measured: 0–51 ms,
+ * and every row it excluded for SalesTable/InventTable was such a false positive.
+ *
+ * Falls back to the unfiltered query when the index predates symbols_fts, which
+ * is what the static branch does too.
+ */
+function delegateSearch(rdb: any, targetName: string, pattern: string): any[] {
+  const SELECT = `SELECT name, parent_name, model, source_snippet FROM symbols
+                   WHERE type = 'method'`;
+  const TAIL = ` ORDER BY model, parent_name, name LIMIT 20`;
+
+  const safe = targetName.replace(/["\(\)\\]/g, '').trim();
+  if (safe) {
+    try {
+      return rdb.prepare(
+        `${SELECT}
+           AND id IN (SELECT rowid FROM symbols_fts WHERE symbols_fts MATCH ?)
+           AND source_snippet LIKE ?${TAIL}`
+      ).all(`{source_snippet} : "${safe}"`, pattern) as any[];
+    } catch {
+      // No FTS table (older index) — fall through.
+    }
+  }
+  try {
+    return rdb.prepare(`${SELECT} AND source_snippet LIKE ?${TAIL}`).all(pattern) as any[];
+  } catch {
+    return [];
+  }
+}
+
 export async function findEventHandlersTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = FindEventHandlersArgsSchema.parse(request.params.arguments);
@@ -101,22 +147,10 @@ export async function findEventHandlersTool(request: CallToolRequest, context: X
     // Delegate subscription search (+= syntax)
     let delegateHandlers: any[] = [];
     if (args.handlerType !== 'static') {
-      delegateHandlers = rdb.prepare(
-        `SELECT name, parent_name, model, source_snippet FROM symbols
-         WHERE type = 'method'
-         AND source_snippet LIKE ?
-         ORDER BY model, parent_name, name
-         LIMIT 20`
-      ).all(`%${targetName}.on%+=% `) as any[];
+      delegateHandlers = delegateSearch(rdb, targetName, `%${targetName}.on%+=% `);
 
       // Also: find methods with body referencing delegate attach
-      const delegateHandlers2 = rdb.prepare(
-        `SELECT name, parent_name, model, source_snippet FROM symbols
-         WHERE type = 'method'
-         AND source_snippet LIKE ?
-         ORDER BY model, parent_name, name
-         LIMIT 20`
-      ).all(`%${targetName}%.on%`) as any[];
+      const delegateHandlers2 = delegateSearch(rdb, targetName, `%${targetName}%.on%`);
 
       for (const h of delegateHandlers2) {
         if (!(delegateHandlers.some(d => d.name === h.name && d.parent_name === h.parent_name))) {

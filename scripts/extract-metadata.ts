@@ -3,8 +3,8 @@
  * Extracts X++ metadata from D365 F&O PackagesLocalDirectory
  */
 
-import { loadEnv } from '../src/utils/loadEnv.js';
-loadEnv(import.meta.url);
+// Load configuration onto process.env — MUST stay the first import (see src/bootstrapEnv.ts).
+import '../src/bootstrapEnv.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
