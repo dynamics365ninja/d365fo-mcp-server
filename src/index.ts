@@ -25,6 +25,7 @@ import { TOOL_ANNOTATIONS } from './server/toolAnnotations.js';
 import { apiKeyAuth } from './middleware/apiKeyAuth.js';
 import { VERSION } from './version.js';
 import { setInitializeParams } from './utils/stdioSessionInfo.js';
+import { createShutdownCoordinator } from './utils/gracefulShutdown.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, sanitize, supportsUnicode, log, shortPath, startupWarnings } from './utils/terminalUi.js';
 import * as fs from 'fs/promises';
 import * as fsSync from 'node:fs';
@@ -139,6 +140,12 @@ const serverState: ServerState = {
   isHealthy: false,
   statusMessage: 'Starting...',
 };
+
+// Graceful shutdown — see src/utils/gracefulShutdown.ts for why and how.
+const shutdownCoordinator = createShutdownCoordinator({
+  deadlineMs: Math.max(1_000, parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '5000', 10) || 5_000),
+});
+const onShutdown = shutdownCoordinator.onShutdown;
 
 async function initializeServices() {
   // -----------------------------------------------------------------------
@@ -410,6 +417,10 @@ async function initializeBridge(targetContext: import('./types/context.js').XppS
     });
     if (bridge) {
       targetContext.bridge = bridge;
+      // dispose() ends the child's stdin and escalates to SIGTERM/SIGKILL, so the
+      // bridge gets the chance to finish an in-flight AOT write and close its own
+      // metadata handles rather than being cut off mid-file.
+      onShutdown('C# bridge', () => bridge.dispose());
       const cap = `metadata ${bridge.metadataAvailable ? 'yes' : 'no'} ${glyph.dot} xref ${bridge.xrefAvailable ? 'yes' : 'no'}`;
       return { ok: true, summary: `C# bridge connected (${devEnvType}) ${glyph.dot} ${cap}` };
     }
@@ -424,6 +435,19 @@ async function initializeBridge(targetContext: import('./types/context.js').XppS
 }
 
 async function main() {
+  // Registered first so it runs LAST (cleanups run in reverse): the log file is
+  // where the other steps report, so it has to outlive them.
+  onShutdown('log file', () => {
+    if (_logStream) {
+      _logStream.end();
+      _logStream = undefined;
+    }
+  });
+  // Covers whichever index ended up in serverState — the real one, the in-memory
+  // stub, or the replacement built after a corrupt-DB recovery.
+  onShutdown('symbol index', () => serverState.symbolIndex?.close?.());
+  shutdownCoordinator.registerSignalHandlers({ stdio: isStdioMode });
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Stdin sniffer: capture the `initialize` request params for get_workspace_info.
   // ─────────────────────────────────────────────────────────────────────────────
@@ -689,7 +713,13 @@ async function main() {
     });
 
     // Bind port immediately — Azure requires the port to be open within ~230 s
-    await new Promise<void>(resolve => app.listen(PORT, host, () => resolve()));
+    const httpServer = await new Promise<import('http').Server>(resolve => {
+      const s = app.listen(PORT, host, () => resolve(s));
+    });
+    // Stop accepting new connections and let in-flight requests finish. Bounded
+    // by the shutdown deadline, so a held-open keep-alive socket cannot stall the
+    // exit.
+    onShutdown('HTTP server', () => new Promise<void>(resolve => httpServer.close(() => resolve())));
 
     // Initialise services in the background; register MCP routes once ready
     initializeServices().then(async ({ mcpServer, symbolIndex, parser, workspaceScanner, hybridSearch, context }) => {
