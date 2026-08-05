@@ -184,10 +184,21 @@ export class CustomHttpTransport implements Transport {
     this.app.post('/mcp', async (req: Request, res: Response): Promise<void> => {
       // Declare here so the catch block can clean it up regardless of where an error fires
       let internalId: string | undefined;
+      // Hoisted for the same reason. An error raised after the timer is armed but
+      // outside the resolve/reject paths (e.g. from the surrounding context
+      // wrapper) would otherwise leave a live timer holding the event loop for up
+      // to the heavy-tool ceiling of 10 minutes.
+      let responseTimeoutId: ReturnType<typeof setTimeout> | undefined;
+      // Captured before any id rewriting below. `request` IS `req.body`, so once
+      // the id is swapped for the internal routing key, reading it back in the
+      // catch block would answer with that key — and a client that gets an error
+      // tagged with an id it never sent cannot correlate it, so it waits out its
+      // own timeout instead of failing fast.
+      const clientRequestId = (req.body as any)?.id ?? null;
       try {
         // Set response headers (keep-alive enabled for performance)
         res.setHeader('Content-Type', 'application/json');
-        
+
         const request = req.body as JSONRPCRequest;
 
         // Extract GitHub Copilot workspace path for per-request isolation.
@@ -290,6 +301,7 @@ export class CustomHttpTransport implements Transport {
                 reject(new Error(`Request timeout: ${toolName} did not complete within ${perToolTimeoutMs / 1000}s`));
               }
             }, perToolTimeoutMs);
+            responseTimeoutId = timeoutId;
 
             this.pendingRequests.set(internalId, {
               resolve: (message) => {
@@ -391,18 +403,18 @@ export class CustomHttpTransport implements Transport {
         if (internalId) {
           this.pendingRequests.delete(internalId);
         }
+        if (responseTimeoutId) {
+          clearTimeout(responseTimeoutId);
+        }
         
         if (!res.headersSent) {
-          // Use the original request id so the client can correlate this error.
-          // request is block-scoped inside try, so fall back to req.body.
-          const reqId = (req.body as any)?.id ?? null;
           res.status(500).json({
             jsonrpc: '2.0',
             error: {
               code: -32603,
               message: error instanceof Error ? error.message : 'Internal error',
             },
-            id: reqId,
+            id: clientRequestId,
           });
         }
       }
