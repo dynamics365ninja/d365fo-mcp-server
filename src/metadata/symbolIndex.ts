@@ -3134,19 +3134,44 @@ export class XppSymbolIndex {
     }));
   }
   getApiUsagePatterns(className: string): any[] {
-    // Find all methods that reference this class in their used_types.
+    // Find methods that reference this class in their used_types.
     // Cap at 20 rows — fetching source_snippet for 50+ rows on a 584K-row table causes timeout.
+    //
+    // `used_types LIKE '%name%'` was wrong on both counts. used_types is a
+    // comma-separated list of exact type names, so a substring test answered
+    // "SalesTable" with methods that only use AxSalesTable or
+    // MCRSalesTableRefRecId. And it could not use an index: LIMIT 20 only stops
+    // the scan once 20 matches exist, so a name with no matches read used_types
+    // out of all 627 K method rows — each carrying source_snippet and source in
+    // overflow pages. Measured on the 2 GB index: over 7 minutes, synchronously,
+    // which blocks the whole server until the client gives up and kills it.
+    //
+    // The FTS pre-filter makes the candidate set small (an indexed token match on
+    // source_snippet), and exact membership in the list then decides. Same
+    // measurement: 0–230 ms, with the false positives gone.
+    //
+    // The pre-filter also narrows what can be returned: a method whose
+    // used_types names the class but whose stored snippet does not mention it is
+    // no longer reported. That is acceptable here specifically — this tool
+    // exists to show usage examples, and the caller reads initialization
+    // patterns straight out of source_snippet, so a row whose snippet lacks the
+    // name has no example to contribute.
+    const safe = className.replace(/["\(\)\\]/g, '').trim();
+    if (!safe) return [];
+
     let stmt = this.stmtCache.get('getApiUsagePatterns');
     if (!stmt) {
       stmt = this.db.prepare(
         `SELECT name, parent_name, method_calls, source_snippet
            FROM symbols
-          WHERE type = 'method' AND used_types LIKE ?
+          WHERE type = 'method'
+            AND id IN (SELECT rowid FROM symbols_fts WHERE symbols_fts MATCH ?)
+            AND ', ' || used_types || ', ' LIKE ? COLLATE NOCASE
           LIMIT 20`
       );
       this.stmtCache.set('getApiUsagePatterns', stmt);
     }
-    const methods = stmt.all(`%${className}%`) as any[];
+    const methods = stmt.all(`{source_snippet} : "${safe}"`, `%, ${className}, %`) as any[];
 
     if (methods.length === 0) {
       return [];
