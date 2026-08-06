@@ -138,7 +138,7 @@ describe('ProjectFileManager', () => {
         ['form-extension', 'AxFormExtension', 'Form Extensions'],
         ['data-entity-extension', 'AxDataEntityViewExtension', 'Data Entity Extensions'],
         ['edt-extension', 'AxEdtExtension', 'EDT Extensions'],
-        ['enum-extension', 'AxEnumExtension', 'Enum Extensions'],
+        ['enum-extension', 'AxEnumExtension', 'Base Enum Extensions'],
         ['report', 'AxReport', 'Reports'],
         ['menu-item-display', 'AxMenuItemDisplay', 'Display Menu Items'],
         ['menu-item-action', 'AxMenuItemAction', 'Action Menu Items'],

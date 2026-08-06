@@ -3343,7 +3343,9 @@ export class ProjectFileManager {
       'menu-item-output-extension': 'Output Menu Item Extensions',
       edt: 'Extended Data Types',
       'edt-extension': 'EDT Extensions',
-      'enum-extension': 'Enum Extensions',
+      // "Base Enum Extensions" (matches the "Base Enums" base node), but
+      // "EDT Extensions" — VS abbreviates only the EDT one.
+      'enum-extension': 'Base Enum Extensions',
       menu: 'Menus',
       'menu-extension': 'Menu Extensions',
       'security-privilege': 'Security Privileges',
