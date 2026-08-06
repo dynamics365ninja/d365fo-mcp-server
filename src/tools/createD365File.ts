@@ -63,6 +63,28 @@ async function withProjectFileLock<T>(projectPath: string, fn: () => Promise<T>)
   }
 }
 
+/**
+ * Builds the "no projectPath could be resolved" warning shown when
+ * addToProject=true but neither projectPath/solutionPath nor auto-detection
+ * produced a usable path. When multiple .rnrproj files exist in the workspace,
+ * auto-detection deliberately refuses to guess between them (see
+ * workspaceDetector.ts detectD365Project) — list the candidates so the caller
+ * knows to pass projectPath explicitly instead of silently landing on the
+ * wrong project.
+ */
+function buildNoProjectPathWarning(): string {
+  const candidates = getConfigManager().getAllDetectedProjects();
+  if (candidates.length > 1) {
+    return `\n⚠️ addToProject=true but no projectPath could be resolved: ${candidates.length} .rnrproj ` +
+      `files were found in this workspace and none matched unambiguously.\n` +
+      `The file was created on disk but was NOT added to any Visual Studio project.\n\n` +
+      `Pass projectPath explicitly to target the right one:\n` +
+      candidates.map(c => `   - ${c.modelName}: ${c.projectPath ?? '(no .rnrproj)'}`).join('\n') + '\n';
+  }
+  return `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
+    `Add projectPath to .mcp.json or pass it as a parameter.`;
+}
+
 const CreateD365FileArgsSchema = z.object({
   objectType: z
     .enum([
@@ -110,7 +132,15 @@ const CreateD365FileArgsSchema = z.object({
   projectPath: z
     .string()
     .optional()
-    .describe('Path to .rnrproj file. Required for addToProject to work. If not specified, auto-detected from .mcp.json or workspace context.'),
+    .describe(
+      'Path to .rnrproj file. Effectively MANDATORY, not optional, in any workspace with more than one ' +
+      'D365FO project/model: auto-detection can only resolve unambiguously when exactly one .rnrproj is ' +
+      'found (or one uniquely matches the workspace name). Whenever a workspace has multiple .rnrproj ' +
+      'files, auto-detection deliberately refuses to guess between them — call get_workspace_info first ' +
+      'to see the detected candidates, then pass this parameter explicitly on every create call so the ' +
+      'file is registered into the intended project instead of being silently added to the wrong one or ' +
+      'not added at all.'
+    ),
   solutionPath: z
     .string()
     .optional()
@@ -4761,8 +4791,7 @@ export async function handleCreateD365File(
                     projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
                   }
                 } else {
-                  projectMsg = `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
-                    `Add projectPath to .mcp.json or pass it as a parameter.`;
+                  projectMsg = buildNoProjectPathWarning();
                 }
               }
 
@@ -4858,8 +4887,7 @@ export async function handleCreateD365File(
                 projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
               }
             } else {
-              projectMsg = `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
-                `Add projectPath to .mcp.json or pass it as a parameter.`;
+              projectMsg = buildNoProjectPathWarning();
             }
           }
 
@@ -5213,15 +5241,8 @@ export async function handleCreateD365File(
         }
       } else if (!projectMessage) {
         // No projectPath found from any source — surface this in the response so AI and user see it
-        projectMessage = `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
-          `The file was created on disk but was NOT added to the Visual Studio project.\n\n` +
-          `To fix this, add projectPath to your .mcp.json:\n` +
-          `  {\n` +
-          `    "servers": { "context": {\n` +
-          `      "projectPath": "K:\\\\VSProjects\\\\YourSolution\\\\YourModel\\\\YourModel.rnrproj"\n` +
-          `    } }\n` +
-          `  }\n` +
-          `Until then, add the file manually in Visual Studio: right-click project → Add Existing Item → ${normalizedFullPath}\n`;
+        projectMessage = buildNoProjectPathWarning() +
+          `\nUntil resolved, add the file manually in Visual Studio: right-click project → Add Existing Item → ${normalizedFullPath}\n`;
       }
     }
 

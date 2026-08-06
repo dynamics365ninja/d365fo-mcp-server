@@ -132,9 +132,14 @@ export async function detectD365Project(workspacePath: string, maxDepth: number 
     projectFiles.forEach(p => debugLog(`   - ${p}`));
 
     // Prefer the .rnrproj whose own folder name matches the workspace base name
-    // (D365FO multi-project solution convention); else the first file found.
-    let primaryProject = projectFiles[0];
-    if (projectFiles.length > 1) {
+    // (D365FO multi-project solution convention). With exactly one candidate,
+    // use it. With multiple candidates and no unambiguous match, refuse to
+    // guess — silently picking projectFiles[0] previously caused new files to
+    // be registered into an arbitrary, unrelated "first found" project.
+    let primaryProject: string;
+    if (projectFiles.length === 1) {
+      primaryProject = projectFiles[0];
+    } else {
       const wpBase = path.basename(workspacePath).toLowerCase();
       const nameMatch = projectFiles.find(
         p => path.basename(path.dirname(p)).toLowerCase() === wpBase,
@@ -142,6 +147,14 @@ export async function detectD365Project(workspacePath: string, maxDepth: number 
       if (nameMatch) {
         primaryProject = nameMatch;
         debugLog(`[WorkspaceDetector] Solution-name match → ${path.basename(nameMatch)}`);
+      } else {
+        console.error(
+          `[WorkspaceDetector] ⚠️ Ambiguous: ${projectFiles.length} .rnrproj files found and none match ` +
+          `the workspace name — refusing to auto-select one. Candidates:\n` +
+          projectFiles.map(p => `   - ${p}`).join('\n') +
+          `\nCaller must pass projectPath explicitly.`
+        );
+        return null;
       }
     }
 
