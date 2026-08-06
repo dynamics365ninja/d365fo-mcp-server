@@ -67,7 +67,9 @@ class ConfigManager {
   private autoDetectionAttempted: boolean = false;
   // Auto-detection results cached per workspace path.
   private autoDetectionCache = new Map<string, D365ProjectInfo | null>();
-  // All projects found when D365FO_SOLUTIONS_PATH is configured.
+  // All known .rnrproj candidates: from the D365FO_SOLUTIONS_PATH scan when that is
+  // configured, otherwise from the workspace itself when auto-detection could not
+  // settle on one project.
   private allDetectedProjects: D365ProjectInfo[] = [];
   // Monotonically-increasing counter identifying each background detection call;
   // a scan whose generation is stale by the time it finishes is discarded so it
@@ -185,6 +187,22 @@ class ConfigManager {
       }
     }
 
+    // No projectPath resolved — either the workspace is ambiguous (several .rnrproj,
+    // none unambiguously "the" one) or nothing was found. Record every candidate so
+    // callers that need a project (addToProject, get_workspace_info) can name the
+    // real alternatives instead of a generic "could not resolve". Only runs on this
+    // failure path, once per workspace, and never overwrites a solutions-path scan.
+    if (!detectedProject?.projectPath && workspacePath && this.allDetectedProjects.length === 0) {
+      const candidates = await scanAllD365Projects(workspacePath);
+      if (candidates.length > 0) {
+        this.allDetectedProjects = candidates;
+        console.error(
+          `[ConfigManager] No project auto-selected — ${candidates.length} candidate(s) in workspace: ` +
+          candidates.map(c => c.modelName).join(', ')
+        );
+      }
+    }
+
     // Store in cache (PERFORMANCE FIX)
     this.autoDetectionCache.set(cacheKey, detectedProject);
 
@@ -202,7 +220,11 @@ class ConfigManager {
     } else if (detectedProject) {
       this.autoDetectedProject = detectedProject;
       console.error('[ConfigManager] ✅ Auto-detection successful:');
-      console.error(`   ProjectPath: ${detectedProject.projectPath}`);
+      console.error(
+        detectedProject.ambiguousProjects
+          ? `   ProjectPath: (not auto-selected — ${detectedProject.ambiguousProjects.length} candidates share this model; pass projectPath explicitly)`
+          : `   ProjectPath: ${detectedProject.projectPath}`
+      );
       console.error(`   ModelName: ${detectedProject.modelName}`);
       console.error(`   SolutionPath: ${detectedProject.solutionPath}`);
       // ✨ Register the auto-detected model as custom
@@ -1001,8 +1023,10 @@ class ConfigManager {
   }
 
   /**
-   * Returns all projects discovered by the D365FO_SOLUTIONS_PATH scan.
-   * Used by get_workspace_info to list available projects for solution switching.
+   * Returns all known .rnrproj candidates — from the D365FO_SOLUTIONS_PATH scan, or
+   * from the workspace when auto-detection found several and could not pick one.
+   * Used by get_workspace_info to list available projects for solution switching,
+   * and by createD365File to name the alternatives when projectPath is missing.
    */
   getAllDetectedProjects(): D365ProjectInfo[] {
     return this.allDetectedProjects;

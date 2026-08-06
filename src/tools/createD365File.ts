@@ -82,7 +82,13 @@ function buildNoProjectPathWarning(): string {
       candidates.map(c => `   - ${c.modelName}: ${c.projectPath ?? '(no .rnrproj)'}`).join('\n') + '\n';
   }
   return `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
-    `Add projectPath to .mcp.json or pass it as a parameter.`;
+    `The file was created on disk but was NOT added to any Visual Studio project.\n\n` +
+    `Pass projectPath as a parameter, or add it to your .mcp.json:\n` +
+    `  {\n` +
+    `    "servers": { "context": {\n` +
+    `      "projectPath": "K:\\\\VSProjects\\\\YourSolution\\\\YourModel\\\\YourModel.rnrproj"\n` +
+    `    } }\n` +
+    `  }\n`;
 }
 
 const CreateD365FileArgsSchema = z.object({
@@ -133,13 +139,9 @@ const CreateD365FileArgsSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Path to .rnrproj file. Effectively MANDATORY, not optional, in any workspace with more than one ' +
-      'D365FO project/model: auto-detection can only resolve unambiguously when exactly one .rnrproj is ' +
-      'found (or one uniquely matches the workspace name). Whenever a workspace has multiple .rnrproj ' +
-      'files, auto-detection deliberately refuses to guess between them — call get_workspace_info first ' +
-      'to see the detected candidates, then pass this parameter explicitly on every create call so the ' +
-      'file is registered into the intended project instead of being silently added to the wrong one or ' +
-      'not added at all.'
+      'Path to .rnrproj file. Required for addToProject in any workspace holding more than one .rnrproj: ' +
+      'auto-detection resolves a project only when there is exactly one, or one whose folder matches the ' +
+      'workspace name, and otherwise refuses to guess. Call get_workspace_info to list the candidates.'
     ),
   solutionPath: z
     .string()
