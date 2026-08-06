@@ -151,8 +151,11 @@ describe('ProjectFileManager', () => {
         ['security-privilege', 'AxSecurityPrivilege', 'Security Privileges'],
         ['security-duty', 'AxSecurityDuty', 'Security Duties'],
         ['security-role', 'AxSecurityRole', 'Security Roles'],
-        ['security-duty-extension', 'AxSecurityDutyExtension', 'Security Duties'],
-        ['security-role-extension', 'AxSecurityRoleExtension', 'Security Roles'],
+        // Extensions get their OWN project folder — VS groups them under
+        // "Security Duty Extensions"/"Security Role Extensions", not under the
+        // base "Security Duties"/"Security Roles" nodes.
+        ['security-duty-extension', 'AxSecurityDutyExtension', 'Security Duty Extensions'],
+        ['security-role-extension', 'AxSecurityRoleExtension', 'Security Role Extensions'],
         ['business-event', 'AxClass', 'Classes'],
         ['tile', 'AxTile', 'Tiles'],
         ['kpi', 'AxKPI', 'KPIs'],
