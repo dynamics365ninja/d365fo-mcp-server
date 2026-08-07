@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import * as path from 'path';
 
 // ── Mocks must be declared before any imports that load the mocked modules ──
 
@@ -193,12 +194,27 @@ describe('forceProject — write anchor', () => {
     expect(mgr.getWriteAnchorModel()).toBe('ModelA');
   });
 
+  // The only case in this file that needs matchProjectForWorkspace to actually
+  // MATCH, which means real path parsing: the Windows literals above are inert on
+  // a POSIX runner (path.dirname of a backslash path is "."), so every other test
+  // here passes on CI by taking the no-match branch. Build this one natively —
+  // the gate runs on ubuntu-latest.
+  const NATIVE_ROOT = path.join(path.parse(process.cwd()).root, 'repos', 'Contoso');
+  const NATIVE_B_DIR = path.join(NATIVE_ROOT, 'SolutionB', 'ProjectB');
+  const NATIVE_B = path.join(NATIVE_B_DIR, 'ProjectB.rnrproj');
+
   it('clears the anchor when the workspace itself resolves a project', async () => {
     const mgr = makeManager();
-    await mgr.forceProject(PROJECT_B);
+    (mgr as any).allDetectedProjects = [
+      INFO_A,
+      { projectPath: NATIVE_B, modelName: 'ModelB', solutionPath: path.join(NATIVE_ROOT, 'SolutionB') },
+    ];
+
+    await mgr.forceProject(NATIVE_B);
+    expect(mgr.getWriteAnchorModel()).toBe('ModelA');
 
     // roots/list with a root that matches ProjectB unambiguously: the USER moved.
-    await mgr.setRuntimeContextFromRoots([PROJECT_B.slice(0, PROJECT_B.lastIndexOf('\\'))]);
+    await mgr.setRuntimeContextFromRoots([NATIVE_B_DIR]);
 
     expect(mgr.getToolProjectSwitch()).toBeNull();
     expect(mgr.getWriteAnchorModel()).toBe('ModelB');
