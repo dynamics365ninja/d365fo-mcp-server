@@ -41,7 +41,13 @@ const CHARS_PER_TOKEN = 4;
 // on the wire — only the prose naming them does, and that was paid for by
 // tightening the `params` description rather than by moving the ceiling.
 // Headroom is small on purpose so creep is caught early.
-const TOTAL_BUDGET = 63_300;
+//
+// run_bp_check's `objects[]` batch form (#828) does raise it: it is a genuinely
+// new array-of-object parameter, and it buys back far more than it costs —
+// checking three objects went from three ListTools-priced round trips to one.
+// The single-target `targetFilter`/`targetElementType` descriptions were
+// tightened at the same time to pay for part of it.
+const TOTAL_BUDGET = 63_700;
 const LARGEST_TOOL_BUDGET = 9_900;
 
 async function getTools(): Promise<Array<{ name: string }>> {
