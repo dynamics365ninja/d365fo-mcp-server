@@ -17,7 +17,6 @@ import { getObjectInfoTool } from '../../src/tools/getObjectInfo';
 import {
   READER_DISPATCH,
   OBJECT_INFO_TYPES,
-  BATCH_INFO_TYPES,
 } from '../../src/tools/objectInfoRegistry';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -103,7 +102,6 @@ describe('get_object_info — extension types are registered', () => {
       'edt-extension', 'data-entity-extension', 'class-extension',
     ]) {
       expect(OBJECT_INFO_TYPES).toContain(t);
-      expect(BATCH_INFO_TYPES).toContain(t);
       expect(READER_DISPATCH[t]).toBeDefined();
     }
   });
