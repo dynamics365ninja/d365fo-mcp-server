@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>EvalL3ServiceTierDowngradeTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Runtime oracle for the L3-enum-field-form-downgrade-guard eval case
+/// (docs/AGENT_EVAL_LOOP.md §6.3).
+///
+/// The case asks for an ordered enum ladder (None &lt; Silver &lt; Gold &lt; Platinum) on
+/// ConDemoTaxChangeLog plus a validateWrite() guard that rejects a DOWNGRADE of
+/// ConDemoTaxChangeLog.ServiceTier against the stored value read from this.orig().
+/// A golden diff can prove the method exists with the right shape and the right
+/// label reference; only a run can prove the comparison has the right direction
+/// (a `&gt;` instead of `&lt;` compiles, is BP-clean, and blocks exactly the wrong
+/// half of the writes).
+///
+/// Every test runs inside ttsbegin/ttsabort, so nothing is persisted; orig() is
+/// populated because the buffer is re-read `forupdate` inside the transaction —
+/// that is precisely the path the guard must work on. The guard reports through
+/// checkFailed(), which posts an infolog error and returns false, so each test
+/// clears the infolog before asserting.
+///
+/// Run via `run_systest_class` with className = EvalL3ServiceTierDowngradeTest.
+/// With the guard absent all three assertions on `accepted` come back true and
+/// the downgrade test fails — the test therefore exercises the guard, not the
+/// platform's own validateWrite.
+/// </summary>
+class EvalL3ServiceTierDowngradeTest extends SysTestCase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>testDowngradeIsRejected</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gold (2) stored, Silver (1) written back — validateWrite() must be false.
+    /// </summary>
+    [SysTestCheckInTestAttribute]
+    public void testDowngradeIsRejected()
+    {
+        ConDemoTaxChangeLog changeLog;
+        boolean accepted;
+
+        ttsbegin;
+
+        changeLog.clear();
+        changeLog.ChangeLogId = 'EVAL-TIER-DOWN';
+        changeLog.ServiceTier = ConDemoServiceTier::Gold;
+        changeLog.insert();
+
+        select forupdate changeLog
+            where changeLog.ChangeLogId == 'EVAL-TIER-DOWN';
+
+        changeLog.ServiceTier = ConDemoServiceTier::Silver;
+        accepted = changeLog.validateWrite();
+
+        ttsabort;
+
+        infolog.clear();
+
+        this.assertFalse(accepted);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testUpgradeIsAccepted</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Silver (1) stored, Platinum (3) written back — the guard must not fire.
+    /// </summary>
+    [SysTestCheckInTestAttribute]
+    public void testUpgradeIsAccepted()
+    {
+        ConDemoTaxChangeLog changeLog;
+        boolean accepted;
+
+        ttsbegin;
+
+        changeLog.clear();
+        changeLog.ChangeLogId = 'EVAL-TIER-UP';
+        changeLog.ServiceTier = ConDemoServiceTier::Silver;
+        changeLog.insert();
+
+        select forupdate changeLog
+            where changeLog.ChangeLogId == 'EVAL-TIER-UP';
+
+        changeLog.ServiceTier = ConDemoServiceTier::Platinum;
+        accepted = changeLog.validateWrite();
+
+        ttsabort;
+
+        infolog.clear();
+
+        this.assertTrue(accepted);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testInsertAtAnyTierIsAccepted</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// A fresh buffer (RecId == 0) has an empty orig(), whose ServiceTier is
+    /// None (0); inserting at Silver must still validate — the guard is an
+    /// update-time rule, not an insert-time one.
+    /// </summary>
+    [SysTestCheckInTestAttribute]
+    public void testInsertAtAnyTierIsAccepted()
+    {
+        ConDemoTaxChangeLog changeLog;
+        boolean accepted;
+
+        ttsbegin;
+
+        changeLog.clear();
+        changeLog.ChangeLogId = 'EVAL-TIER-NEW';
+        changeLog.ServiceTier = ConDemoServiceTier::Silver;
+        accepted = changeLog.validateWrite();
+
+        ttsabort;
+
+        infolog.clear();
+
+        this.assertTrue(accepted);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

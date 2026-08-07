@@ -66,6 +66,9 @@ function ctxWith(rows: any[]) {
     symbolIndex: {
       searchLabels: vi.fn(() => rows),
       getLabelById: vi.fn(() => rows),
+      // No indexed path → the on-disk staleness check gives no verdict, which is
+      // what these reference-formatting cases want (see labelDiskCheck.test.ts).
+      getLabelFilePaths: vi.fn(() => []),
     },
   } as any;
 }

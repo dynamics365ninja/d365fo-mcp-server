@@ -1312,7 +1312,7 @@ const ModifyD365FileArgsSchema = z.object({
   fieldMandatory: z.boolean().optional().describe('Is field mandatory'),
   fieldLabel: z.string().optional().describe('Field label'),
   fieldHelpText: z.string().optional().describe('Field help text (modify-field).'),
-  fieldEnumType: z.string().optional().describe('Enum name to set on the field (modify-field, for enum-typed fields).'),
+  fieldEnumType: z.string().optional().describe('Enum name for an enum-typed field. On add-field this replaces fieldType entirely — it writes AxTableFieldEnum + EnumType and needs no EDT. Also settable later with modify-field.'),
   fieldStringSize: z.string().optional().describe('String size to set on the field (modify-field, for string-typed fields).'),
   fields: z.array(z.object({
     name: z.string(),
@@ -1738,13 +1738,16 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // Ownership comes from the path's <Model> segment, not the <Package> segment
     // used above: one package can carry several models.
     const owningModel = containment.modelSegment ?? null;
-    const activeModel = getConfigManager().getModelName() ?? '';
+    // The write ANCHOR, not the active model: a get_workspace_info project switch
+    // moves reads, and must not move what this guard measures writes against.
+    const activeModel = getConfigManager().getWriteAnchorModel() ?? '';
     const crossModelRefusal = crossModelWriteRefusal({
       objectName,
       objectType,
       owningModel,
       owningPackage: containment.packageSegment ?? resolvedModelFromPath,
       activeModel,
+      toolSwitchedModel: getConfigManager().getToolProjectSwitch()?.forcedModel ?? null,
       action: 'modify',
       existingExtensions: findExtensionsInModel(
         symbolIndex,
@@ -2028,7 +2031,34 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         // (the mapped-field path above has no fieldType at all), so the type-specific half
         // of the contract is enforced here instead of silently falling through to a null
         // bridge result and a generic "required parameters may be missing".
-        if (args.fieldName && !args.fieldType) {
+        const enumTypeArg = ((args as any).fieldEnumType as string | undefined)?.trim() || undefined;
+
+        // fieldType is an EDT NAME here. In `create` the sibling key fields[].fieldType is
+        // the XML element name ("AxTableFieldEnum"), and that collision gets carried over
+        // into add-field, where it used to be accepted and produce a bare AxTableFieldString
+        // referencing a non-existent EDT — a wrong field, discovered only at build time.
+        // Anchored on the metamodel's own container names, not on "starts with Ax
+        // and contains Field": that broader shape also rejected any legitimate EDT
+        // whose name happens to read that way, and refusing a valid EDT is the
+        // same class of wrong answer this check exists to prevent.
+        if (args.fieldType && /^Ax(Table|View|Query|Map|DataEntityView)[A-Za-z]*Field[A-Za-z0-9]*$/i.test(args.fieldType)) {
+          return {
+            content: [{
+              type: 'text',
+              text:
+                `❌ fieldType="${args.fieldType}" is an XML element name, not an EDT — nothing was written.\n` +
+                `On add-field, fieldType is the EDT NAME (e.g. "TransDate", "ItemId"); the XML element is ` +
+                `chosen from fieldBaseType.\n` +
+                `For an enum field pass fieldEnumType="<enum name>" instead — no EDT is needed:\n` +
+                `  d365fo_file(action="modify", objectType="${objectType}", objectName="…", ` +
+                `operation="add-field", fieldName="${args.fieldName ?? 'MyField'}", fieldEnumType="MyEnum")\n` +
+                `\n${renderOpSpec('add-field')}`,
+            }],
+            isError: true,
+          };
+        }
+
+        if (args.fieldName && !args.fieldType && !enumTypeArg) {
           const mappedOnly = (args as any).dataField || (args as any).dataSource;
           return {
             content: [{
@@ -2037,14 +2067,67 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
                 (mappedOnly
                   ? `❌ dataField/dataSource describe a data-entity mapped field and do not apply to ` +
                     `objectType="${objectType}" — nothing was written.\n` +
-                    `On a table or table-extension a field needs fieldType (its EDT).\n`
-                  : `❌ add-field on objectType="${objectType}" requires fieldType (the EDT) — ` +
-                    `nothing was written.\n`) +
+                    `On a table or table-extension a field needs fieldType (its EDT), or ` +
+                    `fieldEnumType for an enum field.\n`
+                  : `❌ add-field on objectType="${objectType}" requires fieldType (the EDT), or ` +
+                    `fieldEnumType for an enum field — nothing was written.\n`) +
                 `\n${renderOpSpec('add-field')}`,
             }],
             isError: true,
           };
         }
+
+        // Enum field: AxTableFieldEnum + <EnumType>, and NO EDT — an enum-typed table
+        // field does not need one. Requiring an EDT here is what used to send callers off
+        // building an AxEdtEnum wrapper, guessing at <Extends>, and failing the build twice
+        // before getting there. fieldType stays accepted for the rarer "enum EDT" case.
+        if (args.fieldName && enumTypeArg) {
+          bridgeResult = await bridgeAddField(
+            context.bridge,
+            objectName,
+            args.fieldName,
+            'Enum',
+            args.fieldType,      // usually undefined; an enum EDT when the caller has one
+            args.fieldMandatory,
+            args.fieldLabel,
+          );
+          // EnumType is set in a second call on purpose: the bridge's AddField RPC has no
+          // enumType parameter, while ModifyField does. Doing it here keeps this a
+          // single tool call for the caller AND works with the bridge already deployed —
+          // no rebuild, which is the part that silently keeps the old binary.
+          if (bridgeResult?.success) {
+            const enumSet = await bridgeModifyField(
+              context.bridge,
+              objectName,
+              args.fieldName,
+              { enumType: enumTypeArg },
+            );
+            if (enumSet && !enumSet.success) {
+              // Undo the half-written field. Two calls are not atomic, and what
+              // they can leave behind — an AxTableFieldEnum with no enum — is a
+              // field the caller did not ask for. Worse, the bridge's AddField
+              // does not check for an existing field, so an agent that reads
+              // "failed" and simply repeats the call ends up with the field
+              // twice. Rolling back restores the pre-call state, which is the
+              // only state a failed operation may leave.
+              const undone = await bridgeRemoveField(context.bridge, objectName, args.fieldName);
+              bridgeResult = {
+                success: false,
+                message: undone?.success
+                  ? `EnumType could not be set (${enumSet.message}) — the field was rolled back and ` +
+                    `nothing was written. Check that enum "${enumTypeArg}" exists ` +
+                    `(get_object_info objectType="enum"), then retry add-field.`
+                  : `Field '${args.fieldName}' was created but EnumType could not be set ` +
+                    `(${enumSet.message}), and rolling the field back failed too. The field is an ` +
+                    `AxTableFieldEnum with no enum — do NOT repeat add-field, it would add a SECOND ` +
+                    `field of the same name. Fix it with operation="modify-field", ` +
+                    `fieldEnumType="${enumTypeArg}", or remove it with operation="remove-field".`,
+              };
+            }
+          }
+          break;
+        }
+
         if (args.fieldName && args.fieldType) {
           // fieldType is the EDT name; fieldBaseType is the primitive base type.
           // When fieldBaseType is omitted, auto-resolve it from the symbol index so the
@@ -2745,6 +2828,25 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     const xppLintWarnings = lintXppSelect(args.sourceCode ?? (args as any).methodCode ?? args.newCode);
     const xppLintNote = xppLintWarnings.length > 0 ? `\n\n${xppLintWarnings.join('\n\n')}` : '';
 
+    // Two BP rules fire on a field that compiles perfectly, so they are invisible
+    // until a BP run several steps later — and one of them (the label copy) then
+    // needs new labels, i.e. rework of what was just written. Say it here instead.
+    let addFieldBpNote = '';
+    if (operation === 'add-field' && (objectType === 'table' || objectType === 'table-extension')) {
+      const notes = [
+        `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup):\n` +
+        `   d365fo_file(action="modify", objectType="${objectType}", objectName="${objectName}", ` +
+        `operation="add-field-to-field-group", fieldName="${args.fieldName}", fieldGroupName="<group>")`,
+      ];
+      if ((args as any).fieldEnumType) {
+        notes.push(
+          `⚠️ BP: the field's Label must be a DIFFERENT label id than the enum's own label ` +
+          `(BPErrorFieldLabelIsCopyOfEnumLabel) — same visible text is fine, same id is not.`,
+        );
+      }
+      addFieldBpNote = `\n\n${notes.join('\n')}`;
+    }
+
     return {
       content: [
         {
@@ -2752,7 +2854,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           text:
             `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${xppLintNote}${backupNote}` +
+            `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}` +
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
         },
@@ -2842,7 +2944,7 @@ function findExtensionsInModel(
  *
  * Idempotent: a name that already carries the prefix — in either the underscore
  * or the bare form, case-insensitively — is left untouched, so an agent that
- * prefixes by hand does not end up with HBR_HBR_Foo.
+ * prefixes by hand does not end up with DEMO_DEMO_Foo.
  */
 export function applyExtensionMemberPrefix(
   args: Record<string, any>,

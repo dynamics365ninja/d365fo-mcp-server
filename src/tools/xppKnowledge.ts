@@ -714,7 +714,7 @@ MyRentEquipmentId newId = numSeq.num();
   {
     id: 'bp-rules',
     title: 'Best Practice (BP) Rules — Generated Code Must Be BP-Clean',
-    keywords: ['bp', 'best practice', 'bpupgradecodetoday', 'bperrorlabelistext', 'bperroredtnotmigrated', 'bpcheck', 'xmldoc', 'doc comment', 'alternate key', 'edt extension', 'stringsize', 'hardcoded string'],
+    keywords: ['bp', 'best practice', 'bpupgradecodetoday', 'bperrorlabelistext', 'bperroredtnotmigrated', 'bperrortablefieldnotinfieldgroup', 'bperrorfieldlabeliscopyofenumlabel', 'field group', 'enum field', 'enum label', 'bpcheck', 'xmldoc', 'doc comment', 'alternate key', 'edt extension', 'stringsize', 'hardcoded string'],
     summary:
       'All generated X++ and metadata must pass the D365FO Best Practice checker without warnings. ' +
       'These are the BP rules the offline validator (validate_code(mode="syntax")) and xppbp.exe enforce most often.',
@@ -724,6 +724,9 @@ MyRentEquipmentId newId = numSeq.num();
       'BPErrorLabelIsText: no literal strings in Info()/warning()/error() or labels — use @ModelName:LabelId; check labels(action="search") first, create with labels(action="create")',
       'BPErrorUnknownLabel: labels(action="create") BEFORE referencing the label in code; labels adds AxLabelFile descriptors to the VS project automatically (addToProject=true)',
       'BPErrorEDTNotMigrated: a field whose EDT carries an implicit relation (ItemId → InventTable) needs an explicit <AxTableRelation>; generate auto-detects these — manual field adds need a matching relation too',
+      'BPErrorTableFieldNotInFieldGroup: every table field must belong to at least one field group — after add-field always follow with operation="add-field-to-field-group" (an existing group such as Identification/Overview, or a new one); a build can pass while this fails BP',
+      'BPErrorFieldLabelIsCopyOfEnumLabel / BPErrorTypeLabelIsCopyOfEnumLabel: an enum field (or an enum EDT) must NOT reuse the enum\'s own label — give the enum, the field and the EDT three separate label ids, even when the visible text is identical',
+      'An enum-typed table field needs NO EDT: it is AxTableFieldEnum + <EnumType>, written in one call with d365fo_file(operation="add-field", fieldEnumType="MyEnum"). Wrap an enum in an AxEdtEnum only when several tables must share one type — and a root enum EDT has an <EnumType> and NO <Extends> (compare the shipped NoYesId)',
       'BPCheckNestedLoopinCode: never nest while select inside while select — use join, temp table, or Map pre-load; report DP classes use insert_recordset or a single joined query',
       'BPCheckAlternateKeyAbsent: every table needs at least one index with <AlternateKey>Yes</AlternateKey> (generate adds it automatically)',
       'BPXmlDocNoDocumentationComments: every public/protected class and method needs a MEANINGFUL /// <summary> — "MyClass class." or "validateWrite." fail BP review; describe what it does, parameters, and the semantic meaning of the return value',

@@ -6,13 +6,13 @@
 
 export const getWorkspaceInfoTool = {
     name: 'get_workspace_info',
-    description: `ALWAYS call FIRST at session start. Returns model name, package path, framework directory, project path, environment type, and EXTENSION_PREFIX. Flags placeholder model names and missing prefix. Use projectName/projectPath params for solution switching. This is the authoritative source for target model — not search results.`,
+    description: `ALWAYS call FIRST at session start. Returns model name, package path, framework directory, project path, environment type, and EXTENSION_PREFIX. Flags placeholder model names and missing prefix. projectName/projectPath ONLY when the USER changed project. This is the authoritative source for target model — not search results.`,
     inputSchema: {
       type: 'object',
       properties: {
         projectName: {
           type: 'string',
-          description: 'Preferred way to switch projects. Just the model name, e.g. "ContosoEDS" or "ContosoBank". The server resolves the full path from D365FO_SOLUTIONS_PATH automatically. Use this when the user says "switch to <project>" or opens a different solution.',
+          description: 'Only when the USER says "switch to <project>". Just the model name, e.g. "ContosoEDS"; path resolved from D365FO_SOLUTIONS_PATH. NOT a way to reach another model — reads span every model already, writes stay in the workspace model.',
         },
         projectPath: {
           type: 'string',

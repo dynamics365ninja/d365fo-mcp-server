@@ -80,7 +80,12 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   fieldMandatory: { type: 'boolean', description: 'Mark the field Mandatory=Yes.' },
   fieldLabel: { type: 'string', description: 'Field label.' },
   fieldHelpText: { type: 'string', description: 'Field help text.' },
-  fieldEnumType: { type: 'string', description: 'Enum name to set on an enum-typed field.' },
+  fieldEnumType: {
+    type: 'string',
+    description:
+      'Enum name for an enum-typed field. On add-field this is all an enum field needs — ' +
+      'it writes AxTableFieldEnum + EnumType, no EDT.',
+  },
   fieldStringSize: { type: 'string', description: 'String size to set on a string-typed field.' },
   dataField: {
     type: 'string',
@@ -310,10 +315,13 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldBaseType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName'],
-    mutationOneOf: ['fieldType', 'dataField'],
+    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName'],
+    mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField'],
     note:
-      'Table/table-extension: fieldType (EDT) is REQUIRED. data-entity-extension: pass dataField AND ' +
+      'Enum field: pass fieldEnumType="<enum name>" and NO fieldType — an enum-typed table field ' +
+      'is an AxTableFieldEnum with an EnumType and needs no EDT. (fieldType is the EDT name here, ' +
+      'never an XML element name like "AxTableFieldEnum".) ' +
+      'Table/table-extension: otherwise fieldType (EDT) is REQUIRED. data-entity-extension: pass dataField AND ' +
       'dataSource instead — BOTH, or nothing is written; a mapped field has no EDT of its own, it points ' +
       'at dataField on the entity data source dataSource. fieldGroupName is optional and only applies to ' +
       'a data-entity-extension: it appends the field to that BASE-entity field group (shipped extensions ' +

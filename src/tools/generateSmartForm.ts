@@ -24,6 +24,7 @@ import { methodStubsForPattern, injectMethodStubs } from '../knowledge/formPatte
 import { findBaseFormXml } from './modifyD365File.js';
 import { getFieldControlMap, getTableTitleField, type FieldControlMap } from '../utils/fieldControlTypes.js';
 import { lookupSymbolNocase } from '../utils/symbolLookup.js';
+import { scaffoldWriteRefusalResult } from './writeAnchorGuard.js';
 
 /**
  * Symbol types a form datasource may bind to. Views are indexed as 'view'
@@ -653,6 +654,15 @@ export async function handleGenerateSmartForm(
   if (finalName !== name) {
     console.log(`[generateSmartForm] Applied naming: ${name} → ${finalName}`);
   }
+
+  // See generateSmartTable: the resolved model follows the ACTIVE project, the
+  // write anchor does not. Checked before the first byte is written.
+  const anchorRefusal = scaffoldWriteRefusalResult({
+    objectName: finalName,
+    objectType: 'form',
+    targetModel: resolvedModel,
+  });
+  if (anchorRefusal) return anchorRefusal;
 
   // Generate XML: clone an existing form (preferred) or build from a template.
   // Without an explicit pattern, default to the majority pattern mined from

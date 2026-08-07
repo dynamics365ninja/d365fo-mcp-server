@@ -19,7 +19,8 @@ import { extensionInfoTool } from './extensionInfo.js';
 import { getKnowledgeTool } from './getKnowledge.js';
 import { validateObjectNamingTool } from './validateObjectNaming.js';
 import { verifyD365ProjectTool } from './verifyD365Project.js';
-import { resolveObjectPrefix, isCustomModel, getObjectSuffix, getExtensionNamingStyle, deriveExtensionInfix } from '../utils/modelClassifier.js';
+import { isCustomModel, getObjectSuffix, getExtensionNamingStyle, deriveExtensionInfix } from '../utils/modelClassifier.js';
+import { buildPrefixDiagnostics, modelWritesLandIn } from './prefixDiagnostics.js';
 import { getStdioSessionInfo } from '../utils/stdioSessionInfo.js';
 import { updateSymbolIndexTool } from './updateSymbolIndex.js';
 import { buildProjectTool } from './buildProject.js';
@@ -340,9 +341,11 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         const envType = await configManager.getDevEnvironmentType();
         const frameworkDirectory = await configManager.getMicrosoftPackagesPath();
 
-        // Prefix diagnostics
-        const extensionPrefixEnv = process.env.EXTENSION_PREFIX?.trim() || null;
-        const effectivePrefix = resolveObjectPrefix(modelName ?? '');
+        // Naming is reported for the model WRITES land in, not the one reads come
+        // from — after a project switch those are different models (see
+        // buildPrefixDiagnostics and ConfigManager.getWriteAnchorModel).
+        const writeModel = modelWritesLandIn(configManager.getWriteAnchorModel() ?? modelName, modelName);
+        const { lines: prefixLines, effectivePrefix } = buildPrefixDiagnostics(writeModel, modelName);
         const objectSuffixEnv = process.env.EXTENSION_SUFFIX?.trim() || null;
         const effectiveSuffix = getObjectSuffix();
 
@@ -381,15 +384,31 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           `Project path    : ${projectPath ?? '(not detected)'}  (source: ${projectSource})`,
           `Env type        : ${envType}`,
           ``,
-          `## Prefix Configuration`,
-          ``,
-          `EXTENSION_PREFIX: ${extensionPrefixEnv ?? '(not set — falling back to model name)'}`,
-          `Effective prefix: ${effectivePrefix || '(none)'}`,
-          extensionPrefixEnv
-            ? `✅ EXTENSION_PREFIX is set — all new objects will use prefix "${effectivePrefix}".`
-            : `⚠️  EXTENSION_PREFIX is not set in the server environment. The model name "${modelName}" will be used as prefix. Add EXTENSION_PREFIX=MY (or your ISV prefix) to the .env file and restart the server.`,
-          ``,
+          ...prefixLines,
         ];
+
+        // A switch moves which project is ACTIVE — nothing else. Reads never
+        // needed it (they span every model regardless) and writes stay anchored
+        // to the model the workspace resolved on its own, so switching cannot be
+        // used to reach an object the cross-model guard refused. Say both here,
+        // before anything is written, so the switch is not mistaken for access.
+        const toolSwitch = configManager.getToolProjectSwitch();
+        if (toolSwitch) {
+          lines.push(
+            `## ⚠️  Project switched — writes are NOT switched`,
+            ``,
+            `"${toolSwitch.forcedModel}" is now the ACTIVE project. This did not change what you ` +
+            `can read: get_object_info, search and find_references span every model, switched or ` +
+            `not, so a switch is never needed to look at another model's code. Writes stay ` +
+            `anchored to "${toolSwitch.anchorModel}" — the model the open workspace targets — and ` +
+            `a create/modify into "${toolSwitch.forcedModel}" will be refused.`,
+            `Tell the user the model they asked about is owned by "${toolSwitch.forcedModel}" and let ` +
+            `THEM decide: extend it from "${toolSwitch.anchorModel}", or allow the write by adding ` +
+            `D365FO_CROSS_MODEL_WRITE_MODELS=${toolSwitch.forcedModel} to the server's .env — that ` +
+            `applies to the next attempt, no restart. Do not decide this on your own.`,
+            ``,
+          );
+        }
 
         if (diagnostics) {
           lines.push(
@@ -410,12 +429,16 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         // (embeds the model name instead, VS default). Tool always normalises the token —
         // pass the BASE object name and let the tool name it.
         const extNamingStyle = getExtensionNamingStyle();
-        const extInfix = deriveExtensionInfix(effectivePrefix);
-        const sampleClassExt = extNamingStyle === 'model-name' && modelName
-          ? `CustTable_${modelName}_Extension`
+        // Against the WRITE model, for both reasons: these samples are names a
+        // write would produce, and passing the model lets the infix come from the
+        // extensions that model already has ("…DEMOExtension") instead of being
+        // derived from the prefix ("…DemoExtension").
+        const extInfix = deriveExtensionInfix(effectivePrefix, writeModel ?? undefined);
+        const sampleClassExt = extNamingStyle === 'model-name' && writeModel
+          ? `CustTable_${writeModel}_Extension`
           : `CustTable${extInfix}_Extension`;
-        const sampleElemExt = extNamingStyle === 'model-name' && modelName
-          ? `CustTable.${modelName}`
+        const sampleElemExt = extNamingStyle === 'model-name' && writeModel
+          ? `CustTable.${writeModel}`
           : `CustTable.${extInfix}Extension`;
         lines.push(
           `## Extension Naming`,

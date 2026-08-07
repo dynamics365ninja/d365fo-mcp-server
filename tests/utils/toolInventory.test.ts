@@ -111,6 +111,21 @@ describe('tool inventory contract', () => {
     }
   });
 
+  it('does not offer a project switch as a way to read another model', () => {
+    // The switch changes which project is ACTIVE — nothing more. Reads never
+    // consulted the active model (get_object_info, search, find_references and
+    // the rest query the index across every model), so describing the parameter
+    // as "how to get at another project" is what taught the agent to switch when
+    // a write was refused: switch, then write, no refusal. The schema text is
+    // the instruction the agent actually reads, so it is pinned here.
+    const workspaceInfo = toolSchemas.find(t => t.name === 'get_workspace_info')!;
+    const projectName = (workspaceInfo.inputSchema as any).properties.projectName.description as string;
+
+    expect(projectName).toContain('USER');
+    expect(projectName).toContain('NOT a way to reach another model');
+    expect(projectName).toContain('reads span every model already');
+  });
+
   it('includes critical diagnostics and SDLC tools in both inventories', () => {
     const criticalTools = [
       'get_workspace_info',

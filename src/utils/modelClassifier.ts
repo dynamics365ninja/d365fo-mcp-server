@@ -10,7 +10,7 @@
  * - All other models are considered Microsoft standard models
  */
 
-import { getInferredModelPrefix } from './modelPrefixInference.js';
+import { getInferredModelPrefix, toExtensionInfixCase } from './modelPrefixInference.js';
 
 // Runtime registry for auto-detected custom models
 const autoDetectedCustomModels = new Set<string>();
@@ -133,7 +133,7 @@ export function applyObjectSuffix(objectName: string, suffix: string): string {
 
 /**
  * Resolve the RAW prefix token for a model — the form that still carries a
- * trailing underscore when the convention has one ("HBR_", "ISV_"), because that
+ * trailing underscore when the convention has one ("DEMO_", "ISV_"), because that
  * underscore decides how every other name is built.
  *
  * Priority — the ACTIVE MODEL outranks configuration:
@@ -186,14 +186,17 @@ export function resolveObjectPrefix(modelName: string): string {
  *   - Normal prefix "Contoso"                  → resolved prefix "Contoso" → infix "Contoso"
  *   - All-caps prefix "WHS" with "WHS_" in env → infix "Whs"
  *   - All-caps prefix "WHS" with "WHS" in env  → infix "WHS" (unchanged)
+ *   - Compound "ConFinSK_"                     → infix "ConFinSk" (per segment)
  *
- * Detection: if the winning raw prefix ends with '_', apply first-upper + rest-lower.
+ * Detection: if the winning raw prefix ends with '_', lower each PascalCase
+ * segment on its own (see toExtensionInfixCase) — flattening the whole token
+ * would turn "ConFinSK" into "Confinsk".
  *
  * When `modelName` is given and that model's own extensions already state their
  * infix, it is used verbatim instead of being derived. The two are genuinely
- * independent: model HBReavis names regular objects "HBR_Foo" but its extensions
- * "AssetBookTable.HBRExtension" — deriving would produce "HbrExtension" and every
- * name would silently diverge from the model's existing convention.
+ * independent: model Demo names regular objects "DEMO_Foo" but its extensions
+ * "AssetBookTable.DEMOExtension" — deriving would produce "DemoExtension" and
+ * every name would silently diverge from the model's existing convention.
  */
 export function deriveExtensionInfix(resolvedPrefix: string, modelName?: string): string {
   if (!resolvedPrefix) return '';
@@ -203,8 +206,8 @@ export function deriveExtensionInfix(resolvedPrefix: string, modelName?: string)
 
   const rawPrefix = modelName ? resolveRawPrefix(modelName) : (process.env.EXTENSION_PREFIX?.trim() ?? '');
   if (rawPrefix.endsWith('_')) {
-    // XY_ → Xy  (first char uppercase, remaining chars lowercase)
-    return resolvedPrefix.charAt(0).toUpperCase() + resolvedPrefix.slice(1).toLowerCase();
+    // XY_ → Xy, ConFinSK_ → ConFinSk  (first char of each segment upper, rest lower)
+    return toExtensionInfixCase(resolvedPrefix);
   }
   // Normal PascalCase — just capitalize first letter, keep the rest as-is
   return resolvedPrefix.charAt(0).toUpperCase() + resolvedPrefix.slice(1);
@@ -264,7 +267,7 @@ export function applyObjectPrefix(objectName: string, prefix: string, modelName?
   //   "XY_"     → regularPrefix="XY_"     → XY_CustTable
   //   "Contoso" → regularPrefix="Contoso" → ContosoCustTable
   // The raw form comes from the model when one is given, so a model whose objects
-  // use "HBR_" keeps the underscore even though EXTENSION_PREFIX says otherwise.
+  // use "DEMO_" keeps the underscore even though EXTENSION_PREFIX says otherwise.
   const rawPrefix = modelName ? resolveRawPrefix(modelName) : (process.env.EXTENSION_PREFIX?.trim() ?? '');
   const envHasUnderscore = rawPrefix.endsWith('_');
   const regularPrefix = envHasUnderscore

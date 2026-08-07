@@ -90,6 +90,10 @@ class ConfigManager {
   private xppConfigProvider: XppConfigProvider | null = null;
   private xppConfig: XppEnvironmentConfig | null = null;
   private xppConfigLoaded: boolean = false;
+  // Set while a TOOL call (get_workspace_info projectName/projectPath) has moved the
+  // active project off the model this workspace itself resolved to. `anchorModel` is
+  // that original model and it survives further switches — see getWriteAnchorModel().
+  private toolForcedProject: { anchorModel: string; forcedModel: string } | null = null;
 
   constructor(configPath?: string) {
     // Default to .mcp.json in current directory or parent directories
@@ -301,6 +305,14 @@ class ConfigManager {
       if (!this.autoDetectionCache.has(cacheKey)) {
         this.autoDetectionAttempted = false;
         this.autoDetectedProject = null;
+        // A workspace this server has never seen — the user moved, so the write
+        // anchor of the PREVIOUS workspace must not survive into this one. Left
+        // standing it becomes the mirror of the bug it prevents: every write into
+        // the model the new workspace actually targets gets refused, named after a
+        // model the user no longer has open. Deliberately not cleared on the cache
+        // branch above: that is the same workspace answering again, possibly with a
+        // project forceProject() pinned to it.
+        this.toolForcedProject = null;
 
         // Fast-path: try exact or close match against known projects.
         // Falls through to BFS only when nothing specific is found.
@@ -376,6 +388,8 @@ class ConfigManager {
         this.autoDetectionAttempted = true;
         this.autoDetectionCache.set(rootPath, match);
         registerCustomModel(match.modelName);
+        // The workspace itself resolved a project — the user moved, not the agent.
+        this.toolForcedProject = null;
         console.error(`[ConfigManager] ⚡ Root matched project: ${match.modelName} (gen ${gen}, ${match.projectPath})`);
         return;
       }
@@ -396,6 +410,7 @@ class ConfigManager {
             this.autoDetectionAttempted = true;
             this.autoDetectionCache.set(rootPath, gitMatch);
             registerCustomModel(gitMatch.modelName);
+            this.toolForcedProject = null;   // genuine workspace move — see above
             console.error(`[ConfigManager] 🌿 Git branch "${branch}" → project: ${gitMatch.modelName} (gen ${gen})`);
             return;
           }
@@ -427,6 +442,11 @@ class ConfigManager {
         return;
       }
       console.error(`[ConfigManager] Roots ambiguous (gen ${gen}) — BFS fallback on: ${firstPath}`);
+      // Nothing cached for this root: it is a workspace this server has not resolved
+      // before, and BFS is about to resolve it from scratch. Same reasoning as the
+      // new-workspace branch of setRuntimeContext — an anchor from the previous
+      // workspace would refuse writes into the model this one targets.
+      this.toolForcedProject = null;
       // If stored workspace already equals firstPath, setRuntimeContext sees
       // workspaceChanged=false and skips detection — prevent that.
       if (this.runtimeContext.workspacePath === firstPath) {
@@ -1058,6 +1078,16 @@ class ConfigManager {
    */
   async forceProject(projectPath: string): Promise<D365ProjectInfo | null> {
     try {
+      // Captured BEFORE the switch: the model this workspace resolved to on its own.
+      // It becomes the write anchor, so a switch cannot silently move where writes land.
+      //
+      // Detection has to have FINISHED first. It runs in the background and only
+      // getWorkspaceInfoDiagnostics() waits for it — which the get_workspace_info
+      // handler calls after this method, not before. A switch on the very first tool
+      // call therefore used to read a null model here, store no anchor at all, and
+      // hand the caller exactly the bypass the anchor exists to deny.
+      await this.awaitPendingDetection();
+      const modelBeforeSwitch = this.getModelName();
       const normalizedPath = path.normalize(projectPath);
       const modelName = await extractModelNameFromProject(normalizedPath);
       if (!modelName) {
@@ -1089,12 +1119,66 @@ class ConfigManager {
       // the user switches git branches or opens a different workspace.
       this.runtimeContext = { ...this.runtimeContext, projectPath: normalizedPath };
       registerCustomModel(modelName);
+      // Remember what the workspace resolved to before the FIRST switch: repeated
+      // switches must not walk the anchor along with them. Switching back to the
+      // anchor clears the state — the workspace is then targeting its own model again.
+      const anchor = this.toolForcedProject?.anchorModel ?? modelBeforeSwitch;
+      this.toolForcedProject =
+        anchor && anchor.trim().toLowerCase() !== modelName.trim().toLowerCase()
+          ? { anchorModel: anchor, forcedModel: modelName }
+          : null;
       console.error(`[ConfigManager] ✅ forceProject: switched to ${modelName} (${normalizedPath})`);
       return project;
     } catch (err) {
       console.error(`[ConfigManager] forceProject error:`, err);
       return null;
     }
+  }
+
+  /**
+   * Wait for an in-flight workspace detection, so a caller that needs the
+   * workspace's OWN model does not read null while the background scan is still
+   * running. Bounded the same way getWorkspaceInfoDiagnostics() bounds it.
+   */
+  private async awaitPendingDetection(): Promise<void> {
+    if (!this.autoDetectionAttempted) {
+      const ctx = this.config?.servers?.context;
+      await this.autoDetectProject(this.runtimeContext.workspacePath || ctx?.workspacePath);
+      return;
+    }
+    if (!this.autoDetectedProject && this.detectionInProgress) {
+      await Promise.race([
+        this.detectionInProgress,
+        new Promise<void>(resolve => setTimeout(resolve, 5_000)),
+      ]);
+      this.detectionInProgress = null;
+    }
+  }
+
+  /**
+   * The model WRITES are anchored to — normally the active model, but after a
+   * tool-initiated project switch it stays the model the workspace resolved to
+   * on its own.
+   *
+   * A switch changes which project is ACTIVE — which one gets built, BP-checked
+   * and written into. It was never needed for reading: get_object_info, search,
+   * find_references and the rest query the symbol index across every model and
+   * never consult the active model at all.
+   *
+   * `get_workspace_info(projectName=…)` is a tool call the agent can make for
+   * itself, so letting it move the write target would hand the agent the very
+   * self-served consent the cross-model guard exists to deny: refused on
+   * "table X lives in another model" → switch project → same write, no refusal.
+   * A genuine workspace change (roots/list, git branch) clears the anchor,
+   * because then the user really did move.
+   */
+  getWriteAnchorModel(): string | null {
+    return this.toolForcedProject?.anchorModel ?? this.getModelName();
+  }
+
+  /** The in-effect tool project switch, or null when writes and reads agree. */
+  getToolProjectSwitch(): { anchorModel: string; forcedModel: string } | null {
+    return this.toolForcedProject;
   }
 
   /**

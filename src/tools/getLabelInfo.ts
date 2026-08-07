@@ -8,6 +8,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { formatLabelReference } from '../utils/labelReference.js';
+import { labelMissingOnDisk } from '../utils/labelDiskCheck.js';
 
 const GetLabelInfoArgsSchema = z.object({
   labelId: z
@@ -116,6 +117,38 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
     // #33/#41: never emit `@SYS:@SYS67433` — an id that already carries its label
     // file id is a complete reference, and xppbp rejects the doubled form.
     const ref = formatLabelReference(first.labelFileId, labelId);
+
+    // An index row is not proof the label exists. Confirm against the .label.txt
+    // before handing back a reference the caller will paste into XML — a stale row
+    // otherwise surfaces as `Unknown label` at build time, several steps later.
+    //
+    // Every model, including Microsoft's: gating this on isCustomModel() looks
+    // right and is not, because isStandardModel() is defined as "not custom" and
+    // an unrecognised model therefore reads as Microsoft's. The shared core model
+    // whose phantom label started all this is exactly such a model, so the gate
+    // would have switched the check off in the one place it had to fire. What
+    // makes the big files affordable is the read budget in labelMissingOnDisk:
+    // the @SYS sweep that measured 17 s now gives up at 218 ms with no verdict.
+    const indexedPaths = symbolIndex
+      .getLabelFilePaths(first.labelFileId, first.model)
+      .map(p => p.filePath);
+    if (await labelMissingOnDisk(labelId, indexedPaths)) {
+      return {
+        content: [{
+          type: 'text',
+          text:
+            `⚠️ Label "${ref}" is in the symbol index but NOT in its label file on disk — ` +
+            `treat it as NOT existing.\n` +
+            `Checked: ${indexedPaths.join(', ')}\n\n` +
+            `The index is ahead of the file system (a rolled-back run, a rebuild outside this ` +
+            `server, or a checkout). Using this reference compiles to a best-practice error ` +
+            `"Unknown label '${ref}'".\n\n` +
+            `Create it: labels(action="create", labelId="${labelId}", labelFileId="${first.labelFileId}", ` +
+            `model="${first.model}", translations=[{language:"en-US", text:"…"}])`,
+        }],
+        isError: true,
+      };
+    }
 
     const lines: string[] = [
       `Label: ${ref}`,

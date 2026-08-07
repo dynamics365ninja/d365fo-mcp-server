@@ -26,10 +26,16 @@
  * explanation afterwards. A bypass the caller can mint for itself is not a
  * bypass, it is a speed bump.
  *
- * So consent lives ONLY in server configuration, which a human edits and which
- * takes a restart:
+ * So consent lives ONLY in server configuration — a file the user edits and the
+ * agent has no tool to write:
  *   - `D365FO_CROSS_MODEL_WRITE_MODELS=ModelA,ModelB` — allow these models,
  *   - `D365FO_ALLOW_CROSS_MODEL_WRITE=true`           — allow any model.
+ *
+ * It used to take a restart as well, which quietly worked against the guard: the
+ * only sanctioned answer cost the user their session, so the pressure was all
+ * towards finding a cheaper one. The policy is now re-read from .env on the next
+ * attempt (reloadWritePolicy) — the decision stays the user's, it just no longer
+ * costs a restart to act on.
  *
  * And the refusal deliberately does NOT hand the caller a workaround: it names
  * the extension route, and says the alternative is the user's decision to make
@@ -37,6 +43,7 @@
  */
 
 import { resolveObjectPrefix, applyObjectPrefix } from './modelClassifier.js';
+import { reloadWritePolicy } from './loadEnv.js';
 
 /** An extension of the target object that already exists in the active model. */
 export interface ExistingExtension {
@@ -59,8 +66,19 @@ export interface CrossModelWriteCheck {
    * keeps the guard from firing on the workspace's own objects.
    */
   owningPackage?: string | null;
-  /** Model the workspace targets (.rnrproj / D365FO_MODEL_NAME). */
+  /**
+   * Model the workspace targets (.rnrproj / D365FO_MODEL_NAME) — the WRITE ANCHOR,
+   * `configManager.getWriteAnchorModel()`. Not simply "the current active model":
+   * after a tool-initiated project switch those differ, and taking the switched
+   * value here would let the caller move the target it is being measured against.
+   */
   activeModel: string | null | undefined;
+  /**
+   * Model a `get_workspace_info(projectName=…)` switch made active during this
+   * session, when that differs from the anchor. Wording only — it names the
+   * bypass out loud instead of letting it read as an unrelated refusal.
+   */
+  toolSwitchedModel?: string | null;
   /** Extensions of the base object that already exist in the active model. */
   existingExtensions?: ExistingExtension[];
   /** Wording only — what the caller was about to do. */
@@ -91,6 +109,10 @@ function eq(a: string | null | undefined, b: string | null | undefined): boolean
  * in the environment: a caller cannot grant this to itself mid-conversation.
  */
 export function crossModelWriteAllowedByConfig(owningModel: string): boolean {
+  // Pick up an edit the user made after the refusal, without a restart. The read
+  // is mtime-gated to a single stat, and only these two keys are refreshed.
+  reloadWritePolicy();
+
   const blanket = process.env.D365FO_ALLOW_CROSS_MODEL_WRITE?.trim().toLowerCase();
   if (blanket === 'true' || blanket === '1' || blanket === 'yes') return true;
 
@@ -156,11 +178,25 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
     `⛔ Refusing to ${verb} "${objectName}" in model "${owningModel}" — this workspace ` +
     `targets model "${activeModel}".`,
     '',
+  ];
+
+  if (eq(check.toolSwitchedModel, owningModel)) {
+    lines.push(
+      `A get_workspace_info(projectName="${check.toolSwitchedModel}") switch earlier in this ` +
+      `session changed which project is ACTIVE. It did not widen what you may read — reading ` +
+      `spans every model either way — and it did not change where writes may land. The workspace ` +
+      `the user has open still targets "${activeModel}", so that is what writes are anchored to. ` +
+      `Switching projects is not a way to get past this refusal.`,
+      '',
+    );
+  }
+
+  lines.push(
     `"${owningModel}" is a different model: the change would land in code that "${activeModel}" ` +
     `only consumes, it would not appear in this workspace's project or version control, and every ` +
     `other model built on "${owningModel}" would inherit it.`,
     '',
-  ];
+  );
 
   if (extType) {
     const existing = (check.existingExtensions ?? []).filter(e => !eq(e.name, objectName));
@@ -185,13 +221,14 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
 
   lines.push(
     `Do NOT route around this guard: no retry with a different modelName, filePath, ` +
-    `packagePath or project. Half-finished pieces of this very feature sitting in ` +
+    `packagePath, or a get_workspace_info project switch. Half-finished pieces of this very feature sitting in ` +
     `"${owningModel}" — a matching enum, field, label or scaffold — are evidence that an ` +
     `earlier run made this same mistake, NOT evidence that the feature belongs there.`,
     '',
-    `Writing into "${owningModel}" is the user's decision, not yours. If they want it, they ` +
-    `set D365FO_CROSS_MODEL_WRITE_MODELS=${owningModel} (or D365FO_ALLOW_CROSS_MODEL_WRITE=true) ` +
-    `in the server configuration and restart. Ask them; report this refusal instead of working past it.`,
+    `Writing into "${owningModel}" is the user's decision, not yours. If they want it, they add ` +
+    `D365FO_CROSS_MODEL_WRITE_MODELS=${owningModel} (or D365FO_ALLOW_CROSS_MODEL_WRITE=true) to the ` +
+    `server's .env — it applies to your next attempt, no restart and no lost session. Ask them, wait ` +
+    `for their answer, and report this refusal instead of working past it.`,
   );
 
   return lines.join('\n');
