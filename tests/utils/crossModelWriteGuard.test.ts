@@ -37,19 +37,16 @@ const ACTIVE_MODEL_OBJECTS = [
   `${CORE_TABLE}.ContosoSKExtension`,
 ];
 
-beforeEach(() => {
+const resetEnv = () => {
   clearInferredModelPrefixes();
   delete process.env.D365FO_ALLOW_CROSS_MODEL_WRITE;
+  delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS;
   delete process.env.EXTENSION_PREFIX;
   delete process.env.EXTENSION_NAMING_STYLE;
-});
+};
 
-afterEach(() => {
-  clearInferredModelPrefixes();
-  delete process.env.D365FO_ALLOW_CROSS_MODEL_WRITE;
-  delete process.env.EXTENSION_PREFIX;
-  delete process.env.EXTENSION_NAMING_STYLE;
-});
+beforeEach(resetEnv);
+afterEach(resetEnv);
 
 describe('crossModelWriteRefusal', () => {
   it('refuses a write into a different CUSTOM model and names both models', () => {
@@ -120,24 +117,31 @@ describe('crossModelWriteRefusal', () => {
     })).toBeNull();
   });
 
-  it('allows the write when the caller names the owning model explicitly', () => {
-    expect(crossModelWriteRefusal({
+  // The first version of the guard accepted modelName="<owning model>" as consent.
+  // The agent read that out of the refusal text, added the parameter, and wrote into
+  // the shared model anyway. Consent the caller can mint for itself is not consent.
+  it('does not offer the caller a way to authorise itself', () => {
+    const msg = crossModelWriteRefusal({
       objectName: CORE_TABLE,
       objectType: 'table',
       owningModel: CORE_MODEL,
       activeModel: ACTIVE_MODEL,
-      explicitModelName: CORE_MODEL,
-    })).toBeNull();
+    })!;
+
+    expect(msg).not.toContain(`modelName="${CORE_MODEL}"`);
+    expect(msg).toMatch(/Do NOT route around this guard/);
+    expect(msg).toMatch(/user's decision/);
   });
 
-  it('does NOT treat an unrelated explicit modelName as consent', () => {
-    expect(crossModelWriteRefusal({
+  it('treats pieces left in the other model by an earlier run as no authorisation', () => {
+    const msg = crossModelWriteRefusal({
       objectName: CORE_TABLE,
       objectType: 'table',
       owningModel: CORE_MODEL,
       activeModel: ACTIVE_MODEL,
-      explicitModelName: ACTIVE_MODEL,
-    })).toBeTruthy();
+    })!;
+
+    expect(msg).toMatch(/earlier run made this same mistake/);
   });
 
   it('honours the server-wide opt-out', () => {
@@ -148,6 +152,33 @@ describe('crossModelWriteRefusal', () => {
       owningModel: CORE_MODEL,
       activeModel: ACTIVE_MODEL,
     })).toBeNull();
+  });
+
+  it('honours the per-model allow-list, and only for the models on it', () => {
+    process.env.D365FO_CROSS_MODEL_WRITE_MODELS = ` OtherModel , ${CORE_MODEL.toLowerCase()} `;
+
+    expect(crossModelWriteRefusal({
+      objectName: CORE_TABLE, objectType: 'table',
+      owningModel: CORE_MODEL, activeModel: ACTIVE_MODEL,
+    })).toBeNull();
+
+    expect(crossModelWriteRefusal({
+      objectName: 'ContosoCZ_Foo', objectType: 'table',
+      owningModel: 'ContosoFinanceCZ', activeModel: ACTIVE_MODEL,
+    })).toBeTruthy();
+  });
+
+  it('covers create as well as modify, with the matching verb', () => {
+    const msg = crossModelWriteRefusal({
+      objectName: 'ContosoCore_QualityTier',
+      objectType: 'enum',
+      owningModel: CORE_MODEL,
+      activeModel: ACTIVE_MODEL,
+      action: 'create',
+    })!;
+
+    expect(msg).toContain('Refusing to create "ContosoCore_QualityTier"');
+    expect(msg).toContain(CORE_MODEL);
   });
 
   it('never blocks on a guess: no active model, or no model resolved from the path', () => {
@@ -185,7 +216,7 @@ describe('crossModelWriteRefusal', () => {
 
     expect(msg).toContain('Refusing to modify');
     expect(msg).not.toContain('action="create"');
-    expect(msg).toContain(`modelName="${CORE_MODEL}"`);
+    expect(msg).toContain(`D365FO_CROSS_MODEL_WRITE_MODELS=${CORE_MODEL}`);
   });
 });
 

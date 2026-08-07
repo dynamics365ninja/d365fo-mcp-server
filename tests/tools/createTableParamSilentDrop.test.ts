@@ -22,7 +22,7 @@
  * XML or is named in the response as dropped. No third option.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { handleCreateD365File } from '../../src/tools/createD365File';
 import {
   reconcileTableCreateProperties,
@@ -97,6 +97,12 @@ vi.mock('../../src/utils/modelClassifier', () => ({
 }));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// The fixtures create into model "Contoso" while the mocked workspace targets
+// "MyModel" — a cross-model write, refused by default since the guard landed. It
+// has its own suite (tests/utils/crossModelWriteGuard.test.ts); allow it here.
+beforeEach(() => { process.env.D365FO_CROSS_MODEL_WRITE_MODELS = 'Contoso'; });
+afterEach(() => { delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS; });
 
 const req = (args: Record<string, unknown>): CallToolRequest => ({
   method: 'tools/call',

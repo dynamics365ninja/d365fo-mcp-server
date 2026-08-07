@@ -100,7 +100,7 @@ EXTENSION_PREFIX_SOURCE=config   # pin step 2 above step 1 (pre-1.8.2 behaviour)
 
 A customer solution is commonly split across several **custom** models — a shared `ContosoFinanceCore` plus country models `ContosoFinanceSK` / `ContosoFinanceCZ` that extend it. The workspace targets exactly one of them; every other model is code this workspace only consumes.
 
-So a `d365fo_file(action="modify")` whose target file resolves into a model other than the active one is **refused**. Asked to "add a field to `ContosoCore_TaxTransReportChangeLog`", the tools would otherwise resolve that table by name, land in the Core model that owns it, and edit it in place — the field would never appear in the active model's project or version control, and every other model built on Core would inherit it. What was wanted is a table extension in the active model:
+So any write — `d365fo_file(action="modify")`, `action="create"`, or a new label — that resolves into a model other than the active one is **refused**. Asked to "add a field to `ContosoCore_TaxTransReportChangeLog`", the tools would otherwise resolve that table by name, land in the Core model that owns it, and edit it in place — the field would never appear in the active model's project or version control, and every other model built on Core would inherit it. What was wanted is a table extension in the active model:
 
 ```
 d365fo_file(action="create", objectType="table-extension",
@@ -110,16 +110,18 @@ d365fo_file(action="create", objectType="table-extension",
 
 …and the field added to that extension, prefixed per the active model (`ContosoSK_…`). The refusal spells this out, and names the extension the active model **already** has when one exists, so the answer is a copy-paste away.
 
-Two escape hatches when editing the other model really is the intent:
+### Consent lives in configuration, not in the call
 
-```
-d365fo_file(action="modify", …, modelName="ContosoFinanceCore")   # per call
-get_workspace_info(projectName="ContosoFinanceCore")              # switch the workspace
-```
+The first version of this guard accepted `modelName="<owning model>"` on the call as consent. For a human that is a reasonable "I know what I'm doing"; for an agent it is not — the refusal text named the parameter, so the agent added the parameter and wrote into the shared model anyway, then explained why afterwards. A bypass the caller can mint for itself is not a bypass.
+
+Allowing a cross-model write is therefore a **configuration** change: a human edits it, and it takes a restart.
 
 ```env
-D365FO_ALLOW_CROSS_MODEL_WRITE=true   # disable the guard server-wide
+D365FO_CROSS_MODEL_WRITE_MODELS=ContosoFinanceCore   # allow these models (comma-separated)
+D365FO_ALLOW_CROSS_MODEL_WRITE=true                  # allow any model
 ```
+
+The refusal deliberately offers the caller no workaround, and says outright that half-finished pieces of the same feature already sitting in the other model — a matching enum, field or label left by an earlier run — are evidence of an earlier mistake, not a reason to continue there.
 
 Writes into **standard Microsoft** models stay refused regardless — see the model-ownership guard.
 

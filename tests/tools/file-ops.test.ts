@@ -98,6 +98,13 @@ vi.mock('../../src/utils/modelClassifier', () => ({
   isStandardModel: vi.fn(() => false),
 }));
 
+// These fixtures create into model "Contoso" while the mocked workspace targets
+// "MyModel" — a cross-model write, which d365fo_file now refuses by default. The
+// guard has its own suite (tests/utils/crossModelWriteGuard.test.ts); allow it here
+// so these tests keep testing the thing they are about.
+beforeEach(() => { process.env.D365FO_CROSS_MODEL_WRITE_MODELS = 'Contoso,ContosoRobotics'; });
+afterEach(() => { delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS; });
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const req = (name: string, args: Record<string, unknown> = {}): CallToolRequest => ({
