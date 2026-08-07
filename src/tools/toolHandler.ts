@@ -479,7 +479,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         const allProjects = configManager.getAllDetectedProjects();
         if (allProjects.length > 1) {
           lines.push(``);
-          lines.push(`## Available Projects (D365FO_SOLUTIONS_PATH)`);
+          lines.push(`## Available Projects`);
           lines.push(``);
           for (const p of allProjects) {
             const active = p.projectPath === projectPath ? '▶ ' : '  ';

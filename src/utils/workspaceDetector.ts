@@ -17,6 +17,14 @@ export interface D365ProjectInfo {
   /** Base PackagesLocalDirectory path, if known */
   packagePath?: string;
   packageName?: string;     // Package containing this model (may differ from model name in UDE)
+  /**
+   * Every .rnrproj found when the workspace held more than one and none could be
+   * resolved unambiguously. Set only on ambiguous results, where projectPath and
+   * solutionPath are deliberately left undefined: the model is known (all
+   * candidates agree on it) but the caller must pass projectPath explicitly for
+   * anything that registers a file into a VS project.
+   */
+  ambiguousProjects?: string[];
 }
 
 /**
@@ -113,8 +121,62 @@ export async function extractModelNameFromProject(projectPath: string): Promise<
 }
 
 /**
+ * Read the <Model> name of every candidate .rnrproj, keyed by project path.
+ * Unreadable projects are omitted.
+ */
+async function readModelNames(projectFiles: string[]): Promise<Map<string, string>> {
+  const byPath = new Map<string, string>();
+  for (const pf of projectFiles) {
+    const model = await extractModelNameFromProject(pf);
+    if (model) byPath.set(pf, model);
+  }
+  return byPath;
+}
+
+/**
+ * Distinct non-demo model names across the candidates, lower-cased for comparison
+ * but returned in original casing (first occurrence wins).
+ */
+function distinctCustomModels(models: Iterable<string>): string[] {
+  const seen = new Map<string, string>();
+  for (const m of models) {
+    if (isMicrosoftDemoModel(m)) continue;
+    const key = m.toLowerCase();
+    if (!seen.has(key)) seen.set(key, m);
+  }
+  return [...seen.values()];
+}
+
+/**
+ * Pick the .rnrproj that is unambiguously "the" project for this workspace.
+ * Exactly one candidate wins outright; with several, only a folder name matching
+ * the workspace base name counts (D365FO multi-project solution convention).
+ * Returns null when the choice would be a guess.
+ */
+function resolvePrimaryProject(workspacePath: string, projectFiles: string[]): string | null {
+  if (projectFiles.length === 1) return projectFiles[0];
+
+  const wpBase = path.basename(workspacePath).toLowerCase();
+  const nameMatch = projectFiles.find(
+    p => path.basename(path.dirname(p)).toLowerCase() === wpBase,
+  );
+  if (nameMatch) {
+    debugLog(`[WorkspaceDetector] Solution-name match → ${path.basename(nameMatch)}`);
+    return nameMatch;
+  }
+  return null;
+}
+
+/**
  * Detect D365FO project information from workspace path
  * This is automatically called when GitHub Copilot provides workspace context
+ *
+ * When several .rnrproj files exist and none is unambiguously the intended one,
+ * no project is selected — picking "the first one found" silently registered new
+ * files into an arbitrary, unrelated VS project. The model name still resolves
+ * whenever every candidate agrees on it (the common case: one model split across
+ * several projects), so only project-registering operations are held back; those
+ * results carry `ambiguousProjects` and no projectPath.
  */
 export async function detectD365Project(workspacePath: string, maxDepth: number = 5): Promise<D365ProjectInfo | null> {
   try {
@@ -131,23 +193,45 @@ export async function detectD365Project(workspacePath: string, maxDepth: number 
     debugLog(`[WorkspaceDetector] Found ${projectFiles.length} .rnrproj file(s):`);
     projectFiles.forEach(p => debugLog(`   - ${p}`));
 
-    // Prefer the .rnrproj whose own folder name matches the workspace base name
-    // (D365FO multi-project solution convention); else the first file found.
-    let primaryProject = projectFiles[0];
-    if (projectFiles.length > 1) {
-      const wpBase = path.basename(workspacePath).toLowerCase();
-      const nameMatch = projectFiles.find(
-        p => path.basename(path.dirname(p)).toLowerCase() === wpBase,
+    let primaryProject = resolvePrimaryProject(workspacePath, projectFiles);
+
+    if (!primaryProject) {
+      // Ambiguous by folder name — but the candidates' models may still settle it.
+      // Only this branch needs every candidate's model; with a resolved primary we
+      // read one file, as before (solution roots can hold dozens of projects).
+      const models = await readModelNames(projectFiles);
+      const customModels = distinctCustomModels(models.values());
+      debugLog(
+        `[WorkspaceDetector] ${projectFiles.length} .rnrproj files and none matches the workspace ` +
+        `name. Candidates:\n` + projectFiles.map(p => `   - ${p}`).join('\n')
       );
-      if (nameMatch) {
-        primaryProject = nameMatch;
-        debugLog(`[WorkspaceDetector] Solution-name match → ${path.basename(nameMatch)}`);
+      if (customModels.length !== 1) {
+        debugLog(`[WorkspaceDetector] Candidates span ${customModels.length} custom model(s) — nothing to resolve`);
+        return null;
+      }
+
+      // Exactly one custom model across the candidates. If exactly one project
+      // CARRIES it, that project is not a guess — the others are Microsoft demo
+      // projects (the VS wizard default nobody renamed), which is the ordinary
+      // shape of a workspace holding a leftover tutorial project alongside the
+      // real one. Refusing here would drop a projectPath the previous code got
+      // right, and addToProject would silently stop working for those users.
+      const owning = projectFiles.filter(p => models.get(p) === customModels[0]);
+      if (owning.length === 1) {
+        debugLog(`[WorkspaceDetector] Only ${path.basename(owning[0])} carries custom model "${customModels[0]}" → resolved`);
+        primaryProject = owning[0];
+      } else {
+        debugLog(
+          `[WorkspaceDetector] ${owning.length} projects share model "${customModels[0]}" — model resolved, ` +
+          `projectPath left unset (only the caller knows which one to register files into)`
+        );
+        return { modelName: customModels[0], ambiguousProjects: projectFiles };
       }
     }
 
     // Prefer a non-demo model when the initially selected primaryProject has a
     // Microsoft demo model name (e.g. FleetManagement).
-    const modelName = await extractModelNameFromProject(primaryProject);
+    let modelName = await extractModelNameFromProject(primaryProject);
     if (modelName && isMicrosoftDemoModel(modelName) && projectFiles.length > 1) {
       debugLog(`[WorkspaceDetector] Primary .rnrproj has MS demo model "${modelName}" — looking for better candidate`);
       for (const pf of projectFiles) {
@@ -156,6 +240,9 @@ export async function detectD365Project(workspacePath: string, maxDepth: number 
         if (altModel && !isMicrosoftDemoModel(altModel)) {
           debugLog(`[WorkspaceDetector] Skipping demo model "${modelName}", using "${altModel}" from ${path.basename(pf)}`);
           primaryProject = pf;
+          // Keep model and project in step — reporting the demo model alongside
+          // the replacement project would mis-target every downstream lookup.
+          modelName = altModel;
           break;
         }
       }
@@ -262,7 +349,30 @@ export async function autoDetectD365Project(
         if (files.length > 0) {
           const loggedSearchRoot = sanitizePathForLog(searchRoot);
           debugLog(`[WorkspaceDetector] Found ${files.length} .rnrproj file(s) in ${loggedSearchRoot}`);
-          const projectPath = files[0]; // take first (most likely the user's project)
+          // The same no-guessing rule as detectD365Project, and applied at least
+          // as strictly: this root is NOT the user's workspace, so a wrong pick
+          // lands on a project from an entirely unrelated solution. A root is
+          // usable only when exactly one project carries exactly one custom
+          // model; "one model split across several projects" resolves the model
+          // in a workspace but is not enough out here, where there is no
+          // workspace name to appeal to and no caller who knows the answer.
+          let projectPath = files[0];
+          if (files.length > 1) {
+            const rootModels = await readModelNames(files);
+            const customModels = distinctCustomModels(rootModels.values());
+            const owning = customModels.length === 1
+              ? files.filter(f => rootModels.get(f) === customModels[0])
+              : [];
+            if (owning.length !== 1) {
+              debugLog(
+                `[WorkspaceDetector] Skipping ${loggedSearchRoot}: ${files.length} .rnrproj files across ` +
+                `${customModels.length} custom model(s), ${owning.length} of them carrying it — too ` +
+                `ambiguous to auto-select. Set D365FO_SOLUTIONS_PATH or pass projectPath explicitly.`
+              );
+              continue;
+            }
+            projectPath = owning[0];
+          }
           const modelName = await extractModelNameFromProject(projectPath);
           if (modelName) {
             const solutionPath = path.dirname(path.dirname(projectPath));
