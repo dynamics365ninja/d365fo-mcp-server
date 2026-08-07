@@ -23,9 +23,10 @@ import { modifyD365FileTool } from '../../src/tools/modifyD365File';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
-const { mockBridgeAddField, mockBridgeModifyField, mockBridgeRefreshProvider } = vi.hoisted(() => ({
+const { mockBridgeAddField, mockBridgeModifyField, mockBridgeRemoveField, mockBridgeRefreshProvider } = vi.hoisted(() => ({
   mockBridgeAddField: vi.fn(async () => ({ success: true, message: '✅ Field added' })),
   mockBridgeModifyField: vi.fn(async () => ({ success: true, message: '✅ Field modified' })),
+  mockBridgeRemoveField: vi.fn(async () => ({ success: true, message: '✅ Field removed' })),
   mockBridgeRefreshProvider: vi.fn(async () => ({ success: true, elapsedMs: 1 })),
 }));
 
@@ -35,6 +36,7 @@ vi.mock('../../src/bridge/bridgeAdapter', async (orig) => {
     ...actual,
     bridgeAddField: mockBridgeAddField,
     bridgeModifyField: mockBridgeModifyField,
+    bridgeRemoveField: mockBridgeRemoveField,
     bridgeRefreshProvider: mockBridgeRefreshProvider,
     bridgeValidateAfterWrite: vi.fn(async () => null),
   };
@@ -139,8 +141,10 @@ const buildContext = (): XppServerContext => {
 beforeEach(() => {
   mockBridgeAddField.mockClear();
   mockBridgeModifyField.mockClear();
+  mockBridgeRemoveField.mockClear();
   mockBridgeAddField.mockResolvedValue({ success: true, message: '✅ Field added' });
   mockBridgeModifyField.mockResolvedValue({ success: true, message: '✅ Field modified' });
+  mockBridgeRemoveField.mockResolvedValue({ success: true, message: '✅ Field removed' });
 });
 
 describe('add-field — enum field needs no EDT', () => {
@@ -172,8 +176,30 @@ describe('add-field — enum field needs no EDT', () => {
     expect(label).toBe('@Con:QualityTierField');
   });
 
-  it('reports a field left without its EnumType instead of claiming success', async () => {
+  it('rolls the field back when EnumType cannot be set', async () => {
+    // The two calls are not atomic. What a failure can leave behind is a field
+    // nobody asked for — and since the bridge's AddField does not check for an
+    // existing field, an agent that reads "failed" and repeats the call ends up
+    // with it twice. A failed operation may only leave the pre-call state.
     mockBridgeModifyField.mockResolvedValue({ success: false, message: 'enum not found' });
+    mockBridgeRemoveField.mockResolvedValue({ success: true, message: '✅ Field removed' });
+
+    const result = await modifyD365FileTool(
+      addFieldReq({ fieldEnumType: 'ConQualityTier' }),
+      buildContext(),
+    );
+
+    expect(mockBridgeRemoveField).toHaveBeenCalledWith(
+      expect.anything(), 'ConChangeLog', 'QualityTier',
+    );
+    const text = (result.content?.[0] as any)?.text ?? '';
+    expect(text).toContain('rolled back');
+    expect(text).toContain('nothing was written');
+  });
+
+  it('warns against a retry when the rollback fails too', async () => {
+    mockBridgeModifyField.mockResolvedValue({ success: false, message: 'enum not found' });
+    mockBridgeRemoveField.mockResolvedValue({ success: false, message: 'locked' });
 
     const result = await modifyD365FileTool(
       addFieldReq({ fieldEnumType: 'ConQualityTier' }),
@@ -182,6 +208,7 @@ describe('add-field — enum field needs no EDT', () => {
 
     const text = (result.content?.[0] as any)?.text ?? '';
     expect(text).toContain('EnumType could not be set');
+    expect(text).toContain('do NOT repeat add-field');
     expect(text).toContain('modify-field');
   });
 

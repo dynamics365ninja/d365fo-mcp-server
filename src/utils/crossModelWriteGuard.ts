@@ -26,10 +26,16 @@
  * explanation afterwards. A bypass the caller can mint for itself is not a
  * bypass, it is a speed bump.
  *
- * So consent lives ONLY in server configuration, which a human edits and which
- * takes a restart:
+ * So consent lives ONLY in server configuration — a file the user edits and the
+ * agent has no tool to write:
  *   - `D365FO_CROSS_MODEL_WRITE_MODELS=ModelA,ModelB` — allow these models,
  *   - `D365FO_ALLOW_CROSS_MODEL_WRITE=true`           — allow any model.
+ *
+ * It used to take a restart as well, which quietly worked against the guard: the
+ * only sanctioned answer cost the user their session, so the pressure was all
+ * towards finding a cheaper one. The policy is now re-read from .env on the next
+ * attempt (reloadWritePolicy) — the decision stays the user's, it just no longer
+ * costs a restart to act on.
  *
  * And the refusal deliberately does NOT hand the caller a workaround: it names
  * the extension route, and says the alternative is the user's decision to make
@@ -37,6 +43,7 @@
  */
 
 import { resolveObjectPrefix, applyObjectPrefix } from './modelClassifier.js';
+import { reloadWritePolicy } from './loadEnv.js';
 
 /** An extension of the target object that already exists in the active model. */
 export interface ExistingExtension {
@@ -102,6 +109,10 @@ function eq(a: string | null | undefined, b: string | null | undefined): boolean
  * in the environment: a caller cannot grant this to itself mid-conversation.
  */
 export function crossModelWriteAllowedByConfig(owningModel: string): boolean {
+  // Pick up an edit the user made after the refusal, without a restart. The read
+  // is mtime-gated to a single stat, and only these two keys are refreshed.
+  reloadWritePolicy();
+
   const blanket = process.env.D365FO_ALLOW_CROSS_MODEL_WRITE?.trim().toLowerCase();
   if (blanket === 'true' || blanket === '1' || blanket === 'yes') return true;
 
@@ -214,9 +225,10 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
     `"${owningModel}" — a matching enum, field, label or scaffold — are evidence that an ` +
     `earlier run made this same mistake, NOT evidence that the feature belongs there.`,
     '',
-    `Writing into "${owningModel}" is the user's decision, not yours. If they want it, they ` +
-    `set D365FO_CROSS_MODEL_WRITE_MODELS=${owningModel} (or D365FO_ALLOW_CROSS_MODEL_WRITE=true) ` +
-    `in the server configuration and restart. Ask them; report this refusal instead of working past it.`,
+    `Writing into "${owningModel}" is the user's decision, not yours. If they want it, they add ` +
+    `D365FO_CROSS_MODEL_WRITE_MODELS=${owningModel} (or D365FO_ALLOW_CROSS_MODEL_WRITE=true) to the ` +
+    `server's .env — it applies to your next attempt, no restart and no lost session. Ask them, wait ` +
+    `for their answer, and report this refusal instead of working past it.`,
   );
 
   return lines.join('\n');

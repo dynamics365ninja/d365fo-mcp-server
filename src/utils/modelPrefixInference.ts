@@ -88,6 +88,58 @@ function leadingTokenCandidates(name: string): string[] {
   return out;
 }
 
+/**
+ * May this candidate compete?
+ *
+ * Coverage cannot tell a real third segment from a domain word: a model whose
+ * objects are all ConDemoNoteHeader / …Line / …Text offers "ConDemoNote" with
+ * exactly the same 100 % coverage that makes "AslFinSK" right for AslFinanceSK,
+ * and the longest-wins tie-break then takes the domain word. Both shapes are
+ * indistinguishable from the names alone, so a candidate spanning three segments
+ * has to be corroborated from OUTSIDE the object names:
+ *
+ *   - the model's own extensions state it ("VendTable.AslFinSKExtension"), or
+ *   - the model NAME contains its segments in order ("Asl|Fin|SK" ⊂ AslFinanceSK,
+ *     while "Note" is nowhere in "ConDemo").
+ *
+ * Uncorroborated, the candidate is dropped and the two-segment token — the
+ * pre-1.8.5 answer, and the conservative one — wins instead. Nothing is dropped
+ * when no model name was supplied and no infix is stated: there is then nothing
+ * to check against, and refusing every long token would be its own guess.
+ */
+function tokenAllowed(
+  token: string,
+  modelName: string | undefined,
+  statedInfix: string | null,
+): boolean {
+  const bare = token.replace(/_+$/, '');
+  const segs = segments(bare);
+  if (segs.length < 3) return true;
+  if (!modelName && !statedInfix) return true;
+
+  if (statedInfix && statedInfix.toLowerCase().startsWith(bare.toLowerCase())) return true;
+  return !!modelName && modelNameCarries(modelName, segs);
+}
+
+/**
+ * Do the token's segments appear in the model name, in order, starting at its
+ * first character? Gaps between them are allowed, which is what makes
+ * "Asl|Fin|SK" match "AslFinanceSK" — the model spells a segment out where the
+ * prefix abbreviates it.
+ */
+function modelNameCarries(modelName: string, segs: string[]): boolean {
+  const model = modelName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  let pos = 0;
+  for (let i = 0; i < segs.length; i++) {
+    const needle = segs[i].toLowerCase();
+    const at = model.indexOf(needle, pos);
+    if (at < 0) return false;
+    if (i === 0 && at !== 0) return false;   // the prefix starts where the name does
+    pos = at + needle.length;
+  }
+  return true;
+}
+
 /** Pick the candidate covering the most names; ties go to the longer token. */
 function bestCovering(names: string[], candidates: Iterable<string>): { token: string; coverage: number } | null {
   let best: { token: string; coverage: number } | null = null;
@@ -165,8 +217,15 @@ function deriveInfixFrom(regular: string): string {
  * `names` are object names as stored in the AOT — regular objects
  * ("DEMO_AssetIPFairValue"), dot-notation extensions ("AssetBookTable.DEMOExtension")
  * and extension classes ("AccountingSourceExplorerDEMO_Extension") mixed together.
+ *
+ * `modelName` is what a three-segment candidate is corroborated against — see
+ * corroboratesToken(). Omit it and long candidates are accepted on coverage
+ * alone, which is right for a caller that has names and nothing else.
  */
-export function inferPrefixFromObjectNames(names: string[]): InferredModelPrefix | null {
+export function inferPrefixFromObjectNames(
+  names: string[],
+  modelName?: string,
+): InferredModelPrefix | null {
   const clean = names.map(n => n.trim()).filter(Boolean);
 
   const dotNames = clean.filter(n => n.includes('.'));
@@ -176,7 +235,9 @@ export function inferPrefixFromObjectNames(names: string[]): InferredModelPrefix
 
   const infixFromElements = inferInfixFromDotExtensions(dotNames);
 
-  const candidates = regulars.flatMap(leadingTokenCandidates);
+  const candidates = regulars
+    .flatMap(leadingTokenCandidates)
+    .filter(token => tokenAllowed(token, modelName, infixFromElements));
   const best = regulars.length >= MIN_SAMPLE ? bestCovering(regulars, candidates) : null;
   const regularOk = best && best.coverage / regulars.length >= MIN_COVERAGE;
 
@@ -238,7 +299,7 @@ export function setModelObjectNameSource(source: ModelObjectNameSource | null): 
 
 /** Seed a model's inferred prefix directly, bypassing the source (tests, CLI). */
 export function primeInferredModelPrefix(modelName: string, names: string[]): void {
-  inferred.set(modelName.toLowerCase(), inferPrefixFromObjectNames(names));
+  inferred.set(modelName.toLowerCase(), inferPrefixFromObjectNames(names, modelName));
 }
 
 /** Drop every cached inference (test isolation, workspace switch). */
@@ -268,7 +329,7 @@ export function getInferredModelPrefix(modelName: string): InferredModelPrefix |
   let result: InferredModelPrefix | null = null;
   try {
     const names = nameSource?.(modelName) ?? [];
-    result = names.length > 0 ? inferPrefixFromObjectNames(names) : null;
+    result = names.length > 0 ? inferPrefixFromObjectNames(names, modelName) : null;
     if (result) {
       console.error(
         `[ModelPrefix] Model "${modelName}" uses prefix "${result.regular}" ` +

@@ -129,6 +129,31 @@ describe('buildPrefixDiagnostics', () => {
     expect(modelWritesLandIn('ContosoFinanceSK', 'ContosoFinanceSK')).toBe('ContosoFinanceSK');
   });
 
+  it('treats two spellings of one model as the same model', () => {
+    // Model names compare case-insensitively everywhere else. Comparing them
+    // exactly here reported a switch — and a whole "writes are NOT switched"
+    // section — for a workspace that never switched anything.
+    expect(modelWritesLandIn('ContosoFinanceSK', 'contosofinancesk')).toBe('ContosoFinanceSK');
+    expect(text('ContosoFinanceSK', 'contosofinancesk')).not.toContain('This is the prefix for WRITES');
+  });
+
+  it('does not claim "0/N objects" when the token came from extension elements', () => {
+    // coverage counts the REGULAR objects that agree; a model whose prefix is
+    // only stated by its extensions has none, and the line used to read
+    // "inferred from 0/4 objects" — a self-contradiction in the one section
+    // whose job is to make the prefix checkable.
+    setModelObjectNameSource(() => [
+      'SalesOrderHelper', 'VendPaymentFix', 'CustBalanceReport', 'TaxReportRunner',
+      'VendTable.ConSKExtension', 'CustTable.ConSKExtension', 'SalesTable.ConSKExtension',
+    ]);
+    clearInferredModelPrefixes();
+
+    const out = text('MixedModel', 'MixedModel');
+
+    expect(out).not.toContain('0/');
+    expect(out).toContain('source: inferred from the extension elements of model "MixedModel"');
+  });
+
   it('tells the operator to configure a prefix when nothing resolves', () => {
     const out = text('BrandNewModel', 'BrandNewModel');
 

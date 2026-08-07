@@ -7,7 +7,8 @@ captured from a real, human-reviewed build (docs/AGENT_EVAL_LOOP.md §6.4) by th
 
 ## Where the case comes from
 
-A live customer demo on 2026-08-07 (customer table `AslFinCore_TaxTransReportChangeLog`).
+A live customer demo on 2026-08-07 (a `<Prefix>_TaxTransReportChangeLog` table in
+the customer's shared core model).
 Adding one enum-typed field, exposing it on the matching form and blocking a
 value downgrade in `validateWrite()` cost several failed builds. The sandbox
 equivalent of that task is this case.

@@ -2037,7 +2037,11 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         // the XML element name ("AxTableFieldEnum"), and that collision gets carried over
         // into add-field, where it used to be accepted and produce a bare AxTableFieldString
         // referencing a non-existent EDT — a wrong field, discovered only at build time.
-        if (args.fieldType && /^Ax[A-Za-z]*Field/i.test(args.fieldType)) {
+        // Anchored on the metamodel's own container names, not on "starts with Ax
+        // and contains Field": that broader shape also rejected any legitimate EDT
+        // whose name happens to read that way, and refusing a valid EDT is the
+        // same class of wrong answer this check exists to prevent.
+        if (args.fieldType && /^Ax(Table|View|Query|Map|DataEntityView)[A-Za-z]*Field[A-Za-z0-9]*$/i.test(args.fieldType)) {
           return {
             content: [{
               type: 'text',
@@ -2099,13 +2103,25 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
               { enumType: enumTypeArg },
             );
             if (enumSet && !enumSet.success) {
+              // Undo the half-written field. Two calls are not atomic, and what
+              // they can leave behind — an AxTableFieldEnum with no enum — is a
+              // field the caller did not ask for. Worse, the bridge's AddField
+              // does not check for an existing field, so an agent that reads
+              // "failed" and simply repeats the call ends up with the field
+              // twice. Rolling back restores the pre-call state, which is the
+              // only state a failed operation may leave.
+              const undone = await bridgeRemoveField(context.bridge, objectName, args.fieldName);
               bridgeResult = {
                 success: false,
-                message:
-                  `Field '${args.fieldName}' was created but EnumType could not be set ` +
-                  `(${enumSet.message}). The field is an AxTableFieldEnum with no enum — ` +
-                  `set it with operation="modify-field", fieldEnumType="${enumTypeArg}", ` +
-                  `or remove the field.`,
+                message: undone?.success
+                  ? `EnumType could not be set (${enumSet.message}) — the field was rolled back and ` +
+                    `nothing was written. Check that enum "${enumTypeArg}" exists ` +
+                    `(get_object_info objectType="enum"), then retry add-field.`
+                  : `Field '${args.fieldName}' was created but EnumType could not be set ` +
+                    `(${enumSet.message}), and rolling the field back failed too. The field is an ` +
+                    `AxTableFieldEnum with no enum — do NOT repeat add-field, it would add a SECOND ` +
+                    `field of the same name. Fix it with operation="modify-field", ` +
+                    `fieldEnumType="${enumTypeArg}", or remove it with operation="remove-field".`,
               };
             }
           }

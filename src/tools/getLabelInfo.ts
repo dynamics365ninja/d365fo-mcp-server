@@ -121,6 +121,14 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
     // An index row is not proof the label exists. Confirm against the .label.txt
     // before handing back a reference the caller will paste into XML — a stale row
     // otherwise surfaces as `Unknown label` at build time, several steps later.
+    //
+    // Every model, including Microsoft's: gating this on isCustomModel() looks
+    // right and is not, because isStandardModel() is defined as "not custom" and
+    // an unrecognised model therefore reads as Microsoft's. The shared core model
+    // whose phantom label started all this is exactly such a model, so the gate
+    // would have switched the check off in the one place it had to fire. What
+    // makes the big files affordable is the read budget in labelMissingOnDisk:
+    // the @SYS sweep that measured 17 s now gives up at 218 ms with no verdict.
     const indexedPaths = symbolIndex
       .getLabelFilePaths(first.labelFileId, first.model)
       .map(p => p.filePath);

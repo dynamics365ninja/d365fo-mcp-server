@@ -225,4 +225,68 @@ describe('forceProject — write anchor', () => {
     expect(mgr.getToolProjectSwitch()).toBeNull();
     expect(mgr.getWriteAnchorModel()).toBe(mgr.getModelName());
   });
+
+  it('waits for a detection still in flight before taking the anchor', async () => {
+    // The switch can be the FIRST tool call of a session, while the background
+    // workspace scan is still running. forceProject used to read the model
+    // synchronously, get null, store no anchor at all — and hand the caller the
+    // bypass the anchor exists to deny: writes would follow the switch.
+    const mgr = makeManager();
+    let resolveDetection!: () => void;
+    (mgr as any).autoDetectedProject = null;
+    (mgr as any).autoDetectionAttempted = true;
+    (mgr as any).detectionInProgress = new Promise<void>(resolve => {
+      resolveDetection = () => { (mgr as any).autoDetectedProject = INFO_A; resolve(); };
+    });
+
+    const switching = mgr.forceProject(PROJECT_B);
+    resolveDetection();
+    await switching;
+
+    expect(mgr.getModelName()).toBe('ModelB');
+    expect(mgr.getWriteAnchorModel()).toBe('ModelA');
+  });
+});
+
+/**
+ * The mirror of the bug the anchor prevents: an anchor left standing after the
+ * user genuinely moved refuses every write into the model the NEW workspace
+ * targets, naming a model they no longer have open. Only two of the six places
+ * that re-resolve a project used to clear it.
+ */
+describe('forceProject — the anchor does not outlive its workspace', () => {
+  it('clears the anchor when a request arrives for a workspace never seen before', async () => {
+    const mgr = makeManager();
+    await mgr.forceProject(PROJECT_B);
+    expect(mgr.getWriteAnchorModel()).toBe('ModelA');
+
+    // VS 2022 sends the workspace path per request; this one is new, so
+    // detection is reset and re-run for it.
+    mgr.setRuntimeContext({ workspacePath: 'K:\\repos\\SomethingElse' });
+
+    expect(mgr.getToolProjectSwitch()).toBeNull();
+  });
+
+  it('keeps the anchor when the SAME workspace reports in again', async () => {
+    // The per-request path fires constantly with an unchanged workspace, and
+    // forceProject cached its project under that key. Clearing here would undo
+    // the anchor on the very next request.
+    const mgr = makeManager();
+    await mgr.forceProject(PROJECT_B);
+
+    mgr.setRuntimeContext({ workspacePath: WORKSPACE });
+    mgr.setRuntimeContext({ workspacePath: WORKSPACE });
+
+    expect(mgr.getWriteAnchorModel()).toBe('ModelA');
+    expect(mgr.getModelName()).toBe('ModelB');
+  });
+
+  it('clears the anchor when roots/list falls back to BFS on an unknown root', async () => {
+    const mgr = makeManager();
+    await mgr.forceProject(PROJECT_B);
+
+    await mgr.setRuntimeContextFromRoots(['K:\\repos\\AnotherSolution']);
+
+    expect(mgr.getToolProjectSwitch()).toBeNull();
+  });
 });

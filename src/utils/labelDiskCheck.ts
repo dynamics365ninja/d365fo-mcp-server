@@ -22,19 +22,42 @@ import * as fs from 'fs/promises';
 const MAX_LABEL_FILE_BYTES = 16 * 1024 * 1024;
 
 /**
- * A label file line is `LabelId=Text`, with ` =Comment` continuation lines and
+ * Total bytes one check may read before giving up with "no verdict".
+ *
+ * A label file id has ~74 language variants, and the platform's own are ~10 MB
+ * each: @SYS alone is 764 MB across its files, and a sweep of all of them was
+ * measured at 17 s on the reference VM — one tool call holding the server for
+ * long enough that a client gives up on it. With the budget the same sweep gives
+ * up at 218 ms and reports no verdict, which is the honest answer anyway: the
+ * files it did read do not know whether the id is in the ones it skipped.
+ *
+ * The budget rather than a "skip Microsoft models" rule, because
+ * isStandardModel() is defined as "not custom" — an unrecognised custom model
+ * reads as Microsoft's, and the check would switch itself off precisely where a
+ * stale row is most likely.
+ */
+const MAX_TOTAL_READ_BYTES = 32 * 1024 * 1024;
+
+/** Regex-safe form of a label id, which may legitimately contain '@' and '.'. */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * A label file line is `LabelId=Text`, with ` ;Comment` continuation lines and
  * `;`-prefixed comments. Only the id half matters here.
+ *
+ * Matched with one multiline regex rather than split()+loop: splitting a 10 MB
+ * file builds ~250k throwaway strings per file, which is most of the cost of the
+ * check and all of it is avoidable. Leading blanks are tolerated the way trim()
+ * did; a ';' comment line cannot match because the id has to start the line.
  */
 function fileDeclaresLabel(content: string, labelId: string): boolean {
-  const needle = labelId.toLowerCase();
-  for (const rawLine of content.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith(';')) continue;
-    const eq = line.indexOf('=');
-    if (eq <= 0) continue;
-    if (line.slice(0, eq).trim().toLowerCase() === needle) return true;
-  }
-  return false;
+  // ﻿ is in the class because every shipped .label.txt starts with a BOM and
+  // Node's utf-8 read keeps it. The old split()+trim() absorbed it by accident —
+  // JS trim() counts U+FEFF as whitespace — so dropping it here would have made
+  // the FIRST label of every file unfindable, i.e. reported as missing.
+  return new RegExp(`^[\\uFEFF \\t]*${escapeRegex(labelId)}[ \\t]*=`, 'im').test(content);
 }
 
 /**
@@ -47,12 +70,17 @@ export async function labelMissingOnDisk(
   filePaths: string[],
 ): Promise<boolean | null> {
   let readAny = false;
+  let bytesRead = 0;
 
   for (const filePath of filePaths) {
     try {
       const stat = await fs.stat(filePath);
       if (!stat.isFile() || stat.size > MAX_LABEL_FILE_BYTES) continue;
+      // Over budget before we have an answer: stop and say nothing. Reporting
+      // "missing" off a partial sweep would be a verdict the files never gave.
+      if (bytesRead + stat.size > MAX_TOTAL_READ_BYTES) return null;
       const content = await fs.readFile(filePath, 'utf-8');
+      bytesRead += stat.size;
       readAny = true;
       // Present in ANY language file is present — a label only translated to one
       // language is normal, and this check is about existence, not completeness.

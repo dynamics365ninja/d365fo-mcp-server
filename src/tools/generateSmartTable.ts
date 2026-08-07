@@ -17,6 +17,7 @@ import { ProjectFileManager } from './createD365File.js';
 import { extractModelFromProject, findProjectInSolution } from '../utils/projectUtils.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
 import { lookupSymbolNocase } from '../utils/symbolLookup.js';
+import { scaffoldWriteRefusalResult } from './writeAnchorGuard.js';
 
 interface GenerateSmartTableArgs {
   name: string;
@@ -655,6 +656,16 @@ export async function handleGenerateSmartTable(
   if (finalName !== name) {
     console.log(`[generateSmartTable] Applied naming: ${name} → ${finalName}`);
   }
+
+  // Where this scaffold would land, checked before anything is written. The
+  // model above comes from the ACTIVE project, which a get_workspace_info switch
+  // moves; writes stay anchored to the model the workspace resolved on its own.
+  const anchorRefusal = scaffoldWriteRefusalResult({
+    objectName: finalName,
+    objectType: 'table',
+    targetModel: resolvedModel,
+  });
+  if (anchorRefusal) return anchorRefusal;
 
   // Generate standard methods (find, exist) based on primary key fields
   const generatedMethods: Array<{ name: string; source: string }> = [];

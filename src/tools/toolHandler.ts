@@ -403,8 +403,9 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
             `anchored to "${toolSwitch.anchorModel}" — the model the open workspace targets — and ` +
             `a create/modify into "${toolSwitch.forcedModel}" will be refused.`,
             `Tell the user the model they asked about is owned by "${toolSwitch.forcedModel}" and let ` +
-            `THEM decide: extend it from "${toolSwitch.anchorModel}", or allow the write in server ` +
-            `configuration (D365FO_CROSS_MODEL_WRITE_MODELS). Do not decide this on your own.`,
+            `THEM decide: extend it from "${toolSwitch.anchorModel}", or allow the write by adding ` +
+            `D365FO_CROSS_MODEL_WRITE_MODELS=${toolSwitch.forcedModel} to the server's .env — that ` +
+            `applies to the next attempt, no restart. Do not decide this on your own.`,
             ``,
           );
         }

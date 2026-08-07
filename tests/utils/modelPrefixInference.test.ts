@@ -181,6 +181,72 @@ describe('inferPrefixFromObjectNames', () => {
     expect(result?.regular).toBe('ContosoFinSK');
   });
 
+  /**
+   * Coverage alone cannot tell a third prefix segment from a domain word: a
+   * model whose objects are all ConDemoNote-something offers "ConDemoNote" with
+   * the same 100 % the real "ContosoFinSK" has, and longest-wins then takes the
+   * domain word. Every generated name would be wrong, and self-reinforcing — the
+   * next object is named that way too. So three segments need corroboration from
+   * outside the object names.
+   */
+  describe('three-segment tokens are corroborated, not taken on coverage', () => {
+    it('accepts one the model name carries, spelled out', () => {
+      // Asl|Fin|SK ⊂ AslFinanceSK: the prefix abbreviates what the name spells.
+      const result = inferPrefixFromObjectNames([
+        'AslFinSKVendPaymentTable', 'AslFinSKCustInvoiceJour',
+        'AslFinSKLedgerJournalTrans', 'AslFinSKTaxReportTable',
+      ], 'AslFinanceSK');
+
+      expect(result?.regular).toBe('AslFinSK');
+    });
+
+    it('accepts one the model\'s own extensions state', () => {
+      const result = inferPrefixFromObjectNames([
+        'ContosoFinSKVendPaymentTable', 'ContosoFinSKCustInvoiceJour',
+        'ContosoFinSKLedgerJournalTrans', 'ContosoFinSKTaxReportTable',
+        'VendTable.ContosoFinSKExtension', 'CustTable.ContosoFinSKExtension',
+      ], 'WhateverTheModelIsCalled');
+
+      expect(result?.regular).toBe('ContosoFinSK');
+    });
+
+    it('falls back to two segments when the third is only a shared topic', () => {
+      // A young model whose objects are all about notes. "Note" is nowhere in
+      // the model name and no extension states it.
+      const result = inferPrefixFromObjectNames([
+        'ConDemoNoteHeader', 'ConDemoNoteLine', 'ConDemoNoteText',
+        'ConDemoNoteFooter', 'ConDemoNoteParm',
+      ], 'ConDemo');
+
+      expect(result?.regular).toBe('ConDemo');
+    });
+
+    it('falls back for an abbreviated-looking topic word too', () => {
+      const result = inferPrefixFromObjectNames([
+        'IsvFinVendPayment', 'IsvFinVendInvoice', 'IsvFinVendBalance', 'IsvFinVendSettle',
+      ], 'IsvFinance');
+
+      expect(result?.regular).toBe('IsvFin');
+    });
+
+    it('still takes the long token when there is nothing to check it against', () => {
+      // No model name, no stated infix: refusing every long token would be its
+      // own guess, and this is the shape a caller with names only passes in.
+      const result = inferPrefixFromObjectNames([
+        'ContosoFinSKVendPaymentTable', 'ContosoFinSKCustInvoiceJour',
+        'ContosoFinSKLedgerJournalTrans', 'ContosoFinSKTaxReportTable',
+      ]);
+
+      expect(result?.regular).toBe('ContosoFinSK');
+    });
+
+    it('leaves one- and two-segment tokens alone whatever the model is called', () => {
+      expect(inferPrefixFromObjectNames([
+        'ConDemoNoteHeader', 'ConDemoRental', 'ConDemoPayment', 'ConDemoTax',
+      ], 'CompletelyUnrelatedName')?.regular).toBe('ConDemo');
+    });
+  });
+
   it('infers nothing from objects that share no prefix', () => {
     expect(inferPrefixFromObjectNames([
       'CustTable', 'VendInvoiceJour', 'SalesLine', 'InventTrans', 'LedgerJournalTable',

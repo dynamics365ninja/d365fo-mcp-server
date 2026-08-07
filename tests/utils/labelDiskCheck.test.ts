@@ -2,9 +2,9 @@
  * Stale label rows — the index says a label exists, the .label.txt does not.
  *
  * Live demo, 2026-08-07: labels(action="info") answered with a full translation
- * list for @AslFinCore:QualityTier, so the agent referenced it in the field and
- * the EDT. It was a phantom — nothing on disk — and the only symptom was a
- * best-practice error, `Unknown label`, several build cycles later.
+ * list for a label in the customer's core model, so the agent referenced it in
+ * the field and the EDT. It was a phantom — nothing on disk — and the only
+ * symptom was a best-practice error, `Unknown label`, several build cycles later.
  *
  * The check reports "missing" ONLY when it actually read a file that lacks the
  * id; anything unreadable stays silent, because a false "your label is gone"
@@ -86,5 +86,29 @@ describe('labelMissingOnDisk', () => {
 
     expect(await labelMissingOnDisk('QualityTier', [FILE])).toBeNull();
     expect(mockReadFile).not.toHaveBeenCalled();
+  });
+
+  it('finds the FIRST label of a file, which carries the BOM', async () => {
+    // Every shipped .label.txt starts with a UTF-8 BOM and Node's utf-8 read
+    // keeps it, so the first id reads as "﻿Account". Missing that would
+    // report one real label per file as gone.
+    readable();
+    mockReadFile.mockResolvedValue('﻿Account=Account\nAccountAlias=Alias\n');
+
+    expect(await labelMissingOnDisk('Account', [FILE])).toBe(false);
+  });
+
+  it('gives no verdict rather than sweeping hundreds of megabytes', async () => {
+    // A label file id has ~74 language variants and the platform's own are
+    // ~10 MB each (@SYS: 764 MB, 17 s for one lookup on the reference VM). One
+    // tool call must not hold the server for that long; callers skip Microsoft
+    // models, and this is the backstop.
+    mockStat.mockResolvedValue({ isFile: () => true, size: 12 * 1024 * 1024 });
+    mockReadFile.mockResolvedValue('SomethingElse=x\n');
+
+    const many = Array.from({ length: 74 }, (_, i) => `${FILE}.${i}`);
+
+    expect(await labelMissingOnDisk('QualityTier', many)).toBeNull();
+    expect(mockReadFile.mock.calls.length).toBeLessThan(10);
   });
 });

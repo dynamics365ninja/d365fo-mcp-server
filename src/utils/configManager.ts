@@ -305,6 +305,14 @@ class ConfigManager {
       if (!this.autoDetectionCache.has(cacheKey)) {
         this.autoDetectionAttempted = false;
         this.autoDetectedProject = null;
+        // A workspace this server has never seen — the user moved, so the write
+        // anchor of the PREVIOUS workspace must not survive into this one. Left
+        // standing it becomes the mirror of the bug it prevents: every write into
+        // the model the new workspace actually targets gets refused, named after a
+        // model the user no longer has open. Deliberately not cleared on the cache
+        // branch above: that is the same workspace answering again, possibly with a
+        // project forceProject() pinned to it.
+        this.toolForcedProject = null;
 
         // Fast-path: try exact or close match against known projects.
         // Falls through to BFS only when nothing specific is found.
@@ -434,6 +442,11 @@ class ConfigManager {
         return;
       }
       console.error(`[ConfigManager] Roots ambiguous (gen ${gen}) — BFS fallback on: ${firstPath}`);
+      // Nothing cached for this root: it is a workspace this server has not resolved
+      // before, and BFS is about to resolve it from scratch. Same reasoning as the
+      // new-workspace branch of setRuntimeContext — an anchor from the previous
+      // workspace would refuse writes into the model this one targets.
+      this.toolForcedProject = null;
       // If stored workspace already equals firstPath, setRuntimeContext sees
       // workspaceChanged=false and skips detection — prevent that.
       if (this.runtimeContext.workspacePath === firstPath) {
@@ -1067,6 +1080,13 @@ class ConfigManager {
     try {
       // Captured BEFORE the switch: the model this workspace resolved to on its own.
       // It becomes the write anchor, so a switch cannot silently move where writes land.
+      //
+      // Detection has to have FINISHED first. It runs in the background and only
+      // getWorkspaceInfoDiagnostics() waits for it — which the get_workspace_info
+      // handler calls after this method, not before. A switch on the very first tool
+      // call therefore used to read a null model here, store no anchor at all, and
+      // hand the caller exactly the bypass the anchor exists to deny.
+      await this.awaitPendingDetection();
       const modelBeforeSwitch = this.getModelName();
       const normalizedPath = path.normalize(projectPath);
       const modelName = await extractModelNameFromProject(normalizedPath);
@@ -1112,6 +1132,26 @@ class ConfigManager {
     } catch (err) {
       console.error(`[ConfigManager] forceProject error:`, err);
       return null;
+    }
+  }
+
+  /**
+   * Wait for an in-flight workspace detection, so a caller that needs the
+   * workspace's OWN model does not read null while the background scan is still
+   * running. Bounded the same way getWorkspaceInfoDiagnostics() bounds it.
+   */
+  private async awaitPendingDetection(): Promise<void> {
+    if (!this.autoDetectionAttempted) {
+      const ctx = this.config?.servers?.context;
+      await this.autoDetectProject(this.runtimeContext.workspacePath || ctx?.workspacePath);
+      return;
+    }
+    if (!this.autoDetectedProject && this.detectionInProgress) {
+      await Promise.race([
+        this.detectionInProgress,
+        new Promise<void>(resolve => setTimeout(resolve, 5_000)),
+      ]);
+      this.detectionInProgress = null;
     }
   }
 

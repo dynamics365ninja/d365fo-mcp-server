@@ -31,8 +31,19 @@ export function modelWritesLandIn(
   anchorModel: string | null,
   activeModel: string | null,
 ): string | null {
-  if (!activeModel || activeModel === anchorModel) return anchorModel;
+  if (!activeModel || sameModel(activeModel, anchorModel)) return anchorModel;
   return crossModelWriteAllowedByConfig(activeModel) ? activeModel : anchorModel;
+}
+
+/**
+ * Model names compare case-insensitively everywhere else (crossModelWriteGuard's
+ * eq, ConfigManager's anchor bookkeeping). Comparing them exactly here would
+ * report a switch — and a whole "writes are NOT switched" section — for two
+ * spellings of one model.
+ */
+function sameModel(a: string | null, b: string | null): boolean {
+  if (!a || !b) return a === b;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 export interface PrefixDiagnostics {
@@ -55,8 +66,15 @@ export function buildPrefixDiagnostics(
   const learned = writeModel ? getInferredModelPrefix(writeModel) : null;
   const effectivePrefix = resolveObjectPrefix(writeModel ?? '');
 
+  // "0/13 objects" is what this said when the token came from the model's
+  // extension ELEMENTS rather than its regular objects (coverage is the regular
+  // objects' count, and there were none to agree). A line that contradicts
+  // itself in the section built to make the prefix checkable is worse than a
+  // vaguer one, so each origin now states the evidence it actually has.
   const source = learned?.regular
-    ? `inferred from ${learned.coverage}/${learned.sampleSize} objects of model "${writeModel}"`
+    ? learned.coverage > 0
+      ? `inferred from ${learned.coverage}/${learned.sampleSize} objects of model "${writeModel}"`
+      : `inferred from the extension elements of model "${writeModel}"`
     : extensionPrefixEnv
       ? 'EXTENSION_PREFIX'
       : 'model name (nothing configured)';
@@ -67,7 +85,7 @@ export function buildPrefixDiagnostics(
     !!learned?.regular && !!extensionPrefixEnv &&
     bare(learned.regular) !== bare(extensionPrefixEnv);
 
-  const switched = !!writeModel && !!readModel && writeModel !== readModel;
+  const switched = !!writeModel && !!readModel && !sameModel(writeModel, readModel);
 
   const lines = [
     `## Prefix Configuration`,

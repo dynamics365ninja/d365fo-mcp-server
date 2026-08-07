@@ -42,6 +42,7 @@ import { resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuf
 import { extractModelFromProject, findProjectInSolution } from '../utils/projectUtils.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
 import { canonicalSymbolName, lookupSymbolNocase } from '../utils/symbolLookup.js';
+import { scaffoldWriteRefusalResult } from './writeAnchorGuard.js';
 
 interface ReportFieldSpec {
   /** Field name on the TmpTable (e.g. "ItemId", "Amount") */
@@ -327,6 +328,16 @@ export async function handleGenerateSmartReport(
   const objectSuffix = getObjectSuffix();
   finalName = applyObjectSuffix(finalName, objectSuffix);
   if (finalName !== name) log(`Applied naming: ${name} → ${finalName}`);
+
+  // See generateSmartTable: the resolved model follows the ACTIVE project, the
+  // write anchor does not. A report scaffold writes several objects at once, so
+  // this is checked before any of them exists.
+  const anchorRefusal = scaffoldWriteRefusalResult({
+    objectName: finalName,
+    objectType: 'report',
+    targetModel: resolvedModel,
+  });
+  if (anchorRefusal) return anchorRefusal;
 
   // Derived object names
   const tmpTableName = `${finalName}Tmp`;
