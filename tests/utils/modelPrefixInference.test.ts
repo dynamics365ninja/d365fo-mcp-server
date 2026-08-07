@@ -52,6 +52,18 @@ const HB_REAVIS_CUS = [
   'CustTransFormHBC_Extension',
 ];
 
+// Model AslFinanceSK — three-segment prefix (Asl|Fin|SK), the shape that made
+// the inference report "AslFin" while EXTENSION_PREFIX said "Asl".
+const ASL_FIN_SK = [
+  'AslFinSKVendPaymentTable',
+  'AslFinSKCustInvoiceJour',
+  'AslFinSKLedgerJournalTrans',
+  'AslFinSKTaxReportTable',
+  'AslFinSKBankStatement',
+  'VendTable.AslFinSKExtension',
+  'CustTableAslFinSK_Extension',
+];
+
 const originalEnv = { ...process.env };
 
 beforeEach(() => {
@@ -101,6 +113,69 @@ describe('inferPrefixFromObjectNames', () => {
     ]);
 
     expect(result?.regular).toBe('IsvFin');
+  });
+
+  it('reads a three-segment prefix instead of stopping at two', () => {
+    // Model AslFinanceSK with EXTENSION_PREFIX="Asl": the inference reported
+    // "AslFin" and it looked deliberate, because only the first two segments
+    // were ever offered as candidates — "AslFinSK" could not compete.
+    const result = inferPrefixFromObjectNames([
+      'AslFinSKVendPaymentTable', 'AslFinSKCustInvoiceJour',
+      'AslFinSKLedgerJournalTrans', 'AslFinSKTaxReportTable',
+      'AslFinSKBankStatement', 'AslFinSKPaymentId',
+    ]);
+
+    expect(result?.regular).toBe('AslFinSK');
+    expect(result?.infix).toBe('AslFinSK');
+  });
+
+  it('keeps the underscore on a three-segment prefix', () => {
+    const result = inferPrefixFromObjectNames([
+      'AslFinSK_VendPaymentTable', 'AslFinSK_CustInvoiceJour',
+      'AslFinSK_LedgerJournalTrans', 'AslFinSK_TaxReportTable',
+    ]);
+
+    expect(result?.regular).toBe('AslFinSK_');
+    // Flattening the whole token would give "Aslfinsk"; each segment is lowered
+    // on its own, so the boundaries survive.
+    expect(result?.infix).toBe('AslFinSk');
+  });
+
+  it('extends a truncated leading token to the infix its own extensions state', () => {
+    // Even with a longer token available, a leading token can come out short —
+    // here every regular object is Vend-something. The model's extensions say
+    // "AslFinSKExtension" outright, and members added inside that extension must
+    // not be named AslFinFoo.
+    const result = inferPrefixFromObjectNames([
+      'AslFinSKVendPaymentTable', 'AslFinSKVendInvoice',
+      'AslFinSKVendBalance', 'AslFinSKVendSettlement',
+      'VendTable.AslFinSKExtension', 'CustTable.AslFinSKExtension',
+    ]);
+
+    expect(result?.regular).toBe('AslFinSK');
+    expect(result?.infix).toBe('AslFinSK');
+  });
+
+  it('does not extend the leading token when the objects do not carry the infix', () => {
+    // A single stray extension from another convention must not rewrite the
+    // prefix that four out of four regular objects agree on.
+    const result = inferPrefixFromObjectNames([
+      'ConDemoNoteHeader', 'ConRentalAgreement', 'ConRentalLine', 'ConPaymentPlan',
+      'CustTable.ConDemoExtension',
+    ]);
+
+    expect(result?.regular).toBe('Con');
+  });
+
+  it('stops at three segments so a domain word cannot become the prefix', () => {
+    // Four leading segments in common is a small model about one topic, not a
+    // four-part prefix — "AslFinSKVend" must not win on length.
+    const result = inferPrefixFromObjectNames([
+      'AslFinSKVendPaymentTable', 'AslFinSKVendPaymentLine',
+      'AslFinSKVendPaymentJour', 'AslFinSKVendPaymentTmp',
+    ]);
+
+    expect(result?.regular).toBe('AslFinSK');
   });
 
   it('infers nothing from objects that share no prefix', () => {
@@ -186,6 +261,31 @@ describe('prefix resolution order', () => {
     expect(deriveExtensionInfix(resolveObjectPrefix('HBReavis'), 'HBReavis')).toBe('HBR');
     expect(applyObjectPrefix('CustTable.Extension', resolveObjectPrefix('HBReavis'), 'HBReavis'))
       .toBe('CustTable.HBRExtension');
+  });
+
+  it('names new objects with the model\'s full three-segment prefix', () => {
+    // End to end for the AslFinanceSK report: EXTENSION_PREFIX said "Asl", the
+    // effective prefix came out "AslFin", and every generated name was wrong by
+    // two characters that nobody would spot in a diff.
+    process.env.EXTENSION_PREFIX = 'Asl';
+    setModelObjectNameSource(() => ASL_FIN_SK);
+
+    expect(resolveObjectPrefix('AslFinanceSK')).toBe('AslFinSK');
+    expect(applyObjectPrefix('VendPaymentJournal', resolveObjectPrefix('AslFinanceSK'), 'AslFinanceSK'))
+      .toBe('AslFinSKVendPaymentJournal');
+    expect(applyObjectPrefix('CustTable.Extension', resolveObjectPrefix('AslFinanceSK'), 'AslFinanceSK'))
+      .toBe('CustTable.AslFinSKExtension');
+  });
+
+  it('keeps segment boundaries in a configured underscore-style prefix', () => {
+    // No model to learn from, so the infix is derived — and deriving used to
+    // flatten the whole token to "Aslfinsk".
+    process.env.EXTENSION_PREFIX = 'AslFinSK_';
+    setModelObjectNameSource(() => []);
+
+    expect(resolveObjectPrefix('EmptyModel')).toBe('AslFinSK');
+    expect(resolveRegularObjectPrefixToken('EmptyModel')).toBe('AslFinSK_');
+    expect(deriveExtensionInfix('AslFinSK', 'EmptyModel')).toBe('AslFinSk');
   });
 
   it('leaves behaviour unchanged when no model prefix can be inferred', () => {

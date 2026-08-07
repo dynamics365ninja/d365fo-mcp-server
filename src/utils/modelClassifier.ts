@@ -10,7 +10,7 @@
  * - All other models are considered Microsoft standard models
  */
 
-import { getInferredModelPrefix } from './modelPrefixInference.js';
+import { getInferredModelPrefix, toExtensionInfixCase } from './modelPrefixInference.js';
 
 // Runtime registry for auto-detected custom models
 const autoDetectedCustomModels = new Set<string>();
@@ -186,8 +186,11 @@ export function resolveObjectPrefix(modelName: string): string {
  *   - Normal prefix "Contoso"                  → resolved prefix "Contoso" → infix "Contoso"
  *   - All-caps prefix "WHS" with "WHS_" in env → infix "Whs"
  *   - All-caps prefix "WHS" with "WHS" in env  → infix "WHS" (unchanged)
+ *   - Compound "AslFinSK_"                     → infix "AslFinSk" (per segment)
  *
- * Detection: if the winning raw prefix ends with '_', apply first-upper + rest-lower.
+ * Detection: if the winning raw prefix ends with '_', lower each PascalCase
+ * segment on its own (see toExtensionInfixCase) — flattening the whole token
+ * would turn "AslFinSK" into "Aslfinsk".
  *
  * When `modelName` is given and that model's own extensions already state their
  * infix, it is used verbatim instead of being derived. The two are genuinely
@@ -203,8 +206,8 @@ export function deriveExtensionInfix(resolvedPrefix: string, modelName?: string)
 
   const rawPrefix = modelName ? resolveRawPrefix(modelName) : (process.env.EXTENSION_PREFIX?.trim() ?? '');
   if (rawPrefix.endsWith('_')) {
-    // XY_ → Xy  (first char uppercase, remaining chars lowercase)
-    return resolvedPrefix.charAt(0).toUpperCase() + resolvedPrefix.slice(1).toLowerCase();
+    // XY_ → Xy, AslFinSK_ → AslFinSk  (first char of each segment upper, rest lower)
+    return toExtensionInfixCase(resolvedPrefix);
   }
   // Normal PascalCase — just capitalize first letter, keep the rest as-is
   return resolvedPrefix.charAt(0).toUpperCase() + resolvedPrefix.slice(1);

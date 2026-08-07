@@ -20,6 +20,7 @@ import { getKnowledgeTool } from './getKnowledge.js';
 import { validateObjectNamingTool } from './validateObjectNaming.js';
 import { verifyD365ProjectTool } from './verifyD365Project.js';
 import { resolveObjectPrefix, isCustomModel, getObjectSuffix, getExtensionNamingStyle, deriveExtensionInfix } from '../utils/modelClassifier.js';
+import { getInferredModelPrefix } from '../utils/modelPrefixInference.js';
 import { getStdioSessionInfo } from '../utils/stdioSessionInfo.js';
 import { updateSymbolIndexTool } from './updateSymbolIndex.js';
 import { buildProjectTool } from './buildProject.js';
@@ -340,9 +341,23 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         const envType = await configManager.getDevEnvironmentType();
         const frameworkDirectory = await configManager.getMicrosoftPackagesPath();
 
-        // Prefix diagnostics
+        // Prefix diagnostics. The effective prefix has THREE possible origins and
+        // reporting only the configured one is how a silently different value
+        // ("EXTENSION_PREFIX: Asl" next to "Effective prefix: AslFin") reads as
+        // approved rather than as the disagreement it is — so state the origin.
         const extensionPrefixEnv = process.env.EXTENSION_PREFIX?.trim() || null;
+        const learnedPrefix = modelName ? getInferredModelPrefix(modelName) : null;
         const effectivePrefix = resolveObjectPrefix(modelName ?? '');
+        const prefixSource = learnedPrefix?.regular
+          ? `inferred from ${learnedPrefix.coverage}/${learnedPrefix.sampleSize} objects of model "${modelName}"`
+          : extensionPrefixEnv
+            ? 'EXTENSION_PREFIX'
+            : 'model name (nothing configured)';
+        // Compared bare, because "HBR_" in the model and "HBR" in the env agree.
+        const bare = (s: string) => s.replace(/_+$/, '').toLowerCase();
+        const prefixDisagrees =
+          !!learnedPrefix?.regular && !!extensionPrefixEnv &&
+          bare(learnedPrefix.regular) !== bare(extensionPrefixEnv);
         const objectSuffixEnv = process.env.EXTENSION_SUFFIX?.trim() || null;
         const effectiveSuffix = getObjectSuffix();
 
@@ -384,10 +399,14 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           `## Prefix Configuration`,
           ``,
           `EXTENSION_PREFIX: ${extensionPrefixEnv ?? '(not set — falling back to model name)'}`,
-          `Effective prefix: ${effectivePrefix || '(none)'}`,
-          extensionPrefixEnv
-            ? `✅ EXTENSION_PREFIX is set — all new objects will use prefix "${effectivePrefix}".`
-            : `⚠️  EXTENSION_PREFIX is not set in the server environment. The model name "${modelName}" will be used as prefix. Add EXTENSION_PREFIX=MY (or your ISV prefix) to the .env file and restart the server.`,
+          `Effective prefix: ${effectivePrefix || '(none)'}  (source: ${prefixSource})`,
+          prefixDisagrees
+            ? `⚠️  The model's own objects use "${learnedPrefix!.regular}", which overrides EXTENSION_PREFIX="${extensionPrefixEnv}" — new objects will be named "${effectivePrefix}…". If that is wrong, the model's existing objects are the thing to check; set EXTENSION_PREFIX_SOURCE=config to pin the configured value instead.`
+            : learnedPrefix?.regular
+              ? `✅ Prefix "${effectivePrefix}" comes from the objects model "${modelName}" already contains.`
+              : extensionPrefixEnv
+                ? `✅ EXTENSION_PREFIX is set — all new objects will use prefix "${effectivePrefix}".`
+                : `⚠️  EXTENSION_PREFIX is not set in the server environment. The model name "${modelName}" will be used as prefix. Add EXTENSION_PREFIX=MY (or your ISV prefix) to the .env file and restart the server.`,
           ``,
         ];
 
@@ -428,7 +447,10 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         // (embeds the model name instead, VS default). Tool always normalises the token —
         // pass the BASE object name and let the tool name it.
         const extNamingStyle = getExtensionNamingStyle();
-        const extInfix = deriveExtensionInfix(effectivePrefix);
+        // With the model name, so the samples show the infix the model's own
+        // extensions state ("…HBRExtension"), not the one derived from the
+        // prefix ("…HbrExtension") — which is not what a write would produce.
+        const extInfix = deriveExtensionInfix(effectivePrefix, modelName ?? undefined);
         const sampleClassExt = extNamingStyle === 'model-name' && modelName
           ? `CustTable_${modelName}_Extension`
           : `CustTable${extInfix}_Extension`;

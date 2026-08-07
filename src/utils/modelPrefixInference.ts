@@ -42,6 +42,14 @@ const MIN_SAMPLE = 4;
 const MIN_COVERAGE = 0.6;
 /** Longest prefix token considered; beyond this it is a domain word, not a prefix. */
 const MAX_TOKEN_LEN = 12;
+/**
+ * Most PascalCase segments a prefix may span. Real prefixes are compound but
+ * short — "Isv" / "IsvFin" / "AslFinSK" (Asl|Fin|SK) / "ACStdSK" (AC|Std|SK).
+ * The cap is what keeps a domain word out: with four segments allowed, a model
+ * whose objects all happen to start "AslFinSKVend…" would offer "AslFinSKVend"
+ * as a fully-covering candidate and it would win on length.
+ */
+const MAX_TOKEN_SEGMENTS = 3;
 
 /**
  * Split a PascalCase / SCREAMING_CASE name into its leading segments.
@@ -64,11 +72,15 @@ function leadingTokenCandidates(name: string): string[] {
   const us = name.indexOf('_');
   if (us >= 1 && us <= MAX_TOKEN_LEN) out.push(name.slice(0, us + 1));
 
-  // PascalCase style (ConDemoNoteHeader): the first one or two segments. Two,
-  // because a prefix is sometimes itself compound ("IsvFin" over "Isv").
+  // PascalCase style (ConDemoNoteHeader): every leading run of segments up to
+  // MAX_TOKEN_SEGMENTS, because a prefix is often compound — "IsvFin" over
+  // "Isv", "AslFinSK" over "AslFin". Offering only the first two segments does
+  // not merely make the third unlikely, it makes it unreachable: "AslFinSK"
+  // never enters the contest and the longest candidate present, "AslFin", wins
+  // by default and reads like a considered choice.
   const segs = segments(name);
   let acc = '';
-  for (let i = 0; i < Math.min(2, segs.length); i++) {
+  for (let i = 0; i < Math.min(MAX_TOKEN_SEGMENTS, segs.length); i++) {
     acc += segs[i];
     if (acc.length >= 2 && acc.length <= MAX_TOKEN_LEN) out.push(acc);
   }
@@ -117,6 +129,23 @@ function inferInfixFromDotExtensions(dotNames: string[]): string | null {
 }
 
 /**
+ * The PascalCase form of an underscore-style prefix, applied PER SEGMENT:
+ * "HBR" → "Hbr", "WHS" → "Whs", "AslFinSK" → "AslFinSk".
+ *
+ * The documented EXTENSION_PREFIX rule is "XY_" → "Xy" — first upper, rest
+ * lower — which is right for the single all-caps acronym it was written for and
+ * destroys every later boundary in a compound token: "AslFinSK" flattens to
+ * "Aslfinsk". Lowering each segment on its own keeps the rule for acronyms and
+ * keeps the boundaries for the rest.
+ */
+export function toExtensionInfixCase(bare: string): string {
+  if (!bare) return '';
+  const segs = segments(bare);
+  if (segs.length === 0) return bare.charAt(0).toUpperCase() + bare.slice(1).toLowerCase();
+  return segs.map(s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()).join('');
+}
+
+/**
  * Derive the extension infix from a regular token when no extension element
  * exists to read it off. Mirrors the documented EXTENSION_PREFIX rule:
  * underscore style "XY_" → "Xy", PascalCase "Contoso" → "Contoso".
@@ -125,7 +154,7 @@ function deriveInfixFrom(regular: string): string {
   const bare = regular.replace(/_+$/, '');
   if (!bare) return '';
   return regular.endsWith('_')
-    ? bare.charAt(0).toUpperCase() + bare.slice(1).toLowerCase()
+    ? toExtensionInfixCase(bare)
     : bare.charAt(0).toUpperCase() + bare.slice(1);
 }
 
@@ -155,8 +184,27 @@ export function inferPrefixFromObjectNames(names: string[]): InferredModelPrefix
 
   // Each token is preferred from direct evidence and derived from the other only
   // when its own evidence is missing.
-  const regular = regularOk ? best!.token : infixFromElements!;
+  let regular = regularOk ? best!.token : infixFromElements!;
   const infix = infixFromElements ?? deriveInfixFrom(regular);
+
+  // Cross-check the two, because a truncated leading token is invisible on its
+  // own: "AslFin" looks like a perfectly good prefix until the model's own
+  // extensions spell "…AslFinSKExtension". When the learned regular token is a
+  // strict prefix of the stated infix AND the regular objects carry the longer
+  // form too, the short one is a truncation rather than a second convention.
+  // Without this, new members land as AslFinFoo inside AslFinSKExtension.
+  if (regularOk && infixFromElements) {
+    const bare = regular.replace(/_+$/, '');
+    const underscore = regular.slice(bare.length);
+    const longer = infixFromElements;
+    const isTruncation =
+      longer.length > bare.length && longer.toLowerCase().startsWith(bare.toLowerCase());
+    const carriedByObjects =
+      regulars.filter(n => n.toLowerCase().startsWith(longer.toLowerCase())).length / regulars.length;
+    if (isTruncation && carriedByObjects >= MIN_COVERAGE) {
+      regular = longer + underscore;
+    }
+  }
 
   return {
     regular,

@@ -90,7 +90,9 @@ Development normally spans several models, each with its own prefix, and `EXTENS
 2. **`EXTENSION_PREFIX`** — used for a model with nothing to learn from, e.g. one that is still empty.
 3. **The model name**, when neither of the above applies.
 
-Inference is conservative: a model whose objects show no consistent prefix (fewer than four of them, or under 60 % agreement) falls through to step 2 rather than guessing. `get_workspace_info` reports the effective prefix and where it came from.
+Inference is conservative: a model whose objects show no consistent prefix (fewer than four of them, or under 60 % agreement) falls through to step 2 rather than guessing. `get_workspace_info` reports the effective prefix and where it came from, and warns when the model's own naming overrides `EXTENSION_PREFIX`.
+
+Compound prefixes are read in full, up to three PascalCase segments: a model whose objects are `AslFinSKVendPaymentTable`, `AslFinSKCustInvoiceJour`… yields `AslFinSK`, not `AslFin`. Where the model's extensions state the infix outright (`VendTable.AslFinSKExtension`), that spelling wins over anything derived.
 
 ```env
 EXTENSION_PREFIX_SOURCE=config   # pin step 2 above step 1 (pre-1.8.2 behaviour)
