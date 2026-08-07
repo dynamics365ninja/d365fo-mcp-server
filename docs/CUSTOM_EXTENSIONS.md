@@ -96,6 +96,33 @@ Inference is conservative: a model whose objects show no consistent prefix (fewe
 EXTENSION_PREFIX_SOURCE=config   # pin step 2 above step 1 (pre-1.8.2 behaviour)
 ```
 
+## Objects owned by another model
+
+A customer solution is commonly split across several **custom** models — a shared `ContosoFinanceCore` plus country models `ContosoFinanceSK` / `ContosoFinanceCZ` that extend it. The workspace targets exactly one of them; every other model is code this workspace only consumes.
+
+So a `d365fo_file(action="modify")` whose target file resolves into a model other than the active one is **refused**. Asked to "add a field to `ContosoCore_TaxTransReportChangeLog`", the tools would otherwise resolve that table by name, land in the Core model that owns it, and edit it in place — the field would never appear in the active model's project or version control, and every other model built on Core would inherit it. What was wanted is a table extension in the active model:
+
+```
+d365fo_file(action="create", objectType="table-extension",
+            objectName="ContosoCore_TaxTransReportChangeLog.ContosoSKExtension",
+            modelName="ContosoFinanceSK")
+```
+
+…and the field added to that extension, prefixed per the active model (`ContosoSK_…`). The refusal spells this out, and names the extension the active model **already** has when one exists, so the answer is a copy-paste away.
+
+Two escape hatches when editing the other model really is the intent:
+
+```
+d365fo_file(action="modify", …, modelName="ContosoFinanceCore")   # per call
+get_workspace_info(projectName="ContosoFinanceCore")              # switch the workspace
+```
+
+```env
+D365FO_ALLOW_CROSS_MODEL_WRITE=true   # disable the guard server-wide
+```
+
+Writes into **standard Microsoft** models stay refused regardless — see the model-ownership guard.
+
 ## Extension Naming Style
 
 When code-gen tools name an **extension element** (table/form/view/etc. extension) or an **extension class** (CoC / augmentation), the token that distinguishes your extension from others is controlled by `EXTENSION_NAMING_STYLE`:

@@ -91,6 +91,9 @@ vi.mock('../../src/utils/modelClassifier', () => ({
   getObjectSuffix: vi.fn(() => ''),
   applyObjectSuffix: vi.fn((name: string) => name),
   getExtensionNamingStyle: vi.fn(() => 'prefix'),
+  // validate_object_naming derives the extension token from the model's own
+  // convention; the identity form keeps these tests on the plain prefix infix.
+  deriveExtensionInfix: vi.fn((prefix: string) => prefix),
   isCustomModel: vi.fn(() => true),
   isStandardModel: vi.fn(() => false),
 }));
