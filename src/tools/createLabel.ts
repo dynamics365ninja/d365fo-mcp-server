@@ -21,6 +21,7 @@ import * as path from 'path';
 import { getConfigManager } from '../utils/configManager.js';
 import { defaultPackagesRoot } from '../utils/packagesRoot.js';
 import { PackageResolver } from '../utils/packageResolver.js';
+import { crossModelWriteRefusal } from '../utils/crossModelWriteGuard.js';
 import { detectEol } from '../utils/eolUtils.js';
 import { isExtensionLabelFile } from '../metadata/labelParser.js';
 import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
@@ -529,6 +530,26 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       // Traditional mode without explicit packageName: assume package == model
       resolvedPackagePath = packagePath || configManager.getPackagePath() || defaultPackagesRoot();
       resolvedPackageName = model;
+    }
+
+    // Cross-model guard: a label file belongs to exactly one model, so writing a
+    // label into another model's file has the same consequences as editing that
+    // model's objects — and labels are usually the first thing an agent adds when
+    // it drifts into the wrong model. `model` is the model directory the write
+    // resolves to, so this compares the real target, not the caller's intent.
+    const crossModelLabelRefusal = crossModelWriteRefusal({
+      objectName: `@${args.labelFileId}:${args.labelId}`,
+      objectType: 'label',
+      owningModel: model,
+      owningPackage: resolvedPackageName,
+      activeModel: configManager.getModelName() ?? '',
+      action: 'create',
+    });
+    if (crossModelLabelRefusal) {
+      return {
+        content: [{ type: 'text', text: crossModelLabelRefusal }],
+        isError: true,
+      };
     }
 
     const modelDir = path.join(resolvedPackagePath, resolvedPackageName, model);

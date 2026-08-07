@@ -16,13 +16,24 @@
  * other country model inherits — instead of the one thing that was wanted, a
  * table extension in the active model.
  *
- * So a write whose resolved file lives in a model other than the active one is
- * refused by default, with the extension route spelled out. Two deliberate
- * escape hatches, mirroring the standard-model guard's "explicit modelName =
- * you know what you're doing":
- *   - `modelName="<owning model>"` on the call — a per-call, per-model opt-in,
- *   - `D365FO_ALLOW_CROSS_MODEL_WRITE=true` — an environment-wide opt-out for
- *     setups where one server really does serve several models.
+ * ## Consent cannot be self-served
+ *
+ * The first version of this guard accepted `modelName="<owning model>"` on the
+ * call as consent, mirroring the standard-model guard's "explicit modelName =
+ * you know what you're doing". For a human that reasoning holds. For an agent it
+ * does not: the refusal text told it which parameter to add, so it added the
+ * parameter and wrote into the shared model anyway — with a well-argued
+ * explanation afterwards. A bypass the caller can mint for itself is not a
+ * bypass, it is a speed bump.
+ *
+ * So consent lives ONLY in server configuration, which a human edits and which
+ * takes a restart:
+ *   - `D365FO_CROSS_MODEL_WRITE_MODELS=ModelA,ModelB` — allow these models,
+ *   - `D365FO_ALLOW_CROSS_MODEL_WRITE=true`           — allow any model.
+ *
+ * And the refusal deliberately does NOT hand the caller a workaround: it names
+ * the extension route, and says the alternative is the user's decision to make
+ * in configuration.
  */
 
 import { resolveObjectPrefix, applyObjectPrefix } from './modelClassifier.js';
@@ -38,7 +49,7 @@ export interface CrossModelWriteCheck {
   objectName: string;
   /** d365fo_file objectType, e.g. 'table', 'table-extension', 'class'. */
   objectType: string;
-  /** Model that owns the resolved file (the `<Model>` path segment). */
+  /** Model that owns the write target (the `<Model>` path segment, or the model asked for). */
   owningModel: string | null | undefined;
   /**
    * `<Package>` segment of the same path. A match on EITHER segment counts as
@@ -50,10 +61,10 @@ export interface CrossModelWriteCheck {
   owningPackage?: string | null;
   /** Model the workspace targets (.rnrproj / D365FO_MODEL_NAME). */
   activeModel: string | null | undefined;
-  /** `modelName` as passed by the caller — the per-call opt-in. */
-  explicitModelName?: string | null;
   /** Extensions of the base object that already exist in the active model. */
   existingExtensions?: ExistingExtension[];
+  /** Wording only — what the caller was about to do. */
+  action?: 'modify' | 'create';
 }
 
 /** Base object type → the d365fo_file objectType used to extend it. */
@@ -74,10 +85,18 @@ function eq(a: string | null | undefined, b: string | null | undefined): boolean
   return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-/** True when the operator has opted out of the guard environment-wide. */
-function guardDisabled(): boolean {
-  const v = process.env.D365FO_ALLOW_CROSS_MODEL_WRITE?.trim().toLowerCase();
-  return v === 'true' || v === '1' || v === 'yes';
+/**
+ * True when the OPERATOR has allowed writes into `owningModel` from another
+ * workspace — a blanket opt-out, or an explicit per-model allow-list. Both live
+ * in the environment: a caller cannot grant this to itself mid-conversation.
+ */
+export function crossModelWriteAllowedByConfig(owningModel: string): boolean {
+  const blanket = process.env.D365FO_ALLOW_CROSS_MODEL_WRITE?.trim().toLowerCase();
+  if (blanket === 'true' || blanket === '1' || blanket === 'yes') return true;
+
+  return (process.env.D365FO_CROSS_MODEL_WRITE_MODELS ?? '')
+    .split(',')
+    .some(m => eq(m, owningModel));
 }
 
 /** The base object an extension extends: "CustTable.FooExtension" → "CustTable". */
@@ -113,18 +132,17 @@ export function suggestedExtensionName(
  * when the write is allowed.
  */
 export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | null {
-  const { objectName, objectType, owningModel, activeModel, explicitModelName } = check;
+  const { objectName, objectType, owningModel, activeModel } = check;
+  const verb = check.action ?? 'modify';
 
   // Nothing to compare against — an unconfigured workspace or a path whose model
   // segment could not be determined. Never block on a guess.
   if (!owningModel || !activeModel) return null;
   if (eq(owningModel, activeModel) || eq(check.owningPackage, activeModel)) return null;
-  // Per-call opt-in: the caller named the owning model (or its package) outright.
-  if (eq(explicitModelName, owningModel) || eq(explicitModelName, check.owningPackage)) return null;
-  if (guardDisabled()) {
+  if (crossModelWriteAllowedByConfig(owningModel)) {
     console.error(
-      `[crossModelWriteGuard] D365FO_ALLOW_CROSS_MODEL_WRITE — allowing write to "${objectName}" ` +
-      `in model "${owningModel}" (active model "${activeModel}")`,
+      `[crossModelWriteGuard] configuration allows cross-model writes to "${owningModel}" ` +
+      `— proceeding with ${verb} of "${objectName}" (active model "${activeModel}")`,
     );
     return null;
   }
@@ -135,8 +153,8 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
   const extType = EXTENSION_TYPE_OF[baseType];
 
   const lines = [
-    `⛔ Refusing to modify "${objectName}" — it belongs to model "${owningModel}", ` +
-    `not to this workspace's model "${activeModel}".`,
+    `⛔ Refusing to ${verb} "${objectName}" in model "${owningModel}" — this workspace ` +
+    `targets model "${activeModel}".`,
     '',
     `"${owningModel}" is a different model: the change would land in code that "${activeModel}" ` +
     `only consumes, it would not appear in this workspace's project or version control, and every ` +
@@ -166,10 +184,14 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
   }
 
   lines.push(
-    `If editing "${owningModel}" in place is genuinely what you want, say so explicitly:`,
-    `  • pass modelName="${owningModel}" on this call, or`,
-    `  • switch the workspace to that model: get_workspace_info(projectName="${owningModel}"), or`,
-    `  • set D365FO_ALLOW_CROSS_MODEL_WRITE=true to disable this guard for the whole server.`,
+    `Do NOT route around this guard: no retry with a different modelName, filePath, ` +
+    `packagePath or project. Half-finished pieces of this very feature sitting in ` +
+    `"${owningModel}" — a matching enum, field, label or scaffold — are evidence that an ` +
+    `earlier run made this same mistake, NOT evidence that the feature belongs there.`,
+    '',
+    `Writing into "${owningModel}" is the user's decision, not yours. If they want it, they ` +
+    `set D365FO_CROSS_MODEL_WRITE_MODELS=${owningModel} (or D365FO_ALLOW_CROSS_MODEL_WRITE=true) ` +
+    `in the server configuration and restart. Ask them; report this refusal instead of working past it.`,
   );
 
   return lines.join('\n');

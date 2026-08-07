@@ -12,6 +12,7 @@ import { getConfigManager, fallbackPackagePath } from '../utils/configManager.js
 import { describePackagesRootScan } from '../utils/packagesRoot.js';
 import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix, getExtensionNamingStyle } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
+import { crossModelWriteRefusal } from '../utils/crossModelWriteGuard.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
@@ -4189,6 +4190,25 @@ export async function handleCreateD365File(
               `Never use "MyModel", "MyPackage" or similar placeholders as modelName.`,
           },
         ],
+        isError: true,
+      };
+    }
+
+    // Cross-model guard: creating INTO a custom model other than the one this
+    // workspace targets is the same mistake as modifying one — the object lands
+    // outside this project's version control and inside code other models inherit.
+    // `actualModelName` is what the write will actually use (caller's modelName, or
+    // the workspace's), so the check sits after every fallback has been applied.
+    const crossModelCreateRefusal = crossModelWriteRefusal({
+      objectName: args.objectName,
+      objectType: args.objectType,
+      owningModel: actualModelName,
+      activeModel: getConfigManager().getModelName() ?? '',
+      action: 'create',
+    });
+    if (crossModelCreateRefusal) {
+      return {
+        content: [{ type: 'text', text: crossModelCreateRefusal }],
         isError: true,
       };
     }

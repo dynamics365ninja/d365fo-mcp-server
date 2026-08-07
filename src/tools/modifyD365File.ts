@@ -1745,7 +1745,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       owningModel,
       owningPackage: containment.packageSegment ?? resolvedModelFromPath,
       activeModel,
-      explicitModelName: modelName,
+      action: 'modify',
       existingExtensions: findExtensionsInModel(
         symbolIndex,
         baseObjectOf(objectName, objectType),
