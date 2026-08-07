@@ -41,7 +41,12 @@ const CHARS_PER_TOKEN = 4;
 // on the wire — only the prose naming them does, and that was paid for by
 // tightening the `params` description rather than by moving the ceiling.
 // Headroom is small on purpose so creep is caught early.
-const TOTAL_BUDGET = 63_300;
+//
+// Raised once more for labels(action="search") maxResults/verbose (#832): a
+// broad phrase query returned 30 four-line blocks (~2,5 kB per call), so ~230
+// wire chars buy a bounded, one-line-per-label default — the schema pays once
+// per session, the result paid on every call and on every later re-read.
+const TOTAL_BUDGET = 63_600;
 const LARGEST_TOOL_BUDGET = 9_900;
 
 async function getTools(): Promise<Array<{ name: string }>> {
