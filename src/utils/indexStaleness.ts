@@ -79,7 +79,14 @@ export function findNewestMetadataMtime(rootDir: string): MtimeScanResult | null
 
 export interface StalenessReport {
   status: 'fresh' | 'stale' | 'unknown';
+  /** Full "## Index Freshness" section — diagnostics=true only. */
   lines: string[];
+  /**
+   * Compact default: one `Index : …` line, and the fix only when the index is
+   * actually stale. The scan detail (newest file, files scanned) is diagnostics
+   * material — it changes nothing about what the agent should do next.
+   */
+  compactLines: string[];
 }
 
 /**
@@ -97,7 +104,11 @@ export function checkIndexStaleness(
       'ℹ️  Index has no freshness timestamp yet (built before this feature or never built).',
       '   It will be recorded on the next build-database run or update_symbol_index call.',
     );
-    return { status: 'unknown', lines };
+    return {
+      status: 'unknown',
+      lines,
+      compactLines: ['Index       : no freshness timestamp yet (never indexed?)'],
+    };
   }
 
   const indexedAtMs = Date.parse(lastIndexedAt);
@@ -106,13 +117,21 @@ export function checkIndexStaleness(
 
   if (!modelMetadataDir) {
     lines.push('ℹ️  Model metadata folder not resolved — cannot compare workspace mtimes.');
-    return { status: 'unknown', lines };
+    return {
+      status: 'unknown',
+      lines,
+      compactLines: [`Index       : indexed ${ageHours} h ago (model folder not resolved — not compared)`],
+    };
   }
 
   const scan = findNewestMetadataMtime(modelMetadataDir);
   if (!scan) {
     lines.push(`ℹ️  No metadata files found under ${modelMetadataDir} — nothing to compare.`);
-    return { status: 'unknown', lines };
+    return {
+      status: 'unknown',
+      lines,
+      compactLines: [`Index       : indexed ${ageHours} h ago (no metadata files to compare)`],
+    };
   }
 
   lines.push(
@@ -129,9 +148,20 @@ export function checkIndexStaleness(
       `   Fix: call \`update_symbol_index(filePath="${scan.newestFile.replace(/\\/g, '\\\\')}")\` for the changed file(s),`,
       '   or run `npm run build-database` (EXTRACT_MODE=custom) for a full custom-model refresh.',
     );
-    return { status: 'stale', lines };
+    return {
+      status: 'stale',
+      lines,
+      compactLines: [
+        `Index       : ⚠️  STALE — indexed ${ageHours} h ago, workspace has newer files (lookups may be outdated)`,
+        `              Fix: update_symbol_index(filePath="${scan.newestFile.replace(/\\/g, '\\\\')}")`,
+      ],
+    };
   }
 
   lines.push('✅ Index is up to date with the workspace.');
-  return { status: 'fresh', lines };
+  return {
+    status: 'fresh',
+    lines,
+    compactLines: [`Index       : up to date (indexed ${ageHours} h ago)`],
+  };
 }

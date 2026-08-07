@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { readFileSync, globSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { LOCAL_TOOLS } from '../../src/server/serverMode';
@@ -42,6 +42,39 @@ describe('tool inventory contract', () => {
 
     expect(LOCAL_TOOLS.size).toBe(10);
     expect(mcpServerToolNames.filter(name => !LOCAL_TOOLS.has(name))).toHaveLength(16);
+  });
+
+  it('never tells the agent to call a tool that was retired by a consolidation', () => {
+    // Guidance the agent copies verbatim — `nextSteps` in the strategy advisor,
+    // the "call X next" tails on generators, the system prompt — outlived several
+    // tool renames and kept naming `find_coc_extensions`, `generate_code`,
+    // `get_xpp_knowledge`. Each such line costs a guaranteed Unknown-tool call
+    // plus a retry, which is far more expensive than the line itself.
+    //
+    // Call form only (`name(`): the dispatchers legitimately pass legacy names as
+    // sub-request STRINGS (`subRequest('find_coc_extensions', …)`), where the name
+    // is followed by a quote, never by an open paren.
+    const retired = [
+      'create_d365fo_file', 'modify_d365fo_file', 'generate_code', 'generate_smart',
+      'generate_d365fo_xml', 'find_coc_extensions', 'find_event_handlers',
+      'analyze_extension_points', 'find_extension_points', 'prepare_change',
+      'get_xpp_knowledge', 'validate_xpp', 'search_extensions', 'batch_search',
+      'get_table_info', 'get_class_info', 'get_form_info',
+    ];
+    const pattern = new RegExp(String.raw`\b(${retired.join('|')})\(`, 'g');
+
+    const sources = globSync('src/**/*.ts', { cwd: repoRoot });
+    const offenders: string[] = [];
+    for (const rel of sources) {
+      const text = readRepoFile(rel);
+      text.split('\n').forEach((line, i) => {
+        for (const m of line.matchAll(pattern)) {
+          offenders.push(`${rel}:${i + 1} → ${m[1]}(`);
+        }
+      });
+    }
+
+    expect(offenders, `retired tool names in agent-facing text:\n${offenders.join('\n')}`).toEqual([]);
   });
 
   it('has a tool annotation (title + hints) for every published tool', () => {

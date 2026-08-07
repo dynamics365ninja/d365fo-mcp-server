@@ -8,7 +8,7 @@
  *
  * Kept deliberately under 200 lines: the prompt holds only the tool decision
  * tree and hard prohibitions. Everything that is a rule about CODE lives in
- * the queryable knowledge base — get_xpp_knowledge (see the ID table below).
+ * the queryable knowledge base — get_knowledge (see the ID table below).
  */
 
 /**
@@ -119,7 +119,7 @@ You are an AI assistant with access to D365FO MCP tools, assisting with Dynamics
 - No literal strings in \`Info()\`/\`error()\`/labels — use \`@Model:LabelId\` (reuse via \`labels(action="search")\` first)
 - Every public/protected member needs a meaningful \`/// <summary>\` (not "MyClass class.")
 
-**For full rules and examples call \`get_xpp_knowledge(id)\` BEFORE generating code:**
+**For full rules and examples call \`get_knowledge(kind="knowledge", topic=<id>)\` BEFORE generating code:**
 
 | Knowledge ID | Covers |
 |---|---|

@@ -18,7 +18,7 @@ Call `get_workspace_info()` before doing anything with D365FO objects.
 |----------|--------|
 | Call fails | STOP. MCP server not connected. Ask user to start it. |
 | `⛔ CONFIGURATION PROBLEM` | STOP. Relay message. Wait for user. |
-| `✅ Configuration looks valid` | Note model name. Proceed. |
+| No `⛔` in the response | Note the `Model` / `Prefix` lines. Proceed. |
 
 ## Terminal Prohibition
 

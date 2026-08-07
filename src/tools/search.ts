@@ -284,7 +284,9 @@ async function performHybridSearch(
     });
   }
 
-  output += `\n\n💡 **Workspace-aware search** includes both your local project files and D365FO external metadata.`;
+  // No trailing "this search is workspace-aware" note: the 🔹/📦 marker on every
+  // row already says which side a hit came from, and search is the most-called
+  // tool — a fixed footer here is paid for on every call for nothing actionable.
 
   return {
     content: [

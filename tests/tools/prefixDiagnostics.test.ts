@@ -44,8 +44,13 @@ afterEach(() => {
   process.env = { ...originalEnv };
 });
 
+/** Compact default — what get_workspace_info emits on every call. */
 const text = (model: string | null, readModel: string | null) =>
   buildPrefixDiagnostics(model, readModel).lines.join('\n');
+
+/** Full section — diagnostics=true only. */
+const verbose = (model: string | null, readModel: string | null) =>
+  buildPrefixDiagnostics(model, readModel).verboseLines.join('\n');
 
 describe('buildPrefixDiagnostics', () => {
   it('reports the write anchor\'s prefix after a project switch', () => {
@@ -77,7 +82,19 @@ describe('buildPrefixDiagnostics', () => {
   it('names the origin when the prefix came from the model\'s objects', () => {
     const out = text('ContosoFinanceSK', 'ContosoFinanceSK');
 
-    expect(out).toContain('source: inferred from 4/4 objects of model "ContosoFinanceSK"');
+    expect(out).toContain('inferred from 4/4 objects of model "ContosoFinanceSK"');
+    expect(verbose('ContosoFinanceSK', 'ContosoFinanceSK'))
+      .toContain('source: inferred from 4/4 objects of model "ContosoFinanceSK"');
+  });
+
+  it('is a single line when nothing is off', () => {
+    // Every session pays for this section. A healthy prefix is one line — the
+    // "✅ …comes from the objects…" restatement belongs to diagnostics.
+    process.env.EXTENSION_PREFIX = 'ConSK';
+    const out = text('ContosoFinanceSK', 'ContosoFinanceSK');
+
+    expect(out.split('\n')).toHaveLength(1);
+    expect(out).toBe('Prefix      : ConSK  (inferred from 4/4 objects of model "ContosoFinanceSK")');
   });
 
   it('warns when the model\'s own naming overrules EXTENSION_PREFIX', () => {
@@ -85,26 +102,26 @@ describe('buildPrefixDiagnostics', () => {
     const out = text('ContosoFinanceSK', 'ContosoFinanceSK');
 
     expect(out).toContain('⚠️');
-    expect(out).toContain('overrides EXTENSION_PREFIX="Con"');
+    expect(out).toContain('overriding EXTENSION_PREFIX="Con"');
     expect(out).toContain('EXTENSION_PREFIX_SOURCE=config');
+    expect(verbose('ContosoFinanceSK', 'ContosoFinanceSK')).toContain('overrides EXTENSION_PREFIX="Con"');
   });
 
   it('does not warn when the model and the configuration agree', () => {
     // "ConSK_" from the objects and "ConSK" in the env are the same prefix —
     // the underscore belongs to the regular-object form, not to the token.
     process.env.EXTENSION_PREFIX = 'ConSK';
-    const out = text('ContosoFinanceSK', 'ContosoFinanceSK');
 
-    expect(out).not.toContain('⚠️');
-    expect(out).toContain('✅');
+    expect(text('ContosoFinanceSK', 'ContosoFinanceSK')).not.toContain('⚠️');
+    expect(verbose('ContosoFinanceSK', 'ContosoFinanceSK')).toContain('✅');
   });
 
   it('falls back to EXTENSION_PREFIX for a model with nothing to teach', () => {
     process.env.EXTENSION_PREFIX = 'Con';
-    const out = text('BrandNewModel', 'BrandNewModel');
 
-    expect(out).toContain('source: EXTENSION_PREFIX');
-    expect(out).toContain('✅ EXTENSION_PREFIX is set');
+    expect(text('BrandNewModel', 'BrandNewModel')).toBe('Prefix      : Con  (EXTENSION_PREFIX)');
+    expect(verbose('BrandNewModel', 'BrandNewModel')).toContain('source: EXTENSION_PREFIX');
+    expect(verbose('BrandNewModel', 'BrandNewModel')).toContain('✅ EXTENSION_PREFIX is set');
   });
 
   it('follows the write into the active model when configuration allows it', () => {
@@ -151,13 +168,13 @@ describe('buildPrefixDiagnostics', () => {
     const out = text('MixedModel', 'MixedModel');
 
     expect(out).not.toContain('0/');
-    expect(out).toContain('source: inferred from the extension elements of model "MixedModel"');
+    expect(out).toContain('inferred from the extension elements of model "MixedModel"');
   });
 
   it('tells the operator to configure a prefix when nothing resolves', () => {
     const out = text('BrandNewModel', 'BrandNewModel');
 
-    expect(out).toContain('source: model name (nothing configured)');
+    expect(out).toContain('model name (nothing configured)');
     expect(out).toContain('⚠️  EXTENSION_PREFIX is not set');
   });
 });
