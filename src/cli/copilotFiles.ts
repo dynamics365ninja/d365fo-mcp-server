@@ -9,6 +9,10 @@
  * folder, or, when that is unknown, into a staging folder with a README
  * naming the two destinations.
  *
+ * The README belongs to the staging folder only. The solutions folder is the
+ * user's own projects directory, so the direct copy leaves nothing there but
+ * `.github\copilot-instructions.md` and says the rest on the console.
+ *
  * The README points at the one .mcp.json `mcpJsonNote()` writes in the data
  * root rather than copying it: the staging folder sits in that same data
  * root, so a second copy is only one more file to keep in sync.
@@ -24,7 +28,7 @@ import { askConfirm, p } from './ui.js';
 /** The copy shipped with this installation — package root in both install modes. */
 const copilotSource = (): string => resolve(repoRoot, '.github', 'copilot-instructions.md');
 
-function writeCopilotSetupReadme(targetDir: string, opts: { copilotAlreadyPlaced: boolean }): void {
+function writeCopilotSetupReadme(targetDir: string): void {
   const readmePath = resolve(targetDir, 'README.md');
   const lines = [
     '# VS setup quick guide',
@@ -37,9 +41,7 @@ function writeCopilotSetupReadme(targetDir: string, opts: { copilotAlreadyPlaced
     `   - Generated copy: ${paths.mcpSuggestion}`,
     '',
     '2. Copy .github/copilot-instructions.md',
-    opts.copilotAlreadyPlaced
-      ? '   - Already placed here: .github\\copilot-instructions.md'
-      : '   - Destination: a parent folder of your solution directories',
+    '   - Destination: a parent folder of your solution directories',
     '   - Why: provides mandatory D365FO tool-routing and safety rules for Copilot',
     '',
     '3. Restart Visual Studio after copying files.',
@@ -74,9 +76,11 @@ export async function maybePrepareCopilotInstructions(solutionsPath: string): Pr
     const targetDir = resolve(target, '.github');
     fs.mkdirSync(targetDir, { recursive: true });
     fs.copyFileSync(source, resolve(targetDir, 'copilot-instructions.md'));
-    writeCopilotSetupReadme(target, { copilotAlreadyPlaced: true });
     p.log.success(`Prepared: ${resolve(targetDir, 'copilot-instructions.md')}`);
-    p.log.success(`Prepared: ${resolve(target, 'README.md')}`);
+    p.log.info(
+      'Still to do: copy .mcp.json to %USERPROFILE%\\.mcp.json (or next to your .sln), then restart Visual Studio.\n' +
+      `   Generated copy: ${paths.mcpSuggestion}`,
+    );
     return;
   }
 
@@ -84,7 +88,7 @@ export async function maybePrepareCopilotInstructions(solutionsPath: string): Pr
   const stageGitHubDir = resolve(stageDir, '.github');
   fs.mkdirSync(stageGitHubDir, { recursive: true });
   fs.copyFileSync(source, resolve(stageGitHubDir, 'copilot-instructions.md'));
-  writeCopilotSetupReadme(stageDir, { copilotAlreadyPlaced: false });
+  writeCopilotSetupReadme(stageDir);
 
   if (wantsDirectCopy && !target) {
     p.log.warn('Solutions folder is empty, so files were prepared in the local staging folder instead.');
