@@ -1120,7 +1120,11 @@ class ConfigManager {
    * tool-initiated project switch it stays the model the workspace resolved to
    * on its own.
    *
-   * Reads follow the switch (that is the point of switching); writes must not.
+   * A switch changes which project is ACTIVE — which one gets built, BP-checked
+   * and written into. It was never needed for reading: get_object_info, search,
+   * find_references and the rest query the symbol index across every model and
+   * never consult the active model at all.
+   *
    * `get_workspace_info(projectName=…)` is a tool call the agent can make for
    * itself, so letting it move the write target would hand the agent the very
    * self-served consent the cross-model guard exists to deny: refused on

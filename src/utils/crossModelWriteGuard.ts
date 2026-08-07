@@ -172,9 +172,10 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
   if (eq(check.toolSwitchedModel, owningModel)) {
     lines.push(
       `A get_workspace_info(projectName="${check.toolSwitchedModel}") switch earlier in this ` +
-      `session changed which project you READ from; it did not change where writes may land. ` +
-      `The workspace the user has open still targets "${activeModel}", so that is what writes ` +
-      `are anchored to. Switching projects is not a way to get past this refusal.`,
+      `session changed which project is ACTIVE. It did not widen what you may read — reading ` +
+      `spans every model either way — and it did not change where writes may land. The workspace ` +
+      `the user has open still targets "${activeModel}", so that is what writes are anchored to. ` +
+      `Switching projects is not a way to get past this refusal.`,
       '',
     );
   }

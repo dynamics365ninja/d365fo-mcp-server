@@ -5,8 +5,8 @@
  *
  * 1. The prefix is reported for the model that WRITES land in — the write anchor
  *    (see ConfigManager.getWriteAnchorModel). A tool-initiated project switch
- *    moves reads only, so after one the active model and the write target are
- *    different models with different prefixes; reporting the active model's
+ *    moves the active project without moving that anchor, so after one the two
+ *    are different models with different prefixes; reporting the active model's
  *    prefix would state a token no write would ever apply.
  * 2. The reported value always carries its origin. The prefix can come from the
  *    model's own objects, from EXTENSION_PREFIX, or from the model name, and a
@@ -60,8 +60,8 @@ export function buildPrefixDiagnostics(
 
   if (switched) {
     lines.push(
-      `ℹ️  This is the prefix for WRITES, which are anchored to "${writeModel}". Reads currently ` +
-      `come from "${readModel}", whose own prefix may differ — see the project-switch note below.`,
+      `ℹ️  This is the prefix for WRITES, which are anchored to "${writeModel}". "${readModel}" is ` +
+      `merely the active project and its own prefix may differ — see the project-switch note below.`,
     );
   }
 

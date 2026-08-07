@@ -62,7 +62,7 @@ describe('buildPrefixDiagnostics', () => {
 
     expect(out).toContain('prefix for WRITES');
     expect(out).toContain('anchored to "ContosoFinanceSK"');
-    expect(out).toContain('Reads currently come from "ContosoFinanceCore"');
+    expect(out).toContain('"ContosoFinanceCore" is merely the active project');
   });
 
   it('adds no switch note when reads and writes agree', () => {

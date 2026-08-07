@@ -217,7 +217,7 @@ describe('crossModelWriteRefusal', () => {
       objectType: 'table',
       owningModel: CORE_MODEL,
       owningPackage: CORE_MODEL,
-      // Anchor stays with the workspace even though reads switched to CORE_MODEL.
+      // Anchor stays with the workspace even though CORE_MODEL went active.
       activeModel: ACTIVE_MODEL,
       toolSwitchedModel: CORE_MODEL,
     })!;
@@ -225,6 +225,10 @@ describe('crossModelWriteRefusal', () => {
     expect(msg).toContain('Refusing to modify');
     expect(msg).toContain('get_workspace_info');
     expect(msg).toContain('it did not change where writes may land');
+    // Nor did it buy any read access: reads span every model regardless, so the
+    // switch bought the agent nothing at all and the refusal says so — otherwise
+    // "switching moved my reads" survives as a reason to keep reaching for it.
+    expect(msg).toContain('reading spans every model either way');
     // Must not hand back the workaround it just closed.
     expect(msg).not.toContain(`projectName="${CORE_MODEL}"` + ' to write');
   });

@@ -387,17 +387,21 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           ...prefixLines,
         ];
 
-        // A switch moves READS. Writes stay anchored to the model the workspace
-        // resolved on its own, so switching cannot be used to reach an object the
-        // cross-model guard refused — say so here, before anything is written.
+        // A switch moves which project is ACTIVE — nothing else. Reads never
+        // needed it (they span every model regardless) and writes stay anchored
+        // to the model the workspace resolved on its own, so switching cannot be
+        // used to reach an object the cross-model guard refused. Say both here,
+        // before anything is written, so the switch is not mistaken for access.
         const toolSwitch = configManager.getToolProjectSwitch();
         if (toolSwitch) {
           lines.push(
             `## ⚠️  Project switched — writes are NOT switched`,
             ``,
-            `Reads now come from "${toolSwitch.forcedModel}". Writes stay anchored to ` +
-            `"${toolSwitch.anchorModel}" — the model the open workspace targets — and a create/modify ` +
-            `into "${toolSwitch.forcedModel}" will be refused.`,
+            `"${toolSwitch.forcedModel}" is now the ACTIVE project. This did not change what you ` +
+            `can read: get_object_info, search and find_references span every model, switched or ` +
+            `not, so a switch is never needed to look at another model's code. Writes stay ` +
+            `anchored to "${toolSwitch.anchorModel}" — the model the open workspace targets — and ` +
+            `a create/modify into "${toolSwitch.forcedModel}" will be refused.`,
             `Tell the user the model they asked about is owned by "${toolSwitch.forcedModel}" and let ` +
             `THEM decide: extend it from "${toolSwitch.anchorModel}", or allow the write in server ` +
             `configuration (D365FO_CROSS_MODEL_WRITE_MODELS). Do not decide this on your own.`,
