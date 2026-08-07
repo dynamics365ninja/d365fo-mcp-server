@@ -542,7 +542,8 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       objectType: 'label',
       owningModel: model,
       owningPackage: resolvedPackageName,
-      activeModel: configManager.getModelName() ?? '',
+      activeModel: configManager.getWriteAnchorModel() ?? '',
+      toolSwitchedModel: configManager.getToolProjectSwitch()?.forcedModel ?? null,
       action: 'create',
     });
     if (crossModelLabelRefusal) {

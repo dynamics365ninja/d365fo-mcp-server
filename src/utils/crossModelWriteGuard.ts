@@ -59,8 +59,19 @@ export interface CrossModelWriteCheck {
    * keeps the guard from firing on the workspace's own objects.
    */
   owningPackage?: string | null;
-  /** Model the workspace targets (.rnrproj / D365FO_MODEL_NAME). */
+  /**
+   * Model the workspace targets (.rnrproj / D365FO_MODEL_NAME) — the WRITE ANCHOR,
+   * `configManager.getWriteAnchorModel()`. Not simply "the current active model":
+   * after a tool-initiated project switch those differ, and taking the switched
+   * value here would let the caller move the target it is being measured against.
+   */
   activeModel: string | null | undefined;
+  /**
+   * Model a `get_workspace_info(projectName=…)` switch made active during this
+   * session, when that differs from the anchor. Wording only — it names the
+   * bypass out loud instead of letting it read as an unrelated refusal.
+   */
+  toolSwitchedModel?: string | null;
   /** Extensions of the base object that already exist in the active model. */
   existingExtensions?: ExistingExtension[];
   /** Wording only — what the caller was about to do. */
@@ -156,11 +167,24 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
     `⛔ Refusing to ${verb} "${objectName}" in model "${owningModel}" — this workspace ` +
     `targets model "${activeModel}".`,
     '',
+  ];
+
+  if (eq(check.toolSwitchedModel, owningModel)) {
+    lines.push(
+      `A get_workspace_info(projectName="${check.toolSwitchedModel}") switch earlier in this ` +
+      `session changed which project you READ from; it did not change where writes may land. ` +
+      `The workspace the user has open still targets "${activeModel}", so that is what writes ` +
+      `are anchored to. Switching projects is not a way to get past this refusal.`,
+      '',
+    );
+  }
+
+  lines.push(
     `"${owningModel}" is a different model: the change would land in code that "${activeModel}" ` +
     `only consumes, it would not appear in this workspace's project or version control, and every ` +
     `other model built on "${owningModel}" would inherit it.`,
     '',
-  ];
+  );
 
   if (extType) {
     const existing = (check.existingExtensions ?? []).filter(e => !eq(e.name, objectName));
@@ -185,7 +209,7 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
 
   lines.push(
     `Do NOT route around this guard: no retry with a different modelName, filePath, ` +
-    `packagePath or project. Half-finished pieces of this very feature sitting in ` +
+    `packagePath, or a get_workspace_info project switch. Half-finished pieces of this very feature sitting in ` +
     `"${owningModel}" — a matching enum, field, label or scaffold — are evidence that an ` +
     `earlier run made this same mistake, NOT evidence that the feature belongs there.`,
     '',

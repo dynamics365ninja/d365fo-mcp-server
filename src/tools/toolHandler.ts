@@ -391,6 +391,24 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           ``,
         ];
 
+        // A switch moves READS. Writes stay anchored to the model the workspace
+        // resolved on its own, so switching cannot be used to reach an object the
+        // cross-model guard refused — say so here, before anything is written.
+        const toolSwitch = configManager.getToolProjectSwitch();
+        if (toolSwitch) {
+          lines.push(
+            `## ⚠️  Project switched — writes are NOT switched`,
+            ``,
+            `Reads now come from "${toolSwitch.forcedModel}". Writes stay anchored to ` +
+            `"${toolSwitch.anchorModel}" — the model the open workspace targets — and a create/modify ` +
+            `into "${toolSwitch.forcedModel}" will be refused.`,
+            `Tell the user the model they asked about is owned by "${toolSwitch.forcedModel}" and let ` +
+            `THEM decide: extend it from "${toolSwitch.anchorModel}", or allow the write in server ` +
+            `configuration (D365FO_CROSS_MODEL_WRITE_MODELS). Do not decide this on your own.`,
+            ``,
+          );
+        }
+
         if (diagnostics) {
           lines.push(
             `## Suffix Configuration`,

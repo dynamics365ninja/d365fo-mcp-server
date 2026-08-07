@@ -156,3 +156,57 @@ describe('forceProject — persistence across stdio roots/list notifications', (
   });
 });
 
+
+/**
+ * The write anchor. A project switch is a TOOL call — the agent can make it for
+ * itself — so it moves reads only. Writes stay measured against the model the
+ * workspace resolved on its own, otherwise the cross-model guard is comparing
+ * a value the caller just changed (live demo, 2026-08-07: every write landed in
+ * the shared Core model and the open project stayed empty).
+ */
+describe('forceProject — write anchor', () => {
+  it('keeps the write anchor on the workspace model after a switch', async () => {
+    const mgr = makeManager();
+    expect(mgr.getWriteAnchorModel()).toBe('ModelA');
+
+    await mgr.forceProject(PROJECT_B);
+
+    expect(mgr.getModelName()).toBe('ModelB');        // reads follow the switch
+    expect(mgr.getWriteAnchorModel()).toBe('ModelA'); // writes do not
+    expect(mgr.getToolProjectSwitch()).toEqual({ anchorModel: 'ModelA', forcedModel: 'ModelB' });
+  });
+
+  it('does not walk the anchor along with repeated switches', async () => {
+    const mgr = makeManager();
+    await mgr.forceProject(PROJECT_B);
+    await mgr.forceProject(PROJECT_B);
+
+    expect(mgr.getWriteAnchorModel()).toBe('ModelA');
+  });
+
+  it('clears the anchor when switched back to the workspace model', async () => {
+    const mgr = makeManager();
+    await mgr.forceProject(PROJECT_B);
+    await mgr.forceProject(PROJECT_A);
+
+    expect(mgr.getToolProjectSwitch()).toBeNull();
+    expect(mgr.getWriteAnchorModel()).toBe('ModelA');
+  });
+
+  it('clears the anchor when the workspace itself resolves a project', async () => {
+    const mgr = makeManager();
+    await mgr.forceProject(PROJECT_B);
+
+    // roots/list with a root that matches ProjectB unambiguously: the USER moved.
+    await mgr.setRuntimeContextFromRoots([PROJECT_B.slice(0, PROJECT_B.lastIndexOf('\\'))]);
+
+    expect(mgr.getToolProjectSwitch()).toBeNull();
+    expect(mgr.getWriteAnchorModel()).toBe('ModelB');
+  });
+
+  it('leaves reads and writes in agreement when nothing was switched', async () => {
+    const mgr = makeManager();
+    expect(mgr.getToolProjectSwitch()).toBeNull();
+    expect(mgr.getWriteAnchorModel()).toBe(mgr.getModelName());
+  });
+});

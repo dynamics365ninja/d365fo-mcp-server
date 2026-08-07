@@ -206,6 +206,41 @@ describe('crossModelWriteRefusal', () => {
     expect(msg).toContain(`${CORE_TABLE}.ContosoSKExtension`);
   });
 
+  // Second self-served bypass, from a live demo (2026-08-07): refused nothing —
+  // the agent never even hit the refusal. It called
+  // get_workspace_info(projectName="<owning model>"), which moved the ACTIVE model,
+  // and then wrote freely, because the guard was comparing the owning model against
+  // a value the caller had just changed. Call sites now pass the write ANCHOR.
+  it('refuses a write into a model reached by a get_workspace_info project switch', () => {
+    const msg = crossModelWriteRefusal({
+      objectName: CORE_TABLE,
+      objectType: 'table',
+      owningModel: CORE_MODEL,
+      owningPackage: CORE_MODEL,
+      // Anchor stays with the workspace even though reads switched to CORE_MODEL.
+      activeModel: ACTIVE_MODEL,
+      toolSwitchedModel: CORE_MODEL,
+    })!;
+
+    expect(msg).toContain('Refusing to modify');
+    expect(msg).toContain('get_workspace_info');
+    expect(msg).toContain('it did not change where writes may land');
+    // Must not hand back the workaround it just closed.
+    expect(msg).not.toContain(`projectName="${CORE_MODEL}"` + ' to write');
+  });
+
+  it('says nothing about a project switch when the write is refused for another reason', () => {
+    const msg = crossModelWriteRefusal({
+      objectName: CORE_TABLE,
+      objectType: 'table',
+      owningModel: CORE_MODEL,
+      activeModel: ACTIVE_MODEL,
+      toolSwitchedModel: null,
+    })!;
+
+    expect(msg).not.toContain('get_workspace_info(projectName');
+  });
+
   it('still refuses for a type with no extension form, without a bogus suggestion', () => {
     const msg = crossModelWriteRefusal({
       objectName: 'ContosoCore_SomePrivilege',

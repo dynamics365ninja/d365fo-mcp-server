@@ -90,6 +90,10 @@ class ConfigManager {
   private xppConfigProvider: XppConfigProvider | null = null;
   private xppConfig: XppEnvironmentConfig | null = null;
   private xppConfigLoaded: boolean = false;
+  // Set while a TOOL call (get_workspace_info projectName/projectPath) has moved the
+  // active project off the model this workspace itself resolved to. `anchorModel` is
+  // that original model and it survives further switches — see getWriteAnchorModel().
+  private toolForcedProject: { anchorModel: string; forcedModel: string } | null = null;
 
   constructor(configPath?: string) {
     // Default to .mcp.json in current directory or parent directories
@@ -376,6 +380,8 @@ class ConfigManager {
         this.autoDetectionAttempted = true;
         this.autoDetectionCache.set(rootPath, match);
         registerCustomModel(match.modelName);
+        // The workspace itself resolved a project — the user moved, not the agent.
+        this.toolForcedProject = null;
         console.error(`[ConfigManager] ⚡ Root matched project: ${match.modelName} (gen ${gen}, ${match.projectPath})`);
         return;
       }
@@ -396,6 +402,7 @@ class ConfigManager {
             this.autoDetectionAttempted = true;
             this.autoDetectionCache.set(rootPath, gitMatch);
             registerCustomModel(gitMatch.modelName);
+            this.toolForcedProject = null;   // genuine workspace move — see above
             console.error(`[ConfigManager] 🌿 Git branch "${branch}" → project: ${gitMatch.modelName} (gen ${gen})`);
             return;
           }
@@ -1058,6 +1065,9 @@ class ConfigManager {
    */
   async forceProject(projectPath: string): Promise<D365ProjectInfo | null> {
     try {
+      // Captured BEFORE the switch: the model this workspace resolved to on its own.
+      // It becomes the write anchor, so a switch cannot silently move where writes land.
+      const modelBeforeSwitch = this.getModelName();
       const normalizedPath = path.normalize(projectPath);
       const modelName = await extractModelNameFromProject(normalizedPath);
       if (!modelName) {
@@ -1089,12 +1099,42 @@ class ConfigManager {
       // the user switches git branches or opens a different workspace.
       this.runtimeContext = { ...this.runtimeContext, projectPath: normalizedPath };
       registerCustomModel(modelName);
+      // Remember what the workspace resolved to before the FIRST switch: repeated
+      // switches must not walk the anchor along with them. Switching back to the
+      // anchor clears the state — the workspace is then targeting its own model again.
+      const anchor = this.toolForcedProject?.anchorModel ?? modelBeforeSwitch;
+      this.toolForcedProject =
+        anchor && anchor.trim().toLowerCase() !== modelName.trim().toLowerCase()
+          ? { anchorModel: anchor, forcedModel: modelName }
+          : null;
       console.error(`[ConfigManager] ✅ forceProject: switched to ${modelName} (${normalizedPath})`);
       return project;
     } catch (err) {
       console.error(`[ConfigManager] forceProject error:`, err);
       return null;
     }
+  }
+
+  /**
+   * The model WRITES are anchored to — normally the active model, but after a
+   * tool-initiated project switch it stays the model the workspace resolved to
+   * on its own.
+   *
+   * Reads follow the switch (that is the point of switching); writes must not.
+   * `get_workspace_info(projectName=…)` is a tool call the agent can make for
+   * itself, so letting it move the write target would hand the agent the very
+   * self-served consent the cross-model guard exists to deny: refused on
+   * "table X lives in another model" → switch project → same write, no refusal.
+   * A genuine workspace change (roots/list, git branch) clears the anchor,
+   * because then the user really did move.
+   */
+  getWriteAnchorModel(): string | null {
+    return this.toolForcedProject?.anchorModel ?? this.getModelName();
+  }
+
+  /** The in-effect tool project switch, or null when writes and reads agree. */
+  getToolProjectSwitch(): { anchorModel: string; forcedModel: string } | null {
+    return this.toolForcedProject;
   }
 
   /**

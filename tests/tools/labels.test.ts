@@ -47,6 +47,9 @@ const mockConfigMgr = {
   ensureLoaded: vi.fn(async () => {}),
   getPackagePath: vi.fn(() => 'K:\\PackagesLocalDirectory'),
   getModelName: vi.fn(() => 'MyModel'),
+  // Writes are measured against the anchor, not the active model (see getWriteAnchorModel).
+  getWriteAnchorModel: vi.fn(() => 'MyModel'),
+  getToolProjectSwitch: vi.fn(() => null),
   getPackageNameFromWorkspacePath: vi.fn(() => 'MyPackage'),
   getProjectPath: vi.fn(async () => null as string | null),
   getSolutionPath: vi.fn(async () => null as string | null),

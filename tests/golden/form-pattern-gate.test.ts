@@ -35,6 +35,9 @@ vi.mock('../../src/utils/configManager', () => ({
     ensureLoaded: vi.fn(async () => {}),
     getPackagePath: vi.fn(() => 'K:\\PackagesLocalDirectory'),
     getModelName: vi.fn(() => 'ContosoExt'),
+    // Writes are measured against the anchor, not the active model (see getWriteAnchorModel).
+    getWriteAnchorModel: vi.fn(() => 'ContosoExt'),
+    getToolProjectSwitch: vi.fn(() => null),
     getPackageNameFromWorkspacePath: vi.fn(() => 'ContosoExt'),
     getProjectPath: vi.fn(async () => null),
     getSolutionPath: vi.fn(async () => null),

@@ -4203,7 +4203,8 @@ export async function handleCreateD365File(
       objectName: args.objectName,
       objectType: args.objectType,
       owningModel: actualModelName,
-      activeModel: getConfigManager().getModelName() ?? '',
+      activeModel: getConfigManager().getWriteAnchorModel() ?? '',
+      toolSwitchedModel: getConfigManager().getToolProjectSwitch()?.forcedModel ?? null,
       action: 'create',
     });
     if (crossModelCreateRefusal) {
