@@ -155,7 +155,7 @@ export interface AddControlPatternVerdict {
 }
 
 /**
- * Pre-flight for modify_d365fo_file(add-control): when the target parent
+ * Pre-flight for d365fo_file(action="modify", operation="add-control"): when the target parent
  * container declares a sub-pattern, check the new control's type against the
  * children that sub-pattern allows. Returns null when the parent cannot be
  * found, declares no pattern, or the pattern is unknown — those cases never

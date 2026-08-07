@@ -59,7 +59,12 @@ interface StrategyRule {
   risks: readonly string[];
   /** Alternative mechanisms and when to prefer them */
   alternatives: readonly { mechanism: string; when: string }[];
-  /** Suggested MCP tool calls to proceed */
+  /**
+   * Suggested MCP tool calls to proceed. These are copied verbatim by the agent,
+   * so they must name tools that are actually registered (see toolHandler's
+   * dispatch) with the argument form their schema requires — a line here that
+   * predates the mega-tool consolidation buys a guaranteed failed call.
+   */
   nextSteps: readonly string[];
   /** Anti-patterns: common wrong choices for this scenario */
   antiPatterns: readonly { wrong: string; why: string }[];
@@ -86,9 +91,9 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
       { mechanism: 'Form data source validateWrite()', when: 'Validation is UI-specific and should NOT apply to service/entity imports' },
     ],
     nextSteps: [
-      'analyze_extension_points("TableName") — check available events and existing extensions',
-      'find_event_handlers("TableName") — see if someone already handles the same event',
-      'generate_code(pattern="event-handler") — generate the handler skeleton',
+      'extension_info(mode="points", target="TableName") — available events and existing extensions',
+      'extension_info(mode="events", target="TableName") — see if someone already handles the same event',
+      'generate_object(mode="pattern", pattern="event-handler", name="TableName") — handler skeleton',
     ],
     antiPatterns: [
       { wrong: 'Business Event', why: 'Business Events are for outbound notifications, not validation logic' },
@@ -115,8 +120,8 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
       { mechanism: 'Form data source initValue()', when: 'Default depends on form context (e.g. header record of a lines form)' },
     ],
     nextSteps: [
-      'analyze_extension_points("TableName") — check initValue availability',
-      'get_method(include="signature", "TableName", "initValue", includeCocTemplate: true) — get CoC template',
+      'extension_info(mode="points", target="TableName") — check initValue availability',
+      'get_method(include="signature", className="TableName", methodName="initValue") — exact signature for the CoC wrapper',
     ],
     antiPatterns: [
       { wrong: 'Overriding insert()', why: 'insert() is for persistence — defaults belong in initValue()' },
@@ -154,9 +159,9 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
       { mechanism: 'CoC on table.modifiedFieldValue()', when: 'You also need the previous value to decide what to do' },
     ],
     nextSteps: [
-      'analyze_extension_points("TableName") — confirm modifiedField is CoC-eligible and see existing extensions',
-      'get_method(include="signature", "TableName", "modifiedField", includeCocTemplate: true) — get the CoC skeleton',
-      'find_coc_extensions("TableName", "modifiedField") — check for existing wrappers',
+      'extension_info(mode="points", target="TableName") — confirm modifiedField is CoC-eligible and see existing extensions',
+      'get_method(include="signature", className="TableName", methodName="modifiedField") — exact signature for the CoC wrapper',
+      'extension_info(mode="coc", target="TableName", method="modifiedField") — check for existing wrappers',
     ],
     antiPatterns: [
       { wrong: 'CoC on initValue()', why: 'initValue fires only at record creation — it will NOT run when the user later changes the field' },
@@ -187,9 +192,9 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
       { mechanism: 'Replaceable method', when: 'Method is marked [Replaceable] — you can fully replace it (rare in standard app)' },
     ],
     nextSteps: [
-      'analyze_extension_points("ClassName") — see CoC-eligible methods and delegates',
-      'get_method(include="signature", "ClassName", "methodName", includeCocTemplate: true) — get exact CoC skeleton',
-      'find_coc_extensions("ClassName", "methodName") — check for existing CoC wrappers',
+      'extension_info(mode="points", target="ClassName") — see CoC-eligible methods and delegates',
+      'get_method(include="signature", className="ClassName", methodName="methodName") — exact signature for the CoC wrapper',
+      'extension_info(mode="coc", target="ClassName", method="methodName") — check for existing CoC wrappers',
     ],
     antiPatterns: [
       { wrong: 'Copy-paste the entire class', why: 'Over-layering defeats the purpose of extensions and blocks upgrades' },
@@ -220,8 +225,8 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
       { mechanism: 'Dual-write', when: 'Real-time bidirectional sync with Dataverse is needed' },
     ],
     nextSteps: [
-      'get_knowledge(kind="knowledge", "business events") — learn the pattern',
-      'generate_code(pattern="business-event", name="MyEvent") — generate skeleton',
+      'get_knowledge(kind="knowledge", topic="business events") — learn the pattern',
+      'generate_object(mode="pattern", pattern="business-event", name="MyEvent") — generate skeleton',
     ],
     antiPatterns: [
       { wrong: 'CoC calling HttpClient', why: 'Synchronous HTTP in a transaction blocks the user and risks timeout/rollback' },
@@ -253,9 +258,9 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
       { mechanism: 'Composite entity', when: 'Header + lines structure needs to be imported as a document' },
     ],
     nextSteps: [
-      'get_knowledge(kind="knowledge", "data-management-framework") — learn DMF patterns',
-      'search("MyTable", "data-entity") — check if an entity already exists',
-      'generate_code(pattern="data-entity", name="MyEntity") — generate entity skeleton',
+      'get_knowledge(kind="knowledge", topic="data-management-framework") — learn DMF patterns',
+      'search(query="MyTable", type="data-entity") — check if an entity already exists',
+      'generate_object(mode="pattern", pattern="data-entity", name="MyEntity") — generate entity skeleton',
     ],
     antiPatterns: [
       { wrong: 'Direct table insert via custom endpoint', why: 'Bypasses validation, number sequences, and event handlers' },
@@ -286,7 +291,7 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
     ],
     nextSteps: [
       'get_object_info(objectType="form", name="FormName", options={searchControl:"General"}) — find exact control names and hierarchy',
-      'analyze_extension_points("FormName") — check form extension points',
+      'extension_info(mode="points", target="FormName", objectType="form") — check form extension points',
       'd365fo_file(action="create", objectType="form-extension") — create the extension',
     ],
     antiPatterns: [
@@ -319,8 +324,8 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
     ],
     nextSteps: [
       'get_object_info(objectType="report", name="ReportName") — inspect existing report structure',
-      'get_knowledge(kind="knowledge", "ssrs-reports") — patterns for SSRS',
-      'generate_smart(objectType="report", name="MyReport") — generate full SSRS stack',
+      'get_knowledge(kind="knowledge", topic="ssrs-reports") — patterns for SSRS',
+      'generate_object(mode="scaffold", objectType="report", name="MyReport") — generate full SSRS stack',
     ],
     antiPatterns: [
       { wrong: 'Business Event for document delivery', why: 'Business Events send notifications, not formatted documents' },
@@ -346,8 +351,8 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
       { mechanism: 'Custom counter table', when: 'Simple auto-increment without legal entity scope or configurable format (rare — prefer the framework)' },
     ],
     nextSteps: [
-      'get_knowledge(kind="knowledge", "number-sequences") — full pattern reference',
-      'generate_code(pattern="number-seq-handler") — generate skeleton',
+      'get_knowledge(kind="knowledge", topic="number-sequences") — full pattern reference',
+      'generate_object(mode="pattern", pattern="number-seq-handler", name="MyModule") — generate skeleton',
     ],
     antiPatterns: [
       { wrong: 'Identity column / RecId as business number', why: 'RecId is internal — users need formatted, gapless (or configurable) business numbers' },
@@ -376,8 +381,8 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
       { mechanism: 'Table permission framework override', when: 'Granting DML access without a menu item entry point (rare)' },
     ],
     nextSteps: [
-      'get_knowledge(kind="knowledge", "security-privileges-duties") — security pattern reference',
-      'security_info(mode="coverage", "ObjectName") — check existing security chain',
+      'get_knowledge(kind="knowledge", topic="security-privileges-duties") — security pattern reference',
+      'security_info(mode="coverage", objectName="ObjectName") — check existing security chain',
       'd365fo_file(action="create", objectType="security-privilege") — create privilege',
     ],
     antiPatterns: [
@@ -406,9 +411,9 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
       { mechanism: 'Business Event + external processor', when: 'Processing should happen outside D365FO (e.g. Azure Function)' },
     ],
     nextSteps: [
-      'get_knowledge(kind="knowledge", "sysoperation") — SysOperation patterns',
-      'generate_code(pattern="sysoperation", name="MyProcess") — generate SysOperation skeleton',
-      'generate_code(pattern="batch-job", name="MyBatch") — generate RunBaseBatch skeleton',
+      'get_knowledge(kind="knowledge", topic="sysoperation") — SysOperation patterns',
+      'generate_object(mode="pattern", pattern="sysoperation", name="MyProcess") — generate SysOperation skeleton',
+      'generate_object(mode="pattern", pattern="batch-job", name="MyBatch") — generate RunBaseBatch skeleton',
     ],
     antiPatterns: [
       { wrong: 'Thread.Sleep / while-polling in batch', why: 'Use batch recurrence and alerts — polling wastes AOS resources' },

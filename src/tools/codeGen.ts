@@ -100,7 +100,7 @@ internal final class ${name}
 // D365FO Data Entity: ${name}Entity
 // ══════════════════════════════════════════════════════════════════
 // Data entities are AxDataEntityView XML objects (NOT X++ classes).
-// Use create_d365fo_file(objectType="view") or the VS designer.
+// Use d365fo_file(action="create", objectType="view") or the VS designer.
 //
 // Key properties to set in XML:
 //   PublicEntityName:       "${name}"  (OData singular name)
@@ -123,8 +123,8 @@ internal final class ${name}
 //
 // Workflow:
 //   1. get_object_info(objectType="data-entity", name="similar entity")  → study structure
-//   2. generate_d365fo_xml(objectType="data-entity", ...)  → preview XML
-//   3. create_d365fo_file(objectType="view", ...)  → create file
+//   2. generate_object(mode="scaffold", objectType="data-entity", ...)  → preview XML
+//   3. d365fo_file(action="create", objectType="view", ...)  → create file
 //   4. After deployment: refresh entity list in Data Management workspace
 `,
 
@@ -674,7 +674,7 @@ function menuItemXmlTemplate(name: string, itemType: string, targetObject: strin
 function ssrsReportFullTemplate(name: string): string {
   return `// ══════════════════════════════════════════════════════════════════
 // SSRS Report: ${name}
-// 5 objects required (use create_d365fo_file for each):
+// 5 objects required (use d365fo_file(action="create") for each):
 //   1. ${name}TmpTable  — TempDB table (objectType="table", tableType="TempDB")
 //   2. ${name}Contract  — DataContract class (below)
 //   3. ${name}DP        — Data Provider class (below)
@@ -1087,14 +1087,14 @@ public class ${name}Controller extends MenuFunction
 function dataEntityStagingTemplate(name: string): string {
   return `// ══════════════════════════════════════════════════════════════════════════
 // Data Entity with Staging Table: ${name}
-// 3 objects required (use create_d365fo_file for each):
+// 3 objects required (use d365fo_file(action="create") for each):
 //   1. ${name}StagingTable  — TempDB staging table
 //   2. ${name}Entity        — Data entity (AxDataEntityView)
 //   3. ${name}EntityService — Optional: AIF service class
 // ══════════════════════════════════════════════════════════════════════════
 
 // ── Object 1: Staging table ${name}Staging ─────────────────────────────────
-// create_d365fo_file(objectType="table", objectName="${name}Staging", xmlContent=...)
+// d365fo_file(action="create", objectType="table", objectName="${name}Staging", xmlContent=...)
 // Set: TableType=TempDB (NOT RegularTable), TableGroup=Main
 // Fields mirror the entity's public fields exactly (same names, same EDTs)
 
@@ -1703,7 +1703,7 @@ public class ${name}Service
     }
 }
 
-// ── 3. AOT objects (create via create_d365fo_file) ──────────────────────
+// ── 3. AOT objects (create via d365fo_file(action="create")) ────────────
 // Verify the result afterwards with get_object_info(objectType="service", name="${name}Service").
 // a) AxService XML (real schema: ServiceOperations / AxServiceOperation / Method):
 //    <AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
@@ -1873,7 +1873,10 @@ export async function codeGenTool(request: CallToolRequest) {
       // real codebase (via prepare_change) before generating extension code.
       const groundingError = enforceGrounding(
         args.groundingToken,
-        `generate_code(pattern="${args.pattern}", name="${args.name}")`,
+        // The MCP-visible name, not the internal one: this string is echoed back
+        // as the call the agent must repeat with a token, and `generate_code`
+        // has not been a registered tool since the mega-tool consolidation.
+        `generate_object(mode="pattern", pattern="${args.pattern}", name="${args.name}")`,
         args.name,
       );
       if (groundingError) return groundingError;
@@ -1977,20 +1980,18 @@ export async function codeGenTool(request: CallToolRequest) {
             `Generated ${args.pattern} template for "${displayName}":\n\n` +
             `\`\`\`xpp${code}\n\`\`\`\n\n` +
             `---\n\n` +
-            `${namingNote}\n\n` +
+            namingNote +
+            // Only the CoC signature rule earns a line here: guessing static vs
+            // instance produces code that fails to compile. The rest was a menu
+            // of optional follow-ups — and it named tools that do not exist
+            // (`find_coc_extensions`) with argument forms analyze_code rejects
+            // (positional, not `className`/`methodName`), so following it cost a
+            // failed call before the agent could get anything useful.
             (args.pattern === 'class-extension'
-              ? `💡 **Next Steps (class-extension CoC workflow):**\n\n` +
-                `1. 🚨 Use \`get_method(include="signature", "${displayName}", "<methodName>")\` — **REQUIRED** to get the exact signature (static vs instance, return type, parameters) before writing any CoC method\n` +
-                `2. ✅ Use \`find_coc_extensions("${displayName}", "<methodName>")\` - See existing CoC wrappers for reference\n` +
-                `3. ✅ Use \`analyze_code(mode="implementations", "${displayName}", "<methodName>")\` - Get real implementation examples\n` +
-                `4. ✅ Use \`analyze_code(mode="api-usage", "<ClassName>")\` - See how to use D365FO APIs correctly\n\n` +
-                `⚠️ Never guess static vs instance — always use get_method(include="signature") first.`
-              : `💡 **Next Steps for Better Code Quality:**\n\n` +
-                `1. ✅ Use \`analyze_code(mode="patterns", "<scenario>")\` - Learn what D365FO classes are commonly used together\n` +
-                `2. ✅ Use \`analyze_code(mode="implementations", "${displayName}", "<methodName>")\` - Get real implementation examples\n` +
-                `3. ✅ Use \`analyze_code(mode="completeness", "${displayName}")\` - Check for missing common methods\n` +
-                `4. ✅ Use \`analyze_code(mode="api-usage", "<ClassName>")\` - See how to use D365FO APIs correctly\n\n` +
-                `These tools provide patterns from the actual codebase, not generic templates.`),
+              ? `\n\n⚠️ Before writing any CoC method call \`get_method(include="signature", className="${displayName}", methodName="<methodName>")\` — ` +
+                `never guess static vs instance, the return type or the parameter list. ` +
+                `Existing wrappers: \`extension_info(mode="coc", target="${displayName}")\`.`
+              : ``),
         },
       ],
     };
