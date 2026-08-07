@@ -5276,16 +5276,13 @@ export async function handleCreateD365File(
       }
     }
 
-    // Build success message
+    // Only the step the AGENT can take. "Reload the project in VS / refresh the
+    // AOT" is a human's UI chore, repeated on every object of a feature; when it
+    // matters (addToProject failed, no projectPath) `projectMessage` above
+    // already says so, in that specific case.
     const nextSteps = args.addToProject
-      ? `Next steps:\n` +
-        `1. Reload project in Visual Studio (or close/reopen solution)\n` +
-        `2. Build the project to synchronize the object\n` +
-        `3. Refresh AOT in Visual Studio to see the new object\n`
-      : `Next steps:\n` +
-        `1. Add the file to your Visual Studio project (.rnrproj)\n` +
-        `2. Build the project to synchronize the object\n` +
-        `3. Refresh AOT in Visual Studio to see the new object\n`;
+      ? `Next: build_d365fo_project to synchronize the object.\n`
+      : `Next: add the file to your .rnrproj, then build_d365fo_project to synchronize the object.\n`;
 
     // Record the freshly-created file for non-git undo (see the bridge paths above).
     if (!fileExisted) {

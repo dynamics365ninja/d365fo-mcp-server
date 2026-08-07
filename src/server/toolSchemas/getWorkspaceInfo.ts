@@ -21,7 +21,7 @@ export const getWorkspaceInfoTool = {
         diagnostics: {
           type: 'boolean',
           default: false,
-          description: 'Include verbose diagnostic sections (suffix breakdown, stdio session/handshake dump). Use when debugging client-server connectivity.',
+          description: 'Include verbose sections (config sources, suffix, project paths, index scan, stdio handshake). Use when debugging config or connectivity.',
         },
       },
       required: [],

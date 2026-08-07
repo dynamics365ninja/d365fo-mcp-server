@@ -47,8 +47,15 @@ function sameModel(a: string | null, b: string | null): boolean {
 }
 
 export interface PrefixDiagnostics {
-  /** Lines for the "## Prefix Configuration" section, blank line included. */
+  /**
+   * Compact default: one `Prefix : …` line, plus a note only when something is
+   * actually off (a switch is in effect, or the resolved prefix contradicts the
+   * configuration). Every call of get_workspace_info pays for these tokens, so
+   * the confirmations that only restate the value stay in `verboseLines`.
+   */
   lines: string[];
+  /** Full "## Prefix Configuration" section — diagnostics=true only. */
+  verboseLines: string[];
   /** The prefix a write would apply — for the Extension Naming samples. */
   effectivePrefix: string;
 }
@@ -87,30 +94,50 @@ export function buildPrefixDiagnostics(
 
   const switched = !!writeModel && !!readModel && !sameModel(writeModel, readModel);
 
-  const lines = [
+  const switchNote =
+    `ℹ️  This is the prefix for WRITES, which are anchored to "${writeModel}". "${readModel}" is ` +
+    `merely the active project and its own prefix may differ — see the project-switch note below.`;
+
+  const disagreeNote =
+    `⚠️  The model's own objects use "${learned?.regular}", which overrides EXTENSION_PREFIX="${extensionPrefixEnv}" — new objects will be named "${effectivePrefix}…". If that is wrong, the model's existing objects are the thing to check; set EXTENSION_PREFIX_SOURCE=config to pin the configured value instead.`;
+
+  const notConfiguredNote =
+    `⚠️  EXTENSION_PREFIX is not set in the server environment. The model name "${writeModel}" will be used as prefix. Add EXTENSION_PREFIX=MY (or your ISV prefix) to the .env file and restart the server.`;
+
+  // Compact: the value, its origin, and a warning only when there is one. The
+  // warnings keep the fix but drop the explanation of it — the resolved prefix
+  // is one line above, so what is wrong is already visible.
+  const lines = [`Prefix      : ${effectivePrefix || '(none)'}  (${source})`];
+  if (switched) lines.push(switchNote);
+  if (disagrees) {
+    lines.push(
+      `⚠️  The model's own objects use "${learned?.regular}", overriding EXTENSION_PREFIX="${extensionPrefixEnv}". ` +
+      `To pin the configured value instead: EXTENSION_PREFIX_SOURCE=config.`,
+    );
+  } else if (!learned?.regular && !extensionPrefixEnv) {
+    lines.push(
+      `⚠️  EXTENSION_PREFIX is not set — the model name is being used as the prefix. ` +
+      `Add EXTENSION_PREFIX=MY (your ISV prefix) to .env and restart the server.`,
+    );
+  }
+
+  const verboseLines = [
     `## Prefix Configuration`,
     ``,
     `EXTENSION_PREFIX: ${extensionPrefixEnv ?? '(not set — falling back to model name)'}`,
     `Effective prefix: ${effectivePrefix || '(none)'}  (source: ${source})`,
   ];
-
-  if (switched) {
-    lines.push(
-      `ℹ️  This is the prefix for WRITES, which are anchored to "${writeModel}". "${readModel}" is ` +
-      `merely the active project and its own prefix may differ — see the project-switch note below.`,
-    );
-  }
-
-  lines.push(
+  if (switched) verboseLines.push(switchNote);
+  verboseLines.push(
     disagrees
-      ? `⚠️  The model's own objects use "${learned!.regular}", which overrides EXTENSION_PREFIX="${extensionPrefixEnv}" — new objects will be named "${effectivePrefix}…". If that is wrong, the model's existing objects are the thing to check; set EXTENSION_PREFIX_SOURCE=config to pin the configured value instead.`
+      ? disagreeNote
       : learned?.regular
         ? `✅ Prefix "${effectivePrefix}" comes from the objects model "${writeModel}" already contains.`
         : extensionPrefixEnv
           ? `✅ EXTENSION_PREFIX is set — all new objects will use prefix "${effectivePrefix}".`
-          : `⚠️  EXTENSION_PREFIX is not set in the server environment. The model name "${writeModel}" will be used as prefix. Add EXTENSION_PREFIX=MY (or your ISV prefix) to the .env file and restart the server.`,
+          : notConfiguredNote,
     ``,
   );
 
-  return { lines, effectivePrefix };
+  return { lines, verboseLines, effectivePrefix };
 }

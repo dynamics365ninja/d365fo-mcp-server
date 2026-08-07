@@ -213,6 +213,35 @@ export async function buildContextSnapshot(
  * as markdown lines for embedding in get_workspace_info. Identity/prefix/index
  * sections are already covered by that tool, so this only adds what is new.
  */
+/** How many recent objects the compact rendering names before summarising. */
+const COMPACT_RECENT_SHOWN = 3;
+
+/**
+ * The same "live" portion as renderContextSnapshotSection, folded into at most
+ * two lines for get_workspace_info's default output. Names only enough recent
+ * objects to orient the agent — the full list, with timestamps and every
+ * uncommitted path, stays behind diagnostics=true and review_workspace_changes.
+ */
+export function renderContextSnapshotCompact(snapshot: ContextSnapshot): string[] {
+  const lines: string[] = [];
+
+  if (snapshot.recentObjects.length > 0) {
+    const shown = snapshot.recentObjects
+      .slice(0, COMPACT_RECENT_SHOWN)
+      .map(o => `${o.name} [${o.type}]`);
+    const rest = snapshot.recentObjects.length - shown.length;
+    lines.push(`Recent edits: ${shown.join(', ')}${rest > 0 ? ` (+${rest} more)` : ''}`);
+  }
+
+  if (snapshot.uncommittedFiles.length > 0) {
+    lines.push(
+      `Uncommitted : ${snapshot.uncommittedFiles.length} X++ file(s) — review_workspace_changes`
+    );
+  }
+
+  return lines;
+}
+
 export function renderContextSnapshotSection(snapshot: ContextSnapshot): string[] {
   const lines: string[] = ['## Context Snapshot', ''];
 

@@ -71,6 +71,24 @@ describe('checkIndexStaleness', () => {
   });
 });
 
+describe('checkIndexStaleness compact lines', () => {
+  it('is one line when the index is fresh', () => {
+    // get_workspace_info's default output pays for this on every call, and a
+    // fresh index needs no scan detail — there is nothing to act on.
+    const report = checkIndexStaleness(new Date(Date.now() + 3_600_000).toISOString(), path.join(tmpDir, 'MyModel'));
+    expect(report.compactLines).toHaveLength(1);
+    expect(report.compactLines[0]).toContain('up to date');
+  });
+
+  it('keeps the fix reachable when the index is stale', () => {
+    const report = checkIndexStaleness(new Date(Date.now() - 24 * 3_600_000).toISOString(), path.join(tmpDir, 'MyModel'));
+    const text = report.compactLines.join('\n');
+    expect(report.compactLines).toHaveLength(2);
+    expect(text).toContain('STALE');
+    expect(text).toContain('update_symbol_index');
+  });
+});
+
 describe('symbolIndex last_indexed_at bookkeeping', () => {
   it('touchLastIndexed/getLastIndexedAt round-trips an ISO timestamp', () => {
     const index = new XppSymbolIndex(':memory:', ':memory:');

@@ -38,9 +38,14 @@ import {
   getInFlight, registerInFlight, clearInFlight,
 } from '../utils/callDedup.js';
 import { checkIndexStaleness } from '../utils/indexStaleness.js';
-import { buildContextSnapshot, renderContextSnapshotSection } from '../workspace/contextSnapshot.js';
+import {
+  buildContextSnapshot, renderContextSnapshotSection, renderContextSnapshotCompact,
+} from '../workspace/contextSnapshot.js';
 import * as nodePath from 'path';
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
+
+/** Models named inline by the compact project list before it summarises the rest. */
+const PROJECT_NAMES_SHOWN = 12;
 
 /**
  * Extract workspace path from GitHub Copilot _meta.
@@ -98,6 +103,10 @@ const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
   build_d365fo_project:             'uncapped', // compiler errors can appear late in long logs
   security_info:                    8000,
   extension_info:                   6000,
+  // Default output is ~1 KB. The higher cap exists for diagnostics=true, whose
+  // whole point is the full dump — truncating that at 5000 hid the stdio
+  // handshake section behind the project table.
+  get_workspace_info:               20000,
   default:                          5000,
 };
 
@@ -345,7 +354,9 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         // from — after a project switch those are different models (see
         // buildPrefixDiagnostics and ConfigManager.getWriteAnchorModel).
         const writeModel = modelWritesLandIn(configManager.getWriteAnchorModel() ?? modelName, modelName);
-        const { lines: prefixLines, effectivePrefix } = buildPrefixDiagnostics(writeModel, modelName);
+        const {
+          lines: prefixLines, verboseLines: prefixVerboseLines, effectivePrefix,
+        } = buildPrefixDiagnostics(writeModel, modelName);
         const objectSuffixEnv = process.env.EXTENSION_SUFFIX?.trim() || null;
         const effectiveSuffix = getObjectSuffix();
 
@@ -372,43 +383,34 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         // MS framework path shown in diagnostics; omitted for single-root traditional setups.
         const msFrameworkPath = frameworkDirectory ?? (!customPackagesPath ? null : packagePath);
 
-        // Verbose diagnostic sections cost tokens on every call — opt-in only.
+        // get_workspace_info is called at the start of every session, so every
+        // line here is paid for on a cold context. The default output carries
+        // only what changes what the agent does next — identity, where writes
+        // land, the naming it must apply, and anything that is actually wrong.
+        // Sources, confirmations and the per-project path table are diagnostics.
         const diagnostics = args.diagnostics === true;
 
-        const lines: string[] = [
-          `## D365FO Workspace Configuration`,
-          ``,
-          `Model name      : ${modelName ?? '(not configured)'}  (source: ${modelSource})`,
-          `Custom write path: ${effectiveWritePath ?? '(not configured)'}  (custom metadata, source: ${effectiveWriteSource})`,
-          `Framework dir   : ${msFrameworkPath ?? '(not applicable — single-root setup)'}  (Microsoft metadata, read-only)`,
-          `Project path    : ${projectPath ?? '(not detected)'}  (source: ${projectSource})`,
-          `Env type        : ${envType}`,
-          ``,
-          ...prefixLines,
-        ];
-
-        // A switch moves which project is ACTIVE — nothing else. Reads never
-        // needed it (they span every model regardless) and writes stay anchored
-        // to the model the workspace resolved on its own, so switching cannot be
-        // used to reach an object the cross-model guard refused. Say both here,
-        // before anything is written, so the switch is not mistaken for access.
-        const toolSwitch = configManager.getToolProjectSwitch();
-        if (toolSwitch) {
-          lines.push(
-            `## ⚠️  Project switched — writes are NOT switched`,
-            ``,
-            `"${toolSwitch.forcedModel}" is now the ACTIVE project. This did not change what you ` +
-            `can read: get_object_info, search and find_references span every model, switched or ` +
-            `not, so a switch is never needed to look at another model's code. Writes stay ` +
-            `anchored to "${toolSwitch.anchorModel}" — the model the open workspace targets — and ` +
-            `a create/modify into "${toolSwitch.forcedModel}" will be refused.`,
-            `Tell the user the model they asked about is owned by "${toolSwitch.forcedModel}" and let ` +
-            `THEM decide: extend it from "${toolSwitch.anchorModel}", or allow the write by adding ` +
-            `D365FO_CROSS_MODEL_WRITE_MODELS=${toolSwitch.forcedModel} to the server's .env — that ` +
-            `applies to the next attempt, no restart. Do not decide this on your own.`,
-            ``,
-          );
-        }
+        const lines: string[] = diagnostics
+          ? [
+              `## D365FO Workspace Configuration`,
+              ``,
+              `Model name      : ${modelName ?? '(not configured)'}  (source: ${modelSource})`,
+              `Custom write path: ${effectiveWritePath ?? '(not configured)'}  (custom metadata, source: ${effectiveWriteSource})`,
+              `Framework dir   : ${msFrameworkPath ?? '(not applicable — single-root setup)'}  (Microsoft metadata, read-only)`,
+              `Project path    : ${projectPath ?? '(not detected)'}  (source: ${projectSource})`,
+              `Env type        : ${envType}`,
+              ``,
+              ...prefixVerboseLines,
+            ]
+          : [
+              `## D365FO Workspace`,
+              ``,
+              `Model       : ${modelName ?? '(not configured)'}  (${modelSource})`,
+              ...prefixLines,
+              `Write path  : ${effectiveWritePath ?? '(not configured)'}`,
+              `Project     : ${projectPath ?? '(not detected)'}`,
+              `Env         : ${envType}`,
+            ];
 
         if (diagnostics) {
           lines.push(
@@ -422,7 +424,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
             ``,
           );
         } else if (effectiveSuffix) {
-          lines.push(`Suffix          : "${effectiveSuffix}" appended to new objects (EXTENSION_SUFFIX)`, ``);
+          lines.push(`Suffix      : "${effectiveSuffix}" appended to new objects (EXTENSION_SUFFIX)`);
         }
 
         // Extension naming: prefix is the infix unless EXTENSION_NAMING_STYLE="model-name"
@@ -440,76 +442,59 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         const sampleElemExt = extNamingStyle === 'model-name' && writeModel
           ? `CustTable.${writeModel}`
           : `CustTable.${extInfix}Extension`;
-        lines.push(
-          `## Extension Naming`,
-          ``,
-          `EXTENSION_NAMING_STYLE: ${process.env.EXTENSION_NAMING_STYLE?.trim() || '(not set → "prefix")'}`,
-          extNamingStyle === 'model-name'
-            ? `✅ model-name style — extension token is the MODEL NAME (Visual Studio default).`
-            : `ℹ️  prefix style (default) — extension token is the EXTENSION_PREFIX infix.`,
-          `  • Extension class  → ${sampleClassExt}`,
-          `  • Element extension → ${sampleElemExt}`,
-          `  ⚠️  Pass the BASE object name (e.g. "CustTable") to d365fo_file(action="create") and let the tool apply the token — any infix you embed will be normalised to the above.`,
-          ``,
-        );
-
-        if (isPlaceholder) {
-          const rawDetectedModel = await configManager.getRawAutoDetectedModelName();
-          const detectedHint = rawDetectedModel
-            ? `> ✅ Auto-detected from .rnrproj: **${rawDetectedModel}**\n` +
-              `> Update your .mcp.json: set \`modelName\` to \`"${rawDetectedModel}"\``
-            : `> ⚠️ No .rnrproj was found — make sure the MCP server is running in the right directory.`;
+        if (diagnostics) {
           lines.push(
-            `⛔ CONFIGURATION PROBLEM — model name "${modelName}" is a placeholder, not a real D365FO model.`,
+            `## Extension Naming`,
             ``,
-            `**YOU MUST STOP** and tell the user:`,
-            `> The configured model name "${modelName}" is a placeholder.`,
-            detectedHint,
-            `>`,
-            `> Please check that:`,
-            `> 1. The MCP server is running in the correct workspace directory`,
-            `> 2. The .mcp.json / mcp.json file has the correct modelName`,
-            `> 3. The projectPath points to a valid .rnrproj file`,
-            `>`,
-            `> Do you want to fix the configuration first, or continue with built-in tools (limited functionality)?`,
-          );
-        } else if (isStandardMsModel) {
-          const allProj = configManager.getAllDetectedProjects();
-          const customCandidates = allProj.filter(p => isCustomModel(p.modelName));
-          const hint = customCandidates.length > 0
-            ? `Available custom models: ${customCandidates.map(p => p.modelName).join(', ')}\n` +
-              `Switch with: get_workspace_info(projectName="<model>")`
-            : `No custom models found under D365FO_SOLUTIONS_PATH. Check your project configuration.`;
-          lines.push(
-            `⛔ CONFIGURATION PROBLEM — model name "${modelName}" is a Microsoft standard/demo model, not a custom model.`,
+            `EXTENSION_NAMING_STYLE: ${process.env.EXTENSION_NAMING_STYLE?.trim() || '(not set → "prefix")'}`,
+            extNamingStyle === 'model-name'
+              ? `✅ model-name style — extension token is the MODEL NAME (Visual Studio default).`
+              : `ℹ️  prefix style (default) — extension token is the EXTENSION_PREFIX infix.`,
+            `  • Extension class  → ${sampleClassExt}`,
+            `  • Element extension → ${sampleElemExt}`,
+            `  ⚠️  Pass the BASE object name (e.g. "CustTable") to d365fo_file(action="create") and let the tool apply the token — any infix you embed will be normalised to the above.`,
             ``,
-            `**YOU MUST STOP** and tell the user:`,
-            `> The auto-detected model "${modelName}" is a Microsoft standard model.`,
-            `> This usually happens when a new VS project was created and the default model`,
-            `> in the project wizard ("FleetManagement") was not changed to the correct custom model.`,
-            `>`,
-            `> How to fix:`,
-            `> 1. In Visual Studio, open the .rnrproj file and change <Model>FleetManagement</Model>`,
-            `>    to the correct model name (e.g. <Model>ContosoCore</Model>).`,
-            `> 2. OR explicitly switch to a known project:`,
-            `>    ${hint}`,
-            `> 3. OR add the correct modelName to .mcp.json.`,
           );
         } else {
-          lines.push(`✅ Configuration looks valid. Proceed with D365FO operations using model "${modelName}".`);
+          // The samples ARE the instruction: the style name and the token rule
+          // add nothing once the two produced names are in front of the agent.
+          lines.push(
+            `Extensions  : ${sampleClassExt} · ${sampleElemExt}  ` +
+            `(pass the BASE name to d365fo_file(create) — the tool applies the token)`,
+          );
         }
 
         const allProjects = configManager.getAllDetectedProjects();
         if (allProjects.length > 1) {
-          lines.push(``);
-          lines.push(`## Available Projects`);
-          lines.push(``);
-          for (const p of allProjects) {
-            const active = p.projectPath === projectPath ? '▶ ' : '  ';
-            lines.push(`${active}${p.modelName.padEnd(40)} ${p.projectPath}`);
+          if (diagnostics) {
+            lines.push(``);
+            lines.push(`## Available Projects`);
+            lines.push(``);
+            for (const p of allProjects) {
+              const active = p.projectPath === projectPath ? '▶ ' : '  ';
+              lines.push(`${active}${p.modelName.padEnd(40)} ${p.projectPath}`);
+            }
+            lines.push(``);
+            lines.push(`To switch project: call get_workspace_info with projectName = "<ModelName>"`);
+          } else {
+            // Names only: a switch is by projectName, so the paths are dead
+            // weight — and one solution can hold dozens of them. Duplicated
+            // model names (several projects, one model) collapse to one entry.
+            const seen = new Set<string>();
+            const names: string[] = [];
+            for (const p of allProjects) {
+              const key = p.modelName.toLowerCase();
+              if (seen.has(key)) continue;
+              seen.add(key);
+              names.push(p.projectPath === projectPath ? `▶${p.modelName}` : p.modelName);
+            }
+            const shown = names.slice(0, PROJECT_NAMES_SHOWN);
+            const rest = names.length - shown.length;
+            lines.push(
+              `Projects    : ${shown.join(', ')}${rest > 0 ? `, +${rest} more` : ''}  ` +
+              `(switch: get_workspace_info(projectName="<ModelName>"))`,
+            );
           }
-          lines.push(``);
-          lines.push(`To switch project: call get_workspace_info with projectName = "<ModelName>"`);
         }
 
         // Index freshness — compare workspace mtimes vs last_indexed_at.
@@ -519,7 +504,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
             ? nodePath.join(effectiveWritePath, modelName)
             : null;
           const staleness = checkIndexStaleness(lastIndexedAt, modelMetadataDir);
-          lines.push('', ...staleness.lines);
+          lines.push(...(diagnostics ? ['', ...staleness.lines] : staleness.compactLines));
         } catch {
           // Freshness reporting is best-effort — never break get_workspace_info
         }
@@ -566,9 +551,85 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         // Context Snapshot — recently edited objects + uncommitted X++ changes. Best-effort.
         try {
           const snapshot = await buildContextSnapshot(context);
-          lines.push('', ...renderContextSnapshotSection(snapshot));
+          lines.push(...(diagnostics
+            ? ['', ...renderContextSnapshotSection(snapshot)]
+            : renderContextSnapshotCompact(snapshot)));
         } catch {
           // Snapshot is additive — omit silently on failure.
+        }
+
+        // Everything below is a broken/unusual state. It sits last so the facts
+        // above stay one uninterrupted block in the normal case, and so the
+        // instruction the agent must act on is the last thing it reads.
+
+        // A switch moves which project is ACTIVE — nothing else. Reads never
+        // needed it (they span every model regardless) and writes stay anchored
+        // to the model the workspace resolved on its own, so switching cannot be
+        // used to reach an object the cross-model guard refused. Say both here,
+        // before anything is written, so the switch is not mistaken for access.
+        const toolSwitch = configManager.getToolProjectSwitch();
+        if (toolSwitch) {
+          lines.push(
+            ``,
+            `## ⚠️  Project switched — writes are NOT switched`,
+            ``,
+            `"${toolSwitch.forcedModel}" is now the ACTIVE project. This did not change what you ` +
+            `can read: get_object_info, search and find_references span every model, switched or ` +
+            `not, so a switch is never needed to look at another model's code. Writes stay ` +
+            `anchored to "${toolSwitch.anchorModel}" — the model the open workspace targets — and ` +
+            `a create/modify into "${toolSwitch.forcedModel}" will be refused.`,
+            `Tell the user the model they asked about is owned by "${toolSwitch.forcedModel}" and let ` +
+            `THEM decide: extend it from "${toolSwitch.anchorModel}", or allow the write by adding ` +
+            `D365FO_CROSS_MODEL_WRITE_MODELS=${toolSwitch.forcedModel} to the server's .env — that ` +
+            `applies to the next attempt, no restart. Do not decide this on your own.`,
+          );
+        }
+
+        if (isPlaceholder) {
+          const rawDetectedModel = await configManager.getRawAutoDetectedModelName();
+          const detectedHint = rawDetectedModel
+            ? `> ✅ Auto-detected from .rnrproj: **${rawDetectedModel}**\n` +
+              `> Update your .mcp.json: set \`modelName\` to \`"${rawDetectedModel}"\``
+            : `> ⚠️ No .rnrproj was found — make sure the MCP server is running in the right directory.`;
+          lines.push(
+            ``,
+            `⛔ CONFIGURATION PROBLEM — model name "${modelName}" is a placeholder, not a real D365FO model.`,
+            ``,
+            `**YOU MUST STOP** and tell the user:`,
+            `> The configured model name "${modelName}" is a placeholder.`,
+            detectedHint,
+            `>`,
+            `> Please check that:`,
+            `> 1. The MCP server is running in the correct workspace directory`,
+            `> 2. The .mcp.json / mcp.json file has the correct modelName`,
+            `> 3. The projectPath points to a valid .rnrproj file`,
+            `>`,
+            `> Do you want to fix the configuration first, or continue with built-in tools (limited functionality)?`,
+          );
+        } else if (isStandardMsModel) {
+          const customCandidates = allProjects.filter(p => isCustomModel(p.modelName));
+          const hint = customCandidates.length > 0
+            ? `Available custom models: ${customCandidates.map(p => p.modelName).join(', ')}\n` +
+              `Switch with: get_workspace_info(projectName="<model>")`
+            : `No custom models found under D365FO_SOLUTIONS_PATH. Check your project configuration.`;
+          lines.push(
+            ``,
+            `⛔ CONFIGURATION PROBLEM — model name "${modelName}" is a Microsoft standard/demo model, not a custom model.`,
+            ``,
+            `**YOU MUST STOP** and tell the user:`,
+            `> The auto-detected model "${modelName}" is a Microsoft standard model.`,
+            `> This usually happens when a new VS project was created and the default model`,
+            `> in the project wizard ("FleetManagement") was not changed to the correct custom model.`,
+            `>`,
+            `> How to fix:`,
+            `> 1. In Visual Studio, open the .rnrproj file and change <Model>FleetManagement</Model>`,
+            `>    to the correct model name (e.g. <Model>ContosoCore</Model>).`,
+            `> 2. OR explicitly switch to a known project:`,
+            `>    ${hint}`,
+            `> 3. OR add the correct modelName to .mcp.json.`,
+          );
+        } else if (diagnostics) {
+          lines.push(``, `✅ Configuration looks valid. Proceed with D365FO operations using model "${modelName}".`);
         }
 
         return { content: [{ type: 'text', text: lines.join('\n') }] };
