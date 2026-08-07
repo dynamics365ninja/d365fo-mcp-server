@@ -7,6 +7,7 @@ import * as fs from 'fs/promises';
 import { existsSync } from 'fs';
 import * as path from 'path';
 import { debugLog } from './logger.js';
+import { recordDetectionFailure, recordDetectionSuccess } from './workspaceDetectionStatus.js';
 
 export interface D365ProjectInfo {
   /** Path to the .rnrproj file. May be undefined when model was detected from PackagesLocalDirectory path. */
@@ -25,6 +26,12 @@ export interface D365ProjectInfo {
    * anything that registers a file into a VS project.
    */
   ambiguousProjects?: string[];
+  /**
+   * Which of autoDetectD365Project's sources produced this result — the answer
+   * to "why this model?", reported by `d365fo-mcp doctor` and recorded in the
+   * detection status so a later success can retract an earlier warning (#833).
+   */
+  detectionSource?: string;
 }
 
 /**
@@ -285,11 +292,20 @@ export async function detectD365Project(workspacePath: string, maxDepth: number 
 export async function autoDetectD365Project(
   explicitWorkspacePath?: string
 ): Promise<D365ProjectInfo | null> {
+  // Every source consulted, in order, so a failure can say what it looked at
+  // instead of the bare "from any source" that named nothing (#833).
+  const tried: string[] = [];
+  const won = (source: string, result: D365ProjectInfo): D365ProjectInfo => {
+    recordDetectionSuccess(source, result.modelName, result.projectPath ?? null);
+    return { ...result, detectionSource: source };
+  };
+
   // Priority 1: Explicit workspace path
   if (explicitWorkspacePath) {
     debugLog(`[WorkspaceDetector] Using explicit workspace path: ${explicitWorkspacePath}`);
+    tried.push('workspace path');
     const result = await detectD365Project(explicitWorkspacePath);
-    if (result) return result;
+    if (result) return won('the workspace path', result);
   }
 
   // Priority 2: Current working directory (skip if it's a Node.js project —
@@ -300,16 +316,18 @@ export async function autoDetectD365Project(
     debugLog(`[WorkspaceDetector] Skipping cwd (Node.js project): ${cwd}`);
   } else {
     debugLog(`[WorkspaceDetector] Trying current working directory: ${cwd}`);
+    tried.push('current working directory');
     const cwdResult = await detectD365Project(cwd);
-    if (cwdResult) return cwdResult;
+    if (cwdResult) return won('the current working directory', cwdResult);
   }
 
   // Priority 3: Explicit env vars
   const envWorkspace = process.env.WORKSPACE_PATH;
   if (envWorkspace) {
     debugLog(`[WorkspaceDetector] Trying WORKSPACE_PATH env var: ${envWorkspace}`);
+    tried.push('WORKSPACE_PATH');
     const envResult = await detectD365Project(envWorkspace);
-    if (envResult) return envResult;
+    if (envResult) return won('the WORKSPACE_PATH env var', envResult);
   }
 
   // Priority 3b: D365FO_SOLUTIONS_PATH — scan root for ALL D365FO projects, use
@@ -318,8 +336,9 @@ export async function autoDetectD365Project(
   const solutionsRoot = process.env.D365FO_SOLUTIONS_PATH;
   if (solutionsRoot) {
     debugLog(`[WorkspaceDetector] Scanning D365FO_SOLUTIONS_PATH: ${solutionsRoot}`);
+    tried.push('D365FO_SOLUTIONS_PATH');
     const result = await detectD365Project(solutionsRoot, 6);
-    if (result) return result;
+    if (result) return won('D365FO_SOLUTIONS_PATH', result);
   }
 
   // Priority 4: Well-known VS project directories (Windows only).
@@ -343,6 +362,7 @@ export async function autoDetectD365Project(
       }
       return p;
     };
+    tried.push('well-known project directories');
     for (const searchRoot of wellKnownPaths) {
       try {
         const files = await findProjectFiles(searchRoot);
@@ -381,12 +401,12 @@ export async function autoDetectD365Project(
               : null;
             debugLog(`[WorkspaceDetector] ✅ Found project via well-known path: ${projectPath}`);
             debugLog(`[WorkspaceDetector]    ModelName: ${modelName}`);
-            return {
+            return won(`the well-known directory ${loggedSearchRoot}`, {
               modelName,
               projectPath,
               solutionPath,
               packagePath: packagePath || undefined,
-            };
+            });
           }
         }
       } catch {
@@ -399,6 +419,7 @@ export async function autoDetectD365Project(
   // e.g. K:\AOSService\PackagesLocalDirectory\MyEnhancedDataSharing → "MyEnhancedDataSharing"
   if (explicitWorkspacePath) {
     const normalized = path.normalize(explicitWorkspacePath);
+    tried.push('PackagesLocalDirectory path');
 
     // K:\...\PackagesLocalDirectory\PackageName\ModelName
     const twoLevelMatch = normalized.match(
@@ -408,11 +429,11 @@ export async function autoDetectD365Project(
       const packagePath = twoLevelMatch[1];
       const packageName = twoLevelMatch[2];
       const modelName = twoLevelMatch[3];
-      return {
+      return won('the PackagesLocalDirectory path', {
         modelName,
         packageName,
         packagePath,
-      };
+      });
     }
 
     const match = normalized.match(/^(.+[\\]PackagesLocalDirectory)[\\]([^\\]+)\\?$/i);
@@ -423,14 +444,18 @@ export async function autoDetectD365Project(
       debugLog(`[WorkspaceDetector]    Package path: ${packagePath}`);
       debugLog(`[WorkspaceDetector]    Note: projectPath unknown — addToProject=true requires projectPath in .mcp.json`);
       // projectPath and solutionPath omitted — not derivable from this path form
-      return {
+      return won('the PackagesLocalDirectory path', {
         modelName,
         packagePath,
-      };
+      });
     }
   }
 
-  console.error('[WorkspaceDetector] ⚠️ Could not auto-detect D365FO project from any source');
+  // No warning here. This function is one of several routes to a project — the
+  // packagePath scan and the solutions-path scan run after it, and .mcp.json may
+  // settle it outright — so "from any source" was false at the moment it printed.
+  // reportUnresolvedDetection() warns later, if it is still true.
+  recordDetectionFailure(tried);
   return null;
 }
 
