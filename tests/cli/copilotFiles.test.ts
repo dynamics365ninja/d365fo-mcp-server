@@ -4,9 +4,10 @@
  * Both files (.mcp.json and .github\copilot-instructions.md) have to be placed
  * for Copilot to route through the MCP tools at all, so the wizard's copy step
  * is load-bearing rather than a convenience: when it silently does nothing the
- * user ends up with a server the agent never uses. The README is what tells
- * them where the files go, which makes "was a README written" part of the
- * contract, not decoration.
+ * user ends up with a server the agent never uses. The staging folder's README
+ * is what tells them where the files go, which makes "was a README written"
+ * part of the contract there — and "was one *not* written" part of it in the
+ * user's own solutions folder.
  */
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -48,7 +49,10 @@ afterEach(() => {
 describe('maybePrepareCopilotInstructions', () => {
   const stagingDir = () => resolve(installDir, 'copilot-setup');
 
-  it('copies the instructions and writes a README into the solutions folder', async () => {
+  it('copies only the instructions into the solutions folder', async () => {
+    // The solutions folder is the user's own projects directory: a README
+    // dropped next to their repos is litter, so the direct copy leaves the
+    // one file that has to be there and says the rest on the console.
     const solutions = resolve(tmpRoot, 'repos');
     fs.mkdirSync(solutions);
 
@@ -56,9 +60,8 @@ describe('maybePrepareCopilotInstructions', () => {
 
     expect(fs.existsSync(stagingDir())).toBe(false);
     expect(fs.readFileSync(resolve(solutions, '.github', 'copilot-instructions.md'), 'utf8')).toBe('# rules\n');
-    const readme = fs.readFileSync(resolve(solutions, 'README.md'), 'utf8');
-    expect(readme).toContain('Already placed here');
-    expect(readme).toContain(resolve(installDir, '.mcp.json'));
+    expect(fs.existsSync(resolve(solutions, 'README.md'))).toBe(false);
+    expect(fs.readdirSync(solutions)).toEqual(['.github']);
   });
 
   it('creates the solutions folder when it does not exist yet', async () => {
