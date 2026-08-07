@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import { promises as fsp } from 'fs';
 import { lookupSymbolNocase } from './symbolLookup.js';
 import { resolveDbPathLocally } from './metadataResolver.js';
+import { bridgeStartupState, type BridgeReadinessSource } from '../bridge/bridgeReadiness.js';
 
 export interface IndexedObjectRef {
   /** Canonical name as stored in the index (may differ in casing from the request). */
@@ -112,9 +113,19 @@ export function indexedSourceNote(source: string): string {
 /**
  * Explain why the bridge produced nothing, so "not found" is never mistaken for
  * "does not exist" when the bridge is simply unavailable.
+ *
+ * Takes the server context (not just `context.bridge`) so a bridge that is still
+ * starting is reported as a cold-start race rather than as a broken config — the
+ * conflation behind issue #826.
  */
-export function bridgeUnavailableNote(bridge: { isReady?: boolean; metadataAvailable?: boolean } | undefined): string {
+export function bridgeUnavailableNote(context: BridgeReadinessSource | undefined): string {
+  const bridge = context?.bridge;
   if (bridge?.isReady && bridge?.metadataAvailable) return '';
+  if (context && bridgeStartupState(context) === 'starting') {
+    return `\n⏳ The C# metadata bridge is still starting, so only the symbol index and disk were ` +
+      `checked. This is a cold-start race, not a configuration problem — retry in a few seconds ` +
+      `before concluding the object does not exist.\n`;
+  }
   return `\n⚠️ The C# metadata bridge is ${bridge?.isReady ? 'running without metadata access' : 'not connected'}, ` +
     `so only the symbol index and disk were checked.\n`;
 }
