@@ -43,6 +43,7 @@ import {
 } from '../workspace/contextSnapshot.js';
 import * as nodePath from 'path';
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
+import { createProgressReporter } from '../utils/progressReporter.js';
 
 /** Models named inline by the compact project list before it summarises the rest. */
 const PROJECT_NAMES_SHOWN = 12;
@@ -231,33 +232,11 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       const args = request.params.arguments as Record<string, any> | undefined;
       const progressMsg = buildProgressMessage(toolName, args);
 
-      // Channel 1: notifications/progress (MCP spec) — sent when the client provides a progressToken.
-      const progressToken = (extra._meta as any)?.progressToken;
-      if (progressToken !== undefined && progressToken !== null) {
-        try {
-          await extra.sendNotification({
-            method: 'notifications/progress',
-            params: {
-              progressToken,
-              progress: 0,
-              total: 1,
-              message: progressMsg,
-            } as any,
-          });
-        } catch {
-          // Non-fatal — client may not support progress notifications
-        }
-      }
-
-      // Channel 2: notifications/message (logging) — fallback for clients without progressToken support.
-      try {
-        await server.sendLoggingMessage({
-          level: 'info',
-          data: progressMsg,
-        });
-      } catch {
-        // Non-fatal — logging is best-effort, never block the tool
-      }
+      // Both notification channels (notifications/progress when the client
+      // supplied a progressToken, notifications/message otherwise) live in one
+      // reporter so long-running tools can keep using it after this first step.
+      const reportProgress = createProgressReporter(server, extra as any);
+      await reportProgress(progressMsg, 0);
 
       return (async () => { switch (toolName) {
       case 'search':
@@ -295,7 +274,9 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       case 'update_symbol_index':
         return await updateSymbolIndexTool(request.params.arguments as any, context);
       case 'build_d365fo_project':
-        return await buildProjectTool(request.params.arguments as any, context);
+        // Streams progress while xppc runs, so a build longer than any timeout
+        // still completes inside this one call instead of handing back a stub.
+        return await buildProjectTool(request.params.arguments as any, context, reportProgress);
       case 'trigger_db_sync':
         return await dbSyncTool(request.params.arguments as any, context);
       case 'run_bp_check':
