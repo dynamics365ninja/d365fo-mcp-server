@@ -8,7 +8,7 @@
  * through to the bridge, so `add-field` on a table extension wrote an unprefixed
  * field while `create` on the same model prefixed the object name.
  *
- * The shape to match, as real table extensions on disk write it — …\DemoFinance\
+ * The shape to match, as real table extensions on disk write it — …\Demo\
  * AxTableExtension\AssetBookTable.DEMOExtension.xml holding a field named
  * <Name>DEMO_MandatoryReasonCode</Name>: the member carries the REGULAR token
  * (DEMO_), not the extension infix (DEMO) the file name itself uses.
@@ -41,7 +41,7 @@ describe('applyExtensionMemberPrefix', () => {
   it('prefixes a field added to a table extension', () => {
     const args: Record<string, any> = { fieldName: 'MandatoryReasonCode' };
 
-    const note = applyExtensionMemberPrefix(args, 'table-extension', 'add-field', 'DemoFinance');
+    const note = applyExtensionMemberPrefix(args, 'table-extension', 'add-field', 'Demo');
 
     expect(args.fieldName).toBe('DEMO_MandatoryReasonCode');
     expect(note).toContain('DEMO_MandatoryReasonCode');
@@ -52,9 +52,9 @@ describe('applyExtensionMemberPrefix', () => {
     const group: Record<string, any> = { fieldGroupName: 'Approval' };
     const value: Record<string, any> = { enumValueName: 'PendingReview' };
 
-    applyExtensionMemberPrefix(index, 'table-extension', 'add-index', 'DemoFinance');
-    applyExtensionMemberPrefix(group, 'table-extension', 'add-field-group', 'DemoFinance');
-    applyExtensionMemberPrefix(value, 'enum-extension', 'add-enum-value', 'DemoFinance');
+    applyExtensionMemberPrefix(index, 'table-extension', 'add-index', 'Demo');
+    applyExtensionMemberPrefix(group, 'table-extension', 'add-field-group', 'Demo');
+    applyExtensionMemberPrefix(value, 'enum-extension', 'add-enum-value', 'Demo');
 
     expect(index.indexName).toBe('DEMO_ByReasonCode');
     expect(group.fieldGroupName).toBe('DEMO_Approval');
@@ -64,7 +64,7 @@ describe('applyExtensionMemberPrefix', () => {
   it('leaves a name that already carries the prefix untouched', () => {
     const args: Record<string, any> = { fieldName: 'DEMO_MandatoryReasonCode' };
 
-    expect(applyExtensionMemberPrefix(args, 'table-extension', 'add-field', 'DemoFinance')).toBe('');
+    expect(applyExtensionMemberPrefix(args, 'table-extension', 'add-field', 'Demo')).toBe('');
     expect(args.fieldName).toBe('DEMO_MandatoryReasonCode');
   });
 
@@ -72,7 +72,7 @@ describe('applyExtensionMemberPrefix', () => {
     // An agent that hand-builds "DEMOSomething" must not end up with DEMO_DEMOSomething.
     const args: Record<string, any> = { fieldName: 'DEMOMandatoryReasonCode' };
 
-    applyExtensionMemberPrefix(args, 'table-extension', 'add-field', 'DemoFinance');
+    applyExtensionMemberPrefix(args, 'table-extension', 'add-field', 'Demo');
 
     expect(args.fieldName).toBe('DEMOMandatoryReasonCode');
   });
@@ -82,7 +82,7 @@ describe('applyExtensionMemberPrefix', () => {
     // one would contradict every field the create path already wrote.
     const args: Record<string, any> = { fieldName: 'ApprovingWorker' };
 
-    applyExtensionMemberPrefix(args, 'table', 'add-field', 'DemoFinance');
+    applyExtensionMemberPrefix(args, 'table', 'add-field', 'Demo');
 
     expect(args.fieldName).toBe('ApprovingWorker');
   });
@@ -92,7 +92,7 @@ describe('applyExtensionMemberPrefix', () => {
     // an override into dead code that never runs.
     const args: Record<string, any> = { methodName: 'insert' };
 
-    applyExtensionMemberPrefix(args, 'class-extension', 'add-method', 'DemoFinance');
+    applyExtensionMemberPrefix(args, 'class-extension', 'add-method', 'Demo');
 
     expect(args.methodName).toBe('insert');
   });
@@ -101,7 +101,7 @@ describe('applyExtensionMemberPrefix', () => {
     // That group already exists and is usually Microsoft's (e.g. "Setup").
     const args: Record<string, any> = { fieldGroupName: 'Setup', fieldName: 'DEMO_MandatoryReasonCode' };
 
-    applyExtensionMemberPrefix(args, 'table-extension', 'add-field-to-field-group', 'DemoFinance');
+    applyExtensionMemberPrefix(args, 'table-extension', 'add-field-to-field-group', 'Demo');
 
     expect(args.fieldGroupName).toBe('Setup');
   });
@@ -110,8 +110,8 @@ describe('applyExtensionMemberPrefix', () => {
     const removed: Record<string, any> = { fieldName: 'DEMO_Legacy' };
     const modified: Record<string, any> = { fieldName: 'SomeExistingField' };
 
-    applyExtensionMemberPrefix(removed, 'table-extension', 'remove-field', 'DemoFinance');
-    applyExtensionMemberPrefix(modified, 'table-extension', 'modify-field', 'DemoFinance');
+    applyExtensionMemberPrefix(removed, 'table-extension', 'remove-field', 'Demo');
+    applyExtensionMemberPrefix(modified, 'table-extension', 'modify-field', 'Demo');
 
     expect(removed.fieldName).toBe('DEMO_Legacy');
     expect(modified.fieldName).toBe('SomeExistingField');
@@ -125,7 +125,7 @@ describe('applyExtensionMemberPrefix', () => {
     ]);
     const args: Record<string, any> = { fieldName: 'BankAccountVerified' };
 
-    applyExtensionMemberPrefix(args, 'table-extension', 'add-field', 'DemoFinanceCus');
+    applyExtensionMemberPrefix(args, 'table-extension', 'add-field', 'DemoCus');
 
     expect(args.fieldName).toBe('DMC_BankAccountVerified');
   });

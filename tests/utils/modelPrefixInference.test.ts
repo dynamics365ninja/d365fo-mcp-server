@@ -2,8 +2,8 @@
  * Prefix inference from a model's own objects.
  *
  * A single configured EXTENSION_PREFIX cannot be right for a developer who works
- * across several models — DemoFinance names its objects DEMO_* and its sibling
- * DemoFinanceCus names them DMC_*, while EXTENSION_PREFIX says "Con". The name
+ * across several models — Demo names its objects DEMO_* and its sibling
+ * DemoCus names them DMC_*, while EXTENSION_PREFIX says "Con". The name
  * samples below reproduce the shapes real solutions use (underscore prefixes,
  * dot-notation extensions, _Extension classes, compound prefixes); only the
  * prefixes and model names are fictional.
@@ -23,9 +23,9 @@ import {
   applyObjectPrefix,
 } from '../../src/utils/modelClassifier.js';
 
-// …\PackagesLocalDirectory\DemoFinance\DemoFinance — underscore-style prefix,
-// with the extension infix spelled differently from it (DEMO_ vs DEMO).
-const DEMO_FINANCE = [
+// …\PackagesLocalDirectory\Demo\Demo — underscore-style prefix, with the
+// extension infix spelled differently from it (DEMO_ vs DEMO).
+const DEMO_MODEL = [
   'DEMO_ArchiveAccDocErrorLog',
   'DEMO_AssetIPFairValue',
   'DEMO_AssetIPFairValueStaging',
@@ -41,8 +41,10 @@ const DEMO_FINANCE = [
   'AgreementGenerationPurchToSalesStrategyDEMO_Extension',
 ];
 
-// …\DemoFinanceCus\DemoFinanceCus — same solution, different model, different prefix.
-const DEMO_FINANCE_CUS = [
+// …\DemoCus\DemoCus — same solution, different model, different prefix (DMC_,
+// for Demo Cus). Nothing ties the prefix to the model name it belongs to, which
+// is the whole reason it has to be read off the objects.
+const DEMO_CUS_MODEL = [
   'DMC_REMLeaseContractLineUGs',
   'DMC_REMLeaseContractLineUGsStaging',
   'DMC_OldDebtsReportController',
@@ -83,7 +85,7 @@ afterEach(() => {
 
 describe('inferPrefixFromObjectNames', () => {
   it('reads the underscore prefix and the extension infix as separate tokens', () => {
-    const result = inferPrefixFromObjectNames(DEMO_FINANCE);
+    const result = inferPrefixFromObjectNames(DEMO_MODEL);
 
     // The two are NOT derivable from one another: deriving "DEMO_" per the
     // documented rule yields the infix "Demo", but the model's own extensions
@@ -93,8 +95,8 @@ describe('inferPrefixFromObjectNames', () => {
   });
 
   it('distinguishes two models that share a solution', () => {
-    expect(inferPrefixFromObjectNames(DEMO_FINANCE_CUS)?.regular).toBe('DMC_');
-    expect(inferPrefixFromObjectNames(DEMO_FINANCE_CUS)?.infix).toBe('DMC');
+    expect(inferPrefixFromObjectNames(DEMO_CUS_MODEL)?.regular).toBe('DMC_');
+    expect(inferPrefixFromObjectNames(DEMO_CUS_MODEL)?.infix).toBe('DMC');
   });
 
   it('reads a PascalCase prefix with no underscore', () => {
@@ -209,19 +211,19 @@ describe('inferPrefixFromObjectNames', () => {
 describe('prefix resolution order', () => {
   it('lets the active model outrank the configured prefix', () => {
     process.env.EXTENSION_PREFIX = 'Con';
-    setModelObjectNameSource(model => (model === 'DemoFinance' ? DEMO_FINANCE : []));
+    setModelObjectNameSource(model => (model === 'Demo' ? DEMO_MODEL : []));
 
-    expect(resolveObjectPrefix('DemoFinance')).toBe('DEMO');
-    expect(resolveRegularObjectPrefixToken('DemoFinance')).toBe('DEMO_');
+    expect(resolveObjectPrefix('Demo')).toBe('DEMO');
+    expect(resolveRegularObjectPrefixToken('Demo')).toBe('DEMO_');
   });
 
   it('gives each model its own prefix within one session', () => {
     process.env.EXTENSION_PREFIX = 'Con';
     setModelObjectNameSource(model =>
-      model === 'DemoFinance' ? DEMO_FINANCE : model === 'DemoFinanceCus' ? DEMO_FINANCE_CUS : []);
+      model === 'Demo' ? DEMO_MODEL : model === 'DemoCus' ? DEMO_CUS_MODEL : []);
 
-    expect(resolveRegularObjectPrefixToken('DemoFinance')).toBe('DEMO_');
-    expect(resolveRegularObjectPrefixToken('DemoFinanceCus')).toBe('DMC_');
+    expect(resolveRegularObjectPrefixToken('Demo')).toBe('DEMO_');
+    expect(resolveRegularObjectPrefixToken('DemoCus')).toBe('DMC_');
   });
 
   it('falls back to the configured prefix for a model with nothing to teach', () => {
@@ -240,27 +242,27 @@ describe('prefix resolution order', () => {
   it('honours EXTENSION_PREFIX_SOURCE=config as an opt-out', () => {
     process.env.EXTENSION_PREFIX = 'Con';
     process.env.EXTENSION_PREFIX_SOURCE = 'config';
-    setModelObjectNameSource(() => DEMO_FINANCE);
+    setModelObjectNameSource(() => DEMO_MODEL);
 
-    expect(resolveObjectPrefix('DemoFinance')).toBe('Con');
+    expect(resolveObjectPrefix('Demo')).toBe('Con');
   });
 
   it('applies the model prefix to a new object name', () => {
     process.env.EXTENSION_PREFIX = 'Con';
-    setModelObjectNameSource(() => DEMO_FINANCE);
+    setModelObjectNameSource(() => DEMO_MODEL);
 
-    expect(applyObjectPrefix('AssetRegister', resolveObjectPrefix('DemoFinance'), 'DemoFinance'))
+    expect(applyObjectPrefix('AssetRegister', resolveObjectPrefix('Demo'), 'Demo'))
       .toBe('DEMO_AssetRegister');
   });
 
   it('uses the model\'s own infix for extension element names', () => {
     process.env.EXTENSION_PREFIX = 'Con';
-    setModelObjectNameSource(() => DEMO_FINANCE);
+    setModelObjectNameSource(() => DEMO_MODEL);
 
     // Deriving from "DEMO_" would give "CustTable.DemoExtension", which does not
     // match the model's dozens of existing …DEMOExtension elements.
-    expect(deriveExtensionInfix(resolveObjectPrefix('DemoFinance'), 'DemoFinance')).toBe('DEMO');
-    expect(applyObjectPrefix('CustTable.Extension', resolveObjectPrefix('DemoFinance'), 'DemoFinance'))
+    expect(deriveExtensionInfix(resolveObjectPrefix('Demo'), 'Demo')).toBe('DEMO');
+    expect(applyObjectPrefix('CustTable.Extension', resolveObjectPrefix('Demo'), 'Demo'))
       .toBe('CustTable.DEMOExtension');
   });
 
@@ -305,11 +307,11 @@ describe('prefix resolution order', () => {
 describe('inference caching', () => {
   it('queries the source once per model', () => {
     let calls = 0;
-    setModelObjectNameSource(model => { calls++; return model === 'DemoFinance' ? DEMO_FINANCE : []; });
+    setModelObjectNameSource(model => { calls++; return model === 'Demo' ? DEMO_MODEL : []; });
 
-    getInferredModelPrefix('DemoFinance');
-    getInferredModelPrefix('DemoFinance');
-    resolveObjectPrefix('DemoFinance');
+    getInferredModelPrefix('Demo');
+    getInferredModelPrefix('Demo');
+    resolveObjectPrefix('Demo');
 
     expect(calls).toBe(1);
   });

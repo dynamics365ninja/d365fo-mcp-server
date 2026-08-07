@@ -86,13 +86,13 @@ Timing depends heavily on the environment. On a single-label-language instance (
 
 Development normally spans several models, each with its own prefix, and `EXTENSION_PREFIX` is a single value chosen once during setup. So the **active model's own objects decide the prefix**, and the configured value is the fallback:
 
-1. **The prefix the model's existing objects already use.** A model whose tables are `HBR_ArchiveAccDocErrorLog`, `HBR_AssetIPFairValue`… and whose extensions are `AssetBookTable.HBRExtension` teaches the tools both tokens — `HBR_` for new objects and members, `HBR` as the extension infix. Switching to a sibling model whose objects say `HBC_` switches the prefix with it, with no reconfiguration.
+1. **The prefix the model's existing objects already use.** A model whose tables are `DEMO_ArchiveAccDocErrorLog`, `DEMO_AssetIPFairValue`… and whose extensions are `AssetBookTable.DEMOExtension` teaches the tools both tokens — `DEMO_` for new objects and members, `DEMO` as the extension infix. Switching to a sibling model whose objects say `DMC_` switches the prefix with it, with no reconfiguration.
 2. **`EXTENSION_PREFIX`** — used for a model with nothing to learn from, e.g. one that is still empty.
 3. **The model name**, when neither of the above applies.
 
 Inference is conservative: a model whose objects show no consistent prefix (fewer than four of them, or under 60 % agreement) falls through to step 2 rather than guessing. `get_workspace_info` reports the effective prefix and where it came from, and warns when the model's own naming overrides `EXTENSION_PREFIX`.
 
-Compound prefixes are read in full, up to three PascalCase segments: a model whose objects are `AslFinSKVendPaymentTable`, `AslFinSKCustInvoiceJour`… yields `AslFinSK`, not `AslFin`. Where the model's extensions state the infix outright (`VendTable.AslFinSKExtension`), that spelling wins over anything derived.
+Compound prefixes are read in full, up to three PascalCase segments: a model whose objects are `ContosoFinSKVendPaymentTable`, `ContosoFinSKCustInvoiceJour`… yields `ContosoFinSK`, not `ContosoFin`. Where the model's extensions state the infix outright (`VendTable.ContosoFinSKExtension`), that spelling wins over anything derived.
 
 ```env
 EXTENSION_PREFIX_SOURCE=config   # pin step 2 above step 1 (pre-1.8.2 behaviour)

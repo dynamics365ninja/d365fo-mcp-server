@@ -2,10 +2,10 @@
  * Infer a model's object prefix from the objects that model already contains.
  *
  * Why this exists: `EXTENSION_PREFIX` is a single value chosen once, during
- * `setup`. Real development spans several models — a developer works in
- * HBReavis today and HBReavisCus tomorrow — and each of those carries its own
- * prefix (HBR_ and HBC_ respectively). A single configured value cannot be right
- * for all of them, and nobody is going to re-run setup on every context switch.
+ * `setup`. Real development spans several models — a developer works in Demo
+ * today and DemoCus tomorrow — and each of those carries its own prefix (DEMO_
+ * and DMC_ respectively). A single configured value cannot be right for all of
+ * them, and nobody is going to re-run setup on every context switch.
  * The information is already on disk: the model's existing objects state its
  * prefix far more reliably than any configuration does.
  *
@@ -14,11 +14,11 @@
  * empty model) — see resolveObjectPrefix() in modelClassifier.ts for the order.
  *
  * Two tokens are inferred, because D365FO uses two different forms and they are
- * NOT derivable from one another (HBR_ / HBR, but Con / Con):
+ * NOT derivable from one another (DEMO_ / DEMO, but Con / Con):
  *   - `regular` — prepended to new objects and to members added inside an
- *     extension:  HBR_MandatoryReasonCode, HBR_ArchiveAccDocErrorLog
+ *     extension:  DEMO_MandatoryReasonCode, DEMO_ArchiveAccDocErrorLog
  *   - `infix`   — embedded in extension element/class names:
- *     AssetBookTable.HBRExtension, AccountingSourceExplorerHBR_Extension
+ *     AssetBookTable.DEMOExtension, AccountingSourceExplorerDEMO_Extension
  *
  * Inference is deliberately conservative: a model whose objects show no
  * consistent prefix yields null, and the configured value is used unchanged.
@@ -44,9 +44,9 @@ const MIN_COVERAGE = 0.6;
 const MAX_TOKEN_LEN = 12;
 /**
  * Most PascalCase segments a prefix may span. Real prefixes are compound but
- * short — "Isv" / "IsvFin" / "AslFinSK" (Asl|Fin|SK) / "ACStdSK" (AC|Std|SK).
+ * short — "Isv" / "IsvFin" / "ConFinSK" (Con|Fin|SK) / "ACStdSK" (AC|Std|SK).
  * The cap is what keeps a domain word out: with four segments allowed, a model
- * whose objects all happen to start "AslFinSKVend…" would offer "AslFinSKVend"
+ * whose objects all happen to start "ConFinSKVend…" would offer "ConFinSKVend"
  * as a fully-covering candidate and it would win on length.
  */
 const MAX_TOKEN_SEGMENTS = 3;
@@ -54,7 +54,7 @@ const MAX_TOKEN_SEGMENTS = 3;
 /**
  * Split a PascalCase / SCREAMING_CASE name into its leading segments.
  * "ConDemoNoteHeader" → [Con, Demo, Note, Header]
- * "HBRArchiveAccDoc"  → [HBR, Archive, Acc, Doc]   (a run of capitals is one segment)
+ * "DEMOArchiveAccDoc"  → [DEMO, Archive, Acc, Doc]   (a run of capitals is one segment)
  */
 function segments(name: string): string[] {
   return name.match(/[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+/g) ?? [];
@@ -67,16 +67,16 @@ function segments(name: string): string[] {
 function leadingTokenCandidates(name: string): string[] {
   const out: string[] = [];
 
-  // Underscore style (HBR_Foo, ISV_Bar): everything up to and including the
+  // Underscore style (DEMO_Foo, ISV_Bar): everything up to and including the
   // first underscore, which is the whole token — the underscore is part of it.
   const us = name.indexOf('_');
   if (us >= 1 && us <= MAX_TOKEN_LEN) out.push(name.slice(0, us + 1));
 
   // PascalCase style (ConDemoNoteHeader): every leading run of segments up to
   // MAX_TOKEN_SEGMENTS, because a prefix is often compound — "IsvFin" over
-  // "Isv", "AslFinSK" over "AslFin". Offering only the first two segments does
-  // not merely make the third unlikely, it makes it unreachable: "AslFinSK"
-  // never enters the contest and the longest candidate present, "AslFin", wins
+  // "Isv", "ConFinSK" over "ConFin". Offering only the first two segments does
+  // not merely make the third unlikely, it makes it unreachable: "ConFinSK"
+  // never enters the contest and the longest candidate present, "ConFin", wins
   // by default and reads like a considered choice.
   const segs = segments(name);
   let acc = '';
@@ -106,7 +106,7 @@ function bestCovering(names: string[], candidates: Iterable<string>): { token: s
 
 /**
  * The infix carried by dot-notation extension elements, which state it outright:
- * "AssetBookTable.HBRExtension" → "HBR". The most frequent one wins; a single
+ * "AssetBookTable.DEMOExtension" → "DEMO". The most frequent one wins; a single
  * stray element is not enough to overrule the rest.
  */
 function inferInfixFromDotExtensions(dotNames: string[]): string | null {
@@ -130,12 +130,12 @@ function inferInfixFromDotExtensions(dotNames: string[]): string | null {
 
 /**
  * The PascalCase form of an underscore-style prefix, applied PER SEGMENT:
- * "HBR" → "Hbr", "WHS" → "Whs", "AslFinSK" → "AslFinSk".
+ * "DEMO" → "Demo", "WHS" → "Whs", "ConFinSK" → "ConFinSk".
  *
  * The documented EXTENSION_PREFIX rule is "XY_" → "Xy" — first upper, rest
  * lower — which is right for the single all-caps acronym it was written for and
- * destroys every later boundary in a compound token: "AslFinSK" flattens to
- * "Aslfinsk". Lowering each segment on its own keeps the rule for acronyms and
+ * destroys every later boundary in a compound token: "ConFinSK" flattens to
+ * "Confinsk". Lowering each segment on its own keeps the rule for acronyms and
  * keeps the boundaries for the rest.
  */
 export function toExtensionInfixCase(bare: string): string {
@@ -163,8 +163,8 @@ function deriveInfixFrom(regular: string): string {
  * Returns null when the names show no consistent prefix.
  *
  * `names` are object names as stored in the AOT — regular objects
- * ("HBR_AssetIPFairValue"), dot-notation extensions ("AssetBookTable.HBRExtension")
- * and extension classes ("AccountingSourceExplorerHBR_Extension") mixed together.
+ * ("DEMO_AssetIPFairValue"), dot-notation extensions ("AssetBookTable.DEMOExtension")
+ * and extension classes ("AccountingSourceExplorerDEMO_Extension") mixed together.
  */
 export function inferPrefixFromObjectNames(names: string[]): InferredModelPrefix | null {
   const clean = names.map(n => n.trim()).filter(Boolean);
@@ -188,11 +188,11 @@ export function inferPrefixFromObjectNames(names: string[]): InferredModelPrefix
   const infix = infixFromElements ?? deriveInfixFrom(regular);
 
   // Cross-check the two, because a truncated leading token is invisible on its
-  // own: "AslFin" looks like a perfectly good prefix until the model's own
-  // extensions spell "…AslFinSKExtension". When the learned regular token is a
+  // own: "ConFin" looks like a perfectly good prefix until the model's own
+  // extensions spell "…ConFinSKExtension". When the learned regular token is a
   // strict prefix of the stated infix AND the regular objects carry the longer
   // form too, the short one is a truncation rather than a second convention.
-  // Without this, new members land as AslFinFoo inside AslFinSKExtension.
+  // Without this, new members land as ConFinFoo inside ConFinSKExtension.
   if (regularOk && infixFromElements) {
     const bare = regular.replace(/_+$/, '');
     const underscore = regular.slice(bare.length);

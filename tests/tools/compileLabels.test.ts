@@ -117,14 +117,14 @@ describe('labelAssembliesAreStale', () => {
 describe('labelcArgs', () => {
   it('matches the invocation Visual Studio records in CompileLabels.xml', () => {
     // K:\...\bin\labelc.exe -metadata="K:\AosService\PackagesLocalDirectory"
-    //   -output="K:\AosService\PackagesLocalDirectory\DemoFinance\Resources"
-    //   -modelmodule="DemoFinance"
-    const args = labelcArgs('K:\\AosService\\PackagesLocalDirectory', 'DemoFinance',
-      'K:\\AosService\\PackagesLocalDirectory\\DemoFinance\\Resources', null, null);
+    //   -output="K:\AosService\PackagesLocalDirectory\Demo\Resources"
+    //   -modelmodule="Demo"
+    const args = labelcArgs('K:\\AosService\\PackagesLocalDirectory', 'Demo',
+      'K:\\AosService\\PackagesLocalDirectory\\Demo\\Resources', null, null);
     expect(args).toEqual([
       '-Metadata=K:\\AosService\\PackagesLocalDirectory',
-      '-Output=K:\\AosService\\PackagesLocalDirectory\\DemoFinance\\Resources',
-      '-ModelModule=DemoFinance',
+      '-Output=K:\\AosService\\PackagesLocalDirectory\\Demo\\Resources',
+      '-ModelModule=Demo',
     ]);
   });
 

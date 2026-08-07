@@ -343,7 +343,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
         // Prefix diagnostics. The effective prefix has THREE possible origins and
         // reporting only the configured one is how a silently different value
-        // ("EXTENSION_PREFIX: Asl" next to "Effective prefix: AslFin") reads as
+        // ("EXTENSION_PREFIX: Con" next to "Effective prefix: ConFin") reads as
         // approved rather than as the disagreement it is — so state the origin.
         const extensionPrefixEnv = process.env.EXTENSION_PREFIX?.trim() || null;
         const learnedPrefix = modelName ? getInferredModelPrefix(modelName) : null;
@@ -353,7 +353,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           : extensionPrefixEnv
             ? 'EXTENSION_PREFIX'
             : 'model name (nothing configured)';
-        // Compared bare, because "HBR_" in the model and "HBR" in the env agree.
+        // Compared bare, because "DEMO_" in the model and "DEMO" in the env agree.
         const bare = (s: string) => s.replace(/_+$/, '').toLowerCase();
         const prefixDisagrees =
           !!learnedPrefix?.regular && !!extensionPrefixEnv &&
@@ -448,8 +448,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         // pass the BASE object name and let the tool name it.
         const extNamingStyle = getExtensionNamingStyle();
         // With the model name, so the samples show the infix the model's own
-        // extensions state ("…HBRExtension"), not the one derived from the
-        // prefix ("…HbrExtension") — which is not what a write would produce.
+        // extensions state ("…DEMOExtension"), not the one derived from the
+        // prefix ("…DemoExtension") — which is not what a write would produce.
         const extInfix = deriveExtensionInfix(effectivePrefix, modelName ?? undefined);
         const sampleClassExt = extNamingStyle === 'model-name' && modelName
           ? `CustTable_${modelName}_Extension`

@@ -2928,7 +2928,7 @@ function findExtensionsInModel(
  *
  * Idempotent: a name that already carries the prefix — in either the underscore
  * or the bare form, case-insensitively — is left untouched, so an agent that
- * prefixes by hand does not end up with HBR_HBR_Foo.
+ * prefixes by hand does not end up with DEMO_DEMO_Foo.
  */
 export function applyExtensionMemberPrefix(
   args: Record<string, any>,
