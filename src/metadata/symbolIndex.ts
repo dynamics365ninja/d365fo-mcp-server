@@ -50,6 +50,9 @@ export class XppSymbolIndex {
   // Symbol-count scans are expensive (full index scan of 1M+ rows, 30-60 s
   // cold) — memoize the result and compute it off-thread (see getSymbolCounts).
   private dbPath: string;
+  // Needed alongside dbPath so ensureFilePathIndexes() can size the labels DB
+  // and hand its path to the background index builder.
+  private labelsDbPath: string = ':memory:';
   private symbolCountsCache: SymbolCounts | null = null;
   private symbolCountsPromise: Promise<SymbolCounts> | null = null;
   // Per-connection prepared-statement cache.  Prepared statements are bound to
@@ -69,6 +72,7 @@ export class XppSymbolIndex {
     // Labels live in a separate DB so the main symbol DB stays small and fast;
     // labels can be huge (20M+ rows) without affecting search performance.
     const labelPath = labelsDbPath || dbPath.replace('.db', '-labels.db');
+    this.labelsDbPath = labelPath;
     this.labelsDb = new Database(labelPath);
 
     // journal_mode should be set by caller (MEMORY for build, WAL for production).
@@ -715,6 +719,97 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_md_define ON macro_defines(define_name);
       CREATE INDEX IF NOT EXISTS idx_md_model ON macro_defines(model);
     `);
+
+    this.ensureFilePathIndexes();
+  }
+
+  /**
+   * Index `symbols.file_path` and `labels.file_path`.
+   *
+   * Both are the lookup key of removeSymbolsByFile()/removeLabelsByFile(), which
+   * every update_symbol_index, undo_last_modification and resync runs first.
+   * Unindexed, each of those calls scans the entire table — measured on the 2 GB
+   * production DB at 319 s (the SELECT of object names) + 173 s (the DELETE) for
+   * indexing a SINGLE new object, versus 0 ms once the index exists. That is why
+   * indexing one freshly created object cost as much as a rebuild.
+   *
+   * Deliberately not part of the CREATE INDEX block above. node:sqlite is
+   * synchronous, and building this index over an already-populated production
+   * table takes ~8 s, so doing it inline would block the event loop for the whole
+   * of startup — the failure mode that makes MCP clients time out and kill the
+   * server. On an empty or small DB (a fresh build, the test suite, :memory:) the
+   * build is instant and runs here; on a large existing DB it is handed to a
+   * worker thread, and until it finishes those deletes simply stay as slow as
+   * they are today.
+   */
+  private ensureFilePathIndexes(): void {
+    const missing = (db: Database, indexName: string): boolean =>
+      !db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?`).get(indexName);
+
+    // Size is read off the file rather than counted, because COUNT(*) on the
+    // table we are trying to speed up is itself one of the slow scans.
+    const isLarge = (dbFile: string): boolean => {
+      if (dbFile === ':memory:') return false;
+      try {
+        return fs.statSync(dbFile).size > 200 * 1024 * 1024;
+      } catch {
+        return false;
+      }
+    };
+
+    const labelsPath = this.labelsDbPath;
+    const work: Array<{ db: Database; dbFile: string; sql: string; name: string }> = [];
+    if (missing(this.db, 'idx_symbols_file_path')) {
+      work.push({
+        db: this.db,
+        dbFile: this.dbPath,
+        name: 'idx_symbols_file_path',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_symbols_file_path ON symbols(file_path);',
+      });
+    }
+    if (missing(this.labelsDb, 'idx_labels_file_path')) {
+      work.push({
+        db: this.labelsDb,
+        dbFile: labelsPath,
+        name: 'idx_labels_file_path',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path ON labels(file_path);',
+      });
+    }
+
+    for (const item of work) {
+      if (isLarge(item.dbFile)) {
+        this.buildIndexInWorker(item.dbFile, item.sql, item.name);
+      } else {
+        item.db.exec(item.sql);
+      }
+    }
+  }
+
+  /**
+   * Build one index on a separate thread so the main event loop keeps serving.
+   * WAL mode allows the worker's write to proceed alongside main-thread readers.
+   * Best-effort: a failure leaves the index absent, which is exactly the state
+   * the server ran in before, so it is logged and never thrown.
+   */
+  private buildIndexInWorker(dbPath: string, sql: string, indexName: string): void {
+    try {
+      const worker = new Worker(new URL('./buildIndexWorker.js', import.meta.url), {
+        workerData: { dbPath, sql, indexName },
+      });
+      // unref() so a pending index build never keeps the process alive on exit.
+      worker.unref();
+      worker.once('message', (msg: { ok: boolean; elapsedMs?: number; error?: string }) => {
+        if (msg.ok) {
+          console.error(`[SymbolIndex] Built ${indexName} in background (${msg.elapsedMs}ms)`);
+        } else {
+          console.error(`[SymbolIndex] Background build of ${indexName} failed: ${msg.error}`);
+        }
+        void worker.terminate();
+      });
+      worker.once('error', e => console.error(`[SymbolIndex] ${indexName} worker error: ${e}`));
+    } catch (e) {
+      console.error(`[SymbolIndex] Could not start ${indexName} worker: ${e}`);
+    }
   }
 
   /**
@@ -835,6 +930,29 @@ export class XppSymbolIndex {
    * even when the DB stores a different path form than the caller passed.
    * Returns the names of top-level objects that were removed (for cache invalidation).
    */
+  /**
+   * Top-level object names belonging to one model — the evidence from which a
+   * model's naming prefix is inferred (see utils/modelPrefixInference.ts).
+   *
+   * Deliberately narrow and bounded: only `name`, only root objects, capped at
+   * `limit`. Reading whole rows here would pull source snippets across the wire
+   * and turn a 450 ms lookup into a slow one. Extension objects are included on
+   * purpose — a dot-notation extension states the model's infix outright.
+   */
+  getModelObjectNames(model: string, limit = 400): string[] {
+    if (!model) return [];
+    const rows = this.getReadDb()
+      .prepare(
+        `SELECT name FROM symbols
+         WHERE model = ?
+           AND parent_name IS NULL
+           AND type NOT IN ('method', 'field')
+         LIMIT ?`
+      )
+      .all(model, limit) as Array<{ name: string }>;
+    return rows.map(r => r.name);
+  }
+
   removeSymbolsByFile(filePath: string): { deletedCount: number; objectNames: string[] } {
     const forms = this.filePathForms(filePath);
     const placeholders = forms.map(() => '?').join(', ');

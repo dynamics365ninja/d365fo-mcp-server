@@ -162,6 +162,10 @@ vi.mock('../../src/utils/modelClassifier', () => ({
   registerCustomModel: vi.fn(),
   resolveObjectPrefix: vi.fn(() => ''),
   applyObjectPrefix: vi.fn((name: string) => name),
+  // Empty, like resolveObjectPrefix above: these cases are about index XML
+  // shape, so leaving names unprefixed keeps the fixtures readable. Extension
+  // member prefixing has its own tests (tests/tools/extensionMemberPrefix).
+  resolveRegularObjectPrefixToken: vi.fn(() => ''),
   getObjectSuffix: vi.fn(() => ''),
   applyObjectSuffix: vi.fn((name: string) => name),
   isCustomModel: vi.fn(() => true),

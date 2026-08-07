@@ -13,7 +13,7 @@ export const updateSymbolIndexTool = {
     inputSchema: {
       type: 'object',
       properties: {
-        filePath: { type: 'string', description: 'Absolute path to the modified or created XML file (e.g. K:\\\\AosService\\\\PackagesLocalDirectory\\\\MyModel\\\\MyModel\\\\AxClass\\\\MyClass.xml). Omit to run a lightweight bridge/workspace refresh instead of indexing a specific file.' },
+        filePath: { type: ['string', 'array'], items: { type: 'string' }, description: 'Absolute path to the modified or created XML file (e.g. K:\\\\AosService\\\\PackagesLocalDirectory\\\\MyModel\\\\MyModel\\\\AxClass\\\\MyClass.xml), or an ARRAY — batch them, each call costs a bridge refresh.' },
       },
     },
   };

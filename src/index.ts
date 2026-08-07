@@ -25,6 +25,7 @@ import { TOOL_ANNOTATIONS } from './server/toolAnnotations.js';
 import { apiKeyAuth } from './middleware/apiKeyAuth.js';
 import { VERSION } from './version.js';
 import { setInitializeParams } from './utils/stdioSessionInfo.js';
+import { setModelObjectNameSource } from './utils/modelPrefixInference.js';
 import { createShutdownCoordinator } from './utils/gracefulShutdown.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, sanitize, supportsUnicode, log, shortPath, startupWarnings } from './utils/terminalUi.js';
 import * as fs from 'fs/promises';
@@ -270,6 +271,11 @@ async function initializeServices() {
         throw error;
       }
     }
+
+    // Let object naming learn each model's prefix from the objects that model
+    // already contains, instead of applying one configured EXTENSION_PREFIX to
+    // every model a developer works in (see utils/modelPrefixInference.ts).
+    setModelObjectNameSource(model => symbolIndex.getModelObjectNames(model));
 
     const parser = new XppMetadataParser();
 

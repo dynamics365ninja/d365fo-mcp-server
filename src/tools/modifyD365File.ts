@@ -14,7 +14,7 @@ import util from 'util';
 import path from 'path';
 import { parseStringPromise } from 'xml2js';
 import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../utils/configManager.js';
-import { isStandardModel, resolveObjectPrefix, applyObjectPrefix } from '../utils/modelClassifier.js';
+import { isStandardModel, resolveObjectPrefix, applyObjectPrefix, resolveRegularObjectPrefixToken } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { resolveDbPathLocally } from '../utils/metadataResolver.js';
 import { assertWritePathAllowed } from '../utils/pathContainment.js';
@@ -1794,6 +1794,21 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       throw new Error(`Operation '${operation}' on object type '${objectType}' is not supported by the bridge.`);
     }
 
+    // Members added INSIDE an extension must carry the model's prefix — an
+    // extension lives in your model but its host object is Microsoft's, so an
+    // unprefixed field/index/enum value collides with anything Microsoft or
+    // another ISV adds to the same host later. Microsoft's naming guideline
+    // spells this out ("Fields in extensions → {Prefix}{FieldName}") and BP
+    // rejects the unprefixed form. This is applied once, here, so every writer
+    // below (bridge op and direct-XML fallback alike) sees the final name.
+    const memberPrefixNote = applyExtensionMemberPrefix(
+      args,
+      objectType,
+      operation,
+      resolvedModelFromPath || modelName || getConfigManager().getModelName() || '',
+    );
+    if (memberPrefixNote) generationNote += memberPrefixNote;
+
     let bridgeResult: { success: boolean; message: string } | null = null;
     let _bridgeRetried = false;
     // Retry loop: on the first null result with all required params present,
@@ -2724,6 +2739,77 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       isError: true,
     };
   }
+}
+
+/** Object types whose members belong to a Microsoft-owned host object. */
+const EXTENSION_OBJECT_TYPES = new Set([
+  'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
+  'view-extension', 'query-extension', 'map-extension', 'data-entity-extension',
+  'class-extension', 'menu-extension',
+  'menu-item-display-extension', 'menu-item-action-extension', 'menu-item-output-extension',
+  'security-duty-extension', 'security-role-extension',
+]);
+
+/**
+ * Which `args` key each operation mints a NEW member name in, for extensions.
+ *
+ * Deliberately absent:
+ *  - every method operation. A CoC/extension-class method name must MATCH the
+ *    base method it wraps (`public void insert() { next insert(); }`) — renaming
+ *    it turns an override into a dead method that never runs.
+ *  - add-field-to-field-group's fieldGroupName. That names an EXISTING, usually
+ *    Microsoft-owned group being extended; prefixing it would point the write at
+ *    a group that does not exist.
+ *  - every remove-/modify- operation, which addresses members that already exist
+ *    under whatever name they were created with.
+ */
+const EXTENSION_MEMBER_NAME_ARG: Record<string, string> = {
+  'add-field': 'fieldName',
+  'add-index': 'indexName',
+  'add-full-text-index': 'indexName',
+  'add-field-group': 'fieldGroupName',
+  'add-enum-value': 'enumValueName',
+};
+
+/**
+ * Prefix the new member name this operation carries, when writing into an
+ * extension. Mutates `args` in place and returns a note for the response (empty
+ * when nothing changed), so the agent learns the real name and addresses the
+ * member correctly in its next call.
+ *
+ * Idempotent: a name that already carries the prefix — in either the underscore
+ * or the bare form, case-insensitively — is left untouched, so an agent that
+ * prefixes by hand does not end up with HBR_HBR_Foo.
+ */
+export function applyExtensionMemberPrefix(
+  args: Record<string, any>,
+  objectType: string,
+  operation: string,
+  modelName: string,
+): string {
+  if (!EXTENSION_OBJECT_TYPES.has(objectType)) return '';
+
+  const argKey = EXTENSION_MEMBER_NAME_ARG[operation];
+  if (!argKey) return '';
+
+  const original = args[argKey];
+  if (typeof original !== 'string' || original.trim().length === 0) return '';
+
+  const token = resolveRegularObjectPrefixToken(modelName);
+  if (!token) return '';
+
+  const bare = token.replace(/_+$/, '');
+  const lower = original.toLowerCase();
+  if (lower.startsWith(token.toLowerCase()) || lower.startsWith(bare.toLowerCase())) return '';
+
+  const prefixed = `${token}${original.charAt(0).toUpperCase()}${original.slice(1)}`;
+  args[argKey] = prefixed;
+  console.error(`[modifyD365File] Extension member prefixed: ${original} → ${prefixed} (model ${modelName})`);
+
+  return (
+    `\n\n> 🔖 Named \`${prefixed}\` — members added to an extension carry model ` +
+    `"${modelName}"'s prefix \`${token}\`. Use that name in later calls.`
+  );
 }
 
 /**
