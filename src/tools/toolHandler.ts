@@ -2,7 +2,10 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
-import { SERVER_MODE, LOCAL_TOOLS, isToolAllowedInMode } from '../server/serverMode.js';
+import {
+  SERVER_MODE, LOCAL_TOOLS, TOOL_PROFILE,
+  isToolAllowedInMode, isToolInProfile,
+} from '../server/serverMode.js';
 import { searchUnifiedTool } from './searchUnified.js';
 import { batchGetInfoTool } from './batchGetInfo.js';
 import { getObjectInfoTool } from './getObjectInfo.js';
@@ -189,6 +192,15 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     if (SERVER_MODE === 'write-only' && !isToolAllowedInMode(SERVER_MODE, toolName)) {
       return {
         content: [{ type: 'text', text: `⚠️ Tool '${toolName}' is not available in write-only mode.\n\nThis local MCP server only handles file operations. Search and analysis tools are provided by the Azure MCP server.` }],
+        isError: true,
+      };
+    }
+    // Breadth gate: the tool exists but this server runs the reduced 'core'
+    // profile, so it was never advertised. Name the two ways back in — an
+    // unexplained refusal just gets retried.
+    if (!isToolInProfile(TOOL_PROFILE, toolName)) {
+      return {
+        content: [{ type: 'text', text: `⚠️ Tool '${toolName}' is not published under MCP_TOOL_PROFILE=core.\n\nTo enable it, set MCP_TOOL_PROFILE=full, or add it to MCP_EXTRA_TOOLS (server.extraTools in d365fo-mcp.json) and restart the server.` }],
         isError: true,
       };
     }

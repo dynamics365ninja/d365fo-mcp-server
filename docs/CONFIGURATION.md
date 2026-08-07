@@ -100,6 +100,8 @@ Transport, timeouts and logging of the MCP server process.
 | Key | Asked | Env var | Default | Description |
 | --- | --- | --- | --- | --- |
 | `server.mode` | advanced | `MCP_SERVER_MODE` | `full` | Which half of the toolset this process exposes. "full" is a single local server; the hybrid deployment splits into an Azure "read-only" instance plus a local "write-only" companion that owns the C# bridge. Values: `full` — all tools — single local server; `read-only` — search/inspect only — Azure-hosted shared index; `write-only` — create/modify/build only — local companion. |
+| `server.toolProfile` | advanced | `MCP_TOOL_PROFILE` | `full` | How many tools this server advertises. "full" publishes all 26. "core" publishes only the plan → discover → write → build → verify loop (18 tools) and leaves out the specialist ones (extension_info, analyze_code, validate_code, security_info, batch_get_info, get_method, run_systest_class, suggest_edt). Worth switching when the workspace runs several MCP servers at once: hosts stop sending the tool catalogue inline past a limit (VS Code: ~100 tools) and make the model search for tools first, which costs a round trip per tool. Values: `full` — all 26 tools; `core` — 18-tool create-and-build loop. |
+| `server.extraTools` | advanced | `MCP_EXTRA_TOOLS` | — | Tool names to publish in addition to the core profile, e.g. security_info,run_systest_class. Ignored when the tool profile is "full". |
 | `server.port` | setup | `PORT` | `8080` | Port for the HTTP transport. Only relevant when clients connect over http://localhost:<port>/mcp/ — an IDE that spawns the server itself uses stdio and ignores this. |
 | `server.debugLogging` | advanced | `DEBUG_LOGGING` | `false` | Prints per-step diagnostics to stderr. Useful when a tool misbehaves; noisy otherwise. |
 | `server.logFile` | advanced | `LOG_FILE` | — | Absolute path; the server appends everything it writes to stderr. The way to get logs out of an IDE that hides MCP subprocess output. |
@@ -190,6 +192,8 @@ Downloading a pre-built index from blob storage instead of building it locally.
   },
   "server": {
     "mode": "full",
+    "toolProfile": "full",
+    "extraTools": "security_info,get_method",
     "port": 8080,
     "debugLogging": false,
     "logFile": "",

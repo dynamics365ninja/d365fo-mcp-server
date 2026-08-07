@@ -398,6 +398,37 @@ export const SETTINGS: Setting[] = [
     ],
   },
   {
+    path: 'server.toolProfile',
+    env: 'MCP_TOOL_PROFILE',
+    section: 'server',
+    tier: 'advanced',
+    type: 'enum',
+    label: 'Tool profile',
+    description:
+      'How many tools this server advertises. "full" publishes all 26. "core" publishes only the plan → discover → ' +
+      'write → build → verify loop (18 tools) and leaves out the specialist ones (extension_info, analyze_code, ' +
+      'validate_code, security_info, batch_get_info, get_method, run_systest_class, suggest_edt). Worth switching ' +
+      'when the workspace runs several MCP servers at once: hosts stop sending the tool catalogue inline past a ' +
+      'limit (VS Code: ~100 tools) and make the model search for tools first, which costs a round trip per tool.',
+    default: 'full',
+    choices: [
+      { value: 'full', hint: 'all 26 tools' },
+      { value: 'core', hint: '18-tool create-and-build loop' },
+    ],
+  },
+  {
+    path: 'server.extraTools',
+    env: 'MCP_EXTRA_TOOLS',
+    section: 'server',
+    tier: 'advanced',
+    type: 'list',
+    label: 'Extra tools on top of the core profile',
+    description:
+      'Tool names to publish in addition to the core profile, e.g. security_info,run_systest_class. Ignored when ' +
+      'the tool profile is "full".',
+    placeholder: 'security_info,get_method',
+  },
+  {
     path: 'server.port',
     env: 'PORT',
     section: 'server',

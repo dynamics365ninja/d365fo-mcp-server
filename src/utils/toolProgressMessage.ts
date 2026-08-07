@@ -152,9 +152,9 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
     case 'get_workspace_info':
       return `⚙️ Reading workspace configuration`;
     case 'get_knowledge':
-      return a.kind === 'error'
-        ? `🆘 Looking up D365FO error: "${String(a.errorText ?? '').slice(0, 80)}"`
-        : `📚 Reading X++ knowledge: "${a.topic ?? ''}"`;
+      if (a.kind === 'error') return `🆘 Looking up D365FO error: "${String(a.errorText ?? '').slice(0, 80)}"`;
+      if (a.kind === 'op-spec') return `📖 Reading parameter spec: "${a.topic ?? a.operation ?? a.mode ?? ''}"`;
+      return `📚 Reading X++ knowledge: "${a.topic ?? ''}"`;
     case 'validate_code':
       return a.mode === 'references'
         ? `🔎 Resolving symbol references in generated code`

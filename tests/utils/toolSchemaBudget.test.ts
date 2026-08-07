@@ -23,26 +23,24 @@ import { createXppMcpServer } from '../../src/server/mcpServer';
 // the human-readable log line, never for assertions.
 const CHARS_PER_TOKEN = 4;
 
-// Ceilings in characters of serialized JSON. Current actual ≈ 63,175 · largest
-// tool d365fo_file ≈ 9,6xx (ahead of generate_object ≈ 8,5xx). Raised
-// deliberately whenever a genuinely new AOT capability lands — `service` +
-// `service-group` objectTypes, then d365fo_file's add-/remove-delete-action
-// (findings #36), generate_object scaffold `fields[]`/`preview` (#21), and the
-// five coverage-closure objectTypes (macro, configuration-key, security-policy,
-// aggregate-measurement, license-code) that took the T flag green on the last
-// create-path holes in the taxonomy, then the data-entity writer properties
-// (primaryKey, isPublic, entityCategory, dynamicFields,
-// allowRowVersionChangeTracking) that were implemented but unadvertised — paid
-// for in part by dropping the member-variable rule from `sourceCode`, where it
-// was the third statement of the same thing.
+// Ceilings in characters of serialized JSON. Current actual ≈ 53,197 · largest
+// tool labels ≈ 5,9xx (ahead of d365fo_file ≈ 4,7xx).
 //
-// data-entity-extension add-field deliberately does NOT raise these. `params` is
-// additionalProperties:true, so dataField/dataSource/fieldGroupName cost nothing
-// on the wire — only the prose naming them does, and that was paid for by
-// tightening the `params` description rather than by moving the ceiling.
+// Ratcheted down from 63,300 / 9,900 by issue #825: `d365fo_file` (9,888 →
+// 4,781) and `generate_object` (8,602 → 3,135) stopped inlining a discriminated
+// union of every operation and its parameters. Both now publish the
+// DISCRIMINATORS only — action/objectType/operation/mode/pattern as closed
+// enums — and the parameter contract behind the one the agent picks is fetched
+// once from get_knowledge(kind="op-spec"), backed by d365foFileOpSpecs.ts and
+// generateObjectOpSpecs.ts. get_knowledge paid ~490 chars for that lookup.
+//
+// What is left in those two schemas is close to the floor: the two closed enums
+// in d365fo_file alone are ~1,185 chars, and the remaining prose is the
+// behavioural warnings (immediate apply, isError=false, never hand-build the
+// prefix) that stop failed calls — which cost far more than the bytes do.
 // Headroom is small on purpose so creep is caught early.
-const TOTAL_BUDGET = 63_300;
-const LARGEST_TOOL_BUDGET = 9_900;
+const TOTAL_BUDGET = 53_600;
+const LARGEST_TOOL_BUDGET = 6_100;
 
 async function getTools(): Promise<Array<{ name: string }>> {
   const ctx: any = { symbolIndex: {}, parser: {} };
@@ -79,5 +77,26 @@ describe('tool schema token budget', () => {
       largest.chars,
       `largest tool schema '${largest.name}' (${largest.chars} chars) exceeds the per-tool cap`,
     ).toBeLessThan(LARGEST_TOOL_BUDGET);
+  });
+
+  it('keeps the two discriminated-union tools off the inline-parameter path', async () => {
+    // Issue #825: d365fo_file and generate_object were a quarter of the payload
+    // because each inlined every operation's parameters. The guard is a size cap
+    // per tool PLUS the reason the size holds — both point at the op-spec lookup,
+    // so an agent that no longer sees the params still knows where they live.
+    const tools = await getTools();
+    const byName = new Map(tools.map(t => [t.name, t]));
+
+    for (const [name, cap] of [['d365fo_file', 5_000], ['generate_object', 3_400]] as const) {
+      const tool: any = byName.get(name);
+      expect(tool, `${name} is not published`).toBeDefined();
+      const chars = JSON.stringify(tool).length;
+      expect(chars, `${name} (${chars} chars) grew past its post-#825 cap`).toBeLessThan(cap);
+      expect(tool.description, `${name} must name the op-spec lookup`).toContain('kind="op-spec"');
+      expect(tool.inputSchema.properties.params, `${name} must expose a loose params object`).toMatchObject({
+        type: 'object',
+        additionalProperties: true,
+      });
+    }
   });
 });
