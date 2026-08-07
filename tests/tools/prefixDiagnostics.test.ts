@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { buildPrefixDiagnostics } from '../../src/tools/prefixDiagnostics.js';
+import { buildPrefixDiagnostics, modelWritesLandIn } from '../../src/tools/prefixDiagnostics.js';
 import {
   setModelObjectNameSource,
   clearInferredModelPrefixes,
@@ -34,6 +34,8 @@ beforeEach(() => {
     model === 'ContosoFinanceSK' ? SK_MODEL : model === 'ContosoFinanceCore' ? CORE_MODEL : []);
   delete process.env.EXTENSION_PREFIX;
   delete process.env.EXTENSION_PREFIX_SOURCE;
+  delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS;
+  delete process.env.D365FO_ALLOW_CROSS_MODEL_WRITE;
 });
 
 afterEach(() => {
@@ -103,6 +105,28 @@ describe('buildPrefixDiagnostics', () => {
 
     expect(out).toContain('source: EXTENSION_PREFIX');
     expect(out).toContain('✅ EXTENSION_PREFIX is set');
+  });
+
+  it('follows the write into the active model when configuration allows it', () => {
+    // With D365FO_CROSS_MODEL_WRITE_MODELS the guard lets the write through and
+    // it lands in the ACTIVE model — so the anchor's prefix would be wrong in
+    // exactly the way the active model's prefix was wrong one state over.
+    process.env.D365FO_CROSS_MODEL_WRITE_MODELS = 'ContosoFinanceCore';
+
+    expect(modelWritesLandIn('ContosoFinanceSK', 'ContosoFinanceCore')).toBe('ContosoFinanceCore');
+    expect(buildPrefixDiagnostics(
+      modelWritesLandIn('ContosoFinanceSK', 'ContosoFinanceCore'), 'ContosoFinanceCore',
+    ).effectivePrefix).toBe('ConCore');
+  });
+
+  it('keeps writes on the anchor when configuration allows some OTHER model', () => {
+    process.env.D365FO_CROSS_MODEL_WRITE_MODELS = 'SomeUnrelatedModel';
+
+    expect(modelWritesLandIn('ContosoFinanceSK', 'ContosoFinanceCore')).toBe('ContosoFinanceSK');
+  });
+
+  it('keeps writes on the anchor when nothing was switched', () => {
+    expect(modelWritesLandIn('ContosoFinanceSK', 'ContosoFinanceSK')).toBe('ContosoFinanceSK');
   });
 
   it('tells the operator to configure a prefix when nothing resolves', () => {

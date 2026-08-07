@@ -20,7 +20,7 @@ import { getKnowledgeTool } from './getKnowledge.js';
 import { validateObjectNamingTool } from './validateObjectNaming.js';
 import { verifyD365ProjectTool } from './verifyD365Project.js';
 import { isCustomModel, getObjectSuffix, getExtensionNamingStyle, deriveExtensionInfix } from '../utils/modelClassifier.js';
-import { buildPrefixDiagnostics } from './prefixDiagnostics.js';
+import { buildPrefixDiagnostics, modelWritesLandIn } from './prefixDiagnostics.js';
 import { getStdioSessionInfo } from '../utils/stdioSessionInfo.js';
 import { updateSymbolIndexTool } from './updateSymbolIndex.js';
 import { buildProjectTool } from './buildProject.js';
@@ -344,7 +344,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         // Naming is reported for the model WRITES land in, not the one reads come
         // from — after a project switch those are different models (see
         // buildPrefixDiagnostics and ConfigManager.getWriteAnchorModel).
-        const writeModel = configManager.getWriteAnchorModel() ?? modelName;
+        const writeModel = modelWritesLandIn(configManager.getWriteAnchorModel() ?? modelName, modelName);
         const { lines: prefixLines, effectivePrefix } = buildPrefixDiagnostics(writeModel, modelName);
         const objectSuffixEnv = process.env.EXTENSION_SUFFIX?.trim() || null;
         const effectiveSuffix = getObjectSuffix();

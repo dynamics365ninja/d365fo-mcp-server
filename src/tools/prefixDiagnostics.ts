@@ -16,6 +16,24 @@
 
 import { resolveObjectPrefix } from '../utils/modelClassifier.js';
 import { getInferredModelPrefix } from '../utils/modelPrefixInference.js';
+import { crossModelWriteAllowedByConfig } from '../utils/crossModelWriteGuard.js';
+
+/**
+ * The model a write would actually land in.
+ *
+ * Normally the anchor: a project switch does not move writes. But when the
+ * operator has allowed writes into the switched-to model in configuration, the
+ * guard lets them through and they land in the ACTIVE model — so that is the
+ * model whose prefix a create would apply. Reporting the anchor's prefix there
+ * would be the same defect one state over.
+ */
+export function modelWritesLandIn(
+  anchorModel: string | null,
+  activeModel: string | null,
+): string | null {
+  if (!activeModel || activeModel === anchorModel) return anchorModel;
+  return crossModelWriteAllowedByConfig(activeModel) ? activeModel : anchorModel;
+}
 
 export interface PrefixDiagnostics {
   /** Lines for the "## Prefix Configuration" section, blank line included. */
