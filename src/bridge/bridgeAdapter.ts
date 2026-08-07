@@ -1093,6 +1093,9 @@ export async function bridgeRefreshProvider(
 ): Promise<{ refreshed: boolean; elapsedMs: number } | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
+    // Recorded so callers that only need the provider to be no older than a
+    // given write can skip a redundant rebuild — see debouncedRefresh.
+    debouncedRefresh.markRefreshStarted();
     return await bridge.refreshProvider();
   } catch (e) {
     console.error(`[BridgeAdapter] refreshProvider failed: ${e}`);

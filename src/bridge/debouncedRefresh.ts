@@ -18,6 +18,33 @@ let pending: {
 } | null = null;
 
 /**
+ * When the most recent provider refresh STARTED (epoch ms), across both this
+ * module and the direct bridgeRefreshProvider() path.
+ *
+ * Start rather than completion, because only a refresh that began after a file
+ * was written is guaranteed to have read it. Callers use this to skip a refresh
+ * that would rediscover nothing: a create/modify already refreshes the provider
+ * on its way out, so the update_symbol_index call that follows it was paying for
+ * a second full DiskProvider rebuild that could not see anything new.
+ */
+let lastRefreshStartedAt = 0;
+
+/** Epoch ms at which the last provider refresh started; 0 if none yet. */
+export function getLastRefreshStartedAt(): number {
+  return lastRefreshStartedAt;
+}
+
+/** Record that a refresh is starting now. Called by every refresh path. */
+export function markRefreshStarted(at: number = Date.now()): void {
+  if (at > lastRefreshStartedAt) lastRefreshStartedAt = at;
+}
+
+/** Forget the recorded refresh time (test isolation). */
+export function resetRefreshTracking(): void {
+  lastRefreshStartedAt = 0;
+}
+
+/**
  * Request a bridge refresh. If one is already pending, the settle timer
  * resets (up to MAX_WAIT_MS). All callers receive the same result.
  */
@@ -68,6 +95,7 @@ function executeRefresh(): void {
   const { resolve, bridge } = pending;
   pending = null;
 
+  markRefreshStarted();
   bridge.refreshProvider()
     .then(result => resolve(result))
     .catch(err => {
