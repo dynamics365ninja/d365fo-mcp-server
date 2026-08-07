@@ -67,10 +67,16 @@ class ConfigManager {
   private autoDetectionAttempted: boolean = false;
   // Auto-detection results cached per workspace path.
   private autoDetectionCache = new Map<string, D365ProjectInfo | null>();
-  // All known .rnrproj candidates: from the D365FO_SOLUTIONS_PATH scan when that is
-  // configured, otherwise from the workspace itself when auto-detection could not
-  // settle on one project.
+  // All projects found by the D365FO_SOLUTIONS_PATH scan. Solution switching and
+  // matchProjectForWorkspace() read this, and both need the full picture across
+  // every solution — so nothing else may write to it.
   private allDetectedProjects: D365ProjectInfo[] = [];
+  // The .rnrproj files sitting in the WORKSPACE when auto-detection could not pick
+  // one of them. Kept apart from allDetectedProjects above: sharing one field made
+  // a populated candidate list look like a completed solutions-path scan, which
+  // both suppressed that scan and let its "use the first project found" fallback
+  // adopt an arbitrary workspace .rnrproj — the very bug this branch removes.
+  private workspaceProjectCandidates: D365ProjectInfo[] = [];
   // Monotonically-increasing counter identifying each background detection call;
   // a scan whose generation is stale by the time it finishes is discarded so it
   // can't overwrite a more recent, more specific scan's result.
@@ -191,11 +197,13 @@ class ConfigManager {
     // none unambiguously "the" one) or nothing was found. Record every candidate so
     // callers that need a project (addToProject, get_workspace_info) can name the
     // real alternatives instead of a generic "could not resolve". Only runs on this
-    // failure path, once per workspace, and never overwrites a solutions-path scan.
-    if (!detectedProject?.projectPath && workspacePath && this.allDetectedProjects.length === 0) {
+    // failure path, once per workspace, and into its own field: allDetectedProjects
+    // belongs to the solutions-path scan below, which must neither be skipped
+    // because this list is non-empty nor draw its fallback project from it.
+    if (!detectedProject?.projectPath && workspacePath) {
       const candidates = await scanAllD365Projects(workspacePath);
       if (candidates.length > 0) {
-        this.allDetectedProjects = candidates;
+        this.workspaceProjectCandidates = candidates;
         console.error(
           `[ConfigManager] No project auto-selected — ${candidates.length} candidate(s) in workspace: ` +
           candidates.map(c => c.modelName).join(', ')
@@ -1023,13 +1031,24 @@ class ConfigManager {
   }
 
   /**
-   * Returns all known .rnrproj candidates — from the D365FO_SOLUTIONS_PATH scan, or
-   * from the workspace when auto-detection found several and could not pick one.
-   * Used by get_workspace_info to list available projects for solution switching,
-   * and by createD365File to name the alternatives when projectPath is missing.
+   * Returns all projects discovered by the D365FO_SOLUTIONS_PATH scan.
+   * Used by get_workspace_info to list available projects for solution switching.
    */
   getAllDetectedProjects(): D365ProjectInfo[] {
     return this.allDetectedProjects;
+  }
+
+  /**
+   * The .rnrproj files found in the WORKSPACE when auto-detection refused to pick
+   * one of them. Empty whenever a project was resolved — these are the concrete
+   * alternatives createD365File names when addToProject has no projectPath to use.
+   *
+   * Not the same list as getAllDetectedProjects(): that one spans every solution
+   * under D365FO_SOLUTIONS_PATH and would answer "which projects exist anywhere",
+   * not "which projects is this workspace ambiguous between".
+   */
+  getWorkspaceProjectCandidates(): D365ProjectInfo[] {
+    return this.workspaceProjectCandidates;
   }
 
   /**

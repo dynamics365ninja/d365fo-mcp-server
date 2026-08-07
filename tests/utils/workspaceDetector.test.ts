@@ -63,6 +63,23 @@ describe('detectD365Project', () => {
     expect(result).toBeNull();
   });
 
+  it('resolves the one project carrying the custom model, demo projects aside', async () => {
+    // The ordinary shape of a real workspace: a leftover tutorial project the VS
+    // wizard named FleetManagement, next to the project actually being worked on.
+    // Neither folder matches the workspace name, so folder-name matching gives up
+    // — but only one of them carries a custom model, so there is nothing to guess
+    // and refusing here would drop a projectPath that used to resolve correctly.
+    const workspace = await makeTempWorkspace();
+    await makeProject(workspace, 'Tutorial', 'FleetManagement');
+    const real = await makeProject(workspace, 'Custom', 'ContosoCore');
+
+    const result = await detectD365Project(workspace);
+
+    expect(result?.projectPath).toBe(real);
+    expect(result?.modelName).toBe('ContosoCore');
+    expect(result?.ambiguousProjects).toBeUndefined();
+  });
+
   it('still resolves the model when ambiguous candidates all share one model', async () => {
     // A single model split across several VS projects is the common D365FO
     // layout. The project stays unresolved (only the caller knows which one to

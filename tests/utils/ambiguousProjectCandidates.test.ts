@@ -77,7 +77,7 @@ describe('ambiguous workspace — candidate listing', () => {
     await (mgr as any).autoDetectProject(WORKSPACE);
 
     expect(scanAllD365Projects).toHaveBeenCalledWith(WORKSPACE);
-    expect(mgr.getAllDetectedProjects().map(p => p.projectPath)).toEqual(
+    expect(mgr.getWorkspaceProjectCandidates().map(p => p.projectPath)).toEqual(
       CANDIDATES.map(p => p.projectPath),
     );
   });
@@ -100,6 +100,28 @@ describe('ambiguous workspace — candidate listing', () => {
     await (mgr as any).autoDetectProject(WORKSPACE);
 
     expect(scanAllD365Projects).not.toHaveBeenCalled();
-    expect(mgr.getAllDetectedProjects()).toEqual([]);
+    expect(mgr.getWorkspaceProjectCandidates()).toEqual([]);
+  });
+
+  it('keeps the candidate list out of the solutions-path list', async () => {
+    // Two lists, two meanings. Feeding workspace candidates into
+    // allDetectedProjects made a populated list look like a finished
+    // D365FO_SOLUTIONS_PATH scan, so the scan below was skipped as unnecessary
+    // AND its "no project detected → use the first one found" fallback adopted an
+    // arbitrary workspace .rnrproj — reinstating, one branch over, exactly the
+    // silent wrong-project pick this change removes.
+    const SOLUTIONS = [
+      { projectPath: 'K:\\solutions\\Fin\\Fin.rnrproj', modelName: 'IsvFin', solutionPath: 'K:\\solutions\\Fin' },
+    ];
+    process.env.D365FO_SOLUTIONS_PATH = 'K:\\solutions';
+    vi.mocked(scanAllD365Projects).mockImplementation(async (root: string) =>
+      (root === WORKSPACE ? CANDIDATES : SOLUTIONS) as any);
+    const mgr = makeManager();
+
+    await (mgr as any).autoDetectProject(WORKSPACE);
+
+    expect(scanAllD365Projects).toHaveBeenCalledWith('K:\\solutions');
+    expect(mgr.getAllDetectedProjects().map(p => p.modelName)).toEqual(['IsvFin']);
+    expect(mgr.getWorkspaceProjectCandidates().map(p => p.modelName)).toEqual(['ContosoCore', 'ContosoCore']);
   });
 });

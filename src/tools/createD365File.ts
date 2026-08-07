@@ -73,7 +73,11 @@ async function withProjectFileLock<T>(projectPath: string, fn: () => Promise<T>)
  * wrong project.
  */
 function buildNoProjectPathWarning(): string {
-  const candidates = getConfigManager().getAllDetectedProjects();
+  // The WORKSPACE candidates, not getAllDetectedProjects(): under
+  // D365FO_SOLUTIONS_PATH the latter lists every project across every solution,
+  // which would put a wrong count behind "in this workspace" and can run to
+  // dozens of lines in what should be a short, actionable warning.
+  const candidates = getConfigManager().getWorkspaceProjectCandidates();
   if (candidates.length > 1) {
     return `\n⚠️ addToProject=true but no projectPath could be resolved: ${candidates.length} .rnrproj ` +
       `files were found in this workspace and none matched unambiguously.\n` +
