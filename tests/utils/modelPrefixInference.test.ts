@@ -2,11 +2,11 @@
  * Prefix inference from a model's own objects.
  *
  * A single configured EXTENSION_PREFIX cannot be right for a developer who works
- * across several models — on the reference VM, HBReavis names its objects HBR_*
- * and HBReavisCus names them HBC_*, while EXTENSION_PREFIX says "Con". The name
- * samples below are taken verbatim from that machine's PackagesLocalDirectory,
- * so these tests pin the inference against real AOT naming rather than invented
- * examples.
+ * across several models — DemoFinance names its objects DEMO_* and its sibling
+ * DemoFinanceCus names them DMC_*, while EXTENSION_PREFIX says "Con". The name
+ * samples below reproduce the shapes real solutions use (underscore prefixes,
+ * dot-notation extensions, _Extension classes, compound prefixes); only the
+ * prefixes and model names are fictional.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -23,45 +23,46 @@ import {
   applyObjectPrefix,
 } from '../../src/utils/modelClassifier.js';
 
-// Real object names from K:\AosService\PackagesLocalDirectory\HBReavis\HBReavis
-const HB_REAVIS = [
-  'HBR_ArchiveAccDocErrorLog',
-  'HBR_AssetIPFairValue',
-  'HBR_AssetIPFairValueStaging',
-  'HBR_AssetsDepreciationSimulationTmp',
-  'HBR_BackIntegrationLink',
-  'HBR_BusinessPartnerStaging',
-  'HBR_AccrualDateFrom',
-  'HBR_AllowAutomaticSalesInvoicePosting',
-  'AccountingSourceExplorerTmp.HBRExtension',
-  'AssetBookTable.HBRExtension',
-  'AssetDepSuspension_CZ.HBRExtension',
-  'AccountingSourceExplorerHBR_Extension',
-  'AgreementGenerationPurchToSalesStrategyHBR_Extension',
+// …\PackagesLocalDirectory\DemoFinance\DemoFinance — underscore-style prefix,
+// with the extension infix spelled differently from it (DEMO_ vs DEMO).
+const DEMO_FINANCE = [
+  'DEMO_ArchiveAccDocErrorLog',
+  'DEMO_AssetIPFairValue',
+  'DEMO_AssetIPFairValueStaging',
+  'DEMO_AssetsDepreciationSimulationTmp',
+  'DEMO_BackIntegrationLink',
+  'DEMO_BusinessPartnerStaging',
+  'DEMO_AccrualDateFrom',
+  'DEMO_AllowAutomaticSalesInvoicePosting',
+  'AccountingSourceExplorerTmp.DEMOExtension',
+  'AssetBookTable.DEMOExtension',
+  'AssetDepSuspension_CZ.DEMOExtension',
+  'AccountingSourceExplorerDEMO_Extension',
+  'AgreementGenerationPurchToSalesStrategyDEMO_Extension',
 ];
 
-// …\HBReavisCus\HBReavisCus — same solution, different model, different prefix.
-const HB_REAVIS_CUS = [
-  'HBC_REMLeaseContractLineUGs',
-  'HBC_REMLeaseContractLineUGsStaging',
-  'HBC_OldDebtsReportController',
-  'HBC_OldDebtsReportDP',
-  'HBC_SalesInvoiceHeaderEmailHandler',
-  'HBC_AssetFirstUseDate',
-  'AssetTable.HBCExtension',
-  'CustTransFormHBC_Extension',
+// …\DemoFinanceCus\DemoFinanceCus — same solution, different model, different prefix.
+const DEMO_FINANCE_CUS = [
+  'DMC_REMLeaseContractLineUGs',
+  'DMC_REMLeaseContractLineUGsStaging',
+  'DMC_OldDebtsReportController',
+  'DMC_OldDebtsReportDP',
+  'DMC_SalesInvoiceHeaderEmailHandler',
+  'DMC_AssetFirstUseDate',
+  'AssetTable.DMCExtension',
+  'CustTransFormDMC_Extension',
 ];
 
-// Model AslFinanceSK — three-segment prefix (Asl|Fin|SK), the shape that made
-// the inference report "AslFin" while EXTENSION_PREFIX said "Asl".
-const ASL_FIN_SK = [
-  'AslFinSKVendPaymentTable',
-  'AslFinSKCustInvoiceJour',
-  'AslFinSKLedgerJournalTrans',
-  'AslFinSKTaxReportTable',
-  'AslFinSKBankStatement',
-  'VendTable.AslFinSKExtension',
-  'CustTableAslFinSK_Extension',
+// Model ContosoFinanceSK — three-segment prefix (Contoso|Fin|SK), the shape that
+// made the inference report "ContosoFin" while EXTENSION_PREFIX said "Contoso".
+const CONTOSO_FIN_SK = [
+  'ContosoFinSKVendPaymentTable',
+  'ContosoFinSKCustInvoiceJour',
+  'ContosoFinSKLedgerJournalTrans',
+  'ContosoFinSKTaxReportTable',
+  'ContosoFinSKBankStatement',
+  'VendTable.ContosoFinSKExtension',
+  'CustTableContosoFinSK_Extension',
 ];
 
 const originalEnv = { ...process.env };
@@ -82,18 +83,18 @@ afterEach(() => {
 
 describe('inferPrefixFromObjectNames', () => {
   it('reads the underscore prefix and the extension infix as separate tokens', () => {
-    const result = inferPrefixFromObjectNames(HB_REAVIS);
+    const result = inferPrefixFromObjectNames(DEMO_FINANCE);
 
-    // The two are NOT derivable from one another: deriving "HBR_" per the
-    // documented rule yields the infix "Hbr", but the model's own extensions
-    // spell it "HBRExtension".
-    expect(result?.regular).toBe('HBR_');
-    expect(result?.infix).toBe('HBR');
+    // The two are NOT derivable from one another: deriving "DEMO_" per the
+    // documented rule yields the infix "Demo", but the model's own extensions
+    // spell it "DEMOExtension".
+    expect(result?.regular).toBe('DEMO_');
+    expect(result?.infix).toBe('DEMO');
   });
 
   it('distinguishes two models that share a solution', () => {
-    expect(inferPrefixFromObjectNames(HB_REAVIS_CUS)?.regular).toBe('HBC_');
-    expect(inferPrefixFromObjectNames(HB_REAVIS_CUS)?.infix).toBe('HBC');
+    expect(inferPrefixFromObjectNames(DEMO_FINANCE_CUS)?.regular).toBe('DMC_');
+    expect(inferPrefixFromObjectNames(DEMO_FINANCE_CUS)?.infix).toBe('DMC');
   });
 
   it('reads a PascalCase prefix with no underscore', () => {
@@ -116,44 +117,44 @@ describe('inferPrefixFromObjectNames', () => {
   });
 
   it('reads a three-segment prefix instead of stopping at two', () => {
-    // Model AslFinanceSK with EXTENSION_PREFIX="Asl": the inference reported
-    // "AslFin" and it looked deliberate, because only the first two segments
-    // were ever offered as candidates — "AslFinSK" could not compete.
+    // Model ContosoFinanceSK with EXTENSION_PREFIX="Contoso": the inference reported
+    // "ContosoFin" and it looked deliberate, because only the first two segments
+    // were ever offered as candidates — "ContosoFinSK" could not compete.
     const result = inferPrefixFromObjectNames([
-      'AslFinSKVendPaymentTable', 'AslFinSKCustInvoiceJour',
-      'AslFinSKLedgerJournalTrans', 'AslFinSKTaxReportTable',
-      'AslFinSKBankStatement', 'AslFinSKPaymentId',
+      'ContosoFinSKVendPaymentTable', 'ContosoFinSKCustInvoiceJour',
+      'ContosoFinSKLedgerJournalTrans', 'ContosoFinSKTaxReportTable',
+      'ContosoFinSKBankStatement', 'ContosoFinSKPaymentId',
     ]);
 
-    expect(result?.regular).toBe('AslFinSK');
-    expect(result?.infix).toBe('AslFinSK');
+    expect(result?.regular).toBe('ContosoFinSK');
+    expect(result?.infix).toBe('ContosoFinSK');
   });
 
   it('keeps the underscore on a three-segment prefix', () => {
     const result = inferPrefixFromObjectNames([
-      'AslFinSK_VendPaymentTable', 'AslFinSK_CustInvoiceJour',
-      'AslFinSK_LedgerJournalTrans', 'AslFinSK_TaxReportTable',
+      'ContosoFinSK_VendPaymentTable', 'ContosoFinSK_CustInvoiceJour',
+      'ContosoFinSK_LedgerJournalTrans', 'ContosoFinSK_TaxReportTable',
     ]);
 
-    expect(result?.regular).toBe('AslFinSK_');
-    // Flattening the whole token would give "Aslfinsk"; each segment is lowered
+    expect(result?.regular).toBe('ContosoFinSK_');
+    // Flattening the whole token would give "Contosofinsk"; each segment is lowered
     // on its own, so the boundaries survive.
-    expect(result?.infix).toBe('AslFinSk');
+    expect(result?.infix).toBe('ContosoFinSk');
   });
 
   it('extends a truncated leading token to the infix its own extensions state', () => {
     // Even with a longer token available, a leading token can come out short —
     // here every regular object is Vend-something. The model's extensions say
-    // "AslFinSKExtension" outright, and members added inside that extension must
-    // not be named AslFinFoo.
+    // "ContosoFinSKExtension" outright, and members added inside that extension must
+    // not be named ContosoFinFoo.
     const result = inferPrefixFromObjectNames([
-      'AslFinSKVendPaymentTable', 'AslFinSKVendInvoice',
-      'AslFinSKVendBalance', 'AslFinSKVendSettlement',
-      'VendTable.AslFinSKExtension', 'CustTable.AslFinSKExtension',
+      'ContosoFinSKVendPaymentTable', 'ContosoFinSKVendInvoice',
+      'ContosoFinSKVendBalance', 'ContosoFinSKVendSettlement',
+      'VendTable.ContosoFinSKExtension', 'CustTable.ContosoFinSKExtension',
     ]);
 
-    expect(result?.regular).toBe('AslFinSK');
-    expect(result?.infix).toBe('AslFinSK');
+    expect(result?.regular).toBe('ContosoFinSK');
+    expect(result?.infix).toBe('ContosoFinSK');
   });
 
   it('does not extend the leading token when the objects do not carry the infix', () => {
@@ -169,13 +170,13 @@ describe('inferPrefixFromObjectNames', () => {
 
   it('stops at three segments so a domain word cannot become the prefix', () => {
     // Four leading segments in common is a small model about one topic, not a
-    // four-part prefix — "AslFinSKVend" must not win on length.
+    // four-part prefix — "ContosoFinSKVend" must not win on length.
     const result = inferPrefixFromObjectNames([
-      'AslFinSKVendPaymentTable', 'AslFinSKVendPaymentLine',
-      'AslFinSKVendPaymentJour', 'AslFinSKVendPaymentTmp',
+      'ContosoFinSKVendPaymentTable', 'ContosoFinSKVendPaymentLine',
+      'ContosoFinSKVendPaymentJour', 'ContosoFinSKVendPaymentTmp',
     ]);
 
-    expect(result?.regular).toBe('AslFinSK');
+    expect(result?.regular).toBe('ContosoFinSK');
   });
 
   it('infers nothing from objects that share no prefix', () => {
@@ -191,36 +192,36 @@ describe('inferPrefixFromObjectNames', () => {
   });
 
   it('ignores extension classes when measuring the leading token', () => {
-    // Extension classes carry the token as a SUFFIX (…HBR_Extension). Counting
+    // Extension classes carry the token as a SUFFIX (…DEMO_Extension). Counting
     // them as regular objects would drag the leading-token coverage below the
     // threshold and lose an otherwise obvious prefix.
     const suffixHeavy = [
-      'HBR_ArchiveAccDocErrorLog', 'HBR_AssetIPFairValue', 'HBR_BackIntegrationLink', 'HBR_AccrualDateFrom',
-      'AccountingSourceExplorerHBR_Extension', 'AcsAsset_AssetPreAcquisitionHelperHBR_Extension',
-      'AcsBasic_ACFeatureManagementHBR_Extension', 'AgreementGenerationSalesToPurchStrategyHBR_Extension',
-      'AccountingSourceExplorerProcessorHBR_Extension',
+      'DEMO_ArchiveAccDocErrorLog', 'DEMO_AssetIPFairValue', 'DEMO_BackIntegrationLink', 'DEMO_AccrualDateFrom',
+      'AccountingSourceExplorerDEMO_Extension', 'AcsAsset_AssetPreAcquisitionHelperDEMO_Extension',
+      'AcsBasic_ACFeatureManagementDEMO_Extension', 'AgreementGenerationSalesToPurchStrategyDEMO_Extension',
+      'AccountingSourceExplorerProcessorDEMO_Extension',
     ];
 
-    expect(inferPrefixFromObjectNames(suffixHeavy)?.regular).toBe('HBR_');
+    expect(inferPrefixFromObjectNames(suffixHeavy)?.regular).toBe('DEMO_');
   });
 });
 
 describe('prefix resolution order', () => {
   it('lets the active model outrank the configured prefix', () => {
     process.env.EXTENSION_PREFIX = 'Con';
-    setModelObjectNameSource(model => (model === 'HBReavis' ? HB_REAVIS : []));
+    setModelObjectNameSource(model => (model === 'DemoFinance' ? DEMO_FINANCE : []));
 
-    expect(resolveObjectPrefix('HBReavis')).toBe('HBR');
-    expect(resolveRegularObjectPrefixToken('HBReavis')).toBe('HBR_');
+    expect(resolveObjectPrefix('DemoFinance')).toBe('DEMO');
+    expect(resolveRegularObjectPrefixToken('DemoFinance')).toBe('DEMO_');
   });
 
   it('gives each model its own prefix within one session', () => {
     process.env.EXTENSION_PREFIX = 'Con';
     setModelObjectNameSource(model =>
-      model === 'HBReavis' ? HB_REAVIS : model === 'HBReavisCus' ? HB_REAVIS_CUS : []);
+      model === 'DemoFinance' ? DEMO_FINANCE : model === 'DemoFinanceCus' ? DEMO_FINANCE_CUS : []);
 
-    expect(resolveRegularObjectPrefixToken('HBReavis')).toBe('HBR_');
-    expect(resolveRegularObjectPrefixToken('HBReavisCus')).toBe('HBC_');
+    expect(resolveRegularObjectPrefixToken('DemoFinance')).toBe('DEMO_');
+    expect(resolveRegularObjectPrefixToken('DemoFinanceCus')).toBe('DMC_');
   });
 
   it('falls back to the configured prefix for a model with nothing to teach', () => {
@@ -239,53 +240,53 @@ describe('prefix resolution order', () => {
   it('honours EXTENSION_PREFIX_SOURCE=config as an opt-out', () => {
     process.env.EXTENSION_PREFIX = 'Con';
     process.env.EXTENSION_PREFIX_SOURCE = 'config';
-    setModelObjectNameSource(() => HB_REAVIS);
+    setModelObjectNameSource(() => DEMO_FINANCE);
 
-    expect(resolveObjectPrefix('HBReavis')).toBe('Con');
+    expect(resolveObjectPrefix('DemoFinance')).toBe('Con');
   });
 
   it('applies the model prefix to a new object name', () => {
     process.env.EXTENSION_PREFIX = 'Con';
-    setModelObjectNameSource(() => HB_REAVIS);
+    setModelObjectNameSource(() => DEMO_FINANCE);
 
-    expect(applyObjectPrefix('AssetRegister', resolveObjectPrefix('HBReavis'), 'HBReavis'))
-      .toBe('HBR_AssetRegister');
+    expect(applyObjectPrefix('AssetRegister', resolveObjectPrefix('DemoFinance'), 'DemoFinance'))
+      .toBe('DEMO_AssetRegister');
   });
 
   it('uses the model\'s own infix for extension element names', () => {
     process.env.EXTENSION_PREFIX = 'Con';
-    setModelObjectNameSource(() => HB_REAVIS);
+    setModelObjectNameSource(() => DEMO_FINANCE);
 
-    // Deriving from "HBR_" would give "CustTable.HbrExtension", which does not
-    // match the model's dozens of existing …HBRExtension elements.
-    expect(deriveExtensionInfix(resolveObjectPrefix('HBReavis'), 'HBReavis')).toBe('HBR');
-    expect(applyObjectPrefix('CustTable.Extension', resolveObjectPrefix('HBReavis'), 'HBReavis'))
-      .toBe('CustTable.HBRExtension');
+    // Deriving from "DEMO_" would give "CustTable.DemoExtension", which does not
+    // match the model's dozens of existing …DEMOExtension elements.
+    expect(deriveExtensionInfix(resolveObjectPrefix('DemoFinance'), 'DemoFinance')).toBe('DEMO');
+    expect(applyObjectPrefix('CustTable.Extension', resolveObjectPrefix('DemoFinance'), 'DemoFinance'))
+      .toBe('CustTable.DEMOExtension');
   });
 
   it('names new objects with the model\'s full three-segment prefix', () => {
-    // End to end for the AslFinanceSK report: EXTENSION_PREFIX said "Asl", the
-    // effective prefix came out "AslFin", and every generated name was wrong by
-    // two characters that nobody would spot in a diff.
-    process.env.EXTENSION_PREFIX = 'Asl';
-    setModelObjectNameSource(() => ASL_FIN_SK);
+    // End to end for the reported case: EXTENSION_PREFIX said "Contoso", the
+    // effective prefix came out "ContosoFin", and every generated name was wrong
+    // by two characters that nobody would spot in a diff.
+    process.env.EXTENSION_PREFIX = 'Contoso';
+    setModelObjectNameSource(() => CONTOSO_FIN_SK);
 
-    expect(resolveObjectPrefix('AslFinanceSK')).toBe('AslFinSK');
-    expect(applyObjectPrefix('VendPaymentJournal', resolveObjectPrefix('AslFinanceSK'), 'AslFinanceSK'))
-      .toBe('AslFinSKVendPaymentJournal');
-    expect(applyObjectPrefix('CustTable.Extension', resolveObjectPrefix('AslFinanceSK'), 'AslFinanceSK'))
-      .toBe('CustTable.AslFinSKExtension');
+    expect(resolveObjectPrefix('ContosoFinanceSK')).toBe('ContosoFinSK');
+    expect(applyObjectPrefix('VendPaymentJournal', resolveObjectPrefix('ContosoFinanceSK'), 'ContosoFinanceSK'))
+      .toBe('ContosoFinSKVendPaymentJournal');
+    expect(applyObjectPrefix('CustTable.Extension', resolveObjectPrefix('ContosoFinanceSK'), 'ContosoFinanceSK'))
+      .toBe('CustTable.ContosoFinSKExtension');
   });
 
   it('keeps segment boundaries in a configured underscore-style prefix', () => {
     // No model to learn from, so the infix is derived — and deriving used to
-    // flatten the whole token to "Aslfinsk".
-    process.env.EXTENSION_PREFIX = 'AslFinSK_';
+    // flatten the whole token to "Contosofinsk".
+    process.env.EXTENSION_PREFIX = 'ContosoFinSK_';
     setModelObjectNameSource(() => []);
 
-    expect(resolveObjectPrefix('EmptyModel')).toBe('AslFinSK');
-    expect(resolveRegularObjectPrefixToken('EmptyModel')).toBe('AslFinSK_');
-    expect(deriveExtensionInfix('AslFinSK', 'EmptyModel')).toBe('AslFinSk');
+    expect(resolveObjectPrefix('EmptyModel')).toBe('ContosoFinSK');
+    expect(resolveRegularObjectPrefixToken('EmptyModel')).toBe('ContosoFinSK_');
+    expect(deriveExtensionInfix('ContosoFinSK', 'EmptyModel')).toBe('ContosoFinSk');
   });
 
   it('leaves behaviour unchanged when no model prefix can be inferred', () => {
@@ -304,11 +305,11 @@ describe('prefix resolution order', () => {
 describe('inference caching', () => {
   it('queries the source once per model', () => {
     let calls = 0;
-    setModelObjectNameSource(model => { calls++; return model === 'HBReavis' ? HB_REAVIS : []; });
+    setModelObjectNameSource(model => { calls++; return model === 'DemoFinance' ? DEMO_FINANCE : []; });
 
-    getInferredModelPrefix('HBReavis');
-    getInferredModelPrefix('HBReavis');
-    resolveObjectPrefix('HBReavis');
+    getInferredModelPrefix('DemoFinance');
+    getInferredModelPrefix('DemoFinance');
+    resolveObjectPrefix('DemoFinance');
 
     expect(calls).toBe(1);
   });
