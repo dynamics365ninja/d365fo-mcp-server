@@ -29,6 +29,15 @@ export interface PathContainmentResult {
   canonicalPath?: string;
   /** Matched root (for diagnostics). */
   matchedRoot?: string;
+  /** `<Package>` segment of the canonical layout, when ok. */
+  packageSegment?: string;
+  /**
+   * `<Model>` segment of the canonical layout, when ok — the model that actually
+   * OWNS the file. Package and model differ whenever one package carries several
+   * models, so ownership decisions (see crossModelWriteGuard) must read this and
+   * not the package name.
+   */
+  modelSegment?: string;
 }
 
 /**
@@ -210,7 +219,7 @@ export async function assertWritePathAllowed(
         `Path does not match canonical AOT layout (<Package>/<Model>/Ax<Type>/<File>):\n  ${filePath}`,
     };
   }
-  const [, modelSeg, axFolder, lastSeg] = parts;
+  const [packageSeg, modelSeg, axFolder, lastSeg] = parts;
   if (!/^Ax[A-Z]/.test(axFolder)) {
     return {
       ok: false,
@@ -236,7 +245,13 @@ export async function assertWritePathAllowed(
     }
   }
 
-  return { ok: true, canonicalPath: canonical, matchedRoot };
+  return {
+    ok: true,
+    canonicalPath: canonical,
+    matchedRoot,
+    packageSegment: packageSeg,
+    modelSegment: modelSeg,
+  };
 }
 
 /** Throwing wrapper — convenient in tool handlers. */

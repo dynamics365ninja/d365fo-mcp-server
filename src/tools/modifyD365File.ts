@@ -53,6 +53,9 @@ import {
   findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
 } from './d365foFileOpSpecs.js';
 import { lookupSymbolNocase } from '../utils/symbolLookup.js';
+import {
+  crossModelWriteRefusal, baseObjectOf, type ExistingExtension,
+} from '../utils/crossModelWriteGuard.js';
 
 /**
  * Decode the standard XML entities (&lt;, &gt;, &apos;, &quot;, &amp;) and normalise
@@ -1728,6 +1731,31 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
     }
 
+    // 1c. Cross-model guard: the object is custom, but owned by a DIFFERENT custom
+    // model than the one this workspace targets (shared "Core" model vs. the country
+    // model that extends it). Editing it in place silently changes code the active
+    // model only consumes — the wanted change is an extension in the active model.
+    // Ownership comes from the path's <Model> segment, not the <Package> segment
+    // used above: one package can carry several models.
+    const owningModel = containment.modelSegment ?? null;
+    const activeModel = getConfigManager().getModelName() ?? '';
+    const crossModelRefusal = crossModelWriteRefusal({
+      objectName,
+      objectType,
+      owningModel,
+      owningPackage: containment.packageSegment ?? resolvedModelFromPath,
+      activeModel,
+      explicitModelName: modelName,
+      existingExtensions: findExtensionsInModel(
+        symbolIndex,
+        baseObjectOf(objectName, objectType),
+        activeModel,
+      ),
+    });
+    if (crossModelRefusal) {
+      throw new Error(crossModelRefusal);
+    }
+
     // 2. Resolve actual XML file path (DB may store JSON metadata with sourcePath)
     let actualFilePath = filePath;
     try {
@@ -1805,7 +1833,10 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       args,
       objectType,
       operation,
-      resolvedModelFromPath || modelName || getConfigManager().getModelName() || '',
+      // The MODEL segment, not the package: members added to an extension must
+      // carry the prefix of the model that owns the extension file (ContosoFinanceSK
+      // → ContosoSK_), and a package can hold a model whose prefix differs.
+      containment.modelSegment || resolvedModelFromPath || modelName || getConfigManager().getModelName() || '',
     );
     if (memberPrefixNote) generationNote += memberPrefixNote;
 
@@ -2770,6 +2801,38 @@ const EXTENSION_MEMBER_NAME_ARG: Record<string, string> = {
   'add-field-group': 'fieldGroupName',
   'add-enum-value': 'enumValueName',
 };
+
+/**
+ * Extensions of `baseObject` that already live in `model` — so the cross-model
+ * refusal can point at the extension the active model ALREADY has instead of
+ * telling the agent to create a second one next to it.
+ *
+ * Reads `extension_metadata`, which is indexed on base_object_name and small
+ * enough that COLLATE NOCASE here costs nothing (unlike the 1M-row symbols
+ * table). Best-effort: a missing table or unbuilt index yields no suggestions,
+ * never an error — the refusal itself does not depend on it.
+ */
+function findExtensionsInModel(
+  symbolIndex: any,
+  baseObject: string,
+  model: string,
+): ExistingExtension[] {
+  if (!baseObject || !model) return [];
+  try {
+    const rdb = symbolIndex?.getReadDb?.();
+    if (!rdb) return [];
+    const rows = rdb.prepare(
+      `SELECT extension_name AS name, extension_type AS type
+         FROM extension_metadata
+        WHERE base_object_name = ? COLLATE NOCASE
+          AND model = ? COLLATE NOCASE
+        LIMIT 5`,
+    ).all(baseObject, model) as ExistingExtension[];
+    return rows ?? [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Prefix the new member name this operation carries, when writing into an
