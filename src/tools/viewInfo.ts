@@ -233,7 +233,7 @@ function formatViewFromSymbols(context: XppServerContext, viewName: string, mode
 
 function buildNotFoundText(context: XppServerContext, viewName: string): string {
   let text = `View "${viewName}" not found via bridge, symbol index, or on disk.\n`;
-  text += bridgeUnavailableNote(context.bridge);
+  text += bridgeUnavailableNote(context);
   try {
     text += buildObjectTypeMismatchMessage(context.symbolIndex.getReadDb(), viewName, 'view');
   } catch { /* DB unavailable */ }

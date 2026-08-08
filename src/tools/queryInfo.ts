@@ -80,7 +80,7 @@ export async function getQueryInfoTool(request: CallToolRequest, context: XppSer
     }
 
     let text = `Query "${args.queryName}" not found via bridge, symbol index, or on disk.\n`;
-    text += bridgeUnavailableNote(context.bridge);
+    text += bridgeUnavailableNote(context);
     try {
       text += buildObjectTypeMismatchMessage(context.symbolIndex.getReadDb(), args.queryName, 'query');
     } catch { /* DB unavailable */ }

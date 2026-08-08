@@ -7,6 +7,7 @@ import type { XppMetadataParser } from '../metadata/xmlParser.js';
 import type { WorkspaceScanner } from '../workspace/workspaceScanner.js';
 import type { HybridSearch } from '../workspace/hybridSearch.js';
 import type { BridgeClient } from '../bridge/bridgeClient.js';
+import type { BridgeStartup } from '../bridge/bridgeReadiness.js';
 
 /**
  * Editor context from IDE (VS2022, VS2026)
@@ -42,6 +43,13 @@ export interface XppServerContext {
    * instead of the SQLite symbol index.
    */
   bridge?: BridgeClient;
+  /**
+   * Tracks the one-shot C# bridge startup attempt, which runs in parallel with
+   * the DB load and only sets `bridge` once it succeeds. Bridge-backed tools
+   * await it (bounded) so a cold-start race is never reported as a missing
+   * object or a broken configuration. Absent when nothing spawned a bridge.
+   */
+  bridgeStartup?: BridgeStartup;
   /**
    * Resolves when the real symbol database has been loaded.
    * Present only in stdio mode when the stub pattern is active.

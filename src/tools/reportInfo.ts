@@ -143,7 +143,7 @@ export async function getReportInfoTool(request: CallToolRequest, context: XppSe
       content: [{
         type: 'text',
         text: `❌ Report "${reportName}" not found via bridge or symbol index.` +
-          bridgeUnavailableNote(context.bridge) + `\n` +
+          bridgeUnavailableNote(context) + `\n` +
           `If this is a newly-created report, pass the explicit \`filePath\` parameter:\n` +
           `  get_object_info(objectType="report", name="${reportName}", options={filePath:"<absolute path to .xml>"})`,
       }],

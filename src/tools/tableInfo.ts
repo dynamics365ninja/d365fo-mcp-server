@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { findD365FileOnDisk } from './modifyD365File.js';
 import { tryBridgeTable } from '../bridge/bridgeAdapter.js';
+import { bridgeUnavailableNote } from '../utils/indexedXmlLookup.js';
 
 const TableInfoArgsSchema = z.object({
   tableName: z.string().describe('Name of the X++ table'),
@@ -62,10 +63,16 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
       }
     }
 
+    // 4. Nothing anywhere. Say WHY before saying "not found": a bridge that is
+    //    still starting (cold-start race) or absent means the object may exist
+    //    and simply wasn't reachable — telling the agent to go fix .mcp.json is
+    //    a diagnostic dead end in both cases (issue #826).
     return {
       content: [{
         type: 'text',
-        text: `Table "${args.tableName}" not found via bridge, symbol index, or on disk.\n\nIf this is a newly created table, ensure .mcp.json has the correct modelName/projectPath so the server can locate it.`,
+        text: `Table "${args.tableName}" not found via bridge, symbol index, or on disk.` +
+          bridgeUnavailableNote(context) +
+          `\nIf this is a newly created table, ensure .mcp.json has the correct modelName/projectPath so the server can locate it.`,
       }],
       isError: true,
     };
