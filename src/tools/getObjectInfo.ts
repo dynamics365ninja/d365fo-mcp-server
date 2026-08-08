@@ -39,10 +39,14 @@ const OPTIONS_DESCRIPTION =
   '{ "members": "names" } for fast member-name list (add "prefix" to filter). ' +
   'Report: { "includeRdl": true }. Form: { "searchControl": "AccountNum" }. Macro: { "filter": "Path" }.';
 
-/** One entry of the plural `objects[]` form — same shape as the single-object form. */
+/**
+ * One entry of the plural `objects[]` form. The name lives in `objectName` —
+ * the key `verify_d365fo_project` and `run_bp_check` already use for their own
+ * `objects[]` entries, so every plural object list on the server reads the same.
+ */
 const ObjectRefSchema = z.object({
   objectType: z.enum(OBJECT_INFO_TYPES).describe(OBJECT_TYPE_DESCRIPTION),
-  name: z.string().min(1).describe('Exact object name (use search/search(queries=[...]) first if unsure).'),
+  objectName: z.string().min(1).describe('Exact object name (use search/search(queries=[...]) first if unsure).'),
   options: z.record(z.string(), z.any()).optional().describe(OPTIONS_DESCRIPTION),
 });
 
@@ -76,8 +80,11 @@ function invalidArgs(detail: string) {
 /**
  * Normalise both call forms into a flat list of lookups.
  *
- * The single `{objectType, name}` form is exactly the one-element plural form —
- * that equivalence is the compatibility guarantee. Top-level options (incl. the
+ * The single `{objectType, name}` form is exactly the one-element plural form
+ * `{objects:[{objectType, objectName}]}` — that equivalence is the compatibility
+ * guarantee, and the only difference is the key the name arrives under (the
+ * top-level parameter has always been `name`; `objects[]` entries follow the
+ * server-wide `objectName` convention). Top-level options (incl. the
  * `compact`/`methodOffset` shortcuts) act as defaults for every entry so
  * `{objects:[…], compact:false}` reads full source for the whole batch; a
  * per-entry `options` wins over them.
@@ -90,7 +97,7 @@ function toObjectRefs(args: z.infer<typeof GetObjectInfoArgsSchema>): ObjectRef[
   if (args.objects?.length) {
     return args.objects.map(o => ({
       objectType: o.objectType,
-      name: o.name,
+      name: o.objectName,
       options: { ...shared, ...o.options },
     }));
   }
@@ -182,7 +189,7 @@ export async function getObjectInfoTool(request: CallToolRequest, context: XppSe
 
   const refs = toObjectRefs(parsed.data);
   if (!refs) {
-    return invalidArgs('pass either {objectType, name} for one object or {objects:[{objectType, name}, …]} for several.');
+    return invalidArgs('pass either {objectType, name} for one object or {objects:[{objectType, objectName}, …]} for several.');
   }
 
   // One object stays a plain single-object result — no batch header, no sections.

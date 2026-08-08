@@ -38,7 +38,7 @@ describe(`${CASE_ID} — eval case spec`, () => {
   });
 
   it('names 3+ objects, all of a type get_object_info can actually read', () => {
-    const objects = [...spec.instruction.matchAll(/name:"([A-Za-z0-9_]+)"/g)].map(m => m[1]);
+    const objects = [...spec.instruction.matchAll(/objectName:"([A-Za-z0-9_]+)"/g)].map(m => m[1]);
     expect(new Set(objects).size).toBeGreaterThanOrEqual(3);
 
     const types = [...spec.instruction.matchAll(/objectType:"([a-z-]+)"/g)].map(m => m[1]);

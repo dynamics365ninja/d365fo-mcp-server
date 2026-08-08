@@ -23,8 +23,8 @@ import { createXppMcpServer } from '../../src/server/mcpServer';
 // the human-readable log line, never for assertions.
 const CHARS_PER_TOKEN = 4;
 
-// Ceilings in characters of serialized JSON. Current actual ≈ 63,175 · largest
-// tool d365fo_file ≈ 9,6xx (ahead of generate_object ≈ 8,5xx). Raised
+// Ceilings in characters of serialized JSON. Current actual = 63,255 · largest
+// tool d365fo_file = 9,888 (ahead of generate_object = 8,602). Raised
 // deliberately whenever a genuinely new AOT capability lands — `service` +
 // `service-group` objectTypes, then d365fo_file's add-/remove-delete-action
 // (findings #36), generate_object scaffold `fields[]`/`preview` (#21), and the
@@ -40,7 +40,15 @@ const CHARS_PER_TOKEN = 4;
 // additionalProperties:true, so dataField/dataSource/fieldGroupName cost nothing
 // on the wire — only the prose naming them does, and that was paid for by
 // tightening the `params` description rather than by moving the ceiling.
-// Headroom is small on purpose so creep is caught early.
+//
+// get_object_info absorbing batch_get_info as `objects[]` did not move these
+// either: the plural form cost 1,002 chars but the retired tool gave back 1,047,
+// and naming the entry `objectName` (the key verify_d365fo_project and
+// run_bp_check already use) added 42 more. Net 63,258 → 63,255.
+//
+// Headroom is small on purpose so creep is caught early: both ceilings are the
+// next round hundred above the measured payload — 45 chars over the total,
+// 12 over the largest tool.
 const TOTAL_BUDGET = 63_300;
 const LARGEST_TOOL_BUDGET = 9_900;
 

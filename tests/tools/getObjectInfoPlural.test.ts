@@ -3,8 +3,10 @@
  * readers in ONE call (issue #831; absorbs the retired `batch_get_info` tool).
  *
  * The compatibility guarantee under test: the single `{objectType, name}` form is
- * exactly the one-element plural form and its result shape is unchanged (no batch
- * header, no numbered sections).
+ * exactly the one-element plural form `{objects:[{objectType, objectName}]}` and
+ * its result shape is unchanged (no batch header, no numbered sections). Entries
+ * carry the name as `objectName` — the key verify_d365fo_project and run_bp_check
+ * already use for their `objects[]`.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -46,9 +48,9 @@ describe('get_object_info — plural objects[] form', () => {
     const result = await getObjectInfoTool(
       req({
         objects: [
-          { objectType: 'class', name: 'Table1Model_Extension' },
-          { objectType: 'class', name: 'Table2Model_Extension' },
-          { objectType: 'class', name: 'Table3Model_Extension' },
+          { objectType: 'class', objectName: 'Table1Model_Extension' },
+          { objectType: 'class', objectName: 'Table2Model_Extension' },
+          { objectType: 'class', objectName: 'Table3Model_Extension' },
         ],
       }),
       context,
@@ -76,8 +78,8 @@ describe('get_object_info — plural objects[] form', () => {
     const result = await getObjectInfoTool(
       req({
         objects: [
-          { objectType: 'class', name: 'SalesFormLetter' },
-          { objectType: 'table', name: 'CustTable' },
+          { objectType: 'class', objectName: 'SalesFormLetter' },
+          { objectType: 'table', objectName: 'CustTable' },
         ],
       }),
       context,
@@ -94,8 +96,8 @@ describe('get_object_info — plural objects[] form', () => {
     const result = await getObjectInfoTool(
       req({
         objects: [
-          { objectType: 'table', name: 'CustTable' },
-          { objectType: 'enum', name: 'NoSuchEnum' },
+          { objectType: 'table', objectName: 'CustTable' },
+          { objectType: 'enum', objectName: 'NoSuchEnum' },
         ],
       }),
       context,
@@ -109,7 +111,7 @@ describe('get_object_info — plural objects[] form', () => {
 
   it('appends the shared not-found guidance (and forbids filesystem scanning) per object', async () => {
     const result = await getObjectInfoTool(
-      req({ objects: [{ objectType: 'enum', name: 'NoSuchEnum' }, { objectType: 'enum', name: 'AlsoMissing' }] }),
+      req({ objects: [{ objectType: 'enum', objectName: 'NoSuchEnum' }, { objectType: 'enum', objectName: 'AlsoMissing' }] }),
       context,
     );
 
@@ -126,8 +128,8 @@ describe('get_object_info — plural objects[] form', () => {
       req({
         compact: false,
         objects: [
-          { objectType: 'class', name: 'A' },
-          { objectType: 'class', name: 'B', options: { compact: true } },
+          { objectType: 'class', objectName: 'A' },
+          { objectType: 'class', objectName: 'B', options: { compact: true } },
         ],
       }),
       context,
@@ -144,7 +146,7 @@ describe('get_object_info — plural objects[] form', () => {
     expect(empty.content[0].text).toContain('invalid arguments');
 
     const tooMany = await getObjectInfoTool(
-      req({ objects: Array.from({ length: 11 }, (_, i) => ({ objectType: 'table', name: `T${i}` })) }),
+      req({ objects: Array.from({ length: 11 }, (_, i) => ({ objectType: 'table', objectName: `T${i}` })) }),
       context,
     );
     expect(tooMany.isError).toBe(true);
@@ -154,6 +156,15 @@ describe('get_object_info — plural objects[] form', () => {
     const result = await getObjectInfoTool(req({}), context);
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('invalid arguments');
+  });
+
+  it('takes the entry name only as objectName — no tolerated `name` alias', async () => {
+    const result = await getObjectInfoTool(
+      req({ objects: [{ objectType: 'table', name: 'CustTable' }] }),
+      context,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('objectName');
   });
 });
 
@@ -169,7 +180,7 @@ describe('get_object_info — single-object form is unchanged (compatibility gua
 
   it('a one-element objects[] is the exact shorthand equivalent of the single form', async () => {
     const single = await getObjectInfoTool(req({ objectType: 'table', name: 'CustTable' }), context);
-    const plural = await getObjectInfoTool(req({ objects: [{ objectType: 'table', name: 'CustTable' }] }), context);
+    const plural = await getObjectInfoTool(req({ objects: [{ objectType: 'table', objectName: 'CustTable' }] }), context);
 
     expect(plural.content[0].text).toBe(single.content[0].text);
   });
@@ -189,7 +200,8 @@ describe('get_object_info — published surface', () => {
     const props = (schema.inputSchema as any).properties;
     expect(props.objects).toBeDefined();
     expect(props.objects.maxItems).toBe(10);
-    expect(props.objects.items.required).toEqual(['objectType', 'name']);
+    expect(props.objects.items.required).toEqual(['objectType', 'objectName']);
+    expect(props.objects.items.properties.name).toBeUndefined();
     // Neither form may be declared globally required — the tool accepts both.
     expect((schema.inputSchema as any).required).toBeUndefined();
     expect(schema.description).not.toContain('batch_get_info(');
@@ -197,7 +209,7 @@ describe('get_object_info — published surface', () => {
 
   it('labels a plural call in the progress message', () => {
     const msg = buildProgressMessage('get_object_info', {
-      objects: [{ objectType: 'class', name: 'A' }, { objectType: 'class', name: 'B' }],
+      objects: [{ objectType: 'class', objectName: 'A' }, { objectType: 'class', objectName: 'B' }],
     });
     expect(msg).toContain('2 objects');
     expect(msg).toContain('A, B');

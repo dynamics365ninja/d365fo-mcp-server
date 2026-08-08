@@ -17,10 +17,10 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
       return `🔍 Searching D365FO index: "${a.query ?? ''}"${a.type ? ` [${a.type}]` : ''}`;
     case 'get_object_info':
       if (Array.isArray(a.objects) && a.objects.length > 1) {
-        return `📦 Reading ${a.objects.length} objects: ${a.objects.map((o: any) => o.name ?? '').join(', ')}`;
+        return `📦 Reading ${a.objects.length} objects: ${a.objects.map((o: any) => o.objectName ?? '').join(', ')}`;
       }
       if (Array.isArray(a.objects) && a.objects.length === 1) {
-        return `📦 Reading ${a.objects[0]?.objectType ?? 'object'} ${a.objects[0]?.name ?? ''}`;
+        return `📦 Reading ${a.objects[0]?.objectType ?? 'object'} ${a.objects[0]?.objectName ?? ''}`;
       }
       return `📦 Reading ${a.objectType ?? 'object'} ${a.name ?? ''}`;
     case 'get_method':
