@@ -8,6 +8,10 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import * as fs from 'fs/promises';
+// Taken from node:fs rather than fs/promises: the value is the same, but the
+// promises namespace is routinely replaced wholesale by test mocks that only
+// stub the functions, and reading .constants off such a mock is a TypeError.
+import { constants as FS_CONSTANTS } from 'fs';
 import { execFile } from 'child_process';
 import util from 'util';
 
@@ -18,6 +22,7 @@ import { isStandardModel, resolveObjectPrefix, applyObjectPrefix, resolveRegular
 import { PackageResolver } from '../utils/packageResolver.js';
 import { resolveDbPathLocally } from '../utils/metadataResolver.js';
 import { assertWritePathAllowed } from '../utils/pathContainment.js';
+import { withFileLock, writeFileAtomic } from '../utils/atomicFileWrite.js';
 import {
   bridgeValidateAfterWrite, canBridgeModify,
   bridgeAddMethod, bridgeRemoveMethod, bridgeAddField, bridgeSetProperty, bridgeReplaceCode,
@@ -292,6 +297,22 @@ export function describeBridgeFallbackReason(
 }
 
 /**
+ * Serializes a direct-XML editor on the file it edits.
+ *
+ * Each of these functions reads the whole file, patches the string and writes it
+ * back. Two that overlap on one file both read the same original, so the second
+ * write silently drops whatever element the first one added — and modify calls do
+ * arrive concurrently, since `d365fo_file` is excluded from the in-flight call dedup
+ * (writes must never be coalesced). The lock is per-path and in-process; see
+ * utils/atomicFileWrite.ts for what it does and does not cover.
+ */
+function serializedOnFile<A extends unknown[], R>(
+  fn: (filePath: string, ...args: A) => Promise<R>,
+): (filePath: string, ...args: A) => Promise<R> {
+  return (filePath, ...args) => withFileLock(filePath, () => fn(filePath, ...args));
+}
+
+/**
  * Direct XML file-level replace-code fallback, used when the C# bridge can't
  * reach a method (e.g. form/form-extension control overrides not exposed via
  * the Methods API). Last resort — the bridge is always preferred.
@@ -299,12 +320,12 @@ export function describeBridgeFallbackReason(
  * `reason` comes from describeBridgeFallbackReason so the success message names the
  * cause that actually applied instead of asserting an outage that may not exist.
  */
-async function directXmlReplaceCode(
+const directXmlReplaceCode = serializedOnFile(async (
   filePath: string,
   oldCode: string,
   newCode: string,
   reason: string,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     // Files on disk are CRLF; oldCode from get_method_source is typically LF-only.
     // Normalize both to LF for matching, then normalizeD365Xml restores CRLF on write.
@@ -332,7 +353,7 @@ async function directXmlReplaceCode(
       return null; // no change made
     }
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlReplaceCode fallback (${reason}): replaced in ${filePath}`);
     return {
       success: true,
@@ -342,7 +363,7 @@ async function directXmlReplaceCode(
     console.error(`[modify_d365fo_file] directXmlReplaceCode failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * Direct XML fallback for modify-property, used when the bridge rejects
@@ -354,12 +375,12 @@ async function directXmlReplaceCode(
  * Refuses to act if the element is missing (returns null so the caller
  * surfaces the original bridge error) or ambiguous (appears more than once).
  */
-async function directXmlModifyProperty(
+const directXmlModifyProperty = serializedOnFile(async (
   filePath: string,
   propertyPath: string,
   propertyValue: string,
   reason: string,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '');
@@ -373,7 +394,7 @@ async function directXmlModifyProperty(
     // occur on controls, so it sees several matches and refuses (#37).
     const formPatched = upsertAxFormDesignProperty(content, tagName, escapedValue);
     if (formPatched) {
-      await fs.writeFile(filePath, normalizeD365Xml(formPatched), 'utf-8');
+      await writeFileAtomic(filePath, normalizeD365Xml(formPatched));
       return {
         success: true,
         message: `✅ Form Design property '${tagName}'='${propertyValue}' set via direct XML (the bridge does not support modify-property for forms). File: ${filePath}`,
@@ -406,7 +427,7 @@ async function directXmlModifyProperty(
       if (!inserted) {
         return null; // not a table / unknown property — surface the original bridge error
       }
-      await fs.writeFile(filePath, normalizeD365Xml(inserted), 'utf-8');
+      await writeFileAtomic(filePath, normalizeD365Xml(inserted));
       console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: inserted <${tagName}> in ${filePath}`);
       return {
         success: true,
@@ -426,7 +447,7 @@ async function directXmlModifyProperty(
       ? content.replace(openTagRe, m => m.replace(/>[\s\S]*?</, `>${escapedValue}<`))
       : content.replace(selfClosingRe, (_m, attrs) => `<${tagName}${attrs}>${escapedValue}</${tagName}>`);
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: set <${tagName}> in ${filePath}`);
     return {
       success: true,
@@ -436,7 +457,7 @@ async function directXmlModifyProperty(
     console.error(`[modify_d365fo_file] directXmlModifyProperty failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * Direct XML fallback for add-menu-item-to-menu.
@@ -445,11 +466,11 @@ async function directXmlModifyProperty(
  * in-memory model yet (even after update_symbol_index). This function edits
  * the XML file directly as a last-resort fallback.
  */
-async function directXmlAddMenuItemToMenu(
+const directXmlAddMenuItemToMenu = serializedOnFile(async (
   filePath: string,
   menuItemToAdd: string,
   menuItemToAddType: string,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -483,7 +504,7 @@ async function directXmlAddMenuItemToMenu(
 
     if (updated === content) return null;
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlAddMenuItemToMenu: added '${menuItemToAdd}' to ${filePath}`);
     return {
       success: true,
@@ -493,7 +514,7 @@ async function directXmlAddMenuItemToMenu(
     console.error(`[modify_d365fo_file] directXmlAddMenuItemToMenu failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * controlType (as passed to add-control) → the form control element emitted inside
@@ -541,7 +562,7 @@ function formExtensionControlName(): string {
  * wrapped by <AxFormExtensionControl xmlns=""> with a <Parent> reference. It edits
  * the file on disk, so it is unaffected by what the bridge has loaded.
  */
-async function directXmlAddControl(
+const directXmlAddControl = serializedOnFile(async (
   filePath: string,
   controlName: string,
   parentControl: string,
@@ -549,7 +570,7 @@ async function directXmlAddControl(
   dataSource?: string,
   dataField?: string,
   label?: string,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -597,7 +618,7 @@ async function directXmlAddControl(
 
     if (updated === content) return null;
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlAddControl: added '${controlName}' (${iType}) to ${filePath}`);
     return {
       success: true,
@@ -607,7 +628,7 @@ async function directXmlAddControl(
     console.error(`[modify_d365fo_file] directXmlAddControl failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * Normalises a NoYes-shaped flag to a boolean.
@@ -650,13 +671,13 @@ export function coerceNoYesFlag(value: unknown): boolean | undefined {
  * carries allowDuplicates/alternateKey, which the whole-file overwrite workaround
  * dropped (cluster #35).
  */
-async function directXmlAddIndex(
+const directXmlAddIndex = serializedOnFile(async (
   filePath: string,
   indexName: string,
   fields: string[] | undefined,
   allowDuplicates: boolean | undefined,
   alternateKey: boolean | undefined,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -712,7 +733,7 @@ async function directXmlAddIndex(
 
     if (updated === content) return null;
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlAddIndex: added '${indexName}' to ${filePath}`);
     return {
       success: true,
@@ -722,7 +743,7 @@ async function directXmlAddIndex(
     console.error(`[modify_d365fo_file] directXmlAddIndex failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * Locates ONE top-level collection element inside a root element's body, e.g.
@@ -847,14 +868,14 @@ function upsertDataEntityFieldGroupExtension(
  * cosmetic, the deserializer drops children it meets out of order, and Label must
  * precede the DataField/DataSource binding pair.
  */
-async function directXmlAddDataEntityExtensionField(
+const directXmlAddDataEntityExtensionField = serializedOnFile(async (
   filePath: string,
   fieldName: string,
   dataField: string,
   dataSource: string,
   label?: string,
   fieldGroupName?: string,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -894,7 +915,7 @@ async function directXmlAddDataEntityExtensionField(
 
     if (updated === content) return null;
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlAddDataEntityExtensionField: added '${fieldName}' to ${filePath}`);
     return {
       success: true,
@@ -908,7 +929,7 @@ async function directXmlAddDataEntityExtensionField(
     console.error(`[modify_d365fo_file] directXmlAddDataEntityExtensionField failed: ${err}`);
     return null;
   }
-}
+});
 
 /** DeleteAction values accepted by the AxTable serialiser. */
 export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRestricted'] as const;
@@ -923,13 +944,13 @@ export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRes
  * it in place is safe. Shape matches MetadataWriteService.cs: Name, Table,
  * DeleteAction.
  */
-async function directXmlDeleteAction(
+const directXmlDeleteAction = serializedOnFile(async (
   filePath: string,
   mode: 'add' | 'remove',
   name: string,
   table: string | undefined,
   deleteAction: string | undefined,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -948,7 +969,7 @@ async function directXmlDeleteAction(
         return { success: true, message: `✅ Delete action '${name}' not present in ${filePath} — nothing to remove.` };
       }
       const updated = content.replace(blockRe, '');
-      await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+      await writeFileAtomic(filePath, normalizeD365Xml(updated));
       return { success: true, message: `✅ Delete action '${name}' removed. File: ${filePath}` };
     }
 
@@ -974,7 +995,7 @@ async function directXmlDeleteAction(
     }
     if (updated === content) return null;
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     return {
       success: true,
       message: `✅ Delete action '${name}' (${deleteAction ?? 'Restricted'} on ${table ?? name}) added. File: ${filePath}`,
@@ -983,7 +1004,7 @@ async function directXmlDeleteAction(
     console.error(`[modify_d365fo_file] directXmlDeleteAction failed: ${err}`);
     return null;
   }
-}
+});
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1010,13 +1031,13 @@ function escapeRegExp(s: string): string {
  * each element is anchored to the sibling it must follow, and the function is a
  * no-op if the anchor is absent or the property is already present.
  */
-export async function directXmlEnsureRelationProperties(
+export const directXmlEnsureRelationProperties = serializedOnFile(async (
   filePath: string,
   relationName: string,
   cardinality: string,
   relatedTableCardinality: string,
   relationshipType: string,
-): Promise<{ applied: string[] } | null> {
+): Promise<{ applied: string[] } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -1062,7 +1083,7 @@ export async function directXmlEnsureRelationProperties(
     if (applied.length === 0 || patched === block) return { applied: [] };
 
     const updated = content.replace(block, patched);
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(
       `[modify_d365fo_file] ✅ directXmlEnsureRelationProperties: ${applied.join(', ')} on '${relationName}' in ${filePath}`,
     );
@@ -1071,7 +1092,7 @@ export async function directXmlEnsureRelationProperties(
     console.error(`[modify_d365fo_file] directXmlEnsureRelationProperties failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * Heuristic: does a bridge failure message indicate the C# provider could not
@@ -3358,23 +3379,40 @@ export async function findD365FileOnDisk(
  * Throws if the source file is missing or the copy fails, so callers
  * always know whether a valid backup exists before overwriting.
  * Returns the backup file path.
+ *
+ * The name carries MILLISECONDS and, if that still collides, a counter. At the old
+ * one-second resolution two modifies of the same file inside the same second
+ * produced the same backup name, so the second copy overwrote the first with
+ * already-modified content — on a target outside git (exactly the case that forces
+ * a backup, see ensureRecoverableModification) the original was then unrecoverable.
+ * COPYFILE_EXCL is what makes the retry a claim rather than a check: it fails
+ * instead of overwriting, so two callers racing on the same name cannot both win.
+ *
+ * Exported for unit tests.
  */
-async function createFileBackup(filePath: string): Promise<string> {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-  const backupPath = `${filePath}.backup-${timestamp}`;
-  try {
-    await fs.copyFile(filePath, backupPath);
-    // Confirm the backup has non-zero size before proceeding
-    const stat = await fs.stat(backupPath);
-    if (stat.size === 0) {
-      throw new Error('Backup file was created but is empty');
+export async function createFileBackup(filePath: string): Promise<string> {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/Z$/, '');
+  const base = `${filePath}.backup-${timestamp}`;
+
+  for (let attempt = 0; ; attempt++) {
+    const backupPath = attempt === 0 ? base : `${base}-${attempt}`;
+    try {
+      await fs.copyFile(filePath, backupPath, FS_CONSTANTS.COPYFILE_EXCL);
+      // Confirm the backup has non-zero size before proceeding
+      const stat = await fs.stat(backupPath);
+      if (stat.size === 0) {
+        throw new Error('Backup file was created but is empty');
+      }
+      return backupPath;
+    } catch (error: any) {
+      if (error?.code === 'EEXIST' && attempt < 100) {
+        continue;
+      }
+      throw new Error(
+        `Failed to create backup at "${backupPath}": ${error instanceof Error ? error.message : String(error)}`
+      );
     }
-  } catch (error) {
-    throw new Error(
-      `Failed to create backup at "${backupPath}": ${error instanceof Error ? error.message : String(error)}`
-    );
   }
-  return backupPath;
 }
 
 const execFileAsync = util.promisify(execFile);
