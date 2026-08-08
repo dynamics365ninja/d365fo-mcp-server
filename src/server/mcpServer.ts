@@ -15,7 +15,7 @@ import { registerToolHandler } from '../tools/toolHandler.js';
 import { registerResources } from '../resources/index.js';
 import { registerCodeReviewPrompt } from '../prompts/codeReview.js';
 import type { XppServerContext } from '../types/context.js';
-import { SERVER_MODE, LOCAL_TOOLS, isToolAllowedInMode } from './serverMode.js';
+import { SERVER_MODE, LOCAL_TOOLS, TOOL_PROFILE, isToolEnabled } from './serverMode.js';
 import { TOOL_ANNOTATIONS } from './toolAnnotations.js';
 import { getConfigManager } from '../utils/configManager.js';
 
@@ -24,8 +24,8 @@ import { setLastRoots, recordRootsListChanged } from '../utils/stdioSessionInfo.
 import { toolSchemas } from './toolSchemas/index.js';
 
 export type { XppServerContext };
-export { SERVER_MODE, LOCAL_TOOLS, WRITE_TOOLS } from './serverMode.js';
-export type { ServerMode } from './serverMode.js';
+export { SERVER_MODE, LOCAL_TOOLS, WRITE_TOOLS, TOOL_PROFILE, CORE_TOOLS } from './serverMode.js';
+export type { ServerMode, ToolProfile } from './serverMode.js';
 
 /**
  * Convert a file:// URI to a local path. Duplicated from transport.ts to avoid
@@ -201,15 +201,18 @@ export function createXppMcpServer(context: XppServerContext): Server {
       annotations: TOOL_ANNOTATIONS[t.name],
     })) as typeof allTools.tools;
 
-    // Apply server mode filter. ALWAYS_TOOLS bypass the partition and stay
-    // published in every mode. isToolAllowedInMode is shared with the runtime
-    // gate in toolHandler so the list and the call-time enforcement can't drift.
-    if (SERVER_MODE === 'read-only') {
-      allTools.tools = allTools.tools.filter(t => isToolAllowedInMode(SERVER_MODE, t.name));
-      console.error(`[MCP Server] Tool list filtered for read-only mode: ${allTools.tools.length} tools (local tools excluded)`);
-    } else if (SERVER_MODE === 'write-only') {
-      allTools.tools = allTools.tools.filter(t => isToolAllowedInMode(SERVER_MODE, t.name));
-      console.error(`[MCP Server] Tool list filtered for write-only mode: ${allTools.tools.length} tools (${Array.from(LOCAL_TOOLS).join(', ')})`);
+    // Apply the locality + breadth filters. ALWAYS_TOOLS bypass the LOCAL_TOOLS
+    // partition and stay published in every mode. isToolEnabled is shared with
+    // the runtime gate in toolHandler so the list and the call-time enforcement
+    // can't drift.
+    const published = allTools.tools.filter(t => isToolEnabled(t.name));
+    const modeNote =
+      SERVER_MODE === 'read-only' ? ' · read-only (local tools excluded)' :
+      SERVER_MODE === 'write-only' ? ` · write-only (${Array.from(LOCAL_TOOLS).join(', ')})` : '';
+    const profileNote = TOOL_PROFILE === 'core' ? ' · core profile' : '';
+    if (published.length !== allTools.tools.length || profileNote) {
+      allTools.tools = published;
+      console.error(`[MCP Server] Tool list filtered: ${published.length} tools${modeNote}${profileNote}`);
     } else {
       console.error(`[MCP Server] Tool list in full mode: ${allTools.tools.length} tools (no filtering)`);
     }

@@ -23,44 +23,29 @@ import { createXppMcpServer } from '../../src/server/mcpServer';
 // the human-readable log line, never for assertions.
 const CHARS_PER_TOKEN = 4;
 
-// Ceilings in characters of serialized JSON. Current actual = 63,255 · largest
-// tool d365fo_file = 9,888 (ahead of generate_object = 8,602). Raised
-// deliberately whenever a genuinely new AOT capability lands — `service` +
-// `service-group` objectTypes, then d365fo_file's add-/remove-delete-action
-// (findings #36), generate_object scaffold `fields[]`/`preview` (#21), and the
-// five coverage-closure objectTypes (macro, configuration-key, security-policy,
-// aggregate-measurement, license-code) that took the T flag green on the last
-// create-path holes in the taxonomy, then the data-entity writer properties
-// (primaryKey, isPublic, entityCategory, dynamicFields,
-// allowRowVersionChangeTracking) that were implemented but unadvertised — paid
-// for in part by dropping the member-variable rule from `sourceCode`, where it
-// was the third statement of the same thing.
+// Ceilings in characters of serialized JSON.
 //
-// data-entity-extension add-field deliberately does NOT raise these. `params` is
-// additionalProperties:true, so dataField/dataSource/fieldGroupName cost nothing
-// on the wire — only the prose naming them does, and that was paid for by
-// tightening the `params` description rather than by moving the ceiling.
+// Ratcheted down hard by issue #825: `d365fo_file` (9,888 -> 4,781) and
+// `generate_object` (8,602 -> 3,135) stopped inlining a discriminated union of
+// every operation and its parameters. Both now publish the DISCRIMINATORS only
+// — action/objectType/operation/mode/pattern as closed enums — and the
+// parameter contract behind the one the agent picks is fetched once from
+// get_knowledge(kind="op-spec"), backed by d365foFileOpSpecs.ts and
+// generateObjectOpSpecs.ts. get_knowledge paid ~490 chars for that lookup.
 //
-// Raised for labels(action="search") maxResults/verbose (#832): a broad phrase
-// query returned 30 four-line blocks (~2,5 kB per call), so ~230 wire chars buy
-// a bounded, one-line-per-label default — the schema pays once per session, the
-// result paid on every call and on every later re-read.
+// What is left in those two schemas is close to the floor: the two closed enums
+// in d365fo_file alone are ~1,185 chars, and the remaining prose is the
+// behavioural warnings (immediate apply, isError=false, never hand-build the
+// prefix) that stop failed calls — which cost far more than the bytes do.
 //
-// run_bp_check's `objects[]` batch form (#828) raises it again: it is a
-// genuinely new array-of-object parameter, and it buys back far more than it
-// costs — checking three objects went from three ListTools-priced round trips
-// to one. The single-target `targetFilter`/`targetElementType` descriptions
-// were tightened at the same time to pay for part of it.
-//
-// get_object_info absorbing batch_get_info as `objects[]` (#831) gives a little
-// back: the plural form cost 1,002 chars but the retired tool returned 1,047,
-// and naming the entry `objectName` (the key verify_d365fo_project and
-// run_bp_check already use) added 42 more.
+// `labels` is the largest tool now, not d365fo_file: labels(action="search")
+// maxResults/verbose (#832) added ~230 wire chars to bound a result that was
+// paid on every call and on every later re-read.
 //
 // Headroom is small on purpose so creep is caught early: both ceilings are the
 // next round hundred above the measured payload.
-const TOTAL_BUDGET = 63_600;
-const LARGEST_TOOL_BUDGET = 9_900;
+const TOTAL_BUDGET = 53_500;
+const LARGEST_TOOL_BUDGET = 6_200;
 
 async function getTools(): Promise<Array<{ name: string }>> {
   const ctx: any = { symbolIndex: {}, parser: {} };
@@ -97,5 +82,26 @@ describe('tool schema token budget', () => {
       largest.chars,
       `largest tool schema '${largest.name}' (${largest.chars} chars) exceeds the per-tool cap`,
     ).toBeLessThan(LARGEST_TOOL_BUDGET);
+  });
+
+  it('keeps the two discriminated-union tools off the inline-parameter path', async () => {
+    // Issue #825: d365fo_file and generate_object were a quarter of the payload
+    // because each inlined every operation's parameters. The guard is a size cap
+    // per tool PLUS the reason the size holds — both point at the op-spec lookup,
+    // so an agent that no longer sees the params still knows where they live.
+    const tools = await getTools();
+    const byName = new Map(tools.map(t => [t.name, t]));
+
+    for (const [name, cap] of [['d365fo_file', 5_000], ['generate_object', 3_400]] as const) {
+      const tool: any = byName.get(name);
+      expect(tool, `${name} is not published`).toBeDefined();
+      const chars = JSON.stringify(tool).length;
+      expect(chars, `${name} (${chars} chars) grew past its post-#825 cap`).toBeLessThan(cap);
+      expect(tool.description, `${name} must name the op-spec lookup`).toContain('kind="op-spec"');
+      expect(tool.inputSchema.properties.params, `${name} must expose a loose params object`).toMatchObject({
+        type: 'object',
+        additionalProperties: true,
+      });
+    }
   });
 });

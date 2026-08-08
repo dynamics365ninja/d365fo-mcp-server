@@ -101,6 +101,18 @@ Both paths in full — prerequisites, editor configuration for every scenario, t
 
 ---
 
+## Keep the tool catalogue small
+
+Every tool your editor advertises is re-sent to the model on **every single request**, and the catalogue is shared across all MCP servers and built-in tool sets in the workspace — not just this one. Two things follow.
+
+**1. Turn off the tool sets you are not using in this workspace.** A measured D365FO session advertised 105 tools: 26 from this server, 14 from a Bicep MCP server that was never called, and ~57 built-in VS Code browser / Python / notebook / dotnet tools that were never called either. Past the host's inline-tool limit (VS Code: ~100 tools) the catalogue stops being sent inline and the model has to call a `tool_search` to *discover* a tool before it can use it — a silent extra round trip per tool it needs. That session spent six dedicated turns and ~20 seconds doing nothing but tool discovery. In VS Code: **Chat → Configure Tools…**, and untick whole tool sets you do not need for the task at hand. Other hosts have the same switch under a different name.
+
+**2. Run this server's `core` profile when the workspace is crowded.** `MCP_TOOL_PROFILE=core` publishes 18 tools instead of 25 — the plan → discover → write → build → verify loop — and drops the specialist ones (`extension_info`, `analyze_code`, `validate_code`, `security_info`, `get_method`, `run_systest_class`, `suggest_edt`). Add individual ones back with `MCP_EXTRA_TOOLS=security_info,get_method`, or set `server.toolProfile` / `server.extraTools` in `d365fo-mcp.json`. The default stays `full`, so an existing setup does not change until you ask it to. See [Configuration](docs/CONFIGURATION.md).
+
+Neither switch loses you any capability — a tool that is not advertised is still there the moment you turn it back on.
+
+---
+
 ## Azure Deployment
 
 One shared instance for the whole team — the metadata index lives in Blob Storage and downloads automatically on startup.

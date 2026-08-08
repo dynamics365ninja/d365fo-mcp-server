@@ -20,7 +20,7 @@ import { WorkspaceScanner } from './workspace/workspaceScanner.js';
 import { HybridSearch } from './workspace/hybridSearch.js';
 import { initializeDatabase } from './database/download.js';
 import { initializeConfig, getConfigManager } from './utils/configManager.js';
-import { SERVER_MODE, LOCAL_TOOLS, isToolAllowedInMode } from './server/serverMode.js';
+import { SERVER_MODE, LOCAL_TOOLS, TOOL_PROFILE, EXTRA_TOOLS, isToolEnabled } from './server/serverMode.js';
 import { TOOL_ANNOTATIONS } from './server/toolAnnotations.js';
 import { apiKeyAuth } from './middleware/apiKeyAuth.js';
 import { VERSION } from './version.js';
@@ -638,12 +638,10 @@ async function main() {
     // Log tool count immediately (transport is already connected).
     // TOOL_ANNOTATIONS is guaranteed complete by tests/utils/toolInventory.test.ts,
     // so its size tracks the real tool count without a hardcoded literal.
-    const totalTools = Object.keys(TOOL_ANNOTATIONS).length;
-    const localToolCount = LOCAL_TOOLS.size;
-    const toolCount = SERVER_MODE === 'write-only' ? localToolCount :
-                     SERVER_MODE === 'read-only' ? totalTools - localToolCount : totalTools;
+    const toolCount = Object.keys(TOOL_ANNOTATIONS).filter(name => isToolEnabled(name)).length;
     const toolDesc = SERVER_MODE === 'write-only' ? `(${Array.from(LOCAL_TOOLS).join(', ')})` :
                     SERVER_MODE === 'read-only' ? '(all except local tools)' :
+                    TOOL_PROFILE === 'core' ? `(core profile${EXTRA_TOOLS.size ? ` + ${EXTRA_TOOLS.size} extra` : ''}; MCP_TOOL_PROFILE=full for all ${Object.keys(TOOL_ANNOTATIONS).length})` :
                     '(1 discovery + 1 labels + 3 object-info + 2 intelligent + 2 smart-gen + 1 file-ops + 1 pattern-analysis + 5 security-ext + 5 sdlc-build + 2 code-review + 2 code-quality)';
     log.ok(`Registered ${toolCount} X++ MCP tools ${toolDesc}`);
     serverState.isReady = true;
@@ -818,7 +816,7 @@ async function main() {
           ...cat,
           // Same predicate as the ListTools filter and runtime gate, so the
           // startup banner matches what the server actually exposes.
-          tools: cat.tools.filter(t => isToolAllowedInMode(SERVER_MODE, t.name)),
+          tools: cat.tools.filter(t => isToolEnabled(t.name)),
         }))
         .filter(cat => cat.tools.length > 0);
 
