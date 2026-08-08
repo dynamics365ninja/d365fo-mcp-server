@@ -951,7 +951,12 @@ namespace D365MetadataBridge.Protocol
 
                         // Extract string helper
                         string? S(string key) => p.TryGetValue(key, out var v) ? v?.ToString() : null;
-                        bool? B(string key) => p.TryGetValue(key, out var v) && v != null ? Convert.ToBoolean(v) : null;
+                        // System.Text.Json boxes every params value as JsonElement, which does
+                        // not implement IConvertible — Convert.ToBoolean(v) therefore threw
+                        // InvalidCastException on every batch op carrying a bool, and the catch
+                        // below reported that cast as the operation's failure. Same coercion as
+                        // the single-op arms' request.GetBoolParam.
+                        bool? B(string key) => p.TryGetValue(key, out var v) ? ParamCoercion.ToBool(v, key) : null;
 
                         switch (op.Operation.ToLowerInvariant())
                         {
