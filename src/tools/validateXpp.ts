@@ -55,8 +55,11 @@ export const validateXppArgsSchema = z.object({
   ),
 });
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts - the single source of truth for tool instructions.
+// This handler has no schema of its own — it is reached through a unified
+// tool. Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/, one file per published tool, aggregated by
+// toolSchemas/index.ts. It is NOT in mcpServer.ts; that file only spreads
+// the aggregated array into the ListTools response.
 
 // Types
 
@@ -296,8 +299,17 @@ function checkCocDefaultParam(code: string): ValidationViolation[] {
   const lines = code.split('\n');
   lines.forEach((rawLine, i) => {
     if (rawLine.trimStart().startsWith('//')) return;
-    // Method-like line with a default param: "public Foo method(Type _p = val)"
-    if (/\b(public|protected|private|internal)\b.*\([^)]*=\s*[^,)]+\)/.test(rawLine)) {
+    // Method-like line with a default param: "public Foo method(Type _p = val)".
+    // The second alternative catches declarations with NO access modifier (legal
+    // X++ — members default to public). get_method's CoC template deliberately
+    // strips access modifiers, so a modifier-only regex misses the single most
+    // likely source of this defect: an agent pasting that template verbatim.
+    // It is anchored to a whole-line declaration (no trailing ';') so that call
+    // statements containing '=' inside parens — strFmt("a = %1", x) — don't match.
+    const withModifier = /\b(public|protected|private|internal)\b.*\([^)]*=\s*[^,)]+\)/.test(rawLine);
+    const bareDeclaration =
+      /^\s*(?:(?:static|final|abstract|display|edit|server|client)\s+)*[A-Za-z_]\w*\s+[A-Za-z_]\w*\s*\([^)]*=\s*[^,)]+\)\s*$/.test(rawLine);
+    if (withModifier || bareDeclaration) {
       // Skip constructors (new()) — defaults there are intentional
       if (/\bnew\s*\(/.test(rawLine)) return;
       // Skip parm* accessor methods (standard DataContract pattern: parmX(T _v = v))
@@ -490,7 +502,7 @@ function checkMissingAlternateKey(code: string): ValidationViolation[] {
       excerpt: '<AxTable> — no index with <AlternateKey>Yes</AlternateKey>',
       fix: 'Add an <AxTableIndex> with <AlternateKey>Yes</AlternateKey> unless the table ' +
         'deliberately has none — xppbp reports BPCheckAlternateKeyAbsent as a warning and ' +
-        'the table still builds. generate_smart adds one via buildPrimaryKeyIndex.',
+        'the table still builds. generate_object(mode="scaffold") adds one via buildPrimaryKeyIndex.',
     });
   }
   return violations;
@@ -853,7 +865,7 @@ export async function validateXppTool(
     return {
       content: [{
         type: 'text',
-        text: `✅ validate_xpp: no violations found${context ? ` in ${context}` : ''}.\n` +
+        text: `✅ validate_code(syntax): no violations found${context ? ` in ${context}` : ''}.\n` +
           `Checked ${XPP_RULES.length + (codeType !== 'xpp' ? XML_RULES.length + XML_PROPERTY_RULES.length : 0)} rule groups` +
           `${codeType !== 'xpp' && stats ? ' (property rules driven by mined standard-model statistics)' : ''}.`,
       }],
@@ -862,7 +874,7 @@ export async function validateXppTool(
 
   const lines: string[] = [];
   lines.push(
-    `${errors.length > 0 ? '❌' : '⚠️'} validate_xpp: ` +
+    `${errors.length > 0 ? '❌' : '⚠️'} validate_code(syntax): ` +
     `${errors.length} error(s), ${warnings.length} warning(s)` +
     (context ? ` in ${context}` : ''),
   );

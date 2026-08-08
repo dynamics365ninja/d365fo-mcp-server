@@ -36,12 +36,6 @@ const RETRY_BASE_DELAY_MS = 500;
 // /metadata/custom/{ModelName}/...    - Custom metadata (denní změny)
 // /databases/xpp-metadata-latest.db   - Compiled database
 
-interface BlobManagerOptions {
-  operation: 'upload' | 'download' | 'delete-custom' | 'sync';
-  modelType?: 'standard' | 'custom' | 'all';
-  specificModels?: string[];
-}
-
 export class AzureBlobMetadataManager {
   private blobServiceClient: BlobServiceClient;
   private containerClient: ContainerClient;
@@ -82,7 +76,6 @@ export class AzureBlobMetadataManager {
     
     // Filter and prepare models for parallel upload
     const uploadPromises: Promise<{ modelName: string; count: number }>[] = [];
-    let queuedCount = 0;
     
     for (const modelName of models) {
       const modelPath = path.join(localPath, modelName);
@@ -98,8 +91,6 @@ export class AzureBlobMetadataManager {
         // Skip if not matching requested type
         if (modelType === 'custom' && !isCustomModel) continue;
         if (modelType === 'standard' && isCustomModel) continue;
-        
-        queuedCount++;
         
         // Add to parallel upload queue
         uploadPromises.push(
@@ -584,25 +575,29 @@ async function main() {
       await manager.downloadMetadata('all');
       break;
       
-    case 'delete-custom':
+    case 'delete-custom': {
       const modelsToDelete = args[1]?.split(',').map(m => m.trim());
       await manager.deleteCustomMetadata(modelsToDelete);
       break;
+    }
       
-    case 'delete-local-custom':
+    case 'delete-local-custom': {
       const localModelsToDelete = args[1]?.split(',').map(m => m.trim());
       await manager.deleteLocalCustomMetadata(localModelsToDelete);
       break;
+    }
       
-    case 'upload-database':
+    case 'upload-database': {
       const dbPath = args[1] || process.env.DB_PATH || './data/xpp-metadata.db';
       await manager.uploadDatabase(dbPath);
       break;
+    }
       
-    case 'download-database':
+    case 'download-database': {
       const localDbPath = args[1] || process.env.DB_PATH || './data/xpp-metadata.db';
       await manager.downloadDatabase(localDbPath);
       break;
+    }
       
     default:
       console.log('Usage:');

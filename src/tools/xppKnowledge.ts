@@ -4,6 +4,13 @@
  * and AX2012 → D365FO migration guidance.
  *
  * Data is embedded — no DB or disk access needed. Available in all server modes.
+ *
+ * ADDING OR EDITING A TOPIC: read docs/KNOWLEDGE_AUTHORING.md first. Content
+ * here ships straight into the model's context with no runtime gate, so three
+ * CI tests stand behind it (tests/knowledge/): entry shape, example validity,
+ * and — the one that will block your PR — every named AOT type must be in
+ * eval/knowledge-audit.snapshot.json, which is captured on a VM. Hypothetical
+ * elements in examples must use the `My…` placeholder convention.
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -25,8 +32,11 @@ const XppKnowledgeArgsSchema = z.object({
   ),
 });
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts - the single source of truth for tool instructions.
+// This handler has no schema of its own — it is reached through a unified
+// tool. Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/, one file per published tool, aggregated by
+// toolSchemas/index.ts. It is NOT in mcpServer.ts; that file only spreads
+// the aggregated array into the ListTools response.
 
 // ─── Knowledge Entry Type ───────────────────────────────────────────────────
 
@@ -601,16 +611,110 @@ class MyReportDP extends SrsReportDataProviderBase
     rules: [
       'today() → DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()) — BPUpgradeCodeToday; NEVER use today() in new code (same replacement the bp-rules topic mandates)',
       'NEVER call today() or any function directly in a WHERE condition — assign to a variable first',
-      'curext() → use Ledger::primaryForLegalEntity(CompanyInfo::findDataArea(curext()).RecId)',
       'AIF services → Data entities + OData',
-      'RunBase → SysOperation framework',
-      'display/edit methods on forms → computed columns or data entity virtual fields',
-      'infolog.add() → info()/warning()/error() global functions',
-      'fieldnum(tableName, fieldName) → still valid but use fieldNum() macro for compile-time safety',
+      'RunBase → SysOperation framework (RunBase still compiles; it is legacy, not [SysObsolete])',
+      'systemDateGet() → see the datetime-timezones topic — BPUpgradeCodeSystemDate',
+      'SysEntryPointAttribute on CUSTOM SERVICE operations → obsolete in AX7 ("This attribute is deprecated in AX7"); still REQUIRED on SysOperation service entry points — see the custom-services topic',
       '[SysObsolete] attribute: ALWAYS read the message — it names the replacement',
       'When get_method(include="source") returns a method with [SysObsolete], do NOT call it — use the stated replacement',
+      // Everything below is a deprecation an agent is likely to "remember" but that
+      // is not real. Listing them here — rather than silently omitting them — is the
+      // only way a keyword search for "curext"/"infolog" lands on the correction
+      // instead of on a confident wrong answer from the model's priors.
+      'NOT DEPRECATED — curExt(): returns the current company DataAreaId (str) and is fully supported. Use it instead of hardcoding a company; see the multi-company topic for the alternatives. It is NOT replaced by Ledger::primaryForLegalEntity — that returns a LedgerRecId, a different type answering a different question, and the "replacement" formerly listed here called curExt() itself.',
+      'NOT DEPRECATED — display/edit methods on forms and tables: fully supported. Computed columns and virtual fields are the replacement for display methods on DATA ENTITIES and VIEWS only, where display methods are not supported at all.',
+      'NOT DEPRECATED — Infolog.add(): a live kernel API. info()/warning()/error() are convenience wrappers over it; preferring them is a readability choice, not a migration requirement.',
+      'NOT DEPRECATED — fieldNum(): an intrinsic function, not a macro, and X++ identifiers are case-insensitive so fieldnum and fieldNum are the same token. There is nothing to migrate.',
     ],
-    related: ['labels', 'data-entities', 'sysoperation'],
+    related: ['labels', 'data-entities', 'sysoperation', 'multi-company', 'custom-services'],
+  },
+
+  // ── Enums & Extensible Enums ────────────────────────────────────────────
+  // Documented because the XML rules below are ENFORCED by the create path
+  // (createD365File.ts generateAxEnumXml) but were previously taught nowhere:
+  // an agent could only discover them by shipping an enum that xppc rejects.
+  {
+    id: 'extensible-enums',
+    title: 'Enums & Extensible Enums (IsExtensible / UseEnumValue)',
+    keywords: ['enum', 'extensible enum', 'isextensible', 'useenumvalue', 'enum value', 'axenum', 'enum extension', 'axenumextension', 'enumvalues', '251'],
+    summary:
+      'Base enums and extensible enums have incompatible XML shapes. IsExtensible=true REQUIRES UseEnumValue=No and forbids explicit <Value> elements — xppc rejects any other combination. ' +
+      'Other models add values through an enum extension, never by editing the base enum.',
+    rules: [
+      'IsExtensible=true REQUIRES <UseEnumValue>No</UseEnumValue>. xppc rejects the alternative with: "UseEnumValue property must be set to \'No\' when IsExtensible is True"',
+      'With UseEnumValue=No, do NOT emit <Value> elements on AxEnumValue — an explicit <Value> forces UseEnumValue=Yes at compile time and re-triggers the same error. Ordering is positional: the first element is 0, the next is 1, and so on',
+      'The two rules above are one rule in practice: extensible enum ⇒ UseEnumValue=No ⇒ no <Value> elements. Set properties.isExtensible=true and let the generator apply all three',
+      'AxEnum element order is fixed: Name → ConfigurationKey → Label → UseEnumValue → EnumValues → IsExtensible. IsExtensible comes AFTER EnumValues and its value is lowercase true/false (not Yes/No)',
+      'The <AxEnum> root needs xmlns:i="http://www.w3.org/2001/XMLSchema-instance" — a missing namespace makes the element unloadable in Visual Studio',
+      'HARD LIMIT: 251 enum elements (values 0–250). Past that, redesign as a class hierarchy or split the enum — the compiler rejects it',
+      'Do NOT pass raw xmlContent for an extensible enum. The C# metadata bridge writes UseEnumValue=Yes with explicit <Value> elements, so d365fo_file(operation="create") deliberately routes extensible enums through the TypeScript XML generator instead',
+      'NEVER add values to another model\'s enum by editing it — create an enum extension named <BaseEnum>.<Suffix> (AxEnumExtension) whose <EnumValues> lists ONLY the new values',
+      'An enum can only be extended if the base declares IsExtensible=true. If it does not, you cannot add values — that is a design decision by the owning model, not a tooling limit',
+      'Because extension-added values get their integer assigned at deployment time, NEVER persist, serialise, or compare the underlying int of an extensible enum — use the symbolic name (enum2Symbol / symbol2Enum) or the enum literal',
+      'Extensible enums are the standard keying mechanism for SysExtension-based strategy resolution — see the sysextension topic',
+    ],
+    examples: [
+      {
+        label: 'Extensible base enum — correct AxEnum XML',
+        code: `<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>MyVehicleCategory</Name>
+\t<Label>@MyModel:VehicleCategory</Label>
+\t<!-- ✅ REQUIRED when IsExtensible is true -->
+\t<UseEnumValue>No</UseEnumValue>
+\t<EnumValues>
+\t\t<AxEnumValue>
+\t\t\t<Name>Compact</Name>
+\t\t\t<Label>@MyModel:Compact</Label>
+\t\t\t<!-- ✅ NO <Value> element — position decides the ordinal (0) -->
+\t\t</AxEnumValue>
+\t\t<AxEnumValue>
+\t\t\t<Name>Midsize</Name>
+\t\t\t<Label>@MyModel:Midsize</Label>
+\t\t</AxEnumValue>
+\t</EnumValues>
+\t<!-- ✅ AFTER EnumValues, lowercase true -->
+\t<IsExtensible>true</IsExtensible>
+</AxEnum>`,
+      },
+      {
+        label: 'Adding values from another model — enum extension',
+        code: `<?xml version="1.0" encoding="utf-8"?>
+<AxEnumExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>MyVehicleCategory.MyPrefix</Name>
+\t<EnumValues>
+\t\t<AxEnumValue>
+\t\t\t<Name>MyPrefixElectric</Name>
+\t\t\t<Label>@MyModel:Electric</Label>
+\t\t</AxEnumValue>
+\t</EnumValues>
+\t<PropertyModifications />
+\t<ValueModifications />
+</AxEnumExtension>`,
+      },
+      {
+        label: 'Consuming an extensible enum safely in X++',
+        code: `MyVehicleCategory category = vehicle.Category;
+
+// ✅ Switch on the symbolic literal — resilient to extension values
+switch (category)
+{
+    case MyVehicleCategory::Compact:
+        break;
+    default:
+        // Extension-added values land here. ALWAYS have a default.
+        break;
+}
+
+// ✅ Persist/transport the symbol, never the ordinal
+str symbol = enum2Symbol(enumNum(MyVehicleCategory), any2Int(category));
+
+// ❌ WRONG — the ordinal of an extension value is assigned at deployment
+//    time and differs per environment
+// if (any2Int(category) == 3) { … }`,
+      },
+    ],
+    related: ['sysextension', 'labels', 'feature-management'],
   },
 
   // ── Number Sequences ────────────────────────────────────────────────────
@@ -1034,8 +1138,13 @@ ttscommit;`,
       'Tables with SaveDataPerCompany=No: shared across all companies (e.g. DirPartyTable, RefRecId tables)',
       'changeCompany("DAT") { ... }: switch company context for a code block — closes and re-opens connection',
       'crosscompany select: use when querying data across multiple companies in one query',
-      'crosscompany containers: pass specific companies, e.g. while select crosscompany [co1, co2] from myTable',
-      'NEVER hardcode DataAreaId — always use curExt() or CompanyInfo::current().DataArea',
+      // The container form needs the colon AND a container VARIABLE — an inline
+      // literal after crossCompany does not parse, and `from` is only legal after
+      // a field list. Spelling it out because the shorthand people reach for,
+      // `select crosscompany [co1, co2] from t`, fails all three ways at once.
+      'crosscompany containers: declare a container variable, then `while select crossCompany : companies <fieldlist> from myTable` — the colon is required and the company list must be a variable, not an inline literal',
+      'crossCompany binds to the DRIVING buffer only — `select crossCompany custTable join custInvoiceJour`, never `join crossCompany custInvoiceJour` (validate_code rule SEL003)',
+      'NEVER hardcode DataAreaId — always use curExt() (returns the current DataAreaId; not deprecated) or CompanyInfo::current().DataArea',
       'changeCompany is expensive — avoid inside loops; batch operations cross-company instead',
       'For reporting: use crosscompany select with a list of company IDs from a parameter',
       'Inter-company transactions: use InterCompanyTradingRelationship — do not write cross-company manually',
@@ -1354,7 +1463,7 @@ public static void runProcessor(MyTable _record, MyProcessorType _type)
 }`,
       },
     ],
-    related: ['coc-extensions', 'batch-jobs'],
+    related: ['coc', 'coc-authoring', 'sysoperation'],
   },
 
   // ── Currency / Exchange Rates ───────────────────────────────────────────
@@ -1485,7 +1594,7 @@ MyBusinessEventContract contract = MyBusinessEventContract::newFromSalesTable(sa
 MySalesConfirmedBusinessEvent::newFromContract(contract).send();`,
       },
     ],
-    related: ['coc-extensions', 'batch-jobs'],
+    related: ['coc', 'sysoperation', 'async-retryable-batch'],
   },
 
   // ── Electronic Reporting (ER) ───────────────────────────────────────────
@@ -1637,7 +1746,7 @@ if (SecurityRights::hasTableAccess(tableNum(MyCustomTable), AccessType::Read))
 </AxSecurityPrivilege>`,
       },
     ],
-    related: ['coc-extensions', 'data-entities', 'security'],
+    related: ['coc', 'data-entities', 'security'],
   },
 
   // ── SSRS Reports ────────────────────────────────────────────────────────
@@ -1933,7 +2042,7 @@ else
     title: 'Trade Agreements & Pricing (PriceDisc)',
     keywords: ['trade agreement', 'pricing', 'pricedisc', 'price', 'discount', 'sales price',
                'purchase price', 'line discount', 'multiline discount', 'total discount',
-               'pricediscadmtrans', 'priceDiscTable'],
+               'pricediscadmtrans', 'pricedisctable'],
     summary:
       'D365FO trade agreements define prices and discounts for sales/purchase. ' +
       'The PriceDisc class evaluates active agreements based on date, quantity, unit, dimensions, and customer/vendor hierarchy. ' +
@@ -2555,7 +2664,7 @@ str         custGroup = this.getValidatedCustGroup();
 str         sql  = strFmt(
     "SELECT RECID, ACCOUNTNUM FROM CUSTTABLE "
   + "WHERE DATAAREAID = '%1' AND CUSTGROUP = '%2'",
-    curext(), custGroup);
+    curExt(), custGroup);
 
 // REQUIRED — assert immediately before execute, revert immediately after
 new SqlStatementExecutePermission(sql).assert();
@@ -2819,7 +2928,7 @@ controller.startOperation();`,
       'forupdate + optimisticlock: default modern pattern — select forupdate optimisticlock, then update; re-read (reread()) inside the catch on UpdateConflict',
       'pessimisticlock: takes the lock at select time (blocks other writers) — use only for genuine hotspots where retry churn is worse than blocking',
       'UpdateConflict handling: catch (Exception::UpdateConflict) → reread() the record, re-apply your change, retry; if retries are exhausted the kernel throws UpdateConflictNotRecovered',
-      'NEVER disable OccEnabled to \"avoid\" conflicts — it serialises writers and hurts throughput; fix the retry logic instead',
+      'NEVER disable OccEnabled to "avoid" conflicts — it serialises writers and hurts throughput; fix the retry logic instead',
       'UnitOfWork: use new UnitOfWork(); register buffers with insertOnSaveChanges/updateOnSaveChanges/deleteOnSaveChanges, then saveChanges() commits them in dependency order within one transaction',
       'UnitOfWork resolves foreign-key order for you (parent inserted before child) — prefer it over hand-ordered inserts across related tables',
       'Do the whole read-modify-write of an OCC record inside one ttsbegin/ttscommit; keep the transaction short to shrink the conflict window',
@@ -2890,7 +2999,7 @@ uow.saveChanges();`,
     rules: [
       'CacheLookup table property values: None, NotInTTS, Found, FoundAndEmpty, EntireTable',
       'Found: caches records that were found by a unique-index lookup (most common for master/reference tables)',
-      'FoundAndEmpty: like Found but ALSO caches \"not found\" results — use when many lookups miss (avoids repeat round-trips), at the cost of remembering absences',
+      'FoundAndEmpty: like Found but ALSO caches "not found" results — use when many lookups miss (avoids repeat round-trips), at the cost of remembering absences',
       'EntireTable: loads the whole table into a per-AOS cache — ONLY for small, rarely-changing reference tables; a single insert/update/delete FLUSHES the entire-table cache cluster-wide',
       'NotInTTS: re-reads from DB (not cache) inside a transaction to guarantee a fresh row before update — cache is bypassed within ttsbegin/ttscommit',
       'Record caching only works for selects on the WHOLE primary/unique index (all key fields with ==) — a partial-key or range select bypasses the cache',
@@ -3629,7 +3738,7 @@ export async function xppKnowledgeTool(request: CallToolRequest) {
       formatted =
         '# X++ Knowledge Base — All Topics\n\n' +
         entries.map(e => `- \`${e.id}\`: **${e.title}**`).join('\n') +
-        '\n\n_Query a specific topic with \`get_knowledge(kind="knowledge")\` for rules and code examples._';
+        '\n\n_Query a specific topic with `get_knowledge(kind="knowledge")` for rules and code examples._';
     } else {
       formatted = args.format === 'detailed'
         ? formatDetailed(entries)

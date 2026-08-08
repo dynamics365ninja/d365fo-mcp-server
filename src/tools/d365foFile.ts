@@ -181,5 +181,7 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
   return handleGenerateD365Xml(subRequest('generate_d365fo_xml', rest));
 }
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts — the single source of truth for tool instructions.
+// Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/d365foFile.ts — the single source of truth for tool
+// instructions. It is NOT in mcpServer.ts; that file only spreads the
+// aggregated toolSchemas array into the ListTools response.

@@ -820,7 +820,7 @@ export function findTopLevelCollection(
   const rootOpen = new RegExp(`<${rootElement}\\b[^>]*>`).exec(content);
   if (!rootOpen) return null;
 
-  let pos = rootOpen.index + rootOpen[0].length;
+  const pos = rootOpen.index + rootOpen[0].length;
   let depth = 0;
   const tagRe = /<(\/?)([A-Za-z_][\w.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
   tagRe.lastIndex = pos;
@@ -1656,7 +1656,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     }
 
     const { symbolIndex } = context;
-    let {
+    const {
       objectType,
       operation,
       createBackup,
@@ -2888,6 +2888,9 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       continue _bridgeRetry;
     }
     break _bridgeRetry;
+    // Labelled retry loop: every exit is an explicit `break _bridgeRetry`, so the
+    // condition is deliberately unconditional.
+    // biome-ignore lint/correctness/noConstantCondition: labelled retry loop, exits via break
     } while (true); // end of retry loop
 
     if (!bridgeResult!.success) {
@@ -2925,7 +2928,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // Not awaited: the validation goes through the sequential bridge stdin/stdout
     // pipe and can take 60s+, which would block all subsequent MCP calls.
     // See: https://github.com/dynamics365ninja/d365fo-mcp-server/issues/407
-    let bridgeValidation = '';
+    const bridgeValidation = '';
     bridgeValidateAfterWrite(
       context.bridge,
       objectType,
@@ -3794,8 +3797,11 @@ async function resolveParentControl(
   return { multiple: matches };
 }
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts - the single source of truth for tool instructions.
+// This handler has no schema of its own — it is reached through a unified
+// tool. Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/, one file per published tool, aggregated by
+// toolSchemas/index.ts. It is NOT in mcpServer.ts; that file only spreads
+// the aggregated array into the ListTools response.
 
 /**
  * Resolve the primitive base type for an EDT by walking the edt_metadata chain.

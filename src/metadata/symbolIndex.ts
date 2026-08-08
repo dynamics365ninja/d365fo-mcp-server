@@ -1467,7 +1467,7 @@ export class XppSymbolIndex {
           WHERE type = 'method'
             AND NOT EXISTS (SELECT 1 FROM temp_call_stats WHERE temp_call_stats.called_method = symbols.name);
         `);
-      } catch (e) {
+      } catch {
         log.warn('Optimized UPDATE failed, using fallback method');
         // Fallback to correlated subquery (slower but compatible)
         this.db.exec(`
@@ -1871,7 +1871,6 @@ export class XppSymbolIndex {
   private indexClasses(classesPath: string, model: string): void {
     const files = fs.readdirSync(classesPath).filter(f => f.endsWith('.json'));
     
-    let processedCount = 0;
     for (const file of files) {
       try {
         const filePath = path.join(classesPath, file);
@@ -1926,8 +1925,6 @@ export class XppSymbolIndex {
             });
           }
         }
-        
-        processedCount++;
       } catch (error) {
         log.warn(`Skipped ${file}: ${error instanceof Error ? error.message : error}`);
       }

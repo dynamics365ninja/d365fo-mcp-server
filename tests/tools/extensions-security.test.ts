@@ -7,7 +7,7 @@
  *         exercised here directly against their handler functions).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 // Prevent findD365FileOnDisk from triggering a filesystem scan (autoDetectProject)
 // which would cause the get_data_entity_info tests to hang for 30 s.

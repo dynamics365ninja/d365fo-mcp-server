@@ -39,7 +39,7 @@ interface XmlRefViolation {
 }
 
 function extractTagValues(xml: string, tag: string): string[] {
-  const re = new RegExp(`<${tag}>([^<]+)<\/${tag}>`, 'gi');
+  const re = new RegExp(`<${tag}>([^<]+)</${tag}>`, 'gi');
   const results: string[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(xml)) !== null) {
@@ -191,7 +191,7 @@ export async function validateCodeTool(request: CallToolRequest, context: XppSer
         return {
           content: [{
             type: 'text' as const,
-            text: `✅ resolve_references: all ${verified} reference(s) verified against the index${contextName ? ` in ${contextName}` : ''}.\n` +
+            text: `✅ validate_code(references): all ${verified} reference(s) verified against the index${contextName ? ` in ${contextName}` : ''}.\n` +
               `No hallucinated symbols detected. This is a name-existence check, not a compile — ` +
               `build_d365fo_project remains the only proof it compiles.`,
           }],
@@ -201,7 +201,7 @@ export async function validateCodeTool(request: CallToolRequest, context: XppSer
       const errors = violations.filter(v => v.severity === 'error');
       const warns  = violations.filter(v => v.severity === 'warning');
       const lines: string[] = [
-        `${errors.length > 0 ? '❌' : '⚠️'} resolve_references: ${violations.length} issue(s) found (${errors.length} error(s), ${warns.length} warning(s)), ${verified} verified${contextName ? ` in ${contextName}` : ''}.`,
+        `${errors.length > 0 ? '❌' : '⚠️'} validate_code(references): ${violations.length} issue(s) found (${errors.length} error(s), ${warns.length} warning(s)), ${verified} verified${contextName ? ` in ${contextName}` : ''}.`,
         '',
       ];
       for (const v of violations) {
@@ -223,5 +223,7 @@ export async function validateCodeTool(request: CallToolRequest, context: XppSer
   }
 }
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts — the single source of truth for tool instructions.
+// Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/validateCode.ts — the single source of truth for tool
+// instructions. It is NOT in mcpServer.ts; that file only spreads the
+// aggregated toolSchemas array into the ListTools response.

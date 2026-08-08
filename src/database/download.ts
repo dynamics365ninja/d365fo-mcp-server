@@ -286,7 +286,7 @@ export async function checkDatabaseVersion(localPath: string, options?: Download
       localModified,
       remoteModified,
     };
-  } catch (error) {
+  } catch {
     // If local file doesn't exist, needs download
     return { needsUpdate: true };
   }

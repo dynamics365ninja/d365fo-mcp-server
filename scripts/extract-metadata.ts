@@ -35,7 +35,6 @@ if (!supportsUnicode) {
 
 const PACKAGES_PATH = process.env.D365FO_PACKAGE_PATH || defaultPackagesRoot();
 const OUTPUT_PATH = process.env.METADATA_PATH || './extracted-metadata';
-const CUSTOM_MODELS_PATH = process.env.CUSTOM_MODELS_PATH; // Optional: separate path for custom extensions
 
 // Custom models defined in .env - these are YOUR extensions
 const CUSTOM_MODELS = getCustomModels();
@@ -519,7 +518,7 @@ async function extractMetadata() {
     try {
       await fs.rm(OUTPUT_PATH, { recursive: true, force: true });
       log.step('Cleaned up existing metadata directory');
-    } catch (error) {
+    } catch {
       // Ignore errors if directory doesn't exist
     }
   } else {

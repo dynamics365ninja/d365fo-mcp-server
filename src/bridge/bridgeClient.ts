@@ -340,7 +340,7 @@ export class BridgeClient extends EventEmitter {
                 pending.resolve(msg.result);
               }
             }
-          } catch (parseErr) {
+          } catch {
             console.error(`[BridgeClient] Failed to parse line: ${line.substring(0, 200)}`);
           }
         }

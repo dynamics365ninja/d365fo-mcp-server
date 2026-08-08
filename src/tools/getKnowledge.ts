@@ -1,7 +1,8 @@
 /**
  * get_knowledge Tool — unified knowledge-lookup entry point.
  *
- * Replaces two knowledge tools with one discriminated by `kind`:
+ * Three kinds behind one tool (KNOWLEDGE_KINDS below is the authority); the
+ * first two absorbed the retired standalone knowledge tools:
  *   • knowledge → queryable X++ rulebook (patterns, BP rules, migration)
  *   • error     → diagnose a D365FO/X++ compiler or runtime error
  *   • op-spec   → parameter contract for one d365fo_file operation/objectType
@@ -74,5 +75,7 @@ export async function getKnowledgeTool(request: CallToolRequest) {
   return xppKnowledgeTool(subRequest('get_xpp_knowledge', knowledgeArgs));
 }
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts — the single source of truth for tool instructions.
+// Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/getKnowledge.ts — the single source of truth for tool
+// instructions. It is NOT in mcpServer.ts; that file only spreads the
+// aggregated toolSchemas array into the ListTools response.

@@ -1244,7 +1244,9 @@
     }
   ],
   "orphans": {
-    "knowledge": [],
+    "knowledge": [
+      "extensible-enums"
+    ],
     "cases": [
       "L0-create-readback-no-reindex",
       "L2-batched-object-reads",

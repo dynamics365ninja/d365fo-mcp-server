@@ -104,7 +104,7 @@ process.on('uncaughtException', (err) => {
   process.stderr.write(`[d365fo-mcp] ⚠️ Uncaught exception (server staying up): ${err?.stack ?? err}\n`);
 });
 
-const PORT = parseInt(process.env.PORT || '8080');
+const PORT = parseInt(process.env.PORT || '8080', 10);
 // Derive server root from this file's location so paths are absolute
 // regardless of process.cwd() — critical when VS Code launches this as stdio subprocess.
 const __serverDir = dirname(fileURLToPath(import.meta.url));
@@ -151,10 +151,11 @@ const onShutdown = shutdownCoordinator.onShutdown;
 
 async function initializeServices() {
   // -----------------------------------------------------------------------
-  // write-only mode: skip all database/symbol work — LOCAL_TOOLS
-  // (create_d365fo_file, modify_d365fo_file, labels, verify_d365fo_project,
-  //  get_workspace_info etc.) only need the config manager for path resolution,
-  //  not the 1.5 GB symbol database.
+  // write-only mode: skip all database/symbol work — the LOCAL_TOOLS set
+  // (src/server/serverMode.ts; d365fo_file, build_d365fo_project,
+  //  verify_d365fo_project, undo_last_modification, get_workspace_info, …)
+  //  only needs the config manager for path resolution, not the 1.5 GB symbol
+  //  database. Read the set from serverMode.ts rather than trusting this list.
   // -----------------------------------------------------------------------
   if (SERVER_MODE === 'write-only') {
     log.info('Mode: write-only (local file-operations companion)');

@@ -2,7 +2,7 @@
  * Debounced Bridge Refresh Tests
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 // Must import AFTER vi.useFakeTimers so setTimeout is intercepted
 vi.useFakeTimers();

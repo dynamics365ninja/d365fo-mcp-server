@@ -367,8 +367,8 @@ describe('rnrproj xml2js roundtrip investigation', () => {
     }
 
     // Both folderGroup and contentGroup point to SAME ItemGroup
-    let folderGroup = parsed.Project.ItemGroup.find((g: any) => g.Folder !== undefined);
-    let contentGroup = parsed.Project.ItemGroup.find((g: any) => g.Content !== undefined);
+    const folderGroup = parsed.Project.ItemGroup.find((g: any) => g.Folder !== undefined);
+    const contentGroup = parsed.Project.ItemGroup.find((g: any) => g.Content !== undefined);
     console.log('folderGroup === contentGroup:', folderGroup === contentGroup);
     expect(folderGroup).toBe(contentGroup); // Same object!
 

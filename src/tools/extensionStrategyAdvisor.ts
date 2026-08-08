@@ -39,8 +39,11 @@ const ExtensionStrategyArgsSchema = z.object({
   ),
 });
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts - the single source of truth for tool instructions.
+// This handler has no schema of its own — it is reached through a unified
+// tool. Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/, one file per published tool, aggregated by
+// toolSchemas/index.ts. It is NOT in mcpServer.ts; that file only spreads
+// the aggregated array into the ListTools response.
 
 // Decision Rules
 
@@ -459,7 +462,7 @@ function findMatchingRules(goal: string, scenario?: string): StrategyRule[] {
   const lower = goal.toLowerCase();
 
   // 1) Filter by scenario if provided
-  let candidates = scenario
+  const candidates = scenario
     ? STRATEGY_RULES.filter(r => r.scenarios.includes(scenario))
     : [...STRATEGY_RULES];
 

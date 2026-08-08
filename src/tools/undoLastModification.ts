@@ -62,8 +62,10 @@ export function toRepoRelative(repoRoot: string, absolutePath: string): string {
   return toPosix(path.relative(realpathOrSelf(repoRoot), realpathOrSelf(absolutePath)));
 }
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts - the single source of truth for tool instructions.
+// Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/undoLastModification.ts — the single source of truth for tool
+// instructions. It is NOT in mcpServer.ts; that file only spreads the
+// aggregated toolSchemas array into the ListTools response.
 
 export const undoLastModificationTool = async (params: any, context: XppServerContext) => {
   const { filePath } = params;

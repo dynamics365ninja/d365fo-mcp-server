@@ -48,8 +48,10 @@ const INDEX_TYPE_TO_ELEMENT_TYPE: Record<string, string> = {
 
 const RESOLVABLE_INDEX_TYPES = Object.keys(INDEX_TYPE_TO_ELEMENT_TYPE);
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts - the single source of truth for tool instructions.
+// Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/runBpCheck.ts — the single source of truth for tool
+// instructions. It is NOT in mcpServer.ts; that file only spreads the
+// aggregated toolSchemas array into the ListTools response.
 
 /**
  * Attempt to run xppbp.exe with a given set of args.

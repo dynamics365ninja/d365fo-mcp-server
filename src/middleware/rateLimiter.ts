@@ -14,7 +14,7 @@ function parseEnvInt(key: string, defaultVal: number, min: number, max: number):
   const raw = process.env[key];
   if (raw === undefined) return defaultVal;
   const parsed = parseInt(raw, 10);
-  if (isNaN(parsed) || parsed < min || parsed > max) {
+  if (Number.isNaN(parsed) || parsed < min || parsed > max) {
     console.warn(`[rateLimiter] Invalid ${key}="${raw}" (expected ${min}–${max}), using default ${defaultVal}`);
     return defaultVal;
   }

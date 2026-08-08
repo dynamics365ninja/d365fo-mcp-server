@@ -284,7 +284,7 @@ export function buildNotFoundGuidance(name: string, objectType: string): string 
   return (
     `\n\n---\n` +
     `🔎 **Resolve \`${name}\` (${objectType}) with the right tool — do not guess or grep the disk:**\n` +
-    `1. \`search\` / \`batch_search\` for \`${name}\` — the exact name may differ (model prefix, casing, suffix).\n` +
+    `1. \`search\` for \`${name}\` — pass \`queries[]\` to probe several spellings in ONE call; the exact name may differ (model prefix, casing, suffix).\n` +
     `2. Real object in a custom package that isn't indexed yet? Run ` +
     `\`update_symbol_index({ filePath: "<absolute path to ${name}.xml>" })\`, and confirm ` +
     `\`D365FO_CUSTOM_PACKAGES_PATH\` includes that package so the bridge + symbol index can see it.\n` +

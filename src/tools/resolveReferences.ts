@@ -49,8 +49,11 @@ export const resolveReferencesArgsSchema = z.object({
   ),
 });
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts — the single source of truth for tool instructions.
+// This handler has no schema of its own — it is reached through a unified
+// tool. Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/, one file per published tool, aggregated by
+// toolSchemas/index.ts. It is NOT in mcpServer.ts; that file only spreads
+// the aggregated array into the ListTools response.
 
 export interface ReferenceViolation {
   kind:
@@ -955,7 +958,7 @@ export function gateOnReferenceErrors(
         `The following identifiers could NOT be proven against the indexed codebase:\n\n` +
         `${list}\n\n` +
         `Fix the identifiers (use the suggested lookup tools), then retry. ` +
-        `Run \`resolve_references\` on the corrected code to confirm it is clean.`,
+        `Run \`validate_code(mode="references")\` on the corrected code to confirm it is clean.`,
     }],
   };
 }
@@ -968,7 +971,7 @@ export async function resolveReferencesTool(
   if (!parsed.success) {
     return {
       isError: true,
-      content: [{ type: 'text', text: `❌ resolve_references: invalid arguments — ${parsed.error.message}` }],
+      content: [{ type: 'text', text: `❌ validate_code(references): invalid arguments — ${parsed.error.message}` }],
     };
   }
   const { code, context: objContext } = parsed.data;
@@ -986,7 +989,7 @@ export async function resolveReferencesTool(
       isError: true,
       content: [{
         type: 'text',
-        text: `❌ resolve_references failed: ${error instanceof Error ? error.message : String(error)}`,
+        text: `❌ validate_code(references) failed: ${error instanceof Error ? error.message : String(error)}`,
       }],
     };
   }
@@ -1000,7 +1003,7 @@ export async function resolveReferencesTool(
       content: [{
         type: 'text',
         text:
-          `✅ resolve_references: all ${result.verifiedCount} reference(s) verified against the index${suffix}.\n` +
+          `✅ validate_code(references): all ${result.verifiedCount} reference(s) verified against the index${suffix}.\n` +
           `No hallucinated symbols detected. This is a name-existence check, not a compile: ` +
           `arity/type compatibility, table extensions contributed by unreferenced packages, ` +
           `and anything the index could not read are outside its reach. ` +
@@ -1010,7 +1013,7 @@ export async function resolveReferencesTool(
   }
 
   const lines: string[] = [
-    `${errors.length > 0 ? '❌' : '⚠️'} resolve_references: ` +
+    `${errors.length > 0 ? '❌' : '⚠️'} validate_code(references): ` +
     `${errors.length} error(s), ${warnings.length} warning(s)${suffix} — ` +
     `${result.verifiedCount} reference(s) verified OK.`,
     '',

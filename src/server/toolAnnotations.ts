@@ -14,8 +14,10 @@
  *                        open internet
  *
  * Per MCP spec these are HINTS for display/UX, not security boundaries.
- * Every tool in mcpServer.ts MUST have an entry here — enforced by
- * tests/utils/toolInventory.test.ts.
+ * Every tool in src/server/toolSchemas/index.ts MUST have an entry here —
+ * enforced by tests/utils/toolInventory.test.ts, which iterates that array.
+ * (This map's size is also what src/index.ts derives the runtime tool count
+ * from, so a missing entry undercounts the startup log as well.)
  */
 
 export interface ToolAnnotations {

@@ -45,6 +45,48 @@ describe('parseMethodSignature', () => {
     expect(sig!.cocTemplate).toContain('next construct(_className, _methodName, _executionMode);');
   });
 
+  /**
+   * The CoC template used to be a copy-paste of buildSignatureString, defaults
+   * and all — so get_method handed the agent a wrapper carrying
+   * `IdentifierName _className = classStr(FormletterService)`. That is exactly
+   * what validate_code reports as COC001 (error) and what the coc-authoring
+   * knowledge topic forbids: the base defaults are already in effect when next
+   * runs, and repeating them shadows the base value on every call. Worse, it
+   * was undetectable downstream — the template strips access modifiers, and
+   * COC001's original regex only fired on lines that carried one.
+   */
+  describe('CoC template never copies base default parameter values', () => {
+    it('emits bare parameter types for a defaulted signature', () => {
+      const src = [
+        '    public static PurchFormLetter_Invoice construct(',
+        '        IdentifierName _className = classStr(FormletterService),',
+        '        SysOperationExecutionMode _executionMode = SysOperationExecutionMode::Synchronous)',
+        '    {',
+        '    }',
+      ].join('\n');
+      const sig = parseMethodSignature(src, 'construct');
+      expect(sig!.cocTemplate).toContain(
+        'PurchFormLetter_Invoice construct(IdentifierName _className, SysOperationExecutionMode _executionMode)',
+      );
+      // No assignment anywhere in the wrapper declaration line.
+      const declLine = sig!.cocTemplate
+        .split('\n')
+        .find(l => l.includes('construct(') && !l.includes('next '))!;
+      expect(declLine).not.toContain('=');
+      // …while the plain signature still reports the real defaults, which is
+      // what the agent needs in order to know what the base does.
+      expect(sig!.signature).toContain('= classStr(FormletterService)');
+    });
+
+    it('the emitted template passes validate_code COC001', async () => {
+      const src = 'public void salute(str message = "Hi")\n{\n}';
+      const sig = parseMethodSignature(src, 'salute');
+      const { runRules } = await import('../../src/tools/validateXpp');
+      const violations = runRules(sig!.cocTemplate).filter(v => v.rule === 'COC001');
+      expect(violations, `template was:\n${sig!.cocTemplate}`).toEqual([]);
+    });
+  });
+
   it('does not truncate at a nested closing paren inside a default value', () => {
     const src = 'public static void post(IdentifierName _className = classStr(FormletterService), boolean _late = false)\n{\n}';
     const sig = parseMethodSignature(src, 'post');

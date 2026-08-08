@@ -266,7 +266,7 @@ export async function handleGenerateSmartForm(
 
   const builder = new SmartXmlBuilder(symbolIndex);
   let dataSources: FormDataSourceSpec[] = [];
-  let controls: FormControlSpec[] = [];
+  const controls: FormControlSpec[] = [];
   /** Note surfaced when the primary datasource resolved to a view, not a table. */
   let viewDataSourceNote = '';
 

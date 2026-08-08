@@ -237,7 +237,7 @@ export async function handleGenerateSmartTable(
   console.log(`[generateSmartTable] Generating table: ${name}, tableGroup=${tableGroup}, tableType=${tableType ?? 'Regular'}, copyFrom=${copyFrom}`);
   const builder = new SmartXmlBuilder(symbolIndex);
   let fields: TableFieldSpec[] = [];
-  let indexes: TableIndexSpec[] = [];
+  const indexes: TableIndexSpec[] = [];
   let relations: TableRelationSpec[] = [];
   let usedFallback = false; // true when fieldsHint was missing and generic defaults were used
 

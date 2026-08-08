@@ -67,7 +67,6 @@ export function trackBridgeStartup(attempt: Promise<unknown>): BridgeStartup {
  */
 export const BRIDGE_BACKED_TOOLS = new Set([
   'search',
-  'batch_get_info',
   'get_object_info',
   'get_method',
   'find_references',

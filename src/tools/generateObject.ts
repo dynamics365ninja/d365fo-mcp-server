@@ -1,10 +1,18 @@
 /**
  * Generate Tool — unified code generator.
  *
- * Merges the former generate_code and generate_smart tools into one tool
- * discriminated by `mode`:
- *   • pattern  → named X++ skeleton from a pattern enum (text only, no write) — generate_code
- *   • scaffold → pattern-aware whole-object generation table/form/report — generate_smart
+ * Six modes, discriminated by `mode` (the dispatch switch below is the
+ * authority — keep this list in step with it):
+ *   • pattern        → named X++ skeleton from a pattern enum (text only, no write)
+ *   • scaffold       → pattern-aware whole-object generation: table/form/report
+ *   • find-methods   → find / findRecId / exists for a table
+ *   • relation-xpp   → a table's relations rendered as X++ select/query
+ *   • fields         → field list → AxTableField XML, with EDT inference
+ *   • table-relation → EDT-referencing fields → AxTableRelation XML
+ *
+ * The first two absorbed the retired generate_code and generate_smart tools;
+ * the other four were added later and were invisible in this header for long
+ * enough that a reader could reasonably conclude they did not exist.
  *
  * Param names of the underlying handlers do not collide and none of their
  * schemas is strict, so the merged arguments are passed straight through; each
@@ -90,5 +98,7 @@ export async function generateObjectTool(request: CallToolRequest, context: XppS
   }
 }
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts — the single source of truth for tool instructions.
+// Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/generateObject.ts — the single source of truth for tool
+// instructions. It is NOT in mcpServer.ts; that file only spreads the
+// aggregated toolSchemas array into the ListTools response.

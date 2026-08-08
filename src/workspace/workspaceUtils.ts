@@ -36,7 +36,7 @@ export async function validateWorkspacePath(workspacePath: string): Promise<{
           error: 'Workspace path must be a directory',
         };
       }
-    } catch (error) {
+    } catch {
       return {
         valid: false,
         error: `Workspace path does not exist or is not accessible: ${resolved}`,

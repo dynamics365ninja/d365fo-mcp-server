@@ -458,7 +458,7 @@ export const SETTINGS: Setting[] = [
     type: 'enum',
     label: 'Tool profile',
     description:
-      'How many tools this server advertises. "full" publishes all 26. "core" publishes only the plan → discover → ' +
+      'How many tools this server advertises. "full" publishes all 25. "core" publishes only the plan → discover → ' +
       'write → build → verify loop (18 tools) and leaves out the specialist ones (extension_info, analyze_code, ' +
       'validate_code, security_info, get_method, run_systest_class, suggest_edt). Worth switching ' +
       'when the workspace runs several MCP servers at once: hosts stop sending the tool catalogue inline past a ' +

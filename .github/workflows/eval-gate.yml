@@ -11,6 +11,13 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel a superseded PR run instead of letting two full suites race — the jobs
+# are pure functions of the tree, so the older one's result is already stale.
+# Pushes to `main` are never cancelled: their result is the branch's record.
+concurrency:
+  group: eval-gate-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

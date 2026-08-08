@@ -526,7 +526,11 @@ describe('gateOnReferenceErrors', () => {
     );
     expect(result?.isError).toBe(true);
     expect(result?.content[0].text).toContain('FakeField');
-    expect(result?.content[0].text).toContain('resolve_references');
+    // The retry instruction must name the SURVIVING tool. It used to say
+    // `resolve_references`, retired into validate_code(mode="references") — a
+    // guaranteed Unknown-tool call on the one path where the model is already
+    // blocked and looking for a way forward.
+    expect(result?.content[0].text).toContain('validate_code(mode="references")');
   });
 
   it('passes warning-only code when enforced', () => {

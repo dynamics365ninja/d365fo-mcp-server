@@ -54,25 +54,67 @@ describe('tool inventory contract', () => {
     // `get_xpp_knowledge`. Each such line costs a guaranteed Unknown-tool call
     // plus a retry, which is far more expensive than the line itself.
     //
-    // Call form only (`name(`): the dispatchers legitimately pass legacy names as
-    // sub-request STRINGS (`subRequest('find_coc_extensions', …)`), where the name
-    // is followed by a quote, never by an open paren.
+    // The matcher used to require a trailing `(`. That anchor was too narrow and
+    // let the whole class through: `validate_xpp` and `batch_search` were already
+    // in this list while `✅ validate_xpp: no violations found` and
+    // "`search` / `batch_search` for X" shipped to the model untouched, because
+    // neither is followed by a paren. Match the bare NAME instead.
+    //
+    // Two legitimate uses of a legacy name survive, and are excluded by line
+    // rather than by regex shape:
+    //  • sub-request routing — `subRequest('find_coc_extensions', …)` — internal
+    //    dispatch, never rendered to the model;
+    //  • this test's own `retired` list.
     const retired = [
       'create_d365fo_file', 'modify_d365fo_file', 'generate_code', 'generate_smart',
       'generate_d365fo_xml', 'find_coc_extensions', 'find_event_handlers',
       'analyze_extension_points', 'find_extension_points', 'prepare_change',
       'get_xpp_knowledge', 'validate_xpp', 'search_extensions', 'batch_search',
       'get_table_info', 'get_class_info', 'get_form_info', 'batch_get_info',
+      'resolve_references', 'form_pattern', 'prepare_create', 'get_method_signature',
+      'get_enum_info', 'get_edt_info', 'get_data_entity_info', 'get_query_info',
+      'get_view_info', 'get_report_info', 'code_completion',
     ];
-    const pattern = new RegExp(String.raw`\b(${retired.join('|')})\(`, 'g');
+    const pattern = new RegExp(String.raw`\b(${retired.join('|')})\b`, 'g');
+
+    // A retired name is a defect where the MODEL can see it, i.e. inside a string
+    // that ends up in a tool response. Scoping to string literals is what makes
+    // the bare-name match usable: comments describing history ("merged from
+    // generate_code") and stderr log prefixes are documentation, not instructions.
+    const STRING_LITERAL = /`[^`]*`|'[^']*'|"[^"]*"/g;
+    // `subRequest('get_xpp_knowledge', …)` is internal dispatch — the legacy name
+    // is the routing key of a handler that still exists, not advice to the model.
+    const INTERNAL_DISPATCH = /\b(subRequest|from|import)\b/;
+    // console.* goes to stderr; the MCP client never renders it.
+    const STDERR_LOG = /\bconsole\.(error|warn|log|info|debug)\b/;
+    // `name: 'get_class_info'` / `toolName: 'get_view_info'` — the internal
+    // routing table of a unified tool. The legacy name is the key of a handler
+    // that still exists behind the merged tool, not advice to call it.
+    const ROUTING_KEY = /\b(toolName|name)\s*:\s*['"]/;
+    // `[create_d365fo_file] …` — an stderr log prefix. console.* is often two
+    // lines up, so the STDERR_LOG guard alone misses these.
+    const isLogPrefix = (literal: string, name: string) =>
+      literal.replace(/^[`'"]/, '').startsWith(`[${name}]`);
+    // "Replaces the former get_<type>_info, code_completion and batch_get_info
+    // tools." — a deliberate migration note in a published tool description. It
+    // names the old tools to STOP the model reaching for them, which is the
+    // opposite of the defect this test guards.
+    const MIGRATION_NOTE = /\b(former|replaces|retired|renamed|merged from)\b/i;
 
     const sources = globSync('src/**/*.ts', { cwd: repoRoot });
     const offenders: string[] = [];
     for (const rel of sources) {
       const text = readRepoFile(rel);
       text.split('\n').forEach((line, i) => {
-        for (const m of line.matchAll(pattern)) {
-          offenders.push(`${rel}:${i + 1} → ${m[1]}(`);
+        const trimmed = line.trim();
+        if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return;
+        if (INTERNAL_DISPATCH.test(line) || STDERR_LOG.test(line) || ROUTING_KEY.test(line)) return;
+        for (const literal of line.match(STRING_LITERAL) ?? []) {
+          if (MIGRATION_NOTE.test(literal)) continue;
+          for (const m of literal.matchAll(pattern)) {
+            if (isLogPrefix(literal, m[1])) continue;
+            offenders.push(`${rel}:${i + 1} → ${m[1]}  |  ${trimmed.slice(0, 120)}`);
+          }
         }
       });
     }

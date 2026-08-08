@@ -6,7 +6,7 @@ Two very different jobs share this page. Pick yours — each path is self-contai
 |---|---|---|
 | You are setting up your own D365FO VM — **the usual case** | [**B–E — Install**](#paths-be--install-on-your-d365fo-vm) | 10 min, or ~25 with a local index |
 | Your team already runs a deployed server | [**A — Connect**](#path-a--connect-to-a-server-someone-else-deployed) | ~2 min, nothing installed |
-| One machine serving several D365FO environments | **F — Multi-instance** | [SETUP.md](SETUP.md#scenario-f-multiple-instances--one-machine-multiple-d365fo-environments) |
+| One machine serving several D365FO environments | **F — Multi-instance** | [SETUP.md](SETUP.md#scenario-f--multiple-instances) |
 
 Both paths finish with the [instruction file](#the-instruction-file-required) and [verification](#verify) at the bottom — those two are shared.
 
@@ -147,8 +147,8 @@ Using Claude Code instead? [SETUP.md § Claude Code CLI](SETUP.md#claude-code-cl
 |----------|----------------|----------|
 | [**B** — Hybrid](#b--hybrid--azure-search--local-writes) | Azure search + local writes | **teams (recommended)** |
 | [**C** — Local HTTP](#c--local-http) | `npm run dev` on the VM | single developer |
-| [**D** — Local stdio](#d--local-stdio) | VS spawns the process | single developer, zero-config |
-| **E** — UDE | stdio + XPP config auto-detection | UDE / Power Platform Tools — [SETUP.md](SETUP.md#scenario-d-ude-unified-developer-experience) |
+| **D** — UDE | stdio + XPP config auto-detection | UDE / Power Platform Tools — [SETUP.md](SETUP.md#scenario-d--ude-unified-developer-experience) |
+| [**E** — Local stdio](#e--local-stdio) | VS spawns the process | single developer, zero-config |
 
 #### B — Hybrid — Azure search + local writes
 
@@ -181,7 +181,7 @@ Using Claude Code instead? [SETUP.md § Claude Code CLI](SETUP.md#claude-code-cl
 
 Start the server with `npx d365fo-mcp start` (or `npm run dev`) in the install directory.
 
-#### D — Local stdio
+#### E — Local stdio
 
 ```json
 {
