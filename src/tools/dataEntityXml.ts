@@ -16,8 +16,10 @@
  *                                     entities use EntityKey but named keys are legal
  *                                     (CustomerGroupKey, VendorGroupKey, …) and used to be
  *                                     silently discarded — see "Change tracking / key naming".
- * properties.entityCategory        – Master | Transaction | Reference | Document | Parameter
- *                                     (default: Transaction).
+ * properties.entityCategory        – Master | Configuration | Transaction | Reference | Document |
+ *                                     Parameters (default: Transaction). The metamodel member is
+ *                                     `Parameters`, plural — this header used to say "Parameter",
+ *                                     which the deserializer drops.
  * properties.isPublic              – default TRUE. Set false to emit a non-public entity:
  *                                     <IsPublic>, <PublicCollectionName> and <PublicEntityName>
  *                                     are then all omitted (shipped census: 1316/1329 entities
@@ -61,8 +63,11 @@
  *                                     data source (after <Name>, before <Table>).
  *
  * Without primaryTable + at least one field, this emits an inert skeleton
- * (no query) that can never function as a data entity — callers should
- * always pass both.
+ * (no query) that can never function as a data entity. The skeleton branch is
+ * kept — it is the byte-identical baseline the element-order tests pin — but the
+ * two tool entry points that WRITE the result (create / generate) call
+ * {@link assertDataEntityIsFunctional} first, so a caller can no longer be told
+ * "✅ created" about an entity with <Fields /> and no ViewMetadata query.
  *
  * ELEMENT ORDER IS NOT NEGOTIABLE. The D365FO deserializer silently drops
  * mis-ordered or unknown elements, so a green build proves nothing. The order
@@ -94,6 +99,8 @@
 import { escapeXml } from '../utils/xmlEscape.js';
 
 
+import { assertKnownEnumValue, ENTITY_CATEGORIES } from '../utils/axEnumProperties.js';
+
 /** The five field groups every shipped data entity carries (5810/5859). */
 const STANDARD_FIELD_GROUPS: Array<{ name: string; autoPopulate?: boolean }> = [
   { name: 'AutoReport' },
@@ -102,6 +109,30 @@ const STANDARD_FIELD_GROUPS: Array<{ name: string; autoPopulate?: boolean }> = [
   { name: 'AutoSummary' },
   { name: 'AutoBrowse' },
 ];
+
+/**
+ * Refuse a data-entity create that cannot produce a working entity.
+ *
+ * `primaryTable` + at least one field are what generate the <Fields>, <Keys> and
+ * the ViewMetadata query. Without them the builder emits a well-formed skeleton
+ * that the tool reported as "✅ created" — an entity with no data source, no key
+ * and no fields, which compiles, syncs, and returns nothing. Neither a build nor
+ * BP flags it, so nothing downstream ever caught it.
+ */
+export function assertDataEntityIsFunctional(entityName: string, properties?: Record<string, any>): void {
+  const primaryTable = properties?.primaryTable;
+  const fields = properties?.fields;
+  const missing: string[] = [];
+  if (typeof primaryTable !== 'string' || !primaryTable.trim()) missing.push('primaryTable');
+  if (!Array.isArray(fields) || fields.length === 0) missing.push('fields');
+  if (missing.length === 0) return;
+  throw new Error(
+    `Data entity '${entityName}': missing ${missing.join(' and ')} — nothing was written. ` +
+    `Both are required for a functional entity: primaryTable is the root data source and fields[] ` +
+    `({name, dataField?}) become the mapped fields, the entity key and the ViewMetadata query. ` +
+    `Without them the file builds and syncs clean but the entity has no query and returns no data.`,
+  );
+}
 
 /** NoYes-ish inputs: true / "Yes" / "true" / 1 all mean Yes. */
 export function isYes(value: unknown): boolean {
@@ -161,7 +192,10 @@ export function buildAxDataEntityXml(entityName: string, properties?: Record<str
   const label = properties?.label || entityName;
   const publicEntityName = properties?.publicEntityName || entityName;
   const publicCollectionName = properties?.publicCollectionName || `${entityName}Collection`;
-  const entityCategory = properties?.entityCategory || 'Transaction';
+  // EntityCategory is a metamodel enum: "Masters"/"Parameter"/"master " were written
+  // verbatim and dropped on deserialization, leaving the category at its default.
+  const entityCategory = assertKnownEnumValue(
+    `Data entity '${entityName}': entityCategory`, properties?.entityCategory, ENTITY_CATEGORIES, 'Transaction');
   const primaryTable: string | undefined = properties?.primaryTable;
   const fields: Array<{ name: string; dataField?: string }> | undefined =
     Array.isArray(properties?.fields) ? properties.fields : undefined;

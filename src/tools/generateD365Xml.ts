@@ -21,7 +21,14 @@ import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils
 import { reindentXppSource } from '../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
-import { buildAxDataEntityXml } from './dataEntityXml.js';
+import { buildAxDataEntityXml, assertDataEntityIsFunctional } from './dataEntityXml.js';
+import {
+  assertKnownEnumValue,
+  resolveEnumValueMode,
+  RELATED_TABLE_CARDINALITIES,
+  RELATION_CARDINALITIES,
+  RELATIONSHIP_TYPES,
+} from '../utils/axEnumProperties.js';
 import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
 import { buildAxEdtExtensionXml } from './edtExtensionXml.js';
 import { buildAxDataEntityViewExtensionXml } from './dataEntityViewExtensionXml.js';
@@ -332,13 +339,6 @@ ${methodsXml}\t</SourceCode>
     properties?: Record<string, any>
   ): string {
     const label = properties?.label || enumName;
-    // Extensible enums MUST have UseEnumValue=No (xppc hard requirement).
-    // Explicit <Value> elements also force UseEnumValue=Yes at compile time,
-    // so we suppress them when UseEnumValue=No.
-    const useEnumValue = (properties?.isExtensible || properties?.useEnumValue === false)
-      ? 'No'
-      : (properties?.useEnumValue ? 'Yes' : 'No');
-    const suppressExplicitValues = useEnumValue === 'No';
     const configKeyXml = properties?.configurationKey
       ? `\t<ConfigurationKey>${properties.configurationKey}</ConfigurationKey>\n`
       : '';
@@ -355,6 +355,8 @@ ${methodsXml}\t</SourceCode>
         `Consider redesigning as a class hierarchy or splitting into multiple enums.`
       );
     }
+
+    const { useEnumValue, suppressExplicitValues } = resolveEnumValueMode(enumName, properties, enumValueSpecs);
 
     let enumValuesXml: string;
     if (enumValueSpecs.length === 0) {
@@ -440,6 +442,9 @@ ${enumValuesXml}${isExtensibleXml}</AxEnum>
     entityName: string,
     properties?: Record<string, any>
   ): string {
+    // Same gate as createD365File's copy — this XML is handed to a caller that
+    // writes it, so an inert entity must not come back looking generated.
+    assertDataEntityIsFunctional(entityName, properties);
     return buildAxDataEntityXml(entityName, properties);
   }
 
@@ -1226,11 +1231,14 @@ ${enumValuesXml}
     } else {
       relationsXml = '\t<Relations>\n';
       for (const rel of relSpecs) {
+        // Same metamodel-enum gate as createD365File's copy: an unknown value is
+        // dropped on deserialization, so it would build clean at NotSpecified.
+        const relCtx = `Relation '${rel.name}' on '${name}'`;
         relationsXml += `\t\t<AxTableRelation>\n\t\t\t<Name>${rel.name}</Name>\n`;
-        relationsXml += `\t\t\t<Cardinality>${rel.cardinality || 'ZeroMore'}</Cardinality>\n`;
+        relationsXml += `\t\t\t<Cardinality>${assertKnownEnumValue(`${relCtx}: cardinality`, rel.cardinality, RELATION_CARDINALITIES, 'ZeroMore')}</Cardinality>\n`;
         relationsXml += `\t\t\t<RelatedTable>${rel.relatedTable}</RelatedTable>\n`;
-        relationsXml += `\t\t\t<RelatedTableCardinality>${rel.relatedTableCardinality || 'ExactlyOne'}</RelatedTableCardinality>\n`;
-        relationsXml += `\t\t\t<RelationshipType>${rel.relationshipType || 'Association'}</RelationshipType>\n`;
+        relationsXml += `\t\t\t<RelatedTableCardinality>${assertKnownEnumValue(`${relCtx}: relatedTableCardinality`, rel.relatedTableCardinality, RELATED_TABLE_CARDINALITIES, 'ExactlyOne')}</RelatedTableCardinality>\n`;
+        relationsXml += `\t\t\t<RelationshipType>${assertKnownEnumValue(`${relCtx}: relationshipType`, rel.relationshipType, RELATIONSHIP_TYPES, 'Association')}</RelationshipType>\n`;
         const constraints = Array.isArray(rel.constraints) ? rel.constraints : [];
         if (constraints.length === 0) {
           relationsXml += `\t\t\t<Constraints />\n`;

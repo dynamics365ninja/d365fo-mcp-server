@@ -1652,7 +1652,7 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"Enum '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Enums, objectName);
                     if (!SetAxEnumProperty(obj, propertyPath, propertyValue))
-                        throw new ArgumentException($"Unknown AxEnum property '{propertyPath}' — nothing was written. Supported: label, isExtensible.");
+                        throw new ArgumentException($"Unknown AxEnum property '{propertyPath}' — nothing was written. Supported: label, isExtensible, useEnumValue.");
                     ((IMetaEnumProvider)_provider.Enums).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -3503,6 +3503,28 @@ namespace D365MetadataBridge.Services
         // HELPERS: Table Field Creation
         // ========================
 
+        /// <summary>
+        /// Refuse to write an &lt;ExtendedDataType&gt; naming an EDT the provider does not know.
+        /// The metadata writer accepts any string here, so a misspelled EDT serialized fine
+        /// and the create/add-field returned success — the only symptom was a later build
+        /// error on a different object.
+        ///
+        /// Deliberately fails OPEN when the provider itself throws (an Exists() that cannot
+        /// answer is not evidence the EDT is missing, and blocking a valid write on a
+        /// provider hiccup is a worse failure than the one this guards).
+        /// </summary>
+        private void RequireExtendedDataTypeExists(string fieldName, string edtName, string what)
+        {
+            bool known;
+            try { known = _provider.Edts.Exists(edtName); }
+            catch { return; }
+            if (known) return;
+            throw new ArgumentException(
+                $"Field '{fieldName}': {what} — nothing was written. " +
+                "Check the spelling with search(type=\"edt\"), or create the EDT first. " +
+                "For an ENUM field pass enumType (the enum name) instead — an enum-typed field needs no EDT.");
+        }
+
         private AxTableField CreateTableField(WriteFieldParam f)
         {
             AxTableField axField;
@@ -3546,15 +3568,27 @@ namespace D365MetadataBridge.Services
                 default:
                     axField = new AxTableFieldString();
                     // fieldType may be an EDT name (not a recognized base type keyword).
-                    // When edt is not set separately, treat fieldType as the EDT name so at
-                    // least ExtendedDataType is populated rather than creating a bare String field.
+                    // When edt is not set separately, treat fieldType as the EDT name — but
+                    // only if that EDT actually exists. It used to be copied in unchecked, so
+                    // a typo ("Iteger" for "Integer") produced an AxTableFieldString carrying
+                    // ExtendedDataType="Iteger", written and reported as success; the caller
+                    // learned about it from an unrelated compile error later.
                     if (string.IsNullOrEmpty(f.Edt) && !string.IsNullOrEmpty(f.FieldType))
+                    {
+                        RequireExtendedDataTypeExists(f.Name, f.FieldType!,
+                            $"type '{f.FieldType}' is neither a base type (String, Integer, Int64, Real, Date, " +
+                            "UtcDateTime, Enum, Container, Guid) nor an existing EDT");
                         axField.ExtendedDataType = f.FieldType;
+                    }
                     break;
             }
 
             axField.Name = f.Name;
-            if (!string.IsNullOrEmpty(f.Edt)) axField.ExtendedDataType = f.Edt;
+            if (!string.IsNullOrEmpty(f.Edt))
+            {
+                RequireExtendedDataTypeExists(f.Name, f.Edt!, $"extended data type '{f.Edt}' does not exist");
+                axField.ExtendedDataType = f.Edt;
+            }
             if (!string.IsNullOrEmpty(f.Label)) axField.Label = f.Label;
             if (!string.IsNullOrEmpty(f.HelpText)) axField.HelpText = f.HelpText;
             if (f.Mandatory)
@@ -3668,6 +3702,13 @@ namespace D365MetadataBridge.Services
                 case "label": en.Label = value; break;
                 case "isextensible":
                     en.IsExtensible = ParseBool(value);
+                    break;
+                // Was unsupported, so the TS generator's useEnumValue never reached a
+                // bridge-created enum: explicit <Value> numbering was written under
+                // whatever UseEnumValue the metamodel defaulted to, and the two paths
+                // (bridge create vs. TS XML) disagreed about the same payload.
+                case "useenumvalue":
+                    en.UseEnumValue = ParseNoYes(value);
                     break;
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxEnum property: {prop}");
@@ -4855,8 +4896,31 @@ namespace D365MetadataBridge.Services
         [System.Text.Json.Serialization.JsonPropertyName("type")]
         public string? FieldType { get; set; }
 
+        /// <summary>
+        /// `fieldType` is how the SAME thing is spelled by the add-field RPCs (single
+        /// and batch) and by the tool's own fields[] documentation. Only `type` was
+        /// bound here, and System.Text.Json drops an unknown key silently, so a caller
+        /// who carried the add-field spelling into a create got every field as a bare
+        /// AxTableFieldString. Both spellings now land on one property; `type` wins.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("fieldType")]
+        public string? FieldTypeAlias
+        {
+            get => null;
+            set { if (string.IsNullOrEmpty(FieldType)) FieldType = value; }
+        }
+
         [System.Text.Json.Serialization.JsonPropertyName("edt")]
         public string? Edt { get; set; }
+
+        /// <summary>Same aliasing as fieldType: `extendedDataType` is the XML element name
+        /// and the spelling half the callers reach for. `edt` wins.</summary>
+        [System.Text.Json.Serialization.JsonPropertyName("extendedDataType")]
+        public string? EdtAlias
+        {
+            get => null;
+            set { if (string.IsNullOrEmpty(Edt)) Edt = value; }
+        }
 
         [System.Text.Json.Serialization.JsonPropertyName("enumType")]
         public string? EnumType { get; set; }

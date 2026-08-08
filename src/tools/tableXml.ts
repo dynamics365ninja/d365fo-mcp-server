@@ -14,6 +14,7 @@
  */
 
 import { escapeXml } from '../utils/xmlEscape.js';
+import { axTableFieldElement, baseTypeFromEdtName, normalizeFieldBaseType } from '../utils/axFieldTypes.js';
 import { renderAxTableProperties } from '../utils/axTablePropertyOrder.js';
 import { isYes } from './dataEntityXml.js';
 
@@ -40,38 +41,12 @@ export interface ParsedTableSource {
  * using edtName (same heuristics as SmartXmlBuilder.getAxTableFieldType).
  */
 export function fieldTypeToAxType(fieldType: string, edtName?: string): string {
-  const typeMap: Record<string, string> = {
-    String:      'AxTableFieldString',
-    Integer:     'AxTableFieldInt',
-    Int64:       'AxTableFieldInt64',
-    Real:        'AxTableFieldReal',
-    Date:        'AxTableFieldDate',
-    DateTime:    'AxTableFieldUtcDateTime',
-    UtcDateTime: 'AxTableFieldUtcDateTime',
-    Enum:        'AxTableFieldEnum',
-    GUID:        'AxTableFieldGuid',
-    Guid:        'AxTableFieldGuid',
-    Container:   'AxTableFieldContainer',
-  };
+  const explicit = normalizeFieldBaseType(fieldType);
+  if (explicit) return axTableFieldElement(explicit);
 
-  const explicit = typeMap[fieldType];
-  if (explicit) return explicit;
-
-  // Fall back to EDT name heuristics (mirrors SmartXmlBuilder.getAxTableFieldType)
-  const hint = edtName || fieldType;
-  if (hint) {
-    const e = hint.toLowerCase();
-    if (e === 'recid' || e.endsWith('recid') || e.includes('refrecid')) return 'AxTableFieldInt64';
-    if (e.includes('utcdatetime') || (e.includes('datetime') && !e.includes('transdate'))) return 'AxTableFieldUtcDateTime';
-    if (e.includes('date') && !e.includes('time') && !e.includes('update')) return 'AxTableFieldDate';
-    if (e.includes('amount') || e.includes('mst') || e.includes('price') || e.includes('qty')
-        || e.includes('percent') || e === 'real') return 'AxTableFieldReal';
-    if (e === 'noyesid' || e.endsWith('noyesid') || e === 'noyes') return 'AxTableFieldEnum';
-    if ((e.endsWith('int') || e.includes('count') || e.includes('level'))
-        && !e.includes('account') && !e.includes('name')) return 'AxTableFieldInt';
-  }
-
-  return 'AxTableFieldString';
+  // Fall back to EDT name heuristics — the same ones every other caller uses.
+  const heuristic = baseTypeFromEdtName(edtName || fieldType);
+  return heuristic ? axTableFieldElement(heuristic) : 'AxTableFieldString';
 }
 
 /** Render the <Fields> block from the caller's field specs. */

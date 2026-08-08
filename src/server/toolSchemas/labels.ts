@@ -8,9 +8,9 @@ export const labelsTool = {
     name: 'labels',
     description:
       'Unified label operations — read and write. Choose an `action`:\n' +
-      '• search → full-text query across indexed label files. Always run before action=create.\n' +
+      '• search → full-text query across indexed label files.\n' +
       '• info → all translations for a labelId; without labelId lists label files (with labelFileId: physical .label.txt path per language).\n' +
-      '• create → add a new label to an AxLabelFile across every language .label.txt (write). Label IDs describe MEANING — never add a model prefix; target the model\'s ORIGINAL label file, never an …_Extension… file. Fails if the label exists. Bulk: pass labels:[{labelId, translations}, …] with shared labelFileId/model at top level.\n' +
+      '• create → add a new label to an AxLabelFile across every language .label.txt (write). Label IDs describe MEANING — never add a model prefix; target the model\'s ORIGINAL label file, never an …_Extension… file. Pass createIfMissing=true to reuse an existing label instead of reporting it — one call, no search first. Bulk: pass labels:[{labelId, translations}, …] with shared labelFileId/model at top level.\n' +
       '• update → overwrite the text of an EXISTING label; same args as create with corrected translations[] (write).\n' +
       '• rename → rename a label ID across .label.txt + X++ + XML + index. Use dryRun=true first (write).\n' +
       'Write plumbing (paths, languages, sortLabels, allowExtensionLabelFile…) is auto-resolved; ' +

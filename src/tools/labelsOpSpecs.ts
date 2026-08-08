@@ -19,7 +19,9 @@
  * drift apart — a parameter must be in exactly one of them.
  */
 
-/** Parameter name → the description it used to carry in the wire schema. */
+/** Parameter name → its contract. Everything here is accepted but unpublished:
+ *  the thirteen above left the wire schema, and createIfMissing was added here
+ *  rather than to it (the payload had 124 chars of headroom). */
 export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
   packageName:
     '[create|rename] Package name for the model. Auto-resolved if omitted.',
@@ -31,6 +33,11 @@ export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
     '[create] Path to the .sln solution directory. Fallback to find .rnrproj if projectPath is not set.',
   addToProject:
     '[create] Add label file XML descriptors to the VS project (default: true).',
+  createIfMissing:
+    '[create] Upsert-lite: create the label when absent, and when it already exists reuse it ' +
+    '(existing text untouched) and report "@labelFileId:labelId" as a success instead of an ' +
+    '"already exists" warning. Default false. One call replaces search-then-create. It never ' +
+    'overwrites — use action="update" for that.',
   createLabelFileIfMissing:
     '[create] Create the AxLabelFile structure if missing (default: true). A wrong-path guard still ' +
     'fails loudly when the model directory is not found, so no phantom file is produced. ' +
