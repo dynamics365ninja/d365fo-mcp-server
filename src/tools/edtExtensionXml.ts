@@ -28,9 +28,7 @@ const NAMED_PROPERTY_MODIFICATIONS: Array<[string, string]> = [
   ['formHelp', 'FormHelp'],
 ];
 
-function escapeXmlText(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+import { escapeXml as escapeXmlText } from '../utils/xmlEscape.js';
 
 /**
  * @param name  Full extension element name, dot notation: BaseEdt.<Prefix>Extension

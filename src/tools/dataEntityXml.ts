@@ -91,6 +91,8 @@
  * properties.dataManagementEnabled — the caller is then responsible for the
  * staging table existing (create it as its own table).
  */
+import { escapeXml } from '../utils/xmlEscape.js';
+
 
 /** The five field groups every shipped data entity carries (5810/5859). */
 const STANDARD_FIELD_GROUPS: Array<{ name: string; autoPopulate?: boolean }> = [
@@ -214,7 +216,7 @@ export function buildAxDataEntityXml(entityName: string, properties?: Record<str
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${entityName}</Name>
-${sourceCodeXml}\t<Label>${label}</Label>
+${sourceCodeXml}\t<Label>${escapeXml(label)}</Label>
 ${changeTrackingXml}${dataManagementXml}\t<EntityCategory>${entityCategory}</EntityCategory>
 ${isPublicXml}${publicNamesXml}${deleteActionsXml}${fieldGroupsXml}\t<Fields />
 \t<Keys />
@@ -259,7 +261,7 @@ ${stateMachinesXml}\t<ViewMetadata />
   return `<?xml version="1.0" encoding="utf-8"?>
 <AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${entityName}</Name>
-${sourceCodeXml}\t<Label>${label}</Label>
+${sourceCodeXml}\t<Label>${escapeXml(label)}</Label>
 ${changeTrackingXml}${dataManagementXml}\t<EntityCategory>${entityCategory}</EntityCategory>
 ${isPublicXml}\t<PrimaryKey>${keyName}</PrimaryKey>
 ${publicNamesXml}${deleteActionsXml}${fieldGroupsXml}\t<Fields>
