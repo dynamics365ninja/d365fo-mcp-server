@@ -79,7 +79,9 @@ function envIntZero(name: string, fallback: number): number {
 }
 
 // Configurable via env so large installations / slow VMs can raise the limits.
-const READY_TIMEOUT_MS = envInt('BRIDGE_READY_TIMEOUT_MS', 30_000); // 30s for metadata provider init
+// Exported so the readiness gate (bridgeReadiness.ts) bounds its wait by the
+// same budget the child process is actually given to come up.
+export const READY_TIMEOUT_MS = envInt('BRIDGE_READY_TIMEOUT_MS', 30_000); // 30s for metadata provider init
 const CALL_TIMEOUT_MS = envInt('BRIDGE_CALL_TIMEOUT_MS', 60_000);   // 60s per call (large searches can take time)
 const MAX_RETRIES = envIntZero('BRIDGE_MAX_RETRIES', 2);            // retries for READ calls only (0 = disabled)
 const HEALTHCHECK_MS = envIntZero('BRIDGE_HEALTHCHECK_MS', 0);      // idle ping interval (0 = disabled)

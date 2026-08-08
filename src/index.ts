@@ -20,12 +20,13 @@ import { WorkspaceScanner } from './workspace/workspaceScanner.js';
 import { HybridSearch } from './workspace/hybridSearch.js';
 import { initializeDatabase } from './database/download.js';
 import { initializeConfig, getConfigManager } from './utils/configManager.js';
-import { SERVER_MODE, LOCAL_TOOLS, isToolAllowedInMode } from './server/serverMode.js';
+import { SERVER_MODE, LOCAL_TOOLS, TOOL_PROFILE, EXTRA_TOOLS, isToolEnabled } from './server/serverMode.js';
 import { TOOL_ANNOTATIONS } from './server/toolAnnotations.js';
 import { apiKeyAuth } from './middleware/apiKeyAuth.js';
 import { VERSION } from './version.js';
 import { setInitializeParams } from './utils/stdioSessionInfo.js';
 import { setModelObjectNameSource } from './utils/modelPrefixInference.js';
+import { trackBridgeStartup } from './bridge/bridgeReadiness.js';
 import { createShutdownCoordinator } from './utils/gracefulShutdown.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, sanitize, supportsUnicode, log, shortPath, startupWarnings } from './utils/terminalUi.js';
 import * as fs from 'fs/promises';
@@ -606,7 +607,11 @@ async function main() {
     // Step 3b: Initialize C# bridge in parallel with DB load (non-blocking)
     // The bridge provides live metadata from Microsoft's IMetadataProvider API
     // and cross-reference queries — only available on Windows VMs with D365FO.
-    void initializeBridge(stubContext).then(s => (s.ok ? log.ok(s.summary) : log.warn(s.summary)));
+    // The attempt is tracked on the context so bridge-backed tools called in the
+    // first seconds wait for it instead of reporting a phantom "not connected".
+    stubContext.bridgeStartup = trackBridgeStartup(
+      initializeBridge(stubContext).then(s => (s.ok ? log.ok(s.summary) : log.warn(s.summary))),
+    );
 
     // Step 4: load real database in the background
     const dbLoadStart = Date.now();
@@ -633,13 +638,11 @@ async function main() {
     // Log tool count immediately (transport is already connected).
     // TOOL_ANNOTATIONS is guaranteed complete by tests/utils/toolInventory.test.ts,
     // so its size tracks the real tool count without a hardcoded literal.
-    const totalTools = Object.keys(TOOL_ANNOTATIONS).length;
-    const localToolCount = LOCAL_TOOLS.size;
-    const toolCount = SERVER_MODE === 'write-only' ? localToolCount :
-                     SERVER_MODE === 'read-only' ? totalTools - localToolCount : totalTools;
+    const toolCount = Object.keys(TOOL_ANNOTATIONS).filter(name => isToolEnabled(name)).length;
     const toolDesc = SERVER_MODE === 'write-only' ? `(${Array.from(LOCAL_TOOLS).join(', ')})` :
                     SERVER_MODE === 'read-only' ? '(all except local tools)' :
-                    '(2 discovery + 1 labels + 3 object-info + 2 intelligent + 2 smart-gen + 1 file-ops + 1 pattern-analysis + 5 security-ext + 5 sdlc-build + 2 code-review + 2 code-quality)';
+                    TOOL_PROFILE === 'core' ? `(core profile${EXTRA_TOOLS.size ? ` + ${EXTRA_TOOLS.size} extra` : ''}; MCP_TOOL_PROFILE=full for all ${Object.keys(TOOL_ANNOTATIONS).length})` :
+                    '(1 discovery + 1 labels + 3 object-info + 2 intelligent + 2 smart-gen + 1 file-ops + 1 pattern-analysis + 5 security-ext + 5 sdlc-build + 2 code-review + 2 code-quality)';
     log.ok(`Registered ${toolCount} X++ MCP tools ${toolDesc}`);
     serverState.isReady = true;
     serverState.isHealthy = true;
@@ -744,8 +747,12 @@ async function main() {
       // never block startup, so cap the wait; it keeps connecting in the
       // background afterwards and attaches to the context once ready.
       if (context) {
+        const attempt = initializeBridge(context);
+        // Tracked before the bounded race below, so a bridge that is still
+        // connecting when the banner gives up is still awaited by tool calls.
+        context.bridgeStartup = trackBridgeStartup(attempt);
         const status = await Promise.race<BridgeStatus>([
-          initializeBridge(context),
+          attempt,
           new Promise<BridgeStatus>(r => setTimeout(
             () => r({ ok: true, summary: 'C# bridge still connecting in the background' + glyph.ellipsis }), 6000)),
         ]);
@@ -757,13 +764,12 @@ async function main() {
       const toolCatalog = [
         { icon: '🔍', category: 'Search & Discovery', tools: [
           { name: 'search',                       desc: 'Search 584K+ symbols: single, batch (queries[]) or scope=extensions' },
-          { name: 'batch_get_info',               desc: 'Get detailed info for up to 10 objects in one parallel call' },
         ]},
         { icon: '🏷️ ', category: 'Label Management', tools: [
           { name: 'labels',                       desc: 'Unified label ops: action=search|info|create|rename (read/write)' },
         ]},
         { icon: '📊', category: 'Advanced Object Info', tools: [
-          { name: 'get_object_info',              desc: 'Read any object by objectType: class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro' },
+          { name: 'get_object_info',              desc: 'Read one object (objectType, name) or many in one call (objects[]): class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro' },
           { name: 'get_method',                   desc: 'Method signature/source/both via include= (required before CoC extensions)' },
           { name: 'find_references',              desc: 'Where-used analysis across the entire codebase' },
         ]},
@@ -789,7 +795,7 @@ async function main() {
           { name: 'verify_d365fo_project',        desc: 'Verify objects exist on disk and are referenced in the .rnrproj project file' },
         ]},
         { icon: '🏗️ ', category: 'SDLC & Build Tools', tools: [
-          { name: 'update_symbol_index',          desc: 'Index a newly generated XML file immediately (no restart needed)' },
+          { name: 'update_symbol_index',          desc: 'Re-index a file changed outside this server (create/modify refresh it themselves)' },
           { name: 'build_d365fo_project',         desc: 'Run MSBuild compilation locally to capture errors' },
           { name: 'trigger_db_sync',              desc: 'Run a database sync for the current model' },
           { name: 'run_bp_check',                 desc: 'Run Microsoft Best Practices (xppbp.exe) analysis' },
@@ -810,7 +816,7 @@ async function main() {
           ...cat,
           // Same predicate as the ListTools filter and runtime gate, so the
           // startup banner matches what the server actually exposes.
-          tools: cat.tools.filter(t => isToolAllowedInMode(SERVER_MODE, t.name)),
+          tools: cat.tools.filter(t => isToolEnabled(t.name)),
         }))
         .filter(cat => cat.tools.length > 0);
 

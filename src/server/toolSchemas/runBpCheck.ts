@@ -10,9 +10,21 @@ export const runBpCheckTool = {
     inputSchema: {
       type: 'object',
       properties: {
+        objects: {
+          type: 'array',
+          description: 'Check several objects in ONE call — preferred over targetFilter. Shared preamble is printed once and findings are grouped per object.',
+          items: {
+            type: 'object',
+            properties: {
+              objectType: { type: 'string', description: 'class, table, form, enum, view, query, edt, ... Looked up in the symbol index if omitted.' },
+              objectName: { type: 'string', description: 'Object name.' },
+            },
+            required: ['objectName'],
+          },
+        },
         projectPath: { type: 'string', description: 'Absolute path to the .rnrproj file to analyze. Auto-detected from .mcp.json if omitted.' },
-        targetFilter: { type: 'string', description: 'Optional: filter results to a specific object name (class, table, form, enum, ...).' },
-        targetElementType: { type: 'string', description: 'Element type for the filter when using xppbp 10.0.24+ (equals-style CLI). Common values: class, table, form, enum, view, query. Defaults to "class" when targetFilter is set but this is omitted.' },
+        targetFilter: { type: 'string', description: 'Single-object form: object name to check. Use objects[] for more than one.' },
+        targetElementType: { type: 'string', description: 'Element type for targetFilter. Looked up in the symbol index if omitted; ambiguous or unknown names error rather than being assumed to be a class.' },
         modelName: { type: 'string', description: 'Model name to check. Auto-detected from .mcp.json if omitted.' },
         packagePath: { type: 'string', description: 'PackagesLocalDirectory root path. Auto-detected from .mcp.json if omitted.' },
       },

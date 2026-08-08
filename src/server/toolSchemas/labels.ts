@@ -34,9 +34,14 @@ export const labelsTool = {
           type: 'string',
           description: '[search] Language/locale (default: en-US). Examples: cs, de, sk.',
         },
-        limit: {
+        maxResults: {
           type: 'number',
-          description: '[search] Maximum number of results (default 30).',
+          description: '[search] Max labels listed (default 10, alias `limit`); a truncated set reports how many more matched.',
+        },
+        limit: { type: 'number', description: '[search] Alias of maxResults.' },
+        verbose: {
+          type: 'boolean',
+          description: '[search] Default one line per label; true = full multi-line block.',
         },
         // action=search
         query: {

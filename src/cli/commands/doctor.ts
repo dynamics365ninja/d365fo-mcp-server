@@ -17,6 +17,9 @@ import { conflictingLegacyValues, readPath, readSetting, type SettingsStore } fr
 import { instanceTarget, rootTarget, type Target } from '../target.js';
 import { isXppConfigStale, listXppConfigs, xppConfigDir } from '../xppConfig.js';
 import { describePackagesRootScan, packagesRoots } from '../../utils/packagesRoot.js';
+import { autoDetectD365Project } from '../../utils/workspaceDetector.js';
+import { describeWorkspaceDetection } from '../../utils/workspaceDetectionStatus.js';
+import { inferPrefixFromObjectNames } from '../../utils/modelPrefixInference.js';
 
 type Severity = 'ok' | 'warn' | 'fail' | 'info';
 
@@ -117,6 +120,122 @@ function checkPackagesRoot(store: SettingsStore, label: string): CheckResult[] {
       ? `set environment.packagePath to ${detected[0]} (${SETUP_COMMAND})`
       : `point environment.packagePath at this machine's PackagesLocalDirectory (${SETUP_COMMAND})`,
   }];
+}
+
+/**
+ * Which detection source resolves the workspace — and which model it lands on.
+ *
+ * The server's own log used to say only that detection had failed, from a pass
+ * that ran before its sources were up; the user then had to infer the real
+ * resolution from an unrelated tool error (#833). Running the same detector here
+ * states the answer outright, and names every source it looked at when there
+ * isn't one.
+ */
+export async function checkWorkspaceDetection(
+  store: SettingsStore,
+  label: string,
+): Promise<{ modelName: string | null; checks: CheckResult[] }> {
+  const configuredModel = String(readSetting(store, settingByPath('workspace.modelName')!) ?? '').trim();
+  const workspacePath = String(readSetting(store, settingByPath('workspace.path')!) ?? '').trim();
+
+  if (configuredModel) {
+    return {
+      modelName: configuredModel,
+      checks: [{
+        severity: 'ok',
+        message: `${label}: model "${configuredModel}" comes from configuration (workspace.modelName) — no auto-detection needed`,
+      }],
+    };
+  }
+
+  const detected = await autoDetectD365Project(workspacePath || undefined);
+  if (!detected) {
+    return {
+      modelName: null,
+      checks: [{
+        severity: 'warn',
+        message: `${label}: ${describeWorkspaceDetection()}`,
+        fix: `set workspace.modelName / workspace.projectPath (${SETUP_COMMAND}), or point workspace.solutionsPath at your solutions root`,
+      }],
+    };
+  }
+  return {
+    modelName: detected.modelName,
+    checks: [{
+      severity: 'ok',
+      message: `${label}: model "${detected.modelName}" detected from ${detected.detectionSource ?? 'auto-detection'}` +
+        (detected.projectPath ? `\n   project: ${detected.projectPath}` : ''),
+    }],
+  };
+}
+
+/**
+ * The configured prefix against the one the model's own objects use.
+ *
+ * These two disagreeing is normal — a single configured prefix cannot be right
+ * for every model — but the server resolves the model's own naming ABOVE the
+ * configuration, so a user reading only their config has the wrong answer. State
+ * both, and how to pin the configured one.
+ */
+export function checkPrefixResolution(
+  configuredPrefix: string,
+  modelName: string | null,
+  modelObjectNames: string[],
+  label: string,
+): CheckResult[] {
+  const inferred = modelName ? inferPrefixFromObjectNames(modelObjectNames, modelName) : null;
+  const bare = (s: string) => s.replace(/_+$/, '').toLowerCase();
+
+  if (!inferred?.regular) {
+    if (!configuredPrefix) {
+      return [{
+        severity: 'warn',
+        message: `${label}: no prefix configured and none inferable — new objects will be prefixed with the model name`,
+        fix: `set naming.prefix to your ISV prefix (${SETUP_COMMAND})`,
+      }];
+    }
+    return [{ severity: 'ok', message: `${label}: prefix "${configuredPrefix}" (naming.prefix)` }];
+  }
+  if (!configuredPrefix || bare(inferred.regular) === bare(configuredPrefix)) {
+    return [{
+      severity: 'ok',
+      message: `${label}: prefix "${inferred.regular}" — model "${modelName}"'s own objects and the configuration agree`,
+    }];
+  }
+  return [{
+    severity: 'warn',
+    message: `${label}: prefix conflict — model "${modelName}"'s objects use "${inferred.regular}" ` +
+      `(${inferred.coverage}/${inferred.sampleSize}), naming.prefix says "${configuredPrefix}". ` +
+      `The model's own naming wins, so new objects are named "${inferred.regular}…".`,
+    fix: 'EXTENSION_PREFIX_SOURCE=config pins the configured value instead',
+  }];
+}
+
+/**
+ * The object names doctor infers a prefix from. Read straight out of the symbol
+ * index — the same rows the server's inference reads (SymbolIndex.getModelObjectNames)
+ * — and empty whenever there is no index to read, which is not a prefix problem.
+ */
+async function modelObjectNames(dbPath: string, modelName: string): Promise<string[]> {
+  if (!fs.existsSync(dbPath)) return [];
+  try {
+    const { default: Database } = await import('../../database/sqlite.js');
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      const rows = db.prepare(
+        `SELECT name FROM symbols
+         WHERE model = ?
+           AND parent_name IS NULL
+           AND type NOT IN ('method', 'field')
+         LIMIT 400`
+      ).all(modelName) as Array<{ name: string }>;
+      return rows.map(r => r.name);
+    } finally {
+      db.close();
+    }
+  } catch {
+    return [];
+  }
 }
 
 /** A legacy .env that disagrees with the config is a trap: the config wins. */
@@ -257,6 +376,16 @@ export async function doctorCommand(): Promise<void> {
 
   // Database (root)
   emit(checkDb(root.store, paths.defaultDb, 'Root'));
+
+  // Which source resolves the workspace, and the prefix that follows from it —
+  // both were previously only inferable from a tool error (#833).
+  const detection = await checkWorkspaceDetection(root.store, 'Workspace');
+  for (const r of detection.checks) emit(r);
+  const configuredPrefix = String(readSetting(root.store, settingByPath('naming.prefix')!) ?? '').trim();
+  const names = detection.modelName
+    ? await modelObjectNames(readPath(root.store, settingByPath('index.dbPath')!, paths.defaultDb), detection.modelName)
+    : [];
+  for (const r of checkPrefixResolution(configuredPrefix, detection.modelName, names, 'Naming')) emit(r);
 
   // C# bridge: the only write path; Windows-only.
   if (isWindows) {

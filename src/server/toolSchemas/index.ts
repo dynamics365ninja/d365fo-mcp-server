@@ -4,7 +4,6 @@
  * tools/list payload and is covered by tests.
  */
 import { searchTool } from './search.js';
-import { batchGetInfoTool } from './batchGetInfo.js';
 import { generateObjectTool } from './generateObject.js';
 import { analyzeCodeTool } from './analyzeCode.js';
 import { d365foFileTool } from './d365foFile.js';
@@ -32,7 +31,6 @@ import { prepareTool } from './prepare.js';
 
 export const toolSchemas = [
   searchTool,
-  batchGetInfoTool,
   generateObjectTool,
   analyzeCodeTool,
   d365foFileTool,

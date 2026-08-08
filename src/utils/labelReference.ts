@@ -77,3 +77,20 @@ export function labelProvenanceWarning(labelModel: string | undefined): string {
   return `⚠️ owned by model "${labelModel ?? 'unknown'}" — resolves only if your model references ` +
     `that package; otherwise xppbp reports BPErrorUnknownLabel`;
 }
+
+/** How many owning models the hoisted warning names before it stops listing them. */
+const MAX_NAMED_MODELS = 5;
+
+/**
+ * One warning for a whole result set instead of one per row (#832): repeating
+ * {@link labelProvenanceWarning} on every hit cost ~2,5 kB per search and said
+ * the same sentence up to 30 times. `models` are the distinct owners of the
+ * flagged rows, in result order.
+ */
+export function crossModelLabelWarning(models: string[], flaggedCount: number): string {
+  const named = models.slice(0, MAX_NAMED_MODELS).map(m => m || 'unknown');
+  const rest = models.length - named.length;
+  const list = named.join(', ') + (rest > 0 ? `, +${rest} more` : '');
+  return `⚠️ ${flaggedCount} result(s) marked ⚠️ are owned by other models (${list}) — each resolves ` +
+    `only if your model references that package; otherwise xppbp reports BPErrorUnknownLabel.`;
+}

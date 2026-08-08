@@ -2,9 +2,9 @@
  * Shared object-reader dispatch registry.
  *
  * Maps an objectType discriminator → the underlying get_*_info handler, its tool
- * name, and an args builder. Single source of truth reused by:
- *   - get_object_info  (single object, with type-specific options passthrough)
- *   - batch_get_info   (many objects in parallel)
+ * name, and an args builder. Single source of truth for get_object_info, in both
+ * its single-object form ({objectType, name} with type-specific options
+ * passthrough) and its plural form ({objects:[…]} fanned out in parallel).
  *
  * The handler functions live in their own files and stay there — consolidating
  * the MCP *surface* into get_object_info does not delete the handlers.
@@ -29,14 +29,14 @@ import { getConfigKeyInfoTool } from './configKeyInfo.js';
 import { getSecurityPolicyInfoTool } from './securityPolicyInfo.js';
 import { getMacroInfoTool } from './macroInfo.js';
 import { tableExtensionInfoTool, formExtensionInfoTool, enumExtensionInfoTool, edtExtensionInfoTool, dataEntityExtensionInfoTool, classExtensionInfoTool } from './tableExtensionInfo.js';
-import { securityArtifactInfoTool } from './securityArtifactInfo.js';
 
 export type InfoTool = (request: CallToolRequest, context: XppServerContext) => Promise<any>;
 
 /**
  * Append actionable "use search / update_symbol_index, don't grep the disk" guidance
- * to a reader result that failed to resolve the object. Shared by get_object_info and
- * batch_get_info so every reader benefits from a single choke point.
+ * to a reader result that failed to resolve the object. Applied on every
+ * get_object_info lookup (single or plural) so every reader benefits from a
+ * single choke point.
  *
  * No-op unless the result is an error whose text reads like a not-found (so genuine
  * operation errors aren't masked), and skipped when a type-mismatch hint or our own
@@ -93,9 +93,6 @@ export const READER_DISPATCH: Record<string, ReaderDispatch> = {
   'edt-extension':           { tool: edtExtensionInfoTool,         toolName: 'get_edt_extension_info',          buildArgs: byBaseName('baseName') },
   'data-entity-extension':   { tool: dataEntityExtensionInfoTool,  toolName: 'get_data_entity_extension_info',  buildArgs: byBaseName('baseName') },
   'class-extension':         { tool: classExtensionInfoTool,       toolName: 'get_class_extension_info',         buildArgs: byBaseName('baseName') },
-  'security-privilege': { tool: securityArtifactInfoTool, toolName: 'get_security_artifact_info', buildArgs: n => ({ name: n, artifactType: 'privilege' }) },
-  'security-duty':      { tool: securityArtifactInfoTool, toolName: 'get_security_artifact_info', buildArgs: n => ({ name: n, artifactType: 'duty' }) },
-  'security-role':      { tool: securityArtifactInfoTool, toolName: 'get_security_artifact_info', buildArgs: n => ({ name: n, artifactType: 'role' }) },
 };
 
 /** Homogeneous "object by name → structure" types exposed by get_object_info. */
@@ -105,10 +102,4 @@ export const OBJECT_INFO_TYPES = [
   // Extension types
   'table-extension', 'class-extension', 'form-extension', 'enum-extension',
   'edt-extension', 'data-entity-extension',
-] as const;
-
-/** Types accepted by batch_get_info (superset incl. extensions + security artifacts). */
-export const BATCH_INFO_TYPES = [
-  ...OBJECT_INFO_TYPES,
-  'security-privilege', 'security-duty', 'security-role',
 ] as const;

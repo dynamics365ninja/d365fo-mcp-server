@@ -22,6 +22,7 @@ vi.mock('../../src/tools/validateXpp', () => ({ validateXppTool: vi.fn((_r: any)
 vi.mock('../../src/tools/resolveReferences', () => ({ resolveReferencesTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'references' }] })) }));
 vi.mock('../../src/tools/codeGen', () => ({ codeGenTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'pattern' }] })) }));
 vi.mock('../../src/tools/generateSmart', () => ({ generateSmartTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'scaffold' }] })) }));
+vi.mock('../../src/tools/generateTableFields', () => ({ generateTableFieldsTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'fields' }] })) }));
 vi.mock('../../src/tools/getTablePatterns', () => ({ getTablePatternsTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'table' }] })) }));
 vi.mock('../../src/tools/formPattern', () => ({ formPatternTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'form' }] })) }));
 vi.mock('../../src/tools/analyzePatterns', () => ({ analyzeCodePatternsTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'patterns' }] })) }));
@@ -49,6 +50,7 @@ import { validateXppTool } from '../../src/tools/validateXpp';
 import { resolveReferencesTool } from '../../src/tools/resolveReferences';
 import { codeGenTool } from '../../src/tools/codeGen';
 import { generateSmartTool } from '../../src/tools/generateSmart';
+import { generateTableFieldsTool } from '../../src/tools/generateTableFields';
 import { getTablePatternsTool } from '../../src/tools/getTablePatterns';
 import { formPatternTool } from '../../src/tools/formPattern';
 
@@ -163,6 +165,44 @@ describe('generate_object dispatcher', () => {
   it('unknown/omitted mode → friendly error', async () => {
     const r: any = await generateObjectTool(req('generate_object', { name: 'X' }), ctx);
     expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('kind="op-spec"');
+  });
+
+  // The published schema advertises only mode/name/pattern/objectType/modelName
+  // plus a free-form `params` (issue #825), so everything else arrives nested
+  // and has to be flattened before the underlying handler sees it.
+  it('flattens `params` into the forwarded arguments', async () => {
+    await generateObjectTool(
+      req('generate_object', {
+        mode: 'scaffold',
+        objectType: 'form',
+        name: 'MyForm',
+        params: { cloneFrom: 'CustGroup', tableMapping: { CustGroup: 'MyGroup' } },
+      }),
+      ctx,
+    );
+    const args = argsOf(generateSmartTool);
+    expect(args.cloneFrom).toBe('CustGroup');
+    expect(args.tableMapping).toEqual({ CustGroup: 'MyGroup' });
+    expect(args.params).toBeUndefined();
+  });
+
+  it('still accepts flat legacy params, with nested winning on collision', async () => {
+    await generateObjectTool(
+      req('generate_object', {
+        mode: 'fields', name: 'MyTable', fieldGroup: 'Flat', params: { fieldGroup: 'Nested' },
+      }),
+      ctx,
+    );
+    expect(argsOf(generateTableFieldsTool).fieldGroup).toBe('Nested');
+  });
+
+  it('answers a missing required param with the mode spec, not a bare zod error', async () => {
+    const r: any = await generateObjectTool(req('generate_object', { mode: 'pattern', name: 'MyHelper' }), ctx);
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('missing required parameter(s) pattern');
+    expect(r.content[0].text).toContain('kind="op-spec"');
+    expect(codeGenTool).not.toHaveBeenCalled();
   });
 });
 

@@ -2,9 +2,12 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
-import { SERVER_MODE, LOCAL_TOOLS, isToolAllowedInMode } from '../server/serverMode.js';
+import {
+  SERVER_MODE, LOCAL_TOOLS, TOOL_PROFILE,
+  isToolAllowedInMode, isToolInProfile,
+} from '../server/serverMode.js';
+import { BRIDGE_BACKED_TOOLS, awaitBridgeReady } from '../bridge/bridgeReadiness.js';
 import { searchUnifiedTool } from './searchUnified.js';
-import { batchGetInfoTool } from './batchGetInfo.js';
 import { getObjectInfoTool } from './getObjectInfo.js';
 import { findReferencesTool } from './findReferences.js';
 import { getMethodTool } from './getMethod.js';
@@ -43,6 +46,7 @@ import {
 } from '../workspace/contextSnapshot.js';
 import * as nodePath from 'path';
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
+import { createProgressReporter } from '../utils/progressReporter.js';
 
 /** Models named inline by the compact project list before it summarises the rest. */
 const PROJECT_NAMES_SHOWN = 12;
@@ -146,6 +150,16 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       configManager.setRuntimeContext({ workspacePath });
     }
 
+    // The C# bridge starts out-of-band, so the tool list can be live while
+    // `context.bridge` is still undefined. Wait for a startup that is in flight
+    // before the tool decides anything — otherwise a 2-second cold-start race is
+    // reported as "the object does not exist" / "check your config" (issue #826).
+    // Started here, awaited after the dbReady block, so the two waits overlap and
+    // a cold start costs max(db, bridge) rather than their sum.
+    const bridgeWait = BRIDGE_BACKED_TOOLS.has(toolName)
+      ? { t0: Date.now(), outcome: awaitBridgeReady(context) }
+      : null;
+
     // ctx.dbReady resolves once the real symbol database is loaded; await it so
     // tools use the real index instead of silently returning empty results.
     // LOCAL_TOOLS need no DB (filesystem/in-memory config only) and skip the wait.
@@ -177,6 +191,19 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       }
     }
 
+    // Collect the bridge wait started above. Every outcome falls through to the
+    // tool: `ready` is the point of the wait, `unavailable`/`not-tracked` mean
+    // the symbol-index and disk fallbacks are the answer, and even on `timeout`
+    // the tool may still resolve the object from the index — it just gets to
+    // describe the bridge as "still starting" instead of "not connected".
+    if (bridgeWait) {
+      const outcome = await bridgeWait.outcome;
+      const elapsed = Date.now() - bridgeWait.t0;
+      if (elapsed > 200) {
+        console.error(`[toolHandler] ⏳ ${toolName}: bridge was starting, waited ${elapsed} ms → ${outcome}`);
+      }
+    }
+
     // Enforce server mode: block local tools in read-only (Azure) mode, block search/analysis
     // tools in write-only mode. isToolAllowedInMode is the same predicate the ListTools filter
     // uses (ALWAYS_TOOLS included), so a tool is refused here iff it is not advertised.
@@ -189,6 +216,15 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     if (SERVER_MODE === 'write-only' && !isToolAllowedInMode(SERVER_MODE, toolName)) {
       return {
         content: [{ type: 'text', text: `⚠️ Tool '${toolName}' is not available in write-only mode.\n\nThis local MCP server only handles file operations. Search and analysis tools are provided by the Azure MCP server.` }],
+        isError: true,
+      };
+    }
+    // Breadth gate: the tool exists but this server runs the reduced 'core'
+    // profile, so it was never advertised. Name the two ways back in — an
+    // unexplained refusal just gets retried.
+    if (!isToolInProfile(TOOL_PROFILE, toolName)) {
+      return {
+        content: [{ type: 'text', text: `⚠️ Tool '${toolName}' is not published under MCP_TOOL_PROFILE=core.\n\nTo enable it, set MCP_TOOL_PROFILE=full, or add it to MCP_EXTRA_TOOLS (server.extraTools in d365fo-mcp.json) and restart the server.` }],
         isError: true,
       };
     }
@@ -231,39 +267,15 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       const args = request.params.arguments as Record<string, any> | undefined;
       const progressMsg = buildProgressMessage(toolName, args);
 
-      // Channel 1: notifications/progress (MCP spec) — sent when the client provides a progressToken.
-      const progressToken = (extra._meta as any)?.progressToken;
-      if (progressToken !== undefined && progressToken !== null) {
-        try {
-          await extra.sendNotification({
-            method: 'notifications/progress',
-            params: {
-              progressToken,
-              progress: 0,
-              total: 1,
-              message: progressMsg,
-            } as any,
-          });
-        } catch {
-          // Non-fatal — client may not support progress notifications
-        }
-      }
-
-      // Channel 2: notifications/message (logging) — fallback for clients without progressToken support.
-      try {
-        await server.sendLoggingMessage({
-          level: 'info',
-          data: progressMsg,
-        });
-      } catch {
-        // Non-fatal — logging is best-effort, never block the tool
-      }
+      // Both notification channels (notifications/progress when the client
+      // supplied a progressToken, notifications/message otherwise) live in one
+      // reporter so long-running tools can keep using it after this first step.
+      const reportProgress = createProgressReporter(server, extra as any);
+      await reportProgress(progressMsg, 0);
 
       return (async () => { switch (toolName) {
       case 'search':
         return searchUnifiedTool(request, context);
-      case 'batch_get_info':
-        return batchGetInfoTool(request, context);
       case 'get_object_info':
         return getObjectInfoTool(request, context);
       case 'generate_object':        return generateObjectTool(request, context);
@@ -295,7 +307,9 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       case 'update_symbol_index':
         return await updateSymbolIndexTool(request.params.arguments as any, context);
       case 'build_d365fo_project':
-        return await buildProjectTool(request.params.arguments as any, context);
+        // Streams progress while xppc runs, so a build longer than any timeout
+        // still completes inside this one call instead of handing back a stub.
+        return await buildProjectTool(request.params.arguments as any, context, reportProgress);
       case 'trigger_db_sync':
         return await dbSyncTool(request.params.arguments as any, context);
       case 'run_bp_check':

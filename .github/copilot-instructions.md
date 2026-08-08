@@ -34,7 +34,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 | Edit an existing object | `d365fo_file(action="modify")` (applies immediately — confirm in chat first) |
 | Revert the last write | `undo_last_modification` |
 | Search objects | `search` — multiple via `search(queries[])`, custom-only via `search(scope="extensions")` |
-| Read any object's metadata | `get_object_info(objectType, name, options?)` — objectType ∈ class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro. 2+ known names: `get_object_info(objects=[{objectType,name},…])` — ONE call, never a loop |
+| Read any object's metadata | `get_object_info(objectType, name, options?)` — objectType ∈ class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro. 2+ known names: `get_object_info(objects=[{objectType,objectName},…])` — ONE call, never a loop |
 | Method signature for CoC | `get_method(include="signature")` (already returned by `prepare(mode="change")`) |
 | Validate X++ before write | `validate_code(mode="syntax", code)` — offline BP check, <50 ms |
 | X++ rules & patterns | `get_knowledge(kind="knowledge", topic)` — select grammar, CoC, BP rules, SysOperation, workflow, … |
@@ -43,6 +43,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 | Resolve label / EDT / class refs | `validate_code(mode="references", code)` |
 | Build / BP / Sync | `build_d365fo_project` / `run_bp_check` / `trigger_db_sync` |
 | Error diagnosis | `get_knowledge(kind="error", errorText)` |
+| Parameters for a `d365fo_file` operation / `generate_object` mode | `get_knowledge(kind="op-spec", topic="add-index" \| "table" \| "scaffold:form")` — those two tools keep their parameters OUT of the tool schema; look the contract up once for the operation you picked, then nest the values in `params` (`properties` for `action="create"`) |
 
 ## Key Rules
 
@@ -83,7 +84,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 ### Spending tool calls
 
 13. **Issue independent read-only calls together, in one step.** Every tool call re-reads the whole conversation, so a turn costs the round trip, not the tool. `get_object_info`, `search`, `labels`, `get_knowledge`, `object_patterns` and `find_references` have no side effects and never need to wait for each other — five lookups are one step, not five.
-14. **Use the plural form when there is one** — `get_object_info(objects[])`, `run_bp_check(objects[])`, `verify_d365fo_project(objects[])`, `search(queries[])`. The entry key differs per tool (`{objectType, name}` for `get_object_info`, `{objectType, objectName}` for `run_bp_check` / `verify_d365fo_project`) — take it from the tool's schema, don't assume.
+14. **Use the plural form when there is one** — `get_object_info(objects[])`, `run_bp_check(objects[])`, `verify_d365fo_project(objects[])`, `search(queries[])`. All three `objects[]` forms take `{objectType, objectName}`; `queries[]` takes `{query}`. Note `get_object_info`'s SINGLE-object form still spells it `name`, not `objectName` — take the key from the tool's schema, don't assume.
 15. **Plan the reads before the first one.** Decide which objects the change touches, then fetch them in a single step instead of discovering them one call at a time.
 
 ### Reading D365FO objects

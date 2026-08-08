@@ -30,8 +30,8 @@ describe('tool inventory contract', () => {
   });
 
   it('exposes the expected total tool count', () => {
-    expect(mcpServerToolNames).toHaveLength(26);
-    expect(startupCatalogToolNames).toHaveLength(26);
+    expect(mcpServerToolNames).toHaveLength(25);
+    expect(startupCatalogToolNames).toHaveLength(25);
   });
 
   it('keeps local-only tool set aligned with the published tool inventory', () => {
@@ -41,7 +41,7 @@ describe('tool inventory contract', () => {
     }
 
     expect(LOCAL_TOOLS.size).toBe(10);
-    expect(mcpServerToolNames.filter(name => !LOCAL_TOOLS.has(name))).toHaveLength(16);
+    expect(mcpServerToolNames.filter(name => !LOCAL_TOOLS.has(name))).toHaveLength(15);
   });
 
   it('never tells the agent to call a tool that was retired by a consolidation', () => {
@@ -59,7 +59,7 @@ describe('tool inventory contract', () => {
       'generate_d365fo_xml', 'find_coc_extensions', 'find_event_handlers',
       'analyze_extension_points', 'find_extension_points', 'prepare_change',
       'get_xpp_knowledge', 'validate_xpp', 'search_extensions', 'batch_search',
-      'get_table_info', 'get_class_info', 'get_form_info',
+      'get_table_info', 'get_class_info', 'get_form_info', 'batch_get_info',
     ];
     const pattern = new RegExp(String.raw`\b(${retired.join('|')})\(`, 'g');
 
@@ -157,6 +157,19 @@ describe('tool inventory contract', () => {
     expect(projectName).toContain('USER');
     expect(projectName).toContain('NOT a way to reach another model');
     expect(projectName).toContain('reads span every model already');
+  });
+
+  it('does not advertise update_symbol_index as a follow-up to create/modify', () => {
+    // #830: the old description opened with "Call this after
+    // d365fo_file(action=create)", so the agent did — four times in one audited
+    // session, each as the only tool call in its turn, for a DiskProvider rebuild
+    // the create had already done. The tool stays (external edits are real), but
+    // the text the agent reads has to say so, and is pinned here.
+    const updateIndex = toolSchemas.find(t => t.name === 'update_symbol_index')!;
+
+    expect(updateIndex.description).toContain('OUTSIDE this server');
+    expect(updateIndex.description).toContain('Do NOT call after d365fo_file create/modify');
+    expect(updateIndex.description).not.toMatch(/Call this after d365fo_file/);
   });
 
   it('includes critical diagnostics and SDLC tools in both inventories', () => {

@@ -6,9 +6,14 @@
  *   • pattern  → named X++ skeleton from a pattern enum (text only, no write) — generate_code
  *   • scaffold → pattern-aware whole-object generation table/form/report — generate_smart
  *
- * Param names of the two underlying handlers do not collide, and neither schema
- * is strict, so the request is passed straight through; each handler reads its
- * own fields and ignores the `mode` discriminator.
+ * Param names of the underlying handlers do not collide and none of their
+ * schemas is strict, so the merged arguments are passed straight through; each
+ * handler reads its own fields and ignores the `mode` discriminator.
+ *
+ * Mode-specific parameters arrive nested in `params` (the published schema
+ * advertises only that free-form object — issue #825) or flat at top level
+ * (legacy callers); both are flattened here before dispatch, and a call missing
+ * a required parameter is answered with the mode's complete spec.
  *
  * Note: d365fo_file(action="generate") is intentionally NOT merged here — it
  * produces XML for an existing object definition, a different concern.
@@ -22,14 +27,50 @@ import { generateFindMethodsTool } from './generateFindMethods.js';
 import { generateRelationXppTool } from './generateRelationXpp.js';
 import { generateTableFieldsTool } from './generateTableFields.js';
 import { generateTableRelationTool } from './generateTableRelation.js';
+import {
+  GENERATE_OBJECT_MODE_SPECS,
+  getGenerateObjectRequiredParams,
+  renderGenerateObjectSpec,
+} from './generateObjectOpSpecs.js';
 
 function err(text: string) {
   return { content: [{ type: 'text' as const, text }], isError: true };
 }
 
+/**
+ * Spec key for the call: `scaffold` splits by objectType because the three
+ * scaffolds share almost nothing. Falls back to the bare mode.
+ */
+function specKey(mode: string, args: Record<string, any>): string {
+  if (mode === 'scaffold' && typeof args.objectType === 'string') {
+    const key = `scaffold:${args.objectType}`;
+    if (GENERATE_OBJECT_MODE_SPECS[key]) return key;
+  }
+  return mode;
+}
+
 export async function generateObjectTool(request: CallToolRequest, context: XppServerContext) {
-  const a = (request.params.arguments ?? {}) as Record<string, any>;
+  const raw = (request.params.arguments ?? {}) as Record<string, any>;
+  const { params, ...flat } = raw;
+  // Nested values win on key collision; the `params` wrapper is not forwarded.
+  const a: Record<string, any> =
+    params && typeof params === 'object' && !Array.isArray(params) ? { ...flat, ...params } : flat;
   const mode = a.mode as string | undefined;
+
+  if (mode && GENERATE_OBJECT_MODE_SPECS[mode]) {
+    // The published schema no longer lists mode params, so a missing one must
+    // come back with the whole contract instead of a bare "expected string".
+    const key = specKey(mode, a);
+    const missing = getGenerateObjectRequiredParams(key).filter(p => a[p] === undefined || a[p] === '');
+    if (missing.length > 0) {
+      return err(
+        `❌ generate_object(mode="${mode}"): missing required parameter(s) ${missing.join(', ')}.\n\n` +
+        renderGenerateObjectSpec(key),
+      );
+    }
+  }
+
+  request = { ...request, params: { ...request.params, arguments: a } };
 
   switch (mode) {
     case 'pattern':
@@ -45,7 +86,7 @@ export async function generateObjectTool(request: CallToolRequest, context: XppS
     case 'table-relation':
       return generateTableRelationTool(request, context);
     default:
-      return err(`generate_object: unknown mode "${mode}". Use "pattern" (named X++ skeleton, text only), "scaffold" (whole table/form/report), "find-methods" (find/findRecId/exists for a table), "relation-xpp" (table relations → X++ select/query), "fields" (field list → AxTableField XML with auto-EDT), or "table-relation" (EDT-referencing fields → AxTableRelation XML).`);
+      return err(`generate_object: unknown mode "${mode}". Use "pattern" (named X++ skeleton, text only), "scaffold" (whole table/form/report), "find-methods" (find/findRecId/exists for a table), "relation-xpp" (table relations → X++ select/query), "fields" (field list → AxTableField XML with auto-EDT), or "table-relation" (EDT-referencing fields → AxTableRelation XML). Per-mode parameters: get_knowledge(kind="op-spec", topic="<mode>").`);
   }
 }
 

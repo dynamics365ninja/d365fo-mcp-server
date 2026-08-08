@@ -1,17 +1,26 @@
 /**
- * MCP tool definition for `d365fo_file` (name/description/inputSchema),
- * extracted verbatim from mcpServer.ts. Serialized payload must not change
- * unintentionally — tests/utils/toolSchemaBudget.test.ts ratchets its size.
+ * MCP tool definition for `d365fo_file` (name/description/inputSchema).
+ *
+ * Deliberately carries the DISCRIMINATORS only (action / objectType /
+ * operation as closed enums) — never the parameters behind them. The per-
+ * operation and per-objectType contracts live in src/tools/d365foFileOpSpecs.ts
+ * and are fetched on demand via get_knowledge(kind="op-spec", topic=…), because
+ * this payload is re-sent on every request while a call needs exactly one of
+ * them (issue #825). Every missing-parameter error names that lookup, so the
+ * contract stays one call away.
+ *
+ * Serialized payload must not change unintentionally —
+ * tests/utils/toolSchemaBudget.test.ts ratchets its size.
  */
 
 export const d365foFileTool = {
     name: 'd365fo_file',
     description: `Create, modify, or generate a D365FO AOT object. Choose an \`action\`:
-• create → write a NEW object file into PackagesLocalDirectory (UTF-8 BOM, auto-added to .rnrproj). THE WRITE STEP — incomplete until isError=false; treat ⚠️/❌ as failure. Extensions: objectName="BaseObject.PrefixExtension". (Windows)
-• modify → edit an EXISTING object via IMetadataProvider. APPLIES IMMEDIATELY, no dry-run — get user confirmation BEFORE calling; revert with undo_last_modification. Requires \`operation\`. (Windows)
-• generate → XML as TEXT only, no write (Azure/Linux fallback when create reports "requires file system access"); save it yourself with UTF-8 BOM. ALWAYS try action=create first.
-
-Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member vars inside the class { }, methods after the closing }.`,
+• create → write a NEW object file into PackagesLocalDirectory (UTF-8 BOM, auto-added to .rnrproj). THE WRITE STEP — incomplete until isError=false; ⚠️/❌ = failure. Extensions: objectName="Base.PrefixExtension".
+• modify → edit an EXISTING object. APPLIES IMMEDIATELY, no dry-run — confirm with the user first; revert with undo_last_modification. Needs \`operation\`.
+• generate → XML as TEXT only, no write (Azure/Linux fallback). Try create first. create/modify need Windows.
+📖 Parameters are NOT inlined here: get_knowledge(kind="op-spec", topic="<operation>"|"<objectType>") returns the contract for the one you picked — pass its values nested in \`params\` (modify) / \`properties\` (create), along with any packageName/packagePath/solutionPath/workspacePath override.
+Model + prefix auto-applied. Classes: member vars inside the class { }, methods after the closing }.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -35,83 +44,35 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'macro', 'configuration-key', 'security-policy', 'aggregate-measurement', 'license-code',
           ],
           description:
-            'Each security/menu-item type maps to its own AOT folder — NEVER use security-privilege for duty or role. ' +
-            'class-extension = [ExtensionOf] final class skeleton; business-event = BusinessEventsBase + Contract pair. ' +
-            '[modify] supports class/table/form/enum/query/view/edt/data-entity/report + *-extension variants. ' +
-            '[generate] supports class/table/enum/form/query/view/data-entity/report + table/form/enum/edt/data-entity-extension.'
+            'Each security/menu-item type is its own AOT folder — NEVER use security-privilege for duty or role. ' +
+            '[modify]/[generate] cover the core families + their *-extension variants.'
         },
         objectName: {
           type: 'string',
-          description: 'Base name WITHOUT model prefix — the tool prepends EXTENSION_PREFIX (or modelName) and detects an existing prefix. Extension classes: pass "{Base}_Extension" with NO prefix infix. NEVER hand-build the prefix.'
+          description: 'Base name WITHOUT model prefix — the tool prepends it. Extension classes: "{Base}_Extension". NEVER hand-build the prefix.'
         },
         modelName: {
           type: 'string',
-          description: 'Target model name — auto-detected from .mcp.json if omitted. NEVER guess or take model names from search results (source models).'
-        },
-        packageName: {
-          type: 'string',
-          description: 'Package name — auto-resolved from model name; pass only if they differ.',
-        },
-        packagePath: {
-          type: 'string',
-          description: 'Base package path (default: auto-detected PackagesLocalDirectory). [modify] also locates objects outside the default dir; for models outside bridge startup roots set D365FO_CUSTOM_PACKAGES_PATH or pass filePath.'
+          description: 'Target model — auto-detected. NEVER take it from search results (those are source models).'
         },
         sourceCode: {
           type: 'string',
-          description: 'X++ source for the object. FOR CLASSES the content is auto-split: <Declaration> = the class line + ALL member variables inside the outer { }; <Methods> = each method AFTER the closing }.'
+          description: 'X++ source. FOR CLASSES auto-split: <Declaration> = class line + member vars; <Methods> = each method after the closing }.'
         },
         properties: {
           type: 'object',
+          additionalProperties: true,
           description:
-            'Additional properties by objectType:\n' +
-            '• class: extends, implements, isFinal, isAbstract\n' +
-            '• table: label, tableGroup, tableType, titleField1/2, cacheLookup?, primaryIndex?, allowRowVersionChangeTracking? (dual-write), created/modifiedBy/DateTime?, fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?}] — enum fields need enumType (+ optionally fieldType:"AxTableFieldEnum")\n' +
-            '• enum: label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}]\n' +
-            '• enum-extension: enumValues[{name,label?,value?,countryRegionCodes?}]\n' +
-            '• table-extension: fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need fieldType:"AxTableFieldEnum" + enumType\n' +
-            '• edt: label, extends, edtType, stringSize\n' +
-            '• edt-extension: label?, helpText?, stringSize?, extends?, formHelp?, propertyModifications?[{name,value}] = the change\n' +
-            '• form: caption, formTemplate, dataSource\n' +
-            '• security-privilege: label, targetObject, objectType (MenuItemDisplay|Action|Output), accessLevel (view|maintain), dataEntity (grants perms)\n' +
-            '• security-duty: label, privileges[]\n' +
-            '• security-role: label, duties[], privileges[]\n' +
-            '• menu-item-*: label, object, objectType\n' +
-            '• data-entity: primaryTable, fields[{name,dataField?}], primaryKey?, primaryKeyFields?[], isPublic?, entityCategory?, dynamicFields?, allowRowVersionChangeTracking? (dual-write: set on the source TABLES too), dataManagementEnabled? (needs staging table)\n' +
-            '• map: label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}], mappingTable?, mappings?[{mapField,mapFieldTo}] (one connection/field by default)\n' +
-            '• query: title?, dataSource (root table; table also works), dataSourceName?, fields?[{name,field?}]\n' +
-            '• view: query (existing AxQuery), fields[{name,dataField?}] — dataSource defaults to query\n' +
-            '• service: serviceClass (defaults to the service name), externalName?, namespace?, description?, operations["opName"] or [{name?,method?,enableIdempotence?,subscriberAccessLevelRead?}]\n' +
-            '• service-group: autoDeploy? (Yes publishes at /api/services), description?, services["MyService"] or [{name?,service?}]\n' +
-            '  ⚠ service/service-group CROSS-REFS (serviceClass, services[].service) are written VERBATIM — only objectName is prefixed. ' +
-            'Pass the FINAL name (e.g. "ContosoDemoNoteService", not "DemoNoteService") or the group resolves to nothing; verbatim also lets it reference an unprefixed MS service.'
+            '[create] Per-objectType creation properties (label, fields[], extends, enumValues[], primaryTable, …) — ' +
+            'NOT in this schema. Fetch yours: get_knowledge(kind="op-spec", topic="<objectType>").'
         },
-        addToProject: {
-          type: 'boolean',
-          description: 'Add the file to the .rnrproj project. Keep the default (true) unless explicitly asked otherwise.',
-          default: true
-        },
-        projectPath: {
-          type: 'string',
-          description: 'Path to .rnrproj file (needed for addToProject). Auto-detected from .mcp.json or workspace if omitted.'
-        },
-        solutionPath: {
-          type: 'string',
-          description: 'VS solution directory — used to find .rnrproj when projectPath unset.'
-        },
-        xmlContent: {
-          type: 'string',
-          description: 'Complete XML to write verbatim (with overwrite=true rewrites an existing object; Azure/Linux: pass XML from action=generate).',
-        },
-        overwrite: {
-          type: 'boolean',
-          description: 'Allow overwriting an existing file (use with xmlContent to rewrite an object \u2014 never via PowerShell/create_file).',
-          default: false,
-        },
+        addToProject: { type: 'boolean', description: 'Add to the .rnrproj — keep the default.', default: true },
+        projectPath: { type: 'string', description: 'Path to .rnrproj (auto-detected).' },
+        xmlContent: { type: 'string', description: 'Complete XML written verbatim (+overwrite=true rewrites an object).' },
+        overwrite: { type: 'boolean', description: 'Allow overwriting — never rewrite via PowerShell.', default: false },
         groundingToken: {
           type: 'string',
-          description:
-            'Provenance token from prepare(change/create). Required for *-extension objectTypes when ' +
-            'GROUNDING_ENFORCE=true; object-bound — only valid for the object it was issued for.',
+          description: 'From prepare(change/create). Required for *-extension when GROUNDING_ENFORCE=true; object-bound.',
         },
         // action=modify only
         operation: {
@@ -133,47 +94,18 @@ Model from .mcp.json; prefix auto-applied from EXTENSION_PREFIX. Classes: member
             'modify-property',
           ],
           description:
-            '[modify] REQUIRED. Modification to perform. Non-obvious ones:\n' +
-            'add-method: adds OR updates in place if the name exists (position kept).\n' +
-            'replace-code: surgical oldCode→newCode; preferred for rewriting a known method. Control overrides: methodName="Control.method".\n' +
-            'rename-field: also fixes index DataField refs and TitleField1/2.\n' +
-            'replace-all-fields: atomic rewrite of ALL fields.\n' +
-            'add-display-method: display method with [SysClientCacheDataMethodAttribute].\n' +
-            'add-table-method: canonical find/exist/findByRecId/validate*/initValue boilerplate.\n' +
-            'add-field-modification: override base-table field label/mandatory in a table-extension.\n' +
-            'add-delete-action: DeleteActions entry — deleteActionName + optional deleteActionTable/deleteActionType.\n' +
-            'add-full-text-index/add-table-mapping: the <FullTextIndexes>/<Mappings> collections.\n' +
-            'modify-property: any object-level property (TableGroup, TitleField1, Extends…) — see propertyPath; on an *-extension it becomes a PropertyModification.'
+            '[modify] REQUIRED. add-method also UPDATES in place; replace-code is the surgical oldCode→newCode path. ' +
+            'Parameters: get_knowledge(kind="op-spec", topic="<operation>").'
         },
         params: {
           type: 'object',
           additionalProperties: true,
           description:
-            '[modify] Operation-specific parameters as ONE object — NEST them here. Common shapes: ' +
-            'add-method {methodName, sourceCode} · replace-code {oldCode, newCode, methodName?} · ' +
-            'add-field {fieldName, fieldType(EDT), fieldBaseType?}; data-entity-ext ' +
-            '{fieldName, dataField, dataSource} · rename-field {fieldName, fieldNewName} · ' +
-            'add-index {indexName, indexFields[{fieldName}]} · add-relation {relationName, relatedTable, relationConstraints?} · ' +
-            'add-field-group {fieldGroupName, fieldGroupFields?} · add-data-source {dataSourceName, dataSourceTable} · ' +
-            'add-control {controlName, parentControl, controlDataSource?, controlDataField?} · ' +
-            'enum ops {enumValueName, enumValueNewName?(modify-enum-value rename), enumValueLabel?, enumValueInt?} · add-menu-item-to-menu {menuItemToAdd} · ' +
-            'modify-property {propertyPath, propertyValue} · add-table-method {tableMethodType, tableKeyField?} · ' +
-            'add-display-method {methodName, displayMethodReturnEdt}. ' +
-            'A missing/wrong parameter returns the COMPLETE spec for that operation — follow it instead of guessing.',
+            '[modify] Operation-specific parameters as ONE nested object, per get_knowledge(kind="op-spec", ' +
+            'topic="<operation>"). A missing/wrong one returns that COMPLETE spec — follow it, do not guess.',
         },
-        createBackup: {
-          type: 'boolean',
-          description: '[modify] Create backup before modification (default false)',
-          default: false
-        },
-        filePath: {
-          type: 'string',
-          description: '[modify] Absolute path to the XML file — bypasses symbol-DB lookup. Use when the object was just created.'
-        },
-        workspacePath: {
-          type: 'string',
-          description: '[modify] Workspace path for finding file'
-        },
+        createBackup: { type: 'boolean', description: '[modify] Back up before modifying.', default: false },
+        filePath: { type: 'string', description: '[modify] Absolute XML path — bypasses symbol-DB lookup. Use for objects just created.' },
       },
       required: ['action'],
     },

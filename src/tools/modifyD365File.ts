@@ -1429,6 +1429,11 @@ const ModifyD365FileArgsSchema = z.object({
   propertyValue: z.string().optional().describe('New property value'),
   
   // Options
+  autoCorrect: z.boolean().optional().default(true).describe(
+    'Apply a correction the server has already fully determined (exactly one valid reading, derivable ' +
+    'from state the server holds) instead of failing the call — reported as a "Note:" line in the result. ' +
+    'Set false for strict behaviour: every such case becomes an error again (eval harness / deterministic callers).'
+  ),
   createBackup: z.boolean().optional().default(false).describe('Create a .bak backup of the file before modifying it (default: false). Changes can also be reverted with undo_last_modification (git checkout) without a backup. When the file is NOT inside a git repository, a backup is created automatically even with false, since undo_last_modification would not work there.'),
   modelName: z.string().optional().describe('Model name (auto-detected if not provided). Pass this if the file was just created and is not yet indexed.'),
   packageName: z.string().optional().describe('Package name. Auto-resolved if omitted.'),
@@ -1595,6 +1600,13 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // This makes add-control seamless — no prior get_object_info(form) call required.
     let addControlNote = '';
     let generationNote = '';
+
+    // Corrections applied instead of a refusal (see AUTO-CORRECT below). Rendered
+    // into the success payload so the agent still learns the right call, and so the
+    // behaviour stays auditable.
+    const autoCorrect = args.autoCorrect !== false;
+    const autoCorrectNotes: string[] = [];
+
     if (operation === 'add-control' && objectType === 'form-extension' && args.parentControl) {
       const resolution = await resolveParentControl(
         objectName,
@@ -1825,6 +1837,11 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       throw new Error(`Operation '${operation}' on object type '${objectType}' is not supported by the bridge.`);
     }
 
+    // The field name as the caller spelled it, before the prefix below rewrites it:
+    // the enum-name derivation in add-field matches against the UNPREFIXED name
+    // (a field named after its enum is prefixed, the enum it names is not).
+    const preprefixFieldName = typeof args.fieldName === 'string' ? args.fieldName : undefined;
+
     // Members added INSIDE an extension must carry the model's prefix — an
     // extension lives in your model but its host object is Microsoft's, so an
     // unprefixed field/index/enum value collides with anything Microsoft or
@@ -2031,7 +2048,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         // (the mapped-field path above has no fieldType at all), so the type-specific half
         // of the contract is enforced here instead of silently falling through to a null
         // bridge result and a generic "required parameters may be missing".
-        const enumTypeArg = ((args as any).fieldEnumType as string | undefined)?.trim() || undefined;
+        let enumTypeArg = ((args as any).fieldEnumType as string | undefined)?.trim() || undefined;
 
         // fieldType is an EDT NAME here. In `create` the sibling key fields[].fieldType is
         // the XML element name ("AxTableFieldEnum"), and that collision gets carried over
@@ -2042,20 +2059,40 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         // whose name happens to read that way, and refusing a valid EDT is the
         // same class of wrong answer this check exists to prevent.
         if (args.fieldType && /^Ax(Table|View|Query|Map|DataEntityView)[A-Za-z]*Field[A-Za-z0-9]*$/i.test(args.fieldType)) {
-          return {
-            content: [{
-              type: 'text',
-              text:
-                `❌ fieldType="${args.fieldType}" is an XML element name, not an EDT — nothing was written.\n` +
-                `On add-field, fieldType is the EDT NAME (e.g. "TransDate", "ItemId"); the XML element is ` +
-                `chosen from fieldBaseType.\n` +
-                `For an enum field pass fieldEnumType="<enum name>" instead — no EDT is needed:\n` +
-                `  d365fo_file(action="modify", objectType="${objectType}", objectName="…", ` +
-                `operation="add-field", fieldName="${args.fieldName ?? 'MyField'}", fieldEnumType="MyEnum")\n` +
-                `\n${renderOpSpec('add-field')}`,
-            }],
-            isError: true,
-          };
+          // ── AUTO-CORRECT ──────────────────────────────────────────────────
+          // The *Enum element is the one member of that family that names its own
+          // fix: it says "this is an enum field", and the enum itself is either in
+          // the same payload (fieldEnumType) or is the field's own name confirmed
+          // as an enum in the symbol index. Both leave exactly ONE valid reading,
+          // so apply it. Every other element name (AxTableFieldString, …) carries
+          // no EDT to derive and still errors.
+          const derivedEnum = autoCorrect
+            ? resolveEnumForFieldElement(args.fieldType, enumTypeArg, [args.fieldName, preprefixFieldName], symbolIndex)
+            : undefined;
+          if (derivedEnum) {
+            noteAutoCorrection(
+              autoCorrectNotes,
+              `fieldType="${args.fieldType}" is an XML element name; treated as fieldEnumType="${derivedEnum}". ` +
+              `Pass fieldEnumType (and no fieldType) for an enum field.`,
+            );
+            enumTypeArg = derivedEnum;
+            args.fieldType = undefined;   // an enum field takes no EDT
+          } else {
+            return {
+              content: [{
+                type: 'text',
+                text:
+                  `❌ fieldType="${args.fieldType}" is an XML element name, not an EDT — nothing was written.\n` +
+                  `On add-field, fieldType is the EDT NAME (e.g. "TransDate", "ItemId"); the XML element is ` +
+                  `chosen from fieldBaseType.\n` +
+                  `For an enum field pass fieldEnumType="<enum name>" instead — no EDT is needed:\n` +
+                  `  d365fo_file(action="modify", objectType="${objectType}", objectName="…", ` +
+                  `operation="add-field", fieldName="${args.fieldName ?? 'MyField'}", fieldEnumType="MyEnum")\n` +
+                  `\n${renderOpSpec('add-field')}`,
+              }],
+              isError: true,
+            };
+          }
         }
 
         if (args.fieldName && !args.fieldType && !enumTypeArg) {
@@ -2423,13 +2460,52 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'add-field-to-field-group': {
         if ((args as any).fieldGroupName && args.fieldName) {
+          const groupName = (args as any).fieldGroupName as string;
+          const extendFlag = (args as any).extendBaseFieldGroup as boolean | undefined;
           bridgeResult = await bridgeAddFieldToFieldGroup(
             context.bridge,
             objectName,
-            (args as any).fieldGroupName,
+            groupName,
             args.fieldName,
-            (args as any).extendBaseFieldGroup,
+            extendFlag,
           );
+
+          // ── AUTO-CORRECT ────────────────────────────────────────────────────
+          // The bridge refuses with a message that states its own fix: the group is
+          // absent from the extension's own <FieldGroups>, so if the BASE table
+          // defines it, <FieldGroupExtensions> is the only place the field can go.
+          // Confirm that against the base table's XML before acting — the bridge
+          // does not check it, and creating a FieldGroupExtension for a group that
+          // exists nowhere would write metadata no form ever reads.
+          // Only when the caller left extendBaseFieldGroup unset: an explicit
+          // false is a decision, not an omission.
+          if (
+            autoCorrect &&
+            extendFlag === undefined &&
+            objectType === 'table-extension' &&
+            bridgeResult && !bridgeResult.success &&
+            isBaseFieldGroupMissError(bridgeResult.message)
+          ) {
+            const baseTable = objectName.split('.')[0];
+            if (await baseObjectDefinesFieldGroup(baseTable, groupName, symbolIndex)) {
+              const retried = await bridgeAddFieldToFieldGroup(
+                context.bridge,
+                objectName,
+                groupName,
+                args.fieldName,
+                true,
+              );
+              if (retried?.success) {
+                bridgeResult = retried;
+                noteAutoCorrection(
+                  autoCorrectNotes,
+                  `'${groupName}' is defined by the base table "${baseTable}"; extended it through ` +
+                  `<FieldGroupExtensions> instead of creating a new group. ` +
+                  `Pass extendBaseFieldGroup=true for a base-table group.`,
+                );
+              }
+            }
+          }
         }
         break;
       }
@@ -2847,12 +2923,19 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       addFieldBpNote = `\n\n${notes.join('\n')}`;
     }
 
+    // Corrections the server applied on its own. Kept in the payload so the agent
+    // learns the correct form for next time and the write stays auditable.
+    const autoCorrectNote = autoCorrectNotes.length > 0
+      ? `\n\n${autoCorrectNotes.map(n => `📝 Note: ${n}`).join('\n')}\n` +
+        `(Pass autoCorrect=false to have corrections like this raise an error instead.)`
+      : '';
+
     return {
       content: [
         {
           type: 'text',
           text:
-            `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()\n\n` +
+            `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
             `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}` +
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
@@ -3422,6 +3505,20 @@ function allControlsFromFormXmlObj(xmlObj: any): ResolvedControl[] {
  * Returns raw XML content, or null if not accessible.
  */
 export async function findBaseFormXml(baseFormName: string, symbolIndex: any): Promise<string | null> {
+  return findBaseObjectXml('form', baseFormName, symbolIndex);
+}
+
+/**
+ * Locate the XML of a base (non-extension) object on disk, trying DB path →
+ * remapped path → filesystem scan. `objectType` is both the symbols-table type
+ * and the findD365FileOnDisk key ('form', 'table', …).
+ * Returns raw XML content, or null if not accessible.
+ */
+export async function findBaseObjectXml(
+  objectType: string,
+  objectName: string,
+  symbolIndex: any,
+): Promise<string | null> {
   // Helper: read a file, transparently following JSON metadata proxies.
   async function tryRead(p: string): Promise<string | null> {
     try {
@@ -3442,8 +3539,8 @@ export async function findBaseFormXml(baseFormName: string, symbolIndex: any): P
   try {
     const rdb = symbolIndex.getReadDb();
     const row = rdb.prepare(
-      `SELECT file_path FROM symbols WHERE type = 'form' AND name = ? LIMIT 1`
-    ).get(baseFormName) as any;
+      `SELECT file_path FROM symbols WHERE type = ? AND name = ? LIMIT 1`
+    ).get(objectType, objectName) as any;
     if (row?.file_path) dbFilePath = row.file_path;
   } catch { /* ignore */ }
 
@@ -3470,10 +3567,72 @@ export async function findBaseFormXml(baseFormName: string, symbolIndex: any): P
   }
 
   // 2. Filesystem scan using model from config
-  const diskPath = await findD365FileOnDisk('form', baseFormName);
+  const diskPath = await findD365FileOnDisk(objectType, objectName);
   if (diskPath) return tryRead(diskPath);
 
   return null;
+}
+
+// ── Auto-correction helpers ────────────────────────────────────────────────
+// A correction is applied ONLY where the failure has exactly one valid reading
+// that the server can derive from state it already holds. Everything else keeps
+// erroring — a wrong write costs far more than the retry round trip this saves.
+
+/** Record a correction, ignoring a repeat from the bridge auto-refresh retry. */
+function noteAutoCorrection(notes: string[], note: string): void {
+  if (!notes.includes(note)) notes.push(note);
+}
+
+/**
+ * add-field was given an XML element name as fieldType. For the *Enum element
+ * — and only that one — the intent is unambiguous ("this field is enum-typed"),
+ * so the enum name is all that is missing. It comes from the payload itself
+ * (fieldEnumType), or from the field name when the symbol index confirms an enum
+ * of exactly that name. Anything else returns undefined and the call still fails.
+ */
+function resolveEnumForFieldElement(
+  fieldTypeElement: string,
+  explicitEnumType: string | undefined,
+  fieldNameCandidates: readonly (string | undefined)[],
+  symbolIndex: any,
+): string | undefined {
+  if (!/Enum$/i.test(fieldTypeElement)) return undefined;
+  if (explicitEnumType) return explicitEnumType;
+
+  for (const candidate of fieldNameCandidates) {
+    if (!candidate) continue;
+    try {
+      const row = symbolIndex.getReadDb().prepare(
+        `SELECT name FROM symbols WHERE type = 'enum' AND name = ? COLLATE NOCASE LIMIT 1`
+      ).get(candidate) as { name?: string } | undefined;
+      // Use the INDEXED spelling — the caller's casing may differ from the AOT name.
+      if (row?.name) return row.name;
+    } catch { /* index unavailable — no derivation, keep erroring */ }
+  }
+  return undefined;
+}
+
+/** The bridge's add-field-to-field-group refusal that names extendBaseFieldGroup as its fix. */
+function isBaseFieldGroupMissError(message: string | undefined): boolean {
+  if (!message) return false;
+  return /field group .* not found on table-extension/i.test(message)
+    && /extendBaseFieldGroup=true/i.test(message);
+}
+
+/** True when the base table's own <FieldGroups> defines `groupName`. */
+async function baseObjectDefinesFieldGroup(
+  baseTableName: string,
+  groupName: string,
+  symbolIndex: any,
+): Promise<boolean> {
+  const xml = await findBaseObjectXml('table', baseTableName, symbolIndex);
+  if (!xml) return false;
+  // <Name> is the first child of every <AxTableFieldGroup>, so a non-greedy hop
+  // from the opening tag to the first Name reads one group name per block.
+  for (const m of xml.matchAll(/<AxTableFieldGroup>[\s\S]*?<Name>([^<]+)<\/Name>/g)) {
+    if (m[1].trim().toLowerCase() === groupName.trim().toLowerCase()) return true;
+  }
+  return false;
 }
 
 /**

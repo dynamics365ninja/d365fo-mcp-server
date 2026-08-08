@@ -87,6 +87,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'it writes AxTableFieldEnum + EnumType, no EDT.',
   },
   fieldStringSize: { type: 'string', description: 'String size to set on a string-typed field.' },
+  autoCorrect: {
+    type: 'boolean (default true)',
+    description:
+      'Apply a correction the server has already fully determined — one valid reading only — and report ' +
+      'it as a "Note:" line in the result, instead of failing the call. false = strict: every such case ' +
+      'errors again (deterministic callers, eval harness).',
+  },
   dataField: {
     type: 'string',
     description:
@@ -315,12 +322,13 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName'],
+    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect'],
     mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField'],
     note:
       'Enum field: pass fieldEnumType="<enum name>" and NO fieldType — an enum-typed table field ' +
       'is an AxTableFieldEnum with an EnumType and needs no EDT. (fieldType is the EDT name here, ' +
-      'never an XML element name like "AxTableFieldEnum".) ' +
+      'never an XML element name like "AxTableFieldEnum" — that one is read as fieldEnumType when the ' +
+      'enum is unambiguous, unless autoCorrect=false.) ' +
       'Table/table-extension: otherwise fieldType (EDT) is REQUIRED. data-entity-extension: pass dataField AND ' +
       'dataSource instead — BOTH, or nothing is written; a mapped field has no EDT of its own, it points ' +
       'at dataField on the entity data source dataSource. fieldGroupName is optional and only applies to ' +
@@ -392,7 +400,11 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'remove-field-group': { required: ['fieldGroupName'], optional: [] },
   'add-field-to-field-group': {
     required: ['fieldGroupName', 'fieldName'],
-    optional: ['extendBaseFieldGroup'],
+    optional: ['extendBaseFieldGroup', 'autoCorrect'],
+    note:
+      'table-extension: a group owned by the BASE table is detected and extended through ' +
+      '<FieldGroupExtensions> on its own (reported as a Note) — pass extendBaseFieldGroup=true to state ' +
+      'it up front, or autoCorrect=false to have the mismatch error instead.',
   },
   'add-field-modification': {
     required: ['fieldName'],
@@ -432,6 +444,79 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
 };
 
 /**
+ * Per-objectType `properties` contract for d365fo_file [create], keyed by the
+ * objectType enum value. Moved out of the published inputSchema (issue #825):
+ * inlining all 19 contracts cost ~2.4 KB on EVERY request while any one call
+ * needs exactly one of them. Fetched on demand through the op-spec lookup —
+ * see renderCreatePropertySpec / src/tools/opSpecs.ts.
+ *
+ * Text is the contract verbatim as it was advertised; objectTypes absent here
+ * take no `properties` beyond objectName/sourceCode.
+ */
+export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
+  class: 'extends, implements, isFinal, isAbstract',
+  table:
+    'label, tableGroup, tableType, titleField1/2, cacheLookup?, primaryIndex?, ' +
+    'allowRowVersionChangeTracking? (dual-write), created/modifiedBy/DateTime?, ' +
+    'fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?}] — enum fields need enumType ' +
+    '(+ optionally fieldType:"AxTableFieldEnum")',
+  enum: 'label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}]',
+  'enum-extension': 'enumValues[{name,label?,value?,countryRegionCodes?}]',
+  'table-extension':
+    'fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need ' +
+    'fieldType:"AxTableFieldEnum" + enumType',
+  edt: 'label, extends, edtType, stringSize',
+  'edt-extension':
+    'label?, helpText?, stringSize?, extends?, formHelp?, propertyModifications?[{name,value}] = the change',
+  form: 'caption, formTemplate, dataSource',
+  'security-privilege':
+    'label, targetObject, objectType (MenuItemDisplay|Action|Output), accessLevel (view|maintain), ' +
+    'dataEntity (grants perms)',
+  'security-duty': 'label, privileges[]',
+  'security-role': 'label, duties[], privileges[]',
+  'menu-item-display': 'label, object, objectType',
+  'menu-item-action': 'label, object, objectType',
+  'menu-item-output': 'label, object, objectType',
+  'data-entity':
+    'primaryTable, fields[{name,dataField?}], primaryKey?, primaryKeyFields?[], isPublic?, ' +
+    'entityCategory?, dynamicFields?, allowRowVersionChangeTracking? (dual-write: set on the source ' +
+    'TABLES too), dataManagementEnabled? (needs staging table)',
+  map:
+    'label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}], mappingTable?, ' +
+    'mappings?[{mapField,mapFieldTo}] (one connection/field by default)',
+  query: 'title?, dataSource (root table; table also works), dataSourceName?, fields?[{name,field?}]',
+  view: 'query (existing AxQuery), fields[{name,dataField?}] — dataSource defaults to query',
+  service:
+    'serviceClass (defaults to the service name), externalName?, namespace?, description?, ' +
+    'operations["opName"] or [{name?,method?,enableIdempotence?,subscriberAccessLevelRead?}]\n' +
+    '  ⚠ CROSS-REFS (serviceClass) are written VERBATIM — only objectName is prefixed. Pass the FINAL ' +
+    'name (e.g. "ContosoDemoNoteService", not "DemoNoteService").',
+  'service-group':
+    'autoDeploy? (Yes publishes at /api/services), description?, services["MyService"] or [{name?,service?}]\n' +
+    '  ⚠ CROSS-REFS (services[].service) are written VERBATIM — only objectName is prefixed. Pass the ' +
+    'FINAL name or the group resolves to nothing; verbatim also lets it reference an unprefixed MS service.',
+};
+
+/**
+ * Full `properties` contract for one [create] objectType — the create-side twin
+ * of renderOpSpec(), used by the op-spec lookup and by create-path errors.
+ */
+export function renderCreatePropertySpec(objectType: string): string {
+  const spec = D365FO_FILE_CREATE_PROPERTY_SPECS[objectType];
+  if (!spec) {
+    return (
+      `objectType '${objectType}' takes no extra \`properties\` beyond objectName/sourceCode ` +
+      `(or is not a d365fo_file objectType). Types that do: ` +
+      `${Object.keys(D365FO_FILE_CREATE_PROPERTY_SPECS).join(', ')}.`
+    );
+  }
+  return (
+    `d365fo_file(action="create", objectType="${objectType}") \`properties\` contract — ` +
+    `pass these NESTED inside \`properties\`:\n  ${spec}`
+  );
+}
+
+/**
  * Params every modify call accepts regardless of operation (routing, file
  * resolution, project/backup handling). Anything outside this set and outside
  * the operation's own spec is not consumed by the operation.
@@ -443,6 +528,7 @@ export const D365FO_FILE_CORE_PARAMS: ReadonlySet<string> = new Set([
   'filePath', 'workspacePath', 'modelName', 'model', 'packageName', 'packagePath',
   // side options
   'createBackup', 'addToProject', 'projectPath', 'solutionPath', 'groundingToken',
+  'autoCorrect',
 ]);
 
 /**
@@ -604,6 +690,10 @@ export function renderOpSpec(operation: string): string {
   const op = D365FO_FILE_OP_SPECS[operation];
   if (!op) return `Unknown operation '${operation}'. Valid operations: ${Object.keys(D365FO_FILE_OP_SPECS).join(', ')}.`;
   const lines = [
+    // The published schema no longer carries op params (issue #825), so every
+    // spec names the lookup that returns it — otherwise the only way to see the
+    // contract is to fail a call first.
+    `(Fetch this spec any time with get_knowledge(kind="op-spec", topic="${operation}").)`,
     `Parameter spec for operation '${operation}' — pass these NESTED inside \`params\`. ` +
     `(Flat top-level keys still work for a few legacy names, but do not rely on it: strict MCP clients ` +
     `validate against the base wire schema and drop anything undeclared before it reaches this server, ` +

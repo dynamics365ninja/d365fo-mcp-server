@@ -232,7 +232,7 @@ Restart the editor, open the AI chat, and ask:
 
 The first prompt should trigger a `search` tool call returning results from **your** metadata — including ISV models no training data has ever seen. That is the signal that grounding works, not just that the server is reachable.
 
-On an installed server, `npx d365fo-mcp doctor` checks the same ground from the other side: Node version, build, native binding, index size, bridge, and any stale configuration.
+On an installed server, `npx d365fo-mcp doctor` checks the same ground from the other side: Node version, build, native binding, index size, bridge, and any stale configuration. It also names the source that resolves your workspace — the workspace path, the packages path, `D365FO_SOLUTIONS_PATH`, or `workspace.modelName` in the config — and flags a prefix conflict when the model's own objects use a different prefix from `naming.prefix` (the model's own naming wins; `EXTENSION_PREFIX_SOURCE=config` pins the configured value).
 
 
 # Logging & diagnostics
@@ -261,7 +261,7 @@ A healthy startup logs `✅ C# bridge initialized (metadataAvailable: true, xref
 
 | Topic | Documentation |
 |-------|--------------|
-| All 26 tools | [MCP_TOOLS.md](MCP_TOOLS.md) |
+| All 25 tools | [MCP_TOOLS.md](MCP_TOOLS.md) |
 | Real-world tool chains (CoC, forms, security, reports) | [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) |
 | Full `.mcp.json` reference | [MCP_CONFIG.md](MCP_CONFIG.md) |
 | Every setting and its environment variable | [CONFIGURATION.md](CONFIGURATION.md) |

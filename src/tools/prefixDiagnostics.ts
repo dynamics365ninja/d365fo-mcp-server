@@ -12,39 +12,17 @@
  *    model's own objects, from EXTENSION_PREFIX, or from the model name, and a
  *    bare "Effective prefix: ConFin" under "EXTENSION_PREFIX: Con" reads as
  *    approved rather than as the disagreement it is.
- */
-
-import { resolveObjectPrefix } from '../utils/modelClassifier.js';
-import { getInferredModelPrefix } from '../utils/modelPrefixInference.js';
-import { crossModelWriteAllowedByConfig } from '../utils/crossModelWriteGuard.js';
-
-/**
- * The model a write would actually land in.
  *
- * Normally the anchor: a project switch does not move writes. But when the
- * operator has allowed writes into the switched-to model in configuration, the
- * guard lets them through and they land in the ACTIVE model — so that is the
- * model whose prefix a create would apply. Reporting the anchor's prefix there
- * would be the same defect one state over.
+ * The resolution itself lives in utils/effectivePrefix.ts, which
+ * validate_object_naming reads too — the two used to resolve it separately and
+ * contradict each other (#833).
  */
-export function modelWritesLandIn(
-  anchorModel: string | null,
-  activeModel: string | null,
-): string | null {
-  if (!activeModel || sameModel(activeModel, anchorModel)) return anchorModel;
-  return crossModelWriteAllowedByConfig(activeModel) ? activeModel : anchorModel;
-}
 
-/**
- * Model names compare case-insensitively everywhere else (crossModelWriteGuard's
- * eq, ConfigManager's anchor bookkeeping). Comparing them exactly here would
- * report a switch — and a whole "writes are NOT switched" section — for two
- * spellings of one model.
- */
-function sameModel(a: string | null, b: string | null): boolean {
-  if (!a || !b) return a === b;
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
+import {
+  prefixConflictWarning, resolveEffectivePrefix, sameModel,
+} from '../utils/effectivePrefix.js';
+
+export { modelWritesLandIn } from '../utils/effectivePrefix.js';
 
 export interface PrefixDiagnostics {
   /**
@@ -69,28 +47,8 @@ export function buildPrefixDiagnostics(
   writeModel: string | null,
   readModel: string | null,
 ): PrefixDiagnostics {
-  const extensionPrefixEnv = process.env.EXTENSION_PREFIX?.trim() || null;
-  const learned = writeModel ? getInferredModelPrefix(writeModel) : null;
-  const effectivePrefix = resolveObjectPrefix(writeModel ?? '');
-
-  // "0/13 objects" is what this said when the token came from the model's
-  // extension ELEMENTS rather than its regular objects (coverage is the regular
-  // objects' count, and there were none to agree). A line that contradicts
-  // itself in the section built to make the prefix checkable is worse than a
-  // vaguer one, so each origin now states the evidence it actually has.
-  const source = learned?.regular
-    ? learned.coverage > 0
-      ? `inferred from ${learned.coverage}/${learned.sampleSize} objects of model "${writeModel}"`
-      : `inferred from the extension elements of model "${writeModel}"`
-    : extensionPrefixEnv
-      ? 'EXTENSION_PREFIX'
-      : 'model name (nothing configured)';
-
-  // Compared bare, because "DEMO_" in the model and "DEMO" in the env agree.
-  const bare = (s: string) => s.replace(/_+$/, '').toLowerCase();
-  const disagrees =
-    !!learned?.regular && !!extensionPrefixEnv &&
-    bare(learned.regular) !== bare(extensionPrefixEnv);
+  const resolution = resolveEffectivePrefix(writeModel);
+  const { prefix: effectivePrefix, source, configured: extensionPrefixEnv, inferred: learned } = resolution;
 
   const switched = !!writeModel && !!readModel && !sameModel(writeModel, readModel);
 
@@ -109,11 +67,9 @@ export function buildPrefixDiagnostics(
   // is one line above, so what is wrong is already visible.
   const lines = [`Prefix      : ${effectivePrefix || '(none)'}  (${source})`];
   if (switched) lines.push(switchNote);
-  if (disagrees) {
-    lines.push(
-      `⚠️  The model's own objects use "${learned?.regular}", overriding EXTENSION_PREFIX="${extensionPrefixEnv}". ` +
-      `To pin the configured value instead: EXTENSION_PREFIX_SOURCE=config.`,
-    );
+  const conflictWarning = prefixConflictWarning(resolution);
+  if (conflictWarning) {
+    lines.push(`⚠️  ${conflictWarning}`);
   } else if (!learned?.regular && !extensionPrefixEnv) {
     lines.push(
       `⚠️  EXTENSION_PREFIX is not set — the model name is being used as the prefix. ` +
@@ -129,7 +85,7 @@ export function buildPrefixDiagnostics(
   ];
   if (switched) verboseLines.push(switchNote);
   verboseLines.push(
-    disagrees
+    resolution.conflict
       ? disagreeNote
       : learned?.regular
         ? `✅ Prefix "${effectivePrefix}" comes from the objects model "${writeModel}" already contains.`

@@ -16,6 +16,12 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
       }
       return `🔍 Searching D365FO index: "${a.query ?? ''}"${a.type ? ` [${a.type}]` : ''}`;
     case 'get_object_info':
+      if (Array.isArray(a.objects) && a.objects.length > 1) {
+        return `📦 Reading ${a.objects.length} objects: ${a.objects.map((o: any) => o.objectName ?? '').join(', ')}`;
+      }
+      if (Array.isArray(a.objects) && a.objects.length === 1) {
+        return `📦 Reading ${a.objects[0]?.objectType ?? 'object'} ${a.objects[0]?.objectName ?? ''}`;
+      }
       return `📦 Reading ${a.objectType ?? 'object'} ${a.name ?? ''}`;
     case 'get_method':
       return `📖 Reading ${a.include === 'signature' ? 'signature' : a.include === 'source' ? 'source' : 'method'} of ${a.className ?? ''}.${a.methodName ?? ''}`;
@@ -142,7 +148,11 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
     case 'trigger_db_sync':
       return `🗄️ Triggering database sync${a.tableName ? ` for ${a.tableName}` : ''}`;
     case 'run_bp_check':
-      return `🔍 Running Best Practices check${a.targetFilter ? ` on ${a.targetFilter}` : ''}`;
+      return `🔍 Running Best Practices check${
+        Array.isArray(a.objects) && a.objects.length > 0
+          ? ` on ${a.objects.length} object${a.objects.length === 1 ? '' : 's'}`
+          : a.targetFilter ? ` on ${a.targetFilter}` : ''
+      }`;
     case 'run_systest_class':
       return `🧪 Running unit tests: ${a.className ?? ''}`;
     case 'review_workspace_changes':
@@ -152,9 +162,9 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
     case 'get_workspace_info':
       return `⚙️ Reading workspace configuration`;
     case 'get_knowledge':
-      return a.kind === 'error'
-        ? `🆘 Looking up D365FO error: "${String(a.errorText ?? '').slice(0, 80)}"`
-        : `📚 Reading X++ knowledge: "${a.topic ?? ''}"`;
+      if (a.kind === 'error') return `🆘 Looking up D365FO error: "${String(a.errorText ?? '').slice(0, 80)}"`;
+      if (a.kind === 'op-spec') return `📖 Reading parameter spec: "${a.topic ?? a.operation ?? a.mode ?? ''}"`;
+      return `📚 Reading X++ knowledge: "${a.topic ?? ''}"`;
     case 'validate_code':
       return a.mode === 'references'
         ? `🔎 Resolving symbol references in generated code`

@@ -12,6 +12,8 @@ Every new MCP tool requires changes in these files. Check each item before openi
 - [ ] Add `TOOL_ANNOTATIONS` entry in `src/server/toolAnnotations.ts` (display title + readOnly/destructive hints — enforced by toolInventory test)
 - [ ] Add a progress message case in `src/utils/toolProgressMessage.ts`
 - [ ] Decide locality: add to `LOCAL_TOOLS` in `src/server/serverMode.ts` only if the tool requires local filesystem/Windows access
+- [ ] Decide breadth: add to `CORE_TOOLS` in `src/server/serverMode.ts` only if the tool is a step of the plan → discover → write → build → verify loop. `tests/server/serverMode.test.ts` pins both the core membership and the excluded list, so a new tool fails until it is classified either way
+- [ ] Keep parameters OUT of the wire schema when the tool dispatches on a discriminator: publish the discriminator enum + a loose `params` object and put the per-value contract in an op-spec registry reachable from `get_knowledge(kind="op-spec")` (see `src/tools/d365foFileOpSpecs.ts`, `src/tools/generateObjectOpSpecs.ts`). The ListTools payload ships on every request; a contract the agent needs once should be fetched once
 
 ## Startup catalog (index.ts)
 
