@@ -4,6 +4,7 @@
  */
 
 import * as fs from 'fs/promises';
+import { escapeXml } from '../utils/xmlEscape.js';
 import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
@@ -833,7 +834,7 @@ ${methodsXml}\t</SourceCode>
         fieldsXml += `\t\t<AxTableField xmlns=""\n\t\t\ti:type="${iType}">\n`;
         fieldsXml += `\t\t\t<Name>${f.name}</Name>\n`;
         if (f.edt)       fieldsXml += `\t\t\t<ExtendedDataType>${f.edt}</ExtendedDataType>\n`;
-        if (f.label)     fieldsXml += `\t\t\t<Label>${f.label}</Label>\n`;
+        if (f.label)     fieldsXml += `\t\t\t<Label>${escapeXml(f.label)}</Label>\n`;
         if (f.mandatory) fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
         if (f.enumType)  fieldsXml += `\t\t\t<EnumType>${f.enumType}</EnumType>\n`;
         fieldsXml += `\t\t</AxTableField>\n`;
@@ -948,8 +949,8 @@ ${fieldsXml}\t<FullTextIndexes />
         autoValue = intValue + 1;
         enumValuesXml += `\t\t<AxEnumValue>\n`;
         enumValuesXml += `\t\t\t<Name>${v.name}</Name>\n`;
-        if (v.label) enumValuesXml += `\t\t\t<Label>${v.label}</Label>\n`;
-        if (v.helpText) enumValuesXml += `\t\t\t<HelpText>${v.helpText}</HelpText>\n`;
+        if (v.label) enumValuesXml += `\t\t\t<Label>${escapeXml(v.label)}</Label>\n`;
+        if (v.helpText) enumValuesXml += `\t\t\t<HelpText>${escapeXml(v.helpText)}</HelpText>\n`;
         // Omit <Value> when UseEnumValue=No (position-based ordering) or for implicit 0
         if (intValue !== 0 && !suppressExplicitValues) enumValuesXml += `\t\t\t<Value>${intValue}</Value>\n`;
         enumValuesXml += `\t\t</AxEnumValue>\n`;
@@ -964,7 +965,7 @@ ${fieldsXml}\t<FullTextIndexes />
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${enumName}</Name>
-${configKeyXml}\t<Label>${label}</Label>
+${configKeyXml}\t<Label>${escapeXml(label)}</Label>
 \t<UseEnumValue>${useEnumValue}</UseEnumValue>
 ${enumValuesXml}${isExtensibleXml}</AxEnum>
 `;
@@ -1152,7 +1153,7 @@ ${enumValuesXml}${isExtensibleXml}</AxEnum>
       if (ds.fields && ds.fields.length > 0) {
         const entries = ds.fields.map(f => {
           const alias      = f.alias    || `${ds.tmpTableName}.1.${f.name}`;
-          const capLine    = f.caption          ? `\n\t\t\t\t<Caption>${f.caption}</Caption>`                                 : '';
+          const capLine    = f.caption          ? `\n\t\t\t\t<Caption>${escapeXml(f.caption)}</Caption>`                                 : '';
           const dtLine     = f.dataType         ? `\n\t\t\t\t<DataType>${f.dataType}</DataType>`                              : '';
           const disableLine = f.disableAutoCreate ? `\n\t\t\t\t<DisableAutoCreateInDataRegion>true</DisableAutoCreateInDataRegion>` : '';
           return [
@@ -1521,7 +1522,7 @@ ${rdlParamLayoutXml}
     };
 
     // ── Design block ──
-    const captionLine = properties?.caption ? `\n\t\t\t<Caption>${properties.caption}</Caption>` : '';
+    const captionLine = properties?.caption ? `\n\t\t\t<Caption>${escapeXml(properties.caption)}</Caption>` : '';
     const styleLine   = properties?.style   ? `\n\t\t\t<Style>${properties.style}</Style>`       : '';
     const rdlContent  = properties?.rdlContent as string | undefined;
     // Sanitize: fix old-schema <Header> inside <TablixMember> — renamed to <TablixHeader> in 2016 RDL.
@@ -2485,11 +2486,7 @@ ${defaultParamGroupXml}
    */
   static encodeReportTextElement(xml: string): string {
     return xml.replace(/<Text><!\[CDATA\[([\s\S]*?)\]\]><\/Text>/g, (_match, rdlInner: string) => {
-      const encoded = rdlInner
-        .replace(/&/g, '&amp;')   // must be first to avoid double-encoding
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-      return `<Text>${encoded}</Text>`;
+      return `<Text>${escapeXml(rdlInner)}</Text>`;
     });
   }
 
@@ -2525,7 +2522,7 @@ ${defaultParamGroupXml}
 <AxEdt xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
 \ti:type="${edtType}">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>${extends_}
+\t<Label>${escapeXml(label)}</Label>${extends_}
 \t<ArrayElements />
 \t<Relations />
 \t<TableReferences />${stringSize}
@@ -2588,8 +2585,8 @@ ${defaultParamGroupXml}
         enumValuesXml += `\n\t\t<AxEnumValue>`;
         enumValuesXml += `\n\t\t\t<Name>${v.name}</Name>`;
         if (v.countryRegionCodes) enumValuesXml += `\n\t\t\t<CountryRegionCodes>${v.countryRegionCodes}</CountryRegionCodes>`;
-        if (v.label) enumValuesXml += `\n\t\t\t<Label>${v.label}</Label>`;
-        if (v.helpText) enumValuesXml += `\n\t\t\t<HelpText>${v.helpText}</HelpText>`;
+        if (v.label) enumValuesXml += `\n\t\t\t<Label>${escapeXml(v.label)}</Label>`;
+        if (v.helpText) enumValuesXml += `\n\t\t\t<HelpText>${escapeXml(v.helpText)}</HelpText>`;
         if (v.value !== undefined && v.value !== 0) enumValuesXml += `\n\t\t\t<Value>${v.value}</Value>`;
         enumValuesXml += `\n\t\t</AxEnumValue>`;
       }
@@ -2638,7 +2635,7 @@ ${enumValuesXml}
         fieldsXml += `\t\t<AxTableField xmlns=""\n\t\t\ti:type="${iType}">\n`;
         fieldsXml += `\t\t\t<Name>${f.name}</Name>\n`;
         if (f.edt)       fieldsXml += `\t\t\t<ExtendedDataType>${f.edt}</ExtendedDataType>\n`;
-        if (f.label)     fieldsXml += `\t\t\t<Label>${f.label}</Label>\n`;
+        if (f.label)     fieldsXml += `\t\t\t<Label>${escapeXml(f.label)}</Label>\n`;
         if (f.mandatory) fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
         if (f.enumType)  fieldsXml += `\t\t\t<EnumType>${f.enumType}</EnumType>\n`;
         fieldsXml += `\t\t</AxTableField>\n`;
@@ -2656,7 +2653,7 @@ ${enumValuesXml}
       fieldGroupsXml = '\t<FieldGroups>\n';
       for (const fg of fgSpecs) {
         fieldGroupsXml += `\t\t<AxTableFieldGroup>\n\t\t\t<Name>${fg.name}</Name>\n`;
-        if (fg.label) fieldGroupsXml += `\t\t\t<Label>${fg.label}</Label>\n`;
+        if (fg.label) fieldGroupsXml += `\t\t\t<Label>${escapeXml(fg.label)}</Label>\n`;
         const fgFields = Array.isArray(fg.fields) ? fg.fields : [];
         if (fgFields.length === 0) {
           fieldGroupsXml += `\t\t\t<Fields />\n`;
@@ -2855,7 +2852,7 @@ ${relationsXml}
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 ${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
 </AxSecurityDuty>`;
   }
@@ -2872,7 +2869,7 @@ ${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privil
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<DirectAccessPermissions />
 ${this.securityRefContainer('Duties', 'AxSecurityDutyReference', duties)}
 ${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
@@ -2982,8 +2979,8 @@ public final class ${contractName} extends BusinessEventsContract
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxTile xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
-\t<HelpText>${helpText}</HelpText>
+\t<Label>${escapeXml(label)}</Label>
+\t<HelpText>${escapeXml(helpText)}</HelpText>
 \t<TileType>${tileType}</TileType>${menuItem ? `\n\t<MenuItemName>${menuItem}</MenuItemName>\n\t<MenuItemType>Display</MenuItemType>` : ''}${query ? `\n\t<Query>${query}</Query>` : ''}
 \t<Size>Wide</Size>
 \t<RefreshFrequency>600</RefreshFrequency>
@@ -3003,8 +3000,8 @@ public final class ${contractName} extends BusinessEventsContract
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxKPI xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
-\t<HelpText>${helpText}</HelpText>${measure ? `\n\t<Measure>${measure}</Measure>` : ''}${dimension ? `\n\t<MeasureDimension>${dimension}</MeasureDimension>` : ''}
+\t<Label>${escapeXml(label)}</Label>
+\t<HelpText>${escapeXml(helpText)}</HelpText>${measure ? `\n\t<Measure>${measure}</Measure>` : ''}${dimension ? `\n\t<MeasureDimension>${dimension}</MeasureDimension>` : ''}
 \t<Goal>0</Goal>
 \t<GoalType>None</GoalType>
 \t<Trend>None</Trend>
@@ -3054,7 +3051,7 @@ public final class ${contractName} extends BusinessEventsContract
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxConfigurationKey xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>${parentKey ? `\n\t<ParentKey>${parentKey}</ParentKey>` : ''}${licenseCode ? `\n\t<LicenseCode>${licenseCode}</LicenseCode>` : ''}${tags ? `\n\t<Tags>${tags}</Tags>` : ''}
+\t<Label>${escapeXml(label)}</Label>${parentKey ? `\n\t<ParentKey>${parentKey}</ParentKey>` : ''}${licenseCode ? `\n\t<LicenseCode>${licenseCode}</LicenseCode>` : ''}${tags ? `\n\t<Tags>${escapeXml(tags)}</Tags>` : ''}
 </AxConfigurationKey>`;
   }
 
@@ -3088,7 +3085,7 @@ public final class ${contractName} extends BusinessEventsContract
 \t<Name>${name}</Name>
 \t<ConstrainedTable>${constrainedTable}</ConstrainedTable>
 \t<Enabled>${enabled}</Enabled>
-\t<Label>${label}</Label>${contextType ? `\n\t<ContextType>${contextType}</ContextType>` : ''}${roleName ? `\n\t<RoleName>${roleName}</RoleName>` : ''}${primaryTable ? `\n\t<PrimaryTable>${primaryTable}</PrimaryTable>` : ''}${query ? `\n\t<Query>${query}</Query>` : ''}
+\t<Label>${escapeXml(label)}</Label>${contextType ? `\n\t<ContextType>${contextType}</ContextType>` : ''}${roleName ? `\n\t<RoleName>${roleName}</RoleName>` : ''}${primaryTable ? `\n\t<PrimaryTable>${primaryTable}</PrimaryTable>` : ''}${query ? `\n\t<Query>${query}</Query>` : ''}
 \t<ConstrainedTables>${constrainedXml ? `\n${constrainedXml}\n\t` : ''}</ConstrainedTables>
 </AxSecurityPolicy>`;
   }
@@ -3208,7 +3205,7 @@ public final class ${contractName} extends BusinessEventsContract
 <AxLicenseCode xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
 \t<Group>${group}</Group>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<Package>${pkg}</Package>
 \t<PublicKey>${publicKey}</PublicKey>
 </AxLicenseCode>`;
@@ -3222,7 +3219,7 @@ public final class ${contractName} extends BusinessEventsContract
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxMenu xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<Elements />
 </AxMenu>`;
   }
@@ -3293,7 +3290,7 @@ public final class ${contractName} extends BusinessEventsContract
     return `<?xml version="1.0" encoding="utf-8"?>
 <${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<Object>${targetObject}</Object>${objectTypeXml}
 </${elemName}>`;
   }

@@ -6,6 +6,7 @@
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
+import { escapeXml } from '../utils/xmlEscape.js';
 import { z } from 'zod';
 import { getConfigManager } from '../utils/configManager.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
@@ -346,7 +347,7 @@ public class ${tableName} extends common
 ]]></Declaration>
 \t\t<Methods />
 \t</SourceCode>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<TableGroup>${tableGroup}</TableGroup>
 ${titleField1Xml}${titleField2Xml}${extendedXml}\t<DeleteActions />
 \t<FieldGroups>
@@ -422,8 +423,8 @@ ${titleField1Xml}${titleField2Xml}${extendedXml}\t<DeleteActions />
         autoValue = intValue + 1;
         enumValuesXml += `\t\t<AxEnumValue>\n`;
         enumValuesXml += `\t\t\t<Name>${v.name}</Name>\n`;
-        if (v.label) enumValuesXml += `\t\t\t<Label>${v.label}</Label>\n`;
-        if (v.helpText) enumValuesXml += `\t\t\t<HelpText>${v.helpText}</HelpText>\n`;
+        if (v.label) enumValuesXml += `\t\t\t<Label>${escapeXml(v.label)}</Label>\n`;
+        if (v.helpText) enumValuesXml += `\t\t\t<HelpText>${escapeXml(v.helpText)}</HelpText>\n`;
         // Omit <Value> when UseEnumValue=No (position-based ordering) or for implicit 0
         if (intValue !== 0 && !suppressExplicitValues) enumValuesXml += `\t\t\t<Value>${intValue}</Value>\n`;
         enumValuesXml += `\t\t</AxEnumValue>\n`;
@@ -438,7 +439,7 @@ ${titleField1Xml}${titleField2Xml}${extendedXml}\t<DeleteActions />
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${enumName}</Name>
-${configKeyXml}\t<Label>${label}</Label>
+${configKeyXml}\t<Label>${escapeXml(label)}</Label>
 \t<UseEnumValue>${useEnumValue}</UseEnumValue>
 ${enumValuesXml}${isExtensibleXml}</AxEnum>
 `;
@@ -617,7 +618,7 @@ ${enumValuesXml}${isExtensibleXml}</AxEnum>
       if (ds.fields && ds.fields.length > 0) {
         const entries = ds.fields.map(f => {
           const alias      = f.alias    || `${ds.tmpTableName}.1.${f.name}`;
-          const capLine    = f.caption          ? `\n\t\t\t\t<Caption>${f.caption}</Caption>`                                 : '';
+          const capLine    = f.caption          ? `\n\t\t\t\t<Caption>${escapeXml(f.caption)}</Caption>`                                 : '';
           const dtLine     = f.dataType         ? `\n\t\t\t\t<DataType>${f.dataType}</DataType>`                              : '';
           const disableLine = f.disableAutoCreate ? `\n\t\t\t\t<DisableAutoCreateInDataRegion>true</DisableAutoCreateInDataRegion>` : '';
           return [
@@ -977,7 +978,7 @@ ${rdlParamLayoutXml}
 </Report>`;
     };
 
-    const captionLine = properties?.caption ? `\n\t\t\t<Caption>${properties.caption}</Caption>` : '';
+    const captionLine = properties?.caption ? `\n\t\t\t<Caption>${escapeXml(properties.caption)}</Caption>` : '';
     const styleLine   = properties?.style   ? `\n\t\t\t<Style>${properties.style}</Style>`       : '';
     const rdlContent  = properties?.rdlContent as string | undefined;
     // Sanitize: fix old-schema <Header> inside <TablixMember> — renamed to <TablixHeader> in 2016 RDL.
@@ -1121,7 +1122,7 @@ ${defaultParamGroupXml}
 <AxEdt xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
 \ti:type="${edtType}">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>${extends_}
+\t<Label>${escapeXml(label)}</Label>${extends_}
 \t<ArrayElements />
 \t<Relations />
 \t<TableReferences />${stringSize}
@@ -1180,8 +1181,8 @@ ${defaultParamGroupXml}
         enumValuesXml += `\n\t\t<AxEnumValue>`;
         enumValuesXml += `\n\t\t\t<Name>${v.name}</Name>`;
         if (v.countryRegionCodes) enumValuesXml += `\n\t\t\t<CountryRegionCodes>${v.countryRegionCodes}</CountryRegionCodes>`;
-        if (v.label) enumValuesXml += `\n\t\t\t<Label>${v.label}</Label>`;
-        if (v.helpText) enumValuesXml += `\n\t\t\t<HelpText>${v.helpText}</HelpText>`;
+        if (v.label) enumValuesXml += `\n\t\t\t<Label>${escapeXml(v.label)}</Label>`;
+        if (v.helpText) enumValuesXml += `\n\t\t\t<HelpText>${escapeXml(v.helpText)}</HelpText>`;
         if (v.value !== undefined && v.value !== 0) enumValuesXml += `\n\t\t\t<Value>${v.value}</Value>`;
         enumValuesXml += `\n\t\t</AxEnumValue>`;
       }
@@ -1212,7 +1213,7 @@ ${enumValuesXml}
         fieldsXml += `\t\t<AxTableField xmlns=""\n\t\t\ti:type="${iType}">\n`;
         fieldsXml += `\t\t\t<Name>${f.name}</Name>\n`;
         if (f.edt)       fieldsXml += `\t\t\t<ExtendedDataType>${f.edt}</ExtendedDataType>\n`;
-        if (f.label)     fieldsXml += `\t\t\t<Label>${f.label}</Label>\n`;
+        if (f.label)     fieldsXml += `\t\t\t<Label>${escapeXml(f.label)}</Label>\n`;
         if (f.mandatory) fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
         if (f.enumType)  fieldsXml += `\t\t\t<EnumType>${f.enumType}</EnumType>\n`;
         fieldsXml += `\t\t</AxTableField>\n`;
@@ -1230,7 +1231,7 @@ ${enumValuesXml}
       fieldGroupsXml = '\t<FieldGroups>\n';
       for (const fg of fgSpecs) {
         fieldGroupsXml += `\t\t<AxTableFieldGroup>\n\t\t\t<Name>${fg.name}</Name>\n`;
-        if (fg.label) fieldGroupsXml += `\t\t\t<Label>${fg.label}</Label>\n`;
+        if (fg.label) fieldGroupsXml += `\t\t\t<Label>${escapeXml(fg.label)}</Label>\n`;
         const fgFields = Array.isArray(fg.fields) ? fg.fields : [];
         if (fgFields.length === 0) {
           fieldGroupsXml += `\t\t\t<Fields />\n`;
@@ -1403,7 +1404,7 @@ ${relationsXml}
     return `<?xml version="1.0" encoding="utf-8"?>
 <${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<Object>${targetObject}</Object>${objectTypeXml}
 </${elemName}>`;
   }
@@ -1413,7 +1414,7 @@ ${relationsXml}
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxMenu xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<Elements />
 </AxMenu>`;
   }
@@ -1440,7 +1441,7 @@ ${relationsXml}
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<Privileges />
 </AxSecurityDuty>`;
   }
@@ -1450,7 +1451,7 @@ ${relationsXml}
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<DirectAccessPermissions />
 \t<Duties />
 \t<Privileges />
@@ -1584,8 +1585,7 @@ export async function handleGenerateD365Xml(
     if (args.objectType === 'report') {
       xmlContent = xmlContent.replace(
         /<Text><!\[CDATA\[([\s\S]*?)\]\]><\/Text>/g,
-        (_m, inner: string) =>
-          `<Text>${inner.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</Text>`
+        (_m, inner: string) => `<Text>${escapeXml(inner)}</Text>`
       );
     }
 

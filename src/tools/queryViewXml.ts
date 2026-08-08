@@ -13,6 +13,8 @@
  * and its own <Fields> are AxViewFieldBound entries pointing at that query's
  * datasource alias; it does not embed its own ViewMetadata/DataSources.
  */
+import { escapeXml } from '../utils/xmlEscape.js';
+
 
 /**
  * properties.dataSource — REQUIRED for a functional query: the root table.
@@ -29,7 +31,7 @@ export function buildAxQueryXml(queryName: string, properties?: Record<string, a
   // query a BPErrorLabelIsText (L3-xds-policy-constrained-table run). Emit it only
   // when the caller supplies one.
   const title: string | undefined = properties?.title || properties?.label;
-  const titleXml = title ? `\t<Title>${title}</Title>\n` : '';
+  const titleXml = title ? `\t<Title>${escapeXml(title)}</Title>\n` : '';
   const dataSource: string | undefined = properties?.dataSource || properties?.table;
   const dataSourceName: string = properties?.dataSourceName || dataSource || '';
   const fields: Array<{ name: string; field?: string }> | undefined =
@@ -113,7 +115,7 @@ ${titleXml}\t<DataSources />
         const field = r.field || r.name;
         return `\t\t\t\t<AxQuerySimpleDataSourceRange>
 \t\t\t\t\t<Name>${r.name || field}</Name>
-\t\t\t\t\t<Field>${field}</Field>${r.value !== undefined && r.value !== '' ? `\n\t\t\t\t\t<Value>${r.value}</Value>` : ''}
+\t\t\t\t\t<Field>${field}</Field>${r.value !== undefined && r.value !== '' ? `\n\t\t\t\t\t<Value>${escapeXml(r.value)}</Value>` : ''}
 \t\t\t\t</AxQuerySimpleDataSourceRange>`;
       }).join('\n')}\n\t\t\t</Ranges>\n`
     : '\t\t\t<Ranges />\n';
@@ -189,7 +191,7 @@ export function buildAxViewXml(viewName: string, properties?: Record<string, any
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${viewName}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<Fields />
 \t<Mappings />
 \t<ViewMetadata />
@@ -207,7 +209,7 @@ export function buildAxViewXml(viewName: string, properties?: Record<string, any
   return `<?xml version="1.0" encoding="utf-8"?>
 <AxView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${viewName}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t<Query>${query}</Query>
 \t<Fields>
 ${fieldsXml}

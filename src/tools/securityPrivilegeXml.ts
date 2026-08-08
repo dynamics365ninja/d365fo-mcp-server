@@ -17,6 +17,8 @@
  * properties.accessLevel   – 'view' | 'maintain' | 'read' (default: 'view' = Read only)
  * properties.dataEntity    – Name of the data entity to grant permissions on (optional)
  */
+import { escapeXml } from '../utils/xmlEscape.js';
+
 export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<string, any>): string {
   const label = properties?.label || '@TODO:LabelId';
   const targetObject: string | undefined = properties?.targetObject;
@@ -53,7 +55,7 @@ export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<st
   return `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t${dataEntityPermissionsElement}
 \t<DirectAccessPermissions />
 \t<EntryPoints>${entryPointsXml}</EntryPoints>
