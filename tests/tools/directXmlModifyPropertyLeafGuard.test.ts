@@ -52,6 +52,10 @@ vi.mock('fs/promises', () => ({
   stat: vi.fn(async () => ({ isFile: () => true, isDirectory: () => false })),
   readdir: vi.fn(async () => []),
   copyFile: vi.fn(async () => {}),
+  // Direct-XML edits go through a temp-file + rename now, so the mock has to
+  // stub those two syscalls as well or the write throws and the fallback fails.
+  rename: vi.fn(async () => {}),
+  rm: vi.fn(async () => {}),
 }));
 
 vi.mock('../../src/utils/configManager', () => ({
