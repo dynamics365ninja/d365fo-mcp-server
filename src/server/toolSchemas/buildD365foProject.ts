@@ -9,8 +9,7 @@ export const buildD365foProjectTool = {
     description:
       'Build a D365FO model with xppc.exe (compiles the ENTIRE model, not one project). ' +
       'Blocks until done — call ONCE per build, do NOT poll (wait:false = legacy polling mode). ' +
-      'fullBuild:true fixes "not been successfully compiled since it was last changed" stale-symbol errors; ' +
-      'buildReferencedModels:true builds custom/ISV dependencies first.',
+      'fullBuild:true fixes "not been successfully compiled since it was last changed" stale-symbol errors.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -32,7 +31,7 @@ export const buildD365foProjectTool = {
         },
         buildReferencedModels: {
           type: 'boolean',
-          description: 'Also build all custom/ISV models this model depends on before building the target. Skips Microsoft standard models.',
+          description: 'DISABLED — always ignored. Rebuilding dependency models on every build slows the run down and referenced models are expected to already be compiled.',
         },
         wait: {
           type: 'boolean',
