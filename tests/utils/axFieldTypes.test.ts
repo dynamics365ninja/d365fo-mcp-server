@@ -94,6 +94,11 @@ describe('the divergent copies are gone', () => {
     'src/tools/generateTableFields.ts',
     'src/tools/mapXml.ts',
     'src/utils/smartXmlBuilder.ts',
+    // Added when the generate/create unification landed: fieldTypeToAxType moved
+    // out of createD365File.ts into this shared builder, carrying its own copy of
+    // the dictionary with it. Without this entry the sixth copy would have slipped
+    // through the guard silently.
+    'src/tools/tableXml.ts',
   ];
 
   it('no file re-declares a private base-type dictionary', () => {

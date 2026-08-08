@@ -19,7 +19,7 @@
  *                            Default 'view'.
  * properties.dataEntity    – Name of the data entity to grant permissions on (optional)
  */
-
+import { escapeXml } from '../utils/xmlEscape.js';
 import { assertKnownEnumValue, SECURITY_ENTRY_POINT_TYPES } from '../utils/axEnumProperties.js';
 
 /** The only two grant shapes this builder can emit. Anything else is a wrong privilege. */
@@ -86,7 +86,7 @@ export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<st
   return `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t${dataEntityPermissionsElement}
 \t<DirectAccessPermissions />
 \t<EntryPoints>${entryPointsXml}</EntryPoints>

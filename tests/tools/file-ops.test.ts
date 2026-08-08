@@ -10,6 +10,8 @@ import { getExtensionNamingStyle } from '../../src/utils/modelClassifier';
 import { verifyD365ProjectTool } from '../../src/tools/verifyD365Project';
 import { handleCreateD365File } from '../../src/tools/createD365File';
 import { modifyD365FileTool, countTopLevelMethodBodies, splitTopLevelMethodBodies, isUnresolvedObjectError, extractMethodNameFromSource } from '../../src/tools/modifyD365File';
+import { resetEdtBaseTypeCache } from '../../src/tools/generateSmartTable';
+import * as debouncedRefresh from '../../src/bridge/debouncedRefresh';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
@@ -44,6 +46,10 @@ vi.mock('fs/promises', () => ({
   }),
   stat: vi.fn(async () => ({ isFile: () => true, isDirectory: () => false, size: 1024 })),
   readdir: vi.fn(async () => []),
+  // The direct-XML writes go through writeFileAtomic: a temp sibling written with
+  // writeFile, then renamed over the target (rm cleans the temp up on failure).
+  rename: vi.fn(async () => {}),
+  rm: vi.fn(async () => {}),
 }));
 
 vi.mock('../../src/bridge/bridgeAdapter', async (orig) => {
@@ -109,7 +115,14 @@ vi.mock('../../src/utils/modelClassifier', () => ({
 // guard has its own suite (tests/utils/crossModelWriteGuard.test.ts); allow it here
 // so these tests keep testing the thing they are about.
 beforeEach(() => { process.env.D365FO_CROSS_MODEL_WRITE_MODELS = 'Contoso,ContosoRobotics'; });
-afterEach(() => { delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS; });
+afterEach(() => {
+  delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS;
+  // Creates now schedule the provider rebuild instead of awaiting it, so every
+  // create leaves module-level state behind that the next test must not inherit.
+  debouncedRefresh.cancel();
+  debouncedRefresh.resetRefreshTracking();
+  resetEdtBaseTypeCache();
+});
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -2089,5 +2102,170 @@ describe('replace-all-fields EDT base type resolution', () => {
     expect(result.isError).toBeFalsy();
     const passedFields = mockBridgeReplaceAllFields.mock.calls[0][2] as any[];
     expect(passedFields[0]).toMatchObject({ name: 'Qty', edt: 'InventQty', type: 'InventQty' });
+  });
+});
+
+// ─── Provider-refresh scheduling and EDT resolution cost ────────────────────
+
+describe('write-path provider refresh', () => {
+  const CLASS_ARGS = {
+    objectType: 'class',
+    objectName: 'ContosoLatencyProbe',
+    modelName: 'Contoso',
+    packageName: 'Contoso',
+    packagePath: 'K:\\PackagesLocalDirectory',
+    addToProject: false,
+    sourceCode: 'public class ContosoLatencyProbe\n{\n}\n',
+  };
+
+  const bridgeWithRefresh = (extra: Record<string, unknown> = {}) => ({
+    isReady: true,
+    metadataAvailable: true,
+    refreshProvider: vi.fn(async () => ({ refreshed: true, elapsedMs: 7 })),
+    validateObject: vi.fn(async () => null),
+    createObject: vi.fn(async () => ({
+      success: true,
+      filePath: 'K:\\PackagesLocalDirectory\\Contoso\\Contoso\\AxClass\\ContosoLatencyProbe.xml',
+      message: 'IMetadataProvider.Create',
+    })),
+    ...extra,
+  });
+
+  it('a create answers without waiting for the DiskProvider rebuild', async () => {
+    // The rebuild used to be awaited inside every create, so a multi-object
+    // scaffold paid for a full DiskProvider rebuild per object, on the response
+    // path, for a provider generation the create itself never reads.
+    const ctx = buildContext();
+    const bridge = bridgeWithRefresh();
+    (ctx as any).bridge = bridge;
+
+    const result = await handleCreateD365File(req('create_d365fo_file', CLASS_ARGS), ctx);
+
+    expect((result as any).isError).toBeFalsy();
+    expect(bridge.createObject).toHaveBeenCalledTimes(1);
+    expect(bridge.refreshProvider).not.toHaveBeenCalled();
+  });
+
+  it('the next create settles the rebuild the previous one scheduled', async () => {
+    // The guarantee that survives the deferral: an object written this session is
+    // resolvable to the NEXT bridge operation. A scaffold that creates an EDT and
+    // then a table using it must not read the pre-EDT model.
+    const ctx = buildContext();
+    const bridge = bridgeWithRefresh();
+    (ctx as any).bridge = bridge;
+
+    await handleCreateD365File(req('create_d365fo_file', CLASS_ARGS), ctx);
+    expect(bridge.refreshProvider).not.toHaveBeenCalled();
+
+    await handleCreateD365File(
+      req('create_d365fo_file', { ...CLASS_ARGS, objectName: 'ContosoLatencyProbe2' }),
+      ctx,
+    );
+    expect(bridge.refreshProvider).toHaveBeenCalledTimes(1);
+    // …and the second create's own rebuild is still outstanding, not awaited.
+    expect(bridge.createObject).toHaveBeenCalledTimes(2);
+  });
+
+  it('a modify settles an outstanding rebuild before its first bridge attempt', async () => {
+    // Without this the modify would still recover — via the null-result auto-retry
+    // — but only after a wasted round trip into the C# process.
+    const fsMod = await import('fs/promises');
+    (fsMod.readFile as any).mockResolvedValueOnce(
+      `<?xml version="1.0"?><AxTable><Name>ContosoRentEquipmentTable</Name></AxTable>`,
+    );
+
+    const ctx = buildContext();
+    const addIndex = vi.fn(async () => ({ success: true, api: 'IMetaTableProvider.Update' }));
+    const bridge = bridgeWithRefresh({ addIndex });
+    (ctx as any).bridge = bridge;
+
+    // Stand in for a create earlier in the session that deferred its rebuild.
+    void debouncedRefresh.refresh(bridge as any);
+    expect(bridge.refreshProvider).not.toHaveBeenCalled();
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'table',
+        objectName: 'ContosoRentEquipmentTable',
+        operation: 'add-index',
+        indexName: 'EquipmentIdx',
+        indexFields: [{ fieldName: 'ContosoRentEquipmentId' }],
+        filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTable\\ContosoRentEquipmentTable.xml',
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(bridge.refreshProvider).toHaveBeenCalledTimes(1);
+    // One attempt — the refresh happened before it, not as a retry after a null.
+    expect(addIndex).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('EDT base-type resolution cost', () => {
+  const tableArgs = (fields: Array<Record<string, unknown>>) => ({
+    objectType: 'table-extension',
+    objectName: 'ContosoEdtProbe.Extension',
+    modelName: 'Contoso',
+    packageName: 'Contoso',
+    packagePath: 'K:\\PackagesLocalDirectory',
+    addToProject: false,
+    properties: { fields },
+  });
+
+  it('asks the bridge once per DISTINCT edt, and not again in a later create', async () => {
+    // One sequential readEdt per FIELD meant a wide table waited out N round trips
+    // into the single-threaded C# process for values that cannot change under it,
+    // and two fields sharing an EDT paid for it twice.
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const readEdt = vi.fn(async (name: string) => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve(); // one microtask — a sequential caller can never overlap here
+      inFlight--;
+      return { baseType: name === 'ContosoWhen' ? 'Date' : 'Real' };
+    });
+    const ctx = buildContext();
+    const createObject = vi.fn(async () => ({
+      success: true,
+      filePath: 'K:\\PackagesLocalDirectory\\Contoso\\Contoso\\AxTableExtension\\ContosoEdtProbe.Extension.xml',
+      message: 'IMetadataProvider.Create',
+    }));
+    (ctx as any).bridge = {
+      isReady: true,
+      metadataAvailable: true,
+      readEdt,
+      createObject,
+      refreshProvider: vi.fn(async () => ({ refreshed: true, elapsedMs: 1 })),
+      validateObject: vi.fn(async () => null),
+    };
+
+    const result = await handleCreateD365File(
+      req('create_d365fo_file', tableArgs([
+        { name: 'RateA', edt: 'ContosoAmount' },
+        { name: 'RateB', edt: 'ContosoAmount' },
+        { name: 'When', edt: 'ContosoWhen' },
+      ])),
+      ctx,
+    );
+
+    expect((result as any).isError).toBeFalsy();
+    expect(readEdt).toHaveBeenCalledTimes(2);
+    // Both distinct EDTs were in flight together — the loop no longer awaits one
+    // round trip before issuing the next.
+    expect(maxInFlight).toBe(2);
+    const fields = (createObject.mock.calls[0][0] as any).fields as any[];
+    expect(fields.map(f => f.type)).toEqual(['Real', 'Real', 'Date']);
+
+    // Second create, same EDTs: memoized, so no further round trips at all.
+    await handleCreateD365File(
+      req('create_d365fo_file', {
+        ...tableArgs([{ name: 'RateC', edt: 'ContosoAmount' }]),
+        objectName: 'ContosoEdtProbe2.Extension',
+      }),
+      ctx,
+    );
+    expect(readEdt).toHaveBeenCalledTimes(2);
   });
 });

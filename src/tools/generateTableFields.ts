@@ -15,6 +15,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
+import { escapeXml } from '../utils/xmlEscape.js';
 import {
   resolveBestEdt,
   resolveEdtBaseType,
@@ -63,9 +64,6 @@ export function axTableFieldType(edt?: string, type?: string, enumType?: string)
   return heuristic ? axTableFieldElement(heuristic) : 'AxTableFieldString';
 }
 
-function escapeXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 /** Render one <AxTableField> fragment (D365FO generic i:type format). */
 export function buildFieldXml(f: ResolvedField): string {

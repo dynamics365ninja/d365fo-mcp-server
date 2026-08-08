@@ -6,6 +6,8 @@
  * underlying table via <Mappings><AxTableMapping><Connections> entries pairing
  * each map field name (MapField) with the target table's field name (MapFieldTo).
  */
+import { escapeXml } from '../utils/xmlEscape.js';
+
 
 import {
   axMapFieldElement,
@@ -95,7 +97,7 @@ public class ${mapName} extends common
 }
 ]]></Declaration>
 \t\t<Methods />
-\t</SourceCode>${developerDocumentation ? `\n\t<DeveloperDocumentation>${developerDocumentation}</DeveloperDocumentation>` : ''}${label ? `\n\t<Label>${label}</Label>` : ''}
+\t</SourceCode>${developerDocumentation ? `\n\t<DeveloperDocumentation>${escapeXml(developerDocumentation)}</DeveloperDocumentation>` : ''}${label ? `\n\t<Label>${escapeXml(label)}</Label>` : ''}
 \t<FieldGroups />
 \t<Fields>
 ${fieldsXml}

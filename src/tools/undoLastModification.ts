@@ -5,6 +5,7 @@ import { promises as fsp } from 'fs';
 import path from 'path';
 import type { XppServerContext } from '../types/context.js';
 import { bridgeRefreshProvider } from '../bridge/index.js';
+import { isFileUnderRoot } from '../utils/pathContainment.js';
 import { lookupCreatedArtifact, forgetCreatedArtifact, type CreatedArtifact } from './createdArtifactLedger.js';
 
 const execFileAsync = util.promisify(execFile);
@@ -20,13 +21,45 @@ async function git(args: string[], cwd: string): Promise<string> {
   return stdout.trim();
 }
 
-function isInsideRepo(repoRoot: string, targetPath: string): boolean {
-  const relative = path.relative(repoRoot, targetPath);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+function realpathOrSelf(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p; // not on disk (yet) — the as-given form is all we have
+  }
 }
 
-function toRepoRelative(repoRoot: string, absolutePath: string): string {
-  return path.relative(repoRoot, absolutePath).split(path.sep).join('/');
+/**
+ * Containment check for the undo target, using the same lexical-OR-realpath rule the
+ * write path applies (utils/pathContainment.isUnder).
+ *
+ * A D365FO model directory under PackagesLocalDirectory is commonly a symlink to a
+ * repo checkout, and `git rev-parse --show-toplevel` answers with the RESOLVED root.
+ * A purely lexical path.relative() between the two therefore climbs out of the repo
+ * ("..\\..\\…") and undo refused every file reached through the symlink — the write
+ * path was fixed for exactly this and undo was left behind.
+ *
+ * Exported for unit tests.
+ */
+export function isInsideRepo(repoRoot: string, targetPath: string): boolean {
+  return isFileUnderRoot(targetPath, repoRoot);
+}
+
+/**
+ * Repo-relative path of the undo target. Prefers the lexical form (it preserves the
+ * casing/spelling git already knows) and falls back to comparing both sides resolved,
+ * which is the form that works when the target was reached through a symlinked
+ * package or model directory.
+ *
+ * Exported for unit tests.
+ */
+export function toRepoRelative(repoRoot: string, absolutePath: string): string {
+  const toPosix = (p: string) => p.split(path.sep).join('/');
+  const lexical = path.relative(repoRoot, absolutePath);
+  if (lexical && !lexical.startsWith('..') && !path.isAbsolute(lexical)) {
+    return toPosix(lexical);
+  }
+  return toPosix(path.relative(realpathOrSelf(repoRoot), realpathOrSelf(absolutePath)));
 }
 
 // Tool registration (name, description, inputSchema) lives inline in
