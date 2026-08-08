@@ -21,6 +21,7 @@ import {
   heuristicEdtBaseType,
   isEnumName,
 } from './generateSmartTable.js';
+import { axTableFieldElement, baseTypeFromEdtName, normalizeFieldBaseType } from '../utils/axFieldTypes.js';
 
 const FieldSpecSchema = z.object({
   name: z.string().describe('Field name (e.g. "AccountNum").'),
@@ -53,36 +54,13 @@ export interface ResolvedField {
   mandatory?: boolean;
 }
 
-/** Map an EDT/base-type pair to the AxTableField i:type — mirrors SmartXmlBuilder. */
+/** Map an EDT/base-type pair to the AxTableField i:type, via the one canonical map. */
 export function axTableFieldType(edt?: string, type?: string, enumType?: string): string {
   if (enumType) return 'AxTableFieldEnum';
-  if (type) {
-    const typeMap: Record<string, string> = {
-      String: 'AxTableFieldString',
-      Integer: 'AxTableFieldInt',
-      Int: 'AxTableFieldInt',
-      Int64: 'AxTableFieldInt64',
-      Real: 'AxTableFieldReal',
-      Date: 'AxTableFieldDate',
-      DateTime: 'AxTableFieldUtcDateTime',
-      UtcDateTime: 'AxTableFieldUtcDateTime',
-      Enum: 'AxTableFieldEnum',
-      Container: 'AxTableFieldContainer',
-      Guid: 'AxTableFieldGuid',
-      GUID: 'AxTableFieldGuid',
-    };
-    if (typeMap[type]) return typeMap[type];
-  }
-  if (edt) {
-    const e = edt.toLowerCase();
-    if (e === 'recid' || e.endsWith('recid') || e.includes('refrecid')) return 'AxTableFieldInt64';
-    if (e.includes('utcdatetime') || (e.includes('datetime') && !e.includes('transdate'))) return 'AxTableFieldUtcDateTime';
-    if (e.includes('date') && !e.includes('time') && !e.includes('update')) return 'AxTableFieldDate';
-    if (e.includes('amount') || e.includes('mst') || e.includes('price') || e.includes('qty') || e.includes('percent') || e === 'real') return 'AxTableFieldReal';
-    if (e === 'noyesid' || e.endsWith('noyesid') || e === 'noyes') return 'AxTableFieldEnum';
-    if ((e.endsWith('int') || e.includes('count') || e.includes('level')) && !e.includes('account') && !e.includes('name')) return 'AxTableFieldInt';
-  }
-  return 'AxTableFieldString';
+  const explicit = normalizeFieldBaseType(type);
+  if (explicit) return axTableFieldElement(explicit);
+  const heuristic = baseTypeFromEdtName(edt);
+  return heuristic ? axTableFieldElement(heuristic) : 'AxTableFieldString';
 }
 
 function escapeXml(s: string): string {

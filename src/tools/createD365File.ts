@@ -25,7 +25,16 @@ import { gateOnReferenceErrors } from './resolveReferences.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
 import { renderAxTableProperties } from '../utils/axTablePropertyOrder.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
-import { buildAxDataEntityXml, isYes } from './dataEntityXml.js';
+import { buildAxDataEntityXml, assertDataEntityIsFunctional, isYes } from './dataEntityXml.js';
+import { axTableFieldElement, baseTypeFromEdtName, normalizeFieldBaseType } from '../utils/axFieldTypes.js';
+import {
+  assertKnownEnumValue,
+  resolveEnumValueMode,
+  RELATED_TABLE_CARDINALITIES,
+  RELATION_CARDINALITIES,
+  RELATIONSHIP_TYPES,
+  SECURITY_POLICY_CONTEXT_TYPES,
+} from '../utils/axEnumProperties.js';
 import { resolveEdtBaseType, resolveEdtEnumType, heuristicEdtBaseType, isEnumName, bridgeEdtBaseType } from './generateSmartTable.js';
 import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
 import { buildAxMapXml } from './mapXml.js';
@@ -249,38 +258,12 @@ export class ProjectFileFinder {
  * using edtName (same heuristics as SmartXmlBuilder.getAxTableFieldType).
  */
 function fieldTypeToAxType(fieldType: string, edtName?: string): string {
-  const typeMap: Record<string, string> = {
-    String:      'AxTableFieldString',
-    Integer:     'AxTableFieldInt',
-    Int64:       'AxTableFieldInt64',
-    Real:        'AxTableFieldReal',
-    Date:        'AxTableFieldDate',
-    DateTime:    'AxTableFieldUtcDateTime',
-    UtcDateTime: 'AxTableFieldUtcDateTime',
-    Enum:        'AxTableFieldEnum',
-    GUID:        'AxTableFieldGuid',
-    Guid:        'AxTableFieldGuid',
-    Container:   'AxTableFieldContainer',
-  };
+  const explicit = normalizeFieldBaseType(fieldType);
+  if (explicit) return axTableFieldElement(explicit);
 
-  const explicit = typeMap[fieldType];
-  if (explicit) return explicit;
-
-  // Fall back to EDT name heuristics (mirrors SmartXmlBuilder.getAxTableFieldType)
-  const hint = edtName || fieldType;
-  if (hint) {
-    const e = hint.toLowerCase();
-    if (e === 'recid' || e.endsWith('recid') || e.includes('refrecid')) return 'AxTableFieldInt64';
-    if (e.includes('utcdatetime') || (e.includes('datetime') && !e.includes('transdate'))) return 'AxTableFieldUtcDateTime';
-    if (e.includes('date') && !e.includes('time') && !e.includes('update')) return 'AxTableFieldDate';
-    if (e.includes('amount') || e.includes('mst') || e.includes('price') || e.includes('qty')
-        || e.includes('percent') || e === 'real') return 'AxTableFieldReal';
-    if (e === 'noyesid' || e.endsWith('noyesid') || e === 'noyes') return 'AxTableFieldEnum';
-    if ((e.endsWith('int') || e.includes('count') || e.includes('level'))
-        && !e.includes('account') && !e.includes('name')) return 'AxTableFieldInt';
-  }
-
-  return 'AxTableFieldString';
+  // Fall back to EDT name heuristics — the same ones every other caller uses.
+  const heuristic = baseTypeFromEdtName(edtName || fieldType);
+  return heuristic ? axTableFieldElement(heuristic) : 'AxTableFieldString';
 }
 
 /**
@@ -913,13 +896,6 @@ ${fieldsXml}\t<FullTextIndexes />
     properties?: Record<string, any>
   ): string {
     const label = properties?.label || enumName;
-    // Extensible enums MUST have UseEnumValue=No (xppc hard requirement).
-    // Explicit <Value> elements also force UseEnumValue=Yes at compile time,
-    // so we suppress them when UseEnumValue=No.
-    const useEnumValue = (properties?.isExtensible || properties?.useEnumValue === false)
-      ? 'No'
-      : (properties?.useEnumValue ? 'Yes' : 'No');
-    const suppressExplicitValues = useEnumValue === 'No';
     const configKeyXml = properties?.configurationKey
       ? `\t<ConfigurationKey>${properties.configurationKey}</ConfigurationKey>\n`
       : '';
@@ -936,6 +912,8 @@ ${fieldsXml}\t<FullTextIndexes />
         `Consider redesigning as a class hierarchy or splitting into multiple enums.`
       );
     }
+
+    const { useEnumValue, suppressExplicitValues } = resolveEnumValueMode(enumName, properties, enumValueSpecs);
 
     let enumValuesXml: string;
     if (enumValueSpecs.length === 0) {
@@ -1055,6 +1033,10 @@ ${enumValuesXml}${isExtensibleXml}</AxEnum>
     entityName: string,
     properties?: Record<string, any>
   ): string {
+    // The result of THIS call gets written to disk and reported as created, so the
+    // inert-skeleton branch is refused here rather than in the builder (whose
+    // skeleton output is the pinned element-order baseline).
+    assertDataEntityIsFunctional(entityName, properties);
     return buildAxDataEntityXml(entityName, properties);
   }
 
@@ -2746,11 +2728,15 @@ ${enumValuesXml}
       relationsXml = '\t<Relations>\n';
       for (const rel of relSpecs) {
         relationsXml += `\t\t<AxTableRelation>\n`;
+        // Cardinality/RelationshipType are metamodel enums: an unknown value is
+        // dropped by the deserializer, so "OneToMany" used to be written verbatim,
+        // build clean, and leave the relation at NotSpecified.
+        const relCtx = `Relation '${rel.name}' on '${name}'`;
         relationsXml += `\t\t\t<Name>${rel.name}</Name>\n`;
-        relationsXml += `\t\t\t<Cardinality>${rel.cardinality || 'ZeroMore'}</Cardinality>\n`;
+        relationsXml += `\t\t\t<Cardinality>${assertKnownEnumValue(`${relCtx}: cardinality`, rel.cardinality, RELATION_CARDINALITIES, 'ZeroMore')}</Cardinality>\n`;
         relationsXml += `\t\t\t<RelatedTable>${rel.relatedTable}</RelatedTable>\n`;
-        relationsXml += `\t\t\t<RelatedTableCardinality>${rel.relatedTableCardinality || 'ExactlyOne'}</RelatedTableCardinality>\n`;
-        relationsXml += `\t\t\t<RelationshipType>${rel.relationshipType || 'Association'}</RelationshipType>\n`;
+        relationsXml += `\t\t\t<RelatedTableCardinality>${assertKnownEnumValue(`${relCtx}: relatedTableCardinality`, rel.relatedTableCardinality, RELATED_TABLE_CARDINALITIES, 'ExactlyOne')}</RelatedTableCardinality>\n`;
+        relationsXml += `\t\t\t<RelationshipType>${assertKnownEnumValue(`${relCtx}: relationshipType`, rel.relationshipType, RELATIONSHIP_TYPES, 'Association')}</RelationshipType>\n`;
         const constraints = Array.isArray(rel.constraints) ? rel.constraints : [];
         if (constraints.length === 0) {
           relationsXml += `\t\t\t<Constraints />\n`;
@@ -3069,7 +3055,11 @@ public final class ${contractName} extends BusinessEventsContract
     const query            = properties?.query            || '';
     const enabled          = properties?.enabled === false ? 'No' : 'Yes';
     const constrainedTable = properties?.constrainedTable === false ? 'No' : 'Yes';
-    const contextType      = properties?.contextType      || '';
+    // <ContextType> is the SecurityPolicyContextType enum. It was written verbatim,
+    // so "Role" / "User" produced a policy whose context silently reverted to the
+    // default while the build stayed green — the policy then constrains nothing.
+    const contextType      = assertKnownEnumValue(
+      `Security policy '${name}': contextType`, properties?.contextType, SECURITY_POLICY_CONTEXT_TYPES, '');
     const roleName         = properties?.roleName         || '';
     const constrained: Array<{ name: string; tableRelation?: string }> =
       Array.isArray(properties?.constrainedTables) ? properties!.constrainedTables : [];

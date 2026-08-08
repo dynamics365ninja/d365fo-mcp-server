@@ -460,7 +460,10 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     'allowRowVersionChangeTracking? (dual-write), created/modifiedBy/DateTime?, ' +
     'fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?}] — enum fields need enumType ' +
     '(+ optionally fieldType:"AxTableFieldEnum")',
-  enum: 'label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}]',
+  enum:
+    'label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}] — ' +
+    'an explicit value: sets UseEnumValue=Yes for you; it cannot be combined with isExtensible ' +
+    '(xppc requires UseEnumValue=No and no <Value> there), which is refused rather than dropped',
   'enum-extension': 'enumValues[{name,label?,value?,countryRegionCodes?}]',
   'table-extension':
     'fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need ' +
@@ -470,20 +473,25 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     'label?, helpText?, stringSize?, extends?, formHelp?, propertyModifications?[{name,value}] = the change',
   form: 'caption, formTemplate, dataSource',
   'security-privilege':
-    'label, targetObject, objectType (MenuItemDisplay|Action|Output), accessLevel (view|maintain), ' +
-    'dataEntity (grants perms)',
+    'label, targetObject, objectType (MenuItemDisplay|MenuItemAction|MenuItemOutput|ServiceOperation), ' +
+    'accessLevel (view|read = Read only, maintain = full CRUD — nothing else is accepted; "full"/"edit" ' +
+    'used to degrade silently to Read-only), dataEntity (grants perms)',
   'security-duty': 'label, privileges[]',
   'security-role': 'label, duties[], privileges[]',
   'menu-item-display': 'label, object, objectType',
   'menu-item-action': 'label, object, objectType',
   'menu-item-output': 'label, object, objectType',
   'data-entity':
-    'primaryTable, fields[{name,dataField?}], primaryKey?, primaryKeyFields?[], isPublic?, ' +
-    'entityCategory?, dynamicFields?, allowRowVersionChangeTracking? (dual-write: set on the source ' +
+    'primaryTable + fields[{name,dataField?}] — BOTH REQUIRED (without them the entity has no query ' +
+    'and returns no data, which builds clean; the create is refused instead), primaryKey?, ' +
+    'primaryKeyFields?[], isPublic?, entityCategory? ' +
+    '(Master|Configuration|Transaction|Reference|Document|Parameters — note the plural), ' +
+    'dynamicFields?, allowRowVersionChangeTracking? (dual-write: set on the source ' +
     'TABLES too), dataManagementEnabled? (needs staging table)',
   map:
-    'label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}], mappingTable?, ' +
-    'mappings?[{mapField,mapFieldTo}] (one connection/field by default)',
+    'label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}] — type is ' +
+    'String|Integer|Int64|Real|Date|Time|UtcDateTime|Enum|Container|Guid (no Boolean: use Enum + ' +
+    'enumType:"NoYes"), mappingTable?, mappings?[{mapField,mapFieldTo}] (one connection/field by default)',
   query: 'title?, dataSource (root table; table also works), dataSourceName?, fields?[{name,field?}]',
   view: 'query (existing AxQuery), fields[{name,dataField?}] — dataSource defaults to query',
   service:
