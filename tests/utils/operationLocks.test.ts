@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { getOperationLockCount, withOperationLock } from '../../src/utils/operationLocks';
+import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -7,15 +8,24 @@ import * as path from 'path';
 // Unique key per test — ensures no cross-test contamination in the in-memory Map
 // even if a previous test left dangling promises (e.g. after an early assertion failure).
 let testSeq = 0;
+const usedKeys: string[] = [];
 function key(base: string): string {
-  return `${base}-t${++testSeq}`;
+  const k = `${base}-t${++testSeq}`;
+  usedKeys.push(k);
+  return k;
 }
 
 const LOCK_ROOT = path.join(os.tmpdir(), 'd365fo-mcp-locks');
 
 afterAll(async () => {
-  // Remove filesystem lock directories created by these tests.
-  await fs.rm(LOCK_ROOT, { recursive: true, force: true }).catch(() => {});
+  // Remove ONLY the lock directories these tests created. LOCK_ROOT is a fixed
+  // path under os.tmpdir() shared by every suite that takes an operation lock,
+  // and vitest runs suites in parallel workers — an `rm -rf` of the whole root
+  // deletes a live lock belonging to another suite, which surfaces as a random
+  // failure somewhere else entirely.
+  const usedDirs = usedKeys.map(k =>
+    path.join(LOCK_ROOT, createHash('sha256').update(k.trim().toLowerCase()).digest('hex')));
+  for (const dir of usedDirs) await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
 });
 
 describe('operationLocks', () => {

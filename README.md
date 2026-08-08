@@ -127,7 +127,7 @@ Deployment guide: [docs/SETUP_AZURE.md](docs/SETUP_AZURE.md) — includes CI/CD 
 
 | Getting started | Reference | Operations |
 |-----------------|-----------|------------|
-| [Quick Start](docs/QUICK_START.md) — connect or install | [All 25 tools](docs/MCP_TOOLS.md) | [Azure deployment](docs/SETUP_AZURE.md) |
+| [Quick Start](docs/QUICK_START.md) — connect or install | [All 23 tools](docs/MCP_TOOLS.md) | [Azure deployment](docs/SETUP_AZURE.md) |
 | [Setup scenarios A–F](docs/SETUP.md) | [`.mcp.json` reference](docs/MCP_CONFIG.md) | [DevOps pipelines](docs/SETUP_AZURE.md#azure-devops-pipelines) |
 | [Claude Code setup](docs/SETUP.md#claude-code-cli) | [Configuration](docs/CONFIGURATION.md) | [Testing](docs/TESTING.md) |
 | [Usage examples](docs/USAGE_EXAMPLES.md) — real tool chains | [Architecture](docs/ARCHITECTURE.md) | [Custom / ISV models](docs/CUSTOM_EXTENSIONS.md) |

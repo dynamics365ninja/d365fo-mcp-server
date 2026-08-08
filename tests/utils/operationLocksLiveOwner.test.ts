@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as os from 'os';
@@ -24,16 +25,38 @@ const LOCK_ROOT = path.join(os.tmpdir(), 'd365fo-mcp-locks');
 let testSeq = 0;
 const key = (base: string) => `${base}-live${++testSeq}`;
 
+/**
+ * Lock directories this suite touched. Cleanup removes exactly these — LOCK_ROOT
+ * is a fixed path under os.tmpdir(), shared with every other suite that takes an
+ * operation lock, and vitest runs suites in parallel workers. An `rm -rf` of the
+ * whole root deletes another suite's live lock mid-test, which reads as a random
+ * unrelated failure.
+ */
+const touched = new Set<string>();
+
 /** Same mapping acquireFilesystemLock uses: sha256 of the normalized key. */
 function lockDirFor(lockKey: string): string {
   const hash = createHash('sha256').update(lockKey.trim().toLowerCase()).digest('hex');
-  return path.join(LOCK_ROOT, hash);
+  const dir = path.join(LOCK_ROOT, hash);
+  touched.add(dir);
+  return dir;
 }
 
-async function plantLock(lockKey: string, owner: { pid: number }, ageMs: number): Promise<string> {
+/**
+ * A pid that is certainly not running: spawnSync returns only once the child has
+ * exited. Picking a large constant instead is a guess, and a wrong guess makes
+ * the dead-owner tests assert the opposite of what they claim.
+ */
+function deadPid(): number {
+  const child = spawnSync(process.execPath, ['-e', '0']);
+  if (typeof child.pid !== 'number') throw new Error('could not spawn a probe process');
+  return child.pid;
+}
+
+async function plantLock(lockKey: string, owner: { pid: number } | null, ageMs: number): Promise<string> {
   const dir = lockDirFor(lockKey);
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, 'owner.json'), JSON.stringify(owner), 'utf8');
+  if (owner) await fs.writeFile(path.join(dir, 'owner.json'), JSON.stringify(owner), 'utf8');
   const when = new Date(Date.now() - ageMs);
   await fs.utimes(dir, when, when);
   return dir;
@@ -51,7 +74,10 @@ async function loadModule(env: Record<string, string>) {
 afterEach(async () => {
   delete process.env.OPERATION_LOCK_HEARTBEAT_MS;
   delete process.env.OPERATION_LOCK_TIMEOUT_MS;
-  await fs.rm(LOCK_ROOT, { recursive: true, force: true }).catch(() => {});
+  delete process.env.OPERATION_LOCK_STALE_MS;
+  delete process.env.OPERATION_LOCK_POLL_MS;
+  for (const dir of touched) await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  touched.clear();
 });
 
 describe('stale-lock reaping vs. a living owner', () => {
@@ -80,11 +106,63 @@ describe('stale-lock reaping vs. a living owner', () => {
   it('still reaps a lock whose owner process is gone', async () => {
     const { withOperationLock } = await loadModule({ OPERATION_LOCK_TIMEOUT_MS: '2000' });
     const lockKey = key('build:crashed');
-    // A pid that cannot be running: the max pid on Linux is 2^22, and Windows
-    // pids are multiples of 4 well below it.
-    await plantLock(lockKey, { pid: 0x7ffffffe }, 1000);
+    await plantLock(lockKey, { pid: deadPid() }, 1000);
 
     await expect(withOperationLock(lockKey, async () => 'ran')).resolves.toBe('ran');
+  });
+
+  it('falls back to age for a lock with no owner record at all', async () => {
+    // owner.json missing — a lock left by an older build of this server, or one
+    // whose write lost a race with the mkdir. Age is the only signal left, so it
+    // is the only one used: below the window the lock still blocks, above it the
+    // lock is reaped. Without the first half a fresh owner-less lock would be
+    // walked straight over.
+    const { withOperationLock, isOperationLockHeld } = await loadModule({
+      OPERATION_LOCK_TIMEOUT_MS: '300',
+      OPERATION_LOCK_POLL_MS: '25',
+      OPERATION_LOCK_STALE_MS: '100000',
+    });
+
+    const fresh = key('sync:no-owner-fresh');
+    await plantLock(fresh, null, 1_000);
+    expect(await isOperationLockHeld(fresh)).toBe(true);
+    await expect(withOperationLock(fresh, async () => 'ran'))
+      .rejects.toThrow(/Timeout waiting for filesystem lock/);
+
+    const stale = key('sync:no-owner-stale');
+    await plantLock(stale, null, 200_000);
+    expect(await isOperationLockHeld(stale)).toBe(false);
+    await expect(withOperationLock(stale, async () => 'ran')).resolves.toBe('ran');
+  });
+
+  it('lets exactly one of several concurrent reapers claim the same dead lock', async () => {
+    // The claim side of the TOCTOU the `release` suite below covers from the
+    // other end. Without the rename-to-claim step both callers rm() the
+    // directory: the winner re-creates it, the loser's rm() then deletes a lock
+    // that is by now legitimately held, and two builds run at once.
+    const { withOperationLock } = await loadModule({ OPERATION_LOCK_TIMEOUT_MS: '3000' });
+    const lockKey = key('build:reap-race');
+    await plantLock(lockKey, { pid: deadPid() }, 1000);
+
+    let inside = 0;
+    let overlapped = false;
+    const body = async () => {
+      inside++;
+      if (inside > 1) overlapped = true;
+      await new Promise(r => setTimeout(r, 20));
+      inside--;
+    };
+
+    // Three spellings of one key, so this also pins the trim()/toLowerCase()
+    // normalisation the lock directory is derived from.
+    const settled = await Promise.allSettled([
+      withOperationLock(lockKey, body),
+      withOperationLock(` ${lockKey.toUpperCase()} `, body),
+      withOperationLock(lockKey, body),
+    ]);
+
+    expect(overlapped, 'two operations held the same lock at once').toBe(false);
+    expect(settled.filter(r => r.status === 'fulfilled')).toHaveLength(3);
   });
 });
 
