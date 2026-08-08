@@ -22,6 +22,10 @@ namespace D365MetadataBridge.Services
         // Cache resolved ModelSaveInfo per model name
         private readonly Dictionary<string, ModelSaveInfo> _modelCache = new Dictionary<string, ModelSaveInfo>(StringComparer.OrdinalIgnoreCase);
 
+        // Cache the publisher verdict per model name — see IsMicrosoftModel. Cleared with
+        // _modelCache in UpdateProvider for the same reason: it is read off the provider.
+        private readonly Dictionary<string, bool> _microsoftModelCache = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
         public MetadataWriteService(IMetadataProvider provider, string packagesPath)
         {
             _provider = provider;
@@ -30,10 +34,21 @@ namespace D365MetadataBridge.Services
 
         /// <summary>
         /// Called by MetadataReadService.RefreshProvider() to keep the write service in sync.
+        ///
+        /// The model cache is derived from the provider (ResolveModelSaveInfo asks
+        /// _provider.ModelManifest first), so it cannot outlive it. A model the OLD manifest
+        /// did not enumerate — the usual case for a model that was just deployed, or created
+        /// and not yet built — falls back to the descriptor scan, whose ModelSaveInfo carries
+        /// the SequenceId as Id and SequenceId=0; that is exactly the shape that makes
+        /// IMetadataProvider.Create() throw NullReferenceException. Cached, it survived every
+        /// later refresh, so the refresh that finally made the manifest able to answer
+        /// correctly changed nothing and every subsequent create into that model kept NREing.
         /// </summary>
         public void UpdateProvider(IMetadataProvider newProvider)
         {
             _provider = newProvider;
+            _modelCache.Clear();
+            _microsoftModelCache.Clear();
         }
 
         // ========================
@@ -162,6 +177,69 @@ namespace D365MetadataBridge.Services
                 Console.Error.WriteLine($"[WriteService] Error parsing descriptor {xmlPath}: {ex.Message}");
                 return null;
             }
+        }
+
+        // ========================
+        // MODEL OWNERSHIP
+        // ========================
+
+        /// <summary>
+        /// Is this model shipped by Microsoft?
+        ///
+        /// Answered from the model manifest's Publisher, which is the model's own
+        /// declaration of who owns it — not a name list that goes stale with every
+        /// release, and not the layer (a partner solution can sit in a low layer).
+        ///
+        /// Default-allow on purpose: an unreadable manifest, or a model the manifest
+        /// does not enumerate, answers false. A guard that cannot see the evidence must
+        /// not start refusing writes that work today; the cost of the rare miss is the
+        /// behaviour we already had, while a false positive would block a customer's own
+        /// model with no way around it from inside the tool.
+        /// </summary>
+        private bool IsMicrosoftModel(string? modelName)
+        {
+            if (string.IsNullOrWhiteSpace(modelName)) return false;
+            if (_microsoftModelCache.TryGetValue(modelName!, out var cached)) return cached;
+
+            var isMicrosoft = false;
+            try
+            {
+                var manifest = _provider.ModelManifest;
+                if (manifest != null)
+                {
+                    foreach (var mi in manifest.ListModelInfos())
+                    {
+                        if (!string.Equals(mi.Name, modelName, StringComparison.OrdinalIgnoreCase)) continue;
+                        isMicrosoft = (mi.Publisher ?? "").IndexOf("Microsoft", StringComparison.OrdinalIgnoreCase) >= 0;
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WriteService] Publisher lookup failed for model '{modelName}': {ex.Message}");
+            }
+
+            _microsoftModelCache[modelName!] = isMicrosoft;
+            return isMicrosoft;
+        }
+
+        /// <summary>
+        /// Refuses a write into a Microsoft-shipped model.
+        ///
+        /// The bridge resolves its target by NAME and writes wherever that name lives, so
+        /// nothing about a request distinguishes "modify my object" from "modify the base
+        /// application". The TS modify path checks ownership from the resolved FILE path,
+        /// but that is a different resolution than the one the bridge performs and it is
+        /// not on every route into these methods (batchModify, a direct RPC). This is the
+        /// check at the point of the actual write.
+        /// </summary>
+        private void AssertModelWritable(ModelSaveInfo? msi, string operation, string objectName, string alternative)
+        {
+            if (msi == null || !IsMicrosoftModel(msi.Name)) return;
+            throw new InvalidOperationException(
+                $"Refusing {operation} on '{objectName}': it belongs to Microsoft-shipped model '{msi.Name}'. " +
+                $"Writing into the base application is not repeatable — the next platform update overwrites it. {alternative}");
         }
 
         // ========================
@@ -638,10 +716,15 @@ namespace D365MetadataBridge.Services
                 default: axEdt = new AxEdtString { Name = name }; break;
             }
 
+            // stringSize on a non-string base type is the common miss here (see
+            // SetAxEdtProperty): the EDT is created either way, so report the drop rather
+            // than fail the create — but do not let it pass as applied.
+            var unsupportedProperties = new List<string>();
             if (properties != null)
             {
                 foreach (var kv in properties)
-                    SetAxEdtProperty(axEdt, kv.Key, kv.Value);
+                    if (!SetAxEdtProperty(axEdt, kv.Key, kv.Value))
+                        unsupportedProperties.Add(kv.Key);
             }
 
             var edtProvider = _provider.Edts as IMetaEdtProvider
@@ -649,7 +732,7 @@ namespace D365MetadataBridge.Services
             edtProvider.Create(axEdt, msi);
 
             var filePath = GetExpectedPath("AxEdt", name, modelName);
-            return new { success = true, objectType = "edt", objectName = name, modelName, filePath, api = "IMetaEdtProvider.Create" };
+            return new { success = true, objectType = "edt", objectName = name, modelName, filePath, unsupportedProperties, api = "IMetaEdtProvider.Create" };
         }
 
         /// <summary>
@@ -682,10 +765,14 @@ namespace D365MetadataBridge.Services
             }
             axQuery.Name = name;
 
+            // The concrete subclass decides which of these exist at all (SetAxQueryProperty),
+            // so what could not be written is part of the answer.
+            var unsupportedProperties = new List<string>();
             if (properties != null)
             {
                 foreach (var kv in properties)
-                    SetAxQueryProperty(axQuery, kv.Key, kv.Value);
+                    if (!SetAxQueryProperty(axQuery, kv.Key, kv.Value))
+                        unsupportedProperties.Add(kv.Key);
             }
 
             var queryProvider = _provider.Queries as IMetaQueryProvider
@@ -693,7 +780,7 @@ namespace D365MetadataBridge.Services
             queryProvider.Create(axQuery, msi);
 
             var filePath = GetExpectedPath("AxQuery", name, modelName);
-            return new { success = true, objectType = "query", objectName = name, modelName, filePath, api = "IMetaQueryProvider.Create" };
+            return new { success = true, objectType = "query", objectName = name, modelName, filePath, unsupportedProperties, api = "IMetaQueryProvider.Create" };
         }
 
         /// <summary>
@@ -739,18 +826,14 @@ namespace D365MetadataBridge.Services
                 ?? throw new ArgumentException($"Model '{modelName}' not found in {_packagesPath}");
             var axMI = new AxMenuItemAction { Name = name };
 
-            if (properties != null)
-            {
-                foreach (var kv in properties)
-                    SetAxMenuItemProperty(axMI, kv.Key, kv.Value);
-            }
+            var unsupportedProperties = ApplyMenuItemProperties(axMI, properties);
 
             var provider = _provider.MenuItemActions as IMetaMenuItemActionProvider
                 ?? throw new InvalidOperationException("DiskProvider.MenuItemActions does not implement IMetaMenuItemActionProvider");
             provider.Create(axMI, msi);
 
             var filePath = GetExpectedPath("AxMenuItemAction", name, modelName);
-            return new { success = true, objectType = "menu-item-action", objectName = name, modelName, filePath, api = "IMetaMenuItemActionProvider.Create" };
+            return new { success = true, objectType = "menu-item-action", objectName = name, modelName, filePath, unsupportedProperties, api = "IMetaMenuItemActionProvider.Create" };
         }
 
         /// <summary>
@@ -762,18 +845,14 @@ namespace D365MetadataBridge.Services
                 ?? throw new ArgumentException($"Model '{modelName}' not found in {_packagesPath}");
             var axMI = new AxMenuItemDisplay { Name = name };
 
-            if (properties != null)
-            {
-                foreach (var kv in properties)
-                    SetAxMenuItemProperty(axMI, kv.Key, kv.Value);
-            }
+            var unsupportedProperties = ApplyMenuItemProperties(axMI, properties);
 
             var provider = _provider.MenuItemDisplays as IMetaMenuItemDisplayProvider
                 ?? throw new InvalidOperationException("DiskProvider.MenuItemDisplays does not implement IMetaMenuItemDisplayProvider");
             provider.Create(axMI, msi);
 
             var filePath = GetExpectedPath("AxMenuItemDisplay", name, modelName);
-            return new { success = true, objectType = "menu-item-display", objectName = name, modelName, filePath, api = "IMetaMenuItemDisplayProvider.Create" };
+            return new { success = true, objectType = "menu-item-display", objectName = name, modelName, filePath, unsupportedProperties, api = "IMetaMenuItemDisplayProvider.Create" };
         }
 
         /// <summary>
@@ -785,18 +864,29 @@ namespace D365MetadataBridge.Services
                 ?? throw new ArgumentException($"Model '{modelName}' not found in {_packagesPath}");
             var axMI = new AxMenuItemOutput { Name = name };
 
-            if (properties != null)
-            {
-                foreach (var kv in properties)
-                    SetAxMenuItemProperty(axMI, kv.Key, kv.Value);
-            }
+            var unsupportedProperties = ApplyMenuItemProperties(axMI, properties);
 
             var provider = _provider.MenuItemOutputs as IMetaMenuItemOutputProvider
                 ?? throw new InvalidOperationException("DiskProvider.MenuItemOutputs does not implement IMetaMenuItemOutputProvider");
             provider.Create(axMI, msi);
 
             var filePath = GetExpectedPath("AxMenuItemOutput", name, modelName);
-            return new { success = true, objectType = "menu-item-output", objectName = name, modelName, filePath, api = "IMetaMenuItemOutputProvider.Create" };
+            return new { success = true, objectType = "menu-item-output", objectName = name, modelName, filePath, unsupportedProperties, api = "IMetaMenuItemOutputProvider.Create" };
+        }
+
+        /// <summary>
+        /// Applies a property bag to any of the three menu item types and returns the keys
+        /// that did NOT apply. Shared because Action/Display/Output differ only in their
+        /// provider — the property surface is AxMenuItem's for all three.
+        /// </summary>
+        private List<string> ApplyMenuItemProperties(dynamic axMI, Dictionary<string, string>? properties)
+        {
+            var unsupported = new List<string>();
+            if (properties == null) return unsupported;
+            foreach (var kv in properties)
+                if (!SetAxMenuItemProperty(axMI, kv.Key, kv.Value))
+                    unsupported.Add(kv.Key);
+            return unsupported;
         }
 
         /// <summary>
@@ -2710,7 +2800,20 @@ namespace D365MetadataBridge.Services
         }
 
         /// <summary>
-        /// Renames a field on a table or table-extension. Also fixes index DataField refs, field group refs, and (for tables) TitleField1/2.
+        /// Renames a field on a table or table-extension, repointing every reference to it
+        /// that lives on the same object: indexes, full-text indexes, field groups, relation
+        /// constraints, Map connections and (for tables) TitleField1/2.
+        ///
+        /// Relations, FullTextIndexes and Mappings used to be skipped, and the reported
+        /// success was the whole problem: the rename left them pointing at a field name that
+        /// no longer exists, so the very next build failed on the renamed table while the
+        /// tool had already said ✅ and moved on. Nothing here can be left to the caller —
+        /// a dangling DataField is not a warning in D365FO, it is a compile error.
+        ///
+        /// Out of scope, and deliberately so: references from OTHER objects (a foreign
+        /// table's relation whose RelatedField names this field, forms, X++ code). They are
+        /// separate files under separate model ownership; find_references over the xref
+        /// database is the tool for those.
         /// </summary>
         public object RenameField(string tableName, string oldName, string newName)
         {
@@ -2727,31 +2830,27 @@ namespace D365MetadataBridge.Services
                 if (target == null)
                     throw new InvalidOperationException($"Field '{oldName}' not found on table '{tableName}'");
                 target.Name = newName;
-                // Fix index DataField references
-                foreach (AxTableIndex idx in axTable.Indexes)
+
+                var repointed = new Dictionary<string, int>
                 {
-                    foreach (AxTableIndexField ixf in idx.Fields)
-                    {
-                        if (string.Equals(ixf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
-                            ixf.DataField = newName;
-                    }
-                }
-                // Fix TitleField1/2
+                    ["indexes"] = RepointIndexFields(axTable.Indexes, oldName, newName),
+                    ["fullTextIndexes"] = RepointFullTextIndexFields(axTable.FullTextIndexes, oldName, newName),
+                    ["fieldGroups"] = RepointFieldGroupFields(axTable.FieldGroups, oldName, newName),
+                    ["relationConstraints"] = RepointRelationFields(axTable.Relations, oldName, newName),
+                    ["mappingConnections"] = RepointMappingFields(axTable.Mappings, oldName, newName),
+                };
+
+                // TitleField1/2 hold a field name directly (no wrapper element); extensions
+                // have no equivalent because the base table owns those properties.
+                var titleFields = 0;
                 if (string.Equals(axTable.TitleField1, oldName, StringComparison.OrdinalIgnoreCase))
-                    axTable.TitleField1 = newName;
+                { axTable.TitleField1 = newName; titleFields++; }
                 if (string.Equals(axTable.TitleField2, oldName, StringComparison.OrdinalIgnoreCase))
-                    axTable.TitleField2 = newName;
-                // Fix field group references
-                foreach (AxTableFieldGroup fg in axTable.FieldGroups)
-                {
-                    foreach (AxTableFieldGroupField fgf in fg.Fields)
-                    {
-                        if (string.Equals(fgf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
-                            fgf.DataField = newName;
-                    }
-                }
+                { axTable.TitleField2 = newName; titleFields++; }
+                repointed["titleFields"] = titleFields;
+
                 ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-                return new { success = true, operation = "rename-field", objectName = tableName, oldName, newName, api = "IMetaTableProvider.Update" };
+                return new { success = true, operation = "rename-field", objectName = tableName, oldName, newName, repointedReferences = repointed, api = "IMetaTableProvider.Update" };
             }
 
             var axExt = _provider.TableExtensions.Read(tableName);
@@ -2767,31 +2866,138 @@ namespace D365MetadataBridge.Services
                 if (target == null)
                     throw new InvalidOperationException($"Field '{oldName}' not found on table-extension '{tableName}'");
                 target.Name = newName;
-                // Fix index DataField references
-                foreach (AxTableIndex idx in axExt.Indexes)
+
+                // An extension carries the same collections plus two of its own:
+                // FieldGroupExtensions (fields appended to a BASE table's group) and
+                // RelationExtensions (constraints appended to a BASE table's relation).
+                // Both can name a field this extension declares, so both must move too.
+                var repointedExt = new Dictionary<string, int>
                 {
-                    foreach (AxTableIndexField ixf in idx.Fields)
-                    {
-                        if (string.Equals(ixf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
-                            ixf.DataField = newName;
-                    }
-                }
-                // Fix field group references (TitleField1/2 not applicable to extensions)
-                foreach (AxTableFieldGroup fg in axExt.FieldGroups)
-                {
-                    foreach (AxTableFieldGroupField fgf in fg.Fields)
-                    {
-                        if (string.Equals(fgf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
-                            fgf.DataField = newName;
-                    }
-                }
+                    ["indexes"] = RepointIndexFields(axExt.Indexes, oldName, newName),
+                    ["fullTextIndexes"] = RepointFullTextIndexFields(axExt.FullTextIndexes, oldName, newName),
+                    ["fieldGroups"] = RepointFieldGroupFields(axExt.FieldGroups, oldName, newName),
+                    ["relationConstraints"] = RepointRelationFields(axExt.Relations, oldName, newName),
+                    ["mappingConnections"] = RepointMappingFields(axExt.Mappings, oldName, newName),
+                };
+
+                var fieldGroupExtensions = 0;
+                foreach (AxTableFieldGroupExtension fge in axExt.FieldGroupExtensions)
+                    fieldGroupExtensions += RepointFieldGroupFieldList(fge.Fields, oldName, newName);
+                repointedExt["fieldGroupExtensions"] = fieldGroupExtensions;
+
+                var relationExtensions = 0;
+                foreach (AxTableRelationExtension re in axExt.RelationExtensions)
+                    relationExtensions += RepointConstraintFields(re.RelationConstraints, oldName, newName);
+                repointedExt["relationExtensions"] = relationExtensions;
+
                 var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
                     ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
                 extProvider.Update(axExt, msi);
-                return new { success = true, operation = "rename-field", objectName = tableName, oldName, newName, api = "IMetaTableExtensionProvider.Update" };
+                return new { success = true, operation = "rename-field", objectName = tableName, oldName, newName, repointedReferences = repointedExt, api = "IMetaTableExtensionProvider.Update" };
             }
 
             throw new ArgumentException($"Table or table-extension '{tableName}' not found");
+        }
+
+        // ── rename-field reference repointing ──
+        // One helper per collection that can name a table field, each returning how many
+        // references it moved so RenameField can report the repair instead of asserting it.
+
+        private static int RepointIndexFields(IEnumerable<AxTableIndex> indexes, string oldName, string newName)
+        {
+            var moved = 0;
+            foreach (AxTableIndex idx in indexes)
+            {
+                foreach (AxTableIndexField ixf in idx.Fields)
+                {
+                    if (string.Equals(ixf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
+                    { ixf.DataField = newName; moved++; }
+                }
+            }
+            return moved;
+        }
+
+        /// <summary>
+        /// FullTextIndexes is a collection of its own (AxTableFullTextIndex), separate from
+        /// Indexes, but its entries are the same AxTableIndexField elements.
+        /// </summary>
+        private static int RepointFullTextIndexFields(IEnumerable<AxTableFullTextIndex> indexes, string oldName, string newName)
+        {
+            var moved = 0;
+            foreach (AxTableFullTextIndex idx in indexes)
+            {
+                foreach (AxTableIndexField ixf in idx.Fields)
+                {
+                    if (string.Equals(ixf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
+                    { ixf.DataField = newName; moved++; }
+                }
+            }
+            return moved;
+        }
+
+        private static int RepointFieldGroupFields(IEnumerable<AxTableFieldGroup> groups, string oldName, string newName)
+        {
+            var moved = 0;
+            foreach (AxTableFieldGroup fg in groups)
+                moved += RepointFieldGroupFieldList(fg.Fields, oldName, newName);
+            return moved;
+        }
+
+        private static int RepointFieldGroupFieldList(IEnumerable<AxTableFieldGroupField> fields, string oldName, string newName)
+        {
+            var moved = 0;
+            foreach (AxTableFieldGroupField fgf in fields)
+            {
+                if (string.Equals(fgf.DataField, oldName, StringComparison.OrdinalIgnoreCase))
+                { fgf.DataField = newName; moved++; }
+            }
+            return moved;
+        }
+
+        private static int RepointRelationFields(IEnumerable<AxTableRelation> relations, string oldName, string newName)
+        {
+            var moved = 0;
+            foreach (AxTableRelation rel in relations)
+                moved += RepointConstraintFields(rel.Constraints, oldName, newName);
+            return moved;
+        }
+
+        /// <summary>
+        /// Only the LOCAL side of a constraint is ours to rename: Field names a column on
+        /// this table, RelatedField names one on the related table. Two constraint kinds
+        /// carry a local Field (…ConstraintField and …ConstraintFixed); …ConstraintRelatedFixed
+        /// has none. The constraint's own Name is left alone — it is an element identifier the
+        /// compiler never resolves against the field list, so rewriting it would be churn.
+        /// </summary>
+        private static int RepointConstraintFields(IEnumerable<AxTableRelationConstraint> constraints, string oldName, string newName)
+        {
+            var moved = 0;
+            foreach (AxTableRelationConstraint c in constraints)
+            {
+                if (c is AxTableRelationConstraintField cf && string.Equals(cf.Field, oldName, StringComparison.OrdinalIgnoreCase))
+                { cf.Field = newName; moved++; }
+                else if (c is AxTableRelationConstraintFixed cx && string.Equals(cx.Field, oldName, StringComparison.OrdinalIgnoreCase))
+                { cx.Field = newName; moved++; }
+            }
+            return moved;
+        }
+
+        /// <summary>
+        /// In an AxTableMapping connection, MapField names the field on the MAP and MapFieldTo
+        /// names the field on this table — so a local rename moves MapFieldTo only.
+        /// </summary>
+        private static int RepointMappingFields(IEnumerable<AxTableMapping> mappings, string oldName, string newName)
+        {
+            var moved = 0;
+            foreach (AxTableMapping m in mappings)
+            {
+                foreach (AxTableMappingConnection c in m.Connections)
+                {
+                    if (string.Equals(c.MapFieldTo, oldName, StringComparison.OrdinalIgnoreCase))
+                    { c.MapFieldTo = newName; moved++; }
+                }
+            }
+            return moved;
         }
 
         /// <summary>Removes a field from a table or table-extension.</summary>
@@ -2891,6 +3097,13 @@ namespace D365MetadataBridge.Services
         /// only take new values through an AxEnumExtension, so without it the ONLY write
         /// path to a shipped enum was create-time (CreateEnumExtension) — an extension with
         /// a wrong or missing value had no repair path at all.
+        ///
+        /// Base-first resolution is what makes the ownership guard necessary here rather
+        /// than optional. Ask for a value on "SalesStatus" and Enums.Read hits Microsoft's
+        /// enum; the extension branch is never reached, because an extension is named
+        /// "SalesStatus.&lt;Something&gt;Extension" and no caller asking for the base ever
+        /// spells that. So the natural request — "add a value to this shipped enum" — wrote
+        /// the value straight into ApplicationSuite and reported success.
         /// </summary>
         public object AddEnumValue(string enumName, string valueName, int value, string? label, string? countryRegionCodes = null)
         {
@@ -2902,6 +3115,9 @@ namespace D365MetadataBridge.Services
             if (axEnum != null)
             {
                 var msi = GetModelSaveInfoForObject(_provider.Enums, enumName);
+                AssertModelWritable(msi, "add-enum-value", enumName,
+                    $"Extend it instead: create an enum-extension of '{enumName}' in your own model " +
+                    "(the base enum must have IsExtensible=Yes), then add the value to that extension.");
                 axEnum.AddEnumValue(axVal);
                 ((IMetaEnumProvider)_provider.Enums).Update(axEnum, msi);
                 return new { success = true, operation = "add-enum-value", objectName = enumName, valueName, value, api = "IMetaEnumProvider.Update" };
@@ -2911,6 +3127,10 @@ namespace D365MetadataBridge.Services
             if (axExt != null)
             {
                 var msi = GetModelSaveInfoForObject(_provider.EnumExtensions, enumName);
+                // An extension is the sanctioned route, but not when the extension itself is
+                // Microsoft's — that is still the base application.
+                AssertModelWritable(msi, "add-enum-value", enumName,
+                    "Create your own enum-extension of the same base enum and add the value there.");
                 axExt.EnumValues.Add(axVal);
                 var extProvider = _provider.EnumExtensions as IMetaEnumExtensionProvider
                     ?? throw new InvalidOperationException("IMetaEnumExtensionProvider not available");
@@ -3200,11 +3420,18 @@ namespace D365MetadataBridge.Services
                     "Pass parentControl=\"Design\" (or omit it) to add a control at the top level of the form design.");
 
             // Create the control using reflection (AxFormControl is abstract)
-            var control = CreateFormControl(controlType, controlName, dataSource, dataField, label);
+            var control = CreateFormControl(controlType, controlName, dataSource, dataField, label, out var unsupportedProperties);
             AddChildControl(parent, control);
 
             ((IMetaFormProvider)_provider.Forms).Update(axForm, msi);
-            return new { success = true, operation = "add-control", objectName = formName, controlName, parentControl, controlType, api = "IMetaFormProvider.Update" };
+            return new
+            {
+                success = true, operation = "add-control", objectName = formName, controlName, parentControl, controlType,
+                // Same contract as the create ops: what was asked for and did NOT apply is
+                // named, so an unbound control cannot pass for a bound one.
+                unsupportedProperties,
+                api = "IMetaFormProvider.Update",
+            };
         }
 
         /// <summary>
@@ -3457,7 +3684,14 @@ namespace D365MetadataBridge.Services
                 case "helptext": edt.HelpText = value; break;
                 case "extends": edt.Extends = value; break;
                 case "stringsize":
-                    if (edt is AxEdtString strEdt && int.TryParse(value, out var ss)) strEdt.StringSize = ss;
+                    // Only AxEdtString has a StringSize. On an int/real/enum EDT there is
+                    // nowhere to put it — which used to fall straight through to `return true`,
+                    // so "set stringSize=60" on the wrong base type reported success over an
+                    // EDT whose length never changed.
+                    if (edt is not AxEdtString strEdt) return false;
+                    if (!int.TryParse(value, out var ss))
+                        throw new ArgumentException($"stringSize must be an integer — got '{value}'.");
+                    strEdt.StringSize = ss;
                     break;
                 case "referencetable": edt.ReferenceTable = value; break;
                 case "basetype": break; // handled at construction time
@@ -3472,16 +3706,23 @@ namespace D365MetadataBridge.Services
         {
             // AxQuery is abstract — properties may vary by subclass. Use dynamic for safety.
             dynamic dq = q;
+            // A subclass that does not carry the property throws on the assignment. That is a
+            // property NOT written, so it returns false (the caller turns that into an error /
+            // an unsupportedProperties entry) — it used to be caught, logged and reported as
+            // applied, which is the same hollow success as an unknown key.
             switch (prop.ToLowerInvariant())
             {
                 case "title":
-                    try { dq.Title = value; } catch { Console.Error.WriteLine($"[WriteService] AxQuery.Title not available on this subclass"); }
+                    try { dq.Title = value; }
+                    catch { Console.Error.WriteLine($"[WriteService] AxQuery.Title not available on this subclass"); return false; }
                     break;
                 case "description":
-                    try { dq.Description = value; } catch { Console.Error.WriteLine($"[WriteService] AxQuery.Description not available on this subclass"); }
+                    try { dq.Description = value; }
+                    catch { Console.Error.WriteLine($"[WriteService] AxQuery.Description not available on this subclass"); return false; }
                     break;
                 case "allowcrosscompany":
-                    try { dq.AllowCrossCompany = ParseNoYes(value); } catch { Console.Error.WriteLine($"[WriteService] AxQuery.AllowCrossCompany not available"); }
+                    try { dq.AllowCrossCompany = ParseNoYes(value); }
+                    catch { Console.Error.WriteLine($"[WriteService] AxQuery.AllowCrossCompany not available"); return false; }
                     break;
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxQuery property: {prop}");
@@ -3547,13 +3788,24 @@ namespace D365MetadataBridge.Services
                 case "label": mi.Label = value; break;
                 case "helptext": mi.HelpText = value; break;
                 case "object": mi.Object = value; break;
+                // A value the enum does not know is rejected with the legal ones, the way
+                // TableType / EntityCategory already are. Swallowing the failed parse left the
+                // property at its metamodel default and reported success, so a menu item asked
+                // for ObjectType=Form silently shipped pointing at nothing — and the caller
+                // only found out when the menu item did not open.
                 case "objecttype":
-                    if (Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.MenuItemObjectType>(value, true, out var ot))
-                        mi.ObjectType = ot;
+                    if (!Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.MenuItemObjectType>(value, true, out var ot))
+                        throw new ArgumentException(
+                            $"'{value}' is not a valid menu item ObjectType. Valid values: " +
+                            string.Join(", ", Enum.GetNames(typeof(Microsoft.Dynamics.AX.Metadata.Core.MetaModel.MenuItemObjectType))) + ".");
+                    mi.ObjectType = ot;
                     break;
                 case "openmode":
-                    if (Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.OpenMode>(value, true, out var om))
-                        mi.OpenMode = om;
+                    if (!Enum.TryParse<Microsoft.Dynamics.AX.Metadata.Core.MetaModel.OpenMode>(value, true, out var om))
+                        throw new ArgumentException(
+                            $"'{value}' is not a valid menu item OpenMode. Valid values: " +
+                            string.Join(", ", Enum.GetNames(typeof(Microsoft.Dynamics.AX.Metadata.Core.MetaModel.OpenMode))) + ".");
+                    mi.OpenMode = om;
                     break;
                 case "normalimage": mi.NormalImage = value; break;
                 case "imagelocation":
@@ -3926,7 +4178,7 @@ namespace D365MetadataBridge.Services
 
         /// <summary>Creates a form control of the specified type.</summary>
         private dynamic CreateFormControl(string controlType, string controlName,
-            string? dataSource, string? dataField, string? label)
+            string? dataSource, string? dataField, string? label, out List<string> unsupportedProperties)
         {
             // D365FO form control classes follow the naming convention AxForm{Type}Control
             // (e.g. AxFormStringControl, AxFormRealControl, AxFormGridControl) — verified
@@ -3983,17 +4235,27 @@ namespace D365MetadataBridge.Services
 
             dynamic ctrl = Activator.CreateInstance(ctrlType)!;
             ctrl.Name = controlName;
+
+            // Not every AxForm*Control carries these: a Group, Tab or CommandButton has no
+            // DataSource/DataField, and the assignment throws. Swallowing that produced the
+            // worst possible outcome — an UNBOUND control reported as added and bound, which
+            // renders as an empty control on the form and reads as a working one in the tool
+            // output. Report what did not stick; the caller decides whether that is fatal.
+            unsupportedProperties = new List<string>();
             if (!string.IsNullOrEmpty(dataSource))
             {
-                try { ctrl.DataSource = dataSource; } catch { }
+                try { ctrl.DataSource = dataSource; }
+                catch { unsupportedProperties.Add("dataSource"); }
             }
             if (!string.IsNullOrEmpty(dataField))
             {
-                try { ctrl.DataField = dataField; } catch { }
+                try { ctrl.DataField = dataField; }
+                catch { unsupportedProperties.Add("dataField"); }
             }
             if (!string.IsNullOrEmpty(label))
             {
-                try { ctrl.Label = label; } catch { }
+                try { ctrl.Label = label; }
+                catch { unsupportedProperties.Add("label"); }
             }
             return ctrl;
         }
