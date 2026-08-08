@@ -63,14 +63,8 @@ export const searchTool = {
               },
               type: {
                 type: 'string',
-                enum: ['class', 'table', 'field', 'method', 'enum', 'edt', 'form', 'query', 'view', 'report',
-                  'security-privilege', 'security-duty', 'security-role',
-                  'menu-item-display', 'menu-item-action', 'menu-item-output',
-                  'table-extension', 'class-extension', 'form-extension',
-                  'enum-extension', 'edt-extension', 'data-entity-extension',
-                  'all'],
                 default: 'all',
-                description: 'Filter by object type. Omit to inherit globalTypeFilter or default to "all"',
+                description: 'Filter by object type — same values as the top-level `type`. Omit to inherit globalTypeFilter or default to "all"',
               },
               limit: {
                 type: 'number',
@@ -96,17 +90,9 @@ export const searchTool = {
           description:
             '[batch] Default type filter for queries without an explicit per-query type. ' +
             'E.g. ["class"] restricts all untyped queries to classes. ' +
-            'Multiple values fan out each untyped query into one search per type.',
-          items: {
-            type: 'string',
-            enum: [
-              'class', 'table', 'form', 'field', 'method', 'enum', 'edt', 'query', 'view', 'report',
-              'security-privilege', 'security-duty', 'security-role',
-              'menu-item-display', 'menu-item-action', 'menu-item-output',
-              'table-extension', 'class-extension', 'form-extension',
-              'enum-extension', 'edt-extension', 'data-entity-extension',
-            ],
-          },
+            'Multiple values fan out each untyped query into one search per type. ' +
+            'Values: same as the top-level `type`, except "all" (which means "no filter" — omit this instead).',
+          items: { type: 'string' },
         },
         deduplicate: {
           type: 'boolean',

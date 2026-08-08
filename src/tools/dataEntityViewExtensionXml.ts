@@ -62,9 +62,7 @@ export interface AxDataEntityViewExtensionFieldGroupSpec {
   fields: string[];
 }
 
-function escapeXmlText(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+import { escapeXml as escapeXmlText } from '../utils/xmlEscape.js';
 
 /**
  * Sub-elements of AxDataEntityViewField, in shipped order: the presentation

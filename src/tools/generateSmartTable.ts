@@ -1104,6 +1104,18 @@ export async function handleGenerateSmartTable(
 }
 
 /**
+ * Resolved EDT base types for this session. Only RESOLVED answers go in —
+ * "undefined" is also what a same-session EDT returns before the provider rebuild
+ * that created it lands, so caching that would freeze the wrong answer in.
+ */
+const edtBaseTypeCache = new Map<string, string>();
+
+/** Forget memoized EDT base types (test isolation). */
+export function resetEdtBaseTypeCache(): void {
+  edtBaseTypeCache.clear();
+}
+
+/**
  * Resolve an EDT's primitive base type via the C# bridge (live IMetadataProvider).
  *
  * The bridge reads the real AxEdt element type (AxEdtDate/AxEdtReal/AxEdtInt64/…),
@@ -1113,13 +1125,21 @@ export async function handleGenerateSmartTable(
  * (String/Integer/Real/Date/Int64/Guid/…), or undefined when the bridge is
  * unavailable, doesn't know the EDT, or reports it as Enum (enum-backed EDTs are
  * handled separately via the enumType path, so we must not emit a bare "Enum" here).
+ *
+ * Memoized: a table with 20 fields issued 20 readEdt round trips into the C# process
+ * for values that cannot change under it, and the same EDTs recur across every table
+ * in a scaffold.
  */
 export async function bridgeEdtBaseType(bridge: BridgeClient | undefined, edtName: string): Promise<string | undefined> {
   if (!bridge?.isReady) return undefined;
+  const cacheKey = edtName.toLowerCase();
+  const cached = edtBaseTypeCache.get(cacheKey);
+  if (cached !== undefined) return cached;
   try {
     const info = await bridge.readEdt(edtName);
     const bt = (info as any)?.baseType;
     if (typeof bt !== 'string' || bt.length === 0 || bt === 'Enum') return undefined;
+    edtBaseTypeCache.set(cacheKey, bt);
     return bt;
   } catch {
     return undefined;

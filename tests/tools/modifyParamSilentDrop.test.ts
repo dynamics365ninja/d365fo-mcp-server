@@ -129,6 +129,10 @@ vi.mock('fs/promises', () => ({
   stat: vi.fn(async () => ({ isFile: () => true, isDirectory: () => false })),
   readdir: vi.fn(async () => []),
   copyFile: vi.fn(async () => {}),
+  // The direct-XML writes go through writeFileAtomic: a temp sibling written with
+  // writeFile, then renamed over the target (rm cleans the temp up on failure).
+  rename: vi.fn(async () => {}),
+  rm: vi.fn(async () => {}),
 }));
 
 vi.mock('../../src/utils/configManager', () => ({
@@ -197,10 +201,17 @@ const buildContext = (): XppServerContext => {
   };
 };
 
-/** XML of the last write to the object file. */
+/**
+ * XML of the last write to the object file. The direct-XML path writes through
+ * writeFileAtomic, whose writeFile call targets a temp sibling
+ * (`<object>.xml.tmp-<pid>-<n>`) that is then renamed over the object — so the
+ * path to recognise is the .xml with an optional temp suffix.
+ */
 function writtenXml(): string | undefined {
   const calls = mockWriteFile.mock.calls as unknown as Array<[string, string, string]>;
-  const hit = [...calls].reverse().find(c => typeof c[0] === 'string' && c[0].endsWith('.xml') && !c[0].includes('.backup'));
+  const hit = [...calls].reverse().find(
+    c => typeof c[0] === 'string' && /\.xml(\.tmp-[^\\/]*)?$/.test(c[0]) && !c[0].includes('.backup'),
+  );
   return hit?.[1];
 }
 

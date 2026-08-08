@@ -39,7 +39,6 @@ export const LOCAL_TOOLS = new Set([
   'review_workspace_changes',
   'undo_last_modification',
   'get_workspace_info',
-  'get_method',
 ]);
 
 /**
@@ -105,11 +104,8 @@ export function isToolAllowedInMode(mode: ServerMode, toolName: string): boolean
  *  - validate_code   → advisory X++ lint; run_bp_check and the compiler are the
  *                      authoritative gates and both stay in core.
  *  - security_info   → security-model inspection, its own kind of task.
- *  - get_method      → one method's source; get_object_info already returns them.
  *  - run_systest_class → test execution, a separate phase (and gated behind an
  *                      interactive console on most boxes).
- *  - suggest_edt     → EDT resolution already runs inside generate_object and
- *                      d365fo_file field handling.
  *
  * generate_object and trigger_db_sync are kept IN core against the raw
  * never-called list from the audit: scaffolding is load-bearing for the create

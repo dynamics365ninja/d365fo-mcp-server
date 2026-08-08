@@ -7,6 +7,7 @@ import {
   isToolAllowedInMode, isToolInProfile,
 } from '../server/serverMode.js';
 import { BRIDGE_BACKED_TOOLS, awaitBridgeReady } from '../bridge/bridgeReadiness.js';
+import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { searchUnifiedTool } from './searchUnified.js';
 import { getObjectInfoTool } from './getObjectInfo.js';
 import { findReferencesTool } from './findReferences.js';
@@ -210,6 +211,16 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       if (elapsed > 200) {
         console.error(`[toolHandler] ⏳ ${toolName}: bridge was starting, waited ${elapsed} ms → ${outcome}`);
       }
+
+      // Settle any provider rebuild a previous write scheduled but did not wait
+      // for. Writers now schedule the rebuild instead of awaiting it (so it
+      // leaves the response path), which means the freshness guarantee has to be
+      // re-established by the READER — otherwise a get_object_info issued right
+      // after a create could see a provider up to SETTLE_MS staler than before.
+      // Every bridge-backed tool passes through here, so this is the one place
+      // that covers reads and writes alike; it is a synchronously-resolved
+      // no-op when nothing is outstanding, so it costs a tick, not 400 ms.
+      await debouncedRefresh.flush();
     }
 
     // Enforce server mode: block local tools in read-only (Azure) mode, block search/analysis
@@ -293,6 +304,11 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return d365foFileTool(request, context);
       case 'find_references':
         return findReferencesTool(request, context);
+      // get_method and suggest_edt are no longer PUBLISHED (their contracts moved
+      // into get_object_info options.method and prepare's fieldsHint, which both
+      // already had the object in hand). The routes stay so an agent still holding
+      // the old name from an earlier session gets its answer plus a pointer,
+      // rather than an "unknown tool" it cannot recover from.
       case 'get_method':
         return getMethodTool(request, context);
       case 'labels':
@@ -679,25 +695,39 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       };
     }
 
-    let capped = capToolResponse(toolName, result);
-    // Record metrics: detect empty result (no content or first text item is empty)
-    const firstText = capped?.content?.[0]?.text;
-    const isEmpty = !firstText || firstText.trim().length === 0 || firstText === 'No results returned';
-    finishMetrics(isEmpty);
+    // Everything from here on runs under try/finally, because the in-flight entry
+    // MUST be settled and dropped no matter what. A throw in capToolResponse (or in
+    // the metrics/dedup bookkeeping) used to skip resolve()+clearInFlight, leaving a
+    // promise in the map that nothing would ever settle — and from that moment every
+    // identical call coalesced onto it and hung forever, for the life of the process.
+    let capped: any = result;
+    try {
+      capped = capToolResponse(toolName, result);
+      // Record metrics: detect empty result (no content or first text item is empty)
+      const firstText = capped?.content?.[0]?.text;
+      const isEmpty = !firstText || firstText.trim().length === 0 || firstText === 'No results returned';
+      finishMetrics(isEmpty);
 
-    if (!DEDUP_EXCLUDED_TOOLS.has(toolName)) {
-      storeDedupResult(callKey, capped);
+      if (!DEDUP_EXCLUDED_TOOLS.has(toolName)) {
+        storeDedupResult(callKey, capped);
+        // Loop hint: 3+ identical calls in the recent window means the model is cycling.
+        if (occurrences >= 3) {
+          capped = appendNote(
+            capped,
+            `> ⚠️ Loop detected: this is occurrence #${occurrences} of the exact same ${toolName} call. ` +
+            `The answer does not change between calls. If you are missing information, ` +
+            `use a DIFFERENT tool or different parameters (see suggestions above), or ask the user.`,
+          );
+        }
+      }
+    } catch (err) {
+      // The tool itself already succeeded; only the post-processing failed. Return
+      // the uncapped result rather than converting a good answer into an error.
+      console.error(`[toolHandler] ⚠️ ${toolName}: response post-processing failed: ${err}`);
+      capped = result;
+    } finally {
       inFlightHandle?.resolve(capped);
       clearInFlight(callKey);
-      // Loop hint: 3+ identical calls in the recent window means the model is cycling.
-      if (occurrences >= 3) {
-        capped = appendNote(
-          capped,
-          `> ⚠️ Loop detected: this is occurrence #${occurrences} of the exact same ${toolName} call. ` +
-          `The answer does not change between calls. If you are missing information, ` +
-          `use a DIFFERENT tool or different parameters (see suggestions above), or ask the user.`,
-        );
-      }
     }
     return capped;
   });

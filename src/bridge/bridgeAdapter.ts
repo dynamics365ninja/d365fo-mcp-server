@@ -1246,6 +1246,20 @@ const BRIDGE_MODIFY_TYPES = new Set([
 ]);
 
 /**
+ * Names the properties the bridge could not write, for appending to a success message.
+ *
+ * The C# side has reported `unsupportedProperties` for a while, but nothing on this side
+ * read it: an EDT whose stringSize had nowhere to go, or a Group control that cannot hold
+ * the DataSource it was handed, still produced a bare ✅. Reporting it in C# and dropping
+ * it here is the same silence with more steps.
+ */
+export function unappliedSuffix(result: { unsupportedProperties?: string[] }): string {
+  const dropped = result.unsupportedProperties ?? [];
+  if (dropped.length === 0) return '';
+  return `\n⚠️ NOT applied — this object type has nowhere to store them: ${dropped.join(', ')}`;
+}
+
+/**
  * Checks if bridge can handle this create operation.
  */
 export function canBridgeCreate(objectType: string): boolean {
@@ -1288,7 +1302,7 @@ export async function bridgeCreateObject(
       return {
         success: true,
         filePath: result.filePath,
-        message: `✅ Created via ${result.api ?? 'IMetadataProvider'} — file: ${result.filePath}`,
+        message: `✅ Created via ${result.api ?? 'IMetadataProvider'} — file: ${result.filePath}` + unappliedSuffix(result),
       };
     } else {
       return { success: false, message: `Bridge createObject returned success=false` };
@@ -1958,7 +1972,7 @@ export async function bridgeAddControl(
     return {
       success: result.success,
       message: result.success
-        ? `✅ Control '${controlName}' added to '${parentControl}' via ${result.api}`
+        ? `✅ Control '${controlName}' added to '${parentControl}' via ${result.api}` + unappliedSuffix(result)
         : `Bridge addControl returned success=false`,
     };
   } catch (e) {
