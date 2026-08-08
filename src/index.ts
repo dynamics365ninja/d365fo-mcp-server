@@ -789,7 +789,7 @@ async function main() {
           { name: 'verify_d365fo_project',        desc: 'Verify objects exist on disk and are referenced in the .rnrproj project file' },
         ]},
         { icon: '🏗️ ', category: 'SDLC & Build Tools', tools: [
-          { name: 'update_symbol_index',          desc: 'Index a newly generated XML file immediately (no restart needed)' },
+          { name: 'update_symbol_index',          desc: 'Re-index a file changed outside this server (create/modify refresh it themselves)' },
           { name: 'build_d365fo_project',         desc: 'Run MSBuild compilation locally to capture errors' },
           { name: 'trigger_db_sync',              desc: 'Run a database sync for the current model' },
           { name: 'run_bp_check',                 desc: 'Run Microsoft Best Practices (xppbp.exe) analysis' },

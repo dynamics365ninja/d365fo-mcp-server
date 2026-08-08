@@ -1,0 +1,23 @@
+{
+  "id": "L0-create-readback-no-reindex",
+  "title": "Create then read back without a follow-up update_symbol_index",
+  "tier": 0,
+  "instruction": "Create a new extensible enum named DemoIndexProbeStatus in the sandbox model with two values: Open (0) and Closed (1), label text Open = 'Open', Closed = 'Closed'. Then read it back with get_object_info(objectType=\"enum\") and report its values. Use exactly ONE tool call for the read-back: d365fo_file(action=\"create\") refreshes the index on its way out, so do NOT call update_symbol_index in between — the enum must resolve without it. Known efficiency defect as of 2026-08-07 (#830, session audit #824): the tool description told the agent to call update_symbol_index after every create, costing a dedicated round trip per created object for a DiskProvider rebuild that could not see anything new. Fail conditions: the read-back needs an update_symbol_index call to resolve the enum, or the run spends a turn on update_symbol_index after the create.",
+  "target_artifact_types": [
+    "AxEnum"
+  ],
+  "golden_path": "eval/goldens/L0-create-readback-no-reindex/",
+  "golden_pending": true,
+  "ignore": [
+    "AxEnum/@Id",
+    "AxEnum/EnumValues/AxEnumValue/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "enum",
+    "index-freshness",
+    "tool-efficiency",
+    "mined"
+  ],
+  "split": "holdout"
+}

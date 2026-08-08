@@ -97,6 +97,46 @@ describe('update_symbol_index batching', () => {
     expect(result.content[0].text).toContain('already refreshed');
   });
 
+  // #830: the skip was silent, so the agent kept spending a round trip on it —
+  // four times in one audited session. A redundant call now says so first.
+  it('leads a redundant single-file call with the not-needed note', async () => {
+    const file = writeObject('Contoso', 'ConAlpha');
+    markRefreshStarted(Date.now() + 1000);
+
+    const { content } = await updateSymbolIndexTool({ filePath: file }, makeContext());
+    const text: string = content[0].text;
+
+    expect(text.startsWith('ℹ️ This call was not needed.')).toBe(true);
+    expect(text).toContain('d365fo_file');
+    expect(text).toContain('OUTSIDE this server');
+    // The note replaces the bridge line, it does not add a second one.
+    expect(text).not.toContain('Bridge provider refreshed');
+    // The SQLite reindex — the only thing that populates the symbol DB — still ran.
+    expect(text).toContain('Symbol index updated for **ConAlpha**');
+  });
+
+  it('leads a redundant batch call with the note too', async () => {
+    const files = ['ConAlpha', 'ConBeta'].map(n => writeObject('Contoso', n));
+    markRefreshStarted(Date.now() + 1000);
+
+    const { content } = await updateSymbolIndexTool({ filePath: files }, makeContext());
+    const text: string = content[0].text;
+
+    expect(refreshProvider).not.toHaveBeenCalled();
+    expect(text.startsWith('ℹ️ This call was not needed.')).toBe(true);
+    expect(text).toContain('2/2');
+  });
+
+  it('says nothing about redundancy when the refresh was genuinely needed', async () => {
+    markRefreshStarted(Date.now() - 60_000);
+    const file = writeObject('Contoso', 'ConAlpha');
+
+    const { content } = await updateSymbolIndexTool({ filePath: file }, makeContext());
+
+    expect(content[0].text).not.toContain('This call was not needed');
+    expect(content[0].text).toContain('Bridge provider refreshed');
+  });
+
   it('does refresh when a file changed after the last refresh', async () => {
     markRefreshStarted(Date.now() - 60_000);
     const file = writeObject('Contoso', 'ConAlpha');
