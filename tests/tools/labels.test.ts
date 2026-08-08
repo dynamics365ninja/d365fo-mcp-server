@@ -33,7 +33,7 @@ const mockAddToProject = vi.fn(async () => true);
 const mockAddLabelToProject = vi.fn(async (_proj: string, _id: string, langs: string[]): Promise<string[]> =>
   langs.map(l => `${_id}_${l}`));
 const mockFindProjectInSolution = vi.fn(async (_sol: string, _model: string): Promise<string | null> => null);
-vi.mock('../../src/tools/createD365File', () => ({
+vi.mock('../../src/workspace/projectFile', () => ({
   ProjectFileManager: vi.fn().mockImplementation(function(this: any) {
     this.addToProject = mockAddToProject;
     this.addLabelToProject = mockAddLabelToProject;

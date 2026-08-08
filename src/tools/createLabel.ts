@@ -24,7 +24,7 @@ import { PackageResolver } from '../utils/packageResolver.js';
 import { crossModelWriteRefusal } from '../utils/crossModelWriteGuard.js';
 import { detectEol } from '../utils/eolUtils.js';
 import { isExtensionLabelFile } from '../metadata/labelParser.js';
-import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
+import { ProjectFileManager, ProjectFileFinder } from '../workspace/projectFile.js';
 
 const UTF8_BOM = '\uFEFF';
 

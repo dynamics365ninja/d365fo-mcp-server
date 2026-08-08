@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { getConfigManager } from '../utils/configManager.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
-import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
+import { decodeXmlEntitiesFromXppSource } from '../utils/xmlEscape.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
 import { buildAxDataEntityXml, assertDataEntityIsFunctional } from './dataEntityXml.js';
 import {

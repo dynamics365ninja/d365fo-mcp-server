@@ -24,7 +24,7 @@ import {
   recordCreatedArtifact,
   lookupCreatedArtifact,
   _clearCreatedArtifactLedger,
-} from '../../src/tools/createdArtifactLedger';
+} from '../../src/workspace/createdArtifactLedger';
 
 let tmpDir: string;
 
@@ -118,7 +118,7 @@ describe('undo_last_modification — non-git ledger fallback', () => {
       '</Project>',
     ].join('\n'), 'utf-8');
 
-    const { ProjectFileManager } = await import('../../src/tools/createD365File');
+    const { ProjectFileManager } = await import('../../src/workspace/projectFile');
     await new ProjectFileManager().addToProject(projectPath, 'service', 'ConDemoNoteService', filePath);
     expect(fs.readFileSync(projectPath, 'utf-8')).toContain('Services\\');
 

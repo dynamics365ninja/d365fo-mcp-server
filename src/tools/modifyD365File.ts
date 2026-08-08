@@ -19,7 +19,6 @@ import path from 'path';
 import { parseStringPromise } from '../utils/xml.js';
 import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../utils/configManager.js';
 import { isStandardModel, resolveObjectPrefix, applyObjectPrefix, resolveRegularObjectPrefixToken } from '../utils/modelClassifier.js';
-import { PackageResolver } from '../utils/packageResolver.js';
 import { resolveDbPathLocally } from '../utils/metadataResolver.js';
 import { assertWritePathAllowed } from '../utils/pathContainment.js';
 import { withFileLock, writeFileAtomic } from '../utils/atomicFileWrite.js';
@@ -37,7 +36,7 @@ import {
   bridgeRefreshProvider,
 } from '../bridge/index.js';
 import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
-import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
+import { ProjectFileManager, ProjectFileFinder } from '../workspace/projectFile.js';
 import { heuristicEdtBaseType } from './generateSmartTable.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
 import {
@@ -61,44 +60,12 @@ import {
   findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
 } from './d365foFileOpSpecs.js';
 import { lookupSymbolNocase } from '../utils/symbolLookup.js';
+import { decodeXmlEntitiesFromXppSource } from '../utils/xmlEscape.js';
+import { findD365FileOnDisk } from '../utils/objectFileLookup.js';
 import {
   crossModelWriteRefusal, baseObjectOf, type ExistingExtension,
 } from '../utils/crossModelWriteGuard.js';
 
-/**
- * Decode the standard XML entities (&lt;, &gt;, &apos;, &quot;, &amp;) and normalise
- * line endings by stripping xml2js's &#xD; representation of carriage return.
- *
- * IMPORTANT: &amp; is decoded LAST so that sequences like `&amp;quot;` are first
- * turned into `&quot;` and can then, if desired, be decoded to `"`, avoiding
- * incorrect double-unescaping.
- */
-function decodeStandardXmlEntities(source: string): string {
-  return source
-    // xml2js Builder escapes \r as &#xD; — strip it to normalise to LF-only line endings
-    .replace(/&#xD;/g, '')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&apos;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&');
-}
-
-/**
- * Decode XML entities from X++ source code.
- *
- * X++ source should never contain entity-encoded characters — `/// <summary>`
- * doc comments, generic types like `List<str>`, and comparison operators like
- * `x < y` all use literal `<` and `>`.  When an AI model copies code from an
- * SSRS report's entity-encoded <Text> block and passes it as `methodCode`, the
- * entities would otherwise survive into the CDATA section and corrupt the source.
- *
- * This function decodes the 5 standard XML entities so that source code always
- * contains proper characters before it is stored in the XML object.
- */
-export function decodeXmlEntitiesFromXppSource(source: string): string {
-  return decodeStandardXmlEntities(source);
-}
 
 /**
  * Reject an X++ source payload that smuggles XML/CDATA structure.
@@ -3297,168 +3264,6 @@ async function resolveD365FileByName(
   return findD365FileOnDisk(objectType, objectName, modelName, packagePath);
 }
 
-/**
- * Filesystem fallback for findD365File.
- * Constructs the expected AOT file path from config/env and checks if it exists on disk.
- * This handles objects that were just created and are not yet indexed in the symbol database.
- */
-export async function findD365FileOnDisk(
-  objectType: string,
-  objectName: string,
-  modelName?: string,
-  explicitPackagePath?: string,
-): Promise<string | null> {
-  const folderMap: Record<string, string> = {
-    class: 'AxClass',
-    table: 'AxTable',
-    form: 'AxForm',
-    enum: 'AxEnum',
-    query: 'AxQuery',
-    view: 'AxView',
-    edt: 'AxEdt',
-    'data-entity': 'AxDataEntityView',
-    report: 'AxReport',
-    'table-extension': 'AxTableExtension',
-    'class-extension': 'AxClass',
-    'form-extension': 'AxFormExtension',
-    'enum-extension': 'AxEnumExtension',
-    'edt-extension': 'AxEdtExtension',
-    'data-entity-extension': 'AxDataEntityViewExtension',
-    'menu-item-display': 'AxMenuItemDisplay',
-    'menu-item-action': 'AxMenuItemAction',
-    'menu-item-output': 'AxMenuItemOutput',
-    'menu-item-display-extension': 'AxMenuItemDisplayExtension',
-    'menu-item-action-extension': 'AxMenuItemActionExtension',
-    'menu-item-output-extension': 'AxMenuItemOutputExtension',
-    menu: 'AxMenu',
-    'menu-extension': 'AxMenuExtension',
-    'security-privilege': 'AxSecurityPrivilege',
-    'security-duty': 'AxSecurityDuty',
-    'security-role': 'AxSecurityRole',
-  };
-
-  const objectFolder = folderMap[objectType];
-  if (!objectFolder) return null;
-
-  const configManager = getConfigManager();
-
-  // Ensure .mcp.json is loaded — lazy init so this works even when
-  // server startup did not call initializeConfig() before this tool ran.
-  await configManager.ensureLoaded();
-
-  // Resolve model name (same priority order as generateSmartTable):
-  //   1. Explicit arg (skip placeholders like "any")
-  //   2. .mcp.json context (modelName field or last segment of workspacePath)
-  //   3. Auto-detected model name (async, from .rnrproj scan)
-  //   4. D365FO_MODEL_NAME env var
-  const resolvedModel =
-    (modelName && modelName !== 'any' ? modelName : null) ||
-    configManager.getModelName() ||
-    (await configManager.getAutoDetectedModelName()) ||
-    process.env.D365FO_MODEL_NAME ||
-    null;
-
-  if (!resolvedModel) {
-    console.error('[modifyD365File] Filesystem fallback: could not resolve model name. ' +
-      'Provide modelName parameter, configure .mcp.json with modelName/projectPath, or set D365FO_MODEL_NAME env var.');
-    return null;
-  }
-
-  const configPackagePath =
-    configManager.getPackagePath() || fallbackPackagePath();
-
-  // Resolve the custom write root (D365FO_CUSTOM_PACKAGES_PATH).
-  // Try this before the MS PLD so we find repo-tracked objects first.
-  const customWritePath = await configManager.getCustomPackagesPath();
-
-  // Candidate 0: caller-supplied packagePath. Highest priority — the caller knows
-  // the model lives outside the default PackagesLocalDirectory (e.g. a repo checkout).
-  // Try both the package==model layout and a PackageResolver scan rooted here so a
-  // package!=model layout (e.g. package "ACAUTOCONT" / model "AC AUTOCONT") still resolves.
-  if (explicitPackagePath) {
-    const directPath = path.join(explicitPackagePath, resolvedModel, resolvedModel, objectFolder, `${objectName}.xml`);
-    try {
-      await fs.access(directPath);
-      console.error(`[modifyD365File] Found via explicit packagePath: ${directPath}`);
-      return directPath;
-    } catch { /* try resolver scan below */ }
-    try {
-      const resolver = new PackageResolver([explicitPackagePath]);
-      const resolved = await resolver.resolve(resolvedModel);
-      if (resolved) {
-        const resolvedPath = path.join(resolved.rootPath, resolved.packageName, resolvedModel, objectFolder, `${objectName}.xml`);
-        await fs.access(resolvedPath);
-        console.error(`[modifyD365File] Found via explicit packagePath (PackageResolver): ${resolvedPath}`);
-        return resolvedPath;
-      }
-    } catch { /* not found under explicit packagePath; fall through */ }
-  }
-
-  // Candidate 1: custom write root, package == model (most common for custom models)
-  if (customWritePath) {
-    const customCandidatePath = path.join(
-      customWritePath,
-      resolvedModel,
-      resolvedModel,
-      objectFolder,
-      `${objectName}.xml`
-    );
-    try {
-      await fs.access(customCandidatePath);
-      console.error(`[modifyD365File] Found via custom packages path: ${customCandidatePath}`);
-      return customCandidatePath;
-    } catch {
-      // Not at custom path; continue
-    }
-  }
-
-  // Candidate 2: MS PLD / configured packagePath, package == model (traditional fallback)
-  const candidatePath = path.join(
-    configPackagePath,
-    resolvedModel,
-    resolvedModel,
-    objectFolder,
-    `${objectName}.xml`
-  );
-
-  try {
-    await fs.access(candidatePath);
-    console.error(`[modifyD365File] Found via filesystem fallback: ${candidatePath}`);
-    return candidatePath;
-  } catch {
-    // Not at the default package==model path; try PackageResolver (UDE or custom layout)
-  }
-
-  // Candidate 3: PackageResolver scan — handles package != model layouts in both UDE
-  // and traditional setups with a custom root
-  try {
-    const envType = await configManager.getDevEnvironmentType();
-    const msPath = envType === 'ude' ? await configManager.getMicrosoftPackagesPath() : null;
-    const roots = [explicitPackagePath, customWritePath, msPath, configPackagePath].filter(Boolean) as string[];
-    const resolver = new PackageResolver(roots);
-    const resolved = await resolver.resolve(resolvedModel);
-    if (resolved) {
-      const resolvedPath = path.join(
-        resolved.rootPath,
-        resolved.packageName,
-        resolvedModel,
-        objectFolder,
-        `${objectName}.xml`
-      );
-      try {
-        await fs.access(resolvedPath);
-        console.error(`[modifyD365File] Found via PackageResolver: ${resolvedPath}`);
-        return resolvedPath;
-      } catch {
-        // Not found at resolved path either
-      }
-    }
-  } catch {
-    // PackageResolver failed — skip silently
-  }
-
-  return null;
-}
 
 /**
  * Create file backup and verify it was written successfully.

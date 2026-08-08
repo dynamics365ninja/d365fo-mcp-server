@@ -23,7 +23,7 @@ import {
   indexedSourceNote,
   bridgeUnavailableNote,
 } from '../utils/indexedXmlLookup.js';
-import { findD365FileOnDisk } from './modifyD365File.js';
+import { findD365FileOnDisk } from '../utils/objectFileLookup.js';
 
 const GetViewInfoArgsSchema = z.object({
   viewName: z.string().describe('Name of the view or data entity'),

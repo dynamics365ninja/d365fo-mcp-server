@@ -33,7 +33,7 @@ import {
   bridgeEdtBaseType,
 } from './generateSmartTable.js';
 import type { BridgeClient } from '../bridge/bridgeClient.js';
-import { ProjectFileManager } from './createD365File.js';
+import { ProjectFileManager } from '../workspace/projectFile.js';
 import path from 'path';
 import fs from 'fs';
 import { getConfigManager } from '../utils/configManager.js';

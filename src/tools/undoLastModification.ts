@@ -6,7 +6,7 @@ import path from 'path';
 import type { XppServerContext } from '../types/context.js';
 import { bridgeRefreshProvider } from '../bridge/index.js';
 import { isFileUnderRoot } from '../utils/pathContainment.js';
-import { lookupCreatedArtifact, forgetCreatedArtifact, type CreatedArtifact } from './createdArtifactLedger.js';
+import { lookupCreatedArtifact, forgetCreatedArtifact, type CreatedArtifact } from '../workspace/createdArtifactLedger.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -230,7 +230,7 @@ async function undoViaLedger(
 async function removeFromProjectSafe(entry: CreatedArtifact): Promise<void> {
   if (!entry.projectPath || !entry.objectType || !entry.objectName) return;
   try {
-    const { ProjectFileManager } = await import('./createD365File.js');
+    const { ProjectFileManager } = await import('../workspace/projectFile.js');
     await new ProjectFileManager().removeFromProject(entry.projectPath, entry.objectType, entry.objectName);
   } catch (e) {
     console.error(`[undo] Non-git project cleanup failed (non-fatal): ${e}`);

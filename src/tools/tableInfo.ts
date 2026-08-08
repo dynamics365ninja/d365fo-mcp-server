@@ -11,7 +11,7 @@ import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { findD365FileOnDisk } from './modifyD365File.js';
+import { findD365FileOnDisk } from '../utils/objectFileLookup.js';
 import { tryBridgeTable } from '../bridge/bridgeAdapter.js';
 import { bridgeUnavailableNote } from '../utils/indexedXmlLookup.js';
 import { pageFields, fieldsHeading, fieldsFooter, TABLE_FIELD_PAGE_SIZE } from '../utils/payloadBudget.js';

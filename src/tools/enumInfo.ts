@@ -20,7 +20,7 @@ import {
   indexedSourceNote,
   bridgeUnavailableNote,
 } from '../utils/indexedXmlLookup.js';
-import { findD365FileOnDisk } from './modifyD365File.js';
+import { findD365FileOnDisk } from '../utils/objectFileLookup.js';
 
 const GetEnumInfoArgsSchema = z.object({
   enumName: z.string().describe('Name of the enum'),

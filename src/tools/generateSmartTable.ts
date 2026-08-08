@@ -14,7 +14,7 @@ import fs from 'fs';
 import { getConfigManager } from '../utils/configManager.js';
 import { defaultPackagesRoot, describePackagesRootScan } from '../utils/packagesRoot.js';
 import { resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix } from '../utils/modelClassifier.js';
-import { ProjectFileManager } from './createD365File.js';
+import { ProjectFileManager } from '../workspace/projectFile.js';
 import { extractModelFromProject, findProjectInSolution } from '../utils/projectUtils.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
 import { lookupSymbolNocase } from '../utils/symbolLookup.js';
