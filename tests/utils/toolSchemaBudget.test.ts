@@ -55,10 +55,16 @@ const CHARS_PER_TOKEN = 4;
 //   • the 23-value object-type enum was inlined THREE times in `search`; the two
 //     nested copies now point at the top-level one.
 //
+// Raised DELIBERATELY, by 451 chars, to spend part of that headroom on
+// d365fo_file's operations[] (4,781 -> 5,232): several edits to one object in a
+// single call. This is the trade the trim was for — the description costs ~450
+// chars once per session, and it removes six or more round trips from every
+// ordinary table change, each of which re-bills the entire cached context.
+//
 // Headroom is small on purpose so creep is caught early: both ceilings are the
 // next round hundred above the measured payload.
-const TOTAL_BUDGET = 49_900;
-const LARGEST_TOOL_BUDGET = 4_800;
+const TOTAL_BUDGET = 50_300;
+const LARGEST_TOOL_BUDGET = 5_300;
 
 async function getTools(): Promise<Array<{ name: string }>> {
   const ctx: any = { symbolIndex: {}, parser: {} };
@@ -105,7 +111,7 @@ describe('tool schema token budget', () => {
     const tools = await getTools();
     const byName = new Map(tools.map(t => [t.name, t]));
 
-    for (const [name, cap] of [['d365fo_file', 5_000], ['generate_object', 3_400]] as const) {
+    for (const [name, cap] of [['d365fo_file', 5_300], ['generate_object', 3_400]] as const) {
       const tool: any = byName.get(name);
       expect(tool, `${name} is not published`).toBeDefined();
       const chars = JSON.stringify(tool).length;

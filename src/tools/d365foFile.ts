@@ -39,6 +39,116 @@ function subRequest(name: string, args: Record<string, unknown>): CallToolReques
   return { method: 'tools/call', params: { name, arguments: args } };
 }
 
+/** Ceiling on one batch — matches get_object_info's objects[] cap. */
+const MAX_BATCH_OPERATIONS = 20;
+
+/** Concatenated text of a tool result, for folding into the batch report. */
+function resultText(result: any): string {
+  return (result?.content ?? [])
+    .filter((c: any) => c?.type === 'text' && typeof c.text === 'string')
+    .map((c: any) => c.text)
+    .join('\n')
+    .trim();
+}
+
+/**
+ * Run several modify operations against one object in a SINGLE tool call.
+ *
+ * This is the largest round-trip saving available: a table change is never one
+ * operation. "add three fields" is 3 calls, each field then wants a field-group
+ * entry (the add-field response says so in as many words), and an index or a
+ * relation adds more — 8 to 14 round trips for one ordinary task, every one of
+ * them re-billing the whole cached context.
+ *
+ * Each operation goes through the ORDINARY single-op path rather than through
+ * the bridge's own batchModify. That is deliberate: the round trip being paid
+ * for is the MCP one, not the bridge IPC (which is local and costs
+ * milliseconds), and modifyD365FileTool is where path containment, backups,
+ * prefix application, .rnrproj registration, the direct-XML fallbacks and the
+ * per-operation validation live. Routing operations[] straight at the bridge
+ * would buy nothing measurable and would silently drop every one of those
+ * guards — including the ones that exist because a bridge write failed.
+ *
+ * Sequential, never parallel: the operations mutate one file, and direct-XML
+ * writes are read-modify-write with no locking, so concurrent ones interleave
+ * and lose edits.
+ */
+async function runModifyBatch(
+  rest: Record<string, unknown>,
+  context: XppServerContext,
+): Promise<any> {
+  const { operations, ...shared } = rest as { operations: unknown[] } & Record<string, unknown>;
+
+  if (operations.length === 0) {
+    return {
+      content: [{ type: 'text', text: '❌ d365fo_file(action="modify"): operations[] is empty — pass at least one { operation, … } entry.' }],
+      isError: true,
+    };
+  }
+  if (operations.length > MAX_BATCH_OPERATIONS) {
+    return {
+      content: [{ type: 'text', text: `❌ d365fo_file(action="modify"): operations[] has ${operations.length} entries, max ${MAX_BATCH_OPERATIONS}. Split it across calls.` }],
+      isError: true,
+    };
+  }
+
+  const results: Array<{ label: string; ok: boolean; text: string }> = [];
+  let stoppedAt = -1;
+
+  for (let i = 0; i < operations.length; i++) {
+    const entry = operations[i];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      results.push({ label: `#${i + 1}`, ok: false, text: 'entry is not an object — expected { operation, … }' });
+      stoppedAt = i;
+      break;
+    }
+    // Per-entry keys win over the shared ones, so objectType/objectName/modelName
+    // are stated once at the top level and an entry can still override them.
+    const entryArgs = { ...shared, ...(entry as Record<string, unknown>) };
+    const opName = String((entry as any).operation ?? '(missing operation)');
+
+    if (!(entry as any).operation) {
+      results.push({ label: `#${i + 1}`, ok: false, text: 'entry has no `operation` key' });
+      stoppedAt = i;
+      break;
+    }
+
+    const result = await modifyD365FileTool(subRequest('modify_d365fo_file', entryArgs), context);
+    const ok = !result?.isError;
+    results.push({ label: `#${i + 1} ${opName}`, ok, text: resultText(result) });
+
+    // Stop on the first failure. These operations are ordered on purpose — a
+    // field group references a field added two operations earlier — so carrying
+    // on past a failure produces a cascade of confusing secondary errors on top
+    // of a half-applied change.
+    if (!ok) { stoppedAt = i; break; }
+  }
+
+  const succeeded = results.filter(r => r.ok).length;
+  const failed = results.length - succeeded;
+  const skipped = operations.length - results.length;
+
+  const head =
+    `${failed === 0 ? '✅' : '⚠️'} d365fo_file(action="modify") — ${succeeded}/${operations.length} operation(s) applied` +
+    (failed ? `, failed at #${stoppedAt + 1}` : '') +
+    (skipped ? `, ${skipped} not attempted` : '');
+
+  const body = results
+    .map(r => `\n\n### ${r.ok ? '✅' : '❌'} ${r.label}\n${r.text || '(no output)'}`)
+    .join('');
+
+  const tail = failed
+    ? `\n\n> Operations run in order and stop at the first failure, because a later one usually ` +
+      `depends on an earlier one. The ${succeeded} operation(s) above it ARE applied — fix the failing ` +
+      `entry and re-send only the remaining ones.`
+    : '';
+
+  return {
+    content: [{ type: 'text', text: head + body + tail }],
+    isError: failed > 0,
+  };
+}
+
 export async function d365foFileTool(request: CallToolRequest, context: XppServerContext) {
   const parsed = D365FileArgsSchema.safeParse(request.params.arguments ?? {});
   if (!parsed.success) {
@@ -62,6 +172,9 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
     return handleCreateD365File(subRequest('create_d365fo_file', rest), context);
   }
   if (action === 'modify') {
+    if (Array.isArray(rest.operations)) {
+      return runModifyBatch(rest, context);
+    }
     return modifyD365FileTool(subRequest('modify_d365fo_file', rest), context);
   }
   // generate: handler takes the request only (no context).

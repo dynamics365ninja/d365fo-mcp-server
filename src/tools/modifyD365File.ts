@@ -2907,12 +2907,17 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // Two BP rules fire on a field that compiles perfectly, so they are invisible
     // until a BP run several steps later — and one of them (the label copy) then
     // needs new labels, i.e. rework of what was just written. Say it here instead.
+    //
+    // The field-group note used to spell out a whole follow-up call, so the agent
+    // made one: every add-field manufactured a second round trip. It now points at
+    // operations[], where the group entry travels in the SAME call as the field.
     let addFieldBpNote = '';
     if (operation === 'add-field' && (objectType === 'table' || objectType === 'table-extension')) {
       const notes = [
-        `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup):\n` +
-        `   d365fo_file(action="modify", objectType="${objectType}", objectName="${objectName}", ` +
-        `operation="add-field-to-field-group", fieldName="${args.fieldName}", fieldGroupName="<group>")`,
+        `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup). ` +
+        `Send the group entry in the SAME call next time — d365fo_file(action="modify", ` +
+        `objectType="${objectType}", objectName="${objectName}", operations=[{operation:"add-field", …}, ` +
+        `{operation:"add-field-to-field-group", fieldName:"${args.fieldName}", fieldGroupName:"<group>"}]).`,
       ];
       if ((args as any).fieldEnumType) {
         notes.push(
