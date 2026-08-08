@@ -4137,8 +4137,17 @@ namespace D365MetadataBridge.Services
                             catch { /* control may not have Methods */ }
 
                             // Fallback: some SDK versions may expose Source directly on the DataControl item
-                            // (for cases where control name IS the method name, e.g. flat override list)
-                            if (!replaced)
+                            // (for cases where control name IS the method name, e.g. flat override list).
+                            // Only safe when we can tie this item to the request: either the caller named
+                            // this control ("PostButton.clicked"), or the item's own name IS the method.
+                            // Without that check an unqualified methodName ("clicked") would match every
+                            // control in the form and rewrite the first unrelated one that happens to
+                            // contain oldCode, while the caller is told 'clicked' was edited.
+                            bool itemIsRequestedMember = controlNameFilter != null
+                                || effectiveMethodName == null
+                                || string.Equals(ctrlName, effectiveMethodName, StringComparison.OrdinalIgnoreCase);
+
+                            if (!replaced && itemIsRequestedMember)
                             {
                                 try
                                 {
@@ -4187,19 +4196,27 @@ namespace D365MetadataBridge.Services
                     catch { }
                 }
 
-                // Absolute last resort: scan ALL reachable Source properties for oldCode (no method name filter)
-                // This handles edge cases where the SDK stores the code in an unexpected location.
+                // Absolute last resort: scan the SourceCode sub-collections for the requested member,
+                // for edge cases where the SDK stores it under an unexpected CONTAINER. The method
+                // scope travels with it — a fallback that ignored methodName silently rewrote a
+                // DIFFERENT method whenever the target one did not contain oldCode, and still
+                // reported success, so the caller believed its edit had landed.
                 if (!replaced)
                 {
-                    replaced = ReplaceCodeInXmlFallback(dyn, oldCode, newCode);
+                    replaced = ReplaceCodeInXmlFallback(dyn, methodName, controlNameFilter, effectiveMethodName, oldCode, newCode);
                 }
 
                 return replaced;
             }
             catch (Exception ex)
             {
+                // A genuine failure (SDK binder fault, provider I/O) is NOT "the snippet is absent".
+                // Returning false here made every caller report "oldCode not found", which sends the
+                // calling agent off retrying different snippets against a healthy method instead of
+                // surfacing the real fault. Surface it, keeping the original as InnerException.
                 Console.Error.WriteLine($"[WriteService] ReplaceInMethods failed: {ex.Message}");
-                return false;
+                throw new InvalidOperationException(
+                    $"replace-code failed while editing {(methodName != null ? $"method '{methodName}'" : "object source")}: {ex.Message}", ex);
             }
         }
 
@@ -4281,14 +4298,33 @@ namespace D365MetadataBridge.Services
         }
 
         /// <summary>
-        /// Absolute last-resort fallback: enumerate all iterable collections exposed by SourceCode
+        /// Absolute last-resort fallback: enumerate the iterable collections exposed by SourceCode
         /// (Methods, DataSources, DataControls, Members) and any nested items looking for Source
-        /// properties that contain oldCode. Replaces globally. Used when structured access fails.
+        /// properties that contain oldCode. Used when structured access fails.
         /// For DataControls, also iterates into each control's Methods sub-collection.
+        ///
+        /// The fallback widens the CONTAINER it looks in, never the member it edits: when the caller
+        /// named a method, only members carrying that name are eligible. An unnamed member cannot be
+        /// proven to be the target, so it is skipped rather than edited on a text match.
         /// </summary>
-        private bool ReplaceCodeInXmlFallback(dynamic axObject, string oldCode, string newCode)
+        private bool ReplaceCodeInXmlFallback(dynamic axObject, string? methodName, string? controlNameFilter,
+            string? effectiveMethodName, string oldCode, string newCode)
         {
             bool replaced = false;
+
+            // Accepts the same name spellings the structured passes accept for one member:
+            // the bare method name, the raw "Control.method" the caller sent, and the
+            // "Control_method" flattening some form shapes use.
+            bool IsRequestedMember(string? memberName)
+            {
+                if (effectiveMethodName == null) return true;   // caller scoped to the whole object
+                if (memberName == null) return false;
+                return string.Equals(memberName, effectiveMethodName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(memberName, methodName, StringComparison.OrdinalIgnoreCase)
+                    || (controlNameFilter != null && string.Equals(memberName,
+                            $"{controlNameFilter}_{effectiveMethodName}", StringComparison.OrdinalIgnoreCase));
+            }
+
             try
             {
                 // Try all known sub-collections on SourceCode
@@ -4310,13 +4346,17 @@ namespace D365MetadataBridge.Services
                         {
                             try
                             {
+                                string? itemName = null;
+                                try { itemName = (string?)item.Name; } catch { }
+                                if (!IsRequestedMember(itemName)) continue;
+
                                 string? src = null;
                                 try { src = (string?)item.Source; } catch { }
                                 if (src != null && src.Contains(oldCode))
                                 {
                                     item.Source = src.Replace(oldCode, newCode);
                                     replaced = true;
-                                    Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced in SourceCode.{colName} item '{(string?)item.Name ?? "?"}'");
+                                    Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced in SourceCode.{colName} item '{itemName ?? "?"}'");
                                 }
                             }
                             catch { }
@@ -4341,6 +4381,13 @@ namespace D365MetadataBridge.Services
                                     string ctrlName = "?";
                                     try { ctrlName = (string)ctrl.Name; } catch { }
 
+                                    // A control-scoped request ("PostButton.clicked") stays inside its
+                                    // control; reaching into a sibling control would edit an override
+                                    // the caller never named.
+                                    if (controlNameFilter != null &&
+                                        !string.Equals(ctrlName, controlNameFilter, StringComparison.OrdinalIgnoreCase))
+                                        continue;
+
                                     // Try methods inside control
                                     try
                                     {
@@ -4348,12 +4395,16 @@ namespace D365MetadataBridge.Services
                                         {
                                             try
                                             {
+                                                string? mName = null;
+                                                try { mName = (string?)m.Name; } catch { }
+                                                if (!IsRequestedMember(mName)) continue;
+
                                                 string? src = (string?)m.Source;
                                                 if (src != null && src.Contains(oldCode))
                                                 {
                                                     m.Source = src.Replace(oldCode, newCode);
                                                     replaced = true;
-                                                    Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced in DataControls.{ctrlName}.{(string?)m.Name ?? "?"}");
+                                                    Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced in DataControls.{ctrlName}.{mName ?? "?"}");
                                                 }
                                             }
                                             catch { }
@@ -4361,18 +4412,24 @@ namespace D365MetadataBridge.Services
                                     }
                                     catch { }
 
-                                    // Also try direct Source on control object (flat override lists)
-                                    try
+                                    // Also try direct Source on control object (flat override lists).
+                                    // Eligible only when the caller named this control, or the control's
+                                    // own name is the method name — otherwise this item is some other
+                                    // control's code and must not absorb the edit.
+                                    if (controlNameFilter != null || IsRequestedMember(ctrlName))
                                     {
-                                        string? src = (string?)ctrl.Source;
-                                        if (src != null && src.Contains(oldCode))
+                                        try
                                         {
-                                            ctrl.Source = src.Replace(oldCode, newCode);
-                                            replaced = true;
-                                            Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced direct Source on DataControl '{ctrlName}'");
+                                            string? src = (string?)ctrl.Source;
+                                            if (src != null && src.Contains(oldCode))
+                                            {
+                                                ctrl.Source = src.Replace(oldCode, newCode);
+                                                replaced = true;
+                                                Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced direct Source on DataControl '{ctrlName}'");
+                                            }
                                         }
+                                        catch { }
                                     }
-                                    catch { }
                                 }
                                 catch { }
                             }
@@ -4383,7 +4440,11 @@ namespace D365MetadataBridge.Services
             }
             catch (Exception ex)
             {
+                // Swallowing this used to leave the caller with "oldCode not found" even though the
+                // scan never completed — and possibly with a partial edit already applied. Let it out
+                // so ReplaceInMethods reports a real error and no Update is attempted.
                 Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback failed: {ex.Message}");
+                throw;
             }
             return replaced;
         }
