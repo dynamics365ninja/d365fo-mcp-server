@@ -31,6 +31,7 @@ import {
   bridgeAddFieldModification, bridgeAddMenuItemToMenu,
   bridgeRefreshProvider,
 } from '../bridge/index.js';
+import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
 import { heuristicEdtBaseType } from './generateSmartTable.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
@@ -1911,6 +1912,12 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       containment.modelSegment || resolvedModelFromPath || modelName || getConfigManager().getModelName() || '',
     );
     if (memberPrefixNote) generationNote += memberPrefixNote;
+
+    // Settle a rebuild an earlier create/modify scheduled but did not wait for, so
+    // an object written moments ago resolves on the FIRST attempt. Without this the
+    // retry loop below would still recover — at the cost of a wasted bridge round
+    // trip plus a full rebuild. Free when no write is outstanding.
+    await debouncedRefresh.flush();
 
     let bridgeResult: { success: boolean; message: string } | null = null;
     let _bridgeRetried = false;
