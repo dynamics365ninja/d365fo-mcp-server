@@ -8,8 +8,10 @@ import { renderMethodSignature } from '../metadata/xppDeclaration.js';
 import { bridgeRefreshProvider } from '../bridge/index.js';
 import { getLastRefreshStartedAt } from '../bridge/debouncedRefresh.js';
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts - the single source of truth for tool instructions.
+// Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/updateSymbolIndex.ts — the single source of truth for tool
+// instructions. It is NOT in mcpServer.ts; that file only spreads the
+// aggregated toolSchemas array into the ListTools response.
 
 /** Map AOT folder names to symbol types */
 const AOT_FOLDER_TYPE_MAP: Record<string, XppSymbol['type']> = {

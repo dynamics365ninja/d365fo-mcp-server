@@ -55,8 +55,11 @@ export const validateXppArgsSchema = z.object({
   ),
 });
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts - the single source of truth for tool instructions.
+// This handler has no schema of its own — it is reached through a unified
+// tool. Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/, one file per published tool, aggregated by
+// toolSchemas/index.ts. It is NOT in mcpServer.ts; that file only spreads
+// the aggregated array into the ListTools response.
 
 // Types
 
@@ -499,7 +502,7 @@ function checkMissingAlternateKey(code: string): ValidationViolation[] {
       excerpt: '<AxTable> — no index with <AlternateKey>Yes</AlternateKey>',
       fix: 'Add an <AxTableIndex> with <AlternateKey>Yes</AlternateKey> unless the table ' +
         'deliberately has none — xppbp reports BPCheckAlternateKeyAbsent as a warning and ' +
-        'the table still builds. generate_smart adds one via buildPrimaryKeyIndex.',
+        'the table still builds. generate_object(mode="scaffold") adds one via buildPrimaryKeyIndex.',
     });
   }
   return violations;
@@ -862,7 +865,7 @@ export async function validateXppTool(
     return {
       content: [{
         type: 'text',
-        text: `✅ validate_xpp: no violations found${context ? ` in ${context}` : ''}.\n` +
+        text: `✅ validate_code(syntax): no violations found${context ? ` in ${context}` : ''}.\n` +
           `Checked ${XPP_RULES.length + (codeType !== 'xpp' ? XML_RULES.length + XML_PROPERTY_RULES.length : 0)} rule groups` +
           `${codeType !== 'xpp' && stats ? ' (property rules driven by mined standard-model statistics)' : ''}.`,
       }],
@@ -871,7 +874,7 @@ export async function validateXppTool(
 
   const lines: string[] = [];
   lines.push(
-    `${errors.length > 0 ? '❌' : '⚠️'} validate_xpp: ` +
+    `${errors.length > 0 ? '❌' : '⚠️'} validate_code(syntax): ` +
     `${errors.length} error(s), ${warnings.length} warning(s)` +
     (context ? ` in ${context}` : ''),
   );

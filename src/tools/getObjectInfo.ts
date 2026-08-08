@@ -196,5 +196,7 @@ export async function getObjectInfoTool(request: CallToolRequest, context: XppSe
   return refs.length === 1 ? readObject(refs[0], context) : readObjects(refs, context);
 }
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts — the single source of truth for tool instructions.
+// Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/getObjectInfo.ts — the single source of truth for tool
+// instructions. It is NOT in mcpServer.ts; that file only spreads the
+// aggregated toolSchemas array into the ListTools response.

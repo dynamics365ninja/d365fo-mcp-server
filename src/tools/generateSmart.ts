@@ -44,7 +44,7 @@ export async function generateSmartTool(request: CallToolRequest, context: XppSe
   const parsed = GenerateSmartArgsSchema.safeParse(request.params.arguments ?? {});
   if (!parsed.success) {
     return {
-      content: [{ type: 'text', text: `❌ generate_smart: invalid arguments — ${parsed.error.message}` }],
+      content: [{ type: 'text', text: `❌ generate_object(scaffold): invalid arguments — ${parsed.error.message}` }],
       isError: true,
     };
   }
@@ -53,7 +53,7 @@ export async function generateSmartTool(request: CallToolRequest, context: XppSe
   const handler = GENERATE_SMART_DISPATCH[objectType as GenerateSmartType];
   if (!handler) {
     return {
-      content: [{ type: 'text', text: `❌ generate_smart: unsupported objectType "${objectType}".` }],
+      content: [{ type: 'text', text: `❌ generate_object(scaffold): unsupported objectType "${objectType}".` }],
       isError: true,
     };
   }
@@ -66,5 +66,8 @@ export async function generateSmartTool(request: CallToolRequest, context: XppSe
   };
 }
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts — the single source of truth for tool instructions.
+// This handler has no schema of its own — it is reached through a unified
+// tool. Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/, one file per published tool, aggregated by
+// toolSchemas/index.ts. It is NOT in mcpServer.ts; that file only spreads
+// the aggregated array into the ListTools response.

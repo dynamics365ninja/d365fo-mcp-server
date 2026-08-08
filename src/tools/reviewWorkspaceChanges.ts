@@ -16,8 +16,10 @@ async function git(args: string[], cwd: string): Promise<string> {
   return stdout;
 }
 
-// Tool registration (name, description, inputSchema) lives inline in
-// src/server/mcpServer.ts - the single source of truth for tool instructions.
+// Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/reviewWorkspaceChanges.ts — the single source of truth for tool
+// instructions. It is NOT in mcpServer.ts; that file only spreads the
+// aggregated toolSchemas array into the ListTools response.
 
 /**
  * Extract absolute file paths from a git diff header ("+++ b/..." lines)
