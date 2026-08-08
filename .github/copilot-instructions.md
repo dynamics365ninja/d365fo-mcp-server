@@ -81,6 +81,23 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 11. **The post-write diff must be additive or narrowly targeted** — verify via `review_workspace_changes` (or re-read with `get_*_info`) that no unrelated XML nodes (`<DataSources>`, `<Controls>`, methods, pattern metadata) disappeared. If they did, the edit failed: `undo_last_modification`.
 12. **An example form named by the user is a pattern contract** — keep its pattern family and required scaffolding (datasources, ActionPane/Tab/grid/QuickFilter); missing pattern elements are a failed generation even if the XML is well-formed.
 
+### Spending tool calls
+
+13. **Issue independent read-only calls together, in one step.** Every tool call re-reads the whole conversation, so a turn costs the round trip, not the tool. `get_object_info`, `search`, `labels`, `get_knowledge`, `object_patterns` and `find_references` have no side effects and never need to wait for each other — five lookups are one step, not five.
+14. **Use the plural form when there is one** — `get_object_info(objects[])`, `run_bp_check(objects[])`, `verify_d365fo_project(objects[])`, `search(queries[])`. All three `objects[]` forms take `{objectType, objectName}`; `queries[]` takes `{query}`. Note `get_object_info`'s SINGLE-object form still spells it `name`, not `objectName` — take the key from the tool's schema, don't assume.
+15. **Plan the reads before the first one.** Decide which objects the change touches, then fetch them in a single step instead of discovering them one call at a time.
+
+### Reading D365FO objects
+
+16. **Use `get_object_info`, not `read_file`, for anything under `PackagesLocalDirectory`.** Raw AOT XML is verbose and stays in context for the rest of the session; `get_object_info` returns the same facts structured and an order of magnitude smaller. Read the raw file only when you need its literal bytes.
+17. **Never hand-edit AOT XML with text replacement** (rule 3) — whitespace and element ordering are load-bearing, so the match fails or the write corrupts the object. `d365fo_file(action="modify")` exists for exactly this.
+18. **Do not call `update_symbol_index` after `d365fo_file` create/modify** — the index is already refreshed. It is for files changed OUTSIDE the server. Sole exception: a brand-new AxEdt/AxEnum you are about to name in a `generate_object` `fieldsHint`.
+19. **Ask for the smallest result set that answers the question** — `labels(action="search")` returns 10 one-line hits; raise `maxResults` or set `verbose` only when that is genuinely not enough.
+
+### Finishing
+
+20. **Keep the closing summary to what changed and what to do next.** Long recaps are the most expensive single output of a session and are re-read by nothing.
+
 ## Full Instructions
 
 The complete X++ rules, query grammar, CoC authoring rules, and workflow details are delivered via the MCP prompt `xpp_system_instructions`. If that prompt is not loaded, request it or consult [src/prompts/systemInstructions.ts](../src/prompts/systemInstructions.ts) directly.
