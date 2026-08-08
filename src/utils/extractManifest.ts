@@ -43,7 +43,7 @@ export interface ExtractManifest {
   customModels: string[];
 }
 
-export function manifestPath(metadataDir: string): string {
+function manifestPath(metadataDir: string): string {
   return path.join(metadataDir, EXTRACT_MANIFEST_FILENAME);
 }
 

@@ -14,7 +14,7 @@
  */
 import { VERSION } from '../version.js';
 
-export const PACKAGE_NAME = 'd365fo-mcp';
+const PACKAGE_NAME = 'd365fo-mcp';
 
 /** Default registry, overridable the same way npm itself allows. */
 function registryBase(): string {

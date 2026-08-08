@@ -6,19 +6,14 @@
  * underlying table via <Mappings><AxTableMapping><Connections> entries pairing
  * each map field name (MapField) with the target table's field name (MapFieldTo).
  */
+import { escapeXml } from '../utils/xmlEscape.js';
 
-const FIELD_TYPE_TO_AXTYPE: Record<string, string> = {
-  Int: 'AxMapFieldInt',
-  Int64: 'AxMapFieldInt64',
-  String: 'AxMapFieldString',
-  Real: 'AxMapFieldReal',
-  Enum: 'AxMapFieldEnum',
-  Container: 'AxMapFieldContainer',
-  Date: 'AxMapFieldDate',
-  UtcDateTime: 'AxMapFieldUtcDateTime',
-  Guid: 'AxMapFieldGuid',
-  Boolean: 'AxMapFieldBoolean',
-};
+
+import {
+  axMapFieldElement,
+  normalizeFieldBaseType,
+  unknownFieldTypeMessage,
+} from '../utils/axFieldTypes.js';
 
 interface MapFieldDef {
   name: string;
@@ -61,7 +56,14 @@ export function buildAxMapXml(mapName: string, properties?: Record<string, any>)
 
   const fieldsXml = fields.length
     ? fields.map(f => {
-      const axType = FIELD_TYPE_TO_AXTYPE[f.type || 'String'] || 'AxMapFieldString';
+      // A map field's type went through a private, case-sensitive dictionary that
+      // spelled Integer as `Int`, so the documented `type:"Integer"` missed and the
+      // field was written AxMapFieldString — mistyped, and green at build time.
+      // Now the one canonical map, and an unrecognized type is refused instead of
+      // becoming a String field under the caller's chosen name.
+      const base = f.type ? normalizeFieldBaseType(f.type) : 'String';
+      if (!base) throw new Error(unknownFieldTypeMessage(`Map field "${f.name}"`, String(f.type)));
+      const axType = axMapFieldElement(base);
       const inner: string[] = [`\t\t\t<Name>${f.name}</Name>`];
       const edt = f.extendedDataType || f.edt;
       if (edt) inner.push(`\t\t\t<ExtendedDataType>${edt}</ExtendedDataType>`);
@@ -95,7 +97,7 @@ public class ${mapName} extends common
 }
 ]]></Declaration>
 \t\t<Methods />
-\t</SourceCode>${developerDocumentation ? `\n\t<DeveloperDocumentation>${developerDocumentation}</DeveloperDocumentation>` : ''}${label ? `\n\t<Label>${label}</Label>` : ''}
+\t</SourceCode>${developerDocumentation ? `\n\t<DeveloperDocumentation>${escapeXml(developerDocumentation)}</DeveloperDocumentation>` : ''}${label ? `\n\t<Label>${escapeXml(label)}</Label>` : ''}
 \t<FieldGroups />
 \t<Fields>
 ${fieldsXml}

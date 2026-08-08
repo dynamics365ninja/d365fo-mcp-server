@@ -29,7 +29,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { parseStringPromise } from 'xml2js';
+import { parseStringPromise } from './xml.js';
 
 export interface FsExtensionScanResult {
   /** Extension object name (from <Name> element) */

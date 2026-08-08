@@ -101,8 +101,3 @@ export const simpleListDetailsTree: FormPatternSpec = {
   ],
   extraRootChildren: 'none',
 };
-
-export const simpleListDetailsPatterns: FormPatternSpec[] = [
-  simpleListDetailsListGrid,
-  simpleListDetailsTree,
-];

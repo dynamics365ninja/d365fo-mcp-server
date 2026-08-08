@@ -295,7 +295,15 @@ async function refreshOnly(context: XppServerContext) {
  * job — it is per-batch, not per-file, which is what made a multi-object update
  * cost one full DiskProvider rebuild per object.
  */
-async function indexOneFile(
+/**
+ * Index ONE file into the SQLite symbol/label index.
+ *
+ * Exported so the create/modify paths can do this in-process on their way out
+ * (see inlineIndexUpsert.ts) instead of the agent spending a round trip on
+ * update_symbol_index — which was the last legitimate mid-task reason to call
+ * that tool at all.
+ */
+export async function indexOneFile(
   filePath: string,
   context: XppServerContext,
 ): Promise<{ text: string; isError: boolean }> {

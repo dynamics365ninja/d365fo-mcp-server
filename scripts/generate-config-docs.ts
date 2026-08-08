@@ -2,27 +2,29 @@
  * Regenerates docs/CONFIGURATION.md from the setting registry, so the reference
  * table can never drift from what the wizard actually asks for.
  *
- *   npm run config:docs            # write
- *   npm run config:docs -- --check # fail if the committed doc is stale
+ *   npm run config:docs            # rewrite the file
+ *   npm run config:docs -- --check # fail if it is out of date (CI gate)
  *
- * The `--check` mode exists because the doc used to be hand-edited after
- * generation: three real env-only variables and a corrected tool count lived
- * only in the markdown, so the next regeneration silently deleted them and
- * reintroduced the wrong count. Everything the doc says now comes from
- * src/config/settings.ts (SETTINGS + ENV_ONLY_SETTINGS) — edit there, never here.
+ * The --check mode exists because the file was hand-edited once: the edit added
+ * three real environment variables the registry did not know about, so the next
+ * regeneration would have deleted them silently.
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SECTIONS, SETTINGS, ENV_ONLY_SETTINGS, type Setting } from '../src/config/settings.js';
+import { SECTIONS, SETTINGS, type Setting } from '../src/config/settings.js';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outPath = resolve(repoRoot, 'docs', 'CONFIGURATION.md');
+const checkOnly = process.argv.includes('--check');
 
 const TIER_LABEL: Record<Setting['tier'], string> = {
   basic: 'setup',
   advanced: 'advanced',
   secret: 'secret',
+  // An env-only setting is never asked for and has no config-file key, so both
+  // of its table cells are an em dash.
+  'env-only': '—',
 };
 
 function formatDefault(setting: Setting): string {
@@ -46,6 +48,7 @@ function buildExample(tier: 'config' | 'secret'): string {
   const out: Record<string, any> = tier === 'config' ? { version: 1 } : {};
   for (const setting of SETTINGS) {
     if (tier === 'config' ? setting.tier === 'secret' : setting.tier !== 'secret') continue;
+    if (!setting.path) continue; // env-only: no key in either file
     const keys = setting.path.split('.');
     const last = keys.pop()!;
     let cursor = out;
@@ -105,11 +108,7 @@ const lines: string[] = [
 
 for (const section of SECTIONS) {
   const settings = SETTINGS.filter(s => s.section === section.id);
-  // Variables with no config-file key still belong in the reference table — they
-  // used to be hand-appended after generation, which meant the next run of this
-  // script deleted three real environment variables from the docs.
-  const envOnly = ENV_ONLY_SETTINGS.filter(s => s.section === section.id);
-  if (settings.length === 0 && envOnly.length === 0) continue;
+  if (settings.length === 0) continue;
   lines.push(`### ${section.title}`, '', section.description, '');
   lines.push('| Key | Asked | Env var | Default | Description |');
   lines.push('| --- | --- | --- | --- | --- |');
@@ -117,16 +116,10 @@ for (const section of SECTIONS) {
     const choices = setting.choices?.length
       ? ' Values: ' + setting.choices.map(c => '`' + c.value + '` — ' + c.hint).join('; ') + '.'
       : '';
+    const key = setting.path ? '`' + setting.path + '`' : '—';
     lines.push(
-      `| \`${setting.path}\` | ${TIER_LABEL[setting.tier]} | \`${setting.env}\` | ${formatDefault(setting)} | ` +
+      `| ${key} | ${TIER_LABEL[setting.tier]} | \`${setting.env}\` | ${formatDefault(setting)} | ` +
       `${escapeCell(setting.description + choices)} |`,
-    );
-  }
-  for (const setting of envOnly) {
-    // No config path and no wizard question, hence the em dashes in both columns.
-    lines.push(
-      `| — | — | \`${setting.env}\` | ${setting.default ? '`' + setting.default + '`' : '—'} | ` +
-      `${escapeCell(setting.description)} |`,
     );
   }
   lines.push('');
@@ -151,21 +144,26 @@ lines.push(
 
 const rendered = lines.join('\n');
 
-if (process.argv.includes('--check')) {
-  // Compare on normalised line endings — the file is committed with the repo's
-  // eol policy and checked out as CRLF on Windows.
-  const current = existsSync(outPath) ? readFileSync(outPath, 'utf8').replace(/\r\n/g, '\n') : '';
-  if (current !== rendered) {
-    console.error(
-      `docs/CONFIGURATION.md is out of date with src/config/settings.ts.\n` +
-      `Run \`npm run config:docs\` and commit the result.`,
-    );
-    process.exit(1);
+if (checkOnly) {
+  // Compare with CR stripped: the file is committed with CRLF on Windows
+  // checkouts, and a line-ending difference is not drift worth failing on.
+  const onDisk = (() => {
+    try {
+      return readFileSync(outPath, 'utf8');
+    } catch {
+      return null;
+    }
+  })();
+  if (onDisk?.replace(/\r\n/g, '\n') === rendered) {
+    console.log(`docs/CONFIGURATION.md is up to date (${SETTINGS.length} settings).`);
+    process.exit(0);
   }
-  console.log(`docs/CONFIGURATION.md is up to date (${SETTINGS.length} settings, ${ENV_ONLY_SETTINGS.length} env-only).`);
-} else {
-  writeFileSync(outPath, rendered, 'utf8');
-  console.log(
-    `Wrote ${outPath} (${SETTINGS.length} settings + ${ENV_ONLY_SETTINGS.length} env-only across ${SECTIONS.length} sections)`,
+  console.error(
+    `docs/CONFIGURATION.md is out of date with src/config/settings.ts.\n` +
+    `Run \`npm run config:docs\` and commit the result.`,
   );
+  process.exit(1);
 }
+
+writeFileSync(outPath, rendered, 'utf8');
+console.log(`Wrote ${outPath} (${SETTINGS.length} settings across ${SECTIONS.length} sections)`);

@@ -70,7 +70,7 @@ export interface ExtractedViewMetadata {
  * Build the absolute path to an extracted-metadata JSON file.
  * Returns null if the file doesn't exist (no throw).
  */
-export async function resolveMetadataJsonPath(
+async function resolveMetadataJsonPath(
   model: string,
   objectType: ExtractedObjectType,
   name: string
@@ -82,84 +82,6 @@ export async function resolveMetadataJsonPath(
   } catch {
     return null;
   }
-}
-
-export interface ExtractedMethodParam {
-  type: string;
-  name: string;
-  defaultValue?: string;
-}
-
-export interface ExtractedMethod {
-  name: string;
-  visibility: string;
-  returnType: string;
-  parameters: ExtractedMethodParam[];
-  isStatic: boolean;
-  source?: string;
-  sourceSnippet?: string;
-}
-
-export interface ExtractedClassMetadata {
-  name: string;
-  model: string;
-  sourcePath: string;
-  declaration?: string;
-  extends?: string;
-  implements?: string[];
-  isAbstract?: boolean;
-  isFinal?: boolean;
-  methods: ExtractedMethod[];
-}
-
-/**
- * Read class metadata from extracted-metadata JSON.
- * Returns null if the file is not available.
- */
-export async function readClassMetadata(
-  model: string,
-  className: string
-): Promise<ExtractedClassMetadata | null> {
-  const filePath = await resolveMetadataJsonPath(model, 'classes', className);
-  if (!filePath) return null;
-
-  try {
-    const raw = await fs.readFile(filePath, 'utf-8');
-    const data = JSON.parse(raw) as ExtractedClassMetadata;
-
-    // Parameters may be stored as raw PowerShell-serialized strings, e.g. "@{type=RecId; name=_legalEntityRecId}"
-    for (const method of data.methods ?? []) {
-      method.parameters = (method.parameters ?? []).map((p: any) => {
-        if (typeof p === 'string') {
-          const typeMatch = p.match(/type=([^;}\s]+)/);
-          const nameMatch = p.match(/name=([^;}\s]+)/);
-          return {
-            type: typeMatch?.[1] ?? 'var',
-            name: nameMatch?.[1] ?? '_param',
-          } as ExtractedMethodParam;
-        }
-        return p as ExtractedMethodParam;
-      });
-    }
-
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Read a specific method from extracted class metadata.
- */
-export async function readMethodMetadata(
-  model: string,
-  className: string,
-  methodName: string
-): Promise<ExtractedMethod | null> {
-  const classData = await readClassMetadata(model, className);
-  if (!classData) return null;
-
-  return classData.methods.find(m => m.name === methodName) ?? null;
 }
 
 /**

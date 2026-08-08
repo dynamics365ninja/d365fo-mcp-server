@@ -42,7 +42,7 @@ export function levenshteinDistance(str1: string, str2: string): number {
  * Calculate similarity score (0-1) based on Levenshtein distance
  * Higher score = more similar
  */
-export function similarityScore(str1: string, str2: string): number {
+function similarityScore(str1: string, str2: string): number {
   const distance = levenshteinDistance(str1, str2);
   const maxLen = Math.max(str1.length, str2.length);
   if (maxLen === 0) return 1.0;

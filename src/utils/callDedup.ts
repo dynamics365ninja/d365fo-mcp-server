@@ -10,7 +10,7 @@
  */
 
 export const DEDUP_TTL_MS = 60_000;
-export const DEDUP_MAX_ENTRIES = 200;
+const DEDUP_MAX_ENTRIES = 200;
 
 /** Tools whose repeated identical calls are legitimate — never dedup, never loop-hint. */
 export const DEDUP_EXCLUDED_TOOLS = new Set([

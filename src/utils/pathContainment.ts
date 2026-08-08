@@ -54,21 +54,81 @@ function isAbsoluteCrossPlatform(p: string): boolean {
 }
 
 function toAbsolute(p: string): string {
+  // Already-absolute input is NOT handed to path.resolve: on POSIX it would treat
+  // a Windows-style "C:\…" path as relative and prefix the cwd, and this server is
+  // routinely asked about Windows paths from a Linux host (tests, Azure proxy).
+  // `..` collapsing is therefore done lexically by lexicalResolve below, which is
+  // what actually neutralises traversal — see the note there.
   return isAbsoluteCrossPlatform(p) ? p : path.resolve(p);
+}
+
+/** Split an absolute path into its root prefix (`C:/`, `//server/share/`, `/`) and the rest. */
+function splitRoot(p: string): { root: string; rest: string } {
+  const s = p.replace(/\\/g, '/');
+  const unc = /^(\/\/[^/]+\/[^/]+)(?:\/|$)/.exec(s);
+  if (unc) return { root: unc[1] + '/', rest: s.slice(unc[0].length) };
+  const drive = /^([a-zA-Z]:)\//.exec(s);
+  if (drive) return { root: drive[1] + '/', rest: s.slice(drive[0].length) };
+  if (s.startsWith('/')) return { root: '/', rest: s.slice(1) };
+  return { root: '', rest: s };
+}
+
+/**
+ * Absolute, POSIX-separated, with `.` and `..` segments collapsed lexically.
+ *
+ * This is the step that makes containment sound. Without it an already-absolute
+ * path kept its `..` segments all the way through both the root check and the
+ * AOT-shape check — `<root>/Pkg/Model/AxTable/a.xml/../../../../../evil/x.xml`
+ * starts under an allowed root and its first four segments are shaped like a
+ * valid AOT path, so it passed every guard and Win32 collapsed it only at the
+ * moment of the write, landing anywhere on disk.
+ *
+ * Returns null when the path climbs above its own root: such a path has no
+ * meaning as a target here and is rejected outright rather than clamped.
+ */
+function lexicalResolve(p: string): string | null {
+  if (!p) return null;
+  const { root, rest } = splitRoot(toAbsolute(p));
+  const out: string[] = [];
+  for (const seg of rest.split('/')) {
+    if (!seg || seg === '.') continue;
+    if (seg === '..') {
+      if (out.length === 0) return null; // escapes above the root
+      out.pop();
+      continue;
+    }
+    out.push(seg);
+  }
+  return (root + out.join('/')).replace(/\/+$/, '');
 }
 
 /** Absolute + POSIX separators, WITHOUT symlink resolution (the as-given form). */
 function lexicalNorm(p: string): string {
-  if (!p) return '';
-  return toAbsolute(p).replace(/\\/g, '/').replace(/\/+$/, '');
+  return lexicalResolve(p) ?? '';
 }
 
-/** Absolute + POSIX separators WITH symlink resolution (realpath). */
+/**
+ * Absolute + POSIX separators WITH symlink resolution (realpath).
+ *
+ * A write target usually does not exist yet, so realpathSync throws on the full
+ * path; we then resolve the deepest ancestor that DOES exist and re-append the
+ * remainder, so a new file under a symlinked model directory still resolves
+ * through that symlink instead of silently falling back to the lexical form.
+ */
 function realNorm(p: string): string {
-  if (!p) return '';
-  let abs = toAbsolute(p);
-  try { abs = realpathSync(abs); } catch { /* may not exist yet — ok */ }
-  return abs.replace(/\\/g, '/').replace(/\/+$/, '');
+  const lex = lexicalResolve(p);
+  if (lex === null) return '';
+  const posix = (s: string) => s.replace(/\\/g, '/').replace(/\/+$/, '');
+  try { return posix(realpathSync(lex)); } catch { /* target may not exist yet */ }
+  const { root, rest } = splitRoot(lex);
+  const segs = rest.split('/').filter(Boolean);
+  for (let i = segs.length - 1; i > 0; i--) {
+    try {
+      const real = posix(realpathSync(root + segs.slice(0, i).join('/')));
+      return [real, ...segs.slice(i)].join('/');
+    } catch { /* keep climbing */ }
+  }
+  return lex;
 }
 
 /** Back-compat alias — defaults to the realpath form. */
@@ -160,6 +220,12 @@ export async function assertWritePathAllowed(
   // file path; the AOT-shape check below must slice with the SAME form that
   // matched, so both are carried through instead of pre-collapsing to realpath.
   const fileLex = lexicalNorm(filePath);
+  if (!fileLex) {
+    return {
+      ok: false,
+      reason: `Refusing to write to a path that traverses above its own root: "${filePath}"`,
+    };
+  }
   const fileReal = realNorm(filePath);
 
   // 1. Root containment
@@ -279,6 +345,12 @@ export async function assertReadRootAllowed(dirPath: string): Promise<PathContai
   }
   if (!isAbsoluteCrossPlatform(dirPath)) {
     return { ok: false, reason: `dirPath must be absolute: "${dirPath}"` };
+  }
+  if (!lexicalNorm(dirPath)) {
+    return {
+      ok: false,
+      reason: `Refusing to scan a path that traverses above its own root: "${dirPath}"`,
+    };
   }
 
   // dirPath is passed raw (not pre-realpath'd) so isUnder can match it lexically

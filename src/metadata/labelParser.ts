@@ -15,7 +15,18 @@
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
+import { settingByEnv } from '../config/settings.js';
 import type { XppSymbolIndex } from './symbolIndex.js';
+
+/**
+ * Fallback when LABEL_LANGUAGES is unset, taken from the registry rather than
+ * spelled out here. This used to be the literal 'en-US,cs,sk,de' while
+ * docs/CONFIGURATION.md documented 'en-US', so an unconfigured build quietly
+ * indexed four language tables (~125 MB each) instead of one. Every deployment
+ * that actually wants the extra languages sets LABEL_LANGUAGES explicitly —
+ * infrastructure/azuredeploy.json and .github/workflows/infrastructure.yml both do.
+ */
+const DEFAULT_LABEL_LANGUAGES = (settingByEnv('LABEL_LANGUAGES')!.default as string[]).join(',');
 
 export interface ParsedLabel {
   labelId: string;
@@ -115,7 +126,7 @@ export async function discoverLabelFiles(
   }
 
   // Restrict indexing to configured languages to keep the label table small; LABEL_LANGUAGES=all indexes everything.
-  const langConfig = process.env.LABEL_LANGUAGES || 'en-US,cs,sk,de';
+  const langConfig = process.env.LABEL_LANGUAGES || DEFAULT_LABEL_LANGUAGES;
   const SUPPORTED_LANGUAGES = langConfig.toLowerCase() === 'all'
     ? null  // null = index all languages
     : new Set(langConfig.split(',').map(l => l.trim()));
@@ -178,7 +189,7 @@ export async function discoverLabelFiles(
  * the caller is responsible for calling `symbolIndex.rebuildLabelsFts()` once
  * after all models have been indexed.
  */
-export async function indexModelLabels(
+async function indexModelLabels(
   symbolIndex: XppSymbolIndex,
   modelDir: string,
   model: string,

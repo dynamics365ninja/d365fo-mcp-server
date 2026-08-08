@@ -7,7 +7,3 @@ export function debugLog(...args: any[]): void {
     console.error(...args);
   }
 }
-
-export function errorLog(...args: any[]): void {
-  console.error(...args);
-}

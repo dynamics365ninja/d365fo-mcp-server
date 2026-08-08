@@ -13,10 +13,19 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
-import { parseStringPromise } from 'xml2js';
+import { parseStringPromise } from '../utils/xml.js';
 import { tryBridgeReport } from '../bridge/bridgeAdapter.js';
 import { readIndexedXml, bridgeUnavailableNote } from '../utils/indexedXmlLookup.js';
 import { assertWritePathAllowed } from '../utils/pathContainment.js';
+import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
+
+/**
+ * Ceiling on embedded RDL returned by includeRdl:true. A production AxReport
+ * design routinely carries 1–2 MB of RDL and the reader emitted all of it with
+ * no size check at all — a single call that costs more than a whole session of
+ * metadata reads, and gets re-billed on every later round trip.
+ */
+const RDL_MAX_CHARS = 60_000;
 
 const GetReportInfoArgsSchema = z.object({
   reportName: z.string().describe('Name of the AxReport object (without .xml extension)'),
@@ -260,10 +269,11 @@ function extractDesigns(axReport: any, includeRdl: boolean): ReportDesign[] {
     const rawText = first(d.Text);  // CDATA string or undefined
     const hasRdl = !!rawText && rawText.trim().length > 0;
 
-    let rdlSummary: string | undefined;
-    if (hasRdl && !includeRdl) {
-      rdlSummary = summarizeRdl(rawText!);
-    }
+    // The summary is also produced for includeRdl:true when the RDL blows the
+    // size ceiling — a truncated dump with no structural overview is the worst
+    // of both worlds, expensive AND unusable.
+    const oversize = hasRdl && rawText!.length > RDL_MAX_CHARS;
+    const rdlSummary = hasRdl && (!includeRdl || oversize) ? summarizeRdl(rawText!) : undefined;
 
     result.push({
       name:       first(d.Name)    ?? 'Unknown',
@@ -272,7 +282,7 @@ function extractDesigns(axReport: any, includeRdl: boolean): ReportDesign[] {
       style:      first(d.Style)   ?? undefined,
       hasRdl,
       rdlContent: includeRdl && hasRdl ? rawText : undefined,
-      rdlSummary: !includeRdl ? rdlSummary : undefined,
+      rdlSummary,
     });
   }
   return result;
@@ -379,13 +389,34 @@ function formatOutput(info: ReportInfo, includeFields: boolean, includeRdl: bool
     }
 
     if (includeRdl && d.rdlContent) {
+      const oversize = d.rdlContent.length > RDL_MAX_CHARS;
+      // Cut on an element boundary, never mid-tag: a dangling `<Textbox Nam`
+      // reads as corrupt metadata rather than as truncated metadata.
+      const body = oversize ? truncateOnBlockBoundary(d.rdlContent, RDL_MAX_CHARS) : d.rdlContent;
+
+      if (oversize && d.rdlSummary) {
+        lines.push(`- **RDL summary:**`);
+        lines.push('');
+        lines.push('  ```');
+        lines.push(d.rdlSummary.split('\n').map(l => `  ${l}`).join('\n'));
+        lines.push('  ```');
+      }
       lines.push('');
-      lines.push('<details><summary>Full RDL</summary>');
+      lines.push(`<details><summary>${oversize ? `RDL (first ${body.length.toLocaleString()} of ${d.rdlContent.length.toLocaleString()} chars)` : 'Full RDL'}</summary>`);
       lines.push('');
       lines.push('```xml');
-      lines.push(d.rdlContent);
+      lines.push(body);
       lines.push('```');
       lines.push('</details>');
+      if (oversize) {
+        lines.push('');
+        lines.push(
+          `> ✂️ RDL truncated at ${RDL_MAX_CHARS.toLocaleString()} chars (element boundary) — ` +
+          `${(d.rdlContent.length - body.length).toLocaleString()} chars omitted. The tail is not reachable ` +
+          `through this reader; work from the summary above, and edit the layout in the report designer ` +
+          `rather than round-tripping megabytes of RDL through the model.`,
+        );
+      }
     }
     lines.push('');
   }

@@ -461,9 +461,12 @@ namespace D365MetadataBridge.Protocol
                             // path inside AddField; both are absent for table/table-extension.
                             // This is the single-op RPC that BridgeClient.addField() calls —
                             // it must forward the same parameters as the batch-modify case below.
+                            // `type`/`extendedDataType` are the spellings the create path's
+                            // fields[] uses for the same two things; accepting only the
+                            // add-field spelling silently defaulted them (String, no EDT).
                             return _writeService!.AddField(tableName, fieldName,
-                                request.GetStringParam("fieldType") ?? "String",
-                                request.GetStringParam("edt"),
+                                request.GetStringParam("fieldType") ?? request.GetStringParam("type") ?? "String",
+                                request.GetStringParam("edt") ?? request.GetStringParam("extendedDataType"),
                                 request.GetBoolParam("mandatory") ?? false,
                                 request.GetStringParam("label"),
                                 request.GetStringParam("dataField"),
@@ -951,7 +954,12 @@ namespace D365MetadataBridge.Protocol
 
                         // Extract string helper
                         string? S(string key) => p.TryGetValue(key, out var v) ? v?.ToString() : null;
-                        bool? B(string key) => p.TryGetValue(key, out var v) && v != null ? Convert.ToBoolean(v) : null;
+                        // System.Text.Json boxes every params value as JsonElement, which does
+                        // not implement IConvertible — Convert.ToBoolean(v) therefore threw
+                        // InvalidCastException on every batch op carrying a bool, and the catch
+                        // below reported that cast as the operation's failure. Same coercion as
+                        // the single-op arms' request.GetBoolParam.
+                        bool? B(string key) => p.TryGetValue(key, out var v) ? ParamCoercion.ToBool(v, key) : null;
 
                         switch (op.Operation.ToLowerInvariant())
                         {
@@ -972,10 +980,11 @@ namespace D365MetadataBridge.Protocol
                             case "add-field":
                                 // dataField/dataSource select the data-entity-extension mapped-field
                                 // path inside AddField; both are absent for table/table-extension.
+                                // Same `type`/`extendedDataType` aliasing as the single-op RPC.
                                 writeResult = _writeService.AddField(objectName,
                                     S("fieldName") ?? throw new ArgumentException("Missing: fieldName"),
-                                    S("fieldType") ?? "String",
-                                    S("edt"),
+                                    S("fieldType") ?? S("type") ?? "String",
+                                    S("edt") ?? S("extendedDataType"),
                                     B("mandatory") ?? false,
                                     S("label"),
                                     S("dataField"),
@@ -1096,9 +1105,18 @@ namespace D365MetadataBridge.Protocol
                             case "addenumvalue":
                             case "add-enum-value":
                                 {
+                                    // A value that would not parse used to fall through as 0 —
+                                    // so add-enum-value(value:"three") wrote element 0, a
+                                    // duplicate of the enum's first member, and reported success.
                                     int enumVal = 0;
                                     if (p.TryGetValue("enumValue", out var ev) || p.TryGetValue("value", out ev))
-                                        int.TryParse(ev?.ToString(), out enumVal);
+                                    {
+                                        var evText = ev?.ToString();
+                                        if (!string.IsNullOrWhiteSpace(evText) && !int.TryParse(evText, out enumVal))
+                                            throw new ArgumentException(
+                                                $"add-enum-value: value '{evText}' is not an integer — nothing was written. " +
+                                                "Enum values are integers 0-250; omit the parameter to take the next free position.");
+                                    }
                                     writeResult = _writeService.AddEnumValue(objectName,
                                         S("enumValueName") ?? S("valueName") ?? throw new ArgumentException("Missing: enumValueName"),
                                         enumVal, S("label"), S("countryRegionCodes"));

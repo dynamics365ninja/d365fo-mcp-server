@@ -12,11 +12,15 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
-import { parseStringPromise } from 'xml2js';
+import { parseStringPromise } from '../utils/xml.js';
 import { tryBridgeForm } from '../bridge/bridgeAdapter.js';
 import { readIndexedXml } from '../utils/indexedXmlLookup.js';
 import { describeBridgeStartup } from '../bridge/bridgeReadiness.js';
 import { assertWritePathAllowed } from '../utils/pathContainment.js';
+import {
+  createControlBudget, chargeControl, chargeSkippedSubtree, controlsFooter,
+  DEFAULT_MAX_CONTROLS, type ControlBudget,
+} from '../utils/payloadBudget.js';
 
 const GetFormInfoArgsSchema = z.object({
   formName: z.string().describe('Name of the form'),
@@ -37,6 +41,10 @@ const GetFormInfoArgsSchema = z.object({
     'Returns matching controls with their full path, parent name, and immediate children. ' +
     'Use this to find the exact name of a tab, group, or field (e.g. searchControl="General"). ' +
     'NEVER use PowerShell Get-Content to search form XML — use this parameter instead.'
+  ),
+  maxControls: z.number().optional().describe(
+    `Cap on how many controls the tree renders (default ${DEFAULT_MAX_CONTROLS}). ` +
+    'Prefer searchControl over raising this — a platform form has >1000 controls.'
   ),
 });
 
@@ -80,6 +88,7 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       includeDataSources, 
       includeMethods,
       searchControl,
+      maxControls,
     } = args;
 
     // Explicit filePath skips the bridge — retry path for newly-created forms not yet indexed.
@@ -108,10 +117,10 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
           isError: true,
         };
       }
-      return await parseAndFormatForm(formName, 'Unknown', xmlContent, includeControls, includeDataSources, includeMethods, searchControl);
+      return await parseAndFormatForm(formName, 'Unknown', xmlContent, includeControls, includeDataSources, includeMethods, searchControl, maxControls);
     }
 
-    const bridgeResult = await tryBridgeForm(context.bridge, formName);
+    const bridgeResult = await tryBridgeForm(context.bridge, formName, maxControls);
     if (bridgeResult) return bridgeResult;
 
     // Symbol index → form XML. A silent bridge is not proof the form is missing:
@@ -124,7 +133,7 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       try {
         return await parseAndFormatForm(
           indexed.ref.name, indexed.ref.model, indexed.xml,
-          includeControls, includeDataSources, includeMethods, searchControl,
+          includeControls, includeDataSources, includeMethods, searchControl, maxControls,
         );
       } catch { /* not a usable AxForm XML — fall through to the error below */ }
     }
@@ -183,6 +192,7 @@ async function parseAndFormatForm(
   includeDataSources: boolean,
   includeMethods: boolean,
   searchControl?: string,
+  maxControls?: number,
 ) {
   const xmlObj = await parseStringPromise(xmlContent);
 
@@ -216,7 +226,7 @@ async function parseAndFormatForm(
     };
   }
 
-  return formatFormOutput(formInfo, includeControls, includeDataSources, includeMethods);
+  return formatFormOutput(formInfo, includeControls, includeDataSources, includeMethods, maxControls);
 }
 
 // Control search helpers
@@ -457,7 +467,8 @@ function formatFormOutput(
   formInfo: FormInfo,
   includeControls: boolean,
   includeDataSources: boolean,
-  includeMethods: boolean
+  includeMethods: boolean,
+  maxControls?: number,
 ): any {
   let output = `# Form: \`${formInfo.name}\`\n\n`;
   output += `**Model:** ${formInfo.model}\n\n`;
@@ -494,8 +505,12 @@ function formatFormOutput(
   }
 
   if (includeControls && formInfo.design.length > 0) {
+    // Capped like the bridge tree: this path had no limit either, so a platform
+    // form rendered its full >1000-node tree into a single response.
+    const budget = createControlBudget(maxControls);
     output += `## 🎨 Design (Controls)\n\n`;
-    output += formatControlHierarchy(formInfo.design, 0);
+    output += formatControlHierarchy(formInfo.design, 0, budget);
+    output += controlsFooter(budget);
   }
 
   if (includeMethods && formInfo.methods.length > 0) {
@@ -521,11 +536,15 @@ function formatFormOutput(
   };
 }
 
-function formatControlHierarchy(controls: FormControl[], indent: number): string {
+function formatControlHierarchy(controls: FormControl[], indent: number, budget: ControlBudget): string {
   let output = '';
   const indentStr = '  '.repeat(indent);
 
   for (const control of controls) {
+    if (!chargeControl(budget)) {
+      chargeSkippedSubtree(budget, control.children.length ? countControls(control.children) : 0);
+      continue;
+    }
     output += `${indentStr}- **${control.name}** (${control.type})\n`;
     
     const importantProps = ['Caption', 'DataSource', 'DataField', 'Visible', 'Enabled'];
@@ -539,7 +558,7 @@ function formatControlHierarchy(controls: FormControl[], indent: number): string
     }
 
     if (control.children.length > 0) {
-      output += formatControlHierarchy(control.children, indent + 1);
+      output += formatControlHierarchy(control.children, indent + 1, budget);
     }
   }
 

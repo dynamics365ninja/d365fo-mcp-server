@@ -25,6 +25,7 @@ import { tryBridgeCocExtensions } from '../bridge/bridgeAdapter.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { lookupSymbolNocase } from '../utils/symbolLookup.js';
 import { findDeclaringAncestor } from '../utils/inheritanceChain.js';
+import { renderPrepareOpSpec } from './opSpecs.js';
 import { rankContext, renderRankedContext } from '../workspace/contextRanker.js';
 
 // Schema
@@ -406,6 +407,15 @@ export async function prepareChangeTool(request: any, context: XppServerContext)
     lines.push(namingText);
     lines.push('');
   }
+
+  // Same reasoning as prepare(create): hand over the write contract here rather
+  // than making the agent fetch it in a separate call.
+  lines.push(...renderPrepareOpSpec({
+    mode: 'change',
+    objectType: resolvedType,
+    operation: (raw as any)?.operation,
+    methodName,
+  }));
 
   lines.push('---');
   lines.push(`**Grounding token:** \`${token}\``);

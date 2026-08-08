@@ -4,7 +4,7 @@
  */
 
 import * as fs from 'fs/promises';
-import { Parser } from 'xml2js';
+import { Parser } from '../utils/xml.js';
 import type {
   XppParseResult,
   XppClassInfo,

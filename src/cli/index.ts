@@ -12,6 +12,7 @@
  *   d365fo-mcp setup            first-time setup wizard (scenarios A–F)
  *   d365fo-mcp config [section] change settings after setup
  *   d365fo-mcp doctor           environment & installation health check
+ *   d365fo-mcp session <log>    round-trip cost analysis of an agent session
  *   d365fo-mcp start [name]     run the root server or an instance
  *   d365fo-mcp update [--yes]   git pull + npm install + build (+ bridge/index)
  *   d365fo-mcp index [name]     rebuild the metadata index (--all: all instances)
@@ -23,6 +24,7 @@ import { connectCommand } from './commands/connect.js';
 import { doctorCommand } from './commands/doctor.js';
 import { indexCommand } from './commands/indexCmd.js';
 import { instanceAddCommand, instanceListCommand, instanceUpgradeCommand } from './commands/instance.js';
+import { sessionCommand } from './commands/session.js';
 import { setupCommand } from './commands/setup.js';
 import { startCommand } from './commands/start.js';
 import { updateCommand } from './commands/update.js';
@@ -30,6 +32,7 @@ import { askSelect, p } from './ui.js';
 import { isFullInstall } from './context.js';
 import { VERSION } from '../version.js';
 import { listInstances } from './instances.js';
+import { KNOWN_FORMATS } from './session/sessionLog.js';
 
 const program = new Command();
 
@@ -61,6 +64,14 @@ program.command('config')
 program.command('doctor')
   .description('Check the environment and installation; prints a fix for every problem')
   .action(doctorCommand);
+
+program.command('session')
+  .argument('[log]', 'agent-host debug log (Copilot Chat: …/GitHub.copilot-chat/debug-logs/<id>/main.jsonl)')
+  .option('--json', 'machine-readable output, for tracking the number across releases')
+  .option('--format <id>', `force a log format instead of sniffing it (${KNOWN_FORMATS.join(', ')})`)
+  .option('--top <n>', 'rows of the per-tool table to print (default 10)')
+  .description('Round-trip cost analysis of an agent session: fitted rates, attribution, wasted round trips')
+  .action((log: string | undefined, opts: { json?: boolean; format?: string; top?: string }) => sessionCommand(log, opts));
 
 program.command('start')
   .argument('[instance]', "instance name, or 'root' for the repo-level .env")

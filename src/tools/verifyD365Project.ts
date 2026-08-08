@@ -8,7 +8,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { Parser } from 'xml2js';
+import { Parser } from '../utils/xml.js';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { defaultPackagesRoot } from '../utils/packagesRoot.js';

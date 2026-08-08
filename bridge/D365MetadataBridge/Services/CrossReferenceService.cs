@@ -10,9 +10,36 @@ namespace D365MetadataBridge.Services
     /// <summary>
     /// Provides cross-reference queries using the DYNAMICSXREFDB SQL database.
     /// This replaces the FTS5 text-search approach with real compiler-resolved references.
+    ///
+    /// ## Query failures are errors, never empty results
+    ///
+    /// Every method here answers one question — "what else touches this?" — and the answer
+    /// drives whether it is safe to change something. A failed query used to be returned as
+    /// a SUCCESSFUL response carrying count=0 plus an `error` field, which reads to any
+    /// caller that does not inspect the extra field as the strongest possible clearance:
+    /// "nothing references this, go ahead". A down or unreachable xref database therefore
+    /// produced false negatives on exactly the question the service exists to answer, and
+    /// the more broken the database, the safer everything looked.
+    ///
+    /// So failures throw. RequestDispatcher.HandleXref turns them into a JSON-RPC error, and
+    /// the TS adapters already treat a rejected call as "no answer from the bridge" and fall
+    /// back to their own scan instead of trusting a zero.
     /// </summary>
     public class CrossReferenceService
     {
+        /// <summary>
+        /// Rethrows a failed xref query as an error the dispatcher will surface, with the
+        /// query's subject in the message so the caller can see what was NOT answered.
+        /// </summary>
+        private static Exception QueryFailed(string operation, string subject, Exception cause)
+        {
+            Console.Error.WriteLine($"[CrossRefService] {operation}({subject}) failed: {cause.Message}");
+            return new InvalidOperationException(
+                $"Cross-reference query {operation}('{subject}') failed: {cause.Message}. " +
+                "This is NOT an empty result — the cross-reference database did not answer, so nothing " +
+                "can be concluded about references to this object.", cause);
+        }
+
         private readonly string _connectionString;
 
         public CrossReferenceService(string server, string database)
@@ -209,8 +236,7 @@ namespace D365MetadataBridge.Services
             }
             catch (SqlException ex)
             {
-                Console.Error.WriteLine($"[CrossRefService] SQL error: {ex.Message}");
-                return new { objectPath, count = 0, references = new List<ReferenceInfoModel>(), error = ex.Message };
+                throw QueryFailed("findReferences", objectPath, ex);
             }
 
             return new { objectPath, count = references.Count, references };
@@ -335,15 +361,7 @@ namespace D365MetadataBridge.Services
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[WARN] FindExtensionClasses({baseClassName}): {ex.Message}");
-                return new
-                {
-                    baseClassName,
-                    count = 0,
-                    extensions = new List<ExtensionClassDetailModel>(),
-                    error = ex.Message,
-                    _source = "C# bridge (DYNAMICSXREFDB)"
-                };
+                throw QueryFailed("findExtensionClasses", baseClassName, ex);
             }
         }
 
@@ -447,8 +465,7 @@ namespace D365MetadataBridge.Services
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[WARN] FindEventSubscribers({targetName}): {ex.Message}");
-                return new { targetName, count = 0, handlers = results, error = ex.Message, _source = "C# bridge (DYNAMICSXREFDB)" };
+                throw QueryFailed("findEventSubscribers", targetName, ex);
             }
         }
 
@@ -574,8 +591,7 @@ namespace D365MetadataBridge.Services
             }
             catch (SqlException ex)
             {
-                Console.Error.WriteLine($"[CrossRefService] FindApiUsageCallers SQL error: {ex.Message}");
-                return new { apiName, count = 0, callers = new List<ApiUsageCallerModel>(), error = ex.Message, _source = "C# bridge (DYNAMICSXREFDB)" };
+                throw QueryFailed("findApiUsageCallers", apiName, ex);
             }
 
             // Group by caller class for pattern summary

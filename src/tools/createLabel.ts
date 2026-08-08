@@ -151,6 +151,16 @@ const CreateLabelArgsSchema = z.object({
         'existing label instead of skipping it. When the label is absent in a target language it ' +
         'is created (upsert). Off by default so create never clobbers existing text.',
     ),
+  createIfMissing: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Upsert-lite for action="create": create the label when it is absent, and when it already ' +
+        'exists REUSE it (existing text untouched) and report the reference instead of an ' +
+        '"already exists, nothing written" warning. Lets one call replace the mandated ' +
+        'search-then-create pair. Never overwrites — that is action="update".',
+    ),
 });
 
 // Helpers
@@ -810,13 +820,33 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
 
     // 6. Build result summary
     if (written.length === 0 && skipped.length > 0) {
-      const skipLines = [
-        `⚠️ Label "${labelId}" already exists in all languages:\n` +
-        skipped.map(s => `  - ${s}`).join('\n') +
-        `\n\nLocation: ${labelResourcesDir}` +
-        `\nPackage : ${resolvedPackageName} @ ${resolvedPackagePath}` +
-        '\n\nNo label text changes were made.',
-      ];
+      // createIfMissing turns "it was already there" from a warning the caller has to
+      // interpret into the answer it actually wanted: the reference to use. Without it
+      // the contract mandates labels(action="search") before every create — a whole
+      // extra round trip, and every round trip re-bills the cached context — purely to
+      // learn something this call already knows.
+      //
+      // Existing text is left ALONE rather than updated. action="update" already exists
+      // for a deliberate overwrite (it forces overwriteExisting), and a label is
+      // referenced from arbitrarily many objects, so replacing its text with whatever
+      // this caller happened to pass silently changes every one of those references —
+      // and .label.txt has no undo outside git.
+      const skipLines = args.createIfMissing
+        ? [
+            `✅ Label "@${labelFileId}:${labelId}" already exists — reusing it (createIfMissing).\n` +
+            skipped.map(s => `  - ${s}`).join('\n') +
+            `\n\nLocation: ${labelResourcesDir}` +
+            `\nPackage : ${resolvedPackageName} @ ${resolvedPackagePath}` +
+            '\n\nExisting text was NOT changed. To change it: ' +
+            `labels(action="update", labelId="${labelId}", labelFileId="${labelFileId}", model="${model}", translations=[…]).`,
+          ]
+        : [
+            `⚠️ Label "${labelId}" already exists in all languages:\n` +
+            skipped.map(s => `  - ${s}`).join('\n') +
+            `\n\nLocation: ${labelResourcesDir}` +
+            `\nPackage : ${resolvedPackageName} @ ${resolvedPackagePath}` +
+            '\n\nNo label text changes were made.',
+          ];
       if (addedToProject.length > 0) {
         skipLines.push('\nAdded to VS project:');
         skipLines.push(...addedToProject.map(n => `  ✔ ${n}`));
@@ -824,6 +854,12 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
         skipLines.push('\n✅ Label file entries already in VS project.');
       }
       if (projectWarning) skipLines.push(projectWarning);
+      if (args.createIfMissing) {
+        // The reuse path has to hand back what a create hands back, or the caller
+        // still needs a second call to learn how to reference the label.
+        skipLines.push('', 'Use in X++:', `  literalStr("@${labelFileId}:${labelId}")`);
+        skipLines.push('', 'Use in metadata XML:', `  <Label>@${labelFileId}:${labelId}</Label>`);
+      }
       return {
         content: [{ type: 'text', text: skipLines.join('\n') }],
       };

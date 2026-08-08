@@ -131,7 +131,7 @@ function checkPackagesRoot(store: SettingsStore, label: string): CheckResult[] {
  * states the answer outright, and names every source it looked at when there
  * isn't one.
  */
-export async function checkWorkspaceDetection(
+async function checkWorkspaceDetection(
   store: SettingsStore,
   label: string,
 ): Promise<{ modelName: string | null; checks: CheckResult[] }> {

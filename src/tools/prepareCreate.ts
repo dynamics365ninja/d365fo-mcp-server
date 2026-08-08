@@ -18,6 +18,7 @@ import type { XppServerContext } from '../types/context.js';
 import { createProvenanceToken } from '../utils/provenanceStore.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { resolveObjectPrefix, applyObjectPrefix } from '../utils/modelClassifier.js';
+import { renderPrepareOpSpec } from './opSpecs.js';
 import { rankContext, renderRankedContext } from '../workspace/contextRanker.js';
 import { lookupSymbolsNocase, type SymbolHit } from '../utils/symbolLookup.js';
 import { RESERVED_SYSTEM_FIELD_NAMES } from './generateSmartTable.js';
@@ -290,6 +291,10 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
   } catch {
     // Additive — omit on failure.
   }
+
+  // The write contract for this objectType, so the flow does not spend a round
+  // trip on get_knowledge(kind="op-spec") right after this call.
+  lines.push(...renderPrepareOpSpec({ mode: 'create', objectType }));
 
   lines.push('---');
   lines.push(`**Grounding token:** \`${token}\``);
