@@ -42,12 +42,17 @@ const CHARS_PER_TOKEN = 4;
 // tightening the `params` description rather than by moving the ceiling.
 // Headroom is small on purpose so creep is caught early.
 //
-// run_bp_check's `objects[]` batch form (#828) does raise it: it is a genuinely
-// new array-of-object parameter, and it buys back far more than it costs —
-// checking three objects went from three ListTools-priced round trips to one.
-// The single-target `targetFilter`/`targetElementType` descriptions were
-// tightened at the same time to pay for part of it.
-const TOTAL_BUDGET = 63_700;
+// Raised for labels(action="search") maxResults/verbose (#832): a broad phrase
+// query returned 30 four-line blocks (~2,5 kB per call), so ~230 wire chars buy
+// a bounded, one-line-per-label default — the schema pays once per session, the
+// result paid on every call and on every later re-read.
+//
+// run_bp_check's `objects[]` batch form (#828) raises it again: it is a
+// genuinely new array-of-object parameter, and it buys back far more than it
+// costs — checking three objects went from three ListTools-priced round trips
+// to one. The single-target `targetFilter`/`targetElementType` descriptions
+// were tightened at the same time to pay for part of it.
+const TOTAL_BUDGET = 63_600;
 const LARGEST_TOOL_BUDGET = 9_900;
 
 async function getTools(): Promise<Array<{ name: string }>> {

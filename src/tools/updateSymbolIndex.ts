@@ -167,6 +167,16 @@ function newestMtimeMs(filePaths: string[]): number {
 }
 
 /**
+ * Said out loud when the call was redundant (#830). The skip itself is old news;
+ * saying nothing about it is what kept the agent making the call — four times in
+ * one audited session, each as the only tool call in its turn.
+ */
+const REDUNDANT_CALL_NOTE =
+  'ℹ️ This call was not needed. The bridge provider was already refreshed after these file(s) ' +
+  'were written — `d365fo_file` create/modify refreshes it on its way out, so no rebuild was run. ' +
+  'Only call `update_symbol_index` for files changed OUTSIDE this server.';
+
+/**
  * Refresh the C# provider once for the whole batch — and only when it could
  * actually learn something.
  *
@@ -179,18 +189,21 @@ function newestMtimeMs(filePaths: string[]): number {
 async function refreshBridgeForBatch(
   context: XppServerContext,
   filePaths: string[],
-): Promise<string> {
+): Promise<{ note: string; redundant: boolean }> {
   const newest = newestMtimeMs(filePaths);
   if (newest > 0 && getLastRefreshStartedAt() > newest) {
-    return 'Bridge provider already refreshed after these files were written — skipped.';
+    return { note: REDUNDANT_CALL_NOTE, redundant: true };
   }
   try {
     const result = await bridgeRefreshProvider(context.bridge);
-    return result
-      ? `Bridge provider refreshed in ${result.elapsedMs}ms.`
-      : 'Bridge provider not available (skipped).';
+    return {
+      note: result
+        ? `Bridge provider refreshed in ${result.elapsedMs}ms.`
+        : 'Bridge provider not available (skipped).',
+      redundant: false,
+    };
   } catch (e: any) {
-    return `Bridge refresh skipped: ${e?.message ?? e}`;
+    return { note: `Bridge refresh skipped: ${e?.message ?? e}`, redundant: false };
   }
 }
 
@@ -209,18 +222,25 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
 
   // One refresh for the batch, before indexing, so a per-file failure cannot
   // leave the provider stale.
-  const bridgeNote = await refreshBridgeForBatch(context, filePaths);
+  const bridge = await refreshBridgeForBatch(context, filePaths);
 
   const results: Array<{ text: string; isError: boolean }> = [];
   for (const fp of filePaths) {
     results.push(await indexOneFile(fp, context));
   }
 
+  // A redundant call leads with the note instead of burying it under a success
+  // message the agent reads as "this call did something" (#830). The SQLite
+  // reindex below still runs — it is milliseconds, and nothing else populates
+  // the symbol DB — but the expensive DiskProvider rebuild was skipped.
+  const lead = bridge.redundant ? `${bridge.note}\n\n` : '';
+  const trail = bridge.redundant ? '' : bridge.note;
+
   // Single file keeps its original single-message shape; only a real batch gets
   // the roll-up, so existing callers and their assertions see no change.
   if (results.length === 1) {
     return {
-      content: [{ type: 'text', text: `${results[0].text}\n\n${bridgeNote}` }],
+      content: [{ type: 'text', text: `${lead}${results[0].text}${trail ? `\n\n${trail}` : ''}` }],
       ...(results[0].isError ? { isError: true } : {}),
     };
   }
@@ -230,7 +250,8 @@ export const updateSymbolIndexTool = async (params: any, context: XppServerConte
     content: [{
       type: 'text',
       text:
-        `Indexed ${results.length - failed}/${results.length} file(s) in one pass. ${bridgeNote}\n\n` +
+        `${lead}Indexed ${results.length - failed}/${results.length} file(s) in one pass.` +
+        `${trail ? ` ${trail}` : ''}\n\n` +
         results.map(r => r.text).join('\n\n'),
     }],
     ...(failed === results.length ? { isError: true } : {}),
