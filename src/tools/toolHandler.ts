@@ -42,6 +42,7 @@ import {
   getInFlight, registerInFlight, clearInFlight,
 } from '../utils/callDedup.js';
 import { checkIndexStaleness } from '../utils/indexStaleness.js';
+import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
 import {
   buildContextSnapshot, renderContextSnapshotSection, renderContextSnapshotCompact,
 } from '../workspace/contextSnapshot.js';
@@ -120,16 +121,23 @@ function getCapForTool(toolName: string): number | 'uncapped' {
 }
 
 
-function capToolResponse(toolName: string, result: any): any {
+export function capToolResponse(toolName: string, result: any): any {
   const cap = getCapForTool(toolName);
   if (cap === 'uncapped' || !result?.content) return result;
   const content = result.content.map((item: any) => {
     if (item.type !== 'text' || typeof item.text !== 'string') return item;
     if (item.text.length <= (cap as number)) return item;
+    // Cut on a block boundary: a raw slice ended responses mid-XML-element
+    // (`<AxTableField Nam`), which reads as corrupt metadata, not truncated.
+    const kept = truncateOnBlockBoundary(item.text, cap as number);
     return {
       ...item,
-      text: item.text.slice(0, cap as number) +
-        `\n\n> ✂️ Response truncated at ${cap} chars. Use more specific parameters (e.g. methodOffset, compact=false for one class) to get remaining content.`,
+      // The advice used to say `compact=false`, which makes the response BIGGER
+      // — the caller followed it and hit the cap again with more content cut.
+      text: kept +
+        `\n\n> ✂️ Response truncated at ${cap} chars (${item.text.length - kept.length} omitted). ` +
+        `Ask for LESS, not more: page with methodOffset/fieldsOffset, narrow with fieldFilter/searchControl/prefix, ` +
+        `keep compact=true, and read one object per call instead of objects[].`,
     };
   });
   return { ...result, content };

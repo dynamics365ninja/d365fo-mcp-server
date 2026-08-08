@@ -37,7 +37,7 @@ export const getObjectInfoTool = {
         },
         options: {
           type: 'object',
-          description: 'Optional type-specific flags forwarded to the reader (e.g. includeRdl, includeFields, searchControl, compact, includeOperations, filter, mode, modelName). For a CLASS, {"method":"validateWrite","include":"signature"} returns ONE method (include: signature | source | both) — required before writing a CoC extension. With objects[] it applies to every entry.',
+          description: 'Type-specific flags forwarded to the reader: includeRdl, includeFields, searchControl, compact, includeOperations, filter, mode, modelName. For a CLASS, {"method":"validateWrite","include":"signature"} returns ONE method (include: signature | source | both) — required before writing a CoC extension. Big objects are paged — table fieldsOffset/fieldFilter, form maxControls. Applies to every objects[] entry.',
         },
       },
     },

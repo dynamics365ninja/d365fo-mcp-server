@@ -69,7 +69,14 @@ const CHARS_PER_TOKEN = 4;
 //
 // Headroom is small on purpose so creep is caught early: both ceilings are the
 // next round hundred above the measured payload.
-const TOTAL_BUDGET = 50_500;
+//
+// Phase 1.7 (reader payloads) added ~50 chars to get_object_info's `options`
+// description to name the new pagination knobs — table fieldsOffset/fieldFilter
+// and form maxControls. That is not optional text: a knob the model cannot see
+// does not shrink anything, so those chars buy back thousands per call. Against
+// main alone it needed the ceiling at 53_700; combined with the Phase 1.5 trim
+// it fits far below, so the ceiling is set from the real measured payload.
+const TOTAL_BUDGET = 50_700;
 const LARGEST_TOOL_BUDGET = 5_300;
 
 async function getTools(): Promise<Array<{ name: string }>> {

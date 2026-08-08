@@ -39,7 +39,8 @@ const OPTIONS_DESCRIPTION =
   'Class: { "compact": false } for full source, { "methodOffset": 15 } for next method page, ' +
   '{ "members": "names" } for fast member-name list (add "prefix" to filter), ' +
   '{ "method": "validateWrite", "include": "signature" } for ONE method (include: signature | source | both). ' +
-  'Report: { "includeRdl": true }. Form: { "searchControl": "AccountNum" }. Macro: { "filter": "Path" }.';
+  'Table: { "fieldsOffset": 50 } for the next field page, { "fieldFilter": "Invoice" } to list only matching fields. ' +
+  'Report: { "includeRdl": true }. Form: { "searchControl": "AccountNum" }, { "maxControls": 300 }. Macro: { "filter": "Path" }.';
 
 /**
  * One entry of the plural `objects[]` form. The name lives in `objectName` —
@@ -182,6 +183,22 @@ async function readObject(ref: ObjectRef, context: XppServerContext) {
 }
 
 /**
+ * Flatten a reader result into the single string a plural section holds.
+ *
+ * This used to read `content[0].text` only, which SILENTLY DROPPED everything a
+ * multi-item reader returned after the first block — the plural form then looked
+ * like it had answered while withholding part of the metadata, which is worse
+ * than failing. The single-object form never had the bug because it passes the
+ * whole content array through untouched.
+ */
+function joinContentText(result: any): string {
+  const texts = (result?.content ?? [])
+    .filter((c: any) => c?.type === 'text' && typeof c.text === 'string')
+    .map((c: any) => c.text);
+  return texts.length ? texts.join('\n\n') : 'No content';
+}
+
+/**
  * Plural form: fan out to every reader in parallel (same pattern as prepare) and
  * assemble one result with per-object sections — N round trips collapse to one.
  */
@@ -191,7 +208,7 @@ async function readObjects(refs: ObjectRef[], context: XppServerContext) {
   const results = await Promise.all(refs.map(async (ref) => {
     try {
       const result = await readObject(ref, context);
-      return { ...ref, success: !result.isError, text: result.content?.[0]?.text ?? 'No content' };
+      return { ...ref, success: !result.isError, text: joinContentText(result) };
     } catch (err) {
       return { ...ref, success: false, text: `Error: ${err instanceof Error ? err.message : err}` };
     }
