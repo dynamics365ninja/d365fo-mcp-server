@@ -22,6 +22,10 @@ const LOCK_ROOT = path.join(os.tmpdir(), 'd365fo-mcp-locks');
 const LOCK_WAIT_TIMEOUT_MS = parseInt(process.env.OPERATION_LOCK_TIMEOUT_MS || '900000', 10); // 15 min
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.OPERATION_LOCK_POLL_MS || '250', 10);
 const LOCK_STALE_MS = parseInt(process.env.OPERATION_LOCK_STALE_MS || '1200000', 10); // 20 min
+// The holder touches its lock directory on this interval. Without it the mtime is
+// frozen at acquisition time and a build/DB-sync that legitimately runs longer than
+// LOCK_STALE_MS has its own lock reaped out from under it by the next caller.
+const LOCK_HEARTBEAT_MS = parseInt(process.env.OPERATION_LOCK_HEARTBEAT_MS || '60000', 10); // 1 min
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -47,36 +51,81 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+/** Owner record of a filesystem lock, or null when it is missing/unreadable. */
+async function readLockOwner(lockDir: string): Promise<{ pid?: number } | null> {
+  try {
+    return JSON.parse(await fs.readFile(path.join(lockDir, 'owner.json'), 'utf8')) as { pid?: number };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Take the lock directory away from its current occupant and delete it.
+ *
+ * The rename is the claim: two processes that both decide the same lock is stale
+ * would otherwise each call rm(), and the loser's rm() lands AFTER the winner has
+ * already re-created the directory — deleting a lock that is now legitimately held.
+ * Exactly one rename can succeed, so exactly one caller reports the removal.
+ */
+async function claimAndRemoveLock(lockDir: string): Promise<boolean> {
+  const claimed = `${lockDir}.reaped-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    await fs.rename(lockDir, claimed);
+  } catch {
+    return false; // someone else claimed it first, or the owner released it
+  }
+  await fs.rm(claimed, { recursive: true, force: true }).catch(() => {});
+  return true;
+}
+
 async function tryRemoveStaleLock(lockDir: string, normalizedKey: string): Promise<boolean> {
   try {
     const stat = await fs.stat(lockDir);
     const ageMs = Date.now() - stat.mtimeMs;
 
-    // If the owning process is dead, remove immediately regardless of age.
-    const ownerFile = path.join(lockDir, 'owner.json');
-    try {
-      const ownerRaw = await fs.readFile(ownerFile, 'utf8');
-      const owner = JSON.parse(ownerRaw) as { pid?: number };
-      if (typeof owner.pid === 'number' && !isProcessAlive(owner.pid)) {
-        await fs.rm(lockDir, { recursive: true, force: true });
+    const owner = await readLockOwner(lockDir);
+    if (typeof owner?.pid === 'number') {
+      if (!isProcessAlive(owner.pid)) {
+        // Dead owner: remove immediately regardless of age.
+        if (!(await claimAndRemoveLock(lockDir))) return false;
         console.error(`[operationLocks] removed dead-process lock for ${normalizedKey} (pid ${owner.pid} no longer running, age ${ageMs} ms)`);
         return true;
       }
-    } catch {
-      // owner.json missing or unparseable — fall through to age check
+      // A LIVING owner's lock is never age-reaped. The age check exists for locks
+      // whose owner vanished without a trace; applied to a live pid it cancelled
+      // long-running work — a build or DB sync past LOCK_STALE_MS had its lock
+      // deleted and a second build started concurrently against the same package.
+      return false;
     }
 
-    // Fallback: time-based stale detection
+    // No usable owner record — all that is left is time-based stale detection.
     if (ageMs < LOCK_STALE_MS) {
       return false;
     }
 
-    await fs.rm(lockDir, { recursive: true, force: true });
+    if (!(await claimAndRemoveLock(lockDir))) return false;
     console.error(`[operationLocks] removed stale filesystem lock for ${normalizedKey} (age ${ageMs} ms)`);
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Keep the lock directory's mtime moving while the operation runs, so the
+ * time-based reaper sees a fresh lock rather than one frozen at acquisition.
+ * Best-effort: the timer is unref'd (a held lock must not keep the process
+ * alive) and every failure is ignored — the pid check is the primary defence.
+ */
+function startLockHeartbeat(lockDir: string, ownerFile: string): () => void {
+  const timer = setInterval(() => {
+    const now = new Date();
+    void fs.utimes(lockDir, now, now).catch(() => {});
+    void fs.utimes(ownerFile, now, now).catch(() => {});
+  }, LOCK_HEARTBEAT_MS);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 async function acquireFilesystemLock(normalizedKey: string): Promise<() => Promise<void>> {
@@ -95,7 +144,18 @@ async function acquireFilesystemLock(normalizedKey: string): Promise<() => Promi
         acquiredAt: new Date().toISOString(),
       }, null, 2), 'utf8').catch(() => {});
 
+      const stopHeartbeat = startLockHeartbeat(lockDir, ownerFile);
+
       return async () => {
+        stopHeartbeat();
+        // Release only what is still OURS. If a reaper wrongly took this lock and
+        // a third party re-created it, an unconditional rm() would delete the new
+        // holder's lock and let two operations run at once.
+        const owner = await readLockOwner(lockDir);
+        if (owner && owner.pid !== process.pid) {
+          console.error(`[operationLocks] lock for ${normalizedKey} is now owned by pid ${owner.pid} — leaving it in place`);
+          return;
+        }
         await fs.rm(lockDir, { recursive: true, force: true }).catch(() => {});
       };
     } catch (error: any) {
@@ -171,17 +231,15 @@ export async function isOperationLockHeld(lockKey: string): Promise<boolean> {
     const stat = await fs.stat(lockDir);
     const ageMs = Date.now() - stat.mtimeMs;
 
-    const ownerFile = path.join(lockDir, 'owner.json');
-    try {
-      const ownerRaw = await fs.readFile(ownerFile, 'utf8');
-      const owner = JSON.parse(ownerRaw) as { pid?: number };
-      if (typeof owner.pid === 'number' && !isProcessAlive(owner.pid)) {
-        return false; // dead process — lock is orphaned, not held
-      }
-    } catch {
-      // owner.json missing/unreadable — fall back to age check
+    const owner = await readLockOwner(lockDir);
+    if (typeof owner?.pid === 'number') {
+      // Held iff the owner is alive — age is irrelevant for a living owner, the
+      // same rule tryRemoveStaleLock applies, so the two never disagree about
+      // whether a long-running build still holds its lock.
+      return isProcessAlive(owner.pid);
     }
 
+    // owner.json missing/unreadable — fall back to age check
     return ageMs < LOCK_STALE_MS;
   } catch {
     return false;

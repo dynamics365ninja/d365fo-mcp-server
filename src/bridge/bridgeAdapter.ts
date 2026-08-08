@@ -29,6 +29,11 @@ import { debugLog } from '../utils/logger.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
 import { parseXppDeclaration } from '../metadata/xppDeclaration.js';
 import { rankCustomFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
+import {
+  pageFields, fieldsHeading, fieldsFooter,
+  createControlBudget, chargeControl, chargeSkippedSubtree, controlsFooter,
+  type ControlBudget,
+} from '../utils/payloadBudget.js';
 import type {
   BridgeTableInfo,
   BridgeClassInfo,
@@ -67,19 +72,21 @@ export async function tryBridgeTable(
   bridge: BridgeClient | undefined,
   tableName: string,
   methodOffset = 0,
+  fieldsOffset = 0,
+  fieldFilter?: string,
 ): Promise<ToolResult | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     const t = await bridge.readTable(tableName);
     if (!t) return null;
-    return { content: [{ type: 'text', text: formatTable(t, methodOffset) }] };
+    return { content: [{ type: 'text', text: formatTable(t, methodOffset, fieldsOffset, fieldFilter) }] };
   } catch (e) {
     recordBridgeFailure(`readTable(${tableName})`, e);
     return null;
   }
 }
 
-function formatTable(t: BridgeTableInfo, methodOffset: number): string {
+function formatTable(t: BridgeTableInfo, methodOffset: number, fieldsOffset = 0, fieldFilter?: string): string {
   let out = `# Table: ${t.name}\n\n`;
   if (t.label) out += `**Label:** ${t.label}\n`;
   if (t.tableGroup) out += `**Table Group:** ${t.tableGroup}\n`;
@@ -90,10 +97,15 @@ function formatTable(t: BridgeTableInfo, methodOffset: number): string {
   if (t.primaryIndex) out += `**PrimaryIndex:** ${t.primaryIndex}\n`;
   out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
 
-  // Fields
-  out += `## Fields (${t.fields.length})\n\n`;
+  // Fields — paged like methods below. A Microsoft table can carry 400+ fields,
+  // which dominated this response and was paid again on every re-read.
+  const fieldPage = pageFields(t.fields, fieldsOffset, fieldFilter);
+  out += `## ${fieldsHeading(fieldPage)}\n\n`;
   out += `_Field type is shown as explicit EDT when available._\n\n`;
-  for (const f of t.fields) {
+  if (fieldPage.matched === 0 && fieldPage.filter) {
+    out += `_No field name contains "${fieldPage.filter}" — drop \`fieldFilter\` to list all ${fieldPage.total}._\n`;
+  }
+  for (const f of fieldPage.visible) {
     const required = f.mandatory ? ' **(required)**' : '';
     const label = f.label ? ` - ${f.label}` : '';
     const typeInfo = f.extendedDataType
@@ -101,6 +113,7 @@ function formatTable(t: BridgeTableInfo, methodOffset: number): string {
       : `Type: ${f.fieldType}`;
     out += `- **${f.name}**: ${typeInfo}${required}${label}\n`;
   }
+  out += fieldsFooter(fieldPage);
 
   // Indexes
   out += `\n## Indexes (${t.indexes.length})\n\n`;
@@ -363,19 +376,20 @@ function formatEdt(edt: BridgeEdtInfo): string {
 export async function tryBridgeForm(
   bridge: BridgeClient | undefined,
   formName: string,
+  maxControls?: number,
 ): Promise<ToolResult | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     const form = await bridge.readForm(formName);
     if (!form) return null;
-    return { content: [{ type: 'text', text: formatForm(form) }] };
+    return { content: [{ type: 'text', text: formatForm(form, maxControls) }] };
   } catch (e) {
     recordBridgeFailure(`readForm(${formName})`, e);
     return null;
   }
 }
 
-function formatForm(form: BridgeFormInfo): string {
+function formatForm(form: BridgeFormInfo, maxControls?: number): string {
   let out = `# Form: ${form.name}\n\n`;
   if (form.model) out += `**Model:** ${form.model}\n`;
   if (form.formPattern) out += `**Pattern:** ${form.formPattern}\n`;
@@ -396,9 +410,13 @@ function formatForm(form: BridgeFormInfo): string {
     out += '\n';
   }
 
-  // Controls tree with extra properties
+  // Controls tree with extra properties. Capped: a platform form's tree runs to
+  // >1000 nodes and there was no limit at all, so one read of SalesTable buried
+  // everything else in the response.
+  const budget = createControlBudget(maxControls);
   out += `## 🎨 Controls (${form.controls.length} top-level)\n\n`;
-  out += buildControlTreeV2(form.controls, 0);
+  out += buildControlTreeV2(form.controls, 0, budget);
+  out += controlsFooter(budget);
 
   // Methods
   if (form.methods && form.methods.length > 0) {
@@ -421,11 +439,17 @@ function formatForm(form: BridgeFormInfo): string {
   return out;
 }
 
-function buildControlTreeV2(controls: BridgeFormControl[], depth: number): string {
+function buildControlTreeV2(controls: BridgeFormControl[], depth: number, budget: ControlBudget): string {
   if (!controls || depth > 10) return '';
   let out = '';
   const indent = '  '.repeat(depth);
   for (const c of controls) {
+    if (!chargeControl(budget)) {
+      // Over budget: the node and everything under it are omitted, but still
+      // counted so the footer reports a true remainder rather than "1 more".
+      chargeSkippedSubtree(budget, c.children?.length ? countControls(c.children) : 0);
+      continue;
+    }
     const binding = c.dataSource && c.dataField ? ` [${c.dataSource}.${c.dataField}]` : '';
     const method = c.dataMethod ? ` (method: ${c.dataMethod})` : '';
     out += `${indent}- **${c.name}** (${c.controlType})${binding}${method}`;
@@ -438,7 +462,7 @@ function buildControlTreeV2(controls: BridgeFormControl[], depth: number): strin
     if (props.length > 0) out += `\n${indent}  _${props.join(', ')}_`;
     out += '\n';
     if (c.children?.length) {
-      out += buildControlTreeV2(c.children, depth + 1);
+      out += buildControlTreeV2(c.children, depth + 1, budget);
     }
   }
   return out;
@@ -1245,6 +1269,20 @@ const BRIDGE_MODIFY_TYPES = new Set([
 ]);
 
 /**
+ * Names the properties the bridge could not write, for appending to a success message.
+ *
+ * The C# side has reported `unsupportedProperties` for a while, but nothing on this side
+ * read it: an EDT whose stringSize had nowhere to go, or a Group control that cannot hold
+ * the DataSource it was handed, still produced a bare ✅. Reporting it in C# and dropping
+ * it here is the same silence with more steps.
+ */
+export function unappliedSuffix(result: { unsupportedProperties?: string[] }): string {
+  const dropped = result.unsupportedProperties ?? [];
+  if (dropped.length === 0) return '';
+  return `\n⚠️ NOT applied — this object type has nowhere to store them: ${dropped.join(', ')}`;
+}
+
+/**
  * Checks if bridge can handle this create operation.
  */
 export function canBridgeCreate(objectType: string): boolean {
@@ -1293,7 +1331,7 @@ export async function bridgeCreateObject(
       return {
         success: true,
         filePath: result.filePath,
-        message: `✅ Created via ${result.api ?? 'IMetadataProvider'} — file: ${result.filePath}`,
+        message: `✅ Created via ${result.api ?? 'IMetadataProvider'} — file: ${result.filePath}` + unappliedSuffix(result),
       };
     } else {
       return { success: false, message: `Bridge createObject returned success=false` };
@@ -1966,7 +2004,7 @@ export async function bridgeAddControl(
     return {
       success: result.success,
       message: result.success
-        ? `✅ Control '${controlName}' added to '${parentControl}' via ${result.api}`
+        ? `✅ Control '${controlName}' added to '${parentControl}' via ${result.api}` + unappliedSuffix(result)
         : `Bridge addControl returned success=false`,
     };
   } catch (e) {

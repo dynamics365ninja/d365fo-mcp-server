@@ -1471,6 +1471,115 @@ describe('labels dispatcher: action aliases + errors', () => {
     expect(r.content[0].text).toMatch(/already exists|No label text changes/i);
   });
 
+  // ── createIfMissing (audit §3 item 10) ────────────────────────────────────
+  // The published contract mandated labels(action="search") before every create,
+  // so the common "make sure this label exists" intent cost two round trips. The
+  // flag collapses it to one without ever overwriting.
+
+  it('createIfMissing reports an existing label as reusable instead of "nothing written"', async () => {
+    await seedExistingLabel();
+    (ctx.symbolIndex.getLabelById as any).mockReturnValue([]);
+    const r: any = await labelsTool(
+      { method: 'tools/call', params: { name: 'labels', arguments: {
+        action: 'create',
+        labelId: 'MyExistingLabel',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        updateIndex: false,
+        createIfMissing: true,
+        translations: [{ language: 'en-US', text: 'Different text' }],
+      } } } as CallToolRequest,
+      ctx,
+    );
+    expect(r.isError).toBeFalsy();
+    expect(r.content[0].text).toContain('✅');
+    expect(r.content[0].text).toContain('reusing it');
+    // Must hand back the reference, or the caller still needs a second call.
+    expect(r.content[0].text).toContain('@MyModel:MyExistingLabel');
+    expect(r.content[0].text).toContain('literalStr("@MyModel:MyExistingLabel")');
+  });
+
+  it('createIfMissing never overwrites — the existing text survives and update is named', async () => {
+    await seedExistingLabel();
+    const fsMock = await import('fs');
+    (fsMock.promises.writeFile as any).mockClear();
+    (ctx.symbolIndex.getLabelById as any).mockReturnValue([]);
+    const r: any = await labelsTool(
+      { method: 'tools/call', params: { name: 'labels', arguments: {
+        action: 'create',
+        labelId: 'MyExistingLabel',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        updateIndex: false,
+        createIfMissing: true,
+        translations: [{ language: 'en-US', text: 'Different text' }],
+      } } } as CallToolRequest,
+      ctx,
+    );
+    // No .label.txt write at all — the whole point of "reuse, don't clobber".
+    const wrotelabelTxt = (fsMock.promises.writeFile as any).mock.calls
+      .some((c: any[]) => String(c[0]).endsWith('.label.txt'));
+    expect(wrotelabelTxt).toBe(false);
+    expect(r.content[0].text).toContain('Existing text was NOT changed');
+    expect(r.content[0].text).toContain('action="update"');
+  });
+
+  it('createIfMissing defaults off — the fail-if-exists report is unchanged', async () => {
+    await seedExistingLabel();
+    (ctx.symbolIndex.getLabelById as any).mockReturnValue([]);
+    const r: any = await labelsTool(
+      { method: 'tools/call', params: { name: 'labels', arguments: {
+        action: 'create',
+        labelId: 'MyExistingLabel',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        updateIndex: false,
+        translations: [{ language: 'en-US', text: 'Different text' }],
+      } } } as CallToolRequest,
+      ctx,
+    );
+    expect(r.content[0].text).toContain('No label text changes were made');
+    expect(r.content[0].text).not.toContain('reusing it');
+  });
+
+  it('createIfMissing still CREATES when the label is absent', async () => {
+    const fsMock = await import('fs');
+    (fsMock.promises.readFile as any).mockImplementation(async () => '; Label file\nSomethingElse=x\n');
+    (fsMock.promises.readdir as any).mockImplementation(async () => ['en-US']);
+    (ctx.symbolIndex.getLabelById as any).mockReturnValue([]);
+    const r: any = await labelsTool(
+      { method: 'tools/call', params: { name: 'labels', arguments: {
+        action: 'create',
+        labelId: 'BrandNewLabel',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        updateIndex: false,
+        createIfMissing: true,
+        translations: [{ language: 'en-US', text: 'Brand new' }],
+      } } } as CallToolRequest,
+      ctx,
+    );
+    expect(r.isError).toBeFalsy();
+    expect(r.content[0].text).toMatch(/created successfully/i);
+  });
+
+  it('accepts createIfMissing nested in `params` like the other write plumbing', async () => {
+    await seedExistingLabel();
+    (ctx.symbolIndex.getLabelById as any).mockReturnValue([]);
+    const r: any = await labelsTool(
+      { method: 'tools/call', params: { name: 'labels', arguments: {
+        action: 'create',
+        labelId: 'MyExistingLabel',
+        labelFileId: 'MyModel',
+        model: 'MyModel',
+        translations: [{ language: 'en-US', text: 'Different text' }],
+        params: { createIfMissing: true, updateIndex: false },
+      } } } as CallToolRequest,
+      ctx,
+    );
+    expect(r.content[0].text).toContain('reusing it');
+  });
+
   it('names the missing field when create/update args are incomplete', async () => {
     const r: any = await labelsTool(
       { method: 'tools/call', params: { name: 'labels', arguments: { action: 'create', labelId: 'Foo' } } } as CallToolRequest,

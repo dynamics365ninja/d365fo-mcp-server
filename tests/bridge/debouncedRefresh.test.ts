@@ -7,7 +7,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Must import AFTER vi.useFakeTimers so setTimeout is intercepted
 vi.useFakeTimers();
 
-import { refresh, flush, cancel } from '../../src/bridge/debouncedRefresh';
+import {
+  refresh, flush, cancel, resetRefreshTracking, markRefreshStarted, getLastRefreshStartedAt,
+} from '../../src/bridge/debouncedRefresh';
 
 const makeBridge = (ready = true) => ({
   isReady: ready,
@@ -18,6 +20,10 @@ const makeBridge = (ready = true) => ({
 describe('debouncedRefresh', () => {
   afterEach(() => {
     cancel(); // clean up any pending state between tests
+    // The fake clock restarts at the same instant for every test, so a refresh
+    // recorded by the previous one sits in this one's future and would look like
+    // an already-satisfied rebuild to the redundancy check in executeRefresh().
+    resetRefreshTracking();
     vi.clearAllTimers();
   });
 
@@ -101,5 +107,58 @@ describe('debouncedRefresh', () => {
 
     // Flush remaining to clean up
     await flush();
+  });
+
+  it('flush waits for a rebuild that already fired on its timer', async () => {
+    // The writer no longer awaits the refresh, so by the time a modify calls
+    // flush() the settle timer may already have started the rebuild. Returning
+    // "nothing pending" there would hand the modify a half-rebuilt provider —
+    // exactly the stale-provider state the eager refresh existed to rule out.
+    let release!: () => void;
+    const bridge = makeBridge();
+    bridge.refreshProvider = vi.fn(
+      () => new Promise(res => { release = () => res({ success: true }); }),
+    );
+
+    refresh(bridge);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(bridge.refreshProvider).toHaveBeenCalledTimes(1);
+
+    let settled = false;
+    const waited = flush().then(r => { settled = true; return r; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+
+    release();
+    expect(await waited).toEqual({ success: true });
+    expect(bridge.refreshProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a queued rebuild that a direct refresh has already performed', async () => {
+    // update_symbol_index and the modify auto-retry call bridgeRefreshProvider()
+    // straight through. Once that rebuild has started, the queued one can no
+    // longer discover anything — running it is a second full DiskProvider scan.
+    const bridge = makeBridge();
+    refresh(bridge);
+
+    await vi.advanceTimersByTimeAsync(50);
+    markRefreshStarted(); // stands in for a direct bridgeRefreshProvider()
+    expect(getLastRefreshStartedAt()).toBeGreaterThan(0);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(bridge.refreshProvider).not.toHaveBeenCalled();
+  });
+
+  it('still rebuilds when the write landed after the last refresh started', async () => {
+    // The mirror of the case above: the skip must key off WHEN the refresh was
+    // requested, or a write made during someone else's rebuild is never picked up.
+    const bridge = makeBridge();
+
+    markRefreshStarted();
+    await vi.advanceTimersByTimeAsync(50);
+    refresh(bridge);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(bridge.refreshProvider).toHaveBeenCalledTimes(1);
   });
 });

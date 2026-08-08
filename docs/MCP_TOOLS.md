@@ -1,12 +1,12 @@
-# Tool Reference — 25 tools
+# Tool Reference — 23 tools
 
 Every tool the server exposes, grouped by purpose. The AI agent picks tools automatically — the *example prompts* show what to ask to trigger them; you never name tools yourself.
 
-> Several tools are **unified** behind a discriminator parameter (`action` / `mode` / `domain` / `kind` / `objectType` / `include`) instead of one tool per variant — e.g. `search`, `get_method`, `d365fo_file`, `analyze_code`, `object_patterns`, `prepare`, `security_info`, `extension_info`, `get_knowledge`, `labels`, `get_object_info`, `generate_object`, `validate_code`. Fewer tools to choose from, same coverage.
+> Several tools are **unified** behind a discriminator parameter (`action` / `mode` / `domain` / `kind` / `objectType` / `include`) instead of one tool per variant — e.g. `search`, `d365fo_file`, `analyze_code`, `object_patterns`, `prepare`, `security_info`, `extension_info`, `get_knowledge`, `labels`, `get_object_info`, `generate_object`, `validate_code`. Fewer tools to choose from, same coverage.
 
 > **C# bridge first:** on Windows D365FO VMs, the bridge-backed read tools (marked †) query the live `IMetadataProvider` (always-fresh metadata) and `DYNAMICSXREFDB` (compiler-resolved cross-references), falling back to SQLite transparently on Azure/Linux. All write operations go exclusively through the bridge. See [ARCHITECTURE.md](ARCHITECTURE.md).
 >
-> **Server modes:** `full` = all 25 tools · `read-only` (Azure) = search/analysis only · `write-only` (hybrid companion) = file operations + bridge-backed reads. Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 18-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
+> **Server modes:** `full` = all 23 tools · `read-only` (Azure) = search/analysis only · `write-only` (hybrid companion) = file operations + bridge-backed reads. Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 18-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
 
 ---
 
@@ -56,8 +56,7 @@ One unified reader covers every object type via `objectType`; type-specific flag
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
-| `get_object_info` † | Read object metadata by `objectType`: `class`, `table`, `form`, `query`, `view`, `enum`, `edt`, `report`, `data-entity`, `menu-item`, `service`, `map`, `config-key`, `security-policy`, `macro`. **2+ objects: pass `objects:[{objectType,objectName},…]` (max 10)** — one call, all lookups in parallel, per-object sections back (absorbs the former `batch_get_info`). Options: `{includeRdl}` (report), `{searchControl}` (form), `{compact:false}` (class), `{mode:"hierarchy"}` (edt), `{filter}` (macro); with `objects[]` a top-level `options` applies to every entry. For classes, `{members:"names"}` (optional `{prefix}`) returns a fast IntelliSense-style member-name list. | *"Show the structure of SalesFormLetter"* · *"Get full details of CustTable, SalesLine and CustInvoiceJour"* · *"Methods on SalesTable starting with calc"* |
-| `get_method` † | Method `include="signature"` (exact signature — **mandatory before CoC**), `include="source"` (full X++ body), or `include="both"` (default) | *"Signature of SalesFormLetter.run?"* · *"Show me the body of CustTable.validateWrite"* |
+| `get_object_info` † | Read object metadata by `objectType`: `class`, `table`, `form`, `query`, `view`, `enum`, `edt`, `report`, `data-entity`, `menu-item`, `service`, `map`, `config-key`, `security-policy`, `macro`. **2+ objects: pass `objects:[{objectType,objectName},…]` (max 10)** — one call, all lookups in parallel, per-object sections back (absorbs the former `batch_get_info`). Options: `{includeRdl}` (report), `{searchControl}` (form), `{compact:false}` (class), `{mode:"hierarchy"}` (edt), `{filter}` (macro); with `objects[]` a top-level `options` applies to every entry. For classes, `{members:"names"}` (optional `{prefix}`) returns a fast IntelliSense-style member-name list, and `{method:"validateWrite", include:"signature"}` returns ONE method — `include` is `signature` (exact signature, **mandatory before CoC**), `source` (full X++ body) or `both` (default). This absorbs the former `get_method`. | *"Show the structure of SalesFormLetter"* · *"Get full details of CustTable, SalesLine and CustInvoiceJour"* · *"Methods on SalesTable starting with calc"* |
 | `find_references` † | Where-used analysis, xref-enriched (reference type, caller class/method). Also does **label where-used** — `targetType="label"` or an `@…` id (e.g. `@WAX2194`, `@ApplicationPlatform:AbortButtonText`) — returning every referencing object type (tables, forms, EDTs, enums, reports, menu items, …), grouped by source type | *"Where is updateInventory called from?"* · *"What references label @SYS9694?"* |
 
 ## 🏷️ Label Management (1)
@@ -82,7 +81,8 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
 | `generate_object` | `mode="pattern"` — named X++ skeleton from a pattern enum (text only): SysOperation, CoC, event handler, business event, custom service, lookup form, … · `mode="scaffold"` — pattern-aware whole-object generation: `objectType=table` (EDT suggestions), `objectType=form` (**clones reference forms** via `cloneFrom` + `tableMapping`, patterns/sub-patterns preserved, optional `includeMethodStubs`), `objectType=report` (complete SSRS stack: TmpTable + Contract + DP + Controller + AxReport/RDL) · `mode="find-methods"` — static `find()`/`findRecId()`/`exists()` for a table, keyed on its primary/unique index · `mode="relation-xpp"` — a table's relations → X++ `select` + `QueryBuildRange` snippets · `mode="fields"` — a field-name list → `AxTableField` XML with auto-resolved EDTs (+ optional field group) · `mode="table-relation"` — EDT-referencing fields → `AxTableRelation` XML (the inverse of `relation-xpp`). Mode-specific parameters go in a single `params` object (flat top-level keys still accepted) and come from `get_knowledge(kind="op-spec", topic="<mode>")`; a missing required one returns the complete per-mode spec (source: `generateObjectOpSpecs.ts`) | *"Generate a SysOperation skeleton for VendRecalc"* · *"Create an audit log table with SalesId, PostedAt, PostedBy"* · *"Create a SimpleList form for MyRentalGroup by cloning CustGroup"* · *"Add find/exists methods to MyOrderTable"* · *"Generate table relations for the EDT fields on MyOrderLine"* |
-| `suggest_edt` | EDT suggestions for a field name (fuzzy, confidence-ranked) | *"Which EDT for a field CustomerAccount?"* |
+
+> `suggest_edt` was retired: EDT suggestions come from `prepare(mode="create", fieldsHint=[...])`, which returns them alongside the collision check, naming and mined property defaults in the same call. Its handler stays routable under the old name.
 
 ## 📈 Pattern Analysis (1)
 

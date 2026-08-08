@@ -770,7 +770,6 @@ async function main() {
         ]},
         { icon: '📊', category: 'Advanced Object Info', tools: [
           { name: 'get_object_info',              desc: 'Read one object (objectType, name) or many in one call (objects[]): class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro' },
-          { name: 'get_method',                   desc: 'Method signature/source/both via include= (required before CoC extensions)' },
           { name: 'find_references',              desc: 'Where-used analysis across the entire codebase' },
         ]},
         { icon: '🧠', category: 'Intelligent Code Generation', tools: [
@@ -779,7 +778,6 @@ async function main() {
         ]},
         { icon: '🎨', category: 'Smart Object Generation', tools: [
           { name: 'generate_object',                     desc: 'mode=pattern (named X++ skeleton) | scaffold (whole table/form/report)' },
-          { name: 'suggest_edt',                  desc: 'Suggest EDT for field name using fuzzy matching' },
         ]},
         { icon: '📝', category: 'File & Metadata Operations', tools: [
           { name: 'd365fo_file',                  desc: 'action=create|modify|generate — write/edit AOT objects or emit XML (cloud)' },

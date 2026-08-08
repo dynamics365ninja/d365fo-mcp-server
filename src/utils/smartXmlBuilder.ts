@@ -5,10 +5,12 @@
  */
 
 import { FormPatternTemplates, FormPattern } from './formPatternTemplates.js';
+import { escapeXml as escapeXmlText } from './xmlEscape.js';
 import { ensureXppDocComment } from './xppDocGen.js';
 import { decodeXmlEntitiesFromXppSource } from '../tools/modifyD365File.js';
 import { type FieldControlMap, controlForField } from './fieldControlTypes.js';
 import { renderAxTableProperties } from './axTablePropertyOrder.js';
+import { axTableFieldElement, baseTypeFromEdtName, normalizeFieldBaseType } from './axFieldTypes.js';
 
 export interface TableFieldSpec {
   name: string;
@@ -407,38 +409,12 @@ export class SmartXmlBuilder {
    *  2. EDT name heuristics — fallback when type is not known
    */
   private getAxTableFieldType(edt?: string, type?: string): string {
-    if (type) {
-      const typeMap: Record<string, string> = {
-        String:      'AxTableFieldString',
-        Integer:     'AxTableFieldInt',
-        Int64:       'AxTableFieldInt64',
-        Real:        'AxTableFieldReal',
-        Date:        'AxTableFieldDate',
-        DateTime:    'AxTableFieldUtcDateTime',
-        UtcDateTime: 'AxTableFieldUtcDateTime',
-        Enum:        'AxTableFieldEnum',
-        Container:   'AxTableFieldContainer',
-        Guid:        'AxTableFieldGuid',
-        GUID:        'AxTableFieldGuid',
-      };
-      const mapped = typeMap[type];
-      if (mapped) return mapped;
-    }
+    const explicit = normalizeFieldBaseType(type);
+    if (explicit) return axTableFieldElement(explicit);
 
     // Fall back to EDT name heuristics
-    if (edt) {
-      const e = edt.toLowerCase();
-      if (e === 'recid' || e.endsWith('recid') || e.includes('refrecid')) return 'AxTableFieldInt64';
-      if (e.includes('utcdatetime') || (e.includes('datetime') && !e.includes('transdate'))) return 'AxTableFieldUtcDateTime';
-      if ((e.includes('date') && !e.includes('time') && !e.includes('update'))) return 'AxTableFieldDate';
-      if (e.includes('amount') || e.includes('mst') || e.includes('price') || e.includes('qty')
-          || e.includes('percent') || e === 'real') return 'AxTableFieldReal';
-      if (e === 'noyesid' || e.endsWith('noyesid') || e === 'noyes') return 'AxTableFieldEnum';
-      if ((e.endsWith('int') || e.includes('count') || e.includes('level'))
-          && !e.includes('account') && !e.includes('name')) return 'AxTableFieldInt';
-    }
-
-    return 'AxTableFieldString';
+    const heuristic = baseTypeFromEdtName(edt);
+    return heuristic ? axTableFieldElement(heuristic) : 'AxTableFieldString';
   }
 
   /**
@@ -567,15 +543,13 @@ export class SmartXmlBuilder {
   }
 
   /**
-   * Escape XML special characters
+   * Escape XML special characters. Delegates to the shared escaper — every one
+   * of these call sites writes TEXT content, where the Microsoft serializer
+   * leaves quotes alone, so the old local `&quot;`/`&apos;` handling only made
+   * our files differ from shipped ones.
    */
   private escapeXml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
+    return escapeXmlText(text);
   }
 
   /**

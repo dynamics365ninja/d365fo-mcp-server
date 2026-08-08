@@ -8,6 +8,10 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import * as fs from 'fs/promises';
+// Taken from node:fs rather than fs/promises: the value is the same, but the
+// promises namespace is routinely replaced wholesale by test mocks that only
+// stub the functions, and reading .constants off such a mock is a TypeError.
+import { constants as FS_CONSTANTS } from 'fs';
 import { execFile } from 'child_process';
 import util from 'util';
 
@@ -18,6 +22,7 @@ import { isStandardModel, resolveObjectPrefix, applyObjectPrefix, resolveRegular
 import { PackageResolver } from '../utils/packageResolver.js';
 import { resolveDbPathLocally } from '../utils/metadataResolver.js';
 import { assertWritePathAllowed } from '../utils/pathContainment.js';
+import { withFileLock, writeFileAtomic } from '../utils/atomicFileWrite.js';
 import {
   bridgeValidateAfterWrite, canBridgeModify,
   bridgeAddMethod, bridgeRemoveMethod, bridgeAddField, bridgeSetProperty, bridgeReplaceCode,
@@ -31,6 +36,7 @@ import {
   bridgeAddFieldModification, bridgeAddMenuItemToMenu,
   bridgeRefreshProvider,
 } from '../bridge/index.js';
+import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
 import { heuristicEdtBaseType } from './generateSmartTable.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
@@ -47,6 +53,8 @@ import {
   isFormPatternEnforceEnabled,
 } from './validateFormPattern.js';
 import { validateEdtExtensionChange } from '../utils/edtExtensionValidator.js';
+import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../utils/xppSelectLint.js';
 import {
   getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
@@ -292,6 +300,22 @@ export function describeBridgeFallbackReason(
 }
 
 /**
+ * Serializes a direct-XML editor on the file it edits.
+ *
+ * Each of these functions reads the whole file, patches the string and writes it
+ * back. Two that overlap on one file both read the same original, so the second
+ * write silently drops whatever element the first one added — and modify calls do
+ * arrive concurrently, since `d365fo_file` is excluded from the in-flight call dedup
+ * (writes must never be coalesced). The lock is per-path and in-process; see
+ * utils/atomicFileWrite.ts for what it does and does not cover.
+ */
+function serializedOnFile<A extends unknown[], R>(
+  fn: (filePath: string, ...args: A) => Promise<R>,
+): (filePath: string, ...args: A) => Promise<R> {
+  return (filePath, ...args) => withFileLock(filePath, () => fn(filePath, ...args));
+}
+
+/**
  * Direct XML file-level replace-code fallback, used when the C# bridge can't
  * reach a method (e.g. form/form-extension control overrides not exposed via
  * the Methods API). Last resort — the bridge is always preferred.
@@ -299,12 +323,12 @@ export function describeBridgeFallbackReason(
  * `reason` comes from describeBridgeFallbackReason so the success message names the
  * cause that actually applied instead of asserting an outage that may not exist.
  */
-async function directXmlReplaceCode(
+const directXmlReplaceCode = serializedOnFile(async (
   filePath: string,
   oldCode: string,
   newCode: string,
   reason: string,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     // Files on disk are CRLF; oldCode from get_method_source is typically LF-only.
     // Normalize both to LF for matching, then normalizeD365Xml restores CRLF on write.
@@ -332,7 +356,7 @@ async function directXmlReplaceCode(
       return null; // no change made
     }
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlReplaceCode fallback (${reason}): replaced in ${filePath}`);
     return {
       success: true,
@@ -342,7 +366,7 @@ async function directXmlReplaceCode(
     console.error(`[modify_d365fo_file] directXmlReplaceCode failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * Direct XML fallback for modify-property, used when the bridge rejects
@@ -352,14 +376,16 @@ async function directXmlReplaceCode(
  *
  * `propertyPath` is a bare element name (no XPath/dotted-path support).
  * Refuses to act if the element is missing (returns null so the caller
- * surfaces the original bridge error) or ambiguous (appears more than once).
+ * surfaces the original bridge error), ambiguous (appears more than once),
+ * or is not a leaf — string replacement can only express a text value, and
+ * writing one over an element that has children produces malformed XML.
  */
-async function directXmlModifyProperty(
+const directXmlModifyProperty = serializedOnFile(async (
   filePath: string,
   propertyPath: string,
   propertyValue: string,
   reason: string,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '');
@@ -368,20 +394,35 @@ async function directXmlModifyProperty(
 
     const tagName = propertyPath.split(/[./]/).pop()!;
 
+    // tagName is interpolated into RegExp source below. Anything that is not a
+    // plain XML element name has no meaning here anyway, and letting it through
+    // either throws on an unbalanced metacharacter (caught, surfacing a
+    // misleading "bridge error") or silently matches the wrong elements.
+    if (!/^[A-Za-z_][A-Za-z0-9_.:-]*$/.test(tagName)) {
+      return {
+        success: false,
+        message:
+          `❌ directXmlModifyProperty: '${propertyPath}' does not name a plain XML element ` +
+          `(resolved to "${tagName}") — nothing was written.`,
+      };
+    }
+    const tagRe = tagName.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+
     // Forms first: the bridge refuses modify-property for AxForm entirely, and the
     // generic path below cannot serve Design properties either — Caption/Style also
     // occur on controls, so it sees several matches and refuses (#37).
     const formPatched = upsertAxFormDesignProperty(content, tagName, escapedValue);
     if (formPatched) {
-      await fs.writeFile(filePath, normalizeD365Xml(formPatched), 'utf-8');
+      await writeFileAtomic(filePath, normalizeD365Xml(formPatched));
       return {
         success: true,
         message: `✅ Form Design property '${tagName}'='${propertyValue}' set via direct XML (the bridge does not support modify-property for forms). File: ${filePath}`,
       };
     }
 
-    const openTagRe = new RegExp(`<${tagName}\\b[^>]*>[\\s\\S]*?</${tagName}>`, 'g');
-    const selfClosingRe = new RegExp(`<${tagName}\\b([^>]*)/>`, 'g');
+    const openTagRe = new RegExp(`<${tagRe}\\b[^>]*>[\\s\\S]*?</${tagRe}>`, 'g');
+    const selfClosingRe = new RegExp(`<${tagRe}\\b([^>]*)/>`, 'g');
+    const openTagOnlyRe = new RegExp(`^<${tagRe}\\b[^>]*>`);
 
     const openMatches = content.match(openTagRe) ?? [];
     const selfClosingMatches = content.match(selfClosingRe) ?? [];
@@ -406,7 +447,7 @@ async function directXmlModifyProperty(
       if (!inserted) {
         return null; // not a table / unknown property — surface the original bridge error
       }
-      await fs.writeFile(filePath, normalizeD365Xml(inserted), 'utf-8');
+      await writeFileAtomic(filePath, normalizeD365Xml(inserted));
       console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: inserted <${tagName}> in ${filePath}`);
       return {
         success: true,
@@ -422,11 +463,33 @@ async function directXmlModifyProperty(
       };
     }
 
+    // Leaf guard. The replacement below can only express a text value, so an
+    // element that has children must be refused: the old `>[\s\S]*?<` rewrite
+    // stopped at the FIRST child tag and produced `<Tag>NewValue<Child>…`,
+    // i.e. structurally broken XML written to disk and reported as success.
+    // Counting matches (above) does not catch this — one match can still be a
+    // container.
+    if (openMatches.length === 1) {
+      const inner = openMatches[0]
+        .replace(openTagOnlyRe, '')
+        .replace(new RegExp(`</${tagRe}>$`), '');
+      if (inner.includes('<')) {
+        return {
+          success: false,
+          message:
+            `❌ directXmlModifyProperty: <${tagName}> in ${filePath} contains child elements — ` +
+            `it holds structure, not a text value. Refusing to overwrite it (nothing was written).`,
+        };
+      }
+    }
+
+    // Function replacers throughout: `escapedValue` escapes XML metacharacters
+    // but not `$`, which a string replacement would read as a capture reference.
     const updated = openMatches.length === 1
-      ? content.replace(openTagRe, m => m.replace(/>[\s\S]*?</, `>${escapedValue}<`))
+      ? content.replace(openTagRe, m => `${openTagOnlyRe.exec(m)![0]}${escapedValue}</${tagName}>`)
       : content.replace(selfClosingRe, (_m, attrs) => `<${tagName}${attrs}>${escapedValue}</${tagName}>`);
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: set <${tagName}> in ${filePath}`);
     return {
       success: true,
@@ -436,7 +499,7 @@ async function directXmlModifyProperty(
     console.error(`[modify_d365fo_file] directXmlModifyProperty failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * Direct XML fallback for add-menu-item-to-menu.
@@ -445,11 +508,11 @@ async function directXmlModifyProperty(
  * in-memory model yet (even after update_symbol_index). This function edits
  * the XML file directly as a last-resort fallback.
  */
-async function directXmlAddMenuItemToMenu(
+const directXmlAddMenuItemToMenu = serializedOnFile(async (
   filePath: string,
   menuItemToAdd: string,
   menuItemToAddType: string,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -483,7 +546,7 @@ async function directXmlAddMenuItemToMenu(
 
     if (updated === content) return null;
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlAddMenuItemToMenu: added '${menuItemToAdd}' to ${filePath}`);
     return {
       success: true,
@@ -493,7 +556,7 @@ async function directXmlAddMenuItemToMenu(
     console.error(`[modify_d365fo_file] directXmlAddMenuItemToMenu failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * controlType (as passed to add-control) → the form control element emitted inside
@@ -541,7 +604,7 @@ function formExtensionControlName(): string {
  * wrapped by <AxFormExtensionControl xmlns=""> with a <Parent> reference. It edits
  * the file on disk, so it is unaffected by what the bridge has loaded.
  */
-async function directXmlAddControl(
+const directXmlAddControl = serializedOnFile(async (
   filePath: string,
   controlName: string,
   parentControl: string,
@@ -549,7 +612,7 @@ async function directXmlAddControl(
   dataSource?: string,
   dataField?: string,
   label?: string,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -597,7 +660,7 @@ async function directXmlAddControl(
 
     if (updated === content) return null;
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlAddControl: added '${controlName}' (${iType}) to ${filePath}`);
     return {
       success: true,
@@ -607,7 +670,7 @@ async function directXmlAddControl(
     console.error(`[modify_d365fo_file] directXmlAddControl failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * Normalises a NoYes-shaped flag to a boolean.
@@ -650,13 +713,27 @@ export function coerceNoYesFlag(value: unknown): boolean | undefined {
  * carries allowDuplicates/alternateKey, which the whole-file overwrite workaround
  * dropped (cluster #35).
  */
-async function directXmlAddIndex(
+const directXmlAddIndex = serializedOnFile(async (
   filePath: string,
   indexName: string,
   fields: string[] | undefined,
   allowDuplicates: boolean | undefined,
   alternateKey: boolean | undefined,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
+  // The bridge refuses an index with no fields (it writes <Fields /> — an index that
+  // compiles, warns about nothing and indexes nothing). This fallback runs precisely
+  // when the bridge call failed, so without the same gate it would catch the refusal
+  // and land the empty index anyway, under a ✅.
+  const namedFields = (fields ?? []).filter(f => typeof f === 'string' && f.trim() !== '');
+  if (namedFields.length === 0) {
+    return {
+      success: false,
+      message:
+        `Index '${indexName}' has no fields — pass indexFields as [{ fieldName: "<field>" }]. ` +
+        `An index with an empty <Fields /> collection compiles clean and indexes nothing.`,
+    };
+  }
+
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -682,22 +759,19 @@ async function directXmlAddIndex(
       };
     }
 
-    const fieldElements = (fields ?? [])
+    const fieldElements = namedFields
       .map(f =>
         `\t\t\t\t<AxTableIndexField>\n` +
         `\t\t\t\t\t<DataField>${f}</DataField>\n` +
         `\t\t\t\t</AxTableIndexField>`)
       .join('\n');
-    const fieldsBlock = fieldElements
-      ? `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>`
-      : `\t\t\t<Fields />`;
 
     const newElement =
       `\t\t<AxTableIndex>\n` +
       `\t\t\t<Name>${indexName}</Name>\n` +
       `\t\t\t<AllowDuplicates>${allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n` +
       (alternateKey ? `\t\t\t<AlternateKey>Yes</AlternateKey>\n` : '') +
-      `${fieldsBlock}\n` +
+      `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>\n` +
       `\t\t</AxTableIndex>`;
 
     let updated: string;
@@ -712,7 +786,7 @@ async function directXmlAddIndex(
 
     if (updated === content) return null;
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlAddIndex: added '${indexName}' to ${filePath}`);
     return {
       success: true,
@@ -722,7 +796,7 @@ async function directXmlAddIndex(
     console.error(`[modify_d365fo_file] directXmlAddIndex failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * Locates ONE top-level collection element inside a root element's body, e.g.
@@ -847,14 +921,14 @@ function upsertDataEntityFieldGroupExtension(
  * cosmetic, the deserializer drops children it meets out of order, and Label must
  * precede the DataField/DataSource binding pair.
  */
-async function directXmlAddDataEntityExtensionField(
+const directXmlAddDataEntityExtensionField = serializedOnFile(async (
   filePath: string,
   fieldName: string,
   dataField: string,
   dataSource: string,
   label?: string,
   fieldGroupName?: string,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -894,7 +968,7 @@ async function directXmlAddDataEntityExtensionField(
 
     if (updated === content) return null;
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(`[modify_d365fo_file] ✅ directXmlAddDataEntityExtensionField: added '${fieldName}' to ${filePath}`);
     return {
       success: true,
@@ -908,7 +982,7 @@ async function directXmlAddDataEntityExtensionField(
     console.error(`[modify_d365fo_file] directXmlAddDataEntityExtensionField failed: ${err}`);
     return null;
   }
-}
+});
 
 /** DeleteAction values accepted by the AxTable serialiser. */
 export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRestricted'] as const;
@@ -923,13 +997,13 @@ export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRes
  * it in place is safe. Shape matches MetadataWriteService.cs: Name, Table,
  * DeleteAction.
  */
-async function directXmlDeleteAction(
+const directXmlDeleteAction = serializedOnFile(async (
   filePath: string,
   mode: 'add' | 'remove',
   name: string,
   table: string | undefined,
   deleteAction: string | undefined,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -948,7 +1022,7 @@ async function directXmlDeleteAction(
         return { success: true, message: `✅ Delete action '${name}' not present in ${filePath} — nothing to remove.` };
       }
       const updated = content.replace(blockRe, '');
-      await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+      await writeFileAtomic(filePath, normalizeD365Xml(updated));
       return { success: true, message: `✅ Delete action '${name}' removed. File: ${filePath}` };
     }
 
@@ -974,7 +1048,7 @@ async function directXmlDeleteAction(
     }
     if (updated === content) return null;
 
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     return {
       success: true,
       message: `✅ Delete action '${name}' (${deleteAction ?? 'Restricted'} on ${table ?? name}) added. File: ${filePath}`,
@@ -983,7 +1057,7 @@ async function directXmlDeleteAction(
     console.error(`[modify_d365fo_file] directXmlDeleteAction failed: ${err}`);
     return null;
   }
-}
+});
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1010,13 +1084,13 @@ function escapeRegExp(s: string): string {
  * each element is anchored to the sibling it must follow, and the function is a
  * no-op if the anchor is absent or the property is already present.
  */
-export async function directXmlEnsureRelationProperties(
+export const directXmlEnsureRelationProperties = serializedOnFile(async (
   filePath: string,
   relationName: string,
   cardinality: string,
   relatedTableCardinality: string,
   relationshipType: string,
-): Promise<{ applied: string[] } | null> {
+): Promise<{ applied: string[] } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -1062,7 +1136,7 @@ export async function directXmlEnsureRelationProperties(
     if (applied.length === 0 || patched === block) return { applied: [] };
 
     const updated = content.replace(block, patched);
-    await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(
       `[modify_d365fo_file] ✅ directXmlEnsureRelationProperties: ${applied.join(', ')} on '${relationName}' in ${filePath}`,
     );
@@ -1071,7 +1145,7 @@ export async function directXmlEnsureRelationProperties(
     console.error(`[modify_d365fo_file] directXmlEnsureRelationProperties failed: ${err}`);
     return null;
   }
-}
+});
 
 /**
  * Heuristic: does a bridge failure message indicate the C# provider could not
@@ -1859,6 +1933,12 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       containment.modelSegment || resolvedModelFromPath || modelName || getConfigManager().getModelName() || '',
     );
     if (memberPrefixNote) generationNote += memberPrefixNote;
+
+    // Settle a rebuild an earlier create/modify scheduled but did not wait for, so
+    // an object written moments ago resolves on the FIRST attempt. Without this the
+    // retry loop below would still recover — at the cost of a wasted bridge round
+    // trip plus a full rebuild. Free when no write is outstanding.
+    await debouncedRefresh.flush();
 
     let bridgeResult: { success: boolean; message: string } | null = null;
     let _bridgeRetried = false;
@@ -2907,12 +2987,17 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // Two BP rules fire on a field that compiles perfectly, so they are invisible
     // until a BP run several steps later — and one of them (the label copy) then
     // needs new labels, i.e. rework of what was just written. Say it here instead.
+    //
+    // The field-group note used to spell out a whole follow-up call, so the agent
+    // made one: every add-field manufactured a second round trip. It now points at
+    // operations[], where the group entry travels in the SAME call as the field.
     let addFieldBpNote = '';
     if (operation === 'add-field' && (objectType === 'table' || objectType === 'table-extension')) {
       const notes = [
-        `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup):\n` +
-        `   d365fo_file(action="modify", objectType="${objectType}", objectName="${objectName}", ` +
-        `operation="add-field-to-field-group", fieldName="${args.fieldName}", fieldGroupName="<group>")`,
+        `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup). ` +
+        `Send the group entry in the SAME call next time — d365fo_file(action="modify", ` +
+        `objectType="${objectType}", objectName="${objectName}", operations=[{operation:"add-field", …}, ` +
+        `{operation:"add-field-to-field-group", fieldName:"${args.fieldName}", fieldGroupName:"<group>"}]).`,
       ];
       if ((args as any).fieldEnumType) {
         notes.push(
@@ -2930,6 +3015,25 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         `(Pass autoCorrect=false to have corrections like this raise an error instead.)`
       : '';
 
+    // Re-index the modified object in-process. A modify changes the symbols the
+    // index holds (a renamed field, a new method), and the parser is right here —
+    // making the agent spend a round trip on update_symbol_index for a file this
+    // process just wrote, and another on the lookup that failed for want of it,
+    // was pure waste.
+    const indexNote = await upsertWrittenFileIntoIndex(actualFilePath, context);
+
+    // Verify the write here rather than leaving the caller to spend a
+    // verify_d365fo_project round trip asking what this call already knows.
+    // The project path resolved inside the addToProject branch is block-scoped,
+    // and a modify commonly runs with addToProject off — re-resolve it here so the
+    // .rnrproj check still happens (config reads are cached).
+    const verifyProjectPath =
+      args.projectPath || (await getConfigManager().getProjectPath()) || undefined;
+    const verifyNote = renderWriteVerification(
+      await verifyWrittenFile(actualFilePath, verifyProjectPath),
+    );
+    const bpNote = await runInlineBpCheck((args as any).bpCheck, objectType, objectName, context);
+
     return {
       content: [
         {
@@ -2937,7 +3041,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           text:
             `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}` +
+            `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}${verifyNote}${indexNote}${bpNote}` +
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
         },
@@ -3358,23 +3462,40 @@ export async function findD365FileOnDisk(
  * Throws if the source file is missing or the copy fails, so callers
  * always know whether a valid backup exists before overwriting.
  * Returns the backup file path.
+ *
+ * The name carries MILLISECONDS and, if that still collides, a counter. At the old
+ * one-second resolution two modifies of the same file inside the same second
+ * produced the same backup name, so the second copy overwrote the first with
+ * already-modified content — on a target outside git (exactly the case that forces
+ * a backup, see ensureRecoverableModification) the original was then unrecoverable.
+ * COPYFILE_EXCL is what makes the retry a claim rather than a check: it fails
+ * instead of overwriting, so two callers racing on the same name cannot both win.
+ *
+ * Exported for unit tests.
  */
-async function createFileBackup(filePath: string): Promise<string> {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-  const backupPath = `${filePath}.backup-${timestamp}`;
-  try {
-    await fs.copyFile(filePath, backupPath);
-    // Confirm the backup has non-zero size before proceeding
-    const stat = await fs.stat(backupPath);
-    if (stat.size === 0) {
-      throw new Error('Backup file was created but is empty');
+export async function createFileBackup(filePath: string): Promise<string> {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/Z$/, '');
+  const base = `${filePath}.backup-${timestamp}`;
+
+  for (let attempt = 0; ; attempt++) {
+    const backupPath = attempt === 0 ? base : `${base}-${attempt}`;
+    try {
+      await fs.copyFile(filePath, backupPath, FS_CONSTANTS.COPYFILE_EXCL);
+      // Confirm the backup has non-zero size before proceeding
+      const stat = await fs.stat(backupPath);
+      if (stat.size === 0) {
+        throw new Error('Backup file was created but is empty');
+      }
+      return backupPath;
+    } catch (error: any) {
+      if (error?.code === 'EEXIST' && attempt < 100) {
+        continue;
+      }
+      throw new Error(
+        `Failed to create backup at "${backupPath}": ${error instanceof Error ? error.message : String(error)}`
+      );
     }
-  } catch (error) {
-    throw new Error(
-      `Failed to create backup at "${backupPath}": ${error instanceof Error ? error.message : String(error)}`
-    );
   }
-  return backupPath;
 }
 
 const execFileAsync = util.promisify(execFile);

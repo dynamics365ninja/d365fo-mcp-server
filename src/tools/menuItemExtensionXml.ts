@@ -49,9 +49,7 @@ export type AxMenuItemExtensionRootElement =
   | 'AxMenuItemActionExtension'
   | 'AxMenuItemOutputExtension';
 
-function escapeXmlText(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+import { escapeXml as escapeXmlText } from '../utils/xmlEscape.js';
 
 /**
  * @param rootElement  AxMenuItem{Display,Action,Output}Extension

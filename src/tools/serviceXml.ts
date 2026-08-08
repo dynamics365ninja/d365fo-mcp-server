@@ -18,6 +18,8 @@
  * <Class>, <ExternalName> and <ServiceOperations>, so those are always emitted
  * (defaulting to the service name) rather than left out.
  */
+import { escapeXml } from '../utils/xmlEscape.js';
+
 
 interface ServiceOperationDef {
   /** Externally visible operation name. Defaults to `method`. */
@@ -96,7 +98,7 @@ export function buildAxServiceXml(serviceName: string, properties?: Record<strin
   return `<?xml version="1.0" encoding="utf-8"?>
 <AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${serviceName}</Name>
-\t<Class>${serviceClass}</Class>${description ? `\n\t<Description>${description}</Description>` : ''}
+\t<Class>${serviceClass}</Class>${description ? `\n\t<Description>${escapeXml(description)}</Description>` : ''}
 \t<ExternalName>${externalName}</ExternalName>${namespace ? `\n\t<Namespace>${namespace}</Namespace>` : ''}
 ${operationsBlock}
 </AxService>
@@ -128,7 +130,7 @@ export function buildAxServiceGroupXml(groupName: string, properties?: Record<st
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <AxServiceGroup xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${groupName}</Name>${autoDeploy ? `\n\t<AutoDeploy>${autoDeploy}</AutoDeploy>` : ''}${description ? `\n\t<Description>${description}</Description>` : ''}
+\t<Name>${groupName}</Name>${autoDeploy ? `\n\t<AutoDeploy>${autoDeploy}</AutoDeploy>` : ''}${description ? `\n\t<Description>${escapeXml(description)}</Description>` : ''}
 ${servicesBlock}
 </AxServiceGroup>
 `;
