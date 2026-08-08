@@ -14,10 +14,10 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { searchLabelsTool } from './searchLabels.js';
-import { getLabelInfoTool } from './getLabelInfo.js';
-import { createLabelTool } from './createLabel.js';
-import { renameLabelTool } from './renameLabel.js';
+import { searchLabelsTool } from './analysis/searchLabels.js';
+import { getLabelInfoTool } from './readers/getLabelInfo.js';
+import { createLabelTool } from './write/createLabel.js';
+import { renameLabelTool } from './write/renameLabel.js';
 
 export type LabelsTool = (request: CallToolRequest, context: XppServerContext) => Promise<any>;
 

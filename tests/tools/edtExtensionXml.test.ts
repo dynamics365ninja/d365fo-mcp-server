@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildAxEdtExtensionXml } from '../../src/tools/edtExtensionXml';
+import { buildAxEdtExtensionXml } from '../../src/tools/xml/edtExtensionXml';
 
 describe('buildAxEdtExtensionXml — property modifications', () => {
   it('turns helpText into an AxPropertyModification instead of dropping it — regression', () => {

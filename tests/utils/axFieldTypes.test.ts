@@ -20,8 +20,8 @@ import {
   baseTypeFromEdtName,
   normalizeFieldBaseType,
 } from '../../src/utils/axFieldTypes';
-import { axTableFieldType } from '../../src/tools/generateTableFields';
-import { buildAxMapXml } from '../../src/tools/mapXml';
+import { axTableFieldType } from '../../src/tools/xml/generateTableFields';
+import { buildAxMapXml } from '../../src/tools/xml/mapXml';
 
 describe('normalizeFieldBaseType', () => {
   it('accepts Integer and Int as the same type (the mapXml divergence)', () => {
@@ -90,15 +90,15 @@ describe('map fields use the same map as table fields (audit 14)', () => {
 
 describe('the divergent copies are gone', () => {
   const sources = [
-    'src/tools/createD365File.ts',
-    'src/tools/generateTableFields.ts',
-    'src/tools/mapXml.ts',
+    'src/tools/write/createD365File.ts',
+    'src/tools/xml/generateTableFields.ts',
+    'src/tools/xml/mapXml.ts',
     'src/utils/smartXmlBuilder.ts',
     // Added when the generate/create unification landed: fieldTypeToAxType moved
     // out of createD365File.ts into this shared builder, carrying its own copy of
     // the dictionary with it. Without this entry the sixth copy would have slipped
     // through the guard silently.
-    'src/tools/tableXml.ts',
+    'src/tools/xml/tableXml.ts',
   ];
 
   it('no file re-declares a private base-type dictionary', () => {

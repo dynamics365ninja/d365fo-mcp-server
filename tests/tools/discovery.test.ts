@@ -4,10 +4,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { searchTool } from '../../src/tools/search';
-import { batchSearchTool } from '../../src/tools/batchSearch';
-import { extensionSearchTool } from '../../src/tools/extensionSearch';
-import { findReferencesTool } from '../../src/tools/findReferences';
+import { searchTool } from '../../src/tools/analysis/search';
+import { batchSearchTool } from '../../src/tools/analysis/batchSearch';
+import { extensionSearchTool } from '../../src/tools/analysis/extensionSearch';
+import { findReferencesTool } from '../../src/tools/analysis/findReferences';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

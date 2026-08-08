@@ -21,8 +21,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import { XppMetadataParser } from '../../src/metadata/xmlParser';
-import { getMethodSignatureTool } from '../../src/tools/methodSignature';
-import { getMethodSourceTool } from '../../src/tools/getMethodSource';
+import { getMethodSignatureTool } from '../../src/tools/knowledge/methodSignature';
+import { getMethodSourceTool } from '../../src/tools/readers/getMethodSource';
 import { inheritanceAncestors, findDeclaringAncestor } from '../../src/utils/inheritanceChain';
 import type { XppServerContext } from '../../src/types/context';
 

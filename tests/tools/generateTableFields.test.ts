@@ -5,7 +5,7 @@ import {
   buildFieldGroupXml,
   parseFieldsHint,
   resolveField,
-} from '../../src/tools/generateTableFields';
+} from '../../src/tools/xml/generateTableFields';
 
 describe('axTableFieldType', () => {
   it('honours an explicit base type', () => {

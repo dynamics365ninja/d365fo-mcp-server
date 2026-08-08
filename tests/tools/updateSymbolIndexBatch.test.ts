@@ -20,7 +20,7 @@ vi.mock('../../src/bridge/index.js', () => ({
   bridgeRefreshProvider: vi.fn(async (bridge: any) => (bridge ? refreshProvider() : null)),
 }));
 
-import { updateSymbolIndexTool } from '../../src/tools/updateSymbolIndex.js';
+import { updateSymbolIndexTool } from '../../src/tools/sdlc/updateSymbolIndex.js';
 import { markRefreshStarted, resetRefreshTracking } from '../../src/bridge/debouncedRefresh.js';
 
 const AOT_XML = (name: string) =>

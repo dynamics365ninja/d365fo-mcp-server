@@ -26,8 +26,8 @@ import {
   findLabelFileDirs,
   labelAssembliesAreStale,
   labelcArgs,
-} from '../../src/tools/compileLabels';
-import { describeLabelCompilation } from '../../src/tools/buildProject';
+} from '../../src/tools/write/compileLabels';
+import { describeLabelCompilation } from '../../src/tools/sdlc/buildProject';
 
 const MODEL = 'Contoso';
 
@@ -172,7 +172,7 @@ describe('build ordering', () => {
     const order: string[] = [];
 
     vi.resetModules();
-    vi.doMock('../../src/tools/compileLabels.js', () => ({
+    vi.doMock('../../src/tools/write/compileLabels.js', () => ({
       compileModelLabels: vi.fn(async () => {
         order.push('labelc');
         return { skipped: false, success: true, message: 'Done compiling 1 label files!' };
@@ -221,12 +221,12 @@ describe('build ordering', () => {
       describePackagesRootScan: () => 'Detected packages roots: K:',
     }));
 
-    const { buildProjectTool } = await import('../../src/tools/buildProject');
+    const { buildProjectTool } = await import('../../src/tools/sdlc/buildProject');
     await buildProjectTool({ wait: false }, {});
 
     expect(order).toEqual(['labelc', 'xppc']);
 
-    vi.doUnmock('../../src/tools/compileLabels.js');
+    vi.doUnmock('../../src/tools/write/compileLabels.js');
     vi.resetModules();
   });
 });

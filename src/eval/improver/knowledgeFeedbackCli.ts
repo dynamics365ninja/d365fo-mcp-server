@@ -7,7 +7,7 @@
 
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { KNOWLEDGE_BASE } from '../../tools/xppKnowledge.js';
+import { KNOWLEDGE_BASE } from '../../tools/knowledge/xppKnowledge.js';
 import { buildKnowledgeProposals, renderKnowledgeProposals } from './knowledgeFeedback.js';
 import type { CorpusRun } from './cluster.js';
 import { loadJsonRecords } from './corpusIO.js';

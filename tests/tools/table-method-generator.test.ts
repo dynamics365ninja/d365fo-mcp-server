@@ -3,7 +3,7 @@ import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import {
   generateTableMethodSource,
   generateDisplayMethodSource,
-} from '../../src/tools/modifyD365File';
+} from '../../src/tools/write/modifyD365File';
 
 // Real in-memory symbol index (production schema incl. symbols_fts) — the EDT
 // lookup canonicalizes the table name through lookupSymbolNocase, which a

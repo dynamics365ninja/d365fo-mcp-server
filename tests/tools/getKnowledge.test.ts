@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
-vi.mock('../../src/tools/xppKnowledge', () => ({
+vi.mock('../../src/tools/knowledge/xppKnowledge', () => ({
   xppKnowledgeTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'knowledge' }] })),
 }));
-vi.mock('../../src/tools/d365foErrorHelp', () => ({
+vi.mock('../../src/tools/knowledge/d365foErrorHelp', () => ({
   d365foErrorHelpTool: vi.fn((_r: any) => ({ content: [{ type: 'text', text: 'error' }] })),
 }));
 
-import { getKnowledgeTool } from '../../src/tools/getKnowledge';
-import { xppKnowledgeTool } from '../../src/tools/xppKnowledge';
-import { d365foErrorHelpTool } from '../../src/tools/d365foErrorHelp';
+import { getKnowledgeTool } from '../../src/tools/knowledge/getKnowledge';
+import { xppKnowledgeTool } from '../../src/tools/knowledge/xppKnowledge';
+import { d365foErrorHelpTool } from '../../src/tools/knowledge/d365foErrorHelp';
 
 const req = (args: Record<string, unknown>): CallToolRequest => ({
   method: 'tools/call',

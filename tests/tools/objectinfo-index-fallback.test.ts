@@ -26,8 +26,8 @@ vi.mock('../../src/bridge/bridgeAdapter', () => ({
 }));
 
 // No disk scan — the index path is what these tests exercise.
-vi.mock('../../src/tools/modifyD365File', async (orig) => {
-  const actual = await orig<typeof import('../../src/tools/modifyD365File')>();
+vi.mock('../../src/tools/write/modifyD365File', async (orig) => {
+  const actual = await orig<typeof import('../../src/tools/write/modifyD365File')>();
   return { ...actual, findD365FileOnDisk: vi.fn(async () => null) };
 });
 
@@ -79,8 +79,8 @@ vi.mock('fs', async (orig) => {
   };
 });
 
-import { getObjectInfoTool } from '../../src/tools/getObjectInfo';
-import { dataEntityInfoTool } from '../../src/tools/dataEntityInfo';
+import { getObjectInfoTool } from '../../src/tools/readers/getObjectInfo';
+import { dataEntityInfoTool } from '../../src/tools/readers/dataEntityInfo';
 
 const req = (name: string, args: Record<string, unknown>): CallToolRequest => ({
   method: 'tools/call',

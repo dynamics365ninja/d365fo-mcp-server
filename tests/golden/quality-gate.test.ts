@@ -17,9 +17,9 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
-import { resolveXppReferences, type ResolverDeps } from '../../src/tools/resolveReferences';
-import { validateXppTool } from '../../src/tools/validateXpp';
-import { codeGenTool } from '../../src/tools/codeGen';
+import { resolveXppReferences, type ResolverDeps } from '../../src/tools/write/resolveReferences';
+import { validateXppTool } from '../../src/tools/analysis/validateXpp';
+import { codeGenTool } from '../../src/tools/smart/codeGen';
 
 // ─── Index fixture (real in-memory index — production schema incl. FTS) ──────
 

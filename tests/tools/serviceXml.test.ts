@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildAxServiceXml, buildAxServiceGroupXml } from '../../src/tools/serviceXml';
+import { buildAxServiceXml, buildAxServiceGroupXml } from '../../src/tools/xml/serviceXml';
 
 describe('buildAxServiceXml', () => {
   it('emits the AOT element shape: Name, Class, ExternalName, ServiceOperations', () => {

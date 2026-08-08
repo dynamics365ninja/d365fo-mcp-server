@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { handleCreateD365File } from '../../src/tools/createD365File';
+import { handleCreateD365File } from '../../src/tools/write/createD365File';
 import { FormPatternTemplates } from '../../src/utils/formPatternTemplates';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

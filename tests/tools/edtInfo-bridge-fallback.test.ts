@@ -17,7 +17,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import Database from '../../src/database/sqlite.js';
-import { getEdtInfoTool } from '../../src/tools/edtInfo';
+import { getEdtInfoTool } from '../../src/tools/readers/edtInfo';
 
 function makeDb(rows: Array<{ name: string; extends?: string; stringSize?: string; model?: string }>) {
   const db = new Database(':memory:');

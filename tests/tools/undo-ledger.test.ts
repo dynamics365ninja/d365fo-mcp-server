@@ -19,7 +19,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { undoLastModificationTool } from '../../src/tools/undoLastModification';
+import { undoLastModificationTool } from '../../src/tools/sdlc/undoLastModification';
 import {
   recordCreatedArtifact,
   lookupCreatedArtifact,

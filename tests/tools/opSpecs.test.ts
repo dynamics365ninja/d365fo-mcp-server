@@ -9,12 +9,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { lookupOpSpec, renderOpSpecIndex, opSpecTopics } from '../../src/tools/opSpecs';
-import { getKnowledgeTool } from '../../src/tools/getKnowledge';
+import { lookupOpSpec, renderOpSpecIndex, opSpecTopics } from '../../src/tools/specs/opSpecs';
+import { getKnowledgeTool } from '../../src/tools/knowledge/getKnowledge';
 import { d365foFileTool } from '../../src/server/toolSchemas/d365foFile';
 import { generateObjectTool as generateObjectSchema } from '../../src/server/toolSchemas/generateObject';
-import { D365FO_FILE_OP_SPECS } from '../../src/tools/d365foFileOpSpecs';
-import { GENERATE_OBJECT_MODE_SPECS } from '../../src/tools/generateObjectOpSpecs';
+import { D365FO_FILE_OP_SPECS } from '../../src/tools/specs/d365foFileOpSpecs';
+import { GENERATE_OBJECT_MODE_SPECS } from '../../src/tools/specs/generateObjectOpSpecs';
 
 function callKnowledge(args: Record<string, unknown>) {
   return getKnowledgeTool({ method: 'tools/call', params: { name: 'get_knowledge', arguments: args } } as any);

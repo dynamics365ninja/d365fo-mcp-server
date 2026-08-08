@@ -8,7 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { KNOWLEDGE_BASE } from '../../tools/xppKnowledge.js';
+import { KNOWLEDGE_BASE } from '../../tools/knowledge/xppKnowledge.js';
 import { d365foFileTool } from '../../server/toolSchemas/d365foFile.js';
 import { TAXONOMY } from './taxonomy.js';
 import { computeCoverage, type EvalCaseSummary, type CoverageReport } from './coverage.js';

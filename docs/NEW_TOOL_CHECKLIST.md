@@ -16,7 +16,24 @@ Every new MCP tool requires changes in these files. Check each item before openi
 
 ## Implementation
 
-- [ ] Create `src/tools/<toolName>.ts` — tool logic + exported `*Tool(request, context?)` function
+- [ ] Create `src/tools/<bucket>/<toolName>.ts` — tool logic + exported `*Tool(request, context?)` function.
+      `src/tools/` is subfoldered by what a file *does*; pick the one that fits:
+      | bucket | holds |
+      |---|---|
+      | `readers/` | object metadata readers — the `get_*_info` family and its registry |
+      | `xml/` | AOT XML builders and the repair/reconcile helpers over that XML |
+      | `specs/` | parameter contracts fetched on demand instead of inlined in the wire schema |
+      | `write/` | anything that writes to PackagesLocalDirectory, plus its guards |
+      | `smart/` | scaffolding and code generation |
+      | `sdlc/` | build, sync, BP check, test, verify, roll back |
+      | `knowledge/` | what the agent is TAUGHT: X++ rules, patterns, extension strategy |
+      | `analysis/` | search and static analysis over the index |
+      | `prepare/` | the one-call context aggregator |
+      Only the dispatcher (`toolHandler.ts`) and the discriminator entry points
+      (`d365foFile.ts`, `generateObject.ts`, `labels.ts`) sit at the root.
+      Nothing under `src/utils`, `src/workspace`, `src/bridge`, `src/metadata` or
+      `src/database` may import from `src/tools` — `tests/utils/layering.test.ts`
+      fails if it does
 - [ ] Create `src/server/toolSchemas/<toolName>.ts` — export `const <toolName>Tool = { name, description, inputSchema }`. This is the single source of truth for the wire schema; do NOT also define it in the handler file
 - [ ] Register in `src/server/toolSchemas/index.ts` — add the `import` **and** the entry in the `toolSchemas` array. **Append**, do not insert: the array order is the serialized `tools/list` order and is covered by tests
 - [ ] Keep descriptions SHORT and precise — they are sent to every client with the tool list; document behavior the model can't infer (gates, side effects, prohibitions), not what the enum already says
@@ -25,7 +42,7 @@ Every new MCP tool requires changes in these files. Check each item before openi
 - [ ] Add a progress message case in `src/utils/toolProgressMessage.ts`
 - [ ] Decide locality: add to `LOCAL_TOOLS` in `src/server/serverMode.ts` only if the tool requires local filesystem/Windows access
 - [ ] Decide breadth: add to `CORE_TOOLS` in `src/server/serverMode.ts` only if the tool is a step of the plan → discover → write → build → verify loop. `tests/server/serverMode.test.ts` pins both the core membership and the excluded list, so a new tool fails until it is classified either way
-- [ ] Keep parameters OUT of the wire schema when the tool dispatches on a discriminator: publish the discriminator enum + a loose `params` object and put the per-value contract in an op-spec registry reachable from `get_knowledge(kind="op-spec")` (see `src/tools/d365foFileOpSpecs.ts`, `src/tools/generateObjectOpSpecs.ts`). The ListTools payload ships on every request; a contract the agent needs once should be fetched once
+- [ ] Keep parameters OUT of the wire schema when the tool dispatches on a discriminator: publish the discriminator enum + a loose `params` object and put the per-value contract in an op-spec registry reachable from `get_knowledge(kind="op-spec")` (see `src/tools/specs/d365foFileOpSpecs.ts`, `src/tools/specs/generateObjectOpSpecs.ts`). The ListTools payload ships on every request; a contract the agent needs once should be fetched once
 
 ## Startup catalog (index.ts)
 
@@ -63,7 +80,7 @@ names mean better model tool-selection.
 If your capability fits one of these, **add a discriminator value** instead of a new tool:
 
 - [ ] Add the new `mode` / `action` / `domain` value to that tool's enum + description in its `src/server/toolSchemas/<toolName>.ts` file
-- [ ] Route it inside the tool's dispatcher (e.g. `src/tools/extensionInfo.ts`) — keep the underlying handler file intact; the dispatcher remaps params and forwards the request
+- [ ] Route it inside the tool's dispatcher (e.g. `src/tools/readers/extensionInfo.ts`) — keep the underlying handler file intact; the dispatcher remaps params and forwards the request
 - [ ] Add a sub-branch to the tool's `case` in `src/utils/toolProgressMessage.ts`
 - [ ] No changes to tool **count**, `TOOL_ANNOTATIONS` or the `index.ts` catalog are needed — the tool already exists
 - [ ] Add a routing/remap test in `tests/tools/mergedDispatchers.test.ts`

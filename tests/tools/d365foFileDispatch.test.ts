@@ -11,20 +11,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
-vi.mock('../../src/tools/createD365File', () => ({
+vi.mock('../../src/tools/write/createD365File', () => ({
   handleCreateD365File: vi.fn(async (_r: any) => ({ content: [{ type: 'text', text: 'create' }] })),
 }));
-vi.mock('../../src/tools/modifyD365File', () => ({
+vi.mock('../../src/tools/write/modifyD365File', () => ({
   modifyD365FileTool: vi.fn(async (_r: any) => ({ content: [{ type: 'text', text: 'modify' }] })),
 }));
-vi.mock('../../src/tools/generateD365Xml', () => ({
+vi.mock('../../src/tools/xml/generateD365Xml', () => ({
   handleGenerateD365Xml: vi.fn(async (_r: any) => ({ content: [{ type: 'text', text: 'generate' }] })),
 }));
 
 import { d365foFileTool } from '../../src/tools/d365foFile';
-import { handleCreateD365File } from '../../src/tools/createD365File';
-import { modifyD365FileTool } from '../../src/tools/modifyD365File';
-import { handleGenerateD365Xml } from '../../src/tools/generateD365Xml';
+import { handleCreateD365File } from '../../src/tools/write/createD365File';
+import { modifyD365FileTool } from '../../src/tools/write/modifyD365File';
+import { handleGenerateD365Xml } from '../../src/tools/xml/generateD365Xml';
 
 const ctx: any = { symbolIndex: {} };
 const req = (args: Record<string, unknown>): CallToolRequest => ({

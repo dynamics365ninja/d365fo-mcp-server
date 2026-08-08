@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extensionStrategyAdvisorTool } from '../../src/tools/extensionStrategyAdvisor';
+import { extensionStrategyAdvisorTool } from '../../src/tools/knowledge/extensionStrategyAdvisor';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

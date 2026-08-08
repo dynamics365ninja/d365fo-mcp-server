@@ -1,6 +1,6 @@
 # Authoring knowledge topics
 
-The X++ knowledge base (`src/tools/xppKnowledge.ts`, exposed as
+The X++ knowledge base (`src/tools/knowledge/xppKnowledge.ts`, exposed as
 `get_knowledge(kind="knowledge")`) is content shipped **directly into the
 model's context**. Unlike generated code — which is gated by `validate_code`,
 `run_bp_check` and the build — knowledge text used to reach the agent with no
@@ -83,7 +83,7 @@ of error.
 
 ### `tests/knowledge/exampleValidation.test.ts` — examples compile-ish
 
-Routes every `examples[].code` through `runRules` from `src/tools/validateXpp.ts`.
+Routes every `examples[].code` through `runRules` from `src/tools/analysis/validateXpp.ts`.
 Any **error**-severity violation fails CI.
 
 If your example is *deliberately* wrong (a "❌ WRONG" demonstration), add its
@@ -138,7 +138,7 @@ topics is invisible to the reader and fatal to the agent. Before you write a
 rule, grep the whole file for the API you are about to make a claim about:
 
 ```bash
-rg -n 'curExt' src/tools/xppKnowledge.ts
+rg -n 'curExt' src/tools/knowledge/xppKnowledge.ts
 ```
 
 `curExt()` was simultaneously listed as deprecated (topic `deprecated`),

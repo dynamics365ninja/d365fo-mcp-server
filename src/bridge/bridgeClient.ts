@@ -980,7 +980,7 @@ export class BridgeClient extends EventEmitter {
       // Development: built in-tree
       path.resolve(__dirname, '../../bridge/D365MetadataBridge/bin/Release', BRIDGE_EXE_NAME),
       // Production: alongside the server
-      path.resolve(__dirname, '../bridge', BRIDGE_EXE_NAME),
+      path.resolve(__dirname, './', BRIDGE_EXE_NAME),
       path.resolve(__dirname, BRIDGE_EXE_NAME),
     ];
 

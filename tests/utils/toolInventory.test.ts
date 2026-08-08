@@ -180,7 +180,7 @@ describe('tool inventory contract', () => {
     ];
     const paramSurface =
       readRepoFile('src/server/toolSchemas/d365foFile.ts') +
-      readRepoFile('src/tools/d365foFileOpSpecs.ts');
+      readRepoFile('src/tools/specs/d365foFileOpSpecs.ts');
     for (const param of requiredModifyParams) {
       expect(
         new RegExp(`\\b${param}:\\s*\\{`).test(paramSurface),

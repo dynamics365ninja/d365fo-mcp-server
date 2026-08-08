@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { xppKnowledgeTool } from '../../src/tools/xppKnowledge';
+import { xppKnowledgeTool } from '../../src/tools/knowledge/xppKnowledge';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 const req = (args: Record<string, unknown> = {}): CallToolRequest => ({

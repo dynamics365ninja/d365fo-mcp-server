@@ -36,7 +36,7 @@ describe('layer direction', () => {
     for (const layer of LOWER_LAYERS) {
       for (const file of globSync(`${layer}/**/*.ts`)) {
         for (const spec of importsOf(file)) {
-          if (spec.includes('../tools/') || spec.includes('/src/tools/')) {
+          if (spec.includes('../tools') || spec.includes('/src/tools/')) {
             offenders.push(`${file.replace(/\\/g, '/')} → ${spec}`);
           }
         }
@@ -46,8 +46,8 @@ describe('layer direction', () => {
   });
 
   it('the two biggest write tools do not import each other', () => {
-    const create = importsOf('src/tools/createD365File.ts');
-    const modify = importsOf('src/tools/modifyD365File.ts');
+    const create = importsOf('src/tools/write/createD365File.ts');
+    const modify = importsOf('src/tools/write/modifyD365File.ts');
 
     expect(create.filter(s => s.includes('modifyD365File'))).toEqual([]);
     expect(modify.filter(s => s.includes('createD365File'))).toEqual([]);
@@ -57,7 +57,7 @@ describe('layer direction', () => {
     // tableInfo/enumInfo/queryInfo/viewInfo each imported findD365FileOnDisk from
     // modifyD365File, so reading a table loaded the whole write path.
     for (const reader of ['tableInfo', 'enumInfo', 'queryInfo', 'viewInfo']) {
-      const specs = importsOf(path.join('src/tools', `${reader}.ts`));
+      const specs = importsOf(path.join('src/tools/readers', `${reader}.ts`));
       expect(
         specs.filter(s => /modifyD365File|createD365File/.test(s)),
         `${reader} still imports a write tool`,

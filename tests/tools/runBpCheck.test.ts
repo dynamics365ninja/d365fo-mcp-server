@@ -60,7 +60,7 @@ vi.mock('../../src/utils/packagesRoot.js', () => ({
 }));
 
 import path from 'path';
-import { runBpCheckTool } from '../../src/tools/runBpCheck';
+import { runBpCheckTool } from '../../src/tools/sdlc/runBpCheck';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -845,14 +845,14 @@ describe('run_bp_check — omitted element type never defaults to class (#828)',
 
 describe('splitSharedPreamble (#828 helper)', () => {
   it('returns a single output untouched — there is nothing to share', async () => {
-    const { splitSharedPreamble } = await import('../../src/tools/runBpCheck');
+    const { splitSharedPreamble } = await import('../../src/tools/sdlc/runBpCheck');
     const { preamble, bodies } = splitSharedPreamble(['banner\nErrors: 0']);
     expect(preamble).toEqual([]);
     expect(bodies[0].join('\n')).toBe('banner\nErrors: 0');
   });
 
   it('stops at the first finding line even when it is common to every output', async () => {
-    const { splitSharedPreamble } = await import('../../src/tools/runBpCheck');
+    const { splitSharedPreamble } = await import('../../src/tools/sdlc/runBpCheck');
     const out = 'banner\nBPErrorXmlDocMissing: same\ntail';
     const { preamble, bodies } = splitSharedPreamble([out, out]);
     expect(preamble).toEqual(['banner']);
@@ -862,7 +862,7 @@ describe('splitSharedPreamble (#828 helper)', () => {
 
 describe('extractReportedElements (#25 helper)', () => {
   it('reads element names out of AOT paths and quoted references', async () => {
-    const { extractReportedElements } = await import('../../src/tools/runBpCheck');
+    const { extractReportedElements } = await import('../../src/tools/sdlc/runBpCheck');
     expect(extractReportedElements('warn K:\\Pkg\\M\\M\\AxTable\\ConDemoTicket.xml')).toContain('ConDemoTicket');
     expect(extractReportedElements("BPError: table 'ConDemoLine' is bad")).toContain('ConDemoLine');
     expect(extractReportedElements('no elements here')).toEqual([]);

@@ -20,7 +20,7 @@ import Database from '../../src/database/sqlite.js';
 import { tryBridgeSearch } from '../../src/bridge/bridgeAdapter';
 import type { BridgeClient } from '../../src/bridge/bridgeClient';
 import { rankExactFirst, exactMatchRank } from '../../src/utils/exactMatchRanking';
-import { probeExactMatches } from '../../src/tools/search';
+import { probeExactMatches } from '../../src/tools/analysis/search';
 
 // ── ranking primitive ────────────────────────────────────────────────────────
 

@@ -16,7 +16,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { isInsideRepo, toRepoRelative } from '../../src/tools/undoLastModification';
+import { isInsideRepo, toRepoRelative } from '../../src/tools/sdlc/undoLastModification';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'd365fo-undo-symlink-'));
 const repoRoot = path.join(root, 'repo');

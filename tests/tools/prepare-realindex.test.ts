@@ -15,8 +15,8 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
-import { prepareChangeTool } from '../../src/tools/prepareChange';
-import { prepareCreateTool } from '../../src/tools/prepareCreate';
+import { prepareChangeTool } from '../../src/tools/prepare/prepareChange';
+import { prepareCreateTool } from '../../src/tools/prepare/prepareCreate';
 import type { XppServerContext } from '../../src/types/context';
 
 let index: XppSymbolIndex;

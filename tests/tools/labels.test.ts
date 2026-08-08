@@ -4,10 +4,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { searchLabelsTool } from '../../src/tools/searchLabels';
-import { getLabelInfoTool } from '../../src/tools/getLabelInfo';
-import { createLabelTool } from '../../src/tools/createLabel';
-import { renameLabelTool } from '../../src/tools/renameLabel';
+import { searchLabelsTool } from '../../src/tools/analysis/searchLabels';
+import { getLabelInfoTool } from '../../src/tools/readers/getLabelInfo';
+import { createLabelTool } from '../../src/tools/write/createLabel';
+import { renameLabelTool } from '../../src/tools/write/renameLabel';
 import { labelsTool } from '../../src/tools/labels';
 import { isExtensionLabelFile } from '../../src/metadata/labelParser';
 import type { XppServerContext } from '../../src/types/context';

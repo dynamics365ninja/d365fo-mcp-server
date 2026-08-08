@@ -62,7 +62,7 @@ the design.
 
 ## Context ranker in `search`
 
-**Status:** deferred · **Area:** `src/tools/search.ts`, `src/workspace/contextRanker.ts` · **Depends on:** Phase 2 (shipped)
+**Status:** deferred · **Area:** `src/tools/analysis/search.ts`, `src/workspace/contextRanker.ts` · **Depends on:** Phase 2 (shipped)
 
 **What**
 - Optionally let `search` re-rank / append a `rankContext()` "related" block when

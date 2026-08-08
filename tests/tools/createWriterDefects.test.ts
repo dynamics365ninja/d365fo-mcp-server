@@ -13,8 +13,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { XmlTemplateGenerator } from '../../src/tools/createD365File';
-import { buildAxQueryXml, buildAxViewXml, extractQueryRootDataSourceName } from '../../src/tools/queryViewXml';
+import { XmlTemplateGenerator } from '../../src/tools/write/createD365File';
+import { buildAxQueryXml, buildAxViewXml, extractQueryRootDataSourceName } from '../../src/tools/xml/queryViewXml';
 import { FormPatternTemplates } from '../../src/utils/formPatternTemplates';
 import {
   AX_TABLE_ELEMENT_ORDER,
@@ -22,7 +22,7 @@ import {
   upsertAxTableProperty,
 } from '../../src/utils/axTablePropertyOrder';
 import { parseTableTitleField } from '../../src/utils/fieldControlTypes';
-import { runRules } from '../../src/tools/validateXpp';
+import { runRules } from '../../src/tools/analysis/validateXpp';
 import { SmartXmlBuilder } from '../../src/utils/smartXmlBuilder';
 
 // ── #31: security duty/role references must actually resolve ────────────────

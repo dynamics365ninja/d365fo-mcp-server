@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { XmlTemplateGenerator } from '../../src/tools/createD365File';
+import { XmlTemplateGenerator } from '../../src/tools/write/createD365File';
 
 describe('macro library (AxMacroDictionary)', () => {
   it('emits Name + Source with the caller source verbatim', () => {

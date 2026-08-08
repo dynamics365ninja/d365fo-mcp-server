@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { computeCoverage, danglingReferences, type CoverageInputs } from '../../src/eval/coverage/coverage';
 import type { CoverageLeaf } from '../../src/eval/coverage/taxonomy';
 import { TAXONOMY } from '../../src/eval/coverage/taxonomy';
-import { KNOWLEDGE_BASE } from '../../src/tools/xppKnowledge';
+import { KNOWLEDGE_BASE } from '../../src/tools/knowledge/xppKnowledge';
 import { loadCases, toolObjectTypes, buildReport } from '../../src/eval/coverage/sources';
 
 const leaf = (partial: Partial<CoverageLeaf>): CoverageLeaf => ({

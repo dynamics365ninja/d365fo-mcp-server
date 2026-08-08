@@ -4,7 +4,7 @@ import {
   resolveKeyFields,
   buildFindMethods,
   type FindMethodTableShape,
-} from '../../src/tools/generateFindMethods';
+} from '../../src/tools/smart/generateFindMethods';
 
 const custTable: FindMethodTableShape = {
   name: 'CustTable',

@@ -13,11 +13,11 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Database from '../../src/database/sqlite.js';
-import { getObjectInfoTool } from '../../src/tools/getObjectInfo';
+import { getObjectInfoTool } from '../../src/tools/readers/getObjectInfo';
 import {
   READER_DISPATCH,
   OBJECT_INFO_TYPES,
-} from '../../src/tools/objectInfoRegistry';
+} from '../../src/tools/readers/objectInfoRegistry';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

@@ -8,19 +8,19 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { codeGenTool } from '../../src/tools/codeGen';
-import { completionTool } from '../../src/tools/completion';
-import { handleGenerateD365Xml, XmlTemplateGenerator as generateGenerator } from '../../src/tools/generateD365Xml';
-import { XmlTemplateGenerator, XmlTemplateGenerator as createGenerator } from '../../src/tools/createD365File';
-import { handleGenerateSmartTable, selectUnbuildableEdts } from '../../src/tools/generateSmartTable';
-import { handleGenerateSmartForm } from '../../src/tools/generateSmartForm';
-import { handleSuggestEdt } from '../../src/tools/suggestEdt';
-import { analyzeCodePatternsTool } from '../../src/tools/analyzePatterns';
-import { suggestMethodImplementationTool } from '../../src/tools/suggestImplementation';
-import { analyzeClassCompletenessTool } from '../../src/tools/analyzeCompleteness';
-import { getApiUsagePatternsTool } from '../../src/tools/apiUsagePatterns';
-import { handleGetTablePatterns } from '../../src/tools/getTablePatterns';
-import { handleGetFormPatterns } from '../../src/tools/getFormPatterns';
+import { codeGenTool } from '../../src/tools/smart/codeGen';
+import { completionTool } from '../../src/tools/readers/completion';
+import { handleGenerateD365Xml, XmlTemplateGenerator as generateGenerator } from '../../src/tools/xml/generateD365Xml';
+import { XmlTemplateGenerator, XmlTemplateGenerator as createGenerator } from '../../src/tools/write/createD365File';
+import { handleGenerateSmartTable, selectUnbuildableEdts } from '../../src/tools/smart/generateSmartTable';
+import { handleGenerateSmartForm } from '../../src/tools/smart/generateSmartForm';
+import { handleSuggestEdt } from '../../src/tools/smart/suggestEdt';
+import { analyzeCodePatternsTool } from '../../src/tools/knowledge/analyzePatterns';
+import { suggestMethodImplementationTool } from '../../src/tools/smart/suggestImplementation';
+import { analyzeClassCompletenessTool } from '../../src/tools/analysis/analyzeCompleteness';
+import { getApiUsagePatternsTool } from '../../src/tools/knowledge/apiUsagePatterns';
+import { handleGetTablePatterns } from '../../src/tools/knowledge/getTablePatterns';
+import { handleGetFormPatterns } from '../../src/tools/knowledge/getFormPatterns';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

@@ -33,7 +33,7 @@ vi.mock('../../src/utils/modelClassifier', () => ({
   applyObjectSuffix: vi.fn((name: string) => name),
 }));
 
-import { handleGenerateSmartReport } from '../../src/tools/generateSmartReport';
+import { handleGenerateSmartReport } from '../../src/tools/smart/generateSmartReport';
 
 function createSymbolIndexStub() {
   const stmt = { all: vi.fn(() => []), get: vi.fn(() => undefined) };

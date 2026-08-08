@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTableRelationXml, type TableRelationSpec } from '../../src/tools/generateTableRelation';
+import { buildTableRelationXml, type TableRelationSpec } from '../../src/tools/xml/generateTableRelation';
 
 describe('buildTableRelationXml', () => {
   const rel: TableRelationSpec = {

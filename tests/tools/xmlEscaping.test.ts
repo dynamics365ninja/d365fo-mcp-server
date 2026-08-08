@@ -15,11 +15,11 @@
 import { describe, it, expect } from 'vitest';
 import { parseStringPromise } from 'xml2js';
 import { escapeXml, escapeXmlAttr } from '../../src/utils/xmlEscape';
-import { buildAxSecurityPrivilegeXml } from '../../src/tools/securityPrivilegeXml';
-import { buildAxQueryXml, buildAxViewXml } from '../../src/tools/queryViewXml';
-import { buildAxDataEntityXml } from '../../src/tools/dataEntityXml';
-import { buildAxServiceXml, buildAxServiceGroupXml } from '../../src/tools/serviceXml';
-import { buildAxMapXml } from '../../src/tools/mapXml';
+import { buildAxSecurityPrivilegeXml } from '../../src/tools/xml/securityPrivilegeXml';
+import { buildAxQueryXml, buildAxViewXml } from '../../src/tools/xml/queryViewXml';
+import { buildAxDataEntityXml } from '../../src/tools/xml/dataEntityXml';
+import { buildAxServiceXml, buildAxServiceGroupXml } from '../../src/tools/xml/serviceXml';
+import { buildAxMapXml } from '../../src/tools/xml/mapXml';
 import { SmartXmlBuilder } from '../../src/utils/smartXmlBuilder';
 
 /** The value that used to corrupt every generated file. */

@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildAxMenuItemExtensionXml } from '../../src/tools/menuItemExtensionXml';
+import { buildAxMenuItemExtensionXml } from '../../src/tools/xml/menuItemExtensionXml';
 
 const NAME = 'CustTableListPage.ConExtension';
 

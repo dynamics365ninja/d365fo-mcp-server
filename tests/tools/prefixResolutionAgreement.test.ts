@@ -13,8 +13,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../../src/types/context.js';
-import { validateObjectNamingTool } from '../../src/tools/validateObjectNaming.js';
-import { buildPrefixDiagnostics } from '../../src/tools/prefixDiagnostics.js';
+import { validateObjectNamingTool } from '../../src/tools/analysis/validateObjectNaming.js';
+import { buildPrefixDiagnostics } from '../../src/tools/analysis/prefixDiagnostics.js';
 import {
   setModelObjectNameSource, clearInferredModelPrefixes,
 } from '../../src/utils/modelPrefixInference.js';

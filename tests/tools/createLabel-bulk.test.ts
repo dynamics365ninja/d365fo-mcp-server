@@ -4,7 +4,7 @@ import {
   extractBulkLabels,
   createLabelsBulk,
   type SingleLabelRunner,
-} from '../../src/tools/createLabel';
+} from '../../src/tools/write/createLabel';
 
 describe('extractBulkLabels', () => {
   it('returns the entries for the bulk shape', () => {

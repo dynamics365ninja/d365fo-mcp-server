@@ -20,7 +20,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import { XppMetadataParser, buildClassExtensionRecord } from '../../src/metadata/xmlParser';
-import { findCocExtensionsTool } from '../../src/tools/findCocExtensions';
+import { findCocExtensionsTool } from '../../src/tools/knowledge/findCocExtensions';
 import type { XppServerContext } from '../../src/types/context';
 
 const MODEL = 'MyCustomModel';

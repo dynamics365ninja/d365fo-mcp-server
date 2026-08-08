@@ -24,7 +24,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createBridgeClient } from '../../src/bridge/bridgeClient';
 import { tryBridgeReferences } from '../../src/bridge/bridgeAdapter';
-import { resolveLabelTarget } from '../../src/tools/findReferences';
+import { resolveLabelTarget } from '../../src/tools/analysis/findReferences';
 import type { BridgeClient } from '../../src/bridge/bridgeClient';
 
 const RUN = !!process.env.D365FO_XREF_INTEGRATION;

@@ -16,9 +16,9 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { handleGenerateD365Xml } from './generateD365Xml.js';
-import { handleCreateD365File } from './createD365File.js';
-import { modifyD365FileTool } from './modifyD365File.js';
+import { handleGenerateD365Xml } from './xml/generateD365Xml.js';
+import { handleCreateD365File } from './write/createD365File.js';
+import { modifyD365FileTool } from './write/modifyD365File.js';
 
 export const D365_FILE_ACTIONS = ['generate', 'create', 'modify'] as const;
 export type D365FileAction = (typeof D365_FILE_ACTIONS)[number];

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { prepareCreateTool } from '../../src/tools/prepareCreate';
+import { prepareCreateTool } from '../../src/tools/prepare/prepareCreate';
 import { getProvenanceBundle } from '../../src/utils/provenanceStore';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';

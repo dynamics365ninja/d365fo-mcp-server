@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveEnvPatternVersion } from '../../src/tools/generateSmartForm';
+import { resolveEnvPatternVersion } from '../../src/tools/smart/generateSmartForm';
 
 describe('resolveEnvPatternVersion', () => {
   it('returns the most-common Design PatternVersion mined for the pattern', () => {

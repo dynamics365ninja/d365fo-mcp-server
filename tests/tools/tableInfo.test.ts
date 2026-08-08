@@ -22,11 +22,11 @@ vi.mock('../../src/bridge/bridgeAdapter', () => ({
   tryBridgeTable: vi.fn(async () => null), // force the DB-index fallback path
 }));
 
-vi.mock('../../src/tools/modifyD365File', () => ({
+vi.mock('../../src/tools/write/modifyD365File', () => ({
   findD365FileOnDisk: vi.fn(async () => null), // no disk fallback hit either
 }));
 
-import { tableInfoTool } from '../../src/tools/tableInfo';
+import { tableInfoTool } from '../../src/tools/readers/tableInfo';
 import * as fs from 'fs';
 
 const req = (args: Record<string, unknown>): CallToolRequest => ({

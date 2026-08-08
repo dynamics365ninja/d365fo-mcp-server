@@ -7,7 +7,7 @@ import {
   resolveEdtBaseType,
   resolveEdtEnumType,
   isEnumName,
-} from '../../src/tools/generateSmartTable';
+} from '../../src/tools/smart/generateSmartTable';
 
 /**
  * Fake read-db over a fixed list of EDT names. Handles the three query shapes

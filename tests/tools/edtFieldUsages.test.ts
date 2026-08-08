@@ -28,7 +28,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import Database from '../../src/database/sqlite.js';
-import { getEdtInfoTool } from '../../src/tools/edtInfo';
+import { getEdtInfoTool } from '../../src/tools/readers/edtInfo';
 
 interface FieldRow { table: string; field: string; signature: string; model?: string }
 

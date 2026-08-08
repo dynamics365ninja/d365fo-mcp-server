@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildAxQueryXml, buildAxViewXml } from '../../src/tools/queryViewXml';
+import { buildAxQueryXml, buildAxViewXml } from '../../src/tools/xml/queryViewXml';
 
 describe('buildAxQueryXml — root datasource property name', () => {
   it('creates a root datasource from the documented `dataSource` key (existing behaviour, unchanged)', () => {

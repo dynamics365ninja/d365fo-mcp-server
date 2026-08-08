@@ -31,8 +31,8 @@ vi.mock('fs', () => {
   };
 });
 
-import { undoLastModificationTool } from '../../src/tools/undoLastModification';
-import { reviewWorkspaceChangesTool } from '../../src/tools/reviewWorkspaceChanges';
+import { undoLastModificationTool } from '../../src/tools/sdlc/undoLastModification';
+import { reviewWorkspaceChangesTool } from '../../src/tools/sdlc/reviewWorkspaceChanges';
 
 const getFs = async () => await import('fs');
 

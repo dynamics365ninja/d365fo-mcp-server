@@ -19,11 +19,11 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 const { mockModify } = vi.hoisted(() => ({ mockModify: vi.fn() }));
 
-vi.mock('../../src/tools/modifyD365File', () => ({
+vi.mock('../../src/tools/write/modifyD365File', () => ({
   modifyD365FileTool: mockModify,
 }));
-vi.mock('../../src/tools/createD365File', () => ({ handleCreateD365File: vi.fn() }));
-vi.mock('../../src/tools/generateD365Xml', () => ({ handleGenerateD365Xml: vi.fn() }));
+vi.mock('../../src/tools/write/createD365File', () => ({ handleCreateD365File: vi.fn() }));
+vi.mock('../../src/tools/xml/generateD365Xml', () => ({ handleGenerateD365Xml: vi.fn() }));
 
 import { d365foFileTool } from '../../src/tools/d365foFile';
 

@@ -14,7 +14,7 @@ import {
   OP_PARAM_ALIASES,
   getRequiredParams,
   renderOpSpec,
-} from '../../src/tools/d365foFileOpSpecs';
+} from '../../src/tools/specs/d365foFileOpSpecs';
 import { d365foFileTool as d365foFileSchema } from '../../src/server/toolSchemas/d365foFile';
 
 describe('d365fo_file op-spec registry', () => {

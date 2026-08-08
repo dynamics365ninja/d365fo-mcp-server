@@ -3,7 +3,7 @@
  * extracted verbatim from mcpServer.ts. Serialized payload must not change
  * unintentionally — tests/utils/toolSchemaBudget.test.ts ratchets its size.
  */
-import { OBJECT_INFO_TYPES } from '../../tools/objectInfoRegistry.js';
+import { OBJECT_INFO_TYPES } from '../../tools/readers/objectInfoRegistry.js';
 
 export const getObjectInfoTool = {
     name: 'get_object_info',

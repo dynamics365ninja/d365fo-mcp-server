@@ -15,7 +15,7 @@
  * testable and runs anywhere.
  */
 
-import type { KnowledgeEntry } from '../../tools/xppKnowledge.js';
+import type { KnowledgeEntry } from '../../tools/knowledge/xppKnowledge.js';
 
 /** How a reference was recognised — drives the resolver's expectations. */
 export type RefKind =

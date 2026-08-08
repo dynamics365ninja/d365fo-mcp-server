@@ -23,7 +23,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildAxDataEntityXml } from '../../src/tools/dataEntityXml';
+import { buildAxDataEntityXml } from '../../src/tools/xml/dataEntityXml';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 

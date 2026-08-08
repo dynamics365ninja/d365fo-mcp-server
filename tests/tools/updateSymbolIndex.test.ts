@@ -32,7 +32,7 @@ vi.mock('../../src/bridge/index.js', () => ({
   bridgeRefreshProvider: bridgeRefreshProviderMock,
 }));
 
-import { updateSymbolIndexTool } from '../../src/tools/updateSymbolIndex';
+import { updateSymbolIndexTool } from '../../src/tools/sdlc/updateSymbolIndex';
 import type { XppServerContext } from '../../src/types/context';
 
 /** Records every db.prepare(sql).run(...args) call so tests can assert on the exact SQL + bound values. */

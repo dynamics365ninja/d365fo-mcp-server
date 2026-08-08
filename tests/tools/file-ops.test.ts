@@ -5,12 +5,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { validateObjectNamingTool } from '../../src/tools/validateObjectNaming';
+import { validateObjectNamingTool } from '../../src/tools/analysis/validateObjectNaming';
 import { getExtensionNamingStyle } from '../../src/utils/modelClassifier';
-import { verifyD365ProjectTool } from '../../src/tools/verifyD365Project';
-import { handleCreateD365File } from '../../src/tools/createD365File';
-import { modifyD365FileTool, countTopLevelMethodBodies, splitTopLevelMethodBodies, isUnresolvedObjectError, extractMethodNameFromSource } from '../../src/tools/modifyD365File';
-import { resetEdtBaseTypeCache } from '../../src/tools/generateSmartTable';
+import { verifyD365ProjectTool } from '../../src/tools/sdlc/verifyD365Project';
+import { handleCreateD365File } from '../../src/tools/write/createD365File';
+import { modifyD365FileTool, countTopLevelMethodBodies, splitTopLevelMethodBodies, isUnresolvedObjectError, extractMethodNameFromSource } from '../../src/tools/write/modifyD365File';
+import { resetEdtBaseTypeCache } from '../../src/tools/smart/generateSmartTable';
 import * as debouncedRefresh from '../../src/bridge/debouncedRefresh';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';

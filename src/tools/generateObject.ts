@@ -29,17 +29,17 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
-import { codeGenTool } from './codeGen.js';
-import { generateSmartTool } from './generateSmart.js';
-import { generateFindMethodsTool } from './generateFindMethods.js';
-import { generateRelationXppTool } from './generateRelationXpp.js';
-import { generateTableFieldsTool } from './generateTableFields.js';
-import { generateTableRelationTool } from './generateTableRelation.js';
+import { codeGenTool } from './smart/codeGen.js';
+import { generateSmartTool } from './smart/generateSmart.js';
+import { generateFindMethodsTool } from './smart/generateFindMethods.js';
+import { generateRelationXppTool } from './smart/generateRelationXpp.js';
+import { generateTableFieldsTool } from './xml/generateTableFields.js';
+import { generateTableRelationTool } from './xml/generateTableRelation.js';
 import {
   GENERATE_OBJECT_MODE_SPECS,
   getGenerateObjectRequiredParams,
   renderGenerateObjectSpec,
-} from './generateObjectOpSpecs.js';
+} from './specs/generateObjectOpSpecs.js';
 
 function err(text: string) {
   return { content: [{ type: 'text' as const, text }], isError: true };

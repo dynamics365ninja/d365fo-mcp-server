@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { applyExtensionMemberPrefix } from '../../src/tools/modifyD365File.js';
+import { applyExtensionMemberPrefix } from '../../src/tools/write/modifyD365File.js';
 import {
   setModelObjectNameSource,
   clearInferredModelPrefixes,
