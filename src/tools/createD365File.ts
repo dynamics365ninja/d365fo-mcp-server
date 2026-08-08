@@ -16,7 +16,8 @@ import { crossModelWriteRefusal } from '../utils/crossModelWriteGuard.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
-import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, bridgeRefreshProvider } from '../bridge/index.js';
+import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable } from '../bridge/index.js';
+import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
 import { gateOnFormPatternErrors, isFormPatternEnforceEnabled } from './validateFormPattern.js';
 import { validateFormExtensionControlShape, buildFormExtensionShapeError } from '../utils/formExtensionShapeValidator.js';
@@ -4594,6 +4595,13 @@ export async function handleCreateD365File(
 
     if (!args.xmlContent && !skipBridgeForExtensibleEnum && context?.bridge && actualModelName && canBridgeCreate(args.objectType)) {
       try {
+        // Settle any rebuild an earlier write in this session scheduled but did not
+        // wait for. Everything below reads the provider — the base object of an
+        // extension, the EDTs a table's fields extend — so a scaffold that creates
+        // an EDT and then a table using it must not see the pre-EDT model. Free
+        // when no write is outstanding.
+        await debouncedRefresh.flush();
+
         // The bridge's `properties` is a flat string map (C# Dictionary<string,string>).
         // Keep only SCALAR values and stringify them. Structured collections
         // (fields/fieldGroups/indexes/relations/values/enumValues/methods) are
@@ -4674,16 +4682,35 @@ export async function handleCreateD365File(
           // edt_metadata chain → name heuristic.
           if (bridgeParams.fields && bridgeParams.fields.length > 0) {
             const db = context.symbolIndex?.getReadDb?.();
-            for (const f of bridgeParams.fields as Record<string, unknown>[]) {
+            const fieldsToResolve = (bridgeParams.fields as Record<string, unknown>[]).filter(f => {
               const edt = f.edt as string | undefined;
-              if (!edt || f.type) continue;
+              if (!edt || f.type) return false;
+              // An "EDT" that is really an enum name needs AxTableFieldEnum + EnumType;
+              // decided from the local index, so it never reaches the bridge.
               if (db && !f.enumType && isEnumName(edt, db)) {
                 f.enumType = edt;
                 f.type = 'Enum';
                 delete f.edt;
-                continue;
+                return false;
               }
-              const resolved = (await bridgeEdtBaseType(context.bridge, edt))
+              return true;
+            });
+
+            // One readEdt per DISTINCT EDT, all in flight at once. Sequentially awaiting
+            // one round trip per field made a wide table's create wait out N latencies
+            // into the C# process end to end, and fields repeating an EDT paid for it
+            // twice. The bridge dispatch loop is single-threaded, so this pipelines the
+            // requests rather than truly parallelising them — the win is the round trips.
+            const baseTypes = new Map<string, string | undefined>();
+            await Promise.all(
+              [...new Set(fieldsToResolve.map(f => f.edt as string))].map(async edt => {
+                baseTypes.set(edt, await bridgeEdtBaseType(context.bridge, edt));
+              }),
+            );
+
+            for (const f of fieldsToResolve) {
+              const edt = f.edt as string;
+              const resolved = baseTypes.get(edt)
                 ?? (db ? resolveEdtBaseType(edt, db) : undefined)
                 ?? heuristicEdtBaseType(edt);
               if (resolved) {
@@ -4825,9 +4852,13 @@ export async function handleCreateD365File(
                 }
               }
 
-              // Eagerly refresh the bridge provider so the new object is immediately
-              // resolvable by subsequent modify calls in the same session.
-              try { await bridgeRefreshProvider(context.bridge); } catch { /* best-effort */ }
+              // Schedule (do not await) the provider rebuild that makes the new object
+              // resolvable to subsequent bridge calls. Awaiting it serialized a full
+              // DiskProvider rebuild into every create's response — once per object on a
+              // multi-object scaffold — for a provider generation the create itself never
+              // reads. The flush() gate at the top of this block and in modify_d365fo_file
+              // is what preserves same-session resolvability.
+              void debouncedRefresh.refresh(context.bridge);
 
               const rawLabelWarning = rawLabelBpWarning(args.properties, finalObjectName);
               // #35: CreateSmartTable ignores every property its C# switch does not
@@ -4921,9 +4952,8 @@ export async function handleCreateD365File(
             }
           }
 
-          // Eagerly refresh the bridge provider so the new object is immediately
-          // resolvable by subsequent modify calls in the same session.
-          try { await bridgeRefreshProvider(context.bridge); } catch { /* best-effort */ }
+          // Scheduled, not awaited — see the smart-table path above.
+          void debouncedRefresh.refresh(context.bridge);
 
           const rawLabelWarning = rawLabelBpWarning(args.properties, finalObjectName);
           // #35: C# CreateTable() runs the same SetAxTableProperty() switch as the
@@ -5171,9 +5201,11 @@ export async function handleCreateD365File(
       `[create_d365fo_file] ✅ Written: ${normalizedFullPath}  (${fileSizeKb} KB)`
     );
 
-    // Eagerly refresh the bridge provider so the new object is immediately
-    // resolvable by subsequent modify calls in the same session.
-    try { await bridgeRefreshProvider(context?.bridge); } catch { /* best-effort */ }
+    // This path paid for the rebuild TWICE: once here on the response path, and
+    // again inside the fire-and-forget bridgeValidateAfterWrite() below, which
+    // already goes through the same coalescer before reading the object back.
+    // Scheduling here collapses both into the one rebuild validation waits for.
+    if (context?.bridge) void debouncedRefresh.refresh(context.bridge);
 
     // Post-write validation via C# bridge (best-effort, non-fatal, fire-and-forget).
     // Not awaited: the validation goes through the sequential bridge stdin/stdout
