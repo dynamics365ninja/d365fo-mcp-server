@@ -342,6 +342,8 @@ describe('reconcileTableCreateProperties', () => {
   });
 
   it('renders nothing when there is nothing to say', () => {
-    expect(renderTableCreateHonestyReport({ xml: base, patched: [], unhonoured: [] })).toBe('');
+    expect(renderTableCreateHonestyReport({
+      xml: base, patched: [], unhonoured: [], droppedCollections: [],
+    })).toBe('');
   });
 });

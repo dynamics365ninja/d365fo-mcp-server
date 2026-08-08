@@ -16,7 +16,8 @@ import { crossModelWriteRefusal } from '../utils/crossModelWriteGuard.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
-import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, bridgeRefreshProvider } from '../bridge/index.js';
+import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, bridgeRefreshProvider, isBridgeFailure, describeBridgeFailure } from '../bridge/index.js';
+import type { BridgeFailure } from '../bridge/index.js';
 import { enforceGrounding } from '../utils/provenanceStore.js';
 import { gateOnFormPatternErrors, isFormPatternEnforceEnabled } from './validateFormPattern.js';
 import { validateFormExtensionControlShape, buildFormExtensionShapeError } from '../utils/formExtensionShapeValidator.js';
@@ -2613,8 +2614,9 @@ ${enumValuesXml}
    *   fields:       Array<{ name, edt?, enumType?, label?, mandatory?, fieldType? }>
    *   fieldGroups:  Array<{ name, label?, fields?: string[] }>
    *   fieldGroupExtensions: Array<{ name, fields: string[] }>  — extend base-table field groups
-   *   indexes:      Array<{ name, fields: Array<{fieldName, direction?}>, allowDuplicates?, alternateKey? }>
-   *   relations:    Array<{ name, relatedTable, constraints: Array<{fieldName, relatedFieldName}>,
+   *   indexes:      Array<{ name, fields: Array<string | {fieldName, direction?}>, allowDuplicates?, alternateKey? }>
+   *   relations:    Array<{ name, relatedTable,
+   *                         constraints: Array<{fieldName|field, relatedFieldName|relatedField}>,
    *                         cardinality?, relatedTableCardinality?, relationshipType? }>
    */
   static generateAxTableExtensionXml(name: string, properties?: Record<string, any>): string {
@@ -2700,7 +2702,7 @@ ${enumValuesXml}
     // ── Indexes ──────────────────────────────────────────────────────────────
     const idxSpecs: Array<{
       name: string;
-      fields: Array<{ fieldName: string; direction?: string }>;
+      fields: Array<{ fieldName: string; direction?: string } | string>;
       allowDuplicates?: boolean;
       alternateKey?: boolean;
     }> = Array.isArray(properties?.indexes) ? properties.indexes : [];
@@ -2713,7 +2715,18 @@ ${enumValuesXml}
         indexesXml += `\t\t<AxTableIndex>\n\t\t\t<Name>${idx.name}</Name>\n`;
         if (idx.allowDuplicates !== undefined) indexesXml += `\t\t\t<AllowDuplicates>${idx.allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n`;
         if (idx.alternateKey)                 indexesXml += `\t\t\t<AlternateKey>Yes</AlternateKey>\n`;
-        const idxFields = Array.isArray(idx.fields) ? idx.fields : [];
+        // `fields: ["AccountNum"]` is the documented shape everywhere else — the
+        // bridge normalizer (normalizeIndexSpecsForBridge) accepts it, and so does
+        // add-index. This writer only ever read `f.fieldName`, so a caller who used
+        // the string form and landed on the fallback got a literal
+        // <DataField>undefined</DataField> in the AOT file: it deserializes, and the
+        // index silently points at nothing.
+        const idxFields = (Array.isArray(idx.fields) ? idx.fields : [])
+          .map((f: any): { fieldName?: string; direction?: string } => (typeof f === 'string'
+            ? { fieldName: f }
+            : { fieldName: f?.fieldName ?? f?.name ?? f?.dataField, direction: f?.direction }))
+          .filter((f): f is { fieldName: string; direction?: string } =>
+            typeof f.fieldName === 'string' && f.fieldName.length > 0);
         if (idxFields.length === 0) {
           indexesXml += `\t\t\t<Fields />\n`;
         } else {
@@ -2751,16 +2764,26 @@ ${enumValuesXml}
         relationsXml += `\t\t\t<RelatedTable>${rel.relatedTable}</RelatedTable>\n`;
         relationsXml += `\t\t\t<RelatedTableCardinality>${rel.relatedTableCardinality || 'ExactlyOne'}</RelatedTableCardinality>\n`;
         relationsXml += `\t\t\t<RelationshipType>${rel.relationshipType || 'Association'}</RelationshipType>\n`;
-        const constraints = Array.isArray(rel.constraints) ? rel.constraints : [];
+        // Same defect as the index fields above: `{ field, relatedField }` is what
+        // generateSmartTable and the bridge's add-relation both speak, and reading
+        // only `fieldName`/`relatedFieldName` turned it into
+        // <Field>undefined</Field> — a relation the compiler accepts and that joins
+        // on nothing.
+        const constraints = (Array.isArray(rel.constraints) ? rel.constraints : [])
+          .map((c: any) => ({
+            field: c?.fieldName ?? c?.field,
+            relatedField: c?.relatedFieldName ?? c?.relatedField,
+          }))
+          .filter((c: any) => typeof c.field === 'string' && typeof c.relatedField === 'string');
         if (constraints.length === 0) {
           relationsXml += `\t\t\t<Constraints />\n`;
         } else {
           relationsXml += `\t\t\t<Constraints>\n`;
           for (const c of constraints) {
             relationsXml += `\t\t\t\t<AxTableRelationConstraint xmlns="" i:type="AxTableRelationConstraintField">\n`;
-            relationsXml += `\t\t\t\t\t<Name>${c.fieldName}</Name>\n`;
-            relationsXml += `\t\t\t\t\t<Field>${c.fieldName}</Field>\n`;
-            relationsXml += `\t\t\t\t\t<RelatedField>${c.relatedFieldName}</RelatedField>\n`;
+            relationsXml += `\t\t\t\t\t<Name>${c.field}</Name>\n`;
+            relationsXml += `\t\t\t\t\t<Field>${c.field}</Field>\n`;
+            relationsXml += `\t\t\t\t\t<RelatedField>${c.relatedField}</RelatedField>\n`;
             relationsXml += `\t\t\t\t</AxTableRelationConstraint>\n`;
           }
           relationsXml += `\t\t\t</Constraints>\n`;
@@ -4592,6 +4615,12 @@ export async function handleCreateD365File(
     const skipBridgeForExtensibleEnum = args.objectType === 'enum'
       && Boolean((args.properties as Record<string, unknown> | undefined)?.isExtensible);
 
+    // Set only when a bridge create THREW (not when it was unavailable or declined).
+    // The XML fallback below is a different writer with a narrower feature set, so a
+    // create that lands there because of a bridge outage must not answer with the
+    // same ✅ as one the bridge performed.
+    let bridgeFailure: BridgeFailure | null = null;
+
     if (!args.xmlContent && !skipBridgeForExtensibleEnum && context?.bridge && actualModelName && canBridgeCreate(args.objectType)) {
       try {
         // The bridge's `properties` is a flat string map (C# Dictionary<string,string>).
@@ -4764,7 +4793,7 @@ export async function handleCreateD365File(
             : undefined;
 
           try {
-            const smartResult = await bridgeCreateSmartTable(context.bridge, {
+            const smartAttempt = await bridgeCreateSmartTable(context.bridge, {
               objectName: finalObjectName,
               modelName: actualModelName,
               tableGroup: smartTableGroup,
@@ -4779,6 +4808,12 @@ export async function handleCreateD365File(
                 ? smartExtraProperties
                 : undefined,
             });
+
+            // A thrown CreateSmartTable is not "the bridge declined" — remember it so
+            // the XML fallback below can say the BP defaults and the bridge-only
+            // collections were never applied, instead of returning the same ✅.
+            if (isBridgeFailure(smartAttempt)) bridgeFailure = smartAttempt;
+            const smartResult = isBridgeFailure(smartAttempt) ? null : smartAttempt;
 
             if (smartResult?.success && smartResult.filePath) {
               console.error(`[create_d365fo_file] ✅ Created via C# bridge (BP-smart): ${smartResult.filePath}`);
@@ -4873,7 +4908,9 @@ export async function handleCreateD365File(
           }
         }
 
-        const bridgeResult = await bridgeCreateObject(context.bridge, bridgeParams);
+        const createAttempt = await bridgeCreateObject(context.bridge, bridgeParams);
+        if (isBridgeFailure(createAttempt)) bridgeFailure = createAttempt;
+        const bridgeResult = isBridgeFailure(createAttempt) ? null : createAttempt;
         if (bridgeResult?.success && bridgeResult.filePath) {
           console.error(`[create_d365fo_file] ✅ Created via C# bridge: ${bridgeResult.filePath}`);
           await normalizeCreatedArtifactEol(bridgeResult.filePath);
@@ -5094,12 +5131,25 @@ export async function handleCreateD365File(
     // #35: the template writer knows a FIXED property list too — anything else the
     // caller passed lands nowhere. Reconcile before the write so a repairable
     // property is emitted in canonical order and the rest is reported, not dropped.
+    // The same reconcile now also names the structural collections the template has
+    // no writer for (indexes/relations/custom field groups), which is the half that
+    // used to come back as an identical ✅.
     let tableHonestyReport = '';
     if (args.objectType === 'table') {
       const reconciled = reconcileTableCreateProperties(xmlContent, args.properties);
       xmlContent = reconciled.xml;
       tableHonestyReport = renderTableCreateHonestyReport(reconciled);
     }
+
+    // Why this writer ran at all. Only set when a bridge create threw — an
+    // unavailable bridge or an unsupported objectType is the normal route here and
+    // says nothing about the file's completeness.
+    const bridgeFallbackNote = bridgeFailure
+      ? `\n⚠️ Written by the local XML template, NOT by IMetadataProvider — ` +
+        `${describeBridgeFailure(bridgeFailure)}.\n` +
+        `   The template covers fewer constructs than the bridge does, so read the object ` +
+        `back with get_object_info before building on it.\n`
+      : '';
 
     // Form pattern gate: structural pattern violations (FP001-FP005, FP007)
     // block the write when FORM_PATTERN_ENFORCE is enabled (default).
@@ -5306,6 +5356,7 @@ export async function handleCreateD365File(
             `🔧 Type: ${objectFolder}\n` +
             bridgeValidation +
             formPatternWarnings +
+            bridgeFallbackNote +
             tableHonestyReport +
             rawLabelBpWarning(args.properties, finalObjectName) +
             projectMessage +

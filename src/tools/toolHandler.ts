@@ -7,6 +7,10 @@ import {
   isToolAllowedInMode, isToolInProfile,
 } from '../server/serverMode.js';
 import { BRIDGE_BACKED_TOOLS, awaitBridgeReady } from '../bridge/bridgeReadiness.js';
+import {
+  BRIDGE_FAILURE_MARKER, runWithBridgeFailureScope, renderBridgeFailureNote,
+} from '../bridge/bridgeFailure.js';
+import type { BridgeFailure } from '../bridge/bridgeFailure.js';
 import { searchUnifiedTool } from './searchUnified.js';
 import { getObjectInfoTool } from './getObjectInfo.js';
 import { findReferencesTool } from './findReferences.js';
@@ -261,8 +265,13 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
     const finishMetrics = recordToolStart(toolName);
     let result: any;
+    // Anything the C# bridge throws during this call lands here (see
+    // bridge/bridgeFailure.ts). Without it a bridge outage is invisible: the read
+    // wrappers return null, the tool serves the SQLite index instead, and the
+    // answer — including "not found" — looks like it came from live metadata.
+    const bridgeFailures: BridgeFailure[] = [];
     try {
-    result = await (async () => {
+    result = await runWithBridgeFailureScope(bridgeFailures, async () => {
       // Build the progress description for this tool call.
       const args = request.params.arguments as Record<string, any> | undefined;
       const progressMsg = buildProgressMessage(toolName, args);
@@ -659,7 +668,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           isError: true,
         };
     } })();
-    })();
+    });
     } catch (err) {
       // Safety net: convert any thrown error into a tool result with isError:true
       // instead of an opaque JSON-RPC protocol error.
@@ -672,6 +681,19 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     }
 
     let capped = capToolResponse(toolName, result);
+
+    // Appended after the cap so truncation can never eat the one line that says the
+    // answer is not authoritative. Skipped when the tool already named the failure
+    // itself (the create/resolve path does) so the response says it once.
+    if (bridgeFailures.length > 0) {
+      const alreadyReported = capped?.content?.some(
+        (item: any) => typeof item?.text === 'string' && item.text.includes(BRIDGE_FAILURE_MARKER),
+      );
+      if (!alreadyReported) {
+        capped = appendNote(capped, renderBridgeFailureNote(bridgeFailures));
+      }
+    }
+
     // Record metrics: detect empty result (no content or first text item is empty)
     const firstText = capped?.content?.[0]?.text;
     const isEmpty = !firstText || firstText.trim().length === 0 || firstText === 'No results returned';

@@ -6,7 +6,8 @@
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { XppSymbolIndex } from '../metadata/symbolIndex.js';
 import { SmartXmlBuilder, TableFieldSpec, TableIndexSpec, TableRelationSpec } from '../utils/smartXmlBuilder.js';
-import { bridgeCreateSmartTable } from '../bridge/index.js';
+import { bridgeCreateSmartTable, isBridgeFailure, describeBridgeFailure } from '../bridge/index.js';
+import type { BridgeFailure } from '../bridge/index.js';
 import type { BridgeClient } from '../bridge/bridgeClient.js';
 import path from 'path';
 import fs from 'fs';
@@ -849,6 +850,9 @@ export async function handleGenerateSmartTable(
     }
   }
 
+  // Set only when the bridge create THREW — not when it was absent or declined.
+  let bridgeFailure: BridgeFailure | null = null;
+
   if (bridge && resolvedModel) {
     // ── Pre-write reference gate ──────────────────────────────────────────────
     // scaffold's bridge path writes the table to disk in one shot, bypassing the
@@ -879,7 +883,7 @@ export async function handleGenerateSmartTable(
     }
 
     console.log(`[generateSmartTable] Attempting bridge-first creation for ${finalName}...`);
-    const bridgeResult = await bridgeCreateSmartTable(bridge, {
+    const bridgeAttempt = await bridgeCreateSmartTable(bridge, {
       objectName: finalName,
       modelName: resolvedModel,
       tableGroup,
@@ -911,6 +915,12 @@ export async function handleGenerateSmartTable(
         ? generatedMethods.map(m => ({ name: m.name, source: m.source }))
         : undefined,
     });
+
+    // A thrown CreateSmartTable must not read as "the bridge declined": the
+    // SmartXmlBuilder fallback below writes a different document, so the reason is
+    // carried into that path's success message rather than dropped here.
+    if (isBridgeFailure(bridgeAttempt)) bridgeFailure = bridgeAttempt;
+    const bridgeResult = isBridgeFailure(bridgeAttempt) ? null : bridgeAttempt;
 
     if (bridgeResult?.success && bridgeResult.filePath) {
       console.log(`[generateSmartTable] ✅ Created via C# bridge: ${bridgeResult.filePath}`);
@@ -1087,6 +1097,16 @@ export async function handleGenerateSmartTable(
           `📁 File: ${normalizedPath}`,
           `📦 Model: ${resolvedModel}`,
           `📊 Fields: ${fields.length}, Indexes: ${indexes.length}, Relations: ${relations.length}`,
+          // The BP defaults line is missing from this message because this writer
+          // does not set them — say why, so "created" is not read as "created the
+          // same way the bridge would have".
+          bridgeFailure
+            ? `\n⚠️ Written by the local XML builder, NOT by IMetadataProvider — ` +
+              `${describeBridgeFailure(bridgeFailure)}.\n` +
+              `   The BP defaults the bridge sets (CacheLookup, TitleField1/2, ` +
+              `PrimaryIndex/ClusteredIndex, standard field groups, delete actions) are NOT on this table. ` +
+              `Verify with get_object_info once the bridge is healthy.\n`
+            : '',
           edtWarningBlock,
           projectMessage,
           ``,
