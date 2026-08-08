@@ -5,6 +5,14 @@
 
 import * as fs from 'fs/promises';
 import { escapeXml } from '../utils/xmlEscape.js';
+import { buildAxTableXml } from './tableXml.js';
+import { buildAxFormXml } from './formXml.js';
+import {
+  buildAxSecurityDutyXml,
+  buildAxSecurityRoleXml,
+  buildAxSecurityDutyExtensionXml,
+  buildAxSecurityRoleExtensionXml,
+} from './securityDutyRoleXml.js';
 import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
@@ -24,9 +32,8 @@ import { validateFormExtensionControlShape, buildFormExtensionShapeError } from 
 import { FormPatternTemplates } from '../utils/formPatternTemplates.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
-import { renderAxTableProperties } from '../utils/axTablePropertyOrder.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
-import { buildAxDataEntityXml, isYes } from './dataEntityXml.js';
+import { buildAxDataEntityXml } from './dataEntityXml.js';
 import { resolveEdtBaseType, resolveEdtEnumType, heuristicEdtBaseType, isEnumName, bridgeEdtBaseType } from './generateSmartTable.js';
 import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
 import { buildAxMapXml } from './mapXml.js';
@@ -242,46 +249,6 @@ export class ProjectFileFinder {
 
     return null;
   }
-}
-
-/**
- * Map a D365FO base type name to the XML i:type attribute used in <AxTableField>.
- * If the explicit fieldType is not a known primitive, fall back to name-based heuristics
- * using edtName (same heuristics as SmartXmlBuilder.getAxTableFieldType).
- */
-function fieldTypeToAxType(fieldType: string, edtName?: string): string {
-  const typeMap: Record<string, string> = {
-    String:      'AxTableFieldString',
-    Integer:     'AxTableFieldInt',
-    Int64:       'AxTableFieldInt64',
-    Real:        'AxTableFieldReal',
-    Date:        'AxTableFieldDate',
-    DateTime:    'AxTableFieldUtcDateTime',
-    UtcDateTime: 'AxTableFieldUtcDateTime',
-    Enum:        'AxTableFieldEnum',
-    GUID:        'AxTableFieldGuid',
-    Guid:        'AxTableFieldGuid',
-    Container:   'AxTableFieldContainer',
-  };
-
-  const explicit = typeMap[fieldType];
-  if (explicit) return explicit;
-
-  // Fall back to EDT name heuristics (mirrors SmartXmlBuilder.getAxTableFieldType)
-  const hint = edtName || fieldType;
-  if (hint) {
-    const e = hint.toLowerCase();
-    if (e === 'recid' || e.endsWith('recid') || e.includes('refrecid')) return 'AxTableFieldInt64';
-    if (e.includes('utcdatetime') || (e.includes('datetime') && !e.includes('transdate'))) return 'AxTableFieldUtcDateTime';
-    if (e.includes('date') && !e.includes('time') && !e.includes('update')) return 'AxTableFieldDate';
-    if (e.includes('amount') || e.includes('mst') || e.includes('price') || e.includes('qty')
-        || e.includes('percent') || e === 'real') return 'AxTableFieldReal';
-    if (e === 'noyesid' || e.endsWith('noyesid') || e === 'noyes') return 'AxTableFieldEnum';
-    if ((e.endsWith('int') || e.includes('count') || e.includes('level'))
-        && !e.includes('account') && !e.includes('name')) return 'AxTableFieldInt';
-  }
-
-  return 'AxTableFieldString';
 }
 
 /**
@@ -773,137 +740,13 @@ ${methodsXml}\t</SourceCode>
     properties?: Record<string, any>,
     sourceCode?: string,
   ): string {
-    const primaryIndex = properties?.primaryIndex || '';
-
-    // Property block, emitted in CANONICAL ORDER. AxTable XML is order-sensitive
-    // and a misordered property is dropped without a word — see
-    // src/utils/axTablePropertyOrder.ts and findings #13. Empty values are omitted
-    // rather than written as <TitleField1></TitleField1>, matching the shipped
-    // tables and the VM-captured golden eval/goldens/L1-table-basic.
-    const propertiesXml = renderAxTableProperties({
-      ConfigurationKey: properties?.configurationKey,
-      DeveloperDocumentation: properties?.developerDocumentation,
-      FormRef: properties?.formRef,
-      Label: properties?.label || tableName,
-      TableGroup: properties?.tableGroup || 'Main',
-      TitleField1: properties?.titleField1,
-      TitleField2: properties?.titleField2,
-      // Dual-write's table-side prerequisite; without it the entity syncs once
-      // and then stops seeing changes.
-      AllowRowVersionChangeTracking:
-        isYes(properties?.allowRowVersionChangeTracking) ? 'Yes' : undefined,
-      CacheLookup: properties?.cacheLookup,
-      // Audit system fields — NoYes, ranked but previously unreachable.
-      CreatedBy: isYes(properties?.createdBy) ? 'Yes' : undefined,
-      CreatedDateTime: isYes(properties?.createdDateTime) ? 'Yes' : undefined,
-      CreatedTransactionId: isYes(properties?.createdTransactionId) ? 'Yes' : undefined,
-      ModifiedBy: isYes(properties?.modifiedBy) ? 'Yes' : undefined,
-      ModifiedDateTime: isYes(properties?.modifiedDateTime) ? 'Yes' : undefined,
-      ModifiedTransactionId: isYes(properties?.modifiedTransactionId) ? 'Yes' : undefined,
-      ClusteredIndex: properties?.clusteredIndex,
-      PrimaryIndex: primaryIndex,
-      // ReplacementKey mirrors PrimaryIndex unless the caller says otherwise.
-      ReplacementKey: properties?.replacementKey || primaryIndex,
-      SaveDataPerCompany: properties?.saveDataPerCompany,
-      SupportInheritance: properties?.supportInheritance,
-      // TableType: TempDB / InMemory; omitted for Regular, which is the default.
-      TableType: properties?.tableType,
-    });
-
-    // Build <Fields> block from properties.fields array (TableFieldSpec[]).
-    // Copilot may pass field definitions via properties.fields or via sourceCode JSON —
-    // both paths merge into properties before calling here (see generate()).
-    // Field-spec keys are unified with the table-extension path (generateAxTableExtensionXml):
-    // accept an explicit AxTableField* i:type (fieldType), a primitive base type (type),
-    // or infer AxTableFieldEnum from enumType — and always emit <EnumType> for enum fields.
-    const fieldSpecs: Array<{
-      name: string; edt?: string; type?: string; fieldType?: string; enumType?: string; mandatory?: boolean; label?: string;
-    }> = Array.isArray(properties?.fields) ? properties.fields : [];
-
-    let fieldsXml: string;
-    if (fieldSpecs.length === 0) {
-      fieldsXml = '\t<Fields />\n';
-    } else {
-      fieldsXml = '\t<Fields>\n';
-      for (const f of fieldSpecs) {
-        // Determine i:type: explicit AxTableField* wins; otherwise derive from the
-        // primitive type / enumType / EDT name heuristics. NEVER default to
-        // AxTableFieldString blindly when an EDT or enumType is present.
-        const iType = f.fieldType
-          ?? fieldTypeToAxType(f.type || (f.enumType ? 'Enum' : 'String'), f.edt);
-        fieldsXml += `\t\t<AxTableField xmlns=""\n\t\t\ti:type="${iType}">\n`;
-        fieldsXml += `\t\t\t<Name>${f.name}</Name>\n`;
-        if (f.edt)       fieldsXml += `\t\t\t<ExtendedDataType>${f.edt}</ExtendedDataType>\n`;
-        if (f.label)     fieldsXml += `\t\t\t<Label>${escapeXml(f.label)}</Label>\n`;
-        if (f.mandatory) fieldsXml += `\t\t\t<Mandatory>Yes</Mandatory>\n`;
-        if (f.enumType)  fieldsXml += `\t\t\t<EnumType>${f.enumType}</EnumType>\n`;
-        fieldsXml += `\t\t</AxTableField>\n`;
-      }
-      fieldsXml += '\t</Fields>\n';
-    }
-
-    // X++ passed in `sourceCode` used to be discarded outright: the caller got a ✅
-    // and an empty <Methods /> on disk, discoverable only by reading the file back
-    // (findings #19). Table source is class-shaped (`public class X extends common`
-    // + methods), so the class splitter handles it; when the caller passed only
-    // method bodies the splitter still returns them as methods.
-    const parsedSource = sourceCode?.trim()
-      ? XmlTemplateGenerator.parseSourceForBridge(sourceCode, tableName)
-      : undefined;
-    const declarationXpp =
-      parsedSource?.declaration?.trim()
-      && /\bclass\s+\w+/.test(parsedSource.declaration)
-        ? parsedSource.declaration.trim()
-        : `public class ${tableName} extends common\n{\n}`;
-    const methodsFromSource = parsedSource?.methods ?? [];
-    const methodsXml = methodsFromSource.length === 0
-      ? '\t\t<Methods />'
-      : `\t\t<Methods>\n${methodsFromSource
-          .map(m =>
-            `\t\t\t<Method>\n\t\t\t\t<Name>${m.name}</Name>\n` +
-            `\t\t\t\t<Source><![CDATA[\n${m.source ?? ''}\n\n]]></Source>\n\t\t\t</Method>`)
-          .join('\n')}\n\t\t</Methods>`;
-
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${tableName}</Name>
-\t<SourceCode>
-\t\t<Declaration><![CDATA[
-${declarationXpp}
-]]></Declaration>
-${methodsXml}
-\t</SourceCode>
-${propertiesXml}\t<DeleteActions />
-\t<FieldGroups>
-\t\t<AxTableFieldGroup>
-\t\t\t<Name>AutoReport</Name>
-\t\t\t<Fields />
-\t\t</AxTableFieldGroup>
-\t\t<AxTableFieldGroup>
-\t\t\t<Name>AutoLookup</Name>
-\t\t\t<Fields />
-\t\t</AxTableFieldGroup>
-\t\t<AxTableFieldGroup>
-\t\t\t<Name>AutoIdentification</Name>
-\t\t\t<AutoPopulate>Yes</AutoPopulate>
-\t\t\t<Fields />
-\t\t</AxTableFieldGroup>
-\t\t<AxTableFieldGroup>
-\t\t\t<Name>AutoSummary</Name>
-\t\t\t<Fields />
-\t\t</AxTableFieldGroup>
-\t\t<AxTableFieldGroup>
-\t\t\t<Name>AutoBrowse</Name>
-\t\t\t<Fields />
-\t\t</AxTableFieldGroup>
-\t</FieldGroups>
-${fieldsXml}\t<FullTextIndexes />
-\t<Indexes />
-\t<Mappings />
-\t<Relations />
-\t<StateMachines />
-</AxTable>
-`;
+    return buildAxTableXml(
+      tableName,
+      properties,
+      sourceCode?.trim()
+        ? XmlTemplateGenerator.parseSourceForBridge(sourceCode, tableName)
+        : undefined,
+    );
   }
 
   /**
@@ -988,23 +831,9 @@ ${enumValuesXml}${isExtensibleXml}</AxEnum>
    */
   static generateAxFormXml(
     formName: string,
-    properties?: Record<string, any>
+    properties?: Record<string, any>,
   ): string {
-    const rawPattern = properties?.pattern || properties?.formTemplate;
-    const pattern = rawPattern
-      ? FormPatternTemplates.normalizePattern(String(rawPattern))
-      : 'SimpleList';
-
-    return FormPatternTemplates.build(pattern, {
-      formName,
-      dsName: properties?.dataSource || undefined,
-      dsTable: properties?.dataSourceTable || properties?.dataSource || undefined,
-      caption: properties?.caption,
-      gridFields: Array.isArray(properties?.gridFields) ? properties.gridFields : undefined,
-      linesDsName: properties?.linesDataSource,
-      linesDsTable: properties?.linesDataSourceTable || properties?.linesDataSource,
-      sections: Array.isArray(properties?.sections) ? properties.sections : undefined,
-    });
+    return buildAxFormXml(formName, properties);
   }
 
   /**
@@ -2812,49 +2641,11 @@ ${relationsXml}
   }
 
   /**
-   * Normalize a name list that may arrive as an array or a comma/semicolon/
-   * newline-separated string (models pass either). Returns trimmed, non-empty names.
-   */
-  static normalizeNameList(value: any): string[] {
-    if (!value) return [];
-    const arr = Array.isArray(value) ? value : String(value).split(/[,;\n]+/);
-    return arr.map((s: any) => String(s).trim()).filter((s: string) => s.length > 0);
-  }
-
-  /**
-   * Render a security reference container: a self-closing tag when empty, or the
-   * wrapped child references (e.g. <AxSecurityPrivilegeReference><Name>…</Name></…>).
-   *
-   * The child element name matters: a duty/role that lists its privileges under
-   * `AxSecurityRolePermissionSet` / `AxSecurityRoleDutyPermission` deserializes into
-   * an EMPTY reference list, so the whole duty→privilege→role chain is dead —
-   * xppbp then reports BPErrorDutyHasNoPrivileges / BPErrorPrivilegeNotCoveredByDuty /
-   * BPErrorDutyNotCoveredByRole for references that are physically in the file.
-   * The correct names are AxSecurityPrivilegeReference / AxSecurityDutyReference
-   * (the same ones the *Extension writers below and generateD365Xml.ts already use).
-   * Evidence: docs/eval-sweep-findings-2026-07-21.md #31 (L4-master-security-slice run).
-   */
-  private static securityRefContainer(container: string, childTag: string, names: string[]): string {
-    if (names.length === 0) return `\t<${container} />`;
-    const children = names
-      .map(n => `\t\t<${childTag}>\n\t\t\t<Name>${n}</Name>\n\t\t</${childTag}>`)
-      .join('\n');
-    return `\t<${container}>\n${children}\n\t</${container}>`;
-  }
-
-  /**
    * Generate AxSecurityDuty XML.
    * properties.privileges – privilege names to reference (array or comma-separated).
    */
   static generateAxSecurityDutyXml(name: string, properties?: Record<string, any>): string {
-    const label = properties?.label || '@TODO:LabelId';
-    const privileges = this.normalizeNameList(properties?.privileges);
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${name}</Name>
-\t<Label>${escapeXml(label)}</Label>
-${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
-</AxSecurityDuty>`;
+    return buildAxSecurityDutyXml(name, properties);
   }
 
   /**
@@ -2863,18 +2654,7 @@ ${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privil
    * properties.privileges – privilege names to reference directly on the role.
    */
   static generateAxSecurityRoleXml(name: string, properties?: Record<string, any>): string {
-    const label = properties?.label || '@TODO:LabelId';
-    const duties = this.normalizeNameList(properties?.duties);
-    const privileges = this.normalizeNameList(properties?.privileges);
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${name}</Name>
-\t<Label>${escapeXml(label)}</Label>
-\t<DirectAccessPermissions />
-${this.securityRefContainer('Duties', 'AxSecurityDutyReference', duties)}
-${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
-\t<SubRoles />
-</AxSecurityRole>`;
+    return buildAxSecurityRoleXml(name, properties);
   }
 
   /**
@@ -2886,13 +2666,7 @@ ${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privil
    * properties.privileges – privilege names to add to the base duty (array or comma-separated).
    */
   static generateAxSecurityDutyExtensionXml(name: string, properties?: Record<string, any>): string {
-    const privileges = this.normalizeNameList(properties?.privileges);
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxSecurityDutyExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${name}</Name>
-${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
-\t<PropertyModifications />
-</AxSecurityDutyExtension>`;
+    return buildAxSecurityDutyExtensionXml(name, properties);
   }
 
   /**
@@ -2904,16 +2678,7 @@ ${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privil
    * properties.privileges – privilege names to add directly to the base role.
    */
   static generateAxSecurityRoleExtensionXml(name: string, properties?: Record<string, any>): string {
-    const duties = this.normalizeNameList(properties?.duties);
-    const privileges = this.normalizeNameList(properties?.privileges);
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxSecurityRoleExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${name}</Name>
-\t<DirectAccessPermissions />
-${this.securityRefContainer('Duties', 'AxSecurityDutyReference', duties)}
-${this.securityRefContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
-\t<PropertyModifications />
-</AxSecurityRoleExtension>`;
+    return buildAxSecurityRoleExtensionXml(name, properties);
   }
 
   /**
