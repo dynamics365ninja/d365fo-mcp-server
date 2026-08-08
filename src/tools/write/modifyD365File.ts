@@ -37,7 +37,7 @@ import {
   bridgeRefreshProvider,
 } from '../../bridge/index.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
-import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
+import { ProjectFileFinder, registerFileIfOrphaned } from '../../workspace/projectFile.js';
 import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import {
@@ -1496,10 +1496,19 @@ const ModifyD365FileArgsSchema = z.object({
     'Absolute path to the XML file. Use this when the object was just created and the path is already known ' +
     '(e.g. from d365fo_file(action="create") output). Bypasses symbol DB lookup entirely.'
   ),
-  addToProject: z.boolean().optional().default(false).describe(
-    'When true, adds the modified file to the Visual Studio project (.rnrproj). ' +
-    'Use this when the file exists on disk but is not yet tracked in the VS project. ' +
-    'Requires projectPath or solutionPath (explicit or via .mcp.json). Default: false.'
+  // Defaulted TRUE to match the wire schema, which advertises
+  // `addToProject: { default: true }` for the whole d365fo_file tool and tells
+  // the caller to "keep the default". This defaulted false, so an agent that
+  // followed that instruction — by omitting the parameter — silently got the
+  // opposite. Editing an existing object that was on disk but absent from the
+  // .rnrproj therefore never registered it, no matter how many times it was
+  // edited. Registration is idempotent (ProjectFileManager skips an entry that
+  // is already there), and it is scoped to objects that belong in the active
+  // project: an object owned by another project of the model is left alone.
+  addToProject: z.boolean().optional().default(true).describe(
+    'Add the modified file to the .rnrproj when no project of its model references it yet. ' +
+    'Keep the default — a file missing from every project of its model does not compile. ' +
+    'Set false to skip. Requires projectPath or solutionPath (explicit or via .mcp.json).'
   ),
   projectPath: z.string().optional().describe(
     'Path to .rnrproj file. Required for addToProject to work. Auto-detected from .mcp.json if omitted.'
@@ -2908,7 +2917,15 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       console.error(`[modify_d365fo_file] Bridge validation skipped: ${e}`);
     });
 
-    // Optionally add the file to the Visual Studio project
+    // Register the edited file when no project of its model references it.
+    //
+    // This used to add it to the active project unconditionally whenever the
+    // flag was set — which was safe only because the flag defaulted OFF and
+    // nobody set it. On by default (matching the wire schema, which always
+    // advertised `default: true`), unconditional registration would put objects
+    // owned by another project of the model into the active one as well, and
+    // one file in two projects builds the element twice. registerFileIfOrphaned
+    // makes the membership check the gate: it acts only on a true orphan.
     let projectMessage = '';
     if (args.addToProject) {
       const configManager = getConfigManager();
@@ -2924,28 +2941,12 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         ) || undefined;
       }
 
-      if (resolvedProjectPath) {
-        try {
-          await fs.access(resolvedProjectPath);
-          const projectManager = new ProjectFileManager();
-          const wasAdded = await projectManager.addToProject(
-            resolvedProjectPath,
-            objectType,
-            objectName,
-            actualFilePath
-          );
-          projectMessage = wasAdded
-            ? `\n✅ Added to VS project: \`${resolvedProjectPath}\``
-            : `\n📋 Already in VS project: \`${resolvedProjectPath}\``;
-        } catch (projErr) {
-          const errMsg = projErr instanceof Error ? projErr.message : String(projErr);
-          projectMessage = `\n⚠️ File modified but could not add to VS project: ${errMsg}`;
-        }
-      } else {
-        projectMessage =
-          `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
-          `Add \`projectPath\` to .mcp.json or pass it explicitly.`;
-      }
+      projectMessage = await registerFileIfOrphaned(
+        objectType,
+        objectName,
+        modelName || configManager.getModelName() || undefined,
+        resolvedProjectPath,
+      );
     }
 
     // Advisory X++ select-statement lint on the source just written (add-method /

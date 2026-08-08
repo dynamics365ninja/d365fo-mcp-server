@@ -19,7 +19,71 @@ import { Parser, Builder } from '../utils/xml.js';
 // than moved along with the classes.
 import { withFileLock } from '../utils/atomicFileWrite.js';
 import { recordCreatedProjectFolder, takeCreatedProjectFolder } from './createdArtifactLedger.js';
-import { axFolderForObjectType } from './projectMembership.js';
+import {
+  axFolderForObjectType, resolveMembership, projectDisplayName, type Membership,
+} from './projectMembership.js';
+import { getConfigManager } from '../utils/configManager.js';
+
+/**
+ * Register a file that is already on disk into the active project, but only
+ * when no project of its model references it.
+ *
+ * The "only when" is the whole design. A D365FO model is split across many
+ * .rnrproj and each object belongs to exactly one of them, so registering a
+ * file its owning project already lists would put one element in two projects
+ * and build it twice. This closes a genuine gap and declines to open a new one.
+ *
+ * Shared by create and modify, which need it for the same reason: an object
+ * that existed but was unregistered could never BECOME registered — create
+ * bailed before its addToProject block, and modify's flag defaulted off against
+ * a wire schema telling the caller to keep the default.
+ *
+ * Returns the line to append to the tool's response, or '' when there is
+ * nothing worth saying. Never throws: the write it comments on has already
+ * succeeded, and an unreadable project must not turn that into a failure.
+ */
+export async function registerFileIfOrphaned(
+  objectType: string,
+  objectName: string,
+  modelName: string | undefined,
+  projectPath: string | undefined,
+): Promise<string> {
+  const axFolder = axFolderForObjectType(objectType);
+
+  let membership: Membership;
+  try {
+    const siblings = (getConfigManager().getProjectsForModel?.(modelName) ?? [])
+      .filter(p => p !== projectPath);
+    membership = await resolveMembership(axFolder, objectName, projectPath, siblings);
+  } catch {
+    return '';
+  }
+
+  // 'unknown' means no project could be read at all — usually no projectPath is
+  // configured. Saying so on every single write is noise about a config gap the
+  // caller cannot fix mid-task, and it is the same silence renderMembership
+  // keeps: the loud cases only mean something when the quiet ones stay quiet.
+  if (membership.status === 'active' || membership.status === 'unknown') return '';
+  if (membership.status === 'other') {
+    const where = membership.owners.map(projectDisplayName).join(', ');
+    return `\n\n✅ Already registered in ${where} — that project owns it. Nothing to add here.`;
+  }
+
+  if (!projectPath) {
+    return `\n\n⚠️ No project of model "${modelName ?? '(unknown)'}" references \`${axFolder}\\${objectName}\`, ` +
+      `and no active projectPath is configured to add it to. It will not compile until some project does.`;
+  }
+  try {
+    const added = await new ProjectFileManager().addToProject(projectPath, objectType, objectName, '');
+    return added
+      ? `\n\n✅ The file was on disk but in no project of this model — added it to ${projectDisplayName(projectPath)}. ` +
+        `Right-click the project → Reload Project if VS is open.`
+      : '';
+  } catch (e: any) {
+    return `\n\n⚠️ The file is in no project of this model and could not be added to ` +
+      `${projectDisplayName(projectPath)}: ${e?.message ?? e}`;
+  }
+}
 
 /**
  * Project File Finder

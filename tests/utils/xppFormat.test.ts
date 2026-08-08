@@ -111,3 +111,108 @@ doSomething();
     expect(twice).toBe(once);
   });
 });
+
+// ---------------------------------------------------------------------------
+// A `case` label opens a level even though it opens no brace. Deriving depth
+// from braces alone flattened every case body onto its label, and did it to
+// CORRECT input too — a well-formatted switch handed in came back wrong, which
+// is how a generated method needed hand-repair right after it was written.
+// Verified against shipped code: ApplicationFoundation/AxClass/AVTimeframe.xml.
+// ---------------------------------------------------------------------------
+
+describe('reindentXppSource — switch/case', () => {
+  const flat = [
+    'public str label(QualityTier _t)',
+    '{',
+    'switch (_t)',
+    '{',
+    'case QualityTier::None:',
+    'return "@None";',
+    'case QualityTier::Gold:',
+    'x = 1;',
+    'return "@Gold";',
+    'default:',
+    "return '';",
+    '}',
+    '}',
+  ].join('\n');
+
+  const expected = [
+    '    public str label(QualityTier _t)',
+    '    {',
+    '        switch (_t)',
+    '        {',
+    '            case QualityTier::None:',
+    '                return "@None";',
+    '            case QualityTier::Gold:',
+    '                x = 1;',
+    '                return "@Gold";',
+    '            default:',
+    "                return '';",
+    '        }',
+    '    }',
+  ].join('\n');
+
+  it('indents case bodies one level under their label', () => {
+    expect(reindentXppSource(flat)).toBe(expected);
+  });
+
+  it('leaves an already-correct switch alone', () => {
+    // The regression that made this necessary: correct input came back flattened.
+    expect(reindentXppSource(expected)).toBe(expected);
+  });
+
+  it('closes the case level on the switch closing brace', () => {
+    const input = 'public void m()\n{\nswitch (x)\n{\ncase 1:\na();\n}\nb();\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        switch (x)',
+      '        {',
+      '            case 1:',
+      '                a();',
+      '        }',
+      '        b();',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('handles a switch nested inside another block', () => {
+    const input = 'public void m()\n{\nif (x)\n{\nswitch (y)\n{\ncase 1:\nbreak;\n}\n}\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        if (x)',
+      '        {',
+      '            switch (y)',
+      '            {',
+      '                case 1:',
+      '                    break;',
+      '            }',
+      '        }',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('does not shift anything for a "case" outside a switch body', () => {
+    // An identifier that merely starts with "case" must not open a level.
+    const input = 'public void m()\n{\ncaseId = 1;\nreturn;\n}';
+    expect(reindentXppSource(input)).toBe(
+      '    public void m()\n    {\n        caseId = 1;\n        return;\n    }',
+    );
+  });
+});
+
+describe('xppMethodSourceForXml', () => {
+  it('ends the method with the blank line shipped metadata has', async () => {
+    const { xppMethodSourceForXml } = await import('../../src/utils/xppFormat');
+    // Microsoft writes "}\n\n]]></Source>"; writers that omitted it produced
+    // classes whose methods sit directly on top of each other.
+    expect(xppMethodSourceForXml('public void m()\n{\n}')).toBe('    public void m()\n    {\n    }\n');
+  });
+
+  it('returns empty for empty source rather than a lone newline', async () => {
+    const { xppMethodSourceForXml } = await import('../../src/utils/xppFormat');
+    expect(xppMethodSourceForXml('   \n  ')).toBe('');
+  });
+});

@@ -19,17 +19,14 @@ import { z } from 'zod';
 import { getConfigManager, fallbackPackagePath } from '../../utils/configManager.js';
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
-import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
-import {
-  axFolderForObjectType, resolveMembership, projectDisplayName, type Membership,
-} from '../../workspace/projectMembership.js';
+import { ProjectFileManager, ProjectFileFinder, registerFileIfOrphaned } from '../../workspace/projectFile.js';
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
 import { registerCustomModel } from '../../utils/modelClassifier.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
 import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../../utils/xppDocGen.js';
-import { reindentXppSource } from '../../utils/xppFormat.js';
+import { xppMethodSourceForXml, reindentXppSource } from '../../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
 import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, isBridgeFailure, describeBridgeFailure } from '../../bridge/index.js';
 import type { BridgeFailure } from '../../bridge/index.js';
@@ -94,61 +91,6 @@ function buildNoProjectPathWarning(): string {
     `      "projectPath": "K:\\\\VSProjects\\\\YourSolution\\\\YourModel\\\\YourModel.rnrproj"\n` +
     `    } }\n` +
     `  }\n`;
-}
-
-/**
- * Register an already-existing file into the active project, but only when no
- * project of its model has it.
- *
- * The "only when" is the whole design. A D365FO model is split across many
- * .rnrproj, and each object belongs to exactly one of them; registering a file
- * that its owning project already lists would put one element in two projects
- * and build it twice. So this closes a genuine gap and declines to create a
- * new one — and says which it did, because "already exists" on its own leaves
- * the caller unable to tell a compiling object from a stranded one.
- */
-async function registerExistingFileIfOrphaned(
-  objectType: string,
-  objectName: string,
-  modelName: string | undefined,
-  projectPath: string | undefined,
-): Promise<string> {
-  const axFolder = axFolderForObjectType(objectType);
-
-  let membership: Membership;
-  try {
-    const siblings = (getConfigManager().getProjectsForModel?.(modelName) ?? [])
-      .filter(p => p !== projectPath);
-    membership = await resolveMembership(axFolder, objectName, projectPath, siblings);
-  } catch {
-    // Advisory only: the "already exists" answer the caller came for must not
-    // become an error because a project file could not be inspected.
-    return '';
-  }
-
-  if (membership.status === 'active') return '';
-  if (membership.status === 'unknown') {
-    return `\n\nℹ️ No .rnrproj could be read, so whether this file is registered is unknown.`;
-  }
-  if (membership.status === 'other') {
-    const where = membership.owners.map(projectDisplayName).join(', ');
-    return `\n\n✅ Already registered in ${where} — that project owns it. Nothing to add here.`;
-  }
-
-  if (!projectPath) {
-    return `\n\n⚠️ No project of model "${modelName ?? '(unknown)'}" references \`${axFolder}\\${objectName}\`, ` +
-      `and no active projectPath is configured to add it to. It will not compile until some project does.`;
-  }
-  try {
-    const added = await new ProjectFileManager().addToProject(projectPath, objectType, objectName, '');
-    return added
-      ? `\n\n✅ The file was on disk but in no project of this model — added it to ${path.basename(projectPath)}. ` +
-        `Right-click the project → Reload Project if VS is open.`
-      : '';
-  } catch (e: any) {
-    return `\n\n⚠️ The file is in no project of this model and could not be added to ` +
-      `${path.basename(projectPath)}: ${e?.message ?? e}`;
-  }
 }
 
 const CreateD365FileArgsSchema = z.object({
@@ -635,10 +577,11 @@ export class XmlTemplateGenerator {
       declaration: result.declaration,
       // The bridge stores each method's source verbatim (no reformatting on its
       // side) — re-derive consistent indentation here so this CREATE path gets
-      // the same fix as bridgeAddMethod's MODIFY path.
+      // the same fix as bridgeAddMethod's MODIFY path, and end it the way
+      // shipped metadata does, with the blank line that separates methods.
       methods: result.methods.map(m => ({
         ...m,
-        source: m.source !== undefined ? reindentXppSource(m.source) : m.source,
+        source: m.source !== undefined ? xppMethodSourceForXml(m.source) : m.source,
       })),
     };
   }
@@ -3678,7 +3621,7 @@ export async function handleCreateD365File(
         // in the wire schema. So an object that existed but was unregistered
         // could never BECOME registered — which is how a table extension got
         // edited through a whole session while staying invisible to the build.
-        const projectNote = await registerExistingFileIfOrphaned(
+        const projectNote = await registerFileIfOrphaned(
           args.objectType, finalObjectName, actualModelName, projectPathToUse,
         );
 
@@ -3773,7 +3716,7 @@ export async function handleCreateD365File(
           if (props.methods) {
             bridgeParams.methods = (props.methods as { name: string; source?: string }[]).map(m => ({
               ...m,
-              source: m.source !== undefined ? reindentXppSource(m.source) : m.source,
+              source: m.source !== undefined ? xppMethodSourceForXml(m.source) : m.source,
             }));
           }
         }
