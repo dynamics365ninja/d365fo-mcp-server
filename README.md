@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-2500%2B-brightgreen.svg)](docs/TESTING.md)
+[![Tests](https://img.shields.io/badge/tests-2800%2B-brightgreen.svg)](docs/TESTING.md)
 <!-- coverage-badge:start -->
 [![Core coverage](https://img.shields.io/badge/core_coverage-100%25-brightgreen.svg)](eval/COVERAGE.md) [![Total coverage](https://img.shields.io/badge/total_coverage-100%25-lightgrey.svg)](eval/COVERAGE.md)
 <!-- coverage-badge:end -->
@@ -131,8 +131,8 @@ Deployment guide: [docs/SETUP_AZURE.md](docs/SETUP_AZURE.md) — includes CI/CD 
 | [Setup scenarios A–F](docs/SETUP.md) | [`.mcp.json` reference](docs/MCP_CONFIG.md) | [DevOps pipelines](docs/SETUP_AZURE.md#azure-devops-pipelines) |
 | [Claude Code setup](docs/SETUP.md#claude-code-cli) | [Configuration](docs/CONFIGURATION.md) | [Testing](docs/TESTING.md) |
 | [Usage examples](docs/USAGE_EXAMPLES.md) — real tool chains | [Architecture](docs/ARCHITECTURE.md) | [Custom / ISV models](docs/CUSTOM_EXTENSIONS.md) |
-| | | [Coverage](eval/COVERAGE.md) — what the badge counts |
-| | | [Eval loop](docs/AGENT_EVAL_LOOP.md) — the self-improvement harness |
+| [Changelog](CHANGELOG.md) | [Knowledge authoring](docs/KNOWLEDGE_AUTHORING.md) | [Coverage](eval/COVERAGE.md) — what the badge counts |
+| [Backlog](docs/BACKLOG.md) — deferred work | [New tool checklist](docs/NEW_TOOL_CHECKLIST.md) | [Eval loop](docs/AGENT_EVAL_LOOP.md) — the self-improvement harness |
 
 ## License
 

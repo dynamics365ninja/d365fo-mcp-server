@@ -198,7 +198,7 @@ If you work on several D365FO environments (different clients, different ISV pre
 .\instances\add-instance.ps1    # creates instances\clientA\ with its own .env
 ```
 
-Each instance has its own `CUSTOM_MODELS`, `EXTENSION_PREFIX`, and database. See [Scenario F in SETUP.md](SETUP.md#scenario-f-multiple-instances--one-machine-multiple-d365fo-environments).
+Each instance has its own `CUSTOM_MODELS`, `EXTENSION_PREFIX`, and database. See [Scenario F in SETUP.md](SETUP.md#scenario-f--multiple-instances).
 
 ---
 

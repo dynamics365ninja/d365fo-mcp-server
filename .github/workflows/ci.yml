@@ -67,6 +67,14 @@ jobs:
       - name: Biome lint
         run: npm run lint
 
+      # docs/CONFIGURATION.md is generated from src/config/settings.ts. It used
+      # to be hand-edited afterwards, so regenerating it deleted three real
+      # env-only variables and reintroduced a wrong tool count. Everything now
+      # lives in the registry; this check makes a stale doc a build failure
+      # instead of a landmine for whoever next runs `npm run config:docs`.
+      - name: docs/CONFIGURATION.md matches the setting registry
+        run: npm run config:docs -- --check
+
   # Coverage was configured in vitest.config.ts (and @vitest/coverage-v8 has been
   # a devDependency) since before this workflow existed, but nothing ever ran it,
   # so the thresholds were never enforced and nobody could see a regression.

@@ -245,7 +245,9 @@ export const SETTINGS: Setting[] = [
     label: 'Extension prefix for custom objects',
     description:
       'Your ISV/customer prefix. Prepended to every generated object, field and method name and enforced by the ' +
-      'naming validator, so BP checks pass on the first build.',
+      'naming validator, so BP checks pass on the first build. Used as the **fallback**: when the active model\'s ' +
+      'existing objects already show a prefix, that one wins — see ' +
+      '[Where the prefix comes from](CUSTOM_EXTENSIONS.md#where-the-prefix-comes-from).',
     placeholder: 'ISV_',
     required: true,
   },
@@ -405,14 +407,14 @@ export const SETTINGS: Setting[] = [
     type: 'enum',
     label: 'Tool profile',
     description:
-      'How many tools this server advertises. "full" publishes all 26. "core" publishes only the plan → discover → ' +
+      'How many tools this server advertises. "full" publishes all 25. "core" publishes only the plan → discover → ' +
       'write → build → verify loop (18 tools) and leaves out the specialist ones (extension_info, analyze_code, ' +
       'validate_code, security_info, get_method, run_systest_class, suggest_edt). Worth switching ' +
       'when the workspace runs several MCP servers at once: hosts stop sending the tool catalogue inline past a ' +
       'limit (VS Code: ~100 tools) and make the model search for tools first, which costs a round trip per tool.',
     default: 'full',
     choices: [
-      { value: 'full', hint: 'all 26 tools' },
+      { value: 'full', hint: 'all 25 tools' },
       { value: 'core', hint: '18-tool create-and-build loop' },
     ],
   },
@@ -721,6 +723,57 @@ export const SETTINGS: Setting[] = [
     description:
       'Set the SAME random string on both halves of a hybrid deployment (and on every scaled-out App Service ' +
       'instance) so tokens issued by one process validate in another. Without it, tokens are memory-local.',
+  },
+];
+
+/**
+ * Variables the runtime reads straight from `process.env` and that deliberately
+ * have NO config-file key.
+ *
+ * Consent-shaped switches live here on purpose: `EXTENSION_PREFIX_SOURCE` and the
+ * two cross-model-write variables are read fresh from the environment on every
+ * decision (see crossModelWriteGuard.ts) precisely so that granting them is an
+ * act outside the agent's reach and takes effect without a restart. Routing them
+ * through the wizard and the config file would defeat both properties.
+ *
+ * They are NOT in SETTINGS, so nothing writes or prompts for them — but
+ * scripts/generate-config-docs.ts renders them into the reference table. Before
+ * this list existed they were hand-added to docs/CONFIGURATION.md after
+ * generation, which meant the next `npm run config:docs` silently deleted three
+ * real, load-bearing environment variables from the documentation.
+ */
+export interface EnvOnlySetting {
+  env: string;
+  section: SectionId;
+  /** Effective default when the variable is absent; documented, never written. */
+  default?: string;
+  description: string;
+}
+
+export const ENV_ONLY_SETTINGS: EnvOnlySetting[] = [
+  {
+    env: 'EXTENSION_PREFIX_SOURCE',
+    section: 'naming',
+    description:
+      'Set to `config` to make `EXTENSION_PREFIX` authoritative again instead of learning each model\'s prefix from ' +
+      'its own objects.',
+  },
+  {
+    env: 'D365FO_CROSS_MODEL_WRITE_MODELS',
+    section: 'naming',
+    description:
+      'Comma-separated models this workspace may write into besides its own. By default any create/modify/label ' +
+      'write into another custom model is refused and the extension route in the active model is offered instead — ' +
+      'see [Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Consent lives ' +
+      'here, in configuration, because a tool parameter is something the agent can grant itself. Re-read from ' +
+      '`.env` before every decision, so an edit applies to the next attempt without a restart.',
+  },
+  {
+    env: 'D365FO_ALLOW_CROSS_MODEL_WRITE',
+    section: 'naming',
+    default: 'false',
+    description:
+      'Set to `true` to allow writes into **any** other custom model — the blanket form of the setting above.',
   },
 ];
 

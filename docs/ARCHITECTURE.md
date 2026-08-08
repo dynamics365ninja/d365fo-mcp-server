@@ -250,5 +250,5 @@ Index refresh is automated via [Azure DevOps pipelines](SETUP_AZURE.md#azure-dev
 | Transport | MCP SDK — stdio + Express 5 HTTP |
 | Storage | node:sqlite (WAL, FTS5) — core module, no native addon |
 | Bridge | .NET Framework 4.8, Microsoft.Dynamics.AX.Metadata DLLs |
-| Tests | Vitest — 2500+ tests, golden quality-gate suites |
+| Tests | Vitest — ~2,850 tests, golden quality-gate suites |
 | CI/CD | GitHub Actions — app CI + `eval-gate` (bridge attestation, golden regression, knowledge audit, coverage matrix); Azure DevOps (metadata pipelines) |
