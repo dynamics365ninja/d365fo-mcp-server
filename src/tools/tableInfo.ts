@@ -14,10 +14,13 @@ import type { XppServerContext } from '../types/context.js';
 import { findD365FileOnDisk } from './modifyD365File.js';
 import { tryBridgeTable } from '../bridge/bridgeAdapter.js';
 import { bridgeUnavailableNote } from '../utils/indexedXmlLookup.js';
+import { pageFields, fieldsHeading, fieldsFooter, TABLE_FIELD_PAGE_SIZE } from '../utils/payloadBudget.js';
 
 const TableInfoArgsSchema = z.object({
   tableName: z.string().describe('Name of the X++ table'),
   methodOffset: z.number().optional().default(0).describe('Offset for paginating methods (use multiples of 25)'),
+  fieldsOffset: z.number().optional().default(0).describe(`Offset for paginating fields (use multiples of ${TABLE_FIELD_PAGE_SIZE})`),
+  fieldFilter: z.string().optional().describe('Case-insensitive substring on the field name — cheaper than paging when you already know what you are looking for'),
 });
 
 export async function tableInfoTool(request: CallToolRequest, context: XppServerContext) {
@@ -25,14 +28,18 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
     const args = TableInfoArgsSchema.parse(request.params.arguments);
     // Read-path priority: Bridge → DB (symbol index) → Disk (last resort).
     // 1. Bridge — live D365FO metadata, always up-to-date when available.
-    const bridgeResult = await tryBridgeTable(context.bridge, args.tableName, args.methodOffset);
+    const bridgeResult = await tryBridgeTable(
+      context.bridge, args.tableName, args.methodOffset, args.fieldsOffset, args.fieldFilter,
+    );
     if (bridgeResult) {
       return bridgeResult;
     }
 
     // 2. DB index fallback — serves offline / write-only / build-agent scenarios.
     const { symbolIndex } = context;
-    const dbResponse = buildTableResponseFromDb(symbolIndex, args.tableName, args.methodOffset);
+    const dbResponse = buildTableResponseFromDb(
+      symbolIndex, args.tableName, args.methodOffset, args.fieldsOffset, args.fieldFilter,
+    );
     if (dbResponse) {
       return dbResponse;
     }
@@ -50,8 +57,9 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
         out += `**Table Group:** ${table.tableGroup}\n`;
         out += `**Model:** ${model}\n`;
         out += `> ⚠️ _Not yet in bridge metadata — reading live file: ${diskPath}_\n\n`;
-        out += `## Fields (${table.fields.length})\n\n`;
-        for (const field of table.fields) {
+        const diskPage = pageFields(table.fields, args.fieldsOffset, args.fieldFilter);
+        out += `## ${fieldsHeading(diskPage)}\n\n`;
+        for (const field of diskPage.visible) {
           const required = field.mandatory ? ' **(required)**' : '';
           const label = field.label ? ` - ${field.label}` : '';
           const typeInfo = field.extendedDataType
@@ -59,6 +67,7 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
             : `Type: ${field.type}`;
           out += `- **${field.name}**: ${typeInfo}${required}${label}\n`;
         }
+        out += fieldsFooter(diskPage);
         return { content: [{ type: 'text', text: out }] };
       }
     }
@@ -107,6 +116,8 @@ function buildTableResponseFromDb(
   symbolIndex: any,
   tableName: string,
   methodOffset: number,
+  fieldsOffset = 0,
+  fieldFilter?: string,
 ): { content: { type: 'text'; text: string }[] } | null {
   const tableSym = symbolIndex.getSymbolByName?.(tableName, 'table');
   if (!tableSym) return null;
@@ -134,10 +145,12 @@ function buildTableResponseFromDb(
 
   let out = `# Table: ${tableSym.name}\n`;
   if (tableSym.model) out += `**Model:** ${tableSym.model}\n`;
-  out += `\n## Fields (${fields.length})\n\n`;
-  for (const f of fields) {
+  const fieldPage = pageFields(fields, fieldsOffset, fieldFilter);
+  out += `\n## ${fieldsHeading(fieldPage)}\n\n`;
+  for (const f of fieldPage.visible) {
     out += `- **${f.name}**${f.signature ? `: ${f.signature}` : ''}\n`;
   }
+  out += fieldsFooter(fieldPage);
   out += `\n## Methods (${totalMethods} total${totalMethods > METHOD_PAGE ? `, showing ${methodOffset + 1}–${Math.min(methodOffset + METHOD_PAGE, totalMethods)}` : ''})\n\n`;
   for (const m of paged) {
     out += `- \`${m.signature || m.name}\`\n`;

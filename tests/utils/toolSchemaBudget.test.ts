@@ -44,7 +44,16 @@ const CHARS_PER_TOKEN = 4;
 //
 // Headroom is small on purpose so creep is caught early: both ceilings are the
 // next round hundred above the measured payload.
-const TOTAL_BUDGET = 53_500;
+//
+// RAISED 53_500 -> 53_700 (Phase 1.7, reader payloads). get_object_info's
+// `options` description grew by 51 chars to name the new pagination knobs —
+// table fieldsOffset/fieldFilter and form maxControls. That is not optional
+// text: those knobs exist because a CustTable-class read was 5–8 k tokens of
+// unpaged fields, and a knob the model cannot see does not shrink anything, so
+// the 51 chars buy back thousands per call. The old ceiling had 50 chars of
+// headroom left and the payload landed at 53_501 — one char over — so the
+// ceiling moves rather than the fix being trimmed to fit.
+const TOTAL_BUDGET = 53_700;
 const LARGEST_TOOL_BUDGET = 6_200;
 
 async function getTools(): Promise<Array<{ name: string }>> {
