@@ -61,9 +61,15 @@ const CHARS_PER_TOKEN = 4;
 // chars once per session, and it removes six or more round trips from every
 // ordinary table change, each of which re-bills the entire cached context.
 //
+// Raised again by ~200 chars for prepare's `operation`, which makes prepare
+// return the write contract itself. Deferring those contracts out of the schema
+// (#825) had traded bytes for a discovery hop — get_knowledge(kind="op-spec")
+// on nearly every write flow — and this buys the hop back for a fraction of
+// what inlining them cost.
+//
 // Headroom is small on purpose so creep is caught early: both ceilings are the
 // next round hundred above the measured payload.
-const TOTAL_BUDGET = 50_300;
+const TOTAL_BUDGET = 50_500;
 const LARGEST_TOOL_BUDGET = 5_300;
 
 async function getTools(): Promise<Array<{ name: string }>> {

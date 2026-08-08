@@ -44,6 +44,10 @@ export const prepareTool = {
           type: 'string',
           description: '[change] Target method name when the change involves a specific method (CoC or event handlers). Example: "validateWrite".',
         },
+        operation: {
+          type: 'string',
+          description: '[change] The modify operation you intend to run; its full parameter contract comes back in THIS response, so no separate op-spec call. Defaults to add-method when methodName is given.',
+        },
         proposedName: {
           type: 'string',
           description: '[change] Proposed name for the new extension class/object. When provided, naming validation runs.',
