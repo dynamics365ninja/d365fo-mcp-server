@@ -21,11 +21,16 @@ export default defineConfig({
         '**/*.test.ts',
         '**/*.spec.ts',
         'scripts/',
-        '.claude/worktrees/**',
+        // NOTE: do NOT add '.claude/worktrees/**' here. The v8 provider matches
+        // these against absolute paths, and a parallel-session worktree lives
+        // *under* that path — the pattern then excludes every source file and
+        // coverage reports "Unknown% (0/0)", which satisfies the thresholds
+        // below vacuously. The test `exclude` above is a different matcher and
+        // does need it.
       ],
       // RATCHET, not a target. Measured on the full suite at the commit that
-      // introduced these numbers: 61.36 statements / 52.30 branches /
-      // 67.01 functions / 62.94 lines. Each threshold sits ~2 points below its
+      // introduced these numbers: 62.12 statements / 52.92 branches /
+      // 67.59 functions / 63.77 lines. Each threshold sits ~2 points below its
       // measurement so ordinary churn does not turn CI red, while a real drop
       // (deleting tests, adding a large untested module) does.
       //
@@ -36,10 +41,10 @@ export default defineConfig({
       // Raise these when coverage rises. Never lower them to make a build green
       // — lowering the floor is how a ratchet silently becomes decoration.
       thresholds: {
-        statements: 59,
+        statements: 60,
         branches: 50,
-        functions: 64,
-        lines: 60,
+        functions: 65,
+        lines: 61,
       },
     },
     testTimeout: 30000,

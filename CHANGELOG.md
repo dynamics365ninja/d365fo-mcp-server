@@ -50,6 +50,11 @@ those are called out explicitly below.
   drifted from the setting registry.
 - `docs/BACKLOG.md` restored: deleted by `5ef1413` with three items still open
   and never migrated, taking their deferral rationale and design sketches with it.
+- First tests for four previously-uncovered risk modules: `securityPrivilegeXml`
+  (the exact path of the silent empty-privilege incident), `formInfo` (561 lines,
+  zero coverage, and the tool the agent reads control names from before every
+  form extension), `repairFormControls`, and `fsExtensionScanner` (the fallback
+  that exists to stop the agent shelling out to PowerShell).
 
 ### Fixed
 - `get_method`'s Chain-of-Command template copied the base method's **default

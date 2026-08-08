@@ -1,6 +1,6 @@
 # Testing
 
-The project uses [Vitest](https://vitest.dev/). ~2,850 tests across ~215 files run without a live D365FO environment — all external dependencies (SQLite, filesystem, bridge, cache) are mocked.
+The project uses [Vitest](https://vitest.dev/). ~2,900 tests across ~220 files run without a live D365FO environment — all external dependencies (SQLite, filesystem, bridge, cache) are mocked.
 
 ## Running tests
 
@@ -77,7 +77,7 @@ Two gaps worth knowing about, because a green check does not mean what it looks 
 ### Coverage
 
 `npm run test:coverage` enforces the thresholds in `vitest.config.ts`. They are a
-**ratchet**, set a couple of points under the measured value (61.36% statements /
-52.30% branches / 67.01% functions / 62.94% lines) so ordinary churn stays green
+**ratchet**, set a couple of points under the measured value (62.12% statements /
+52.92% branches / 67.59% functions / 63.77% lines) so ordinary churn stays green
 while a real regression does not. Raise them when coverage rises; never lower them
 to make a build green.
