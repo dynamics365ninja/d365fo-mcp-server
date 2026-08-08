@@ -105,6 +105,53 @@ export function renderOpSpecIndex(unknownTopic?: string): string {
 }
 
 /**
+ * The op-spec section `prepare` carries in its own output.
+ *
+ * Deferring the parameter contracts out of the wire schema (#825) traded schema
+ * bytes for a DISCOVERY HOP: nearly every write flow then spent a round trip on
+ * get_knowledge(kind="op-spec", …) — or, worse, a failed write that returned the
+ * spec in its error. prepare already knows the objectType and, for a change, the
+ * method, so it can hand the contract over in the call the agent was making
+ * anyway. That is a few hundred bytes against a whole round trip.
+ *
+ * `operation` is used when the caller names one. Otherwise a change targeting a
+ * method is going to write one, so add-method's contract is the right guess; a
+ * change with no method has no confident guess and only gets the pointer.
+ */
+export function renderPrepareOpSpec(args: {
+  mode: 'change' | 'create';
+  objectType?: string;
+  operation?: string;
+  methodName?: string;
+}): string[] {
+  const { mode, objectType, operation, methodName } = args;
+  const lines: string[] = [];
+
+  if (mode === 'create') {
+    if (!objectType) return lines;
+    lines.push(`### Write contract — d365fo_file(action="create", objectType="${objectType}")`);
+    lines.push(renderCreatePropertySpec(objectType));
+  } else {
+    const op = operation && findKey(D365FO_FILE_OP_SPECS, normalize(operation))
+      ? findKey(D365FO_FILE_OP_SPECS, normalize(operation))!
+      : (methodName ? 'add-method' : undefined);
+    if (!op) {
+      lines.push(
+        '### Write contract',
+        'Pick the operation, then get_knowledge(kind="op-spec", topic="<operation>") for its parameters — ' +
+        'or pass `operation` to prepare and the contract comes back here.',
+      );
+      return lines;
+    }
+    lines.push(`### Write contract — d365fo_file(action="modify", operation="${op}")`);
+    lines.push(renderOpSpec(op));
+  }
+
+  lines.push('');
+  return lines;
+}
+
+/**
  * Resolve one topic to its full parameter contract. Resolution order is
  * modify operation → generate_object mode → create objectType; the three key
  * spaces do not overlap, so the order only decides what an ambiguous future
