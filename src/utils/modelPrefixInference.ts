@@ -140,15 +140,30 @@ function modelNameCarries(modelName: string, segs: string[]): boolean {
   return true;
 }
 
-/** Pick the candidate covering the most names; ties go to the longer token. */
+/**
+ * Pick the candidate to trust: the LONGEST token that still clears
+ * MIN_COVERAGE, not the one with the highest raw coverage count.
+ *
+ * A shorter candidate is always a prefix of every longer one, so it always
+ * covers at least as many names — one stray object off-convention (a typo, a
+ * differently-cased legacy name, an old object from before the prefix went
+ * compound) drops the three-segment count below the two-segment count and,
+ * under a raw-coverage race, the two-segment token wins EVERY time real data
+ * has any exception at all. That is exactly how "AslFinSK" (26/28 objects, a
+ * couple of others spelled "AslFinSk_") lost to "AslFin" (28/28) despite being
+ * the model's actual, corroborated convention.
+ * Once a token clears the coverage bar it is trusted; among those, the longest
+ * is the most specific answer and wins outright, not merely on a tie.
+ */
 function bestCovering(names: string[], candidates: Iterable<string>): { token: string; coverage: number } | null {
   let best: { token: string; coverage: number } | null = null;
   for (const token of new Set(candidates)) {
     const coverage = names.filter(n => n.startsWith(token)).length;
+    if (coverage / names.length < MIN_COVERAGE) continue;
     if (
       !best ||
-      coverage > best.coverage ||
-      (coverage === best.coverage && token.length > best.token.length)
+      token.length > best.token.length ||
+      (token.length === best.token.length && coverage > best.coverage)
     ) {
       best = { token, coverage };
     }

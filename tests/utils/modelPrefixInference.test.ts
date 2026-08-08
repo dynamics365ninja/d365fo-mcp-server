@@ -200,6 +200,21 @@ describe('inferPrefixFromObjectNames', () => {
       expect(result?.regular).toBe('AslFinSK');
     });
 
+    it('wins on corroboration even when a few objects dilute its raw coverage', () => {
+      // Real AslFinanceSK data: most objects say "AslFinSK_", a couple of older
+      // ones are cased "AslFinSk_" instead. "AslFin" still covers all of them and
+      // used to win outright on that higher raw count — the model's actual,
+      // corroborated convention must win instead because it clears MIN_COVERAGE.
+      const result = inferPrefixFromObjectNames([
+        'AslFinSK_ACFeatureList', 'AslFinSK_CustInvoiceJournalFormHandler',
+        'AslFinSK_LedgerJournalTransApproveFormHandler', 'AslFinSK_TaxTransHandler',
+        'AslFinSK_TaxTransManager', 'AslFinSK_VendInvoiceJournalFormHandler',
+        'AslFinSk_FinanceSK', 'AslFinSk_FinanceSK',
+      ], 'AslFinanceSK');
+
+      expect(result?.regular).toBe('AslFinSK_');
+    });
+
     it('accepts one the model\'s own extensions state', () => {
       const result = inferPrefixFromObjectNames([
         'ContosoFinSKVendPaymentTable', 'ContosoFinSKCustInvoiceJour',
