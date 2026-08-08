@@ -933,7 +933,11 @@ export const buildProjectTool = async (params: any, _context: any, onProgress?: 
   try {
     const force                 = params.force                === true;
     const fullBuild             = params.fullBuild            === true;
-    const buildReferencedModels = params.buildReferencedModels === true;
+    // Disabled: rebuilding referenced models drags in every custom/ISV
+    // dependency on each build and slows the whole run down for no benefit —
+    // dependencies are expected to already be compiled. The parameter is
+    // accepted but always ignored.
+    const buildReferencedModels = false;
 
     const configManager = getConfigManager();
     await configManager.ensureLoaded();
