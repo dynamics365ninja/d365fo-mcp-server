@@ -21,6 +21,7 @@ import { loadEnv } from '../../src/utils/loadEnv.js';
 
 let tmp: string;
 let savedEnv: NodeJS.ProcessEnv;
+let savedCwd: string;
 
 /**
  * A distinctive packages path that is absolute on this platform.
@@ -67,10 +68,21 @@ beforeEach(() => {
   delete process.env.D365FO_PACKAGE_PATH;
   delete process.env.ENV_FILE;
   delete process.env.D365FO_CONFIG;
+  // Run from a directory with no configuration in it. loadEnv falls back to
+  // `dotenv.config()` — i.e. process.cwd()/.env — when the caller's own install
+  // root has no .env, which is precedence rule 4 and deliberate. Under vitest
+  // the cwd is the repo root, so on any developer machine that has a working
+  // .env (untracked, gitignored) the "no configuration anywhere" case below
+  // loaded THAT file and read the developer's own D365FO_PACKAGE_PATH. It
+  // passed in CI, where no .env exists, and failed locally — the test was
+  // measuring the machine, not the code.
+  savedCwd = process.cwd();
+  process.chdir(tmp);
 });
 
 afterEach(() => {
   process.env = savedEnv;
+  process.chdir(savedCwd);
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 

@@ -63,13 +63,23 @@ describe('tool inventory contract', () => {
     // stay out. The bare-"all" shape is then re-checked against a window that
     // must mention tools, which is what keeps "8 GB (all 70)" — the label
     // languages — from reading as a tool count.
-    const COUNT_CLAIM = /\b(\d{2})[ -]tools?\b|\ball (\d{2})\b(?=[.)])/g;
+    // Two more shapes were added after the first version of this gate shipped,
+    // because it still passed a README whose FIRST LINE said "25 AI tools":
+    //  • "instead of 25" — the second number in a comparison carries no "tools"
+    //    of its own and does not end the clause;
+    //  • "25 AI tools" / "25 specialized MCP tools" — the count and the noun are
+    //    separated by adjectives, which the adjacency shape above cannot bridge.
+    // The second one allows up to three intervening words, which is what keeps
+    // "~57 built-in VS Code browser / Python / notebook / dotnet tools" (a
+    // measured VS Code catalogue, not a claim about this server) out.
+    const COUNT_CLAIM =
+      /\b(\d{2})(?:[ -][A-Za-z][\w-]*){0,3}[ -]tools?\b|\ball (\d{2})\b(?=[.)])|\binstead of (\d{2})\b/g;
     for (const rel of sources) {
       const text = readRepoFile(rel);
       for (const m of text.matchAll(COUNT_CLAIM)) {
         const window = text.slice(Math.max(0, m.index - 90), m.index + 90);
         if (!/tool/i.test(window)) continue;
-        const n = Number(m[1] ?? m[2]);
+        const n = Number(m[1] ?? m[2] ?? m[3]);
         expect(
           n === published || n === core,
           `${rel}: claims "${m[0].trim()}" but the server publishes ${published} tools ` +
@@ -91,6 +101,47 @@ describe('tool inventory contract', () => {
         `settings.ts still offers '${name}' as a core-profile exclusion, but it is not published`,
       ).toBe(false);
     }
+  });
+
+  it('never tells a reader or an agent to call an unpublished tool', () => {
+    // The gate above only ever read settings.ts, and the src/**/*.ts gate below
+    // cannot list get_method/suggest_edt at all — their handlers are deliberately
+    // still routable, so the name is legitimate inside src. That left the files a
+    // human or an agent actually reads ungated, and every one of them had drifted:
+    // README offered `MCP_EXTRA_TOOLS=security_info,get_method` and listed both
+    // retired names as core-profile exclusions, SETUP promised the companion
+    // exposes `get_method`, MCP_CONFIG used it as the MCP_EXTRA_TOOLS example, and
+    // copilot-instructions.md — the file the agent is handed verbatim — taught
+    // `get_method(include="signature")` as THE route to a CoC signature.
+    //
+    // MCP_TOOLS.md and CHANGELOG.md are excluded on purpose: they are where the
+    // retirement is documented, so naming the old tool there is the point.
+    const retiredButRoutable = ['get_method', 'suggest_edt', 'batch_get_info'];
+    const readerFacing = [
+      'README.md',
+      '.github/copilot-instructions.md',
+      'docs/SETUP.md',
+      'docs/QUICK_START.md',
+      'docs/MCP_CONFIG.md',
+      'docs/CONFIGURATION.md',
+      'docs/ARCHITECTURE.md',
+      'src/config/settings.ts',
+    ];
+    const offenders: string[] = [];
+    for (const rel of readerFacing) {
+      readRepoFile(rel).split('\n').forEach((line, i) => {
+        for (const name of retiredButRoutable) {
+          if (new RegExp(String.raw`\b${name}\b`).test(line)) {
+            offenders.push(`${rel}:${i + 1} → ${name}  |  ${line.trim().slice(0, 110)}`);
+          }
+        }
+      });
+    }
+    expect(
+      offenders,
+      `unpublished tool names in reader-facing text (they route, but nothing should ` +
+      `send anyone to them):\n${offenders.join('\n')}`,
+    ).toEqual([]);
   });
 
   it('keeps local-only tool set aligned with the published tool inventory', () => {

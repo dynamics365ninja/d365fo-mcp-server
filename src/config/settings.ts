@@ -479,7 +479,7 @@ export const SETTINGS: Setting[] = [
     description:
       'Tool names to publish in addition to the core profile, e.g. security_info,run_systest_class. Ignored when ' +
       'the tool profile is "full".',
-    placeholder: 'security_info,get_method',
+    placeholder: 'security_info,run_systest_class',
   },
   {
     path: 'server.port',

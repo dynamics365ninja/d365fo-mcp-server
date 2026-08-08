@@ -81,6 +81,34 @@ those are called out explicitly below.
   `D365FO_ALLOW_CROSS_MODEL_WRITE`) and reintroduced a wrong tool count.
 - `QUICK_START.md` and `SETUP.md` disagreed on which setup scenario is D and
   which is E; two dead `SETUP.md#…` anchors.
+- Every remaining place that still advertised the pre-consolidation tool
+  surface. README's **first line** said "25 AI tools"; `MCP_EXTRA_TOOLS` was
+  documented with `security_info,get_method` in README, `MCP_CONFIG.md` and the
+  `server.extraTools` placeholder (which generates `CONFIGURATION.md`); `SETUP.md`
+  promised the write-only companion exposes `get_method`; and
+  `.github/copilot-instructions.md` — handed to the agent verbatim — taught
+  `get_method(include="signature")` as *the* route to a CoC signature, which is a
+  guaranteed unknown-tool call. `get_method`, `suggest_edt` and `batch_get_info`
+  have been folded into `get_object_info`/`prepare` since 1.9.0; their handlers
+  still route, so nothing broke loudly — it just cost a round trip each time.
+- The tool-count gate could not see either shape that had drifted. It matched
+  only a count directly adjacent to "tools", so `"25 AI tools"`,
+  `"25 specialized MCP tools"` and `"18 tools instead of 25"` all passed. It now
+  bridges up to three intervening words and reads the second number of a
+  comparison, and a companion gate forbids naming a retired-but-routable tool in
+  the eight files a reader or an agent is actually pointed at.
+- `tests/utils/loadEnvDepth.test.ts` measured the developer's machine rather than
+  `loadEnv`: with no config in the temp tree, precedence rule 4 falls back to
+  `process.cwd()/.env`, which under vitest is the repo root. Any working
+  (gitignored) `.env` therefore supplied a real `D365FO_PACKAGE_PATH` and the
+  "no configuration anywhere" case failed locally while passing in CI. The test
+  now runs from its own temp directory.
+
+### Removed
+- README's *"Keep the tool catalogue small"* section. The advice it carried
+  (turn off unused tool sets; `MCP_TOOL_PROFILE=core`) is documented where it is
+  configured — [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) and
+  [`docs/MCP_CONFIG.md`](docs/MCP_CONFIG.md).
 
 ---
 
