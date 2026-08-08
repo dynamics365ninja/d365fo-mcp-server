@@ -424,26 +424,7 @@ export class XppSymbolIndex {
       );
     `);
 
-    // Only index en-US rows to keep FTS compact (~5x smaller on typical installs)
-    // Case-insensitive: Microsoft packages store language as 'en-us' from Linux directory names
-    this.labelsDb.exec(`
-      CREATE TRIGGER IF NOT EXISTS labels_ai AFTER INSERT ON labels WHEN LOWER(new.language) = 'en-us' BEGIN
-        INSERT INTO labels_fts(rowid, label_id, text, comment)
-        VALUES (new.id, new.label_id, new.text, new.comment);
-      END;
-
-      CREATE TRIGGER IF NOT EXISTS labels_ad AFTER DELETE ON labels WHEN LOWER(old.language) = 'en-us' BEGIN
-        INSERT INTO labels_fts(labels_fts, rowid, label_id, text, comment)
-        VALUES ('delete', old.id, old.label_id, old.text, old.comment);
-      END;
-
-      CREATE TRIGGER IF NOT EXISTS labels_au AFTER UPDATE ON labels WHEN LOWER(old.language) = 'en-us' OR LOWER(new.language) = 'en-us' BEGIN
-        INSERT INTO labels_fts(labels_fts, rowid, label_id, text, comment)
-        VALUES ('delete', old.id, old.label_id, old.text, old.comment);
-        INSERT INTO labels_fts(rowid, label_id, text, comment)
-        VALUES (new.id, new.label_id, new.text, new.comment);
-      END;
-    `);
+    this.createLabelsFtsTriggers();
 
     // Extended metadata tables for smart generation
 
@@ -784,6 +765,27 @@ export class XppSymbolIndex {
         sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path ON labels(file_path);',
       });
     }
+    // NOCASE twins. removeSymbolsByFile/removeLabelsByFile compare COLLATE NOCASE
+    // (Windows paths differ only in case between the indexer and a tool argument),
+    // and SQLite will only use an index whose collation matches the comparison —
+    // without these the case-insensitive delete falls back to the full-table scan
+    // the BINARY indexes above exist to avoid.
+    if (missing(this.db, 'idx_symbols_file_path_nocase')) {
+      work.push({
+        db: this.db,
+        dbFile: this.dbPath,
+        name: 'idx_symbols_file_path_nocase',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_symbols_file_path_nocase ON symbols(file_path COLLATE NOCASE);',
+      });
+    }
+    if (missing(this.labelsDb, 'idx_labels_file_path_nocase')) {
+      work.push({
+        db: this.labelsDb,
+        dbFile: labelsPath,
+        name: 'idx_labels_file_path_nocase',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path_nocase ON labels(file_path COLLATE NOCASE);',
+      });
+    }
 
     for (const item of work) {
       if (isLarge(item.dbFile)) {
@@ -864,6 +866,46 @@ export class XppSymbolIndex {
   }
 
   /**
+   * (Re)create the labels_fts sync triggers — the single definition of them.
+   *
+   * The language test is LOWER(...) = 'en-us', never a literal comparison against
+   * 'en-US': Microsoft packages unzipped on Linux store the locale lowercased while
+   * custom packages write 'en-US', and a case-sensitive WHEN clause silently skips
+   * every lowercase row. Its effect is one-directional and therefore invisible until
+   * a search goes wrong — inserts never reach the index, and, worse, DELETEs never
+   * remove the entries a full rebuild had put there, so searchLabels keeps returning
+   * labels that no longer exist.
+   *
+   * Dropped and recreated (not CREATE-IF-NOT-EXISTS alone) so a database still
+   * carrying the earlier case-sensitive definitions is repaired on the next open —
+   * mirrors createFTSTriggers on the symbols side.
+   */
+  private createLabelsFtsTriggers(): void {
+    this.labelsDb.exec(`
+      DROP TRIGGER IF EXISTS labels_ai;
+      DROP TRIGGER IF EXISTS labels_ad;
+      DROP TRIGGER IF EXISTS labels_au;
+
+      CREATE TRIGGER labels_ai AFTER INSERT ON labels WHEN LOWER(new.language) = 'en-us' BEGIN
+        INSERT INTO labels_fts(rowid, label_id, text, comment)
+        VALUES (new.id, new.label_id, new.text, new.comment);
+      END;
+
+      CREATE TRIGGER labels_ad AFTER DELETE ON labels WHEN LOWER(old.language) = 'en-us' BEGIN
+        INSERT INTO labels_fts(labels_fts, rowid, label_id, text, comment)
+        VALUES ('delete', old.id, old.label_id, old.text, old.comment);
+      END;
+
+      CREATE TRIGGER labels_au AFTER UPDATE ON labels WHEN LOWER(old.language) = 'en-us' OR LOWER(new.language) = 'en-us' BEGIN
+        INSERT INTO labels_fts(labels_fts, rowid, label_id, text, comment)
+        VALUES ('delete', old.id, old.label_id, old.text, old.comment);
+        INSERT INTO labels_fts(rowid, label_id, text, comment)
+        VALUES (new.id, new.label_id, new.text, new.comment);
+      END;
+    `);
+  }
+
+  /**
    * Add a symbol to the index with enhanced metadata
    */
   addSymbol(symbol: XppSymbol): void {
@@ -919,16 +961,31 @@ export class XppSymbolIndex {
    * working regardless of which build produced the DB.
    */
   private filePathForms(filePath: string): string[] {
-    const forms = new Set<string>([
-      filePath,
-      filePath.replace(/\//g, '\\'),
-      filePath.replace(/\\/g, '/'),
-    ]);
-    const m = /[/\\]PackagesLocalDirectory[/\\](.+)$/.exec(filePath);
-    if (m) {
-      const tail = m[1].replace(/\\/g, '/');
-      forms.add(tail);
-      forms.add(tail.replace(/\//g, '\\'));
+    const forms = new Set<string>();
+    const addSpellings = (p: string): void => {
+      if (!p) return;
+      forms.add(p);
+      forms.add(p.replace(/\//g, '\\'));
+      forms.add(p.replace(/\\/g, '/'));
+      const m = /[/\\]PackagesLocalDirectory[/\\](.+)$/.exec(p);
+      if (m) {
+        const tail = m[1].replace(/\\/g, '/');
+        forms.add(tail);
+        forms.add(tail.replace(/\//g, '\\'));
+      }
+    };
+
+    addSpellings(filePath);
+    // A model directory under PackagesLocalDirectory is routinely a symlink/junction
+    // to a repo checkout, so the path a caller holds and the path the indexer walked
+    // are two different spellings of the same file. Without the resolved alias the
+    // delete matches neither stored form and the stale rows survive — the index then
+    // keeps answering with symbols of a file that was reverted or deleted.
+    try {
+      addSpellings(fs.realpathSync(filePath));
+    } catch {
+      // File already gone (the usual case for an undo that deleted it) — the
+      // as-given spellings are all we have.
     }
     return [...forms];
   }
@@ -937,6 +994,13 @@ export class XppSymbolIndex {
    * Remove all symbols for a given file path from both the main table and FTS index.
    * Matches every stored path form (see filePathForms) so stale rows are removed
    * even when the DB stores a different path form than the caller passed.
+   *
+   * The comparison is COLLATE NOCASE because SQLite's default BINARY collation made
+   * it case-SENSITIVE against a Windows filesystem that is not: `k:\aosservice\…`
+   * from a tool argument never matched `K:\AosService\…` as stored by the indexer,
+   * so the delete reported 0 rows and every stale symbol stayed searchable. See
+   * ensureFilePathIndexes for the NOCASE index that keeps this lookup off a scan.
+   *
    * Returns the names of top-level objects that were removed (for cache invalidation).
    */
   /**
@@ -968,12 +1032,12 @@ export class XppSymbolIndex {
 
     // Collect object names BEFORE deletion (for cache invalidation)
     const rows = this.db.prepare(
-      `SELECT DISTINCT name FROM symbols WHERE file_path IN (${placeholders}) AND parent_name IS NULL`
+      `SELECT DISTINCT name FROM symbols WHERE file_path COLLATE NOCASE IN (${placeholders}) AND parent_name IS NULL`
     ).all(...forms) as Array<{ name: string }>;
     const objectNames = rows.map(r => r.name);
 
     // The FTS trigger (symbols_fts AFTER DELETE) handles FTS cleanup automatically
-    const result = this.db.prepare(`DELETE FROM symbols WHERE file_path IN (${placeholders})`).run(...forms);
+    const result = this.db.prepare(`DELETE FROM symbols WHERE file_path COLLATE NOCASE IN (${placeholders})`).run(...forms);
     this.invalidateSymbolCounts();
     return { deletedCount: result.changes, objectNames };
   }
@@ -989,7 +1053,7 @@ export class XppSymbolIndex {
     const placeholders = forms.map(() => '?').join(', ');
     // The labels_ad trigger handles FTS cleanup for en-US rows
     const result = this.labelsDb.prepare(
-      `DELETE FROM labels WHERE file_path IN (${placeholders})`
+      `DELETE FROM labels WHERE file_path COLLATE NOCASE IN (${placeholders})`
     ).run(...forms);
     return result.changes;
   }
@@ -3655,9 +3719,14 @@ export class XppSymbolIndex {
    * and any pending debounced labels FTS rebuild timer.
    */
   close(): void {
-    // Flush any debounced labels FTS rebuild to avoid losing writes on shutdown.
-    if (this._labelsFtsTimer) {
-      clearTimeout(this._labelsFtsTimer);
+    // RUN the pending debounced rebuild, don't just cancel its timer: labels created
+    // in the last ~300 ms before shutdown are in the labels table but not yet in
+    // labels_fts, and cancelling leaves them unfindable by searchLabels until the
+    // next full re-index. Best-effort — a rebuild failure must not block the close.
+    try {
+      this.flushLabelsFtsRebuild();
+    } catch (e) {
+      console.error(`[SymbolIndex] Final labels FTS flush failed: ${e}`);
       this._labelsFtsTimer = null;
     }
 
@@ -3722,7 +3791,8 @@ export class XppSymbolIndex {
     }>,
     opts?: { skipFtsRebuild?: boolean; keepTriggers?: boolean },
   ): void {
-    if (opts?.keepTriggers) {
+    const keepTriggers = !!opts?.keepTriggers;
+    if (keepTriggers) {
       // Scoped/incremental insert: let the triggers maintain labels_fts per row instead of
       // re-tokenising every en-US label afterwards. Recursive triggers are required so the
       // rows displaced by INSERT OR REPLACE fire labels_ad and don't leave orphaned FTS
@@ -3735,47 +3805,37 @@ export class XppSymbolIndex {
       this.labelsDb.exec(`DROP TRIGGER IF EXISTS labels_au`);
     }
 
-    const insert = this.labelsDb.prepare(`
-      INSERT OR REPLACE INTO labels (label_id, label_file_id, model, language, text, comment, file_path)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    // try/finally, because the teardown is not optional: a constraint violation in
+    // the insert or a failure inside rebuildLabelsFts used to propagate with the
+    // triggers still dropped, and from then on every label written through this
+    // connection was missing from labels_fts with nothing to signal it.
+    try {
+      const insert = this.labelsDb.prepare(`
+        INSERT OR REPLACE INTO labels (label_id, label_file_id, model, language, text, comment, file_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
 
-    const insertMany = this.labelsDb.transaction((rows: typeof entries) => {
-      for (const e of rows) {
-        insert.run(e.labelId, e.labelFileId, e.model, e.language, e.text, e.comment ?? null, e.filePath);
+      const insertMany = this.labelsDb.transaction((rows: typeof entries) => {
+        for (const e of rows) {
+          insert.run(e.labelId, e.labelFileId, e.model, e.language, e.text, e.comment ?? null, e.filePath);
+        }
+      });
+
+      insertMany(entries);
+
+      // With keepTriggers the index is already up to date — the triggers maintained
+      // it row by row. Otherwise rebuild, unless the caller will do a single rebuild
+      // after all batches.
+      if (!keepTriggers && !opts?.skipFtsRebuild) {
+        this.rebuildLabelsFts();
       }
-    });
-
-    insertMany(entries);
-
-    if (opts?.keepTriggers) {
-      // labels_fts is already up to date — the triggers maintained it row by row.
-      this.labelsDb.pragma('recursive_triggers = OFF');
-      return;
+    } finally {
+      if (keepTriggers) {
+        this.labelsDb.pragma('recursive_triggers = OFF');
+      } else {
+        this.createLabelsFtsTriggers();
+      }
     }
-
-    // Rebuild FTS unless the caller will do a single rebuild after all batches
-    if (!opts?.skipFtsRebuild) {
-      this.rebuildLabelsFts();
-    }
-
-    // Re-create triggers (en-US only to keep FTS compact)
-    this.labelsDb.exec(`
-      CREATE TRIGGER IF NOT EXISTS labels_ai AFTER INSERT ON labels WHEN new.language = 'en-US' BEGIN
-        INSERT INTO labels_fts(rowid, label_id, text, comment)
-        VALUES (new.id, new.label_id, new.text, new.comment);
-      END;
-      CREATE TRIGGER IF NOT EXISTS labels_ad AFTER DELETE ON labels WHEN old.language = 'en-US' BEGIN
-        INSERT INTO labels_fts(labels_fts, rowid, label_id, text, comment)
-        VALUES ('delete', old.id, old.label_id, old.text, old.comment);
-      END;
-      CREATE TRIGGER IF NOT EXISTS labels_au AFTER UPDATE ON labels WHEN old.language = 'en-US' OR new.language = 'en-US' BEGIN
-        INSERT INTO labels_fts(labels_fts, rowid, label_id, text, comment)
-        VALUES ('delete', old.id, old.label_id, old.text, old.comment);
-        INSERT INTO labels_fts(rowid, label_id, text, comment)
-        VALUES (new.id, new.label_id, new.text, new.comment);
-      END;
-    `);
   }
 
   /**

@@ -687,25 +687,39 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       };
     }
 
-    let capped = capToolResponse(toolName, result);
-    // Record metrics: detect empty result (no content or first text item is empty)
-    const firstText = capped?.content?.[0]?.text;
-    const isEmpty = !firstText || firstText.trim().length === 0 || firstText === 'No results returned';
-    finishMetrics(isEmpty);
+    // Everything from here on runs under try/finally, because the in-flight entry
+    // MUST be settled and dropped no matter what. A throw in capToolResponse (or in
+    // the metrics/dedup bookkeeping) used to skip resolve()+clearInFlight, leaving a
+    // promise in the map that nothing would ever settle — and from that moment every
+    // identical call coalesced onto it and hung forever, for the life of the process.
+    let capped: any = result;
+    try {
+      capped = capToolResponse(toolName, result);
+      // Record metrics: detect empty result (no content or first text item is empty)
+      const firstText = capped?.content?.[0]?.text;
+      const isEmpty = !firstText || firstText.trim().length === 0 || firstText === 'No results returned';
+      finishMetrics(isEmpty);
 
-    if (!DEDUP_EXCLUDED_TOOLS.has(toolName)) {
-      storeDedupResult(callKey, capped);
+      if (!DEDUP_EXCLUDED_TOOLS.has(toolName)) {
+        storeDedupResult(callKey, capped);
+        // Loop hint: 3+ identical calls in the recent window means the model is cycling.
+        if (occurrences >= 3) {
+          capped = appendNote(
+            capped,
+            `> ⚠️ Loop detected: this is occurrence #${occurrences} of the exact same ${toolName} call. ` +
+            `The answer does not change between calls. If you are missing information, ` +
+            `use a DIFFERENT tool or different parameters (see suggestions above), or ask the user.`,
+          );
+        }
+      }
+    } catch (err) {
+      // The tool itself already succeeded; only the post-processing failed. Return
+      // the uncapped result rather than converting a good answer into an error.
+      console.error(`[toolHandler] ⚠️ ${toolName}: response post-processing failed: ${err}`);
+      capped = result;
+    } finally {
       inFlightHandle?.resolve(capped);
       clearInFlight(callKey);
-      // Loop hint: 3+ identical calls in the recent window means the model is cycling.
-      if (occurrences >= 3) {
-        capped = appendNote(
-          capped,
-          `> ⚠️ Loop detected: this is occurrence #${occurrences} of the exact same ${toolName} call. ` +
-          `The answer does not change between calls. If you are missing information, ` +
-          `use a DIFFERENT tool or different parameters (see suggestions above), or ask the user.`,
-        );
-      }
     }
     return capped;
   });

@@ -125,6 +125,10 @@ vi.mock('fs/promises', () => ({
   stat: vi.fn(async () => ({ isFile: () => true, isDirectory: () => false })),
   readdir: vi.fn(async () => []),
   copyFile: vi.fn(async () => {}),
+  // The direct-XML writes go through writeFileAtomic: a temp sibling written with
+  // writeFile, then renamed over the target (rm cleans the temp up on failure).
+  rename: vi.fn(async () => {}),
+  rm: vi.fn(async () => {}),
 }));
 
 vi.mock('../../src/utils/configManager', () => ({

@@ -49,6 +49,10 @@ vi.mock('fs/promises', () => ({
   // modify_d365fo_file forces a backup for edits outside git (0432c5d) —
   // without this the tool fails before it ever reaches the bridge.
   copyFile: vi.fn(async () => {}),
+  // The direct-XML writes go through writeFileAtomic: a temp sibling written with
+  // writeFile, then renamed over the target (rm cleans the temp up on failure).
+  rename: vi.fn(async () => {}),
+  rm: vi.fn(async () => {}),
 }));
 
 vi.mock('../../src/utils/configManager', () => ({
