@@ -14,6 +14,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
 import {
+  crossModelLabelWarning,
   formatLabelReference,
   isLabelLikelyResolvable,
   labelProvenanceWarning,
@@ -38,8 +39,27 @@ const SearchLabelsArgsSchema = z.object({
     .string()
     .optional()
     .describe('Restrict results to a specific label file ID (e.g. ContosoExt, SYS)'),
-  limit: z.number().optional().default(30).describe('Maximum number of results (default 30)'),
+  maxResults: z
+    .number()
+    .optional()
+    .describe('Maximum number of labels to list (default 10). Truncated sets report how many more matched.'),
+  limit: z.number().optional().describe('Legacy alias of maxResults.'),
+  verbose: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('One line per label by default; true restores the multi-line text/comment/model block.'),
 });
+
+/** Labels listed per search unless the caller raises it — a broad phrase query matches dozens (#832). */
+const DEFAULT_MAX_RESULTS = 10;
+
+/**
+ * How many rows to pull from the index beyond the display cap so the footer can
+ * state an exact "and N more". Bounded on purpose — an exact count is not worth
+ * scanning the whole label index, so past this the footer says "N+ more".
+ */
+const OVERFETCH_CAP = 200;
 
 /** Best-effort current model: explicit arg → configured model → env. Never throws. */
 function resolveCurrentModel(explicit?: string): string | undefined {
@@ -55,9 +75,14 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
   try {
     const args = SearchLabelsArgsSchema.parse(request.params.arguments);
     const { symbolIndex } = context;
-    const { query, language, model, labelFileId, limit } = args;
+    const { query, language, model, labelFileId, verbose } = args;
 
-    let results = symbolIndex.searchLabels(query, { language, model, labelFileId, limit });
+    const requested = args.maxResults ?? args.limit;
+    const maxResults = requested !== undefined && requested > 0 ? Math.floor(requested) : DEFAULT_MAX_RESULTS;
+    // Over-fetch so the truncation footer can quantify what it hid.
+    const probeLimit = Math.max(maxResults + 1, OVERFETCH_CAP);
+
+    const results = symbolIndex.searchLabels(query, { language, model, labelFileId, limit: probeLimit });
 
     if (results.length === 0) {
       return {
@@ -86,26 +111,62 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
       comment: r.comment ?? null,
     });
 
+    const currentModel = resolveCurrentModel(args.model);
+
+    // The index was queried past the display cap; only the first maxResults are rendered.
+    const hidden = Math.max(0, results.length - maxResults);
+    const atProbeCap = results.length >= probeLimit;
+    const total = `${results.length}${atProbeCap ? '+' : ''}`;
+    const scope = `[language: ${language}${model ? `, model: ${model}` : ''}]`;
+
     const lines: string[] = [
-      `Found ${results.length} label(s) matching "${query}" [language: ${language}${model ? `, model: ${model}` : ''}]:`,
+      hidden > 0
+        ? `Found ${total} label(s) matching "${query}" ${scope} — showing first ${maxResults}:`
+        : `Found ${results.length} label(s) matching "${query}" ${scope}:`,
       '',
     ];
 
-    const currentModel = resolveCurrentModel(args.model);
+    const normalised = results.slice(0, maxResults).map(normalise);
 
-    const normalised = results.map(normalise);
+    // Owners of the flagged rows, in result order — named once below instead of
+    // repeating the same sentence on every line (#832).
+    const flaggedModels: string[] = [];
+    let flaggedCount = 0;
 
     for (const r of normalised) {
       // X++ label reference syntax — never double-prefix an id that already
       // carries its label file id (#33/#41: `@SYS:@SYS67433` is rejected by xppbp).
       const ref = formatLabelReference(r.labelFileId, r.labelId);
       const resolvable = isLabelLikelyResolvable(r.labelFileId, r.model, currentModel);
-      lines.push(`  ${ref}${resolvable ? '' : `   ${labelProvenanceWarning(r.model)}`}`);
-      lines.push(`  Text    : ${r.text}`);
-      if (r.comment) lines.push(`  Comment : ${r.comment}`);
-      lines.push(`  Model   : ${r.model}  |  LabelFile: ${r.labelFileId}`);
+      if (!resolvable) {
+        flaggedCount++;
+        if (!flaggedModels.includes(r.model)) flaggedModels.push(r.model);
+      }
+
+      if (verbose) {
+        lines.push(`  ${ref}${resolvable ? '' : `   ${labelProvenanceWarning(r.model)}`}`);
+        lines.push(`  Text    : ${r.text}`);
+        if (r.comment) lines.push(`  Comment : ${r.comment}`);
+        lines.push(`  Model   : ${r.model}  |  LabelFile: ${r.labelFileId}`);
+        lines.push('');
+      } else {
+        // One line per label: @File:Id — "Text" [owner], with ⚠️ marking the rows
+        // the hoisted ownership warning below is about.
+        const text = (r.text ?? '').replace(/\s+/g, ' ').trim();
+        lines.push(`  ${ref} — "${text}" [${r.model}]${resolvable ? '' : ' ⚠️'}`);
+      }
+    }
+
+    if (hidden > 0) {
+      if (!verbose) lines.push('');
+      lines.push(`… and ${hidden}${atProbeCap ? '+' : ''} more — narrow the query or raise maxResults`);
+      lines.push('');
+    } else if (!verbose) {
       lines.push('');
     }
+
+    // Once per result set, not once per label (#832).
+    if (flaggedCount > 0 && !verbose) lines.push(crossModelLabelWarning(flaggedModels, flaggedCount));
 
     // Only ever *recommend* a label the model can actually resolve — suggesting an
     // unreferenced one is what produced BPErrorUnknownLabel in the sweep (#33/#41).

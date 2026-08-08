@@ -118,7 +118,7 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 | `trigger_db_sync` | Database sync for the current model | *"Sync the database"* |
 | `run_bp_check` | Microsoft Best Practices (xppbp.exe) analysis | *"Run a BP check on my model"* |
 | `run_systest_class` | Execute SysTest unit tests via SysTestConsole.exe (requires an interactive console session) | *"Run the MyServiceTest class"* |
-| `update_symbol_index` | Re-index a single changed file without restart | *"Refresh the index for the table I just created"* |
+| `update_symbol_index` | Re-index file(s) changed **outside** this server, without a restart — `d365fo_file` create/modify already refresh the index themselves, so no follow-up call is needed after a write | *"I edited that table in Visual Studio — re-index it"* |
 
 ## ✅ Quality & Grounding (3)
 

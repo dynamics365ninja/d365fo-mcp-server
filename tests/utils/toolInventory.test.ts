@@ -159,6 +159,19 @@ describe('tool inventory contract', () => {
     expect(projectName).toContain('reads span every model already');
   });
 
+  it('does not advertise update_symbol_index as a follow-up to create/modify', () => {
+    // #830: the old description opened with "Call this after
+    // d365fo_file(action=create)", so the agent did — four times in one audited
+    // session, each as the only tool call in its turn, for a DiskProvider rebuild
+    // the create had already done. The tool stays (external edits are real), but
+    // the text the agent reads has to say so, and is pinned here.
+    const updateIndex = toolSchemas.find(t => t.name === 'update_symbol_index')!;
+
+    expect(updateIndex.description).toContain('OUTSIDE this server');
+    expect(updateIndex.description).toContain('Do NOT call after d365fo_file create/modify');
+    expect(updateIndex.description).not.toMatch(/Call this after d365fo_file/);
+  });
+
   it('includes critical diagnostics and SDLC tools in both inventories', () => {
     const criticalTools = [
       'get_workspace_info',

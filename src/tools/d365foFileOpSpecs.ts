@@ -87,6 +87,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'it writes AxTableFieldEnum + EnumType, no EDT.',
   },
   fieldStringSize: { type: 'string', description: 'String size to set on a string-typed field.' },
+  autoCorrect: {
+    type: 'boolean (default true)',
+    description:
+      'Apply a correction the server has already fully determined — one valid reading only — and report ' +
+      'it as a "Note:" line in the result, instead of failing the call. false = strict: every such case ' +
+      'errors again (deterministic callers, eval harness).',
+  },
   dataField: {
     type: 'string',
     description:
@@ -315,12 +322,13 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName'],
+    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect'],
     mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField'],
     note:
       'Enum field: pass fieldEnumType="<enum name>" and NO fieldType — an enum-typed table field ' +
       'is an AxTableFieldEnum with an EnumType and needs no EDT. (fieldType is the EDT name here, ' +
-      'never an XML element name like "AxTableFieldEnum".) ' +
+      'never an XML element name like "AxTableFieldEnum" — that one is read as fieldEnumType when the ' +
+      'enum is unambiguous, unless autoCorrect=false.) ' +
       'Table/table-extension: otherwise fieldType (EDT) is REQUIRED. data-entity-extension: pass dataField AND ' +
       'dataSource instead — BOTH, or nothing is written; a mapped field has no EDT of its own, it points ' +
       'at dataField on the entity data source dataSource. fieldGroupName is optional and only applies to ' +
@@ -392,7 +400,11 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'remove-field-group': { required: ['fieldGroupName'], optional: [] },
   'add-field-to-field-group': {
     required: ['fieldGroupName', 'fieldName'],
-    optional: ['extendBaseFieldGroup'],
+    optional: ['extendBaseFieldGroup', 'autoCorrect'],
+    note:
+      'table-extension: a group owned by the BASE table is detected and extended through ' +
+      '<FieldGroupExtensions> on its own (reported as a Note) — pass extendBaseFieldGroup=true to state ' +
+      'it up front, or autoCorrect=false to have the mismatch error instead.',
   },
   'add-field-modification': {
     required: ['fieldName'],
@@ -516,6 +528,7 @@ export const D365FO_FILE_CORE_PARAMS: ReadonlySet<string> = new Set([
   'filePath', 'workspacePath', 'modelName', 'model', 'packageName', 'packagePath',
   // side options
   'createBackup', 'addToProject', 'projectPath', 'solutionPath', 'groundingToken',
+  'autoCorrect',
 ]);
 
 /**

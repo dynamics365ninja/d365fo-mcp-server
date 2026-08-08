@@ -39,8 +39,17 @@ const CHARS_PER_TOKEN = 4;
 // behavioural warnings (immediate apply, isError=false, never hand-build the
 // prefix) that stop failed calls — which cost far more than the bytes do.
 // Headroom is small on purpose so creep is caught early.
+//
+// labels(action="search") maxResults/verbose (#832) added ~230 wire chars: a
+// broad phrase query returned 30 four-line blocks (~2,5 kB per call), so the
+// schema pays once per session to bound a result paid on every call.
+//
+// Both ceilings then drop hard (#825): d365fo_file and generate_object now
+// publish discriminators plus a loose `params`, with the per-branch contract
+// moved to get_knowledge(kind="op-spec"). `labels` is the largest tool now,
+// not d365fo_file.
 const TOTAL_BUDGET = 53_600;
-const LARGEST_TOOL_BUDGET = 6_100;
+const LARGEST_TOOL_BUDGET = 6_300;
 
 async function getTools(): Promise<Array<{ name: string }>> {
   const ctx: any = { symbolIndex: {}, parser: {} };

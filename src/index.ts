@@ -26,6 +26,7 @@ import { apiKeyAuth } from './middleware/apiKeyAuth.js';
 import { VERSION } from './version.js';
 import { setInitializeParams } from './utils/stdioSessionInfo.js';
 import { setModelObjectNameSource } from './utils/modelPrefixInference.js';
+import { trackBridgeStartup } from './bridge/bridgeReadiness.js';
 import { createShutdownCoordinator } from './utils/gracefulShutdown.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, sanitize, supportsUnicode, log, shortPath, startupWarnings } from './utils/terminalUi.js';
 import * as fs from 'fs/promises';
@@ -606,7 +607,11 @@ async function main() {
     // Step 3b: Initialize C# bridge in parallel with DB load (non-blocking)
     // The bridge provides live metadata from Microsoft's IMetadataProvider API
     // and cross-reference queries — only available on Windows VMs with D365FO.
-    void initializeBridge(stubContext).then(s => (s.ok ? log.ok(s.summary) : log.warn(s.summary)));
+    // The attempt is tracked on the context so bridge-backed tools called in the
+    // first seconds wait for it instead of reporting a phantom "not connected".
+    stubContext.bridgeStartup = trackBridgeStartup(
+      initializeBridge(stubContext).then(s => (s.ok ? log.ok(s.summary) : log.warn(s.summary))),
+    );
 
     // Step 4: load real database in the background
     const dbLoadStart = Date.now();
@@ -742,8 +747,12 @@ async function main() {
       // never block startup, so cap the wait; it keeps connecting in the
       // background afterwards and attaches to the context once ready.
       if (context) {
+        const attempt = initializeBridge(context);
+        // Tracked before the bounded race below, so a bridge that is still
+        // connecting when the banner gives up is still awaited by tool calls.
+        context.bridgeStartup = trackBridgeStartup(attempt);
         const status = await Promise.race<BridgeStatus>([
-          initializeBridge(context),
+          attempt,
           new Promise<BridgeStatus>(r => setTimeout(
             () => r({ ok: true, summary: 'C# bridge still connecting in the background' + glyph.ellipsis }), 6000)),
         ]);
@@ -787,7 +796,7 @@ async function main() {
           { name: 'verify_d365fo_project',        desc: 'Verify objects exist on disk and are referenced in the .rnrproj project file' },
         ]},
         { icon: '🏗️ ', category: 'SDLC & Build Tools', tools: [
-          { name: 'update_symbol_index',          desc: 'Index a newly generated XML file immediately (no restart needed)' },
+          { name: 'update_symbol_index',          desc: 'Re-index a file changed outside this server (create/modify refresh it themselves)' },
           { name: 'build_d365fo_project',         desc: 'Run MSBuild compilation locally to capture errors' },
           { name: 'trigger_db_sync',              desc: 'Run a database sync for the current model' },
           { name: 'run_bp_check',                 desc: 'Run Microsoft Best Practices (xppbp.exe) analysis' },
