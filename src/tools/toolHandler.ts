@@ -7,6 +7,7 @@ import {
   isToolAllowedInMode, isToolInProfile,
 } from '../server/serverMode.js';
 import { BRIDGE_BACKED_TOOLS, awaitBridgeReady } from '../bridge/bridgeReadiness.js';
+import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { searchUnifiedTool } from './searchUnified.js';
 import { getObjectInfoTool } from './getObjectInfo.js';
 import { findReferencesTool } from './findReferences.js';
@@ -202,6 +203,16 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       if (elapsed > 200) {
         console.error(`[toolHandler] ⏳ ${toolName}: bridge was starting, waited ${elapsed} ms → ${outcome}`);
       }
+
+      // Settle any provider rebuild a previous write scheduled but did not wait
+      // for. Writers now schedule the rebuild instead of awaiting it (so it
+      // leaves the response path), which means the freshness guarantee has to be
+      // re-established by the READER — otherwise a get_object_info issued right
+      // after a create could see a provider up to SETTLE_MS staler than before.
+      // Every bridge-backed tool passes through here, so this is the one place
+      // that covers reads and writes alike; it is a synchronously-resolved
+      // no-op when nothing is outstanding, so it costs a tick, not 400 ms.
+      await debouncedRefresh.flush();
     }
 
     // Enforce server mode: block local tools in read-only (Azure) mode, block search/analysis
