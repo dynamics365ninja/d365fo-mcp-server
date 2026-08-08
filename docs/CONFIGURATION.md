@@ -64,6 +64,8 @@ The model/project the server writes to. Auto-detected from the IDE when left emp
 | `workspace.solutionsPath` | setup | `D365FO_SOLUTIONS_PATH` | — | Scanned once at startup so the server can switch model automatically when you open another solution or git branch. Optional, but it is what makes multi-project workspaces work without reconfiguring. |
 | `workspace.projectPath` | advanced | `D365FO_PROJECT_PATH` | — | Forces one specific project instead of auto-detection. Rarely needed outside CI. |
 | `workspace.solutionPath` | advanced | `D365FO_SOLUTION_PATH` | — | Forces one specific solution instead of auto-detection. Rarely needed outside CI. |
+| — | — | `D365FO_CROSS_MODEL_WRITE_MODELS` | — | Comma-separated models this workspace may write into besides its own. By default any create/modify/label write into another custom model is refused and the extension route in the active model is offered instead — see [Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Consent lives here, in configuration, because a tool parameter is something the agent can grant itself. Re-read from `.env` before every decision, so an edit applies to the next attempt without a restart. |
+| — | — | `D365FO_ALLOW_CROSS_MODEL_WRITE` | `false` | Set to `true` to allow writes into **any** other custom model — the blanket form of the setting above. |
 
 ### Naming convention
 
@@ -73,8 +75,6 @@ How generated objects, extensions and fields are named.
 | --- | --- | --- | --- | --- |
 | `naming.prefix` | setup | `EXTENSION_PREFIX` | — | Your ISV/customer prefix. Prepended to every generated object, field and method name and enforced by the naming validator, so BP checks pass on the first build. Used as the **fallback**: when the active model's existing objects already show a prefix, that one wins — see [Where the prefix comes from](CUSTOM_EXTENSIONS.md#where-the-prefix-comes-from). |
 | — | — | `EXTENSION_PREFIX_SOURCE` | — | Set to `config` to make `EXTENSION_PREFIX` authoritative again instead of learning each model's prefix from its own objects. |
-| — | — | `D365FO_CROSS_MODEL_WRITE_MODELS` | — | Comma-separated models this workspace may write into besides its own. By default any create/modify/label write into another custom model is refused and the extension route in the active model is offered instead — see [Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Consent lives here, in configuration, because a tool parameter is something the agent can grant itself. Re-read from `.env` before every decision, so an edit applies to the next attempt without a restart. |
-| — | — | `D365FO_ALLOW_CROSS_MODEL_WRITE` | `false` | Set to `true` to allow writes into **any** other custom model — the blanket form of the setting above. |
 | `naming.suffix` | advanced | `EXTENSION_SUFFIX` | — | Optional suffix appended to new object names (MyTableZZ with suffix "ZZ"). Most projects use only a prefix — leave empty unless your convention requires one. |
 | `naming.extensionStyle` | advanced | `EXTENSION_NAMING_STYLE` | `prefix` | Whether extension classes/elements embed the prefix (per the Microsoft prefix guideline) or the model name (the Visual Studio default). Use model-name when your model name is long but your prefix is a short abbreviation. Values: `prefix` — CustTable.CrExtension — embeds the extension prefix; `model-name` — CustTable.ContosoRobotics — embeds the model name (VS default). |
 
@@ -86,7 +86,7 @@ What gets extracted into the SQLite index and where it is stored.
 | --- | --- | --- | --- | --- |
 | `index.extractMode` | setup | `EXTRACT_MODE` | `all` | Scope of the metadata extraction. "all" gives full cross-reference search over the standard application but takes 1–2 hours and produces a multi-GB database; "custom" indexes only your own models and finishes in minutes. Values: `all` — standard + custom — full search, 1–2 h build; `custom` — custom models only — minutes; `standard` — Microsoft models only. |
 | `index.includeLabels` | setup | `INCLUDE_LABELS` | `true` | Builds the labels database so labels(action="search") and label reuse work. Disabling it speeds up the build and shrinks the index, at the cost of label lookup. |
-| `index.labelLanguages` | setup | `LABEL_LANGUAGES` | `en-US` | Comma-separated language codes. Each extra language multiplies the label table — indexing only the languages you actually ship keeps the database small. |
+| `index.labelLanguages` | setup | `LABEL_LANGUAGES` | `en-US` | Comma-separated language codes, or `all` for every language shipped with the model. Each extra language multiplies the label table (~125 MB apiece) — indexing only the languages you actually ship keeps the database small. |
 | `index.dbPath` | advanced | `DB_PATH` | `./data/xpp-metadata.db` | SQLite file holding the indexed X++ metadata. Relative paths resolve from the config file directory. |
 | `index.labelsDbPath` | advanced | `LABELS_DB_PATH` | `./data/xpp-metadata-labels.db` | Second SQLite file for labels (dual-database architecture keeps label writes from locking metadata reads). Defaults to <dbPath>-labels.db. |
 | `index.metadataPath` | advanced | `METADATA_PATH` | `./extracted-metadata` | Working folder for the XML dumped during extraction, before it is loaded into the database. |
@@ -100,9 +100,11 @@ Transport, timeouts and logging of the MCP server process.
 | Key | Asked | Env var | Default | Description |
 | --- | --- | --- | --- | --- |
 | `server.mode` | advanced | `MCP_SERVER_MODE` | `full` | Which half of the toolset this process exposes. "full" is a single local server; the hybrid deployment splits into an Azure "read-only" instance plus a local "write-only" companion that owns the C# bridge. Values: `full` — all tools — single local server; `read-only` — search/inspect only — Azure-hosted shared index; `write-only` — create/modify/build only — local companion. |
-| `server.toolProfile` | advanced | `MCP_TOOL_PROFILE` | `full` | How many tools this server advertises. "full" publishes all 25. "core" publishes only the plan → discover → write → build → verify loop (18 tools) and leaves out the specialist ones (extension_info, analyze_code, validate_code, security_info, get_method, run_systest_class, suggest_edt). Worth switching when the workspace runs several MCP servers at once: hosts stop sending the tool catalogue inline past a limit (VS Code: ~100 tools) and make the model search for tools first, which costs a round trip per tool. Values: `full` — all 25 tools; `core` — 18-tool create-and-build loop. |
+| `server.toolProfile` | advanced | `MCP_TOOL_PROFILE` | `full` | How many tools this server advertises. "full" publishes all 26. "core" publishes only the plan → discover → write → build → verify loop (18 tools) and leaves out the specialist ones (extension_info, analyze_code, validate_code, security_info, get_method, run_systest_class, suggest_edt). Worth switching when the workspace runs several MCP servers at once: hosts stop sending the tool catalogue inline past a limit (VS Code: ~100 tools) and make the model search for tools first, which costs a round trip per tool. Values: `full` — all 26 tools; `core` — 18-tool create-and-build loop. |
 | `server.extraTools` | advanced | `MCP_EXTRA_TOOLS` | — | Tool names to publish in addition to the core profile, e.g. security_info,run_systest_class. Ignored when the tool profile is "full". |
 | `server.port` | setup | `PORT` | `8080` | Port for the HTTP transport. Only relevant when clients connect over http://localhost:<port>/mcp/ — an IDE that spawns the server itself uses stdio and ignores this. |
+| `server.host` | advanced | `HOST` | `0.0.0.0` | Interface the HTTP transport binds to. The default accepts connections from anywhere, which is what a container or App Service needs; set 127.0.0.1 to make a local server unreachable from the network. |
+| `server.shutdownTimeoutMs` | advanced | `SHUTDOWN_TIMEOUT_MS` | `5000` | How long SIGTERM/SIGINT handling waits for in-flight work (bridge writes, database checkpoints) before the process exits anyway. Clamped to a minimum of 1000. |
 | `server.debugLogging` | advanced | `DEBUG_LOGGING` | `false` | Prints per-step diagnostics to stderr. Useful when a tool misbehaves; noisy otherwise. |
 | `server.logFile` | advanced | `LOG_FILE` | — | Absolute path; the server appends everything it writes to stderr. The way to get logs out of an IDE that hides MCP subprocess output. |
 | `server.forceHttp` | advanced | `MCP_FORCE_HTTP` | `false` | The server picks stdio when its stdin is piped. Set this to keep HTTP anyway — e.g. when running under a process supervisor that pipes stdin. |
@@ -195,6 +197,8 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "toolProfile": "full",
     "extraTools": "security_info,get_method",
     "port": 8080,
+    "host": "0.0.0.0",
+    "shutdownTimeoutMs": 5000,
     "debugLogging": false,
     "logFile": "",
     "forceHttp": false,

@@ -84,7 +84,7 @@ export interface XppExtensionOf {
   memberName?: string;
 }
 
-export const MODIFIER_KEYWORDS = [
+const MODIFIER_KEYWORDS = [
   'public', 'private', 'protected', 'internal', 'static', 'final', 'abstract', 'display', 'edit',
 ];
 
@@ -110,7 +110,7 @@ function escapeRegExp(str: string): string {
  * copy, so they can't be fooled by a method name or keyword mentioned in a
  * comment/attribute string, or by parens/commas inside string defaults.
  */
-export function blankCommentsAndStrings(src: string): string {
+function blankCommentsAndStrings(src: string): string {
   const out = src.split('');
   let state: 'code' | 'line' | 'block' | 'str' = 'code';
   let quote = '';

@@ -12,7 +12,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { promises as fs } from 'fs';
-import { parseStringPromise } from 'xml2js';
+import { parseStringPromise } from '../utils/xml.js';
 import { tryBridgeForm } from '../bridge/bridgeAdapter.js';
 import { readIndexedXml } from '../utils/indexedXmlLookup.js';
 import { describeBridgeStartup } from '../bridge/bridgeReadiness.js';

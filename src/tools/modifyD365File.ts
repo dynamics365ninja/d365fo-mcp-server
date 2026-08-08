@@ -12,7 +12,7 @@ import { execFile } from 'child_process';
 import util from 'util';
 
 import path from 'path';
-import { parseStringPromise } from 'xml2js';
+import { parseStringPromise } from '../utils/xml.js';
 import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../utils/configManager.js';
 import { isStandardModel, resolveObjectPrefix, applyObjectPrefix, resolveRegularObjectPrefixToken } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';

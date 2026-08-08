@@ -10,7 +10,7 @@
 
 import * as fs from 'fs/promises';
 import { z } from 'zod';
-import { Parser } from 'xml2js';
+import { Parser } from '../utils/xml.js';
 import {
   validateFormPatternXml,
   hasPatternErrors,

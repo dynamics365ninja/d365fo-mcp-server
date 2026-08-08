@@ -17,8 +17,12 @@
 
 export type SettingType = 'string' | 'path' | 'boolean' | 'int' | 'list' | 'enum';
 
-/** basic = asked during setup · advanced = asked only in the advanced pass · secret = stored in config/secrets.json */
-export type SettingTier = 'basic' | 'advanced' | 'secret';
+/**
+ * basic = asked during setup · advanced = asked only in the advanced pass ·
+ * secret = stored in config/secrets.json · env-only = documented environment
+ * variable with no config-file key (see `path` below).
+ */
+export type SettingTier = 'basic' | 'advanced' | 'secret' | 'env-only';
 
 export type SectionId =
   | 'environment'
@@ -36,8 +40,18 @@ export interface SettingChoice {
 }
 
 export interface Setting {
-  /** Dotted path inside the JSON config, e.g. "environment.packagePath". */
-  path: string;
+  /**
+   * Dotted path inside the JSON config, e.g. "environment.packagePath".
+   *
+   * Absent for `env-only` settings: consent-style switches whose whole point is
+   * that they are re-read from the environment (or the .env file) between tool
+   * calls, so writing them into the wizard-managed JSON would misrepresent when
+   * a change takes effect. They are still registered here — without an entry
+   * the docs generator silently drops them, which is how three cross-model
+   * variables disappeared from docs/CONFIGURATION.md the last time it was
+   * regenerated.
+   */
+  path?: string;
   /** Environment variable the server/scripts read at runtime. */
   env: string;
   section: SectionId;
@@ -234,6 +248,29 @@ export const SETTINGS: Setting[] = [
     label: 'Pinned .sln file',
     description: 'Forces one specific solution instead of auto-detection. Rarely needed outside CI.',
   },
+  {
+    env: 'D365FO_CROSS_MODEL_WRITE_MODELS',
+    section: 'workspace',
+    tier: 'env-only',
+    type: 'list',
+    label: 'Models this workspace may also write into',
+    description:
+      'Comma-separated models this workspace may write into besides its own. By default any create/modify/label write ' +
+      'into another custom model is refused and the extension route in the active model is offered instead — see ' +
+      '[Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Consent lives here, in ' +
+      'configuration, because a tool parameter is something the agent can grant itself. Re-read from `.env` before ' +
+      'every decision, so an edit applies to the next attempt without a restart.',
+  },
+  {
+    env: 'D365FO_ALLOW_CROSS_MODEL_WRITE',
+    section: 'workspace',
+    tier: 'env-only',
+    type: 'boolean',
+    label: 'Allow writes into any other custom model',
+    description:
+      'Set to `true` to allow writes into **any** other custom model — the blanket form of the setting above.',
+    default: false,
+  },
 
   // ── naming ───────────────────────────────────────────────────────────────
   {
@@ -245,9 +282,21 @@ export const SETTINGS: Setting[] = [
     label: 'Extension prefix for custom objects',
     description:
       'Your ISV/customer prefix. Prepended to every generated object, field and method name and enforced by the ' +
-      'naming validator, so BP checks pass on the first build.',
+      'naming validator, so BP checks pass on the first build. Used as the **fallback**: when the active model\'s ' +
+      'existing objects already show a prefix, that one wins — see ' +
+      '[Where the prefix comes from](CUSTOM_EXTENSIONS.md#where-the-prefix-comes-from).',
     placeholder: 'ISV_',
     required: true,
+  },
+  {
+    env: 'EXTENSION_PREFIX_SOURCE',
+    section: 'naming',
+    tier: 'env-only',
+    type: 'string',
+    label: 'Pin the configured prefix',
+    description:
+      'Set to `config` to make `EXTENSION_PREFIX` authoritative again instead of learning each model\'s prefix from ' +
+      'its own objects.',
   },
   {
     path: 'naming.suffix',
@@ -315,8 +364,12 @@ export const SETTINGS: Setting[] = [
     type: 'list',
     label: 'Label languages to index',
     description:
-      'Comma-separated language codes. Each extra language multiplies the label table — indexing only the languages ' +
-      'you actually ship keeps the database small.',
+      'Comma-separated language codes, or `all` for every language shipped with the model. Each extra language ' +
+      'multiplies the label table (~125 MB apiece) — indexing only the languages you actually ship keeps the ' +
+      'database small.',
+    // src/metadata/labelParser.ts reads this default straight off the registry:
+    // it used to carry its own 'en-US,cs,sk,de' literal, so an unconfigured
+    // build silently indexed four languages while this table promised one.
     default: ['en-US'],
     placeholder: 'en-US,cs,de',
   },
@@ -439,6 +492,30 @@ export const SETTINGS: Setting[] = [
       'Port for the HTTP transport. Only relevant when clients connect over http://localhost:<port>/mcp/ — an IDE that ' +
       'spawns the server itself uses stdio and ignores this.',
     default: 8080,
+  },
+  {
+    path: 'server.host',
+    env: 'HOST',
+    section: 'server',
+    tier: 'advanced',
+    type: 'string',
+    label: 'HTTP bind address',
+    description:
+      'Interface the HTTP transport binds to. The default accepts connections from anywhere, which is what a ' +
+      'container or App Service needs; set 127.0.0.1 to make a local server unreachable from the network.',
+    default: '0.0.0.0',
+  },
+  {
+    path: 'server.shutdownTimeoutMs',
+    env: 'SHUTDOWN_TIMEOUT_MS',
+    section: 'server',
+    tier: 'advanced',
+    type: 'int',
+    label: 'Graceful shutdown deadline (ms)',
+    description:
+      'How long SIGTERM/SIGINT handling waits for in-flight work (bridge writes, database checkpoints) before the ' +
+      'process exits anyway. Clamped to a minimum of 1000.',
+    default: 5000,
   },
   {
     path: 'server.debugLogging',
@@ -724,7 +801,7 @@ export const SETTINGS: Setting[] = [
   },
 ];
 
-const BY_PATH = new Map(SETTINGS.map(s => [s.path, s]));
+const BY_PATH = new Map(SETTINGS.flatMap(s => (s.path ? [[s.path, s] as const] : [])));
 const BY_ENV = new Map(SETTINGS.map(s => [s.env, s]));
 
 export function settingByPath(path: string): Setting | undefined {

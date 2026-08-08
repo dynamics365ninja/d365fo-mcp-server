@@ -20,7 +20,7 @@
  * may block writes; the rest are recommendations.
  */
 
-import { Parser } from 'xml2js';
+import { Parser } from '../utils/xml.js';
 import {
   walkFormDesign,
   type FormControlNode,

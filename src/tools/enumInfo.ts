@@ -10,7 +10,7 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { parseStringPromise } from 'xml2js';
+import { parseStringPromise } from '../utils/xml.js';
 import type { XppServerContext } from '../types/context.js';
 import { tryBridgeEnum } from '../bridge/bridgeAdapter.js';
 import { readEnumRawXml, buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';

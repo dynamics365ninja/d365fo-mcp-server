@@ -66,19 +66,6 @@ export function readEnvValue(envFile: string, key: string): string | null {
   return getValue(fs.readFileSync(envFile, 'utf8'), key);
 }
 
-export function writeEnvValue(envFile: string, key: string, value: string): void {
-  const content = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8') : '';
-  fs.writeFileSync(envFile, setValue(content, key, value));
-}
-
-/**
- * Dev-environment type with the legacy fallback name, matching
- * run-instance.ps1 / rebuild-instance.ps1 and the server itself.
- */
-export function readDevEnvType(envFile: string): string | null {
-  return readEnvValue(envFile, 'D365FO_DEV_ENVIRONMENT_TYPE') ?? readEnvValue(envFile, 'DEV_ENVIRONMENT_TYPE');
-}
-
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

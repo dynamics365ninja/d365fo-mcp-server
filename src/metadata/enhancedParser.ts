@@ -23,15 +23,6 @@ export interface EnhancedMethodInfo extends XppMethodInfo {
 /**
  * Enhanced class information
  */
-export interface EnhancedClassInfo extends XppClassInfo {
-  tags?: string[];
-  relationships?: {
-    extends?: string;
-    implements?: string[];
-    uses?: string[];            // Other classes used
-  };
-}
-
 export class EnhancedXppParser {
   constructor() {}
 

@@ -243,7 +243,7 @@ async function maybeBuildIndex(): Promise<boolean> {
   return rebuildIndex(rootTarget());
 }
 
-export function savedNote(store: SettingsStore): void {
+function savedNote(store: SettingsStore): void {
   const rel = relative(dataRoot(), store.configPath) || store.configPath;
   const lines = [`Settings written to ${rel}`];
   if (fs.existsSync(store.secretsPath)) {

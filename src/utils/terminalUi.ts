@@ -32,7 +32,7 @@ export const supportsUnicode: boolean = (() => {
  * Whether to emit ANSI colour codes. Disabled for non-TTY (pipes/redirects),
  * NO_COLOR, and dumb terminals; FORCE_COLOR=1 forces it on.
  */
-export const supportsColor: boolean = (() => {
+const supportsColor: boolean = (() => {
   if (process.env.FORCE_COLOR && process.env.FORCE_COLOR !== '0') return true;
   if ('NO_COLOR' in process.env) return false;
   if (process.env.TERM === 'dumb') return false;
@@ -115,7 +115,7 @@ export function sanitize(text: string): string {
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
 /** Visible length of a string, ignoring ANSI colour codes. */
-export function visibleLen(s: string): number {
+function visibleLen(s: string): number {
   return s.replace(ANSI_RE, '').length;
 }
 

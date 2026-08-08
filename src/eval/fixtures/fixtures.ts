@@ -34,7 +34,7 @@ import { fileURLToPath } from 'url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, '..', '..', '..');
-export const FIXTURES_DIR = path.join(REPO_ROOT, 'eval', 'fixtures');
+const FIXTURES_DIR = path.join(REPO_ROOT, 'eval', 'fixtures');
 export const CASES_DIR = path.join(REPO_ROOT, 'eval', 'cases');
 
 /**

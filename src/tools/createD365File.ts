@@ -7,7 +7,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { Parser, Builder } from 'xml2js';
+import { Parser, Builder } from '../utils/xml.js';
 import { getConfigManager, fallbackPackagePath } from '../utils/configManager.js';
 import { describePackagesRootScan } from '../utils/packagesRoot.js';
 import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix, getExtensionNamingStyle } from '../utils/modelClassifier.js';

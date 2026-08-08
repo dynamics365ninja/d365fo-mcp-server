@@ -40,10 +40,15 @@ afterEach(() => {
 
 describe('setting registry', () => {
   it('has unique config paths and env vars', () => {
-    const paths = SETTINGS.map(s => s.path);
+    // env-only settings have no config path at all — they are documented
+    // environment variables the wizard never writes into the JSON.
+    const paths = SETTINGS.map(s => s.path).filter((p): p is string => p !== undefined);
     const envs = SETTINGS.map(s => s.env);
     expect(new Set(paths).size).toBe(paths.length);
     expect(new Set(envs).size).toBe(envs.length);
+    expect(SETTINGS.filter(s => s.path === undefined).map(s => s.env)).toEqual(
+      SETTINGS.filter(s => s.tier === 'env-only').map(s => s.env),
+    );
   });
 
   it('documents every setting — the wizard prints these', () => {

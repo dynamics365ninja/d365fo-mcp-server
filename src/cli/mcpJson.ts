@@ -10,7 +10,7 @@ import { paths, repoRoot } from './context.js';
 import type { SettingsStore } from './settingsStore.js';
 import { p } from './ui.js';
 
-export const distEntryWin = (): string => resolve(repoRoot, 'dist', 'index.js');
+const distEntryWin = (): string => resolve(repoRoot, 'dist', 'index.js');
 
 /**
  * A stdio server entry.

@@ -5,9 +5,20 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { glob } from 'glob';
-import { parseStringPromise } from 'xml2js';
+import { parseStringPromise } from '../utils/xml.js';
 import { isFileUnderRoot } from '../utils/pathContainment.js';
+
+/**
+ * Directories never worth walking in a D365FO workspace. fs.glob's `exclude`
+ * callback is handed the plain entry NAME (not a path), and returning true for
+ * a directory prunes the whole subtree — which is why this is a name set rather
+ * than the `**​/node_modules/**` style patterns the glob package took.
+ *
+ * The callback form is used deliberately over `exclude: string[]`: the callback
+ * has been supported since fs.glob landed, the pattern-array form is newer, and
+ * an unsupported option here would be ignored silently rather than throwing.
+ */
+const SKIPPED_DIRS = new Set(['node_modules', 'bin', 'obj', '.git']);
 
 export interface WorkspaceFile {
   path: string;
@@ -41,12 +52,6 @@ export interface FieldMetadata {
   mandatory?: boolean;
 }
 
-export interface WorkspaceContext {
-  rootPath: string;
-  files: WorkspaceFile[];
-  openFiles: Map<string, string>; // path -> content
-}
-
 export class WorkspaceScanner {
   private workspaceCache: Map<string, { files: WorkspaceFile[]; scannedAt: number }> = new Map();
 
@@ -65,12 +70,15 @@ export class WorkspaceScanner {
 
     const files: WorkspaceFile[] = [];
 
-    // Find all .xml files (D365FO metadata files)
-    const xmlFiles = await glob('**/*.xml', {
+    // Find all .xml files (D365FO metadata files). fs.glob yields cwd-relative
+    // paths, so resolve them here — the glob package's `absolute: true` did it.
+    const xmlFiles: string[] = [];
+    for await (const relPath of fs.glob('**/*.xml', {
       cwd: workspacePath,
-      ignore: ['**/node_modules/**', '**/bin/**', '**/obj/**', '**/.git/**'],
-      absolute: true,
-    });
+      exclude: name => SKIPPED_DIRS.has(name),
+    })) {
+      xmlFiles.push(path.resolve(workspacePath, relPath));
+    }
 
     for (const filePath of xmlFiles) {
       // Reject symlinks that resolve outside the workspace root.

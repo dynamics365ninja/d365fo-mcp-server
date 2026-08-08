@@ -110,6 +110,9 @@ export function migrateLegacyEnv(store: SettingsStore): Setting[] {
     // Never move a secret into the JSON automatically — the user decides
     // whether it lands in secrets.json or stays an environment variable.
     if (setting.tier === 'secret') continue;
+    // An env-only setting has nowhere in the JSON to go; without this it would
+    // be reported as migrated while setAtPath quietly did nothing.
+    if (!setting.path) continue;
     if (getAtPath(store.config, setting.path) !== undefined) continue;
     const raw = readEnvValue(store.legacyEnvFile, setting.env);
     if (raw === null) continue;

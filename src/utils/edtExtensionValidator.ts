@@ -192,7 +192,7 @@ export function resolveEffectiveDatabaseStringSize(
  * Try to enrich base info with IsExtensible from the live bridge metadata.
  * Returns the same struct when bridge is unavailable or read fails.
  */
-export async function enrichWithBridge(
+async function enrichWithBridge(
   base: EdtBaseInfo,
   bridge: BridgeClient | undefined,
 ): Promise<EdtBaseInfo> {

@@ -60,29 +60,3 @@ export async function validateWorkspacePath(workspacePath: string): Promise<{
     };
   }
 }
-
-/**
- * Sanitize workspace path
- * Remove any potentially dangerous characters
- */
-export function sanitizeWorkspacePath(workspacePath: string): string {
-  let sanitized = path.normalize(workspacePath);
-  sanitized = sanitized.replace(/\0/g, '');
-
-  if (!path.isAbsolute(sanitized)) {
-    sanitized = path.resolve(sanitized);
-  }
-
-  return sanitized;
-}
-
-/**
- * Check if path is within allowed bounds
- */
-export function isPathWithinBounds(basePath: string, targetPath: string): boolean {
-  const normalizedBase = path.normalize(basePath);
-  const normalizedTarget = path.normalize(targetPath);
-
-  const relative = path.relative(normalizedBase, normalizedTarget);
-  return !relative.startsWith('..') && !path.isAbsolute(relative);
-}

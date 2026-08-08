@@ -18,10 +18,10 @@
  */
 import * as fs from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { SETTINGS, serializeValue, type Setting } from './settings.js';
+import { SETTINGS, serializeValue } from './settings.js';
 
 /** Bumped only when the on-disk shape changes in a way the loader must handle. */
-export const CONFIG_VERSION = 1;
+const CONFIG_VERSION = 1;
 
 export type ConfigObject = Record<string, any>;
 
@@ -36,12 +36,17 @@ export interface ResolvedConfigFiles {
   secrets: ConfigObject | null;
 }
 
-export function getAtPath(obj: ConfigObject | null | undefined, path: string): unknown {
-  if (!obj) return undefined;
+// `path` is optional because env-only settings have no config-file key at all
+// (see src/config/settings.ts). Every SETTINGS loop below would otherwise need
+// its own guard; taking undefined here as "nothing to read/write" keeps that in
+// one place.
+export function getAtPath(obj: ConfigObject | null | undefined, path: string | undefined): unknown {
+  if (!obj || !path) return undefined;
   return path.split('.').reduce<any>((acc, key) => (acc == null ? undefined : acc[key]), obj);
 }
 
-export function setAtPath(obj: ConfigObject, path: string, value: unknown): void {
+export function setAtPath(obj: ConfigObject, path: string | undefined, value: unknown): void {
+  if (!path) return;
   const keys = path.split('.');
   const last = keys.pop()!;
   let cursor = obj;
@@ -160,7 +165,7 @@ export function toEnvRecord(files: Pick<ResolvedConfigFiles, 'baseDir' | 'config
 export function defaultPathEnv(baseDir: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const setting of SETTINGS) {
-    if (setting.type !== 'path' || typeof setting.default !== 'string' || setting.default === '') continue;
+    if (!setting.path || setting.type !== 'path' || typeof setting.default !== 'string' || setting.default === '') continue;
     out[setting.env] = isAbsolute(setting.default) ? setting.default : resolve(baseDir, setting.default);
   }
   return out;
@@ -192,12 +197,4 @@ export function writeSecretsFile(secretsPath: string, secrets: ConfigObject): vo
     return;
   }
   fs.writeFileSync(secretsPath, JSON.stringify(ordered, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
-}
-
-/** Settings whose value in the config differs from what the environment already provides. */
-export function shadowedSettings(env: NodeJS.ProcessEnv, envRecord: Record<string, string>): Setting[] {
-  return SETTINGS.filter(s => {
-    const fromEnv = env[s.env];
-    return fromEnv !== undefined && envRecord[s.env] !== undefined && fromEnv !== envRecord[s.env];
-  });
 }

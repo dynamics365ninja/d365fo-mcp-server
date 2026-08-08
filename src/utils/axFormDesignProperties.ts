@@ -15,7 +15,7 @@
  */
 
 /** Direct-child properties of <Design> the serialiser writes. */
-export const AX_FORM_DESIGN_PROPERTIES = new Set([
+const AX_FORM_DESIGN_PROPERTIES = new Set([
   'Caption',
   'ColumnsMode',
   'DataSource',

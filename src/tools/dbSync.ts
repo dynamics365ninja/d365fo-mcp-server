@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs/promises';
-import { Parser } from 'xml2js';
+import { Parser } from '../utils/xml.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { defaultPackagesRoot } from '../utils/packagesRoot.js';
 import { withOperationLock } from '../utils/operationLocks.js';

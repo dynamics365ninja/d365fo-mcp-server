@@ -69,7 +69,7 @@ function stateDir(): string {
 }
 
 /** Records which directory holds this user's installation. */
-export const installPointerFile = resolve(stateDir(), 'install.json');
+const installPointerFile = resolve(stateDir(), 'install.json');
 
 /**
  * The data directory named by a pointer file, or null.
