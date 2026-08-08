@@ -216,3 +216,96 @@ describe('xppMethodSourceForXml', () => {
     expect(xppMethodSourceForXml('   \n  ')).toBe('');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Shapes below were generated through the real generator, written into a model
+// and compiled with xppc.exe 7.0.7996.33 — "Errors: 0, Warnings: 0". The run
+// was proved to actually reach the file by injecting a missing semicolon and
+// confirming the compiler reported it ("';' expected" with coordinates), so the
+// pass is evidence rather than a check that silently skipped.
+//
+// Indentation does not affect X++ validity; what the compile establishes is
+// that the generator emits code that builds first time, and these expectations
+// pin the layout so it keeps matching shipped platform code.
+// ---------------------------------------------------------------------------
+
+describe('reindentXppSource — compiler-validated switch shapes', () => {
+  it('keeps consecutive fall-through labels on one level and indents the shared body', () => {
+    // 3 of 40 sampled shipped classes put two labels in a row; all of them do
+    // it this way, which is why a label must close the previous label's level
+    // before opening its own rather than stair-stepping.
+    const input = 'public str f(int _k)\n{\nswitch (_k)\n{\ncase 1:\ncase 2:\nreturn \'low\';\ndefault:\nreturn \'none\';\n}\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public str f(int _k)',
+      '    {',
+      '        switch (_k)',
+      '        {',
+      '            case 1:',
+      '            case 2:',
+      "                return 'low';",
+      '            default:',
+      "                return 'none';",
+      '        }',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('restores the outer case level after a nested switch closes', () => {
+    const input = 'public int f(int _a, int _b)\n{\nswitch (_a)\n{\ncase 1:\nswitch (_b)\n{\ncase 10:\nreturn 11;\n}\ncase 2:\nreturn 20;\n}\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public int f(int _a, int _b)',
+      '    {',
+      '        switch (_a)',
+      '        {',
+      '            case 1:',
+      '                switch (_b)',
+      '                {',
+      '                    case 10:',
+      '                        return 11;',
+      '                }',
+      '            case 2:',
+      '                return 20;',
+      '        }',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('handles a case body wrapped in its own braces', () => {
+    const input = 'public str f(int _k)\n{\nswitch (_k)\n{\ncase 1:\n{\nstr local = \'one\';\nreturn local;\n}\ndefault:\n{\nreturn \'other\';\n}\n}\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public str f(int _k)',
+      '    {',
+      '        switch (_k)',
+      '        {',
+      '            case 1:',
+      '                {',
+      "                    str local = 'one';",
+      '                    return local;',
+      '                }',
+      '            default:',
+      '                {',
+      "                    return 'other';",
+      '                }',
+      '        }',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('indents break with the rest of the case body', () => {
+    // 33 of 33 sampled shipped classes indent `break` under its label.
+    const input = 'public void f(NoYes _flag)\n{\nswitch (_flag)\n{\ncase NoYes::Yes:\ncounter++;\nbreak;\ndefault:\nbreak;\n}\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void f(NoYes _flag)',
+      '    {',
+      '        switch (_flag)',
+      '        {',
+      '            case NoYes::Yes:',
+      '                counter++;',
+      '                break;',
+      '            default:',
+      '                break;',
+      '        }',
+      '    }',
+    ].join('\n'));
+  });
+});
