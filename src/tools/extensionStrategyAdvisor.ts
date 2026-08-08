@@ -459,7 +459,7 @@ function findMatchingRules(goal: string, scenario?: string): StrategyRule[] {
   const lower = goal.toLowerCase();
 
   // 1) Filter by scenario if provided
-  let candidates = scenario
+  const candidates = scenario
     ? STRATEGY_RULES.filter(r => r.scenarios.includes(scenario))
     : [...STRATEGY_RULES];
 

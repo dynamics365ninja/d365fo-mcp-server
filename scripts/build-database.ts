@@ -5,7 +5,6 @@
 
 // Load configuration onto process.env — MUST stay the first import (see src/bootstrapEnv.ts).
 import '../src/bootstrapEnv.js';
-import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 import { XppSymbolIndex } from '../src/metadata/symbolIndex.js';

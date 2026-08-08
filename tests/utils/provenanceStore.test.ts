@@ -2,7 +2,7 @@
  * provenanceStore tests — grounding tokens, TTL, object binding, enforcement.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   createProvenanceToken,
   getProvenanceBundle,
@@ -122,7 +122,7 @@ describe('HMAC-signed tokens (GROUNDING_SECRET)', () => {
   it('rejects a tampered signed token', () => {
     process.env.GROUNDING_SECRET = 'test-secret';
     const token = createProvenanceToken({ goal: 'test', objectName: 'CustTable' });
-    const [prefix, payload, mac] = token.split('.');
+    const [prefix, , mac] = token.split('.');
     const forgedPayload = Buffer.from(
       JSON.stringify({ o: 'SalesTable', e: Date.now() + 60 * 60 * 1000 }), 'utf8',
     ).toString('base64url');

@@ -14,14 +14,33 @@ export default defineConfig({
     exclude: [...configDefaults.exclude, '**/*.integration.test.ts', '**/.claude/worktrees/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text-summary', 'json-summary', 'json', 'html'],
       exclude: [
         'node_modules/',
         'dist/',
         '**/*.test.ts',
         '**/*.spec.ts',
         'scripts/',
+        '.claude/worktrees/**',
       ],
+      // RATCHET, not a target. Measured on the full suite at the commit that
+      // introduced these numbers: 61.36 statements / 52.30 branches /
+      // 67.01 functions / 62.94 lines. Each threshold sits ~2 points below its
+      // measurement so ordinary churn does not turn CI red, while a real drop
+      // (deleting tests, adding a large untested module) does.
+      //
+      // Coverage was configured and @vitest/coverage-v8 installed long before
+      // anything ran it, so these numbers were invisible and unenforceable.
+      // The .github/workflows/ci.yml `coverage` job is what makes them bite.
+      //
+      // Raise these when coverage rises. Never lower them to make a build green
+      // — lowering the floor is how a ratchet silently becomes decoration.
+      thresholds: {
+        statements: 59,
+        branches: 50,
+        functions: 64,
+        lines: 60,
+      },
     },
     testTimeout: 30000,
     hookTimeout: 30000,

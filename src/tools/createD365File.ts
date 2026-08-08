@@ -2251,7 +2251,7 @@ ${defaultParamGroupXml}
     //     </CellContents></TablixCell> then depth-count-walk the next N-1 TablixCells
     //     and replace any non-empty ones with <TablixCell />.
     xml = xml.replace(/(<Text><!\[CDATA\[)([\s\S]*?)(\]\]><\/Text>)/, (_whole, open, rdl, close) => {
-      let fixedRdl = rdl;
+      const fixedRdl = rdl;
       const patches: { start: number; end: number }[] = [];
 
       const csRe = /<ColSpan>(\d+)<\/ColSpan>/g;
@@ -5179,7 +5179,7 @@ export async function handleCreateD365File(
     // Not awaited: the validation goes through the sequential bridge stdin/stdout
     // pipe and can take 60s+, which would block all subsequent MCP calls.
     // See: https://github.com/dynamics365ninja/d365fo-mcp-server/issues/407
-    let bridgeValidation = '';
+    const bridgeValidation = '';
     bridgeValidateAfterWrite(
       context?.bridge,
       args.objectType,

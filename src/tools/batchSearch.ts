@@ -223,7 +223,7 @@ export async function batchSearchTool(request: CallToolRequest, context: XppServ
       }
     }
 
-    let dedupStats = { total: 0 };
+    const dedupStats = { total: 0 };
     if (args.deduplicate) {
       const seenKeys = new Map<string, number>(); // key → 1-based query index
 

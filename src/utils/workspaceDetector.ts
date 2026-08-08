@@ -99,7 +99,7 @@ async function findProjectFiles(
     }
 
     return projectFiles;
-  } catch (error) {
+  } catch {
     // Directory not accessible or doesn't exist
     return [];
   }

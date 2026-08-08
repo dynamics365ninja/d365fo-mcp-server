@@ -130,7 +130,7 @@ export async function verifyD365ProjectTool(
     //   1) Explicit args.modelName
     //   2) .mcp.json / env var (configModelName)
     //   3) Stem of the .rnrproj filename  (structure: <base>\<pkg>\<model>\<model>.rnrproj)
-    let actualModelName: string =
+    const actualModelName: string =
       args.modelName ||
       configModelName ||
       (resolvedProjectPath ? path.basename(resolvedProjectPath, path.extname(resolvedProjectPath)) : '') ||
@@ -304,7 +304,7 @@ export async function verifyD365ProjectTool(
     const projOk      = results.filter((r) => r.projectStatus === 'ok').length;
     const projMissing = results.filter((r) => r.projectStatus === 'missing').length;
 
-    let summaryLines = [
+    const summaryLines = [
       `- Checked: ${results.length}`,
       `- On disk ✅: ${diskOk}   Missing from disk ❌: ${diskMissing}`,
     ];

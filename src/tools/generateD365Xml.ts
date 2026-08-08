@@ -460,7 +460,7 @@ ${enumValuesXml}${isExtensibleXml}</AxEnum>
 \t\t<Methods xmlns="">
 \t\t\t<Method>
 \t\t\t\t<Name>classDeclaration</Name>
-\t\t\t\t<Source><!\[CDATA[
+\t\t\t\t<Source><![CDATA[
     [Form]
     public class ${formName} extends FormRun
     {

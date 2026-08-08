@@ -370,7 +370,7 @@ export async function handleGenerateSmartReport(
   const primitiveOfSync = (edt: string | undefined): string | undefined =>
     edt ? edtPrimitiveCache.get(edt) : undefined;
 
-  let reportFields: ReportFieldSpec[] = [];
+  const reportFields: ReportFieldSpec[] = [];
 
   // Strategy 1: copyFrom — read fields from existing report's TmpTable
   if (copyFrom) {
@@ -671,7 +671,7 @@ export async function handleGenerateSmartReport(
   // Class-level attributes
   // PreProcess: no [SRSReportParameterAttribute] — contract is passed via Controller
   // aotQuery: add [SRSReportQueryAttribute]
-  let dpAttrLines: string[] = [];
+  const dpAttrLines: string[] = [];
   if (!preProcess) dpAttrLines.push(`    SRSReportParameterAttribute(classStr(${contractClassName}))`);
   if (aotQuery)   dpAttrLines.push(`    SRSReportQueryAttribute(queryStr(${aotQuery}))`);
   const dpClassAttr = dpAttrLines.length > 0

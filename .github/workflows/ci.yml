@@ -1,0 +1,115 @@
+name: ci
+
+# Fast-fail quality gates that do NOT need a D365FO VM. Split out from
+# eval-gate.yml so the cheap checks (type-check, lint) report in ~30s instead of
+# waiting behind the full 2,800-test suite, and so a formatting/lint regression
+# is distinguishable from a behavioural one in the checks list.
+#
+# eval-gate.yml remains the suite + golden/knowledge/coverage-matrix gate. This
+# workflow adds: tsc --noEmit, the Biome lint gate, v8 test coverage with a
+# ratchet, and the VM-free dispatch integration tier that previously had no
+# runner at all.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A force-push or a second push to the same PR should cancel the in-flight run
+# rather than queue behind it — these jobs are pure functions of the tree.
+# `main` pushes are never cancelled: their result is the branch's record.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24.x'
+
+jobs:
+  # Cheapest signal first. `npm run build` in eval-gate.yml also type-checks, but
+  # it emits to dist/ and runs esbuild afterwards; this is the same check in a
+  # fraction of the time, so a type error is reported before anything expensive.
+  #
+  # NOTE: tsconfig.json `include` is "src/**/*" — tests/ and scripts/ are NOT
+  # covered here. The lint job below is the only automated check those files get.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: tsc --noEmit
+        run: npm run typecheck
+
+  # Biome, configured in biome.jsonc. Read the header comment there before
+  # widening the rule set: the default recommended preset reports 3,391 findings
+  # against this tree, so rules were turned on individually and the disabled ones
+  # each carry their count.
+  #
+  # This gate is LINT ONLY. The formatter is configured but not enforced —
+  # 531/535 files predate it and a sweep would destroy `git blame`.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Biome lint
+        run: npm run lint
+
+  # Coverage was configured in vitest.config.ts (and @vitest/coverage-v8 has been
+  # a devDependency) since before this workflow existed, but nothing ever ran it,
+  # so the thresholds were never enforced and nobody could see a regression.
+  #
+  # The thresholds in vitest.config.ts are a RATCHET, set a couple of points
+  # below the measured value so normal churn does not fail the build. Raise them
+  # when coverage rises; never lower them to make a red build green.
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Unit tests with v8 coverage (thresholds enforced)
+        run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  # tests/**/*.integration.test.ts is a separate tier (vitest.integration.config.ts,
+  # `npm run test:integration`) that the default `vitest run` deliberately excludes.
+  # tests/dispatch.integration.test.ts is VM-free — it drives a request through the
+  # real registerToolHandler router with a fake MCP server — but until now NO
+  # workflow ran it, so a regression in server-mode gating, dedup, progress
+  # channels or response capping shipped unnoticed.
+  #
+  # The other file in that tier (label-references.integration.test.ts) self-skips
+  # unless D365FO_XREF_INTEGRATION is set, so running the whole tier here is safe.
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Integration tier (VM-free)
+        run: npm run test:integration

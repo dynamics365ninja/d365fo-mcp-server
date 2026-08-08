@@ -15,12 +15,6 @@ import { validateFormPatternXml } from '../../src/validation/formPatternValidato
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** Simple helper to check XML for element presence and nesting */
-const containsElement = (xml: string, tag: string, value?: string): boolean => {
-  if (value) return xml.includes(`<${tag}>${value}</${tag}>`) || xml.includes(`<${tag} xmlns="">${value}</${tag}>`);
-  return xml.includes(`<${tag}>`) || xml.includes(`<${tag} `);
-};
-
 /** Check that an element with given Name appears in the XML */
 const hasNamedControl = (xml: string, name: string): boolean =>
   xml.includes(`<Name>${name}</Name>`);

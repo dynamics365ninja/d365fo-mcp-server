@@ -3,7 +3,7 @@
  * Tests for configurable object name suffixes (EXTENSION_SUFFIX).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { getObjectSuffix, applyObjectSuffix } from '../../src/utils/modelClassifier';
 
 describe('getObjectSuffix', () => {

@@ -39,7 +39,7 @@ interface XmlRefViolation {
 }
 
 function extractTagValues(xml: string, tag: string): string[] {
-  const re = new RegExp(`<${tag}>([^<]+)<\/${tag}>`, 'gi');
+  const re = new RegExp(`<${tag}>([^<]+)</${tag}>`, 'gi');
   const results: string[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(xml)) !== null) {

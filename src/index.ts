@@ -104,7 +104,7 @@ process.on('uncaughtException', (err) => {
   process.stderr.write(`[d365fo-mcp] ⚠️ Uncaught exception (server staying up): ${err?.stack ?? err}\n`);
 });
 
-const PORT = parseInt(process.env.PORT || '8080');
+const PORT = parseInt(process.env.PORT || '8080', 10);
 // Derive server root from this file's location so paths are absolute
 // regardless of process.cwd() — critical when VS Code launches this as stdio subprocess.
 const __serverDir = dirname(fileURLToPath(import.meta.url));

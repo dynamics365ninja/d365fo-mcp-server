@@ -394,13 +394,16 @@ function buildCoCTemplate(
 
   template += returnType + ' ' + methodName + '(';
 
-  const paramStrings = parameters.map(p => {
-    let ps = p.type + ' ' + p.name;
-    if (p.defaultValue) {
-      ps += ' = ' + p.defaultValue;
-    }
-    return ps;
-  });
+  // Bare parameter types only — NEVER echo the base method's defaults here.
+  // A CoC wrapper that repeats `str _message = "Hi"` is exactly what validate_code
+  // reports as COC001 (error) and what the coc-authoring knowledge topic forbids:
+  // the base method's defaults are already in effect by the time `next` runs, and
+  // re-declaring them shadows the base value on every call. This builder was
+  // copy-pasted from buildSignatureString (where defaults ARE correct), so the
+  // default-value branch has to be dropped deliberately — and it cannot be caught
+  // downstream, because the template strips access modifiers and COC001's regex
+  // only fires on lines that carry one.
+  const paramStrings = parameters.map(p => p.type + ' ' + p.name);
   template += paramStrings.join(', ');
   template += ')\n';
   template += '\t{\n';

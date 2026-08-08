@@ -50,7 +50,7 @@ export interface AuditResult {
 export type Allowlist = Record<string, string>;
 
 function isAllowed(name: string, allow: Allowlist): boolean {
-  if (Object.prototype.hasOwnProperty.call(allow, name)) return true;
+  if (Object.hasOwn(allow, name)) return true;
   // Fully-qualified .NET types are recognised by namespace prefix.
   return name.startsWith('System.') || name.startsWith('Microsoft.');
 }

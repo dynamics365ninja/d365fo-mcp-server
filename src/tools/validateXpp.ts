@@ -296,8 +296,17 @@ function checkCocDefaultParam(code: string): ValidationViolation[] {
   const lines = code.split('\n');
   lines.forEach((rawLine, i) => {
     if (rawLine.trimStart().startsWith('//')) return;
-    // Method-like line with a default param: "public Foo method(Type _p = val)"
-    if (/\b(public|protected|private|internal)\b.*\([^)]*=\s*[^,)]+\)/.test(rawLine)) {
+    // Method-like line with a default param: "public Foo method(Type _p = val)".
+    // The second alternative catches declarations with NO access modifier (legal
+    // X++ — members default to public). get_method's CoC template deliberately
+    // strips access modifiers, so a modifier-only regex misses the single most
+    // likely source of this defect: an agent pasting that template verbatim.
+    // It is anchored to a whole-line declaration (no trailing ';') so that call
+    // statements containing '=' inside parens — strFmt("a = %1", x) — don't match.
+    const withModifier = /\b(public|protected|private|internal)\b.*\([^)]*=\s*[^,)]+\)/.test(rawLine);
+    const bareDeclaration =
+      /^\s*(?:(?:static|final|abstract|display|edit|server|client)\s+)*[A-Za-z_]\w*\s+[A-Za-z_]\w*\s*\([^)]*=\s*[^,)]+\)\s*$/.test(rawLine);
+    if (withModifier || bareDeclaration) {
       // Skip constructors (new()) — defaults there are intentional
       if (/\bnew\s*\(/.test(rawLine)) return;
       // Skip parm* accessor methods (standard DataContract pattern: parmX(T _v = v))
