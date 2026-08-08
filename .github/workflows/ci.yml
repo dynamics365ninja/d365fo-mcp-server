@@ -91,6 +91,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # tests/packaging/publishedFiles.test.ts inspects dist/ and asserts, when
+      # CI is set, that it was NOT skipped — a guard against exactly this job
+      # silently dropping the packaging gate. So the build has to happen first,
+      # the same way eval-gate.yml does it.
+      - name: Build (the packaging tests read dist/)
+        run: npm run build
       - name: Unit tests with v8 coverage (thresholds enforced)
         run: npm run test:coverage
       - name: Upload coverage report
