@@ -5,7 +5,6 @@ import { getConfigManager } from '../utils/configManager.js';
 import { SERVER_MODE, LOCAL_TOOLS, isToolAllowedInMode } from '../server/serverMode.js';
 import { BRIDGE_BACKED_TOOLS, awaitBridgeReady } from '../bridge/bridgeReadiness.js';
 import { searchUnifiedTool } from './searchUnified.js';
-import { batchGetInfoTool } from './batchGetInfo.js';
 import { getObjectInfoTool } from './getObjectInfo.js';
 import { findReferencesTool } from './findReferences.js';
 import { getMethodTool } from './getMethod.js';
@@ -265,8 +264,6 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       return (async () => { switch (toolName) {
       case 'search':
         return searchUnifiedTool(request, context);
-      case 'batch_get_info':
-        return batchGetInfoTool(request, context);
       case 'get_object_info':
         return getObjectInfoTool(request, context);
       case 'generate_object':        return generateObjectTool(request, context);

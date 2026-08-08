@@ -3,7 +3,7 @@
  * payload, which is sent to the model on (at least) every new session and is
  * the server's largest fixed token cost.
  *
- * Rationale: the 26 tool schemas are verbose on purpose (the descriptions encode
+ * Rationale: the 25 tool schemas are verbose on purpose (the descriptions encode
  * hard-won D365FO patterns that prevent failed/retried calls), so the goal is
  * NOT to minimise blindly — it is to make the size *visible and bounded* so it
  * cannot creep upward unnoticed. Lower these ceilings whenever the schema is
@@ -23,8 +23,8 @@ import { createXppMcpServer } from '../../src/server/mcpServer';
 // the human-readable log line, never for assertions.
 const CHARS_PER_TOKEN = 4;
 
-// Ceilings in characters of serialized JSON. Current actual ≈ 63,175 · largest
-// tool d365fo_file ≈ 9,6xx (ahead of generate_object ≈ 8,5xx). Raised
+// Ceilings in characters of serialized JSON. Current actual = 63,255 · largest
+// tool d365fo_file = 9,888 (ahead of generate_object = 8,602). Raised
 // deliberately whenever a genuinely new AOT capability lands — `service` +
 // `service-group` objectTypes, then d365fo_file's add-/remove-delete-action
 // (findings #36), generate_object scaffold `fields[]`/`preview` (#21), and the
@@ -40,7 +40,6 @@ const CHARS_PER_TOKEN = 4;
 // additionalProperties:true, so dataField/dataSource/fieldGroupName cost nothing
 // on the wire — only the prose naming them does, and that was paid for by
 // tightening the `params` description rather than by moving the ceiling.
-// Headroom is small on purpose so creep is caught early.
 //
 // Raised for labels(action="search") maxResults/verbose (#832): a broad phrase
 // query returned 30 four-line blocks (~2,5 kB per call), so ~230 wire chars buy
@@ -52,6 +51,14 @@ const CHARS_PER_TOKEN = 4;
 // costs — checking three objects went from three ListTools-priced round trips
 // to one. The single-target `targetFilter`/`targetElementType` descriptions
 // were tightened at the same time to pay for part of it.
+//
+// get_object_info absorbing batch_get_info as `objects[]` (#831) gives a little
+// back: the plural form cost 1,002 chars but the retired tool returned 1,047,
+// and naming the entry `objectName` (the key verify_d365fo_project and
+// run_bp_check already use) added 42 more.
+//
+// Headroom is small on purpose so creep is caught early: both ceilings are the
+// next round hundred above the measured payload.
 const TOTAL_BUDGET = 63_600;
 const LARGEST_TOOL_BUDGET = 9_900;
 
@@ -73,7 +80,7 @@ describe('tool schema token budget', () => {
       `[tool-budget] ${tools.length} tools · ${chars} chars ≈ ${Math.round(chars / CHARS_PER_TOKEN)} tokens ` +
       `(budget ${TOTAL_BUDGET} chars)`,
     );
-    expect(tools.length).toBe(26);
+    expect(tools.length).toBe(25);
     expect(chars).toBeLessThan(TOTAL_BUDGET);
   });
 

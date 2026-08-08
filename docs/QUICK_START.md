@@ -261,7 +261,7 @@ A healthy startup logs `✅ C# bridge initialized (metadataAvailable: true, xref
 
 | Topic | Documentation |
 |-------|--------------|
-| All 26 tools | [MCP_TOOLS.md](MCP_TOOLS.md) |
+| All 25 tools | [MCP_TOOLS.md](MCP_TOOLS.md) |
 | Real-world tool chains (CoC, forms, security, reports) | [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) |
 | Full `.mcp.json` reference | [MCP_CONFIG.md](MCP_CONFIG.md) |
 | Every setting and its environment variable | [CONFIGURATION.md](CONFIGURATION.md) |

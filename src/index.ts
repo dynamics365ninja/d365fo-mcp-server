@@ -644,7 +644,7 @@ async function main() {
                      SERVER_MODE === 'read-only' ? totalTools - localToolCount : totalTools;
     const toolDesc = SERVER_MODE === 'write-only' ? `(${Array.from(LOCAL_TOOLS).join(', ')})` :
                     SERVER_MODE === 'read-only' ? '(all except local tools)' :
-                    '(2 discovery + 1 labels + 3 object-info + 2 intelligent + 2 smart-gen + 1 file-ops + 1 pattern-analysis + 5 security-ext + 5 sdlc-build + 2 code-review + 2 code-quality)';
+                    '(1 discovery + 1 labels + 3 object-info + 2 intelligent + 2 smart-gen + 1 file-ops + 1 pattern-analysis + 5 security-ext + 5 sdlc-build + 2 code-review + 2 code-quality)';
     log.ok(`Registered ${toolCount} X++ MCP tools ${toolDesc}`);
     serverState.isReady = true;
     serverState.isHealthy = true;
@@ -766,13 +766,12 @@ async function main() {
       const toolCatalog = [
         { icon: '🔍', category: 'Search & Discovery', tools: [
           { name: 'search',                       desc: 'Search 584K+ symbols: single, batch (queries[]) or scope=extensions' },
-          { name: 'batch_get_info',               desc: 'Get detailed info for up to 10 objects in one parallel call' },
         ]},
         { icon: '🏷️ ', category: 'Label Management', tools: [
           { name: 'labels',                       desc: 'Unified label ops: action=search|info|create|rename (read/write)' },
         ]},
         { icon: '📊', category: 'Advanced Object Info', tools: [
-          { name: 'get_object_info',              desc: 'Read any object by objectType: class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro' },
+          { name: 'get_object_info',              desc: 'Read one object (objectType, name) or many in one call (objects[]): class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro' },
           { name: 'get_method',                   desc: 'Method signature/source/both via include= (required before CoC extensions)' },
           { name: 'find_references',              desc: 'Where-used analysis across the entire codebase' },
         ]},
