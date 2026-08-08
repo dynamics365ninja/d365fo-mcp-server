@@ -48,18 +48,19 @@ namespace D365MetadataBridge.Protocol
         }
 
         /// <summary>
-        /// Helper to extract a boolean parameter from Params
+        /// Helper to extract a boolean parameter from Params.
+        /// Reads through ParamCoercion so this path and HandleBatchModify cannot disagree
+        /// about what a given value means.
         /// </summary>
         public bool? GetBoolParam(string name)
         {
             if (Params == null || Params.Value.ValueKind != JsonValueKind.Object)
                 return null;
 
-            if (Params.Value.TryGetProperty(name, out var prop) &&
-                (prop.ValueKind == JsonValueKind.True || prop.ValueKind == JsonValueKind.False))
-                return prop.GetBoolean();
+            if (!Params.Value.TryGetProperty(name, out var prop))
+                return null;
 
-            return null;
+            return ParamCoercion.ToBool(prop, name);
         }
 
         /// <summary>
@@ -113,6 +114,80 @@ namespace D365MetadataBridge.Protocol
                 }
             }
             return dict;
+        }
+    }
+
+    /// <summary>
+    /// Parameter coercion shared by BOTH dispatch paths.
+    ///
+    /// The single-op path reads its params straight off the request's JsonElement; the
+    /// batch path gets them as Dictionary&lt;string, object&gt;, whose values System.Text.Json
+    /// boxes as JsonElement. JsonElement does not implement IConvertible, so the batch
+    /// path's Convert.ToBoolean(value) threw InvalidCastException ("Object must implement
+    /// IConvertible") for EVERY operation carrying a bool — mandatory, allowDuplicates,
+    /// alternateKey, extendBaseFieldGroup — and HandleBatchModify's per-op catch reported
+    /// that cast as the operation's reason for failing. Booleans are read by JSON kind, in
+    /// one place, so the two paths cannot drift apart again.
+    /// </summary>
+    public static class ParamCoercion
+    {
+        /// <summary>
+        /// Boolean from a raw (boxed) batch parameter value.
+        /// </summary>
+        public static bool? ToBool(object? value, string paramName)
+        {
+            switch (value)
+            {
+                case null: return null;
+                case bool b: return b;
+                case JsonElement el: return ToBool(el, paramName);
+                case string s: return ParseBoolText(s, paramName, s);
+                default:
+                    throw new ArgumentException(
+                        $"Parameter '{paramName}' must be a boolean — got {value.GetType().Name} '{value}'.");
+            }
+        }
+
+        /// <summary>
+        /// Boolean from a JSON value. Absent/null yields null so the caller's own default
+        /// applies; a value that is present but not readable as a boolean throws rather
+        /// than degrading to false — a silent false writes a field that is not mandatory,
+        /// or an index that allows duplicates, and reports success either way.
+        ///
+        /// The string spellings are accepted because the AxTable XML value is No/Yes and
+        /// callers reach for that form (#27); it is a typo, not a shape, that fails here.
+        /// </summary>
+        public static bool? ToBool(JsonElement el, string paramName)
+        {
+            switch (el.ValueKind)
+            {
+                case JsonValueKind.True: return true;
+                case JsonValueKind.False: return false;
+                case JsonValueKind.Null:
+                case JsonValueKind.Undefined: return null;
+                case JsonValueKind.String: return ParseBoolText(el.GetString(), paramName, el.GetRawText());
+                case JsonValueKind.Number when el.TryGetInt32(out var n) && (n == 0 || n == 1):
+                    return n == 1;
+                default:
+                    throw new ArgumentException(
+                        $"Parameter '{paramName}' must be a boolean — got {el.ValueKind} {el.GetRawText()}. " +
+                        "Accepted: true/false, \"true\"/\"false\", \"Yes\"/\"No\", 1/0.");
+            }
+        }
+
+        private static bool? ParseBoolText(string? text, string paramName, string received)
+        {
+            switch (text?.Trim().ToLowerInvariant())
+            {
+                case null:
+                case "": return null;
+                case "true": case "yes": case "1": return true;
+                case "false": case "no": case "0": return false;
+                default:
+                    throw new ArgumentException(
+                        $"Parameter '{paramName}' must be a boolean — got {received}. " +
+                        "Accepted: true/false, \"true\"/\"false\", \"Yes\"/\"No\", 1/0.");
+            }
         }
     }
 

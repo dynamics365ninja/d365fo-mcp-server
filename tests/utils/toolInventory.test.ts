@@ -30,8 +30,11 @@ describe('tool inventory contract', () => {
   });
 
   it('exposes the expected total tool count', () => {
-    expect(mcpServerToolNames).toHaveLength(25);
-    expect(startupCatalogToolNames).toHaveLength(25);
+    // 23 since get_method and suggest_edt were unpublished: their contracts moved
+    // into get_object_info(options.method) and prepare(fieldsHint), both of which
+    // already had the object in hand. Their handlers stay routable.
+    expect(mcpServerToolNames).toHaveLength(23);
+    expect(startupCatalogToolNames).toHaveLength(23);
   });
 
   it('keeps local-only tool set aligned with the published tool inventory', () => {
@@ -40,8 +43,8 @@ describe('tool inventory contract', () => {
       expect(publishedTools.has(toolName)).toBe(true);
     }
 
-    expect(LOCAL_TOOLS.size).toBe(10);
-    expect(mcpServerToolNames.filter(name => !LOCAL_TOOLS.has(name))).toHaveLength(15);
+    expect(LOCAL_TOOLS.size).toBe(9);
+    expect(mcpServerToolNames.filter(name => !LOCAL_TOOLS.has(name))).toHaveLength(14);
   });
 
   it('never tells the agent to call a tool that was retired by a consolidation', () => {

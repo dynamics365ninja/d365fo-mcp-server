@@ -12,10 +12,17 @@ export const labelsTool = {
       '• info → all translations for a labelId; without labelId lists label files (with labelFileId: physical .label.txt path per language).\n' +
       '• create → add a new label to an AxLabelFile across every language .label.txt (write). Label IDs describe MEANING — never add a model prefix; target the model\'s ORIGINAL label file, never an …_Extension… file. Fails if the label exists. Bulk: pass labels:[{labelId, translations}, …] with shared labelFileId/model at top level.\n' +
       '• update → overwrite the text of an EXISTING label; same args as create with corrected translations[] (write).\n' +
-      '• rename → rename a label ID across .label.txt + X++ + XML + index. Use dryRun=true first (write).',
+      '• rename → rename a label ID across .label.txt + X++ + XML + index. Use dryRun=true first (write).\n' +
+      'Write plumbing (paths, languages, sortLabels, allowExtensionLabelFile…) is auto-resolved; ' +
+      'override it via get_knowledge(kind="op-spec", topic="labels").',
     inputSchema: {
       type: 'object',
       properties: {
+        params: {
+          type: 'object',
+          additionalProperties: true,
+          description: 'Optional write plumbing (packagePath, projectPath, languages, sortLabels, allowExtensionLabelFile, …) — all auto-resolved when omitted. Contract: get_knowledge(kind="op-spec", topic="labels").',
+        },
         action: {
           type: 'string',
           enum: ['search', 'info', 'create', 'update', 'rename', 'list', 'list-files'],
@@ -91,50 +98,6 @@ export const labelsTool = {
             required: ['language', 'text'],
           },
         },
-        defaultComment: {
-          type: 'string',
-          description: '[create] Developer comment for languages without explicit comment.',
-        },
-        description: {
-          type: 'string',
-          description:
-            '[create] Label description (comment line in .label.txt). Defaults to VS project name from .rnrproj when omitted, then falls back to labelFileId. ' +
-            'Per-translation comment and defaultComment take priority.',
-        },
-        packageName: {
-          type: 'string',
-          description: '[create|rename] Package name for the model. Auto-resolved if omitted.',
-        },
-        packagePath: {
-          type: 'string',
-          description: '[create|rename] Root packages path. Auto-detected from environment config if omitted.',
-        },
-        projectPath: {
-          type: 'string',
-          description: '[create] Path to the .rnrproj project file. Auto-detected from .mcp.json if omitted.',
-        },
-        solutionPath: {
-          type: 'string',
-          description: '[create] Path to the .sln solution directory. Fallback to find .rnrproj if projectPath is not set.',
-        },
-        addToProject: {
-          type: 'boolean',
-          description: '[create] Add label file XML descriptors to the VS project (default: true).',
-        },
-        createLabelFileIfMissing: {
-          type: 'boolean',
-          description: '[create] Create the AxLabelFile structure if missing (default: true). A wrong-path guard still fails loudly when the model directory is not found, so no phantom file is produced. Set false to fail fast instead.',
-        },
-        sortLabels: {
-          type: 'boolean',
-          description: '[create] Sort labels alphabetically in .label.txt (default true, from LABEL_SORT_ORDER env; false = append at end).',
-        },
-        languages: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '[create] Restrict which language .label.txt files are written (e.g. ["en-US"]). Omitted = every language folder present in the model.',
-        },
-        // action=rename
         oldLabelId: {
           type: 'string',
           description: '[rename] REQUIRED. Current label ID (e.g. MyOldField).',
@@ -143,23 +106,9 @@ export const labelsTool = {
           type: 'string',
           description: '[rename] REQUIRED. New label ID — must be alphanumeric, no spaces.',
         },
-        searchPaths: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '[rename] Additional absolute directory paths to scan for X++ / XML references.',
-        },
         dryRun: {
           type: 'boolean',
           description: '[rename] Preview changes without writing anything (default: false). Use this first!',
-        },
-        // shared write knob
-        updateIndex: {
-          type: 'boolean',
-          description: '[create|rename] Update the MCP label index after writing (default: true).',
-        },
-        allowExtensionLabelFile: {
-          type: 'boolean',
-          description: '[create|rename] Allow writing to a label file EXTENSION ("_Extension" marker). Default false — new labels belong in the model\'s ORIGINAL label file.',
         },
       },
       required: ['action'],

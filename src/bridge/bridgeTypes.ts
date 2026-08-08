@@ -441,6 +441,12 @@ export interface BridgeWriteResult {
   fieldType?: string;
   propertyPath?: string;
   propertyValue?: string;
+  /**
+   * Properties the caller asked for that the bridge could NOT write — an EDT stringSize
+   * on a non-string base type, a DataSource on a control that has none. Present on the
+   * create ops and on add-control; the write itself still succeeded.
+   */
+  unsupportedProperties?: string[];
   api?: string;
 }
 

@@ -5,6 +5,7 @@
  */
 
 import { FormPatternTemplates, FormPattern } from './formPatternTemplates.js';
+import { escapeXml as escapeXmlText } from './xmlEscape.js';
 import { ensureXppDocComment } from './xppDocGen.js';
 import { decodeXmlEntitiesFromXppSource } from '../tools/modifyD365File.js';
 import { type FieldControlMap, controlForField } from './fieldControlTypes.js';
@@ -567,15 +568,13 @@ export class SmartXmlBuilder {
   }
 
   /**
-   * Escape XML special characters
+   * Escape XML special characters. Delegates to the shared escaper — every one
+   * of these call sites writes TEXT content, where the Microsoft serializer
+   * leaves quotes alone, so the old local `&quot;`/`&apos;` handling only made
+   * our files differ from shipped ones.
    */
   private escapeXml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
+    return escapeXmlText(text);
   }
 
   /**

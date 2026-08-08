@@ -150,6 +150,10 @@ describe('restart', () => {
 
     const p1 = client.restart();
     const p2 = client.restart();
+    // restart() awaits killChild before respawning (it must not build a second child while
+    // the old one still holds the packages directory), so the spawn stub only runs — and
+    // only then hands back resolveSpawn — a turn of the event loop later.
+    await new Promise(resolve => setImmediate(resolve));
     resolveSpawn();
     await Promise.all([p1, p2]);
     expect(spawnAndWaitReady).toHaveBeenCalledTimes(1);

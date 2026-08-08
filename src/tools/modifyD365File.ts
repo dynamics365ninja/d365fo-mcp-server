@@ -36,6 +36,7 @@ import {
   bridgeAddFieldModification, bridgeAddMenuItemToMenu,
   bridgeRefreshProvider,
 } from '../bridge/index.js';
+import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { ProjectFileManager, ProjectFileFinder } from './createD365File.js';
 import { heuristicEdtBaseType } from './generateSmartTable.js';
 import { normalizeD365Xml } from '../utils/d365XmlNormalizer.js';
@@ -52,6 +53,8 @@ import {
   isFormPatternEnforceEnabled,
 } from './validateFormPattern.js';
 import { validateEdtExtensionChange } from '../utils/edtExtensionValidator.js';
+import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../utils/xppSelectLint.js';
 import {
   getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
@@ -373,7 +376,9 @@ const directXmlReplaceCode = serializedOnFile(async (
  *
  * `propertyPath` is a bare element name (no XPath/dotted-path support).
  * Refuses to act if the element is missing (returns null so the caller
- * surfaces the original bridge error) or ambiguous (appears more than once).
+ * surfaces the original bridge error), ambiguous (appears more than once),
+ * or is not a leaf — string replacement can only express a text value, and
+ * writing one over an element that has children produces malformed XML.
  */
 const directXmlModifyProperty = serializedOnFile(async (
   filePath: string,
@@ -389,6 +394,20 @@ const directXmlModifyProperty = serializedOnFile(async (
 
     const tagName = propertyPath.split(/[./]/).pop()!;
 
+    // tagName is interpolated into RegExp source below. Anything that is not a
+    // plain XML element name has no meaning here anyway, and letting it through
+    // either throws on an unbalanced metacharacter (caught, surfacing a
+    // misleading "bridge error") or silently matches the wrong elements.
+    if (!/^[A-Za-z_][A-Za-z0-9_.:-]*$/.test(tagName)) {
+      return {
+        success: false,
+        message:
+          `❌ directXmlModifyProperty: '${propertyPath}' does not name a plain XML element ` +
+          `(resolved to "${tagName}") — nothing was written.`,
+      };
+    }
+    const tagRe = tagName.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+
     // Forms first: the bridge refuses modify-property for AxForm entirely, and the
     // generic path below cannot serve Design properties either — Caption/Style also
     // occur on controls, so it sees several matches and refuses (#37).
@@ -401,8 +420,9 @@ const directXmlModifyProperty = serializedOnFile(async (
       };
     }
 
-    const openTagRe = new RegExp(`<${tagName}\\b[^>]*>[\\s\\S]*?</${tagName}>`, 'g');
-    const selfClosingRe = new RegExp(`<${tagName}\\b([^>]*)/>`, 'g');
+    const openTagRe = new RegExp(`<${tagRe}\\b[^>]*>[\\s\\S]*?</${tagRe}>`, 'g');
+    const selfClosingRe = new RegExp(`<${tagRe}\\b([^>]*)/>`, 'g');
+    const openTagOnlyRe = new RegExp(`^<${tagRe}\\b[^>]*>`);
 
     const openMatches = content.match(openTagRe) ?? [];
     const selfClosingMatches = content.match(selfClosingRe) ?? [];
@@ -443,8 +463,30 @@ const directXmlModifyProperty = serializedOnFile(async (
       };
     }
 
+    // Leaf guard. The replacement below can only express a text value, so an
+    // element that has children must be refused: the old `>[\s\S]*?<` rewrite
+    // stopped at the FIRST child tag and produced `<Tag>NewValue<Child>…`,
+    // i.e. structurally broken XML written to disk and reported as success.
+    // Counting matches (above) does not catch this — one match can still be a
+    // container.
+    if (openMatches.length === 1) {
+      const inner = openMatches[0]
+        .replace(openTagOnlyRe, '')
+        .replace(new RegExp(`</${tagRe}>$`), '');
+      if (inner.includes('<')) {
+        return {
+          success: false,
+          message:
+            `❌ directXmlModifyProperty: <${tagName}> in ${filePath} contains child elements — ` +
+            `it holds structure, not a text value. Refusing to overwrite it (nothing was written).`,
+        };
+      }
+    }
+
+    // Function replacers throughout: `escapedValue` escapes XML metacharacters
+    // but not `$`, which a string replacement would read as a capture reference.
     const updated = openMatches.length === 1
-      ? content.replace(openTagRe, m => m.replace(/>[\s\S]*?</, `>${escapedValue}<`))
+      ? content.replace(openTagRe, m => `${openTagOnlyRe.exec(m)![0]}${escapedValue}</${tagName}>`)
       : content.replace(selfClosingRe, (_m, attrs) => `<${tagName}${attrs}>${escapedValue}</${tagName}>`);
 
     await writeFileAtomic(filePath, normalizeD365Xml(updated));
@@ -678,6 +720,20 @@ const directXmlAddIndex = serializedOnFile(async (
   allowDuplicates: boolean | undefined,
   alternateKey: boolean | undefined,
 ): Promise<{ success: boolean; message: string } | null> => {
+  // The bridge refuses an index with no fields (it writes <Fields /> — an index that
+  // compiles, warns about nothing and indexes nothing). This fallback runs precisely
+  // when the bridge call failed, so without the same gate it would catch the refusal
+  // and land the empty index anyway, under a ✅.
+  const namedFields = (fields ?? []).filter(f => typeof f === 'string' && f.trim() !== '');
+  if (namedFields.length === 0) {
+    return {
+      success: false,
+      message:
+        `Index '${indexName}' has no fields — pass indexFields as [{ fieldName: "<field>" }]. ` +
+        `An index with an empty <Fields /> collection compiles clean and indexes nothing.`,
+    };
+  }
+
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -703,22 +759,19 @@ const directXmlAddIndex = serializedOnFile(async (
       };
     }
 
-    const fieldElements = (fields ?? [])
+    const fieldElements = namedFields
       .map(f =>
         `\t\t\t\t<AxTableIndexField>\n` +
         `\t\t\t\t\t<DataField>${f}</DataField>\n` +
         `\t\t\t\t</AxTableIndexField>`)
       .join('\n');
-    const fieldsBlock = fieldElements
-      ? `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>`
-      : `\t\t\t<Fields />`;
 
     const newElement =
       `\t\t<AxTableIndex>\n` +
       `\t\t\t<Name>${indexName}</Name>\n` +
       `\t\t\t<AllowDuplicates>${allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n` +
       (alternateKey ? `\t\t\t<AlternateKey>Yes</AlternateKey>\n` : '') +
-      `${fieldsBlock}\n` +
+      `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>\n` +
       `\t\t</AxTableIndex>`;
 
     let updated: string;
@@ -1881,6 +1934,12 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     );
     if (memberPrefixNote) generationNote += memberPrefixNote;
 
+    // Settle a rebuild an earlier create/modify scheduled but did not wait for, so
+    // an object written moments ago resolves on the FIRST attempt. Without this the
+    // retry loop below would still recover — at the cost of a wasted bridge round
+    // trip plus a full rebuild. Free when no write is outstanding.
+    await debouncedRefresh.flush();
+
     let bridgeResult: { success: boolean; message: string } | null = null;
     let _bridgeRetried = false;
     // Retry loop: on the first null result with all required params present,
@@ -2928,12 +2987,17 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // Two BP rules fire on a field that compiles perfectly, so they are invisible
     // until a BP run several steps later — and one of them (the label copy) then
     // needs new labels, i.e. rework of what was just written. Say it here instead.
+    //
+    // The field-group note used to spell out a whole follow-up call, so the agent
+    // made one: every add-field manufactured a second round trip. It now points at
+    // operations[], where the group entry travels in the SAME call as the field.
     let addFieldBpNote = '';
     if (operation === 'add-field' && (objectType === 'table' || objectType === 'table-extension')) {
       const notes = [
-        `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup):\n` +
-        `   d365fo_file(action="modify", objectType="${objectType}", objectName="${objectName}", ` +
-        `operation="add-field-to-field-group", fieldName="${args.fieldName}", fieldGroupName="<group>")`,
+        `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup). ` +
+        `Send the group entry in the SAME call next time — d365fo_file(action="modify", ` +
+        `objectType="${objectType}", objectName="${objectName}", operations=[{operation:"add-field", …}, ` +
+        `{operation:"add-field-to-field-group", fieldName:"${args.fieldName}", fieldGroupName:"<group>"}]).`,
       ];
       if ((args as any).fieldEnumType) {
         notes.push(
@@ -2951,6 +3015,25 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         `(Pass autoCorrect=false to have corrections like this raise an error instead.)`
       : '';
 
+    // Re-index the modified object in-process. A modify changes the symbols the
+    // index holds (a renamed field, a new method), and the parser is right here —
+    // making the agent spend a round trip on update_symbol_index for a file this
+    // process just wrote, and another on the lookup that failed for want of it,
+    // was pure waste.
+    const indexNote = await upsertWrittenFileIntoIndex(actualFilePath, context);
+
+    // Verify the write here rather than leaving the caller to spend a
+    // verify_d365fo_project round trip asking what this call already knows.
+    // The project path resolved inside the addToProject branch is block-scoped,
+    // and a modify commonly runs with addToProject off — re-resolve it here so the
+    // .rnrproj check still happens (config reads are cached).
+    const verifyProjectPath =
+      args.projectPath || (await getConfigManager().getProjectPath()) || undefined;
+    const verifyNote = renderWriteVerification(
+      await verifyWrittenFile(actualFilePath, verifyProjectPath),
+    );
+    const bpNote = await runInlineBpCheck((args as any).bpCheck, objectType, objectName, context);
+
     return {
       content: [
         {
@@ -2958,7 +3041,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           text:
             `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}` +
+            `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}${verifyNote}${indexNote}${bpNote}` +
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
         },

@@ -53,12 +53,10 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
 
   // Object inspection
   get_object_info:                  read('Read object info'),
-  get_method:                       read('Read method signature/source'),
   security_info:                    read('Security info (artifact/coverage)'),
 
   // Analysis & guidance
   analyze_code:                     read('Analyze code (patterns/impl/completeness/API)'),
-  suggest_edt:                      read('Suggest EDT for field'),
   object_patterns:                         read('Patterns (table/form)'),
   get_knowledge:                    read('X++ knowledge / error help'),
   validate_object_naming:           read('Validate object naming'),

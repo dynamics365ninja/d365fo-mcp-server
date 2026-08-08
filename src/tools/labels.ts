@@ -62,7 +62,18 @@ const ACTION_ALIASES: Record<string, LabelAction> = {
 const LABEL_FILE_ACTIONS = new Set(['create-label-file', 'create-file', 'create-labelfile', 'new-label-file']);
 
 export async function labelsTool(request: CallToolRequest, context: XppServerContext) {
-  const rawArgs = { ...(request.params.arguments ?? {}) } as Record<string, any>;
+  // Write plumbing (packagePath, languages, sortLabels, …) left the wire schema —
+  // it is auto-resolved on the normal path, so publishing all thirteen knobs cost
+  // ~1.7 KB on every request to serve the rare call that overrides one. They are
+  // still accepted, flat or nested in `params`, exactly like d365fo_file's
+  // resolution overrides; contract via get_knowledge(kind="op-spec", topic="labels").
+  const incoming = { ...(request.params.arguments ?? {}) } as Record<string, any>;
+  const nested = (incoming.params && typeof incoming.params === 'object' && !Array.isArray(incoming.params))
+    ? incoming.params as Record<string, any>
+    : {};
+  delete incoming.params;
+  // Flat keys win: an explicit top-level value is the more specific statement.
+  const rawArgs = { ...nested, ...incoming };
   const rawAction = typeof rawArgs.action === 'string' ? rawArgs.action.trim().toLowerCase() : rawArgs.action;
 
   if (typeof rawAction === 'string') {

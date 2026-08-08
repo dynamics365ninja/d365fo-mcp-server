@@ -22,6 +22,7 @@ import {
   GENERATE_OBJECT_MODE_SPECS,
   renderGenerateObjectSpec,
 } from './generateObjectOpSpecs.js';
+import { LABELS_OVERRIDE_PARAMS, renderLabelsOpSpec } from './labelsOpSpecs.js';
 import { d365foFileTool } from '../server/toolSchemas/d365foFile.js';
 
 /**
@@ -35,6 +36,9 @@ const D365FO_FILE_OBJECT_TYPES: readonly string[] =
 
 /** Tool-qualified topics (`d365fo_file.add-index`) resolve to the bare key. */
 const TOOL_PREFIXES = ['d365fo_file.', 'd365fo_file:', 'generate_object.', 'generate_object:'];
+
+/** Topics that resolve to the `labels` write-plumbing contract. */
+const LABELS_TOPICS = ['labels', 'label', 'labels.create', 'labels.rename', 'create-label'];
 
 function normalize(topic: string): string {
   let t = topic.trim();
@@ -63,6 +67,11 @@ const D365FO_FILE_OVERRIDE_PARAMS: Record<string, string> = {
   packagePath: 'Base package path (default: auto-detected PackagesLocalDirectory).',
   solutionPath: 'VS solution directory — used to find the .rnrproj when projectPath is unset.',
   workspacePath: '[modify] Workspace path used to locate the object file.',
+  bpCheck:
+    '[create|modify] true = run the best-practice check on the object in THIS call, ' +
+    'instead of spending a round trip on run_bp_check afterwards. Off by default: ' +
+    'xppbp needs the compiler and takes seconds, which is the wrong trade for the common case. ' +
+    'The write result already carries an on-disk + .rnrproj verification without it.',
 };
 
 /** Every topic the lookup answers, grouped for the index listing. */
@@ -94,7 +103,57 @@ export function renderOpSpecIndex(unknownTopic?: string): string {
     '',
     'd365fo_file resolution overrides (any action, nested in `params`):',
     ...Object.entries(D365FO_FILE_OVERRIDE_PARAMS).map(([k, v]) => `  ${k}: ${v}`),
+    '',
+    'labels write plumbing (topic="labels", nested in `params`):',
+    `  ${Object.keys(LABELS_OVERRIDE_PARAMS).join(', ')}`,
   ].join('\n');
+}
+
+/**
+ * The op-spec section `prepare` carries in its own output.
+ *
+ * Deferring the parameter contracts out of the wire schema (#825) traded schema
+ * bytes for a DISCOVERY HOP: nearly every write flow then spent a round trip on
+ * get_knowledge(kind="op-spec", …) — or, worse, a failed write that returned the
+ * spec in its error. prepare already knows the objectType and, for a change, the
+ * method, so it can hand the contract over in the call the agent was making
+ * anyway. That is a few hundred bytes against a whole round trip.
+ *
+ * `operation` is used when the caller names one. Otherwise a change targeting a
+ * method is going to write one, so add-method's contract is the right guess; a
+ * change with no method has no confident guess and only gets the pointer.
+ */
+export function renderPrepareOpSpec(args: {
+  mode: 'change' | 'create';
+  objectType?: string;
+  operation?: string;
+  methodName?: string;
+}): string[] {
+  const { mode, objectType, operation, methodName } = args;
+  const lines: string[] = [];
+
+  if (mode === 'create') {
+    if (!objectType) return lines;
+    lines.push(`### Write contract — d365fo_file(action="create", objectType="${objectType}")`);
+    lines.push(renderCreatePropertySpec(objectType));
+  } else {
+    const op = operation && findKey(D365FO_FILE_OP_SPECS, normalize(operation))
+      ? findKey(D365FO_FILE_OP_SPECS, normalize(operation))!
+      : (methodName ? 'add-method' : undefined);
+    if (!op) {
+      lines.push(
+        '### Write contract',
+        'Pick the operation, then get_knowledge(kind="op-spec", topic="<operation>") for its parameters — ' +
+        'or pass `operation` to prepare and the contract comes back here.',
+      );
+      return lines;
+    }
+    lines.push(`### Write contract — d365fo_file(action="modify", operation="${op}")`);
+    lines.push(renderOpSpec(op));
+  }
+
+  lines.push('');
+  return lines;
 }
 
 /**
@@ -115,6 +174,8 @@ export function lookupOpSpec(topic?: string): string {
 
   const objectType = D365FO_FILE_OBJECT_TYPES.find(t => t.toLowerCase() === needle);
   if (objectType) return renderCreatePropertySpec(objectType);
+
+  if (LABELS_TOPICS.includes(needle)) return renderLabelsOpSpec();
 
   return renderOpSpecIndex(topic);
 }

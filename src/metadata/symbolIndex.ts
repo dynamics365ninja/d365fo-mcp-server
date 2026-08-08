@@ -20,6 +20,9 @@ const isCI = (): boolean => {
   return !!(process.env.CI || process.env.TF_BUILD || process.env.GITHUB_ACTIONS);
 };
 
+/** How many distinct queries keep a memoized "did you mean" candidate pool. */
+const SUGGESTION_CACHE_ENTRIES = 32;
+
 /** Total + per-type symbol counts (both come from one GROUP BY scan). */
 export interface SymbolCounts {
   total: number;
@@ -55,6 +58,12 @@ export class XppSymbolIndex {
   private labelsDbPath: string = ':memory:';
   private symbolCountsCache: SymbolCounts | null = null;
   private symbolCountsPromise: Promise<SymbolCounts> | null = null;
+  // "Did you mean" candidate pools, keyed by query. An agent that guesses a name
+  // wrong tends to guess near it again, and both pools are derived purely from the
+  // index — recomputing them per probe is the whole cost of a failed search.
+  // Bounded so a long session cannot accumulate one entry per typo.
+  private suggestionNamesCache: Map<string, string[]> = new Map();
+  private symbolsByTermCache: Map<string, XppSymbol[]> | null = null;
   // Per-connection prepared-statement cache.  Prepared statements are bound to
   // their originating connection and cannot be shared across connections.
   private perConnStmtCache = new WeakMap<Database, Map<string, Statement>>();
@@ -1279,10 +1288,15 @@ export class XppSymbolIndex {
     return promise;
   }
 
-  /** Drop memoized counts — call after any write that changes symbol rows. */
+  /**
+   * Drop everything memoized from the symbols table — counts and the suggestion
+   * candidate pools. Call after any write that changes symbol rows.
+   */
   private invalidateSymbolCounts(): void {
     this.symbolCountsCache = null;
     this.symbolCountsPromise = null;
+    this.suggestionNamesCache.clear();
+    this.symbolsByTermCache = null;
   }
 
   private computeSymbolCountsSync(): SymbolCounts {
@@ -3545,12 +3559,36 @@ export class XppSymbolIndex {
    * Get candidate symbol names for fuzzy matching ("did you mean" suggestions).
    *
    * When a query is given, candidates are anchored to it: names sharing the
-   * query's leading characters plus names containing its root term (avoids
+   * query's leading characters plus names sharing its root term (avoids
    * always sampling the same alphabetical slice of a 580K-symbol index).
    * Without a query, falls back to the first 5000 names alphabetically.
+   *
+   * Both probes go through symbols_fts. `name LIKE '%root%'` cannot use any index
+   * — SQLite scans all 1.17M rows, synchronously, on exactly the path an agent hits
+   * when it guessed a name wrong, which it does routinely. FTS5 answers a prefix
+   * term from its term index instead. The trade is that infix candidates
+   * ("MyCustTable" for query "CustTable") are no longer offered; they scored below
+   * the 0.7 fuzzy threshold anyway, being far longer than the query.
    */
   getAllSymbolNames(query?: string, limit: number = 2000): string[] {
     const trimmed = query?.trim();
+    const cacheKey = `${trimmed ?? ''}|${limit}`;
+    const cached = this.suggestionNamesCache.get(cacheKey);
+    if (cached) return cached;
+
+    const names = this.computeSymbolNameCandidates(trimmed, limit);
+
+    // Bounded LRU-ish: a session probing dozens of wrong names must not pin an
+    // unbounded number of 2000-name arrays in memory.
+    if (this.suggestionNamesCache.size >= SUGGESTION_CACHE_ENTRIES) {
+      const oldest = this.suggestionNamesCache.keys().next().value;
+      if (oldest !== undefined) this.suggestionNamesCache.delete(oldest);
+    }
+    this.suggestionNamesCache.set(cacheKey, names);
+    return names;
+  }
+
+  private computeSymbolNameCandidates(trimmed: string | undefined, limit: number): string[] {
     if (!trimmed) {
       const stmt = this.db.prepare(`
         SELECT DISTINCT name
@@ -3566,27 +3604,40 @@ export class XppSymbolIndex {
       return names;
     }
 
-    const escapeLike = (value: string): string =>
-      value.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&');
-
-    // Typo distance is usually in the tail of the name, so same-prefix names
-    // are the best candidate pool; contains-matches on the root term catch
-    // wrong-prefix typos (e.g. "CusTable" → "CustTable").
+    // Typo distance is usually in the tail of the name, so same-prefix names are
+    // the best candidate pool; the longer root-term prefix catches typos further
+    // in (e.g. "CusTable" → "CustTable") with a tighter, higher-quality window.
     const half = Math.max(1, Math.floor(limit / 2));
-    const prefix = escapeLike(trimmed.slice(0, 2));
-    const root = escapeLike(trimmed.slice(0, Math.max(3, Math.ceil(trimmed.length / 2))));
+    // FTS5 tokenizes on non-alphanumerics, so anything else in the term would be
+    // read as an operator (or a syntax error) rather than matched.
+    const ftsTerm = trimmed.replace(/[^a-zA-Z0-9]/g, '');
+    const prefix = ftsTerm.slice(0, 2);
+    const root = ftsTerm.slice(0, Math.max(3, Math.ceil(ftsTerm.length / 2)));
 
     const names = new Set<string>();
     const db = this.getReadDb();
+    if (prefix.length > 0) {
+      try {
+        const stmt = this.getReadStmt(db, 'suggest_fts_prefix', () =>
+          `SELECT s.name FROM symbols_fts fts JOIN symbols s ON s.id = fts.rowid
+           WHERE symbols_fts MATCH ? LIMIT ?`);
+        for (const probe of new Set([prefix, root])) {
+          for (const row of stmt.iterate(`{name} : "${probe}"*`, half) as IterableIterator<{ name: string }>) {
+            names.add(row.name);
+          }
+        }
+        return [...names];
+      } catch {
+        // FTS table missing (SKIP_FTS build) — fall through to the scan.
+      }
+    }
+
+    const escapeLike = (value: string): string =>
+      value.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&');
     try {
       const prefixStmt = this.getReadStmt(db, 'suggest_prefix', () =>
         `SELECT DISTINCT name FROM symbols WHERE name LIKE ? ESCAPE '\\' LIMIT ?`);
-      for (const row of prefixStmt.iterate(`${prefix}%`, half) as IterableIterator<{ name: string }>) {
-        names.add(row.name);
-      }
-      const containsStmt = this.getReadStmt(db, 'suggest_contains', () =>
-        `SELECT DISTINCT name FROM symbols WHERE name LIKE ? ESCAPE '\\' LIMIT ?`);
-      for (const row of containsStmt.iterate(`%${root}%`, half) as IterableIterator<{ name: string }>) {
+      for (const row of prefixStmt.iterate(`${escapeLike(trimmed.slice(0, 2))}%`, half) as IterableIterator<{ name: string }>) {
         names.add(row.name);
       }
     } catch {
@@ -3599,8 +3650,20 @@ export class XppSymbolIndex {
    * Get symbols grouped by term (for relationship analysis)
    * Returns a map of term -> symbols with that term
    * Uses iterator to avoid loading all symbols into memory at once
+   *
+   * Memoized for the lifetime of the index contents: the query takes no arguments
+   * and hydrates the same 3000 rows every time, yet it sits on the failed-search
+   * path next to getAllSymbolNames — so every name an agent probes and misses paid
+   * for a fresh `SELECT *` of 3000 rows on the event loop.
    */
   getSymbolsByTerm(): Map<string, XppSymbol[]> {
+    if (this.symbolsByTermCache) return this.symbolsByTermCache;
+    const built = this.computeSymbolsByTerm();
+    this.symbolsByTermCache = built;
+    return built;
+  }
+
+  private computeSymbolsByTerm(): Map<string, XppSymbol[]> {
     const stmt = this.db.prepare(`
       SELECT *
       FROM symbols
