@@ -15,6 +15,23 @@ const MAX_SCANNED_FILES = 5000;
 /** Files newer than the index by less than this are tolerated (clock skew, in-flight writes). */
 const TOLERANCE_MS = 60_000;
 
+/**
+ * How long a completed scan answers for.
+ *
+ * The scan is up to MAX_SCANNED_FILES synchronous statSync calls — 1-3 s of blocked
+ * event loop on Windows — and get_workspace_info ran it on every single call, with
+ * no cache and outside the in-flight dedup. Half of TOLERANCE_MS, so the cache can
+ * never widen the staleness blind spot beyond the one the comparison already grants.
+ */
+const SCAN_CACHE_MS = 30_000;
+
+const scanCache = new Map<string, { at: number; result: MtimeScanResult | null }>();
+
+/** Drop cached scans (test isolation, or after a known workspace write). */
+export function resetMetadataMtimeCache(): void {
+  scanCache.clear();
+}
+
 export interface MtimeScanResult {
   /** Epoch ms of the newest .xml/.label.txt file found */
   newestMtime: number;
@@ -27,8 +44,18 @@ export interface MtimeScanResult {
 /**
  * Recursively find the newest metadata file mtime under rootDir.
  * Returns null when the directory does not exist or contains no metadata files.
+ *
+ * Cached for SCAN_CACHE_MS per root — see that constant for why.
  */
 export function findNewestMetadataMtime(rootDir: string): MtimeScanResult | null {
+  const hit = scanCache.get(rootDir);
+  if (hit && Date.now() - hit.at < SCAN_CACHE_MS) return hit.result;
+  const result = scanNewestMetadataMtime(rootDir);
+  scanCache.set(rootDir, { at: Date.now(), result });
+  return result;
+}
+
+function scanNewestMetadataMtime(rootDir: string): MtimeScanResult | null {
   let newestMtime = 0;
   let newestFile = '';
   let scannedFiles = 0;

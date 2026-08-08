@@ -465,7 +465,7 @@ export const SETTINGS: Setting[] = [
       'limit (VS Code: ~100 tools) and make the model search for tools first, which costs a round trip per tool.',
     default: 'full',
     choices: [
-      { value: 'full', hint: 'all 26 tools' },
+      { value: 'full', hint: 'all 23 tools' },
       { value: 'core', hint: '18-tool create-and-build loop' },
     ],
   },
@@ -516,6 +516,21 @@ export const SETTINGS: Setting[] = [
       'How long SIGTERM/SIGINT handling waits for in-flight work (bridge writes, database checkpoints) before the ' +
       'process exits anyway. Clamped to a minimum of 1000.',
     default: 5000,
+  },
+  {
+    env: 'OPERATION_LOCK_HEARTBEAT_MS',
+    section: 'server',
+    // env-only: the lock holder reads this at acquire time in a process the
+    // wizard never configures, so a JSON key would misrepresent when a change
+    // takes effect.
+    tier: 'env-only',
+    type: 'int',
+    label: 'Operation-lock heartbeat interval (ms)',
+    description:
+      'How often the holder of a long-running operation lock (build, DB sync) touches it so the stale-lock reaper ' +
+      'can tell a live owner from an abandoned one. Lower it only if a reaper is killing locks that are still ' +
+      'working; the reaper already refuses to age out a lock whose owner pid is alive.',
+    default: 60000,
   },
   {
     path: 'server.debugLogging',

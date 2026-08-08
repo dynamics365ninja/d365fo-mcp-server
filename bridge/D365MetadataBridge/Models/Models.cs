@@ -781,23 +781,46 @@ namespace D365MetadataBridge.Models
         /// <summary>
         /// Deserializes a typed parameter from the Params dictionary.
         /// Values arrive as JsonElement from System.Text.Json — convert to the target type.
+        ///
+        /// The old `catch { return null; }` made a WRONGLY SHAPED parameter
+        /// indistinguishable from an absent one, and the dispatcher's
+        /// `?? throw new ArgumentException("Missing: fields")` then told the caller the key
+        /// was missing while it sat right there in the request. That is the param-shape
+        /// contract bug this project keeps re-living — e.g. constraints sent as
+        /// [{fieldName, relatedFieldName}] when this side reads [{field, relatedField}], or
+        /// index fields sent as [{fieldName}] when this side reads a flat string[]. A
+        /// failure now names the parameter and shows what actually arrived.
+        ///
+        /// JsonOptions.Default is used so the batch path resolves property names exactly the
+        /// way the single-op BridgeRequest.GetParam&lt;T&gt; does; deserializing without it was
+        /// a second, quieter way for the two paths to disagree.
         /// </summary>
         public T? GetTypedParam<T>(string key) where T : class
         {
             if (Params == null || !Params.TryGetValue(key, out var raw) || raw == null)
                 return null;
+            // Already the correct type (in-process caller, not a JSON round trip).
+            if (raw is T typed) return typed;
+
+            var json = raw is System.Text.Json.JsonElement je
+                ? je.GetRawText()
+                : System.Text.Json.JsonSerializer.Serialize(raw, Protocol.JsonOptions.Default);
             try
             {
-                if (raw is System.Text.Json.JsonElement je)
-                    return System.Text.Json.JsonSerializer.Deserialize<T>(je.GetRawText());
-                // Already correct type
-                if (raw is T typed) return typed;
-                // Fallback: serialize then deserialize
-                var json = System.Text.Json.JsonSerializer.Serialize(raw);
-                return System.Text.Json.JsonSerializer.Deserialize<T>(json);
+                // A JSON `null` deserializes to null here — same as an absent key, which is
+                // what the caller's "Missing: <key>" message correctly describes.
+                return System.Text.Json.JsonSerializer.Deserialize<T>(json, Protocol.JsonOptions.Default);
             }
-            catch { return null; }
+            catch (System.Text.Json.JsonException ex)
+            {
+                throw new System.ArgumentException(
+                    $"Parameter '{key}' has the wrong shape: {ex.Message} Received: {Preview(json)}");
+            }
         }
+
+        /// <summary>Caps the echoed payload — a batch op can carry a large array.</summary>
+        private static string Preview(string json) =>
+            json.Length <= 300 ? json : json.Substring(0, 300) + "…(truncated)";
     }
 
     public class BatchOperationResult

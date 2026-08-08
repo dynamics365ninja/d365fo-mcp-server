@@ -21,6 +21,17 @@ vi.mock('../../src/tools/tableInfo', () => ({
     content: [{ type: 'text', text: `table:${req.params.arguments.tableName}` }],
   })),
 }));
+// A reader that legitimately returns SEVERAL content blocks — the plural form
+// used to keep only content[0] and silently drop the rest.
+vi.mock('../../src/tools/viewInfo', () => ({
+  getViewInfoTool: vi.fn(async () => ({
+    content: [
+      { type: 'text', text: 'view header block' },
+      { type: 'text', text: 'view fields block' },
+      { type: 'text', text: 'view query block' },
+    ],
+  })),
+}));
 vi.mock('../../src/tools/enumInfo', () => ({
   getEnumInfoTool: vi.fn(async () => ({
     content: [{ type: 'text', text: 'enum not found' }],
@@ -138,6 +149,26 @@ describe('get_object_info — plural objects[] form', () => {
     const text = result.content[0].text;
     expect(text).toContain('class:A:compact=false');
     expect(text).toContain('class:B:compact=true');
+  });
+
+  it('keeps every content block a reader returns, not just the first (audit §4.4)', async () => {
+    const result = await getObjectInfoTool(
+      req({
+        objects: [
+          { objectType: 'view', objectName: 'CustInvoiceView' },
+          { objectType: 'table', objectName: 'CustTable' },
+        ],
+      }),
+      context,
+    );
+
+    const text = result.content[0].text;
+    // Dropping content[1..] made the plural form look like it had answered while
+    // withholding part of the metadata — worse than failing outright.
+    expect(text).toContain('view header block');
+    expect(text).toContain('view fields block');
+    expect(text).toContain('view query block');
+    expect(text).toContain('table:CustTable');
   });
 
   it('rejects an empty objects[] and more than 10 entries', async () => {

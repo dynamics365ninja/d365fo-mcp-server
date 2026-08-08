@@ -34,7 +34,10 @@ const req = (args: Record<string, unknown>): CallToolRequest => ({
   params: { name: 'get_object_info', arguments: args },
 });
 
-function buildContext(tableRow: { name: string; filePath: string; model: string } | null): XppServerContext {
+function buildContext(
+  tableRow: { name: string; filePath: string; model: string } | null,
+  fields: Array<{ name: string; signature: string | null }> = [],
+): XppServerContext {
   return {
     symbolIndex: {
       getSymbolByName: vi.fn((name: string, type: string) => {
@@ -42,8 +45,9 @@ function buildContext(tableRow: { name: string; filePath: string; model: string 
         return tableRow;
       }),
       getReadDb: vi.fn(() => ({
-        prepare: vi.fn(() => ({
-          all: vi.fn(() => []),
+        // The reader issues two queries in order: fields, then methods.
+        prepare: vi.fn((sql: string) => ({
+          all: vi.fn(() => (sql.includes("'field'") ? fields : [])),
         })),
       })),
     } as any,
@@ -78,5 +82,36 @@ describe('tableInfoTool — stale symbol-index guard', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).not.toContain('Served from symbol index');
     expect(result.content[0].text).toMatch(/not found/i);
+  });
+});
+
+describe('tableInfoTool — the DB fallback pages fields too', () => {
+  // The bridge path is the one that normally serves CustTable, but the offline
+  // fallback dumped every indexed field just as unboundedly, so the fix has to
+  // land on both paths or a bridge-less session pays the old price.
+  const manyFields = Array.from({ length: 300 }, (_, i) => ({ name: `Field${i}`, signature: 'str 20' }));
+
+  it('cuts the field list at one page and names both ways out', async () => {
+    const ctx = buildContext({ name: 'CustTable', filePath: 'K:\\Pkg\\M\\AxTable\\CustTable.xml', model: 'M' }, manyFields);
+
+    const result = await tableInfoTool(req({ tableName: 'CustTable' }), ctx);
+    const text = result.content[0].text;
+
+    expect(text).toContain('Fields (300 total, showing 1–50)');
+    expect(text).not.toContain('**Field50**');
+    expect(text).toContain('250 more fields');
+    expect(text).toContain('fieldsOffset: 50');
+    expect(text).toContain('fieldFilter');
+  });
+
+  it('honours fieldFilter on the DB fallback', async () => {
+    const ctx = buildContext({ name: 'CustTable', filePath: 'K:\\Pkg\\M\\AxTable\\CustTable.xml', model: 'M' }, manyFields);
+
+    const result = await tableInfoTool(req({ tableName: 'CustTable', fieldFilter: 'field29' }), ctx);
+    const text = result.content[0].text;
+
+    expect(text).toContain('matching "field29"');
+    expect(text).toContain('**Field290**');
+    expect(text).not.toContain('**Field1**:');
   });
 });

@@ -336,11 +336,17 @@ describe('generate_d365fo_xml', () => {
 // ─── XmlTemplateGenerator.generateAxDataEntityXml ───────────────────────────
 
 describe('XmlTemplateGenerator.generateAxDataEntityXml', () => {
-  it('emits an inert skeleton (no query) when primaryTable/fields are omitted — backward compat', () => {
-    const xml = XmlTemplateGenerator.generateAxDataEntityXml('MyEntity', { label: 'My entity' });
-    expect(xml).toContain('<Fields />');
-    expect(xml).toContain('<ViewMetadata />');
-    expect(xml).not.toContain('AxQuerySimpleRootDataSource');
+  it('REFUSES the inert skeleton when primaryTable/fields are omitted (audit 15)', () => {
+    // Used to return a well-formed but non-functional entity (<Fields />, no
+    // ViewMetadata query) which the create tool reported as ✅ created. The raw
+    // builder still emits that skeleton — it is the pinned element-order baseline
+    // in dataEntityXml.test.ts — but this entry point writes what it returns.
+    expect(() => XmlTemplateGenerator.generateAxDataEntityXml('MyEntity', { label: 'My entity' }))
+      .toThrow(/missing primaryTable and fields/);
+    expect(() => XmlTemplateGenerator.generateAxDataEntityXml('MyEntity', { primaryTable: 'T' }))
+      .toThrow(/missing fields/);
+    expect(() => XmlTemplateGenerator.generateAxDataEntityXml('MyEntity', { fields: [{ name: 'A' }] }))
+      .toThrow(/missing primaryTable/);
   });
 
   it('populates Fields/Keys/ViewMetadata when primaryTable + fields are given (TOOL_DEFECT fix)', () => {

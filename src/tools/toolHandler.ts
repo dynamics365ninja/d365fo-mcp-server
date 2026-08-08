@@ -7,6 +7,11 @@ import {
   isToolAllowedInMode, isToolInProfile,
 } from '../server/serverMode.js';
 import { BRIDGE_BACKED_TOOLS, awaitBridgeReady } from '../bridge/bridgeReadiness.js';
+import {
+  BRIDGE_FAILURE_MARKER, runWithBridgeFailureScope, renderBridgeFailureNote,
+} from '../bridge/bridgeFailure.js';
+import type { BridgeFailure } from '../bridge/bridgeFailure.js';
+import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { searchUnifiedTool } from './searchUnified.js';
 import { getObjectInfoTool } from './getObjectInfo.js';
 import { findReferencesTool } from './findReferences.js';
@@ -41,6 +46,7 @@ import {
   getInFlight, registerInFlight, clearInFlight,
 } from '../utils/callDedup.js';
 import { checkIndexStaleness } from '../utils/indexStaleness.js';
+import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
 import {
   buildContextSnapshot, renderContextSnapshotSection, renderContextSnapshotCompact,
 } from '../workspace/contextSnapshot.js';
@@ -119,16 +125,23 @@ function getCapForTool(toolName: string): number | 'uncapped' {
 }
 
 
-function capToolResponse(toolName: string, result: any): any {
+export function capToolResponse(toolName: string, result: any): any {
   const cap = getCapForTool(toolName);
   if (cap === 'uncapped' || !result?.content) return result;
   const content = result.content.map((item: any) => {
     if (item.type !== 'text' || typeof item.text !== 'string') return item;
     if (item.text.length <= (cap as number)) return item;
+    // Cut on a block boundary: a raw slice ended responses mid-XML-element
+    // (`<AxTableField Nam`), which reads as corrupt metadata, not truncated.
+    const kept = truncateOnBlockBoundary(item.text, cap as number);
     return {
       ...item,
-      text: item.text.slice(0, cap as number) +
-        `\n\n> ✂️ Response truncated at ${cap} chars. Use more specific parameters (e.g. methodOffset, compact=false for one class) to get remaining content.`,
+      // The advice used to say `compact=false`, which makes the response BIGGER
+      // — the caller followed it and hit the cap again with more content cut.
+      text: kept +
+        `\n\n> ✂️ Response truncated at ${cap} chars (${item.text.length - kept.length} omitted). ` +
+        `Ask for LESS, not more: page with methodOffset/fieldsOffset, narrow with fieldFilter/searchControl/prefix, ` +
+        `keep compact=true, and read one object per call instead of objects[].`,
     };
   });
   return { ...result, content };
@@ -202,6 +215,16 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       if (elapsed > 200) {
         console.error(`[toolHandler] ⏳ ${toolName}: bridge was starting, waited ${elapsed} ms → ${outcome}`);
       }
+
+      // Settle any provider rebuild a previous write scheduled but did not wait
+      // for. Writers now schedule the rebuild instead of awaiting it (so it
+      // leaves the response path), which means the freshness guarantee has to be
+      // re-established by the READER — otherwise a get_object_info issued right
+      // after a create could see a provider up to SETTLE_MS staler than before.
+      // Every bridge-backed tool passes through here, so this is the one place
+      // that covers reads and writes alike; it is a synchronously-resolved
+      // no-op when nothing is outstanding, so it costs a tick, not 400 ms.
+      await debouncedRefresh.flush();
     }
 
     // Enforce server mode: block local tools in read-only (Azure) mode, block search/analysis
@@ -261,8 +284,13 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
     const finishMetrics = recordToolStart(toolName);
     let result: any;
+    // Anything the C# bridge throws during this call lands here (see
+    // bridge/bridgeFailure.ts). Without it a bridge outage is invisible: the read
+    // wrappers return null, the tool serves the SQLite index instead, and the
+    // answer — including "not found" — looks like it came from live metadata.
+    const bridgeFailures: BridgeFailure[] = [];
     try {
-    result = await (async () => {
+    result = await runWithBridgeFailureScope(bridgeFailures, async () => {
       // Build the progress description for this tool call.
       const args = request.params.arguments as Record<string, any> | undefined;
       const progressMsg = buildProgressMessage(toolName, args);
@@ -285,6 +313,11 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return d365foFileTool(request, context);
       case 'find_references':
         return findReferencesTool(request, context);
+      // get_method and suggest_edt are no longer PUBLISHED (their contracts moved
+      // into get_object_info options.method and prepare's fieldsHint, which both
+      // already had the object in hand). The routes stay so an agent still holding
+      // the old name from an earlier session gets its answer plus a pointer,
+      // rather than an "unknown tool" it cannot recover from.
       case 'get_method':
         return getMethodTool(request, context);
       case 'labels':
@@ -659,7 +692,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           isError: true,
         };
     } })();
-    })();
+    });
     } catch (err) {
       // Safety net: convert any thrown error into a tool result with isError:true
       // instead of an opaque JSON-RPC protocol error.
@@ -671,25 +704,52 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       };
     }
 
-    let capped = capToolResponse(toolName, result);
-    // Record metrics: detect empty result (no content or first text item is empty)
-    const firstText = capped?.content?.[0]?.text;
-    const isEmpty = !firstText || firstText.trim().length === 0 || firstText === 'No results returned';
-    finishMetrics(isEmpty);
+    // Everything from here on runs under try/finally, because the in-flight entry
+    // MUST be settled and dropped no matter what. A throw in capToolResponse (or in
+    // the metrics/dedup bookkeeping) used to skip resolve()+clearInFlight, leaving a
+    // promise in the map that nothing would ever settle — and from that moment every
+    // identical call coalesced onto it and hung forever, for the life of the process.
+    let capped: any = result;
+    try {
+      capped = capToolResponse(toolName, result);
 
-    if (!DEDUP_EXCLUDED_TOOLS.has(toolName)) {
-      storeDedupResult(callKey, capped);
+      // Appended after the cap so truncation can never eat the one line that says the
+      // answer is not authoritative. Skipped when the tool already named the failure
+      // itself (the create/resolve path does) so the response says it once.
+      if (bridgeFailures.length > 0) {
+        const alreadyReported = capped?.content?.some(
+          (item: any) => typeof item?.text === 'string' && item.text.includes(BRIDGE_FAILURE_MARKER),
+        );
+        if (!alreadyReported) {
+          capped = appendNote(capped, renderBridgeFailureNote(bridgeFailures));
+        }
+      }
+
+      // Record metrics: detect empty result (no content or first text item is empty)
+      const firstText = capped?.content?.[0]?.text;
+      const isEmpty = !firstText || firstText.trim().length === 0 || firstText === 'No results returned';
+      finishMetrics(isEmpty);
+
+      if (!DEDUP_EXCLUDED_TOOLS.has(toolName)) {
+        storeDedupResult(callKey, capped);
+        // Loop hint: 3+ identical calls in the recent window means the model is cycling.
+        if (occurrences >= 3) {
+          capped = appendNote(
+            capped,
+            `> ⚠️ Loop detected: this is occurrence #${occurrences} of the exact same ${toolName} call. ` +
+            `The answer does not change between calls. If you are missing information, ` +
+            `use a DIFFERENT tool or different parameters (see suggestions above), or ask the user.`,
+          );
+        }
+      }
+    } catch (err) {
+      // The tool itself already succeeded; only the post-processing failed. Return
+      // the uncapped result rather than converting a good answer into an error.
+      console.error(`[toolHandler] ⚠️ ${toolName}: response post-processing failed: ${err}`);
+      capped = result;
+    } finally {
       inFlightHandle?.resolve(capped);
       clearInFlight(callKey);
-      // Loop hint: 3+ identical calls in the recent window means the model is cycling.
-      if (occurrences >= 3) {
-        capped = appendNote(
-          capped,
-          `> ⚠️ Loop detected: this is occurrence #${occurrences} of the exact same ${toolName} call. ` +
-          `The answer does not change between calls. If you are missing information, ` +
-          `use a DIFFERENT tool or different parameters (see suggestions above), or ask the user.`,
-        );
-      }
     }
     return capped;
   });

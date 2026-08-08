@@ -94,8 +94,18 @@ Model + prefix auto-applied. Classes: member vars inside the class { }, methods 
             'modify-property',
           ],
           description:
-            '[modify] REQUIRED. add-method also UPDATES in place; replace-code is the surgical oldCode→newCode path. ' +
+            '[modify] REQUIRED unless using operations[]. add-method also UPDATES in place; replace-code is the surgical oldCode→newCode path. ' +
             'Parameters: get_knowledge(kind="op-spec", topic="<operation>").'
+        },
+        operations: {
+          type: 'array',
+          maxItems: 20,
+          description:
+            '[modify] PREFERRED for 2+ edits to the SAME object — ONE call, not one per edit. ' +
+            'Entries are {operation, …op-spec params}; objectType/objectName/modelName stay top-level. ' +
+            'Applied in order, stopped at the first failure, per-operation results back. ' +
+            '3 fields + their field groups + an index: 7 calls flat, 1 here.',
+          items: { type: 'object', additionalProperties: true },
         },
         params: {
           type: 'object',

@@ -13,15 +13,48 @@
  *
  * properties.label         – label id (default: @TODO:LabelId)
  * properties.targetObject  – ObjectName of the target menu item (optional)
- * properties.objectType    – MenuItemDisplay | MenuItemAction | MenuItemOutput (default: MenuItemDisplay)
- * properties.accessLevel   – 'view' | 'maintain' | 'read' (default: 'view' = Read only)
+ * properties.objectType    – EntryPointType: None | MenuItemDisplay | MenuItemOutput |
+ *                            MenuItemAction | ServiceOperation (default: MenuItemDisplay)
+ * properties.accessLevel   – 'view' | 'read' (Read only) | 'maintain' (full CRUD).
+ *                            Default 'view'.
  * properties.dataEntity    – Name of the data entity to grant permissions on (optional)
  */
+import { escapeXml } from '../utils/xmlEscape.js';
+import { assertKnownEnumValue, SECURITY_ENTRY_POINT_TYPES } from '../utils/axEnumProperties.js';
+
+/** The only two grant shapes this builder can emit. Anything else is a wrong privilege. */
+const ACCESS_LEVELS = ['view', 'read', 'maintain'] as const;
+
 export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<string, any>): string {
   const label = properties?.label || '@TODO:LabelId';
   const targetObject: string | undefined = properties?.targetObject;
-  const objType: string = properties?.objectType || 'MenuItemDisplay';
-  const al = (properties?.accessLevel || 'view').toLowerCase();
+
+  // <ObjectType> is the EntryPointType enum — an unknown value is dropped by the
+  // deserializer, leaving the entry point pointing at nothing.
+  const objType: string = assertKnownEnumValue(
+    `Security privilege '${name}': objectType`,
+    properties?.objectType,
+    SECURITY_ENTRY_POINT_TYPES,
+    'MenuItemDisplay',
+  );
+
+  // Only 'maintain' ever produced a CRUD grant; EVERY other string — including the
+  // plausible-sounding 'full', 'edit', 'update', 'delete' — fell through to the
+  // read-only branch. That privilege builds clean, passes BP, and grants the wrong
+  // permissions, which is the one failure class a security object must not have.
+  // So this is a closed enum, not a comparison.
+  const rawAccess = properties?.accessLevel === undefined || properties?.accessLevel === null
+    ? 'view'
+    : String(properties.accessLevel).trim().toLowerCase();
+  if (!(ACCESS_LEVELS as readonly string[]).includes(rawAccess)) {
+    throw new Error(
+      `Security privilege '${name}': accessLevel "${properties?.accessLevel}" is not supported — ` +
+      `nothing was written. Use "maintain" for full CRUD (Read+Update+Create+Delete, plus Correct on a ` +
+      `data entity) or "view"/"read" for Read only. There is no "full"/"edit" level here — those used to ` +
+      `be accepted and silently degraded to Read-only.`,
+    );
+  }
+  const al = rawAccess;
 
   let entryPointsXml: string;
   if (targetObject) {
@@ -53,7 +86,7 @@ export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<st
   return `<?xml version="1.0" encoding="utf-8"?>
 <AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 \t<Name>${name}</Name>
-\t<Label>${label}</Label>
+\t<Label>${escapeXml(label)}</Label>
 \t${dataEntityPermissionsElement}
 \t<DirectAccessPermissions />
 \t<EntryPoints>${entryPointsXml}</EntryPoints>

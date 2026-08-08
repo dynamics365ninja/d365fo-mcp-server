@@ -19,6 +19,15 @@ export { BridgeClient, createBridgeClient } from './bridgeClient.js';
 export type { BridgeClientOptions, BridgeReadyPayload, BridgeInfoPayload } from './bridgeClient.js';
 export * from './bridgeTypes.js';
 export {
+  isBridgeFailure,
+  describeBridgeFailure,
+  renderBridgeFailureNote,
+  recordBridgeFailure,
+  runWithBridgeFailureScope,
+  BRIDGE_FAILURE_MARKER,
+} from './bridgeFailure.js';
+export type { BridgeFailure, BridgeAttempt } from './bridgeFailure.js';
+export {
   tryBridgeTable,
   tryBridgeClass,
   tryBridgeMethodSource,
