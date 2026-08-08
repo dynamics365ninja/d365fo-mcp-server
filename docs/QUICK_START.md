@@ -257,6 +257,20 @@ A healthy startup logs `✅ C# bridge initialized (metadataAvailable: true, xref
 | `xrefAvailable: false` | `DYNAMICSXREFDB` unreachable — non-critical, tools fall back to SQLite |
 
 
+## What a session cost
+
+`npx d365fo-mcp session <log>` reads an agent host's debug log and reports where the money went: the fitted price of cached / uncached / output tokens, how much of the total was context re-read on every round trip, and — the number that matters most — how many tool-turns issued exactly **one** tool call. Each of those is a full round trip paying the whole prompt again before it does any work.
+
+```powershell
+$log = Get-ChildItem "$env:APPDATA\Code\User\workspaceStorage\*\GitHub.copilot-chat\debug-logs\*\main.jsonl" |
+       Sort-Object LastWriteTime -Descending | Select-Object -First 1
+npx d365fo-mcp session $log.FullName          # human-readable
+npx d365fo-mcp session $log.FullName --json   # for tracking across releases
+```
+
+GitHub Copilot Chat's `main.jsonl` is the format it reads today; the log only exists while chat debug logging is on. The command fits the host's own billing to the token counts and **refuses to print any attribution when that fit is poor** — a bad residual means the log is not what the tool assumes, and it exits 1 rather than printing a confident number. Round-trip counts do not depend on the fit and are printed either way.
+
+
 # What's next
 
 | Topic | Documentation |
