@@ -8,9 +8,9 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { Parser } from '../../utils/xml.js';
 import type { XppServerContext } from '../../types/context.js';
 import { getConfigManager } from '../../utils/configManager.js';
+import { readProjectIncludes, resolveMembership, projectDisplayName } from '../../workspace/projectMembership.js';
 import { defaultPackagesRoot } from '../../utils/packagesRoot.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
 
@@ -92,24 +92,6 @@ const VerifyD365ProjectArgsSchema = z.object({
     .describe('Base package path (default: auto-detected PackagesLocalDirectory)'),
 });
 
-/** Read all Content Include values from a .rnrproj XML file. */
-async function readProjectIncludes(projectPath: string): Promise<Set<string>> {
-  const parser = new Parser({ explicitArray: true });
-  const xml = await fs.readFile(projectPath, 'utf-8');
-  const parsed = await parser.parseStringPromise(xml);
-
-  const includes = new Set<string>();
-  const itemGroups: any[] = parsed?.Project?.ItemGroup ?? [];
-  for (const group of itemGroups) {
-    const contents: any[] = Array.isArray(group.Content) ? group.Content : [];
-    for (const c of contents) {
-      const inc: string | undefined = c?.$?.Include;
-      if (inc) includes.add(inc);
-    }
-  }
-  return includes;
-}
-
 export async function verifyD365ProjectTool(
   request: CallToolRequest,
   _context: XppServerContext
@@ -180,6 +162,18 @@ export async function verifyD365ProjectTool(
       }
     }
 
+    // The model's OTHER projects. Membership is a model-wide question: a file
+    // registered in the project that owns it is registered, and calling that
+    // "missing" is how one file ends up in two projects.
+    // Degrades to the active project alone rather than throwing: a solution
+    // scan that has not run yet must narrow this answer, not replace the whole
+    // verification with an error.
+    let siblingProjectPaths: string[] = [];
+    try {
+      siblingProjectPaths = (configManager.getProjectsForModel?.(actualModelName) ?? [])
+        .filter(p => p !== resolvedProjectPath);
+    } catch { /* no sibling projects known */ }
+
     // verify-all mode: when no objects are supplied, derive them from the project's
     // Content Includes (e.g. "AxClass\MyClass" → { class, MyClass }).
     type VerifyObject = { objectType: (typeof OBJECT_TYPES)[number]; objectName: string };
@@ -228,7 +222,9 @@ export async function verifyD365ProjectTool(
       filePath: string;
       diskStatus: 'ok' | 'missing' | 'error';
       diskError?: string;
-      projectStatus: 'ok' | 'missing' | 'no-project';
+      projectStatus: 'ok' | 'missing' | 'elsewhere' | 'no-project';
+      /** Projects referencing the object, when it is not the active one. */
+      ownedBy: string[];
     };
 
     const results: ObjectResult[] = [];
@@ -252,12 +248,21 @@ export async function verifyD365ProjectTool(
         }
       }
 
-      // Project check
+      // Project check, across every project of the model. An object registered
+      // in the project that OWNS it is registered — reporting it as missing
+      // invites a second entry for one file, and then it compiles twice.
       let projectStatus: ObjectResult['projectStatus'] = 'no-project';
-      if (projectIncludes !== null) {
-        // Content Include uses backslash, no .xml extension: "AxClass\MyClass"
-        const includeKey = `${axFolder}\\${obj.objectName}`;
-        projectStatus = projectIncludes.has(includeKey) ? 'ok' : 'missing';
+      let ownedBy: string[] = [];
+      if (resolvedProjectPath || siblingProjectPaths.length > 0) {
+        const membership = await resolveMembership(
+          axFolder, obj.objectName, resolvedProjectPath, siblingProjectPaths,
+        );
+        ownedBy = membership.owners;
+        projectStatus =
+          membership.status === 'active' ? 'ok'
+          : membership.status === 'other' ? 'elsewhere'
+          : membership.status === 'missing' ? 'missing'
+          : 'no-project';
       }
 
       results.push({
@@ -268,6 +273,7 @@ export async function verifyD365ProjectTool(
         diskStatus,
         diskError,
         projectStatus,
+        ownedBy,
       });
     }
 
@@ -290,8 +296,10 @@ export async function verifyD365ProjectTool(
       const projCell =
         r.projectStatus === 'ok'
           ? '✅'
+          : r.projectStatus === 'elsewhere'
+          ? `✅ in ${r.ownedBy.map(projectDisplayName).join(', ')}`
           : r.projectStatus === 'missing'
-          ? `❌ Not in project (\`${r.axFolder}\\${r.objectName}\`)`
+          ? `❌ In no project of this model (\`${r.axFolder}\\${r.objectName}\`)`
           : '⚠️ No project path';
 
       return hasProject
@@ -301,15 +309,25 @@ export async function verifyD365ProjectTool(
 
     const diskOk      = results.filter((r) => r.diskStatus === 'ok').length;
     const diskMissing = results.filter((r) => r.diskStatus !== 'ok').length;
-    const projOk      = results.filter((r) => r.projectStatus === 'ok').length;
-    const projMissing = results.filter((r) => r.projectStatus === 'missing').length;
+    const projOk        = results.filter((r) => r.projectStatus === 'ok').length;
+    const projElsewhere = results.filter((r) => r.projectStatus === 'elsewhere').length;
+    const projMissing   = results.filter((r) => r.projectStatus === 'missing').length;
 
     const summaryLines = [
       `- Checked: ${results.length}`,
       `- On disk ✅: ${diskOk}   Missing from disk ❌: ${diskMissing}`,
     ];
     if (hasProject) {
-      summaryLines.push(`- In project ✅: ${projOk}   Missing from project ❌: ${projMissing}`);
+      summaryLines.push(
+        `- In the active project ✅: ${projOk}` +
+        (projElsewhere > 0 ? `   In another project of this model ✅: ${projElsewhere}` : '') +
+        `   In no project ❌: ${projMissing}`,
+      );
+      if (projElsewhere > 0) {
+        summaryLines.push(
+          `- Objects marked "in <project>" are registered where they belong — do NOT add them to the active project as well.`,
+        );
+      }
     }
     if (projectLoadError) {
       summaryLines.push(`- ⚠️ Could not read project file: ${projectLoadError}`);

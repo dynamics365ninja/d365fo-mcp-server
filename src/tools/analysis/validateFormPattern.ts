@@ -19,6 +19,7 @@ import {
 } from '../../validation/formPatternValidator.js';
 import { resolveSubPattern } from '../../knowledge/formPatterns/index.js';
 import { canonicalSymbolName } from '../../utils/symbolLookup.js';
+import { resolveIndexedFilePath } from '../../utils/packagesRoot.js';
 import {
   walkFormDesign,
   type FormControlNode,
@@ -116,8 +117,11 @@ export async function validateFormPatternTool(
           }],
         };
       }
-      formXml = await fs.readFile(row.file_path, 'utf-8');
-      source = `${formName} (${row.file_path})`;
+      // The index stores some file_path values package-relative; read them
+      // against the packages root, not the process cwd. See resolveIndexedFilePath.
+      const resolved = resolveIndexedFilePath(row.file_path);
+      formXml = await fs.readFile(resolved, 'utf-8');
+      source = `${formName} (${resolved})`;
     }
   } catch (error) {
     return {

@@ -26,7 +26,7 @@ import { recordBridgeFailure } from './bridgeFailure.js';
 import type { BridgeAttempt } from './bridgeFailure.js';
 import * as debouncedRefresh from './debouncedRefresh.js';
 import { debugLog } from '../utils/logger.js';
-import { reindentXppSource } from '../utils/xppFormat.js';
+import { xppMethodSourceForXml } from '../utils/xppFormat.js';
 import { parseXppDeclaration } from '../metadata/xppDeclaration.js';
 import { rankCustomFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
 import {
@@ -1404,7 +1404,7 @@ export async function bridgeAddMethod(
     // The bridge stores sourceCode verbatim — whatever indentation the caller typed
     // (or didn't) ends up in the AOT XML as-is. Re-derive consistent indentation
     // from brace depth so ragged/flush-left input doesn't produce garbled formatting.
-    const result = await bridge.addMethod(objectType, objectName, methodName, reindentXppSource(sourceCode));
+    const result = await bridge.addMethod(objectType, objectName, methodName, xppMethodSourceForXml(sourceCode));
     return {
       success: result.success,
       message: result.success

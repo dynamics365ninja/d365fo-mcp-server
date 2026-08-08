@@ -15,54 +15,91 @@
  */
 
 import * as fs from 'fs/promises';
-import * as path from 'path';
-import { Parser } from '../../utils/xml.js';
+import {
+  resolveMembership, renderMembership, axFolderForObjectType, type Membership,
+} from '../../workspace/projectMembership.js';
+import { getConfigManager } from '../../utils/configManager.js';
+
+/**
+ * The model's other .rnrproj, or none — never a throw.
+ *
+ * Everything in this module is advisory: the write has already happened and
+ * succeeded by the time any of it runs, so a diagnostic that raises turns a good
+ * write into a reported failure. That is not hypothetical — this call is
+ * evaluated as an ARGUMENT to verifyWrittenFile, outside its try, so an
+ * exception here skips the verification entirely and surfaces as the write
+ * failing. Degrading to "no siblings known" costs a less specific message and
+ * nothing else.
+ */
+function projectsForModelSafe(modelName: string | null | undefined): string[] {
+  try {
+    return getConfigManager().getProjectsForModel?.(modelName) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The membership question for an object, with the model's other projects filled
+ * in. Call sites pass the model they just wrote into; everything else is looked
+ * up here so a caller cannot forget the siblings and silently get the old
+ * active-project-only answer back.
+ */
+export function membershipOf(
+  objectType: string,
+  objectName: string,
+  modelName: string | null | undefined,
+): { axFolder: string; objectName: string; siblingProjectPaths: string[] } {
+  return {
+    axFolder: axFolderForObjectType(objectType),
+    objectName,
+    siblingProjectPaths: projectsForModelSafe(modelName),
+  };
+}
 
 export interface WriteVerification {
   /** The file exists on disk and is non-empty. */
   onDisk: boolean;
   /** Byte length written, when readable. */
   bytes?: number;
-  /** True/false when a project path was supplied and readable; undefined otherwise. */
-  inProject?: boolean;
+  /**
+   * Where the object is registered across the projects of its model. Undefined
+   * when no project could be read — see projectMembership.ts for why this is a
+   * membership question and not a path comparison.
+   */
+  membership?: Membership;
+  /** AOT folder and name the membership answer is about, for the message. */
+  axFolder?: string;
+  objectName?: string;
 }
 
-/** True when `projectPath`'s .rnrproj has a Content Include resolving to `filePath`. */
-async function isReferencedByProject(projectPath: string, filePath: string): Promise<boolean | undefined> {
-  try {
-    const xml = await fs.readFile(projectPath, 'utf-8');
-    const parsed = await new Parser({ explicitArray: true }).parseStringPromise(xml);
-    const projectDir = path.dirname(projectPath);
-    const target = path.resolve(filePath).toLowerCase();
-
-    for (const group of (parsed?.Project?.ItemGroup ?? []) as any[]) {
-      const contents: any[] = Array.isArray(group?.Content) ? group.Content : [];
-      for (const c of contents) {
-        const include: string | undefined = c?.$?.Include;
-        if (!include) continue;
-        // Includes are project-relative, and Windows-relative at that; resolve
-        // rather than string-compare, or a legitimate entry reads as missing.
-        if (path.resolve(projectDir, include.replace(/\\/g, path.sep)).toLowerCase() === target) return true;
-      }
-    }
-    return false;
-  } catch {
-    // Unreadable/absent project file is not evidence either way — say nothing
-    // rather than report a false "not registered" on a write that was fine.
-    return undefined;
-  }
-}
-
-/** Check that a just-written file is where it should be. Never throws. */
+/**
+ * Check that a just-written file is where it should be. Never throws.
+ *
+ * `siblingProjectPaths` are the other .rnrproj of the same model. Supply them
+ * and an object registered in the project that owns it is reported as such
+ * rather than as missing — the distinction matters, because "missing" invites a
+ * second registration of the same file.
+ */
 export async function verifyWrittenFile(
   filePath: string | undefined,
   projectPath?: string,
+  membershipOf?: { axFolder: string; objectName: string; siblingProjectPaths?: readonly string[] },
 ): Promise<WriteVerification> {
   if (!filePath) return { onDisk: false };
   try {
     const stat = await fs.stat(filePath);
     const result: WriteVerification = { onDisk: stat.isFile() && stat.size > 0, bytes: stat.size };
-    if (projectPath) result.inProject = await isReferencedByProject(projectPath, filePath);
+    if (membershipOf && (projectPath || membershipOf.siblingProjectPaths?.length)) {
+      result.membership = await resolveMembership(
+        membershipOf.axFolder,
+        membershipOf.objectName,
+        projectPath,
+        membershipOf.siblingProjectPaths ?? [],
+      );
+      result.axFolder = membershipOf.axFolder;
+      result.objectName = membershipOf.objectName;
+    }
     return result;
   } catch {
     return { onDisk: false };
@@ -110,11 +147,12 @@ export function renderWriteVerification(v: WriteVerification): string {
     return `\n❌ Verification: the file is NOT on disk after a reported success — treat this write as failed.`;
   }
   const parts = [`on disk (${v.bytes} bytes)`];
-  if (v.inProject === true) parts.push('referenced by the .rnrproj');
-  // Only the negative is worth the bytes; `undefined` means we could not tell.
-  if (v.inProject === false) {
-    return `\n✅ Verified: ${parts.join(', ')}` +
-           `\n⚠️ Verification: the .rnrproj does NOT reference this file — it will not compile until it does.`;
-  }
-  return `\n✅ Verified: ${parts.join(', ')}.`;
+  if (v.membership?.status === 'active') parts.push('referenced by the .rnrproj');
+  const verified = `\n✅ Verified: ${parts.join(', ')}`;
+  // Only 'other' and 'missing' have something to add; 'active' and 'unknown'
+  // are the quiet cases, and quiet is what makes the loud ones mean anything.
+  const note = v.membership
+    ? renderMembership(v.membership, v.axFolder ?? '', v.objectName ?? '')
+    : '';
+  return note ? verified + note : `${verified}.`;
 }

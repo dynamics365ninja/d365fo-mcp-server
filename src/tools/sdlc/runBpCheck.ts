@@ -48,6 +48,47 @@ const INDEX_TYPE_TO_ELEMENT_TYPE: Record<string, string> = {
 
 const RESOLVABLE_INDEX_TYPES = Object.keys(INDEX_TYPE_TO_ELEMENT_TYPE);
 
+/**
+ * Translate a caller-supplied objectType into the token xppbp accepts.
+ *
+ * The map above existed but was only consulted when the caller OMITTED the
+ * type; a supplied one was passed through `.toLowerCase()`. So the kebab-case
+ * spelling every other tool in this server takes — `objectType:
+ * "table-extension"`, exactly as verify_d365fo_project documents it — reached
+ * xppbp verbatim and was rejected with "The element type 'table-extension' is
+ * invalid". Same vocabulary, two tools, one of them wrong.
+ *
+ * Anything already in xppbp's own spelling ("TableExtension") still works: it
+ * squashes to the same token.
+ */
+export function normalizeElementType(raw: string): string {
+  const kebab = raw.trim().toLowerCase();
+  const mapped = INDEX_TYPE_TO_ELEMENT_TYPE[kebab];
+  if (mapped) return mapped;
+  return kebab.replace(/[-_\s]/g, '');
+}
+
+/**
+ * xppbp's "I did not run" responses, as a sentence — or '' when it ran.
+ *
+ * A rejected element type makes xppbp print a complaint and no findings, and
+ * "no findings" is indistinguishable from a clean object unless something looks
+ * for the complaint. It did not, so a check that never executed was reported as
+ * `✅ clean`, which is the one BP outcome worse than a failure: it is a pass the
+ * caller will act on.
+ */
+export function describeNonRun(output: string): string {
+  const invalidType = output.match(/The element type '([^']*)' is invalid/i);
+  if (invalidType) {
+    return `xppbp rejected the element type "${invalidType[1]}", so no rules were evaluated for this object. ` +
+      `Use the kebab-case objectType the other tools take (e.g. "table-extension") and it will be translated.`;
+  }
+  if (/\b0 elements processed\b/i.test(output)) {
+    return `xppbp processed 0 elements — the filter matched nothing, so this result is not evidence of a clean object.`;
+  }
+  return '';
+}
+
 // Tool registration (name, description, inputSchema) lives in
 // src/server/toolSchemas/runBpCheck.ts — the single source of truth for tool
 // instructions. It is NOT in mcpServer.ts; that file only spreads the
@@ -284,7 +325,7 @@ export const runBpCheckTool = async (params: any, context: any) => {
     const resolveErrors: string[] = [];
     for (const t of requested) {
       if (t.type) {
-        targets.push({ name: t.name, elementType: t.type.toLowerCase() });
+        targets.push({ name: t.name, elementType: normalizeElementType(t.type) });
         continue;
       }
       const { elementType, error } = resolveElementType(t.name, db);
@@ -444,6 +485,18 @@ export const runBpCheckTool = async (params: any, context: any) => {
     if (runTargets.length === 1) {
       const combined = combinedByTarget[0];
       const target = runTargets[0];
+      const notRun = describeNonRun(combined);
+      if (notRun) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ BP Check did NOT run — nothing was verified.\n\n${header}` +
+              (target ? `\nFilter: ${selector(target)}` : '') +
+              `\n\n${notRun}\n\n${combined || '(no output)'}`,
+          }],
+          isError: true,
+        };
+      }
       // #25: report honestly whether the requested scope actually took effect —
       // attribution used to require reading rule names and guessing.
       const scopeNote = target ? describeScope(target.name, combined) : '';
@@ -461,11 +514,19 @@ export const runBpCheckTool = async (params: any, context: any) => {
 
     // Batch: one preamble, findings grouped per object (#828).
     const { preamble, bodies } = splitSharedPreamble(combinedByTarget);
-    const issueCount = combinedByTarget.filter(hasIssues).length;
+    const nonRunByTarget = combinedByTarget.map(describeNonRun);
+    const notRunCount = nonRunByTarget.filter(Boolean).length;
+    const issueCount = combinedByTarget.filter((o, i) => !nonRunByTarget[i] && hasIssues(o)).length;
 
     const groups = runTargets.map((target, i) => {
       const combined = combinedByTarget[i];
       const body = bodies[i].join('\n').trim();
+      const notRun = nonRunByTarget[i];
+      if (notRun) {
+        // A rejected element type produces no findings, and "no findings" used
+        // to render as ✅ clean — a check that never ran, reported as a pass.
+        return `── ${selector(target)} ── ❌ NOT CHECKED\n${notRun}\n${body || ''}`.trimEnd();
+      }
       return (
         `── ${selector(target)} ── ${hasIssues(combined) ? '⚠️ issues' : '✅ clean'}` +
         (target ? describeScope(target.name, combined) : '') +
@@ -473,17 +534,23 @@ export const runBpCheckTool = async (params: any, context: any) => {
       );
     });
 
+    const verdict =
+      notRunCount > 0 ? `❌ BP Check incomplete — ${notRunCount} object(s) were NOT checked`
+      : issueCount > 0 ? '⚠️ BP Check completed with issues'
+      : '✅ BP Check passed';
+
     return {
       content: [{
         type: 'text',
-        text: `${issueCount > 0 ? '⚠️ BP Check completed with issues' : '✅ BP Check passed'} — ` +
+        text: `${verdict} — ` +
           `${runTargets.length} objects checked, ${issueCount} with findings\n\n${header}` +
           labelNote +
           (preamble.length > 0
             ? `\n\nShared xppbp preamble (identical for all ${runTargets.length} objects, shown once):\n${preamble.join('\n').trim()}`
             : '') +
           `\n\n${groups.join('\n\n')}`
-      }]
+      }],
+      ...(notRunCount > 0 ? { isError: true } : {}),
     };
   } catch (error: any) {
     console.error('Error running BP Check:', error);

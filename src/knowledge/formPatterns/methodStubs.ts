@@ -7,6 +7,7 @@
  */
 
 import { resolvePattern } from './index.js';
+import { xppMethodSourceForXml } from '../../utils/xppFormat.js';
 
 export interface MethodStub {
   name: string;
@@ -175,7 +176,7 @@ function methodXml(stub: MethodStub, indent: string): string {
   return (
     `${indent}<Method>\n` +
     `${indent}\t<Name>${stub.name}</Name>\n` +
-    `${indent}\t<Source><![CDATA[\n${stub.source}\n]]></Source>\n` +
+    `${indent}\t<Source><![CDATA[\n${xppMethodSourceForXml(stub.source)}]]></Source>\n` +
     `${indent}</Method>\n`
   );
 }
@@ -296,7 +297,7 @@ export function injectMethodStubs(
     if (closeIdx !== -1) {
       const insertAt = closeIdx + '</Method>'.length;
       const block = stubs.formMethods
-        .map((s) => `\n\t\t\t<Method>\n\t\t\t\t<Name>${s.name}</Name>\n\t\t\t\t<Source><![CDATA[\n${s.source}\n]]></Source>\n\t\t\t</Method>`)
+        .map((s) => `\n\t\t\t<Method>\n\t\t\t\t<Name>${s.name}</Name>\n\t\t\t\t<Source><![CDATA[\n${xppMethodSourceForXml(s.source)}]]></Source>\n\t\t\t</Method>`)
         .join('');
       result = result.slice(0, insertAt) + block + result.slice(insertAt);
       injected.push(...stubs.formMethods.map((s) => s.name));
