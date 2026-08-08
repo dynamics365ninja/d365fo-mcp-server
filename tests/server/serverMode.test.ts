@@ -87,9 +87,12 @@ describe('tool profile', () => {
 
   it('leaves out the specialist tools the audit never called', () => {
     const excluded = published.filter(name => !isToolInProfile('core', name, NONE));
+    // get_method and suggest_edt used to be here; they are no longer PUBLISHED at
+    // all (folded into get_object_info options.method and prepare's fieldsHint),
+    // so they cannot be excluded from a profile that never offered them.
     expect(excluded.sort()).toEqual([
-      'analyze_code', 'extension_info', 'get_method',
-      'run_systest_class', 'security_info', 'suggest_edt', 'validate_code',
+      'analyze_code', 'extension_info',
+      'run_systest_class', 'security_info', 'validate_code',
     ]);
   });
 

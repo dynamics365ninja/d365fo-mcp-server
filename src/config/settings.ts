@@ -412,7 +412,7 @@ export const SETTINGS: Setting[] = [
       'limit (VS Code: ~100 tools) and make the model search for tools first, which costs a round trip per tool.',
     default: 'full',
     choices: [
-      { value: 'full', hint: 'all 26 tools' },
+      { value: 'full', hint: 'all 23 tools' },
       { value: 'core', hint: '18-tool create-and-build loop' },
     ],
   },
