@@ -20,8 +20,12 @@ import { getConfigManager, fallbackPackagePath } from '../../utils/configManager
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck } from './inlineWriteVerification.js';
-import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix, getExtensionNamingStyle } from '../../utils/modelClassifier.js';
+import {
+  axFolderForObjectType, resolveMembership, projectDisplayName, type Membership,
+} from '../../workspace/projectMembership.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
+import { registerCustomModel } from '../../utils/modelClassifier.js';
+import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
 import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../../utils/xppDocGen.js';
@@ -90,6 +94,61 @@ function buildNoProjectPathWarning(): string {
     `      "projectPath": "K:\\\\VSProjects\\\\YourSolution\\\\YourModel\\\\YourModel.rnrproj"\n` +
     `    } }\n` +
     `  }\n`;
+}
+
+/**
+ * Register an already-existing file into the active project, but only when no
+ * project of its model has it.
+ *
+ * The "only when" is the whole design. A D365FO model is split across many
+ * .rnrproj, and each object belongs to exactly one of them; registering a file
+ * that its owning project already lists would put one element in two projects
+ * and build it twice. So this closes a genuine gap and declines to create a
+ * new one — and says which it did, because "already exists" on its own leaves
+ * the caller unable to tell a compiling object from a stranded one.
+ */
+async function registerExistingFileIfOrphaned(
+  objectType: string,
+  objectName: string,
+  modelName: string | undefined,
+  projectPath: string | undefined,
+): Promise<string> {
+  const axFolder = axFolderForObjectType(objectType);
+
+  let membership: Membership;
+  try {
+    const siblings = (getConfigManager().getProjectsForModel?.(modelName) ?? [])
+      .filter(p => p !== projectPath);
+    membership = await resolveMembership(axFolder, objectName, projectPath, siblings);
+  } catch {
+    // Advisory only: the "already exists" answer the caller came for must not
+    // become an error because a project file could not be inspected.
+    return '';
+  }
+
+  if (membership.status === 'active') return '';
+  if (membership.status === 'unknown') {
+    return `\n\nℹ️ No .rnrproj could be read, so whether this file is registered is unknown.`;
+  }
+  if (membership.status === 'other') {
+    const where = membership.owners.map(projectDisplayName).join(', ');
+    return `\n\n✅ Already registered in ${where} — that project owns it. Nothing to add here.`;
+  }
+
+  if (!projectPath) {
+    return `\n\n⚠️ No project of model "${modelName ?? '(unknown)'}" references \`${axFolder}\\${objectName}\`, ` +
+      `and no active projectPath is configured to add it to. It will not compile until some project does.`;
+  }
+  try {
+    const added = await new ProjectFileManager().addToProject(projectPath, objectType, objectName, '');
+    return added
+      ? `\n\n✅ The file was on disk but in no project of this model — added it to ${path.basename(projectPath)}. ` +
+        `Right-click the project → Reload Project if VS is open.`
+      : '';
+  } catch (e: any) {
+    return `\n\n⚠️ The file is in no project of this model and could not be added to ` +
+      `${path.basename(projectPath)}: ${e?.message ?? e}`;
+  }
 }
 
 const CreateD365FileArgsSchema = z.object({
@@ -3364,113 +3423,15 @@ export async function handleCreateD365File(
       };
     }
 
-    // Apply extension prefix to object name
-    const objectPrefix = resolveObjectPrefix(actualModelName);
-    const namingStyle = getExtensionNamingStyle();
-
-    // If EXTENSION_PREFIX differs from modelName, the AI may have embedded the modelName
-    // in the extension name. Strip it so applyObjectPrefix injects the correct prefix only.
-    // NOTE: this stripping only makes sense for the prefix-infix style. Under the
-    // model-name style the model name IS the desired token, so the stripping below is
-    // skipped and applyObjectPrefix (given actualModelName) normalises the name instead.
-    let effectiveObjectName = args.objectName;
-
-    // Case A: dot-notation extension elements (table/form/EDT/enum extensions)
-    // e.g. "CustTable.MyModelExtension" with modelName="MyModel" → "CustTable.Extension"
-    // applyObjectPrefix then produces "CustTable.MyExtension"
-    if (
-      namingStyle !== 'model-name' &&
-      args.objectName.includes('.') &&
-      args.objectName.toLowerCase().endsWith('extension') &&
-      actualModelName &&
-      objectPrefix.toLowerCase() !== actualModelName.toLowerCase()
-    ) {
-      const dotIdx = args.objectName.lastIndexOf('.');
-      const basePart = args.objectName.slice(0, dotIdx);
-      const suffixPart = args.objectName.slice(dotIdx + 1);
-      if (suffixPart.toLowerCase().startsWith(actualModelName.toLowerCase())) {
-        effectiveObjectName = `${basePart}.${suffixPart.slice(actualModelName.length)}`;
-        console.error(
-          `[create_d365fo_file] Stripped model name from dot-notation extension: ` +
-          `${args.objectName} → ${effectiveObjectName}`
-        );
-      }
-    }
-
-    // Case B: extension classes (objectName ends with "_Extension")
-    // e.g. "SalesFormLetterContoso_Extension" with modelName="ContosoExt" → "SalesFormLetter_Extension"
-    // applyObjectPrefix then produces "SalesFormLetterContoso_Extension"
-    if (
-      namingStyle !== 'model-name' &&
-      args.objectName.endsWith('_Extension') &&
-      actualModelName &&
-      objectPrefix.toLowerCase() !== actualModelName.toLowerCase()
-    ) {
-      const baseName = args.objectName.slice(0, -'_Extension'.length);
-      if (baseName.toLowerCase().endsWith(actualModelName.toLowerCase())) {
-        effectiveObjectName = baseName.slice(0, -actualModelName.length) + '_Extension';
-        console.error(
-          `[create_d365fo_file] Stripped model name infix "${actualModelName}" from extension class: ` +
-          `${args.objectName} → ${effectiveObjectName}`
-        );
-      }
-    }
-
-    // Case C: dot-notation extension types provided without a dot (bare base name)
-    // e.g. objectType="table-extension", objectName="PurchTable"
-    // → effectiveObjectName="PurchTable.Extension" so applyObjectPrefix SPECIAL CASE A
-    // produces the correct "PurchTable.ContosoExtension" instead of falling into NORMAL CASE
-    // and producing the wrong "ContosoPurchTable".
-    const DOT_NOTATION_EXTENSION_TYPES = new Set([
-      'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
-      'data-entity-extension', 'menu-item-display-extension', 'menu-item-action-extension',
-      'menu-item-output-extension', 'menu-extension',
-      'security-duty-extension', 'security-role-extension',
-    ]);
-    if (DOT_NOTATION_EXTENSION_TYPES.has(args.objectType) && !effectiveObjectName.includes('.')) {
-      effectiveObjectName = `${effectiveObjectName}.Extension`;
-      console.error(
-        `[create_d365fo_file] Bare extension name auto-converted to dot-notation: ` +
-        `${args.objectName} → ${effectiveObjectName}`
-      );
-    }
-
-    // Case D: class extensions (CoC) provided as a bare base class name, i.e. WITHOUT
-    // the "_Extension" suffix.
-    // e.g. objectType="class-extension", objectName="SalesFormLetter"
-    // → effectiveObjectName="SalesFormLetter_Extension" so applyObjectPrefix's
-    //   extension-class branch produces the correct name for the active style:
-    //     prefix style     → SalesFormLetterCr_Extension
-    //     model-name style → SalesFormLetter_ContosoRobotics_Extension
-    //
-    // Without this, a bare base name has no dot and does not end in "_Extension", so it
-    // falls into applyObjectPrefix's NORMAL CASE and is treated as a brand-new object —
-    // wrongly producing "CrSalesFormLetter". This mirrors the dot-notation Case C above;
-    // class-extension was the only extension type missing bare-name normalisation
-    // (the EXTENSION_NAMING_STYLE work added the model-name branches but assumed the
-    // caller always supplies the "_Extension" form for CoC classes).
-    if (args.objectType === 'class-extension' && !effectiveObjectName.endsWith('_Extension')) {
-      effectiveObjectName = `${effectiveObjectName}_Extension`;
-      console.error(
-        `[create_d365fo_file] Bare class-extension name auto-converted to _Extension form: ` +
-        `${args.objectName} → ${effectiveObjectName}`
-      );
-    }
-
-    // Pass actualModelName so the model-name naming style can use it as the extension
-    // token. For the default prefix style (or non-extension objects) it is ignored.
-    let finalObjectName = applyObjectPrefix(effectiveObjectName, objectPrefix, actualModelName);
-    // Trailing suffix (EXTENSION_SUFFIX) applies to NEW objects only — never to
-    // extension elements/classes. (For the prefix style applyObjectSuffix already
-    // skips _Extension and dot-notation "…Extension" names; this guard additionally
-    // covers the model-name style's "Base.ModelName" form, which has no "Extension"
-    // word and would otherwise wrongly receive the suffix.)
-    const isExtensionObjectType =
-      args.objectType === 'class-extension' || DOT_NOTATION_EXTENSION_TYPES.has(args.objectType);
-    const objectSuffix = getObjectSuffix();
-    if (!isExtensionObjectType) {
-      finalObjectName = applyObjectSuffix(finalObjectName, objectSuffix);
-    }
+    // Name normalisation lives in utils/objectNaming so that modify resolves the
+    // very same name from the very same arguments — the ninety lines that used to
+    // sit here inline were the reason it did not. See normalizeObjectName.
+    const finalObjectName = normalizeObjectName(
+      args.objectName,
+      args.objectType,
+      actualModelName,
+      (note: string) => console.error(`[create_d365fo_file] ${note}`),
+    );
     if (finalObjectName !== args.objectName) {
       console.error(`[create_d365fo_file] Applied naming: ${args.objectName} → ${finalObjectName}`);
     }
@@ -3710,11 +3671,22 @@ export async function handleCreateD365File(
             `(active naming style/prefix), so this is the file that matches your request.`
           : '';
 
+        // A file on disk that no project of the model references is a real gap,
+        // and this early return was the only place that could close it: `create`
+        // used to bail here, before the addToProject block far below, and
+        // `modify` registers nothing unless the caller passes a flag that is not
+        // in the wire schema. So an object that existed but was unregistered
+        // could never BECOME registered — which is how a table extension got
+        // edited through a whole session while staying invisible to the build.
+        const projectNote = await registerExistingFileIfOrphaned(
+          args.objectType, finalObjectName, actualModelName, projectPathToUse,
+        );
+
         return {
           content: [
             {
               type: 'text',
-              text: `⚠️ File already exists: ${normalizedFullPath}${nameNote}${existingSummary}\n\nOptions:\n` +
+              text: `⚠️ File already exists: ${normalizedFullPath}${nameNote}${existingSummary}${projectNote}\n\nOptions:\n` +
                 `  1. Pass overwrite=true together with xmlContent to replace the file.\n` +
                 `  2. Use d365fo_file(action="modify") to make targeted changes (rename-field, replace-all-fields, modify-property, …).\n` +
                 `  3. Choose a different objectName.${inlineContent}`,
@@ -4054,7 +4026,11 @@ export async function handleCreateD365File(
               // Verify the write here rather than leaving the caller to spend a
               // verify_d365fo_project round trip asking what this call already knows.
               const verifyNote = renderWriteVerification(
-                await verifyWrittenFile(smartResult.filePath, projectPathToUse),
+                await verifyWrittenFile(
+                  smartResult.filePath,
+                  projectPathToUse,
+                  membershipOf(args.objectType, finalObjectName, actualModelName),
+                ),
               );
               const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
 
@@ -4151,7 +4127,11 @@ export async function handleCreateD365File(
           const indexNote = await upsertWrittenFileIntoIndex(bridgeResult.filePath, context);
           // Verify the write — see the smart-table path above.
           const verifyNote = renderWriteVerification(
-            await verifyWrittenFile(bridgeResult.filePath, projectPathToUse),
+            await verifyWrittenFile(
+              bridgeResult.filePath,
+              projectPathToUse,
+              membershipOf(args.objectType, finalObjectName, actualModelName),
+            ),
           );
           const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
 
@@ -4526,7 +4506,11 @@ export async function handleCreateD365File(
     const indexNote = await upsertWrittenFileIntoIndex(normalizedFullPath, context);
     // Verify the write — see the bridge paths above.
     const verifyNote = renderWriteVerification(
-      await verifyWrittenFile(normalizedFullPath, args.addToProject ? projectPathToUse : undefined),
+      await verifyWrittenFile(
+        normalizedFullPath,
+        args.addToProject ? projectPathToUse : undefined,
+        membershipOf(args.objectType, finalObjectName, actualModelName),
+      ),
     );
     const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
 

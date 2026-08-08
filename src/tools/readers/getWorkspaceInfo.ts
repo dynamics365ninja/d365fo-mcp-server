@@ -22,9 +22,8 @@ import { buildPrefixDiagnostics, modelWritesLandIn } from '../analysis/prefixDia
 import {
   buildContextSnapshot, renderContextSnapshotSection, renderContextSnapshotCompact,
 } from '../../workspace/contextSnapshot.js';
-
-/** Models named inline by the compact project list before it summarises the rest. */
-const PROJECT_NAMES_SHOWN = 12;
+import { selectProject, renderSelectionFailure } from '../../workspace/projectSelector.js';
+import { projectDisplayName } from '../../workspace/projectMembership.js';
 
 export async function getWorkspaceInfoTool(
   request: CallToolRequest,
@@ -34,20 +33,28 @@ export async function getWorkspaceInfoTool(
   const configManager = getConfigManager();
   const args = (request as any).params?.arguments || {};
 
-  // projectName: resolve by name from known projects list (user-friendly switch)
+  // projectName: resolve to ONE project. A model name that several projects
+  // build is not a selection — see projectSelector.ts for why picking the first
+  // of them is the bug this replaced.
   if (args.projectName && !args.projectPath) {
-    const needle = (args.projectName as string).toLowerCase();
     const allProjects = configManager.getAllDetectedProjects();
-    const match = allProjects.find(p => p.modelName.toLowerCase() === needle)
-      ?? allProjects.find(p => p.modelName.toLowerCase().includes(needle));
-    if (!match) {
-      const names = allProjects.map(p => p.modelName).join(', ') || '(none — set D365FO_SOLUTIONS_PATH)';
+    const selection = selectProject(args.projectName as string, allProjects);
+    if (selection.kind !== 'resolved') {
       return {
-        content: [{ type: 'text', text: `❌ No project found matching "${args.projectName}".\nAvailable: ${names}` }],
+        content: [{ type: 'text', text: renderSelectionFailure(selection, allProjects) }],
         isError: true,
       };
     }
-    args.projectPath = match.projectPath;
+    if (!selection.project.projectPath) {
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ "${args.projectName}" resolved to model "${selection.project.modelName}", which has no .rnrproj on record — there is nothing to switch to.`,
+        }],
+        isError: true,
+      };
+    }
+    args.projectPath = selection.project.projectPath;
   }
 
   // projectPath: force-switch to specific .rnrproj
@@ -192,27 +199,26 @@ export async function getWorkspaceInfoTool(
       lines.push(``);
       for (const p of allProjects) {
         const active = p.projectPath === projectPath ? '▶ ' : '  ';
-        lines.push(`${active}${p.modelName.padEnd(40)} ${p.projectPath}`);
+        const stem = p.projectPath ? projectDisplayName(p.projectPath) : '(no .rnrproj)';
+        lines.push(`${active}${stem.padEnd(46)} ${p.modelName.padEnd(24)} ${p.projectPath ?? ''}`);
       }
       lines.push(``);
-      lines.push(`To switch project: call get_workspace_info with projectName = "<ModelName>"`);
+      lines.push(`To switch project: get_workspace_info(projectName="<project file name>") — the name in the first column, not the model.`);
     } else {
-      // Names only: a switch is by projectName, so the paths are dead
-      // weight — and one solution can hold dozens of them. Duplicated
-      // model names (several projects, one model) collapse to one entry.
-      const seen = new Set<string>();
-      const names: string[] = [];
-      for (const p of allProjects) {
-        const key = p.modelName.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        names.push(p.projectPath === projectPath ? `▶${p.modelName}` : p.modelName);
-      }
-      const shown = names.slice(0, PROJECT_NAMES_SHOWN);
-      const rest = names.length - shown.length;
+      // The active project is already on the `Project :` line above, so this
+      // only has to say what else exists and how to reach it.
+      //
+      // It used to list model names, deduped by model — which turned the
+      // fifteen .rnrproj of one model into a single entry called
+      // "ContosoFin" and then told the agent to switch by that name. The
+      // agent did, landed on whichever of the fifteen came first, and wrote
+      // there. The affordance itself was the bug; naming projects costs
+      // fewer bytes than naming models did anyway.
+      const others = allProjects.length - 1;
       lines.push(
-        `Projects    : ${shown.join(', ')}${rest > 0 ? `, +${rest} more` : ''}  ` +
-        `(switch: get_workspace_info(projectName="<ModelName>"))`,
+        `Projects    : ${allProjects.length} in solution` +
+        (others > 0 ? ` (${others} besides the active one)` : '') +
+        `  — list with diagnostics=true; switch with projectName="<project file name>"`,
       );
     }
   }

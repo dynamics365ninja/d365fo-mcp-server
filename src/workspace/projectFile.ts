@@ -19,6 +19,7 @@ import { Parser, Builder } from '../utils/xml.js';
 // than moved along with the classes.
 import { withFileLock } from '../utils/atomicFileWrite.js';
 import { recordCreatedProjectFolder, takeCreatedProjectFolder } from './createdArtifactLedger.js';
+import { axFolderForObjectType } from './projectMembership.js';
 
 /**
  * Project File Finder
@@ -161,48 +162,7 @@ export class ProjectFileManager {
    * e.g. class → AxClass, enum → AxEnum, data-entity → AxDataEntityView
    */
   private getAxFolderPrefix(objectType: string): string {
-    const prefixMap: Record<string, string> = {
-      class: 'AxClass',
-      'class-extension': 'AxClass',
-      table: 'AxTable',
-      enum: 'AxEnum',
-      form: 'AxForm',
-      query: 'AxQuery',
-      view: 'AxView',
-      'data-entity': 'AxDataEntityView',
-      'table-extension': 'AxTableExtension',
-      'form-extension': 'AxFormExtension',
-      'data-entity-extension': 'AxDataEntityViewExtension',
-      report: 'AxReport',
-      'menu-item-display': 'AxMenuItemDisplay',
-      'menu-item-action': 'AxMenuItemAction',
-      'menu-item-output': 'AxMenuItemOutput',
-      'menu-item-display-extension': 'AxMenuItemDisplayExtension',
-      'menu-item-action-extension': 'AxMenuItemActionExtension',
-      'menu-item-output-extension': 'AxMenuItemOutputExtension',
-      edt: 'AxEdt',
-      'edt-extension': 'AxEdtExtension',
-      'enum-extension': 'AxEnumExtension',
-      menu: 'AxMenu',
-      'menu-extension': 'AxMenuExtension',
-      'security-privilege': 'AxSecurityPrivilege',
-      'security-duty': 'AxSecurityDuty',
-      'security-role': 'AxSecurityRole',
-      'security-duty-extension': 'AxSecurityDutyExtension',
-      'security-role-extension': 'AxSecurityRoleExtension',
-      'business-event': 'AxClass',
-      tile: 'AxTile',
-      kpi: 'AxKPI',
-      map: 'AxMap',
-      service: 'AxService',
-      'service-group': 'AxServiceGroup',
-      macro: 'AxMacroDictionary',
-      'configuration-key': 'AxConfigurationKey',
-      'security-policy': 'AxSecurityPolicy',
-      'aggregate-measurement': 'AxAggregateMeasurement',
-      'license-code': 'AxLicenseCode',
-    };
-    return prefixMap[objectType] || 'AxClass';
+    return axFolderForObjectType(objectType);
   }
 
   /**

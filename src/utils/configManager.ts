@@ -1152,6 +1152,23 @@ class ConfigManager {
   }
 
   /**
+   * Every .rnrproj that builds `modelName`, as paths.
+   *
+   * One model is split across as many projects as its owner wants — fifteen, in
+   * the solution that surfaced this. Anything asking "is this object registered
+   * in a project?" has to ask all of them, or a file correctly registered in the
+   * project that owns it reads as missing, and the fix that invites is a second
+   * entry for the same file. See workspace/projectMembership.ts.
+   */
+  getProjectsForModel(modelName: string | null | undefined): string[] {
+    if (!modelName) return [];
+    const needle = modelName.toLowerCase();
+    return this.allDetectedProjects
+      .filter(p => p.modelName.toLowerCase() === needle && p.projectPath)
+      .map(p => p.projectPath!);
+  }
+
+  /**
    * The .rnrproj files found in the WORKSPACE when auto-detection refused to pick
    * one of them. Empty whenever a project was resolved — these are the concrete
    * alternatives createD365File names when addToProject has no projectPath to use.

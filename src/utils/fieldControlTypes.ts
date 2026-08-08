@@ -13,6 +13,7 @@
 
 import fs from 'fs';
 import { lookupSymbolNocase } from './symbolLookup.js';
+import { resolveIndexedFilePath } from './packagesRoot.js';
 
 export interface ControlTypeInfo {
   /** AxForm control i:type attribute, e.g. 'AxFormComboBoxControl' */
@@ -205,8 +206,10 @@ export function getFieldControlMap(db: any, table: string): FieldControlMap {
          LIMIT 1`,
       )
       .get(canonical) as { file_path?: string } | undefined;
-    if (!row?.file_path || !fs.existsSync(row.file_path)) return new Map();
-    const xml = fs.readFileSync(row.file_path, 'utf-8');
+    if (!row?.file_path) return new Map();
+    const resolved = resolveIndexedFilePath(row.file_path);
+    if (!fs.existsSync(resolved)) return new Map();
+    const xml = fs.readFileSync(resolved, 'utf-8');
     // An AxView document has no AxTableField to parse — take the view route.
     if (/^\s*<AxView[\s>]/m.test(xml)) return getViewFieldControlMap(db, xml);
     return parseTableFieldControls(xml);
@@ -243,8 +246,10 @@ export function getTableTitleField(db: any, table: string): string | undefined {
          LIMIT 1`,
       )
       .get(canonical) as { file_path?: string } | undefined;
-    if (!row?.file_path || !fs.existsSync(row.file_path)) return undefined;
-    return parseTableTitleField(fs.readFileSync(row.file_path, 'utf-8'));
+    if (!row?.file_path) return undefined;
+    const resolved = resolveIndexedFilePath(row.file_path);
+    if (!fs.existsSync(resolved)) return undefined;
+    return parseTableTitleField(fs.readFileSync(resolved, 'utf-8'));
   } catch {
     return undefined;
   }

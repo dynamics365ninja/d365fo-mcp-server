@@ -142,6 +142,65 @@ export function describePackagesRootScan(): string {
     : `No <drive>:\\AosService\\PackagesLocalDirectory found on any drive (C: to Z: were scanned).`;
 }
 
+/**
+ * Absolute in the Windows sense as well as the POSIX one.
+ *
+ * `path.isAbsolute` on a POSIX host says `K:\AosService\…` is RELATIVE, so a
+ * perfectly good absolute path gets joined onto a packages root — the server
+ * can run on Linux while every path it handles comes from a Windows metadata
+ * store. Mirrors the same check in modifyD365File.ts.
+ */
+function isAbsoluteXPlat(p: string): boolean {
+  return path.isAbsolute(p) || /^[a-zA-Z]:[\\/]/.test(p) || /^\\\\/.test(p);
+}
+
+/**
+ * Join a Windows-style root to a relative path without letting the host's
+ * separator decide. `path.resolve` on POSIX would prefix the process cwd to a
+ * `K:\…` root, producing `/home/runner/…/K:\…\K:\…`.
+ */
+function joinXPlat(root: string, relative: string): string {
+  if (/^[a-zA-Z]:[\\/]/.test(root) || /^\\\\/.test(root)) {
+    return `${root.replace(/[\\/]+$/, '')}\\${relative.replace(/\//g, '\\')}`;
+  }
+  return path.resolve(root, relative);
+}
+
+/**
+ * An absolute path for a `file_path` read out of the symbol index.
+ *
+ * The index holds both shapes. Most rows are absolute, but a measured 5,345 of
+ * them are package-relative — `ContosoCore/ContosoCore/AxForm/Foo.xml` —
+ * left over from an extraction that ran with the packages root as its cwd.
+ * Handing one of those to `fs.readFile` resolves it against the CURRENT cwd,
+ * which for a server VS Code spawned is the user's home directory. The failure
+ * is a puzzling ENOENT naming a path that could never exist:
+ *
+ *   C:\Users\<user>\ContosoCore\ContosoCore\AxForm\Foo.xml
+ *
+ * Absolute inputs are returned unchanged, so this is safe to apply everywhere a
+ * file_path leaves the index — which is the only way to be sure a caller does
+ * not hit one of the 5,345.
+ *
+ * `roots` is injectable for tests; it defaults to the detected packages roots,
+ * tried in order, with the first existing candidate winning.
+ */
+export function resolveIndexedFilePath(
+  filePath: string,
+  opts: { roots?: readonly string[]; exists?: (p: string) => boolean } = {},
+): string {
+  if (!filePath || isAbsoluteXPlat(filePath)) return filePath;
+  const exists = opts.exists ?? fs.existsSync;
+  const roots = opts.roots ?? packagesRoots();
+  for (const root of roots) {
+    const candidate = joinXPlat(root, filePath);
+    if (exists(candidate)) return candidate;
+  }
+  // Nothing matched: resolve against the best-known root anyway, so the error
+  // names a path the user can recognise instead of one under their home.
+  return joinXPlat(roots[0] ?? FALLBACK_PACKAGES_ROOT, filePath);
+}
+
 /** Test seam — drops the cached scan. */
 export function resetPackagesRootCache(): void {
   cached = null;

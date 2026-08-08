@@ -12,7 +12,7 @@ export const getWorkspaceInfoTool = {
       properties: {
         projectName: {
           type: 'string',
-          description: 'Only when the USER says "switch to <project>". Just the model name, e.g. "ContosoEDS"; path resolved from D365FO_SOLUTIONS_PATH. NOT a way to reach another model — reads span every model already, writes stay in the workspace model.',
+          description: 'Only when the USER says "switch to <project>". The PROJECT file name, e.g. "Contoso - FeatureManagement". NOT a model name: one model is built by many projects, so naming it selects none and the call is refused. Reads span every model already.',
         },
         projectPath: {
           type: 'string',
