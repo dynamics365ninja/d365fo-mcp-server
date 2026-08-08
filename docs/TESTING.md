@@ -103,16 +103,25 @@ npm run cli -- session <path-to-main.jsonl> --json   # for tracking across relea
 
 ### The committed baseline
 
-`eval/round-trip-baseline.json` holds the numbers for two sessions measured
-**before** the Phase 1 round-trip work landed (the first audit PR merged
-2026-08-08T12:22Z; both sessions predate it). It exists so the improvement can be
-shown with numbers instead of re-derived by hand.
+`eval/round-trip-baseline.json` holds derived numbers for three sessions: **A**
+and **B** measured *before* the Phase 1 round-trip work landed (the first audit
+PR merged 2026-08-08T12:22Z; both predate it), and **C** measured *after*, on
+merged main. It exists so the improvement is shown with numbers instead of
+re-derived by hand.
 
-To produce the "after" half: run a session of the **same shape** as one of the
-baseline entries against the current build, then compare `totals.costAiu`,
-`roundTrips.singleCallShare` and the `topCarry` table. Shape matters — the two
-baseline sessions differ by 305 vs 178 AIU because they are different tasks, so a
-delta against a differently-shaped session measures the task, not the change.
+**Read `whatThisDoesAndDoesNotShow` in that file before quoting any delta.** The
+three sessions are three different tasks, and C lands *between* A and B on every
+shape metric, which is what a task difference looks like — not a change signal.
+The spread between A and B, both measured on the same build, is already as wide
+as anything C adds. What is attributable across differently-shaped sessions is
+the fixed prefix (same bytes on every request): 22,404 tokens in A → 21,746 in C,
+tracking the measured 2,928-char schema trim. The plan's 8–14 → 4–6 round-trip
+claim is **not** established by these three; that needs the *same* task run once
+per build.
+
+When you record a new session, set `phase`, and if the session was still running
+at capture, say so in `sessionComplete`/`captureCaveat` as entry C does — an
+in-progress log keeps growing and its totals are a lower bound.
 
 ⚠️ **Never commit a raw log.** They contain real prompts and customer object
 names. The baseline holds derived numbers only, and the test fixture for the

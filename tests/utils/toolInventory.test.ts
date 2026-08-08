@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, globSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { LOCAL_TOOLS } from '../../src/server/serverMode';
+import { CORE_TOOLS, LOCAL_TOOLS } from '../../src/server/serverMode';
 import { TOOL_ANNOTATIONS } from '../../src/server/toolAnnotations';
 import { toolSchemas } from '../../src/server/toolSchemas/index';
 
@@ -35,6 +35,62 @@ describe('tool inventory contract', () => {
     // already had the object in hand. Their handlers stay routable.
     expect(mcpServerToolNames).toHaveLength(23);
     expect(startupCatalogToolNames).toHaveLength(23);
+  });
+
+  it('never states a tool count that disagrees with the published inventory', () => {
+    // The count is written out in prose in five places, and every one of them
+    // drifted: retiring get_method and suggest_edt took the catalogue 25 -> 23,
+    // but only the enum HINT next to the setting was updated. Its own
+    // description still said "publishes all 25", and since
+    // docs/CONFIGURATION.md is GENERATED from that description, the
+    // `config:docs --check` CI gate compared a wrong number against the same
+    // wrong number and passed — the doc even contradicted itself on one line
+    // ("all 25 … Values: full — all 23 tools"). No existing gate could see it,
+    // hence this one, which compares the prose against the real inventory.
+    const published = mcpServerToolNames.length;
+    const core = mcpServerToolNames.filter(n => CORE_TOOLS.has(n)).length;
+    const sources = [
+      'src/config/settings.ts',
+      'docs/ARCHITECTURE.md',
+      'docs/MCP_CONFIG.md',
+      'docs/MCP_TOOLS.md',
+      'docs/CONFIGURATION.md',
+      'README.md',
+    ];
+    // Two shapes: "23 tools" / "18-tool loop", and a bare "all 23" that ends the
+    // clause ("publishes all 23.", "(all 23)"). Two digits with word boundaries,
+    // so "~100 tools" (the VS Code catalogue limit) and "39 AOT object types"
+    // stay out. The bare-"all" shape is then re-checked against a window that
+    // must mention tools, which is what keeps "8 GB (all 70)" — the label
+    // languages — from reading as a tool count.
+    const COUNT_CLAIM = /\b(\d{2})[ -]tools?\b|\ball (\d{2})\b(?=[.)])/g;
+    for (const rel of sources) {
+      const text = readRepoFile(rel);
+      for (const m of text.matchAll(COUNT_CLAIM)) {
+        const window = text.slice(Math.max(0, m.index - 90), m.index + 90);
+        if (!/tool/i.test(window)) continue;
+        const n = Number(m[1] ?? m[2]);
+        expect(
+          n === published || n === core,
+          `${rel}: claims "${m[0].trim()}" but the server publishes ${published} tools ` +
+          `(core profile: ${core}). Update the prose, not this test.`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('does not name an unpublished tool as a core-profile exclusion', () => {
+    // The same description listed get_method and suggest_edt among the tools
+    // `core` leaves out, months after both stopped being published at all.
+    const description = readRepoFile('src/config/settings.ts')
+      .split('MCP_TOOL_PROFILE')[1]
+      .slice(0, 1200);
+    for (const name of ['get_method', 'suggest_edt']) {
+      expect(
+        description.includes(name),
+        `settings.ts still offers '${name}' as a core-profile exclusion, but it is not published`,
+      ).toBe(false);
+    }
   });
 
   it('keeps local-only tool set aligned with the published tool inventory', () => {

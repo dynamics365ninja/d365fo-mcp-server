@@ -1,13 +1,19 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "measuredOn": "2026-08-08",
-  "measuredAgainst": "main BEFORE the Phase 1 round-trip work — the first audit PR (#848) merged 2026-08-08T12:22Z, and both sessions below predate that.",
+  "measuredAgainst": "Sessions A and B are main BEFORE the Phase 1 round-trip work (the first audit PR #848 merged 2026-08-08T12:22Z; both predate it). Session C is AFTER, on merged main.",
   "producedBy": "d365fo-mcp session <log> --json",
   "privacy": "Derived numbers only. The raw logs hold real prompts and customer object names and must never be committed.",
   "howToCompare": "Run a session of the same shape against the current build, then: npm run cli -- session <log> --json  and compare totals.costAiu, roundTrips.singleCallShare and the topCarry table against the entries here.",
+  "whatThisDoesAndDoesNotShow": [
+    "A, B and C are three DIFFERENT tasks. On every shape metric C lands between the two pre-fix sessions (calls per tool-turn 1.34 / 1.81 -> 1.65; single-call share 75% / 57% -> 59%), which is what a task difference looks like, not a change signal. Do not quote a session-to-session delta as the effect of Phase 1 — the spread between A and B, both measured on the SAME build, is already as wide as anything C adds.",
+    "What is attributable is the fixed prefix, because it is the same bytes on every request regardless of task: 22,404 tokens in A -> 21,746 in C, a 658-token drop that tracks the measured 2,928-char tool-schema trim (tests/utils/toolSchemaBudget.test.ts). B sits at 21,794 on the pre-fix build, so even this holds only against A — the host's own tool catalogue varies by workspace and moves the prefix more than the server does.",
+    "The round-trip claim in the plan (8-14 -> 4-6 per task) is NOT established by these three sessions. Establishing it needs the same task run twice, once per build. Until someone does that, the defensible statements are the ones measured in-repo: the schema trim above, and the follow-up calls the server no longer asks for (the add-field-to-field-group note now points at operations[] instead of spelling out a second call; prepare ships the op-spec instead of sending the agent to get_knowledge; create/modify answer the verify question inline)."
+  ],
   "sessions": [
     {
       "session": "A",
+      "phase": "before",
       "note": "the session audited in issue #824",
       "totals": {
         "costAiu": 305.18,
@@ -83,6 +89,7 @@
     },
     {
       "session": "B",
+      "phase": "before",
       "note": "a second pre-fix session, different task shape",
       "totals": {
         "costAiu": 177.54,
@@ -154,6 +161,90 @@
           "resultTokens": 514,
           "carryAiu": 0.59
         }
+      ]
+    },
+    {
+      "session": "C",
+      "phase": "after",
+      "note": "post-merge session on the audited build. Build provenance is not assumed: the log carries fieldsOffset/maxControls (added by phase 1.7), carries the CORRECTED truncation footer ('Ask for LESS, not more' — the pre-fix one advised compact=false), and never mentions suggest_edt, which the pre-fix session on the same box used 20 times.",
+      "capturedAt": "2026-08-08T16:52Z",
+      "sessionComplete": false,
+      "captureCaveat": "The session was STILL RUNNING when this was captured — its log grew from 2.8 MB to 9.9 MB during the audit. Totals are therefore a lower bound for that session; the ratios (singleCallShare, callsPerToolTurn, floorPerRequest) were already stable across two captures 11 minutes apart (0.49 -> 0.59 share on 39 -> 71 requests). Re-capture from the same sessionId to supersede this entry.",
+      "totals": {
+        "costAiu": 235.16,
+        "requests": 77,
+        "billedRequests": 71,
+        "wallMinutes": 15.35
+      },
+      "fit": {
+        "usable": true,
+        "rates": {
+          "cached": 20,
+          "uncached": 249.99,
+          "output": 999.99
+        }
+      },
+      "attribution": {
+        "cachedInput": 145.48,
+        "uncachedInput": 35.94,
+        "output": 53.74,
+        "prefixTokens": 21746,
+        "fixedPrefix": 30.88,
+        "carry": 25.12,
+        "floorPerRequest": 2.05
+      },
+      "roundTrips": {
+        "toolCalls": 117,
+        "toolTurns": 71,
+        "singleCallTurns": 42,
+        "parallelTurns": 29,
+        "singleCallShare": 0.59,
+        "callsPerToolTurn": 1.65,
+        "avoidableRoundTrips": 9
+      },
+      "failedCalls": 5,
+      "resultsTruncated": 7,
+      "topCarry": [
+        {
+          "tool": "get_knowledge",
+          "calls": 11,
+          "resultTokens": 7042,
+          "carryAiu": 6.08
+        },
+        {
+          "tool": "prepare",
+          "calls": 4,
+          "resultTokens": 4227,
+          "carryAiu": 4.65
+        },
+        {
+          "tool": "get_object_info",
+          "calls": 19,
+          "resultTokens": 4338,
+          "carryAiu": 3.91
+        },
+        {
+          "tool": "d365fo_file",
+          "calls": 17,
+          "resultTokens": 4735,
+          "carryAiu": 3.45
+        },
+        {
+          "tool": "labels",
+          "calls": 14,
+          "resultTokens": 2094,
+          "carryAiu": 2.47
+        },
+        {
+          "tool": "get_workspace_info",
+          "calls": 3,
+          "resultTokens": 1055,
+          "carryAiu": 1.32
+        }
+      ],
+      "observations": [
+        "9 avoidable round trips remain, all of the same kind the analyzer already names: get_object_info called one object at a time across consecutive turns (5 runs), plus verify_d365fo_project and run_bp_check. These tools all take objects:[…]. The plural form exists and is not being reached for, so the next round-trip win is guidance//schema wording, not a new capability.",
+        "get_knowledge is still the largest single carry (7,042 result tokens over 11 calls) even after phase 1.3 folded the op-spec into prepare — worth checking which topics those 11 calls asked for before assuming 1.3 covered the traffic."
       ]
     }
   ]
