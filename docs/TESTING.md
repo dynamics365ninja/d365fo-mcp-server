@@ -81,3 +81,39 @@ Two gaps worth knowing about, because a green check does not mean what it looks 
 52.92% branches / 67.59% functions / 63.77% lines) so ordinary churn stays green
 while a real regression does not. Raise them when coverage rises; never lower them
 to make a build green.
+
+## Measuring round-trip cost
+
+The unit tests say whether the server is correct. They say nothing about what a
+session *costs*, and cost here is dominated by round trips rather than payload
+size: every tool call re-bills the whole cached context, so the floor is
+~1.6–2.2 AIU per call before any work happens.
+
+`d365fo-mcp session <log>` measures that from an agent-host debug log (see
+issue #845). It fits the cost model, attributes the total, counts the tool-turns
+that issued exactly ONE call, and lists the per-tool carry cost — the number that
+identifies where context actually accumulates.
+
+```bash
+# Copilot Chat writes one directory per session:
+#   %APPDATA%/Code/User/workspaceStorage/*/GitHub.copilot-chat/debug-logs/<id>/main.jsonl
+npm run cli -- session <path-to-main.jsonl>
+npm run cli -- session <path-to-main.jsonl> --json   # for tracking across releases
+```
+
+### The committed baseline
+
+`eval/round-trip-baseline.json` holds the numbers for two sessions measured
+**before** the Phase 1 round-trip work landed (the first audit PR merged
+2026-08-08T12:22Z; both sessions predate it). It exists so the improvement can be
+shown with numbers instead of re-derived by hand.
+
+To produce the "after" half: run a session of the **same shape** as one of the
+baseline entries against the current build, then compare `totals.costAiu`,
+`roundTrips.singleCallShare` and the `topCarry` table. Shape matters — the two
+baseline sessions differ by 305 vs 178 AIU because they are different tasks, so a
+delta against a differently-shaped session measures the task, not the change.
+
+⚠️ **Never commit a raw log.** They contain real prompts and customer object
+names. The baseline holds derived numbers only, and the test fixture for the
+analyzer is redacted.

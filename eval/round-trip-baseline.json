@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "measuredOn": "2026-08-08",
+  "measuredAgainst": "main BEFORE the Phase 1 round-trip work — the first audit PR (#848) merged 2026-08-08T12:22Z, and both sessions below predate that.",
+  "producedBy": "d365fo-mcp session <log> --json",
+  "privacy": "Derived numbers only. The raw logs hold real prompts and customer object names and must never be committed.",
+  "howToCompare": "Run a session of the same shape against the current build, then: npm run cli -- session <log> --json  and compare totals.costAiu, roundTrips.singleCallShare and the topCarry table against the entries here.",
+  "sessions": [
+    {
+      "session": "A",
+      "note": "the session audited in issue #824",
+      "totals": {
+        "costAiu": 305.18,
+        "requests": 95,
+        "billedRequests": 89,
+        "wallMinutes": 16.71
+      },
+      "fit": {
+        "usable": true,
+        "rates": {
+          "cached": 20,
+          "uncached": 249.99,
+          "output": 1000
+        }
+      },
+      "attribution": {
+        "cachedInput": 196.21,
+        "uncachedInput": 38.58,
+        "output": 70.39,
+        "fixedPrefix": 39.88,
+        "carry": 37.24,
+        "floorPerRequest": 2.2
+      },
+      "roundTrips": {
+        "toolCalls": 118,
+        "toolTurns": 88,
+        "singleCallTurns": 66,
+        "parallelTurns": 22,
+        "singleCallShare": 0.75,
+        "callsPerToolTurn": 1.34,
+        "avoidableRoundTrips": 5
+      },
+      "failedCalls": 2,
+      "resultsTruncated": 11,
+      "topCarry": [
+        {
+          "tool": "read_file",
+          "calls": 14,
+          "resultTokens": 13973,
+          "carryAiu": 13.51
+        },
+        {
+          "tool": "labels",
+          "calls": 6,
+          "resultTokens": 3842,
+          "carryAiu": 5.31
+        },
+        {
+          "tool": "get_knowledge",
+          "calls": 2,
+          "resultTokens": 2506,
+          "carryAiu": 3.21
+        },
+        {
+          "tool": "get_object_info",
+          "calls": 13,
+          "resultTokens": 1850,
+          "carryAiu": 2.82
+        },
+        {
+          "tool": "d365fo_file",
+          "calls": 10,
+          "resultTokens": 2320,
+          "carryAiu": 2.59
+        },
+        {
+          "tool": "grep_search",
+          "calls": 5,
+          "resultTokens": 3280,
+          "carryAiu": 1.82
+        }
+      ]
+    },
+    {
+      "session": "B",
+      "note": "a second pre-fix session, different task shape",
+      "totals": {
+        "costAiu": 177.54,
+        "requests": 69,
+        "billedRequests": 63,
+        "wallMinutes": 17.99
+      },
+      "fit": {
+        "usable": true,
+        "rates": {
+          "cached": 20,
+          "uncached": 249.99,
+          "output": 999.98
+        }
+      },
+      "attribution": {
+        "cachedInput": 103.36,
+        "uncachedInput": 29.29,
+        "output": 44.89,
+        "fixedPrefix": 27.46,
+        "carry": 18.14,
+        "floorPerRequest": 1.64
+      },
+      "roundTrips": {
+        "toolCalls": 114,
+        "toolTurns": 63,
+        "singleCallTurns": 36,
+        "parallelTurns": 27,
+        "singleCallShare": 0.57,
+        "callsPerToolTurn": 1.81,
+        "avoidableRoundTrips": 3
+      },
+      "failedCalls": 7,
+      "resultsTruncated": 3,
+      "topCarry": [
+        {
+          "tool": "get_knowledge",
+          "calls": 13,
+          "resultTokens": 6568,
+          "carryAiu": 5.44
+        },
+        {
+          "tool": "labels",
+          "calls": 23,
+          "resultTokens": 4208,
+          "carryAiu": 3.5
+        },
+        {
+          "tool": "get_object_info",
+          "calls": 15,
+          "resultTokens": 3228,
+          "carryAiu": 2.24
+        },
+        {
+          "tool": "prepare",
+          "calls": 4,
+          "resultTokens": 2658,
+          "carryAiu": 1.89
+        },
+        {
+          "tool": "d365fo_file",
+          "calls": 8,
+          "resultTokens": 1585,
+          "carryAiu": 0.93
+        },
+        {
+          "tool": "search",
+          "calls": 4,
+          "resultTokens": 514,
+          "carryAiu": 0.59
+        }
+      ]
+    }
+  ]
+}
