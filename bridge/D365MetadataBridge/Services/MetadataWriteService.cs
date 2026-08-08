@@ -349,13 +349,10 @@ namespace D365MetadataBridge.Services
                     axIdx.AllowDuplicates = ix.AllowDuplicates ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
                     if (ix.AlternateKey)
                         axIdx.AlternateKey = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes;
-                    if (ix.Fields != null)
+                    foreach (var ixf in RequireIndexFields(name, ix.Name, ix.Fields))
                     {
-                        foreach (var ixf in ix.Fields)
-                        {
-                            var axIxField = new AxTableIndexField { DataField = ixf };
-                            axIdx.AddField(axIxField);
-                        }
+                        var axIxField = new AxTableIndexField { DataField = ixf };
+                        axIdx.AddField(axIxField);
                     }
                     axTable.AddIndex(axIdx);
                 }
@@ -367,19 +364,8 @@ namespace D365MetadataBridge.Services
                 foreach (var rel in relations)
                 {
                     var axRel = new AxTableRelation { Name = rel.Name, RelatedTable = rel.RelatedTable ?? "" };
-                    if (rel.Constraints != null)
-                    {
-                        foreach (var c in rel.Constraints)
-                        {
-                            var constraint = new AxTableRelationConstraintField
-                            {
-                                Name = c.Field ?? "",
-                                Field = c.Field ?? "",
-                                RelatedField = c.RelatedField ?? ""
-                            };
-                            axRel.AddConstraint(constraint);
-                        }
-                    }
+                    foreach (var c in RequireRelationConstraints(name, rel.Name, rel.Constraints))
+                        axRel.AddConstraint(NewRelationConstraint(rel.Name, c));
                     axTable.AddRelation(axRel);
                 }
             }
@@ -522,11 +508,8 @@ namespace D365MetadataBridge.Services
                         axIdx.AllowDuplicates = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
                         if (uniqueIndexName == null) uniqueIndexName = ix.Name;
                     }
-                    if (ix.Fields != null)
-                    {
-                        foreach (var ixf in ix.Fields)
-                            axIdx.AddField(new AxTableIndexField { DataField = ixf });
-                    }
+                    foreach (var ixf in RequireIndexFields(name, ix.Name, ix.Fields))
+                        axIdx.AddField(new AxTableIndexField { DataField = ixf });
                     axTable.AddIndex(axIdx);
                 }
             }
@@ -613,18 +596,8 @@ namespace D365MetadataBridge.Services
                 foreach (var rel in relations)
                 {
                     var axRel = new AxTableRelation { Name = rel.Name, RelatedTable = rel.RelatedTable ?? "" };
-                    if (rel.Constraints != null)
-                    {
-                        foreach (var c in rel.Constraints)
-                        {
-                            axRel.AddConstraint(new AxTableRelationConstraintField
-                            {
-                                Name = c.Field ?? "",
-                                Field = c.Field ?? "",
-                                RelatedField = c.RelatedField ?? "",
-                            });
-                        }
-                    }
+                    foreach (var c in RequireRelationConstraints(name, rel.Name, rel.Constraints))
+                        axRel.AddConstraint(NewRelationConstraint(rel.Name, c));
                     axTable.AddRelation(axRel);
                 }
             }
@@ -1039,11 +1012,8 @@ namespace D365MetadataBridge.Services
                         : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
                     if (ix.AlternateKey)
                         axIdx.AlternateKey = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes;
-                    if (ix.Fields != null)
-                    {
-                        foreach (var ixf in ix.Fields)
-                            axIdx.AddField(new AxTableIndexField { DataField = ixf });
-                    }
+                    foreach (var ixf in RequireIndexFields(name, ix.Name, ix.Fields))
+                        axIdx.AddField(new AxTableIndexField { DataField = ixf });
                     axExt.Indexes.Add(axIdx);
                 }
             }
@@ -1054,18 +1024,8 @@ namespace D365MetadataBridge.Services
                 foreach (var rel in relations)
                 {
                     var axRel = new AxTableRelation { Name = rel.Name, RelatedTable = rel.RelatedTable ?? "" };
-                    if (rel.Constraints != null)
-                    {
-                        foreach (var c in rel.Constraints)
-                        {
-                            axRel.AddConstraint(new AxTableRelationConstraintField
-                            {
-                                Name = c.Field ?? "",
-                                Field = c.Field ?? "",
-                                RelatedField = c.RelatedField ?? ""
-                            });
-                        }
-                    }
+                    foreach (var c in RequireRelationConstraints(name, rel.Name, rel.Constraints))
+                        axRel.AddConstraint(NewRelationConstraint(rel.Name, c));
                     axExt.Relations.Add(axRel);
                 }
             }
@@ -2087,18 +2047,44 @@ namespace D365MetadataBridge.Services
         // TABLE INDEX OPERATIONS
         // ========================
 
+        /// <summary>
+        /// The field list of an index, refused when it holds nothing usable.
+        ///
+        /// A null/empty `fields` serialized as &lt;Fields /&gt; and the call returned
+        /// success: the index compiles, raises no BP warning, and indexes nothing — the
+        /// silent-empty-write failure mode, where the object is only discovered to be
+        /// inert long after the caller was told it was written. The usual cause is a
+        /// param-shape mismatch (fields sent as [{fieldName}] instead of a flat string[]),
+        /// so failing here is also what makes that visible.
+        /// </summary>
+        private static List<string> RequireIndexFields(string tableName, string indexName, List<string>? fields)
+        {
+            if (fields == null || fields.Count == 0)
+                throw new ArgumentException(
+                    $"Index '{indexName}' on '{tableName}' has no fields — pass the field names as a string array in 'fields'. " +
+                    "An index with an empty <Fields /> collection compiles clean and indexes nothing.");
+
+            for (var i = 0; i < fields.Count; i++)
+            {
+                if (string.IsNullOrWhiteSpace(fields[i]))
+                    throw new ArgumentException(
+                        $"Index '{indexName}' on '{tableName}': fields[{i}] is empty. " +
+                        "Every entry must name a field on the table.");
+            }
+            return fields;
+        }
+
         /// <summary>Adds an index to a table or table-extension.</summary>
         public object AddIndex(string tableName, string indexName, List<string>? fields, bool allowDuplicates, bool alternateKey)
         {
+            var indexFields = RequireIndexFields(tableName, indexName, fields);
+
             var axIdx = new AxTableIndex { Name = indexName };
             axIdx.AllowDuplicates = allowDuplicates ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
             if (alternateKey)
                 axIdx.AlternateKey = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes;
-            if (fields != null)
-            {
-                foreach (var f in fields)
-                    axIdx.AddField(new AxTableIndexField { DataField = f });
-            }
+            foreach (var f in indexFields)
+                axIdx.AddField(new AxTableIndexField { DataField = f });
 
             var axTable = _provider.Tables.Read(tableName);
             if (axTable != null)
@@ -2106,7 +2092,7 @@ namespace D365MetadataBridge.Services
                 var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
                 axTable.AddIndex(axIdx);
                 ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-                return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableProvider.Update" };
+                return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = indexFields.Count, api = "IMetaTableProvider.Update" };
             }
 
             var axExt = _provider.TableExtensions.Read(tableName);
@@ -2117,7 +2103,7 @@ namespace D365MetadataBridge.Services
                 var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
                     ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
                 extProvider.Update(axExt, msi);
-                return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableExtensionProvider.Update" };
+                return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = indexFields.Count, api = "IMetaTableExtensionProvider.Update" };
             }
 
             throw new ArgumentException($"Table or table-extension '{tableName}' not found");
@@ -2179,12 +2165,11 @@ namespace D365MetadataBridge.Services
         /// </summary>
         public object AddFullTextIndex(string tableName, string indexName, List<string>? fields)
         {
+            var indexFields = RequireIndexFields(tableName, indexName, fields);
+
             var axIdx = new AxTableFullTextIndex { Name = indexName };
-            if (fields != null)
-            {
-                foreach (var f in fields)
-                    axIdx.Fields.Add(new AxTableIndexField { DataField = f });
-            }
+            foreach (var f in indexFields)
+                axIdx.Fields.Add(new AxTableIndexField { DataField = f });
 
             var axTable = _provider.Tables.Read(tableName);
             if (axTable != null)
@@ -2192,7 +2177,7 @@ namespace D365MetadataBridge.Services
                 var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
                 axTable.FullTextIndexes.Add(axIdx);
                 ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-                return new { success = true, operation = "add-full-text-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableProvider.Update" };
+                return new { success = true, operation = "add-full-text-index", objectName = tableName, indexName, fieldCount = indexFields.Count, api = "IMetaTableProvider.Update" };
             }
 
             var axExt = _provider.TableExtensions.Read(tableName);
@@ -2203,7 +2188,7 @@ namespace D365MetadataBridge.Services
                 var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
                     ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
                 extProvider.Update(axExt, msi);
-                return new { success = true, operation = "add-full-text-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableExtensionProvider.Update" };
+                return new { success = true, operation = "add-full-text-index", objectName = tableName, indexName, fieldCount = indexFields.Count, api = "IMetaTableExtensionProvider.Update" };
             }
 
             throw new ArgumentException($"Table or table-extension '{tableName}' not found");
@@ -2349,6 +2334,45 @@ namespace D365MetadataBridge.Services
         // ========================
 
         /// <summary>
+        /// One relation constraint, refused when either side is blank.
+        ///
+        /// `Field = c.Field ?? ""` wrote a nameless &lt;AxTableRelationConstraintField&gt;:
+        /// the relation was reported as added, joined nothing, and the damage surfaced
+        /// only at compile time. Blank on BOTH sides is the signature of the param-shape
+        /// mismatch the TS side remaps around — constraints arriving as
+        /// {fieldName, relatedFieldName} deserialize into a WriteRelationConstraint whose
+        /// two properties are null. Name it instead of writing it.
+        /// </summary>
+        private static AxTableRelationConstraintField NewRelationConstraint(string relationName, WriteRelationConstraint c)
+        {
+            var field = c.Field?.Trim();
+            var relatedField = c.RelatedField?.Trim();
+            if (string.IsNullOrEmpty(field) || string.IsNullOrEmpty(relatedField))
+                throw new ArgumentException(
+                    $"Relation '{relationName}' has a constraint with an empty field name " +
+                    $"(field='{c.Field}', relatedField='{c.RelatedField}'). Every constraint needs both keys: " +
+                    "{\"field\": \"<field on this table>\", \"relatedField\": \"<field on the related table>\"}.");
+
+            return new AxTableRelationConstraintField { Name = field, Field = field, RelatedField = relatedField };
+        }
+
+        /// <summary>
+        /// The constraint list of a relation, refused when empty — a relation with no
+        /// constraint fields joins nothing, so writing one is the same silent-empty-write
+        /// as an index with no fields.
+        /// </summary>
+        private static List<WriteRelationConstraint> RequireRelationConstraints(
+            string tableName, string relationName, List<WriteRelationConstraint>? constraints)
+        {
+            if (constraints == null || constraints.Count == 0)
+                throw new ArgumentException(
+                    $"Relation '{relationName}' on '{tableName}' has no constraints — pass 'constraints' as " +
+                    "[{\"field\": \"<field on this table>\", \"relatedField\": \"<field on the related table>\"}]. " +
+                    "A relation with an empty <Constraints /> collection joins nothing.");
+            return constraints;
+        }
+
+        /// <summary>
         /// Adds a relation to a table.
         ///
         /// Cardinality / RelatedTableCardinality / RelationshipType are real
@@ -2364,22 +2388,14 @@ namespace D365MetadataBridge.Services
             List<WriteRelationConstraint>? constraints,
             string? cardinality = null, string? relatedTableCardinality = null, string? relationshipType = null)
         {
+            var relationConstraints = RequireRelationConstraints(tableName, relationName, constraints);
+
             var axRel = new AxTableRelation { Name = relationName, RelatedTable = relatedTable };
             SetEnumProperty(axRel, "Cardinality", cardinality);
             SetEnumProperty(axRel, "RelatedTableCardinality", relatedTableCardinality);
             SetEnumProperty(axRel, "RelationshipType", relationshipType);
-            if (constraints != null)
-            {
-                foreach (var c in constraints)
-                {
-                    axRel.AddConstraint(new AxTableRelationConstraintField
-                    {
-                        Name = c.Field ?? "",
-                        Field = c.Field ?? "",
-                        RelatedField = c.RelatedField ?? ""
-                    });
-                }
-            }
+            foreach (var c in relationConstraints)
+                axRel.AddConstraint(NewRelationConstraint(relationName, c));
 
             var axTable = _provider.Tables.Read(tableName);
             if (axTable != null)
@@ -2431,26 +2447,18 @@ namespace D365MetadataBridge.Services
                     }
 
                     var added = new List<string>();
-                    if (constraints != null)
+                    foreach (var c in relationConstraints)
                     {
-                        foreach (var c in constraints)
+                        var constraint = NewRelationConstraint(relationName, c);
+                        var already = false;
+                        foreach (AxTableRelationConstraint existing in relExt.RelationConstraints)
                         {
-                            var field = c.Field ?? "";
-                            var already = false;
-                            foreach (AxTableRelationConstraint existing in relExt.RelationConstraints)
-                            {
-                                if (string.Equals(existing.Name, field, StringComparison.OrdinalIgnoreCase))
-                                { already = true; break; }
-                            }
-                            if (already) continue;
-                            relExt.RelationConstraints.Add(new AxTableRelationConstraintField
-                            {
-                                Name = field,
-                                Field = field,
-                                RelatedField = c.RelatedField ?? ""
-                            });
-                            added.Add(field);
+                            if (string.Equals(existing.Name, constraint.Name, StringComparison.OrdinalIgnoreCase))
+                            { already = true; break; }
                         }
+                        if (already) continue;
+                        relExt.RelationConstraints.Add(constraint);
+                        added.Add(constraint.Name);
                     }
 
                     extProvider.Update(axExt, msi);
@@ -4391,8 +4399,17 @@ namespace D365MetadataBridge.Services
                             catch { /* control may not have Methods */ }
 
                             // Fallback: some SDK versions may expose Source directly on the DataControl item
-                            // (for cases where control name IS the method name, e.g. flat override list)
-                            if (!replaced)
+                            // (for cases where control name IS the method name, e.g. flat override list).
+                            // Only safe when we can tie this item to the request: either the caller named
+                            // this control ("PostButton.clicked"), or the item's own name IS the method.
+                            // Without that check an unqualified methodName ("clicked") would match every
+                            // control in the form and rewrite the first unrelated one that happens to
+                            // contain oldCode, while the caller is told 'clicked' was edited.
+                            bool itemIsRequestedMember = controlNameFilter != null
+                                || effectiveMethodName == null
+                                || string.Equals(ctrlName, effectiveMethodName, StringComparison.OrdinalIgnoreCase);
+
+                            if (!replaced && itemIsRequestedMember)
                             {
                                 try
                                 {
@@ -4441,19 +4458,27 @@ namespace D365MetadataBridge.Services
                     catch { }
                 }
 
-                // Absolute last resort: scan ALL reachable Source properties for oldCode (no method name filter)
-                // This handles edge cases where the SDK stores the code in an unexpected location.
+                // Absolute last resort: scan the SourceCode sub-collections for the requested member,
+                // for edge cases where the SDK stores it under an unexpected CONTAINER. The method
+                // scope travels with it — a fallback that ignored methodName silently rewrote a
+                // DIFFERENT method whenever the target one did not contain oldCode, and still
+                // reported success, so the caller believed its edit had landed.
                 if (!replaced)
                 {
-                    replaced = ReplaceCodeInXmlFallback(dyn, oldCode, newCode);
+                    replaced = ReplaceCodeInXmlFallback(dyn, methodName, controlNameFilter, effectiveMethodName, oldCode, newCode);
                 }
 
                 return replaced;
             }
             catch (Exception ex)
             {
+                // A genuine failure (SDK binder fault, provider I/O) is NOT "the snippet is absent".
+                // Returning false here made every caller report "oldCode not found", which sends the
+                // calling agent off retrying different snippets against a healthy method instead of
+                // surfacing the real fault. Surface it, keeping the original as InnerException.
                 Console.Error.WriteLine($"[WriteService] ReplaceInMethods failed: {ex.Message}");
-                return false;
+                throw new InvalidOperationException(
+                    $"replace-code failed while editing {(methodName != null ? $"method '{methodName}'" : "object source")}: {ex.Message}", ex);
             }
         }
 
@@ -4535,14 +4560,33 @@ namespace D365MetadataBridge.Services
         }
 
         /// <summary>
-        /// Absolute last-resort fallback: enumerate all iterable collections exposed by SourceCode
+        /// Absolute last-resort fallback: enumerate the iterable collections exposed by SourceCode
         /// (Methods, DataSources, DataControls, Members) and any nested items looking for Source
-        /// properties that contain oldCode. Replaces globally. Used when structured access fails.
+        /// properties that contain oldCode. Used when structured access fails.
         /// For DataControls, also iterates into each control's Methods sub-collection.
+        ///
+        /// The fallback widens the CONTAINER it looks in, never the member it edits: when the caller
+        /// named a method, only members carrying that name are eligible. An unnamed member cannot be
+        /// proven to be the target, so it is skipped rather than edited on a text match.
         /// </summary>
-        private bool ReplaceCodeInXmlFallback(dynamic axObject, string oldCode, string newCode)
+        private bool ReplaceCodeInXmlFallback(dynamic axObject, string? methodName, string? controlNameFilter,
+            string? effectiveMethodName, string oldCode, string newCode)
         {
             bool replaced = false;
+
+            // Accepts the same name spellings the structured passes accept for one member:
+            // the bare method name, the raw "Control.method" the caller sent, and the
+            // "Control_method" flattening some form shapes use.
+            bool IsRequestedMember(string? memberName)
+            {
+                if (effectiveMethodName == null) return true;   // caller scoped to the whole object
+                if (memberName == null) return false;
+                return string.Equals(memberName, effectiveMethodName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(memberName, methodName, StringComparison.OrdinalIgnoreCase)
+                    || (controlNameFilter != null && string.Equals(memberName,
+                            $"{controlNameFilter}_{effectiveMethodName}", StringComparison.OrdinalIgnoreCase));
+            }
+
             try
             {
                 // Try all known sub-collections on SourceCode
@@ -4564,13 +4608,17 @@ namespace D365MetadataBridge.Services
                         {
                             try
                             {
+                                string? itemName = null;
+                                try { itemName = (string?)item.Name; } catch { }
+                                if (!IsRequestedMember(itemName)) continue;
+
                                 string? src = null;
                                 try { src = (string?)item.Source; } catch { }
                                 if (src != null && src.Contains(oldCode))
                                 {
                                     item.Source = src.Replace(oldCode, newCode);
                                     replaced = true;
-                                    Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced in SourceCode.{colName} item '{(string?)item.Name ?? "?"}'");
+                                    Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced in SourceCode.{colName} item '{itemName ?? "?"}'");
                                 }
                             }
                             catch { }
@@ -4595,6 +4643,13 @@ namespace D365MetadataBridge.Services
                                     string ctrlName = "?";
                                     try { ctrlName = (string)ctrl.Name; } catch { }
 
+                                    // A control-scoped request ("PostButton.clicked") stays inside its
+                                    // control; reaching into a sibling control would edit an override
+                                    // the caller never named.
+                                    if (controlNameFilter != null &&
+                                        !string.Equals(ctrlName, controlNameFilter, StringComparison.OrdinalIgnoreCase))
+                                        continue;
+
                                     // Try methods inside control
                                     try
                                     {
@@ -4602,12 +4657,16 @@ namespace D365MetadataBridge.Services
                                         {
                                             try
                                             {
+                                                string? mName = null;
+                                                try { mName = (string?)m.Name; } catch { }
+                                                if (!IsRequestedMember(mName)) continue;
+
                                                 string? src = (string?)m.Source;
                                                 if (src != null && src.Contains(oldCode))
                                                 {
                                                     m.Source = src.Replace(oldCode, newCode);
                                                     replaced = true;
-                                                    Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced in DataControls.{ctrlName}.{(string?)m.Name ?? "?"}");
+                                                    Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced in DataControls.{ctrlName}.{mName ?? "?"}");
                                                 }
                                             }
                                             catch { }
@@ -4615,18 +4674,24 @@ namespace D365MetadataBridge.Services
                                     }
                                     catch { }
 
-                                    // Also try direct Source on control object (flat override lists)
-                                    try
+                                    // Also try direct Source on control object (flat override lists).
+                                    // Eligible only when the caller named this control, or the control's
+                                    // own name is the method name — otherwise this item is some other
+                                    // control's code and must not absorb the edit.
+                                    if (controlNameFilter != null || IsRequestedMember(ctrlName))
                                     {
-                                        string? src = (string?)ctrl.Source;
-                                        if (src != null && src.Contains(oldCode))
+                                        try
                                         {
-                                            ctrl.Source = src.Replace(oldCode, newCode);
-                                            replaced = true;
-                                            Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced direct Source on DataControl '{ctrlName}'");
+                                            string? src = (string?)ctrl.Source;
+                                            if (src != null && src.Contains(oldCode))
+                                            {
+                                                ctrl.Source = src.Replace(oldCode, newCode);
+                                                replaced = true;
+                                                Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback: replaced direct Source on DataControl '{ctrlName}'");
+                                            }
                                         }
+                                        catch { }
                                     }
-                                    catch { }
                                 }
                                 catch { }
                             }
@@ -4637,7 +4702,11 @@ namespace D365MetadataBridge.Services
             }
             catch (Exception ex)
             {
+                // Swallowing this used to leave the caller with "oldCode not found" even though the
+                // scan never completed — and possibly with a partial edit already applied. Let it out
+                // so ReplaceInMethods reports a real error and no Update is attempted.
                 Console.Error.WriteLine($"[WriteService] ReplaceCodeInXmlFallback failed: {ex.Message}");
+                throw;
             }
             return replaced;
         }

@@ -352,7 +352,9 @@ async function directXmlReplaceCode(
  *
  * `propertyPath` is a bare element name (no XPath/dotted-path support).
  * Refuses to act if the element is missing (returns null so the caller
- * surfaces the original bridge error) or ambiguous (appears more than once).
+ * surfaces the original bridge error), ambiguous (appears more than once),
+ * or is not a leaf — string replacement can only express a text value, and
+ * writing one over an element that has children produces malformed XML.
  */
 async function directXmlModifyProperty(
   filePath: string,
@@ -368,6 +370,20 @@ async function directXmlModifyProperty(
 
     const tagName = propertyPath.split(/[./]/).pop()!;
 
+    // tagName is interpolated into RegExp source below. Anything that is not a
+    // plain XML element name has no meaning here anyway, and letting it through
+    // either throws on an unbalanced metacharacter (caught, surfacing a
+    // misleading "bridge error") or silently matches the wrong elements.
+    if (!/^[A-Za-z_][A-Za-z0-9_.:-]*$/.test(tagName)) {
+      return {
+        success: false,
+        message:
+          `❌ directXmlModifyProperty: '${propertyPath}' does not name a plain XML element ` +
+          `(resolved to "${tagName}") — nothing was written.`,
+      };
+    }
+    const tagRe = tagName.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+
     // Forms first: the bridge refuses modify-property for AxForm entirely, and the
     // generic path below cannot serve Design properties either — Caption/Style also
     // occur on controls, so it sees several matches and refuses (#37).
@@ -380,8 +396,9 @@ async function directXmlModifyProperty(
       };
     }
 
-    const openTagRe = new RegExp(`<${tagName}\\b[^>]*>[\\s\\S]*?</${tagName}>`, 'g');
-    const selfClosingRe = new RegExp(`<${tagName}\\b([^>]*)/>`, 'g');
+    const openTagRe = new RegExp(`<${tagRe}\\b[^>]*>[\\s\\S]*?</${tagRe}>`, 'g');
+    const selfClosingRe = new RegExp(`<${tagRe}\\b([^>]*)/>`, 'g');
+    const openTagOnlyRe = new RegExp(`^<${tagRe}\\b[^>]*>`);
 
     const openMatches = content.match(openTagRe) ?? [];
     const selfClosingMatches = content.match(selfClosingRe) ?? [];
@@ -422,8 +439,30 @@ async function directXmlModifyProperty(
       };
     }
 
+    // Leaf guard. The replacement below can only express a text value, so an
+    // element that has children must be refused: the old `>[\s\S]*?<` rewrite
+    // stopped at the FIRST child tag and produced `<Tag>NewValue<Child>…`,
+    // i.e. structurally broken XML written to disk and reported as success.
+    // Counting matches (above) does not catch this — one match can still be a
+    // container.
+    if (openMatches.length === 1) {
+      const inner = openMatches[0]
+        .replace(openTagOnlyRe, '')
+        .replace(new RegExp(`</${tagRe}>$`), '');
+      if (inner.includes('<')) {
+        return {
+          success: false,
+          message:
+            `❌ directXmlModifyProperty: <${tagName}> in ${filePath} contains child elements — ` +
+            `it holds structure, not a text value. Refusing to overwrite it (nothing was written).`,
+        };
+      }
+    }
+
+    // Function replacers throughout: `escapedValue` escapes XML metacharacters
+    // but not `$`, which a string replacement would read as a capture reference.
     const updated = openMatches.length === 1
-      ? content.replace(openTagRe, m => m.replace(/>[\s\S]*?</, `>${escapedValue}<`))
+      ? content.replace(openTagRe, m => `${openTagOnlyRe.exec(m)![0]}${escapedValue}</${tagName}>`)
       : content.replace(selfClosingRe, (_m, attrs) => `<${tagName}${attrs}>${escapedValue}</${tagName}>`);
 
     await fs.writeFile(filePath, normalizeD365Xml(updated), 'utf-8');
@@ -657,6 +696,20 @@ async function directXmlAddIndex(
   allowDuplicates: boolean | undefined,
   alternateKey: boolean | undefined,
 ): Promise<{ success: boolean; message: string } | null> {
+  // The bridge refuses an index with no fields (it writes <Fields /> — an index that
+  // compiles, warns about nothing and indexes nothing). This fallback runs precisely
+  // when the bridge call failed, so without the same gate it would catch the refusal
+  // and land the empty index anyway, under a ✅.
+  const namedFields = (fields ?? []).filter(f => typeof f === 'string' && f.trim() !== '');
+  if (namedFields.length === 0) {
+    return {
+      success: false,
+      message:
+        `Index '${indexName}' has no fields — pass indexFields as [{ fieldName: "<field>" }]. ` +
+        `An index with an empty <Fields /> collection compiles clean and indexes nothing.`,
+    };
+  }
+
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -682,22 +735,19 @@ async function directXmlAddIndex(
       };
     }
 
-    const fieldElements = (fields ?? [])
+    const fieldElements = namedFields
       .map(f =>
         `\t\t\t\t<AxTableIndexField>\n` +
         `\t\t\t\t\t<DataField>${f}</DataField>\n` +
         `\t\t\t\t</AxTableIndexField>`)
       .join('\n');
-    const fieldsBlock = fieldElements
-      ? `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>`
-      : `\t\t\t<Fields />`;
 
     const newElement =
       `\t\t<AxTableIndex>\n` +
       `\t\t\t<Name>${indexName}</Name>\n` +
       `\t\t\t<AllowDuplicates>${allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n` +
       (alternateKey ? `\t\t\t<AlternateKey>Yes</AlternateKey>\n` : '') +
-      `${fieldsBlock}\n` +
+      `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>\n` +
       `\t\t</AxTableIndex>`;
 
     let updated: string;
