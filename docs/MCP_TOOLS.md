@@ -1,4 +1,4 @@
-# Tool Reference — 26 tools
+# Tool Reference — 25 tools
 
 Every tool the server exposes, grouped by purpose. The AI agent picks tools automatically — the *example prompts* show what to ask to trigger them; you never name tools yourself.
 
@@ -6,7 +6,7 @@ Every tool the server exposes, grouped by purpose. The AI agent picks tools auto
 
 > **C# bridge first:** on Windows D365FO VMs, the bridge-backed read tools (marked †) query the live `IMetadataProvider` (always-fresh metadata) and `DYNAMICSXREFDB` (compiler-resolved cross-references), falling back to SQLite transparently on Azure/Linux. All write operations go exclusively through the bridge. See [ARCHITECTURE.md](ARCHITECTURE.md).
 >
-> **Server modes:** `full` = all 26 tools · `read-only` (Azure) = search/analysis only · `write-only` (hybrid companion) = file operations + bridge-backed reads. Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 18-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
+> **Server modes:** `full` = all 25 tools · `read-only` (Azure) = search/analysis only · `write-only` (hybrid companion) = file operations + bridge-backed reads. Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 18-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
 
 ---
 
@@ -42,12 +42,11 @@ flowchart LR
 
 ---
 
-## 🔍 Search & Discovery (2)
+## 🔍 Search & Discovery (1)
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
 | `search` † | Search 580K+ symbols by name or keyword (FTS5, < 10 ms). `queries[]` runs up to 10 searches in parallel; `scope="extensions"` limits to custom/ISV models (filters out Microsoft code) | *"Find classes related to sales order posting"* · *"Look up CustTable, SalesLine and PaymTerm at once"* · *"What extensions do we have on VendTable?"* |
-| `batch_get_info` | Detailed info for up to 10 known objects (any type) in one parallel call | *"Get full details of CustTable, SalesLine and CustInvoiceJour"* |
 
 † = bridge-first on Windows D365FO VMs
 
@@ -57,7 +56,7 @@ One unified reader covers every object type via `objectType`; type-specific flag
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
-| `get_object_info` † | Read one object's metadata by `objectType`: `class`, `table`, `form`, `query`, `view`, `enum`, `edt`, `report`, `data-entity`, `menu-item`, `service`, `map`, `config-key`, `security-policy`, `macro`. Options: `{includeRdl}` (report), `{searchControl}` (form), `{compact:false}` (class), `{mode:"hierarchy"}` (edt), `{filter}` (macro). For classes, `{members:"names"}` (optional `{prefix}`) returns a fast IntelliSense-style member-name list. | *"Show the structure of SalesFormLetter"* · *"Methods on SalesTable starting with calc"* · *"Datasets of the SalesInvoice report"* |
+| `get_object_info` † | Read object metadata by `objectType`: `class`, `table`, `form`, `query`, `view`, `enum`, `edt`, `report`, `data-entity`, `menu-item`, `service`, `map`, `config-key`, `security-policy`, `macro`. **2+ objects: pass `objects:[{objectType,objectName},…]` (max 10)** — one call, all lookups in parallel, per-object sections back (absorbs the former `batch_get_info`). Options: `{includeRdl}` (report), `{searchControl}` (form), `{compact:false}` (class), `{mode:"hierarchy"}` (edt), `{filter}` (macro); with `objects[]` a top-level `options` applies to every entry. For classes, `{members:"names"}` (optional `{prefix}`) returns a fast IntelliSense-style member-name list. | *"Show the structure of SalesFormLetter"* · *"Get full details of CustTable, SalesLine and CustInvoiceJour"* · *"Methods on SalesTable starting with calc"* |
 | `get_method` † | Method `include="signature"` (exact signature — **mandatory before CoC**), `include="source"` (full X++ body), or `include="both"` (default) | *"Signature of SalesFormLetter.run?"* · *"Show me the body of CustTable.validateWrite"* |
 | `find_references` † | Where-used analysis, xref-enriched (reference type, caller class/method). Also does **label where-used** — `targetType="label"` or an `@…` id (e.g. `@WAX2194`, `@ApplicationPlatform:AbortButtonText`) — returning every referencing object type (tables, forms, EDTs, enums, reports, menu items, …), grouped by source type | *"Where is updateInventory called from?"* · *"What references label @SYS9694?"* |
 
@@ -116,7 +115,7 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 |------|--------------|----------------|
 | `build_d365fo_project` | MSBuild compilation with structured xppc diagnostics (severity, object, line, fix hints for the first errors) | *"Build the project and show the errors"* |
 | `trigger_db_sync` | Database sync for the current model | *"Sync the database"* |
-| `run_bp_check` | Microsoft Best Practices (xppbp.exe) analysis | *"Run a BP check on my model"* |
+| `run_bp_check` | Microsoft Best Practices (xppbp.exe) analysis — `objects: [{objectType, objectName}]` checks several objects in one call (shared preamble once, findings grouped per object) | *"Run a BP check on my model"* · *"BP check the table, its extension class and the enum"* |
 | `run_systest_class` | Execute SysTest unit tests via SysTestConsole.exe (requires an interactive console session) | *"Run the MyServiceTest class"* |
 | `update_symbol_index` | Re-index file(s) changed **outside** this server, without a restart — `d365fo_file` create/modify already refresh the index themselves, so no follow-up call is needed after a write | *"I edited that table in Visual Studio — re-index it"* |
 

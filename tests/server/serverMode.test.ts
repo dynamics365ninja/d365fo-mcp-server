@@ -88,7 +88,7 @@ describe('tool profile', () => {
   it('leaves out the specialist tools the audit never called', () => {
     const excluded = published.filter(name => !isToolInProfile('core', name, NONE));
     expect(excluded.sort()).toEqual([
-      'analyze_code', 'batch_get_info', 'extension_info', 'get_method',
+      'analyze_code', 'extension_info', 'get_method',
       'run_systest_class', 'security_info', 'suggest_edt', 'validate_code',
     ]);
   });

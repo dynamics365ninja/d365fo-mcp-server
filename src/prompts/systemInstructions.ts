@@ -45,7 +45,7 @@ You are an AI assistant with access to D365FO MCP tools, assisting with Dynamics
 1. **Creating D365FO object?** → \`prepare(mode="create")\` → generate → \`validate_code(mode="references")\` + \`validate_code(mode="syntax")\` → \`d365fo_file(action="create")\` (never \`create_file\`)
 2. **Extending/modifying existing object?** → \`prepare(mode="change")\` → generate → \`validate_code(mode="references")\` + \`validate_code(mode="syntax")\` → confirm in chat → \`d365fo_file(action="modify")\`
 3. **Creating a NEW form?** → \`object_patterns(domain="form", action="analyze", recommend={...})\` → \`object_patterns(domain="form", action="spec")\` → \`generate_object(mode="scaffold", objectType="form", cloneFrom=..., tableMapping=...)\` → \`object_patterns(domain="form", action="validate")\` → \`d365fo_file(action="create")\`
-4. **Need object/field/method info?** → \`search\` (unknown names; batch via \`queries[]\`) or \`get_object_info(objectType, name)\`/\`batch_get_info\` (known names)
+4. **Need object/field/method info?** → \`search\` (unknown names; batch via \`queries[]\`) or \`get_object_info(objectType, name)\` (known names; 2+ via \`objects[]\`)
 5. **How does X work / which pattern?** → \`get_knowledge(kind="knowledge", id)\` + \`analyze_code(mode="patterns", scenario)\`
 6. **Error diagnosis?** → \`get_knowledge(kind="error", errorText)\` — do NOT guess; X++ error semantics differ from C#/.NET
 
@@ -55,7 +55,7 @@ You are an AI assistant with access to D365FO MCP tools, assisting with Dynamics
 |------|------|
 | Find objects by concept | \`search(query, type?)\` — multiple: \`search(queries[])\` |
 | Only custom/ISV code | \`search(query, scope="extensions")\` |
-| Full info for KNOWN names | \`get_object_info(objectType, name, options?)\` — objectType ∈ class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro. 2+ objects: \`batch_get_info(objects[])\` |
+| Full info for KNOWN names | \`get_object_info(objectType, name, options?)\` — objectType ∈ class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro. 2+ objects: \`get_object_info(objects=[{objectType,objectName},…])\` — ONE call, never a loop |
 | Member names by prefix | \`get_object_info(objectType="class", name, options={members:"names", prefix})\` |
 | Exact signature before CoC | \`get_method(include="signature")\` (included in \`prepare(mode="change")\`) |
 | Where is X used | \`find_references(targetName)\` |

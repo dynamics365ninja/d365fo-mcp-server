@@ -3,7 +3,7 @@
  * payload, which is sent to the model on (at least) every new session and is
  * the server's largest fixed token cost.
  *
- * Rationale: the 26 tool schemas are verbose on purpose (the descriptions encode
+ * Rationale: the 25 tool schemas are verbose on purpose (the descriptions encode
  * hard-won D365FO patterns that prevent failed/retried calls), so the goal is
  * NOT to minimise blindly — it is to make the size *visible and bounded* so it
  * cannot creep upward unnoticed. Lower these ceilings whenever the schema is
@@ -23,33 +23,29 @@ import { createXppMcpServer } from '../../src/server/mcpServer';
 // the human-readable log line, never for assertions.
 const CHARS_PER_TOKEN = 4;
 
-// Ceilings in characters of serialized JSON. Current actual ≈ 53,197 · largest
-// tool labels ≈ 5,9xx (ahead of d365fo_file ≈ 4,7xx).
+// Ceilings in characters of serialized JSON.
 //
-// Ratcheted down from 63,300 / 9,900 by issue #825: `d365fo_file` (9,888 →
-// 4,781) and `generate_object` (8,602 → 3,135) stopped inlining a discriminated
-// union of every operation and its parameters. Both now publish the
-// DISCRIMINATORS only — action/objectType/operation/mode/pattern as closed
-// enums — and the parameter contract behind the one the agent picks is fetched
-// once from get_knowledge(kind="op-spec"), backed by d365foFileOpSpecs.ts and
+// Ratcheted down hard by issue #825: `d365fo_file` (9,888 -> 4,781) and
+// `generate_object` (8,602 -> 3,135) stopped inlining a discriminated union of
+// every operation and its parameters. Both now publish the DISCRIMINATORS only
+// — action/objectType/operation/mode/pattern as closed enums — and the
+// parameter contract behind the one the agent picks is fetched once from
+// get_knowledge(kind="op-spec"), backed by d365foFileOpSpecs.ts and
 // generateObjectOpSpecs.ts. get_knowledge paid ~490 chars for that lookup.
 //
 // What is left in those two schemas is close to the floor: the two closed enums
 // in d365fo_file alone are ~1,185 chars, and the remaining prose is the
 // behavioural warnings (immediate apply, isError=false, never hand-build the
 // prefix) that stop failed calls — which cost far more than the bytes do.
-// Headroom is small on purpose so creep is caught early.
 //
-// labels(action="search") maxResults/verbose (#832) added ~230 wire chars: a
-// broad phrase query returned 30 four-line blocks (~2,5 kB per call), so the
-// schema pays once per session to bound a result paid on every call.
+// `labels` is the largest tool now, not d365fo_file: labels(action="search")
+// maxResults/verbose (#832) added ~230 wire chars to bound a result that was
+// paid on every call and on every later re-read.
 //
-// Both ceilings then drop hard (#825): d365fo_file and generate_object now
-// publish discriminators plus a loose `params`, with the per-branch contract
-// moved to get_knowledge(kind="op-spec"). `labels` is the largest tool now,
-// not d365fo_file.
-const TOTAL_BUDGET = 53_600;
-const LARGEST_TOOL_BUDGET = 6_300;
+// Headroom is small on purpose so creep is caught early: both ceilings are the
+// next round hundred above the measured payload.
+const TOTAL_BUDGET = 53_500;
+const LARGEST_TOOL_BUDGET = 6_200;
 
 async function getTools(): Promise<Array<{ name: string }>> {
   const ctx: any = { symbolIndex: {}, parser: {} };
@@ -69,7 +65,7 @@ describe('tool schema token budget', () => {
       `[tool-budget] ${tools.length} tools · ${chars} chars ≈ ${Math.round(chars / CHARS_PER_TOKEN)} tokens ` +
       `(budget ${TOTAL_BUDGET} chars)`,
     );
-    expect(tools.length).toBe(26);
+    expect(tools.length).toBe(25);
     expect(chars).toBeLessThan(TOTAL_BUDGET);
   });
 

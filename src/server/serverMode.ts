@@ -105,7 +105,6 @@ export function isToolAllowedInMode(mode: ServerMode, toolName: string): boolean
  *  - validate_code   → advisory X++ lint; run_bp_check and the compiler are the
  *                      authoritative gates and both stay in core.
  *  - security_info   → security-model inspection, its own kind of task.
- *  - batch_get_info  → the batched form of get_object_info, which is core.
  *  - get_method      → one method's source; get_object_info already returns them.
  *  - run_systest_class → test execution, a separate phase (and gated behind an
  *                      interactive console on most boxes).

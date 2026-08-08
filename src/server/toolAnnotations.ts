@@ -48,7 +48,6 @@ function write(
 export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Search & discovery
   search:                           read('Search D365FO index'),
-  batch_get_info:                   read('Batch read object info'),
   find_references:                  read('Find references'),
   extension_info:                    read('Extensibility (coc/events/points/strategy)'),
 

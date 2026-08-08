@@ -287,6 +287,10 @@ describe('build_d365fo_project', () => {
     const result = await buildProjectTool({ projectPath: PROJECT_PATH }, {});
 
     expect(result.content[0].text).toContain('succeeded');
+    // #829 explicitly praises this wording — a collected result must keep
+    // saying, in plain words, that this call compiled nothing.
+    expect(result.content[0].text).toContain('Collected the result of the build that ended');
+    expect(result.content[0].text).toContain('nothing was recompiled by this call');
     expect(result.isError).toBeFalsy();
     expect(spawnMock).not.toHaveBeenCalled();
     // State file should be cleared
@@ -481,6 +485,163 @@ describe('build_d365fo_project', () => {
     expect(firstPath).toBe(secondPath);
 
     vi.restoreAllMocks();
+  });
+
+  // -------------------------------------------------------------------------
+  // #829 — an explicit fullBuild:true is a request to RECOMPILE, not a request
+  // for the newest available result, and a build that outlives the wait window
+  // must not turn into a second "call me again to collect" round trip.
+  // -------------------------------------------------------------------------
+
+  /** State-file JSON for a build that has already finished. */
+  function finishedState(extra: Record<string, unknown> = {}): string {
+    return JSON.stringify({
+      pid: 888,
+      modelName: MODEL_NAME,
+      targetModel: MODEL_NAME,
+      projectPath: PROJECT_PATH,
+      tool: 'xppc.exe',
+      startTime: new Date(Date.now() - 49_000).toISOString(),
+      endTime: new Date().toISOString(),
+      logFile: 'C:\\Temp\\d365build_log_prev.log',
+      status: 'succeeded',
+      exitCode: 0,
+      ...extra,
+    });
+  }
+
+  function serveState(stateJson: string) {
+    readFileMock.mockImplementation(async (p: string) => {
+      if (p.includes('d365build_state')) return stateJson;
+      if (p.endsWith('.rnrproj')) return RNRPROJ_XML;
+      if (p.includes('d365build_log')) return 'Build complete.';
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    });
+  }
+
+  it('fullBuild:true recompiles instead of replaying a finished FULL build', async () => {
+    serveState(finishedState({ fullBuild: true }));
+    // Sources unchanged since the build ended — the cached result would
+    // otherwise be considered perfectly reusable.
+    readdirMock.mockResolvedValue([]);
+    spawnMock.mockReturnValue(makeFakeChild(4242));
+    allowPaths([PROJECT_PATH, XPPC, PKG]);
+
+    const result = await buildProjectTool(
+      { projectPath: PROJECT_PATH, fullBuild: true, wait: false }, {},
+    );
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const [, args] = spawnMock.mock.calls[0];
+    expect(args).not.toContain('-incremental');
+    expect(result.content[0].text).not.toContain('Collected the result');
+    expect(result.content[0].text).toContain('Full build started');
+  });
+
+  it('fullBuild:true recompiles instead of replaying a finished INCREMENTAL build', async () => {
+    serveState(finishedState());
+    readdirMock.mockResolvedValue([]);
+    spawnMock.mockReturnValue(makeFakeChild(4243));
+    allowPaths([PROJECT_PATH, XPPC, PKG]);
+
+    const result = await buildProjectTool(
+      { projectPath: PROJECT_PATH, fullBuild: true, wait: false }, {},
+    );
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(result.content[0].text).not.toContain('Collected the result');
+  });
+
+  it('declines fullBuild:true while an INCREMENTAL build is running, and says why', async () => {
+    serveState(JSON.stringify({
+      pid: 777,
+      modelName: MODEL_NAME,
+      targetModel: MODEL_NAME,
+      tool: 'xppc.exe',
+      startTime: new Date(Date.now() - 20_000).toISOString(),
+      logFile: 'C:\\Temp\\d365build_log_run.log',
+      status: 'running',
+    }));
+    allowPaths([PROJECT_PATH, XPPC, PKG]);
+    const origKill = process.kill.bind(process);
+    vi.spyOn(process, 'kill').mockImplementation((pid: any, sig: any) => {
+      if (pid === 777 && sig === 0) return true as any;
+      return origKill(pid, sig);
+    });
+
+    const result = await buildProjectTool({ projectPath: PROJECT_PATH, fullBuild: true }, {});
+
+    expect(result.content[0].text).toContain('DECLINED');
+    expect(result.content[0].text).toContain('nothing was recompiled by this call');
+    expect(result.content[0].text).toContain('force: true');
+    expect(spawnMock).not.toHaveBeenCalled();
+
+    vi.restoreAllMocks();
+  });
+
+  it('waits through the post-build finalizing phase instead of handing back a "still running" stub', async () => {
+    // The 185 s double-call of #829: xppc exits, the close handler is still
+    // regenerating runtime metadata, and the waiter used to read the dead PID
+    // as "orphaned/timed out" for a build that had in fact just succeeded.
+    const base = {
+      pid: 4242,
+      modelName: MODEL_NAME,
+      targetModel: MODEL_NAME,
+      tool: 'xppc.exe',
+      startTime: new Date(Date.now() - 185_000).toISOString(),
+      logFile: 'C:\\Temp\\d365build_log_fin.log',
+    };
+    let stateReads = 0;
+    readFileMock.mockImplementation(async (p: string) => {
+      if (p.includes('d365build_state')) {
+        stateReads++;
+        return stateReads <= 2
+          ? JSON.stringify({ ...base, status: 'running', phase: 'finalizing' })
+          : JSON.stringify({ ...base, status: 'succeeded', exitCode: 0, endTime: new Date().toISOString() });
+      }
+      if (p.endsWith('.rnrproj')) return RNRPROJ_XML;
+      if (p.includes('d365build_log')) return 'Build complete.';
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    });
+    allowPaths([PROJECT_PATH, XPPC, PKG]);
+    // PID 4242 is gone — only the 'finalizing' phase says the build is alive.
+    const origKill = process.kill.bind(process);
+    vi.spyOn(process, 'kill').mockImplementation((pid: any, sig: any) => {
+      if (pid === 4242 && sig === 0) throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
+      return origKill(pid, sig);
+    });
+    const onProgress = vi.fn().mockResolvedValue(undefined);
+
+    const result = await buildProjectTool({ projectPath: PROJECT_PATH }, {}, onProgress);
+
+    expect(result.content[0].text).toContain('Build succeeded');
+    expect(result.content[0].text).not.toContain('timeout');
+    expect(spawnMock).not.toHaveBeenCalled();
+    // Progress streamed while blocking, naming the phase the caller cannot see.
+    expect(onProgress).toHaveBeenCalled();
+    expect(onProgress.mock.calls[0][0]).toContain('finalizing');
+    expect(typeof onProgress.mock.calls[0][1]).toBe('number');
+
+    vi.restoreAllMocks();
+  });
+
+  it('timeout message carries the elapsed/window state and a concrete waitTimeoutMs to retry with', async () => {
+    spawnMock.mockReturnValue(makeFakeChild(51));
+    allowPaths([PROJECT_PATH, XPPC, PKG]);
+
+    // 1 ms window — the wait expires before the build can possibly finish.
+    const result = await buildProjectTool(
+      { projectPath: PROJECT_PATH, waitTimeoutMs: 1 }, {},
+    );
+
+    const text = result.content[0].text;
+    expect(text).toContain('still running after');
+    expect(text).toContain('The build is NOT finished');
+    expect(text).toContain('does not start a second one');
+    const suggested = text.match(/waitTimeoutMs: (\d+)/);
+    expect(suggested).toBeTruthy();
+    expect(Number(suggested![1])).toBeGreaterThanOrEqual(600_000);
+    expect(result.isError).toBeFalsy();
   });
 
   it('uses explicit modelName param without requiring projectPath or rnrproj', async () => {
