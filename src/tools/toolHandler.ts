@@ -3,6 +3,7 @@ import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { SERVER_MODE, LOCAL_TOOLS, isToolAllowedInMode } from '../server/serverMode.js';
+import { BRIDGE_BACKED_TOOLS, awaitBridgeReady } from '../bridge/bridgeReadiness.js';
 import { searchUnifiedTool } from './searchUnified.js';
 import { getObjectInfoTool } from './getObjectInfo.js';
 import { findReferencesTool } from './findReferences.js';
@@ -145,6 +146,16 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       configManager.setRuntimeContext({ workspacePath });
     }
 
+    // The C# bridge starts out-of-band, so the tool list can be live while
+    // `context.bridge` is still undefined. Wait for a startup that is in flight
+    // before the tool decides anything — otherwise a 2-second cold-start race is
+    // reported as "the object does not exist" / "check your config" (issue #826).
+    // Started here, awaited after the dbReady block, so the two waits overlap and
+    // a cold start costs max(db, bridge) rather than their sum.
+    const bridgeWait = BRIDGE_BACKED_TOOLS.has(toolName)
+      ? { t0: Date.now(), outcome: awaitBridgeReady(context) }
+      : null;
+
     // ctx.dbReady resolves once the real symbol database is loaded; await it so
     // tools use the real index instead of silently returning empty results.
     // LOCAL_TOOLS need no DB (filesystem/in-memory config only) and skip the wait.
@@ -173,6 +184,19 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       const elapsed = Date.now() - t0;
       if (elapsed > 200) {
         console.error(`[toolHandler] ⏳ ${toolName}: DB was loading, waited ${elapsed} ms`);
+      }
+    }
+
+    // Collect the bridge wait started above. Every outcome falls through to the
+    // tool: `ready` is the point of the wait, `unavailable`/`not-tracked` mean
+    // the symbol-index and disk fallbacks are the answer, and even on `timeout`
+    // the tool may still resolve the object from the index — it just gets to
+    // describe the bridge as "still starting" instead of "not connected".
+    if (bridgeWait) {
+      const outcome = await bridgeWait.outcome;
+      const elapsed = Date.now() - bridgeWait.t0;
+      if (elapsed > 200) {
+        console.error(`[toolHandler] ⏳ ${toolName}: bridge was starting, waited ${elapsed} ms → ${outcome}`);
       }
     }
 

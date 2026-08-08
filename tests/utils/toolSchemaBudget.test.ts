@@ -41,15 +41,19 @@ const CHARS_PER_TOKEN = 4;
 // on the wire — only the prose naming them does, and that was paid for by
 // tightening the `params` description rather than by moving the ceiling.
 //
-// get_object_info absorbing batch_get_info as `objects[]` did not move these
-// either: the plural form cost 1,002 chars but the retired tool gave back 1,047,
-// and naming the entry `objectName` (the key verify_d365fo_project and
-// run_bp_check already use) added 42 more. Net 63,258 → 63,255.
+// Raised for labels(action="search") maxResults/verbose (#832): a broad phrase
+// query returned 30 four-line blocks (~2,5 kB per call), so ~230 wire chars buy
+// a bounded, one-line-per-label default — the schema pays once per session, the
+// result paid on every call and on every later re-read.
+//
+// get_object_info absorbing batch_get_info as `objects[]` (#831) lowers it: the
+// plural form cost 1,002 chars but the retired tool gave back 1,047, and naming
+// the entry `objectName` (the key verify_d365fo_project and run_bp_check already
+// use) added 42 more.
 //
 // Headroom is small on purpose so creep is caught early: both ceilings are the
-// next round hundred above the measured payload — 45 chars over the total,
-// 12 over the largest tool.
-const TOTAL_BUDGET = 63_300;
+// next round hundred above the measured payload.
+const TOTAL_BUDGET = 63_200;
 const LARGEST_TOOL_BUDGET = 9_900;
 
 async function getTools(): Promise<Array<{ name: string }>> {

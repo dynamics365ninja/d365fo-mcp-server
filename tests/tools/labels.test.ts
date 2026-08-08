@@ -188,6 +188,123 @@ describe('search_labels', () => {
   });
 });
 
+// ─── search_labels result budget (#832) ──────────────────────────────────────
+
+describe('search_labels result budget (#832)', () => {
+  let ctx: XppServerContext;
+
+  /** N hits owned by `model`, ids Label0…LabelN-1 — mimics a broad phrase query. */
+  const manyLabels = (n: number, model = 'Foundation') =>
+    Array.from({ length: n }, (_, i) => makeLabelResult({
+      labelId: `Label${i}`, labelFileId: model, model, text: `value cannot be less than ${i}`,
+      comment: 'Some developer comment that used to be printed for every single hit',
+    }));
+
+  beforeEach(() => { ctx = buildContext(); });
+
+  it('caps the listing at 10 labels by default and says how many more matched', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue(manyLabels(30));
+
+    const text = (await searchLabelsTool(req('search_labels', { query: 'lower value' }), ctx)).content[0].text as string;
+
+    expect(text).toContain('showing first 10');
+    expect(text).toContain('… and 20 more — narrow the query or raise maxResults');
+    expect(text).toContain('@Foundation:Label9');
+    expect(text).not.toContain('@Foundation:Label10');
+  });
+
+  it('honours maxResults and its legacy `limit` alias', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue(manyLabels(30));
+
+    const wide = (await searchLabelsTool(req('search_labels', { query: 'x', maxResults: 25 }), ctx)).content[0].text as string;
+    expect(wide).toContain('@Foundation:Label24');
+    expect(wide).toContain('… and 5 more');
+
+    const legacy = (await searchLabelsTool(req('search_labels', { query: 'x', limit: 3 }), ctx)).content[0].text as string;
+    expect(legacy).toContain('@Foundation:Label2');
+    expect(legacy).not.toContain('@Foundation:Label3');
+    expect(legacy).toContain('… and 27 more');
+  });
+
+  it('over-fetches past the display cap so the footer count is exact', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue(manyLabels(30));
+    await searchLabelsTool(req('search_labels', { query: 'lower value' }), ctx);
+
+    const opts = (ctx.symbolIndex.searchLabels as any).mock.calls[0][1];
+    expect(opts.limit).toBeGreaterThan(30);
+  });
+
+  it('emits no footer when everything matched fits', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue(manyLabels(4));
+
+    const text = (await searchLabelsTool(req('search_labels', { query: 'x' }), ctx)).content[0].text as string;
+
+    expect(text).toContain('Found 4 label(s)');
+    expect(text).not.toContain('more — narrow the query');
+  });
+
+  it('states the cross-model ownership warning once per result set, not once per label', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([
+      ...manyLabels(6, 'Foundation'),
+      ...manyLabels(4, 'RevenueRecognition'),
+    ]);
+
+    const text = (await searchLabelsTool(req('search_labels', { query: 'x' }), ctx)).content[0].text as string;
+
+    // …once for the whole set, naming the models that need a package reference —
+    // and never again as the per-label sentence that used to repeat on every hit.
+    expect(text.match(/owned by other models/g) ?? []).toHaveLength(1);
+    expect(text).not.toContain('owned by model "');
+    expect(text).toContain('10 result(s) marked');
+    expect(text).toContain('Foundation, RevenueRecognition');
+  });
+
+  it('renders one line per label by default', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([
+      makeLabelResult({ labelId: 'CustName', labelFileId: 'MyModel', model: 'MyModel', text: 'Customer name' }),
+    ]);
+
+    const text = (await searchLabelsTool(req('search_labels', { query: 'customer' }), ctx)).content[0].text as string;
+
+    expect(text).toContain('@MyModel:CustName — "Customer name" [MyModel]');
+    expect(text).not.toContain('Text    :');
+    expect(text).not.toContain('Comment :');
+  });
+
+  it('keeps a multi-line hit on a single line', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([
+      makeLabelResult({ labelId: 'Multi', text: 'first line\nsecond   line' }),
+    ]);
+
+    const text = (await searchLabelsTool(req('search_labels', { query: 'x' }), ctx)).content[0].text as string;
+    const hit = text.split('\n').filter(l => l.trim().startsWith('@MyModel:Multi —'));
+
+    expect(hit).toHaveLength(1);
+    expect(hit[0]).toContain('"first line second line"');
+  });
+
+  it('verbose=true restores the multi-line block for callers that want full detail', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([
+      makeLabelResult({ labelId: 'CustName', text: 'Customer name', comment: 'Header caption' }),
+    ]);
+
+    const text = (await searchLabelsTool(req('search_labels', { query: 'customer', verbose: true }), ctx)).content[0].text as string;
+
+    expect(text).toContain('Text    : Customer name');
+    expect(text).toContain('Comment : Header caption');
+    expect(text).toContain('Model   : MyModel  |  LabelFile: MyModel');
+  });
+
+  it('is dramatically cheaper than the verbose form for a broad query', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue(manyLabels(30));
+
+    const compact = (await searchLabelsTool(req('search_labels', { query: 'x' }), ctx)).content[0].text as string;
+    const verbose = (await searchLabelsTool(req('search_labels', { query: 'x', verbose: true, maxResults: 30 }), ctx)).content[0].text as string;
+
+    expect(compact.length).toBeLessThan(verbose.length / 3);
+  });
+});
+
 // ─── get_label_info ──────────────────────────────────────────────────────────
 
 describe('get_label_info', () => {

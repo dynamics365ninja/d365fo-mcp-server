@@ -64,7 +64,7 @@ export async function getEnumInfoTool(request: CallToolRequest, context: XppServ
     }
 
     let text = `Enum "${args.enumName}" not found via bridge, symbol index, or on disk.\n`;
-    text += bridgeUnavailableNote(context.bridge);
+    text += bridgeUnavailableNote(context);
     try {
       text += buildObjectTypeMismatchMessage(context.symbolIndex.getReadDb(), args.enumName, 'enum');
     } catch { /* DB unavailable */ }
