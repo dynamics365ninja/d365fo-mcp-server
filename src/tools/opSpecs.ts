@@ -22,6 +22,7 @@ import {
   GENERATE_OBJECT_MODE_SPECS,
   renderGenerateObjectSpec,
 } from './generateObjectOpSpecs.js';
+import { LABELS_OVERRIDE_PARAMS, renderLabelsOpSpec } from './labelsOpSpecs.js';
 import { d365foFileTool } from '../server/toolSchemas/d365foFile.js';
 
 /**
@@ -35,6 +36,9 @@ const D365FO_FILE_OBJECT_TYPES: readonly string[] =
 
 /** Tool-qualified topics (`d365fo_file.add-index`) resolve to the bare key. */
 const TOOL_PREFIXES = ['d365fo_file.', 'd365fo_file:', 'generate_object.', 'generate_object:'];
+
+/** Topics that resolve to the `labels` write-plumbing contract. */
+const LABELS_TOPICS = ['labels', 'label', 'labels.create', 'labels.rename', 'create-label'];
 
 function normalize(topic: string): string {
   let t = topic.trim();
@@ -94,6 +98,9 @@ export function renderOpSpecIndex(unknownTopic?: string): string {
     '',
     'd365fo_file resolution overrides (any action, nested in `params`):',
     ...Object.entries(D365FO_FILE_OVERRIDE_PARAMS).map(([k, v]) => `  ${k}: ${v}`),
+    '',
+    'labels write plumbing (topic="labels", nested in `params`):',
+    `  ${Object.keys(LABELS_OVERRIDE_PARAMS).join(', ')}`,
   ].join('\n');
 }
 
@@ -115,6 +122,8 @@ export function lookupOpSpec(topic?: string): string {
 
   const objectType = D365FO_FILE_OBJECT_TYPES.find(t => t.toLowerCase() === needle);
   if (objectType) return renderCreatePropertySpec(objectType);
+
+  if (LABELS_TOPICS.includes(needle)) return renderLabelsOpSpec();
 
   return renderOpSpecIndex(topic);
 }

@@ -20,6 +20,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { READER_DISPATCH, OBJECT_INFO_TYPES, withNotFoundGuidance } from './objectInfoRegistry.js';
 import { completionTool } from './completion.js';
+import { getMethodTool } from './getMethod.js';
 
 /** Ceiling on one plural call — inherited from the retired batch_get_info. */
 const MAX_OBJECTS = 10;
@@ -36,7 +37,8 @@ const OBJECT_TYPE_DESCRIPTION =
 const OPTIONS_DESCRIPTION =
   'Optional type-specific flags forwarded to the reader. ' +
   'Class: { "compact": false } for full source, { "methodOffset": 15 } for next method page, ' +
-  '{ "members": "names" } for fast member-name list (add "prefix" to filter). ' +
+  '{ "members": "names" } for fast member-name list (add "prefix" to filter), ' +
+  '{ "method": "validateWrite", "include": "signature" } for ONE method (include: signature | source | both). ' +
   'Report: { "includeRdl": true }. Form: { "searchControl": "AccountNum" }. Macro: { "filter": "Path" }.';
 
 /**
@@ -110,6 +112,34 @@ function toObjectRefs(args: z.infer<typeof GetObjectInfoArgsSchema>): ObjectRef[
 /** Resolve one object through its registered reader, with the shared not-found guidance. */
 async function readObject(ref: ObjectRef, context: XppServerContext) {
   const { objectType, name, options } = ref;
+
+  // Folded get_method: one method's signature and/or source.
+  // get_object_info(objectType="class", name, options:{ method:"validateWrite", include? })
+  //
+  // get_method was its own tool purely for historical reasons and the mandated
+  // chain was search → get_object_info → get_method: three round trips to read
+  // one signature, where the middle call already had the class in hand. Folding
+  // it here removes that hop and its ~926 chars from every ListTools payload.
+  if (options?.method) {
+    if (objectType !== 'class') {
+      return {
+        content: [{ type: 'text', text: `❌ get_object_info: options.method is only supported for objectType="class". For "${objectType}" omit it to get full metadata.` }],
+        isError: true,
+      };
+    }
+    const methodRequest: CallToolRequest = {
+      method: 'tools/call',
+      params: {
+        name: 'get_method',
+        arguments: {
+          className: name,
+          methodName: String(options.method),
+          include: options.include,
+        },
+      },
+    };
+    return getMethodTool(methodRequest, context);
+  }
 
   // Folded code_completion: a fast member-name list for classes.
   // get_object_info(objectType="class", name, options:{ members:"names", prefix? })

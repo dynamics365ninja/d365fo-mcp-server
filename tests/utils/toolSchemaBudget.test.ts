@@ -3,7 +3,7 @@
  * payload, which is sent to the model on (at least) every new session and is
  * the server's largest fixed token cost.
  *
- * Rationale: the 25 tool schemas are verbose on purpose (the descriptions encode
+ * Rationale: the 23 tool schemas are verbose on purpose (the descriptions encode
  * hard-won D365FO patterns that prevent failed/retried calls), so the goal is
  * NOT to minimise blindly — it is to make the size *visible and bounded* so it
  * cannot creep upward unnoticed. Lower these ceilings whenever the schema is
@@ -38,14 +38,27 @@ const CHARS_PER_TOKEN = 4;
 // behavioural warnings (immediate apply, isError=false, never hand-build the
 // prefix) that stop failed calls — which cost far more than the bytes do.
 //
-// `labels` is the largest tool now, not d365fo_file: labels(action="search")
-// maxResults/verbose (#832) added ~230 wire chars to bound a result that was
-// paid on every call and on every later re-read.
+// Ratcheted again by the round-trip work, which needed headroom it did not have:
+// 53,450 of 53,500 chars were used, and `labels` sat 3 chars under its per-tool
+// cap, so no change could be paid for. Three trims, ~3,850 chars:
+//   • get_method and suggest_edt unpublished. Both were folded into a tool that
+//     already had the object in hand — get_object_info(options.method) and
+//     prepare(fieldsHint) — and get_method's mandated chain (search →
+//     get_object_info → get_method) spent a round trip to read one signature.
+//     Their handlers stay routable, so an agent holding the old name still gets
+//     an answer instead of an unrecoverable "unknown tool".
+//   • `labels` write plumbing — 13 knobs (packagePath, languages, sortLabels, …)
+//     that are auto-resolved on the normal path — moved behind
+//     get_knowledge(kind="op-spec", topic="labels"), the same trade #825 made
+//     for d365fo_file. labels: 6,197 -> 4,465.
+//   Net after re-spending some of it on the folded get_method contract: 53,450 -> 49,776.
+//   • the 23-value object-type enum was inlined THREE times in `search`; the two
+//     nested copies now point at the top-level one.
 //
 // Headroom is small on purpose so creep is caught early: both ceilings are the
 // next round hundred above the measured payload.
-const TOTAL_BUDGET = 53_500;
-const LARGEST_TOOL_BUDGET = 6_200;
+const TOTAL_BUDGET = 49_900;
+const LARGEST_TOOL_BUDGET = 4_800;
 
 async function getTools(): Promise<Array<{ name: string }>> {
   const ctx: any = { symbolIndex: {}, parser: {} };
@@ -65,7 +78,7 @@ describe('tool schema token budget', () => {
       `[tool-budget] ${tools.length} tools · ${chars} chars ≈ ${Math.round(chars / CHARS_PER_TOKEN)} tokens ` +
       `(budget ${TOTAL_BUDGET} chars)`,
     );
-    expect(tools.length).toBe(25);
+    expect(tools.length).toBe(23);
     expect(chars).toBeLessThan(TOTAL_BUDGET);
   });
 
