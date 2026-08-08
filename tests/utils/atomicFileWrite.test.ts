@@ -96,13 +96,23 @@ describe('withFileLock', () => {
   });
 
   it('serializes the same file across separator and case spellings', async () => {
-    const file = tempFile('<AxTable/>');
-    const alias = file.replace(/\\/g, '/').toUpperCase();
+    // Lock-key equivalence only — deliberately no filesystem I/O. On Windows the
+    // three spellings name one file; on a case-sensitive filesystem they name
+    // three different paths, so reading through an alias ENOENTs and the test
+    // ends up asserting the filesystem's case rules instead of the lock's.
+    // (That is exactly how this failed on the Linux CI runner while passing here.)
+    const base = 'C:\\Pkg\\ContosoModel\\AxTable\\ContosoDemoTable.xml';
+    const spellings = [base, base.replace(/\\/g, '/'), base.toUpperCase()];
 
-    await Promise.all([appendUnderLock(file, 'FIRST'), appendUnderLock(alias, 'SECOND')]);
+    let active = 0;
+    let maxActive = 0;
+    await Promise.all(spellings.map(spelling => withFileLock(spelling, async () => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise(r => setTimeout(r, 10));
+      active--;
+    })));
 
-    const result = fs.readFileSync(file, 'utf-8');
-    expect(result).toContain('FIRST');
-    expect(result).toContain('SECOND');
+    expect(maxActive).toBe(1);
   });
 });
