@@ -7,13 +7,21 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { escapeXml } from '../utils/xmlEscape.js';
+import { buildAxTableXml } from './tableXml.js';
+import { buildAxFormXml } from './formXml.js';
+import {
+  buildAxSecurityDutyXml,
+  buildAxSecurityRoleXml,
+  buildAxSecurityDutyExtensionXml,
+  buildAxSecurityRoleExtensionXml,
+} from './securityDutyRoleXml.js';
 import { z } from 'zod';
 import { getConfigManager } from '../utils/configManager.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from './modifyD365File.js';
 import { buildAxSecurityPrivilegeXml } from './securityPrivilegeXml.js';
-import { buildAxDataEntityXml, isYes } from './dataEntityXml.js';
+import { buildAxDataEntityXml } from './dataEntityXml.js';
 import { buildAxQueryXml, buildAxViewXml } from './queryViewXml.js';
 import { buildAxEdtExtensionXml } from './edtExtensionXml.js';
 import { buildAxDataEntityViewExtensionXml } from './dataEntityViewExtensionXml.js';
@@ -313,71 +321,7 @@ ${methodsXml}\t</SourceCode>
     tableName: string,
     properties?: Record<string, any>
   ): string {
-    const label = properties?.label || tableName;
-    const tableGroup = properties?.tableGroup || 'Main';
-    const titleField1 = properties?.titleField1 || '';
-    const titleField2 = properties?.titleField2 || '';
-
-    const titleField1Xml = titleField1
-      ? `\t<TitleField1>${titleField1}</TitleField1>\n`
-      : '';
-    const titleField2Xml = titleField2
-      ? `\t<TitleField2>${titleField2}</TitleField2>\n`
-      : '';
-    // Canonical order: Title block → these → collections. See axTablePropertyOrder.
-    const noYes = (key: string, tag: string) =>
-      isYes(properties?.[key]) ? `\t<${tag}>Yes</${tag}>\n` : '';
-    const extendedXml =
-      noYes('allowRowVersionChangeTracking', 'AllowRowVersionChangeTracking') +
-      noYes('createdBy', 'CreatedBy') +
-      noYes('createdDateTime', 'CreatedDateTime') +
-      noYes('createdTransactionId', 'CreatedTransactionId') +
-      noYes('modifiedBy', 'ModifiedBy') +
-      noYes('modifiedDateTime', 'ModifiedDateTime') +
-      noYes('modifiedTransactionId', 'ModifiedTransactionId');
-
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${tableName}</Name>
-\t<SourceCode>
-\t\t<Declaration><![CDATA[
-public class ${tableName} extends common
-{
-}
-]]></Declaration>
-\t\t<Methods />
-\t</SourceCode>
-\t<Label>${escapeXml(label)}</Label>
-\t<TableGroup>${tableGroup}</TableGroup>
-${titleField1Xml}${titleField2Xml}${extendedXml}\t<DeleteActions />
-\t<FieldGroups>
-\t\t<AxTableFieldGroup>
-\t\t\t<Name>AutoReport</Name>
-\t\t\t<Fields />
-\t\t</AxTableFieldGroup>
-\t\t<AxTableFieldGroup>
-\t\t\t<Name>AutoLookup</Name>
-\t\t\t<Fields />
-\t\t</AxTableFieldGroup>
-\t\t<AxTableFieldGroup>
-\t\t\t<Name>AutoIdentification</Name>
-\t\t\t<AutoPopulate>Yes</AutoPopulate>
-\t\t\t<Fields />
-\t\t</AxTableFieldGroup>
-\t\t<AxTableFieldGroup>
-\t\t\t<Name>AutoSummary</Name>
-\t\t\t<Fields />
-\t\t</AxTableFieldGroup>
-\t\t<AxTableFieldGroup>
-\t\t\t<Name>AutoBrowse</Name>
-\t\t\t<Fields />
-\t\t</AxTableFieldGroup>
-\t</FieldGroups>
-\t<Fields />
-\t<Indexes />
-\t<Relations />
-</AxTable>
-`;
+    return buildAxTableXml(tableName, properties);
   }
 
   /**
@@ -450,37 +394,9 @@ ${enumValuesXml}${isExtensibleXml}</AxEnum>
    */
   static generateAxFormXml(
     formName: string,
-    _properties?: Record<string, any>
+    properties?: Record<string, any>
   ): string {
-    // D365FO forms require xmlns="Microsoft.Dynamics.AX.Metadata.V6" and SourceCode first
-    // NOTE: <Label> is intentionally absent — AxForm files do not carry a top-level <Label>.
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
-\t<Name>${formName}</Name>
-\t<SourceCode>
-\t\t<Methods xmlns="">
-\t\t\t<Method>
-\t\t\t\t<Name>classDeclaration</Name>
-\t\t\t\t<Source><!\[CDATA[
-    [Form]
-    public class ${formName} extends FormRun
-    {
-    }
-
-]]></Source>
-\t\t\t</Method>
-\t\t</Methods>
-\t\t<DataSources xmlns="" />
-\t\t<DataControls xmlns="" />
-\t\t<Members xmlns="" />
-\t</SourceCode>
-\t<DataSources />
-\t<Design>
-\t\t<Controls xmlns="" />
-\t</Design>
-\t<Parts />
-</AxForm>
-`;
+    return buildAxFormXml(formName, properties);
   }
 
   /**
@@ -1437,41 +1353,11 @@ ${relationsXml}
   }
 
   static generateAxSecurityDutyXml(name: string, properties?: Record<string, any>): string {
-    const label = properties?.label || '@TODO:LabelId';
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${name}</Name>
-\t<Label>${escapeXml(label)}</Label>
-\t<Privileges />
-</AxSecurityDuty>`;
+    return buildAxSecurityDutyXml(name, properties);
   }
 
   static generateAxSecurityRoleXml(name: string, properties?: Record<string, any>): string {
-    const label = properties?.label || '@TODO:LabelId';
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${name}</Name>
-\t<Label>${escapeXml(label)}</Label>
-\t<DirectAccessPermissions />
-\t<Duties />
-\t<Privileges />
-\t<SubRoles />
-</AxSecurityRole>`;
-  }
-
-  /** Normalize a name list that may arrive as an array or a comma/semicolon/newline-separated string. */
-  private static normalizeNameList(value: any): string[] {
-    if (!value) return [];
-    const arr = Array.isArray(value) ? value : String(value).split(/[,;\n]+/);
-    return arr.map((s: any) => String(s).trim()).filter((s: string) => s.length > 0);
-  }
-
-  private static refContainer(container: string, childTag: string, names: string[]): string {
-    if (names.length === 0) return `\t<${container} />`;
-    const children = names
-      .map(n => `\t\t<${childTag}>\n\t\t\t<Name>${n}</Name>\n\t\t</${childTag}>`)
-      .join('\n');
-    return `\t<${container}>\n${children}\n\t</${container}>`;
+    return buildAxSecurityRoleXml(name, properties);
   }
 
   /**
@@ -1479,13 +1365,7 @@ ${relationsXml}
    * without overlaying it. Name convention: "<BaseDuty>.<PrefixOrModel>Extension".
    */
   static generateAxSecurityDutyExtensionXml(name: string, properties?: Record<string, any>): string {
-    const privileges = this.normalizeNameList(properties?.privileges);
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxSecurityDutyExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${name}</Name>
-${this.refContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
-\t<PropertyModifications />
-</AxSecurityDutyExtension>`;
+    return buildAxSecurityDutyExtensionXml(name, properties);
   }
 
   /**
@@ -1493,16 +1373,7 @@ ${this.refContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
    * role without overlaying it. Name convention: "<BaseRole>.<PrefixOrModel>Extension".
    */
   static generateAxSecurityRoleExtensionXml(name: string, properties?: Record<string, any>): string {
-    const duties = this.normalizeNameList(properties?.duties);
-    const privileges = this.normalizeNameList(properties?.privileges);
-    return `<?xml version="1.0" encoding="utf-8"?>
-<AxSecurityRoleExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-\t<Name>${name}</Name>
-\t<DirectAccessPermissions />
-${this.refContainer('Duties', 'AxSecurityDutyReference', duties)}
-${this.refContainer('Privileges', 'AxSecurityPrivilegeReference', privileges)}
-\t<PropertyModifications />
-</AxSecurityRoleExtension>`;
+    return buildAxSecurityRoleExtensionXml(name, properties);
   }
 }
 
