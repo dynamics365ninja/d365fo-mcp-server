@@ -191,28 +191,28 @@ describe('inferPrefixFromObjectNames', () => {
    */
   describe('three-segment tokens are corroborated, not taken on coverage', () => {
     it('accepts one the model name carries, spelled out', () => {
-      // Asl|Fin|SK ⊂ AslFinanceSK: the prefix abbreviates what the name spells.
+      // Demo|Fin|SK ⊂ DemoFinanceSK: the prefix abbreviates what the name spells.
       const result = inferPrefixFromObjectNames([
-        'AslFinSKVendPaymentTable', 'AslFinSKCustInvoiceJour',
-        'AslFinSKLedgerJournalTrans', 'AslFinSKTaxReportTable',
-      ], 'AslFinanceSK');
+        'DemoFinSKVendPaymentTable', 'DemoFinSKCustInvoiceJour',
+        'DemoFinSKLedgerJournalTrans', 'DemoFinSKTaxReportTable',
+      ], 'DemoFinanceSK');
 
-      expect(result?.regular).toBe('AslFinSK');
+      expect(result?.regular).toBe('DemoFinSK');
     });
 
     it('wins on corroboration even when a few objects dilute its raw coverage', () => {
-      // Real AslFinanceSK data: most objects say "AslFinSK_", a couple of older
-      // ones are cased "AslFinSk_" instead. "AslFin" still covers all of them and
-      // used to win outright on that higher raw count — the model's actual,
-      // corroborated convention must win instead because it clears MIN_COVERAGE.
+      // The shape that exposed this: most objects say "DemoFinSK_", a couple of
+      // older ones are cased "DemoFinSk_" instead. "DemoFin" still covers all of
+      // them and used to win outright on that higher raw count — the model's
+      // actual, corroborated convention must win because it clears MIN_COVERAGE.
       const result = inferPrefixFromObjectNames([
-        'AslFinSK_ACFeatureList', 'AslFinSK_CustInvoiceJournalFormHandler',
-        'AslFinSK_LedgerJournalTransApproveFormHandler', 'AslFinSK_TaxTransHandler',
-        'AslFinSK_TaxTransManager', 'AslFinSK_VendInvoiceJournalFormHandler',
-        'AslFinSk_FinanceSK', 'AslFinSk_FinanceSK',
-      ], 'AslFinanceSK');
+        'DemoFinSK_ACFeatureList', 'DemoFinSK_CustInvoiceJournalFormHandler',
+        'DemoFinSK_LedgerJournalTransApproveFormHandler', 'DemoFinSK_TaxTransHandler',
+        'DemoFinSK_TaxTransManager', 'DemoFinSK_VendInvoiceJournalFormHandler',
+        'DemoFinSk_FinanceSK', 'DemoFinSk_FinanceSK',
+      ], 'DemoFinanceSK');
 
-      expect(result?.regular).toBe('AslFinSK_');
+      expect(result?.regular).toBe('DemoFinSK_');
     });
 
     it('accepts one the model\'s own extensions state', () => {

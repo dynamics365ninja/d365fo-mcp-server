@@ -93,13 +93,13 @@ function leadingTokenCandidates(name: string): string[] {
  *
  * Coverage cannot tell a real third segment from a domain word: a model whose
  * objects are all ConDemoNoteHeader / …Line / …Text offers "ConDemoNote" with
- * exactly the same 100 % coverage that makes "AslFinSK" right for AslFinanceSK,
+ * exactly the same 100 % coverage that makes "DemoFinSK" right for DemoFinanceSK,
  * and the longest-wins tie-break then takes the domain word. Both shapes are
  * indistinguishable from the names alone, so a candidate spanning three segments
  * has to be corroborated from OUTSIDE the object names:
  *
- *   - the model's own extensions state it ("VendTable.AslFinSKExtension"), or
- *   - the model NAME contains its segments in order ("Asl|Fin|SK" ⊂ AslFinanceSK,
+ *   - the model's own extensions state it ("VendTable.DemoFinSKExtension"), or
+ *   - the model NAME contains its segments in order ("Demo|Fin|SK" ⊂ DemoFinanceSK,
  *     while "Note" is nowhere in "ConDemo").
  *
  * Uncorroborated, the candidate is dropped and the two-segment token — the
@@ -124,7 +124,7 @@ function tokenAllowed(
 /**
  * Do the token's segments appear in the model name, in order, starting at its
  * first character? Gaps between them are allowed, which is what makes
- * "Asl|Fin|SK" match "AslFinanceSK" — the model spells a segment out where the
+ * "Demo|Fin|SK" match "DemoFinanceSK" — the model spells a segment out where the
  * prefix abbreviates it.
  */
 function modelNameCarries(modelName: string, segs: string[]): boolean {
@@ -149,8 +149,8 @@ function modelNameCarries(modelName: string, segs: string[]): boolean {
  * differently-cased legacy name, an old object from before the prefix went
  * compound) drops the three-segment count below the two-segment count and,
  * under a raw-coverage race, the two-segment token wins EVERY time real data
- * has any exception at all. That is exactly how "AslFinSK" (26/28 objects, a
- * couple of others spelled "AslFinSk_") lost to "AslFin" (28/28) despite being
+ * has any exception at all. That is exactly how "DemoFinSK" (26/28 objects, a
+ * couple of others spelled "DemoFinSk_") lost to "DemoFin" (28/28) despite being
  * the model's actual, corroborated convention.
  * Once a token clears the coverage bar it is trusted; among those, the longest
  * is the most specific answer and wins outright, not merely on a tie.
