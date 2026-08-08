@@ -67,6 +67,11 @@ const D365FO_FILE_OVERRIDE_PARAMS: Record<string, string> = {
   packagePath: 'Base package path (default: auto-detected PackagesLocalDirectory).',
   solutionPath: 'VS solution directory — used to find the .rnrproj when projectPath is unset.',
   workspacePath: '[modify] Workspace path used to locate the object file.',
+  bpCheck:
+    '[create|modify] true = run the best-practice check on the object in THIS call, ' +
+    'instead of spending a round trip on run_bp_check afterwards. Off by default: ' +
+    'xppbp needs the compiler and takes seconds, which is the wrong trade for the common case. ' +
+    'The write result already carries an on-disk + .rnrproj verification without it.',
 };
 
 /** Every topic the lookup answers, grouped for the index listing. */
