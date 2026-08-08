@@ -60,6 +60,9 @@ vi.mock('../../src/utils/configManager', () => ({
     ensureLoaded: vi.fn(async () => {}),
     getPackagePath: vi.fn(() => 'K:\\PackagesLocalDirectory'),
     getModelName: vi.fn(() => 'MyModel'),
+    // validate_object_naming awaits this so a detection still in flight cannot
+    // leave it resolving the prefix for a null model (#833).
+    getAutoDetectedModelName: vi.fn(async () => 'MyModel'),
     // Writes are measured against the anchor, not the active model (see getWriteAnchorModel).
     getWriteAnchorModel: vi.fn(() => 'MyModel'),
     getToolProjectSwitch: vi.fn(() => null),

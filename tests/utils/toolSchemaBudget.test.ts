@@ -46,14 +46,20 @@ const CHARS_PER_TOKEN = 4;
 // a bounded, one-line-per-label default — the schema pays once per session, the
 // result paid on every call and on every later re-read.
 //
-// get_object_info absorbing batch_get_info as `objects[]` (#831) lowers it: the
-// plural form cost 1,002 chars but the retired tool gave back 1,047, and naming
-// the entry `objectName` (the key verify_d365fo_project and run_bp_check already
-// use) added 42 more.
+// run_bp_check's `objects[]` batch form (#828) raises it again: it is a
+// genuinely new array-of-object parameter, and it buys back far more than it
+// costs — checking three objects went from three ListTools-priced round trips
+// to one. The single-target `targetFilter`/`targetElementType` descriptions
+// were tightened at the same time to pay for part of it.
+//
+// get_object_info absorbing batch_get_info as `objects[]` (#831) gives a little
+// back: the plural form cost 1,002 chars but the retired tool returned 1,047,
+// and naming the entry `objectName` (the key verify_d365fo_project and
+// run_bp_check already use) added 42 more.
 //
 // Headroom is small on purpose so creep is caught early: both ceilings are the
 // next round hundred above the measured payload.
-const TOTAL_BUDGET = 63_200;
+const TOTAL_BUDGET = 63_600;
 const LARGEST_TOOL_BUDGET = 9_900;
 
 async function getTools(): Promise<Array<{ name: string }>> {

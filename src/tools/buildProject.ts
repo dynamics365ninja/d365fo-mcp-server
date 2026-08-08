@@ -13,6 +13,7 @@ import { lookupErrorFix } from './d365foErrorHelp.js';
 import { generateRuntimeMetadata } from './generateMetadata.js';
 import { compileModelLabels, type CompileLabelsResult } from './compileLabels.js';
 import { readModuleReferences } from '../metadata/modelDescriptor.js';
+import type { ProgressReporter } from '../utils/progressReporter.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -157,6 +158,13 @@ interface BuildJobState {
   startTime: string;
   logFile: string;         // Log for the CURRENT model in the queue
   status: 'running' | 'succeeded' | 'failed';
+  // What a 'running' state is actually doing. 'finalizing' means xppc has
+  // already exited and the in-process close handler is doing post-build work
+  // (runtime metadata regeneration, up to ~90 s) before it can write the final
+  // result. Without this a waiter sees a dead PID, concludes the build was
+  // orphaned and returns a "still running" stub for a build that in fact
+  // succeeded seconds ago — the 185 s double-call of #829.
+  phase?: 'compiling' | 'finalizing';
   exitCode?: number;
   endTime?: string;
   fullBuild?: boolean;
@@ -568,6 +576,11 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
     closeSyncFs(logFd);
     const exitCode = code ?? -1;
 
+    // Publish "xppc is gone, I am finishing up" BEFORE the post-build work, so
+    // a waiter can tell this apart from an orphaned process and keeps waiting
+    // instead of returning a stub for an already-finished build.
+    await writeBuildState({ ...liveState, phase: 'finalizing' }, customPackagesPath).catch(() => {});
+
     // Read the -log file (authoritative source of X++ compiler errors)
     let xppcErrContent = '';
     try {
@@ -790,48 +803,133 @@ function incrementalScopeCaveat(succeeded: boolean, fullBuild: boolean): string 
 
 // ---------------------------------------------------------------------------
 // Block until the build for `targetModel` reaches a non-running state, the
-// tracked process is no longer alive, or `timeoutMs` elapses. Returns the
-// final state when finished, or null when the timeout was hit.
+// tracked process is confirmed gone without a result, or `timeoutMs` elapses.
+//
+// Outcomes:
+//   { outcome: 'finished',  state }  — build reached succeeded/failed
+//   { outcome: 'orphaned',  state }  — process vanished, no result was written
+//   { outcome: 'timeout',   state }  — wait window expired, build still running
 // ---------------------------------------------------------------------------
+
+/** How often the waiter emits an MCP progress notification while blocking. */
+const PROGRESS_INTERVAL_MS = 10_000;
+
+/**
+ * Default wait window. Long on purpose: with progress streaming the caller is
+ * not sitting in silence, and a timeout short enough to fire on a normal build
+ * is the worst of both worlds — it blocks for minutes AND still hands back a
+ * "call me again" stub that costs another round trip (#829).
+ */
+const DEFAULT_WAIT_TIMEOUT_MS = 30 * 60 * 1000;
+
+function resolveWaitTimeoutMs(params: any): number {
+  return (typeof params.waitTimeoutMs === 'number' && params.waitTimeoutMs > 0)
+    ? params.waitTimeoutMs
+    : DEFAULT_WAIT_TIMEOUT_MS;
+}
+
+/**
+ * How long a dead PID is tolerated before the build is called orphaned. The
+ * close handler runs in THIS process and finishes with runtime-metadata
+ * regeneration (two execFile calls capped at 30 s + 60 s), so 'finalizing'
+ * gets a window that comfortably covers it; anything else — an orphan from a
+ * previous server process, a killed xppc — is only given time to settle.
+ */
+const FINALIZING_GRACE_MS = 5 * 60_000;
+const ORPHAN_GRACE_MS = 30_000;
+
+interface WaitOutcome {
+  outcome: 'finished' | 'orphaned' | 'timeout';
+  state: BuildJobState | null;
+}
 
 async function waitForBuildCompletion(
   targetModel: string,
   customPackagesPath: string,
   timeoutMs: number,
-): Promise<BuildJobState | null> {
+  onProgress?: ProgressReporter,
+  startedAt: number = Date.now(),
+): Promise<WaitOutcome> {
   const deadline = Date.now() + timeoutMs;
   // Poll roughly every second; xppc builds typically take many seconds to
   // many minutes, so a 1 s cadence is fine and keeps responsiveness high.
   const pollIntervalMs = 1000;
   let lastState: BuildJobState | null = null;
+  // When the tracked PID was first seen dead — reset whenever it is alive again
+  // (a queue advance briefly runs with pid 0 between models).
+  let pidDeadSince: number | null = null;
+  // 0 = emit on the very first poll. The first update is worth its cost: it
+  // confirms the build is actually under way and starts the client's
+  // timeout-reset clock immediately rather than PROGRESS_INTERVAL_MS later.
+  let lastProgressAt = 0;
+
   while (Date.now() < deadline) {
     const state = await readBuildState(targetModel, customPackagesPath);
     if (state) {
       lastState = state;
-      if (state.status !== 'running') return state;
-      // Process disappeared without writing a final state — give the close
-      // handler up to ~2 s to settle, then return whatever we have so the
-      // caller can surface a sensible "exited unexpectedly" message.
-      if (state.pid && !isProcessAlive(state.pid)) {
-        for (let i = 0; i < 4; i++) {
-          await new Promise(r => setTimeout(r, 500));
-          const refreshed = await readBuildState(targetModel, customPackagesPath);
-          if (refreshed && refreshed.status !== 'running') return refreshed;
-        }
-        return state;
+      if (state.status !== 'running') return { outcome: 'finished', state };
+
+      // pid 0 means a queue advance is in flight (the next model has not been
+      // spawned yet) — transient, never an orphan.
+      const finalizing = state.phase === 'finalizing';
+      const settled = !finalizing && (!state.pid || isProcessAlive(state.pid));
+      if (settled) {
+        pidDeadSince = null;
+      } else {
+        if (pidDeadSince === null) pidDeadSince = Date.now();
+        const grace = finalizing ? FINALIZING_GRACE_MS : ORPHAN_GRACE_MS;
+        if (Date.now() - pidDeadSince > grace) return { outcome: 'orphaned', state };
+      }
+
+      // Report while we wait. This is the whole point of streaming: clients that
+      // pass a progressToken reset their request timeout on each notification,
+      // so a long build finishes inside this single call.
+      if (onProgress && Date.now() - lastProgressAt >= PROGRESS_INTERVAL_MS) {
+        lastProgressAt = Date.now();
+        await onProgress(describeBuildProgress(state, startedAt), Math.round((Date.now() - startedAt) / 1000));
       }
     }
     await new Promise(r => setTimeout(r, pollIntervalMs));
   }
-  // Timed out — return null so the caller emits a "still running" snapshot.
-  return lastState && lastState.status !== 'running' ? lastState : null;
+  return { outcome: 'timeout', state: lastState };
+}
+
+/** One-line "what is happening right now" for a progress notification. */
+function describeBuildProgress(state: BuildJobState, startedAt: number): string {
+  const elapsed = Math.round((Date.now() - startedAt) / 1000);
+  const queue = state.buildQueue && state.buildQueue.length > 1
+    ? ` (${(state.queueIndex ?? 0) + 1}/${state.buildQueue.length})`
+    : '';
+  const what = state.phase === 'finalizing'
+    ? 'finalizing (runtime metadata)'
+    : state.fullBuild ? 'full build' : 'incremental';
+  return `🔨 Building ${state.modelName}${queue} — ${what}, ${elapsed}s elapsed`;
+}
+
+/**
+ * What to do after a wait window expires. The old text ("call again to collect
+ * the final result") made the follow-up poll the obvious move, which is a whole
+ * extra round trip for a build that is still compiling. Name a concrete
+ * waitTimeoutMs instead, so a caller that wants to keep waiting can do it in one
+ * call rather than guessing a number.
+ */
+function renderWaitTimeoutGuidance(elapsedSec: number, timeoutMs: number): string {
+  // Twice what has already elapsed, rounded up to a whole minute and never
+  // below 10 — enough headroom that the next call is very unlikely to time out.
+  const suggestMin = Math.max(10, Math.ceil((elapsedSec * 2) / 60));
+  return [
+    `The build is NOT finished and nothing is lost — it keeps compiling in the background.`,
+    `Waited ${elapsedSec}s of the ${Math.round(timeoutMs / 1000)}s window.`,
+    `To keep waiting in a single call: build_d365fo_project { waitTimeoutMs: ${suggestMin * 60_000} }  (${suggestMin} min).`,
+    `Calling again without waitTimeoutMs re-attaches to the same build — it does not start a second one.`,
+  ].join('\n');
 }
 
 // ---------------------------------------------------------------------------
 // Tool handler
 // ---------------------------------------------------------------------------
 
-export const buildProjectTool = async (params: any, _context: any) => {
+export const buildProjectTool = async (params: any, _context: any, onProgress?: ProgressReporter) => {
   try {
     const force                 = params.force                === true;
     const fullBuild             = params.fullBuild            === true;
@@ -917,19 +1015,47 @@ export const buildProjectTool = async (params: any, _context: any) => {
     const existingState = await readBuildState(targetModel, customPackagesPath);
 
     if (existingState && !force) {
-      // If the caller requests a DIFFERENT build mode than what's cached (e.g. incremental → fullBuild),
-      // and the build is not currently running, discard the stale cached state and fall through
-      // to start a fresh build with the requested mode.
-      const buildModeChanged = existingState.status !== 'running' && fullBuild && !existingState.fullBuild;
-      if (buildModeChanged) {
+      // fullBuild:true is a request to RECOMPILE, not a request for the newest
+      // available result — so a FINISHED state can never satisfy it, not even a
+      // finished full build. Discard it and compile for real. (#829: an explicit
+      // {fullBuild:true} came back as "Collected the result of the build that
+      // ended 19:27:58 … nothing was recompiled by this call".)
+      const fullBuildNeedsFreshRun = existingState.status !== 'running' && fullBuild;
+      if (fullBuildNeedsFreshRun) {
+        await buildLog('INFO', `fullBuild:true — discarding finished state for ${targetModel} and recompiling`);
         await clearBuildState(targetModel, customPackagesPath);
         // intentional fall-through to "start new build" below
       } else {
 
-      const alive   = isProcessAlive(existingState.pid);
+      // A 'finalizing' state has no live PID by definition — xppc exited and the
+      // close handler is still doing post-build work — but it is very much a
+      // running build, not an orphan.
+      const alive   = existingState.phase === 'finalizing' || isProcessAlive(existingState.pid);
       const logTail = await readLogTail(existingState.logFile);
 
       if (existingState.status === 'running' && alive) {
+        // The running build is INCREMENTAL but the caller asked for a full
+        // recompile: attaching to it would answer a fullBuild:true request with
+        // something that is not a full build. Say so plainly instead of
+        // pretending it was honoured. (#829)
+        if (fullBuild && existingState.fullBuild !== true) {
+          const runningFor = Math.round((Date.now() - new Date(existingState.startTime).getTime()) / 1000);
+          return {
+            content: [{
+              type: 'text',
+              text: [
+                `⛔ fullBuild DECLINED — nothing was recompiled by this call.`,
+                ``,
+                `An INCREMENTAL build of ${targetModel} (PID: ${existingState.pid}) has been running for ${runningFor}s.`,
+                `Waiting for it would return an incremental result, which is not what fullBuild:true asks for.`,
+                ``,
+                `Choose one:`,
+                `  • build_d365fo_project { fullBuild: true, force: true } — kill the running build and start the full one now`,
+                `  • build_d365fo_project { fullBuild: true } again once the incremental build has finished`,
+              ].join('\n'),
+            }],
+          };
+        }
         const elapsed       = Math.round((Date.now() - new Date(existingState.startTime).getTime()) / 1000);
         const isQueued      = !!(existingState.buildQueue && existingState.buildQueue.length > 1);
         const queueProgress = isQueued
@@ -945,24 +1071,36 @@ export const buildProjectTool = async (params: any, _context: any) => {
         // a snapshot — this matches the "single call per build" contract.
         const waitForFinish = params.wait !== false;
         if (waitForFinish) {
-          const timeoutMs: number = (typeof params.waitTimeoutMs === 'number' && params.waitTimeoutMs > 0)
-            ? params.waitTimeoutMs
-            : 30 * 60 * 1000;
-          const finalState = await waitForBuildCompletion(targetModel, customPackagesPath, timeoutMs);
-          if (finalState && finalState.status !== 'running') {
+          const timeoutMs = resolveWaitTimeoutMs(params);
+          // A malformed startTime must not leak NaN into a progress payload.
+          const stateStartedAt = new Date(existingState.startTime).getTime();
+          const startedAt = Number.isFinite(stateStartedAt) ? stateStartedAt : Date.now();
+          const wait = await waitForBuildCompletion(
+            targetModel, customPackagesPath, timeoutMs, onProgress, startedAt,
+          );
+          if (wait.outcome === 'finished' && wait.state) {
             await clearBuildState(targetModel, customPackagesPath);
-            return await renderFinishedBuildResult(finalState, targetModel);
+            return await renderFinishedBuildResult(wait.state, targetModel);
+          }
+          const tailLog = await readLogTail(existingState.logFile);
+          if (wait.outcome === 'orphaned') {
+            await clearBuildState(targetModel, customPackagesPath);
+            return {
+              content: [{
+                type: 'text',
+                text: `❌ Build process (PID: ${existingState.pid}) disappeared without reporting a result.\n\nModel: ${targetModel}${completedLine}\n\nRe-run with force: true to start a clean build.\n\n--- Log ---\n${tailLog}`,
+              }],
+              isError: true,
+            };
           }
           // Timed out — emit a "still running" snapshot so the caller can choose
           // to extend the wait window with another call.
-          const tailLog = await readLogTail(existingState.logFile);
           return {
             content: [{
               type: 'text',
               text:
                 `⏳ ${queueProgress} (PID: ${existingState.pid}, running ${elapsed}s; wait timeout reached)${completedLine}\n\n` +
-                `Build continues in background. Call again to collect the final result, ` +
-                `or pass waitTimeoutMs to extend the wait window.\n\n` +
+                renderWaitTimeoutGuidance(elapsed, timeoutMs) + '\n\n' +
                 `--- Latest log ---\n${tailLog}`,
             }],
           };
@@ -1131,28 +1269,48 @@ export const buildProjectTool = async (params: any, _context: any) => {
     const waitForFinish = params.wait !== false;
 
     if (waitForFinish) {
-      const timeoutMs: number = (typeof params.waitTimeoutMs === 'number' && params.waitTimeoutMs > 0)
-        ? params.waitTimeoutMs
-        : 30 * 60 * 1000; // 30 minutes default — covers full builds with referenced models
-      const finalState = await waitForBuildCompletion(targetModel, customPackagesPath, timeoutMs);
-      if (finalState && finalState.status !== 'running') {
+      const timeoutMs = resolveWaitTimeoutMs(params);
+      const startedAt = new Date(initState.startTime).getTime();
+      const wait = await waitForBuildCompletion(
+        targetModel, customPackagesPath, timeoutMs, onProgress, startedAt,
+      );
+      if (wait.outcome === 'finished' && wait.state) {
         await clearBuildState(targetModel, customPackagesPath);
-        return await renderFinishedBuildResult(finalState, targetModel);
+        return await renderFinishedBuildResult(wait.state, targetModel);
+      }
+      const elapsed = Math.round((Date.now() - startedAt) / 1000);
+      const tailLog = await readLogTail(wait.state?.logFile ?? firstLogFile);
+      if (wait.outcome === 'orphaned') {
+        await clearBuildState(targetModel, customPackagesPath);
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              `❌ ${modeLabel} process (PID: ${pid}) disappeared after ${elapsed}s without reporting a result.`,
+              ``,
+              `Target: ${targetModel}${queueDetail}`,
+              `Log:    ${firstLogFile}`,
+              ``,
+              `Re-run with force: true to start a clean build.`,
+              ``,
+              `--- Latest log ---`,
+              tailLog,
+            ].join('\n'),
+          }],
+          isError: true,
+        };
       }
       // Timed out — leave the build running so a follow-up call can collect it.
-      const elapsed = Math.round((Date.now() - new Date(initState.startTime).getTime()) / 1000);
-      const tailLog = await readLogTail(firstLogFile);
       return {
         content: [{
           type: 'text',
           text: [
-            `⏳ ${modeLabel} still running after ${elapsed}s (timeout reached, build continues in background)`,
+            `⏳ ${modeLabel} still running after ${elapsed}s (wait window of ${Math.round(timeoutMs / 1000)}s reached, build continues in background)`,
             ``,
             `Target: ${targetModel}${queueDetail}`,
             `Log:    ${firstLogFile}`,
             ``,
-            `Call **build_d365fo_project** again to collect the final result. ` +
-            `Or pass waitTimeoutMs to extend the wait window in a single call.`,
+            renderWaitTimeoutGuidance(elapsed, timeoutMs),
             ``,
             `--- Latest log ---`,
             tailLog,

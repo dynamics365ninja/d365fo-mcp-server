@@ -482,7 +482,10 @@ describe('run_bp_check — violation detection', () => {
       cb(null, { stdout: '✅', stderr: '' });
     });
 
-    const result = await runBpCheckTool({ modelName: 'MyModel', targetFilter: 'MyClass' }, {});
+    const result = await runBpCheckTool(
+      { modelName: 'MyModel', targetFilter: 'MyClass', targetElementType: 'class' },
+      {},
+    );
 
     expect(result.content[0].text).toContain('Filter: class:MyClass');
     const args = capturedArgs(0);
@@ -581,6 +584,279 @@ describe('run_bp_check — targetFilter actually scopes (#25)', () => {
     );
 
     expect(result.content[0].text as string).toContain('Scope: honoured');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #828: batch form + no silent `class` default
+//
+// Checking three objects used to cost four sequential calls (~64 s, 4 round
+// trips) and repeated the whole xppbp preamble each time — and the one call
+// that omitted targetElementType silently checked `class:<Table>`.
+// ---------------------------------------------------------------------------
+
+/** Minimal symbol-index stand-in that serves lookupSymbolsNocase queries. */
+function fakeContext(rows: Array<{ name: string; type: string }>) {
+  const db = {
+    prepare: (sql: string) => ({
+      get: () => undefined,
+      all: (...params: any[]) => {
+        // Exact probe: (name, ...types, limit). FTS probe: (matchExpr, name, ...types, limit).
+        const isFts = /symbols_fts/.test(sql);
+        const name = String(isFts ? params[1] : params[0]);
+        const types = params.slice(isFts ? 2 : 1, -1) as string[];
+        return rows
+          .filter(r => r.name.toLowerCase() === name.toLowerCase())
+          .filter(r => types.length === 0 || types.includes(r.type))
+          .map(r => ({ name: r.name, type: r.type, model: 'MyModel', extends_class: null, file_path: null }));
+      },
+    }),
+  };
+  return { symbolIndex: { getReadDb: () => db } };
+}
+
+/** The positional `<type>:<Name>` selector xppbp was invoked with. */
+function selectorOf(args: string[]): string {
+  return args.find(a => !a.startsWith('-')) ?? '-all';
+}
+
+describe('run_bp_check — batch objects[] (#828)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    detectedRoots.splice(0, detectedRoots.length, CHE_PKG);
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('MyModel');
+    cfgGetProjectPath.mockResolvedValue(null);
+    cfgGetPackagePath.mockReturnValue(null);
+    cfgGetCustomPackagesPath.mockResolvedValue(null);
+    cfgGetMicrosoftPackagesPath.mockResolvedValue(null);
+    cfgGetActiveXppConfig.mockResolvedValue(null);
+    allowPaths([CHE_PKG, CHE_XPPBP]);
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, { stdout: '✅', stderr: '' });
+    });
+  });
+
+  it('checks every object in one call, one xppbp run each', async () => {
+    const result = await runBpCheckTool(
+      {
+        modelName: 'MyModel',
+        objects: [
+          { objectType: 'table', objectName: 'ConDemoTicket' },
+          { objectType: 'class', objectName: 'ConDemoTicket_Extension' },
+          { objectType: 'enum',  objectName: 'ConDemoStatus' },
+        ],
+      },
+      {},
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(execFileMock).toHaveBeenCalledTimes(3);
+    expect(selectorOf(capturedArgs(0))).toBe('table:ConDemoTicket');
+    expect(selectorOf(capturedArgs(1))).toBe('class:ConDemoTicket_Extension');
+    expect(selectorOf(capturedArgs(2))).toBe('enum:ConDemoStatus');
+
+    const text = result.content[0].text as string;
+    expect(text).toContain('3 objects checked');
+    expect(text).toContain('── table:ConDemoTicket ──');
+    expect(text).toContain('── class:ConDemoTicket_Extension ──');
+    expect(text).toContain('── enum:ConDemoStatus ──');
+  });
+
+  it('emits the repeated xppbp preamble once and groups findings per object', async () => {
+    const preamble = (mb: number) =>
+      'Microsoft (R) X++ Best Practice Tool\n' +
+      `Memory usage at start of execution is ${mb} MB\n` +
+      'Enabled rules: ALL\n';
+    execFileMock.mockImplementation((_f: string, a: string[], _o: any, cb: Function) => {
+      const sel = selectorOf(a);
+      const finding = sel.startsWith('table')
+        ? 'BPErrorTableMissingFormRef: K:\\Pkg\\M\\M\\AxTable\\ConDemoTicket.xml\nErrors: 1'
+        : 'Errors: 0\nWarnings: 0';
+      cb(null, { stdout: preamble(sel.startsWith('table') ? 27 : 28) + finding, stderr: '' });
+    });
+
+    const result = await runBpCheckTool(
+      {
+        modelName: 'MyModel',
+        objects: [
+          { objectType: 'table', objectName: 'ConDemoTicket' },
+          { objectType: 'enum',  objectName: 'ConDemoStatus' },
+        ],
+      },
+      {},
+    );
+
+    const text = result.content[0].text as string;
+    // Banner and enabled-rules line appear exactly once, in the shared block…
+    expect(text.match(/Microsoft \(R\) X\+\+ Best Practice Tool/g)).toHaveLength(1);
+    expect(text.match(/Enabled rules: ALL/g)).toHaveLength(1);
+    // …even though the memory counter differed by a megabyte between runs.
+    expect(text.match(/Memory usage at start of execution/g)).toHaveLength(1);
+    expect(text).toContain('Shared xppbp preamble');
+    // The findings themselves stay attached to their object.
+    expect(text).toContain('BPErrorTableMissingFormRef');
+    expect(text).toContain('⚠️ BP Check completed with issues');
+    expect(text).toContain('2 objects checked, 1 with findings');
+  });
+
+  it('reuses the flag style that worked, instead of re-walking the fallback chain', async () => {
+    const HELP_OUTPUT = 'X++ Best Practice Options:\n  -metadata:<path>\n';
+    execFileMock.mockImplementation((_f: string, a: string[], _o: any, cb: Function) => {
+      // Only the equals style is understood by this xppbp.
+      if (a.some(x => /^-metadata:/.test(x))) cb(null, { stdout: HELP_OUTPUT, stderr: '' });
+      else                                    cb(null, { stdout: '✅', stderr: '' });
+    });
+
+    await runBpCheckTool(
+      {
+        modelName: 'MyModel',
+        objects: [
+          { objectType: 'table', objectName: 'A' },
+          { objectType: 'table', objectName: 'B' },
+          { objectType: 'table', objectName: 'C' },
+        ],
+      },
+      {},
+    );
+
+    // Object 1 pays attempts 1+2; objects 2 and 3 start straight at attempt 2.
+    expect(execFileMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('accepts bare strings as one-element entries when the type is resolvable', async () => {
+    const ctx = fakeContext([{ name: 'ConDemoTicket', type: 'table' }]);
+
+    const result = await runBpCheckTool({ modelName: 'MyModel', objects: ['ConDemoTicket'] }, ctx);
+
+    expect(result.isError).toBeFalsy();
+    expect(selectorOf(capturedArgs(0))).toBe('table:ConDemoTicket');
+  });
+
+  it('rejects an objects[] with no usable entry', async () => {
+    const result = await runBpCheckTool({ modelName: 'MyModel', objects: [{ objectType: 'table' }] }, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('no usable entry');
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the single-target form working and unchanged', async () => {
+    const result = await runBpCheckTool(
+      { modelName: 'MyModel', targetFilter: 'ConDemoTicket', targetElementType: 'table' },
+      {},
+    );
+
+    const text = result.content[0].text as string;
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+    expect(text).toContain('Filter: table:ConDemoTicket');
+    expect(text).not.toContain('objects checked');
+  });
+});
+
+describe('run_bp_check — omitted element type never defaults to class (#828)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    detectedRoots.splice(0, detectedRoots.length, CHE_PKG);
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('MyModel');
+    cfgGetProjectPath.mockResolvedValue(null);
+    cfgGetPackagePath.mockReturnValue(null);
+    cfgGetCustomPackagesPath.mockResolvedValue(null);
+    cfgGetMicrosoftPackagesPath.mockResolvedValue(null);
+    cfgGetActiveXppConfig.mockResolvedValue(null);
+    allowPaths([CHE_PKG, CHE_XPPBP]);
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, { stdout: '✅', stderr: '' });
+    });
+  });
+
+  it('resolves the type from the symbol index — a table checks as table, not class', async () => {
+    const ctx = fakeContext([{ name: 'ConDemoTicket', type: 'table' }]);
+
+    const result = await runBpCheckTool({ modelName: 'MyModel', targetFilter: 'ConDemoTicket' }, ctx);
+
+    expect(result.isError).toBeFalsy();
+    expect(selectorOf(capturedArgs(0))).toBe('table:ConDemoTicket');
+    expect(result.content[0].text).toContain('Filter: table:ConDemoTicket');
+  });
+
+  it('resolves a class extension (an AxClass carrying [ExtensionOf]) as class', async () => {
+    const ctx = fakeContext([{ name: 'ConDemoTicket_Extension', type: 'class-extension' }]);
+
+    await runBpCheckTool({ modelName: 'MyModel', objects: [{ objectName: 'ConDemoTicket_Extension' }] }, ctx);
+
+    expect(selectorOf(capturedArgs(0))).toBe('class:ConDemoTicket_Extension');
+  });
+
+  it('errors instead of guessing when the name is not indexed', async () => {
+    const ctx = fakeContext([]);
+
+    const result = await runBpCheckTool({ modelName: 'MyModel', targetFilter: 'Unknown' }, ctx);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Cannot determine the element type');
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it('errors when the name is ambiguous across element kinds', async () => {
+    const ctx = fakeContext([
+      { name: 'ConDemo', type: 'table' },
+      { name: 'ConDemo', type: 'class' },
+    ]);
+
+    const result = await runBpCheckTool({ modelName: 'MyModel', targetFilter: 'ConDemo' }, ctx);
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('ambiguous');
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it('errors when no symbol index is available at all', async () => {
+    const result = await runBpCheckTool({ modelName: 'MyModel', targetFilter: 'ConDemoTicket' }, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('symbol index is not available');
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it('reports every unresolvable object of a batch in one error', async () => {
+    const ctx = fakeContext([{ name: 'ConDemoTicket', type: 'table' }]);
+
+    const result = await runBpCheckTool(
+      { modelName: 'MyModel', objects: ['ConDemoTicket', 'Ghost1', 'Ghost2'] },
+      ctx,
+    );
+
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toContain('Ghost1');
+    expect(text).toContain('Ghost2');
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it('still runs the whole model when neither objects nor targetFilter is given', async () => {
+    const result = await runBpCheckTool({ modelName: 'MyModel' }, {});
+
+    expect(result.isError).toBeFalsy();
+    expect(capturedArgs(0)).toContain('-all');
+  });
+});
+
+describe('splitSharedPreamble (#828 helper)', () => {
+  it('returns a single output untouched — there is nothing to share', async () => {
+    const { splitSharedPreamble } = await import('../../src/tools/runBpCheck');
+    const { preamble, bodies } = splitSharedPreamble(['banner\nErrors: 0']);
+    expect(preamble).toEqual([]);
+    expect(bodies[0].join('\n')).toBe('banner\nErrors: 0');
+  });
+
+  it('stops at the first finding line even when it is common to every output', async () => {
+    const { splitSharedPreamble } = await import('../../src/tools/runBpCheck');
+    const out = 'banner\nBPErrorXmlDocMissing: same\ntail';
+    const { preamble, bodies } = splitSharedPreamble([out, out]);
+    expect(preamble).toEqual(['banner']);
+    expect(bodies[0].join('\n')).toContain('BPErrorXmlDocMissing');
   });
 });
 

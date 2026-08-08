@@ -148,7 +148,11 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
     case 'trigger_db_sync':
       return `🗄️ Triggering database sync${a.tableName ? ` for ${a.tableName}` : ''}`;
     case 'run_bp_check':
-      return `🔍 Running Best Practices check${a.targetFilter ? ` on ${a.targetFilter}` : ''}`;
+      return `🔍 Running Best Practices check${
+        Array.isArray(a.objects) && a.objects.length > 0
+          ? ` on ${a.objects.length} object${a.objects.length === 1 ? '' : 's'}`
+          : a.targetFilter ? ` on ${a.targetFilter}` : ''
+      }`;
     case 'run_systest_class':
       return `🧪 Running unit tests: ${a.className ?? ''}`;
     case 'review_workspace_changes':
