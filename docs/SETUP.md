@@ -106,7 +106,7 @@ npm run build
 
 `D365FO_CONFIG` points at the file `npm run setup` wrote — it already holds `server.mode: write-only`, the workspace and the solutions path for this companion. Add a variable to the `env` block only to override the file for that one server entry.
 
-The local companion also exposes the bridge-backed reader `get_object_info` (and `get_method`), so freshly created objects are immediately readable without waiting for an Azure index refresh.
+The local companion also exposes the bridge-backed reader `get_object_info` (including its `options.method` form), so freshly created objects are immediately readable without waiting for an Azure index refresh.
 
 **Update:** `git pull && npm install && npm run build` whenever a new version ships.
 

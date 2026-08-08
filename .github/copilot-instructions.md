@@ -35,7 +35,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 | Revert the last write | `undo_last_modification` |
 | Search objects | `search` — multiple via `search(queries[])`, custom-only via `search(scope="extensions")` |
 | Read any object's metadata | `get_object_info(objectType, name, options?)` — objectType ∈ class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro. 2+ known names: `get_object_info(objects=[{objectType,objectName},…])` — ONE call, never a loop |
-| Method signature for CoC | `get_method(include="signature")` (already returned by `prepare(mode="change")`) |
+| Method signature for CoC | `get_object_info(objectType="class", name, options={method, include:"signature"})` (already returned by `prepare(mode="change")`) |
 | Validate X++ before write | `validate_code(mode="syntax", code)` — offline BP check, <50 ms |
 | X++ rules & patterns | `get_knowledge(kind="knowledge", topic)` — select grammar, CoC, BP rules, SysOperation, workflow, … |
 | Create a NEW form | `object_patterns(domain="form", action="analyze", recommend={...})` → `object_patterns(domain="form", action="spec", pattern)` → `generate_object(mode="scaffold", objectType="form", cloneFrom=referenceForm, tableMapping={...})` → `object_patterns(domain="form", action="validate", xml)` |

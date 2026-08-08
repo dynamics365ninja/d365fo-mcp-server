@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**25 AI tools that know every X++ class, table, form, and EDT in your D365FO codebase**
+**23 AI tools that know every X++ class, table, form, and EDT in your D365FO codebase**
 
 [![npm](https://img.shields.io/npm/v/d365fo-mcp.svg?logo=npm&color=cb3837)](https://www.npmjs.com/package/d365fo-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -29,7 +29,7 @@
 
 AI assistants excel at C#, Python, and JavaScript. X++ is different: your D365FO codebase is private, deeply customized, and invisible to every model — so AI confidently generates code that doesn't compile.
 
-This server pre-indexes your entire D365FO installation (580 000+ symbols across standard, ISV, and custom models) and exposes it as 25 specialized MCP tools. Every signature, every CoC wrapper, every label, every form pattern — verified against your real metadata **before** the AI writes a single line.
+This server pre-indexes your entire D365FO installation (580 000+ symbols across standard, ISV, and custom models) and exposes it as 23 specialized MCP tools. Every signature, every CoC wrapper, every label, every form pattern — verified against your real metadata **before** the AI writes a single line.
 
 ![Solution Architecture](docs/img/solution-architecture-diagram.svg)
 
@@ -98,18 +98,6 @@ npx d365fo-mcp connect https://your-server.azurewebsites.net
 ```
 
 Both paths in full — prerequisites, editor configuration for every scenario, the required instruction file, and how to verify grounding actually works: **[docs/QUICK_START.md](docs/QUICK_START.md)**
-
----
-
-## Keep the tool catalogue small
-
-Every tool your editor advertises is re-sent to the model on **every single request**, and the catalogue is shared across all MCP servers and built-in tool sets in the workspace — not just this one. Two things follow.
-
-**1. Turn off the tool sets you are not using in this workspace.** A measured D365FO session advertised 105 tools: 26 from this server, 14 from a Bicep MCP server that was never called, and ~57 built-in VS Code browser / Python / notebook / dotnet tools that were never called either. Past the host's inline-tool limit (VS Code: ~100 tools) the catalogue stops being sent inline and the model has to call a `tool_search` to *discover* a tool before it can use it — a silent extra round trip per tool it needs. That session spent six dedicated turns and ~20 seconds doing nothing but tool discovery. In VS Code: **Chat → Configure Tools…**, and untick whole tool sets you do not need for the task at hand. Other hosts have the same switch under a different name.
-
-**2. Run this server's `core` profile when the workspace is crowded.** `MCP_TOOL_PROFILE=core` publishes 18 tools instead of 25 — the plan → discover → write → build → verify loop — and drops the specialist ones (`extension_info`, `analyze_code`, `validate_code`, `security_info`, `get_method`, `run_systest_class`, `suggest_edt`). Add individual ones back with `MCP_EXTRA_TOOLS=security_info,get_method`, or set `server.toolProfile` / `server.extraTools` in `d365fo-mcp.json`. The default stays `full`, so an existing setup does not change until you ask it to. See [Configuration](docs/CONFIGURATION.md).
-
-Neither switch loses you any capability — a tool that is not advertised is still there the moment you turn it back on.
 
 ---
 

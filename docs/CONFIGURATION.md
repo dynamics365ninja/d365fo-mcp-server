@@ -196,7 +196,7 @@ Downloading a pre-built index from blob storage instead of building it locally.
   "server": {
     "mode": "full",
     "toolProfile": "full",
-    "extraTools": "security_info,get_method",
+    "extraTools": "security_info,run_systest_class",
     "port": 8080,
     "host": "0.0.0.0",
     "shutdownTimeoutMs": 5000,
