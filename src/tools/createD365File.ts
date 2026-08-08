@@ -19,6 +19,8 @@ import { z } from 'zod';
 import { Parser, Builder } from 'xml2js';
 import { getConfigManager, fallbackPackagePath } from '../utils/configManager.js';
 import { describePackagesRootScan } from '../utils/packagesRoot.js';
+import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck } from './inlineWriteVerification.js';
 import { registerCustomModel, resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix, getExtensionNamingStyle } from '../utils/modelClassifier.js';
 import { PackageResolver } from '../utils/packageResolver.js';
 import { crossModelWriteRefusal } from '../utils/crossModelWriteGuard.js';
@@ -4616,13 +4618,25 @@ export async function handleCreateD365File(
                 });
               }
 
+              // Index the new object in-process. The parser is right here, so making
+              // the agent spend a round trip on update_symbol_index — which this very
+              // response used to instruct it to do — plus another on the lookup that
+              // failed for want of it, was pure waste.
+              const indexNote = await upsertWrittenFileIntoIndex(smartResult.filePath, context);
+              // Verify the write here rather than leaving the caller to spend a
+              // verify_d365fo_project round trip asking what this call already knows.
+              const verifyNote = renderWriteVerification(
+                await verifyWrittenFile(smartResult.filePath, projectPathToUse),
+              );
+              const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
+
               return {
                 content: [
                   {
                     type: 'text',
                     text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)\n` +
                       `📁 ${smartResult.filePath}${projectMsg}\n` +
-                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}`,
+                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}`,
                   },
                 ],
               };
@@ -4704,13 +4718,21 @@ export async function handleCreateD365File(
             });
           }
 
+          // Index the new object in-process — see the smart-table path above.
+          const indexNote = await upsertWrittenFileIntoIndex(bridgeResult.filePath, context);
+          // Verify the write — see the smart-table path above.
+          const verifyNote = renderWriteVerification(
+            await verifyWrittenFile(bridgeResult.filePath, projectPathToUse),
+          );
+          const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
+
           return {
             content: [
               {
                 type: 'text',
                 text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
-                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}`,
+                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}`,
               },
             ],
           };
@@ -5056,6 +5078,14 @@ export async function handleCreateD365File(
       });
     }
 
+    // Index the new object in-process — see the bridge paths above.
+    const indexNote = await upsertWrittenFileIntoIndex(normalizedFullPath, context);
+    // Verify the write — see the bridge paths above.
+    const verifyNote = renderWriteVerification(
+      await verifyWrittenFile(normalizedFullPath, args.addToProject ? projectPathToUse : undefined),
+    );
+    const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
+
     // Return success message with file path
     return {
       content: [
@@ -5071,6 +5101,9 @@ export async function handleCreateD365File(
             tableHonestyReport +
             rawLabelBpWarning(args.properties, finalObjectName) +
             projectMessage +
+            verifyNote +
+            indexNote +
+            bpNote +
             `\n${nextSteps}\n` +
             `⛔ TASK COMPLETE — do NOT call \`generate\`, \`generate\`, or \`d365fo_file(action="create")\` again for this object.`,
         },

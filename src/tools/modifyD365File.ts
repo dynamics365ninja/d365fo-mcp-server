@@ -47,6 +47,8 @@ import {
   isFormPatternEnforceEnabled,
 } from './validateFormPattern.js';
 import { validateEdtExtensionChange } from '../utils/edtExtensionValidator.js';
+import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../utils/xppSelectLint.js';
 import {
   getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
@@ -2985,6 +2987,25 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         `(Pass autoCorrect=false to have corrections like this raise an error instead.)`
       : '';
 
+    // Re-index the modified object in-process. A modify changes the symbols the
+    // index holds (a renamed field, a new method), and the parser is right here —
+    // making the agent spend a round trip on update_symbol_index for a file this
+    // process just wrote, and another on the lookup that failed for want of it,
+    // was pure waste.
+    const indexNote = await upsertWrittenFileIntoIndex(actualFilePath, context);
+
+    // Verify the write here rather than leaving the caller to spend a
+    // verify_d365fo_project round trip asking what this call already knows.
+    // The project path resolved inside the addToProject branch is block-scoped,
+    // and a modify commonly runs with addToProject off — re-resolve it here so the
+    // .rnrproj check still happens (config reads are cached).
+    const verifyProjectPath =
+      args.projectPath || (await getConfigManager().getProjectPath()) || undefined;
+    const verifyNote = renderWriteVerification(
+      await verifyWrittenFile(actualFilePath, verifyProjectPath),
+    );
+    const bpNote = await runInlineBpCheck((args as any).bpCheck, objectType, objectName, context);
+
     return {
       content: [
         {
@@ -2992,7 +3013,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           text:
             `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}` +
+            `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}${verifyNote}${indexNote}${bpNote}` +
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
         },
