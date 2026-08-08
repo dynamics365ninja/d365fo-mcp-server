@@ -8,8 +8,12 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import {
-  getObjectSuffix, getExtensionNamingStyle, resolveObjectPrefix, deriveExtensionInfix,
+  getObjectSuffix, getExtensionNamingStyle, deriveExtensionInfix,
 } from '../utils/modelClassifier.js';
+import {
+  matchPrefixCandidate, modelWritesLandIn, prefixCandidates, prefixConflictWarning,
+  resolveEffectivePrefix, type PrefixCandidate,
+} from '../utils/effectivePrefix.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { lookupSymbolNocase, lookupSymbolsNocase } from '../utils/symbolLookup.js';
 
@@ -58,22 +62,44 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
     }
 
     // The model whose convention is being validated against: explicit arg, else the
-    // model this workspace targets. It decides the prefix, so it is resolved BEFORE
-    // the prefix — a workspace on ContosoFinanceSK must validate against ContosoSK even
-    // when EXTENSION_PREFIX still says something else.
+    // model WRITES land in — the same model get_workspace_info reports the prefix for
+    // (see prefixDiagnostics). Reading the active model here instead made the two
+    // tools disagree after a project switch. The await lets a detection still in
+    // flight finish: reading null resolves the prefix from EXTENSION_PREFIX alone and
+    // validates against a token the server itself would not apply (#833).
+    const configManager = getConfigManager();
+    await configManager.getAutoDetectedModelName();
+    const activeModel = configManager.getModelName();
     const namingStyle = getExtensionNamingStyle();
-    const modelName = args.modelName?.trim() || getConfigManager().getModelName() || '';
+    const modelName = args.modelName?.trim() ||
+      modelWritesLandIn(configManager.getWriteAnchorModel() ?? activeModel, activeModel) || '';
     const useModelName = namingStyle === 'model-name' && !!modelName;
 
-    // Resolve model prefix: explicit arg → the active model's own prefix
-    // (resolveObjectPrefix: learned from that model's objects, else EXTENSION_PREFIX,
-    // else the model name) → DB auto-detect for an unconfigured workspace.
+    // Resolve model prefix: explicit arg → the effective prefix for that model
+    // (resolveEffectivePrefix: learned from the model's own objects, else
+    // EXTENSION_PREFIX, else the model name) → DB auto-detect for an unconfigured
+    // workspace.
     // NOT upper-cased: "ContosoFin" is a PascalCase prefix, and "CONTOSOFIN" would make every
     // suggested name and every startsWith() check below wrong.
-    let prefix = args.modelPrefix?.trim() || '';
-    if (!prefix) {
-      prefix = resolveObjectPrefix(modelName) || detectModelPrefix(db, name);
-    }
+    const resolution = resolveEffectivePrefix(modelName);
+    const explicitPrefix = args.modelPrefix?.trim() || '';
+    const prefix = explicitPrefix || resolution.prefix || detectModelPrefix(db, name);
+
+    // An explicitly passed prefix is the caller's decision and the only candidate;
+    // otherwise every token that could rightfully prefix a name in this workspace
+    // counts, so a disagreement between model and configuration produces a warning
+    // naming both rather than an error against whichever one the server picked.
+    const resolvedCandidates = prefixCandidates(resolution);
+    const candidates: PrefixCandidate[] = explicitPrefix
+      ? [{ token: explicitPrefix.replace(/_+$/, ''), label: 'the prefix you passed', effective: true }]
+      : resolvedCandidates.length > 0
+        ? resolvedCandidates
+        : prefix
+          ? [{ token: prefix, label: 'the prefix detected from the symbol index', effective: true }]
+          : [];
+    // Stated once, wherever the name lands: the reader cannot otherwise tell which
+    // of the two tokens the validation above used.
+    const conflictWarning = explicitPrefix ? null : prefixConflictWarning(resolution);
     // Token embedded in extension element/class names — the model's own infix when its
     // existing extensions state one (ContosoFinanceSK → "ContosoSK"), else derived.
     const extensionInfix = prefix ? deriveExtensionInfix(prefix, modelName) : '';
@@ -176,14 +202,21 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
 
     // Rule set 2: new object naming rules
     if (!isExtension) {
+      /** The candidate prefix the name turned out to carry, once one is found. */
+      let separator: PrefixCandidate | null = null;
+
       // Underscores are allowed only as a prefix separator: {Prefix}_{Rest}
       // (e.g. valid "MY_VendPaymTermsMaintain", invalid "MYVendPaymTerms_Helper").
       if (name.includes('_')) {
         const underscoreIdx = name.indexOf('_');
         const beforeUnderscore = name.slice(0, underscoreIdx);
-        const hasPrefixSeparator = !!prefix &&
-          beforeUnderscore.toLowerCase() === prefix.toLowerCase();
-        if (!hasPrefixSeparator) {
+        // Matched against every candidate prefix, not just the winning one: while
+        // the model's own naming and EXTENSION_PREFIX disagree, "Other_MyObject"
+        // IS prefix-separator form — under the token the server did not pick. The
+        // conflict is reported as a warning below; declaring the name invalid
+        // contradicts the prefix the server itself reports as effective (#833).
+        separator = matchPrefixCandidate(beforeUnderscore, candidates);
+        if (!separator) {
           errors.push(
             `Non-extension objects must not contain underscores. ` +
             `The only allowed underscore is as a prefix separator: ` +
@@ -194,9 +227,16 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
       }
 
       if (prefix) {
-        if (!name.toLowerCase().startsWith(prefix.toLowerCase())) {
+        const leading = separator ??
+          candidates.find(c => name.toLowerCase().startsWith(c.token.toLowerCase()));
+        if (!leading) {
           warnings.push(`Proposed name does not start with model prefix "${prefix}". All custom objects should be prefixed to avoid conflicts.`);
           suggestions.push(`Prefixed name: ${prefix}${name}`);
+        } else if (!leading.effective) {
+          warnings.push(
+            `"${name}" carries "${leading.token}" (${leading.label}), not the prefix this server ` +
+            `applies, "${prefix}" (${resolution.source}).`
+          );
         }
       }
 
@@ -229,6 +269,12 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
       }
     }
 
+    // The model's own naming and EXTENSION_PREFIX disagree. Reported wherever the
+    // name landed, because every rule above ran against ONE of the two tokens and
+    // the reader cannot otherwise tell which — the state that produced a false
+    // ERROR on a name that was correct under the effective prefix (#833).
+    if (conflictWarning) warnings.push(conflictWarning);
+
     // Rule set 3: conflict detection
     const dbType = args.objectType === 'class-extension' ? 'class-extension' :
       args.objectType === 'table-extension' ? 'table-extension' :
@@ -251,7 +297,13 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
     let output = `Validation: "${name}" as ${args.objectType}\n`;
     if (args.baseObjectName) output += `Base Object: ${args.baseObjectName}\n`;
     if (prefix) {
-      output += `Model Prefix: ${prefix}${modelName ? ` (model ${modelName})` : ''}\n`;
+      // The origin comes along, because the same prefix line in get_workspace_info
+      // carries it — without it the two read as two independent opinions.
+      const origin = explicitPrefix ? 'passed in' : resolution.source;
+      // The inferred-prefix origin already names the model; repeating it reads as
+      // two different models.
+      const modelPart = modelName && !origin.includes(`"${modelName}"`) ? `model ${modelName}, ` : '';
+      output += `Model Prefix: ${prefix}${modelName ? ` (${modelPart}${origin})` : ''}\n`;
     }
     if (isExtension) {
       output += useModelName

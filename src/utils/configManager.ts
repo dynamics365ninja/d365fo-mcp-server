@@ -13,6 +13,9 @@ import { registerCustomModel, getCustomModels } from './modelClassifier.js';
 import { XppConfigProvider, type XppEnvironmentConfig } from './xppConfigProvider.js';
 import { FALLBACK_PACKAGES_ROOT, findPackagesRoot } from './packagesRoot.js';
 import { debugLog } from './logger.js';
+import {
+  recordDetectionSuccess, reportUnresolvedDetection, resetWorkspaceDetectionStatus,
+} from './workspaceDetectionStatus.js';
 
 export interface McpContext {
   workspacePath?: string;
@@ -94,6 +97,10 @@ class ConfigManager {
   // active project off the model this workspace itself resolved to. `anchorModel` is
   // that original model and it survives further switches — see getWriteAnchorModel().
   private toolForcedProject: { anchorModel: string; forcedModel: string } | null = null;
+  // The sources available the last time detection ran, and whether the retry that
+  // a change in them buys has been spent — see ensureProjectDetection().
+  private lastDetectionFingerprint: string | null = null;
+  private detectionRetried = false;
 
   constructor(configPath?: string) {
     // Default to .mcp.json in current directory or parent directories
@@ -149,6 +156,7 @@ class ConfigManager {
     }
 
     this.autoDetectionAttempted = true;
+    this.lastDetectionFingerprint = this.detectionSourceFingerprint(workspacePath);
 
     // .rnrproj files only exist on Windows D365FO VMs — skip scan on Azure/Linux
     if (process.platform !== 'win32') {
@@ -189,6 +197,7 @@ class ConfigManager {
             // Prefer model name already resolved via Priority 4 (from PackagesLocalDirectory regex)
             modelName: detectedProject?.modelName || pkgScan.modelName,
             packagePath: packagePathHint,
+            detectionSource: 'the configured packagePath',
           };
           console.error(`[ConfigManager] ✅ Found .rnrproj via packagePath scan: ${pkgScan.projectPath}`);
         } else {
@@ -239,10 +248,23 @@ class ConfigManager {
       );
       console.error(`   ModelName: ${detectedProject.modelName}`);
       console.error(`   SolutionPath: ${detectedProject.solutionPath}`);
+      if (detectedProject.detectionSource) {
+        console.error(`   Source: ${detectedProject.detectionSource}`);
+      }
+      // Recorded here rather than at each route's own return: this is the point
+      // the result survives the staleness guard and becomes the answer.
+      recordDetectionSuccess(
+        detectedProject.detectionSource ?? 'workspace auto-detection',
+        detectedProject.modelName,
+        detectedProject.projectPath ?? null,
+      );
       // ✨ Register the auto-detected model as custom
       registerCustomModel(detectedProject.modelName);
     } else {
-      console.error('[ConfigManager] ⚠️ Auto-detection failed - no .rnrproj files found');
+      // Not a warning: the D365FO_SOLUTIONS_PATH scan below still runs, and
+      // .mcp.json may name the model outright. reportUnresolvedDetection() warns
+      // once nothing has resolved it and a caller actually needs one (#833).
+      debugLog('[ConfigManager] No .rnrproj found in the workspace pass');
     }
 
     // Scan D365FO_SOLUTIONS_PATH for all available projects (for solution-switching support).
@@ -281,7 +303,72 @@ class ConfigManager {
         }
         this.autoDetectedProject = primary;
         registerCustomModel(primary.modelName);
+        recordDetectionSuccess('the D365FO_SOLUTIONS_PATH scan', primary.modelName, primary.projectPath ?? null);
         console.error(`[ConfigManager] ✅ Using first found project as primary: ${primary.modelName}`);
+      }
+    }
+  }
+
+  /**
+   * The detection sources available right now, as a comparable string.
+   *
+   * A first pass that ran before the workspace roots / packagePath arrived looked
+   * at strictly less than a later one would — that is the race behind the boot
+   * warning (#833). A change in this fingerprint is what makes a retry worth the
+   * filesystem scan; an unchanged one would repeat the same walk for the same
+   * answer.
+   */
+  private detectionSourceFingerprint(workspacePath?: string): string {
+    const ctx = this.config?.servers?.context;
+    return JSON.stringify([
+      workspacePath ?? null,
+      this.runtimeContext.workspacePath ?? null,
+      this.runtimeContext.packagePath ?? null,
+      this.runtimeContext.projectPath ?? null,
+      ctx?.workspacePath ?? null,
+      ctx?.packagePath ?? null,
+      ctx?.projectPath ?? null,
+      ctx?.modelName ?? null,
+      process.env.D365FO_SOLUTIONS_PATH ?? null,
+      this.allDetectedProjects.length,
+    ]);
+  }
+
+  /**
+   * Run workspace detection if it has not run yet, and re-run it once when the
+   * first pass came up empty and a source it needs has appeared since.
+   *
+   * The first pass fires roughly two seconds into startup, before the bridge and
+   * the workspace roots are up; treating its result as final is what made the
+   * server report "could not auto-detect" for a workspace it went on to resolve
+   * moments later (#833). Only when the retry has also failed — and a caller
+   * actually needs a project — is the warning emitted.
+   */
+  private async ensureProjectDetection(workspacePath?: string): Promise<void> {
+    if (!this.autoDetectionAttempted) {
+      await this.autoDetectProject(workspacePath);
+    } else if (
+      !this.autoDetectedProject &&
+      !this.detectionRetried &&
+      this.lastDetectionFingerprint !== null &&
+      this.detectionSourceFingerprint(workspacePath) !== this.lastDetectionFingerprint
+    ) {
+      this.detectionRetried = true;
+      this.autoDetectionAttempted = false;
+      this.autoDetectionCache.delete(workspacePath || 'default');
+      console.error('[ConfigManager] Re-running workspace detection — sources have come up since the first pass');
+      await this.autoDetectProject(workspacePath);
+    }
+
+    // A model named in .mcp.json (or D365FO_MODEL_NAME) settles the question just
+    // as well as a scan does — recorded so `doctor` reports THAT as the source
+    // that won, rather than an unresolved detection nothing was waiting for.
+    if (!this.autoDetectedProject) {
+      const configured = this.getModelNameWithSource();
+      if (configured.modelName) {
+        recordDetectionSuccess(configured.source, configured.modelName, this.runtimeContext.projectPath ?? null);
+      } else {
+        reportUnresolvedDetection();
       }
     }
   }
@@ -305,6 +392,10 @@ class ConfigManager {
       if (!this.autoDetectionCache.has(cacheKey)) {
         this.autoDetectionAttempted = false;
         this.autoDetectedProject = null;
+        // A different workspace resolves to a different project — what the last
+        // one detected, and the retry it was owed, say nothing about this one.
+        this.detectionRetried = false;
+        resetWorkspaceDetectionStatus();
         // A workspace this server has never seen — the user moved, so the write
         // anchor of the PREVIOUS workspace must not survive into this one. Left
         // standing it becomes the mirror of the bug it prevents: every write into
@@ -325,6 +416,7 @@ class ConfigManager {
             this.autoDetectedProject = matched;
             this.autoDetectionAttempted = true;
             this.autoDetectionCache.set(cacheKey, matched);
+            recordDetectionSuccess('a known project matching the workspace path', matched.modelName, matched.projectPath ?? null);
             console.error(`[ConfigManager] ⚡ Workspace matched known project: ${matched.modelName} (gen ${this.detectionGeneration})`);
             return;
           }
@@ -388,6 +480,7 @@ class ConfigManager {
         this.autoDetectionAttempted = true;
         this.autoDetectionCache.set(rootPath, match);
         registerCustomModel(match.modelName);
+        recordDetectionSuccess('the workspace root path', match.modelName, match.projectPath ?? null);
         // The workspace itself resolved a project — the user moved, not the agent.
         this.toolForcedProject = null;
         console.error(`[ConfigManager] ⚡ Root matched project: ${match.modelName} (gen ${gen}, ${match.projectPath})`);
@@ -410,6 +503,7 @@ class ConfigManager {
             this.autoDetectionAttempted = true;
             this.autoDetectionCache.set(rootPath, gitMatch);
             registerCustomModel(gitMatch.modelName);
+            recordDetectionSuccess(`the git branch name "${branch}"`, gitMatch.modelName, gitMatch.projectPath ?? null);
             this.toolForcedProject = null;   // genuine workspace move — see above
             console.error(`[ConfigManager] 🌿 Git branch "${branch}" → project: ${gitMatch.modelName} (gen ${gen})`);
             return;
@@ -970,10 +1064,7 @@ class ConfigManager {
       ]);
     }
 
-    if (!this.autoDetectionAttempted) {
-      const ctx = this.config?.servers?.context;
-      await this.autoDetectProject(this.runtimeContext.workspacePath || ctx?.workspacePath);
-    } else if (!this.autoDetectedProject && this.detectionInProgress) {
+    if (this.autoDetectionAttempted && !this.autoDetectedProject && this.detectionInProgress) {
       // autoDetectionAttempted was set immediately when background scan started,
       // but the scan hasn't finished yet — wait up to 5 s for the result.
       await Promise.race([
@@ -982,6 +1073,8 @@ class ConfigManager {
       ]);
       this.detectionInProgress = null;
     }
+    const ctx = this.config?.servers?.context;
+    await this.ensureProjectDetection(this.runtimeContext.workspacePath || ctx?.workspacePath);
 
     // Model name
     const { modelName, source: modelSource } = this.getModelNameWithSource();
@@ -1141,18 +1234,15 @@ class ConfigManager {
    * running. Bounded the same way getWorkspaceInfoDiagnostics() bounds it.
    */
   private async awaitPendingDetection(): Promise<void> {
-    if (!this.autoDetectionAttempted) {
-      const ctx = this.config?.servers?.context;
-      await this.autoDetectProject(this.runtimeContext.workspacePath || ctx?.workspacePath);
-      return;
-    }
-    if (!this.autoDetectedProject && this.detectionInProgress) {
+    if (this.autoDetectionAttempted && !this.autoDetectedProject && this.detectionInProgress) {
       await Promise.race([
         this.detectionInProgress,
         new Promise<void>(resolve => setTimeout(resolve, 5_000)),
       ]);
       this.detectionInProgress = null;
     }
+    const ctx = this.config?.servers?.context;
+    await this.ensureProjectDetection(this.runtimeContext.workspacePath || ctx?.workspacePath);
   }
 
   /**
@@ -1198,9 +1288,7 @@ class ConfigManager {
     }
 
     // Priority 3: Auto-detection
-    if (!this.autoDetectionAttempted) {
-      await this.autoDetectProject(this.runtimeContext.workspacePath || context?.workspacePath);
-    }
+    await this.ensureProjectDetection(this.runtimeContext.workspacePath || context?.workspacePath);
 
     return this.autoDetectedProject?.projectPath || null;
   }
@@ -1222,9 +1310,7 @@ class ConfigManager {
     }
 
     // Priority 3: Auto-detection
-    if (!this.autoDetectionAttempted) {
-      await this.autoDetectProject(this.runtimeContext.workspacePath || context?.workspacePath);
-    }
+    await this.ensureProjectDetection(this.runtimeContext.workspacePath || context?.workspacePath);
 
     return this.autoDetectedProject?.solutionPath || null;
   }
@@ -1262,10 +1348,8 @@ class ConfigManager {
    * the real model to the user.
    */
   async getRawAutoDetectedModelName(): Promise<string | null> {
-    if (!this.autoDetectionAttempted) {
-      const context = this.config?.servers?.context;
-      await this.autoDetectProject(this.runtimeContext.workspacePath || context?.workspacePath);
-    }
+    const context = this.config?.servers?.context;
+    await this.ensureProjectDetection(this.runtimeContext.workspacePath || context?.workspacePath);
     return this.autoDetectedProject?.modelName || null;
   }
 
@@ -1281,10 +1365,8 @@ class ConfigManager {
       return alreadyKnown;
     }
 
-    if (!this.autoDetectionAttempted) {
-      const context = this.config?.servers?.context;
-      await this.autoDetectProject(this.runtimeContext.workspacePath || context?.workspacePath);
-    }
+    const context = this.config?.servers?.context;
+    await this.ensureProjectDetection(this.runtimeContext.workspacePath || context?.workspacePath);
 
     return this.autoDetectedProject?.modelName || null;
   }
