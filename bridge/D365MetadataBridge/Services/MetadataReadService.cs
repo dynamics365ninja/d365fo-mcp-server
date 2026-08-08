@@ -125,11 +125,34 @@ namespace D365MetadataBridge.Services
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var factory = new MetadataProviderFactory();
+            var previous = _provider;
             _provider = CreatePrimaryProvider(factory, _packagesPath, _referencePackagesPath);
+            // Hand the new provider over BEFORE releasing the old one, so nothing is
+            // holding a provider that is about to be disposed.
             OnProviderRefreshed?.Invoke(_provider);
+            // Every write auto-refreshes (HandleWrite refreshAfterSuccess), so a long
+            // authoring session builds one DiskProvider per write. Dropping the old one
+            // on the floor kept its file handles and per-package metadata caches alive
+            // over the whole PackagesLocalDirectory until GC felt like it — the bridge
+            // grew until it stopped answering, which is the state the client sees as a
+            // wedged process.
+            DisposeProvider(previous);
             sw.Stop();
             Console.Error.WriteLine($"[MetadataService] Provider refreshed in {sw.ElapsedMilliseconds}ms");
             return new { refreshed = true, elapsedMs = sw.ElapsedMilliseconds };
+        }
+
+        /// <summary>
+        /// Releases a superseded provider. Whether DiskProvider implements IDisposable
+        /// varies across metamodel versions, so this asks rather than assumes; a failure
+        /// to release is logged and swallowed because the replacement is already live and
+        /// the refresh itself succeeded.
+        /// </summary>
+        private static void DisposeProvider(IMetadataProvider? provider)
+        {
+            if (provider is not IDisposable disposable) return;
+            try { disposable.Dispose(); }
+            catch (Exception ex) { Console.Error.WriteLine($"[WARN] Failed to dispose superseded metadata provider: {ex.Message}"); }
         }
 
         /// <summary>

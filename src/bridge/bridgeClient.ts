@@ -89,6 +89,8 @@ const MAX_RESTARTS = envInt('BRIDGE_MAX_RESTARTS', 3);              // max child
 const RESTART_WINDOW_MS = 60_000;
 const PING_TIMEOUT_MS = 5_000;
 const RETRY_BASE_DELAY_MS = 250;
+const KILL_GRACE_MS = envInt('BRIDGE_KILL_GRACE_MS', 2_000);        // stdin-end → SIGTERM
+const KILL_HARD_MS = envInt('BRIDGE_KILL_HARD_MS', 3_000);          // SIGTERM → SIGKILL, and SIGKILL → give up
 
 /**
  * Methods safe to auto-retry on timeout/pipe error: idempotent READS only.
@@ -105,13 +107,23 @@ const RETRYABLE_METHODS = new Set([
   'findApiUsageCallers', 'resolveObjectInfo', 'validateObject', 'discoverFormPatterns',
 ]);
 
-/** Errors that indicate a transient transport problem (vs. a deterministic bridge error). */
-function isTransientError(err: unknown): boolean {
+/**
+ * Errors that indicate a transient transport problem (vs. a deterministic bridge error).
+ *
+ * Exported for the lifecycle test, which derives the message the child-exit handler
+ * actually produces and checks it lands here: the two used to disagree. This matched
+ * only the phrase "exited unexpectedly", which no code path ever emitted — the exit
+ * handler said "Bridge process exited before becoming ready", so a child that crashed
+ * with a READ in flight (the AOS metadata provider dying mid-query is the common case)
+ * was classified as a deterministic failure and thrown at the caller instead of being
+ * retried against a respawned child.
+ */
+export function isTransientError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return (
     msg.includes('timed out') ||
     msg.includes('Bridge is not ready') ||
-    msg.includes('exited unexpectedly') ||
+    msg.includes('Bridge process exited') ||
     msg.includes('Bridge process error') ||
     msg.includes('Failed to write to bridge stdin') ||
     msg.includes('Bridge restarting')
@@ -120,6 +132,23 @@ function isTransientError(err: unknown): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * True when `promise` settled within `ms`. The timer is cleared on the fast path so
+ * a pending kill-escalation deadline cannot hold the event loop open after the child
+ * has already exited.
+ */
+async function settledWithin(promise: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms);
+  });
+  try {
+    return await Promise.race([promise.then(() => true), expired]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export interface BridgeClientOptions {
@@ -239,7 +268,9 @@ export class BridgeClient extends EventEmitter {
     return new Promise<BridgeReadyPayload>((resolve, reject) => {
       const timeout = setTimeout(() => {
         // Kill only the child; the client stays usable for a later restart()/dispose().
-        this.killChild();
+        // Not awaited — this rejects the ready promise now and lets the escalation
+        // run behind it; a later dispose() has nothing left to wait for either way.
+        void this.killChild();
         reject(new Error(`Bridge process did not become ready within ${this.options.readyTimeoutMs ?? READY_TIMEOUT_MS}ms`));
       }, this.options.readyTimeoutMs ?? READY_TIMEOUT_MS);
 
@@ -345,9 +376,14 @@ export class BridgeClient extends EventEmitter {
         clearTimeout(timeout);
         this._isReady = false;
         console.error(`[BridgeClient] Process exited: code=${code}, signal=${signal}`);
-        const exitErr = new Error(`Bridge process exited before becoming ready: code=${code}, signal=${signal}`);
-        this.rejectAllPending(exitErr);
-        reject(exitErr);
+        // Two different audiences, two different truths. The spawn promise only
+        // matters before ready, so "before becoming ready" is right there. In-flight
+        // calls are the opposite case — the child was up and serving them — and they
+        // must get a message isTransientError() recognises, or a read that was in the
+        // pipe when the child crashed is reported as a hard failure instead of being
+        // retried against a respawned child.
+        this.rejectAllPending(new Error(`Bridge process exited unexpectedly: code=${code}, signal=${signal}`));
+        reject(new Error(`Bridge process exited before becoming ready: code=${code}, signal=${signal}`));
       });
     });
   }
@@ -465,7 +501,9 @@ export class BridgeClient extends EventEmitter {
     this.restartPromise = (async () => {
       console.error('[BridgeClient] Restarting bridge child process…');
       this.rejectAllPending(new Error('Bridge restarting'));
-      this.killChild();
+      // Awaited: respawning while the old child still holds the packages directory
+      // is what a restart exists to get away from.
+      await this.killChild();
       this._isReady = false;
       this.readyPayload = null;
       this.buffer = '';
@@ -497,8 +535,17 @@ export class BridgeClient extends EventEmitter {
     if (typeof this.healthTimer.unref === 'function') this.healthTimer.unref();
   }
 
-  /** Gracefully shut down the bridge process */
-  dispose(): void {
+  /**
+   * Gracefully shut down the bridge process.
+   *
+   * Awaitable, and the shutdown coordinator does await it: the escalation below is
+   * driven by timers, and unref'd timers scheduled by a synchronous dispose() never
+   * get to fire — the process exits first. A child that had gone unresponsive was
+   * therefore left running with the packages directory open, so the next server start
+   * met a second bridge holding the same metadata, and the user met an orphan they
+   * had to find in Task Manager.
+   */
+  async dispose(): Promise<void> {
     if (this._disposed) return;
     this._disposed = true;
     this._isReady = false;
@@ -508,31 +555,38 @@ export class BridgeClient extends EventEmitter {
       this.healthTimer = null;
     }
     this.rejectAllPending(new Error('BridgeClient disposed'));
-    this.killChild();
+    await this.killChild();
   }
 
-  /** Kill the current child process (used by dispose and restart). */
-  private killChild(): void {
-    // Capture the reference before clearing this.process so the deferred SIGTERM closure retains it.
+  /**
+   * Kill the current child process (used by dispose and restart), escalating until
+   * it is actually gone: end stdin so it can finish an in-flight AOT write, then
+   * SIGTERM, then SIGKILL. Resolves when the child exits, or after the last step's
+   * budget — shutdown must not be the thing that hangs.
+   */
+  private async killChild(): Promise<void> {
+    // Capture the reference before clearing this.process so the exit listener below
+    // (and any late event from the replaced child) cannot touch its successor.
     const child = this.process;
     this.process = null;
-    if (child) {
-      try {
-        child.stdin?.end();
-        const graceful = setTimeout(() => {
-          if (!child.killed) {
-            try { child.kill('SIGTERM'); } catch { /* already gone */ }
-          }
-        }, 2000);
-        // SIGKILL fallback if SIGTERM did not terminate within another 3s.
-        const hard = setTimeout(() => {
-          if (!child.killed) {
-            try { child.kill('SIGKILL'); } catch { /* already gone */ }
-          }
-        }, 5000);
-        if (typeof graceful.unref === 'function') graceful.unref();
-        if (typeof hard.unref === 'function') hard.unref();
-      } catch { /* ignore */ }
+    if (!child) return;
+    if (child.exitCode !== null || child.signalCode !== null) return;
+
+    const exited = new Promise<void>((resolve) => {
+      child.once('exit', () => resolve());
+    });
+
+    try { child.stdin?.end(); } catch { /* pipe already gone */ }
+    if (await settledWithin(exited, KILL_GRACE_MS)) return;
+
+    console.error('[BridgeClient] Child did not exit on stdin close — sending SIGTERM');
+    try { child.kill('SIGTERM'); } catch { /* already gone */ }
+    if (await settledWithin(exited, KILL_HARD_MS)) return;
+
+    console.error('[BridgeClient] Child survived SIGTERM — sending SIGKILL');
+    try { child.kill('SIGKILL'); } catch { /* already gone */ }
+    if (!(await settledWithin(exited, KILL_HARD_MS))) {
+      console.error(`[BridgeClient] Child pid=${child.pid} did not die after SIGKILL — abandoning it`);
     }
   }
 
@@ -992,7 +1046,7 @@ export async function createBridgeClient(options: {
     return client;
   } catch (err) {
     console.error(`[BridgeClient] Initialization failed: ${err}`);
-    client.dispose();
+    await client.dispose();
     return null;
   }
 }
