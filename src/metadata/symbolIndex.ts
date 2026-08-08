@@ -93,7 +93,12 @@ export class XppSymbolIndex {
     this.db.pragma('synchronous = NORMAL'); // Faster writes, still crash-safe
     this.db.pragma('cache_size = -64000'); // 64MB cache (negative = kibibytes)
     this.db.pragma('temp_store = MEMORY'); // Store temp tables in memory
-    this.db.pragma('mmap_size = 268435456'); // 256MB memory-mapped I/O
+    // 1 GiB. The shipped symbol DB is ~2.3 GB and the labels DB ~0.9 GB, so the
+    // previous 256 MB / 128 MB mapped roughly a tenth of each file and every read
+    // outside that window paid a page copy through the regular pager. SQLite maps
+    // min(mmap_size, file size) and the mapping is virtual — pages fault in on
+    // demand — so a larger window costs address space, not resident memory.
+    this.db.pragma('mmap_size = 1073741824'); // 1 GiB memory-mapped I/O
     // Without a busy_timeout the writer fails immediately (SQLITE_BUSY) whenever
     // a WAL checkpoint races with an active reader; retry for up to 5s instead.
     this.db.pragma('busy_timeout = 5000');
@@ -109,7 +114,7 @@ export class XppSymbolIndex {
     this.labelsDb.pragma('synchronous = NORMAL');
     this.labelsDb.pragma('cache_size = -32000'); // 32MB cache for labels
     this.labelsDb.pragma('temp_store = MEMORY');
-    this.labelsDb.pragma('mmap_size = 134217728'); // 128MB memory-mapped I/O
+    this.labelsDb.pragma('mmap_size = 536870912'); // 512 MiB — see the note above
     this.labelsDb.pragma('busy_timeout = 5000');
     this.labelsDb.pragma('wal_autocheckpoint = 4000');
     // page_size is a no-op on an existing database (only applies to new DBs).
@@ -128,7 +133,7 @@ export class XppSymbolIndex {
         rConn.pragma('busy_timeout = 5000');
         rConn.pragma('cache_size = -32000'); // 32 MB page cache per connection
         rConn.pragma('temp_store = MEMORY');
-        rConn.pragma('mmap_size = 268435456');
+        rConn.pragma('mmap_size = 1073741824');
         this.readPool.push(rConn);
 
         if (labelPath !== ':memory:') {
@@ -136,7 +141,7 @@ export class XppSymbolIndex {
           rLabels.pragma('busy_timeout = 5000');
           rLabels.pragma('cache_size = -16000'); // 16 MB per labels connection
           rLabels.pragma('temp_store = MEMORY');
-          rLabels.pragma('mmap_size = 134217728');
+          rLabels.pragma('mmap_size = 536870912');
           this.labelsReadPool.push(rLabels);
         }
       }
