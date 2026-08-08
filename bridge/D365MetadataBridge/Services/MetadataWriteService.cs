@@ -271,13 +271,10 @@ namespace D365MetadataBridge.Services
                     axIdx.AllowDuplicates = ix.AllowDuplicates ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
                     if (ix.AlternateKey)
                         axIdx.AlternateKey = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes;
-                    if (ix.Fields != null)
+                    foreach (var ixf in RequireIndexFields(name, ix.Name, ix.Fields))
                     {
-                        foreach (var ixf in ix.Fields)
-                        {
-                            var axIxField = new AxTableIndexField { DataField = ixf };
-                            axIdx.AddField(axIxField);
-                        }
+                        var axIxField = new AxTableIndexField { DataField = ixf };
+                        axIdx.AddField(axIxField);
                     }
                     axTable.AddIndex(axIdx);
                 }
@@ -289,19 +286,8 @@ namespace D365MetadataBridge.Services
                 foreach (var rel in relations)
                 {
                     var axRel = new AxTableRelation { Name = rel.Name, RelatedTable = rel.RelatedTable ?? "" };
-                    if (rel.Constraints != null)
-                    {
-                        foreach (var c in rel.Constraints)
-                        {
-                            var constraint = new AxTableRelationConstraintField
-                            {
-                                Name = c.Field ?? "",
-                                Field = c.Field ?? "",
-                                RelatedField = c.RelatedField ?? ""
-                            };
-                            axRel.AddConstraint(constraint);
-                        }
-                    }
+                    foreach (var c in RequireRelationConstraints(name, rel.Name, rel.Constraints))
+                        axRel.AddConstraint(NewRelationConstraint(rel.Name, c));
                     axTable.AddRelation(axRel);
                 }
             }
@@ -444,11 +430,8 @@ namespace D365MetadataBridge.Services
                         axIdx.AllowDuplicates = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
                         if (uniqueIndexName == null) uniqueIndexName = ix.Name;
                     }
-                    if (ix.Fields != null)
-                    {
-                        foreach (var ixf in ix.Fields)
-                            axIdx.AddField(new AxTableIndexField { DataField = ixf });
-                    }
+                    foreach (var ixf in RequireIndexFields(name, ix.Name, ix.Fields))
+                        axIdx.AddField(new AxTableIndexField { DataField = ixf });
                     axTable.AddIndex(axIdx);
                 }
             }
@@ -535,18 +518,8 @@ namespace D365MetadataBridge.Services
                 foreach (var rel in relations)
                 {
                     var axRel = new AxTableRelation { Name = rel.Name, RelatedTable = rel.RelatedTable ?? "" };
-                    if (rel.Constraints != null)
-                    {
-                        foreach (var c in rel.Constraints)
-                        {
-                            axRel.AddConstraint(new AxTableRelationConstraintField
-                            {
-                                Name = c.Field ?? "",
-                                Field = c.Field ?? "",
-                                RelatedField = c.RelatedField ?? "",
-                            });
-                        }
-                    }
+                    foreach (var c in RequireRelationConstraints(name, rel.Name, rel.Constraints))
+                        axRel.AddConstraint(NewRelationConstraint(rel.Name, c));
                     axTable.AddRelation(axRel);
                 }
             }
@@ -949,11 +922,8 @@ namespace D365MetadataBridge.Services
                         : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
                     if (ix.AlternateKey)
                         axIdx.AlternateKey = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes;
-                    if (ix.Fields != null)
-                    {
-                        foreach (var ixf in ix.Fields)
-                            axIdx.AddField(new AxTableIndexField { DataField = ixf });
-                    }
+                    foreach (var ixf in RequireIndexFields(name, ix.Name, ix.Fields))
+                        axIdx.AddField(new AxTableIndexField { DataField = ixf });
                     axExt.Indexes.Add(axIdx);
                 }
             }
@@ -964,18 +934,8 @@ namespace D365MetadataBridge.Services
                 foreach (var rel in relations)
                 {
                     var axRel = new AxTableRelation { Name = rel.Name, RelatedTable = rel.RelatedTable ?? "" };
-                    if (rel.Constraints != null)
-                    {
-                        foreach (var c in rel.Constraints)
-                        {
-                            axRel.AddConstraint(new AxTableRelationConstraintField
-                            {
-                                Name = c.Field ?? "",
-                                Field = c.Field ?? "",
-                                RelatedField = c.RelatedField ?? ""
-                            });
-                        }
-                    }
+                    foreach (var c in RequireRelationConstraints(name, rel.Name, rel.Constraints))
+                        axRel.AddConstraint(NewRelationConstraint(rel.Name, c));
                     axExt.Relations.Add(axRel);
                 }
             }
@@ -1997,18 +1957,44 @@ namespace D365MetadataBridge.Services
         // TABLE INDEX OPERATIONS
         // ========================
 
+        /// <summary>
+        /// The field list of an index, refused when it holds nothing usable.
+        ///
+        /// A null/empty `fields` serialized as &lt;Fields /&gt; and the call returned
+        /// success: the index compiles, raises no BP warning, and indexes nothing — the
+        /// silent-empty-write failure mode, where the object is only discovered to be
+        /// inert long after the caller was told it was written. The usual cause is a
+        /// param-shape mismatch (fields sent as [{fieldName}] instead of a flat string[]),
+        /// so failing here is also what makes that visible.
+        /// </summary>
+        private static List<string> RequireIndexFields(string tableName, string indexName, List<string>? fields)
+        {
+            if (fields == null || fields.Count == 0)
+                throw new ArgumentException(
+                    $"Index '{indexName}' on '{tableName}' has no fields — pass the field names as a string array in 'fields'. " +
+                    "An index with an empty <Fields /> collection compiles clean and indexes nothing.");
+
+            for (var i = 0; i < fields.Count; i++)
+            {
+                if (string.IsNullOrWhiteSpace(fields[i]))
+                    throw new ArgumentException(
+                        $"Index '{indexName}' on '{tableName}': fields[{i}] is empty. " +
+                        "Every entry must name a field on the table.");
+            }
+            return fields;
+        }
+
         /// <summary>Adds an index to a table or table-extension.</summary>
         public object AddIndex(string tableName, string indexName, List<string>? fields, bool allowDuplicates, bool alternateKey)
         {
+            var indexFields = RequireIndexFields(tableName, indexName, fields);
+
             var axIdx = new AxTableIndex { Name = indexName };
             axIdx.AllowDuplicates = allowDuplicates ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.No;
             if (alternateKey)
                 axIdx.AlternateKey = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.NoYes.Yes;
-            if (fields != null)
-            {
-                foreach (var f in fields)
-                    axIdx.AddField(new AxTableIndexField { DataField = f });
-            }
+            foreach (var f in indexFields)
+                axIdx.AddField(new AxTableIndexField { DataField = f });
 
             var axTable = _provider.Tables.Read(tableName);
             if (axTable != null)
@@ -2016,7 +2002,7 @@ namespace D365MetadataBridge.Services
                 var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
                 axTable.AddIndex(axIdx);
                 ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-                return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableProvider.Update" };
+                return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = indexFields.Count, api = "IMetaTableProvider.Update" };
             }
 
             var axExt = _provider.TableExtensions.Read(tableName);
@@ -2027,7 +2013,7 @@ namespace D365MetadataBridge.Services
                 var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
                     ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
                 extProvider.Update(axExt, msi);
-                return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableExtensionProvider.Update" };
+                return new { success = true, operation = "add-index", objectName = tableName, indexName, fieldCount = indexFields.Count, api = "IMetaTableExtensionProvider.Update" };
             }
 
             throw new ArgumentException($"Table or table-extension '{tableName}' not found");
@@ -2089,12 +2075,11 @@ namespace D365MetadataBridge.Services
         /// </summary>
         public object AddFullTextIndex(string tableName, string indexName, List<string>? fields)
         {
+            var indexFields = RequireIndexFields(tableName, indexName, fields);
+
             var axIdx = new AxTableFullTextIndex { Name = indexName };
-            if (fields != null)
-            {
-                foreach (var f in fields)
-                    axIdx.Fields.Add(new AxTableIndexField { DataField = f });
-            }
+            foreach (var f in indexFields)
+                axIdx.Fields.Add(new AxTableIndexField { DataField = f });
 
             var axTable = _provider.Tables.Read(tableName);
             if (axTable != null)
@@ -2102,7 +2087,7 @@ namespace D365MetadataBridge.Services
                 var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
                 axTable.FullTextIndexes.Add(axIdx);
                 ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
-                return new { success = true, operation = "add-full-text-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableProvider.Update" };
+                return new { success = true, operation = "add-full-text-index", objectName = tableName, indexName, fieldCount = indexFields.Count, api = "IMetaTableProvider.Update" };
             }
 
             var axExt = _provider.TableExtensions.Read(tableName);
@@ -2113,7 +2098,7 @@ namespace D365MetadataBridge.Services
                 var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
                     ?? throw new InvalidOperationException("IMetaTableExtensionProvider not available");
                 extProvider.Update(axExt, msi);
-                return new { success = true, operation = "add-full-text-index", objectName = tableName, indexName, fieldCount = fields?.Count ?? 0, api = "IMetaTableExtensionProvider.Update" };
+                return new { success = true, operation = "add-full-text-index", objectName = tableName, indexName, fieldCount = indexFields.Count, api = "IMetaTableExtensionProvider.Update" };
             }
 
             throw new ArgumentException($"Table or table-extension '{tableName}' not found");
@@ -2259,6 +2244,45 @@ namespace D365MetadataBridge.Services
         // ========================
 
         /// <summary>
+        /// One relation constraint, refused when either side is blank.
+        ///
+        /// `Field = c.Field ?? ""` wrote a nameless &lt;AxTableRelationConstraintField&gt;:
+        /// the relation was reported as added, joined nothing, and the damage surfaced
+        /// only at compile time. Blank on BOTH sides is the signature of the param-shape
+        /// mismatch the TS side remaps around — constraints arriving as
+        /// {fieldName, relatedFieldName} deserialize into a WriteRelationConstraint whose
+        /// two properties are null. Name it instead of writing it.
+        /// </summary>
+        private static AxTableRelationConstraintField NewRelationConstraint(string relationName, WriteRelationConstraint c)
+        {
+            var field = c.Field?.Trim();
+            var relatedField = c.RelatedField?.Trim();
+            if (string.IsNullOrEmpty(field) || string.IsNullOrEmpty(relatedField))
+                throw new ArgumentException(
+                    $"Relation '{relationName}' has a constraint with an empty field name " +
+                    $"(field='{c.Field}', relatedField='{c.RelatedField}'). Every constraint needs both keys: " +
+                    "{\"field\": \"<field on this table>\", \"relatedField\": \"<field on the related table>\"}.");
+
+            return new AxTableRelationConstraintField { Name = field, Field = field, RelatedField = relatedField };
+        }
+
+        /// <summary>
+        /// The constraint list of a relation, refused when empty — a relation with no
+        /// constraint fields joins nothing, so writing one is the same silent-empty-write
+        /// as an index with no fields.
+        /// </summary>
+        private static List<WriteRelationConstraint> RequireRelationConstraints(
+            string tableName, string relationName, List<WriteRelationConstraint>? constraints)
+        {
+            if (constraints == null || constraints.Count == 0)
+                throw new ArgumentException(
+                    $"Relation '{relationName}' on '{tableName}' has no constraints — pass 'constraints' as " +
+                    "[{\"field\": \"<field on this table>\", \"relatedField\": \"<field on the related table>\"}]. " +
+                    "A relation with an empty <Constraints /> collection joins nothing.");
+            return constraints;
+        }
+
+        /// <summary>
         /// Adds a relation to a table.
         ///
         /// Cardinality / RelatedTableCardinality / RelationshipType are real
@@ -2274,22 +2298,14 @@ namespace D365MetadataBridge.Services
             List<WriteRelationConstraint>? constraints,
             string? cardinality = null, string? relatedTableCardinality = null, string? relationshipType = null)
         {
+            var relationConstraints = RequireRelationConstraints(tableName, relationName, constraints);
+
             var axRel = new AxTableRelation { Name = relationName, RelatedTable = relatedTable };
             SetEnumProperty(axRel, "Cardinality", cardinality);
             SetEnumProperty(axRel, "RelatedTableCardinality", relatedTableCardinality);
             SetEnumProperty(axRel, "RelationshipType", relationshipType);
-            if (constraints != null)
-            {
-                foreach (var c in constraints)
-                {
-                    axRel.AddConstraint(new AxTableRelationConstraintField
-                    {
-                        Name = c.Field ?? "",
-                        Field = c.Field ?? "",
-                        RelatedField = c.RelatedField ?? ""
-                    });
-                }
-            }
+            foreach (var c in relationConstraints)
+                axRel.AddConstraint(NewRelationConstraint(relationName, c));
 
             var axTable = _provider.Tables.Read(tableName);
             if (axTable != null)
@@ -2341,26 +2357,18 @@ namespace D365MetadataBridge.Services
                     }
 
                     var added = new List<string>();
-                    if (constraints != null)
+                    foreach (var c in relationConstraints)
                     {
-                        foreach (var c in constraints)
+                        var constraint = NewRelationConstraint(relationName, c);
+                        var already = false;
+                        foreach (AxTableRelationConstraint existing in relExt.RelationConstraints)
                         {
-                            var field = c.Field ?? "";
-                            var already = false;
-                            foreach (AxTableRelationConstraint existing in relExt.RelationConstraints)
-                            {
-                                if (string.Equals(existing.Name, field, StringComparison.OrdinalIgnoreCase))
-                                { already = true; break; }
-                            }
-                            if (already) continue;
-                            relExt.RelationConstraints.Add(new AxTableRelationConstraintField
-                            {
-                                Name = field,
-                                Field = field,
-                                RelatedField = c.RelatedField ?? ""
-                            });
-                            added.Add(field);
+                            if (string.Equals(existing.Name, constraint.Name, StringComparison.OrdinalIgnoreCase))
+                            { already = true; break; }
                         }
+                        if (already) continue;
+                        relExt.RelationConstraints.Add(constraint);
+                        added.Add(constraint.Name);
                     }
 
                     extProvider.Update(axExt, msi);

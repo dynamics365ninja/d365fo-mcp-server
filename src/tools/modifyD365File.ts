@@ -696,6 +696,20 @@ async function directXmlAddIndex(
   allowDuplicates: boolean | undefined,
   alternateKey: boolean | undefined,
 ): Promise<{ success: boolean; message: string } | null> {
+  // The bridge refuses an index with no fields (it writes <Fields /> — an index that
+  // compiles, warns about nothing and indexes nothing). This fallback runs precisely
+  // when the bridge call failed, so without the same gate it would catch the refusal
+  // and land the empty index anyway, under a ✅.
+  const namedFields = (fields ?? []).filter(f => typeof f === 'string' && f.trim() !== '');
+  if (namedFields.length === 0) {
+    return {
+      success: false,
+      message:
+        `Index '${indexName}' has no fields — pass indexFields as [{ fieldName: "<field>" }]. ` +
+        `An index with an empty <Fields /> collection compiles clean and indexes nothing.`,
+    };
+  }
+
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
@@ -721,22 +735,19 @@ async function directXmlAddIndex(
       };
     }
 
-    const fieldElements = (fields ?? [])
+    const fieldElements = namedFields
       .map(f =>
         `\t\t\t\t<AxTableIndexField>\n` +
         `\t\t\t\t\t<DataField>${f}</DataField>\n` +
         `\t\t\t\t</AxTableIndexField>`)
       .join('\n');
-    const fieldsBlock = fieldElements
-      ? `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>`
-      : `\t\t\t<Fields />`;
 
     const newElement =
       `\t\t<AxTableIndex>\n` +
       `\t\t\t<Name>${indexName}</Name>\n` +
       `\t\t\t<AllowDuplicates>${allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n` +
       (alternateKey ? `\t\t\t<AlternateKey>Yes</AlternateKey>\n` : '') +
-      `${fieldsBlock}\n` +
+      `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>\n` +
       `\t\t</AxTableIndex>`;
 
     let updated: string;
