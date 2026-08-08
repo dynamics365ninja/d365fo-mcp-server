@@ -15,7 +15,7 @@
  * See docs/AGENT_EVAL_LOOP.md §6.2.
  */
 
-import { parseStringPromise } from 'xml2js';
+import { parseStringPromise } from '../../utils/xml.js';
 import { reindentXppSource } from '../../utils/xppFormat.js';
 import { canonicalizePrefix, type PrefixSpec } from './prefix.js';
 import { artifactKeyMap } from './artifactKey.js';
@@ -128,7 +128,7 @@ function canonicalizeXppSourceText(s: string): string {
  * Deliberately still a `///` line: PRESENCE of a doc comment survives the
  * canonicalisation, only its PROSE is discarded (see below).
  */
-export const XMLDOC_PLACEHOLDER = '/// <xmldoc/>';
+const XMLDOC_PLACEHOLDER = '/// <xmldoc/>';
 
 /**
  * Collapse every contiguous run of `///` XmlDoc lines to a single placeholder

@@ -2,20 +2,29 @@
  * Regenerates docs/CONFIGURATION.md from the setting registry, so the reference
  * table can never drift from what the wizard actually asks for.
  *
- *   npm run config:docs
+ *   npm run config:docs            # rewrite the file
+ *   npm run config:docs -- --check # fail if it is out of date (CI gate)
+ *
+ * The --check mode exists because the file was hand-edited once: the edit added
+ * three real environment variables the registry did not know about, so the next
+ * regeneration would have deleted them silently.
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SECTIONS, SETTINGS, type Setting } from '../src/config/settings.js';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outPath = resolve(repoRoot, 'docs', 'CONFIGURATION.md');
+const checkOnly = process.argv.includes('--check');
 
 const TIER_LABEL: Record<Setting['tier'], string> = {
   basic: 'setup',
   advanced: 'advanced',
   secret: 'secret',
+  // An env-only setting is never asked for and has no config-file key, so both
+  // of its table cells are an em dash.
+  'env-only': '—',
 };
 
 function formatDefault(setting: Setting): string {
@@ -39,6 +48,7 @@ function buildExample(tier: 'config' | 'secret'): string {
   const out: Record<string, any> = tier === 'config' ? { version: 1 } : {};
   for (const setting of SETTINGS) {
     if (tier === 'config' ? setting.tier === 'secret' : setting.tier !== 'secret') continue;
+    if (!setting.path) continue; // env-only: no key in either file
     const keys = setting.path.split('.');
     const last = keys.pop()!;
     let cursor = out;
@@ -106,8 +116,9 @@ for (const section of SECTIONS) {
     const choices = setting.choices?.length
       ? ' Values: ' + setting.choices.map(c => '`' + c.value + '` — ' + c.hint).join('; ') + '.'
       : '';
+    const key = setting.path ? '`' + setting.path + '`' : '—';
     lines.push(
-      `| \`${setting.path}\` | ${TIER_LABEL[setting.tier]} | \`${setting.env}\` | ${formatDefault(setting)} | ` +
+      `| ${key} | ${TIER_LABEL[setting.tier]} | \`${setting.env}\` | ${formatDefault(setting)} | ` +
       `${escapeCell(setting.description + choices)} |`,
     );
   }
@@ -131,5 +142,28 @@ lines.push(
   '',
 );
 
-writeFileSync(outPath, lines.join('\n'), 'utf8');
+const rendered = lines.join('\n');
+
+if (checkOnly) {
+  // Compare with CR stripped: the file is committed with CRLF on Windows
+  // checkouts, and a line-ending difference is not drift worth failing on.
+  const onDisk = (() => {
+    try {
+      return readFileSync(outPath, 'utf8');
+    } catch {
+      return null;
+    }
+  })();
+  if (onDisk?.replace(/\r\n/g, '\n') === rendered) {
+    console.log(`docs/CONFIGURATION.md is up to date (${SETTINGS.length} settings).`);
+    process.exit(0);
+  }
+  console.error(
+    `docs/CONFIGURATION.md is out of date with src/config/settings.ts.\n` +
+    `Run \`npm run config:docs\` and commit the result.`,
+  );
+  process.exit(1);
+}
+
+writeFileSync(outPath, rendered, 'utf8');
 console.log(`Wrote ${outPath} (${SETTINGS.length} settings across ${SECTIONS.length} sections)`);

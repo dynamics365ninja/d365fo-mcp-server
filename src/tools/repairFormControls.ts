@@ -12,7 +12,7 @@
 
 import * as fs from 'fs/promises';
 import { z } from 'zod';
-import { Parser } from 'xml2js';
+import { Parser } from '../utils/xml.js';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
 import { walkFormDesign } from '../metadata/formPatternMiner.js';

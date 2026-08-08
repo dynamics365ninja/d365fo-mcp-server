@@ -21,7 +21,7 @@
  */
 
 /** Block 1 — properties the serialiser always writes, in order. */
-export const AX_TABLE_MANDATORY_PROPERTIES = [
+const AX_TABLE_MANDATORY_PROPERTIES = [
   'ConfigurationKey',
   'DeveloperDocumentation',
   'FormRef',
@@ -32,7 +32,7 @@ export const AX_TABLE_MANDATORY_PROPERTIES = [
 ] as const;
 
 /** Block 2 — extended properties, alphabetical, written only when set. */
-export const AX_TABLE_EXTENDED_PROPERTIES = [
+const AX_TABLE_EXTENDED_PROPERTIES = [
   // 3,962 of the 18,337 shipped tables set AllowRowVersionChangeTracking (157
   // AllowRetention), both directly before CacheLookup. This list doubles as the
   // writer's whitelist, so an absent name is dropped, not just misordered.
@@ -58,7 +58,7 @@ export const AX_TABLE_EXTENDED_PROPERTIES = [
 ] as const;
 
 /** The collection elements that terminate the property block, in serialised order. */
-export const AX_TABLE_COLLECTIONS = [
+const AX_TABLE_COLLECTIONS = [
   'DeleteActions',
   'FieldGroups',
   'Fields',

@@ -146,8 +146,3 @@ export function buildModelVisibility(
     },
   };
 }
-
-/** Test seam — drops the memoised visibility oracles. */
-export function clearModelVisibilityCache(): void {
-  visibilityCache.clear();
-}

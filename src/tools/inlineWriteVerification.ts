@@ -16,7 +16,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { Parser } from 'xml2js';
+import { Parser } from '../utils/xml.js';
 
 export interface WriteVerification {
   /** The file exists on disk and is non-empty. */

@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import type { SymbolLookup } from './knowledgeAudit.js';
 
 /** AOT element types worth resolving a knowledge reference against. */
-export const ELEMENT_TYPES = [
+const ELEMENT_TYPES = [
   'class', 'table', 'enum', 'edt', 'interface', 'form', 'view', 'query', 'map',
   'report', 'macro', 'data-entity', 'service', 'configuration-key',
   'menu-item-display', 'menu-item-action', 'menu-item-output',

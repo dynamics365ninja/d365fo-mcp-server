@@ -10,7 +10,7 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { parseStringPromise } from 'xml2js';
+import { parseStringPromise } from '../utils/xml.js';
 import type { XppServerContext } from '../types/context.js';
 import { tryBridgeQuery } from '../bridge/bridgeAdapter.js';
 import { buildObjectTypeMismatchMessage } from '../utils/metadataResolver.js';

@@ -32,7 +32,7 @@ export interface FormExtShapeProblem {
  * The canonical correct shape, shown to the caller when a problem is found so they
  * can fix it without grepping standard packages.
  */
-export const CORRECT_FORM_EXTENSION_CONTROL_TEMPLATE =
+const CORRECT_FORM_EXTENSION_CONTROL_TEMPLATE =
   `<AxFormExtensionControl xmlns="">\n` +
   `    <Name>FormExtensionControl{uniqueId}</Name>\n` +
   `    <FormControl xmlns="" i:type="AxFormIntegerControl">\n` +

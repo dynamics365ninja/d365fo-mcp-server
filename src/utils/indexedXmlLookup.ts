@@ -59,7 +59,7 @@ export async function resolveIndexedObject(
 }
 
 /** Resolve an indexed file path to something readable here, or null. */
-export async function resolveLocalPath(indexedPath: string | null): Promise<string | null> {
+async function resolveLocalPath(indexedPath: string | null): Promise<string | null> {
   if (!indexedPath) return null;
   try {
     if (fs.existsSync(indexedPath)) return indexedPath;

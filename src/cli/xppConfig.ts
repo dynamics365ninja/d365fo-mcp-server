@@ -9,7 +9,6 @@
 import * as fs from 'node:fs';
 import { join } from 'node:path';
 import { settingByPath } from '../config/settings.js';
-import { getValue } from './envFile.js';
 import { readSetting, saveStore, writeSetting, type SettingsStore } from './settingsStore.js';
 
 const xppConfigNameSetting = settingByPath('environment.xppConfigName')!;
@@ -102,6 +101,3 @@ export function isXppConfigStale(store: SettingsStore): boolean {
   if (!dir || !fs.existsSync(dir)) return false;
   return !fs.existsSync(join(dir, `${configName}.json`));
 }
-
-// Re-export for callers that work on content strings in tests.
-export { getValue as _getValue };

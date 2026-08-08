@@ -16,7 +16,7 @@ import {
 import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { Parser, Builder } from 'xml2js';
+import { Parser, Builder } from '../utils/xml.js';
 import { getConfigManager, fallbackPackagePath } from '../utils/configManager.js';
 import { describePackagesRootScan } from '../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';

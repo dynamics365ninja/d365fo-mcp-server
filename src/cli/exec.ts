@@ -64,11 +64,3 @@ export function commandExists(cmd: string, versionArg = '--version'): Promise<bo
     child.on('close', () => resolvePromise(true));
   });
 }
-
-/** Throwing variant — use for steps where a failure must abort the flow. */
-export async function mustSucceed(promise: Promise<number>, what: string): Promise<void> {
-  const code = await promise;
-  if (code !== 0) {
-    throw new Error(`${what} failed with exit code ${code}`);
-  }
-}
