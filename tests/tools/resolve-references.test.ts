@@ -12,8 +12,8 @@ import {
   gateOnReferenceErrors,
   resolveReferencesTool,
   type ResolverDeps,
-} from '../../src/tools/resolveReferences';
-import { validateCodeTool } from '../../src/tools/validateCode';
+} from '../../src/tools/write/resolveReferences';
+import { validateCodeTool } from '../../src/tools/analysis/validateCode';
 
 const ORIGINAL_ENFORCE = process.env.GROUNDING_ENFORCE;
 

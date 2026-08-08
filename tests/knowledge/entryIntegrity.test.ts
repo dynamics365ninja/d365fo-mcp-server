@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { KNOWLEDGE_BASE } from '../../src/tools/xppKnowledge';
+import { KNOWLEDGE_BASE } from '../../src/tools/knowledge/xppKnowledge';
 
 describe('KNOWLEDGE_BASE structural integrity', () => {
   const ids = new Set(KNOWLEDGE_BASE.map(e => e.id));

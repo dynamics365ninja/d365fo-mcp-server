@@ -776,12 +776,12 @@ export async function tryBridgeSearch(
 
     // Splice in exact matches the bridge's truncated window missed (#15).
     const bridgeHits = sr.results ?? [];
-    const known = new Set(bridgeHits.map(r => `${r.name.toLowerCase()} ${r.type}`));
+    const known = new Set(bridgeHits.map(r => `${r.name.toLowerCase()}\0${r.type}`));
     const spliced: Array<{ name: string; type: string; fromIndex?: boolean }> = [];
     for (const cand of opts?.exactMatches ?? []) {
       if (!isExactNameMatch(query, cand.name)) continue;
-      if (known.has(`${cand.name.toLowerCase()} ${cand.type}`)) continue;
-      known.add(`${cand.name.toLowerCase()} ${cand.type}`);
+      if (known.has(`${cand.name.toLowerCase()}\0${cand.type}`)) continue;
+      known.add(`${cand.name.toLowerCase()}\0${cand.type}`);
       spliced.push({ ...cand, fromIndex: true });
     }
 

@@ -1,0 +1,3843 @@
+/**
+ * Modify D365FO File Tool
+ * Edit existing D365FO XML files (AxClass, AxTable, AxForm, etc.)
+ * Supports atomic operations: add method, add field, modify property
+ */
+
+import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import type { XppServerContext } from '../../types/context.js';
+import * as fs from 'fs/promises';
+// Taken from node:fs rather than fs/promises: the value is the same, but the
+// promises namespace is routinely replaced wholesale by test mocks that only
+// stub the functions, and reading .constants off such a mock is a TypeError.
+import { constants as FS_CONSTANTS } from 'fs';
+import { execFile } from 'child_process';
+import util from 'util';
+
+import path from 'path';
+import { parseStringPromise } from '../../utils/xml.js';
+import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../../utils/configManager.js';
+import { isStandardModel, resolveObjectPrefix, applyObjectPrefix, resolveRegularObjectPrefixToken } from '../../utils/modelClassifier.js';
+import { resolveDbPathLocally } from '../../utils/metadataResolver.js';
+import { assertWritePathAllowed } from '../../utils/pathContainment.js';
+import { withFileLock, writeFileAtomic } from '../../utils/atomicFileWrite.js';
+import {
+  bridgeValidateAfterWrite, canBridgeModify,
+  bridgeAddMethod, bridgeRemoveMethod, bridgeAddField, bridgeSetProperty, bridgeReplaceCode,
+  bridgeModifyField, bridgeRenameField, bridgeRemoveField, bridgeReplaceAllFields,
+  bridgeAddIndex, bridgeRemoveIndex, bridgeAddRelation, bridgeRemoveRelation,
+  bridgeAddFullTextIndex, bridgeRemoveFullTextIndex,
+  bridgeAddTableMapping, bridgeRemoveTableMapping,
+  bridgeAddFieldGroup, bridgeRemoveFieldGroup, bridgeAddFieldToFieldGroup,
+  bridgeAddEnumValue, bridgeModifyEnumValue, bridgeRemoveEnumValue,
+  bridgeAddControl, bridgeAddDataSource,
+  bridgeAddFieldModification, bridgeAddMenuItemToMenu,
+  bridgeRefreshProvider,
+} from '../../bridge/index.js';
+import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
+import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
+import { heuristicEdtBaseType } from '../smart/generateSmartTable.js';
+import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
+import {
+  upsertAxTableProperty,
+  AX_TABLE_NON_EXISTENT_PROPERTIES,
+} from '../../utils/axTablePropertyOrder.js';
+import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.js';
+import { buildAxDataEntityViewFieldXml } from '../xml/dataEntityViewExtensionXml.js';
+import { enforceGrounding } from '../../utils/provenanceStore.js';
+import { gateOnReferenceErrors } from './resolveReferences.js';
+import {
+  checkAddControlAgainstParentPattern,
+  isFormPatternEnforceEnabled,
+} from '../analysis/validateFormPattern.js';
+import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
+import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck } from './inlineWriteVerification.js';
+import { lintXppSelect } from '../../utils/xppSelectLint.js';
+import {
+  getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
+  findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
+} from '../specs/d365foFileOpSpecs.js';
+import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
+import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
+import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
+import {
+  crossModelWriteRefusal, baseObjectOf, type ExistingExtension,
+} from '../../utils/crossModelWriteGuard.js';
+
+
+/**
+ * Reject an X++ source payload that smuggles XML/CDATA structure.
+ *
+ * Method source written through the bridge is handed verbatim to the D365FO SDK
+ * serializer, which wraps it in `<![CDATA[ … ]]>` and emits the surrounding
+ * `<Method>…</Method>` markup itself. If the caller's source already contains
+ * the CDATA terminator `]]>` or closing metadata tags, the serializer writes
+ * them inside the CDATA block unchanged — producing structurally invalid XML:
+ * a premature/doubled `]]>` and a stray `<Method>` that drops the enclosing
+ * `</Method>` (exactly the corruption D365FO refuses to deserialize). The
+ * direct-XML replace fallback has the same exposure: a literal string replace
+ * that injects `]]>` into an existing CDATA block corrupts it too.
+ *
+ * This always means the AI passed a slice of the .xml file where clean X++ was
+ * expected. Reject it here — before it reaches disk — with an actionable
+ * message, rather than silently escaping and hiding the mistake.
+ *
+ * X++ legitimately uses `<`/`>` (generics, comparisons, doc comments), so we
+ * only flag the CDATA terminator and the specific opening/closing metadata
+ * tokens, never bare angle brackets.
+ */
+export function assertCleanXppSource(source: string | undefined, paramName: string): void {
+  if (!source) return;
+
+  if (source.includes(']]>')) {
+    throw new Error(
+      `⛔ ${paramName} contains the CDATA terminator "]]>" — that is XML, not clean X++ source.\n\n` +
+      `Method source is wrapped in <![CDATA[ … ]]> by the metadata serializer, so a "]]>" inside it ` +
+      `breaks the CDATA block and yields invalid XML (doubled "]]>" plus a dropped </Method>), which ` +
+      `D365FO refuses to load.\n\n` +
+      `Pass ONLY the X++ code — no <Source>, <![CDATA[, ]]> or </Method> markup. The tool adds the wrapping itself.`
+    );
+  }
+
+  const structuralTag = source.match(/<\/(?:Source|Methods?)>|<Method>|<!\[CDATA\[/);
+  if (structuralTag) {
+    throw new Error(
+      `⛔ ${paramName} contains the XML metadata token "${structuralTag[0]}" — that is XML, not clean X++ source.\n\n` +
+      `You pasted a slice of the .xml file. Pass ONLY the X++ code — the tool emits the ` +
+      `<Method>, <Source> and <![CDATA[ … ]]> wrapping itself.`
+    );
+  }
+}
+
+/** Strip X++ line/block/doc comments and string literals so their braces/parens
+ *  don't skew structural scans. Returns a same-ish-length cleaned string. */
+function stripXppCommentsAndStrings(s: string): string {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const two = s.slice(i, i + 2);
+    if (two === '//') {                       // line comment (incl. /// doc comments)
+      const nl = s.indexOf('\n', i);
+      i = nl === -1 ? s.length : nl;
+      continue;
+    }
+    if (two === '/*') {                        // block comment
+      const end = s.indexOf('*/', i + 2);
+      i = end === -1 ? s.length : end + 2;
+      continue;
+    }
+    if (s[i] === '"') {                         // string literal
+      i++;
+      while (i < s.length && s[i] !== '"') { if (s[i] === '\\') i++; i++; }
+      i++;
+      out += '""';
+      continue;
+    }
+    out += s[i];
+    i++;
+  }
+  return out;
+}
+
+/** Count top-level X++ method bodies: a `{` opened at brace-depth 0 immediately
+ *  after a `)` (a method signature). Nested blocks (if/for/switch) are inside the
+ *  body (depth > 0) and a class wrapper opens after an identifier, so neither is
+ *  miscounted. */
+export function countTopLevelMethodBodies(source: string): number {
+  const cleaned = stripXppCommentsAndStrings(source);
+  let depth = 0;
+  let count = 0;
+  let prevSignificant = '';
+  for (const ch of cleaned) {
+    if (ch === '{') {
+      if (depth === 0 && prevSignificant === ')') count++;
+      depth++;
+    } else if (ch === '}') {
+      if (depth > 0) depth--;
+    }
+    if (!/\s/.test(ch)) prevSignificant = ch;
+  }
+  return count;
+}
+
+/** Split a source string containing one or more top-level X++ methods into the
+ *  individual method sources (each including any leading doc comments / attributes
+ *  and its full body). Mirrors countTopLevelMethodBodies' brace/comment/string
+ *  handling. Used to let add-method accept several methods in one call and add them
+ *  one <Method> at a time. */
+export function splitTopLevelMethodBodies(source: string): string[] {
+  const s = source;
+  const methods: string[] = [];
+  let depth = 0;
+  let methodStart = -1;
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    // Start a method slice at the first significant char (incl. leading /// doc
+    // comments and [Attribute] blocks) after the previous method closed.
+    if (methodStart === -1 && !/\s/.test(ch)) methodStart = i;
+
+    const two = s.slice(i, i + 2);
+    if (two === '//') { const nl = s.indexOf('\n', i); i = nl === -1 ? s.length : nl; continue; }
+    if (two === '/*') { const end = s.indexOf('*/', i + 2); i = end === -1 ? s.length : end + 2; continue; }
+    if (ch === '"') { i++; while (i < s.length && s[i] !== '"') { if (s[i] === '\\') i++; i++; } i++; continue; }
+
+    if (ch === '{') {
+      depth++;
+    } else if (ch === '}') {
+      if (depth > 0) depth--;
+      if (depth === 0 && methodStart !== -1) {
+        methods.push(s.slice(methodStart, i + 1).trim());
+        methodStart = -1;
+      }
+    }
+    i++;
+  }
+  // Trailing brace-less content (e.g. an interface/abstract method declaration).
+  if (methodStart !== -1) {
+    const tail = s.slice(methodStart).trim();
+    if (tail) methods.push(tail);
+  }
+  return methods.filter(Boolean);
+}
+
+/**
+ * Reject an add-method payload that contains more than one method. Each add-method
+ * call emits a single <Method>; passing two methods drops the second outside the
+ * class scope and yields invalid X++ ("Unexpected token 'public' specified outside
+ * the scope of any class or model element"). Splitting into separate calls is the fix.
+ */
+export function assertSingleMethodSource(source: string | undefined): void {
+  if (!source) return;
+  const count = countTopLevelMethodBodies(source);
+  if (count > 1) {
+    throw new Error(
+      `⛔ add-method expects exactly ONE method, but ${count} method bodies were detected in the source.\n\n` +
+      `Each add-method call adds a single <Method> element. Passing multiple methods puts all but ` +
+      `the first OUTSIDE the class scope, producing invalid X++ ("Unexpected token 'public' specified ` +
+      `outside the scope of any class or model element").\n\n` +
+      `Add each method with its own add-method call — one method per call.`
+    );
+  }
+}
+
+/**
+ * Derive the method name from a full X++ method source: the identifier immediately
+ * before the first '(' of the signature, after stripping comments, strings and
+ * attribute blocks (e.g. [ExtensionOf(...)]). Lets add-method callers omit methodName
+ * when they already pass the complete source (e.g. "public static X find(...)").
+ * Returns null when no signature can be found.
+ */
+export function extractMethodNameFromSource(source: string | undefined): string | null {
+  if (!source) return null;
+  const cleaned = stripXppCommentsAndStrings(source).replace(/\[[^\]]*\]/g, ' ');
+  const m = cleaned.match(/\b([A-Za-z_]\w*)\s*\(/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Why the bridge path did not apply, in the caller's own words.
+ *
+ * The direct-XML fallbacks used to announce "bridge was unavailable" unconditionally,
+ * which is the true reason in only one of the four ways the bridge path can decline:
+ * it can also be a type outside BRIDGE_MODIFY_TYPES, an SDK that cannot reach the
+ * member (form control overrides), or a thrown error. Reporting the wrong cause sent
+ * agents off to restart a bridge that was healthy — and hid genuine outages behind a
+ * green result, since the write still succeeded (see the #4 sweep finding: two calls
+ * "fell back" while a third seconds later went through Update just fine).
+ */
+export function describeBridgeFallbackReason(
+  bridge: { isReady?: boolean; metadataAvailable?: boolean } | undefined,
+  objectType: string,
+  operation: string,
+  bridgeResult: { success: boolean; message: string } | null,
+): string {
+  if (!bridge?.isReady || !bridge.metadataAvailable) {
+    return 'the bridge was unavailable';
+  }
+  if (!canBridgeModify(objectType, operation)) {
+    return `the bridge does not support ${operation} for objectType="${objectType}"`;
+  }
+  if (bridgeResult && !bridgeResult.success) {
+    return `the bridge was reachable but declined: ${bridgeResult.message}`;
+  }
+  return 'the bridge was reachable but did not handle this call';
+}
+
+/**
+ * Serializes a direct-XML editor on the file it edits.
+ *
+ * Each of these functions reads the whole file, patches the string and writes it
+ * back. Two that overlap on one file both read the same original, so the second
+ * write silently drops whatever element the first one added — and modify calls do
+ * arrive concurrently, since `d365fo_file` is excluded from the in-flight call dedup
+ * (writes must never be coalesced). The lock is per-path and in-process; see
+ * utils/atomicFileWrite.ts for what it does and does not cover.
+ */
+function serializedOnFile<A extends unknown[], R>(
+  fn: (filePath: string, ...args: A) => Promise<R>,
+): (filePath: string, ...args: A) => Promise<R> {
+  return (filePath, ...args) => withFileLock(filePath, () => fn(filePath, ...args));
+}
+
+/**
+ * Direct XML file-level replace-code fallback, used when the C# bridge can't
+ * reach a method (e.g. form/form-extension control overrides not exposed via
+ * the Methods API). Last resort — the bridge is always preferred.
+ *
+ * `reason` comes from describeBridgeFallbackReason so the success message names the
+ * cause that actually applied instead of asserting an outage that may not exist.
+ */
+const directXmlReplaceCode = serializedOnFile(async (
+  filePath: string,
+  oldCode: string,
+  newCode: string,
+  reason: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    // Files on disk are CRLF; oldCode from get_method_source is typically LF-only.
+    // Normalize both to LF for matching, then normalizeD365Xml restores CRLF on write.
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    const normOld = oldCode.replace(/\r\n/g, '\n');
+    const normNew = newCode.replace(/\r\n/g, '\n');
+
+    if (!content.includes(normOld)) {
+      return null; // oldCode not found in file at all
+    }
+
+    // Without /g, String.replace() only replaces the first occurrence, so require
+    // exactly one match to avoid silently picking the wrong one.
+    const occurrences = content.split(normOld).length - 1;
+    if (occurrences > 1) {
+      return {
+        success: false,
+        message: `❌ directXmlReplaceCode: oldCode appears ${occurrences} times in ${filePath} — replacement is ambiguous. Provide a more specific oldCode snippet.`,
+      };
+    }
+
+    const updated = content.replace(normOld, normNew);
+    if (updated === content) {
+      return null; // no change made
+    }
+
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(`[modify_d365fo_file] ✅ directXmlReplaceCode fallback (${reason}): replaced in ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Code replaced via direct XML fallback (${reason}). File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlReplaceCode failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * Direct XML fallback for modify-property, used when the bridge rejects
+ * modify-property for an object type (e.g. AxForm) even though the property
+ * is a plain text element (e.g. <Caption>) editable by string replacement.
+ * Only used when the bridge itself reports failure.
+ *
+ * `propertyPath` is a bare element name (no XPath/dotted-path support).
+ * Refuses to act if the element is missing (returns null so the caller
+ * surfaces the original bridge error), ambiguous (appears more than once),
+ * or is not a leaf — string replacement can only express a text value, and
+ * writing one over an element that has children produces malformed XML.
+ */
+const directXmlModifyProperty = serializedOnFile(async (
+  filePath: string,
+  propertyPath: string,
+  propertyValue: string,
+  reason: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '');
+    const escapedValue = String(propertyValue)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const tagName = propertyPath.split(/[./]/).pop()!;
+
+    // tagName is interpolated into RegExp source below. Anything that is not a
+    // plain XML element name has no meaning here anyway, and letting it through
+    // either throws on an unbalanced metacharacter (caught, surfacing a
+    // misleading "bridge error") or silently matches the wrong elements.
+    if (!/^[A-Za-z_][A-Za-z0-9_.:-]*$/.test(tagName)) {
+      return {
+        success: false,
+        message:
+          `❌ directXmlModifyProperty: '${propertyPath}' does not name a plain XML element ` +
+          `(resolved to "${tagName}") — nothing was written.`,
+      };
+    }
+    const tagRe = tagName.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+
+    // Forms first: the bridge refuses modify-property for AxForm entirely, and the
+    // generic path below cannot serve Design properties either — Caption/Style also
+    // occur on controls, so it sees several matches and refuses (#37).
+    const formPatched = upsertAxFormDesignProperty(content, tagName, escapedValue);
+    if (formPatched) {
+      await writeFileAtomic(filePath, normalizeD365Xml(formPatched));
+      return {
+        success: true,
+        message: `✅ Form Design property '${tagName}'='${propertyValue}' set via direct XML (the bridge does not support modify-property for forms). File: ${filePath}`,
+      };
+    }
+
+    const openTagRe = new RegExp(`<${tagRe}\\b[^>]*>[\\s\\S]*?</${tagRe}>`, 'g');
+    const selfClosingRe = new RegExp(`<${tagRe}\\b([^>]*)/>`, 'g');
+    const openTagOnlyRe = new RegExp(`^<${tagRe}\\b[^>]*>`);
+
+    const openMatches = content.match(openTagRe) ?? [];
+    const selfClosingMatches = content.match(selfClosingRe) ?? [];
+    const totalMatches = openMatches.length + selfClosingMatches.length;
+
+    if (totalMatches === 0) {
+      // The element does not exist yet. For an AxTable we know the canonical
+      // element order, so it can be INSERTED in the right place instead of failing.
+      // This is what makes properties the C# bridge refuses outright reachable at
+      // all — notably FormRef, whose absence is the very BPErrorTableMissingFormRef
+      // the agent is trying to fix (docs/eval-sweep-findings-2026-07-21.md #37).
+      // Order matters: a property written in the wrong position is dropped without
+      // a word (#13), which is why this goes through upsertAxTableProperty.
+      const nonExistent = AX_TABLE_NON_EXISTENT_PROPERTIES[tagName];
+      if (nonExistent && /<AxTable[\s>]/.test(content)) {
+        return {
+          success: false,
+          message: `❌ '${tagName}' is not an AxTable property — nothing was written. ${nonExistent}`,
+        };
+      }
+      const inserted = upsertAxTableProperty(content, tagName, escapedValue);
+      if (!inserted) {
+        return null; // not a table / unknown property — surface the original bridge error
+      }
+      await writeFileAtomic(filePath, normalizeD365Xml(inserted));
+      console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: inserted <${tagName}> in ${filePath}`);
+      return {
+        success: true,
+        message:
+          `✅ Property '${propertyPath}'='${propertyValue}' added via direct XML fallback ` +
+          `(the element did not exist; inserted in canonical AxTable element order). File: ${filePath}`,
+      };
+    }
+    if (totalMatches > 1) {
+      return {
+        success: false,
+        message: `❌ directXmlModifyProperty: <${tagName}> appears ${totalMatches} times in ${filePath} — ambiguous, refusing to guess which one.`,
+      };
+    }
+
+    // Leaf guard. The replacement below can only express a text value, so an
+    // element that has children must be refused: the old `>[\s\S]*?<` rewrite
+    // stopped at the FIRST child tag and produced `<Tag>NewValue<Child>…`,
+    // i.e. structurally broken XML written to disk and reported as success.
+    // Counting matches (above) does not catch this — one match can still be a
+    // container.
+    if (openMatches.length === 1) {
+      const inner = openMatches[0]
+        .replace(openTagOnlyRe, '')
+        .replace(new RegExp(`</${tagRe}>$`), '');
+      if (inner.includes('<')) {
+        return {
+          success: false,
+          message:
+            `❌ directXmlModifyProperty: <${tagName}> in ${filePath} contains child elements — ` +
+            `it holds structure, not a text value. Refusing to overwrite it (nothing was written).`,
+        };
+      }
+    }
+
+    // Function replacers throughout: `escapedValue` escapes XML metacharacters
+    // but not `$`, which a string replacement would read as a capture reference.
+    const updated = openMatches.length === 1
+      ? content.replace(openTagRe, m => `${openTagOnlyRe.exec(m)![0]}${escapedValue}</${tagName}>`)
+      : content.replace(selfClosingRe, (_m, attrs) => `<${tagName}${attrs}>${escapedValue}</${tagName}>`);
+
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: set <${tagName}> in ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Property '${propertyPath}' set via direct XML fallback (${reason}). File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlModifyProperty failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * Direct XML fallback for add-menu-item-to-menu.
+ * The C# bridge can only modify menus it has loaded from its startup roots;
+ * newly created menus trigger a NullRef because they aren't in the bridge's
+ * in-memory model yet (even after update_symbol_index). This function edits
+ * the XML file directly as a last-resort fallback.
+ */
+const directXmlAddMenuItemToMenu = serializedOnFile(async (
+  filePath: string,
+  menuItemToAdd: string,
+  menuItemToAddType: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    const typeMap: Record<string, string> = { display: 'Display', action: 'Action', output: 'Output' };
+    const menuItemType = typeMap[menuItemToAddType?.toLowerCase()] ?? 'Display';
+
+    // An AxMenu's <Elements> holds AxMenuElement entries discriminated by i:type —
+    // `AxMenuElementMenuItem` for a menu-item reference. `AxMenuFunctionItem` is not
+    // a type in the metadata model at all (zero of the 73 shipped AxMenu files use
+    // it), so the element deserializes into nothing and the menu comes out empty:
+    // docs/eval-sweep-findings-2026-07-21.md #30. `MenuItemType` is omitted for
+    // MenuItemType stays explicit (Display is the model default and the shipped
+    // files omit it, but writing it costs nothing and keeps display/action/output
+    // unambiguous).
+    const newElement =
+      `\t\t<AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">\n` +
+      `\t\t\t<Name>${menuItemToAdd}</Name>\n` +
+      `\t\t\t<MenuItemName>${menuItemToAdd}</MenuItemName>\n` +
+      `\t\t\t<MenuItemType>${menuItemType}</MenuItemType>\n` +
+      `\t\t</AxMenuElement>`;
+
+    let updated: string;
+    if (content.includes('<Elements />')) {
+      updated = content.replace('<Elements />', `<Elements>\n${newElement}\n\t</Elements>`);
+    } else if (content.includes('</Elements>')) {
+      updated = content.replace('</Elements>', `${newElement}\n\t</Elements>`);
+    } else {
+      return null;
+    }
+
+    if (updated === content) return null;
+
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(`[modify_d365fo_file] ✅ directXmlAddMenuItemToMenu: added '${menuItemToAdd}' to ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Menu item '${menuItemToAdd}' (${menuItemType}) added via direct XML fallback. File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddMenuItemToMenu failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * controlType (as passed to add-control) → the form control element emitted inside
+ * a form-extension's <FormControl>, together with its <Type> value. Verified against
+ * shipped standard form extensions (e.g. InventItemSampling.AdvancedQualityManagement).
+ * NOTE: an integer control is `AxFormIntegerControl` (Type=Integer) — NOT
+ * `AxFormIntControl`. Unknown types fall back to String, which is always valid.
+ */
+const CONTROL_TYPE_TO_FORM_CONTROL: Record<string, { iType: string; typeValue: string }> = {
+  string:      { iType: 'AxFormStringControl',   typeValue: 'String' },
+  integer:     { iType: 'AxFormIntegerControl',  typeValue: 'Integer' },
+  int:         { iType: 'AxFormIntegerControl',  typeValue: 'Integer' },
+  int64:       { iType: 'AxFormInt64Control',    typeValue: 'Int64' },
+  real:        { iType: 'AxFormRealControl',     typeValue: 'Real' },
+  date:        { iType: 'AxFormDateControl',     typeValue: 'Date' },
+  datetime:    { iType: 'AxFormDateTimeControl', typeValue: 'DateTime' },
+  utcdatetime: { iType: 'AxFormDateTimeControl', typeValue: 'DateTime' },
+  time:        { iType: 'AxFormTimeControl',     typeValue: 'Time' },
+  guid:        { iType: 'AxFormGuidControl',     typeValue: 'Guid' },
+  checkbox:    { iType: 'AxFormCheckBoxControl', typeValue: 'CheckBox' },
+  combobox:    { iType: 'AxFormComboBoxControl', typeValue: 'ComboBox' },
+  button:      { iType: 'AxFormButtonControl',   typeValue: 'Button' },
+  group:       { iType: 'AxFormGroupControl',    typeValue: 'Group' },
+};
+const DEFAULT_FORM_CONTROL = { iType: 'AxFormStringControl', typeValue: 'String' };
+
+/** Random 9-char lowercase-alphanumeric suffix, matching the SDK's
+ *  `FormExtensionControl<rand>` wrapper-name convention (e.g. "fh5riowy1"). */
+function formExtensionControlName(): string {
+  let s = '';
+  while (s.length < 9) s += Math.random().toString(36).slice(2);
+  return `FormExtensionControl${s.slice(0, 9)}`;
+}
+
+/**
+ * Direct XML fallback for add-control on a form-extension.
+ *
+ * The C# bridge's AddControl resolves its target via _provider.Forms.Read(name),
+ * which can NEVER find a form EXTENSION (named "BaseForm.Suffix") — it always
+ * reports 'Form "<ext>" not found'. add-control on a form-extension therefore has
+ * no working bridge path at all (independent of metadata-root freshness). This
+ * writes an <AxFormExtensionControl> element straight into the extension's
+ * <Controls> collection, in the exact shape the D365FO SDK serializes (verified
+ * against shipped standard extensions): an empty-namespace <FormControl i:type="…">
+ * wrapped by <AxFormExtensionControl xmlns=""> with a <Parent> reference. It edits
+ * the file on disk, so it is unaffected by what the bridge has loaded.
+ */
+const directXmlAddControl = serializedOnFile(async (
+  filePath: string,
+  controlName: string,
+  parentControl: string,
+  controlType: string,
+  dataSource?: string,
+  dataField?: string,
+  label?: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Idempotency: a control with this Name already present → skip.
+    // (controlName is a D365 identifier, so a literal substring match is safe.)
+    if (content.includes(`<Name>${controlName}</Name>`)) {
+      return {
+        success: true,
+        message: `✅ Control '${controlName}' already present in ${filePath} — skipped (idempotent).`,
+      };
+    }
+
+    const { iType, typeValue } = CONTROL_TYPE_TO_FORM_CONTROL[(controlType || 'String').toLowerCase()] ?? DEFAULT_FORM_CONTROL;
+
+    // Inner <FormControl> children, in the order shipped extensions serialize them:
+    // Name → Type → FormControlExtension(nil) → DataField → DataSource → Label → [Items].
+    const inner = [
+      `\t\t\t\t<Name>${controlName}</Name>`,
+      `\t\t\t\t<Type>${typeValue}</Type>`,
+      `\t\t\t\t<FormControlExtension i:nil="true" />`,
+    ];
+    if (dataField) inner.push(`\t\t\t\t<DataField>${dataField}</DataField>`);
+    if (dataSource) inner.push(`\t\t\t\t<DataSource>${dataSource}</DataSource>`);
+    if (label) inner.push(`\t\t\t\t<Label>${label}</Label>`);
+    if (typeValue === 'ComboBox') inner.push(`\t\t\t\t<Items />`);
+
+    const newElement =
+      `\t\t<AxFormExtensionControl xmlns="">\n` +
+      `\t\t\t<Name>${formExtensionControlName()}</Name>\n` +
+      `\t\t\t<FormControl xmlns="" i:type="${iType}">\n` +
+      inner.join('\n') + '\n' +
+      `\t\t\t</FormControl>\n` +
+      `\t\t\t<Parent>${parentControl}</Parent>\n` +
+      `\t\t</AxFormExtensionControl>`;
+
+    let updated: string;
+    if (content.includes('<Controls />')) {
+      updated = content.replace('<Controls />', `<Controls>\n${newElement}\n\t</Controls>`);
+    } else if (content.includes('</Controls>')) {
+      updated = content.replace('</Controls>', `${newElement}\n\t</Controls>`);
+    } else {
+      return null; // no <Controls> collection — not a form-extension shape we recognise
+    }
+
+    if (updated === content) return null;
+
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(`[modify_d365fo_file] ✅ directXmlAddControl: added '${controlName}' (${iType}) to ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Control '${controlName}' (${iType}) added to '${parentControl}' via direct XML fallback. File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddControl failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * Normalises a NoYes-shaped flag to a boolean.
+ *
+ * The wire type is boolean, but the value these params end up as in AxTable XML
+ * is `No`/`Yes`, so callers legitimately pass the string spelling (corpus #27:
+ * indexAllowDuplicates="No" was rejected with a bare "expected boolean").
+ * Anything unrecognised returns undefined so the op's own default applies.
+ */
+export function coerceNoYesFlag(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (v === 'yes' || v === 'true' || v === '1') return true;
+    if (v === 'no' || v === 'false' || v === '0') return false;
+  }
+  return undefined;
+}
+
+/**
+ * Direct XML fallback for add-index on a TABLE.
+ *
+ * The C# bridge's AddIndex resolves its target via _provider.Tables.Read(name),
+ * whose DiskProvider metadata roots are fixed at bridge startup. A table CREATED
+ * THIS SESSION is therefore reported "Table '<name>' not found" — even after
+ * update_symbol_index and even when an explicit filePath was supplied (filePath
+ * only steers the TS-side file lookup, never the bridge's own name resolution).
+ * Corpus evidence: 2026-07-21T19__L2-error-handling-infolog (add-index on
+ * ConDemoTicket failed 3×) and 2026-07-21T20__L3-workflow-document-submit.
+ * With no working grounded path the only way to land the index was
+ * d365fo_file(action="create", overwrite=true) — the whole-file escape hatch the
+ * eval loop forbids.
+ *
+ * This writes an <AxTableIndex> element straight into the table's <Indexes>
+ * collection, in the shape the D365FO SDK serialises: <Name>, <AllowDuplicates>,
+ * optional <AlternateKey>, then <Fields> of <AxTableIndexField><DataField>.
+ * <Indexes> is a collection sibling, NOT part of the order-sensitive top-level
+ * property block, so appending to it is safe. Unlike the bridge it edits the file
+ * on disk, so it is unaffected by what the provider loaded at startup — and it
+ * carries allowDuplicates/alternateKey, which the whole-file overwrite workaround
+ * dropped (cluster #35).
+ */
+const directXmlAddIndex = serializedOnFile(async (
+  filePath: string,
+  indexName: string,
+  fields: string[] | undefined,
+  allowDuplicates: boolean | undefined,
+  alternateKey: boolean | undefined,
+): Promise<{ success: boolean; message: string } | null> => {
+  // The bridge refuses an index with no fields (it writes <Fields /> — an index that
+  // compiles, warns about nothing and indexes nothing). This fallback runs precisely
+  // when the bridge call failed, so without the same gate it would catch the refusal
+  // and land the empty index anyway, under a ✅.
+  const namedFields = (fields ?? []).filter(f => typeof f === 'string' && f.trim() !== '');
+  if (namedFields.length === 0) {
+    return {
+      success: false,
+      message:
+        `Index '${indexName}' has no fields — pass indexFields as [{ fieldName: "<field>" }]. ` +
+        `An index with an empty <Fields /> collection compiles clean and indexes nothing.`,
+    };
+  }
+
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Only tables and table-extensions carry an <Indexes> collection — bail on any
+    // other shape so a mis-typed objectType never corrupts an unrelated file.
+    //
+    // AxTableExtension is included deliberately: the bridge gained a table-extension
+    // path for AddIndex (#799), but its provider still resolves against metadata roots
+    // fixed at startup, so an extension CREATED THIS SESSION is unresolvable there —
+    // the very hole this fallback exists to close. The extension's <Indexes> collection
+    // holds the same <AxTableIndex> element as a table's, so the patch below is
+    // shape-identical. Note `\b` does NOT match `<AxTableExtension` (E is a word char),
+    // which is why the extension needs its own alternative rather than a looser pattern.
+    if (!/<AxTable\b/.test(content) && !/<AxTableExtension\b/.test(content)) return null;
+
+    // Idempotent: if an index with this name already exists, report success
+    // rather than writing a duplicate (mirrors directXmlAddControl).
+    if (new RegExp(`<AxTableIndex>\\s*<Name>${indexName}</Name>`).test(content)) {
+      return {
+        success: true,
+        message: `✅ Index '${indexName}' already present in ${filePath} — skipped (idempotent).`,
+      };
+    }
+
+    const fieldElements = namedFields
+      .map(f =>
+        `\t\t\t\t<AxTableIndexField>\n` +
+        `\t\t\t\t\t<DataField>${f}</DataField>\n` +
+        `\t\t\t\t</AxTableIndexField>`)
+      .join('\n');
+
+    const newElement =
+      `\t\t<AxTableIndex>\n` +
+      `\t\t\t<Name>${indexName}</Name>\n` +
+      `\t\t\t<AllowDuplicates>${allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n` +
+      (alternateKey ? `\t\t\t<AlternateKey>Yes</AlternateKey>\n` : '') +
+      `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>\n` +
+      `\t\t</AxTableIndex>`;
+
+    let updated: string;
+    if (content.includes('<Indexes />')) {
+      updated = content.replace('<Indexes />', `<Indexes>\n${newElement}\n\t</Indexes>`);
+    } else if (content.includes('</Indexes>')) {
+      updated = content.replace('</Indexes>', `${newElement}\n\t</Indexes>`);
+    } else {
+      // No <Indexes> collection at all — not a shape we can safely patch.
+      return null;
+    }
+
+    if (updated === content) return null;
+
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(`[modify_d365fo_file] ✅ directXmlAddIndex: added '${indexName}' to ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Index '${indexName}' added via direct XML fallback (bridge could not resolve the same-session table). File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddIndex failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * Locates ONE top-level collection element inside a root element's body, e.g.
+ * `<Fields>` directly under `<AxDataEntityViewExtension>`.
+ *
+ * A plain `content.replace('</Fields>', …)` is wrong here and silently so: an
+ * AxDataEntityViewExtension carries `<FieldGroupExtensions>` BEFORE `<Fields>`, and
+ * each `<AxTableFieldGroupExtension>` inside it has a nested `<Fields>` of its own.
+ * The first `</Fields>` in the file therefore closes the field GROUP, and the new
+ * element lands in a collection the deserializer will not read it from.
+ *
+ * Depth-counts from the root's opening tag so only a DIRECT child matches.
+ * Returns the insertion offset (just before the collection's closing tag), or a
+ * `selfClosingAt` range when the collection is `<Fields />` and must be expanded.
+ */
+export function findTopLevelCollection(
+  content: string,
+  rootElement: string,
+  collection: string,
+): { insertAt: number } | { selfClosingAt: [number, number] } | null {
+  const rootOpen = new RegExp(`<${rootElement}\\b[^>]*>`).exec(content);
+  if (!rootOpen) return null;
+
+  const pos = rootOpen.index + rootOpen[0].length;
+  let depth = 0;
+  const tagRe = /<(\/?)([A-Za-z_][\w.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
+  tagRe.lastIndex = pos;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(content)) !== null) {
+    const [full, closing, name, , selfClosing] = m;
+    if (closing) {
+      if (name === rootElement && depth === 0) return null;
+      depth--;
+      continue;
+    }
+    if (selfClosing) {
+      if (depth === 0 && name === collection) {
+        return { selfClosingAt: [m.index, m.index + full.length] };
+      }
+      continue;
+    }
+    if (depth === 0 && name === collection) {
+      // Walk to this element's matching close tag at the same depth.
+      let inner = 1;
+      const innerRe = new RegExp(tagRe.source, 'g');
+      innerRe.lastIndex = m.index + full.length;
+      let im: RegExpExecArray | null;
+      while ((im = innerRe.exec(content)) !== null) {
+        if (im[4]) continue;            // self-closing: no depth change
+        if (im[1]) {
+          inner--;
+          if (inner === 0) return { insertAt: im.index };
+        } else {
+          inner++;
+        }
+      }
+      return null;
+    }
+    depth++;
+  }
+  return null;
+}
+
+/**
+ * Appends `fieldName` to a base-entity field group inside <FieldGroupExtensions>,
+ * creating the <AxTableFieldGroupExtension> entry when the group is not there yet.
+ *
+ * <FieldGroups> (groups the extension OWNS) and <FieldGroupExtensions> (appending to a
+ * group the BASE entity owns) are not interchangeable — picking the wrong one is silent,
+ * the field lands in the file and never surfaces. This only ever touches the latter.
+ */
+function upsertDataEntityFieldGroupExtension(
+  content: string,
+  groupName: string,
+  fieldName: string,
+): string | null {
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const entry = `\t\t\t\t<AxTableFieldGroupField>\n\t\t\t\t\t<DataField>${fieldName}</DataField>\n\t\t\t\t</AxTableFieldGroupField>`;
+
+  // Scope every probe to THIS group's own block. Searching the whole file for
+  // <DataField>{fieldName}</DataField> also finds the mapped field just written into
+  // <Fields> — the group would then look "already registered" and silently stay empty.
+  const blockRe = new RegExp(
+    `<AxTableFieldGroupExtension>\\s*<Name>${escapeRe(groupName)}</Name>[\\s\\S]*?</AxTableFieldGroupExtension>`,
+  );
+  const block = blockRe.exec(content);
+  if (block) {
+    if (new RegExp(`<DataField>${escapeRe(fieldName)}</DataField>`).test(block[0])) {
+      return content; // already registered in this group
+    }
+    const updatedBlock = block[0].includes('<Fields />')
+      ? block[0].replace('<Fields />', `<Fields>\n${entry}\n\t\t\t</Fields>`)
+      : block[0].replace('</Fields>', `${entry}\n\t\t\t</Fields>`);
+    return content.slice(0, block.index) + updatedBlock + content.slice(block.index + block[0].length);
+  }
+
+  const newGroup =
+    `\t\t<AxTableFieldGroupExtension>\n` +
+    `\t\t\t<Name>${groupName}</Name>\n` +
+    `\t\t\t<Fields>\n${entry}\n\t\t\t</Fields>\n` +
+    `\t\t</AxTableFieldGroupExtension>`;
+
+  const target = findTopLevelCollection(content, 'AxDataEntityViewExtension', 'FieldGroupExtensions');
+  if (!target) return null;
+  if ('selfClosingAt' in target) {
+    const [from, to] = target.selfClosingAt;
+    return `${content.slice(0, from)}<FieldGroupExtensions>\n${newGroup}\n\t</FieldGroupExtensions>${content.slice(to)}`;
+  }
+  return `${content.slice(0, target.insertAt)}${newGroup}\n\t${content.slice(target.insertAt)}`;
+}
+
+/**
+ * Direct XML fallback for add-field on a DATA-ENTITY-EXTENSION.
+ *
+ * The bridge handles this via IMetaDataEntityViewExtensionProvider; this is the
+ * same-session escape hatch that add-index and add-control already have — the
+ * provider resolves against metadata roots fixed at startup, so an extension
+ * created THIS session is invisible to it.
+ *
+ * The element itself comes from the shared builder (dataEntityViewExtensionXml.ts)
+ * so the modify path cannot drift from the create path: sub-element ORDER is not
+ * cosmetic, the deserializer drops children it meets out of order, and Label must
+ * precede the DataField/DataSource binding pair.
+ */
+const directXmlAddDataEntityExtensionField = serializedOnFile(async (
+  filePath: string,
+  fieldName: string,
+  dataField: string,
+  dataSource: string,
+  label?: string,
+  fieldGroupName?: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Only data-entity extensions carry a <Fields> collection of mapped fields
+    // shaped like this — bail on any other file shape.
+    if (!/<AxDataEntityViewExtension\b/.test(content)) return null;
+
+    // Idempotency: scoped to the mapped-field elements. Matching a bare
+    // <Name>…</Name> anywhere in the file also hits the extension's own name, every
+    // field-group name and every AxPropertyModification — a false hit there answers
+    // "already present" and writes nothing.
+    const escapedName = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`<AxDataEntityViewField\\b[^>]*>\\s*<Name>${escapedName}</Name>`).test(content)) {
+      return {
+        success: true,
+        message: `✅ Field '${fieldName}' already present in ${filePath} — skipped (idempotent).`,
+      };
+    }
+
+    const newElement = buildAxDataEntityViewFieldXml({ name: fieldName, dataField, dataSource, label });
+
+    const target = findTopLevelCollection(content, 'AxDataEntityViewExtension', 'Fields');
+    if (!target) return null;
+
+    let updated: string;
+    if ('selfClosingAt' in target) {
+      const [from, to] = target.selfClosingAt;
+      updated = `${content.slice(0, from)}<Fields>\n${newElement}\n\t</Fields>${content.slice(to)}`;
+    } else {
+      updated = `${content.slice(0, target.insertAt)}${newElement}\n\t${content.slice(target.insertAt)}`;
+    }
+
+    if (fieldGroupName) {
+      updated = upsertDataEntityFieldGroupExtension(updated, fieldGroupName, fieldName) ?? updated;
+    }
+
+    if (updated === content) return null;
+
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(`[modify_d365fo_file] ✅ directXmlAddDataEntityExtensionField: added '${fieldName}' to ${filePath}`);
+    return {
+      success: true,
+      message:
+        `✅ Mapped field '${fieldName}' (${dataSource}.${dataField}) added via direct XML fallback ` +
+        `(the bridge could not resolve the same-session extension)` +
+        (fieldGroupName ? ` and registered in field group '${fieldGroupName}'` : '') +
+        `. File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddDataEntityExtensionField failed: ${err}`);
+    return null;
+  }
+});
+
+/** DeleteAction values accepted by the AxTable serialiser. */
+export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRestricted'] as const;
+
+/**
+ * add-delete-action / remove-delete-action on a TABLE, written straight to the XML.
+ *
+ * There is no bridge operation for DeleteActions at all (finding #36), so a
+ * cascading delete action was inexpressible through the modify surface — the only
+ * route was the forbidden whole-file overwrite. <DeleteActions> is a collection
+ * sibling, not part of the order-sensitive top-level property block, so patching
+ * it in place is safe. Shape matches MetadataWriteService.cs: Name, Table,
+ * DeleteAction.
+ */
+const directXmlDeleteAction = serializedOnFile(async (
+  filePath: string,
+  mode: 'add' | 'remove',
+  name: string,
+  table: string | undefined,
+  deleteAction: string | undefined,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Only tables carry <DeleteActions> — bail on any other shape so a mis-typed
+    // objectType never corrupts a non-table file.
+    if (!/<AxTable\b/.test(content)) return null;
+
+    const blockRe = new RegExp(
+      `[\\t ]*<AxTableDeleteAction>\\s*<Name>${escapeRegExp(name)}</Name>[\\s\\S]*?</AxTableDeleteAction>\\n?`,
+    );
+    const existing = blockRe.exec(content);
+
+    if (mode === 'remove') {
+      if (!existing) {
+        return { success: true, message: `✅ Delete action '${name}' not present in ${filePath} — nothing to remove.` };
+      }
+      const updated = content.replace(blockRe, '');
+      await writeFileAtomic(filePath, normalizeD365Xml(updated));
+      return { success: true, message: `✅ Delete action '${name}' removed. File: ${filePath}` };
+    }
+
+    if (existing) {
+      return { success: true, message: `✅ Delete action '${name}' already present in ${filePath} — skipped (idempotent).` };
+    }
+
+    const newElement =
+      `\t\t<AxTableDeleteAction>\n` +
+      `\t\t\t<Name>${name}</Name>\n` +
+      `\t\t\t<Table>${table ?? name}</Table>\n` +
+      `\t\t\t<DeleteAction>${deleteAction ?? 'Restricted'}</DeleteAction>\n` +
+      `\t\t</AxTableDeleteAction>`;
+
+    let updated: string;
+    if (content.includes('<DeleteActions />')) {
+      updated = content.replace('<DeleteActions />', `<DeleteActions>\n${newElement}\n\t</DeleteActions>`);
+    } else if (content.includes('</DeleteActions>')) {
+      updated = content.replace('</DeleteActions>', `${newElement}\n\t</DeleteActions>`);
+    } else {
+      // No <DeleteActions> collection at all — not a shape we can safely patch.
+      return null;
+    }
+    if (updated === content) return null;
+
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    return {
+      success: true,
+      message: `✅ Delete action '${name}' (${deleteAction ?? 'Restricted'} on ${table ?? name}) added. File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlDeleteAction failed: ${err}`);
+    return null;
+  }
+});
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Writes the relation properties the bridge drops into an <AxTableRelation>.
+ *
+ * add-relation documents relationCardinality / relatedTableCardinality /
+ * relationshipType WITH defaults, but neither bridgeClient.addRelation nor the
+ * C# MetadataWriteService.AddRelation carries them: AddRelation only sets Name,
+ * RelatedTable and the constraints. The result was a relation that reports
+ * "✅ Relation 'X' added" and then fails BP with
+ * BPErrorTableRelationshipPropertiesCompleteness naming exactly those three
+ * properties — with no repair path, because modify-property rejects
+ * Relations/<name>/RelationshipType (corpus findings #5 / #35).
+ *
+ * The C# side cannot be fixed or tested without the VM's metadata assemblies, so
+ * the properties are written on disk after the relation lands. Element order is
+ * the one both in-repo generators emit (createD365File.ts / generateTableRelation.ts,
+ * matching the SDK serialiser): Name, Cardinality, RelatedTable,
+ * RelatedTableCardinality, RelationshipType, Constraints. Order matters — AxTable
+ * XML silently drops misordered properties (#13) — so nothing is guessed here:
+ * each element is anchored to the sibling it must follow, and the function is a
+ * no-op if the anchor is absent or the property is already present.
+ */
+export const directXmlEnsureRelationProperties = serializedOnFile(async (
+  filePath: string,
+  relationName: string,
+  cardinality: string,
+  relatedTableCardinality: string,
+  relationshipType: string,
+): Promise<{ applied: string[] } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    // Locate the <AxTableRelation> block that carries this <Name>.
+    const relRegex = /<AxTableRelation>[\s\S]*?<\/AxTableRelation>/g;
+    let block: string | undefined;
+    for (const m of content.matchAll(relRegex)) {
+      if (new RegExp(`<Name>${relationName}</Name>`).test(m[0])) { block = m[0]; break; }
+    }
+    if (!block) return null;
+
+    const indent = /\n(\s*)<Name>/.exec(block)?.[1] ?? '\t\t\t';
+    let patched = block;
+    const applied: string[] = [];
+
+    // <Cardinality> goes directly after <Name>.
+    if (!/<Cardinality>/.test(patched)) {
+      patched = patched.replace(
+        new RegExp(`(<Name>${relationName}</Name>)`),
+        `$1\n${indent}<Cardinality>${cardinality}</Cardinality>`,
+      );
+      applied.push(`Cardinality=${cardinality}`);
+    }
+    // <RelatedTableCardinality> and <RelationshipType> go after <RelatedTable>,
+    // in that order.
+    const relatedTableMatch = /<RelatedTable>[^<]*<\/RelatedTable>/.exec(patched);
+    if (relatedTableMatch) {
+      let insertion = '';
+      if (!/<RelatedTableCardinality>/.test(patched)) {
+        insertion += `\n${indent}<RelatedTableCardinality>${relatedTableCardinality}</RelatedTableCardinality>`;
+        applied.push(`RelatedTableCardinality=${relatedTableCardinality}`);
+      }
+      if (!/<RelationshipType>/.test(patched)) {
+        insertion += `\n${indent}<RelationshipType>${relationshipType}</RelationshipType>`;
+        applied.push(`RelationshipType=${relationshipType}`);
+      }
+      if (insertion) {
+        patched = patched.replace(relatedTableMatch[0], `${relatedTableMatch[0]}${insertion}`);
+      }
+    }
+
+    if (applied.length === 0 || patched === block) return { applied: [] };
+
+    const updated = content.replace(block, patched);
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(
+      `[modify_d365fo_file] ✅ directXmlEnsureRelationProperties: ${applied.join(', ')} on '${relationName}' in ${filePath}`,
+    );
+    return { applied };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlEnsureRelationProperties failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * Heuristic: does a bridge failure message indicate the C# provider could not
+ * resolve the target object (vs. a genuine operation error like "index already
+ * exists")? An unresolved object is the one failure worth a refresh+retry,
+ * because an object created this session may not be in the provider's
+ * startup-fixed metadata roots yet.
+ */
+export function isUnresolvedObjectError(message: string | undefined): boolean {
+  if (!message) return false;
+  // Content/operation failures that merely contain "not found" are NOT object
+  // resolution and must not trigger the refresh+retry or the "could not resolve"
+  // guidance: replace-code's "oldCode not found in <obj>.<method>", a missing
+  // method/field/index, etc. The object was resolved — only the snippet/member wasn't.
+  //
+  // `control` / `data source` are in this list because the bridge's add-control
+  // failure reads "Parent control 'X' not found in form 'Y'" — the form WAS read
+  // successfully. Misclassifying it as unresolved produced the factually wrong
+  // "the C# metadata bridge could not find '<form>' in its metadata model"
+  // (corpus: 2026-07-21T18__L2-form-modify-controls__c262b19).
+  if (/\b(oldcode|new ?code|code|snippet|method|field|index|relation|element|control|data ?source|value)\b[^.]*\bnot found/i.test(message)) {
+    return false;
+  }
+  // Genuine object-resolution failures: a quoted object name "'X' not found",
+  // or the explicit resolve/model phrases the bridge emits.
+  return /'[^']+'\s+not found|could not resolve|does not exist|not in (the )?(metadata )?model|cannot determine model/i.test(message);
+}
+
+/**
+ * Build the actionable "object could not be resolved" error for a modify
+ * operation. When `bridgeReported` is supplied it is included verbatim so the
+ * caller sees exactly what the C# bridge said rather than a generic guess.
+ */
+function unresolvedObjectError(
+  operation: string,
+  objectType: string,
+  objectName: string,
+  actualFilePath?: string,
+  bridgeReported?: string,
+): string {
+  return (
+    `Bridge operation '${operation}' could not resolve ${objectType} '${objectName}'.\n` +
+    (bridgeReported ? `Bridge reported: ${bridgeReported}\n` : '') +
+    `Most likely cause: the C# metadata bridge could not find '${objectName}' in its metadata model.\n` +
+    `This is typical right after creating an object in the same session — the bridge's metadata ` +
+    `roots are fixed at startup, so a file written this session may not be in its model.\n` +
+    `Auto-refresh was already attempted once and still failed.\n\n` +
+    // Deliberately NOT suggesting `d365fo_file(action="create", overwrite=true,
+    // xmlContent=...)` here: rewriting a whole object from hand-authored XML is the
+    // exact escape hatch that loses metadata the provider would have written, and it
+    // is never the right remedy for a *modify* failure. Fix the resolution instead.
+    `Try in order:\n` +
+    `  1. update_symbol_index({ filePath: "<path to ${objectName}.xml>" })\n` +
+    `  2. Check D365FO_CUSTOM_PACKAGES_PATH points to the correct metadata folder.\n` +
+    `  3. Confirm ${objectName}.xml actually exists on disk.\n` +
+    (actualFilePath ? `Resolved file path: ${actualFilePath}\n` : '') +
+    `If none of these apply, the object may simply not exist or its name may be misspelled.`
+  );
+}
+
+const ModifyD365FileArgsSchema = z.object({
+  objectType: z.enum([
+    'class', 'table', 'form', 'enum', 'query', 'view', 'edt', 'data-entity', 'report',
+    'table-extension', 'class-extension', 'form-extension', 'enum-extension', 'edt-extension',
+    'data-entity-extension',
+    'menu-item-display', 'menu-item-action', 'menu-item-output',
+    'menu-item-display-extension', 'menu-item-action-extension', 'menu-item-output-extension',
+    'menu', 'menu-extension',
+    'security-privilege', 'security-duty', 'security-role',
+  ]).describe('Type of D365FO object'),
+  objectName: z.string().optional().describe(
+    'Name of the object to modify. Optional when filePath is provided — it is then ' +
+    'derived from the file basename (the bridge resolves objects by name, which the ' +
+    'file path already determines).'
+  ),
+  operation: z.enum([
+    'add-method', 'remove-method', 'replace-code',
+    'add-field', 'modify-field', 'rename-field', 'replace-all-fields', 'remove-field',
+    'add-index', 'remove-index',
+    'add-full-text-index', 'remove-full-text-index',
+    'add-table-mapping', 'remove-table-mapping',
+    'add-relation', 'remove-relation',
+    'add-delete-action', 'remove-delete-action',
+    'add-field-group', 'remove-field-group', 'add-field-to-field-group',
+    'add-field-modification',
+    'add-data-source',
+    'modify-property',
+    'add-control',
+    'add-enum-value', 'modify-enum-value', 'remove-enum-value',
+    'add-display-method', 'add-table-method', 'add-menu-item-to-menu',
+  ]).describe(
+    'Operation to perform. ' +
+    'replace-code REQUIRES parameters: oldCode (exact code to find) + newCode (replacement). ' +
+    'add-method REQUIRES: methodName + sourceCode. ' +
+    'add-table-method: pass tableMethodType (find/exist/findByRecId/validateWrite/validateDelete/initValue) ' +
+    '(+ tableKeyField for find/exist) to auto-generate the method, OR methodName + sourceCode for a custom one. ' +
+    'add-display-method: pass methodName + displayMethodReturnEdt to auto-generate a stub, OR methodName + sourceCode. ' +
+    'For form control override methods with replace-code, use methodName="ControlName.methodName" (e.g. "PostButton.clicked").'
+  ),
+
+  // For add-enum-value / modify-enum-value / remove-enum-value
+  enumValueName: z.string().optional().describe(
+    'Enum value name for add-enum-value / modify-enum-value / remove-enum-value. ' +
+    'E.g. "Approved", "Pending", "Rejected". For modify-enum-value this is the EXISTING ' +
+    'name used to locate the value — see enumValueNewName to rename it.'
+  ),
+  enumValueNewName: z.string().optional().describe(
+    'modify-enum-value ONLY: renames the enum value (its Name/identifier) from ' +
+    'enumValueName to this. Numeric value and label are unaffected unless ' +
+    'enumValueInt/enumValueLabel are also given.'
+  ),
+  enumValueLabel: z.string().optional().describe(
+    'Label reference for the enum value (e.g. "@MyModel:Approved"). ' +
+    'Used with add-enum-value and modify-enum-value.'
+  ),
+  enumValueHelpText: z.string().optional().describe(
+    'Help text reference for the enum value (e.g. "@MyModel:ApprovedHelp"). Optional.'
+  ),
+  enumValueInt: z.number().optional().describe(
+    'Explicit integer value for the enum value. ' +
+    'If omitted for add-enum-value, the next available value is assigned automatically. ' +
+    'Use with modify-enum-value to change the integer value (rare — may break existing data).'
+  ),
+  enumValueCountryRegionCodes: z.string().optional().describe(
+    'ISO country/region codes for the enum value, comma-separated (e.g. "CZ", "CZ,SK"). ' +
+    'Used with add-enum-value to restrict the value to specific locales.'
+  ),
+
+  // For add-display-method
+  displayMethodReturnEdt: z.string().optional().describe(
+    'EDT or type name the display method returns, e.g. "Name", "AmountMST", "SalesStatus". ' +
+    'Used with add-display-method to set the return type automatically.'
+  ),
+
+  // For add-table-method
+  tableMethodType: z.enum(['find', 'exist', 'findByRecId', 'validateWrite', 'validateDelete', 'initValue']).optional().describe(
+    'Standard table method pattern to generate. Used with add-table-method. ' +
+    'find: returns a single record by key field. exist: returns true/false. ' +
+    'findByRecId: returns record by RecId. validateWrite/validateDelete/initValue: standard overrides.'
+  ),
+  tableKeyField: z.string().optional().describe(
+    'Name of the primary key field for find/exist patterns (e.g. "ItemId", "SalesId"). ' +
+    'Used with add-table-method when tableMethodType is find or exist.'
+  ),
+
+  // For add-menu-item-to-menu
+  menuItemToAdd: z.string().optional().describe(
+    'Name of the menu item to add (e.g. "MyCustomForm"). Used with add-menu-item-to-menu.'
+  ),
+  menuItemToAddType: z.enum(['display', 'action', 'output']).optional().describe(
+    'Type of menu item to add: display (form), action (class), output (report). ' +
+    'Used with add-menu-item-to-menu. Defaults to display.'
+  ),
+
+  // For add-control (form-extension only)
+  controlName: z.string().optional().describe(
+    'Name of the new form control to add inside the form extension. ' +
+    'e.g. "MyCustPriorityTier". Used as <Name> inside <FormControl>.'
+  ),
+  parentControl: z.string().optional().describe(
+    'Name of the existing parent control/tab/group to insert into. ' +
+    'e.g. "TabGeneral", "HeaderGroup", "TabPageSales". ' +
+    'On objectType="form", pass "Design" to add the control at the TOP LEVEL of the form ' +
+    'design (required for the first control on a form whose design is still empty). ' +
+    'On objectType="form-extension" it becomes the <Parent> element of the ' +
+    'AxFormExtensionControl wrapper.'
+  ),
+  controlDataSource: z.string().optional().describe(
+    'Data source name for the new control binding (e.g. "CustTable"). ' +
+    'Required when controlDataField is provided.'
+  ),
+  controlDataField: z.string().optional().describe(
+    'Data field name for the new control binding (e.g. "MyCustPriorityTier"). ' +
+    'The field must already exist in the table (extension) before adding the UI control.'
+  ),
+  controlType: z.string().optional().describe(
+    'Form control type (default: String). Determines i:type and <Type> in the XML. ' +
+    'Supported values: String, Integer, Real, CheckBox, ComboBox, Date, DateTime, Int64, Group, Button, CommandButton, MenuFunctionButton. ' +
+    'Use CheckBox for NoYes/boolean fields. Use ComboBox for enum fields. ' +
+    'If omitted the tool auto-picks based on the EDT base type if controlDataField is provided.'
+  ),
+  controlLabel: z.string().optional().describe(
+    'Optional label for the new control (add-control). Becomes the control <Label>.'
+  ),
+  positionType: z.string().optional().describe(
+    'Optional positioning: AfterItem | BeforeItem. Omit to append at the end of the parent.'
+  ),
+  previousSibling: z.string().optional().describe(
+    'Name of the sibling control to position after (used with positionType=AfterItem).'
+  ),
+  baseFormName: z.string().optional().describe(
+    'Base form name used for auto-resolving parentControl when the extension name does not contain it. ' +
+    'E.g. if objectName="SalesOrder.MyExt" the base form is auto-detected as "SalesOrder". ' +
+    'Pass this only when auto-detection fails (e.g. the extension has a non-standard name).'
+  ),
+  
+  // For add-method
+  methodName: z.string().optional().describe('Name of method to add/remove'),
+  methodCode: z.string().optional().describe(
+    'X++ code for the method — either the FULL source (access modifiers + return type + name + params + body) ' +
+    'or just the method body. When the full source is provided (first real code line contains an access ' +
+    'modifier and the method name followed by "("), it is used as-is. When only a body is provided, ' +
+    'the signature is assembled from methodModifiers, methodReturnType, methodName, and methodParameters. ' +
+    'Alias: sourceCode (preferred when passing a complete CoC skeleton or full method source).'
+  ),
+  sourceCode: z.string().optional().describe(
+    'Alias for methodCode — pass the FULL X++ method source including access modifiers, return type, ' +
+    'method name, parameters, attributes (e.g. [ExtensionOf(...)]), and body. ' +
+    'This is the preferred parameter when passing a complete CoC skeleton. ' +
+    'Either methodCode or sourceCode may be used; sourceCode takes precedence if both are supplied.'
+  ),
+  // For replace-code (REQUIRED for operation="replace-code" — do NOT use sourceCode for this)
+  oldCode: z.string().optional().describe(
+    'REQUIRED for replace-code. Exact existing X++ code snippet to find and replace. ' +
+    'Must match the source text exactly (leading/trailing whitespace is trimmed for matching). ' +
+    'If methodName is also provided the search is scoped to that method\'s Source block only. ' +
+    'For form control override methods, use methodName="ControlName.methodName" (e.g. "PostButton.clicked").'
+  ),
+  newCode: z.string().optional().describe(
+    'REQUIRED for replace-code. Replacement X++ code snippet. ' +
+    'Replaces the first occurrence of oldCode in the target source block. ' +
+    'Pass empty string "" to delete the matched oldCode snippet.'
+  ),
+  methodModifiers: z.string().optional().describe('Method modifiers (e.g., "public static")'),
+  methodReturnType: z.string().optional().describe('Return type of method'),
+  methodParameters: z.string().optional().describe('Method parameters (e.g., "str _param1, int _param2")'),  
+  
+  // For add-field / modify-field (tables)
+  fieldName: z.string().optional().describe('Name of field to add/remove/modify/rename'),
+  fieldNewName: z.string().optional().describe('New name for the field (required for rename-field operation)'),
+  fieldType: z.string().optional().describe('EDT name for the field (for add-field: required — pass the EDT name, e.g. "InventQty", "WHSZoneId"). For modify-field: new EDT to set.'),
+  fieldBaseType: z.string().optional().describe(
+    'Base type that determines the XML element for add-field: String | Integer | Real | Date | DateTime | Int64 | GUID | Enum. ' +
+    'REQUIRED when fieldType is an EDT — pass the EDT base type so the correct AxTableFieldReal/AxTableFieldDate/… is used. ' +
+    'Examples: fieldType="InventQty" fieldBaseType="Real"; fieldType="TransDate" fieldBaseType="Date"; fieldType="ItemId" fieldBaseType="String". ' +
+    'Without this, all EDT fields default to AxTableFieldString which is WRONG for numeric/date types.'
+  ),
+  fieldMandatory: z.boolean().optional().describe('Is field mandatory'),
+  fieldLabel: z.string().optional().describe('Field label'),
+  fieldHelpText: z.string().optional().describe('Field help text (modify-field).'),
+  fieldEnumType: z.string().optional().describe('Enum name for an enum-typed field. On add-field this replaces fieldType entirely — it writes AxTableFieldEnum + EnumType and needs no EDT. Also settable later with modify-field.'),
+  fieldStringSize: z.string().optional().describe('String size to set on the field (modify-field, for string-typed fields).'),
+  fields: z.array(z.object({
+    name: z.string(),
+    edt: z.string().optional(),
+    type: z.string().optional().describe('Base type for the XML element: String|Real|Integer|Date|DateTime|Int64|GUID|Enum. REQUIRED when edt is an EDT name — without it defaults to AxTableFieldString!'),
+    mandatory: z.boolean().optional(),
+    label: z.string().optional(),
+  })).optional().describe(
+    'Full list of fields for replace-all-fields operation. Each item: { name, edt?, type?, mandatory?, label? }. ' +
+    'IMPORTANT: always pass type= the base type (String/Real/Integer/Date/DateTime/Int64/GUID) alongside edt= so the correct XML element is used. ' +
+    'Example: { name: "TransQty", edt: "InventQty", type: "Real" }. ' +
+    'All existing fields are replaced atomically.'
+  ),
+
+  // For add-index / remove-index (table, table-extension)
+  indexName: z.string().optional().describe('Index name for add-index / remove-index.'),
+  indexFields: z.array(z.object({
+    fieldName: z.string(),
+    direction: z.enum(['Asc', 'Desc']).optional(),
+  })).optional().describe('Fields that make up the index. Required for add-index.'),
+  // Accept the XML spelling too: the AxTable element value is No/Yes, so callers
+  // naturally pass "Yes"/"No" and used to get a bare "expected boolean" (#27).
+  indexAllowDuplicates: z.union([z.boolean(), z.string()]).optional().describe(
+    'Whether index allows duplicates (default: false = unique). Accepts true/false or the XML spelling "Yes"/"No".'
+  ),
+  indexAlternateKey: z.union([z.boolean(), z.string()]).optional().describe(
+    'Whether index is an alternate key. Accepts true/false or the XML spelling "Yes"/"No".'
+  ),
+  indexEnabled: z.union([z.boolean(), z.string()]).optional().describe(
+    'Whether index is enabled (default: true). Accepts true/false or the XML spelling "Yes"/"No".'
+  ),
+
+  // For add-table-mapping / remove-table-mapping (table, table-extension).
+  // <Mappings> records which AxMap the table takes part in — a different collection and a
+  // different element type from <Relations>, so add-relation cannot express it.
+  mapName: z.string().optional().describe('Name of the AxMap this table takes part in (add-table-mapping / remove-table-mapping).'),
+  mappingTable: z.string().optional().describe('Mapped table name for add-table-mapping. Defaults to mapName.'),
+  mappingConnections: z.array(z.object({
+    mapField: z.string().describe('Field name on the MAP.'),
+    mapFieldTo: z.string().describe('Field name on THIS table.'),
+  })).optional().describe('Field pairings for add-table-mapping. Both sides are required per connection.'),
+
+  // For add-relation / remove-relation (table, table-extension)
+  relationName: z.string().optional().describe('Relation name for add-relation / remove-relation.'),
+  relatedTable: z.string().optional().describe('Name of the related (foreign key) table.'),
+  relationConstraints: z.array(z.object({
+    fieldName: z.string().describe('Local field name.'),
+    relatedFieldName: z.string().describe('Field name in the related table.'),
+  })).optional().describe('Field constraints for the relation (field = relatedField pairs).'),
+  relationCardinality: z.string().optional().describe('Cardinality on local side: ZeroMore | ZeroOne | ExactlyOne (default: ZeroMore).'),
+  relatedTableCardinality: z.string().optional().describe('Cardinality on related side: ZeroMore | ZeroOne | ExactlyOne (default: ExactlyOne).'),
+  relationshipType: z.string().optional().describe('Relationship type: Association | Composition | Aggregation | Link | Specialization (default: Association).'),
+
+  // For add-delete-action / remove-delete-action (table)
+  deleteActionTable: z.string().optional().describe(
+    'Related table the delete action applies to (e.g. "SalesLine"). Defaults to deleteActionName.'
+  ),
+  deleteActionName: z.string().optional().describe(
+    'Delete action name — conventionally the related table name. Required for both add- and remove-delete-action.'
+  ),
+  deleteActionType: z.enum(DELETE_ACTION_TYPES).optional().describe(
+    'None | Restricted (default) | Cascade | CascadeRestricted.'
+  ),
+
+  // For add-field-group / remove-field-group / add-field-to-field-group (table, table-extension)
+  fieldGroupName: z.string().optional().describe('Field group name. For add-field-to-field-group in a table-extension: name of the group (new or existing base-table group).'),
+  fieldGroupFields: z.array(z.string()).optional().describe('Initial field names for add-field-group. Can be empty — add fields later with add-field-to-field-group.'),
+  fieldGroupLabel: z.string().optional().describe('Label for add-field-group (optional).'),
+  extendBaseFieldGroup: z.boolean().optional().describe(
+    'Only for table-extension add-field-to-field-group: when true, adds the field to <FieldGroupExtensions> ' +
+    '(extending an existing base-table field group). When false/omitted, adds to <FieldGroups> (a new group defined in the extension).'
+  ),
+
+  // For add-field-modification (table-extension only)
+  // uses fieldName, fieldLabel, fieldMandatory (already defined above)
+
+  // For add-data-source (form-extension)
+  dataSourceName: z.string().optional().describe('Data source reference name for add-data-source (e.g. "MyTable_1").'),
+  dataSourceTable: z.string().optional().describe('Base table name for add-data-source (e.g. "MyTable").'),
+  joinSource: z.string().optional().describe(
+    'Optional name of an existing data source on the form to join the new data source to (add-data-source).'
+  ),
+  linkType: z.string().optional().describe(
+    'Optional join/link type when joinSource is set (add-data-source): InnerJoin | OuterJoin | ExistJoin | NotExistJoin | Delayed | Active | Passive.'
+  ),
+
+  // For add-field on data-entity-extension: the mapped field's source binding.
+  // fieldName (already defined above) is the entity-facing field name.
+  dataField: z.string().optional().describe(
+    'Source table field name for add-field on a data-entity-extension (e.g. "MyField"). Required alongside dataSource.'
+  ),
+  dataSource: z.string().optional().describe(
+    'Source data-source/table name on the entity for add-field on a data-entity-extension (e.g. "MyTable"). Required alongside dataField.'
+  ),
+
+  // For modify-property
+  propertyPath: z.string().optional().describe(
+    'Property name to set. ' +
+    'For tables (AxTable): TableGroup, TitleField1, TitleField2, TableType (TempDB/RegularTable/InMemory), ' +
+    'CacheLookup, ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends, SystemTable. ' +
+    'For table-extensions (AxTableExtension): properties are stored inside <PropertyModifications> as ' +
+    '<AxPropertyModification> entries. Supported: Label, HelpText, TableGroup, CacheLookup, TitleField1, TitleField2, ' +
+    'ClusteredIndex, PrimaryIndex, SaveDataPerCompany, TableType, SystemTable, ' +
+    'ModifiedDateTime (Yes/No), CreatedDateTime (Yes/No), ModifiedBy (Yes/No), CreatedBy (Yes/No), ' +
+    'CountryRegionCodes (comma-separated, e.g. "CZ,SK"). ' +
+    'For EDTs: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField. ' +
+    'For classes: Extends, Abstract, Final, Label. ' +
+    'For nested properties use dot notation, e.g. "Fields.AxTableField.Name" (rare). ' +
+    'Examples: propertyPath="TableGroup" propertyValue="Group"; propertyPath="TitleField1" propertyValue="ItemId"; ' +
+    'propertyPath="TableType" propertyValue="TempDB"; propertyPath="Extends" propertyValue="WHSZoneId"; ' +
+    'propertyPath="ModifiedDateTime" propertyValue="Yes" (table-extension); ' +
+    'propertyPath="CountryRegionCodes" propertyValue="CZ,SK" (table-extension)'
+  ),
+  propertyValue: z.string().optional().describe('New property value'),
+  
+  // Options
+  autoCorrect: z.boolean().optional().default(true).describe(
+    'Apply a correction the server has already fully determined (exactly one valid reading, derivable ' +
+    'from state the server holds) instead of failing the call — reported as a "Note:" line in the result. ' +
+    'Set false for strict behaviour: every such case becomes an error again (eval harness / deterministic callers).'
+  ),
+  createBackup: z.boolean().optional().default(false).describe('Create a .bak backup of the file before modifying it (default: false). Changes can also be reverted with undo_last_modification (git checkout) without a backup. When the file is NOT inside a git repository, a backup is created automatically even with false, since undo_last_modification would not work there.'),
+  modelName: z.string().optional().describe('Model name (auto-detected if not provided). Pass this if the file was just created and is not yet indexed.'),
+  packageName: z.string().optional().describe('Package name. Auto-resolved if omitted.'),
+  packagePath: z.string().optional().describe(
+    'Root packages path to search when the object lives outside the default PackagesLocalDirectory ' +
+    '(e.g. a repo metadata checkout like "K:\\\\repos\\\\…\\\\metadata"). Used to locate the file for ' +
+    'backup and the direct-XML fallback. NOTE: bridge-backed operations (add-method, add-field, etc.) ' +
+    'resolve objects via the C# bridge, which is configured with fixed roots at startup — if the model ' +
+    'is not under the bridge\'s roots, set context.customPackagesPath / D365FO_CUSTOM_PACKAGES_PATH so ' +
+    'the bridge picks it up, or pass an explicit filePath.'
+  ),
+  workspacePath: z.string().optional().describe('Path to workspace for finding file'),
+  filePath: z.string().optional().describe(
+    'Absolute path to the XML file. Use this when the object was just created and the path is already known ' +
+    '(e.g. from d365fo_file(action="create") output). Bypasses symbol DB lookup entirely.'
+  ),
+  addToProject: z.boolean().optional().default(false).describe(
+    'When true, adds the modified file to the Visual Studio project (.rnrproj). ' +
+    'Use this when the file exists on disk but is not yet tracked in the VS project. ' +
+    'Requires projectPath or solutionPath (explicit or via .mcp.json). Default: false.'
+  ),
+  projectPath: z.string().optional().describe(
+    'Path to .rnrproj file. Required for addToProject to work. Auto-detected from .mcp.json if omitted.'
+  ),
+  solutionPath: z.string().optional().describe(
+    'Path to VS solution directory. Used to find .rnrproj when projectPath is not given.'
+  ),
+  groundingToken: z.string().optional().describe(
+    'Provenance token returned by prepare(mode="change"). Proves the change was grounded in the indexed codebase. ' +
+    'Required for *-extension objectTypes when GROUNDING_ENFORCE=true on the server.'
+  ),
+});
+
+export async function modifyD365FileTool(request: CallToolRequest, context: XppServerContext) {
+  try {
+    const args = ModifyD365FileArgsSchema.parse(request.params.arguments);
+
+    // ── Silent-parameter-drop guard (corpus cluster #35, #6) ─────────────────
+    // The published schema advertises a free-form `params` object and the Zod
+    // schema STRIPS unknown keys, so a misspelled or misplaced parameter used to
+    // disappear without a trace while the op still answered "✅ … modified".
+    // Read the RAW arguments (pre-strip) and account for every key: either the
+    // operation consumes it, or the caller is told it was dropped.
+    const rawArgs = (request.params.arguments ?? {}) as Record<string, unknown>;
+    const providedKeys = Object.keys(rawArgs).filter(k => rawArgs[k] !== undefined);
+    const ignoredParams = findIgnoredParams(String(args.operation), providedKeys);
+    const ignoredParamsWarning = renderIgnoredParamsWarning(String(args.operation), ignoredParams);
+
+    // A call that carries none of the params that would mutate anything must not
+    // report success: `modify-field {fieldName, mandatory:true}` (wrong key —
+    // it is fieldMandatory) wrote nothing and still answered
+    // "✅ Field 'Description' modified via IMetaTableProvider.Update".
+    const missingMutation = findMissingMutationParams(String(args.operation), providedKeys);
+    if (missingMutation.length > 0) {
+      return {
+        content: [{
+          type: 'text',
+          text:
+            `❌ '${args.operation}' was called with no parameter that changes anything — nothing would be written.\n` +
+            `Pass at least one of: ${missingMutation.join(', ')}.\n` +
+            (ignoredParamsWarning ? `\n${ignoredParamsWarning}\n` : '') +
+            `\n${renderOpSpec(String(args.operation))}`,
+        }],
+        isError: true,
+      };
+    }
+
+    // Decode XML entities in X++ payloads. An AI that copied entity-encoded code (an
+    // SSRS <Text> block, or escaped doc comments like "/// &lt;summary&gt;") sends
+    // &lt;/&gt;/&amp;/&quot;/&apos;; the serializer would otherwise write them literally
+    // into the source. No-op for clean X++ — literal <, >, && and " are not entities.
+    if (args.sourceCode) args.sourceCode = decodeXmlEntitiesFromXppSource(args.sourceCode);
+    if ((args as any).methodCode) (args as any).methodCode = decodeXmlEntitiesFromXppSource((args as any).methodCode);
+    if (args.newCode) args.newCode = decodeXmlEntitiesFromXppSource(args.newCode);
+    if (args.oldCode) args.oldCode = decodeXmlEntitiesFromXppSource(args.oldCode);
+
+    // objectName is optional when filePath is given — derive it from the file
+    // basename using path.win32.basename (handles Windows backslash paths on
+    // all platforms — path.posix.basename treats '\\' as a regular character).
+    if (!args.objectName) {
+      if (args.filePath) {
+        (args as any).objectName = path.win32.basename(args.filePath, '.xml');
+      } else {
+        return {
+          content: [{
+            type: 'text',
+            text: "❌ Provide 'objectName' — or 'filePath', from which the object name is derived.",
+          }],
+          isError: true,
+        };
+      }
+    }
+
+    // Grounding enforcement: modifying an extension changes the behaviour of an
+    // existing base object — when GROUNDING_ENFORCE=true the model must prove
+    // (via prepare_change) that it inspected the real object first.
+    if (args.objectType.endsWith('-extension')) {
+      const groundingError = enforceGrounding(
+        args.groundingToken,
+        `d365fo_file(action="modify", objectType="${args.objectType}", objectName="${args.objectName}", operation="${args.operation}")`,
+        args.objectName,
+      );
+      if (groundingError) return groundingError;
+    }
+
+    // Semantic reference gate: when GROUNDING_ENFORCE=true, every identifier in
+    // X++ source about to be written must be proven against the symbol index.
+    const xppToWrite = args.sourceCode ?? args.methodCode ?? args.newCode;
+    const referenceError = gateOnReferenceErrors(
+      xppToWrite,
+      context.symbolIndex,
+      `d365fo_file(action="modify", objectType="${args.objectType}", objectName="${args.objectName}", operation="${args.operation}")`,
+    );
+    if (referenceError) return referenceError;
+
+    // CDATA-corruption guard: any X++ payload that will be CDATA-wrapped by the
+    // serializer (add-method's source) or spliced into an existing CDATA block
+    // (replace-code's newCode) must be clean X++ — never a slice of .xml markup.
+    // A "]]>" or stray <Method>/<Source> in the payload otherwise survives into
+    // the file and produces the invalid doubled-"]]>" / dropped-</Method> shape.
+    assertCleanXppSource(args.sourceCode, 'sourceCode');
+    assertCleanXppSource((args as any).methodCode, 'methodCode');
+    assertCleanXppSource(args.newCode, 'newCode');
+
+    // add-method emits exactly one <Method>; reject a payload carrying multiple
+    // methods (the extras would land outside the class → invalid X++). Only for the
+    // method-adding operations — replace-code's newCode is a snippet, not a method.
+    if (['add-method', 'add-display-method', 'add-table-method'].includes(args.operation)) {
+      const methodSrc = args.sourceCode ?? (args as any).methodCode;
+      // add-method may carry several methods — they are split and added one <Method>
+      // at a time below. add-display-method / add-table-method generate a single
+      // method, so multiple bodies there are still a mistake.
+      if (args.operation !== 'add-method') {
+        assertSingleMethodSource(methodSrc);
+      }
+      // Derive methodName from the source signature when omitted — the full method
+      // source already contains the name (e.g. "public static X find(...)" → "find").
+      // Skip derivation when the payload holds multiple methods (handled per-method).
+      if (!args.methodName && countTopLevelMethodBodies(methodSrc ?? '') <= 1) {
+        const derived = extractMethodNameFromSource(methodSrc);
+        if (derived) {
+          args.methodName = derived;
+          console.error(`[modify_d365fo_file] methodName omitted — derived '${derived}' from the source signature`);
+        }
+      }
+    }
+
+    const { symbolIndex } = context;
+    const {
+      objectType,
+      operation,
+      createBackup,
+      modelName,
+      workspacePath,
+      filePath: explicitFilePath,
+    } = args;
+    // objectName guaranteed non-null by the derivation block above.
+    // Declared as `let` so it can be corrected from the resolved file basename below.
+    let objectName = args.objectName!;
+
+    // ── Auto-resolve parentControl for add-control on form-extension ─────────
+    // When `parentControl` is a fuzzy / lowercase string (e.g. "general"), look
+    // up the base form XML, walk the control tree, and resolve to the exact name.
+    // This makes add-control seamless — no prior get_object_info(form) call required.
+    let addControlNote = '';
+    let generationNote = '';
+
+    // Corrections applied instead of a refusal (see AUTO-CORRECT below). Rendered
+    // into the success payload so the agent still learns the right call, and so the
+    // behaviour stays auditable.
+    const autoCorrect = args.autoCorrect !== false;
+    const autoCorrectNotes: string[] = [];
+
+    if (operation === 'add-control' && objectType === 'form-extension' && args.parentControl) {
+      const resolution = await resolveParentControl(
+        objectName,
+        args.parentControl,
+        symbolIndex,
+        (args as any).baseFormName,
+      );
+
+      if (resolution && 'multiple' in resolution) {
+        const candidateList = resolution.multiple
+          .slice(0, 20)
+          .map(c =>
+            `  • \`${c.name}\`` +
+            (c.parentName ? ` (parent: \`${c.parentName}\`)` : '') +
+            ` — path: ${c.pathStr}`
+          )
+          .join('\n');
+        return {
+          content: [{
+            type: 'text',
+            text:
+              `⚠️ **Ambiguous parentControl** — "${args.parentControl}" matches multiple controls in the base form.\n\n` +
+              `**Candidates** (${resolution.multiple.length}):\n${candidateList}\n\n` +
+              `Re-call \`add-control\` with the exact \`parentControl\` name from the list above.`,
+          }],
+          isError: true,
+        };
+      }
+
+      if (resolution && 'resolved' in resolution) {
+        if (resolution.resolved !== args.parentControl) {
+          addControlNote = `\n\n> 🔍 **parentControl** auto-resolved: \`"${args.parentControl}"\` → \`"${resolution.resolved}"\` (${resolution.pathStr})`;
+        } else {
+          addControlNote = `\n\n> ✅ **parentControl** \`"${resolution.resolved}"\` confirmed in base form (${resolution.pathStr})`;
+        }
+        (args as any).parentControl = resolution.resolved;
+      }
+      // null → form not found or no match; proceed with original value (compiler will catch it)
+    }
+
+    // ── Form-pattern pre-flight for add-control ───────────────────────────────
+    // When the parent container declares a sub-pattern (e.g. FieldsFieldGroups),
+    // verify the new control's type is allowed there. Blocking when
+    // FORM_PATTERN_ENFORCE is enabled (default); advisory note otherwise.
+    if (
+      operation === 'add-control' &&
+      (objectType === 'form' || objectType === 'form-extension') &&
+      args.parentControl &&
+      (args as any).controlType
+    ) {
+      const baseFormName =
+        objectType === 'form'
+          ? objectName
+          : ((args as any).baseFormName || objectName.split('.')[0]);
+      const baseXml = await findBaseFormXml(baseFormName, symbolIndex);
+      if (baseXml) {
+        const verdict = await checkAddControlAgainstParentPattern(
+          baseXml,
+          args.parentControl,
+          (args as any).controlType,
+        );
+        if (verdict && !verdict.allowed) {
+          const allowedList = verdict.allowedTypes === 'any' ? 'any' : verdict.allowedTypes.join(', ');
+          if (isFormPatternEnforceEnabled()) {
+            return {
+              content: [{
+                type: 'text',
+                text:
+                  `⛔ add-control blocked — parent control "${args.parentControl}" follows sub-pattern ` +
+                  `**${verdict.parentPattern}**, which does not allow a "${(args as any).controlType}" child.\n\n` +
+                  `Allowed control types here: ${allowedList}.\n\n` +
+                  `Options:\n` +
+                  `  1. Use an allowed control type (e.g. controlType="String" for a bound field).\n` +
+                  `  2. Target a different parent container (use get_object_info(objectType="form", name=...) to inspect the hierarchy).\n` +
+                  `  3. Set FORM_PATTERN_ENFORCE=false to bypass pattern enforcement.`,
+              }],
+              isError: true,
+            };
+          }
+          addControlNote +=
+            `\n\n> ⚠️ Pattern warning: parent "${args.parentControl}" follows ${verdict.parentPattern}, ` +
+            `which does not allow "${(args as any).controlType}" children (allowed: ${allowedList}). ` +
+            `FORM_PATTERN_ENFORCE is disabled — proceeding anyway.`;
+        }
+      }
+    }
+
+    // 1. Find the file
+    const filePath = await findD365File(symbolIndex, objectType, objectName, modelName, workspacePath, explicitFilePath, args.packagePath);
+
+    if (!filePath) {
+      throw new Error(
+        `File not found for ${objectType} "${objectName}".\n\n` +
+        `Retry options (do NOT use PowerShell — this tool can handle it):\n` +
+        `  1. Pass modelName="<YourModel>" — triggers filesystem lookup by path.\n` +
+        `  2. Pass packagePath="<root that contains the model>" if the metadata lives outside the default PackagesLocalDirectory (e.g. a repo checkout).\n` +
+        `  3. Pass filePath="K:\\\\AosService\\\\PackagesLocalDirectory\\\\<pkg>\\\\<model>\\\\${objectName}.xml" — bypasses all lookup.\n` +
+        `  4. If the object was just created, re-run d365fo_file(action="create") first and use the returned path as filePath.\n\n` +
+        `If the file exists but bridge operations still fail to resolve the object, the C# bridge's metadata roots ` +
+        `(fixed at startup) likely don't include this model — set context.customPackagesPath / D365FO_CUSTOM_PACKAGES_PATH and restart the server.`
+      );
+    }
+
+    // 1a. Path containment guard — every write target must live under a configured
+    //     <PackagesLocalDirectory>/<Package>/<Model>/Ax<Type>/<File>.xml layout.
+    //     Refuses path traversal via explicit filePath or JSON sourcePath (security-critical).
+    //     A caller-supplied packagePath (metadata outside PLD, e.g. a repo checkout) is
+    //     honored as an allowed root — findD365File already resolves against it, so the
+    //     containment list must include it too or valid writes get wrongly rejected.
+    const extraRoots = args.packagePath ? [args.packagePath] : undefined;
+    const containment = await assertWritePathAllowed(filePath, modelName, { extraRoots });
+    if (!containment.ok) {
+      throw new Error(containment.reason || 'Path containment check failed');
+    }
+
+    // 1b. Model-ownership guard: refuse to modify objects in standard Microsoft models.
+    // This prevents accidental writes to ApplicationSuite, ApplicationFoundation, etc.
+    const resolvedModelFromPath = extractModelFromFilePath(filePath);
+    if (resolvedModelFromPath && isStandardModel(resolvedModelFromPath)) {
+      const configManager = getConfigManager();
+      const configuredModel = modelName || configManager.getModelName();
+      // Only block if the resolved model differs from the user's explicitly configured model.
+      // If user explicitly set modelName=ApplicationSuite, they know what they're doing.
+      if (!modelName || modelName !== resolvedModelFromPath) {
+        throw new Error(
+          `⛔ Refusing to modify "${objectName}" — the resolved file belongs to standard Microsoft model "${resolvedModelFromPath}".\n\n` +
+          `Your configured model is "${configuredModel || '(not set)'}".\n` +
+          `Modifying standard objects is not permitted — it can corrupt the base application.\n\n` +
+          `To extend a standard object, create an extension instead:\n` +
+          `  • Table: d365fo_file(action="create", objectType="table-extension", objectName="${objectName}.${configuredModel || 'YourModel'}Extension")\n` +
+          `  • Class: d365fo_file(action="create", objectType="class-extension", objectName="${objectName}_Extension")\n` +
+          `  • Form:  d365fo_file(action="create", objectType="form-extension", objectName="${objectName}.${configuredModel || 'YourModel'}Extension")`
+        );
+      }
+    }
+
+    // 1c. Cross-model guard: the object is custom, but owned by a DIFFERENT custom
+    // model than the one this workspace targets (shared "Core" model vs. the country
+    // model that extends it). Editing it in place silently changes code the active
+    // model only consumes — the wanted change is an extension in the active model.
+    // Ownership comes from the path's <Model> segment, not the <Package> segment
+    // used above: one package can carry several models.
+    const owningModel = containment.modelSegment ?? null;
+    // The write ANCHOR, not the active model: a get_workspace_info project switch
+    // moves reads, and must not move what this guard measures writes against.
+    const activeModel = getConfigManager().getWriteAnchorModel() ?? '';
+    const crossModelRefusal = crossModelWriteRefusal({
+      objectName,
+      objectType,
+      owningModel,
+      owningPackage: containment.packageSegment ?? resolvedModelFromPath,
+      activeModel,
+      toolSwitchedModel: getConfigManager().getToolProjectSwitch()?.forcedModel ?? null,
+      action: 'modify',
+      existingExtensions: findExtensionsInModel(
+        symbolIndex,
+        baseObjectOf(objectName, objectType),
+        activeModel,
+      ),
+    });
+    if (crossModelRefusal) {
+      throw new Error(crossModelRefusal);
+    }
+
+    // 2. Resolve actual XML file path (DB may store JSON metadata with sourcePath)
+    let actualFilePath = filePath;
+    try {
+      const fileContent = await fs.readFile(filePath, 'utf-8');
+      const trimmed = fileContent.trimStart();
+      if (trimmed.startsWith('{')) {
+        const data = JSON.parse(fileContent);
+        if (data.sourcePath) {
+          // Re-validate the indirect path: sourcePath also comes from user-influenced data.
+          const srcContainment = await assertWritePathAllowed(data.sourcePath, modelName, { extraRoots });
+          if (!srcContainment.ok) {
+            throw new Error(`sourcePath rejected: ${srcContainment.reason}`);
+          }
+          actualFilePath = srcContainment.canonicalPath || data.sourcePath;
+        } else {
+          throw new Error(`Metadata file has no sourcePath: ${filePath}`);
+        }
+      }
+    } catch (readError) {
+      if (readError instanceof SyntaxError || (readError instanceof Error && readError.message.includes('sourcePath'))) {
+        throw readError;
+      }
+      const isRelative = !path.isAbsolute(filePath);
+      const hint = isRelative
+        ? ' The path is relative — the symbol DB returned a build-agent path. ' +
+          'Pass filePath="<absolute path>" or modelName="<YourModel>" so the tool can locate the file on disk.'
+        : '';
+      throw new Error(`Cannot read file: ${filePath}${hint}`);
+    }
+
+    // 3. Create backup of the actual XML file. When the target is NOT inside a
+    //    git work tree, the documented undo path (undo_last_modification →
+    //    git checkout) cannot revert the change — force a backup even with
+    //    createBackup=false so a bad modify is never unrecoverable.
+    const backupNote = await ensureRecoverableModification(actualFilePath, createBackup);
+
+    // 3b. Derive the authoritative object name from the resolved file path.
+    //     The caller may pass objectName="RentEquipment" while the file on disk
+    //     is ContosoRentEquipment.xml (auto-prefixed at create time). The C# bridge
+    //     resolves objects by name from its metadata model — if the name doesn't
+    //     match the file it will always return null, regardless of refreshes.
+    //     Use path.win32.basename so Windows backslash paths are handled correctly
+    //     on all platforms (path.posix.basename treats '\\' as a regular character).
+    const fileBaseName = path.win32.basename(actualFilePath, '.xml');
+    const bridgeObjectName = fileBaseName !== objectName ? fileBaseName : objectName;
+    if (bridgeObjectName !== objectName) {
+      console.error(
+        `[modify_d365fo_file] ℹ️  objectName "${objectName}" → resolved to "${bridgeObjectName}" from file basename`,
+      );
+      objectName = bridgeObjectName;
+    }
+
+    // ── Bridge-only modify via IMetadataProvider.Update() ────────────────────
+    // ALL modify operations go through the C# bridge. The bridge reads, modifies,
+    // and writes via the official D365FO metadata API — no xml2js needed.
+    // If the bridge is unavailable or fails, we throw an error (no fallback).
+    if (!context?.bridge) {
+      throw new Error(
+        'C# metadata bridge is not available. The bridge is required for all modify operations.\n' +
+        'Start the bridge by building the D365MetadataBridge project and restarting the MCP server.'
+      );
+    }
+    if (!canBridgeModify(objectType, operation)) {
+      throw new Error(`Operation '${operation}' on object type '${objectType}' is not supported by the bridge.`);
+    }
+
+    // The field name as the caller spelled it, before the prefix below rewrites it:
+    // the enum-name derivation in add-field matches against the UNPREFIXED name
+    // (a field named after its enum is prefixed, the enum it names is not).
+    const preprefixFieldName = typeof args.fieldName === 'string' ? args.fieldName : undefined;
+
+    // Members added INSIDE an extension must carry the model's prefix — an
+    // extension lives in your model but its host object is Microsoft's, so an
+    // unprefixed field/index/enum value collides with anything Microsoft or
+    // another ISV adds to the same host later. Microsoft's naming guideline
+    // spells this out ("Fields in extensions → {Prefix}{FieldName}") and BP
+    // rejects the unprefixed form. This is applied once, here, so every writer
+    // below (bridge op and direct-XML fallback alike) sees the final name.
+    const memberPrefixNote = applyExtensionMemberPrefix(
+      args,
+      objectType,
+      operation,
+      // The MODEL segment, not the package: members added to an extension must
+      // carry the prefix of the model that owns the extension file (ContosoFinanceSK
+      // → ContosoSK_), and a package can hold a model whose prefix differs.
+      containment.modelSegment || resolvedModelFromPath || modelName || getConfigManager().getModelName() || '',
+    );
+    if (memberPrefixNote) generationNote += memberPrefixNote;
+
+    // Settle a rebuild an earlier create/modify scheduled but did not wait for, so
+    // an object written moments ago resolves on the FIRST attempt. Without this the
+    // retry loop below would still recover — at the cost of a wasted bridge round
+    // trip plus a full rebuild. Free when no write is outstanding.
+    await debouncedRefresh.flush();
+
+    let bridgeResult: { success: boolean; message: string } | null = null;
+    let _bridgeRetried = false;
+    // Retry loop: on the first null result with all required params present,
+    // refresh the bridge provider (picks up objects created this session) and
+    // re-run the operation once. Max 1 auto-refresh retry (_bridgeRetried guard).
+    _bridgeRetry: do {
+      bridgeResult = null;
+
+    switch (operation) {
+      case 'add-method': {
+        // sourceCode and methodCode are aliases; sourceCode wins when both are set.
+        const methodSource = args.sourceCode ?? (args as any).methodCode;
+        if (methodSource) {
+          // A single call may carry several methods — split and add each as its own
+          // <Method> so callers don't have to issue one tool call per method.
+          const bodies = countTopLevelMethodBodies(methodSource) > 1
+            ? splitTopLevelMethodBodies(methodSource)
+            : [methodSource];
+
+          if (bodies.length > 1) {
+            const added: string[] = [];
+            let lastResult: { success: boolean; message: string } | null = null;
+            for (const body of bodies) {
+              const mName = extractMethodNameFromSource(body);
+              if (!mName) {
+                // A body without a derivable method name is typically a class/extension declaration
+                // (e.g. "[ExtensionOf(tableStr(T))] final class T_Extension { }"). Such blocks are
+                // NOT methods and do not belong in add-method — skip and continue.
+                // The regex handles: optional attribute block(s) → optional modifiers (final/abstract/
+                // public/static/…) → class or interface keyword.
+                const trimmed = body.trim();
+                if (/^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|private|protected|final|abstract|static|internal|sealed)\s+)*(?:class|interface)\b/i.test(trimmed)) {
+                  console.warn(`[add-method] Skipping class/interface declaration block (not a method): ${trimmed.slice(0, 80)}...`);
+                  continue;
+                }
+                throw new Error(
+                  `⛔ add-method: could not derive a method name from one of the ${bodies.length} method bodies. ` +
+                  `Ensure each method has a complete signature (e.g. "public void foo()").`,
+                );
+              }
+              lastResult = await bridgeAddMethod(context.bridge, objectType, objectName, mName, body);
+              if (!lastResult) {
+                throw new Error(
+                  `Bridge add-method failed for '${mName}' (${added.length} of ${bodies.length} method(s) added successfully: ${added.join(', ') || 'none'}).`,
+                );
+              }
+              added.push(mName);
+            }
+            // Summarize as a single result for the downstream success message.
+            bridgeResult = lastResult
+              ? { ...lastResult, message: `Added ${added.length} methods: ${added.join(', ')}` }
+              : null;
+          } else if (args.methodName) {
+            bridgeResult = await bridgeAddMethod(
+              context.bridge,
+              objectType,
+              objectName,
+              args.methodName,
+              methodSource,
+            );
+          }
+        }
+        break;
+      }
+      case 'add-display-method': {
+        // Explicit source wins; otherwise generate a stub from displayMethodReturnEdt.
+        let methodSource = args.sourceCode ?? (args as any).methodCode;
+        const methodName = args.methodName;
+        if (!methodSource && methodName && (args as any).displayMethodReturnEdt) {
+          methodSource = generateDisplayMethodSource(
+            methodName,
+            (args as any).displayMethodReturnEdt,
+          );
+          generationNote =
+            `\n\n> 🔧 Display method \`${methodName}\` generated returning ` +
+            `\`${(args as any).displayMethodReturnEdt}\` (stub — fill in the computation).`;
+        }
+        if (methodName && methodSource) {
+          bridgeResult = await bridgeAddMethod(
+            context.bridge,
+            objectType,
+            objectName,
+            methodName,
+            methodSource,
+          );
+        }
+        break;
+      }
+      case 'add-table-method': {
+        // Explicit source wins; otherwise generate from tableMethodType.
+        let methodSource = args.sourceCode ?? (args as any).methodCode;
+        let methodName = args.methodName;
+        if (!methodSource && (args as any).tableMethodType) {
+          const gen = generateTableMethodSource(
+            objectName,
+            (args as any).tableMethodType,
+            (args as any).tableKeyField,
+            symbolIndex.getReadDb(),
+          );
+          methodName = gen.methodName;
+          methodSource = gen.source;
+          generationNote =
+            `\n\n> 🔧 Table method \`${gen.methodName}\` generated from ` +
+            `tableMethodType="${(args as any).tableMethodType}".` +
+            (gen.note ? `\n> ${gen.note}` : '');
+        }
+        // When caller supplies custom source (methodCode/sourceCode) + tableMethodType
+        // but omits methodName, the method name equals the tableMethodType value
+        // (find / exist / findByRecId / validateWrite / validateDelete / initValue).
+        if (!methodName && (args as any).tableMethodType && methodSource) {
+          methodName = (args as any).tableMethodType as string;
+        }
+        if (methodName && methodSource) {
+          bridgeResult = await bridgeAddMethod(
+            context.bridge,
+            objectType,
+            objectName,
+            methodName,
+            methodSource,
+          );
+        }
+        break;
+      }
+      case 'remove-method': {
+        if (args.methodName) {
+          bridgeResult = await bridgeRemoveMethod(
+            context.bridge,
+            objectType,
+            objectName,
+            args.methodName,
+          );
+        }
+        break;
+      }
+      case 'add-field': {
+        // A data-entity-extension field is an AxDataEntityViewMappedField
+        // (Name/DataField/DataSource/Label/Mandatory) — it has no EDT and no base type,
+        // so none of the fieldType/fieldBaseType resolution below applies. It goes
+        // through the same bridge op with the mapped-field binding attached; the bridge
+        // routes on that binding, not on the object name.
+        if (objectType === 'data-entity-extension' && args.fieldName) {
+          const dataField = (args as any).dataField as string | undefined;
+          const dataSource = (args as any).dataSource as string | undefined;
+          if (!dataField || !dataSource) {
+            return {
+              content: [{
+                type: 'text',
+                text:
+                  `❌ add-field on a data-entity-extension needs BOTH dataField and dataSource — ` +
+                  `nothing was written.\n` +
+                  `A mapped field has no EDT of its own: it names an entity-side field (fieldName) that ` +
+                  `points at dataField on the entity data source dataSource.\n` +
+                  `Half of the binding serialises fine and then fails to compile, so it is refused here.\n` +
+                  `\n${renderOpSpec('add-field')}`,
+              }],
+              isError: true,
+            };
+          }
+          bridgeResult = await bridgeAddField(
+            context.bridge,
+            objectName,
+            args.fieldName,
+            '',              // no base type — the mapped-field path ignores it
+            undefined,       // no EDT
+            args.fieldMandatory,
+            args.fieldLabel,
+            { dataField, dataSource, fieldGroupName: (args as any).fieldGroupName },
+          );
+          // Same-session fallback, same shape as add-index/add-control: the bridge
+          // provider resolves against metadata roots fixed at startup, so an extension
+          // CREATED THIS SESSION reports "not found" no matter what (ec07ca3).
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlAddDataEntityExtensionField(
+              actualFilePath,
+              args.fieldName,
+              dataField,
+              dataSource,
+              args.fieldLabel,
+              (args as any).fieldGroupName,
+            );
+            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+          }
+          break;
+        }
+        // Everything else is an AxTableField. `required` on add-field is only fieldName
+        // (the mapped-field path above has no fieldType at all), so the type-specific half
+        // of the contract is enforced here instead of silently falling through to a null
+        // bridge result and a generic "required parameters may be missing".
+        let enumTypeArg = ((args as any).fieldEnumType as string | undefined)?.trim() || undefined;
+
+        // fieldType is an EDT NAME here. In `create` the sibling key fields[].fieldType is
+        // the XML element name ("AxTableFieldEnum"), and that collision gets carried over
+        // into add-field, where it used to be accepted and produce a bare AxTableFieldString
+        // referencing a non-existent EDT — a wrong field, discovered only at build time.
+        // Anchored on the metamodel's own container names, not on "starts with Ax
+        // and contains Field": that broader shape also rejected any legitimate EDT
+        // whose name happens to read that way, and refusing a valid EDT is the
+        // same class of wrong answer this check exists to prevent.
+        if (args.fieldType && /^Ax(Table|View|Query|Map|DataEntityView)[A-Za-z]*Field[A-Za-z0-9]*$/i.test(args.fieldType)) {
+          // ── AUTO-CORRECT ──────────────────────────────────────────────────
+          // The *Enum element is the one member of that family that names its own
+          // fix: it says "this is an enum field", and the enum itself is either in
+          // the same payload (fieldEnumType) or is the field's own name confirmed
+          // as an enum in the symbol index. Both leave exactly ONE valid reading,
+          // so apply it. Every other element name (AxTableFieldString, …) carries
+          // no EDT to derive and still errors.
+          const derivedEnum = autoCorrect
+            ? resolveEnumForFieldElement(args.fieldType, enumTypeArg, [args.fieldName, preprefixFieldName], symbolIndex)
+            : undefined;
+          if (derivedEnum) {
+            noteAutoCorrection(
+              autoCorrectNotes,
+              `fieldType="${args.fieldType}" is an XML element name; treated as fieldEnumType="${derivedEnum}". ` +
+              `Pass fieldEnumType (and no fieldType) for an enum field.`,
+            );
+            enumTypeArg = derivedEnum;
+            args.fieldType = undefined;   // an enum field takes no EDT
+          } else {
+            return {
+              content: [{
+                type: 'text',
+                text:
+                  `❌ fieldType="${args.fieldType}" is an XML element name, not an EDT — nothing was written.\n` +
+                  `On add-field, fieldType is the EDT NAME (e.g. "TransDate", "ItemId"); the XML element is ` +
+                  `chosen from fieldBaseType.\n` +
+                  `For an enum field pass fieldEnumType="<enum name>" instead — no EDT is needed:\n` +
+                  `  d365fo_file(action="modify", objectType="${objectType}", objectName="…", ` +
+                  `operation="add-field", fieldName="${args.fieldName ?? 'MyField'}", fieldEnumType="MyEnum")\n` +
+                  `\n${renderOpSpec('add-field')}`,
+              }],
+              isError: true,
+            };
+          }
+        }
+
+        if (args.fieldName && !args.fieldType && !enumTypeArg) {
+          const mappedOnly = (args as any).dataField || (args as any).dataSource;
+          return {
+            content: [{
+              type: 'text',
+              text:
+                (mappedOnly
+                  ? `❌ dataField/dataSource describe a data-entity mapped field and do not apply to ` +
+                    `objectType="${objectType}" — nothing was written.\n` +
+                    `On a table or table-extension a field needs fieldType (its EDT), or ` +
+                    `fieldEnumType for an enum field.\n`
+                  : `❌ add-field on objectType="${objectType}" requires fieldType (the EDT), or ` +
+                    `fieldEnumType for an enum field — nothing was written.\n`) +
+                `\n${renderOpSpec('add-field')}`,
+            }],
+            isError: true,
+          };
+        }
+
+        // Enum field: AxTableFieldEnum + <EnumType>, and NO EDT — an enum-typed table
+        // field does not need one. Requiring an EDT here is what used to send callers off
+        // building an AxEdtEnum wrapper, guessing at <Extends>, and failing the build twice
+        // before getting there. fieldType stays accepted for the rarer "enum EDT" case.
+        if (args.fieldName && enumTypeArg) {
+          bridgeResult = await bridgeAddField(
+            context.bridge,
+            objectName,
+            args.fieldName,
+            'Enum',
+            args.fieldType,      // usually undefined; an enum EDT when the caller has one
+            args.fieldMandatory,
+            args.fieldLabel,
+          );
+          // EnumType is set in a second call on purpose: the bridge's AddField RPC has no
+          // enumType parameter, while ModifyField does. Doing it here keeps this a
+          // single tool call for the caller AND works with the bridge already deployed —
+          // no rebuild, which is the part that silently keeps the old binary.
+          if (bridgeResult?.success) {
+            const enumSet = await bridgeModifyField(
+              context.bridge,
+              objectName,
+              args.fieldName,
+              { enumType: enumTypeArg },
+            );
+            if (enumSet && !enumSet.success) {
+              // Undo the half-written field. Two calls are not atomic, and what
+              // they can leave behind — an AxTableFieldEnum with no enum — is a
+              // field the caller did not ask for. Worse, the bridge's AddField
+              // does not check for an existing field, so an agent that reads
+              // "failed" and simply repeats the call ends up with the field
+              // twice. Rolling back restores the pre-call state, which is the
+              // only state a failed operation may leave.
+              const undone = await bridgeRemoveField(context.bridge, objectName, args.fieldName);
+              bridgeResult = {
+                success: false,
+                message: undone?.success
+                  ? `EnumType could not be set (${enumSet.message}) — the field was rolled back and ` +
+                    `nothing was written. Check that enum "${enumTypeArg}" exists ` +
+                    `(get_object_info objectType="enum"), then retry add-field.`
+                  : `Field '${args.fieldName}' was created but EnumType could not be set ` +
+                    `(${enumSet.message}), and rolling the field back failed too. The field is an ` +
+                    `AxTableFieldEnum with no enum — do NOT repeat add-field, it would add a SECOND ` +
+                    `field of the same name. Fix it with operation="modify-field", ` +
+                    `fieldEnumType="${enumTypeArg}", or remove it with operation="remove-field".`,
+              };
+            }
+          }
+          break;
+        }
+
+        if (args.fieldName && args.fieldType) {
+          // fieldType is the EDT name; fieldBaseType is the primitive base type.
+          // When fieldBaseType is omitted, auto-resolve it from the symbol index so the
+          // correct AxTableField XML element is emitted. Always pass fieldType as edtName
+          // so the <ExtendedDataType> reference is always written — previously, omitting
+          // fieldBaseType left edtName undefined and produced fields with no EDT reference.
+          const edtName = args.fieldType;
+          let baseType: string = (args as any).fieldBaseType ?? '';
+          if (!baseType) {
+            try {
+              const rdb = symbolIndex.getReadDb();
+              baseType = resolveEdtBaseTypeForField(edtName, rdb);
+            } catch {
+              baseType = edtName; // bridge will apply its own name heuristics
+            }
+          }
+          bridgeResult = await bridgeAddField(
+            context.bridge,
+            objectName,
+            args.fieldName,
+            baseType,
+            edtName,
+            args.fieldMandatory,
+            args.fieldLabel,
+          );
+        }
+        break;
+      }
+      case 'modify-field': {
+        if (args.fieldName) {
+          // Map the field-* params onto the bare prop keys the bridge expects.
+          const fieldProps: Record<string, string> = {};
+          if ((args as any).fieldLabel) fieldProps.label = (args as any).fieldLabel;
+          if ((args as any).fieldHelpText) fieldProps.helpText = (args as any).fieldHelpText;
+          if ((args as any).fieldMandatory !== undefined) fieldProps.mandatory = String((args as any).fieldMandatory);
+          if ((args as any).fieldType) fieldProps.edt = (args as any).fieldType;
+          if ((args as any).fieldEnumType) fieldProps.enumType = (args as any).fieldEnumType;
+          if ((args as any).fieldStringSize) fieldProps.stringSize = String((args as any).fieldStringSize);
+          bridgeResult = await bridgeModifyField(
+            context.bridge,
+            objectName,
+            args.fieldName,
+            Object.keys(fieldProps).length > 0 ? fieldProps : undefined,
+          );
+        }
+        break;
+      }
+      case 'rename-field': {
+        if (args.fieldName && (args as any).fieldNewName) {
+          bridgeResult = await bridgeRenameField(
+            context.bridge,
+            objectName,
+            args.fieldName,
+            (args as any).fieldNewName,
+          );
+        }
+        break;
+      }
+      case 'remove-field': {
+        if (args.fieldName) {
+          bridgeResult = await bridgeRemoveField(
+            context.bridge,
+            objectName,
+            args.fieldName,
+          );
+        }
+        break;
+      }
+      case 'replace-all-fields': {
+        if ((args as any).fields) {
+          const rawFields: any[] = (args as any).fields;
+          const resolvedFields = rawFields.map((f: any) => {
+            if (!f.type && f.edt) {
+              try {
+                const rdb = symbolIndex.getReadDb();
+                return { ...f, type: resolveEdtBaseTypeForField(f.edt, rdb) };
+              } catch {
+                return f;
+              }
+            }
+            return f;
+          });
+          bridgeResult = await bridgeReplaceAllFields(
+            context.bridge,
+            objectName,
+            resolvedFields,
+          );
+        }
+        break;
+      }
+      case 'add-index': {
+        if ((args as any).indexName) {
+          // indexFields is documented (Zod + MCP schema) as [{ fieldName, direction? }],
+          // but the bridge's addIndex expects a flat string[] of field names. Map the
+          // objects to their fieldName here — passing the objects straight through makes
+          // the C# side deserialize [{fieldName:…}] into List<string>, which throws and
+          // surfaces as a null bridge result (misreported as "could not resolve table").
+          const indexFieldNames: string[] | undefined = Array.isArray((args as any).indexFields)
+            ? (args as any).indexFields.map((f: any) => (typeof f === 'string' ? f : f?.fieldName)).filter(Boolean)
+            : undefined;
+          // indexAllowDuplicates / indexAlternateKey are booleans on the wire, but
+          // the AxTable XML value is No/Yes — callers naturally pass the STRING and
+          // used to get a bare "expected boolean" rejection (#27). Accept both.
+          const allowDuplicates = coerceNoYesFlag((args as any).indexAllowDuplicates);
+          const alternateKey = coerceNoYesFlag((args as any).indexAlternateKey);
+          bridgeResult = await bridgeAddIndex(
+            context.bridge,
+            objectName,
+            (args as any).indexName,
+            indexFieldNames,
+            allowDuplicates,
+            alternateKey,
+          );
+          // Fallback: the bridge's AddIndex resolves the table via
+          // _provider.Tables.Read, whose metadata roots are fixed at startup, so a
+          // table CREATED THIS SESSION reports "Table '<name>' not found" — even
+          // after update_symbol_index and even when an explicit filePath was
+          // supplied (see corpus L2-error-handling-infolog / L3-workflow-document-
+          // submit). Rather than push the agent into the forbidden whole-file
+          // overwrite (which also drops allowDuplicates/alternateKey — #35), write
+          // the index straight into the on-disk XML.
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlAddIndex(
+              actualFilePath,
+              (args as any).indexName,
+              indexFieldNames,
+              allowDuplicates,
+              alternateKey,
+            );
+            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+          }
+        }
+        break;
+      }
+      case 'remove-index': {
+        if ((args as any).indexName) {
+          bridgeResult = await bridgeRemoveIndex(
+            context.bridge,
+            objectName,
+            (args as any).indexName,
+          );
+        }
+        break;
+      }
+      case 'add-full-text-index': {
+        if ((args as any).indexName) {
+          // indexFields carries the same [{fieldName}] shape add-index documents.
+          const fullTextFields: string[] | undefined = Array.isArray((args as any).indexFields)
+            ? (args as any).indexFields.map((f: any) => (typeof f === 'string' ? f : f?.fieldName)).filter(Boolean)
+            : undefined;
+          bridgeResult = await bridgeAddFullTextIndex(
+            context.bridge,
+            objectName,
+            (args as any).indexName,
+            fullTextFields,
+          );
+        }
+        break;
+      }
+      case 'remove-full-text-index': {
+        if ((args as any).indexName) {
+          bridgeResult = await bridgeRemoveFullTextIndex(
+            context.bridge,
+            objectName,
+            (args as any).indexName,
+          );
+        }
+        break;
+      }
+      case 'add-table-mapping': {
+        if ((args as any).mapName) {
+          bridgeResult = await bridgeAddTableMapping(
+            context.bridge,
+            objectName,
+            (args as any).mapName,
+            (args as any).mappingTable,
+            (args as any).mappingConnections,
+          );
+        }
+        break;
+      }
+      case 'remove-table-mapping': {
+        if ((args as any).mapName) {
+          bridgeResult = await bridgeRemoveTableMapping(
+            context.bridge,
+            objectName,
+            (args as any).mapName,
+          );
+        }
+        break;
+      }
+      case 'add-relation': {
+        if ((args as any).relationName && (args as any).relatedTable) {
+          // relationConstraints is documented as [{ fieldName, relatedFieldName }], but the
+          // bridge/C# WriteRelationConstraint deserializes the JSON keys { field, relatedField }.
+          // Without this remap the keys don't match: C# sees no `field`/`relatedField`, leaves
+          // both null, and silently writes a relation with EMPTY constraints (no hard error —
+          // the corruption only surfaces at compile time). Map the field names explicitly.
+          const constraints: Array<{ field?: string; relatedField?: string }> | undefined =
+            Array.isArray((args as any).relationConstraints)
+              ? (args as any).relationConstraints.map((c: any) => ({
+                  field: c?.field ?? c?.fieldName,
+                  relatedField: c?.relatedField ?? c?.relatedFieldName,
+                }))
+              : undefined;
+          const relationProperties = {
+            relationCardinality: (args as any).relationCardinality ?? 'ZeroMore',
+            relatedTableCardinality: (args as any).relatedTableCardinality ?? 'ExactlyOne',
+            relationshipType: (args as any).relationshipType ?? 'Association',
+          };
+          bridgeResult = await bridgeAddRelation(
+            context.bridge,
+            objectName,
+            (args as any).relationName,
+            (args as any).relatedTable,
+            constraints,
+            relationProperties,
+          );
+          // The bridge now sets Cardinality/RelatedTableCardinality/RelationshipType
+          // through the provider (verified on the VM: they serialise in the SDK's own
+          // element order). Dropping them is what raised
+          // BPErrorTableRelationshipPropertiesCompleteness on a relation reported as
+          // added, with no repair path — modify-property rejects
+          // Relations/<name>/RelationshipType (findings #5 / #35).
+          //
+          // The on-disk writer stays as the fallback for an OLD bridge binary, which
+          // ignores the new params without complaint; it no-ops when the properties are
+          // already present, so the bridge path costs one file read.
+          if (bridgeResult?.success && !(bridgeResult as any).propertiesWritten) {
+            const relProps = await directXmlEnsureRelationProperties(
+              actualFilePath,
+              (args as any).relationName,
+              relationProperties.relationCardinality,
+              relationProperties.relatedTableCardinality,
+              relationProperties.relationshipType,
+            );
+            if (relProps && relProps.applied.length > 0) {
+              bridgeResult = {
+                success: true,
+                message: `${bridgeResult.message} (+ ${relProps.applied.join(', ')} written directly to the XML)`,
+              };
+            }
+          }
+        }
+        break;
+      }
+      case 'remove-relation': {
+        if ((args as any).relationName) {
+          bridgeResult = await bridgeRemoveRelation(
+            context.bridge,
+            objectName,
+            (args as any).relationName,
+          );
+        }
+        break;
+      }
+      case 'add-delete-action':
+      case 'remove-delete-action': {
+        // No bridge op exists for DeleteActions (#36) — this is the only path.
+        const daName = (args as any).deleteActionName ?? (args as any).deleteActionTable;
+        if (daName) {
+          bridgeResult = await directXmlDeleteAction(
+            actualFilePath,
+            operation === 'add-delete-action' ? 'add' : 'remove',
+            daName,
+            (args as any).deleteActionTable,
+            (args as any).deleteActionType,
+          );
+        }
+        break;
+      }
+      case 'add-field-group': {
+        if ((args as any).fieldGroupName) {
+          bridgeResult = await bridgeAddFieldGroup(
+            context.bridge,
+            objectName,
+            (args as any).fieldGroupName,
+            (args as any).fieldGroupLabel,
+            (args as any).fieldGroupFields,
+          );
+        }
+        break;
+      }
+      case 'remove-field-group': {
+        if ((args as any).fieldGroupName) {
+          bridgeResult = await bridgeRemoveFieldGroup(
+            context.bridge,
+            objectName,
+            (args as any).fieldGroupName,
+          );
+        }
+        break;
+      }
+      case 'add-field-to-field-group': {
+        if ((args as any).fieldGroupName && args.fieldName) {
+          const groupName = (args as any).fieldGroupName as string;
+          const extendFlag = (args as any).extendBaseFieldGroup as boolean | undefined;
+          bridgeResult = await bridgeAddFieldToFieldGroup(
+            context.bridge,
+            objectName,
+            groupName,
+            args.fieldName,
+            extendFlag,
+          );
+
+          // ── AUTO-CORRECT ────────────────────────────────────────────────────
+          // The bridge refuses with a message that states its own fix: the group is
+          // absent from the extension's own <FieldGroups>, so if the BASE table
+          // defines it, <FieldGroupExtensions> is the only place the field can go.
+          // Confirm that against the base table's XML before acting — the bridge
+          // does not check it, and creating a FieldGroupExtension for a group that
+          // exists nowhere would write metadata no form ever reads.
+          // Only when the caller left extendBaseFieldGroup unset: an explicit
+          // false is a decision, not an omission.
+          if (
+            autoCorrect &&
+            extendFlag === undefined &&
+            objectType === 'table-extension' &&
+            bridgeResult && !bridgeResult.success &&
+            isBaseFieldGroupMissError(bridgeResult.message)
+          ) {
+            const baseTable = objectName.split('.')[0];
+            if (await baseObjectDefinesFieldGroup(baseTable, groupName, symbolIndex)) {
+              const retried = await bridgeAddFieldToFieldGroup(
+                context.bridge,
+                objectName,
+                groupName,
+                args.fieldName,
+                true,
+              );
+              if (retried?.success) {
+                bridgeResult = retried;
+                noteAutoCorrection(
+                  autoCorrectNotes,
+                  `'${groupName}' is defined by the base table "${baseTable}"; extended it through ` +
+                  `<FieldGroupExtensions> instead of creating a new group. ` +
+                  `Pass extendBaseFieldGroup=true for a base-table group.`,
+                );
+              }
+            }
+          }
+        }
+        break;
+      }
+      case 'modify-property': {
+        if (args.propertyPath && args.propertyValue !== undefined) {
+          // ── Semantic guard for AxEdtExtension property changes ───────────────
+          // D365FO silently accepts illegal extension edits (e.g. widening
+          // StringSize on a derived EDT) but the change is ineffective at
+          // runtime and corrupts the metadata model. Block them here with a
+          // clear explanation of the proper alternative.
+          if (objectType === 'edt-extension') {
+            const guard = await validateEdtExtensionChange(
+              objectName,
+              args.propertyPath,
+              String(args.propertyValue),
+              symbolIndex.getReadDb(),
+              context.bridge,
+            );
+            if (!guard.ok) {
+              return {
+                content: [{ type: 'text', text: guard.message ?? 'EDT extension change rejected.' }],
+                isError: true,
+              };
+            }
+          }
+
+          bridgeResult = await bridgeSetProperty(
+            context.bridge,
+            objectType,
+            objectName,
+            args.propertyPath,
+            args.propertyValue,
+          );
+
+          // Fallback: some object types (confirmed: AxForm) are rejected by the
+          // bridge outright for modify-property even though the property is a
+          // plain text element trivially editable by string replacement.
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlModifyProperty(
+              actualFilePath, args.propertyPath, String(args.propertyValue),
+              describeBridgeFallbackReason(context.bridge, objectType, 'modify-property', bridgeResult),
+            );
+            if (xmlFallbackResult) {
+              bridgeResult = xmlFallbackResult;
+            }
+          }
+        }
+        break;
+      }
+      case 'replace-code': {
+        // Auto-detect common mistake: agent sends sourceCode/methodCode instead of oldCode/newCode
+        const hasOldNew = args.oldCode && args.newCode !== undefined;
+        const sentSourceCode = args.sourceCode || (args as any).methodCode;
+        
+        if (!hasOldNew && sentSourceCode) {
+          throw new Error(
+            `⛔ replace-code requires 'oldCode' and 'newCode' — NOT 'sourceCode'/'methodCode'.\n\n` +
+            `You sent sourceCode/methodCode but replace-code needs:\n` +
+            `  • oldCode = the exact existing snippet to find\n` +
+            `  • newCode = the replacement snippet\n\n` +
+            `Example:\n` +
+            `  d365fo_file(action="modify", objectType="form", objectName="MyForm",\n` +
+            `    operation="replace-code",\n` +
+            `    methodName="PostButton.clicked",\n` +
+            `    oldCode="ttsbegin;",\n` +
+            `    newCode="")\n\n` +
+            `If you want to replace an entire existing method, pass the full old method source as oldCode and the full new method source as newCode so the edit stays in place. Use remove-method + add-method only when you intentionally want a remove/add operation.`
+          );
+        }
+        
+        if (hasOldNew) {
+          // Try bridge first
+          bridgeResult = await bridgeReplaceCode(
+            context.bridge,
+            objectType,
+            objectName,
+            args.methodName,
+            args.oldCode!,
+            args.newCode!,
+          );
+
+          // Fallback: if bridge returns null (unsupported type or not connected)
+          // or success=false (SDK couldn't find the code — e.g. form control override),
+          // do direct string replacement in the XML file.
+          // This handles form control override methods which the SDK may not expose.
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlReplaceCode(
+              actualFilePath, args.oldCode!, args.newCode!,
+              describeBridgeFallbackReason(context.bridge, objectType, 'replace-code', bridgeResult),
+            );
+            if (xmlFallbackResult) {
+              bridgeResult = xmlFallbackResult;
+            }
+          }
+        } else {
+          throw new Error(
+            `replace-code requires both 'oldCode' and 'newCode' parameters.\n` +
+            `  oldCode: ${args.oldCode ? 'provided' : '⛔ MISSING'}\n` +
+            `  newCode: ${args.newCode !== undefined ? 'provided' : '⛔ MISSING'}\n` +
+            `Note: 'sourceCode' is NOT an alias for replace-code — you must use 'oldCode' and 'newCode'.\n\n` +
+            renderOpSpec('replace-code')
+          );
+        }
+        break;
+      }
+      case 'add-enum-value': {
+        if ((args as any).enumValueName !== undefined) {
+          bridgeResult = await bridgeAddEnumValue(
+            context.bridge,
+            objectName,
+            (args as any).enumValueName,
+            (args as any).enumValueInt ?? 0,
+            (args as any).enumValueLabel,
+            (args as any).enumValueCountryRegionCodes,
+          );
+        }
+        break;
+      }
+      case 'modify-enum-value': {
+        if ((args as any).enumValueName) {
+          const evProps: Record<string, string> = {};
+          if ((args as any).enumValueNewName) evProps.name = (args as any).enumValueNewName;
+          if ((args as any).enumValueLabel) evProps.label = (args as any).enumValueLabel;
+          if ((args as any).enumValueInt !== undefined) evProps.value = String((args as any).enumValueInt);
+          bridgeResult = await bridgeModifyEnumValue(
+            context.bridge,
+            objectName,
+            (args as any).enumValueName,
+            Object.keys(evProps).length > 0 ? evProps : undefined,
+          );
+        }
+        break;
+      }
+      case 'remove-enum-value': {
+        if ((args as any).enumValueName) {
+          bridgeResult = await bridgeRemoveEnumValue(
+            context.bridge,
+            objectName,
+            (args as any).enumValueName,
+          );
+        }
+        break;
+      }
+      case 'add-control': {
+        if ((args as any).controlName && (args as any).parentControl) {
+          // The tool never exposes a `controlType` input (not in the Zod schema below),
+          // so this always used to fall back to the literal string "String" — every
+          // control, regardless of the bound field's actual type, was created as a plain
+          // string edit control. Infer a better default from the field name heuristic
+          // (the same one used for table field base-type resolution) when a
+          // controlDataField is given; this is a best-effort name heuristic, not an
+          // index/bridge EDT lookup (that would need resolving controlDataSource, a form
+          // DATA SOURCE name, back to its bound table — out of scope here), but it is
+          // strictly better than always guessing "String".
+          const resolvedControlType =
+            (args as any).controlType
+            ?? ((args as any).controlDataField ? heuristicEdtBaseType((args as any).controlDataField) : undefined)
+            ?? 'String';
+          bridgeResult = await bridgeAddControl(
+            context.bridge,
+            objectName,
+            (args as any).controlName,
+            (args as any).parentControl,
+            resolvedControlType,
+            (args as any).controlDataSource,
+            (args as any).controlDataField,
+            (args as any).controlLabel,
+          );
+          // Fallback: the bridge's AddControl resolves its target via _provider.Forms,
+          // which can never find a form EXTENSION (named "Base.Suffix") — it always
+          // reports 'Form "<ext>" not found', regardless of metadata-root freshness.
+          // For form extensions, write the control element straight into the XML.
+          if (objectType === 'form-extension' && (!bridgeResult || !bridgeResult.success)) {
+            const xmlFallbackResult = await directXmlAddControl(
+              actualFilePath,
+              (args as any).controlName,
+              (args as any).parentControl,
+              resolvedControlType,
+              (args as any).controlDataSource,
+              (args as any).controlDataField,
+              (args as any).controlLabel,
+            );
+            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+          }
+        }
+        break;
+      }
+      case 'add-data-source': {
+        if ((args as any).dataSourceName && (args as any).dataSourceTable) {
+          bridgeResult = await bridgeAddDataSource(
+            context.bridge,
+            objectType,
+            objectName,
+            (args as any).dataSourceName,
+            (args as any).dataSourceTable,
+            (args as any).joinSource,
+            (args as any).linkType,
+          );
+        }
+        break;
+      }
+      case 'add-field-modification': {
+        if (args.fieldName) {
+          bridgeResult = await bridgeAddFieldModification(
+            context.bridge,
+            objectName,
+            args.fieldName,
+            (args as any).fieldLabel,
+            (args as any).fieldMandatory,
+          );
+        }
+        break;
+      }
+      case 'add-menu-item-to-menu': {
+        if ((args as any).menuItemToAdd) {
+          bridgeResult = await bridgeAddMenuItemToMenu(
+            context.bridge,
+            objectName,
+            (args as any).menuItemToAdd,
+            (args as any).menuItemToAddType,
+          );
+          // Fallback: bridge requires the menu to exist in its loaded metadata roots.
+          // Newly created menus aren't there yet — write directly to the XML file.
+          if (!bridgeResult || !bridgeResult.success) {
+            const xmlFallbackResult = await directXmlAddMenuItemToMenu(
+              actualFilePath,
+              (args as any).menuItemToAdd,
+              (args as any).menuItemToAddType ?? 'display',
+            );
+            if (xmlFallbackResult) {
+              bridgeResult = xmlFallbackResult;
+            }
+          }
+        }
+        break;
+      }
+      default:
+        throw new Error(`Unsupported operation: ${operation}`);
+    }
+
+    if (!bridgeResult) {
+      // Required params + full per-op specs live in the central registry
+      // (d365foFileOpSpecs.ts) — the published schema only advertises a
+      // free-form `params` object, so this error must carry the whole spec.
+      const required = getRequiredParams(operation);
+      // Treat a supplied alias as satisfying the requirement.
+      const isProvided = (p: string) =>
+        (args as any)[p] !== undefined || (OP_PARAM_ALIASES[p] ?? []).some(a => (args as any)[a] !== undefined);
+      const missing = required.filter(p => !isProvided(p));
+
+      // Auto-refresh retry: all required params are present but bridge returned
+      // null — the object was likely written this session and isn't in the
+      // bridge's metadata model yet (roots are fixed at startup). Refresh once
+      // and re-run the operation. Afterwards the normal error path takes over.
+      if (missing.length === 0 && !_bridgeRetried && context.bridge) {
+        console.error(
+          `[modify_d365fo_file] ⚠️ '${operation}' on '${objectName}' returned null — ` +
+          `refreshing bridge provider and retrying once`,
+        );
+        try { await bridgeRefreshProvider(context.bridge); } catch { /* best-effort */ }
+        _bridgeRetried = true;
+        continue _bridgeRetry;
+      }
+
+      // Two distinct causes produce a null bridge result; pick the message that
+      // matches reality instead of always blaming missing parameters.
+      if (missing.length > 0) {
+        const missingList = missing.map(p => `  ⛔ ${p}: MISSING`);
+        const providedList = required.filter(isProvided).map(p => `  ✅ ${p}: provided`);
+        throw new Error(
+          `Bridge operation '${operation}' returned null — required parameters are missing.\n` +
+          `Required parameters for '${operation}':\n${[...providedList, ...missingList].join('\n')}\n` +
+          `Provided args: ${Object.keys(args).filter(k => (args as any)[k] !== undefined).join(', ')}\n\n` +
+          renderOpSpec(operation)
+        );
+      }
+
+      // All required params were supplied, yet the bridge returned null (it never
+      // attempted the op — e.g. provider not ready). Surface the actionable
+      // same-session resolution guidance.
+      throw new Error(unresolvedObjectError(operation, objectType, objectName, actualFilePath));
+    }
+
+    // Bridge executed but reported failure. A resolution failure (object created
+    // this session, not yet in the provider's fixed-root model) gets the same
+    // one-shot refresh+retry the null path gets; any other failure falls through
+    // to the real-message throw below — no longer masked as a generic guess.
+    if (
+      !bridgeResult.success &&
+      !_bridgeRetried &&
+      context.bridge &&
+      isUnresolvedObjectError(bridgeResult.message)
+    ) {
+      console.error(
+        `[modify_d365fo_file] ⚠️ '${operation}' on '${objectName}' failed (${bridgeResult.message}) — ` +
+        `refreshing bridge provider and retrying once`,
+      );
+      try { await bridgeRefreshProvider(context.bridge); } catch { /* best-effort */ }
+      _bridgeRetried = true;
+      continue _bridgeRetry;
+    }
+    break _bridgeRetry;
+    // Labelled retry loop: every exit is an explicit `break _bridgeRetry`, so the
+    // condition is deliberately unconditional.
+    // biome-ignore lint/correctness/noConstantCondition: labelled retry loop, exits via break
+    } while (true); // end of retry loop
+
+    if (!bridgeResult!.success) {
+      // Surface the real bridge error. For an object-resolution failure keep the
+      // actionable same-session fallback guidance, now including exactly what the
+      // bridge reported instead of a generic "could not resolve" guess.
+      if (isUnresolvedObjectError(bridgeResult!.message)) {
+        throw new Error(
+          unresolvedObjectError(operation, objectType, objectName, actualFilePath, bridgeResult!.message),
+        );
+      }
+      let opErrorMsg = `Bridge operation '${operation}' failed: ${bridgeResult!.message}`;
+      if (operation === 'add-control' && /parent control .* not found/i.test(bridgeResult!.message ?? '')) {
+        opErrorMsg +=
+          `\n\n💡 The ${objectType} '${objectName}' WAS found — only the parent container was not.\n` +
+          `  • To add a control at the TOP LEVEL of the form design, pass parentControl="Design".\n` +
+          `  • Otherwise list the existing containers first: get_object_info(objectType="${objectType}", name="${objectName}")\n` +
+          `    and pass the exact container name (e.g. a Tab, TabPage, Group or Grid) as parentControl.\n` +
+          `  • Do not rewrite the whole object from hand-authored XML — it loses metadata the ` +
+          `provider writes for you. Fix the parentControl instead.`;
+      }
+      if (operation === 'replace-code' && /oldCode not found/i.test(bridgeResult!.message ?? '')) {
+        opErrorMsg +=
+          `\n\n💡 Tip: The oldCode must match the exact source currently on disk.\n` +
+          `  • Fetch the current source first: get_object_info(objectType="${objectType}", name="${objectName}")\n` +
+          `  • Then copy the exact snippet from the output as oldCode.\n` +
+          `  • Alternative: use add-method with the complete new method body — it overwrites the existing method.`;
+      }
+      throw new Error(opErrorMsg);
+    }
+
+    console.error(`[modify_d365fo_file] ✅ Bridge ${operation}: ${bridgeResult.message}`);
+
+    // Post-write validation (best-effort, fire-and-forget).
+    // Not awaited: the validation goes through the sequential bridge stdin/stdout
+    // pipe and can take 60s+, which would block all subsequent MCP calls.
+    // See: https://github.com/dynamics365ninja/d365fo-mcp-server/issues/407
+    const bridgeValidation = '';
+    bridgeValidateAfterWrite(
+      context.bridge,
+      objectType,
+      objectName,
+    ).then(validationMsg => {
+      if (validationMsg) {
+        console.error(`[modify_d365fo_file] Bridge validation: ${validationMsg}`);
+      }
+    }).catch(e => {
+      console.error(`[modify_d365fo_file] Bridge validation skipped: ${e}`);
+    });
+
+    // Optionally add the file to the Visual Studio project
+    let projectMessage = '';
+    if (args.addToProject) {
+      const configManager = getConfigManager();
+      await configManager.ensureLoaded();
+
+      let resolvedProjectPath = args.projectPath || await configManager.getProjectPath() || undefined;
+      const resolvedSolutionPath = args.solutionPath || await configManager.getSolutionPath() || undefined;
+
+      if (!resolvedProjectPath && resolvedSolutionPath) {
+        resolvedProjectPath = await ProjectFileFinder.findProjectInSolution(
+          resolvedSolutionPath,
+          modelName || configManager.getModelName() || ''
+        ) || undefined;
+      }
+
+      if (resolvedProjectPath) {
+        try {
+          await fs.access(resolvedProjectPath);
+          const projectManager = new ProjectFileManager();
+          const wasAdded = await projectManager.addToProject(
+            resolvedProjectPath,
+            objectType,
+            objectName,
+            actualFilePath
+          );
+          projectMessage = wasAdded
+            ? `\n✅ Added to VS project: \`${resolvedProjectPath}\``
+            : `\n📋 Already in VS project: \`${resolvedProjectPath}\``;
+        } catch (projErr) {
+          const errMsg = projErr instanceof Error ? projErr.message : String(projErr);
+          projectMessage = `\n⚠️ File modified but could not add to VS project: ${errMsg}`;
+        }
+      } else {
+        projectMessage =
+          `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
+          `Add \`projectPath\` to .mcp.json or pass it explicitly.`;
+      }
+    }
+
+    // Advisory X++ select-statement lint on the source just written (add-method /
+    // replace-code etc.). Non-blocking: surfaces a likely "WHERE after join" mistake
+    // up front instead of letting it become a build error the agent hunts by hand.
+    const xppLintWarnings = lintXppSelect(args.sourceCode ?? (args as any).methodCode ?? args.newCode);
+    const xppLintNote = xppLintWarnings.length > 0 ? `\n\n${xppLintWarnings.join('\n\n')}` : '';
+
+    // Two BP rules fire on a field that compiles perfectly, so they are invisible
+    // until a BP run several steps later — and one of them (the label copy) then
+    // needs new labels, i.e. rework of what was just written. Say it here instead.
+    //
+    // The field-group note used to spell out a whole follow-up call, so the agent
+    // made one: every add-field manufactured a second round trip. It now points at
+    // operations[], where the group entry travels in the SAME call as the field.
+    let addFieldBpNote = '';
+    if (operation === 'add-field' && (objectType === 'table' || objectType === 'table-extension')) {
+      const notes = [
+        `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup). ` +
+        `Send the group entry in the SAME call next time — d365fo_file(action="modify", ` +
+        `objectType="${objectType}", objectName="${objectName}", operations=[{operation:"add-field", …}, ` +
+        `{operation:"add-field-to-field-group", fieldName:"${args.fieldName}", fieldGroupName:"<group>"}]).`,
+      ];
+      if ((args as any).fieldEnumType) {
+        notes.push(
+          `⚠️ BP: the field's Label must be a DIFFERENT label id than the enum's own label ` +
+          `(BPErrorFieldLabelIsCopyOfEnumLabel) — same visible text is fine, same id is not.`,
+        );
+      }
+      addFieldBpNote = `\n\n${notes.join('\n')}`;
+    }
+
+    // Corrections the server applied on its own. Kept in the payload so the agent
+    // learns the correct form for next time and the write stays auditable.
+    const autoCorrectNote = autoCorrectNotes.length > 0
+      ? `\n\n${autoCorrectNotes.map(n => `📝 Note: ${n}`).join('\n')}\n` +
+        `(Pass autoCorrect=false to have corrections like this raise an error instead.)`
+      : '';
+
+    // Re-index the modified object in-process. A modify changes the symbols the
+    // index holds (a renamed field, a new method), and the parser is right here —
+    // making the agent spend a round trip on update_symbol_index for a file this
+    // process just wrote, and another on the lookup that failed for want of it,
+    // was pure waste.
+    const indexNote = await upsertWrittenFileIntoIndex(actualFilePath, context);
+
+    // Verify the write here rather than leaving the caller to spend a
+    // verify_d365fo_project round trip asking what this call already knows.
+    // The project path resolved inside the addToProject branch is block-scoped,
+    // and a modify commonly runs with addToProject off — re-resolve it here so the
+    // .rnrproj check still happens (config reads are cached).
+    const verifyProjectPath =
+      args.projectPath || (await getConfigManager().getProjectPath()) || undefined;
+    const verifyNote = renderWriteVerification(
+      await verifyWrittenFile(actualFilePath, verifyProjectPath),
+    );
+    const bpNote = await runInlineBpCheck((args as any).bpCheck, objectType, objectName, context);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text:
+            `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${autoCorrectNote}\n\n` +
+            `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
+            `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}${verifyNote}${indexNote}${bpNote}` +
+            (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
+            `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
+        },
+      ],
+    };
+
+  } catch (error) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `❌ Error modifying D365FO file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+}
+
+/** Object types whose members belong to a Microsoft-owned host object. */
+const EXTENSION_OBJECT_TYPES = new Set([
+  'table-extension', 'form-extension', 'enum-extension', 'edt-extension',
+  'view-extension', 'query-extension', 'map-extension', 'data-entity-extension',
+  'class-extension', 'menu-extension',
+  'menu-item-display-extension', 'menu-item-action-extension', 'menu-item-output-extension',
+  'security-duty-extension', 'security-role-extension',
+]);
+
+/**
+ * Which `args` key each operation mints a NEW member name in, for extensions.
+ *
+ * Deliberately absent:
+ *  - every method operation. A CoC/extension-class method name must MATCH the
+ *    base method it wraps (`public void insert() { next insert(); }`) — renaming
+ *    it turns an override into a dead method that never runs.
+ *  - add-field-to-field-group's fieldGroupName. That names an EXISTING, usually
+ *    Microsoft-owned group being extended; prefixing it would point the write at
+ *    a group that does not exist.
+ *  - every remove-/modify- operation, which addresses members that already exist
+ *    under whatever name they were created with.
+ */
+const EXTENSION_MEMBER_NAME_ARG: Record<string, string> = {
+  'add-field': 'fieldName',
+  'add-index': 'indexName',
+  'add-full-text-index': 'indexName',
+  'add-field-group': 'fieldGroupName',
+  'add-enum-value': 'enumValueName',
+};
+
+/**
+ * Extensions of `baseObject` that already live in `model` — so the cross-model
+ * refusal can point at the extension the active model ALREADY has instead of
+ * telling the agent to create a second one next to it.
+ *
+ * Reads `extension_metadata`, which is indexed on base_object_name and small
+ * enough that COLLATE NOCASE here costs nothing (unlike the 1M-row symbols
+ * table). Best-effort: a missing table or unbuilt index yields no suggestions,
+ * never an error — the refusal itself does not depend on it.
+ */
+function findExtensionsInModel(
+  symbolIndex: any,
+  baseObject: string,
+  model: string,
+): ExistingExtension[] {
+  if (!baseObject || !model) return [];
+  try {
+    const rdb = symbolIndex?.getReadDb?.();
+    if (!rdb) return [];
+    const rows = rdb.prepare(
+      `SELECT extension_name AS name, extension_type AS type
+         FROM extension_metadata
+        WHERE base_object_name = ? COLLATE NOCASE
+          AND model = ? COLLATE NOCASE
+        LIMIT 5`,
+    ).all(baseObject, model) as ExistingExtension[];
+    return rows ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Prefix the new member name this operation carries, when writing into an
+ * extension. Mutates `args` in place and returns a note for the response (empty
+ * when nothing changed), so the agent learns the real name and addresses the
+ * member correctly in its next call.
+ *
+ * Idempotent: a name that already carries the prefix — in either the underscore
+ * or the bare form, case-insensitively — is left untouched, so an agent that
+ * prefixes by hand does not end up with DEMO_DEMO_Foo.
+ */
+export function applyExtensionMemberPrefix(
+  args: Record<string, any>,
+  objectType: string,
+  operation: string,
+  modelName: string,
+): string {
+  if (!EXTENSION_OBJECT_TYPES.has(objectType)) return '';
+
+  const argKey = EXTENSION_MEMBER_NAME_ARG[operation];
+  if (!argKey) return '';
+
+  const original = args[argKey];
+  if (typeof original !== 'string' || original.trim().length === 0) return '';
+
+  const token = resolveRegularObjectPrefixToken(modelName);
+  if (!token) return '';
+
+  const bare = token.replace(/_+$/, '');
+  const lower = original.toLowerCase();
+  if (lower.startsWith(token.toLowerCase()) || lower.startsWith(bare.toLowerCase())) return '';
+
+  const prefixed = `${token}${original.charAt(0).toUpperCase()}${original.slice(1)}`;
+  args[argKey] = prefixed;
+  console.error(`[modifyD365File] Extension member prefixed: ${original} → ${prefixed} (model ${modelName})`);
+
+  return (
+    `\n\n> 🔖 Named \`${prefixed}\` — members added to an extension carry model ` +
+    `"${modelName}"'s prefix \`${token}\`. Use that name in later calls.`
+  );
+}
+
+/**
+ * Find D365FO file path
+ */
+async function findD365File(
+  symbolIndex: any,
+  objectType: string,
+  objectName: string,
+  modelName?: string,
+  _workspacePath?: string,
+  explicitFilePath?: string,
+  packagePath?: string,
+): Promise<string | null> {
+  // Explicit path bypasses all lookup — use when caller knows the exact location
+  // (e.g. the path was returned by create_d365fo_file).
+  if (explicitFilePath) {
+    return explicitFilePath;
+  }
+
+  // Resolve by the given name first; if that misses, retry once with the model
+  // prefix applied. create_d365fo_file auto-prefixes new object names (e.g.
+  // "RentEquipmentTable" → "ContosoRentEquipmentTable"), so a modify call with the bare
+  // name would otherwise fail to locate the file. The bridge object name is then
+  // re-derived from the resolved file's basename, so the prefixed name flows through.
+  const direct = await resolveD365FileByName(symbolIndex, objectType, objectName, modelName, packagePath);
+  if (direct) return direct;
+
+  const prefix = resolveObjectPrefix(modelName || getConfigManager().getModelName() || '');
+  if (prefix && !objectType.endsWith('-extension')) {
+    const prefixed = applyObjectPrefix(objectName, prefix);
+    if (prefixed && prefixed.toLowerCase() !== objectName.toLowerCase()) {
+      const viaPrefixed = await resolveD365FileByName(symbolIndex, objectType, prefixed, modelName, packagePath);
+      if (viaPrefixed) {
+        console.error(`[modifyD365File] '${objectName}' not found — resolved via prefixed name '${prefixed}'`);
+        return viaPrefixed;
+      }
+    }
+  }
+  return null;
+}
+
+/** Resolve a D365FO file by an exact object name (symbol DB, then filesystem). */
+async function resolveD365FileByName(
+  symbolIndex: any,
+  objectType: string,
+  objectName: string,
+  modelName?: string,
+  packagePath?: string,
+): Promise<string | null> {
+  // Symbol DB only indexes a subset of types — for the rest go straight to filesystem.
+  const dbTypeMap: Record<string, string> = {
+    class: 'class',
+    table: 'table',
+    form: 'form',
+    enum: 'enum',
+    query: 'query',
+    view: 'view',
+  };
+
+  const symbolType = dbTypeMap[objectType];
+
+  // Query database when a symbol type mapping exists
+  if (symbolType) {
+    let dbResult: string | null = null;
+    const rdb = symbolIndex.getReadDb();
+    if (modelName) {
+      const stmt = rdb.prepare(`
+        SELECT file_path
+        FROM symbols
+        WHERE type = ? AND name = ? AND model = ?
+        LIMIT 1
+      `);
+      const row = stmt.get(symbolType, objectName, modelName);
+      dbResult = row ? row.file_path : null;
+    } else {
+      // No modelName specified — prefer the user's configured model to avoid
+      // accidentally resolving to a standard Microsoft model (issue #369).
+      const configuredModel = getConfigManager().getModelName();
+      if (configuredModel) {
+        const stmtPref = rdb.prepare(`
+          SELECT file_path
+          FROM symbols
+          WHERE type = ? AND name = ? AND model = ?
+          LIMIT 1
+        `);
+        const prefRow = stmtPref.get(symbolType, objectName, configuredModel);
+        dbResult = prefRow ? prefRow.file_path : null;
+      }
+      if (!dbResult) {
+        // Fallback: any model (still guarded by the standard-model check after findD365File)
+        const stmt = rdb.prepare(`
+          SELECT file_path
+          FROM symbols
+          WHERE type = ? AND name = ?
+          ORDER BY model
+          LIMIT 1
+        `);
+        const row = stmt.get(symbolType, objectName);
+        dbResult = row ? row.file_path : null;
+      }
+    }
+
+    // Only trust the DB path when it is an absolute path that actually exists on disk.
+    // The DB file_path column stores paths from the CI build agent (e.g. C:\home\vsts\work\...)
+    // which are never accessible at runtime.  Relative paths (e.g. "ContosoExt/ContosoExt/AxClass/Foo.xml")
+    // also come from this source and cannot be used directly.
+    // Fall through to findD365FileOnDisk which builds the correct absolute path from config.
+    //
+    // Use cross-platform absolute detection so that Windows-style drive paths (C:\...)
+    // are recognised as absolute even when the server runs on Linux/macOS (path.isAbsolute
+    // returns false for Windows paths on POSIX hosts, causing spurious fallback loops).
+    const isAbsoluteXPlat = (p: string) =>
+      path.isAbsolute(p) || /^[a-zA-Z]:[\\/]/.test(p) || /^\\\\/.test(p);
+    if (dbResult && isAbsoluteXPlat(dbResult)) {
+      try {
+        await import('fs').then(m => m.promises.access(dbResult!));
+        return dbResult;
+      } catch {
+        // Absolute path from DB but not accessible — fall through to filesystem lookup
+        console.error(`[modifyD365File] DB path not accessible: ${dbResult} — falling back to filesystem lookup`);
+      }
+    } else if (dbResult) {
+      console.error(`[modifyD365File] DB returned relative path: ${dbResult} — falling back to filesystem lookup`);
+    }
+  }
+
+  // Filesystem fallback: handles newly created files not yet in the symbol index,
+  // and all types not covered by the symbol DB (edt, report, extensions, security, menu …).
+  return findD365FileOnDisk(objectType, objectName, modelName, packagePath);
+}
+
+
+/**
+ * Create file backup and verify it was written successfully.
+ * Throws if the source file is missing or the copy fails, so callers
+ * always know whether a valid backup exists before overwriting.
+ * Returns the backup file path.
+ *
+ * The name carries MILLISECONDS and, if that still collides, a counter. At the old
+ * one-second resolution two modifies of the same file inside the same second
+ * produced the same backup name, so the second copy overwrote the first with
+ * already-modified content — on a target outside git (exactly the case that forces
+ * a backup, see ensureRecoverableModification) the original was then unrecoverable.
+ * COPYFILE_EXCL is what makes the retry a claim rather than a check: it fails
+ * instead of overwriting, so two callers racing on the same name cannot both win.
+ *
+ * Exported for unit tests.
+ */
+export async function createFileBackup(filePath: string): Promise<string> {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/Z$/, '');
+  const base = `${filePath}.backup-${timestamp}`;
+
+  for (let attempt = 0; ; attempt++) {
+    const backupPath = attempt === 0 ? base : `${base}-${attempt}`;
+    try {
+      await fs.copyFile(filePath, backupPath, FS_CONSTANTS.COPYFILE_EXCL);
+      // Confirm the backup has non-zero size before proceeding
+      const stat = await fs.stat(backupPath);
+      if (stat.size === 0) {
+        throw new Error('Backup file was created but is empty');
+      }
+      return backupPath;
+    } catch (error: any) {
+      if (error?.code === 'EEXIST' && attempt < 100) {
+        continue;
+      }
+      throw new Error(
+        `Failed to create backup at "${backupPath}": ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+}
+
+const execFileAsync = util.promisify(execFile);
+
+// Directory → inside-git-work-tree result, cached for the process lifetime so
+// repeated modifies don't re-spawn git for the same metadata folder.
+const gitWorkTreeCache = new Map<string, boolean>();
+
+/**
+ * Cheap check whether a file lives inside a git work tree — i.e. whether
+ * undo_last_modification (git checkout) could revert a change to it.
+ * git not installed, timeout, or any other error → treated as "not a repo".
+ */
+async function isInsideGitWorkTree(filePath: string): Promise<boolean> {
+  const dir = path.dirname(filePath);
+  const cached = gitWorkTreeCache.get(dir);
+  if (cached !== undefined) return cached;
+  let inside = false;
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd: dir,
+      timeout: 5_000,
+      windowsHide: true,
+    });
+    inside = stdout.trim() === 'true';
+  } catch {
+    inside = false;
+  }
+  gitWorkTreeCache.set(dir, inside);
+  return inside;
+}
+
+/**
+ * Backup guard for modify operations. Honors an explicit createBackup=true;
+ * with createBackup=false it force-enables the backup when the target is not
+ * inside a git work tree, because the documented undo path
+ * (undo_last_modification → git checkout) only works inside a repo.
+ * Returns a note to append to the success response ('' when no forced backup
+ * was needed). Exported for unit tests.
+ */
+export async function ensureRecoverableModification(
+  actualFilePath: string,
+  createBackup: boolean,
+): Promise<string> {
+  if (createBackup) {
+    await createFileBackup(actualFilePath);
+    return '';
+  }
+  if (await isInsideGitWorkTree(actualFilePath)) {
+    return '';
+  }
+  const backupPath = await createFileBackup(actualFilePath);
+  return (
+    `\n\nℹ️ Target is not under git — created backup ${backupPath} automatically ` +
+    `(undo_last_modification would not work here).`
+  );
+}
+
+// ─── Form parent-control auto-resolution ────────────────────────────────────
+//
+// When add-control is called with a fuzzy parentControl (e.g. "general"),
+// these helpers find the base form XML, walk the control hierarchy, and return
+// the exact control name so the caller never has to call get_object_info(form) first.
+
+interface ResolvedControl {
+  name: string;
+  parentName: string | null;
+  pathStr: string;
+}
+
+/**
+ * Recursively walk an AxFormControl node forest and collect every control.
+ */
+function walkFormControls(
+  nodes: any[],
+  out: ResolvedControl[],
+  parentName: string | null,
+  pathParts: string[],
+): void {
+  for (const node of nodes) {
+    if (!node || typeof node !== 'object') continue;
+    const name: string = Array.isArray(node.Name) ? node.Name[0] : (node.Name ?? '');
+    if (!name) continue;
+    const currentPath = [...pathParts, name];
+    out.push({ name, parentName, pathStr: currentPath.join(' › ') });
+    const cn = Array.isArray(node.Controls) ? node.Controls[0] : node.Controls;
+    if (cn?.AxFormControl) {
+      const children = Array.isArray(cn.AxFormControl) ? cn.AxFormControl : [cn.AxFormControl];
+      walkFormControls(children, out, name, currentPath);
+    }
+  }
+}
+
+/**
+ * Extract all controls from a parsed AxForm xmlObj.
+ */
+function allControlsFromFormXmlObj(xmlObj: any): ResolvedControl[] {
+  const results: ResolvedControl[] = [];
+  const axForm = xmlObj.AxForm;
+  if (!axForm) return results;
+
+  const designNode = Array.isArray(axForm.Design) ? axForm.Design[0] : axForm.Design;
+  if (!designNode) return results;
+
+  let rootNodes: any[] = [];
+  // AxFormDesign wrapper (standard D365FO 10.0 format)
+  if (designNode.AxFormDesign) {
+    const fds = Array.isArray(designNode.AxFormDesign) ? designNode.AxFormDesign : [designNode.AxFormDesign];
+    for (const fd of fds) {
+      const cn = Array.isArray(fd.Controls) ? fd.Controls[0] : fd.Controls;
+      if (cn?.AxFormControl) {
+        const items = Array.isArray(cn.AxFormControl) ? cn.AxFormControl : [cn.AxFormControl];
+        rootNodes = rootNodes.concat(items);
+      }
+    }
+  } else if (designNode.Controls) {
+    const cn = Array.isArray(designNode.Controls) ? designNode.Controls[0] : designNode.Controls;
+    if (cn?.AxFormControl) {
+      rootNodes = Array.isArray(cn.AxFormControl) ? cn.AxFormControl : [cn.AxFormControl];
+    }
+  }
+  walkFormControls(rootNodes, results, null, []);
+  return results;
+}
+
+/**
+ * Locate the base form XML on disk, trying DB path → remapped path → filesystem scan.
+ * Returns raw XML content, or null if not accessible.
+ */
+export async function findBaseFormXml(baseFormName: string, symbolIndex: any): Promise<string | null> {
+  return findBaseObjectXml('form', baseFormName, symbolIndex);
+}
+
+/**
+ * Locate the XML of a base (non-extension) object on disk, trying DB path →
+ * remapped path → filesystem scan. `objectType` is both the symbols-table type
+ * and the findD365FileOnDisk key ('form', 'table', …).
+ * Returns raw XML content, or null if not accessible.
+ */
+export async function findBaseObjectXml(
+  objectType: string,
+  objectName: string,
+  symbolIndex: any,
+): Promise<string | null> {
+  // Helper: read a file, transparently following JSON metadata proxies.
+  async function tryRead(p: string): Promise<string | null> {
+    try {
+      const raw = await fs.readFile(p, 'utf-8');
+      if (raw.trimStart().startsWith('{')) {
+        const data = JSON.parse(raw);
+        if (data.sourcePath) {
+          try { return await fs.readFile(data.sourcePath, 'utf-8'); } catch { return null; }
+        }
+        return null;
+      }
+      return raw;
+    } catch { return null; }
+  }
+
+  // 1. Symbol DB lookup
+  let dbFilePath: string | null = null;
+  try {
+    const rdb = symbolIndex.getReadDb();
+    const row = rdb.prepare(
+      `SELECT file_path FROM symbols WHERE type = ? AND name = ? LIMIT 1`
+    ).get(objectType, objectName) as any;
+    if (row?.file_path) dbFilePath = row.file_path;
+  } catch { /* ignore */ }
+
+  if (dbFilePath) {
+    // Try absolute DB path as-is
+    const direct = await tryRead(dbFilePath);
+    if (direct) return direct;
+
+    // DB stored a relative path — join with configured packagePath
+    if (!path.isAbsolute(dbFilePath)) {
+      const cm = getConfigManager();
+      await cm.ensureLoaded();
+      const pkgPath = cm.getPackagePath() || fallbackPackagePath();
+      const abs = await tryRead(path.join(pkgPath, dbFilePath));
+      if (abs) return abs;
+    }
+
+    // Build-agent path remapping (e.g. /home/vsts/... → local PackagesLocalDirectory)
+    const remapped = await resolveDbPathLocally(dbFilePath);
+    if (remapped) {
+      const content = await tryRead(remapped);
+      if (content) return content;
+    }
+  }
+
+  // 2. Filesystem scan using model from config
+  const diskPath = await findD365FileOnDisk(objectType, objectName);
+  if (diskPath) return tryRead(diskPath);
+
+  return null;
+}
+
+// ── Auto-correction helpers ────────────────────────────────────────────────
+// A correction is applied ONLY where the failure has exactly one valid reading
+// that the server can derive from state it already holds. Everything else keeps
+// erroring — a wrong write costs far more than the retry round trip this saves.
+
+/** Record a correction, ignoring a repeat from the bridge auto-refresh retry. */
+function noteAutoCorrection(notes: string[], note: string): void {
+  if (!notes.includes(note)) notes.push(note);
+}
+
+/**
+ * add-field was given an XML element name as fieldType. For the *Enum element
+ * — and only that one — the intent is unambiguous ("this field is enum-typed"),
+ * so the enum name is all that is missing. It comes from the payload itself
+ * (fieldEnumType), or from the field name when the symbol index confirms an enum
+ * of exactly that name. Anything else returns undefined and the call still fails.
+ */
+function resolveEnumForFieldElement(
+  fieldTypeElement: string,
+  explicitEnumType: string | undefined,
+  fieldNameCandidates: readonly (string | undefined)[],
+  symbolIndex: any,
+): string | undefined {
+  if (!/Enum$/i.test(fieldTypeElement)) return undefined;
+  if (explicitEnumType) return explicitEnumType;
+
+  for (const candidate of fieldNameCandidates) {
+    if (!candidate) continue;
+    try {
+      const row = symbolIndex.getReadDb().prepare(
+        `SELECT name FROM symbols WHERE type = 'enum' AND name = ? COLLATE NOCASE LIMIT 1`
+      ).get(candidate) as { name?: string } | undefined;
+      // Use the INDEXED spelling — the caller's casing may differ from the AOT name.
+      if (row?.name) return row.name;
+    } catch { /* index unavailable — no derivation, keep erroring */ }
+  }
+  return undefined;
+}
+
+/** The bridge's add-field-to-field-group refusal that names extendBaseFieldGroup as its fix. */
+function isBaseFieldGroupMissError(message: string | undefined): boolean {
+  if (!message) return false;
+  return /field group .* not found on table-extension/i.test(message)
+    && /extendBaseFieldGroup=true/i.test(message);
+}
+
+/** True when the base table's own <FieldGroups> defines `groupName`. */
+async function baseObjectDefinesFieldGroup(
+  baseTableName: string,
+  groupName: string,
+  symbolIndex: any,
+): Promise<boolean> {
+  const xml = await findBaseObjectXml('table', baseTableName, symbolIndex);
+  if (!xml) return false;
+  // <Name> is the first child of every <AxTableFieldGroup>, so a non-greedy hop
+  // from the opening tag to the first Name reads one group name per block.
+  for (const m of xml.matchAll(/<AxTableFieldGroup>[\s\S]*?<Name>([^<]+)<\/Name>/g)) {
+    if (m[1].trim().toLowerCase() === groupName.trim().toLowerCase()) return true;
+  }
+  return false;
+}
+
+/**
+ * Resolve a possibly-fuzzy `parentControl` value to the exact control name in the base form.
+ *
+ * Returns:
+ *  { resolved, pathStr }   — unique case-insensitive substring match (use this name)
+ *  { multiple }            — ambiguous (return candidates to caller)
+ *  null                    — form not found or no controls matched; caller uses original value
+ */
+async function resolveParentControl(
+  extensionObjectName: string,
+  parentControlQuery: string,
+  symbolIndex: any,
+  explicitBaseFormName?: string,
+): Promise<{ resolved: string; pathStr: string } | { multiple: ResolvedControl[] } | null> {
+  // Base form name: "CustTable.MyExt" → "CustTable"
+  const baseFormName = explicitBaseFormName || extensionObjectName.split('.')[0];
+  if (!baseFormName) return null;
+
+  const xmlContent = await findBaseFormXml(baseFormName, symbolIndex);
+  if (!xmlContent) return null;
+
+  let xmlObj: any;
+  try { xmlObj = await parseStringPromise(xmlContent); } catch { return null; }
+
+  const all = allControlsFromFormXmlObj(xmlObj);
+  const lq = parentControlQuery.toLowerCase();
+  const matches = all.filter(c => c.name.toLowerCase().includes(lq));
+
+  if (matches.length === 0) return null; // No match — caller proceeds with original
+  if (matches.length === 1) return { resolved: matches[0].name, pathStr: matches[0].pathStr };
+
+  // Multiple substring matches — try an exact case-insensitive match first
+  const exact = matches.filter(c => c.name.toLowerCase() === lq);
+  if (exact.length === 1) return { resolved: exact[0].name, pathStr: exact[0].pathStr };
+
+  return { multiple: matches };
+}
+
+// This handler has no schema of its own — it is reached through a unified
+// tool. Tool registration (name, description, inputSchema) lives in
+// src/server/toolSchemas/, one file per published tool, aggregated by
+// toolSchemas/index.ts. It is NOT in mcpServer.ts; that file only spreads
+// the aggregated array into the ListTools response.
+
+/**
+ * Resolve the primitive base type for an EDT by walking the edt_metadata chain.
+ * Used by add-field to auto-fill fieldBaseType when the caller omits it.
+ * A newly-created EDT not yet in the index returns the EDT name so the bridge
+ * can still apply its own name-based heuristics.
+ */
+function resolveEdtBaseTypeForField(edtName: string, db: any, depth = 0): string {
+  const PRIMITIVES = new Set([
+    'String', 'Integer', 'Int64', 'Real', 'Date', 'UtcDateTime', 'DateTime',
+    'Enum', 'Container', 'Guid', 'GUID',
+  ]);
+  if (depth > 8) return edtName;
+  if (PRIMITIVES.has(edtName)) return edtName;
+  try {
+    const row = db.prepare(
+      `SELECT extends, enum_type FROM edt_metadata WHERE edt_name = ? LIMIT 1`
+    ).get(edtName) as { extends: string | null; enum_type: string | null } | undefined;
+    if (!row) return edtName; // not yet indexed — let bridge use name heuristics
+    if (row.enum_type && !row.extends) return 'Enum';
+    if (!row.extends) return edtName;
+    if (PRIMITIVES.has(row.extends)) return row.extends;
+    return resolveEdtBaseTypeForField(row.extends, db, depth + 1);
+  } catch {
+    return edtName;
+  }
+}
+
+/** Lower-case the first character — D365FO convention for a table buffer variable. */
+function bufferVarName(tableName: string): string {
+  return tableName.charAt(0).toLowerCase() + tableName.slice(1);
+}
+
+/**
+ * Resolve the EDT/type of a table field from the symbol index so generated
+ * find/exist signatures use the correct parameter type. The field's `signature`
+ * column stores its EDT name. Returns null when the field is not indexed.
+ */
+/** Metadata base-type keywords (the stripped i:type, e.g. AxTableFieldString → "String").
+ *  These are NOT valid X++ parameter types — a field's signature in the index stores
+ *  the base type, not its EDT, so a resolved value matching one of these must be
+ *  discarded in favour of the field name (D365 fields are conventionally named after
+ *  their EDT, e.g. field ItemId uses EDT ItemId). */
+const METADATA_BASE_TYPE_KEYWORDS = new Set([
+  'string', 'integer', 'int', 'int64', 'real', 'date', 'time', 'datetime',
+  'utcdatetime', 'guid', 'container', 'enum', 'boolean', 'memo',
+]);
+
+function isMetadataBaseTypeKeyword(t: string): boolean {
+  return METADATA_BASE_TYPE_KEYWORDS.has(t.trim().toLowerCase());
+}
+
+function resolveFieldEdt(tableName: string, fieldName: string, db: any): string | null {
+  try {
+    // Canonicalize the parent — `parent_name = ? COLLATE NOCASE` cannot use
+    // idx_parent_type_name and scans all 360k field rows (180 s cold). NOCASE
+    // on the field name is fine inside the indexed parent+type range.
+    const canonical = lookupSymbolNocase(db, tableName)?.name ?? tableName;
+    const row = db.prepare(
+      `SELECT signature FROM symbols WHERE type = 'field' AND parent_name = ? AND name = ? COLLATE NOCASE LIMIT 1`
+    ).get(canonical, fieldName) as { signature: string | null } | undefined;
+    const sig = row?.signature?.trim();
+    // The index stores the field's BASE TYPE (e.g. "String"), not its EDT. A base-type
+    // keyword is not a usable X++ parameter type, so treat it as unresolved — the caller
+    // then falls back to the field name, which is conventionally the EDT.
+    if (!sig || isMetadataBaseTypeKeyword(sig)) return null;
+    return sig;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate idiomatic X++ source for a standard table method from a high-level
+ * `tableMethodType`. The method name is implied by the type (find/exist/…), so
+ * callers need not pass methodName or sourceCode — only tableMethodType (plus
+ * tableKeyField for find/exist).
+ *
+ * Returns the generated method name, source, and an optional advisory note
+ * (e.g. when the key field's EDT could not be resolved from the index).
+ */
+export function generateTableMethodSource(
+  tableName: string,
+  methodType: 'find' | 'exist' | 'findByRecId' | 'validateWrite' | 'validateDelete' | 'initValue',
+  keyField: string | undefined,
+  db: any,
+): { methodName: string; source: string; note?: string } {
+  const buf = bufferVarName(tableName);
+
+  switch (methodType) {
+    case 'find':
+    case 'exist': {
+      if (!keyField) {
+        throw new Error(
+          `add-table-method with tableMethodType="${methodType}" requires tableKeyField ` +
+          `(the primary key field to select on, e.g. tableKeyField="ItemId").`
+        );
+      }
+      const resolvedEdt = resolveFieldEdt(tableName, keyField, db);
+      const paramType = resolvedEdt ?? keyField;
+      const note = resolvedEdt
+        ? undefined
+        : `⚠️ Could not resolve the EDT for field "${keyField}" on "${tableName}" from the index — ` +
+          `the parameter type defaulted to "${keyField}". Verify it compiles, or pass full sourceCode instead.`;
+      const param = `_${bufferVarName(keyField)}`;
+
+      if (methodType === 'find') {
+        const source =
+          `/// <summary>\n` +
+          `/// Finds the <c>${tableName}</c> record for the given ${keyField}.\n` +
+          `/// </summary>\n` +
+          `/// <param name = "${param}">The ${keyField} value to find.</param>\n` +
+          `/// <param name = "_forUpdate">Select the record for update; optional.</param>\n` +
+          `/// <returns>The matching <c>${tableName}</c> record; an empty buffer if none exists.</returns>\n` +
+          `public static ${tableName} find(${paramType} ${param}, boolean _forUpdate = false)\n` +
+          `{\n` +
+          `    ${tableName} ${buf};\n` +
+          `\n` +
+          `    if (${param})\n` +
+          `    {\n` +
+          `        ${buf}.selectForUpdate(_forUpdate);\n` +
+          `\n` +
+          `        select firstonly ${buf}\n` +
+          `            where ${buf}.${keyField} == ${param};\n` +
+          `    }\n` +
+          `\n` +
+          `    return ${buf};\n` +
+          `}`;
+        return { methodName: 'find', source, note };
+      }
+
+      // exist
+      const source =
+        `/// <summary>\n` +
+        `/// Checks whether a <c>${tableName}</c> record exists for the given ${keyField}.\n` +
+        `/// </summary>\n` +
+        `/// <param name = "${param}">The ${keyField} value to check.</param>\n` +
+        `/// <returns>true if a matching record exists; otherwise false.</returns>\n` +
+        `public static boolean exist(${paramType} ${param})\n` +
+        `{\n` +
+        `    return ${param} &&\n` +
+        `        (select firstonly RecId from ${buf}\n` +
+        `            where ${buf}.${keyField} == ${param}).RecId != 0;\n` +
+        `}`;
+      return { methodName: 'exist', source, note };
+    }
+
+    case 'findByRecId': {
+      const source =
+        `/// <summary>\n` +
+        `/// Finds the <c>${tableName}</c> record for the given RecId.\n` +
+        `/// </summary>\n` +
+        `/// <param name = "_recId">The RecId to find.</param>\n` +
+        `/// <param name = "_forUpdate">Select the record for update; optional.</param>\n` +
+        `/// <returns>The matching <c>${tableName}</c> record; an empty buffer if none exists.</returns>\n` +
+        `public static ${tableName} findByRecId(RefRecId _recId, boolean _forUpdate = false)\n` +
+        `{\n` +
+        `    ${tableName} ${buf};\n` +
+        `\n` +
+        `    if (_recId)\n` +
+        `    {\n` +
+        `        ${buf}.selectForUpdate(_forUpdate);\n` +
+        `\n` +
+        `        select firstonly ${buf}\n` +
+        `            where ${buf}.RecId == _recId;\n` +
+        `    }\n` +
+        `\n` +
+        `    return ${buf};\n` +
+        `}`;
+      return { methodName: 'findByRecId', source };
+    }
+
+    case 'validateWrite':
+    case 'validateDelete': {
+      const source =
+        `/// <summary>\n` +
+        `/// Validates the record before ${methodType === 'validateWrite' ? 'writing' : 'deletion'}.\n` +
+        `/// </summary>\n` +
+        `/// <returns>true if the record is valid; otherwise false.</returns>\n` +
+        `public boolean ${methodType}()\n` +
+        `{\n` +
+        `    boolean ret;\n` +
+        `\n` +
+        `    ret = super();\n` +
+        `\n` +
+        `    // TODO: add custom ${methodType} validation\n` +
+        `\n` +
+        `    return ret;\n` +
+        `}`;
+      return { methodName: methodType, source };
+    }
+
+    case 'initValue': {
+      const source =
+        `/// <summary>\n` +
+        `/// Initializes the record with default field values.\n` +
+        `/// </summary>\n` +
+        `public void initValue()\n` +
+        `{\n` +
+        `    super();\n` +
+        `\n` +
+        `    // TODO: set default field values\n` +
+        `}`;
+      return { methodName: 'initValue', source };
+    }
+
+    default: {
+      // Exhaustiveness guard — the schema enum should keep this unreachable.
+      throw new Error(`Unsupported tableMethodType: ${methodType as string}`);
+    }
+  }
+}
+
+/**
+ * Generate an X++ display method stub returning the given EDT/type.
+ * Used when add-display-method is called with displayMethodReturnEdt but no
+ * explicit sourceCode/methodCode.
+ */
+export function generateDisplayMethodSource(methodName: string, returnEdt: string): string {
+  return (
+    `/// <summary>\n` +
+    `/// Display method returning <c>${returnEdt}</c>.\n` +
+    `/// </summary>\n` +
+    `/// <returns>The computed ${returnEdt} value.</returns>\n` +
+    `public display ${returnEdt} ${methodName}()\n` +
+    `{\n` +
+    `    ${returnEdt} ret;\n` +
+    `\n` +
+    `    // TODO: compute the display value\n` +
+    `\n` +
+    `    return ret;\n` +
+    `}`
+  );
+}

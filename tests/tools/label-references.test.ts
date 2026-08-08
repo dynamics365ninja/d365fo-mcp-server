@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { findReferencesTool, resolveLabelTarget } from '../../src/tools/findReferences';
+import { findReferencesTool, resolveLabelTarget } from '../../src/tools/analysis/findReferences';
 import { tryBridgeReferences } from '../../src/bridge/bridgeAdapter';
 import type { BridgeClient } from '../../src/bridge/bridgeClient';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
-import { d365foErrorHelpTool, lookupErrorFix } from '../../src/tools/d365foErrorHelp';
+import { d365foErrorHelpTool, lookupErrorFix } from '../../src/tools/knowledge/d365foErrorHelp';
 
 const req = (args: Record<string, unknown>): CallToolRequest => ({
   method: 'tools/call',

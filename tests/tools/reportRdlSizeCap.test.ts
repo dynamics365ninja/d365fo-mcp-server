@@ -17,7 +17,7 @@ vi.mock('../../src/utils/indexedXmlLookup', () => ({
   bridgeUnavailableNote: vi.fn(() => ''),
 }));
 
-import { getReportInfoTool } from '../../src/tools/reportInfo';
+import { getReportInfoTool } from '../../src/tools/readers/reportInfo';
 
 /** An AxReport whose single design embeds `elementCount` RDL elements. */
 function reportXml(elementCount: number): string {

@@ -9,8 +9,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getMethodSignatureTool } from '../../src/tools/methodSignature';
-import { getMethodSourceTool } from '../../src/tools/getMethodSource';
+import { getMethodSignatureTool } from '../../src/tools/knowledge/methodSignature';
+import { getMethodSourceTool } from '../../src/tools/readers/getMethodSource';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

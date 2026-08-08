@@ -4,10 +4,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { searchLabelsTool } from '../../src/tools/searchLabels';
-import { getLabelInfoTool } from '../../src/tools/getLabelInfo';
-import { createLabelTool } from '../../src/tools/createLabel';
-import { renameLabelTool } from '../../src/tools/renameLabel';
+import { searchLabelsTool } from '../../src/tools/analysis/searchLabels';
+import { getLabelInfoTool } from '../../src/tools/readers/getLabelInfo';
+import { createLabelTool } from '../../src/tools/write/createLabel';
+import { renameLabelTool } from '../../src/tools/write/renameLabel';
 import { labelsTool } from '../../src/tools/labels';
 import { isExtensionLabelFile } from '../../src/metadata/labelParser';
 import type { XppServerContext } from '../../src/types/context';
@@ -33,7 +33,7 @@ const mockAddToProject = vi.fn(async () => true);
 const mockAddLabelToProject = vi.fn(async (_proj: string, _id: string, langs: string[]): Promise<string[]> =>
   langs.map(l => `${_id}_${l}`));
 const mockFindProjectInSolution = vi.fn(async (_sol: string, _model: string): Promise<string | null> => null);
-vi.mock('../../src/tools/createD365File', () => ({
+vi.mock('../../src/workspace/projectFile', () => ({
   ProjectFileManager: vi.fn().mockImplementation(function(this: any) {
     this.addToProject = mockAddToProject;
     this.addLabelToProject = mockAddLabelToProject;

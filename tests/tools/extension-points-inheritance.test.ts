@@ -24,7 +24,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import { XppMetadataParser } from '../../src/metadata/xmlParser';
-import { analyzeExtensionPointsTool } from '../../src/tools/analyzeExtensionPoints';
+import { analyzeExtensionPointsTool } from '../../src/tools/knowledge/analyzeExtensionPoints';
 import type { XppServerContext } from '../../src/types/context';
 
 const MODEL = 'MyCustomModel';

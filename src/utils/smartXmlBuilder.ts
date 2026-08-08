@@ -7,7 +7,7 @@
 import { FormPatternTemplates, FormPattern } from './formPatternTemplates.js';
 import { escapeXml as escapeXmlText } from './xmlEscape.js';
 import { ensureXppDocComment } from './xppDocGen.js';
-import { decodeXmlEntitiesFromXppSource } from '../tools/modifyD365File.js';
+import { decodeXmlEntitiesFromXppSource } from './xmlEscape.js';
 import { type FieldControlMap, controlForField } from './fieldControlTypes.js';
 import { renderAxTableProperties } from './axTablePropertyOrder.js';
 import { axTableFieldElement, baseTypeFromEdtName, normalizeFieldBaseType } from './axFieldTypes.js';

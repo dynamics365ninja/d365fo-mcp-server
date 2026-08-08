@@ -17,8 +17,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { toolSchemas } from '../../src/server/toolSchemas/index';
-import { lookupOpSpec } from '../../src/tools/opSpecs';
-import { LABELS_OVERRIDE_PARAMS } from '../../src/tools/labelsOpSpecs';
+import { lookupOpSpec } from '../../src/tools/specs/opSpecs';
+import { LABELS_OVERRIDE_PARAMS } from '../../src/tools/specs/labelsOpSpecs';
 
 const published = new Set(toolSchemas.map(t => t.name));
 

@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { recommendPattern, getFormPatternsTool, type RecommendInput } from '../../src/tools/getFormPatterns';
+import { recommendPattern, getFormPatternsTool, type RecommendInput } from '../../src/tools/knowledge/getFormPatterns';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 describe('recommendPattern decision tree', () => {

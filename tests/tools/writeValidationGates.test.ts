@@ -15,9 +15,9 @@
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
-import { buildAxSecurityPrivilegeXml } from '../../src/tools/securityPrivilegeXml';
-import { buildAxDataEntityXml, assertDataEntityIsFunctional } from '../../src/tools/dataEntityXml';
-import { XmlTemplateGenerator } from '../../src/tools/createD365File';
+import { buildAxSecurityPrivilegeXml } from '../../src/tools/xml/securityPrivilegeXml';
+import { buildAxDataEntityXml, assertDataEntityIsFunctional } from '../../src/tools/xml/dataEntityXml';
+import { XmlTemplateGenerator } from '../../src/tools/write/createD365File';
 
 // ── audit 10: security privilege accessLevel / objectType ───────────────────
 

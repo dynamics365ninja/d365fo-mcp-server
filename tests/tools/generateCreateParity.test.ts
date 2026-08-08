@@ -21,8 +21,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { XmlTemplateGenerator as CreateGen } from '../../src/tools/createD365File';
-import { XmlTemplateGenerator as GenerateGen } from '../../src/tools/generateD365Xml';
+import { XmlTemplateGenerator as CreateGen } from '../../src/tools/write/createD365File';
+import { XmlTemplateGenerator as GenerateGen } from '../../src/tools/xml/generateD365Xml';
 
 describe('generate/create builder parity', () => {
   it('AxSecurityDuty — same XML, and the privileges are actually in it', () => {

@@ -11,16 +11,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
-vi.mock('../../src/tools/methodSignature', () => ({
+vi.mock('../../src/tools/knowledge/methodSignature', () => ({
   getMethodSignatureTool: vi.fn(),
 }));
-vi.mock('../../src/tools/getMethodSource', () => ({
+vi.mock('../../src/tools/readers/getMethodSource', () => ({
   getMethodSourceTool: vi.fn(),
 }));
 
-import { getMethodTool } from '../../src/tools/getMethod';
-import { getMethodSignatureTool } from '../../src/tools/methodSignature';
-import { getMethodSourceTool } from '../../src/tools/getMethodSource';
+import { getMethodTool } from '../../src/tools/readers/getMethod';
+import { getMethodSignatureTool } from '../../src/tools/knowledge/methodSignature';
+import { getMethodSourceTool } from '../../src/tools/readers/getMethodSource';
 
 const sigMock = getMethodSignatureTool as any;
 const srcMock = getMethodSourceTool as any;

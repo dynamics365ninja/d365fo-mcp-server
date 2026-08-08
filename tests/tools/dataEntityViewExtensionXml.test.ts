@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildAxDataEntityViewExtensionXml } from '../../src/tools/dataEntityViewExtensionXml';
+import { buildAxDataEntityViewExtensionXml } from '../../src/tools/xml/dataEntityViewExtensionXml';
 
 const NAME = 'CustCustomerV3Entity.ConExtension';
 

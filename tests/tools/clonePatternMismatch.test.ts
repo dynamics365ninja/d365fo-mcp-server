@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cloneFromPatternMismatchWarning, checkTableMappingCoverage } from '../../src/tools/generateSmartForm';
+import { cloneFromPatternMismatchWarning, checkTableMappingCoverage } from '../../src/tools/smart/generateSmartForm';
 
 /** Minimal AxForm shell carrying a Design-level <Pattern>. */
 function formXmlWithPattern(pattern: string): string {

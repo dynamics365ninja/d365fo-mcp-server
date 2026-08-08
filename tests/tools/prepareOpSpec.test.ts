@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { renderPrepareOpSpec } from '../../src/tools/opSpecs';
+import { renderPrepareOpSpec } from '../../src/tools/specs/opSpecs';
 
 const render = (args: Parameters<typeof renderPrepareOpSpec>[0]) => renderPrepareOpSpec(args).join('\n');
 

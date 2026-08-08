@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { handleGenerateSmartTable } from '../../src/tools/generateSmartTable';
+import { handleGenerateSmartTable } from '../../src/tools/smart/generateSmartTable';
 
 vi.mock('../../src/utils/configManager', () => ({
   getConfigManager: vi.fn(() => ({

@@ -30,7 +30,7 @@ vi.mock('fs', async () => {
 });
 
 import { promises as fs } from 'fs';
-import { getFormInfoTool } from '../../src/tools/formInfo';
+import { getFormInfoTool } from '../../src/tools/readers/formInfo';
 import type { XppServerContext } from '../../src/types/context';
 
 const FORM_XML = `<?xml version="1.0" encoding="utf-8"?>

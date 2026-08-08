@@ -17,7 +17,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { KNOWLEDGE_BASE } from '../../tools/xppKnowledge.js';
+import { KNOWLEDGE_BASE } from '../../tools/knowledge/xppKnowledge.js';
 import { extractKnowledgeRefs } from './knowledgeRefs.js';
 import { openSymbolLookup } from './symbolLookup.js';
 import {

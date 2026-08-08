@@ -14,7 +14,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { createFileBackup } from '../../src/tools/modifyD365File';
+import { createFileBackup } from '../../src/tools/write/modifyD365File';
 
 const dirs: string[] = [];
 function tempObject(contents: string): string {

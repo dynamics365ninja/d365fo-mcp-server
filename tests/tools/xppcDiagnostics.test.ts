@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseXppcDiagnostics, formatStructuredDiagnostics } from '../../src/tools/buildProject';
+import { parseXppcDiagnostics, formatStructuredDiagnostics } from '../../src/tools/sdlc/buildProject';
 
 describe('parseXppcDiagnostics', () => {
   it('parses the canonical class-method error line', () => {

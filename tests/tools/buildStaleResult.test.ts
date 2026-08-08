@@ -33,7 +33,7 @@ import * as path from 'path';
 import {
   hasSourceChangesSince,
   finishedResultStillDescribesDisk,
-} from '../../src/tools/buildProject';
+} from '../../src/tools/sdlc/buildProject';
 
 const MODEL = 'Contoso';
 

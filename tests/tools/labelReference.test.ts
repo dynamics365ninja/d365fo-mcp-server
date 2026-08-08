@@ -17,8 +17,8 @@ import {
   formatLabelReference,
   isLabelLikelyResolvable,
 } from '../../src/utils/labelReference';
-import { searchLabelsTool } from '../../src/tools/searchLabels';
-import { getLabelInfoTool } from '../../src/tools/getLabelInfo';
+import { searchLabelsTool } from '../../src/tools/analysis/searchLabels';
+import { getLabelInfoTool } from '../../src/tools/readers/getLabelInfo';
 
 // ── (a) reference syntax ─────────────────────────────────────────────────────
 

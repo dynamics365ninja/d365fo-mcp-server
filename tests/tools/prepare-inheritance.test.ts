@@ -29,7 +29,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import { XppMetadataParser } from '../../src/metadata/xmlParser';
-import { prepareTool } from '../../src/tools/prepare';
+import { prepareTool } from '../../src/tools/prepare/prepare';
 import type { XppServerContext } from '../../src/types/context';
 
 const MODEL = 'MyCustomModel';

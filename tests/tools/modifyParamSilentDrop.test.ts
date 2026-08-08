@@ -22,12 +22,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { modifyD365FileTool, coerceNoYesFlag } from '../../src/tools/modifyD365File';
+import { modifyD365FileTool, coerceNoYesFlag } from '../../src/tools/write/modifyD365File';
 import {
   findIgnoredParams,
   findMissingMutationParams,
   renderIgnoredParamsWarning,
-} from '../../src/tools/d365foFileOpSpecs';
+} from '../../src/tools/specs/d365foFileOpSpecs';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

@@ -84,7 +84,7 @@ vi.mock('../../src/utils/packagesRoot.js', async () => {
 });
 
 import path from 'path';
-import { buildProjectTool } from '../../src/tools/buildProject';
+import { buildProjectTool } from '../../src/tools/sdlc/buildProject';
 
 const PROJECT_PATH = 'C:\\MyProject\\MyProject.rnrproj';
 const MODEL_NAME = 'MyModel';

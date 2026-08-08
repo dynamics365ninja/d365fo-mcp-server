@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { buildPrefixDiagnostics, modelWritesLandIn } from '../../src/tools/prefixDiagnostics.js';
+import { buildPrefixDiagnostics, modelWritesLandIn } from '../../src/tools/analysis/prefixDiagnostics.js';
 import {
   setModelObjectNameSource,
   clearInferredModelPrefixes,

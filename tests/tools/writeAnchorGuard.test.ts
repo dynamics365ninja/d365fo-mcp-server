@@ -23,7 +23,7 @@ vi.mock('../../src/utils/configManager', () => ({
   getConfigManager: () => mockConfig,
 }));
 
-import { scaffoldWriteRefusal, scaffoldWriteRefusalResult } from '../../src/tools/writeAnchorGuard';
+import { scaffoldWriteRefusal, scaffoldWriteRefusalResult } from '../../src/tools/write/writeAnchorGuard';
 
 const table = (targetModel: string | null) => ({
   objectName: 'DemoSKTaxChangeLog',

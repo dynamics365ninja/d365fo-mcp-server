@@ -31,7 +31,7 @@ vi.mock('../../src/utils/operationLocks.js', () => ({
 }));
 
 import path from 'path';
-import { sysTestRunnerTool } from '../../src/tools/sysTestRunner';
+import { sysTestRunnerTool } from '../../src/tools/sdlc/sysTestRunner';
 
 const PKG = 'K:\\AOSService\\PackagesLocalDirectory';
 const SYSTEST_CONSOLE = path.join(PKG, 'Bin', 'SysTestConsole.exe');

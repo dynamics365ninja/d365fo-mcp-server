@@ -13,7 +13,7 @@ import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
 import util from 'util';
-import { ensureRecoverableModification } from '../../src/tools/modifyD365File';
+import { ensureRecoverableModification } from '../../src/tools/write/modifyD365File';
 
 const execFileAsync = util.promisify(execFile);
 

@@ -20,13 +20,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { handleGenerateSmartForm } from '../../src/tools/generateSmartForm';
+import { handleGenerateSmartForm } from '../../src/tools/smart/generateSmartForm';
 import {
   buildSyncEngineArgs,
   classifySyncOutcome,
   classifySyncTargets,
   extractTablesFromProject,
-} from '../../src/tools/dbSync';
+} from '../../src/tools/sdlc/dbSync';
 import {
   getFieldControlMap,
   parseQueryDataSourceTables,

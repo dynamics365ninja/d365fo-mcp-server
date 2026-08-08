@@ -17,9 +17,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { mockIndexOneFile } = vi.hoisted(() => ({ mockIndexOneFile: vi.fn() }));
 
-vi.mock('../../src/tools/updateSymbolIndex', () => ({ indexOneFile: mockIndexOneFile }));
+vi.mock('../../src/tools/sdlc/updateSymbolIndex', () => ({ indexOneFile: mockIndexOneFile }));
 
-import { upsertWrittenFileIntoIndex } from '../../src/tools/inlineIndexUpsert';
+import { upsertWrittenFileIntoIndex } from '../../src/tools/write/inlineIndexUpsert';
 
 const ctx = { symbolIndex: {} } as any;
 

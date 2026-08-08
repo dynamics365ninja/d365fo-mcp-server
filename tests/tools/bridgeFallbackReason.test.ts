@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   modifyD365FileTool,
   describeBridgeFallbackReason,
-} from '../../src/tools/modifyD365File';
+} from '../../src/tools/write/modifyD365File';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

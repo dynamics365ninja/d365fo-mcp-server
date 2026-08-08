@@ -7,14 +7,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getObjectInfoTool } from '../../src/tools/getObjectInfo';
-import { getMethodSignatureTool } from '../../src/tools/methodSignature';
+import { getObjectInfoTool } from '../../src/tools/readers/getObjectInfo';
+import { getMethodSignatureTool } from '../../src/tools/knowledge/methodSignature';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 // Prevent disk access in tools that call findD365FileOnDisk
-vi.mock('../../src/tools/modifyD365File', async (orig) => {
-  const actual = await orig<typeof import('../../src/tools/modifyD365File')>();
+vi.mock('../../src/tools/write/modifyD365File', async (orig) => {
+  const actual = await orig<typeof import('../../src/tools/write/modifyD365File')>();
   return { ...actual, findD365FileOnDisk: vi.fn(async () => null) };
 });
 

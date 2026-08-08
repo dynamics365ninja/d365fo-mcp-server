@@ -23,7 +23,7 @@ import os from 'os';
 import path from 'path';
 import Database from '../../src/database/sqlite.js';
 import { XppMetadataParser } from '../../src/metadata/xmlParser';
-import { securityArtifactInfoTool } from '../../src/tools/securityArtifactInfo';
+import { securityArtifactInfoTool } from '../../src/tools/readers/securityArtifactInfo';
 
 function writeTmp(name: string, xml: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'secparse-'));

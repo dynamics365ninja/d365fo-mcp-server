@@ -18,7 +18,7 @@ import { clearAllInFlight, clearDedupCache } from '../../src/utils/callDedup';
 // `search` is a capped tool (capToolResponse actually walks its content) and is not
 // in DEDUP_EXCLUDED_TOOLS, so it goes through the in-flight registration.
 // The malformed content is what makes the cap step throw.
-vi.mock('../../src/tools/searchUnified', () => ({
+vi.mock('../../src/tools/analysis/searchUnified', () => ({
   searchUnifiedTool: vi.fn(async () => ({ content: { notAnArray: 'boom' } })),
 }));
 

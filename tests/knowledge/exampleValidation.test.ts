@@ -19,8 +19,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { KNOWLEDGE_BASE } from '../../src/tools/xppKnowledge';
-import { runRules } from '../../src/tools/validateXpp';
+import { KNOWLEDGE_BASE } from '../../src/tools/knowledge/xppKnowledge';
+import { runRules } from '../../src/tools/analysis/validateXpp';
 
 type CodeType = 'xpp' | 'xml-table' | 'xml-any';
 

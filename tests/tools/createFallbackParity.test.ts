@@ -17,8 +17,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { handleCreateD365File, XmlTemplateGenerator } from '../../src/tools/createD365File';
-import { findDroppedTableCollections } from '../../src/tools/createTablePropertyHonesty';
+import { handleCreateD365File, XmlTemplateGenerator } from '../../src/tools/write/createD365File';
+import { findDroppedTableCollections } from '../../src/tools/xml/createTablePropertyHonesty';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 const { files } = vi.hoisted(() => ({ files: new Map<string, string>() }));

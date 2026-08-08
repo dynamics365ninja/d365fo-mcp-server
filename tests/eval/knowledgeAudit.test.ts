@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { extractEntryRefs, extractKnowledgeRefs } from '../../src/eval/audit/knowledgeRefs';
 import { auditRefs, verifyAgainstSnapshot, buildSnapshot, type SymbolLookup, type AuditSnapshot } from '../../src/eval/audit/knowledgeAudit';
-import { KNOWLEDGE_BASE, type KnowledgeEntry } from '../../src/tools/xppKnowledge';
+import { KNOWLEDGE_BASE, type KnowledgeEntry } from '../../src/tools/knowledge/xppKnowledge';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 

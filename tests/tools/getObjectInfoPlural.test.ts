@@ -11,19 +11,19 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('../../src/tools/classInfo', () => ({
+vi.mock('../../src/tools/readers/classInfo', () => ({
   classInfoTool: vi.fn(async (req: any) => ({
     content: [{ type: 'text', text: `class:${req.params.arguments.className}:compact=${req.params.arguments.compact}` }],
   })),
 }));
-vi.mock('../../src/tools/tableInfo', () => ({
+vi.mock('../../src/tools/readers/tableInfo', () => ({
   tableInfoTool: vi.fn(async (req: any) => ({
     content: [{ type: 'text', text: `table:${req.params.arguments.tableName}` }],
   })),
 }));
 // A reader that legitimately returns SEVERAL content blocks — the plural form
 // used to keep only content[0] and silently drop the rest.
-vi.mock('../../src/tools/viewInfo', () => ({
+vi.mock('../../src/tools/readers/viewInfo', () => ({
   getViewInfoTool: vi.fn(async () => ({
     content: [
       { type: 'text', text: 'view header block' },
@@ -32,16 +32,16 @@ vi.mock('../../src/tools/viewInfo', () => ({
     ],
   })),
 }));
-vi.mock('../../src/tools/enumInfo', () => ({
+vi.mock('../../src/tools/readers/enumInfo', () => ({
   getEnumInfoTool: vi.fn(async () => ({
     content: [{ type: 'text', text: 'enum not found' }],
     isError: true,
   })),
 }));
 
-import { getObjectInfoTool } from '../../src/tools/getObjectInfo';
-import { classInfoTool } from '../../src/tools/classInfo';
-import { tableInfoTool } from '../../src/tools/tableInfo';
+import { getObjectInfoTool } from '../../src/tools/readers/getObjectInfo';
+import { classInfoTool } from '../../src/tools/readers/classInfo';
+import { tableInfoTool } from '../../src/tools/readers/tableInfo';
 import { toolSchemas } from '../../src/server/toolSchemas/index';
 import { buildProgressMessage } from '../../src/utils/toolProgressMessage';
 

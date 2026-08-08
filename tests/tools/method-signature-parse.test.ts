@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseMethodSignature } from '../../src/tools/methodSignature';
+import { parseMethodSignature } from '../../src/tools/knowledge/methodSignature';
 
 describe('parseMethodSignature', () => {
   it('parses a simple single-line declaration (baseline)', () => {
@@ -81,7 +81,7 @@ describe('parseMethodSignature', () => {
     it('the emitted template passes validate_code COC001', async () => {
       const src = 'public void salute(str message = "Hi")\n{\n}';
       const sig = parseMethodSignature(src, 'salute');
-      const { runRules } = await import('../../src/tools/validateXpp');
+      const { runRules } = await import('../../src/tools/analysis/validateXpp');
       const violations = runRules(sig!.cocTemplate).filter(v => v.rule === 'COC001');
       expect(violations, `template was:\n${sig!.cocTemplate}`).toEqual([]);
     });

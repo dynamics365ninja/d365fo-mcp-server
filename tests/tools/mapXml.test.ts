@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildAxMapXml } from '../../src/tools/mapXml';
+import { buildAxMapXml } from '../../src/tools/xml/mapXml';
 
 describe('buildAxMapXml — field EDT property name', () => {
   it('writes ExtendedDataType from the documented extendedDataType key (existing behaviour, unchanged)', () => {

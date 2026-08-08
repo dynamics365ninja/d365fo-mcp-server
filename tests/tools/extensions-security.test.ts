@@ -11,20 +11,20 @@ import { describe, it, expect, vi } from 'vitest';
 
 // Prevent findD365FileOnDisk from triggering a filesystem scan (autoDetectProject)
 // which would cause the get_data_entity_info tests to hang for 30 s.
-vi.mock('../../src/tools/modifyD365File', async (orig) => {
-  const actual = await orig<typeof import('../../src/tools/modifyD365File')>();
+vi.mock('../../src/tools/write/modifyD365File', async (orig) => {
+  const actual = await orig<typeof import('../../src/tools/write/modifyD365File')>();
   return { ...actual, findD365FileOnDisk: vi.fn(async () => null) };
 });
 
-import { findCocExtensionsTool } from '../../src/tools/findCocExtensions';
-import { findEventHandlersTool } from '../../src/tools/findEventHandlers';
-import { tableExtensionInfoTool } from '../../src/tools/tableExtensionInfo';
-import { securityArtifactInfoTool } from '../../src/tools/securityArtifactInfo';
-import { securityCoverageInfoTool } from '../../src/tools/securityCoverageInfo';
-import { analyzeExtensionPointsTool } from '../../src/tools/analyzeExtensionPoints';
-import { menuItemInfoTool } from '../../src/tools/menuItemInfo';
-import { dataEntityInfoTool } from '../../src/tools/dataEntityInfo';
-import { extensionStrategyAdvisorTool } from '../../src/tools/extensionStrategyAdvisor';
+import { findCocExtensionsTool } from '../../src/tools/knowledge/findCocExtensions';
+import { findEventHandlersTool } from '../../src/tools/knowledge/findEventHandlers';
+import { tableExtensionInfoTool } from '../../src/tools/readers/tableExtensionInfo';
+import { securityArtifactInfoTool } from '../../src/tools/readers/securityArtifactInfo';
+import { securityCoverageInfoTool } from '../../src/tools/readers/securityCoverageInfo';
+import { analyzeExtensionPointsTool } from '../../src/tools/knowledge/analyzeExtensionPoints';
+import { menuItemInfoTool } from '../../src/tools/readers/menuItemInfo';
+import { dataEntityInfoTool } from '../../src/tools/readers/dataEntityInfo';
+import { extensionStrategyAdvisorTool } from '../../src/tools/knowledge/extensionStrategyAdvisor';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

@@ -23,11 +23,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { handleCreateD365File } from '../../src/tools/createD365File';
+import { handleCreateD365File } from '../../src/tools/write/createD365File';
 import {
   reconcileTableCreateProperties,
   renderTableCreateHonestyReport,
-} from '../../src/tools/createTablePropertyHonesty';
+} from '../../src/tools/xml/createTablePropertyHonesty';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 // ─── In-memory filesystem ────────────────────────────────────────────────────

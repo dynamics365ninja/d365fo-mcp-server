@@ -24,8 +24,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { modifyD365FileTool, isUnresolvedObjectError } from '../../src/tools/modifyD365File';
-import { D365FO_FILE_OP_SPECS } from '../../src/tools/d365foFileOpSpecs';
+import { modifyD365FileTool, isUnresolvedObjectError } from '../../src/tools/write/modifyD365File';
+import { D365FO_FILE_OP_SPECS } from '../../src/tools/specs/d365foFileOpSpecs';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

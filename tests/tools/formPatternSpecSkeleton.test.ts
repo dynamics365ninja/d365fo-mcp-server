@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getFormPatternSpecTool } from '../../src/tools/getFormPatternSpec.js';
+import { getFormPatternSpecTool } from '../../src/tools/specs/getFormPatternSpec.js';
 
 async function specText(pattern: string): Promise<string> {
   const r: any = await getFormPatternSpecTool({ params: { arguments: { pattern } } });

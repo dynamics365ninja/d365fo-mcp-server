@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { handleCreateD365File } from '../../src/tools/createD365File';
-import { modifyD365FileTool } from '../../src/tools/modifyD365File';
+import { handleCreateD365File } from '../../src/tools/write/createD365File';
+import { modifyD365FileTool } from '../../src/tools/write/modifyD365File';
 import { createProvenanceToken } from '../../src/utils/provenanceStore';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../../src/types/context';

@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { securityCoverageInfoTool } from '../../src/tools/securityCoverageInfo';
+import { securityCoverageInfoTool } from '../../src/tools/readers/securityCoverageInfo';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

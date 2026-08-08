@@ -20,7 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import Database from '../../src/database/sqlite.js';
 import { describe, it, expect } from 'vitest';
-import { KNOWLEDGE_BASE } from '../../src/tools/xppKnowledge';
+import { KNOWLEDGE_BASE } from '../../src/tools/knowledge/xppKnowledge';
 import { extractKnowledgeRefs } from '../../src/eval/audit/knowledgeRefs';
 import { openSymbolLookup } from '../../src/eval/audit/symbolLookup';
 import {

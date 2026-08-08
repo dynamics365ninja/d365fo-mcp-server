@@ -14,11 +14,11 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
-import { getMethodSignatureTool } from '../../src/tools/methodSignature';
-import { getMethodSourceTool } from '../../src/tools/getMethodSource';
-import { getMacroInfoTool } from '../../src/tools/macroInfo';
-import { validateObjectNamingTool } from '../../src/tools/validateObjectNaming';
-import { analyzeExtensionPointsTool } from '../../src/tools/analyzeExtensionPoints';
+import { getMethodSignatureTool } from '../../src/tools/knowledge/methodSignature';
+import { getMethodSourceTool } from '../../src/tools/readers/getMethodSource';
+import { getMacroInfoTool } from '../../src/tools/readers/macroInfo';
+import { validateObjectNamingTool } from '../../src/tools/analysis/validateObjectNaming';
+import { analyzeExtensionPointsTool } from '../../src/tools/knowledge/analyzeExtensionPoints';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

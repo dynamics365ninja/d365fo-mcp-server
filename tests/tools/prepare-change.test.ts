@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { prepareChangeTool } from '../../src/tools/prepareChange';
+import { prepareChangeTool } from '../../src/tools/prepare/prepareChange';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

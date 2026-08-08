@@ -3,8 +3,8 @@
  * Covers: BOM preservation, ItemGroup ordering, addToProject roundtrip
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ProjectFileManager } from '../../src/tools/createD365File';
-import { _clearCreatedArtifactLedger } from '../../src/tools/createdArtifactLedger';
+import { ProjectFileManager } from '../../src/workspace/projectFile';
+import { _clearCreatedArtifactLedger } from '../../src/workspace/createdArtifactLedger';
 
 // We need to mock fs/promises so addToProject reads/writes in-memory
 const fileStore = new Map<string, string>();

@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { OBJECT_INFO_TYPES } from '../../src/tools/objectInfoRegistry';
+import { OBJECT_INFO_TYPES } from '../../src/tools/readers/objectInfoRegistry';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..');

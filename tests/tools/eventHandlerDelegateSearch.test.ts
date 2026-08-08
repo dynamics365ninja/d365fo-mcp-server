@@ -21,7 +21,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex.js';
-import { findEventHandlersTool } from '../../src/tools/findEventHandlers';
+import { findEventHandlersTool } from '../../src/tools/knowledge/findEventHandlers';
 
 const open: any[] = [];
 

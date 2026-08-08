@@ -8,12 +8,12 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { getServiceInfoTool } from '../../src/tools/serviceInfo';
-import { getMapInfoTool } from '../../src/tools/mapInfo';
-import { getConfigKeyInfoTool } from '../../src/tools/configKeyInfo';
-import { getSecurityPolicyInfoTool } from '../../src/tools/securityPolicyInfo';
-import { getMacroInfoTool } from '../../src/tools/macroInfo';
-import { getObjectInfoTool } from '../../src/tools/getObjectInfo';
+import { getServiceInfoTool } from '../../src/tools/readers/serviceInfo';
+import { getMapInfoTool } from '../../src/tools/readers/mapInfo';
+import { getConfigKeyInfoTool } from '../../src/tools/readers/configKeyInfo';
+import { getSecurityPolicyInfoTool } from '../../src/tools/readers/securityPolicyInfo';
+import { getMacroInfoTool } from '../../src/tools/readers/macroInfo';
+import { getObjectInfoTool } from '../../src/tools/readers/getObjectInfo';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 

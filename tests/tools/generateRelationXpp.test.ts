@@ -4,7 +4,7 @@ import {
   buildRelationQuery,
   buildRelationXpp,
   type RelationShape,
-} from '../../src/tools/generateRelationXpp';
+} from '../../src/tools/smart/generateRelationXpp';
 
 const custRel: RelationShape = {
   name: 'CustTable',

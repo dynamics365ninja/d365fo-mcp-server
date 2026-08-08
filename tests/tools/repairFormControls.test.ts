@@ -21,7 +21,7 @@ vi.mock('fs/promises', async () => {
 });
 
 import * as fs from 'fs/promises';
-import { repairFormControlsTool } from '../../src/tools/repairFormControls';
+import { repairFormControlsTool } from '../../src/tools/xml/repairFormControls';
 import type { XppServerContext } from '../../src/types/context';
 
 /** SimpleList declares ActionPane (required) + Grid (required); this has neither. */

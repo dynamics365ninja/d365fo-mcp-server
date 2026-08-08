@@ -22,7 +22,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildAxSecurityPrivilegeXml } from '../../src/tools/securityPrivilegeXml';
+import { buildAxSecurityPrivilegeXml } from '../../src/tools/xml/securityPrivilegeXml';
 
 /** Index of a tag's first occurrence in either open or self-closed form; -1 when absent. */
 function at(xml: string, tag: string): number {
@@ -207,7 +207,7 @@ describe('buildAxSecurityPrivilegeXml', () => {
   it('is byte-identical to the createD365File and generateD365Xml wrappers', async () => {
     // Both XmlTemplateGenerator classes delegate here precisely so they cannot
     // drift. If either grows its own copy, this catches it.
-    const { XmlTemplateGenerator: fromCreate } = await import('../../src/tools/createD365File');
+    const { XmlTemplateGenerator: fromCreate } = await import('../../src/tools/write/createD365File');
     const props = { targetObject: 'MyMenuItem', dataEntity: 'MyEntity', accessLevel: 'maintain' };
     const direct = buildAxSecurityPrivilegeXml('MyPrivilege', props);
     expect(fromCreate.generateAxSecurityPrivilegeXml('MyPrivilege', props)).toBe(direct);
