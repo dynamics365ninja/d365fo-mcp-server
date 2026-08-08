@@ -94,6 +94,36 @@ const AX_TABLE_OMITTED_DEFAULTS: Record<string, readonly string[]> = {
   Visible: ['Yes'],
 };
 
+/**
+ * Structural collections that travel as their own bridge parameter, and the AxTable
+ * element each one lands in.
+ *
+ * `generateAxTableXml` — the template the create tool falls back to when the bridge
+ * is down — emits a hardcoded `<Indexes />`, `<Relations />` and the five standard
+ * field groups, so every index, relation and custom field group the caller passed is
+ * dropped on the floor while the response stays the same ✅ as a bridge create. The
+ * check below is against the XML that was actually written rather than against a
+ * list of "what this writer supports", so it cannot drift out of date the way such a
+ * list would.
+ */
+const TABLE_COLLECTIONS: readonly { key: string; container: string; plural: string; repair: string }[] = [
+  { key: 'indexes', container: 'Indexes', plural: 'indexes', repair: 'add-index' },
+  { key: 'relations', container: 'Relations', plural: 'relations', repair: 'add-relation' },
+  { key: 'fieldGroups', container: 'FieldGroups', plural: 'field groups', repair: 'add-field-group' },
+];
+
+/** A collection whose members are absent from the document that was written. */
+export interface DroppedCollection {
+  /** The `properties` key the caller used. */
+  key: string;
+  /** How to name these in prose, e.g. "indexes". */
+  plural: string;
+  /** Names that were requested but are not in the written XML. */
+  missing: string[];
+  /** modify operation that can add them back. */
+  repair: string;
+}
+
 /** A property the create writer accepted but could not honour. */
 export interface UnhonouredCreateProperty {
   /** The key as the caller spelled it. */
@@ -111,6 +141,53 @@ export interface TableCreateReconcileResult {
   patched: { name: string; element: string; value: string }[];
   /** Properties that could not be written at all — must be surfaced to the caller. */
   unhonoured: UnhonouredCreateProperty[];
+  /** Structural collections (indexes/relations/field groups) missing from the written XML. */
+  droppedCollections: DroppedCollection[];
+}
+
+/** Contents of `<Container>…</Container>`, or '' when the element is empty or absent. */
+function sectionBody(xml: string, container: string): string {
+  if (new RegExp(`<${container}\\s*/>`).test(xml)) return '';
+  const m = new RegExp(`<${container}>([\\s\\S]*?)</${container}>`).exec(xml);
+  return m ? m[1] : '';
+}
+
+/** The name a collection member was requested under, across the spellings the tool accepts. */
+function collectionMemberName(item: unknown): string | undefined {
+  if (typeof item === 'string') return item;
+  if (typeof item !== 'object' || item === null) return undefined;
+  const rec = item as Record<string, unknown>;
+  const raw = rec.name ?? rec.indexName ?? rec.groupName ?? rec.relationName;
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
+
+/**
+ * Which of the caller's structural collections are absent from the XML that was
+ * written. Membership is checked by name, not by count, because the writer can emit
+ * a non-empty container of its OWN making — the five standard field groups are there
+ * whether or not the caller's custom group survived.
+ */
+export function findDroppedTableCollections(
+  xml: string,
+  properties: Record<string, unknown> | undefined,
+): DroppedCollection[] {
+  if (!properties) return [];
+  const dropped: DroppedCollection[] = [];
+  for (const { key, container, plural, repair } of TABLE_COLLECTIONS) {
+    const requested = properties[key];
+    if (!Array.isArray(requested) || requested.length === 0) continue;
+    const body = sectionBody(xml, container);
+    const missing = requested
+      .map(collectionMemberName)
+      .filter((name): name is string =>
+        typeof name === 'string' && !new RegExp(`<Name>\\s*${escapeRegExp(name)}\\s*</Name>`, 'i').test(body));
+    if (missing.length > 0) dropped.push({ key, plural, missing, repair });
+  }
+  return dropped;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** Canonical AxTable element name for a caller-supplied key, or undefined if unknown. */
@@ -149,8 +226,10 @@ export function reconcileTableCreateProperties(
   xml: string,
   properties: Record<string, unknown> | undefined,
 ): TableCreateReconcileResult {
-  const result: TableCreateReconcileResult = { xml, patched: [], unhonoured: [] };
+  const result: TableCreateReconcileResult = { xml, patched: [], unhonoured: [], droppedCollections: [] };
   if (!properties || !/<AxTable[\s>]/.test(xml)) return result;
+
+  result.droppedCollections = findDroppedTableCollections(xml, properties);
 
   for (const [key, rawValue] of Object.entries(properties)) {
     if (rawValue === undefined || rawValue === null) continue;
@@ -224,6 +303,17 @@ export function reconcileTableCreateProperties(
  */
 export function renderTableCreateHonestyReport(result: TableCreateReconcileResult): string {
   const parts: string[] = [];
+  if (result.droppedCollections.length > 0) {
+    parts.push(
+      `\n⚠️ NOT APPLIED — the writer that produced this file has no place for:\n` +
+        result.droppedCollections
+          .map(d => `   • ${d.missing.length} of the requested ${d.plural}: ${d.missing.join(', ')}`)
+          .join('\n') +
+        `\n   They are NOT in the file on disk. Add them with ` +
+        result.droppedCollections.map(d => `d365fo_file(action="modify", operation="${d.repair}")`).join(' / ') +
+        `, then re-read the object to confirm.`,
+    );
+  }
   if (result.patched.length > 0) {
     parts.push(
       `\n🔧 Written after the create (the metadata writer dropped ${result.patched.length === 1 ? 'it' : 'them'}): ` +

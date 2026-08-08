@@ -9,9 +9,21 @@
  *   const bridgeResult = await tryBridgeTable(context.bridge, tableName, methodOffset);
  *   if (bridgeResult) return bridgeResult;
  *   // ... fallback to SQLite/parser ...
+ *
+ * ERROR CONTRACT — `null` means "the bridge is not in play, or it answered and the
+ * object is not there". It does NOT mean "the bridge blew up": a thrown call goes
+ * through `recordBridgeFailure`, which keeps the reason on the current tool call so
+ * the dispatcher can label the index fallback instead of letting a bridge outage
+ * pass for a missing object. The few wrappers whose caller must act differently on a
+ * failure (create/resolve — they fall back to XML generation and would otherwise
+ * report ✅ for a write the bridge never performed) return `BridgeAttempt<T>` and
+ * hand back the `BridgeFailure` itself; discriminate with `isBridgeFailure` before
+ * the truthiness check.
  */
 
 import type { BridgeClient } from './bridgeClient.js';
+import { recordBridgeFailure } from './bridgeFailure.js';
+import type { BridgeAttempt } from './bridgeFailure.js';
 import * as debouncedRefresh from './debouncedRefresh.js';
 import { debugLog } from '../utils/logger.js';
 import { reindentXppSource } from '../utils/xppFormat.js';
@@ -69,7 +81,7 @@ export async function tryBridgeTable(
     if (!t) return null;
     return { content: [{ type: 'text', text: formatTable(t, methodOffset, fieldsOffset, fieldFilter) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] readTable(${tableName}) failed: ${e}`);
+    recordBridgeFailure(`readTable(${tableName})`, e);
     return null;
   }
 }
@@ -168,7 +180,7 @@ export async function tryBridgeClass(
     if (!cls) return null;
     return { content: [{ type: 'text', text: formatClass(cls, compact, methodOffset) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] readClass(${className}) failed: ${e}`);
+    recordBridgeFailure(`readClass(${className})`, e);
     return null;
   }
 }
@@ -281,7 +293,7 @@ export async function tryBridgeMethodSource(
       `\n\`\`\`xpp\n${ms.source}\n\`\`\``;
     return { content: [{ type: 'text', text }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] getMethodSource(${className}, ${methodName}) failed: ${e}`);
+    recordBridgeFailure(`getMethodSource(${className}, ${methodName})`, e);
     return null;
   }
 }
@@ -311,7 +323,7 @@ export async function tryBridgeEnum(
 
     return { content: [{ type: 'text', text: out }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] readEnum(${enumName}) failed: ${e}`);
+    recordBridgeFailure(`readEnum(${enumName})`, e);
     return null;
   }
 }
@@ -328,7 +340,7 @@ export async function tryBridgeEdt(
     if (!edt) return null;
     return { content: [{ type: 'text', text: formatEdt(edt) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] readEdt(${edtName}) failed: ${e}`);
+    recordBridgeFailure(`readEdt(${edtName})`, e);
     return null;
   }
 }
@@ -372,7 +384,7 @@ export async function tryBridgeForm(
     if (!form) return null;
     return { content: [{ type: 'text', text: formatForm(form, maxControls) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] readForm(${formName}) failed: ${e}`);
+    recordBridgeFailure(`readForm(${formName})`, e);
     return null;
   }
 }
@@ -506,7 +518,7 @@ export async function tryBridgeReferences(
       if (r?.references?.length) merged.push(...r.references);
     } catch (e) {
       errored = true;
-      console.error(`[BridgeAdapter] findReferences(${t}) failed: ${e}`);
+      recordBridgeFailure(`findReferences(${t})`, e);
     }
   }
 
@@ -818,7 +830,7 @@ export async function tryBridgeSearch(
 
     return { content: [{ type: 'text', text: out }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] searchObjects(${query}) failed: ${e}`);
+    recordBridgeFailure(`searchObjects(${query})`, e);
     return null;
   }
 }
@@ -835,7 +847,7 @@ export async function tryBridgeQuery(
     if (!q) return null;
     return { content: [{ type: 'text', text: formatQuery(q) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] readQuery(${queryName}) failed: ${e}`);
+    recordBridgeFailure(`readQuery(${queryName})`, e);
     return null;
   }
 }
@@ -911,7 +923,7 @@ export async function tryBridgeView(
     if (!v) return null;
     return { content: [{ type: 'text', text: formatView(v) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] readView(${viewName}) failed: ${e}`);
+    recordBridgeFailure(`readView(${viewName})`, e);
     return null;
   }
 }
@@ -998,7 +1010,7 @@ export async function tryBridgeDataEntity(
     if (!e) return null;
     return { content: [{ type: 'text', text: formatDataEntity(e) }] };
   } catch (err) {
-    console.error(`[BridgeAdapter] readDataEntity(${entityName}) failed: ${err}`);
+    recordBridgeFailure(`readDataEntity(${entityName})`, err);
     return null;
   }
 }
@@ -1063,7 +1075,7 @@ export async function tryBridgeReport(
     if (!r) return null;
     return { content: [{ type: 'text', text: formatReport(r) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] readReport(${reportName}) failed: ${e}`);
+    recordBridgeFailure(`readReport(${reportName})`, e);
     return null;
   }
 }
@@ -1122,7 +1134,7 @@ export async function bridgeRefreshProvider(
     debouncedRefresh.markRefreshStarted();
     return await bridge.refreshProvider();
   } catch (e) {
-    console.error(`[BridgeAdapter] refreshProvider failed: ${e}`);
+    recordBridgeFailure(`refreshProvider`, e);
     return null;
   }
 }
@@ -1162,27 +1174,38 @@ export async function bridgeValidateAfterWrite(
       return `⚠️ **IMetadataProvider could not read back \`${objectName}\`**: ${result.reason ?? 'unknown error'}`;
     }
   } catch (e) {
-    console.error(`[BridgeAdapter] validateAfterWrite(${objectType}, ${objectName}) failed: ${e}`);
+    recordBridgeFailure(`validateAfterWrite(${objectType}, ${objectName})`, e);
     return null; // non-fatal — bridge validation is best-effort
   }
 }
 
+export interface BridgeResolvedObject {
+  exists: boolean;
+  objectType: string;
+  objectName: string;
+  model?: string;
+}
+
 /**
  * Resolves object existence and model via IMetadataProvider.
- * Used by modify_d365fo_file to locate objects without the SQLite index.
- * Returns { exists, objectType, objectName, model } or null.
+ * Used to locate objects without the SQLite index.
+ *
+ * Returns the resolution, `null` when the bridge is not in play, or a
+ * `BridgeFailure` when the call threw. The distinction matters more here than
+ * anywhere else in this file: the payload's whole content is `exists`, so a
+ * `null`-on-throw reads as "this object does not exist" — the literal shape of the
+ * historical "could not resolve" reports.
  */
 export async function bridgeResolveObject(
   bridge: BridgeClient | undefined,
   objectType: string,
   objectName: string,
-): Promise<{ exists: boolean; objectType: string; objectName: string; model?: string } | null> {
+): Promise<BridgeAttempt<BridgeResolvedObject>> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     return await bridge.resolveObjectInfo(objectType, objectName);
   } catch (e) {
-    console.error(`[BridgeAdapter] resolveObjectInfo(${objectType}, ${objectName}) failed: ${e}`);
-    return null;
+    return recordBridgeFailure(`resolveObjectInfo(${objectType}, ${objectName})`, e);
   }
 }
 
@@ -1275,7 +1298,13 @@ export function canBridgeModify(objectType: string, operation: string): boolean 
 
 /**
  * Creates a D365FO object via the C# bridge (IMetadataProvider.Create()).
- * Returns { success, filePath, api } or null if bridge unavailable.
+ *
+ * Returns { success, filePath, message }, `null` when the bridge is unavailable or
+ * the type is not a bridge-create type, or a `BridgeFailure` when the create threw.
+ * The caller falls back to XML generation in all three cases — but only the third
+ * means the object it is about to hand-write skipped IMetadataProvider entirely,
+ * which is what the ✅ has to admit (the XML templates carry fewer collections than
+ * the bridge does).
  */
 export async function bridgeCreateObject(
   bridge: BridgeClient | undefined,
@@ -1292,7 +1321,7 @@ export async function bridgeCreateObject(
     values?: Record<string, unknown>[];
     properties?: Record<string, string>;
   },
-): Promise<{ success: boolean; filePath?: string; message: string } | null> {
+): Promise<BridgeAttempt<{ success: boolean; filePath?: string; message: string }>> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   if (!canBridgeCreate(params.objectType)) return null;
 
@@ -1308,17 +1337,21 @@ export async function bridgeCreateObject(
       return { success: false, message: `Bridge createObject returned success=false` };
     }
   } catch (e) {
-    // Recoverable: the caller falls back to XML generation on null. Log at debug
-    // so an expected fast-path miss doesn't surface as a client-facing error.
-    debugLog(`[BridgeAdapter] createObject(${params.objectType}, ${params.objectName}) failed — falling back to XML generation: ${e}`);
-    return null; // Signal to caller: fall back to XML generation
+    // Recoverable — the caller falls back to XML generation, so this stays at debug
+    // level rather than surfacing as a client-facing error. It is still returned as
+    // a BridgeFailure so the fallback can say the bridge is the reason it ran.
+    return recordBridgeFailure(`createObject(${params.objectType}, ${params.objectName})`, e, { quiet: true });
   }
 }
 
 /**
  * Creates a smart table via the C# bridge with all BP-smart defaults
  * (CacheLookup, FieldGroups, DeleteActions, TitleField, PrimaryIndex) auto-set.
- * Returns { success, filePath, bpDefaults } or null if bridge unavailable.
+ *
+ * Returns the result, `null` when the bridge is unavailable or declined, or a
+ * `BridgeFailure` when the call threw — same reasoning as bridgeCreateObject: the
+ * XML fallback that follows writes none of those BP defaults, so "the bridge threw"
+ * has to reach the caller's message.
  */
 export async function bridgeCreateSmartTable(
   bridge: BridgeClient | undefined,
@@ -1335,7 +1368,7 @@ export async function bridgeCreateSmartTable(
     methods?: { name: string; source?: string }[];
     extraProperties?: Record<string, string>;
   },
-): Promise<BridgeSmartTableResult | null> {
+): Promise<BridgeAttempt<BridgeSmartTableResult>> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
 
   try {
@@ -1348,10 +1381,9 @@ export async function bridgeCreateSmartTable(
       return null;
     }
   } catch (e) {
-    // Recoverable: the caller falls back to SmartXmlBuilder on null. Log at debug
-    // so an expected fast-path miss doesn't surface as a client-facing error.
-    debugLog(`[BridgeAdapter] createSmartTable(${params.objectName}) failed — falling back to SmartXmlBuilder: ${e}`);
-    return null; // Signal to caller: fall back to SmartXmlBuilder
+    // Recoverable — the caller falls back to SmartXmlBuilder, so this stays at debug
+    // level; the BridgeFailure is what tells that fallback why it is running.
+    return recordBridgeFailure(`createSmartTable(${params.objectName})`, e, { quiet: true });
   }
 }
 
@@ -2100,7 +2132,7 @@ export async function bridgeBatchModify(
       isError: result.failureCount > 0,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] batchModify(${objectType}, ${objectName}) failed: ${e}`);
+    recordBridgeFailure(`batchModify(${objectType}, ${objectName})`, e);
     return null;
   }
 }
@@ -2130,7 +2162,7 @@ export async function bridgeGetCapabilities(
 
     return { content: [{ type: 'text', text }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] getCapabilities() failed: ${e}`);
+    recordBridgeFailure(`getCapabilities()`, e);
     return null;
   }
 }
@@ -2160,7 +2192,7 @@ export async function bridgeDiscoverFormPatterns(
 
     return { content: [{ type: 'text', text }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] discoverFormPatterns() failed: ${e}`);
+    recordBridgeFailure(`discoverFormPatterns()`, e);
     return null;
   }
 }
@@ -2189,7 +2221,7 @@ export async function tryBridgeSecurityArtifact(
       return { content: [{ type: 'text', text: formatSecurityRole(role, includeChain) }] };
     }
   } catch (e) {
-    console.error(`[BridgeAdapter] readSecurity${artifactType}(${name}) failed: ${e}`);
+    recordBridgeFailure(`readSecurity${artifactType}(${name})`, e);
     return null;
   }
 }
@@ -2291,7 +2323,7 @@ export async function tryBridgeMenuItem(
     if (!mi) return null;
     return { content: [{ type: 'text', text: formatMenuItem(mi) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] readMenuItem(${name}) failed: ${e}`);
+    recordBridgeFailure(`readMenuItem(${name})`, e);
     return null;
   }
 }
@@ -2334,7 +2366,7 @@ export async function tryBridgeTableExtensions(
     if (!result) return null;
     return { content: [{ type: 'text', text: formatTableExtensions(result) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] readTableExtensions(${baseTableName}) failed: ${e}`);
+    recordBridgeFailure(`readTableExtensions(${baseTableName})`, e);
     return null;
   }
 }
@@ -2393,7 +2425,7 @@ export async function tryBridgeCompletion(
           inherited = await bridge.getCompletionMembers(ancestor);
         } catch (e) {
           // One unreadable link must not discard the members already merged.
-          console.error(`[BridgeAdapter] getCompletionMembers(${ancestor}) failed: ${e}`);
+          recordBridgeFailure(`getCompletionMembers(${ancestor})`, e);
           continue;
         }
         for (const m of inherited?.members ?? []) {
@@ -2407,7 +2439,7 @@ export async function tryBridgeCompletion(
 
     return { content: [{ type: 'text', text: formatCompletion(result, prefix) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] getCompletionMembers(${symbolName}) failed: ${e}`);
+    recordBridgeFailure(`getCompletionMembers(${symbolName})`, e);
     return null;
   }
 }
@@ -2469,7 +2501,7 @@ export async function tryBridgeCocExtensions(
     if (!result) return null;
     return { content: [{ type: 'text', text: formatCocExtensions(result, methodName) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] findExtensionClasses(${baseClassName}) failed: ${e}`);
+    recordBridgeFailure(`findExtensionClasses(${baseClassName})`, e);
     return null;
   }
 }
@@ -2522,7 +2554,7 @@ export async function tryBridgeEventHandlers(
     if (!result) return null;
     return { content: [{ type: 'text', text: formatEventHandlers(result) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] findEventSubscribers(${targetName}) failed: ${e}`);
+    recordBridgeFailure(`findEventSubscribers(${targetName})`, e);
     return null;
   }
 }
@@ -2573,7 +2605,7 @@ export async function tryBridgeApiUsageCallers(
     if (!result || result.totalCallers === 0) return null;
     return { content: [{ type: 'text', text: formatApiUsageCallers(result) }] };
   } catch (e) {
-    console.error(`[BridgeAdapter] findApiUsageCallers(${apiName}) failed: ${e}`);
+    recordBridgeFailure(`findApiUsageCallers(${apiName})`, e);
     return null;
   }
 }
