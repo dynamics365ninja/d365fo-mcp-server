@@ -18,7 +18,8 @@ import util from 'util';
 import path from 'path';
 import { parseStringPromise } from '../../utils/xml.js';
 import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../../utils/configManager.js';
-import { isStandardModel, resolveObjectPrefix, applyObjectPrefix, resolveRegularObjectPrefixToken } from '../../utils/modelClassifier.js';
+import { isStandardModel, resolveRegularObjectPrefixToken } from '../../utils/modelClassifier.js';
+import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { resolveDbPathLocally } from '../../utils/metadataResolver.js';
 import { assertWritePathAllowed } from '../../utils/pathContainment.js';
 import { withFileLock, writeFileAtomic } from '../../utils/atomicFileWrite.js';
@@ -36,8 +37,8 @@ import {
   bridgeRefreshProvider,
 } from '../../bridge/index.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
-import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
-import { heuristicEdtBaseType } from '../smart/generateSmartTable.js';
+import { ProjectFileFinder, registerFileIfOrphaned } from '../../workspace/projectFile.js';
+import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import {
   upsertAxTableProperty,
@@ -53,7 +54,7 @@ import {
 } from '../analysis/validateFormPattern.js';
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
 import {
   getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
@@ -545,6 +546,10 @@ const CONTROL_TYPE_TO_FORM_CONTROL: Record<string, { iType: string; typeValue: s
   guid:        { iType: 'AxFormGuidControl',     typeValue: 'Guid' },
   checkbox:    { iType: 'AxFormCheckBoxControl', typeValue: 'CheckBox' },
   combobox:    { iType: 'AxFormComboBoxControl', typeValue: 'ComboBox' },
+  // An enum binds to a ComboBox. Spelled out because "Enum" is what the EDT
+  // resolver and the op-spec both call it, and an unmapped type silently
+  // becomes a String control over enum data.
+  enum:        { iType: 'AxFormComboBoxControl', typeValue: 'ComboBox' },
   button:      { iType: 'AxFormButtonControl',   typeValue: 'Button' },
   group:       { iType: 'AxFormGroupControl',    typeValue: 'Group' },
 };
@@ -1491,10 +1496,19 @@ const ModifyD365FileArgsSchema = z.object({
     'Absolute path to the XML file. Use this when the object was just created and the path is already known ' +
     '(e.g. from d365fo_file(action="create") output). Bypasses symbol DB lookup entirely.'
   ),
-  addToProject: z.boolean().optional().default(false).describe(
-    'When true, adds the modified file to the Visual Studio project (.rnrproj). ' +
-    'Use this when the file exists on disk but is not yet tracked in the VS project. ' +
-    'Requires projectPath or solutionPath (explicit or via .mcp.json). Default: false.'
+  // Defaulted TRUE to match the wire schema, which advertises
+  // `addToProject: { default: true }` for the whole d365fo_file tool and tells
+  // the caller to "keep the default". This defaulted false, so an agent that
+  // followed that instruction — by omitting the parameter — silently got the
+  // opposite. Editing an existing object that was on disk but absent from the
+  // .rnrproj therefore never registered it, no matter how many times it was
+  // edited. Registration is idempotent (ProjectFileManager skips an entry that
+  // is already there), and it is scoped to objects that belong in the active
+  // project: an object owned by another project of the model is left alone.
+  addToProject: z.boolean().optional().default(true).describe(
+    'Add the modified file to the .rnrproj when no project of its model references it yet. ' +
+    'Keep the default — a file missing from every project of its model does not compile. ' +
+    'Set false to skip. Requires projectPath or solutionPath (explicit or via .mcp.json).'
   ),
   projectPath: z.string().optional().describe(
     'Path to .rnrproj file. Required for addToProject to work. Auto-detected from .mcp.json if omitted.'
@@ -2698,18 +2712,13 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'add-control': {
         if ((args as any).controlName && (args as any).parentControl) {
-          // The tool never exposes a `controlType` input (not in the Zod schema below),
-          // so this always used to fall back to the literal string "String" — every
-          // control, regardless of the bound field's actual type, was created as a plain
-          // string edit control. Infer a better default from the field name heuristic
-          // (the same one used for table field base-type resolution) when a
-          // controlDataField is given; this is a best-effort name heuristic, not an
-          // index/bridge EDT lookup (that would need resolving controlDataSource, a form
-          // DATA SOURCE name, back to its bound table — out of scope here), but it is
-          // strictly better than always guessing "String".
           const resolvedControlType =
             (args as any).controlType
-            ?? ((args as any).controlDataField ? heuristicEdtBaseType((args as any).controlDataField) : undefined)
+            ?? resolveControlTypeForField(
+                 (args as any).controlDataSource,
+                 (args as any).controlDataField,
+                 symbolIndex?.getReadDb?.(),
+               )
             ?? 'String';
           bridgeResult = await bridgeAddControl(
             context.bridge,
@@ -2908,7 +2917,15 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       console.error(`[modify_d365fo_file] Bridge validation skipped: ${e}`);
     });
 
-    // Optionally add the file to the Visual Studio project
+    // Register the edited file when no project of its model references it.
+    //
+    // This used to add it to the active project unconditionally whenever the
+    // flag was set — which was safe only because the flag defaulted OFF and
+    // nobody set it. On by default (matching the wire schema, which always
+    // advertised `default: true`), unconditional registration would put objects
+    // owned by another project of the model into the active one as well, and
+    // one file in two projects builds the element twice. registerFileIfOrphaned
+    // makes the membership check the gate: it acts only on a true orphan.
     let projectMessage = '';
     if (args.addToProject) {
       const configManager = getConfigManager();
@@ -2924,28 +2941,12 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         ) || undefined;
       }
 
-      if (resolvedProjectPath) {
-        try {
-          await fs.access(resolvedProjectPath);
-          const projectManager = new ProjectFileManager();
-          const wasAdded = await projectManager.addToProject(
-            resolvedProjectPath,
-            objectType,
-            objectName,
-            actualFilePath
-          );
-          projectMessage = wasAdded
-            ? `\n✅ Added to VS project: \`${resolvedProjectPath}\``
-            : `\n📋 Already in VS project: \`${resolvedProjectPath}\``;
-        } catch (projErr) {
-          const errMsg = projErr instanceof Error ? projErr.message : String(projErr);
-          projectMessage = `\n⚠️ File modified but could not add to VS project: ${errMsg}`;
-        }
-      } else {
-        projectMessage =
-          `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
-          `Add \`projectPath\` to .mcp.json or pass it explicitly.`;
-      }
+      projectMessage = await registerFileIfOrphaned(
+        objectType,
+        objectName,
+        modelName || configManager.getModelName() || undefined,
+        resolvedProjectPath,
+      );
     }
 
     // Advisory X++ select-statement lint on the source just written (add-method /
@@ -3000,7 +3001,11 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     const verifyProjectPath =
       args.projectPath || (await getConfigManager().getProjectPath()) || undefined;
     const verifyNote = renderWriteVerification(
-      await verifyWrittenFile(actualFilePath, verifyProjectPath),
+      await verifyWrittenFile(
+        actualFilePath,
+        verifyProjectPath,
+        membershipOf(objectType, objectName, modelName || getConfigManager().getModelName()),
+      ),
     );
     const bpNote = await runInlineBpCheck((args as any).bpCheck, objectType, objectName, context);
 
@@ -3160,15 +3165,23 @@ async function findD365File(
   const direct = await resolveD365FileByName(symbolIndex, objectType, objectName, modelName, packagePath);
   if (direct) return direct;
 
-  const prefix = resolveObjectPrefix(modelName || getConfigManager().getModelName() || '');
-  if (prefix && !objectType.endsWith('-extension')) {
-    const prefixed = applyObjectPrefix(objectName, prefix);
-    if (prefixed && prefixed.toLowerCase() !== objectName.toLowerCase()) {
-      const viaPrefixed = await resolveD365FileByName(symbolIndex, objectType, prefixed, modelName, packagePath);
-      if (viaPrefixed) {
-        console.error(`[modifyD365File] '${objectName}' not found — resolved via prefixed name '${prefixed}'`);
-        return viaPrefixed;
-      }
+  // Retry under the name `create` would have written the file as.
+  //
+  // The old retry here called applyObjectPrefix and explicitly skipped every
+  // "-extension" type, so `modify(objectType: "table-extension", objectName:
+  // "PurchTable")` never looked for "PurchTable.CtsoExtension" — the exact file
+  // `create` had produced from those same two arguments, whose path it had
+  // printed one call earlier. The answer was "File not found for
+  // table-extension", and the only way out was passing filePath by hand.
+  // normalizeObjectName is what create uses, so the two now agree by
+  // construction rather than by two implementations staying in sync.
+  const effectiveModel = modelName || getConfigManager().getModelName() || undefined;
+  const normalized = normalizeObjectName(objectName, objectType, effectiveModel);
+  if (normalized && normalized.toLowerCase() !== objectName.toLowerCase()) {
+    const viaNormalized = await resolveD365FileByName(symbolIndex, objectType, normalized, modelName, packagePath);
+    if (viaNormalized) {
+      console.error(`[modifyD365File] '${objectName}' not found — resolved via normalized name '${normalized}'`);
+      return viaNormalized;
     }
   }
   return null;
@@ -3657,6 +3670,56 @@ const METADATA_BASE_TYPE_KEYWORDS = new Set([
 
 function isMetadataBaseTypeKeyword(t: string): boolean {
   return METADATA_BASE_TYPE_KEYWORDS.has(t.trim().toLowerCase());
+}
+
+/**
+ * The form control type to bind to a table field: ComboBox for an enum, the
+ * EDT's base type otherwise.
+ *
+ * This used to be `heuristicEdtBaseType(fieldName)` — a guess from the field's
+ * NAME, with a comment saying an index lookup was out of scope because it would
+ * mean resolving the data source back to its table. It costs one query:
+ * resolveFieldEdt() already answers "what type is field F of table T", and a
+ * form data source is conventionally named after its table, which is the case
+ * the fallbacks below cover when it is not.
+ *
+ * The gap it left was enums. A name heuristic has nothing to match on, so an
+ * enum field got the String default and became an AxFormStringControl — a text
+ * box over an enum. Recovering from that took an undo, a re-create and a
+ * re-modify, because a control's type cannot be changed in place.
+ */
+export function resolveControlTypeForField(
+  dataSource: string | undefined,
+  dataField: string | undefined,
+  db: any,
+): string | undefined {
+  if (!dataField) return undefined;
+
+  // The field's declared EDT or enum type, via the data source's table. Form
+  // data sources are conventionally named after the table they bind.
+  const declared = dataSource && db ? resolveFieldEdt(dataSource, dataField, db) : null;
+
+  // resolveEdtBaseType answers "Enum" for an enum-backed EDT, and "Enum" is not
+  // a form control type — left as-is it falls through to the String default and
+  // reintroduces the text-box-over-an-enum this function exists to stop.
+  const asControlType = (baseType: string | undefined): string | undefined =>
+    baseType === 'Enum' ? 'ComboBox' : baseType;
+
+  if (declared && db) {
+    if (isEnumName(declared, db)) return 'ComboBox';
+    const base = asControlType(resolveEdtBaseType(declared, db));
+    if (base) return base;
+  }
+
+  // No data source, no index, or an unindexed field: the field name itself is
+  // conventionally the EDT or enum name in X++, so try it directly before
+  // falling back to the pure name heuristic.
+  if (db) {
+    if (isEnumName(dataField, db)) return 'ComboBox';
+    const base = asControlType(resolveEdtBaseType(dataField, db));
+    if (base) return base;
+  }
+  return asControlType(heuristicEdtBaseType(dataField));
 }
 
 function resolveFieldEdt(tableName: string, fieldName: string, db: any): string | null {

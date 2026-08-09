@@ -868,3 +868,125 @@ describe('extractReportedElements (#25 helper)', () => {
     expect(extractReportedElements('no elements here')).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Audit of run 810e9f6e: a check that never ran, reported as a pass.
+//
+// The call asked for objectType "table-extension" — the same kebab-case
+// vocabulary verify_d365fo_project documents. It was lowercased and handed
+// straight to xppbp, which answered "The element type 'table-extension' is
+// invalid" and evaluated nothing. That output has no BPError and no non-zero
+// counter, so hasIssues() said false and the object rendered as `✅ clean`.
+// Two extensions were declared BP-clean without a single rule running.
+// ---------------------------------------------------------------------------
+
+describe('normalizeElementType', () => {
+  it('translates the kebab-case objectType the other tools take', async () => {
+    const { normalizeElementType } = await import('../../src/tools/sdlc/runBpCheck');
+    expect(normalizeElementType('table-extension')).toBe('tableextension');
+    expect(normalizeElementType('form-extension')).toBe('formextension');
+  });
+
+  it('keeps a class extension checking as a class', async () => {
+    const { normalizeElementType } = await import('../../src/tools/sdlc/runBpCheck');
+    expect(normalizeElementType('class-extension')).toBe('class');
+  });
+
+  it("accepts xppbp's own spelling unchanged", async () => {
+    const { normalizeElementType } = await import('../../src/tools/sdlc/runBpCheck');
+    expect(normalizeElementType('TableExtension')).toBe('tableextension');
+    expect(normalizeElementType('Class')).toBe('class');
+  });
+});
+
+describe('describeNonRun', () => {
+  it('recognises a rejected element type', async () => {
+    const { describeNonRun } = await import('../../src/tools/sdlc/runBpCheck');
+    const out = "The element type 'table-extension' is invalid. Supported types are Class, Table.";
+    expect(describeNonRun(out)).toMatch(/rejected the element type "table-extension"/);
+  });
+
+  it('recognises a filter that matched nothing', async () => {
+    const { describeNonRun } = await import('../../src/tools/sdlc/runBpCheck');
+    expect(describeNonRun('0 elements processed')).toMatch(/not evidence of a clean object/);
+  });
+
+  it('stays quiet on a real run', async () => {
+    const { describeNonRun } = await import('../../src/tools/sdlc/runBpCheck');
+    expect(describeNonRun('1 elements processed\nWarnings: 0\nErrors: 0')).toBe('');
+  });
+});
+
+describe('run_bp_check — a check that did not run is never a pass', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    detectedRoots.splice(0, detectedRoots.length, CHE_PKG);
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('MyModel');
+    cfgGetProjectPath.mockResolvedValue(null);
+    cfgGetPackagePath.mockReturnValue(null);
+    cfgGetCustomPackagesPath.mockResolvedValue(null);
+    cfgGetMicrosoftPackagesPath.mockResolvedValue(null);
+    cfgGetActiveXppConfig.mockResolvedValue(null);
+    allowPaths([CHE_PKG, CHE_XPPBP]);
+  });
+
+  it('reports a rejected element type as NOT CHECKED, not as passed', async () => {
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, { stdout: "The element type 'tableextension' is invalid. Supported types are Class.", stderr: '' });
+    });
+
+    const result = await runBpCheckTool(
+      { modelName: 'MyModel', objects: [{ objectType: 'table-extension', objectName: 'MyTable.MyExt' }] },
+      {},
+    );
+
+    expect(result.content[0].text).not.toContain('✅ BP Check passed');
+    expect(result.content[0].text).toContain('did NOT run');
+    expect(result.isError).toBe(true);
+  });
+
+  it('marks only the rejected object in a batch and keeps the rest', async () => {
+    execFileMock.mockImplementation((_f: string, a: string[], _o: any, cb: Function) => {
+      const rejected = a.some(x => x.includes('Rejected'));
+      cb(null, {
+        stdout: rejected
+          ? "The element type 'nope' is invalid. Supported types are Class."
+          : '1 elements processed\nWarnings: 0\nErrors: 0',
+        stderr: '',
+      });
+    });
+
+    const result = await runBpCheckTool(
+      {
+        modelName: 'MyModel',
+        objects: [
+          { objectType: 'class', objectName: 'GoodOne' },
+          { objectType: 'class', objectName: 'Rejected' },
+        ],
+      },
+      {},
+    );
+
+    const text = result.content[0].text;
+    expect(text).toContain('❌ BP Check incomplete');
+    expect(text).toMatch(/Rejected ── ❌ NOT CHECKED/);
+    expect(text).toMatch(/GoodOne ── ✅ clean/);
+    expect(result.isError).toBe(true);
+  });
+
+  it('sends the translated element type to xppbp', async () => {
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, { stdout: '1 elements processed\nErrors: 0', stderr: '' });
+    });
+
+    await runBpCheckTool(
+      { modelName: 'MyModel', objects: [{ objectType: 'table-extension', objectName: 'MyTable.MyExt' }] },
+      {},
+    );
+
+    const args = capturedArgs(0);
+    expect(args.join(' ')).toContain('tableextension');
+    expect(args.join(' ')).not.toContain('table-extension');
+  });
+});

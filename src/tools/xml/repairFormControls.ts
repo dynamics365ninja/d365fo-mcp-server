@@ -21,6 +21,7 @@ import { validateFormPatternXml } from '../../validation/formPatternValidator.js
 import { repairFormXml } from '../../utils/formControlRepair.js';
 import { type ExpandFormOptions } from '../../utils/formControlExpander.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
+import { resolveIndexedFilePath } from '../../utils/packagesRoot.js';
 
 const RepairArgsSchema = z.object({
   xml: z.string().optional().describe('Complete AxForm XML to repair. Provide this OR formName/filePath.'),
@@ -67,8 +68,11 @@ export async function repairFormControlsTool(
       if (!row?.file_path) {
         return text(`❌ Form "${formName}" not found in the symbol index. Pass filePath or xml directly.`, true);
       }
-      formXml = await fs.readFile(row.file_path, 'utf-8');
-      source = `${formName} (${row.file_path})`;
+      // Package-relative file_path rows resolve against the packages root, not
+      // the process cwd — see resolveIndexedFilePath.
+      const resolved = resolveIndexedFilePath(row.file_path);
+      formXml = await fs.readFile(resolved, 'utf-8');
+      source = `${formName} (${resolved})`;
     }
   } catch (e) {
     return text(`❌ Could not read form XML: ${e instanceof Error ? e.message : String(e)}`, true);

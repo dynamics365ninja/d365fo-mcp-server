@@ -307,8 +307,20 @@ describe('tool inventory contract', () => {
     const projectName = (workspaceInfo.inputSchema as any).properties.projectName.description as string;
 
     expect(projectName).toContain('USER');
-    expect(projectName).toContain('NOT a way to reach another model');
-    expect(projectName).toContain('reads span every model already');
+    expect(projectName).toMatch(/reads span every model already/i);
+  });
+
+  it('tells the agent projectName selects a project, not a model', () => {
+    // A model is built by many projects — fifteen share one model in the
+    // solution where this surfaced — so a model name selects none of them. The
+    // parameter used to say "just the model name", the resolver took the first
+    // match, and every write after that landed in a project nobody chose.
+    const workspaceInfo = toolSchemas.find(t => t.name === 'get_workspace_info')!;
+    const projectName = (workspaceInfo.inputSchema as any).properties.projectName.description as string;
+
+    expect(projectName).toMatch(/PROJECT file name/i);
+    expect(projectName).toMatch(/not a model name/i);
+    expect(projectName).not.toMatch(/just the model name/i);
   });
 
   it('does not advertise update_symbol_index as a follow-up to create/modify', () => {

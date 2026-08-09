@@ -11,7 +11,7 @@ import { handleGetFormPatterns } from '../knowledge/getFormPatterns.js';
 import path from 'path';
 import fs from 'fs';
 import { getConfigManager } from '../../utils/configManager.js';
-import { defaultPackagesRoot } from '../../utils/packagesRoot.js';
+import { defaultPackagesRoot, resolveIndexedFilePath } from '../../utils/packagesRoot.js';
 import { resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix } from '../../utils/modelClassifier.js';
 import { ProjectFileManager } from '../../workspace/projectFile.js';
 import { extractModelFromProject, findProjectInSolution } from '../../utils/projectUtils.js';
@@ -1001,7 +1001,9 @@ export async function handleGenerateSmartForm(
       if (!table || seenTables.has(table.toLowerCase())) continue;
       seenTables.add(table.toLowerCase());
       const row = lookupSymbolNocase(db, table, ['table']);
-      const stale = row?.file_path && !fs.existsSync(row.file_path);
+      // Package-relative file_path rows would always miss here and mark a
+      // perfectly good table "stale" — see resolveIndexedFilePath.
+      const stale = row?.file_path && !fs.existsSync(resolveIndexedFilePath(row.file_path));
       if (row && !stale) continue;
       const stem = table.replace(/s$/i, '');
       const alt = db.prepare(
