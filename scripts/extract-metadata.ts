@@ -13,6 +13,7 @@ import { XppMetadataParser, buildClassExtensionRecord } from '../src/metadata/xm
 import type { XppClassInfo } from '../src/metadata/types.js';
 import { isCustomModel as checkIsCustomModel, getCustomModels } from '../src/utils/modelClassifier.js';
 import { writeExtractManifest } from '../src/utils/extractManifest.js';
+import { readBlobDownloadMarker } from '../src/utils/blobDownloadMarker.js';
 import { XppConfigProvider } from '../src/utils/xppConfigProvider.js';
 import { defaultPackagesRoot } from '../src/utils/packagesRoot.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, log, shortPath, supportsUnicode, sanitize } from '../src/utils/terminalUi.js';
@@ -136,6 +137,14 @@ async function writeMetadataJson(
  * Only ever called for a model whose extraction completed without a single error — a
  * transient parse failure means "no JSON written", which is indistinguishable here from
  * "object deleted", and pruning on that signal would delete good metadata.
+ *
+ * INTERACTION WITH BLOB-DOWNLOADED METADATA: scripts/azure-blob-manager.ts downloads
+ * into this same OUTPUT_PATH/<model>/… layout. For a model that is BOTH downloaded and
+ * re-extracted here, "the blob had it, this disk does not" is indistinguishable from
+ * "it was deleted from the AOT", and the sweep removes it. That precedence is intended —
+ * local disk is authoritative for a model you just extracted — but on a machine with a
+ * partial PackagesLocalDirectory it reads as data loss, so the run summary says so
+ * whenever a blob-download marker is present (see src/utils/blobDownloadMarker.ts).
  *
  * Exported for tests.
  */
@@ -928,6 +937,31 @@ async function extractMetadata() {
         log.detail(`${modelName}: ${removed.slice(0, 10).join(', ')}${removed.length > 10 ? ` (+${removed.length - 10} more)` : ''}`);
       }
       log.detail('These objects are gone from PackagesLocalDirectory. Run build-database to drop them from the symbol index.');
+      // "Gone from PackagesLocalDirectory" is the whole story only when this machine
+      // is the sole source of what lives under OUTPUT_PATH. The blob manager downloads
+      // into the same layout, and for a model that is both downloaded and re-extracted
+      // here the sweep cannot tell "the blob had it, this disk does not" apart from a
+      // delete. Naming that is the difference between intended precedence and apparent
+      // data loss.
+      const blobMarker = readBlobDownloadMarker(OUTPUT_PATH);
+      if (blobMarker) {
+        const overlap = [...prunedByModel.keys()].filter(
+          m => blobMarker.models.length === 0 || blobMarker.models.includes(m),
+        );
+        if (overlap.length > 0) {
+          console.log(statusLine('warn', c.yellow(
+            `${formatCount(overlap.length)} of these model(s) also hold metadata downloaded from blob storage ` +
+            `on ${blobMarker.downloadedAt} (${blobMarker.modelType}): ${overlap.slice(0, 10).join(', ')}` +
+            `${overlap.length > 10 ? ` (+${overlap.length - 10} more)` : ''}`
+          )));
+          log.detail(
+            'Local disk is authoritative for a model this run re-extracted, so JSON the blob copy had and this ' +
+            "machine's PackagesLocalDirectory does not was removed as an orphan. That is the intended precedence, " +
+            'not a bug — but if this machine holds only part of the AOT, re-run the blob download afterwards or ' +
+            'exclude those models from extraction.'
+          );
+        }
+      }
     } else {
       log.info('No orphaned metadata found - every extracted JSON has a live source file');
     }
