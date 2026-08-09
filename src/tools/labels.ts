@@ -149,6 +149,35 @@ export async function labelsTool(request: CallToolRequest, context: XppServerCon
 const MAX_BATCH_QUERIES = 12;
 
 /**
+ * How many of the batch's searches are in flight at once.
+ *
+ * They are independent reads, so running them one after another made the batch
+ * cost the SUM of its queries when it only needs to cost the slowest — the very
+ * latency batching exists to remove. Bounded rather than unbounded because they
+ * all land on the same SQLite connection: twelve concurrent FTS queries buy
+ * nothing over a handful and only lengthen the queue behind them.
+ */
+const BATCH_CONCURRENCY = 4;
+
+/** Run `fn` over `items` with at most `limit` in flight, preserving input order. Exported for tests. */
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/**
  * Run several label searches in one call.
  *
  * Looking for a reusable label is inherently a guessing game — the caller does not
@@ -163,8 +192,21 @@ async function batchSearch(
   search: LabelsTool,
   context: XppServerContext,
 ): Promise<any> {
-  const all = (args.query as unknown[]).map(q => String(q)).filter(q => q.trim() !== '');
-  const queries = all.slice(0, MAX_BATCH_QUERIES);
+  const all = (args.query as unknown[]).map(q => String(q).trim()).filter(q => q !== '');
+  // Fold phrasings that differ only in case or surrounding space: the index is
+  // case-insensitive, so ["customer","customer","Customer"] is one query printed
+  // three times — and passing near-duplicates is exactly the guessing behaviour
+  // this feature exists to absorb. First spelling wins, so the sections still read
+  // back in the caller's own words.
+  const seen = new Set<string>();
+  const unique = all.filter(q => {
+    const key = q.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const duplicates = all.length - unique.length;
+  const queries = unique.slice(0, MAX_BATCH_QUERIES);
   if (queries.length === 0) {
     return {
       content: [{ type: 'text', text: `❌ labels(action="search"): query[] is empty — pass at least one search text.` }],
@@ -172,33 +214,63 @@ async function batchSearch(
     };
   }
 
-  const sections: string[] = [];
-  let foundReusable = false;
-
-  for (const query of queries) {
-    const result = await search(
-      { method: 'tools/call', params: { name: 'search_labels', arguments: { ...args, query } } },
-      context,
-    );
+  const runs = await mapWithConcurrency(queries, BATCH_CONCURRENCY, async (query) => {
+    let result: any;
+    try {
+      result = await search(
+        { method: 'tools/call', params: { name: 'search_labels', arguments: { ...args, query } } },
+        context,
+      );
+    } catch (error) {
+      // A handler that throws is a failure like any other — it must not read back
+      // as "this phrasing found nothing".
+      return { query, text: `❌ ${error instanceof Error ? error.message : String(error)}`, failed: true };
+    }
     const text = (result?.content ?? [])
       .map((c: any) => (typeof c?.text === 'string' ? c.text : ''))
       .join('\n');
-    if (text.includes(REUSABLE_MARKER)) foundReusable = true;
-    sections.push(`## "${query}"\n\n${text}`);
-  }
+    return { query, text, failed: result?.isError === true };
+  });
 
+  const failed = runs.filter(r => r.failed);
+  const searched = runs.length - failed.length;
+  const foundReusable = runs.some(r => !r.failed && r.text.includes(REUSABLE_MARKER));
+  const sections = runs.map(r => `## "${r.query}"${r.failed ? ' — ❌ SEARCH FAILED' : ''}\n\n${r.text}`);
+
+  const notes = [
+    duplicates > 0 ? `${duplicates} duplicate phrasing(s) folded` : '',
+    unique.length > queries.length ? `${unique.length - queries.length} beyond the ${MAX_BATCH_QUERIES}-query cap were not run` : '',
+  ].filter(Boolean);
   const header = `# Label search — ${queries.length} quer${queries.length === 1 ? 'y' : 'ies'}` +
-    (all.length > queries.length ? ` (${all.length - queries.length} beyond the ${MAX_BATCH_QUERIES}-query cap were not run)` : '') +
-    '\n';
+    (notes.length > 0 ? ` (${notes.join('; ')})` : '') + '\n';
+
   // The per-query sections each carry their own advice; the verdict is what the
   // caller actually needs, so state it once, up front, rather than making them
   // read every section to work out that no phrasing hit.
-  const verdict = foundReusable
-    ? `**Verdict:** at least one reusable label was found — see the section(s) marked "${REUSABLE_MARKER}".\n`
-    : `**Verdict:** none of these ${queries.length} phrasings found a label this model can resolve. ` +
-      `Stop searching and create your own.\n\n${NO_REUSE_ADVICE}`;
+  //
+  // A failed sub-search is NOT a miss, and the two used to be indistinguishable:
+  // isError was dropped on the floor, so a batch in which every query blew up
+  // returned a clean report whose verdict said "no label exists — create your own".
+  // That is the one thing this line exists to state unambiguously, so failures
+  // either replace the verdict or are named alongside it.
+  const verdict = searched === 0
+    ? `**Verdict:** NONE of these ${runs.length} searches ran — every one failed (see the sections below). ` +
+      `This says nothing about whether a reusable label exists; fix the error and search again ` +
+      `rather than creating a label on the strength of this answer.\n`
+    : foundReusable
+      ? `**Verdict:** at least one reusable label was found — see the section(s) marked "${REUSABLE_MARKER}".\n`
+      : `**Verdict:** none of these ${searched} phrasings found a label this model can resolve. ` +
+        `Stop searching and create your own.\n` +
+        (failed.length > 0
+          ? `\n⚠️ ${failed.length} of ${runs.length} searches FAILED and were not part of that verdict: ` +
+            `${failed.map(f => `"${f.query}"`).join(', ')}.\n`
+          : '') +
+        `\n${NO_REUSE_ADVICE}`;
 
-  return { content: [{ type: 'text', text: `${header}\n${verdict}\n---\n\n${sections.join('\n\n---\n\n')}` }] };
+  return {
+    content: [{ type: 'text', text: `${header}\n${verdict}\n---\n\n${sections.join('\n\n---\n\n')}` }],
+    ...(searched === 0 ? { isError: true } : {}),
+  };
 }
 
 // Tool registration (name, description, inputSchema) lives in
