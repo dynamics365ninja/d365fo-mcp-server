@@ -251,6 +251,16 @@ export function resolveRegularObjectPrefixToken(modelName?: string): string {
  * so it strips any existing suffix-prefix and replaces it with the current one.
  *
  * Case-insensitive check prevents double-prefixing.
+ *
+ * ALWAYS pass `modelName` when you know it. Omitting it does not merely lose the
+ * model-name naming style — it changes the regular-object result, because the raw
+ * prefix then falls back to EXTENSION_PREFIX and the model's own separator is
+ * invisible: a model whose objects are "ConSK_*" yields "ConSK_QualityTier"
+ * with the argument and "ConSKQualityTier" without it. prepare(mode="create")
+ * predicted names through the 2-arg form while d365fo_file(action="create") wrote
+ * them through the 3-arg form, so the two disagreed on every underscore-style model.
+ * Prefer normalizeObjectName() (utils/objectNaming.ts), which is the one path
+ * create/modify already share.
  */
 export function applyObjectPrefix(objectName: string, prefix: string, modelName?: string): string {
   if (!prefix) return objectName;

@@ -324,7 +324,7 @@ export async function handleGenerateSmartReport(
 
   // Apply prefix
   const objectPrefix = resolvedModel ? resolveObjectPrefix(resolvedModel) : '';
-  let finalName = objectPrefix ? applyObjectPrefix(name, objectPrefix) : name;
+  let finalName = objectPrefix ? applyObjectPrefix(name, objectPrefix, resolvedModel ?? undefined) : name;
   const objectSuffix = getObjectSuffix();
   finalName = applyObjectSuffix(finalName, objectSuffix);
   if (finalName !== name) log(`Applied naming: ${name} → ${finalName}`);

@@ -404,7 +404,10 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     note:
       'table-extension: a group owned by the BASE table is detected and extended through ' +
       '<FieldGroupExtensions> on its own (reported as a Note) — pass extendBaseFieldGroup=true to state ' +
-      'it up front, or autoCorrect=false to have the mismatch error instead.',
+      'it up front, or autoCorrect=false to have the mismatch error instead. ' +
+      'fieldName follows the prefix add-field applied: send both in one operations[] and the bare name is ' +
+      'retargeted at the prefixed field (reported as a Note), unless the base table declares a field of ' +
+      'that name too — then it is taken as naming the base-table field.',
   },
   'add-field-modification': {
     required: ['fieldName'],
@@ -537,6 +540,13 @@ export const D365FO_FILE_CORE_PARAMS: ReadonlySet<string> = new Set([
   // side options
   'createBackup', 'addToProject', 'projectPath', 'solutionPath', 'groundingToken',
   'autoCorrect',
+  // Internal, injected by runModifyBatch — the operation names travelling in the
+  // same operations[] batch, so an advisory note can tell whether its advice has
+  // already been taken. It is absent from the published schema, so no caller can
+  // send it; omitting it here made every batched entry report
+  // "peerOperations: IGNORED (not a recognised d365fo_file parameter)" — the
+  // exact false warning the batch flow exists to stop producing.
+  'peerOperations',
 ]);
 
 /**

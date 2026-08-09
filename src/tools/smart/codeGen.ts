@@ -1942,7 +1942,7 @@ export async function codeGenTool(request: CallToolRequest) {
       }
     } else if (args.pattern === 'sysoperation') {
       // sysoperation is handled separately so we can pass the optional serviceMethod param
-      let finalName = applyObjectPrefix(args.name, prefix);
+      let finalName = applyObjectPrefix(args.name, prefix, resolvedModelName || undefined);
       const suffix = getObjectSuffix();
       finalName = applyObjectSuffix(finalName, suffix);
       const serviceMethod = args.serviceMethod?.trim() || 'process';
@@ -1962,7 +1962,7 @@ export async function codeGenTool(request: CallToolRequest) {
           isError: true,
         };
       }
-      let finalName = applyObjectPrefix(args.name, prefix);
+      let finalName = applyObjectPrefix(args.name, prefix, resolvedModelName || undefined);
       const suffix = getObjectSuffix();
       finalName = applyObjectSuffix(finalName, suffix);
       code = newTemplate(finalName);

@@ -18,6 +18,7 @@ import {
   formatSuggestions
 } from '../../utils/suggestionEngine.js';
 import { tryBridgeSearch } from '../../bridge/bridgeAdapter.js';
+import { indexedPathIsMissing } from '../../utils/indexedXmlLookup.js';
 import { lookupSymbolsNocase } from '../../utils/symbolLookup.js';
 import { rankCustomFirst, isExactNameMatch } from '../../utils/exactMatchRanking.js';
 import { isCustomModel } from '../../utils/modelClassifier.js';
@@ -89,6 +90,30 @@ export function probeCustomMatches(
   }
 }
 
+/**
+ * Drop probe rows whose object is gone from disk.
+ *
+ * Both probes are index-only reads, and the index is not rebuilt when a file is
+ * deleted — so after a workspace reset the splice kept surfacing objects from the
+ * previous run and ranking them ABOVE the live ones, which is how a search for a
+ * field that did not exist answered "found it". `indexedPathIsMissing` judges only
+ * PackagesLocalDirectory paths, so a build-agent path that merely does not remap
+ * here is still spliced in as before.
+ *
+ * Scoped to the PROBES on purpose. They are a splice that outranks everything
+ * else, so a ghost among them is actively misleading and dropping one costs
+ * nothing — the row is still in the result set the probe was spliced into. The
+ * result set itself is not swept: a symbol index built elsewhere (the shipped
+ * one covers every standard package) routinely names files a given machine has
+ * not installed, and dropping those would answer "no such object" for the whole
+ * of D365FO on a partial install. Marking rather than hiding is the open
+ * question there.
+ */
+async function dropStaleRows<T extends { filePath?: string }>(rows: T[]): Promise<T[]> {
+  const missing = await Promise.all(rows.map(r => indexedPathIsMissing(r.filePath)));
+  return rows.filter((_, i) => !missing[i]);
+}
+
 const SearchArgsSchema = z.object({
   query: z.string().describe('Search query (class name, method name, etc.)'),
   type: z.enum([
@@ -120,8 +145,8 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
     // of the Microsoft-dominated bridge window are spliced back in and
     // prioritized (never "only Microsoft objects").
     const searchTypes = args.type === 'all' ? undefined : [args.type];
-    const exactMatches = probeExactMatches(symbolIndex, args.query, searchTypes);
-    const customMatches = probeCustomMatches(symbolIndex, args.query, searchTypes);
+    const exactMatches = await dropStaleRows(probeExactMatches(symbolIndex, args.query, searchTypes));
+    const customMatches = await dropStaleRows(probeCustomMatches(symbolIndex, args.query, searchTypes));
     const bridgeResult = await tryBridgeSearch(
       context.bridge,
       args.query,
@@ -326,6 +351,11 @@ async function performExternalSearch(
       .filter(hit => !seen.has(`${hit.name.toLowerCase()} ${hit.type}`));
     for (const hit of missingCustom) seen.add(`${hit.name.toLowerCase()} ${hit.type}`);
 
+    // NOT swept for stale rows, deliberately — see dropStaleRows. This is the
+    // whole answer, not a splice, and a symbol index built elsewhere routinely
+    // covers packages this machine does not have installed. Dropping those would
+    // turn "you do not have that package locally" into "no such object", in the
+    // one tool everything else starts from.
     const combined = [...missingExact, ...missingCustom, ...raw];
     const isCustomHit = (r: any) =>
       (r.model ? isCustomModel(String(r.model)) : false) ||

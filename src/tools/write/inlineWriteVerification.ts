@@ -77,9 +77,9 @@ export interface WriteVerification {
  * Check that a just-written file is where it should be. Never throws.
  *
  * `siblingProjectPaths` are the other .rnrproj of the same model. Supply them
- * and an object registered in the project that owns it is reported as such
- * rather than as missing — the distinction matters, because "missing" invites a
- * second registration of the same file.
+ * and an object referenced by one of those is reported as such rather than as
+ * missing — the distinction matters, because only one of the two stops the
+ * build, and they call for different fixes.
  */
 export async function verifyWrittenFile(
   filePath: string | undefined,

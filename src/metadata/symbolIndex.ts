@@ -1012,10 +1012,20 @@ export class XppSymbolIndex {
    * Top-level object names belonging to one model — the evidence from which a
    * model's naming prefix is inferred (see utils/modelPrefixInference.ts).
    *
-   * Deliberately narrow and bounded: only `name`, only root objects, capped at
-   * `limit`. Reading whole rows here would pull source snippets across the wire
-   * and turn a 450 ms lookup into a slow one. Extension objects are included on
-   * purpose — a dot-notation extension states the model's infix outright.
+   * Deliberately narrow and bounded: only `name`, capped at `limit`. Reading whole
+   * rows here would pull source snippets across the wire and turn a 450 ms lookup
+   * into a slow one.
+   *
+   * Extension objects are included on purpose — a dot-notation extension states the
+   * model's infix outright — but `parent_name IS NULL` had been quietly excluding
+   * them, because an extension ELEMENT is stored as a child of the base object it
+   * extends. On ContosoFinanceSK that hid 34 of 36: the model spells its extensions
+   * "…ConSKExtension" 35 times and "…ConSkExtension" once, yet inference saw
+   * two names, one of each, fell under the 60 % threshold and derived "ConSk"
+   * from the regular token instead — flattening the "SK" country code. This server
+   * then WROTE a ConSk extension, which became one of the two visible names, so
+   * the wrong answer was feeding itself. Members ('method', 'field') are excluded by
+   * type, which is what this clause was reaching for.
    */
   getModelObjectNames(model: string, limit = 400): string[] {
     if (!model) return [];
@@ -1023,7 +1033,7 @@ export class XppSymbolIndex {
       .prepare(
         `SELECT name FROM symbols
          WHERE model = ?
-           AND parent_name IS NULL
+           AND (parent_name IS NULL OR type LIKE '%-extension')
            AND type NOT IN ('method', 'field')
          LIMIT ?`
       )
@@ -4023,24 +4033,40 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Get all label file IDs for a model (i.e. which AxLabelFiles exist)
+   * Get all label file IDs for a model (i.e. which AxLabelFiles exist).
+   *
+   * Both filters belong in SQL. `labelFileId` used to be applied by the caller to
+   * the finished list, so asking about ONE label file still grouped all 1.4 M rows
+   * into 1602 groups and then threw 1601 of them away — a full index scan measured
+   * at 2.5 s warm, and one cold call in a real session took 28 s against the 40-170 ms
+   * every other call to the same tool costs. Pushed into the WHERE clause the same
+   * lookup is a seek on idx_labels_file_id: 0.4 ms.
    */
-  getLabelFileIds(model?: string): Array<{ labelFileId: string; model: string; languages: string }> {
-    if (model) {
-      return this.labelsDb.prepare(`
-        SELECT label_file_id AS labelFileId, model, GROUP_CONCAT(DISTINCT language) AS languages
-        FROM labels
-        WHERE model = ?
-        GROUP BY label_file_id, model
-        ORDER BY label_file_id
-      `).all(model) as any[];
-    }
-    return this.labelsDb.prepare(`
+  getLabelFileIds(model?: string, labelFileId?: string): Array<{ labelFileId: string; model: string; languages: string }> {
+    const run = (extraWhere: string, params: string[]) => this.labelsDb.prepare(`
       SELECT label_file_id AS labelFileId, model, GROUP_CONCAT(DISTINCT language) AS languages
       FROM labels
+      ${extraWhere}
       GROUP BY label_file_id, model
       ORDER BY label_file_id
-    `).all() as any[];
+    `).all(...params) as Array<{ labelFileId: string; model: string; languages: string }>;
+
+    const where: string[] = [];
+    const params: string[] = [];
+    if (model) { where.push('model = ?'); params.push(model); }
+    if (labelFileId) { where.push('label_file_id = ?'); params.push(labelFileId); }
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const hits = run(clause, params);
+    if (hits.length > 0 || !labelFileId) return hits;
+
+    // The caller-side filter this replaced compared lowercased, and idx_labels_file_id
+    // is BINARY — so a differently-cased ID would silently return nothing. Only when
+    // the fast exact seek misses does it cost the scan to stay case-insensitive.
+    const nocaseWhere: string[] = ['label_file_id = ? COLLATE NOCASE'];
+    const nocaseParams: string[] = [labelFileId];
+    if (model) { nocaseWhere.unshift('model = ?'); nocaseParams.unshift(model); }
+    return run(`WHERE ${nocaseWhere.join(' AND ')}`, nocaseParams);
   }
 
   /**

@@ -16,6 +16,7 @@ import type { XppMetadataParser } from '../../metadata/xmlParser.js';
 import { parseXppDeclaration } from '../../metadata/xppDeclaration.js';
 import { canonicalSymbolName } from '../../utils/symbolLookup.js';
 import { inheritedOwnerCandidates } from '../../utils/inheritanceChain.js';
+import { indexedPathIsMissing, renderStaleIndexNote } from '../../utils/indexedXmlLookup.js';
 
 /** Object types that can own methods. */
 const OBJECT_TYPES = ['class', 'table', 'view', 'data-entity'] as const;
@@ -136,7 +137,14 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
       output += `**Model:** ${classRow.model}\n`;
       output += `_Source: SQLite index (signature only — bridge and XML unavailable)_\n\n`;
       output += `\`\`\`xpp\n${sigText}\n\`\`\`\n`;
-      output += `\n> ⚠️ CoC template not available without full method source. Start the C# bridge for full functionality.\n`;
+      // "Bridge and XML unavailable" reads as a degraded read, but it is also what a
+      // DELETED class looks like — the signature row survives the file. Say which,
+      // instead of leaving the agent to prove it with a directory walk.
+      if (await indexedPathIsMissing(classRow.file_path)) {
+        output += `\n${renderStaleIndexNote(className, classRow.file_path)}`;
+      } else {
+        output += `\n> ⚠️ CoC template not available without full method source. Start the C# bridge for full functionality.\n`;
+      }
       return { content: [{ type: 'text', text: output }] };
     }
 

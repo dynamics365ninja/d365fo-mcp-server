@@ -48,13 +48,23 @@ describe('describeBridgeFallbackReason', () => {
   });
 });
 
-const { mockBridgeReplaceCode, mockWriteFile } = vi.hoisted(() => ({
-  mockBridgeReplaceCode: vi.fn(async () => ({
-    success: false,
-    message: 'Bridge replaceCode returned success=false',
-  })),
-  mockWriteFile: vi.fn(async () => {}),
-}));
+// The XML mock is STATEFUL: writeFile keeps what was written and readFile hands it
+// back. A write-only mock made every read return the pristine file, so the fallback's
+// read-back check (added after a ✅ that the caller did not trust and re-applied by
+// hand) could never see its own write.
+const { mockBridgeReplaceCode, mockWriteFile, fsState } = vi.hoisted(() => {
+  const fsState = { xml: '' };
+  return {
+    fsState,
+    mockBridgeReplaceCode: vi.fn(async () => ({
+      success: false,
+      message: 'Bridge replaceCode returned success=false',
+    })),
+    mockWriteFile: vi.fn(async (_p: string, content: string) => {
+      if (typeof content === 'string' && content.includes('<AxForm')) fsState.xml = content;
+    }),
+  };
+});
 
 vi.mock('../../src/bridge/bridgeAdapter', async (orig) => {
   const actual = await orig<typeof import('../../src/bridge/bridgeAdapter')>();
@@ -87,7 +97,7 @@ public void clicked()
 
 vi.mock('fs/promises', () => ({
   readFile: vi.fn(async (p: string) => {
-    if (p.endsWith('.xml')) return FORM_XML;
+    if (p.endsWith('.xml')) return fsState.xml || FORM_XML;
     if (p.endsWith('.rnrproj')) return `<Project><ItemGroup></ItemGroup></Project>`;
     throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
   }),
@@ -190,6 +200,7 @@ describe('replace-code direct-XML fallback message (finding #4)', () => {
   beforeEach(() => {
     mockBridgeReplaceCode.mockClear();
     mockWriteFile.mockClear();
+    fsState.xml = '';
     mockBridgeReplaceCode.mockResolvedValue({
       success: false,
       message: 'Bridge replaceCode returned success=false',
@@ -201,7 +212,6 @@ describe('replace-code direct-XML fallback message (finding #4)', () => {
 
     expect(result.isError).toBeFalsy();
     const text = result.content[0].text as string;
-    expect(text).toMatch(/direct XML fallback/i);
     expect(text).not.toMatch(/unavailable/i);
     expect(text).toContain('Bridge replaceCode returned success=false');
     expect(mockWriteFile).toHaveBeenCalled();
@@ -212,5 +222,25 @@ describe('replace-code direct-XML fallback message (finding #4)', () => {
 
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text as string).toMatch(/the bridge was unavailable/i);
+  });
+
+  it('confirms the new code is on disk and tells the caller not to re-apply it', async () => {
+    // The ✅ that led with the bridge's error read as a failure, so the caller
+    // edited the AOT XML again with a text tool — the bypass this server removes.
+    const result = await replaceCode(buildContext({ isReady: true, metadataAvailable: true }));
+
+    const text = result.content[0].text as string;
+    expect(text).toMatch(/verified on disk/i);
+    expect(text).toMatch(/do NOT re-apply/i);
+    expect(fsState.xml).toContain('ttsbegin; // guarded');
+  });
+
+  it('reports failure rather than ✅ when the write did not land', async () => {
+    mockWriteFile.mockImplementationOnce(async () => {}); // swallow the write
+    const result = await replaceCode(buildContext({ isReady: true, metadataAvailable: true }));
+
+    const text = result.content[0].text as string;
+    expect(text).not.toMatch(/verified on disk/i);
+    expect(text).toMatch(/did not take effect|not in the file afterwards/i);
   });
 });

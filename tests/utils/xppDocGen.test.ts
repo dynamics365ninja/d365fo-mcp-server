@@ -249,6 +249,52 @@ describe('ensureXppDocComment — completing an existing doc block', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// An X++ class is public unless it says otherwise, so requiring an explicit
+// `public` skipped the one class shape this server generates most —
+// `final class Foo_Extension`, emitted for every CoC extension — and its own
+// run_bp_check then flagged the result BPXmlDocNoDocumentationComments.
+// ---------------------------------------------------------------------------
+
+describe('ensureXppDocComment — class declarations without an explicit modifier', () => {
+  const hasDoc = (s: string) => s.trimStart().startsWith('/// <summary>');
+
+  it('documents a `final class` CoC extension', () => {
+    const decl = '[ExtensionOf(tableStr(MyTable))]\nfinal class MyTable_Extension\n{\n}';
+    const out = ensureXppDocComment(decl);
+    expect(hasDoc(out)).toBe(true);
+    // The attribute keeps its place directly above the class.
+    expect(out).toContain('[ExtensionOf(tableStr(MyTable))]\nfinal class MyTable_Extension');
+  });
+
+  it('documents a bare `class`, an `abstract class` and a `final class extends`', () => {
+    for (const decl of [
+      'class MyClass\n{\n}',
+      'abstract class MyBase\n{\n}',
+      'final class MyLeaf extends MyBase\n{\n}',
+    ]) {
+      expect(hasDoc(ensureXppDocComment(decl))).toBe(true);
+    }
+  });
+
+  it('still leaves an explicitly private or internal class alone', () => {
+    for (const decl of ['private class Hidden\n{\n}', 'internal final class Hidden\n{\n}']) {
+      expect(ensureXppDocComment(decl)).toBe(decl);
+    }
+  });
+
+  it('is idempotent — a class documented once is not documented twice', () => {
+    const once = ensureXppDocComment('final class MyTable_Extension\n{\n}');
+    expect(ensureXppDocComment(once)).toBe(once);
+  });
+
+  it('does not start documenting unmodified METHODS as a side effect', () => {
+    // The visibility gate is deliberate for methods; only classes were wrong.
+    const method = 'void helper()\n{\n}';
+    expect(ensureXppDocComment(method)).toBe(method);
+  });
+});
+
 describe('ensureBlankLineBeforeClosingBrace', () => {
   it('inserts a blank line between last member and closing brace', () => {
     const decl = [

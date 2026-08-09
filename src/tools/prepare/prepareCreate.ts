@@ -17,7 +17,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { createProvenanceToken } from '../../utils/provenanceStore.js';
 import { getConfigManager } from '../../utils/configManager.js';
-import { resolveObjectPrefix, applyObjectPrefix } from '../../utils/modelClassifier.js';
+import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { renderPrepareOpSpec } from '../specs/opSpecs.js';
 import { rankContext, renderRankedContext } from '../../workspace/contextRanker.js';
 import { lookupSymbolsNocase, type SymbolHit } from '../../utils/symbolLookup.js';
@@ -238,8 +238,14 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
 
   const { goal, objectName, objectType, fieldsHint } = parsed.data;
   const modelName = getConfigManager().getModelName() ?? undefined;
-  const prefix = resolveObjectPrefix(modelName ?? '');
-  const finalName = prefix ? applyObjectPrefix(objectName, prefix) : objectName;
+  // Predict the name through the SAME helper d365fo_file(action="create") writes with.
+  // Re-deriving it here from applyObjectPrefix(name, prefix) — without modelName — dropped
+  // the separator for models whose inferred prefix carries one: prepare promised
+  // "ConSKQualityTier" and create wrote "ConSK_QualityTier". The caller then took
+  // prepare at its word, hand-fed a leading "_" to compensate, and got "ConSK__QualityTier"
+  // on disk, which cost a create + undo + re-create. It also made the collision check probe
+  // a name that never gets written, so a real collision read as "No collision".
+  const finalName = normalizeObjectName(objectName, objectType, modelName);
 
   // All lookups are synchronous index queries — run them in one tick.
   const [collisions, naming, similar, edts, labels, propertyDefaults] = [

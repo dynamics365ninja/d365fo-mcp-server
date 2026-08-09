@@ -20,6 +20,26 @@
  *
  * — and it did that to correct input too, so a well-formatted switch handed in
  * came back wrong and had to be repaired by hand afterwards.
+ *
+ * A statement continued onto further lines indents those lines one level past
+ * its first line. Brace depth alone cannot see this — no brace opens — so a
+ * wrapped statement came back flattened onto one level, again including
+ * correct input:
+ *
+ *     select firstonly oldRecord
+ *     where oldRecord.RecId == this.RecId;
+ *
+ * That is what a caller who wrapped the `where` (and the `&&` of a wrapped
+ * `if`) got back after `d365fo_file` wrote the method.
+ *
+ * "Is this statement finished?" is asked of the line's CODE, never its raw text.
+ * Asked of the raw text, a trailing comment hid the `;` —
+ *
+ *     ttsbegin; // start
+ *         ttscommit;
+ *
+ * — and every line after one got a level it had not earned. The result was
+ * stable under re-formatting, so nothing ever put it back.
  */
 
 const INDENT_UNIT = '    ';
@@ -32,13 +52,44 @@ interface OpenBlock {
   caseOpen: boolean;
 }
 
-/** `{` and `}` in source order, ignoring string literals and comments. */
-function braceEvents(line: string): { braces: Array<'{' | '}'>; leadingCloses: number } {
+/** What one line contributes, read once with strings and comments accounted for. */
+interface LineScan {
+  /** `{` and `}` in source order, ignoring string literals and comments. */
+  braces: Array<'{' | '}'>;
+  /** How many of those `}` precede any other code on the line. */
+  leadingCloses: number;
+  /**
+   * The line with its comments removed — the only thing worth asking syntax
+   * questions of. `x = 1; // set it` reads as an unfinished statement until the
+   * comment is gone, and every line after it then got a continuation level it
+   * had not earned.
+   */
+  code: string;
+  /** A `/*` opened on this line (or before it) and is still open at its end. */
+  blockCommentOpen: boolean;
+}
+
+/**
+ * Read one line: brace events, and the code with comments stripped.
+ *
+ * X++ string literals take EITHER quote — `"text"` and `'text'` are the same
+ * literal. Recognising only `'` let a brace inside a double-quoted string count
+ * as real: `info("a } b");` popped a block and shifted every following line of
+ * the method out by one level. Both quote styles escape by doubling (`""`) and
+ * by backslash (`\"`).
+ *
+ * `inBlockCommentAtStart` carries a `/* …` that a previous line left open, so
+ * the body of a multi-line comment is not read as code — a `}` in prose does
+ * not pop a block, and a prose line does not continue the statement above it.
+ */
+function scanLine(line: string, inBlockCommentAtStart = false): LineScan {
   const braces: Array<'{' | '}'> = [];
+  const code: string[] = [];
   let leadingCloses = 0;
   let sawNonCloseNonSpace = false;
-  let inString = false;
-  let inBlockComment = false;
+  /** The quote character that opened the string literal we are inside, if any. */
+  let stringQuote: '"' | "'" | null = null;
+  let inBlockComment = inBlockCommentAtStart;
 
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
@@ -48,15 +99,18 @@ function braceEvents(line: string): { braces: Array<'{' | '}'>; leadingCloses: n
       if (c === '*' && next === '/') { inBlockComment = false; i++; }
       continue;
     }
-    if (inString) {
-      if (c === "'" && next === "'") { i++; continue; } // escaped '' inside a string
-      if (c === "'") inString = false;
+    if (stringQuote) {
+      code.push(c);
+      if (c === '\\' && next !== undefined) { code.push(next); i++; continue; } // \" \\ \n …
+      if (c === stringQuote && next === stringQuote) { code.push(next); i++; continue; } // doubled quote
+      if (c === stringQuote) stringQuote = null;
       continue;
     }
-    if (c === "'") { inString = true; continue; }
+    if (c === "'" || c === '"') { stringQuote = c; code.push(c); continue; }
     if (c === '/' && next === '/') break;
     if (c === '/' && next === '*') { inBlockComment = true; i++; continue; }
 
+    code.push(c);
     if (c === '{') { braces.push('{'); sawNonCloseNonSpace = true; }
     else if (c === '}') {
       braces.push('}');
@@ -65,12 +119,35 @@ function braceEvents(line: string): { braces: Array<'{' | '}'>; leadingCloses: n
       sawNonCloseNonSpace = true;
     }
   }
-  return { braces, leadingCloses };
+  return { braces, leadingCloses, code: code.join('').trim(), blockCommentOpen: inBlockComment };
 }
 
 /** A `case X:` or `default:` label — the statements after it belong one level in. */
 function isCaseLabel(trimmed: string): boolean {
   return /^(case\b|default\s*:)/.test(trimmed);
+}
+
+/**
+ * Does this line leave nothing open, so the next line starts fresh at block depth?
+ *
+ * Takes the line's CODE (see `LineScan.code`), never the raw text: judged on the
+ * raw text, `ttsbegin; // start` does not end in `;` and pushed `ttscommit;` a
+ * level in — and the result was stable under re-formatting, so nothing put it
+ * back. A trailing comment is the most ordinary thing in the language.
+ *
+ * True for a statement end (`;`), a brace, a label/`case` colon, a comment-only
+ * line (which strips to nothing), a macro line, and a one-line attribute — false
+ * for anything that reads as the middle of a statement (`if (a`,
+ * `select firstonly t`, `&& b`, `_p1,`). A line the caller wrapped therefore
+ * gets one extra level; the level does not accumulate, because the flag is
+ * re-derived from the previous line each time, which is what shipped platform
+ * code does for a three-line `if` condition.
+ */
+function terminatesStatement(code: string): boolean {
+  if (code === '') return true; // comment-only line, or the body of a block comment
+  if (code.startsWith('#')) return true; // #define / #macrolib
+  if (code.startsWith('[') && code.endsWith(']')) return true; // [ExtensionOf(…)]
+  return /[;{}:]$/.test(code);
 }
 
 /**
@@ -106,12 +183,20 @@ export function reindentXppSource(source: string, baseDepth = 1): string {
   };
 
   const out: string[] = [];
+  /** The previous non-blank line left a statement open, so this line continues it. */
+  let continues = false;
+  /** A `/* …` from an earlier line is still open, so this line is prose. */
+  let inBlockComment = false;
+
   for (const raw of lines) {
     const trimmed = raw.trim();
+    // A blank line inside a wrapped statement neither opens nor closes one, so
+    // it passes the pending state through untouched.
     if (trimmed === '') { out.push(''); continue; }
 
-    const { braces, leadingCloses } = braceEvents(trimmed);
-    const startsCase = isCaseLabel(trimmed);
+    const { braces, leadingCloses, code, blockCommentOpen } = scanLine(trimmed, inBlockComment);
+    inBlockComment = blockCommentOpen;
+    const startsCase = isCaseLabel(code);
 
     // A new label ends the previous one; a `}` that closes the switch body ends
     // it too, and must do so before the block itself is popped.
@@ -125,7 +210,14 @@ export function reindentXppSource(source: string, baseDepth = 1): string {
       braceIdx++;
     }
 
-    out.push(INDENT_UNIT.repeat(depthNow()) + trimmed);
+    // The brace that opens or closes the wrapped statement's own block belongs
+    // at block depth, not one level in — `if (a\n    && b)\n{` puts the `{`
+    // under the `if`, not under the `&&`.
+    const isBraceOnlyStart = code.startsWith('{') || code.startsWith('}');
+    const continuationIndent = continues && !isBraceOnlyStart ? 1 : 0;
+
+    out.push(INDENT_UNIT.repeat(depthNow() + continuationIndent) + trimmed);
+    continues = !terminatesStatement(code);
 
     // Braces after the leading closes: opens push a block, further closes pop.
     for (; braceIdx < braces.length; braceIdx++) {
@@ -140,7 +232,7 @@ export function reindentXppSource(source: string, baseDepth = 1): string {
     }
 
     // `switch (x)` with its `{` on the following line.
-    if (/^switch\b/.test(trimmed) && !braces.includes('{')) pendingSwitch = true;
+    if (/^switch\b/.test(code) && !braces.includes('{')) pendingSwitch = true;
 
     if (startsCase) {
       const sw = innermostSwitch();

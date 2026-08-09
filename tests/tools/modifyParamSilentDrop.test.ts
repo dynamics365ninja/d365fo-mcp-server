@@ -169,6 +169,9 @@ vi.mock('../../src/utils/modelClassifier', () => ({
   applyObjectSuffix: vi.fn((name: string) => name),
   isCustomModel: vi.fn(() => true),
   isStandardModel: vi.fn(() => false),
+  // No prefix in these fixtures: what is under test here is that the declared
+  // params reach the bridge, not what a member gets renamed to.
+  resolveRegularObjectPrefixToken: vi.fn(() => ''),
 }));
 
 const TABLE_FILE_PATH = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTable\\ConDemoModLifecycle.xml';
@@ -539,6 +542,18 @@ describe('parameter-accounting helpers', () => {
 
   it('accepts an alias of a required param (methodCode for sourceCode)', () => {
     expect(findIgnoredParams('add-method', ['methodName', 'methodCode'])).toEqual([]);
+  });
+
+  it('never flags peerOperations, which this server injects itself', () => {
+    // runModifyBatch adds it to every entry of an operations[] batch so an
+    // advisory note can tell whether its advice is already being followed. It is
+    // not in the published schema, so no caller can send it — flagging it made
+    // EVERY batched entry answer "peerOperations: IGNORED (not a recognised
+    // d365fo_file parameter)", a false drop warning on the one flow the batch
+    // API exists to encourage.
+    expect(findIgnoredParams('add-field', ['fieldName', 'fieldType', 'peerOperations'])).toEqual([]);
+    expect(findIgnoredParams('add-field-to-field-group',
+      ['fieldName', 'fieldGroupName', 'peerOperations'])).toEqual([]);
   });
 
   it('reports the two enum-value drops the audit turned up', () => {

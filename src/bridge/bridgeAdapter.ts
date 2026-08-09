@@ -27,6 +27,7 @@ import type { BridgeAttempt } from './bridgeFailure.js';
 import * as debouncedRefresh from './debouncedRefresh.js';
 import { debugLog } from '../utils/logger.js';
 import { xppMethodSourceForXml } from '../utils/xppFormat.js';
+import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { parseXppDeclaration } from '../metadata/xppDeclaration.js';
 import { rankCustomFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
 import {
@@ -1297,6 +1298,35 @@ export function canBridgeModify(objectType: string, operation: string): boolean 
 }
 
 /**
+ * Give a create's X++ the same doc comments and indentation the XML fallback gives it.
+ *
+ * The bridge stores `declaration` / `methods[].source` verbatim, and only the XML
+ * writers ran `ensureXppDocComment` — so the SAME create landed documented when the
+ * bridge was down and undocumented when it was up, and the undocumented one then
+ * failed `run_bp_check` on `BPXmlDocNoDocumentationComments`. The agent's repair for
+ * that was to hand-edit the AOT XML with a plain text tool, which is exactly the
+ * bypass this server exists to remove. Doing it here covers every create type at once.
+ *
+ * Both helpers are idempotent, so a caller that already formatted its own source
+ * (the table path does) is not disturbed.
+ */
+function documentAndFormat<T extends { declaration?: string; methods?: { name: string; source?: string }[] }>(
+  params: T,
+): T {
+  return {
+    ...params,
+    declaration:
+      params.declaration !== undefined
+        ? ensureBlankLineBeforeClosingBrace(ensureXppDocComment(params.declaration))
+        : undefined,
+    methods: params.methods?.map(m => ({
+      ...m,
+      source: m.source !== undefined ? xppMethodSourceForXml(ensureXppDocComment(m.source)) : m.source,
+    })),
+  };
+}
+
+/**
  * Creates a D365FO object via the C# bridge (IMetadataProvider.Create()).
  *
  * Returns { success, filePath, message }, `null` when the bridge is unavailable or
@@ -1326,7 +1356,7 @@ export async function bridgeCreateObject(
   if (!canBridgeCreate(params.objectType)) return null;
 
   try {
-    const result = await bridge.createObject(params);
+    const result = await bridge.createObject(documentAndFormat(params));
     if (result.success) {
       return {
         success: true,
@@ -1403,8 +1433,15 @@ export async function bridgeAddMethod(
   try {
     // The bridge stores sourceCode verbatim — whatever indentation the caller typed
     // (or didn't) ends up in the AOT XML as-is. Re-derive consistent indentation
-    // from brace depth so ragged/flush-left input doesn't produce garbled formatting.
-    const result = await bridge.addMethod(objectType, objectName, methodName, xppMethodSourceForXml(sourceCode));
+    // from brace depth so ragged/flush-left input doesn't produce garbled formatting,
+    // and add the doc comment `BPXmlDocNoDocumentationComments` asks for, so a method
+    // added through the bridge is not the one shape of write that fails BP.
+    const result = await bridge.addMethod(
+      objectType,
+      objectName,
+      methodName,
+      xppMethodSourceForXml(ensureXppDocComment(sourceCode)),
+    );
     return {
       success: result.success,
       message: result.success

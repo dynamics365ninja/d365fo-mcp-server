@@ -1155,10 +1155,10 @@ class ConfigManager {
    * Every .rnrproj that builds `modelName`, as paths.
    *
    * One model is split across as many projects as its owner wants — fifteen, in
-   * the solution that surfaced this. Anything asking "is this object registered
-   * in a project?" has to ask all of them, or a file correctly registered in the
-   * project that owns it reads as missing, and the fix that invites is a second
-   * entry for the same file. See workspace/projectMembership.ts.
+   * the solution that surfaced this — and one object may be referenced by
+   * several of them. Anything asking "is this object registered in a project?"
+   * has to ask all of them, or a file that compiles perfectly reads as missing
+   * from the build. See workspace/projectMembership.ts.
    */
   getProjectsForModel(modelName: string | null | undefined): string[] {
     if (!modelName) return [];

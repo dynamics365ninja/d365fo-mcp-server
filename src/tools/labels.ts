@@ -14,7 +14,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { searchLabelsTool } from './analysis/searchLabels.js';
+import { searchLabelsTool, REUSABLE_MARKER, NO_REUSE_ADVICE } from './analysis/searchLabels.js';
 import { getLabelInfoTool } from './readers/getLabelInfo.js';
 import { createLabelTool } from './write/createLabel.js';
 import { renameLabelTool } from './write/renameLabel.js';
@@ -128,10 +128,13 @@ export async function labelsTool(request: CallToolRequest, context: XppServerCon
     const r = rest as Record<string, unknown>;
     if (r.query === undefined) {
       const alt = r.searchText ?? r.text ?? r.q;
-      if (typeof alt === 'string') {
+      if (typeof alt === 'string' || Array.isArray(alt)) {
         r.query = alt;
         delete r.searchText; delete r.text; delete r.q;
       }
+    }
+    if (Array.isArray(r.query)) {
+      return batchSearch(r, dispatch.tool, context);
     }
   }
 
@@ -140,6 +143,62 @@ export async function labelsTool(request: CallToolRequest, context: XppServerCon
     params: { name: dispatch.toolName, arguments: rest },
   };
   return dispatch.tool(subRequest, context);
+}
+
+/** Most phrasings one call will try — beyond this the answer is "create your own". */
+const MAX_BATCH_QUERIES = 12;
+
+/**
+ * Run several label searches in one call.
+ *
+ * Looking for a reusable label is inherently a guessing game — the caller does not
+ * know the wording Microsoft used — and one query per call turned that into a
+ * round trip per guess: 19 of them in a single benchmark run, ~150 s of wall clock,
+ * for an answer ("no reusable label exists, create your own") that was already
+ * determined by the first. Batching collapses the guesses into one call and, when
+ * none of them hits, says so once instead of leaving the caller to conclude it.
+ */
+async function batchSearch(
+  args: Record<string, unknown>,
+  search: LabelsTool,
+  context: XppServerContext,
+): Promise<any> {
+  const all = (args.query as unknown[]).map(q => String(q)).filter(q => q.trim() !== '');
+  const queries = all.slice(0, MAX_BATCH_QUERIES);
+  if (queries.length === 0) {
+    return {
+      content: [{ type: 'text', text: `❌ labels(action="search"): query[] is empty — pass at least one search text.` }],
+      isError: true,
+    };
+  }
+
+  const sections: string[] = [];
+  let foundReusable = false;
+
+  for (const query of queries) {
+    const result = await search(
+      { method: 'tools/call', params: { name: 'search_labels', arguments: { ...args, query } } },
+      context,
+    );
+    const text = (result?.content ?? [])
+      .map((c: any) => (typeof c?.text === 'string' ? c.text : ''))
+      .join('\n');
+    if (text.includes(REUSABLE_MARKER)) foundReusable = true;
+    sections.push(`## "${query}"\n\n${text}`);
+  }
+
+  const header = `# Label search — ${queries.length} quer${queries.length === 1 ? 'y' : 'ies'}` +
+    (all.length > queries.length ? ` (${all.length - queries.length} beyond the ${MAX_BATCH_QUERIES}-query cap were not run)` : '') +
+    '\n';
+  // The per-query sections each carry their own advice; the verdict is what the
+  // caller actually needs, so state it once, up front, rather than making them
+  // read every section to work out that no phrasing hit.
+  const verdict = foundReusable
+    ? `**Verdict:** at least one reusable label was found — see the section(s) marked "${REUSABLE_MARKER}".\n`
+    : `**Verdict:** none of these ${queries.length} phrasings found a label this model can resolve. ` +
+      `Stop searching and create your own.\n\n${NO_REUSE_ADVICE}`;
+
+  return { content: [{ type: 'text', text: `${header}\n${verdict}\n---\n\n${sections.join('\n\n---\n\n')}` }] };
 }
 
 // Tool registration (name, description, inputSchema) lives in

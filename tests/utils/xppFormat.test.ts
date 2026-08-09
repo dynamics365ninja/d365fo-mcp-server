@@ -309,3 +309,299 @@ describe('reindentXppSource — compiler-validated switch shapes', () => {
     ].join('\n'));
   });
 });
+
+// ---------------------------------------------------------------------------
+// A statement wrapped onto further lines opens no brace, so brace depth alone
+// put its continuation lines at the same level as its first line — and did it
+// to CORRECT input, so a caller who wrapped a `where` clause or an `&&` got the
+// wrap flattened back out by the writer it handed the method to.
+// ---------------------------------------------------------------------------
+
+describe('reindentXppSource — wrapped statements', () => {
+  it('indents the continuation of a wrapped select and a wrapped if condition', () => {
+    // Verbatim shape from a d365fo_file(create, class) call whose wrap the
+    // writer flattened: the `where` and the `&&` came back at `select`/`if` level.
+    const input = [
+      'public boolean validateWrite()',
+      '{',
+      'boolean ret = next validateWrite();',
+      '',
+      'select firstonly oldRecord',
+      'where oldRecord.RecId == this.RecId;',
+      '',
+      'if (oldRecord.RecId',
+      '&& enum2int(this.Tier) < enum2int(oldRecord.Tier))',
+      '{',
+      'ret = checkFailed("@Lbl:X");',
+      '}',
+      '',
+      'return ret;',
+      '}',
+    ].join('\n');
+    expect(reindentXppSource(input)).toBe([
+      '    public boolean validateWrite()',
+      '    {',
+      '        boolean ret = next validateWrite();',
+      '',
+      '        select firstonly oldRecord',
+      '            where oldRecord.RecId == this.RecId;',
+      '',
+      '        if (oldRecord.RecId',
+      '            && enum2int(this.Tier) < enum2int(oldRecord.Tier))',
+      '        {',
+      '            ret = checkFailed("@Lbl:X");',
+      '        }',
+      '',
+      '        return ret;',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('leaves an already-wrapped statement alone', () => {
+    // The regression this pins: correct input came back flattened.
+    const correct = [
+      '    public void m()',
+      '    {',
+      '        select firstonly t',
+      '            where t.RecId == this.RecId;',
+      '    }',
+    ].join('\n');
+    expect(reindentXppSource(correct)).toBe(correct);
+  });
+
+  it('does not stair-step a condition wrapped over three lines', () => {
+    const input = 'public void m()\n{\nif (a\n&& b\n&& c)\n{\nx();\n}\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        if (a',
+      '            && b',
+      '            && c)',
+      '        {',
+      '            x();',
+      '        }',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('keeps a wrapped signature\'s opening brace at the signature level', () => {
+    const input = 'public void m(\nint _a,\nint _b)\n{\nx();\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m(',
+      '        int _a,',
+      '        int _b)',
+      '    {',
+      '        x();',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('does not treat an attribute or a doc comment as an open statement', () => {
+    // `[ExtensionOf(…)]` ends in `]` and `/// <summary>` in `>`; neither may
+    // push the declaration that follows it one level in.
+    const input = '/// <summary>\n/// Does a thing.\n/// </summary>\n[SysObsolete("x", false)]\npublic void m()\n{\nx();\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    /// <summary>',
+      '    /// Does a thing.',
+      '    /// </summary>',
+      '    [SysObsolete("x", false)]',
+      '    public void m()',
+      '    {',
+      '        x();',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('indents a braceless if body under its condition', () => {
+    const input = 'public void m()\n{\nif (a)\nreturn;\nx();\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        if (a)',
+      '            return;',
+      '        x();',
+      '    }',
+    ].join('\n'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// X++ string literals take EITHER quote. Recognising only `'` let a brace
+// inside a double-quoted string count as a real one, so `info("a } b");`
+// popped a block and shifted the whole rest of the method out by a level.
+// ---------------------------------------------------------------------------
+
+describe('reindentXppSource — braces inside string literals', () => {
+  it('ignores a closing brace inside a double-quoted string', () => {
+    const input = 'public void m()\n{\ninfo("a } b");\nx = 1;\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        info("a } b");',
+      '        x = 1;',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('ignores an opening brace inside a double-quoted string', () => {
+    const input = 'public void m()\n{\ninfo("a { b");\nx = 1;\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        info("a { b");',
+      '        x = 1;',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('still ignores braces inside a single-quoted string', () => {
+    const input = "public void m()\n{\ninfo('a } b');\nx = 1;\n}";
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      "        info('a } b');",
+      '        x = 1;',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('does not end the literal on an escaped or doubled quote', () => {
+    const input = 'public void m()\n{\ninfo("say \\" } still in");\ninfo("say "" } still in");\nx = 1;\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        info("say \\" } still in");',
+      '        info("say "" } still in");',
+      '        x = 1;',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('does not cut the line at a // inside a double-quoted string', () => {
+    // The `//` scan runs outside string state, so a URL no longer hides a brace.
+    const input = 'public void m()\n{\nif (a)\n{\ninfo("http://x/y");\n}\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        if (a)',
+      '        {',
+      '            info("http://x/y");',
+      '        }',
+      '    }',
+    ].join('\n'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Continuation depth is judged on the line's CODE, not its raw text. Judged on
+// the raw text, a trailing comment hid the `;` that ends the statement and the
+// NEXT line was indented as its continuation — and the result was stable under
+// re-formatting, so nothing put it back. Trailing comments are ordinary X++.
+// ---------------------------------------------------------------------------
+
+describe('reindentXppSource — comments do not fake a continuation', () => {
+  it('does not indent the line after a statement with a trailing comment', () => {
+    const input = 'public void m()\n{\nttsbegin; // start\nttscommit;\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        ttsbegin; // start',
+      '        ttscommit;',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('does not indent the line after an opening brace with a trailing comment', () => {
+    const input = 'public void m()\n{\nif (x)\n{   // guard\nfoo();\n}\nbar();\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        if (x)',
+      '        {   // guard',
+      '            foo();',
+      '        }',
+      '        bar();',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('reads through a multi-line block comment without continuing into it', () => {
+    const input = 'public void m()\n{\n/* explain\nthe thing */\nfoo();\nbar();\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        /* explain',
+      '        the thing */',
+      '        foo();',
+      '        bar();',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('does not let a brace inside a multi-line block comment pop a block', () => {
+    // Prose is not code: the `}` below closes nothing, so `after();` stays inside.
+    const input = 'public void m()\n{\n/* a }\nb } c */\nafter();\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        /* a }',
+      '        b } c */',
+      '        after();',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('still continues a wrapped statement that carries a trailing comment', () => {
+    const input = 'public void m()\n{\nselect firstonly t // the live one\nwhere t.RecId == this.RecId;\nfoo();\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        select firstonly t // the live one',
+      '            where t.RecId == this.RecId;',
+      '        foo();',
+      '    }',
+    ].join('\n'));
+  });
+
+  it('ignores an inline block comment in the middle of a condition', () => {
+    const input = 'public void m()\n{\nif (a /* why */ && b)\n{\nx();\n}\ny();\n}';
+    expect(reindentXppSource(input)).toBe([
+      '    public void m()',
+      '    {',
+      '        if (a /* why */ && b)',
+      '        {',
+      '            x();',
+      '        }',
+      '        y();',
+      '    }',
+    ].join('\n'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Idempotence is the property that keeps a correctly formatted method from
+// being rewritten on every subsequent modify. Each shape above is re-run
+// through the formatter here so a future change cannot make one of them
+// oscillate.
+// ---------------------------------------------------------------------------
+
+describe('reindentXppSource — idempotence across every shape', () => {
+  const shapes: Array<[string, string]> = [
+    ['wrapped select', 'public void m()\n{\nselect firstonly t\nwhere t.RecId == this.RecId;\n}'],
+    ['wrapped condition', 'public void m()\n{\nif (a\n&& b)\n{\nx();\n}\n}'],
+    ['wrapped signature', 'public void m(\nint _a,\nint _b)\n{\nx();\n}'],
+    ['braceless if body', 'public void m()\n{\nif (a)\nreturn;\n}'],
+    ['brace in a string', 'public void m()\n{\ninfo("a } b");\nx = 1;\n}'],
+    ['switch', 'public void m()\n{\nswitch (x)\n{\ncase 1:\na();\nbreak;\n}\n}'],
+    ['attribute + doc comment', '/// <summary>\n/// x\n/// </summary>\n[SysObsolete("x", false)]\npublic void m()\n{\n}'],
+    ['trailing comment', 'public void m()\n{\nttsbegin; // start\nttscommit;\n}'],
+    ['multi-line block comment', 'public void m()\n{\n/* explain\nthe thing */\nfoo();\n}'],
+  ];
+
+  for (const [name, input] of shapes) {
+    it(`is idempotent for a ${name}`, () => {
+      const once = reindentXppSource(input);
+      expect(reindentXppSource(once)).toBe(once);
+    });
+  }
+});

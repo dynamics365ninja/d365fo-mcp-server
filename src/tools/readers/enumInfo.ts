@@ -19,6 +19,7 @@ import {
   readXmlFile,
   indexedSourceNote,
   bridgeUnavailableNote,
+  type IndexedObjectRef,
 } from '../../utils/indexedXmlLookup.js';
 import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
 
@@ -48,7 +49,9 @@ export async function getEnumInfoTool(request: CallToolRequest, context: XppServ
       const xml = extractedXml
         ?? (ref.localPath ? await readXmlFile(ref.localPath) : null);
       const source = extractedXml ? 'symbol index (extracted metadata)' : `XML: ${ref.localPath}`;
-      const formatted = xml && await formatEnumXml(ref.name, ref.model, xml, source, args.includeLabels);
+      // `ref` goes through so a JSON cache that outlived its AxEnum.xml is labelled
+      // a stale row rather than rendered as a live enum — the ghost enum of #874's run.
+      const formatted = xml && await formatEnumXml(ref.name, ref.model, xml, source, args.includeLabels, ref);
       if (formatted) return formatted;
     }
 
@@ -87,6 +90,7 @@ async function formatEnumXml(
   xml: string,
   source: string,
   includeLabels: boolean,
+  ref?: IndexedObjectRef | null,
 ): Promise<{ content: { type: 'text'; text: string }[] } | null> {
   let axEnum: any;
   try {
@@ -107,7 +111,7 @@ async function formatEnumXml(
   out += `**Extensible:** ${axEnum.IsExtensible?.[0] === 'Yes' ? 'Yes' : 'No'}\n`;
   out += `**Use Enum Value:** ${axEnum.UseEnumValue?.[0] === 'Yes' ? 'Yes' : 'No'}\n`;
   if (axEnum.Label?.[0]) out += `**Label:** ${axEnum.Label[0]}\n`;
-  out += indexedSourceNote(source);
+  out += indexedSourceNote(source, ref);
 
   if (values.length > 0) {
     out += `## 📋 Enum Values (${values.length})\n\n`;

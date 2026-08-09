@@ -33,14 +33,12 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
 
     // Mode A: no labelId → list available AxLabelFile IDs
     if (!labelId) {
-      let files = symbolIndex.getLabelFileIds(model);
-
       // When a specific labelFileId is requested, narrow the listing to it and
       // additionally surface the physical .label.txt path for each language so
-      // the caller never has to shell out to locate the file on disk.
-      if (labelFileId) {
-        files = files.filter(f => f.labelFileId.toLowerCase() === labelFileId.toLowerCase());
-      }
+      // the caller never has to shell out to locate the file on disk. The narrowing
+      // is the query's job — doing it here meant every such call still grouped the
+      // whole labels table first (see getLabelFileIds).
+      const files = symbolIndex.getLabelFileIds(model, labelFileId);
 
       if (files.length === 0) {
         return {

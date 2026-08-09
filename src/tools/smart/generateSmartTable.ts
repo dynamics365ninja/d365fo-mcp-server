@@ -651,7 +651,7 @@ export async function handleGenerateSmartTable(
 
   // Apply extension prefix to table name (skip when model unknown)
   const objectPrefix = resolvedModel ? resolveObjectPrefix(resolvedModel) : '';
-  let finalName = objectPrefix ? applyObjectPrefix(name, objectPrefix) : name;
+  let finalName = objectPrefix ? applyObjectPrefix(name, objectPrefix, resolvedModel ?? undefined) : name;
   const objectSuffix = getObjectSuffix();
   finalName = applyObjectSuffix(finalName, objectSuffix);
   if (finalName !== name) {

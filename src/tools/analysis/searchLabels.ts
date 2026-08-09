@@ -20,6 +20,30 @@ import {
   labelProvenanceWarning,
 } from '../../utils/labelReference.js';
 
+/**
+ * Emitted only when a label the current model can actually resolve was found.
+ * `labels` reads it back to decide whether a batch of queries found anything
+ * reusable, so keep the two in step.
+ */
+export const REUSABLE_MARKER = '💡 Use the label reference syntax in X++:';
+
+/**
+ * What to do when nothing reusable came back.
+ *
+ * Rephrasing is the wrong next move and used to be the only one suggested: one
+ * benchmark run spent 19 separate `action="search"` calls guessing English
+ * wordings for the same message ("cannot be decreased", "rating cannot be
+ * lowered", "%1 cannot be lower than %2"), and the answer was "create your own"
+ * from the first call onwards. Every phrasing queries the same index, so say
+ * that, and hand over the call that ends the loop.
+ */
+export const NO_REUSE_ADVICE =
+  `➡️  Nothing reusable here — create your own label and move on:\n` +
+  `      labels(action="create", labelFileId="<your model's label file>", model="<your model>",\n` +
+  `             labelId="<MeaningOfTheText>", translations=[{language:"en-US", text:"…"}])\n` +
+  `   Rephrasing does not help: every wording queries the same index. To try several at once,\n` +
+  `   pass query as an array — labels(action="search", query=["…", "…", "…"]) — one call, not one each.\n`;
+
 const SearchLabelsArgsSchema = z.object({
   query: z
     .string()
@@ -94,7 +118,7 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
               (language !== 'en-US' ? ` in language "${language}"` : '') +
               (model ? ` in model "${model}"` : '') +
               '.\n\n' +
-              `💡 Tip: Use labels(action="create") to add a new label to your custom model.\n` +
+              NO_REUSE_ADVICE +
               `💡 To search a different language use the language parameter (e.g. "cs", "de", "sk").`,
           },
         ],
@@ -173,14 +197,16 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
     const recommended = normalised.find(r => isLabelLikelyResolvable(r.labelFileId, r.model, currentModel));
     if (recommended) {
       const ref = formatLabelReference(recommended.labelFileId, recommended.labelId);
-      lines.push(`💡 Use the label reference syntax in X++:  literalStr("${ref}")`);
+      lines.push(`${REUSABLE_MARKER}  literalStr("${ref}")`);
       lines.push(`💡 Or in metadata XML:  <Label>${ref}</Label>`);
     } else {
       lines.push(
         `⚠️ None of these labels is in a core label file (SYS/…) or in your own model, so none is ` +
         `recommended as-is: referencing one raises BPErrorUnknownLabel unless your model references ` +
-        `its package. Create your own with labels(action="create") instead.`,
+        `its package.`,
       );
+      lines.push('');
+      lines.push(NO_REUSE_ADVICE.trimEnd());
     }
 
     return {

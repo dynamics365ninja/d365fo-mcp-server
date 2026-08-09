@@ -40,6 +40,46 @@ const TOOL_PREFIXES = ['d365fo_file.', 'd365fo_file:', 'generate_object.', 'gene
 /** Topics that resolve to the `labels` write-plumbing contract. */
 const LABELS_TOPICS = ['labels', 'label', 'labels.create', 'labels.rename', 'create-label'];
 
+/**
+ * Real questions that are not op-specs, answered with the tool that does answer them.
+ *
+ * These are asked, and the catalogue is the wrong reply: a caller who has just been
+ * told "Final name: X (prefix auto-applied)" and wants to know how the prefix is
+ * chosen reaches for topic="naming" or topic="prefix", gets back the full list of 30
+ * modify operations, and is no closer — twice in one observed session, ~2 round trips
+ * spent on a dead end at the exact moment the caller was already unsure about a name.
+ */
+const TOPIC_REDIRECTS: Record<string, string> = {
+  naming: 'naming',
+  prefix: 'naming',
+  'object-naming': 'naming',
+  'model-prefix': 'naming',
+  'extension-prefix': 'naming',
+  suffix: 'naming',
+};
+
+const REDIRECT_ANSWERS: Record<string, string> = {
+  naming: [
+    'Naming is not an op-spec — it is resolved per model, so ask the tools that know your model:',
+    '',
+    '  validate_object_naming(objectType, proposedName[, baseObjectName])',
+    '      → the rules applied, the effective prefix and where it came from, and a conflict check.',
+    '  get_workspace_info()',
+    '      → the model, the effective prefix, and the extension token this server applies.',
+    '  prepare(mode="create", objectName, objectType)',
+    '      → the exact final name d365fo_file(action="create") will write, collision-checked.',
+    '',
+    'The short version:',
+    '  • Pass the BASE name to d365fo_file(action="create") — the prefix is applied for you.',
+    '    Do NOT pre-apply it and do NOT add a leading separator; both double up.',
+    '  • The prefix is inferred from the model\'s own objects and beats EXTENSION_PREFIX.',
+    '    Pin the configured value instead with EXTENSION_PREFIX_SOURCE=config.',
+    '  • Regular objects keep the model\'s separator (ConSK_MyEnum); extension elements',
+    '    use the PascalCase infix without one (MyTable.ConSkExtension,',
+    '    MyTableConSk_Extension).',
+  ].join('\n'),
+};
+
 function normalize(topic: string): string {
   let t = topic.trim();
   for (const prefix of TOOL_PREFIXES) {
@@ -176,6 +216,9 @@ export function lookupOpSpec(topic?: string): string {
   if (objectType) return renderCreatePropertySpec(objectType);
 
   if (LABELS_TOPICS.includes(needle)) return renderLabelsOpSpec();
+
+  const redirect = TOPIC_REDIRECTS[needle];
+  if (redirect && REDIRECT_ANSWERS[redirect]) return REDIRECT_ANSWERS[redirect];
 
   return renderOpSpecIndex(topic);
 }

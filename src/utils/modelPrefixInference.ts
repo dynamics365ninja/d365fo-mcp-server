@@ -196,6 +196,49 @@ function inferInfixFromDotExtensions(dotNames: string[]): string | null {
 }
 
 /**
+ * How the model itself SPELLS `token` in the extension position — the casing taken
+ * from evidence rather than derived.
+ *
+ * Both extension shapes are read, because a model may use only one of them:
+ *   "CustTable.ConSKExtension"        → ConSK
+ *   "CustInvoiceJourConSK_Extension"  → ConSK
+ *
+ * Only spellings that case-insensitively equal `token` are counted, so this decides
+ * casing and never the token itself; the most frequent literal spelling wins. Without
+ * it, a model whose 35 extensions all say "ConSK" could still be handed a derived
+ * "ConSk" — toExtensionInfixCase lowercases each segment, which is right for the
+ * acronym prefix the MS rule was written for ("XY_" → "Xy") and wrong for a token
+ * ending in a country code. The model's own files outrank the rule.
+ */
+function observedInfixCasing(names: string[], token: string): string | null {
+  if (!token) return null;
+  const needle = token.toLowerCase();
+  const counts = new Map<string, number>();
+  const bump = (spelling: string) => {
+    if (spelling.toLowerCase() !== needle) return;
+    counts.set(spelling, (counts.get(spelling) ?? 0) + 1);
+  };
+
+  for (const name of names) {
+    if (name.includes('.')) {
+      const suffix = name.slice(name.lastIndexOf('.') + 1);
+      if (/extension$/i.test(suffix)) bump(suffix.slice(0, -'Extension'.length));
+      continue;
+    }
+    if (name.endsWith('_Extension')) {
+      const base = name.slice(0, -'_Extension'.length);
+      if (base.length >= token.length) bump(base.slice(-token.length));
+    }
+  }
+
+  let winner: { spelling: string; n: number } | null = null;
+  for (const [spelling, n] of counts) {
+    if (!winner || n > winner.n) winner = { spelling, n };
+  }
+  return winner ? winner.spelling : null;
+}
+
+/**
  * The PascalCase form of an underscore-style prefix, applied PER SEGMENT:
  * "DEMO" → "Demo", "WHS" → "Whs", "ConFinSK" → "ConFinSk".
  *
@@ -261,7 +304,10 @@ export function inferPrefixFromObjectNames(
   // Each token is preferred from direct evidence and derived from the other only
   // when its own evidence is missing.
   let regular = regularOk ? best!.token : infixFromElements!;
-  const infix = infixFromElements ?? deriveInfixFrom(regular);
+  // Which token, then how the model spells it. The derivation is only the fallback
+  // for a model that states the token nowhere in an extension name.
+  const infixToken = infixFromElements ?? deriveInfixFrom(regular);
+  const infix = observedInfixCasing(clean, infixToken) ?? infixToken;
 
   // Cross-check the two, because a truncated leading token is invisible on its
   // own: "ConFin" looks like a perfectly good prefix until the model's own

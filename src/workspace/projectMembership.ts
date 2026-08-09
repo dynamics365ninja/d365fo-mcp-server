@@ -5,10 +5,15 @@
  * different way.
  *
  * `verify_d365fo_project` compared the right thing (the raw `Content Include`)
- * but only ever looked at the ACTIVE project, so an object registered in the
- * project that owns it reported `❌ Not in project`. Acting on that is worse
- * than the warning: adding the entry to the active project too puts one file in
- * two projects of one model and the element gets compiled twice.
+ * but only ever looked at the ACTIVE project, so an object registered in a
+ * sibling project of the same model reported `❌ Not in project` — a hard error
+ * for something that compiles perfectly. It is a real distinction, just not a
+ * fatal one: 'other' means registered somewhere, 'missing' means registered
+ * nowhere, and only the second stops the build.
+ *
+ * (An element referenced by two projects of one model is fine. The model is the
+ * build unit; it compiles once either way. Projects are editing views, and the
+ * one you are working in has to contain the object you are changing.)
  *
  * `inlineWriteVerification` looked at the active project as well, and compared
  * a resolved absolute path against the include:
@@ -207,6 +212,14 @@ export async function resolveMembership(
  * The one line a write response spends on project membership, or '' when there
  * is nothing worth saying. Silence is the common case: the file is registered
  * where it should be and the caller does not need to be told so again.
+ *
+ * 'other' used to read "that is where this object belongs; do not add it again
+ * here". That was the wrong rule: an element may be referenced by several
+ * .rnrproj of one model, it still compiles once, and an object being changed in
+ * the active project has to be IN the active project to be built or handed over
+ * from it. So the line now names the gap instead of blessing it — and normally
+ * never fires on a write at all, because registerFileInActiveProject has just
+ * closed it. It survives for writes made with addToProject off.
  */
 export function renderMembership(m: Membership, axFolder: string, objectName: string): string {
   switch (m.status) {
@@ -215,7 +228,8 @@ export function renderMembership(m: Membership, axFolder: string, objectName: st
       return '';
     case 'other': {
       const where = m.owners.map(projectDisplayName).join(', ');
-      return `\nℹ️ Registered in ${where}, not in the active project — that is where this object belongs; do not add it again here.`;
+      return `\nℹ️ Referenced by ${where} but NOT by the active project — it compiles, but the active ` +
+        `project does not contain what you just changed. Re-send with addToProject=true to add it here too.`;
     }
     case 'missing':
       return `\n⚠️ No .rnrproj of this model references \`${axFolder}\\${objectName}\` — it will not compile until one does.`;

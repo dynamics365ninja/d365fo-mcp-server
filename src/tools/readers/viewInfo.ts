@@ -22,6 +22,7 @@ import {
   resolveIndexedObject,
   indexedSourceNote,
   bridgeUnavailableNote,
+  type IndexedObjectRef,
 } from '../../utils/indexedXmlLookup.js';
 import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
 
@@ -118,8 +119,10 @@ async function buildViewResponseFromIndex(
   // Pre-extracted JSON (works without a D365FO installation)
   const extracted = await readViewMetadata(model, ref.name);
   if (extracted) {
+    // The JSON cache outlives a deleted AxView.xml, so `ref` rides along to have a
+    // row that lost its file called out instead of rendered as a live view.
     return {
-      content: [{ type: 'text', text: formatViewLike(extracted, model, 'symbol index (extracted metadata)') }],
+      content: [{ type: 'text', text: formatViewLike(extracted, model, 'symbol index (extracted metadata)', ref) }],
     };
   }
 
@@ -157,7 +160,7 @@ async function buildViewResponseFromDisk(
   return null;
 }
 
-function formatViewLike(v: ViewLike, model: string, source: string): string {
+function formatViewLike(v: ViewLike, model: string, source: string, ref?: IndexedObjectRef | null): string {
   const kind = v.type === 'data-entity' ? 'Data Entity View' : 'View';
   let out = `# ${kind}: ${v.name}\n\n`;
   if (v.label) out += `**Label:** ${v.label}\n`;
@@ -165,7 +168,7 @@ function formatViewLike(v: ViewLike, model: string, source: string): string {
   if (v.isPublic != null) out += `**Public:** ${v.isPublic ? 'Yes' : 'No'}\n`;
   if (v.isReadOnly != null) out += `**Read-Only:** ${v.isReadOnly ? 'Yes' : 'No'}\n`;
   if (v.primaryKey) out += `**Primary Key:** ${v.primaryKey}\n`;
-  out += indexedSourceNote(source);
+  out += indexedSourceNote(source, ref);
 
   const fields = v.fields ?? [];
   if (fields.length > 0) {

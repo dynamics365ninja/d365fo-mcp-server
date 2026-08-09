@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { getConfigManager, fallbackPackagePath } from '../../utils/configManager.js';
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
-import { ProjectFileManager, ProjectFileFinder, registerFileIfOrphaned } from '../../workspace/projectFile.js';
+import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
 import { registerCustomModel } from '../../utils/modelClassifier.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
@@ -3614,14 +3614,14 @@ export async function handleCreateD365File(
             `(active naming style/prefix), so this is the file that matches your request.`
           : '';
 
-        // A file on disk that no project of the model references is a real gap,
-        // and this early return was the only place that could close it: `create`
-        // used to bail here, before the addToProject block far below, and
+        // A file on disk that the ACTIVE project does not reference is a real
+        // gap, and this early return was the only place that could close it:
+        // `create` used to bail here, before the addToProject block far below, and
         // `modify` registers nothing unless the caller passes a flag that is not
         // in the wire schema. So an object that existed but was unregistered
         // could never BECOME registered — which is how a table extension got
         // edited through a whole session while staying invisible to the build.
-        const projectNote = await registerFileIfOrphaned(
+        const projectNote = await registerFileInActiveProject(
           args.objectType, finalObjectName, actualModelName, projectPathToUse,
         );
 
@@ -3654,8 +3654,32 @@ export async function handleCreateD365File(
     // EXCEPTION — security-privilege/duty/role: excluded from BRIDGE_CREATE_TYPES
     // entirely (see bridgeAdapter.ts) because the bridge silently drops their
     // structured collections (EntryPoints, DataEntityPermissions, Privileges, Duties).
-    const skipBridgeForExtensibleEnum = args.objectType === 'enum'
-      && Boolean((args.properties as Record<string, unknown> | undefined)?.isExtensible);
+    //
+    // EXCEPTION — any enum whose resolved mode forbids explicit <Value> elements. The
+    // bridge takes UseEnumValue from the scalar property but still serializes a <Value>
+    // for every numbered entry, minus the ones equal to 0, which .NET omits as the type
+    // default. An enum created with useEnumValue:false and values None=0..Platinum=3 came
+    // out as <UseEnumValue>No</UseEnumValue> with <Value>1/2/3</Value> and no <Value>0</Value>
+    // — the combination this server's own knowledge base tells callers xppc rejects the
+    // moment IsExtensible is set, and with the caller's number for entry 0 silently gone.
+    // resolveEnumValueMode is the single place that decides this; when it says the values
+    // must be suppressed and the payload carries some, hand the write to the TypeScript
+    // generator, which is the writer that honours suppressExplicitValues.
+    const skipBridgeForEnumValueMode = (): boolean => {
+      if (args.objectType !== 'enum') return false;
+      const props = args.properties as Record<string, unknown> | undefined;
+      if (props?.isExtensible) return true;
+      const vals = (props?.enumValues ?? props?.values) as Array<{ name?: string; value?: number }> | undefined;
+      if (!Array.isArray(vals) || !vals.some(v => typeof v?.value === 'number')) return false;
+      try {
+        return resolveEnumValueMode(finalObjectName, props, vals).suppressExplicitValues;
+      } catch {
+        // A genuine contradiction (isExtensible + off-positional values, …). Let the
+        // generator path re-run it and surface the one authored error message.
+        return true;
+      }
+    };
+    const skipBridgeForEnum = skipBridgeForEnumValueMode();
 
     // Set only when a bridge create THREW (not when it was unavailable or declined).
     // The XML fallback below is a different writer with a narrower feature set, so a
@@ -3663,7 +3687,7 @@ export async function handleCreateD365File(
     // same ✅ as one the bridge performed.
     let bridgeFailure: BridgeFailure | null = null;
 
-    if (!args.xmlContent && !skipBridgeForExtensibleEnum && context?.bridge && actualModelName && canBridgeCreate(args.objectType)) {
+    if (!args.xmlContent && !skipBridgeForEnum && context?.bridge && actualModelName && canBridgeCreate(args.objectType)) {
       try {
         // Settle any rebuild an earlier write in this session scheduled but did not
         // wait for. Everything below reads the provider — the base object of an

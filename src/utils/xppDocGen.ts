@@ -29,19 +29,27 @@ interface ParsedSig {
  * Returns null when the line cannot be parsed or represents a private/internal member.
  */
 function parseSig(sigLine: string): ParsedSig | null {
-  const isPublic    = /\bpublic\b/.test(sigLine);
-  const isProtected = /\bprotected\b/.test(sigLine);
-  if (!isPublic && !isProtected) return null;
-
   const hasParens = sigLine.includes('(');
 
-  // Class / struct declaration
+  // Class / struct declaration.
+  //
+  // An X++ class is public unless it says otherwise, so the visibility gate that
+  // guards methods must not apply here: it skipped `final class Foo_Extension` —
+  // the exact shape this server emits for a CoC extension
+  // (`d365fo_file(create, objectType="class", properties:{isFinal:true})`) — and
+  // the class then came back from this server's own run_bp_check flagged
+  // BPXmlDocNoDocumentationComments. Only an explicit private/internal opts out.
   if (!hasParens) {
     const classMatch = sigLine.match(/\bclass\s+(\w+)/);
     if (!classMatch) return null;
+    if (/\b(private|internal)\b/.test(sigLine)) return null;
     const baseMatch = sigLine.match(/\bextends\s+(\w+)/);
     return { isClass: true, name: classMatch[1], returnType: '', params: [], baseClass: baseMatch?.[1] };
   }
+
+  const isPublic    = /\bpublic\b/.test(sigLine);
+  const isProtected = /\bprotected\b/.test(sigLine);
+  if (!isPublic && !isProtected) return null;
 
   // Method signature
   const parenIdx    = sigLine.indexOf('(');
