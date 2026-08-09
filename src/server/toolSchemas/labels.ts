@@ -52,8 +52,9 @@ export const labelsTool = {
         },
         // action=search
         query: {
-          type: 'string',
-          description: '[search] REQUIRED. Search text — matches label ID, text and developer comment.',
+          type: ['string', 'array'],
+          items: { type: 'string' },
+          description: '[search] REQUIRED. Search text — matches label ID, text and developer comment. ARRAY = try several phrasings in ONE call.',
         },
         // action=info
         labelId: {

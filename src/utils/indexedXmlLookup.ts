@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import { promises as fsp } from 'fs';
 import { lookupSymbolNocase } from './symbolLookup.js';
 import { resolveDbPathLocally } from './metadataResolver.js';
+import { getConfigManager, fallbackPackagePath } from './configManager.js';
 import { bridgeStartupState, type BridgeReadinessSource } from '../bridge/bridgeReadiness.js';
 
 export interface IndexedObjectRef {
@@ -30,6 +31,15 @@ export interface IndexedObjectRef {
   indexedPath: string | null;
   /** Readable path on this machine (indexed or remapped), null when unreachable. */
   localPath: string | null;
+  /**
+   * The index records a PackagesLocalDirectory path whose file is gone from BOTH
+   * the recorded location and the local remap — the row outlived the object.
+   *
+   * Only set for PackagesLocalDirectory paths: a foreign build-agent path that
+   * simply does not remap here is unreachable, not deleted, and must not be
+   * reported as stale.
+   */
+  sourceFileMissing: boolean;
 }
 
 /** Look up a top-level object in the symbol index and resolve a readable local path. */
@@ -50,11 +60,13 @@ export async function resolveIndexedObject(
   // stub can never make a reader render an unrelated object under the asked name.
   if (hit.name?.toLowerCase() !== name.toLowerCase()) return null;
 
+  const localPath = await resolveLocalPath(hit.file_path);
   return {
     name: hit.name,
     model: modelName || hit.model || 'Unknown',
     indexedPath: hit.file_path,
-    localPath: await resolveLocalPath(hit.file_path),
+    localPath,
+    sourceFileMissing: await isStaleIndexedPath(hit.file_path, localPath),
   };
 }
 
@@ -65,6 +77,46 @@ async function resolveLocalPath(indexedPath: string | null): Promise<string | nu
     if (fs.existsSync(indexedPath)) return indexedPath;
   } catch { /* ignore */ }
   return resolveDbPathLocally(indexedPath);
+}
+
+/**
+ * Can this machine observe the absence of a PackagesLocalDirectory file at all?
+ *
+ * "No file at either location" means the object was deleted only if the packages
+ * root is actually there to be looked at. An unconfigured, mistyped or
+ * momentarily unreachable root (an offline share, a drive not yet mapped) makes
+ * EVERY object's file unreadable — and the stale-row note that follows tells the
+ * agent to treat the object as not existing and create it, without re-checking.
+ * That is a duplicate of something like CustTable on a bad config day, so the
+ * root has to be verified before the row is called a ghost.
+ */
+async function packagesRootReachable(): Promise<boolean> {
+  try {
+    const configManager = getConfigManager();
+    await configManager.ensureLoaded();
+    const root = configManager.getPackagePath() || fallbackPackagePath();
+    if (!root) return false;
+    await fsp.access(root);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The one rule for "this index row outlived its file", shared by the ref-carrying
+ * readers and the raw-path ones so the two can never drift apart.
+ *
+ * Only a PackagesLocalDirectory path can be judged: a foreign build-agent path
+ * that does not remap here is unreachable, not deleted.
+ */
+async function isStaleIndexedPath(
+  indexedPath: string | null | undefined,
+  localPath: string | null,
+): Promise<boolean> {
+  if (localPath !== null) return false;
+  if (!indexedPath || !/PackagesLocalDirectory/i.test(indexedPath)) return false;
+  return packagesRootReachable();
 }
 
 /**
@@ -105,9 +157,55 @@ export async function readIndexedXml(
 /**
  * Standard footer for a reader that answered from the index instead of the bridge —
  * makes the provenance (and its limits) explicit to the agent.
+ *
+ * Pass `ref` whenever one is available so a row that outlived its file is called
+ * out rather than rendered as fact — see `staleIndexNote`.
  */
-export function indexedSourceNote(source: string): string {
-  return `_Source: ${source} — the C# bridge returned no data for this object._\n\n`;
+export function indexedSourceNote(source: string, ref?: IndexedObjectRef | null): string {
+  return `_Source: ${source} — the C# bridge returned no data for this object._\n\n` +
+    (ref ? staleIndexNote(ref) : '');
+}
+
+/**
+ * Warn when the answer came from a cache whose object is no longer on disk.
+ *
+ * The extracted-metadata JSON is written at index time and is NOT removed when the
+ * AOT XML is deleted, so a reset workspace kept answering `get_object_info` with a
+ * complete, confident enum — name, four values, four labels — for a file that did
+ * not exist. The agent believed it (the bridge being quiet is normal for
+ * not-yet-indexed objects), spent about a quarter of its run proving the object was
+ * a ghost, and only then started the real work.
+ *
+ * The bridge disagreeing with the cache is the tell, and it is available right here:
+ * bridge silent + PackagesLocalDirectory path + no file at either the recorded or
+ * the remapped location means the row outlived the object.
+ */
+export function staleIndexNote(ref: IndexedObjectRef): string {
+  if (!ref.sourceFileMissing) return '';
+  return renderStaleIndexNote(ref.name, ref.indexedPath ?? '(unknown)');
+}
+
+/**
+ * Is this indexed path a row that outlived its file?
+ *
+ * For readers that hold a raw `file_path` from a symbol row rather than an
+ * `IndexedObjectRef`. Literally the same rule — both go through
+ * `isStaleIndexedPath`, so the two can never answer differently about one row.
+ */
+export async function indexedPathIsMissing(indexedPath: string | null | undefined): Promise<boolean> {
+  if (!indexedPath || !/PackagesLocalDirectory/i.test(indexedPath)) return false;
+  return isStaleIndexedPath(indexedPath, await resolveLocalPath(indexedPath));
+}
+
+/** The warning text both stale-row paths render. */
+export function renderStaleIndexNote(name: string, indexedPath: string): string {
+  return `⚠️ STALE INDEX ENTRY — everything above is a cache read, not a live object. ` +
+    `The symbol index records \`${indexedPath}\`, and there is no file there or at ` +
+    `the local remap of that path. The object was almost certainly deleted (a workspace ` +
+    `reset, a rolled-back run) without the index being rebuilt.\n` +
+    `➡️  Treat \`${name}\` as NOT EXISTING and create it. Do not spend calls proving ` +
+    `this — the file has already been checked on disk. Run \`update_symbol_index\` to ` +
+    `drop rows like this one.\n\n`;
 }
 
 /**

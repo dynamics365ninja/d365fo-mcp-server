@@ -156,16 +156,22 @@ describe('renderWriteVerification', () => {
     expect(text).toMatch(/will not compile/i);
   });
 
-  it('names the owning project instead of crying missing', () => {
+  // 'other' is neither a pass nor a build failure. The element compiles — a
+  // sibling project references it — but the project being worked in does not
+  // contain what was just changed, and an object may belong to several projects
+  // of one model, so the fix is to add it here too rather than to accept the gap.
+  it('names the sibling project and points at the gap, without crying missing', () => {
     const text = renderWriteVerification({
       onDisk: true,
       bytes: 120,
-      membership: m('other', ['K:\\repo\\MyModel - Owning.rnrproj']),
+      membership: m('other', ['K:\\repo\\MyModel - Sibling.rnrproj']),
       axFolder: 'AxTable',
       objectName: 'T',
     });
-    expect(text).toContain('MyModel - Owning');
-    expect(text).toMatch(/do not add it again/i);
+    expect(text).toContain('MyModel - Sibling');
+    expect(text).toMatch(/not by the active project/i);
+    expect(text).toMatch(/addToProject=true/);
+    expect(text).not.toMatch(/do not add it again/i);
     expect(text).not.toMatch(/will not compile/i);
   });
 

@@ -37,7 +37,7 @@ import {
   bridgeRefreshProvider,
 } from '../../bridge/index.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
-import { ProjectFileFinder, registerFileIfOrphaned } from '../../workspace/projectFile.js';
+import { ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
 import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import {
@@ -325,10 +325,28 @@ const directXmlReplaceCode = serializedOnFile(async (
     }
 
     await writeFileAtomic(filePath, normalizeD365Xml(updated));
+
+    // Read back before claiming it. The bridge declining is normal here (a class
+    // DECLARATION is not a method, so its Methods API never finds the snippet),
+    // but a message that led with that error and only then said ✅ read as a
+    // failure — the caller re-did the same edit by hand with a plain text tool,
+    // which is the AOT-XML bypass this server exists to remove. Confirming the
+    // new code is on disk lets the message lead with the fact instead.
+    const after = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    if (!after.includes(normNew)) {
+      return {
+        success: false,
+        message: `❌ directXmlReplaceCode: wrote ${filePath} but newCode is not in the file afterwards — ` +
+          `the write did not take effect. Re-read the file and retry; do not assume the change landed.`,
+      };
+    }
+
     console.error(`[modify_d365fo_file] ✅ directXmlReplaceCode fallback (${reason}): replaced in ${filePath}`);
     return {
       success: true,
-      message: `✅ Code replaced via direct XML fallback (${reason}). File: ${filePath}`,
+      message: `✅ Code replaced and verified on disk — newCode is present in ${filePath}. ` +
+        `No further edit is needed; do NOT re-apply it with a text editor.\n` +
+        `   (Written by this server's XML writer rather than the bridge — ${reason})`,
     };
   } catch (err) {
     console.error(`[modify_d365fo_file] directXmlReplaceCode failed: ${err}`);
@@ -1503,11 +1521,12 @@ const ModifyD365FileArgsSchema = z.object({
   // opposite. Editing an existing object that was on disk but absent from the
   // .rnrproj therefore never registered it, no matter how many times it was
   // edited. Registration is idempotent (ProjectFileManager skips an entry that
-  // is already there), and it is scoped to objects that belong in the active
-  // project: an object owned by another project of the model is left alone.
+  // is already there) and targets the ACTIVE project: an element may be
+  // referenced by several projects of a model, and the one being edited in has
+  // to contain it.
   addToProject: z.boolean().optional().default(true).describe(
-    'Add the modified file to the .rnrproj when no project of its model references it yet. ' +
-    'Keep the default — a file missing from every project of its model does not compile. ' +
+    'Add the modified file to the active .rnrproj when it is not already listed there. ' +
+    'Keep the default — a project that does not contain the object cannot build or hand over the change. ' +
     'Set false to skip. Requires projectPath or solutionPath (explicit or via .mcp.json).'
   ),
   projectPath: z.string().optional().describe(
@@ -1519,6 +1538,19 @@ const ModifyD365FileArgsSchema = z.object({
   groundingToken: z.string().optional().describe(
     'Provenance token returned by prepare(mode="change"). Proves the change was grounded in the indexed codebase. ' +
     'Required for *-extension objectTypes when GROUNDING_ENFORCE=true on the server.'
+  ),
+
+  // INTERNAL — set by runModifyBatch, absent from the published wire schema.
+  //
+  // Each entry of operations[] runs as its own modify call, so an operation
+  // cannot see the ones travelling with it. That is fine for the writes, which
+  // are independent, and wrong for the advisory notes, which are about the task:
+  // add-field told the caller "send the group entry in the SAME call next time"
+  // in a call that already contained the group entry. Advice that fires when it
+  // has already been followed is how a response teaches an agent to stop reading
+  // its warnings.
+  peerOperations: z.array(z.string()).optional().describe(
+    'Internal: the operation names travelling in the same operations[] batch.'
   ),
 });
 
@@ -1914,6 +1946,24 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       containment.modelSegment || resolvedModelFromPath || modelName || getConfigManager().getModelName() || '',
     );
     if (memberPrefixNote) generationNote += memberPrefixNote;
+
+    // The other half of that rename: an operation that REFERS to a member the
+    // prefix has already renamed. add-field-to-field-group mints no name, so it
+    // is rightly absent from the table above — but it names the field the
+    // add-field before it just renamed, and pointed the group at a field that
+    // does not exist. Corrected here, where the extension's real fields can be
+    // read, and only when there is one reading (see the helper).
+    if (autoCorrect) {
+      const retargetNote = await resolveFieldNameForFieldGroup(
+        args as Record<string, any>,
+        objectType,
+        operation,
+        containment.modelSegment || resolvedModelFromPath || modelName || getConfigManager().getModelName() || '',
+        actualFilePath,
+        symbolIndex,
+      );
+      if (retargetNote) noteAutoCorrection(autoCorrectNotes, retargetNote);
+    }
 
     // Settle a rebuild an earlier create/modify scheduled but did not wait for, so
     // an object written moments ago resolves on the FIRST attempt. Without this the
@@ -2917,15 +2967,14 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       console.error(`[modify_d365fo_file] Bridge validation skipped: ${e}`);
     });
 
-    // Register the edited file when no project of its model references it.
+    // Register the edited file in the ACTIVE project unless it is already there.
     //
-    // This used to add it to the active project unconditionally whenever the
-    // flag was set — which was safe only because the flag defaulted OFF and
-    // nobody set it. On by default (matching the wire schema, which always
-    // advertised `default: true`), unconditional registration would put objects
-    // owned by another project of the model into the active one as well, and
-    // one file in two projects builds the element twice. registerFileIfOrphaned
-    // makes the membership check the gate: it acts only on a true orphan.
+    // Being referenced by a sibling project of the same model is not a reason to
+    // skip this: an element may belong to several .rnrproj, the model is the
+    // build unit and it compiles once regardless, and a project that does not
+    // contain the object cannot build or hand over the change just made to it.
+    // The previous gate stopped at 'registered somewhere', which left an edited
+    // object missing from the very project it was edited in.
     let projectMessage = '';
     if (args.addToProject) {
       const configManager = getConfigManager();
@@ -2941,7 +2990,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         ) || undefined;
       }
 
-      projectMessage = await registerFileIfOrphaned(
+      projectMessage = await registerFileInActiveProject(
         objectType,
         objectName,
         modelName || configManager.getModelName() || undefined,
@@ -2961,22 +3010,30 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     //
     // The field-group note used to spell out a whole follow-up call, so the agent
     // made one: every add-field manufactured a second round trip. It now points at
-    // operations[], where the group entry travels in the SAME call as the field.
+    // operations[], where the group entry travels in the SAME call as the field —
+    // and stays quiet when that call already carries one.
     let addFieldBpNote = '';
     if (operation === 'add-field' && (objectType === 'table' || objectType === 'table-extension')) {
-      const notes = [
-        `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup). ` +
-        `Send the group entry in the SAME call next time — d365fo_file(action="modify", ` +
-        `objectType="${objectType}", objectName="${objectName}", operations=[{operation:"add-field", …}, ` +
-        `{operation:"add-field-to-field-group", fieldName:"${args.fieldName}", fieldGroupName:"<group>"}]).`,
-      ];
+      const notes: string[] = [];
+      // Silent when the group entry is already in this batch — the advice has
+      // been taken, and repeating it teaches the agent that these warnings do
+      // not track what it actually did.
+      const groupEntryInBatch = (args.peerOperations ?? []).includes('add-field-to-field-group');
+      if (!groupEntryInBatch) {
+        notes.push(
+          `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup). ` +
+          `Send the group entry in the SAME call next time — d365fo_file(action="modify", ` +
+          `objectType="${objectType}", objectName="${objectName}", operations=[{operation:"add-field", …}, ` +
+          `{operation:"add-field-to-field-group", fieldName:"${args.fieldName}", fieldGroupName:"<group>"}]).`,
+        );
+      }
       if ((args as any).fieldEnumType) {
         notes.push(
           `⚠️ BP: the field's Label must be a DIFFERENT label id than the enum's own label ` +
           `(BPErrorFieldLabelIsCopyOfEnumLabel) — same visible text is fine, same id is not.`,
         );
       }
-      addFieldBpNote = `\n\n${notes.join('\n')}`;
+      addFieldBpNote = notes.length > 0 ? `\n\n${notes.join('\n')}` : '';
     }
 
     // Corrections the server applied on its own. Kept in the payload so the agent
@@ -3137,6 +3194,99 @@ export function applyExtensionMemberPrefix(
     `\n\n> 🔖 Named \`${prefixed}\` — members added to an extension carry model ` +
     `"${modelName}"'s prefix \`${token}\`. Use that name in later calls.`
   );
+}
+
+/** Field names declared by a table extension's own `<Fields>`, as spelled there. */
+function extensionFieldNames(xml: string): string[] {
+  const names: string[] = [];
+  // <Name> is the first child of every <AxTableField>, so a non-greedy hop from
+  // the opening tag to the first Name reads one field name per block. Field
+  // GROUP entries use <DataField>, so they cannot be picked up by accident.
+  for (const m of xml.matchAll(/<AxTableField\b[^>]*>[\s\S]*?<Name>([^<]+)<\/Name>/g)) {
+    names.push(m[1].trim());
+  }
+  return names;
+}
+
+/** Whether the base table declares a field of this name. */
+function baseTableDeclaresField(xml: string, fieldName: string): boolean {
+  const needle = fieldName.trim().toLowerCase();
+  return extensionFieldNames(xml).some(n => n.toLowerCase() === needle);
+}
+
+/**
+ * Point `add-field-to-field-group` at the field that actually exists.
+ *
+ * add-field on an extension renames what it adds — `QualityTier` becomes
+ * `CtsoSK_QualityTier`, because a member added to someone else's table has to
+ * carry your prefix — and says so in the response. The group entry that follows
+ * it names the SAME field, and it was left exactly as the caller spelled it:
+ * applyExtensionMemberPrefix mints names for new members and this operation
+ * mints none, so it is correctly absent from EXTENSION_MEMBER_NAME_ARG.
+ *
+ * The result was a dangling reference. The bridge validates no DataField, so
+ * `<DataField>QualityTier</DataField>` was written against a field named
+ * `CtsoSK_QualityTier`, reported as applied, and the group silently pointed at
+ * nothing. Sending both operations in ONE call — which every add-field response
+ * tells the agent to do — hit it every time.
+ *
+ * Blind prefixing is the wrong repair: a group extension may perfectly well
+ * carry a BASE-table field, which has no prefix. So this corrects only the case
+ * with one reading — the name as given is not a field of the extension, the
+ * prefixed name is, and the base table has no field by the given name either.
+ * Anything else is left untouched.
+ *
+ * Advisory, like every other auto-correction: it runs before a write that is
+ * perfectly capable of succeeding without it, so anything unreadable — the
+ * extension file, the base table, the prefix rules — means "no correction", not
+ * a failed modify.
+ */
+export async function resolveFieldNameForFieldGroup(
+  args: Record<string, any>,
+  objectType: string,
+  operation: string,
+  modelName: string,
+  actualFilePath: string,
+  symbolIndex: any,
+): Promise<string> {
+  if (operation !== 'add-field-to-field-group' || objectType !== 'table-extension') return '';
+
+  const given = args.fieldName;
+  if (typeof given !== 'string' || given.trim().length === 0) return '';
+
+  try {
+    const token = resolveRegularObjectPrefixToken(modelName);
+    if (!token) return '';
+    const bare = token.replace(/_+$/, '');
+    const lower = given.toLowerCase();
+    if (lower.startsWith(token.toLowerCase()) || lower.startsWith(bare.toLowerCase())) return '';
+
+    const extensionXml = await fs.readFile(actualFilePath, 'utf-8');
+    const fields = extensionFieldNames(extensionXml);
+    // Already a field of this extension — nothing to correct.
+    if (fields.some(n => n.toLowerCase() === lower)) return '';
+
+    const prefixed = `${token}${given.charAt(0).toUpperCase()}${given.slice(1)}`;
+    const match = fields.find(n => n.toLowerCase() === prefixed.toLowerCase());
+    if (!match) return '';
+
+    // A base-table field of the given name makes both readings valid; say
+    // nothing and let the caller's spelling stand.
+    const baseTable = String(args.objectName ?? '').split('.')[0];
+    if (baseTable) {
+      const baseXml = await findBaseObjectXml('table', baseTable, symbolIndex);
+      if (baseXml && baseTableDeclaresField(baseXml, given)) return '';
+    }
+
+    args.fieldName = match;
+    console.error(`[modifyD365File] Field-group entry retargeted: ${given} → ${match}`);
+    return (
+      `'${given}' is not a field of this extension, but '${match}' is — the group entry now points at it. ` +
+      `Members added to an extension carry the model's prefix \`${token}\`; use that name when referring to them.`
+    );
+  } catch {
+    return '';
+  }
 }
 
 /**

@@ -95,6 +95,15 @@ async function runModifyBatch(
   const results: Array<{ label: string; ok: boolean; text: string }> = [];
   let stoppedAt = -1;
 
+  // What each operation is travelling with. An entry runs as its own modify
+  // call and cannot otherwise see the batch, which is right for the writes and
+  // wrong for the advice: add-field told the caller to "send the group entry in
+  // the SAME call next time" while the group entry sat two lines below it in
+  // that very call. Internal — not part of the published schema.
+  const peerOperations = operations
+    .map(e => (e && typeof e === 'object' ? String((e as any).operation ?? '') : ''))
+    .filter(Boolean);
+
   for (let i = 0; i < operations.length; i++) {
     const entry = operations[i];
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
@@ -104,7 +113,7 @@ async function runModifyBatch(
     }
     // Per-entry keys win over the shared ones, so objectType/objectName/modelName
     // are stated once at the top level and an entry can still override them.
-    const entryArgs = { ...shared, ...(entry as Record<string, unknown>) };
+    const entryArgs = { ...shared, ...(entry as Record<string, unknown>), peerOperations };
     const opName = String((entry as any).operation ?? '(missing operation)');
 
     if (!(entry as any).operation) {

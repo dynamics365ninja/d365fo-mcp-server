@@ -163,8 +163,9 @@ export async function verifyD365ProjectTool(
     }
 
     // The model's OTHER projects. Membership is a model-wide question: a file
-    // registered in the project that owns it is registered, and calling that
-    // "missing" is how one file ends up in two projects.
+    // referenced by a sibling project compiles, and reporting that as "missing"
+    // is a hard error on something that builds. It is still worth flagging when
+    // the ACTIVE project lacks it — see the projCell rendering below.
     // Degrades to the active project alone rather than throwing: a solution
     // scan that has not run yet must narrow this answer, not replace the whole
     // verification with an error.
@@ -248,9 +249,11 @@ export async function verifyD365ProjectTool(
         }
       }
 
-      // Project check, across every project of the model. An object registered
-      // in the project that OWNS it is registered — reporting it as missing
-      // invites a second entry for one file, and then it compiles twice.
+      // Project check, across every project of the model. Three outcomes worth
+      // telling apart: in this project, only in a sibling (compiles, but this
+      // project does not contain it), and in none (does not compile at all).
+      // Collapsing the middle case into 'missing' was a hard error on something
+      // that builds; collapsing it into 'ok' hid a real gap.
       let projectStatus: ObjectResult['projectStatus'] = 'no-project';
       let ownedBy: string[] = [];
       if (resolvedProjectPath || siblingProjectPaths.length > 0) {
@@ -297,7 +300,10 @@ export async function verifyD365ProjectTool(
         r.projectStatus === 'ok'
           ? '✅'
           : r.projectStatus === 'elsewhere'
-          ? `✅ in ${r.ownedBy.map(projectDisplayName).join(', ')}`
+          // Compiles — a sibling project references it — but the active project
+          // does not contain it, so it cannot be built or handed over from here.
+          // Not an error, not a pass either.
+          ? `⚠️ Only in ${r.ownedBy.map(projectDisplayName).join(', ')}`
           : r.projectStatus === 'missing'
           ? `❌ In no project of this model (\`${r.axFolder}\\${r.objectName}\`)`
           : '⚠️ No project path';
@@ -320,12 +326,15 @@ export async function verifyD365ProjectTool(
     if (hasProject) {
       summaryLines.push(
         `- In the active project ✅: ${projOk}` +
-        (projElsewhere > 0 ? `   In another project of this model ✅: ${projElsewhere}` : '') +
+        (projElsewhere > 0 ? `   Only in another project of this model ⚠️: ${projElsewhere}` : '') +
         `   In no project ❌: ${projMissing}`,
       );
       if (projElsewhere > 0) {
         summaryLines.push(
-          `- Objects marked "in <project>" are registered where they belong — do NOT add them to the active project as well.`,
+          `- Objects marked "Only in <project>" do compile — an element may belong to several projects of ` +
+          `a model and is built once regardless. But the active project does not contain them, so a change ` +
+          `made here cannot be built or handed over from it. Add them with ` +
+          `d365fo_file(action="modify", addToProject=true) if you are working on them here.`,
         );
       }
     }

@@ -25,13 +25,21 @@ import {
 import { getConfigManager } from '../utils/configManager.js';
 
 /**
- * Register a file that is already on disk into the active project, but only
- * when no project of its model references it.
+ * Register a file that is already on disk into the ACTIVE project, whenever the
+ * active project is not already listing it.
  *
- * The "only when" is the whole design. A D365FO model is split across many
- * .rnrproj and each object belongs to exactly one of them, so registering a
- * file its owning project already lists would put one element in two projects
- * and build it twice. This closes a genuine gap and declines to open a new one.
+ * An object may legitimately be referenced by several .rnrproj of one model. A
+ * project is an editing view over a model, not an ownership claim: the model is
+ * the build unit, each element compiles once per model however many projects
+ * name it, and teams routinely group one element into a feature project and a
+ * maintenance project both. So "some other project has it" is not a reason to
+ * leave it out of the one being worked in — you cannot build, check in, or hand
+ * over a change through a project that does not contain the object it changed.
+ *
+ * This used to stop at membership 'other' and report the sibling as the owner.
+ * That inverted the rule: an object edited in the active project stayed absent
+ * from it, and every later verify pass had to re-explain why the gap was fine.
+ * The only case that still writes nothing is 'active' — it is already there.
  *
  * Shared by create and modify, which need it for the same reason: an object
  * that existed but was unregistered could never BECOME registered — create
@@ -42,7 +50,7 @@ import { getConfigManager } from '../utils/configManager.js';
  * nothing worth saying. Never throws: the write it comments on has already
  * succeeded, and an unreadable project must not turn that into a failure.
  */
-export async function registerFileIfOrphaned(
+export async function registerFileInActiveProject(
   objectType: string,
   objectName: string,
   modelName: string | undefined,
@@ -59,28 +67,40 @@ export async function registerFileIfOrphaned(
     return '';
   }
 
-  // 'unknown' means no project could be read at all — usually no projectPath is
-  // configured. Saying so on every single write is noise about a config gap the
-  // caller cannot fix mid-task, and it is the same silence renderMembership
-  // keeps: the loud cases only mean something when the quiet ones stay quiet.
+  // Already in the project being written to — the quiet, common case.
+  //
+  // 'unknown' means no project could be read at all, usually because no
+  // projectPath is configured. Saying so on every single write is noise about a
+  // config gap the caller cannot fix mid-task, and it is the same silence
+  // renderMembership keeps: the loud cases only mean something when the quiet
+  // ones stay quiet.
   if (membership.status === 'active' || membership.status === 'unknown') return '';
-  if (membership.status === 'other') {
-    const where = membership.owners.map(projectDisplayName).join(', ');
-    return `\n\n✅ Already registered in ${where} — that project owns it. Nothing to add here.`;
-  }
+
+  // Registered elsewhere but not here. Still add it — see the note above — and
+  // name the sibling so the agent knows the entry it just made is a second
+  // reference to one file rather than a rescue from oblivion.
+  const alsoIn = membership.status === 'other'
+    ? membership.owners.map(projectDisplayName).join(', ')
+    : '';
 
   if (!projectPath) {
+    // Nothing to add it TO. Only worth saying when no project has it at all;
+    // a sibling already references it, so the element does compile.
+    if (alsoIn) return '';
     return `\n\n⚠️ No project of model "${modelName ?? '(unknown)'}" references \`${axFolder}\\${objectName}\`, ` +
       `and no active projectPath is configured to add it to. It will not compile until some project does.`;
   }
   try {
     const added = await new ProjectFileManager().addToProject(projectPath, objectType, objectName, '');
-    return added
-      ? `\n\n✅ The file was on disk but in no project of this model — added it to ${projectDisplayName(projectPath)}. ` +
-        `Right-click the project → Reload Project if VS is open.`
-      : '';
+    if (!added) return '';
+    const reload = `Right-click the project → Reload Project if VS is open.`;
+    return alsoIn
+      ? `\n\n✅ Added to the active project ${projectDisplayName(projectPath)} (also referenced by ${alsoIn} — ` +
+        `an element may belong to several projects of a model; it still compiles once). ${reload}`
+      : `\n\n✅ The file was on disk but in no project of this model — added it to ${projectDisplayName(projectPath)}. ` +
+        reload;
   } catch (e: any) {
-    return `\n\n⚠️ The file is in no project of this model and could not be added to ` +
+    return `\n\n⚠️ Could not add \`${axFolder}\\${objectName}\` to ` +
       `${projectDisplayName(projectPath)}: ${e?.message ?? e}`;
   }
 }

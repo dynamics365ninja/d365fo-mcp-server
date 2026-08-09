@@ -110,6 +110,15 @@ function toObjectRefs(args: z.infer<typeof GetObjectInfoArgsSchema>): ObjectRef[
   return null;
 }
 
+/**
+ * Object types whose methods `options.method` can read.
+ *
+ * Kept in step with `OBJECT_TYPES` in tools/knowledge/methodSignature.ts — that
+ * is the tool this option delegates to, and the two disagreeing is what made a
+ * table's `validateWrite` unreadable through the folded call.
+ */
+const METHOD_OWNER_TYPES = new Set(['class', 'table', 'view', 'data-entity']);
+
 /** Resolve one object through its registered reader, with the shared not-found guidance. */
 async function readObject(ref: ObjectRef, context: XppServerContext) {
   const { objectType, name, options } = ref;
@@ -122,9 +131,18 @@ async function readObject(ref: ObjectRef, context: XppServerContext) {
   // one signature, where the middle call already had the class in hand. Folding
   // it here removes that hop and its ~926 chars from every ListTools payload.
   if (options?.method) {
-    if (objectType !== 'class') {
+    // get_method resolves methods on classes, tables, views and data entities
+    // (its own OBJECT_TYPES), so gating this on `class` alone refused calls the
+    // underlying tool would have answered. `options.method:"validateWrite"` on a
+    // table is the obvious one, and the refusal sent the caller hunting for a
+    // separate tool instead of naming the types that do work.
+    if (!METHOD_OWNER_TYPES.has(objectType)) {
       return {
-        content: [{ type: 'text', text: `❌ get_object_info: options.method is only supported for objectType="class". For "${objectType}" omit it to get full metadata.` }],
+        content: [{
+          type: 'text',
+          text: `❌ get_object_info: options.method works on ${[...METHOD_OWNER_TYPES].join(', ')} — ` +
+            `"${objectType}" stores no methods, so omit it to get full metadata.`,
+        }],
         isError: true,
       };
     }
@@ -136,6 +154,11 @@ async function readObject(ref: ObjectRef, context: XppServerContext) {
           className: name,
           methodName: String(options.method),
           include: options.include,
+          // The schema advertises modelName among the flags forwarded to the
+          // reader, and get_method takes one — dropping it here made the
+          // documented way to disambiguate a name that two models both define
+          // do nothing at all.
+          modelName: options.modelName,
         },
       },
     };

@@ -152,4 +152,33 @@ describe('d365fo_file(action="modify") with operations[]', () => {
     expect(mockModify).toHaveBeenCalledTimes(1);
     expect(forwarded()[0]).toMatchObject({ operation: 'add-field', fieldName: 'A' });
   });
+
+  // An entry runs as its own modify call and so cannot see the batch. Right for
+  // the writes, wrong for the advisory notes: add-field told the caller to "send
+  // the group entry in the SAME call next time" in a call that already carried
+  // one. Advice that fires when it has already been followed is how a response
+  // teaches an agent to stop reading its warnings.
+  it('tells every entry which operations it is travelling with', async () => {
+    await d365foFileTool(call({
+      objectType: 'table-extension',
+      objectName: 'CustTable.CtsoExtension',
+      operations: [
+        { operation: 'add-field', fieldName: 'Tier' },
+        { operation: 'add-field-to-field-group', fieldName: 'Tier', fieldGroupName: 'Admin' },
+      ],
+    }), ctx);
+
+    const peers = ['add-field', 'add-field-to-field-group'];
+    expect(forwarded()[0].peerOperations).toEqual(peers);
+    expect(forwarded()[1].peerOperations).toEqual(peers);
+  });
+
+  it('reports a single-entry batch as travelling alone', async () => {
+    await d365foFileTool(call({
+      objectType: 'table', objectName: 'T',
+      operations: [{ operation: 'add-field', fieldName: 'A' }],
+    }), ctx);
+
+    expect(forwarded()[0].peerOperations).toEqual(['add-field']);
+  });
 });
