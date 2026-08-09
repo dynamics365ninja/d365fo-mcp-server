@@ -18,7 +18,7 @@ import {
   formatSuggestions
 } from '../../utils/suggestionEngine.js';
 import { tryBridgeSearch } from '../../bridge/bridgeAdapter.js';
-import { indexedPathIsMissing } from '../../utils/indexedXmlLookup.js';
+import { indexedPathIsMissing, renderStaleSearchRowsNote } from '../../utils/indexedXmlLookup.js';
 import { lookupSymbolsNocase } from '../../utils/symbolLookup.js';
 import { rankCustomFirst, isExactNameMatch } from '../../utils/exactMatchRanking.js';
 import { isCustomModel } from '../../utils/modelClassifier.js';
@@ -103,15 +103,35 @@ export function probeCustomMatches(
  * Scoped to the PROBES on purpose. They are a splice that outranks everything
  * else, so a ghost among them is actively misleading and dropping one costs
  * nothing — the row is still in the result set the probe was spliced into. The
- * result set itself is not swept: a symbol index built elsewhere (the shipped
- * one covers every standard package) routinely names files a given machine has
- * not installed, and dropping those would answer "no such object" for the whole
- * of D365FO on a partial install. Marking rather than hiding is the open
- * question there.
+ * result set itself is MARKED rather than swept; see markStaleRows.
  */
 async function dropStaleRows<T extends { filePath?: string }>(rows: T[]): Promise<T[]> {
   const missing = await Promise.all(rows.map(r => indexedPathIsMissing(r.filePath)));
   return rows.filter((_, i) => !missing[i]);
+}
+
+/**
+ * Flag the rows of an index-only answer whose file is gone from disk.
+ *
+ * This is the answer the whole of `search` reduces to when the bridge returns
+ * nothing — and a stale index outlives a deleted file precisely when the bridge is
+ * silent, so the one answer made entirely of index rows was the one still reporting
+ * ghosts as fact.
+ *
+ * Marked, not dropped. `indexedPathIsMissing` fires for any PackagesLocalDirectory
+ * path with no file here, the shipped index covers every standard package, and a
+ * machine installs a subset — sweeping this set would answer "no X++ symbols found"
+ * for most of D365FO on a partial install, in the tool every other workflow starts
+ * from. (Measured: with a packages root present, sweeping turned search("CustTable")
+ * into a no-match.) So the row stays, says what it is, and ranks below the live ones.
+ *
+ * Cost is one existsSync + one access per row over a `limit`-bounded set.
+ */
+async function markStaleRows<T extends { filePath?: string }>(
+  rows: T[],
+): Promise<Array<T & { staleIndexRow?: boolean }>> {
+  const missing = await Promise.all(rows.map(r => indexedPathIsMissing(r.filePath)));
+  return rows.map((row, i) => (missing[i] ? { ...row, staleIndexRow: true } : row));
 }
 
 const SearchArgsSchema = z.object({
@@ -351,16 +371,24 @@ async function performExternalSearch(
       .filter(hit => !seen.has(`${hit.name.toLowerCase()} ${hit.type}`));
     for (const hit of missingCustom) seen.add(`${hit.name.toLowerCase()} ${hit.type}`);
 
-    // NOT swept for stale rows, deliberately — see dropStaleRows. This is the
-    // whole answer, not a splice, and a symbol index built elsewhere routinely
-    // covers packages this machine does not have installed. Dropping those would
-    // turn "you do not have that package locally" into "no such object", in the
-    // one tool everything else starts from.
-    const combined = [...missingExact, ...missingCustom, ...raw];
+    // Marked, not swept — see markStaleRows. This is the whole answer rather than a
+    // splice, and a symbol index built elsewhere routinely covers packages this
+    // machine does not have installed, so dropping those rows would turn "you do not
+    // have that package locally" into "no such object" in the one tool everything
+    // else starts from.
+    const combined = await markStaleRows([...missingExact, ...missingCustom, ...raw]);
     const isCustomHit = (r: any) =>
       (r.model ? isCustomModel(String(r.model)) : false) ||
       customKeys.has(`${String(r.name).toLowerCase()} ${r.type}`);
-    const results: any[] = rankCustomFirst(args.query, combined, r => String(r.name), isCustomHit);
+    const ranked: any[] = rankCustomFirst(args.query, combined, r => String(r.name), isCustomHit);
+    // Below the live rows, keeping the ranking within each band: a cache row must
+    // never outrank an object that is actually here, least of all as the exact match
+    // the renderer calls out at the top.
+    const results: any[] = [
+      ...ranked.filter(r => !r.staleIndexRow),
+      ...ranked.filter(r => r.staleIndexRow),
+    ];
+    const staleCount = results.filter(r => r.staleIndexRow).length;
 
     if (!results || results.length === 0) {
       const allSymbolNames = symbolIndex.getAllSymbolNames(args.query);
@@ -408,11 +436,14 @@ async function performExternalSearch(
     let output = `Found ${results.length} matches:\n`;
 
     // #15: the grouped renderer below hides ordering, so call the exact match out
-    // explicitly — that is the whole point of the exact-first repair.
+    // explicitly — that is the whole point of the exact-first repair. A stale exact
+    // match is still called out (hiding it is what this used to get wrong) but it
+    // says so right here, where the caller is most likely to act on that one line
+    // without reading further.
     const exactHits = results.filter(r => isExactNameMatch(args.query, String(r.name)));
     if (exactHits.length > 0) {
       output += `\n⭐ **Exact name match:** ` +
-        exactHits.map(r => `${r.name} (${r.type})`).join(', ') + '\n';
+        exactHits.map(r => `${r.name} (${r.type})${r.staleIndexRow ? ' — ⚠️ STALE index row, no file on this machine' : ''}`).join(', ') + '\n';
     }
 
     output += formatRichContext(args.query, results, {
@@ -420,6 +451,8 @@ async function performExternalSearch(
       commonPatterns,
       tips
     });
+
+    if (staleCount > 0) output += `\n${renderStaleSearchRowsNote(staleCount)}`;
 
     return {
       content: [

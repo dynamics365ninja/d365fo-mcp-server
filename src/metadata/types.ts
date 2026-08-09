@@ -180,6 +180,12 @@ export interface XppSymbol {
   /** JSON array of typical usage examples. */
   typicalUsages?: string;
   usageFrequency?: number;
+  /**
+   * Set by `search` when this row's file is gone from disk (see
+   * indexedPathIsMissing). Not a stored column — a rendering flag, so the reader
+   * sees both the hit and the fact that it is a cache row.
+   */
+  staleIndexRow?: boolean;
   calledByCount?: number;
   /** Comma-separated related methods. */
   relatedMethods?: string;
