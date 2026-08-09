@@ -157,14 +157,18 @@ describe('labels FTS: incremental strategy', () => {
    * Label ids reachable through the index for a term. As on the symbols side, only a MATCH
    * query is answered from the index — labels_fts is external-content too.
    *
-   * No integrity-check counterpart here: labels_fts deliberately indexes en-US rows only,
-   * so FTS5 would report that partial index as corrupt by design.
+   * Reported as `id/language`: the index covers every locale, so one label id is present
+   * once per translation and a bare id could not tell an en-US hit from a Czech one.
    */
   function ftsLabelSearch(index: XppSymbolIndex, term: string): string[] {
     return index.labelsDb
-      .prepare('SELECT label_id FROM labels_fts WHERE labels_fts MATCH ? ORDER BY label_id')
+      .prepare(
+        `SELECT l.label_id, l.language FROM labels_fts f
+         JOIN labels l ON l.id = f.rowid
+         WHERE labels_fts MATCH ? ORDER BY l.label_id, l.language`,
+      )
       .all(term)
-      .map((r: any) => r.label_id);
+      .map((r: any) => `${r.label_id}/${r.language}`);
   }
 
   it('matches a full rebuild, and clearing a model prunes its FTS rows', () => {
@@ -179,23 +183,27 @@ describe('labels FTS: incremental strategy', () => {
       ],
       { skipFtsRebuild: true, keepTriggers: true },
     );
-    expect(ftsLabelSearch(index, 'Hello')).toEqual(['@Cus:Hello']);
-    expect(ftsLabelSearch(index, 'Keep')).toEqual(['@Std:Keep']);
-    // Non-en-US rows stay out of the index.
-    expect(ftsLabelSearch(index, 'Ahoj')).toEqual([]);
+    // 'Hello' is the en-US text and the label id both translations share, so the Czech
+    // row answers on its id — it is in the index now, which is the point.
+    expect(ftsLabelSearch(index, 'Hello')).toEqual(['@Cus:Hello/cs', '@Cus:Hello/en-US']);
+    expect(ftsLabelSearch(index, 'Keep')).toEqual(['@Std:Keep/en-US']);
+    // The Czech text itself is reachable — it used to be indexed nowhere.
+    expect(ftsLabelSearch(index, 'Ahoj')).toEqual(['@Cus:Hello/cs']);
 
     index.clearLabelsForModels(['CustomModel'], { ftsStrategy: 'incremental' });
     expect(ftsLabelSearch(index, 'Hello')).toEqual([]);
     expect(ftsLabelSearch(index, 'Goodbye')).toEqual([]);
+    // Pruning has to reach the translations too, not just the en-US row.
+    expect(ftsLabelSearch(index, 'Ahoj')).toEqual([]);
     // The untouched standard model must survive both the clear and the FTS pruning.
-    expect(ftsLabelSearch(index, 'Keep')).toEqual(['@Std:Keep']);
+    expect(ftsLabelSearch(index, 'Keep')).toEqual(['@Std:Keep/en-US']);
     expect(index.labelsDb.prepare('SELECT COUNT(*) n FROM labels').get()).toEqual({ n: 1 });
 
     index.bulkAddLabels([label('@Cus:Hello', 'CustomModel', 'Hello again')], {
       skipFtsRebuild: true,
       keepTriggers: true,
     });
-    expect(ftsLabelSearch(index, 'again')).toEqual(['@Cus:Hello']);
+    expect(ftsLabelSearch(index, 'again')).toEqual(['@Cus:Hello/en-US']);
 
     // Same oracle as the symbols side: the incrementally maintained index must answer
     // exactly like one rebuilt from scratch.
@@ -221,7 +229,7 @@ describe('labels FTS: incremental strategy', () => {
 
     // The replaced row must be gone from the index, not merely shadowed by the new one.
     expect(ftsLabelSearch(index, 'First')).toEqual([]);
-    expect(ftsLabelSearch(index, 'Second')).toEqual(['@Cus:Hello']);
+    expect(ftsLabelSearch(index, 'Second')).toEqual(['@Cus:Hello/en-US']);
 
     index.close?.();
   });

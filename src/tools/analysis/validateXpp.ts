@@ -14,10 +14,12 @@
  *   COC001  Default param value copied into CoC wrapper signature
  *   COC002  [ExtensionOf] class not declared final
  *   COC003  [ExtensionOf] class name not ending _Extension
+ *   COC004  next not reached exactly once and unconditionally (SYS10028)
  *   BP001   Hardcoded string literal in info/warning/error/checkFailed
  *   BP002   doInsert/doUpdate/doDelete outside explicit migration comment
  *   BP003   Generic doc-comment (/// Foo class. / /// methodName.)
  *   BP004   Developer-only statements left in code (pause / print)
+ *   BP005   enum2str() in user-facing text (emits the symbol, never the translation)
  *   TTS001  Unbalanced ttsbegin / ttscommit
  *   XML001  AxTable XML missing an index with <AlternateKey>Yes</AlternateKey>
  *   XML006  AxTable elements out of canonical order (silently dropped by the AOT)
@@ -390,6 +392,162 @@ function checkExtensionOfNaming(code: string): ValidationViolation[] {
 }
 
 /**
+ * BP005 — enum2str() feeding user-facing text.
+ *
+ * enum2str returns the enum's symbolic NAME ('Gold'), never its <Label>, so a message
+ * built with it stays English on a Czech or Slovak client no matter how carefully the
+ * enum was labelled. The runtime API that resolves the translation is
+ * `new DictEnum(enumNum(MyEnum)).value2Label(enum2int(value))`.
+ *
+ * Scoped to the message builders (info/warning/error/checkFailed/strFmt) because
+ * enum2str is perfectly correct for a log line, a filename or a comparison key.
+ */
+function checkEnum2StrInMessage(code: string): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
+  const masked = maskStringsAndComments(code).split('\n');
+  const lines = code.split('\n');
+
+  masked.forEach((clean, i) => {
+    if (!/\benum2str\s*\(/.test(clean)) return;
+    if (!/\b(?:info|warning|error|checkFailed|strFmt)\s*\(/.test(clean)) return;
+    violations.push({
+      rule: 'BP005',
+      severity: 'warning',
+      line: i + 1,
+      excerpt: lines[i].trim(),
+      fix:
+        'enum2str() returns the symbolic name, not the label — this message stays English in every locale. ' +
+        'Use "new DictEnum(enumNum(MyEnum)).value2Label(enum2int(value))" to get the translated text.',
+    });
+  });
+
+  return violations;
+}
+
+/**
+ * COC004 — `next` not reached exactly once and unconditionally (compiler SYS10028).
+ *
+ * The X++ compiler rejects a CoC method whose `next` sits inside an `if`, is called
+ * twice, or can be skipped by an earlier `return`. It is the one CoC mistake that
+ * looks completely reasonable as ordinary X++ — `if (ret) { ret = next foo(); }` is
+ * how you would write a short-circuit anywhere else — and neither run_bp_check nor
+ * the reference checks catch it, because xppbp does not diagnose it and every symbol
+ * in the method resolves fine. Only a build did, which meant it was only ever found
+ * by whoever remembered to run one.
+ *
+ * Brace depths are counted on the masked copy, so a '{' inside a literal or a doc
+ * comment cannot shift the method boundaries.
+ */
+function checkCocNextUnconditional(code: string): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
+  if (!/\[ExtensionOf\s*\(/i.test(code)) return violations;
+
+  const lines = code.split('\n');
+  const masked = maskStringsAndComments(code).split('\n');
+  const METHOD_DECL =
+    /^\s*(?:(?:public|protected|private|internal|static|final|display|edit|server|client)\s+)*[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*\([^;]*\)\s*$/;
+
+  let depth = 0;
+  let classBodyDepth: number | null = null;
+  // The method currently being walked, if any.
+  let method: { name: string; bodyDepth: number; nexts: Array<{ line: number; excerpt: string; conditional: boolean }>; earlyReturn: number | null } | null = null;
+
+  const closeMethod = (): void => {
+    if (!method) return;
+    const { name, nexts, earlyReturn } = method;
+
+    for (const n of nexts) {
+      if (n.conditional) {
+        violations.push({
+          rule: 'COC004',
+          severity: 'error',
+          line: n.line,
+          excerpt: n.excerpt,
+          fix:
+            `"next ${name}" is inside a conditional block. The compiler rejects this with ` +
+            'SYS10028 "Call to \'next\' should be done only once and unconditionally". ' +
+            `Call it as the first statement instead — "ret = next ${name}();" — then apply the ` +
+            'business rule afterwards and use "ret = checkFailed(\'@Model:Label\')" to fail the write.',
+        });
+      }
+    }
+
+    if (nexts.length > 1) {
+      violations.push({
+        rule: 'COC004',
+        severity: 'error',
+        line: nexts[1].line,
+        excerpt: nexts[1].excerpt,
+        fix:
+          `"next ${name}" is called ${nexts.length} times in one CoC method; SYS10028 allows exactly one. ` +
+          'Store the single result in a local and reuse it.',
+      });
+    }
+
+    if (earlyReturn !== null && nexts.length > 0 && earlyReturn < nexts[0].line) {
+      violations.push({
+        rule: 'COC004',
+        severity: 'error',
+        line: earlyReturn,
+        excerpt: lines[earlyReturn - 1].trim(),
+        fix:
+          `This "return" can skip "next ${name}" below it, so the call is not unconditional (SYS10028). ` +
+          `Call "next ${name}" first, then let the rule decide the return value.`,
+      });
+    }
+
+    method = null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const clean = masked[i] ?? '';
+    const depthAtLineStart = depth;
+
+    if (classBodyDepth === null && /\bclass\b/i.test(clean) && clean.includes('{')) {
+      classBodyDepth = depthAtLineStart + 1;
+    } else if (classBodyDepth === null && /\bclass\b/i.test(clean)) {
+      // Brace on the following line — the class body opens one deeper than here.
+      classBodyDepth = depthAtLineStart + 1;
+    }
+
+    if (method) {
+      const nextCall = new RegExp(`\\bnext\\s+${method.name}\\b`).exec(clean);
+      if (nextCall) {
+        method.nexts.push({
+          line: i + 1,
+          excerpt: lines[i].trim(),
+          // Deeper than the method body means it sits inside if/while/switch/try;
+          // the same-line form "if (ret) ret = next foo();" never opens a block.
+          conditional: depthAtLineStart > method.bodyDepth || /\b(if|while|for|switch|case)\b/.test(clean),
+        });
+      } else if (
+        method.earlyReturn === null &&
+        depthAtLineStart > method.bodyDepth &&
+        /\breturn\b/.test(clean)
+      ) {
+        method.earlyReturn = i + 1;
+      }
+    } else if (classBodyDepth !== null && depthAtLineStart === classBodyDepth) {
+      const decl = METHOD_DECL.exec(clean);
+      if (decl && !/\bnew\s*\(/.test(clean)) {
+        method = { name: decl[1], bodyDepth: classBodyDepth + 1, nexts: [], earlyReturn: null };
+      }
+    }
+
+    for (const ch of clean) {
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (method && depth < method.bodyDepth) closeMethod();
+      }
+    }
+  }
+  closeMethod();
+
+  return violations;
+}
+
+/**
  * BP001 — Hardcoded string literal in info/warning/error/checkFailed.
  * Flags: info("literal") — must use label @Module:LabelId.
  * Excludes strFmt(labelRef, ...) and calls where the first arg is a label ref (@...).
@@ -684,6 +842,8 @@ const XPP_RULES = [
   checkCocDefaultParam,
   checkExtensionOfNotFinal,
   checkExtensionOfNaming,
+  checkCocNextUnconditional,
+  checkEnum2StrInMessage,
   checkHardcodedStrings,
   checkDoMethods,
   checkGenericDocComment,

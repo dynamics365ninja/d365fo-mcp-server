@@ -23,13 +23,13 @@
  * parent still fails the grandparent case.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import { XppMetadataParser } from '../../src/metadata/xmlParser';
-import { prepareTool } from '../../src/tools/prepare/prepare';
+import { prepareTool, resetRecentPrepares } from '../../src/tools/prepare/prepare';
 import type { XppServerContext } from '../../src/types/context';
 
 const MODEL = 'MyCustomModel';
@@ -123,6 +123,12 @@ async function prepareChange(objectName: string, methodName: string): Promise<st
 }
 
 describe('prepare(mode="change") resolves inherited methods', () => {
+  // prepare remembers a repeated question and answers it with a pointer instead of
+  // re-aggregating (see prepareRepeatSuppression.test.ts). That store is module-level,
+  // and several cases below ask the same question to assert different parts of the
+  // answer, so each one needs a clean slate.
+  beforeEach(() => resetRecentPrepares());
+
   it('finds a method declared on the DIRECT parent', async () => {
     const text = await prepareChange('P_Leaf', 'parentOnly');
     expect(text).not.toContain('(not found in symbol index)');

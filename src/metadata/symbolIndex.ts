@@ -68,6 +68,14 @@ export class XppSymbolIndex {
   // their originating connection and cannot be shared across connections.
   private perConnStmtCache = new WeakMap<Database, Map<string, Statement>>();
 
+  /**
+   * Directory holding the metadata databases. Sibling marker files (the blob-download
+   * note, the last-build record) live here so they travel with the index they describe.
+   */
+  get dataDir(): string {
+    return path.dirname(this.dbPath);
+  }
+
   constructor(dbPath: string, labelsDbPath?: string) {
     this.dbPath = dbPath;
     // Ensure database directory exists
@@ -416,9 +424,15 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_labels_language ON labels(language);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_labels_unique
         ON labels(label_id, label_file_id, model, language);
+      -- Every language comparison in this file is LOWER(language) = LOWER(?), because
+      -- Microsoft packages unzipped on Linux store 'en-us' while custom packages write
+      -- 'en-US'. A plain index on language cannot serve that predicate, so the LIKE
+      -- fallback degraded to a scan of all four locales instead of one.
+      CREATE INDEX IF NOT EXISTS idx_labels_language_lower ON labels(LOWER(language));
     `);
 
-    // FTS5 full-text search for labels (en-US text only – primary search language)
+    // FTS5 full-text search for labels — every indexed language, not just en-US.
+    // See rebuildLabelsFts() for why the en-US-only index had to go.
     this.labelsDb.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS labels_fts USING fts5(
         label_id,
@@ -430,6 +444,7 @@ export class XppSymbolIndex {
     `);
 
     this.createLabelsFtsTriggers();
+    this.migrateLabelsFtsLanguageCoverage();
 
     // Extended metadata tables for smart generation
 
@@ -873,16 +888,17 @@ export class XppSymbolIndex {
   /**
    * (Re)create the labels_fts sync triggers — the single definition of them.
    *
-   * The language test is LOWER(...) = 'en-us', never a literal comparison against
-   * 'en-US': Microsoft packages unzipped on Linux store the locale lowercased while
-   * custom packages write 'en-US', and a case-sensitive WHEN clause silently skips
-   * every lowercase row. Its effect is one-directional and therefore invisible until
-   * a search goes wrong — inserts never reach the index, and, worse, DELETEs never
-   * remove the entries a full rebuild had put there, so searchLabels keeps returning
-   * labels that no longer exist.
+   * There is deliberately no language filter here. The triggers used to carry
+   * `WHEN LOWER(language) = 'en-us'`, which kept the index one quarter of its size
+   * on a four-locale build but made every non-English search fall through to the
+   * LIKE scan in searchLabelsLike — measured at 152 s for a four-term `cs` query
+   * against a 1.4 M-row table, run synchronously on the event loop so the whole
+   * server stalled behind it. The rows are indexed; the space is the cheaper half
+   * of that trade. Whatever LABEL_LANGUAGES ingested is what gets tokenised, so a
+   * default en-US-only build is unaffected.
    *
    * Dropped and recreated (not CREATE-IF-NOT-EXISTS alone) so a database still
-   * carrying the earlier case-sensitive definitions is repaired on the next open —
+   * carrying the earlier language-filtered definitions is repaired on the next open —
    * mirrors createFTSTriggers on the symbols side.
    */
   private createLabelsFtsTriggers(): void {
@@ -891,23 +907,63 @@ export class XppSymbolIndex {
       DROP TRIGGER IF EXISTS labels_ad;
       DROP TRIGGER IF EXISTS labels_au;
 
-      CREATE TRIGGER labels_ai AFTER INSERT ON labels WHEN LOWER(new.language) = 'en-us' BEGIN
+      CREATE TRIGGER labels_ai AFTER INSERT ON labels BEGIN
         INSERT INTO labels_fts(rowid, label_id, text, comment)
         VALUES (new.id, new.label_id, new.text, new.comment);
       END;
 
-      CREATE TRIGGER labels_ad AFTER DELETE ON labels WHEN LOWER(old.language) = 'en-us' BEGIN
+      CREATE TRIGGER labels_ad AFTER DELETE ON labels BEGIN
         INSERT INTO labels_fts(labels_fts, rowid, label_id, text, comment)
         VALUES ('delete', old.id, old.label_id, old.text, old.comment);
       END;
 
-      CREATE TRIGGER labels_au AFTER UPDATE ON labels WHEN LOWER(old.language) = 'en-us' OR LOWER(new.language) = 'en-us' BEGIN
+      CREATE TRIGGER labels_au AFTER UPDATE ON labels BEGIN
         INSERT INTO labels_fts(labels_fts, rowid, label_id, text, comment)
         VALUES ('delete', old.id, old.label_id, old.text, old.comment);
         INSERT INTO labels_fts(rowid, label_id, text, comment)
         VALUES (new.id, new.label_id, new.text, new.comment);
       END;
     `);
+  }
+
+  /**
+   * Databases built before labels_fts covered every language carry an index holding
+   * only en-US rows. Recreating the triggers fixes rows written from now on but
+   * cannot retroactively tokenise the ones already there, so the non-English search
+   * would stay silently empty until the next full rebuild — exactly the failure this
+   * change exists to remove.
+   *
+   * `PRAGMA user_version` on the labels DB records the coverage generation. It is 0
+   * on every database that predates this, so the one-time rebuild is self-triggering
+   * and costs nothing on an already-migrated file.
+   */
+  private migrateLabelsFtsLanguageCoverage(): void {
+    const LABELS_FTS_ALL_LANGUAGES = 1;
+    try {
+      const version = Number(this.labelsDb.pragma('user_version', { simple: true }) ?? 0);
+      if (version >= LABELS_FTS_ALL_LANGUAGES) return;
+
+      // An empty labels table needs no rebuild — a fresh DB is already correct, and
+      // stamping it here keeps the first real build off the slow path.
+      const { n } = this.labelsDb
+        .prepare('SELECT COUNT(*) AS n FROM labels')
+        .get() as { n: number };
+      if (n > 0) {
+        // Measured at ~23 s for 1.4 M labels, and it blocks startup. Announced rather
+        // than done quietly, because a silent 23 s stall reads as a hung server.
+        log.detail(
+          `Re-tokenising ${n.toLocaleString('en-US')} labels so every language is searchable (one-off, ~20 s)…`,
+        );
+        this.rebuildLabelsFts();
+      }
+      this.labelsDb.pragma(`user_version = ${LABELS_FTS_ALL_LANGUAGES}`);
+    } catch (e) {
+      // A read-only file, or a writer holding the lock, must not take the server down.
+      // Leaving user_version unstamped means the next open retries; until then the
+      // non-English searches fall back to searchLabelsLike — the old behaviour, slow
+      // but correct.
+      console.error(`[SymbolIndex] labels_fts language migration skipped: ${e}`);
+    }
   }
 
   /**
@@ -1095,7 +1151,7 @@ export class XppSymbolIndex {
   removeLabelsByFile(filePath: string): number {
     const forms = this.filePathForms(filePath);
     const placeholders = forms.map(() => '?').join(', ');
-    // The labels_ad trigger handles FTS cleanup for en-US rows
+    // The labels_ad trigger handles FTS cleanup, for every language
     const result = this.labelsDb.prepare(
       `DELETE FROM labels WHERE file_path COLLATE NOCASE IN (${placeholders})`
     ).run(...forms);
@@ -3835,7 +3891,7 @@ export class XppSymbolIndex {
     const keepTriggers = !!opts?.keepTriggers;
     if (keepTriggers) {
       // Scoped/incremental insert: let the triggers maintain labels_fts per row instead of
-      // re-tokenising every en-US label afterwards. Recursive triggers are required so the
+      // re-tokenising every label in the database afterwards. Recursive triggers are required so the
       // rows displaced by INSERT OR REPLACE fire labels_ad and don't leave orphaned FTS
       // entries pointing at dead rowids.
       this.labelsDb.pragma('recursive_triggers = ON');
@@ -3880,18 +3936,22 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Rebuild the FTS index for labels from scratch.
-   * Only indexes en-US rows — the primary search language — keeping the
-   * index ~(N_languages)x smaller compared to indexing all translations.
+   * Rebuild the FTS index for labels from scratch — every row in `labels`, whatever
+   * its language.
+   *
+   * This used to filter to en-US on the theory that it was "the primary search
+   * language", which held only as long as nobody searched in another one. On a build
+   * with LABEL_LANGUAGES=en-US,cs,sk,de the other three quarters were unreachable
+   * through the index, and searchLabels quietly answered them with a LIKE scan of
+   * the whole table instead. The index is ~4x larger on such a build; the alternative
+   * was a 150 s query.
    */
   rebuildLabelsFts(): void {
     // Clear existing FTS index
     this.labelsDb.exec(`INSERT INTO labels_fts(labels_fts) VALUES('delete-all')`);
-    // Re-populate with en-US rows only (case-insensitive: Microsoft packages store
-    // locale as 'en-us' from Linux-unzipped directory names, custom packages use 'en-US')
     this.labelsDb.exec(`
       INSERT INTO labels_fts(rowid, label_id, text, comment)
-      SELECT id, label_id, text, comment FROM labels WHERE LOWER(language) = 'en-us'
+      SELECT id, label_id, text, comment FROM labels
     `);
   }
 
@@ -3927,7 +3987,10 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Full-text search labels (default language: en-US, falls back to any)
+   * Full-text search labels within one language (default en-US).
+   *
+   * Answered from labels_fts, which covers every indexed locale. Only queries FTS5
+   * cannot tokenise fall through to the LIKE scan in searchLabelsLike.
    */
   searchLabels(
     query: string,
@@ -3944,25 +4007,18 @@ export class XppSymbolIndex {
   }> {
     const { language = 'en-US', model, labelFileId, limit = 30 } = opts;
 
-    // labels_fts only indexes en-US rows. For any other language, skip straight to
-    // LIKE-based search — attempting FTS would always produce 0 results and then
-    // fall through to LIKE anyway, wasting two round-trips.
-    // Compare case-insensitively: callers pass variants like 'en-us', and a
-    // false mismatch here degrades to a LIKE full scan of the labels table
-    // (200+ s on a production DB, synchronously blocking the event loop).
-    if (language.toLowerCase() !== 'en-us') {
-      return this.searchLabelsLike(query, opts);
-    }
-
     // Sanitize query for FTS5 (strip chars that would cause a syntax error)
     const ftsQuery = query.replace(/['"*()]/g, ' ').trim();
     // Route to LIKE when FTS5 would silently return 0 results:
     // • '_' and '%' — word separators in the unicode61 tokenizer (also LIKE wildcards);
     //   literal underscore/percent searches must go through LIKE with proper escaping.
-    // • Any query whose alphanumeric content disappears after sanitization (e.g. '-',
+    // • Any query whose letter/digit content disappears after sanitization (e.g. '-',
     //   '.', '@', ':', '@SYS:') produces zero FTS5 tokens and no exception to trigger
     //   the catch-based fallback below.
-    if (/[_%]/.test(query) || !/[a-zA-Z0-9]/.test(ftsQuery)) {
+    //   The test is Unicode-aware on purpose: unicode61 tokenises 'Přístup' and
+    //   'Qualität' perfectly well, and an [a-zA-Z0-9] test would have shunted any
+    //   query without ASCII letters onto the LIKE scan this method exists to avoid.
+    if (/[_%]/.test(query) || !/[\p{L}\p{N}]/u.test(ftsQuery)) {
       return this.searchLabelsLike(query, opts);
     }
 
@@ -3970,13 +4026,17 @@ export class XppSymbolIndex {
     const stmtKey = `searchLabels_${model ? 'model' : 'nomodel'}_${labelFileId ? 'lfid' : 'nolfid'}`;
     let stmt = this.labelsStmtCache.get(stmtKey);
     if (!stmt) {
+      // The language predicate is not optional. labels_fts now holds every locale,
+      // so without it a `cs` search happily returns the en-US and de rows that share
+      // a token — the index no longer does the filtering the caller assumed.
       let sql = `
         SELECT l.label_id AS labelId, l.label_file_id AS labelFileId, l.model, l.language,
                l.text, l.comment, l.file_path AS filePath,
                f.rank
         FROM labels_fts f
         JOIN labels l ON l.id = f.rowid
-        WHERE labels_fts MATCH ?`;
+        WHERE labels_fts MATCH ?
+          AND LOWER(l.language) = ?`;
       if (model)       sql += `\n          AND l.model = ?`;
       if (labelFileId) sql += `\n          AND l.label_file_id = ?`;
       sql += `\n          ORDER BY f.rank\n          LIMIT ?`;
@@ -3984,7 +4044,7 @@ export class XppSymbolIndex {
       this.labelsStmtCache.set(stmtKey, stmt);
     }
 
-    const params: any[] = [ftsQuery];
+    const params: any[] = [ftsQuery, language.toLowerCase()];
     if (model)       params.push(model);
     if (labelFileId) params.push(labelFileId);
     params.push(limit);
@@ -3998,7 +4058,14 @@ export class XppSymbolIndex {
   }
 
   /**
-   * LIKE-based fallback label search (for queries with special characters)
+   * LIKE-based fallback label search, for the queries FTS5 cannot tokenise
+   * (literal '_'/'%', or nothing but punctuation once sanitised).
+   *
+   * A leading-wildcard LIKE cannot use an index, so this scans the labels table.
+   * The language predicate is written to hit idx_labels_language_lower, which keeps
+   * the scan inside one locale instead of all of them; there is no way to make the
+   * text comparison itself cheaper here, which is exactly why the FTS path above now
+   * covers every language rather than only en-US.
    */
   private searchLabelsLike(
     query: string,
@@ -4018,7 +4085,7 @@ export class XppSymbolIndex {
                text, comment, file_path AS filePath, 0 as rank
         FROM labels
         WHERE (text LIKE ? ESCAPE '\\' OR label_id LIKE ? ESCAPE '\\')
-          AND LOWER(language) = LOWER(?)`;
+          AND LOWER(language) = ?`;
       if (model)       sql += `\n          AND model = ?`;
       if (labelFileId) sql += `\n          AND label_file_id = ?`;
       sql += `\n        LIMIT ?`;
@@ -4026,7 +4093,9 @@ export class XppSymbolIndex {
       this.labelsStmtCache.set(stmtKey, stmt);
     }
 
-    const params: any[] = [pattern, pattern, language];
+    // Lowercased here, not as LOWER(?) in SQL: the expression index is on
+    // LOWER(language), and matching it requires the bound side to be a plain value.
+    const params: any[] = [pattern, pattern, language.toLowerCase()];
     if (model)       params.push(model);
     if (labelFileId) params.push(labelFileId);
     params.push(limit);
@@ -4125,7 +4194,7 @@ export class XppSymbolIndex {
     const placeholders = models.map(() => '?').join(',');
     this.labelsDb.prepare(`DELETE FROM labels WHERE model IN (${placeholders})`).run(...models);
     // 'incremental': the labels_ad trigger already dropped each deleted row from labels_fts,
-    // so the full delete-all + re-INSERT of every en-US label (O(all labels)) is pure waste
+    // so the full delete-all + re-INSERT of every label (O(all labels)) is pure waste
     // when only a handful of models were cleared.
     if (opts?.ftsStrategy !== 'incremental') this.rebuildLabelsFts();
   }
