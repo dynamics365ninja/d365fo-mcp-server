@@ -1026,19 +1026,48 @@ export class XppSymbolIndex {
    * then WROTE a ConSk extension, which became one of the two visible names, so
    * the wrong answer was feeding itself. Members ('method', 'field') are excluded by
    * type, which is what this clause was reaching for.
+   *
+   * The sample is drawn in two BANDS rather than as one `LIMIT` over the union,
+   * because a model with more names than `limit` otherwise lets SQLite decide which
+   * ones inference sees — no ORDER BY means no defined subset, and inference is
+   * threshold-based (MIN_COVERAGE 60 %), so a skewed sample can flip the answer.
+   * The bands also protect the signal: extensions are rare and state the infix
+   * outright, regular objects are many and carry the leading token, and
+   * inferPrefixFromObjectNames needs BOTH — a single window ordered any way at all
+   * would let the larger band crowd the other one out entirely. Each band is capped
+   * at half the budget, gives back what it does not use, and is ordered (type, name)
+   * so the same model always yields the same sample — a silent, self-reinforcing
+   * failure otherwise, since this server writes names with the inferred prefix and
+   * those names become evidence for the next inference.
    */
   getModelObjectNames(model: string, limit = 400): string[] {
     if (!model) return [];
-    const rows = this.getReadDb()
-      .prepare(
-        `SELECT name FROM symbols
-         WHERE model = ?
-           AND (parent_name IS NULL OR type LIKE '%-extension')
-           AND type NOT IN ('method', 'field')
-         LIMIT ?`
-      )
-      .all(model, limit) as Array<{ name: string }>;
-    return rows.map(r => r.name);
+    if (limit <= 0) return [];
+    const db = this.getReadDb();
+
+    const band = (extensions: boolean, cap: number): string[] => {
+      if (cap <= 0) return [];
+      const rows = db
+        .prepare(
+          `SELECT name FROM symbols
+           WHERE model = ?
+             AND type ${extensions ? 'LIKE' : 'NOT LIKE'} '%-extension'
+             ${extensions ? '' : 'AND parent_name IS NULL'}
+             AND type NOT IN ('method', 'field')
+           ORDER BY type, name
+           LIMIT ?`
+        )
+        .all(model, cap) as Array<{ name: string }>;
+      return rows.map(r => r.name);
+    };
+
+    // Extensions first so their (smaller) band can hand its leftover budget to the
+    // regular one; the reverse would let a large model spend the whole budget on
+    // regular objects before the infix evidence is ever read.
+    const half = Math.max(1, Math.ceil(limit / 2));
+    const extensionNames = band(true, half);
+    const regularNames = band(false, limit - extensionNames.length);
+    return [...extensionNames, ...regularNames];
   }
 
   removeSymbolsByFile(filePath: string): { deletedCount: number; objectNames: string[] } {

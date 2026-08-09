@@ -8,7 +8,7 @@ import { searchLabelsTool } from '../../src/tools/analysis/searchLabels';
 import { getLabelInfoTool } from '../../src/tools/readers/getLabelInfo';
 import { createLabelTool } from '../../src/tools/write/createLabel';
 import { renameLabelTool } from '../../src/tools/write/renameLabel';
-import { labelsTool } from '../../src/tools/labels';
+import { labelsTool, mapWithConcurrency } from '../../src/tools/labels';
 import { isExtensionLabelFile } from '../../src/metadata/labelParser';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -264,6 +264,79 @@ describe('labels(action="search") with query[]', () => {
   it('rejects an empty query array rather than reporting a clean no-match', async () => {
     const result = await labelsTool(req('labels', { action: 'search', query: [] }), ctx);
     expect(result.isError).toBe(true);
+  });
+
+  it('folds phrasings that differ only in case or spacing', async () => {
+    // The index is case-insensitive, so these are one query — running it three
+    // times costs three FTS scans and prints three identical sections.
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([]);
+
+    const text = (await labelsTool(
+      req('labels', { action: 'search', query: ['customer', 'customer', ' Customer ', 'client'] }),
+      ctx,
+    )).content[0].text as string;
+
+    expect((ctx.symbolIndex.searchLabels as any).mock.calls.length).toBe(2);
+    expect(text).toContain('2 duplicate phrasing(s) folded');
+    // The caller's own first spelling is what reads back.
+    expect(text).toContain('## "customer"');
+    expect(text).not.toContain('## "Customer"');
+  });
+
+  it('does not report a failed batch as "no reusable label exists"', async () => {
+    // isError used to be dropped: a batch in which every query blew up returned a
+    // clean report whose verdict was "none of these phrasings found a label" —
+    // indistinguishable from a real miss, and the caller then created a duplicate.
+    (ctx.symbolIndex.searchLabels as any).mockImplementation(() => { throw new Error('labels DB is locked'); });
+
+    const result = await labelsTool(
+      req('labels', { action: 'search', query: ['customer', 'client'] }),
+      ctx,
+    );
+    const text = result.content[0].text as string;
+
+    expect(result.isError).toBe(true);
+    expect(text).toMatch(/every one failed/i);
+    expect(text).not.toContain('Stop searching and create your own.');
+    expect(text).toContain('SEARCH FAILED');
+  });
+
+  it('runs the phrasings with bounded concurrency, in order', async () => {
+    // Batching exists to turn N round trips into one; a serial loop keeps the cost
+    // at the SUM of the queries when it only needs to be the slowest of them. The
+    // bound is there because they all land on one SQLite connection.
+    let inFlight = 0;
+    let peak = 0;
+    const out = await mapWithConcurrency([1, 2, 3, 4, 5, 6, 7, 8], 4, async (n) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise(r => setTimeout(r, 5));
+      inFlight--;
+      return n * 10;
+    });
+
+    expect(out).toEqual([10, 20, 30, 40, 50, 60, 70, 80]);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(4);
+  });
+
+  it('keeps the verdict but names the queries that failed when only some did', async () => {
+    let call = 0;
+    (ctx.symbolIndex.searchLabels as any).mockImplementation(() => {
+      call++;
+      if (call === 1) throw new Error('labels DB is locked');
+      return [];
+    });
+
+    const result = await labelsTool(
+      req('labels', { action: 'search', query: ['customer', 'client'] }),
+      ctx,
+    );
+    const text = result.content[0].text as string;
+
+    expect(result.isError).toBeUndefined();
+    expect(text).toMatch(/none of these 1 phrasings/i);
+    expect(text).toMatch(/1 of 2 searches FAILED/);
   });
 
   it('still accepts a single string query', async () => {

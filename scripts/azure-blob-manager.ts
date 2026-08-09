@@ -11,6 +11,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';
 import { isCustomModel } from '../src/utils/modelClassifier.js';
+import { writeBlobDownloadMarker } from '../src/utils/blobDownloadMarker.js';
 
 console.log('✅ Imports loaded');
 console.log(`🔑 Connection string configured: ${process.env.AZURE_STORAGE_CONNECTION_STRING ? 'YES' : 'NO'}`);
@@ -125,7 +126,12 @@ export class AzureBlobMetadataManager {
    */
   async downloadMetadata(modelType: 'standard' | 'custom' | 'all', specificModels?: string[]): Promise<void> {
     console.log(`\n📥 Downloading ${modelType} metadata from Azure Blob Storage`);
-    
+
+    // Which models this download populated. Recorded in the marker below so a later
+    // `extract-metadata` run can name the interaction between its orphan sweep and
+    // this download instead of leaving it to be discovered as apparent data loss.
+    const downloadedModels = new Set<string>();
+
     const prefixes: string[] = [];
     if (modelType === 'all' || modelType === 'standard') {
       prefixes.push('metadata/standard/');
@@ -161,6 +167,8 @@ export class AzureBlobMetadataManager {
           }
         }
         
+        const blobModel = this.extractModelNameFromBlobPath(blob.name);
+        if (blobModel) downloadedModels.add(blobModel);
         blobsToDownload.push({ name: blob.name, size: blob.properties.contentLength });
       }
       
@@ -225,6 +233,20 @@ export class AzureBlobMetadataManager {
       console.log(`   ✅ Completed: ${blobsToDownload.length} files`);
     }
     
+    // Leave the note extract-metadata reads. Best-effort: a failure here must not turn
+    // a completed download into an error — the marker only affects what a later run
+    // can EXPLAIN, never what it does.
+    try {
+      writeBlobDownloadMarker(LOCAL_METADATA_PATH, {
+        downloadedAt: new Date().toISOString(),
+        modelType,
+        models: [...downloadedModels].sort(),
+        fileCount: downloadCount,
+      });
+    } catch (error) {
+      console.warn(`   ⚠️  Could not record the blob-download marker (non-fatal): ${error instanceof Error ? error.message : error}`);
+    }
+
     console.log(`\n✅ Download complete! Total files: ${downloadCount}`);
   }
 

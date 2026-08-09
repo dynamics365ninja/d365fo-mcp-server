@@ -36,6 +36,19 @@ import { getConfigManager } from '../utils/configManager.js';
  * leave it out of the one being worked in — you cannot build, check in, or hand
  * over a change through a project that does not contain the object it changed.
  *
+ * Both halves of that are measured, not assumed (#882):
+ *  • Compiler — xppc.exe takes `-modelmodule=<model>` and writes one assembly per
+ *    module. There is no project-level input at all, so a .rnrproj cannot cause a
+ *    second compilation. (X++ Compiler 7.0.7996.33.)
+ *  • Visual Studio / ALM — surveyed a real 187-project ISV solution authored in VS
+ *    over years: 280 of its 1899 AOT elements are listed in two or more projects of
+ *    the SAME model, across 20 element types (92 AxClass, plus forms, tables,
+ *    form/table extensions, security duties, EDTs…). Shared membership is routine
+ *    practice in a shipping codebase, not an edge case, and that solution's own
+ *    build projects list no elements whatsoever — they declare `<Model>` and let
+ *    the build task compile the module, which is the packaging flow agreeing with
+ *    the compiler.
+ *
  * This used to stop at membership 'other' and report the sibling as the owner.
  * That inverted the rule: an object edited in the active project stayed absent
  * from it, and every later verify pass had to re-explain why the gap was fine.

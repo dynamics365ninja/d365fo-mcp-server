@@ -197,6 +197,32 @@ export async function indexedPathIsMissing(indexedPath: string | null | undefine
   return isStaleIndexedPath(indexedPath, await resolveLocalPath(indexedPath));
 }
 
+/**
+ * The same fact, told to a LIST rather than to a reader of one object.
+ *
+ * `renderStaleIndexNote` answers "you asked for this object and the cache answered
+ * for it", so it can end in "treat it as NOT EXISTING and create it". A search
+ * result set cannot say that. `indexedPathIsMissing` fires for any
+ * PackagesLocalDirectory path with no file here, and the shipped symbol index covers
+ * every standard package while a given machine installs a subset — so on a partial
+ * install these rows are mostly "that package is not installed", not "deleted". Both
+ * causes matter to the caller and neither justifies hiding the row (that would answer
+ * "no such object" for most of D365FO, in the tool every other workflow starts from),
+ * so name them and let the caller decide.
+ */
+export function renderStaleSearchRowsNote(count: number): string {
+  return `\n⚠️ ${count} result${count === 1 ? '' : 's'} marked STALE: the symbol index records a ` +
+    `PackagesLocalDirectory path with no file there or at its local remap, so ${count === 1 ? 'it is' : 'they are'} ` +
+    `an index row without an object on this machine — either deleted without the index being rebuilt ` +
+    `(a workspace reset, a rolled-back run), or belonging to a package this machine does not have ` +
+    `installed. ${count === 1 ? 'It is' : 'They are'} listed last and ${count === 1 ? 'is' : 'are'} NOT ` +
+    `evidence the object is usable: read it with get_object_info before building on it, and run ` +
+    `update_symbol_index if this workspace was reset.\n`;
+}
+
+/** The per-row marker for a stale search hit — see renderStaleSearchRowsNote. */
+export const STALE_ROW_MARKER = '⚠️ STALE index row — no file on this machine';
+
 /** The warning text both stale-row paths render. */
 export function renderStaleIndexNote(name: string, indexedPath: string): string {
   return `⚠️ STALE INDEX ENTRY — everything above is a cache read, not a live object. ` +

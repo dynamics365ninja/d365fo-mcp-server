@@ -4,6 +4,7 @@
  */
 
 import type { XppSymbol } from '../metadata/types.js';
+import { STALE_ROW_MARKER } from './indexedXmlLookup.js';
 
 export interface RichContextOptions {
   includeRelated?: boolean;
@@ -390,6 +391,12 @@ function groupResultsByType(results: XppSymbol[]): Record<string, XppSymbol[]> {
  */
 function formatSymbolWithMetadata(symbol: XppSymbol): string {
   let output = `📦 **${symbol.name}**\n`;
+
+  // Marked, never hidden: the row is a real index hit whose file is not on this
+  // machine, and the caller needs both halves of that. See renderStaleSearchRowsNote.
+  if (symbol.staleIndexRow) {
+    output += `   └─ ${STALE_ROW_MARKER}\n`;
+  }
 
   if (symbol.parentName) {
     output += `   └─ Parent: ${symbol.parentName}\n`;
