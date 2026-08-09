@@ -3078,6 +3078,33 @@ async function normalizeCreatedArtifactEol(filePath: string): Promise<void> {
 }
 
 /**
+ * Resolve the `values` / `enumValues` alias ONCE, before anything routes on it.
+ *
+ * `values` is a legacy spelling the bridge create path has always accepted
+ * (`props.enumValues ?? props.values` → bridgeParams.values), but the TypeScript
+ * XML generator reads `properties.enumValues` and nothing else. Two writers
+ * disagreeing about the same payload is only harmless while both of them run;
+ * they don't. An enum passed `values: [None=0, A=1]` routes AWAY from the bridge
+ * (the resolved mode forbids explicit <Value> elements — see
+ * enumModeForbidsExplicitValues below) and lands on the generator, which finds no
+ * `enumValues`, writes `<EnumValues />`, and reports a clean ✅ for an enum with no
+ * values at all.
+ *
+ * So normalise here, at the top of the handler, where every later reader — routing
+ * predicate, bridge params, generator — sees the same list. Mutates in place: `args`
+ * is this call's own parsed object.
+ */
+export function normalizeEnumValuesAlias(
+  objectType: string,
+  properties: Record<string, unknown> | undefined,
+): void {
+  if (objectType !== 'enum' && objectType !== 'enum-extension') return;
+  if (!properties) return;
+  if (properties.enumValues !== undefined) return;
+  if (Array.isArray(properties.values)) properties.enumValues = properties.values;
+}
+
+/**
  * Returns a BP warning string when a `label` property is raw text (not a @File:Id reference).
  * xppbp raises BPErrorLabelIsText for any object-level label that is not a label ID.
  * Use the `labels` tool to find or create a label ID before writing the object.
@@ -3133,6 +3160,7 @@ export async function handleCreateD365File(
   },
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
   const args = CreateD365FileArgsSchema.parse(request.params.arguments);
+  normalizeEnumValuesAlias(args.objectType, args.properties);
 
   // Grounding enforcement: extension objects modify the behaviour of existing
   // code, so when GROUNDING_ENFORCE=true the model must prove (via prepare_change)
@@ -3655,7 +3683,7 @@ export async function handleCreateD365File(
     // entirely (see bridgeAdapter.ts) because the bridge silently drops their
     // structured collections (EntryPoints, DataEntityPermissions, Privileges, Duties).
     //
-    // EXCEPTION — any enum whose resolved mode forbids explicit <Value> elements. The
+    // EXCEPTION — any enum whose RESOLVED MODE forbids explicit <Value> elements. The
     // bridge takes UseEnumValue from the scalar property but still serializes a <Value>
     // for every numbered entry, minus the ones equal to 0, which .NET omits as the type
     // default. An enum created with useEnumValue:false and values None=0..Platinum=3 came
@@ -3665,11 +3693,22 @@ export async function handleCreateD365File(
     // resolveEnumValueMode is the single place that decides this; when it says the values
     // must be suppressed and the payload carries some, hand the write to the TypeScript
     // generator, which is the writer that honours suppressExplicitValues.
-    const skipBridgeForEnumValueMode = (): boolean => {
+    //
+    // Read the rule literally, because it is BROADER than the two headline cases:
+    // suppressExplicitValues is true whenever the resolved mode is UseEnumValue=No, and
+    // that includes the plain positional payload — values [None=0, A=1, B=2] with
+    // `useEnumValue` unset. So in practice ANY enum create carrying explicit numbers
+    // goes to the TypeScript generator, extensible or not, useEnumValue or not. That is
+    // the intended behaviour (the bridge cannot write this shape correctly); it is named
+    // and commented this way so the next reader does not conclude the bridge still
+    // handles positional enums.
+    const enumModeForbidsExplicitValues = (): boolean => {
       if (args.objectType !== 'enum') return false;
       const props = args.properties as Record<string, unknown> | undefined;
       if (props?.isExtensible) return true;
-      const vals = (props?.enumValues ?? props?.values) as Array<{ name?: string; value?: number }> | undefined;
+      // `enumValues` only: the `values` alias was folded into it by
+      // normalizeEnumValuesAlias, so routing and the writers read one list.
+      const vals = props?.enumValues as Array<{ name?: string; value?: number }> | undefined;
       if (!Array.isArray(vals) || !vals.some(v => typeof v?.value === 'number')) return false;
       try {
         return resolveEnumValueMode(finalObjectName, props, vals).suppressExplicitValues;
@@ -3679,7 +3718,7 @@ export async function handleCreateD365File(
         return true;
       }
     };
-    const skipBridgeForEnum = skipBridgeForEnumValueMode();
+    const skipBridgeForEnum = enumModeForbidsExplicitValues();
 
     // Set only when a bridge create THREW (not when it was unavailable or declined).
     // The XML fallback below is a different writer with a narrower feature set, so a
