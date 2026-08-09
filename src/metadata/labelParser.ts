@@ -240,7 +240,7 @@ export async function indexAllLabels(
   opts?: { ftsStrategy?: 'rebuild' | 'incremental' },
 ): Promise<{ totalLabels: number; modelsIndexed: number }> {
   // 'incremental' keeps the labels_fts triggers live so only the scanned models' labels are
-  // tokenised, instead of re-inserting every en-US label in the database afterwards. Only
+  // tokenised, instead of re-inserting every label in the database afterwards. Only
   // worth it when modelFilter narrows the scan to a small set (a custom-model build).
   const incrementalFts = opts?.ftsStrategy === 'incremental';
   let totalLabels = 0;

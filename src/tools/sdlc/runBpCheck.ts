@@ -7,6 +7,7 @@ import { defaultPackagesRoot, findPackagesRoot } from '../../utils/packagesRoot.
 import { withOperationLock } from '../../utils/operationLocks.js';
 import { lookupSymbolsNocase, type DbLike } from '../../utils/symbolLookup.js';
 import { compileModelLabels } from '../write/compileLabels.js';
+import { describeBuildFreshness } from '../../utils/buildMarker.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -539,11 +540,20 @@ export const runBpCheckTool = async (params: any, context: any) => {
       : issueCount > 0 ? '⚠️ BP Check completed with issues'
       : '✅ BP Check passed';
 
+    // A clean xppbp run is routinely read as "the task is done". It is not a compile:
+    // run f2e7b71a shipped a CoC method that violates SYS10028 with this line reading
+    // "0 with findings". Say what has actually compiled the model.
+    const buildNote = context?.symbolIndex?.dataDir
+      ? `\n\n${describeBuildFreshness(context.symbolIndex.dataDir, modelName)}`
+      : '';
+
     return {
       content: [{
         type: 'text',
         text: `${verdict} — ` +
-          `${runTargets.length} objects checked, ${issueCount} with findings\n\n${header}` +
+          `${runTargets.length} objects checked, ${issueCount} with findings` +
+          buildNote +
+          `\n\n${header}` +
           labelNote +
           (preamble.length > 0
             ? `\n\nShared xppbp preamble (identical for all ${runTargets.length} objects, shown once):\n${preamble.join('\n').trim()}`

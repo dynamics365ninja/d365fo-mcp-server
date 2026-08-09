@@ -7,38 +7,107 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
+import { getObjectSuffix, getExtensionNamingStyle, deriveExtensionInfix } from '../../utils/modelClassifier.js';
 import {
-  getObjectSuffix, getExtensionNamingStyle, deriveExtensionInfix,
-} from '../../utils/modelClassifier.js';
-import {
-  matchPrefixCandidate, modelWritesLandIn, prefixCandidates, prefixConflictWarning,
-  resolveEffectivePrefix, type PrefixCandidate,
+  matchPrefixCandidate,
+  modelWritesLandIn,
+  prefixCandidates,
+  prefixConflictWarning,
+  resolveEffectivePrefix,
+  type PrefixCandidate,
 } from '../../utils/effectivePrefix.js';
 import { getConfigManager } from '../../utils/configManager.js';
 import { lookupSymbolNocase, lookupSymbolsNocase } from '../../utils/symbolLookup.js';
 
 const ValidateObjectNamingArgsSchema = z.object({
   proposedName: z.string().describe('The proposed object name to validate'),
-  objectType: z.enum([
-    'class', 'table', 'form', 'enum', 'edt', 'query', 'view',
-    'table-extension', 'class-extension', 'form-extension',
-    'enum-extension', 'edt-extension',
-    'menu-item', 'security-privilege', 'security-duty', 'security-role',
-    'data-entity',
-  ]).describe('Type of the D365FO object'),
-  baseObjectName: z.string().optional()
-    .describe('Required for extension types: name of the object being extended'),
-  modelPrefix: z.string().optional()
+  objectType: z
+    .enum([
+      'class',
+      'table',
+      'form',
+      'enum',
+      'edt',
+      'query',
+      'view',
+      'table-extension',
+      'class-extension',
+      'form-extension',
+      'enum-extension',
+      'edt-extension',
+      'menu-item',
+      'security-privilege',
+      'security-duty',
+      'security-role',
+      'data-entity',
+    ])
+    .describe('Type of the D365FO object'),
+  baseObjectName: z.string().optional().describe('Required for extension types: name of the object being extended'),
+  modelPrefix: z
+    .string()
+    .optional()
     .describe('Expected ISV/model prefix (2-4 uppercase letters, e.g. "WHS", "CONT"). Auto-detected if omitted.'),
-  modelName: z.string().optional()
-    .describe('Target model name. Only relevant when EXTENSION_NAMING_STYLE=model-name, where the extension token is the model name (e.g. CustTable_ContosoRobotics_Extension). Auto-detected from the active workspace if omitted.'),
+  modelName: z
+    .string()
+    .optional()
+    .describe(
+      'Target model name. Only relevant when EXTENSION_NAMING_STYLE=model-name, where the extension token is the model name (e.g. CustTable_ContosoRobotics_Extension). Auto-detected from the active workspace if omitted.',
+    ),
 });
 
 // Extension types that require base object name
 const EXTENSION_TYPES = new Set([
-  'table-extension', 'class-extension', 'form-extension',
-  'enum-extension', 'edt-extension',
+  'table-extension',
+  'class-extension',
+  'form-extension',
+  'enum-extension',
+  'edt-extension',
 ]);
+
+/** Non-extension type → the extension type that extends it. */
+const EXTENSION_COUNTERPART: Record<string, string> = {
+  table: 'table-extension',
+  class: 'class-extension',
+  form: 'form-extension',
+  enum: 'enum-extension',
+  edt: 'edt-extension',
+};
+
+/**
+ * A name that can only be an extension: `Base.PrefixExtension` (element extensions) or
+ * `BasePrefix_Extension` (class CoC).
+ */
+const DOTTED_EXTENSION = /^[A-Za-z]\w*\.\w*Extension$/;
+const UNDERSCORE_EXTENSION = /^[A-Za-z]\w*_Extension$/;
+
+/**
+ * Reinterpret `objectType` when the proposed name is unmistakably an extension.
+ *
+ * Callers reach for the base type — "is this a valid *form* name?" — while proposing
+ * `AslFinCore_TaxTransReportChangeLog.AslFinSKExtension`. Validated as a plain form
+ * that trips the "non-extension objects must not contain underscores" rule and comes
+ * back as a hard ERROR, which is both wrong and a wasted round trip: run f2e7b71a
+ * asked with `form`, was refused, and asked again with `form-extension` (T56 → T59).
+ *
+ * Only the shapes above qualify, so a genuinely bad non-extension name — the case the
+ * underscore rule exists for — still fails.
+ */
+function reinterpretExtensionType(
+  objectType: string,
+  proposedName: string,
+): { objectType: string; note: string } | undefined {
+  const counterpart = EXTENSION_COUNTERPART[objectType];
+  if (!counterpart) return undefined;
+  const dotted = DOTTED_EXTENSION.test(proposedName);
+  const underscored = objectType === 'class' && UNDERSCORE_EXTENSION.test(proposedName);
+  if (!dotted && !underscored) return undefined;
+  return {
+    objectType: counterpart,
+    note:
+      `Read as **${counterpart}**, not "${objectType}" — "${proposedName}" is an extension name. ` +
+      `Pass objectType="${counterpart}" directly next time.`,
+  };
+}
 
 export async function validateObjectNamingTool(request: CallToolRequest, context: XppServerContext) {
   try {
@@ -50,15 +119,33 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
     const suggestions: string[] = [];
 
     const name = args.proposedName;
+
+    // Before any rule runs: an extension name asked about under its base type is a
+    // question about the extension. Answer that question instead of refusing.
+    const reinterpreted = reinterpretExtensionType(args.objectType, name);
+    if (reinterpreted) {
+      args.objectType = reinterpreted.objectType as typeof args.objectType;
+      // The base is the part before the dot; supplying it here keeps the
+      // "baseObjectName is required for extension types" check from firing on a
+      // name that spells its base out.
+      if (!args.baseObjectName && name.includes('.')) {
+        args.baseObjectName = name.slice(0, name.indexOf('.'));
+      }
+    }
+
     const isExtension = EXTENSION_TYPES.has(args.objectType);
 
     // D365FO has a hard 81-character limit on AOT names; exceeding it is a build error.
     const MAX_NAME_LENGTH = 81;
     if (name.length > MAX_NAME_LENGTH) {
-      errors.push(`Name "${name}" is ${name.length} characters — exceeds the D365FO AOT maximum of ${MAX_NAME_LENGTH} characters. This will cause a build error.`);
+      errors.push(
+        `Name "${name}" is ${name.length} characters — exceeds the D365FO AOT maximum of ${MAX_NAME_LENGTH} characters. This will cause a build error.`,
+      );
       suggestions.push(`Shortened name (${MAX_NAME_LENGTH} chars max): ${name.slice(0, MAX_NAME_LENGTH)}`);
     } else if (name.length > 70) {
-      warnings.push(`Name is ${name.length} characters — approaching the ${MAX_NAME_LENGTH}-char AOT limit. Consider a shorter name to leave room for extensions.`);
+      warnings.push(
+        `Name is ${name.length} characters — approaching the ${MAX_NAME_LENGTH}-char AOT limit. Consider a shorter name to leave room for extensions.`,
+      );
     }
 
     // The model whose convention is being validated against: explicit arg, else the
@@ -71,8 +158,10 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
     await configManager.getAutoDetectedModelName();
     const activeModel = configManager.getModelName();
     const namingStyle = getExtensionNamingStyle();
-    const modelName = args.modelName?.trim() ||
-      modelWritesLandIn(configManager.getWriteAnchorModel() ?? activeModel, activeModel) || '';
+    const modelName =
+      args.modelName?.trim() ||
+      modelWritesLandIn(configManager.getWriteAnchorModel() ?? activeModel, activeModel) ||
+      '';
     const useModelName = namingStyle === 'model-name' && !!modelName;
 
     // Resolve model prefix: explicit arg → the effective prefix for that model
@@ -119,7 +208,9 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
           const expectedToken = useModelName ? modelName : extensionInfix;
 
           if (!name.startsWith(baseObjectName)) {
-            errors.push(`Class extension names must start with the base class name.\n  Expected format: ${expectedPattern}`);
+            errors.push(
+              `Class extension names must start with the base class name.\n  Expected format: ${expectedPattern}`,
+            );
             if (expectedToken) suggestions.push(`Correct name: ${expectedPattern}`);
           } else if (!name.endsWith('_Extension')) {
             errors.push(`Class extension names must end with '_Extension'.\n  Expected format: ${expectedPattern}`);
@@ -128,13 +219,15 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
             // Structure is correct — check the expected token is included. Strip a leading
             // separator so "_ContosoRobotics" compares cleanly to the model name.
             const middle = name.slice(baseObjectName.length, -'_Extension'.length).replace(/^_+/, '');
-            if (expectedToken &&
-                middle.toLowerCase() !== expectedToken.toLowerCase() &&
-                !middle.toLowerCase().includes(expectedToken.toLowerCase())) {
+            if (
+              expectedToken &&
+              middle.toLowerCase() !== expectedToken.toLowerCase() &&
+              !middle.toLowerCase().includes(expectedToken.toLowerCase())
+            ) {
               warnings.push(
                 useModelName
                   ? `Extension name does not embed the model name "${modelName}" (EXTENSION_NAMING_STYLE=model-name).\n  Current: ${name}\n  Recommended: ${expectedPattern}`
-                  : `Extension name does not include model "${modelName || '(unknown)'}"'s extension infix "${extensionInfix}".\n  Current: ${name}\n  Recommended: ${expectedPattern}`
+                  : `Extension name does not include model "${modelName || '(unknown)'}"'s extension infix "${extensionInfix}".\n  Current: ${name}\n  Recommended: ${expectedPattern}`,
               );
             }
           }
@@ -142,60 +235,79 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
           suggestions.push(
             useModelName
               ? `AOT name for an element extension instead: ${baseObjectName}.${modelName}`
-              : `AOT label for extension file: ${baseObjectName}.${extensionInfix}Extension (if creating table-extension AOT object instead)`
+              : `AOT label for extension file: ${baseObjectName}.${extensionInfix}Extension (if creating table-extension AOT object instead)`,
           );
-
         } else if (useModelName) {
           // AOT extensions (table/form/enum/edt), model-name style: {Base}.{ModelName} — bare model
           // name, no "Extension" word.
           const expectedPattern = `${baseObjectName}.${modelName}`;
 
           if (!name.includes('.')) {
-            errors.push(`${args.objectType} names must use dot notation: {Base}.{ModelName}.\n  Expected: ${expectedPattern}`);
+            errors.push(
+              `${args.objectType} names must use dot notation: {Base}.{ModelName}.\n  Expected: ${expectedPattern}`,
+            );
             suggestions.push(`Correct name: ${expectedPattern}`);
           } else {
             const [basePart, extPart] = name.split('.', 2);
 
             if (basePart !== baseObjectName) {
-              errors.push(`Extension base (before '.') must exactly match baseObjectName.\n  Expected: ${baseObjectName}.xxx\n  Got: ${basePart}.xxx`);
+              errors.push(
+                `Extension base (before '.') must exactly match baseObjectName.\n  Expected: ${baseObjectName}.xxx\n  Got: ${basePart}.xxx`,
+              );
             }
             if (extPart.toLowerCase() !== modelName.toLowerCase()) {
-              warnings.push(`Extension token (after '.') should be the model name "${modelName}" (EXTENSION_NAMING_STYLE=model-name).\n  Current: ${extPart}\n  Recommended: ${modelName}`);
+              warnings.push(
+                `Extension token (after '.') should be the model name "${modelName}" (EXTENSION_NAMING_STYLE=model-name).\n  Current: ${extPart}\n  Recommended: ${modelName}`,
+              );
             }
           }
-
         } else {
           // AOT extensions (table/form/enum/edt), prefix style: {Base}.{Infix}Extension.
           const expectedPattern = `${baseObjectName}.${extensionInfix}Extension`;
 
           if (!name.includes('.')) {
-            errors.push(`${args.objectType} names must use dot notation: {Base}.{Prefix}Extension.\n  Expected: ${expectedPattern}`);
+            errors.push(
+              `${args.objectType} names must use dot notation: {Base}.{Prefix}Extension.\n  Expected: ${expectedPattern}`,
+            );
             if (prefix) suggestions.push(`Correct name: ${expectedPattern}`);
           } else {
             const [basePart, extPart] = name.split('.', 2);
 
             if (basePart !== baseObjectName) {
-              errors.push(`Extension base (before '.') must exactly match baseObjectName.\n  Expected: ${baseObjectName}.xxx\n  Got: ${basePart}.xxx`);
+              errors.push(
+                `Extension base (before '.') must exactly match baseObjectName.\n  Expected: ${baseObjectName}.xxx\n  Got: ${basePart}.xxx`,
+              );
             }
             if (!extPart.endsWith('Extension')) {
-              errors.push(`Extension suffix (after '.') must end with 'Extension'.\n  Expected: ${extensionInfix}Extension\n  Got: ${extPart}`);
+              errors.push(
+                `Extension suffix (after '.') must end with 'Extension'.\n  Expected: ${extensionInfix}Extension\n  Got: ${extPart}`,
+              );
             } else if (extensionInfix && !extPart.toLowerCase().startsWith(extensionInfix.toLowerCase())) {
-              warnings.push(`Extension suffix should start with model "${modelName || '(unknown)'}"'s infix "${extensionInfix}".\n  Current: ${extPart}\n  Recommended: ${extensionInfix}Extension`);
+              warnings.push(
+                `Extension suffix should start with model "${modelName || '(unknown)'}"'s infix "${extensionInfix}".\n  Current: ${extPart}\n  Recommended: ${extensionInfix}Extension`,
+              );
             }
           }
         }
 
-        const dbTypes = args.objectType.includes('class') ? ['class'] :
-          args.objectType.includes('table') ? ['table'] :
-          args.objectType.includes('form') ? ['form'] :
-          args.objectType.includes('enum') ? ['enum'] : ['edt'];
+        const dbTypes = args.objectType.includes('class')
+          ? ['class']
+          : args.objectType.includes('table')
+            ? ['table']
+            : args.objectType.includes('form')
+              ? ['form']
+              : args.objectType.includes('enum')
+                ? ['enum']
+                : ['edt'];
 
         // Case-insensitive: the base object may be spelled with different casing
         // than the canonical AOT name (#686).
         const baseExists = lookupSymbolNocase(db, baseObjectName, dbTypes);
 
         if (!baseExists) {
-          warnings.push(`Base object "${baseObjectName}" not found in symbol index for types: ${dbTypes.join(', ')}. Ensure it's indexed.`);
+          warnings.push(
+            `Base object "${baseObjectName}" not found in symbol index for types: ${dbTypes.join(', ')}. Ensure it's indexed.`,
+          );
         }
       }
     }
@@ -219,23 +331,24 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
         if (!separator) {
           errors.push(
             `Non-extension objects must not contain underscores. ` +
-            `The only allowed underscore is as a prefix separator: ` +
-            `${prefix ? prefix + '_MyObject' : 'Prefix_MyObject'}. ` +
-            `For extension classes use: VendTable${prefix || 'Prefix'}_Extension.`
+              `The only allowed underscore is as a prefix separator: ` +
+              `${prefix ? prefix + '_MyObject' : 'Prefix_MyObject'}. ` +
+              `For extension classes use: VendTable${prefix || 'Prefix'}_Extension.`,
           );
         }
       }
 
       if (prefix) {
-        const leading = separator ??
-          candidates.find(c => name.toLowerCase().startsWith(c.token.toLowerCase()));
+        const leading = separator ?? candidates.find(c => name.toLowerCase().startsWith(c.token.toLowerCase()));
         if (!leading) {
-          warnings.push(`Proposed name does not start with model prefix "${prefix}". All custom objects should be prefixed to avoid conflicts.`);
+          warnings.push(
+            `Proposed name does not start with model prefix "${prefix}". All custom objects should be prefixed to avoid conflicts.`,
+          );
           suggestions.push(`Prefixed name: ${prefix}${name}`);
         } else if (!leading.effective) {
           warnings.push(
             `"${name}" carries "${leading.token}" (${leading.label}), not the prefix this server ` +
-            `applies, "${prefix}" (${resolution.source}).`
+              `applies, "${prefix}" (${resolution.source}).`,
           );
         }
       }
@@ -243,20 +356,26 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
       const configuredSuffix = getObjectSuffix();
       if (configuredSuffix) {
         if (!name.toLowerCase().endsWith(configuredSuffix.toLowerCase())) {
-          warnings.push(`EXTENSION_SUFFIX="${configuredSuffix}" is configured but the proposed name does not end with it. Expected: ${name}${configuredSuffix}`);
+          warnings.push(
+            `EXTENSION_SUFFIX="${configuredSuffix}" is configured but the proposed name does not end with it. Expected: ${name}${configuredSuffix}`,
+          );
           suggestions.push(`Suffixed name: ${name}${configuredSuffix}`);
         }
       }
 
       if (args.objectType === 'security-privilege') {
         if (!/(View|Maintain|Delete|Admin|Invoke|Approve|FullControl)$/.test(name)) {
-          warnings.push(`Security privileges typically end with an action suffix: View, Maintain, Delete, Admin, Invoke, Approve, or FullControl.\n  Examples: ${name}View, ${name}Maintain`);
+          warnings.push(
+            `Security privileges typically end with an action suffix: View, Maintain, Delete, Admin, Invoke, Approve, or FullControl.\n  Examples: ${name}View, ${name}Maintain`,
+          );
         }
       }
 
       if (args.objectType === 'security-duty') {
-        if (!/(Maintain|View|Inquire|Admin|Approve|Process)$/.test(name) &&
-            !(name.toLowerCase().includes('maintain') || name.toLowerCase().includes('view'))) {
+        if (
+          !/(Maintain|View|Inquire|Admin|Approve|Process)$/.test(name) &&
+          !(name.toLowerCase().includes('maintain') || name.toLowerCase().includes('view'))
+        ) {
           warnings.push(`Security duties typically end with: Maintain, View, Inquire, Admin, Approve, or Process.`);
         }
       }
@@ -276,13 +395,20 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
     if (conflictWarning) warnings.push(conflictWarning);
 
     // Rule set 3: conflict detection
-    const dbType = args.objectType === 'class-extension' ? 'class-extension' :
-      args.objectType === 'table-extension' ? 'table-extension' :
-      args.objectType === 'form-extension' ? 'form-extension' :
-      args.objectType === 'enum-extension' ? 'enum-extension' :
-      args.objectType === 'edt-extension' ? 'edt-extension' :
-      args.objectType === 'data-entity' ? 'view' :
-      args.objectType;
+    const dbType =
+      args.objectType === 'class-extension'
+        ? 'class-extension'
+        : args.objectType === 'table-extension'
+          ? 'table-extension'
+          : args.objectType === 'form-extension'
+            ? 'form-extension'
+            : args.objectType === 'enum-extension'
+              ? 'enum-extension'
+              : args.objectType === 'edt-extension'
+                ? 'edt-extension'
+                : args.objectType === 'data-entity'
+                  ? 'view'
+                  : args.objectType;
 
     // AOT names are case-insensitive, so an existing object differing only in
     // casing IS a conflict — a case-sensitive probe here reported a false
@@ -290,11 +416,12 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
     // field sharing the name is not an AOT naming conflict.
     const exactConflict = lookupSymbolsNocase(db, name, { limit: 5 });
 
-    const similarSymbols = db.prepare(
-      `SELECT name, type, model FROM symbols WHERE name LIKE ? AND type = ? ORDER BY name LIMIT 5`
-    ).all(`${name.slice(0, Math.max(4, name.length - 3))}%`, dbType) as any[];
+    const similarSymbols = db
+      .prepare(`SELECT name, type, model FROM symbols WHERE name LIKE ? AND type = ? ORDER BY name LIMIT 5`)
+      .all(`${name.slice(0, Math.max(4, name.length - 3))}%`, dbType) as any[];
 
     let output = `Validation: "${name}" as ${args.objectType}\n`;
+    if (reinterpreted) output += `ℹ️ ${reinterpreted.note}\n`;
     if (args.baseObjectName) output += `Base Object: ${args.baseObjectName}\n`;
     if (prefix) {
       // The origin comes along, because the same prefix line in get_workspace_info
@@ -389,17 +516,34 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
  * Looks for 2-4 char prefix shared by many objects in the index.
  */
 function detectModelPrefix(db: any, proposedName: string): string {
-  const stdPrefixes = ['Cust', 'Vend', 'Sales', 'Purch', 'Ledger', 'Invent', 'Proj', 'WHS',
-    'Sma', 'MCR', 'Retail', 'Ax', 'Sys', 'Global', 'Common', 'Tax', 'Bank'];
+  const stdPrefixes = [
+    'Cust',
+    'Vend',
+    'Sales',
+    'Purch',
+    'Ledger',
+    'Invent',
+    'Proj',
+    'WHS',
+    'Sma',
+    'MCR',
+    'Retail',
+    'Ax',
+    'Sys',
+    'Global',
+    'Common',
+    'Tax',
+    'Bank',
+  ];
   for (const p of stdPrefixes) {
     if (proposedName.startsWith(p)) return '';
   }
 
   try {
     const prefix3 = proposedName.slice(0, 3).toUpperCase();
-    const sample = db.prepare(
-      `SELECT name FROM symbols WHERE type = 'class' AND name LIKE ? LIMIT 20`
-    ).all(`${prefix3}%`) as any[];
+    const sample = db
+      .prepare(`SELECT name FROM symbols WHERE type = 'class' AND name LIKE ? LIMIT 20`)
+      .all(`${prefix3}%`) as any[];
 
     if (sample.length >= 3) return prefix3;
 

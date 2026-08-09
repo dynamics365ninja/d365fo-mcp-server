@@ -13,6 +13,7 @@ import { lookupErrorFix } from '../knowledge/d365foErrorHelp.js';
 import { generateRuntimeMetadata } from '../xml/generateMetadata.js';
 import { compileModelLabels, type CompileLabelsResult } from '../write/compileLabels.js';
 import { readModuleReferences } from '../../metadata/modelDescriptor.js';
+import { recordBuild } from '../../utils/buildMarker.js';
 import type { ProgressReporter } from '../../utils/progressReporter.js';
 
 const execFileAsync = util.promisify(execFile);
@@ -729,6 +730,8 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
 async function renderFinishedBuildResult(
   finalState: BuildJobState,
   targetModel: string,
+  /** Where to leave the last-build note; omitted when no symbol index is attached. */
+  dataDir?: string,
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
   const succeeded  = finalState.status === 'succeeded';
   const isQueued   = !!(finalState.buildQueue && finalState.buildQueue.length > 1);
@@ -774,6 +777,16 @@ async function renderFinishedBuildResult(
   const structured    = succeeded
     ? ''
     : formatStructuredDiagnostics(parseXppcDiagnostics(await readWholeLog(finalState.logFile)));
+
+  // The note run_bp_check and verify_d365fo_project read, so a green verdict from a
+  // tool that compiles nothing can say whether anything ever did.
+  if (dataDir) {
+    recordBuild(dataDir, targetModel, {
+      builtAt: new Date().toISOString(),
+      fullBuild: !!finalState.fullBuild,
+      succeeded,
+    });
+  }
 
   return {
     content: [{
@@ -932,7 +945,8 @@ function renderWaitTimeoutGuidance(elapsedSec: number, timeoutMs: number): strin
 // Tool handler
 // ---------------------------------------------------------------------------
 
-export const buildProjectTool = async (params: any, _context: any, onProgress?: ProgressReporter) => {
+export const buildProjectTool = async (params: any, context: any, onProgress?: ProgressReporter) => {
+  const dataDir: string | undefined = context?.symbolIndex?.dataDir;
   try {
     const force                 = params.force                === true;
     const fullBuild             = params.fullBuild            === true;
@@ -1087,7 +1101,7 @@ export const buildProjectTool = async (params: any, _context: any, onProgress?: 
           );
           if (wait.outcome === 'finished' && wait.state) {
             await clearBuildState(targetModel, customPackagesPath);
-            return await renderFinishedBuildResult(wait.state, targetModel);
+            return await renderFinishedBuildResult(wait.state, targetModel, dataDir);
           }
           const tailLog = await readLogTail(existingState.logFile);
           if (wait.outcome === 'orphaned') {
@@ -1157,7 +1171,7 @@ export const buildProjectTool = async (params: any, _context: any, onProgress?: 
       );
       await clearBuildState(targetModel, customPackagesPath);
       if (stillCurrent) {
-        const result = await renderFinishedBuildResult(existingState, targetModel);
+        const result = await renderFinishedBuildResult(existingState, targetModel, dataDir);
         // Say plainly that nothing was compiled just now, so a reader can never
         // mistake a collected result for a fresh one.
         const collected =
@@ -1283,7 +1297,7 @@ export const buildProjectTool = async (params: any, _context: any, onProgress?: 
       );
       if (wait.outcome === 'finished' && wait.state) {
         await clearBuildState(targetModel, customPackagesPath);
-        return await renderFinishedBuildResult(wait.state, targetModel);
+        return await renderFinishedBuildResult(wait.state, targetModel, dataDir);
       }
       const elapsed = Math.round((Date.now() - startedAt) / 1000);
       const tailLog = await readLogTail(wait.state?.logFile ?? firstLogFile);

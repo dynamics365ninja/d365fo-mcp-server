@@ -13,6 +13,7 @@ import { getConfigManager } from '../../utils/configManager.js';
 import { readProjectIncludes, resolveMembership, projectDisplayName } from '../../workspace/projectMembership.js';
 import { defaultPackagesRoot } from '../../utils/packagesRoot.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
+import { describeBuildFreshness } from '../../utils/buildMarker.js';
 
 const OBJECT_TYPES = [
   'class', 'table', 'enum', 'form', 'query', 'view', 'data-entity', 'report',
@@ -94,7 +95,7 @@ const VerifyD365ProjectArgsSchema = z.object({
 
 export async function verifyD365ProjectTool(
   request: CallToolRequest,
-  _context: XppServerContext
+  context: XppServerContext
 ) {
   try {
     const args = VerifyD365ProjectArgsSchema.parse(request.params.arguments);
@@ -358,6 +359,12 @@ export async function verifyD365ProjectTool(
       '',
       '### Summary',
       ...summaryLines,
+      // Every row above can be ✅ for code that does not compile: this tool proves a
+      // file is on disk and in the .rnrproj, nothing more. Run f2e7b71a read a fully
+      // green table as done and shipped a SYS10028 violation.
+      ...(context?.symbolIndex?.dataDir
+        ? ['', `- ${describeBuildFreshness(context.symbolIndex.dataDir, actualModelName, results.map(r => r.filePath))}`]
+        : []),
     ];
 
     return {
