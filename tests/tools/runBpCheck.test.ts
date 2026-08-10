@@ -1,4 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import realFs from 'fs';
+import os from 'os';
+import nodePath from 'path';
+import { recordBuild } from '../../src/utils/buildMarker';
 
 // --- hoisted mocks -----------------------------------------------------------
 const {
@@ -751,6 +755,95 @@ describe('run_bp_check — batch objects[] (#828)', () => {
     expect(execFileMock).toHaveBeenCalledTimes(1);
     expect(text).toContain('Filter: table:ConDemoTicket');
     expect(text).not.toContain('objects checked');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The build-freshness line, with the object paths it needs to be true.
+//
+// Passing no paths left describeBuildFreshness unable to compare "last built"
+// against "last written", so it reported the newest recorded success as-is —
+// a green verdict for objects written long after that build.
+// ---------------------------------------------------------------------------
+
+describe('run_bp_check — build freshness reflects THESE objects', () => {
+  let dataDir: string;
+  let objectPath: string;
+
+  /** Symbol index that answers the path probe and carries a marker directory. */
+  const contextWithPath = () => ({
+    symbolIndex: {
+      dataDir,
+      getReadDb: () => ({
+        prepare: (sql: string) => ({
+          get: () => undefined,
+          all: (...params: any[]) => {
+            const isFts = /symbols_fts/.test(sql);
+            const name = String(isFts ? params[1] : params[0]);
+            return name === 'ConDemoTicket'
+              ? [{ name, type: 'table', model: 'MyModel', extends_class: null, file_path: objectPath }]
+              : [];
+          },
+        }),
+      }),
+    },
+  });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    detectedRoots.splice(0, detectedRoots.length, CHE_PKG);
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('MyModel');
+    cfgGetProjectPath.mockResolvedValue(null);
+    cfgGetPackagePath.mockReturnValue(null);
+    cfgGetCustomPackagesPath.mockResolvedValue(null);
+    cfgGetMicrosoftPackagesPath.mockResolvedValue(null);
+    cfgGetActiveXppConfig.mockResolvedValue(null);
+    allowPaths([CHE_PKG, CHE_XPPBP]);
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, { stdout: '✅', stderr: '' });
+    });
+
+    dataDir = realFs.mkdtempSync(nodePath.join(os.tmpdir(), 'd365fo-bpfresh-'));
+    objectPath = nodePath.join(dataDir, 'ConDemoTicket.xml');
+  });
+
+  afterEach(() => {
+    realFs.rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  it('calls a green build STALE when the object was written after it', async () => {
+    recordBuild(dataDir, 'MyModel', {
+      builtAt: new Date(Date.now() - 60_000).toISOString(),
+      fullBuild: true,
+      succeeded: true,
+    });
+    realFs.writeFileSync(objectPath, '<AxTable/>');
+
+    const result = await runBpCheckTool(
+      { modelName: 'MyModel', objects: [{ objectType: 'table', objectName: 'ConDemoTicket' }] },
+      contextWithPath(),
+    );
+
+    const text = result.content[0].text as string;
+    expect(text).toContain('Stale');
+    expect(text).not.toContain('✅ Compiled');
+  });
+
+  it('still confirms a build that came after the write', async () => {
+    realFs.writeFileSync(objectPath, '<AxTable/>');
+    recordBuild(dataDir, 'MyModel', {
+      builtAt: new Date(Date.now() + 60_000).toISOString(),
+      fullBuild: true,
+      succeeded: true,
+    });
+
+    const result = await runBpCheckTool(
+      { modelName: 'MyModel', objects: [{ objectType: 'table', objectName: 'ConDemoTicket' }] },
+      contextWithPath(),
+    );
+
+    expect(result.content[0].text as string).toContain('✅ Compiled');
   });
 });
 

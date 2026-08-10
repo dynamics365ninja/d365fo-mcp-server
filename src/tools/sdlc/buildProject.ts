@@ -62,38 +62,127 @@ export interface XppcDiagnostic {
   message: string;
 }
 
-const XPPC_DIAG_LINE_RE =
-  /^(Compile Fatal Error|Compile Error|Compile Warning|Generation Warning|Best Practice Warning):\s*(?:(.*?)\s+)?dynamics:\/\/([^/\s:]+)\/([^/\s:]+)(?:\/([^\s:]+))?\s*:?\s*\[\((\d+),(\d+)\)(?:,\(\d+,\d+\))?\]\s*:\s*(.*)$/;
+/**
+ * The severity prefix every xppc diagnostic line opens with, as a family rather
+ * than a list of literals: xppc also emits `Metadata` and
+ * `FormPatternValidation` errors, which a five-literal list reported as zero —
+ * a FAILED build with no stated cause.
+ */
+const DIAG_PREFIX = String.raw`(?:([A-Za-z][A-Za-z ]{0,30}?)\s)?(Fatal Error|Error|Warning)`;
+
+/** Prefix-only test, for deciding which log lines are worth keeping in an excerpt. */
+export const DIAG_LINE_TEST = new RegExp(String.raw`^${DIAG_PREFIX}:\s`);
+
+/** `<Kind> <Severity>: [<elementKind> ]dynamics://Model/Object[/Member]: [(l,c)…]: message` */
+const XPPC_DIAG_DYNAMICS_RE = new RegExp(
+  String.raw`^${DIAG_PREFIX}:\s*(?:(.*?)\s+)?dynamics:\/\/([^/\s:]+)\/([^/\s:]+)(?:\/([^\s:]+))?\s*:?\s*\[\((\d+),(\d+)\)(?:,\(\d+,\d+\))?\]\s*:\s*(.*)$`,
+);
+
+/** `<Kind> <Severity>: AxFormExtension/Name/Design/Controls/…: message` — no line/col. */
+const XPPC_DIAG_PATH_RE = new RegExp(
+  String.raw`^${DIAG_PREFIX}:\s*(Ax[A-Za-z]+)\/([^\s:]+)\s*:\s*(.*)$`,
+);
+
+/** `<Kind> <Severity>: message` */
+const XPPC_DIAG_PLAIN_RE = new RegExp(String.raw`^${DIAG_PREFIX}:\s*(.+)$`);
+
+/** xppc's own tally at the end of the log, to catch a parser shortfall. */
+const XPPC_ERROR_TOTAL_RE = /^Errors:\s*(\d+)\s*$/m;
+
+/** Errors xppc counted in this log, or null when it printed no tally. */
+export function xppcReportedErrorCount(logContent: string): number | null {
+  const m = XPPC_ERROR_TOTAL_RE.exec(logContent);
+  return m ? Number(m[1]) : null;
+}
 
 /** Parse xppc log content into structured diagnostics. */
 export function parseXppcDiagnostics(logContent: string): XppcDiagnostic[] {
   const diagnostics: XppcDiagnostic[] = [];
   for (const rawLine of logContent.split(/\r?\n/)) {
     const line = rawLine.trim();
-    const m = XPPC_DIAG_LINE_RE.exec(line);
-    if (m) {
+
+    const dyn = XPPC_DIAG_DYNAMICS_RE.exec(line);
+    if (dyn) {
       diagnostics.push({
-        severity: m[1].includes('Error') ? 'error' : 'warning',
-        kind: m[2] || undefined,
-        model: m[3],
-        object: m[4],
-        member: m[5] || undefined,
-        line: Number(m[6]),
-        column: Number(m[7]),
-        message: m[8].trim(),
+        severity: dyn[2].includes('Error') ? 'error' : 'warning',
+        kind: dyn[3] || dyn[1] || undefined,
+        model: dyn[4],
+        object: dyn[5],
+        member: dyn[6] || undefined,
+        line: Number(dyn[7]),
+        column: Number(dyn[8]),
+        message: dyn[9].trim(),
       });
       continue;
     }
-    // Fallback: severity prefix without the dynamics:// location part
-    const simple = /^(Compile Fatal Error|Compile Error|Compile Warning|Generation Warning):\s*(.+)$/.exec(line);
-    if (simple) {
+
+    const pathForm = XPPC_DIAG_PATH_RE.exec(line);
+    if (pathForm) {
+      // "AxFormExtension/MyForm.Ext/Design/Controls/Grid/Foo" — the element is the
+      // first segment, the rest locates the member inside it.
+      const [objectName, ...rest] = pathForm[4].split('/');
       diagnostics.push({
-        severity: simple[1].includes('Error') ? 'error' : 'warning',
-        message: simple[2].trim(),
+        severity: pathForm[2].includes('Error') ? 'error' : 'warning',
+        kind: pathForm[1] || undefined,
+        model: pathForm[3],
+        object: objectName,
+        member: rest.length > 0 ? rest.join('/') : undefined,
+        message: pathForm[5].trim(),
+      });
+      continue;
+    }
+
+    const plain = XPPC_DIAG_PLAIN_RE.exec(line);
+    if (plain) {
+      diagnostics.push({
+        severity: plain[2].includes('Error') ? 'error' : 'warning',
+        kind: plain[1] || undefined,
+        message: plain[3].trim(),
       });
     }
   }
   return diagnostics;
+}
+
+/**
+ * What to say when the compiler failed and this parser cannot show why.
+ *
+ * A FAILED headline over a list of warnings reads as though the warnings are
+ * the cause, and invites deleting whatever is nearest to clear the red. Name
+ * the gap instead. Returns '' when the parsed errors do explain the failure.
+ */
+export function renderUnexplainedFailure(
+  parsed: XppcDiagnostic[],
+  logContent: string,
+): string {
+  const parsedErrors = parsed.filter(d => d.severity === 'error').length;
+  const reported = xppcReportedErrorCount(logContent);
+
+  if (parsedErrors > 0 && (reported === null || parsedErrors >= reported)) return '';
+
+  const lines: string[] = [];
+  if (parsedErrors === 0) {
+    lines.push(
+      `⚠️ The build FAILED but this server parsed **no error diagnostic** from the log` +
+      (reported !== null ? ` (xppc's own tally says: Errors: ${reported})` : '') + '.',
+    );
+    lines.push(
+      `Any warnings listed below are NOT the failure — do not treat them as the cause. ` +
+      `Read the raw log at the end of this response; the failing line is in there in a ` +
+      `format this parser did not recognise.`,
+    );
+  } else {
+    lines.push(
+      `⚠️ xppc counted ${reported} error(s) but only ${parsedErrors} could be parsed into the list below. ` +
+      `The rest are in the raw log.`,
+    );
+  }
+  lines.push(
+    `⛔ Do NOT delete, undo or unregister an object to make the build pass. A green build ` +
+    `you obtained by removing the thing you were asked to create is a failed task, not a fixed one. ` +
+    `If you cannot find the cause, say so and ask.`,
+  );
+  return lines.join('\n');
 }
 
 /**
@@ -332,10 +421,9 @@ async function readFullLog(logFile: string, maxLines = 300): Promise<string> {
     const all = content.split(/\r?\n/);
     if (all.length <= maxLines) return content.trim();
 
-    const DIAG_RE = /^(Compile Fatal Error|Compile Error|Compile Warning|Generation Warning|Best Practice Warning):/;
     const diagIndices: number[] = [];
     for (let i = 0; i < all.length; i++) {
-      if (DIAG_RE.test(all[i].trim())) diagIndices.push(i);
+      if (DIAG_LINE_TEST.test(all[i].trim())) diagIndices.push(i);
     }
 
     if (diagIndices.length > 0) {
@@ -751,14 +839,16 @@ async function renderFinishedBuildResult(
     const logContent = succeeded
       ? await readLogTail(relevantLogFile)
       : await readFullLog(relevantLogFile);
-    const structured = succeeded
-      ? ''
-      : formatStructuredDiagnostics(parseXppcDiagnostics(await readWholeLog(relevantLogFile)));
+    const wholeLog = succeeded ? '' : await readWholeLog(relevantLogFile);
+    const parsed = succeeded ? [] : parseXppcDiagnostics(wholeLog);
+    const structured = succeeded ? '' : formatStructuredDiagnostics(parsed);
+    const unexplained = succeeded ? '' : renderUnexplainedFailure(parsed, wholeLog);
 
     return {
       content: [{
         type: 'text',
         text: `${statusIcon} — ${allResults.length} models, ${totalDuration}s total\n\n${modelLines}\n\n` +
+          (unexplained ? `${unexplained}\n\n` : '') +
           (structured ? `${structured}\n\n` : '') +
           `--- Log (${relevantResult?.modelName ?? targetModel}) ---\n${logContent}`,
       }],
@@ -768,15 +858,16 @@ async function renderFinishedBuildResult(
 
   const logTail       = await readLogTail(finalState.logFile);
   const logContent    = succeeded ? logTail : await readFullLog(finalState.logFile);
-  const hasWarnings   = succeeded && /^(Generation Warning|Compile Warning):/m.test(logTail);
+  const hasWarnings   = succeeded && logTail.split(/\r?\n/).some(l => /Warning:\s/.test(l) && DIAG_LINE_TEST.test(l.trim()));
   const statusIcon    = !succeeded ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
   const buildMode     = finalState.fullBuild ? 'full build (target), incremental (deps)' : 'incremental';
   const duration      = finalState.endTime
     ? Math.round((new Date(finalState.endTime).getTime() - new Date(finalState.startTime).getTime()) / 1000)
     : '?';
-  const structured    = succeeded
-    ? ''
-    : formatStructuredDiagnostics(parseXppcDiagnostics(await readWholeLog(finalState.logFile)));
+  const wholeLog      = succeeded ? '' : await readWholeLog(finalState.logFile);
+  const parsed        = succeeded ? [] : parseXppcDiagnostics(wholeLog);
+  const structured    = succeeded ? '' : formatStructuredDiagnostics(parsed);
+  const unexplained   = succeeded ? '' : renderUnexplainedFailure(parsed, wholeLog);
 
   // The note run_bp_check and verify_d365fo_project read, so a green verdict from a
   // tool that compiles nothing can say whether anything ever did.
@@ -793,6 +884,7 @@ async function renderFinishedBuildResult(
       type: 'text',
       text: `${statusIcon} (${finalState.tool}, ${buildMode}, ${duration}s)\n\nModel: ${targetModel}\n` +
         incrementalScopeCaveat(succeeded, !!finalState.fullBuild) + '\n' +
+        (unexplained ? `${unexplained}\n\n` : '') +
         (structured ? `${structured}\n\n--- Raw log ---\n` : '') +
         `${logContent || '(no output)'}`,
     }],

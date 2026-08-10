@@ -24,6 +24,7 @@ import {
 } from '../../workspace/contextSnapshot.js';
 import { selectProject, renderSelectionFailure } from '../../workspace/projectSelector.js';
 import { projectDisplayName } from '../../workspace/projectMembership.js';
+import { activeCrossModelAllowance } from '../../utils/crossModelWriteGuard.js';
 
 export async function getWorkspaceInfoTool(
   request: CallToolRequest,
@@ -305,9 +306,26 @@ export async function getWorkspaceInfoTool(
       `anchored to "${toolSwitch.anchorModel}" — the model the open workspace targets — and ` +
       `a create/modify into "${toolSwitch.forcedModel}" will be refused.`,
       `Tell the user the model they asked about is owned by "${toolSwitch.forcedModel}" and let ` +
-      `THEM decide: extend it from "${toolSwitch.anchorModel}", or allow the write by adding ` +
-      `D365FO_CROSS_MODEL_WRITE_MODELS=${toolSwitch.forcedModel} to the server's .env — that ` +
-      `applies to the next attempt, no restart. Do not decide this on your own.`,
+      `THEM decide: extend it from "${toolSwitch.anchorModel}", or have THEM allow the write by ` +
+      `adding D365FO_CROSS_MODEL_WRITE_MODELS=${toolSwitch.forcedModel} to the server's ` +
+      `environment — that applies to the next attempt, no restart.`,
+      `That setting is the USER'S to make, in their own editor. Do not write it yourself: editing ` +
+      `mcp.json, .env or any other server configuration to widen what you may write is granting ` +
+      `yourself the permission this guard exists to withhold, whatever the reason seems to be.`,
+    );
+  }
+
+  // What is allowed right now, stated without having to attempt a write first.
+  const allowance = activeCrossModelAllowance();
+  if (allowance) {
+    lines.push(
+      ``,
+      `## ⚠️  Cross-model writes are currently ALLOWED`,
+      ``,
+      `${allowance}.`,
+      `Writes into that model will succeed and will NOT appear in this workspace's project or ` +
+      `version control. If nobody deliberately granted this, remove the setting from the server's ` +
+      `environment before writing anything.`,
     );
   }
 

@@ -41,16 +41,39 @@ const DEBUG_LOGGING = process.env.DEBUG_LOGGING === 'true';
 // to a file (useful when the IDE doesn't expose MCP subprocess stderr).
 const LOG_FILE = process.env.LOG_FILE;
 let _logStream: fsSync.WriteStream | undefined;
+/** Undoes the stderr tee. Set only while the tee is installed. */
+let _restoreStderr: (() => void) | undefined;
 if (LOG_FILE) {
   try {
     _logStream = fsSync.createWriteStream(LOG_FILE, { flags: 'a', encoding: 'utf8' });
+    // The open is asynchronous, so a bad path (missing directory, no write
+    // permission) never reaches the catch below — it arrives here instead, and
+    // without a listener an 'error' event on a stream is an uncaught exception.
+    _logStream.on('error', (err) => {
+      _logStream = undefined;
+      _restoreStderr?.();
+      process.stderr.write(`[d365fo-mcp] ⚠️ LOG_FILE=${LOG_FILE} unusable, file logging off: ${err}\n`);
+    });
     const banner = `\n${'─'.repeat(72)}\n[d365fo-mcp] Started at ${new Date().toISOString()}  pid=${process.pid}\n${'─'.repeat(72)}\n`;
     _logStream.write(banner);
-    // Tee: intercept process.stderr so every write also goes to the log file
-    const origStderrWrite = process.stderr.write.bind(process.stderr);
-    (process.stderr as NodeJS.WriteStream & { write: (...args: any[]) => boolean }).write = function (chunk: any, ...rest: any[]): boolean {
-      _logStream!.write(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+    // Tee: intercept process.stderr so every write also goes to the log file.
+    // The mirror is best-effort — stderr itself must keep working even once the
+    // stream is gone, because shutdown reports its final progress through it.
+    const stderr = process.stderr as NodeJS.WriteStream & { write: (...args: any[]) => boolean };
+    const origStderrWrite = stderr.write.bind(process.stderr);
+    const teeWrite = function (chunk: any, ...rest: any[]): boolean {
+      try {
+        _logStream?.write(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+      } catch {
+        // A failed mirror must never take the real stderr write down with it.
+      }
       return origStderrWrite(chunk, ...rest) as boolean;
+    };
+    stderr.write = teeWrite;
+    _restoreStderr = () => {
+      // Only unpatch our own tee — something else may have wrapped stderr since.
+      if (stderr.write === teeWrite) stderr.write = origStderrWrite;
+      _restoreStderr = undefined;
     };
   } catch (e) {
     // Don't crash the server if the log file can't be opened
@@ -89,9 +112,20 @@ console.error = (...args: any[]) => {
 // on the first request and has to be restarted" when a background task (e.g.
 // the async DB load) rejects before any tool call awaits it. Log and keep the
 // server alive instead of dying. (stderr is already tee'd to LOG_FILE above.)
+// A throw inside either of these handlers is fatal and unrecoverable — Node has
+// no net left to catch it — so the reporting itself is wrapped: the net must not
+// be the thing that kills the process it exists to keep alive.
+function reportSafely(message: string): void {
+  try {
+    process.stderr.write(message);
+  } catch {
+    /* nothing left to report through */
+  }
+}
+
 process.on('unhandledRejection', (reason) => {
   const msg = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
-  process.stderr.write(`[d365fo-mcp] ⚠️ Unhandled promise rejection (server staying up): ${msg}\n`);
+  reportSafely(`[d365fo-mcp] ⚠️ Unhandled promise rejection (server staying up): ${msg}\n`);
 });
 
 // Same protection for SYNCHRONOUS uncaught exceptions — a throw that escapes a
@@ -101,7 +135,7 @@ process.on('unhandledRejection', (reason) => {
 // root cause is diagnosable, then keep serving. (Genuinely fatal startup errors
 // are still surfaced via main().catch → process.exit below.)
 process.on('uncaughtException', (err) => {
-  process.stderr.write(`[d365fo-mcp] ⚠️ Uncaught exception (server staying up): ${err?.stack ?? err}\n`);
+  reportSafely(`[d365fo-mcp] ⚠️ Uncaught exception (server staying up): ${err?.stack ?? err}\n`);
 });
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
@@ -446,6 +480,9 @@ async function main() {
   // Registered first so it runs LAST (cleanups run in reverse): the log file is
   // where the other steps report, so it has to outlive them.
   onShutdown('log file', () => {
+    // Unpatch before closing: the coordinator still writes "[shutdown] done"
+    // after this cleanup returns, and that write must not touch a closed stream.
+    _restoreStderr?.();
     if (_logStream) {
       _logStream.end();
       _logStream = undefined;

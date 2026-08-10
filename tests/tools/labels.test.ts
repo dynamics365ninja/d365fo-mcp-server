@@ -10,8 +10,13 @@ import { createLabelTool } from '../../src/tools/write/createLabel';
 import { renameLabelTool } from '../../src/tools/write/renameLabel';
 import { labelsTool, mapWithConcurrency } from '../../src/tools/labels';
 import { isExtensionLabelFile } from '../../src/metadata/labelParser';
+import { resetLabelSearchHistory } from '../../src/tools/analysis/labelSearchHistory';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
+
+// The search history is module state that deliberately outlives one call — reset
+// it per test so one suite's phrasings never become another's "you already asked".
+beforeEach(() => { resetLabelSearchHistory(); });
 
 // Mock filesystem access — label tools write to disk
 vi.mock('fs', async (orig) => {
@@ -230,13 +235,22 @@ describe('labels(action="search") with query[]', () => {
     expect(text).toContain('3 queries');
     expect(text).toMatch(/none of these 3 phrasings/i);
     expect(text).toContain('Stop searching and create your own.');
-    // Each query still gets its own section.
+    // Every phrasing is still named, but a miss carries no information beyond
+    // its own name: three full "create your own label" sections were three
+    // copies of one paragraph. They collapse into one line.
+    expect(text).toContain('No match — 3 phrasing(s)');
     for (const q of ['cannot be decreased', 'downgrade', 'value is lower']) {
-      expect(text).toContain(`## "${q}"`);
+      expect(text).toContain(`"${q}"`);
+      expect(text).not.toContain(`## "${q}"`);
     }
+    // The advice survives — once.
+    expect(text.match(/Nothing reusable here/g) ?? []).toHaveLength(1);
   });
 
-  it('reports a reusable hit instead of telling the caller to create one', async () => {
+  // "At least one reusable label was found" promised more than a hit means: the
+  // model can RESOLVE the label, not that it says what the caller needs. Callers
+  // kept rephrasing to find the label the verdict implied was there.
+  it('reports a hit as a candidate, and still hands over the create call', async () => {
     (ctx.symbolIndex.searchLabels as any).mockReturnValue([
       makeLabelResult({ labelId: 'CustomerName', text: 'Customer name', labelFileId: 'MyModel', model: 'MyModel' }),
     ]);
@@ -246,8 +260,12 @@ describe('labels(action="search") with query[]', () => {
       ctx,
     )).content[0].text as string;
 
-    expect(text).toMatch(/at least one reusable label was found/i);
-    expect(text).not.toContain('Stop searching and create your own.');
+    expect(text).toMatch(/at least one label this model can resolve came back/i);
+    expect(text).toMatch(/a hit is a candidate, not a verdict/i);
+    // Never the flat "nothing was found" verdict — something WAS found.
+    expect(text).not.toMatch(/none of these \d+ phrasings/i);
+    // …but the fallback is right there, so "none of these fit" needs no new call.
+    expect(text).toContain('labels(action="create"');
   });
 
   it('caps the batch and says what it did not run', async () => {
@@ -279,8 +297,52 @@ describe('labels(action="search") with query[]', () => {
     expect((ctx.symbolIndex.searchLabels as any).mock.calls.length).toBe(2);
     expect(text).toContain('2 duplicate phrasing(s) folded');
     // The caller's own first spelling is what reads back.
-    expect(text).toContain('## "customer"');
-    expect(text).not.toContain('## "Customer"');
+    expect(text).toContain('"customer"');
+    expect(text).not.toContain('"Customer"');
+  });
+
+  // Run f7130bea: six batches of phrasings, ~23 AIU, plus two raw reads of the
+  // .label.txt files — and the answer was settled by the first batch. Every result
+  // already said "rephrasing does not help"; advice stated in the abstract is easy
+  // to argue with, the same advice listing what you already asked is not.
+  it('says nothing about repetition on the first miss', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([]);
+
+    const text = (await labelsTool(
+      req('labels', { action: 'search', query: ['cannot be decreased', 'downgrade'] }),
+      ctx,
+    )).content[0].text as string;
+
+    expect(text).not.toContain('This is not new information');
+  });
+
+  it('names the earlier phrasings when the caller comes back to rephrase', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([]);
+
+    await labelsTool(req('labels', { action: 'search', query: ['cannot be decreased', 'downgrade'] }), ctx);
+    const text = (await labelsTool(
+      req('labels', { action: 'search', query: ['value must not drop'] }),
+      ctx,
+    )).content[0].text as string;
+
+    expect(text).toContain('This is not new information');
+    expect(text).toContain('2 phrasing(s) already came back empty');
+    expect(text).toContain('"cannot be decreased"');
+    // Its own phrasings are the current answer, not evidence of repetition.
+    expect(text).not.toMatch(/already came back empty here:[^\n]*value must not drop/);
+  });
+
+  it('keeps quiet about a phrasing that DID find something', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([
+      makeLabelResult({ labelId: 'CustomerName', text: 'Customer name', labelFileId: 'MyModel', model: 'MyModel' }),
+    ]);
+    await labelsTool(req('labels', { action: 'search', query: ['customer'] }), ctx);
+
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([]);
+    const text = (await labelsTool(req('labels', { action: 'search', query: ['nothing at all'] }), ctx))
+      .content[0].text as string;
+
+    expect(text).not.toContain('This is not new information');
   });
 
   it('does not report a failed batch as "no reusable label exists"', async () => {

@@ -19,6 +19,7 @@ import {
   isLabelLikelyResolvable,
   labelProvenanceWarning,
 } from '../../utils/labelReference.js';
+import { recordLabelSearch, repeatSearchNotice } from './labelSearchHistory.js';
 
 /**
  * Emitted only when a label the current model can actually resolve was found.
@@ -26,6 +27,13 @@ import {
  * reusable, so keep the two in step.
  */
 export const REUSABLE_MARKER = '💡 Use the label reference syntax in X++:';
+
+/**
+ * Opens the answer for a query that matched nothing. `labels` reads it back to
+ * collapse those sections in a batch — a paragraph of identical advice repeated
+ * once per phrasing was most of a 5 KB result — so keep the two in step.
+ */
+export const NO_HITS_MARKER = 'No labels found matching';
 
 /**
  * What to do when nothing reusable came back.
@@ -37,12 +45,24 @@ export const REUSABLE_MARKER = '💡 Use the label reference syntax in X++:';
  * from the first call onwards. Every phrasing queries the same index, so say
  * that, and hand over the call that ends the loop.
  */
-export const NO_REUSE_ADVICE =
-  `➡️  Nothing reusable here — create your own label and move on:\n` +
+const CREATE_CALL_ADVICE =
   `      labels(action="create", labelFileId="<your model's label file>", model="<your model>",\n` +
   `             labelId="<MeaningOfTheText>", translations=[{language:"en-US", text:"…"}])\n` +
   `   Rephrasing does not help: every wording queries the same index. To try several at once,\n` +
   `   pass query as an array — labels(action="search", query=["…", "…", "…"]) — one call, not one each.\n`;
+
+export const NO_REUSE_ADVICE =
+  `➡️  Nothing reusable here — create your own label and move on:\n` + CREATE_CALL_ADVICE;
+
+/**
+ * Same call, for the branch where hits DID come back.
+ *
+ * NO_REUSE_ADVICE opens with "Nothing reusable here", which contradicts a verdict
+ * that just reported a resolvable label. Callers resolve the contradiction by
+ * searching again — the loop the verdict exists to end.
+ */
+export const SOME_REUSE_ADVICE =
+  `➡️  If none of the hits above says what you need, create your own label and move on:\n` + CREATE_CALL_ADVICE;
 
 const SearchLabelsArgsSchema = z.object({
   query: z
@@ -62,7 +82,11 @@ const SearchLabelsArgsSchema = z.object({
   labelFileId: z
     .string()
     .optional()
-    .describe('Restrict results to a specific label file ID (e.g. ContosoExt, SYS)'),
+    .describe(
+      'Restrict results to ONE label file ID (e.g. ContosoExt, SYS). Omitting it searches every label ' +
+      'file at once — the default, and almost always what you want. Running the same query once per ' +
+      'label file buys nothing but round trips.',
+    ),
   maxResults: z
     .number()
     .optional()
@@ -109,21 +133,28 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
     const results = symbolIndex.searchLabels(query, { language, model, labelFileId, limit: probeLimit });
 
     if (results.length === 0) {
+      // Named before the advice: a caller that has already tried five wordings
+      // needs to hear that it has, not the same paragraph a sixth time.
+      const repeatNotice = repeatSearchNotice([query]);
+      recordLabelSearch(query, true);
       return {
         content: [
           {
             type: 'text',
             text:
-              `No labels found matching "${query}"` +
+              `${NO_HITS_MARKER} "${query}"` +
               (language !== 'en-US' ? ` in language "${language}"` : '') +
               (model ? ` in model "${model}"` : '') +
               '.\n\n' +
+              (repeatNotice ? `${repeatNotice}\n` : '') +
               NO_REUSE_ADVICE +
               `💡 To search a different language use the language parameter (e.g. "cs", "de", "sk").`,
           },
         ],
       };
     }
+
+    recordLabelSearch(query, false);
 
     // Normalise column names (DB returns snake_case)
     const normalise = (r: any) => ({

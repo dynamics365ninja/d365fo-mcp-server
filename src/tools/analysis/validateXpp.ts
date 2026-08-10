@@ -15,11 +15,12 @@
  *   COC002  [ExtensionOf] class not declared final
  *   COC003  [ExtensionOf] class name not ending _Extension
  *   COC004  next not reached exactly once and unconditionally (SYS10028)
+ *   COC005  Global function (checkFailed/error/…) called as this.<fn>() on a table buffer
  *   BP001   Hardcoded string literal in info/warning/error/checkFailed
  *   BP002   doInsert/doUpdate/doDelete outside explicit migration comment
  *   BP003   Generic doc-comment (/// Foo class. / /// methodName.)
  *   BP004   Developer-only statements left in code (pause / print)
- *   BP005   enum2str() in user-facing text (emits the symbol, never the translation)
+ *   BP005   an enum SYMBOL (enum2Symbol / value2Symbol) in user-facing text — never translated
  *   TTS001  Unbalanced ttsbegin / ttscommit
  *   XML001  AxTable XML missing an index with <AlternateKey>Yes</AlternateKey>
  *   XML006  AxTable elements out of canonical order (silently dropped by the AOT)
@@ -391,35 +392,119 @@ function checkExtensionOfNaming(code: string): ValidationViolation[] {
   return violations;
 }
 
+/** Global functions, not members of `Common` — unqualified on a table buffer. */
+const GLOBAL_FUNCTIONS_NOT_ON_TABLE = [
+  'checkFailed', 'error', 'warning', 'info', 'strFmt', 'setPrefix', 'funcName',
+];
+
 /**
- * BP005 — enum2str() feeding user-facing text.
+ * COC005 — a Global function called as `this.<fn>()` on a table buffer.
  *
- * enum2str returns the enum's symbolic NAME ('Gold'), never its <Label>, so a message
- * built with it stays English on a Czech or Slovak client no matter how carefully the
- * enum was labelled. The runtime API that resolves the translation is
- * `new DictEnum(enumNum(MyEnum)).value2Label(enum2int(value))`.
+ * `this.checkFailed(...)` reads as consistent next to `this.orig()`, and xppc
+ * rejects it with ClassDoesNotContainMethod. Nothing but a build caught it:
+ * xppbp does not diagnose it and the symbol index resolves the name.
  *
- * Scoped to the message builders (info/warning/error/checkFailed/strFmt) because
- * enum2str is perfectly correct for a log line, a filename or a comparison key.
+ * Scoped to `[ExtensionOf(tableStr(...))]` — on a RunBase descendant the same
+ * call is legal.
  */
-function checkEnum2StrInMessage(code: string): ValidationViolation[] {
+function checkGlobalFunctionOnTableBuffer(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
-  const masked = maskStringsAndComments(code).split('\n');
+  if (!/\[ExtensionOf\s*\(\s*tableStr\s*\(/i.test(code)) return violations;
+
   const lines = code.split('\n');
+  const masked = maskStringsAndComments(code).split('\n');
+  const pattern = new RegExp(
+    `\\bthis\\s*\\.\\s*(${GLOBAL_FUNCTIONS_NOT_ON_TABLE.join('|')})\\s*\\(`,
+    'gi',
+  );
 
   masked.forEach((clean, i) => {
-    if (!/\benum2str\s*\(/.test(clean)) return;
-    if (!/\b(?:info|warning|error|checkFailed|strFmt)\s*\(/.test(clean)) return;
+    pattern.lastIndex = 0;
+    const m = pattern.exec(clean);
+    if (!m) return;
+    const fn = m[1];
     violations.push({
-      rule: 'BP005',
-      severity: 'warning',
+      rule: 'COC005',
+      severity: 'error',
       line: i + 1,
       excerpt: lines[i].trim(),
       fix:
-        'enum2str() returns the symbolic name, not the label — this message stays English in every locale. ' +
-        'Use "new DictEnum(enumNum(MyEnum)).value2Label(enum2int(value))" to get the translated text.',
+        `"${fn}" is a Global function, not a method of the table buffer. The compiler rejects ` +
+        `"this.${fn}(…)" with "Table '<name>' does not contain a definition for method '${fn}'". ` +
+        `Call it unqualified: "${fn}(…)"` +
+        (fn === 'checkFailed'
+          ? ' — the idiom in a validateWrite wrapper is "ret = checkFailed(\'@Model:LabelId\');".'
+          : '.'),
     });
   });
+
+  return violations;
+}
+
+/**
+ * BP005 — an enum's SYMBOL feeding user-facing text.
+ *
+ * `enum2Symbol()` / `DictEnum.value2Symbol()` return the AOT name ('Gold'), which is
+ * not a label and is never translated, so a message built from one stays English on a
+ * Czech or Slovak client no matter how carefully the enum was labelled.
+ *
+ * NOT enum2str, which this rule used to flag: enum2str resolves the value's <Label> in
+ * the session language, and the platform ships it inside checkFailed, throw error and
+ * control captions. `Global::enum2Symbol` is itself `new DictEnum(_id).value2Symbol()`
+ * — a separate function for the symbol only makes sense because enum2str is not it.
+ * DictEnum.value2Label remains the answer when the enum type is known only at runtime.
+ *
+ * Scoped to the message builders (info/warning/error/checkFailed/strFmt): a symbol is
+ * correct for a log line, a filename or a comparison key, and it is the only safe thing
+ * to persist for an extensible enum, whose integers are assigned at deployment time.
+ *
+ * Matched over the call's whole argument span: in a wrapped
+ * `checkFailed(strFmt("@M:Id",\n enum2Symbol(a),\n enum2Symbol(b)))` the message
+ * builder and the symbol call never share a line, which a per-line scan misses.
+ */
+function checkEnumSymbolInMessage(code: string): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
+  const masked = maskStringsAndComments(code);
+  const lines = code.split('\n');
+  const reported = new Set<number>();
+
+  const callRe = /\b(?:info|warning|error|checkFailed|strFmt)\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = callRe.exec(masked)) !== null) {
+    // Walk from the opening paren to its match so nested calls and multi-line
+    // argument lists are one span.
+    let depth = 0;
+    let end = m.index + m[0].length - 1;
+    for (; end < masked.length; end++) {
+      const ch = masked[end];
+      if (ch === '(') depth++;
+      else if (ch === ')') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    const span = masked.slice(m.index, Math.min(end + 1, masked.length));
+
+    // Both spellings: the Global wrapper and the DictEnum method it delegates to.
+    const inner = /(?:\benum2Symbol|\.\s*value2Symbol)\s*\(/gi;
+    let hit: RegExpExecArray | null;
+    while ((hit = inner.exec(span)) !== null) {
+      const lineNo = lineNumber(masked, m.index + hit.index);
+      if (reported.has(lineNo)) continue;
+      reported.add(lineNo);
+      violations.push({
+        rule: 'BP005',
+        severity: 'warning',
+        line: lineNo,
+        excerpt: lines[lineNo - 1].trim(),
+        fix:
+          'This prints the enum\'s AOT name, which is never translated — the message stays English in ' +
+          'every locale. Use enum2str(value) when the enum type is known at compile time; when it is ' +
+          'only known at runtime, new DictEnum(enumId).value2Label(value). Keep the symbol for logs, ' +
+          'filenames and anything persisted.',
+      });
+    }
+  }
 
   return violations;
 }
@@ -843,7 +928,8 @@ const XPP_RULES = [
   checkExtensionOfNotFinal,
   checkExtensionOfNaming,
   checkCocNextUnconditional,
-  checkEnum2StrInMessage,
+  checkGlobalFunctionOnTableBuffer,
+  checkEnumSymbolInMessage,
   checkHardcodedStrings,
   checkDoMethods,
   checkGenericDocComment,

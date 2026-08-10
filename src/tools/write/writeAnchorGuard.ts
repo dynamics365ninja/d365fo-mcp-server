@@ -18,6 +18,30 @@
 import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
 import { getConfigManager } from '../../utils/configManager.js';
 
+/**
+ * The write anchor, resolved the way every guard must resolve it.
+ *
+ * Async because the synchronous getter returns null until the background
+ * .rnrproj scan lands, and a null anchor makes the guard stand down — which
+ * left the guard decided by a race.
+ *
+ * Defensive on purpose: a ConfigManager without the async method falls back to
+ * the sync getter, and one with neither yields '' — the guard's own "nothing to
+ * compare against" case, not a crash inside a write.
+ */
+export async function resolveAnchorModel(cm: {
+  resolveWriteAnchorModel?: () => Promise<string | null>;
+  getWriteAnchorModel?: () => string | null;
+}): Promise<string> {
+  try {
+    const resolved = await cm.resolveWriteAnchorModel?.();
+    if (resolved) return resolved;
+  } catch {
+    /* fall through to the sync getter */
+  }
+  return cm.getWriteAnchorModel?.() ?? '';
+}
+
 export interface ScaffoldWriteTarget {
   /** Final object name, prefix and suffix already applied. */
   objectName: string;
@@ -34,25 +58,36 @@ export interface ScaffoldWriteTarget {
  * not expose getWriteAnchorModel yields no anchor, and the guard then has nothing
  * to compare against and stays silent — never a refusal on a guess.
  */
-export function scaffoldWriteRefusal(target: ScaffoldWriteTarget): string | null {
+export async function scaffoldWriteRefusal(target: ScaffoldWriteTarget): Promise<string | null> {
+  return crossModelWriteRefusal(await scaffoldWriteCheck(target));
+}
+
+/**
+ * The check this scaffold is measured by. Exposed so a caller that proceeds can
+ * also ask for standDownNotice() without resolving the anchor twice.
+ *
+ * The anchor is RESOLVED, not read: the synchronous getter returns null until the
+ * background .rnrproj scan lands, and a null anchor makes the guard stand down.
+ */
+export async function scaffoldWriteCheck(target: ScaffoldWriteTarget) {
   const cm = getConfigManager() as Partial<ReturnType<typeof getConfigManager>>;
-  const anchor = cm.getWriteAnchorModel?.() ?? null;
+  const anchor = (await resolveAnchorModel(cm)) || null;
   const switched = cm.getToolProjectSwitch?.()?.forcedModel ?? null;
 
-  return crossModelWriteRefusal({
+  return {
     objectName: target.objectName,
     objectType: target.objectType,
     owningModel: target.targetModel,
     activeModel: anchor,
     toolSwitchedModel: switched,
-    action: 'create',
-  });
+    action: 'create' as const,
+  };
 }
 
 /** Same check, packaged as the tool result a scaffold handler returns. */
-export function scaffoldWriteRefusalResult(
+export async function scaffoldWriteRefusalResult(
   target: ScaffoldWriteTarget,
-): { content: Array<{ type: string; text: string }>; isError: true } | null {
-  const refusal = scaffoldWriteRefusal(target);
+): Promise<{ content: Array<{ type: string; text: string }>; isError: true } | null> {
+  const refusal = await scaffoldWriteRefusal(target);
   return refusal ? { content: [{ type: 'text', text: refusal }], isError: true } : null;
 }

@@ -3396,6 +3396,16 @@ namespace D365MetadataBridge.Services
         public object AddControl(string formName, string controlName, string parentControl,
             string controlType, string? dataSource, string? dataField, string? label)
         {
+            // Forms is keyed by plain form names; a form EXTENSION lives in FormExtensions
+            // under its dotted "Base.Suffix" name and wraps each added control in an
+            // AxFormExtensionControl, which this method does not build. Say so instead of
+            // reporting the lookup miss as "form not found".
+            if (formName.Contains('.'))
+                throw new ArgumentException(
+                    $"'{formName}' is a form extension — AddControl only handles base forms. " +
+                    "Form extensions are written by the caller's direct-XML path, which produces the " +
+                    "required AxFormExtensionControl wrapper.");
+
             var axForm = _provider.Forms.Read(formName)
                 ?? throw new ArgumentException($"Form '{formName}' not found");
             var msi = GetModelSaveInfoForObject(_provider.Forms, formName);

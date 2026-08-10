@@ -181,10 +181,29 @@ describe('search_extensions', () => {
 
   it('returns no-results message when nothing found', async () => {
     (ctx.symbolIndex.searchCustomExtensions as any).mockReturnValue([]);
-    (ctx.symbolIndex.getCustomModels as any).mockReturnValue([]);
+    (ctx.symbolIndex.getCustomModels as any).mockReturnValue(['ISVModel']);
     const result = await extensionSearchTool(req('search_extensions', { query: 'Unknown' }), ctx);
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toMatch(/no.*found|0 match|no extension/i);
+  });
+
+  // The scope is defined by the custom-model list, so an empty list is not an empty
+  // result — it means the search could never have matched anything.
+  it('names the configuration fault when no custom models are known', async () => {
+    (ctx.symbolIndex.searchCustomExtensions as any).mockReturnValue([]);
+    (ctx.symbolIndex.getCustomModels as any).mockReturnValue([]);
+    const result = await extensionSearchTool(req('search_extensions', { query: 'Unknown' }), ctx);
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain('CUSTOM_MODELS');
+  });
+
+  it('forwards the type filter to the index', async () => {
+    (ctx.symbolIndex.searchCustomExtensions as any).mockReturnValue([]);
+    (ctx.symbolIndex.getCustomModels as any).mockReturnValue(['ISVModel']);
+    await extensionSearchTool(
+      req('search_extensions', { query: 'validateWrite', type: 'method' }), ctx);
+    expect(ctx.symbolIndex.searchCustomExtensions).toHaveBeenCalledWith(
+      'validateWrite', undefined, 20, ['method']);
   });
 
   it('returns error on missing query', async () => {

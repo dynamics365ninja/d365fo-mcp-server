@@ -1808,10 +1808,10 @@ describe('modify_d365fo_file', () => {
     expect(writtenContent).toContain('<MenuItemType>Display</MenuItemType>');
   });
 
-  it('add-control on a form-extension falls back to XML when the bridge fails (extension never resolves as a form)', async () => {
-    // Root cause: the C# bridge's AddControl reads _provider.Forms.Read(name), which
-    // can never resolve a form EXTENSION ("Base.Suffix") — it always reports
-    // 'Form "<ext>" not found'. The XML fallback must write the control element.
+  it('add-control on a form-extension bypasses the bridge and writes the XML directly', async () => {
+    // The C# AddControl reads _provider.Forms.Read(name), which never resolves a form
+    // EXTENSION ("Base.Suffix") — those live in FormExtensions. The call cannot succeed,
+    // so it is not made at all and the XML writer produces the control element.
     const fsMod = await import('fs/promises');
     const extXml =
       `<?xml version="1.0" encoding="utf-8"?>\n` +
@@ -1846,8 +1846,8 @@ describe('modify_d365fo_file', () => {
     );
 
     expect(result.isError).toBeFalsy();
-    // Bridge was attempted first (and failed), XML fallback wrote the file.
-    expect(addControl).toHaveBeenCalledTimes(1);
+    // Not attempted: a doomed bridge call costs a round trip and logs a bridge error.
+    expect(addControl).not.toHaveBeenCalled();
     const written = (fsMod.writeFile as any).mock.calls.find((c: any[]) =>
       String(c[0]).includes('ContosoRentConfiguration.MyExt.xml'),
     );
@@ -1940,8 +1940,8 @@ describe('modify_d365fo_file', () => {
     );
 
     expect(result.isError).toBeFalsy();
-    // The bridge attempt itself must also have received the inferred type, not "String".
-    expect(addControl.mock.calls[0][3]).toBe('Real');
+    // Inference must reach the writer: the emitted element carries Real, not String.
+    expect(addControl).not.toHaveBeenCalled();
     const written = (fsMod.writeFile as any).mock.calls.find((c: any[]) =>
       String(c[0]).includes('RentAgreementForm.MyExt.xml'),
     );

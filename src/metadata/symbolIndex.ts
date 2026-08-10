@@ -3081,14 +3081,36 @@ export class XppSymbolIndex {
    * Restricts results to symbol types whose names carry the `*_Extension` /
    * `*.<model>Extension` convention (class-extension, table-extension, etc.)
    * so that unrelated symbols sharing a substring don't leak into extension UI.
+   *
+   * `model IN (custom models)` is what makes this affordable, and it has to be the
+   * FIRST predicate. A leading-wildcard `name LIKE '%q%'` is unindexable, so with the
+   * whole corpus in scope every call scanned all 584 K symbols — measured at 122.8 s on
+   * the production DB. Against idx_symbols_model the same scan covers only the ~25
+   * custom models. The filter is also a correctness fix: the results were already
+   * captioned "matches in custom extensions" while Microsoft rows could satisfy the
+   * name convention and appear there.
+   *
+   * `types` narrows to symbol kinds (the `type` argument of search(scope="extensions"),
+   * which used to be dropped before it reached here). A method or field is matched on
+   * its PARENT carrying the extension convention — its own name never does.
    */
-  searchCustomExtensions(query: string, prefix?: string, limit: number = 20): XppSymbol[] {
-    // Allow extension-shaped rows (regardless of whether the indexer set a
-    // dedicated *-extension type) while also including explicit extension types.
+  searchCustomExtensions(query: string, prefix?: string, limit: number = 20, types?: string[]): XppSymbol[] {
+    const customModels = this.getCustomModels()
+      .filter(m => !prefix || m.toLowerCase().startsWith(prefix.toLowerCase()));
+    if (customModels.length === 0) return [];
+
+    // '_' is a single-character LIKE wildcard, so the unescaped '%_Extension' this
+    // replaced also matched any name merely ENDING in "Extension" — which is how a
+    // method called validateWriteExtension was reported as an extension object.
+    const escapeLikePattern = (value: string): string =>
+      value.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&');
+
+    const modelPlaceholders = customModels.map(() => '?').join(',');
     let sql = `
       SELECT *
       FROM symbols
-      WHERE name LIKE ?
+      WHERE model IN (${modelPlaceholders})
+        AND name LIKE ? ESCAPE '\\'
         AND (
           type IN (
             'class-extension','table-extension','form-extension','enum-extension',
@@ -3096,23 +3118,29 @@ export class XppSymbolIndex {
             'map-extension','menu-extension','security-role-extension','security-duty-extension',
             'menu-item-display-extension','menu-item-action-extension','menu-item-output-extension'
           )
-          OR name LIKE '%_Extension'
+          OR name LIKE '%\\_Extension' ESCAPE '\\'
           OR name LIKE '%.%Extension'
+          OR parent_name LIKE '%\\_Extension' ESCAPE '\\'
+          OR parent_name LIKE '%.%Extension'
         )
     `;
 
-    const params: any[] = [`%${query}%`];
+    const params: any[] = [...customModels, `%${escapeLikePattern(query)}%`];
 
-    if (prefix) {
-      sql += ` AND model LIKE ?`;
-      params.push(`${prefix}%`);
+    if (types && types.length > 0) {
+      // Unary + strips the term of its index affinity. Written plainly, `type IN ('method')`
+      // makes the planner prefer idx_type_name over idx_symbols_model — and since ~1 M of the
+      // 1.19 M rows ARE methods, that trades a 25-model seek for a scan of nearly the whole
+      // table: measured 14.8 ms → 238 ms warm, 56 s cold. EXPLAIN QUERY PLAN must keep
+      // reporting `SEARCH symbols USING INDEX idx_symbols_model`.
+      sql += ` AND +type IN (${types.map(() => '?').join(',')})`;
+      params.push(...types);
     }
 
     sql += ` ORDER BY name LIMIT ?`;
     params.push(limit);
 
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params) as any[];
+    const rows = this.getReadDb().prepare(sql).all(...params) as any[];
     return rows.map(row => this.rowToSymbol(row));
   }
 

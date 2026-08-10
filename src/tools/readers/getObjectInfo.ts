@@ -21,6 +21,7 @@ import type { XppServerContext } from '../../types/context.js';
 import { READER_DISPATCH, OBJECT_INFO_TYPES, withNotFoundGuidance } from './objectInfoRegistry.js';
 import { completionTool } from './completion.js';
 import { getMethodTool } from './getMethod.js';
+import { readObjectXml } from './objectXml.js';
 
 /** Ceiling on one plural call — inherited from the retired batch_get_info. */
 const MAX_OBJECTS = 10;
@@ -40,7 +41,9 @@ const OPTIONS_DESCRIPTION =
   '{ "members": "names" } for fast member-name list (add "prefix" to filter), ' +
   '{ "method": "validateWrite", "include": "signature" } for ONE method (include: signature | source | both). ' +
   'Table: { "fieldsOffset": 50 } for the next field page, { "fieldFilter": "Invoice" } to list only matching fields. ' +
-  'Report: { "includeRdl": true }. Form: { "searchControl": "AccountNum" }, { "maxControls": 300 }. Macro: { "filter": "Path" }.';
+  'Report: { "includeRdl": true }. Form: { "searchControl": "AccountNum" }, { "maxControls": 300 }. Macro: { "filter": "Path" }. ' +
+  'Any type: { "include": "xml" } returns the raw AOT XML and its path — use it instead of shelling out to ' +
+  'Get-ChildItem/Get-Content; page it with { "startLine": 1, "endLine": 200 }.';
 
 /**
  * One entry of the plural `objects[]` form. The name lives in `objectName` —
@@ -130,6 +133,19 @@ async function readObject(ref: ObjectRef, context: XppServerContext) {
   // chain was search → get_object_info → get_method: three round trips to read
   // one signature, where the middle call already had the class in hand. Folding
   // it here removes that hop and its ~926 chars from every ListTools payload.
+  // The file itself, when the rendered metadata is not what is wanted. Checked
+  // before options.method so {method, include:"xml"} cannot silently mean two
+  // things.
+  if (options?.include === 'xml') {
+    const xml = await readObjectXml(objectType, name, {
+      modelName: options.modelName as string | undefined,
+      startLine: options.startLine as number | undefined,
+      endLine: options.endLine as number | undefined,
+      maxChars: options.maxChars as number | undefined,
+    });
+    return { content: [{ type: 'text', text: xml.text }], ...(xml.isError ? { isError: true } : {}) };
+  }
+
   if (options?.method) {
     // get_method resolves methods on classes, tables, views and data entities
     // (its own OBJECT_TYPES), so gating this on `class` alone refused calls the

@@ -259,6 +259,80 @@ ttscommit;`,
     related: [],
   },
   {
+    patterns: [
+      'classdoesnotcontainmethod',
+      'does not contain a definition for method',
+      'no extension method',
+      'accepting a first argument of type',
+    ],
+    title: 'Method Does Not Exist on That Type',
+    explanation:
+      'The compiler resolved the receiver (a table buffer, a class instance) but found no such method on it. ' +
+      'On a TABLE buffer this is almost always a Global function called as if it were a member: checkFailed(), ' +
+      'error(), warning(), info(), strFmt() and setPrefix() live on Global and are called unqualified — the ' +
+      'buffer is a Common descendant and has none of them. Writing "this.checkFailed(…)" inside a validateWrite ' +
+      'CoC wrapper reads perfectly and does not compile.',
+    fix: [
+      'Drop the qualifier: "ret = checkFailed(\'@MyModel:LabelId\');" — not "this.checkFailed(...)"',
+      'For a genuine member, confirm it exists: get_object_info(objectType="table", name="TableName", options={method:"<name>", include:"signature"})',
+      'On a class, check you are not calling a method of the WRAPPED type from an [ExtensionOf] class — extension classes cannot see private members',
+      'validate_code(mode="syntax") flags the table-buffer case as COC005 without needing a build',
+    ],
+    example: `[ExtensionOf(tableStr(MyTable))]
+final class MyTable_MyModel_Extension
+{
+    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+        if (ret && /* rule violated */ true)
+        {
+            ret = checkFailed("@MyModel:RuleBroken"); // ✅ Global function, unqualified
+        }
+        return ret;
+    }
+}`,
+    related: ['coc', 'coc-authoring'],
+  },
+  {
+    patterns: [
+      'duplicate name',
+      'was detected. the duplication',
+      'duplication is either in the base element',
+      'duplicate control',
+    ],
+    title: 'Duplicate Control Name in a Form Extension',
+    explanation:
+      'A form extension declares a control whose name already exists on the base form. The usual cause is ' +
+      'invisible: the field was added to a table field group that the base form renders through ' +
+      '<DataGroup>, and the compiler generates a control named "<FieldGroupName>_<FieldName>" for it. ' +
+      'Adding an explicit control for the same field collides with that generated one. ' +
+      'The duplicate exists only after compilation — grepping the XML on disk will never find it, ' +
+      'because only one of the two controls is written to a file.',
+    fix: [
+      'Pick one mechanism, never both: EITHER the field group entry OR an explicit control',
+      'Preferred: keep add-field-to-field-group on the table extension and delete the control from the form extension — the field renders on its own',
+      'Check which field groups the base form renders: get_object_info(objectType="form", name="BaseForm", options={include:"xml"}) and look for <DataGroup> on the Grid/Group',
+      'If you genuinely need an explicit control (different position, type or properties), remove the field from the field group instead',
+      'Do NOT search other models or packages for the name — a sibling extension is the rare cause, the field group is the common one',
+    ],
+    example: `<!-- Base form: the Grid renders field group "Administration" -->
+<AxFormGridControl>
+  <DataGroup>Administration</DataGroup>   <!-- generates Administration_<Field> per member -->
+  <DataSource>MyTable</DataSource>
+</AxFormGridControl>
+
+<!-- ✅ Table extension only — the control appears by itself -->
+d365fo_file(action="modify", objectType="table-extension", operations=[
+  {operation:"add-field", fieldName:"MyPrefix_Tier", ...},
+  {operation:"add-field-to-field-group", fieldGroupName:"Administration",
+   fieldName:"MyPrefix_Tier", extendBaseFieldGroup:true}])
+
+<!-- ❌ Adding this on top of the field group entry is the duplicate -->
+d365fo_file(action="modify", objectType="form-extension", operation="add-control",
+            params={controlName:"Administration_MyPrefix_Tier", parentControl:"Administration", ...})`,
+    related: ['form-extension', 'add-control', 'add-field-to-field-group'],
+  },
+  {
     patterns: ['label does not exist', 'label not found', '@sys', 'undefined label', 'label reference'],
     title: 'Label Does Not Exist',
     explanation:
@@ -337,6 +411,20 @@ function isSignificantWord(word: string): boolean {
   return word.length >= 3 && !STOPWORDS.has(word) && !/^\d+$/.test(word);
 }
 
+/**
+ * Score at or above which a match is an answer rather than a guess: one whole
+ * pattern appearing verbatim. Below it, only the loose word fallback fired —
+ * enough for "did you also mean", too weak to print as the diagnosis, and
+ * `lookupErrorFix` puts the winner straight into build output.
+ */
+const MIN_CONFIDENT_SCORE = 10;
+
+/** Whole-word containment — 'table' must not match inside 'MyTableExtension'. */
+function containsWord(haystack: string, word: string): boolean {
+  if (!haystack) return false;
+  return new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(haystack);
+}
+
 function scoreError(entry: ErrorEntry, errorText: string, errorCode?: string): number {
   const lowerText = errorText.toLowerCase();
   const lowerCode = (errorCode ?? '').toLowerCase();
@@ -348,7 +436,7 @@ function scoreError(entry: ErrorEntry, errorText: string, errorCode?: string): n
     // Partial match fallback on significant words only; multi-word patterns need
     // at least 2 matched words so one shared generic term can't cause a false match.
     const words = pattern.split(/\s+/).filter(isSignificantWord);
-    const matchedWords = words.filter(w => lowerText.includes(w) || lowerCode.includes(w));
+    const matchedWords = words.filter(w => containsWord(lowerText, w) || containsWord(lowerCode, w));
     const meetsThreshold = words.length <= 1 ? matchedWords.length === 1 : matchedWords.length >= 2;
     if (meetsThreshold) {
       score += matchedWords.length * 2;
@@ -391,7 +479,7 @@ function formatEntry(entry: ErrorEntry, context?: string): string {
 export function lookupErrorFix(errorText: string): { title: string; fix: string[] } | undefined {
   const scored = ERROR_DB
     .map(entry => ({ entry, score: scoreError(entry, errorText, undefined) }))
-    .filter(s => s.score > 0)
+    .filter(s => s.score >= MIN_CONFIDENT_SCORE)
     .sort((a, b) => b.score - a.score);
   if (scored.length === 0) return undefined;
   return { title: scored[0].entry.title, fix: scored[0].entry.fix };
@@ -408,12 +496,20 @@ export function d365foErrorHelpTool(request: CallToolRequest) {
       .filter(s => s.score > 0)
       .sort((a, b) => b.score - a.score);
 
-    if (scored.length === 0) {
+    // Below the threshold nothing matched on more than a stray shared word;
+    // list the near-misses as near-misses rather than dressing one up as the
+    // diagnosis.
+    if (scored.length === 0 || scored[0].score < MIN_CONFIDENT_SCORE) {
+      const guesses = scored
+        .slice(0, 3)
+        .map(s => `- **${s.entry.title}** (weak match — shared wording only)`)
+        .join('\n');
       return {
         content: [{
           type: 'text' as const,
           text:
             `❌ No matching error pattern found for:\n\n> ${errorText}\n\n` +
+            (guesses ? `_Nothing scored as a real match. Closest entries, none confirmed:_\n${guesses}\n\n` : '') +
             `**Suggestions:**\n` +
             `- Try searching the error code in Microsoft docs: https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/\n` +
             `- Use get_knowledge(kind="knowledge") with the relevant topic (e.g. "transactions", "coc", "query-patterns")\n` +

@@ -120,7 +120,24 @@ describe('COC004 — next must be unconditional', () => {
     expect(rules(code)).toEqual([]);
   });
 
-  it('flags enum2str in the downgrade message the run shipped (BP005)', () => {
+  it('flags an untranslated enum SYMBOL in the downgrade message (BP005)', () => {
+    const code = coc(`    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+        if (!ret)
+        {
+            ret = checkFailed(strFmt("@AslFinSK:Downgrade", enum2Symbol(enumNum(AslFinSK_QualityTier), enum2int(this.orig().AslFinSK_QualityTier))));
+        }
+        return ret;
+    }`);
+
+    const bp005 = runRules(code, 'xpp').filter(v => v.rule === 'BP005');
+    expect(bp005).toHaveLength(1);
+    expect(bp005[0].fix).toContain('enum2str(value)');
+  });
+
+  // This rule used to reject it and send the caller to the reflective DictEnum form.
+  it('leaves enum2str in the downgrade message alone', () => {
     const code = coc(`    public boolean validateWrite()
     {
         boolean ret = next validateWrite();
@@ -131,16 +148,14 @@ describe('COC004 — next must be unconditional', () => {
         return ret;
     }`);
 
-    const bp005 = runRules(code, 'xpp').filter(v => v.rule === 'BP005');
-    expect(bp005).toHaveLength(1);
-    expect(bp005[0].fix).toContain('value2Label');
+    expect(runRules(code, 'xpp').filter(v => v.rule === 'BP005')).toEqual([]);
   });
 
-  it('leaves enum2str alone outside a user-facing message', () => {
+  it('leaves a symbol alone outside a user-facing message', () => {
     const code = coc(`    public boolean validateWrite()
     {
         boolean ret = next validateWrite();
-        str key = enum2str(this.AslFinSK_QualityTier);
+        str key = enum2Symbol(enumNum(AslFinSK_QualityTier), enum2int(this.AslFinSK_QualityTier));
         return ret;
     }`);
 

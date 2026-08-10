@@ -50,12 +50,16 @@ import { enforceGrounding } from '../../utils/provenanceStore.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import {
   checkAddControlAgainstParentPattern,
+  checkAddControlAgainstDataGroup,
+  findDataGroupRenderers,
   isFormPatternEnforceEnabled,
 } from '../analysis/validateFormPattern.js';
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
+import { validateWrittenXpp } from './inlineXppValidation.js';
+import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import {
   getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
   findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
@@ -64,8 +68,9 @@ import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
 import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
 import {
-  crossModelWriteRefusal, baseObjectOf, type ExistingExtension,
+  crossModelWriteRefusal, standDownNotice, baseObjectOf, type ExistingExtension,
 } from '../../utils/crossModelWriteGuard.js';
+import { resolveAnchorModel } from './writeAnchorGuard.js';
 
 
 /**
@@ -281,6 +286,131 @@ function serializedOnFile<A extends unknown[], R>(
   fn: (filePath: string, ...args: A) => Promise<R>,
 ): (filePath: string, ...args: A) => Promise<R> {
   return (filePath, ...args) => withFileLock(filePath, () => fn(filePath, ...args));
+}
+
+/** File content, CRLF- and BOM-normalised, for matching caller-supplied X++ against. */
+async function readForMatching(filePath: string): Promise<string | null> {
+  try {
+    return (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  } catch {
+    return null;
+  }
+}
+
+/** 1-based line numbers at which `needle` occurs in `content`. */
+function occurrenceLines(content: string, needle: string): number[] {
+  const lines: number[] = [];
+  let from = 0;
+  for (;;) {
+    const at = content.indexOf(needle, from);
+    if (at === -1) return lines;
+    lines.push(content.slice(0, at).split('\n').length);
+    from = at + Math.max(needle.length, 1);
+  }
+}
+
+/**
+ * Refuse a replace-code that cannot mean what the caller intends.
+ *
+ * The bridge edits with .NET `String.Replace` (MetadataWriteService.ReplaceIn
+ * Methods) — replace-ALL, no count, no echo. Two failure modes are decidable
+ * from the file first: oldCode matching more than once, and an edit whose
+ * newCode is already present and contains oldCode (oldCode="checkFailed",
+ * newCode="this.checkFailed" over `this.checkFailed` yields
+ * `this.this.checkFailed`).
+ *
+ * Returns null to proceed, `noop` when the file is already in the requested
+ * state, `refuse` when the call is ambiguous.
+ */
+export interface ReplaceCodeVerdict {
+  kind: 'noop' | 'refuse';
+  message: string;
+}
+
+export function preflightReplaceCode(
+  content: string,
+  oldCode: string,
+  newCode: string,
+): ReplaceCodeVerdict | null {
+  const normOld = oldCode.replace(/\r\n/g, '\n');
+  const normNew = newCode.replace(/\r\n/g, '\n');
+  if (normOld.length === 0) return null;
+
+  const hits = occurrenceLines(content, normOld);
+
+  if (hits.length === 0) {
+    // Not an error here — the bridge may still reach source this file-level view
+    // cannot (form control overrides). But if the intended result is already
+    // present, say THAT instead of letting "oldCode not found" imply the opposite.
+    if (normNew.length > 0 && content.includes(normNew)) {
+      return {
+        kind: 'noop',
+        message:
+          `Nothing to do — the file already contains newCode ` +
+          `(line ${occurrenceLines(content, normNew)[0]}), and oldCode is not present. ` +
+          `This edit has already been applied; do not retry it.`,
+      };
+    }
+    return null;
+  }
+
+  if (normNew.includes(normOld) && content.includes(normNew)) {
+    return {
+      kind: 'noop',
+      message:
+        `Nothing to do — this edit is already applied, and repeating it would nest the text.\n` +
+        `   oldCode  : ${JSON.stringify(normOld)}\n` +
+        `   newCode  : ${JSON.stringify(normNew)}\n` +
+        `newCode is already in the file at line ${occurrenceLines(content, normNew)[0]}, and oldCode is a ` +
+        `substring of it — so the ${hits.length} "match(es)" found ARE the newCode occurrence(s). ` +
+        `Applying it would produce ${JSON.stringify(normNew.replace(normOld, normNew))}.\n` +
+        `If you meant a different edit, pass a full-line oldCode with enough surrounding text to be unambiguous.`,
+    };
+  }
+
+  if (hits.length > 1) {
+    return {
+      kind: 'refuse',
+      message:
+        `⛔ replace-code refused — oldCode matches ${hits.length} times (lines ${hits.join(', ')}).\n` +
+        `The bridge replaces EVERY occurrence, so this would edit all ${hits.length} of them. ` +
+        `Extend oldCode with surrounding lines until it identifies exactly one site, or scope the call ` +
+        `with methodName="<method>".`,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * The lines a write changed, with context, so seeing the result costs no
+ * read_file round trip.
+ */
+export function renderChangedLines(before: string, after: string, context = 3): string {
+  if (before === after) return '';
+  const b = before.split('\n');
+  const a = after.split('\n');
+
+  let head = 0;
+  while (head < b.length && head < a.length && b[head] === a[head]) head++;
+  let tail = 0;
+  while (
+    tail < b.length - head &&
+    tail < a.length - head &&
+    b[b.length - 1 - tail] === a[a.length - 1 - tail]
+  ) tail++;
+
+  const from = Math.max(0, head - context);
+  const to = Math.min(a.length, a.length - tail + context);
+  const shown = a.slice(from, to)
+    .map((line, i) => {
+      const no = from + i + 1;
+      const changed = no > head && no <= a.length - tail;
+      return `${changed ? '›' : ' '} ${String(no).padStart(4)} | ${line}`;
+    })
+    .join('\n');
+
+  return `\n\n**Result on disk** (› = changed):\n\`\`\`\n${shown}\n\`\`\``;
 }
 
 /**
@@ -1555,6 +1685,7 @@ const ModifyD365FileArgsSchema = z.object({
 });
 
 export async function modifyD365FileTool(request: CallToolRequest, context: XppServerContext) {
+  const timer = createPhaseTimer();
   try {
     const args = ModifyD365FileArgsSchema.parse(request.params.arguments);
 
@@ -1734,6 +1865,69 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       // null → form not found or no match; proceed with original value (compiler will catch it)
     }
 
+    // ── DataGroup pre-flight for add-control ──────────────────────────────────
+    // A parent carrying <DataGroup> is filled by the compiler from that table
+    // field group. A hand-added bound control there duplicates the generated
+    // one — an error that exists only after compilation, so it cannot be found
+    // by inspecting the XML on disk.
+    if (
+      operation === 'add-control' &&
+      (objectType === 'form' || objectType === 'form-extension') &&
+      args.parentControl &&
+      (args as any).controlDataField
+    ) {
+      const baseFormName =
+        objectType === 'form'
+          ? objectName
+          : ((args as any).baseFormName || objectName.split('.')[0]);
+      const baseXml = await findBaseFormXml(baseFormName, symbolIndex);
+      if (baseXml) {
+        const dgVerdict = await checkAddControlAgainstDataGroup(
+          baseXml,
+          args.parentControl,
+          (args as any).controlDataField,
+          (args as any).controlName,
+        );
+        if (dgVerdict) {
+          const field = (args as any).controlDataField;
+          const onTable = dgVerdict.dataSource ? ` on \`${dgVerdict.dataSource}\`` : '';
+          if (isFormPatternEnforceEnabled()) {
+            return {
+              content: [{
+                type: 'text',
+                text:
+                  `⛔ add-control blocked — parent control "${args.parentControl}" renders field group ` +
+                  `**${dgVerdict.dataGroup}**${onTable} via \`<DataGroup>\`.\n\n` +
+                  `The compiler generates one control per member of that field group, named ` +
+                  `\`${dgVerdict.generatedName}\`. Adding \`${field}\` to the field group AND an explicit ` +
+                  `control for it fails the build with "The duplicate name '${dgVerdict.generatedName}' ` +
+                  `was detected"` +
+                  (dgVerdict.exactNameCollision
+                    ? ` — and your \`controlName\` is exactly that generated name, so this is certain.\n\n`
+                    : `.\n\n`) +
+                  `That duplicate is NOT visible in the XML on disk — only one of the two controls is ` +
+                  `ever written to a file.\n\n` +
+                  `Do this instead:\n` +
+                  `  1. Add the field to the field group only — d365fo_file(action="modify", ` +
+                  `objectType="table-extension", operations=[{operation:"add-field-to-field-group", ` +
+                  `fieldGroupName:"${dgVerdict.dataGroup}", fieldName:"${field}", extendBaseFieldGroup:true}]). ` +
+                  `The control appears on the form by itself; no form extension is needed.\n` +
+                  `  2. Only if you need a different position, type or properties: keep this add-control, ` +
+                  `but remove ${field} from field group ${dgVerdict.dataGroup} first.\n` +
+                  `  3. Set FORM_PATTERN_ENFORCE=false to bypass this check.`,
+              }],
+              isError: true,
+            };
+          }
+          addControlNote +=
+            `\n\n> ⚠️ DataGroup warning: parent "${args.parentControl}" renders field group ` +
+            `${dgVerdict.dataGroup} via <DataGroup>, which generates \`${dgVerdict.generatedName}\`. ` +
+            `If ${field} is also in that field group the build fails with a duplicate-name error. ` +
+            `FORM_PATTERN_ENFORCE is disabled — proceeding anyway.`;
+        }
+      }
+    }
+
     // ── Form-pattern pre-flight for add-control ───────────────────────────────
     // When the parent container declares a sub-pattern (e.g. FieldsFieldGroups),
     // verify the new control's type is allowed there. Blocking when
@@ -1839,24 +2033,30 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     const owningModel = containment.modelSegment ?? null;
     // The write ANCHOR, not the active model: a get_workspace_info project switch
     // moves reads, and must not move what this guard measures writes against.
-    const activeModel = getConfigManager().getWriteAnchorModel() ?? '';
-    const crossModelRefusal = crossModelWriteRefusal({
+    // Resolved, not read synchronously: where the model comes only from the
+    // background .rnrproj scan, the sync getter can still be null here — and a
+    // null anchor makes the guard stand down.
+    const activeModel = await resolveAnchorModel(getConfigManager());
+    const crossModelCheck = {
       objectName,
       objectType,
       owningModel,
       owningPackage: containment.packageSegment ?? resolvedModelFromPath,
       activeModel,
       toolSwitchedModel: getConfigManager().getToolProjectSwitch()?.forcedModel ?? null,
-      action: 'modify',
+      action: 'modify' as const,
       existingExtensions: findExtensionsInModel(
         symbolIndex,
         baseObjectOf(objectName, objectType),
         activeModel,
       ),
-    });
+    };
+    const crossModelRefusal = crossModelWriteRefusal(crossModelCheck);
     if (crossModelRefusal) {
       throw new Error(crossModelRefusal);
     }
+    // Allowed, but possibly not into this model — see standDownNotice.
+    const crossModelNotice = standDownNotice(crossModelCheck);
 
     // 2. Resolve actual XML file path (DB may store JSON metadata with sourcePath)
     let actualFilePath = filePath;
@@ -1969,13 +2169,16 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // an object written moments ago resolves on the FIRST attempt. Without this the
     // retry loop below would still recover — at the cost of a wasted bridge round
     // trip plus a full rebuild. Free when no write is outstanding.
-    await debouncedRefresh.flush();
+    await timer.time('provider refresh (pending writes)', () => debouncedRefresh.flush());
 
     let bridgeResult: { success: boolean; message: string } | null = null;
+    /** File content captured before a replace-code, to diff the reply against. */
+    let replaceCodeBefore: string | null = null;
     let _bridgeRetried = false;
     // Retry loop: on the first null result with all required params present,
     // refresh the bridge provider (picks up objects created this session) and
     // re-run the operation once. Max 1 auto-refresh retry (_bridgeRetried guard).
+    const bridgeStartedAt = Date.now();
     _bridgeRetry: do {
       bridgeResult = null;
 
@@ -2688,6 +2891,26 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         }
         
         if (hasOldNew) {
+          // Decided before the bridge's replace-ALL semantics act on it.
+          const beforeContent = await readForMatching(actualFilePath);
+          if (beforeContent !== null) {
+            replaceCodeBefore = beforeContent;
+            const verdict = preflightReplaceCode(beforeContent, args.oldCode!, args.newCode!);
+            if (verdict?.kind === 'refuse') throw new Error(verdict.message);
+            if (verdict?.kind === 'noop') {
+              // An already-correct file is a success; "oldCode not found" would
+              // read as "the file is still wrong" and invite a retry.
+              return {
+                content: [{
+                  type: 'text',
+                  text:
+                    `✅ ${operation} on ${objectType} "${objectName}" — no change needed.\n\n` +
+                    `**File:** ${actualFilePath}\n${verdict.message}`,
+                }],
+              };
+            }
+          }
+
           // Try bridge first
           bridgeResult = await bridgeReplaceCode(
             context.bridge,
@@ -2770,21 +2993,27 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
                  symbolIndex?.getReadDb?.(),
                )
             ?? 'String';
-          bridgeResult = await bridgeAddControl(
-            context.bridge,
-            objectName,
-            (args as any).controlName,
-            (args as any).parentControl,
-            resolvedControlType,
-            (args as any).controlDataSource,
-            (args as any).controlDataField,
-            (args as any).controlLabel,
-          );
-          // Fallback: the bridge's AddControl resolves its target via _provider.Forms,
-          // which can never find a form EXTENSION (named "Base.Suffix") — it always
-          // reports 'Form "<ext>" not found', regardless of metadata-root freshness.
-          // For form extensions, write the control element straight into the XML.
-          if (objectType === 'form-extension' && (!bridgeResult || !bridgeResult.success)) {
+          // The bridge's AddControl resolves its target via _provider.Forms, which
+          // never contains a form EXTENSION (keyed "Base.Suffix" in FormExtensions).
+          // Calling it would always fail with 'Form "<ext>" not found' and log a
+          // bridge error for a call that cannot succeed, so extensions go straight
+          // to the XML writer. Metadata-root freshness is not a factor either way.
+          const isFormExtension = objectType === 'form-extension';
+
+          if (!isFormExtension) {
+            bridgeResult = await bridgeAddControl(
+              context.bridge,
+              objectName,
+              (args as any).controlName,
+              (args as any).parentControl,
+              resolvedControlType,
+              (args as any).controlDataSource,
+              (args as any).controlDataField,
+              (args as any).controlLabel,
+            );
+          }
+
+          if (isFormExtension && (!bridgeResult || !bridgeResult.success)) {
             const xmlFallbackResult = await directXmlAddControl(
               actualFilePath,
               (args as any).controlName,
@@ -2918,6 +3147,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // condition is deliberately unconditional.
     // biome-ignore lint/correctness/noConstantCondition: labelled retry loop, exits via break
     } while (true); // end of retry loop
+    timer.add(`C# bridge ${operation}`, Date.now() - bridgeStartedAt);
 
     if (!bridgeResult!.success) {
       // Surface the real bridge error. For an object-resolution failure keep the
@@ -3001,8 +3231,22 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // Advisory X++ select-statement lint on the source just written (add-method /
     // replace-code etc.). Non-blocking: surfaces a likely "WHERE after join" mistake
     // up front instead of letting it become a build error the agent hunts by hand.
-    const xppLintWarnings = lintXppSelect(args.sourceCode ?? (args as any).methodCode ?? args.newCode);
+    const writtenXpp = args.sourceCode ?? (args as any).methodCode ?? args.newCode;
+    const xppLintWarnings = lintXppSelect(writtenXpp);
     const xppLintNote = xppLintWarnings.length > 0 ? `\n\n${xppLintWarnings.join('\n\n')}` : '';
+
+    // One read back of what is now on disk, used for both of the notes below.
+    const afterContent = writtenXpp || replaceCodeBefore !== null
+      ? await readForMatching(actualFilePath)
+      : null;
+
+    // The offline rule set on the same text. The object's <Declaration> supplies
+    // the class header a method snippet lacks; without it, fewer rules apply.
+    const xppRuleNote = writtenXpp ? validateWrittenXpp(writtenXpp, afterContent) : '';
+
+    const changedLinesNote = replaceCodeBefore !== null && afterContent !== null
+      ? renderChangedLines(replaceCodeBefore, afterContent)
+      : '';
 
     // Two BP rules fire on a field that compiles perfectly, so they are invisible
     // until a BP run several steps later — and one of them (the label copy) then
@@ -3036,6 +3280,23 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       addFieldBpNote = notes.length > 0 ? `\n\n${notes.join('\n')}` : '';
     }
 
+    // A field group already rendered on a form via <DataGroup> puts the field on
+    // that form by itself — said now, before a form extension gets created for it.
+    let fieldGroupRenderNote = '';
+    if (
+      operation === 'add-field-to-field-group' &&
+      (objectType === 'table' || objectType === 'table-extension') &&
+      (args as any).fieldGroupName && args.fieldName
+    ) {
+      fieldGroupRenderNote = await timer.time('field-group render probe', () =>
+        describeFieldGroupRendering(
+          objectType === 'table' ? objectName : objectName.split('.')[0],
+          (args as any).fieldGroupName,
+          args.fieldName!,
+          symbolIndex,
+        ));
+    }
+
     // Corrections the server applied on its own. Kept in the payload so the agent
     // learns the correct form for next time and the write stays auditable.
     const autoCorrectNote = autoCorrectNotes.length > 0
@@ -3048,7 +3309,8 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // making the agent spend a round trip on update_symbol_index for a file this
     // process just wrote, and another on the lookup that failed for want of it,
     // was pure waste.
-    const indexNote = await upsertWrittenFileIntoIndex(actualFilePath, context);
+    const indexNote = await timer.time('symbol index upsert',
+      () => upsertWrittenFileIntoIndex(actualFilePath, context));
 
     // Verify the write here rather than leaving the caller to spend a
     // verify_d365fo_project round trip asking what this call already knows.
@@ -3058,22 +3320,23 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     const verifyProjectPath =
       args.projectPath || (await getConfigManager().getProjectPath()) || undefined;
     const verifyNote = renderWriteVerification(
-      await verifyWrittenFile(
+      await timer.time('write verification', () => verifyWrittenFile(
         actualFilePath,
         verifyProjectPath,
         membershipOf(objectType, objectName, modelName || getConfigManager().getModelName()),
-      ),
+      )),
     );
-    const bpNote = await runInlineBpCheck((args as any).bpCheck, objectType, objectName, context);
+    const bpNote = await timer.time('inline BP check',
+      () => runInlineBpCheck((args as any).bpCheck, objectType, objectName, context));
 
     return {
       content: [
         {
           type: 'text',
           text:
-            `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${autoCorrectNote}\n\n` +
+            `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${crossModelNotice}${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}${verifyNote}${indexNote}${bpNote}` +
+            `🔧 API: ${bridgeResult.message}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${backupNote}${verifyNote}${indexNote}${bpNote}${timer.render()}` +
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
         },
@@ -3709,6 +3972,70 @@ function isBaseFieldGroupMissError(message: string | undefined): boolean {
   if (!message) return false;
   return /field group .* not found on table-extension/i.test(message)
     && /extendBaseFieldGroup=true/i.test(message);
+}
+
+/** How many forms on the base table are opened looking for a <DataGroup> renderer. */
+const DATA_GROUP_FORM_PROBE_LIMIT = 3;
+
+/**
+ * Note for a successful add-field-to-field-group: is this field group already
+ * rendered on a form through a container's <DataGroup>?
+ *
+ * If it is, the compiler puts the new field on that form by itself and any
+ * hand-added control for it collides with the generated one. The add-control
+ * guard says the same thing, but only once a form extension exists and a control
+ * is being added to it — a create that then has to be undone. Said here it costs
+ * one indexed lookup.
+ *
+ * Returns '' on any miss — no form on the table, no container with that
+ * DataGroup, an unreadable form, a database that cannot answer — which leaves
+ * the reactive guard exactly as it was.
+ */
+export async function describeFieldGroupRendering(
+  baseTableName: string,
+  groupName: string,
+  fieldName: string,
+  symbolIndex: any,
+): Promise<string> {
+  try {
+    const rdb = symbolIndex?.getReadDb?.();
+    if (!rdb) return '';
+
+    // BINARY probe on idx_form_datasources_table first; table_name casing comes
+    // from the form XML, so fall back to NOCASE only when that misses
+    // (form_datasources is small — the scan is cheap).
+    const sql = (collate: string) =>
+      `SELECT DISTINCT form_name, datasource_name FROM form_datasources ` +
+      `WHERE table_name = ?${collate} LIMIT ${DATA_GROUP_FORM_PROBE_LIMIT}`;
+    let rows = rdb.prepare(sql('')).all(baseTableName) as
+      Array<{ form_name: string; datasource_name: string }>;
+    if (rows.length === 0) {
+      rows = rdb.prepare(sql(' COLLATE NOCASE')).all(baseTableName) as typeof rows;
+    }
+
+    for (const row of rows) {
+      const xml = await findBaseFormXml(row.form_name, symbolIndex);
+      if (!xml) continue;
+      const renderers = await findDataGroupRenderers(xml, groupName);
+      // A container bound to a different datasource renders a different table's
+      // group of the same name — not this field's.
+      const hit = renderers.find(
+        r => !r.dataSource || r.dataSource.toLowerCase() === row.datasource_name.toLowerCase(),
+      );
+      if (!hit) continue;
+
+      return (
+        `\n\n🖼️ Form \`${row.form_name}\` renders field group **${groupName}** via ` +
+        `\`<DataGroup>\` on control "${hit.controlName}" — the compiler generates ` +
+        `\`${hit.generatedNameFor(fieldName)}\` for this field, so **it is already on the form**. ` +
+        `Do not create a form extension or an add-control for it: that control and the ` +
+        `generated one collide as a duplicate name, which only the build reports.`
+      );
+    }
+  } catch {
+    // A hint must never be the reason a successful write reports failure.
+  }
+  return '';
 }
 
 /** True when the base table's own <FieldGroups> defines `groupName`. */

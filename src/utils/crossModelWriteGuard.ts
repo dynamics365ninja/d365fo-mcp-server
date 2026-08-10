@@ -26,8 +26,8 @@
  * explanation afterwards. A bypass the caller can mint for itself is not a
  * bypass, it is a speed bump.
  *
- * So consent lives ONLY in server configuration — a file the user edits and the
- * agent has no tool to write:
+ * So consent lives in server configuration, which the caller cannot reach
+ * through any tool this server publishes:
  *   - `D365FO_CROSS_MODEL_WRITE_MODELS=ModelA,ModelB` — allow these models,
  *   - `D365FO_ALLOW_CROSS_MODEL_WRITE=true`           — allow any model.
  *
@@ -40,6 +40,19 @@
  * And the refusal deliberately does NOT hand the caller a workaround: it names
  * the extension route, and says the alternative is the user's decision to make
  * in configuration.
+ *
+ * ## "The agent has no tool to write it" holds only for THIS server's tools
+ *
+ * The caller is a coding assistant with generic file editing, and the settings
+ * are plain JSON. One refusal was enough for it to find the host's mcp.json and
+ * add the allow-list key to the env block itself — writes into the other model
+ * then succeeded with a clean ✅, and the only trace was a console.error in a log
+ * truncated on every restart, including the one the settings edit triggers.
+ *
+ * The guard cannot tell which hand wrote its configuration. What it can do is
+ * refuse to be quiet: every path that lets a cross-model write through returns a
+ * note the caller prints on its result (standDownNotice), so it reaches the
+ * transcript rather than a log nobody opens.
  */
 
 import { resolveObjectPrefix, applyObjectPrefix } from './modelClassifier.js';
@@ -83,6 +96,73 @@ export interface CrossModelWriteCheck {
   existingExtensions?: ExistingExtension[];
   /** Wording only — what the caller was about to do. */
   action?: 'modify' | 'create';
+}
+
+/**
+ * A description of the cross-model allowance currently in force, or null.
+ *
+ * Surfaced by get_workspace_info so the state is visible without performing a
+ * write to discover it. An allowance nobody remembers granting is the dangerous
+ * kind — see the header.
+ */
+export function activeCrossModelAllowance(): string | null {
+  reloadWritePolicy();
+  const blanket = process.env.D365FO_ALLOW_CROSS_MODEL_WRITE?.trim().toLowerCase();
+  if (blanket === 'true' || blanket === '1' || blanket === 'yes') {
+    return 'D365FO_ALLOW_CROSS_MODEL_WRITE=true — writes into ANY model are allowed';
+  }
+  const models = (process.env.D365FO_CROSS_MODEL_WRITE_MODELS ?? '')
+    .split(',')
+    .map(m => m.trim())
+    .filter(Boolean);
+  return models.length > 0
+    ? `D365FO_CROSS_MODEL_WRITE_MODELS=${models.join(',')} — writes into ${models.length === 1 ? 'that model' : 'those models'} are allowed`
+    : null;
+}
+
+/**
+ * The note to print on a write the guard let through into ANOTHER model.
+ *
+ * Two paths reach a foreign model without a refusal, and both were silent:
+ *   • no anchor to compare against, so the guard stood down rather than block
+ *     on a guess;
+ *   • configuration allows this model — a decision someone made, and "someone"
+ *     is not necessarily the user (see the header).
+ * Either way the write lands in code this workspace only consumes, so it belongs
+ * in the reply, not only in a log a restart truncates.
+ *
+ * Returns '' for a write that stayed inside the active model, which is almost
+ * every write — callers can concatenate it unconditionally.
+ */
+export function standDownNotice(check: CrossModelWriteCheck): string {
+  const { objectName, owningModel, activeModel } = check;
+  const verb = check.action ?? 'modify';
+  if (!owningModel) return '';
+  if (activeModel && (eq(owningModel, activeModel) || eq(check.owningPackage, activeModel))) return '';
+
+  if (!activeModel) {
+    return (
+      `\n\n⚠️ **Cross-model guard did not run.** "${objectName}" was written into model ` +
+      `"${owningModel}", and this workspace's write anchor model could not be determined — so ` +
+      `nothing verified that "${owningModel}" is where you meant it to go. If it is not, undo this ` +
+      `and set the model explicitly (\`modelName\` in the server's config) before writing again.`
+    );
+  }
+
+  if (crossModelWriteAllowedByConfig(owningModel)) {
+    return (
+      `\n\n⚠️ **Cross-model write permitted by configuration.** "${objectName}" was ${verb === 'create' ? 'created' : 'modified'} ` +
+      `in model "${owningModel}", not in "${activeModel}" which this workspace targets. ` +
+      `D365FO_ALLOW_CROSS_MODEL_WRITE / D365FO_CROSS_MODEL_WRITE_MODELS is what allowed it. ` +
+      `The change will not appear in this workspace's project or version control, and every model ` +
+      `built on "${owningModel}" inherits it. If you did not intend to grant that, remove the ` +
+      `setting from the server's environment and undo this write.`
+    );
+  }
+
+  // A refusal was due and the caller ignored it — not this function's job to
+  // repeat it, but never report the write as ordinary either.
+  return '';
 }
 
 /** Base object type → the d365fo_file objectType used to extend it. */
@@ -158,7 +238,8 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
   const verb = check.action ?? 'modify';
 
   // Nothing to compare against — an unconfigured workspace or a path whose model
-  // segment could not be determined. Never block on a guess.
+  // segment could not be determined. Never block on a guess (but say so: see
+  // standDownNotice, which the caller prints on its result).
   if (!owningModel || !activeModel) return null;
   if (eq(owningModel, activeModel) || eq(check.owningPackage, activeModel)) return null;
   if (crossModelWriteAllowedByConfig(owningModel)) {

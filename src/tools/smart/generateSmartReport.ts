@@ -332,7 +332,7 @@ export async function handleGenerateSmartReport(
   // See generateSmartTable: the resolved model follows the ACTIVE project, the
   // write anchor does not. A report scaffold writes several objects at once, so
   // this is checked before any of them exists.
-  const anchorRefusal = scaffoldWriteRefusalResult({
+  const anchorRefusal = await scaffoldWriteRefusalResult({
     objectName: finalName,
     objectType: 'report',
     targetModel: resolvedModel,

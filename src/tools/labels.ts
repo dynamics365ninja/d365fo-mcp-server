@@ -14,7 +14,10 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { searchLabelsTool, REUSABLE_MARKER, NO_REUSE_ADVICE } from './analysis/searchLabels.js';
+import {
+  searchLabelsTool, REUSABLE_MARKER, NO_HITS_MARKER, NO_REUSE_ADVICE, SOME_REUSE_ADVICE,
+} from './analysis/searchLabels.js';
+import { repeatSearchNotice } from './analysis/labelSearchHistory.js';
 import { getLabelInfoTool } from './readers/getLabelInfo.js';
 import { createLabelTool } from './write/createLabel.js';
 import { renameLabelTool } from './write/renameLabel.js';
@@ -235,7 +238,24 @@ async function batchSearch(
   const failed = runs.filter(r => r.failed);
   const searched = runs.length - failed.length;
   const foundReusable = runs.some(r => !r.failed && r.text.includes(REUSABLE_MARKER));
-  const sections = runs.map(r => `## "${r.query}"${r.failed ? ' — ❌ SEARCH FAILED' : ''}\n\n${r.text}`);
+
+  // A miss carries one bit of information wrapped in the same "create your own
+  // label" paragraph as every other miss, so a batch of them buries both the
+  // verdict and any section that DID hit. Name the misses in a line; keep the
+  // full section for the runs that carry something — hits and failures.
+  const missed = runs.filter(r => !r.failed && r.text.includes(NO_HITS_MARKER));
+  const missedSet = new Set(missed.map(r => r.query));
+  const sections = runs
+    .filter(r => !missedSet.has(r.query))
+    .map(r => `## "${r.query}"${r.failed ? ' — ❌ SEARCH FAILED' : ''}\n\n${r.text}`);
+  if (missed.length > 0) {
+    sections.push(
+      `## No match — ${missed.length} phrasing(s)\n\n` +
+      `${missed.map(r => `"${r.query}"`).join(' · ')}\n\n` +
+      `Nothing in the index matches any of them. The advice below is the same for all of them, ` +
+      `so it is stated once.`,
+    );
+  }
 
   const notes = [
     duplicates > 0 ? `${duplicates} duplicate phrasing(s) folded` : '',
@@ -258,13 +278,24 @@ async function batchSearch(
       `This says nothing about whether a reusable label exists; fix the error and search again ` +
       `rather than creating a label on the strength of this answer.\n`
     : foundReusable
-      ? `**Verdict:** at least one reusable label was found — see the section(s) marked "${REUSABLE_MARKER}".\n`
+      // "Reusable" only ever meant "this model can resolve it" — the index
+      // matches words, not meaning. Overstating that sent callers back to
+      // rephrase and search again, so the verdict states what was established
+      // and carries the create call.
+      ? `**Verdict:** ${searched} search(es) ran and at least one label this model can resolve came back — ` +
+        `see the section(s) marked "${REUSABLE_MARKER}". Read the TEXT of those hits before adopting one: ` +
+        `the index matches wording, not meaning, so a hit is a candidate, not a verdict. ` +
+        `If none of them says what you need, do NOT rephrase and search again — nothing new will surface.\n` +
+        `\n${SOME_REUSE_ADVICE}`
       : `**Verdict:** none of these ${searched} phrasings found a label this model can resolve. ` +
         `Stop searching and create your own.\n` +
         (failed.length > 0
           ? `\n⚠️ ${failed.length} of ${runs.length} searches FAILED and were not part of that verdict: ` +
             `${failed.map(f => `"${f.query}"`).join(', ')}.\n`
           : '') +
+        // Excludes this batch's own phrasings — they are the current answer, not
+        // evidence of repetition. What is left is what earlier calls already asked.
+        (repeatSearchNotice(queries) ? `\n${repeatSearchNotice(queries)}` : '') +
         `\n${NO_REUSE_ADVICE}`;
 
   return {

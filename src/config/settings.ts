@@ -635,6 +635,18 @@ export const SETTINGS: Setting[] = [
     description: 'A lock older than this is treated as left behind by a crashed process and broken.',
     default: 1200000,
   },
+  {
+    path: 'server.slowCallLogMs',
+    env: 'SLOW_CALL_LOG_MS',
+    section: 'server',
+    tier: 'advanced',
+    type: 'int',
+    label: 'Log a tool call slower than (ms)',
+    description:
+      'Writes one line per tool call that exceeds this, with the tool name and a short argument digest. ' +
+      'Aggregate metrics cannot say which specific call cost five minutes; this can. Set LOG_FILE to keep the lines.',
+    default: 10000,
+  },
 
   // ── bridge ───────────────────────────────────────────────────────────────
   {

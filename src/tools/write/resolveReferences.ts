@@ -62,6 +62,7 @@ export interface ReferenceViolation {
     | 'unknown-method'
     | 'unknown-field'
     | 'unknown-label'
+    | 'label-placeholder-mismatch'
     | 'unknown-intrinsic-target'
     | 'arity-mismatch'
     | 'not-visible-from-model';
@@ -88,7 +89,7 @@ export interface ResolverDeps {
   getLabelById(
     labelId: string,
     labelFileId?: string,
-  ): Array<{ labelId: string; labelFileId: string }>;
+  ): Array<{ labelId: string; labelFileId: string; language?: string; text?: string }>;
   getLabelFileIds(): Array<{ labelFileId: string }>;
   /**
    * Optional Descriptor-backed answer to "may the target model see this type?".
@@ -651,8 +652,11 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     const legacy = s.value.match(/^@([A-Z]{2,4}\d+)$/);
     if (modern) {
       const [, fileId, labelId] = modern;
-      if (deps.getLabelById(labelId, fileId).length > 0) {
+      const hits = deps.getLabelById(labelId, fileId);
+      if (hits.length > 0) {
         verifiedCount++;
+        const v = checkLabelPlaceholders(hits, `@${fileId}:${labelId}`, cleaned, s.index, code);
+        if (v) violations.push(v);
       } else {
         // Known label file with missing id is an error; unknown file is a warning.
         const fileKnown = labelFileExists(deps, fileId);
@@ -905,6 +909,108 @@ export function resolverModelVisibility(): ModelVisibility | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A label's %n placeholders against the arguments the call site supplies.
+ *
+ * Both directions are silent at compile time and wrong at runtime: a label with
+ * %1 used without strFmt shows the user a literal "%1", and arguments passed to
+ * a label that has no placeholders are discarded.
+ */
+function checkLabelPlaceholders(
+  hits: Array<{ language?: string; text?: string }>,
+  identifier: string,
+  cleaned: string,
+  index: number,
+  code: string,
+): ReferenceViolation | null {
+  const preferred = hits.find(h => h.language?.toLowerCase() === 'en-us') ?? hits[0];
+  if (!preferred?.text) return null;
+
+  const needed = placeholderCount(preferred.text);
+  const supplied = strFmtArgs(cleaned, index);
+  const line = lineOf(code, index);
+  const quoted = `"${preferred.text}"`;
+
+  if (needed === 0 && supplied !== null && supplied > 0) {
+    return {
+      kind: 'label-placeholder-mismatch',
+      severity: 'error',
+      line,
+      identifier,
+      detail:
+        `${identifier} is ${quoted} — no %1 placeholder, so the ${supplied} strFmt argument(s) are discarded. ` +
+        `Drop strFmt, or add %1…%${supplied} to the label text with labels(action="update").`,
+    };
+  }
+  if (needed > 0 && supplied === null) {
+    return {
+      kind: 'label-placeholder-mismatch',
+      severity: 'error',
+      line,
+      identifier,
+      detail:
+        `${identifier} is ${quoted} — it takes ${needed} argument(s) and must be wrapped: ` +
+        `strFmt("${identifier}", …). Used bare, the user sees the literal %1.`,
+    };
+  }
+  if (needed > 0 && supplied !== null && supplied !== needed) {
+    return {
+      kind: 'label-placeholder-mismatch',
+      severity: 'error',
+      line,
+      identifier,
+      detail:
+        `${identifier} is ${quoted} — it takes ${needed} argument(s), strFmt supplies ${supplied}.`,
+    };
+  }
+  return null;
+}
+
+/** Highest %n in a label's text; 0 when it takes no arguments. */
+function placeholderCount(text: string): number {
+  let max = 0;
+  for (const m of text.matchAll(/%(\d+)/g)) max = Math.max(max, Number(m[1]));
+  return max;
+}
+
+/**
+ * How a label literal at `index` is being passed: as strFmt's format argument,
+ * and if so with how many further arguments.
+ *
+ * Scans backwards for the nearest unclosed `(` chain, so `checkFailed(strFmt(@X,
+ * a, b))` reports the strFmt, not the checkFailed. `literalStr(@X)` is
+ * transparent — it wraps the literal without changing who receives it.
+ */
+function strFmtArgs(cleaned: string, index: number): number | null {
+  let depth = 0;
+  let i = index - 1;
+  for (; i >= 0; i--) {
+    const c = cleaned[i];
+    if (c === ')') depth++;
+    else if (c === '(') {
+      if (depth === 0) break;
+      depth--;
+    }
+  }
+  if (i < 0) return null;
+
+  const callee = /([A-Za-z_]\w*)\s*$/.exec(cleaned.slice(0, i));
+  if (!callee) return null;
+  if (/^literalStr$/i.test(callee[1])) return strFmtArgs(cleaned, callee.index);
+  if (!/^strFmt$/i.test(callee[1])) return null;
+
+  // Commas at this call's own depth, from the format argument to the close.
+  let args = 0;
+  let d = 0;
+  for (let k = i + 1; k < cleaned.length; k++) {
+    const c = cleaned[k];
+    if (c === '(') d++;
+    else if (c === ')') { if (d === 0) break; d--; }
+    else if (c === ',' && d === 0) args++;
+  }
+  return args;
 }
 
 /** True when the label file id is present in the labels index. */

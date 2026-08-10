@@ -169,25 +169,67 @@ describe('enum create — which writer runs', () => {
     for (const v of POSITIONAL) expect(xml).toContain(`<Name>${v.name}</Name>`);
   });
 
-  it('leaves an unnumbered enum on the bridge', async () => {
-    // Nothing to suppress, so the exception does not apply and the normal
-    // bridge-first path stands.
-    await handleCreateD365File(
-      req({ enumValues: [{ name: 'None' }, { name: 'Silver' }] }, 'ConDemoTierPlain'),
+  it('routes an UNNUMBERED list to the generator too, and writes UseEnumValue', async () => {
+    // The shape that used to stay on the bridge, and the one it cannot survive:
+    // with no `useEnumValue` scalar the bridge emits no <UseEnumValue> at all,
+    // xppc reads the absent element as Yes, and every member without an explicit
+    // <Value> is 0 — "Duplicate value '0' detected", on the full build only.
+    // Positions decide here, so the file must carry UseEnumValue=No and no <Value>.
+    const result = await handleCreateD365File(
+      req({ enumValues: [{ name: 'None' }, { name: 'Silver' }, { name: 'Gold' }] }, 'ConDemoTierPlain'),
       buildContext(),
     );
 
-    expect(createObject).toHaveBeenCalledTimes(1);
+    expect(createObject).not.toHaveBeenCalled();
+    const xml = [...files.values()].join('\n');
+    expect(result.content[0].text).toContain('Successfully created');
+    expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
+    expect(xml).not.toContain('<Value>');
+    for (const n of ['None', 'Silver', 'Gold']) expect(xml).toContain(`<Name>${n}</Name>`);
   });
 
-  it('passes the aliased list to the bridge as well, when the bridge is the writer', async () => {
-    await handleCreateD365File(
+  it('writes every value of an unnumbered list spelled `values`', async () => {
+    const result = await handleCreateD365File(
       req({ values: [{ name: 'None' }, { name: 'Silver' }] }, 'ConDemoTierPlainAlias'),
       buildContext(),
     );
 
+    expect(createObject).not.toHaveBeenCalled();
+    const xml = [...files.values()].join('\n');
+    expect(result.content[0].text).toContain('Successfully created');
+    expect(xml).not.toContain('<EnumValues />');
+    expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
+    for (const n of ['None', 'Silver']) expect(xml).toContain(`<Name>${n}</Name>`);
+  });
+
+  it('leaves an enum with NO values on the bridge — the one shape it cannot get wrong', async () => {
+    await handleCreateD365File(req({ label: '@SYS1' }, 'ConDemoTierEmpty'), buildContext());
+
     expect(createObject).toHaveBeenCalledTimes(1);
-    const params = createObject.mock.calls[0][0] as any;
-    expect(params.values).toHaveLength(2);
+  });
+});
+
+/** IsExtensible=Yes and ranking the values are mutually exclusive, and only the build says so. */
+describe('enum create — extensibility vs ordering', () => {
+  it('warns that an extensible enum can only be compared for equality', async () => {
+    const result = await handleCreateD365File(
+      req({ isExtensible: true, enumValues: POSITIONAL }, 'ConDemoTierExt'),
+      buildContext(),
+    );
+
+    const text = result.content[0].text as string;
+    expect(text).toContain('Successfully created');
+    expect(text).toContain('IsExtensible=true');
+    expect(text).toMatch(/non-equality comparison/i);
+    // Names the way out while it is still cheap — before any code references it.
+    expect(text).toContain('isExtensible=false');
+  });
+
+  it('says nothing for a non-extensible enum', async () => {
+    const result = await handleCreateD365File(
+      req({ enumValues: POSITIONAL }, 'ConDemoTierQuiet'),
+      buildContext(),
+    );
+    expect(result.content[0].text).not.toMatch(/non-equality comparison/i);
   });
 });
