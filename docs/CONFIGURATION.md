@@ -116,6 +116,7 @@ Transport, timeouts and logging of the MCP server process.
 | `server.operationLockTimeoutMs` | advanced | `OPERATION_LOCK_TIMEOUT_MS` | `900000` | How long a build/sync waits for another one to finish before failing. |
 | `server.operationLockPollMs` | advanced | `OPERATION_LOCK_POLL_MS` | `250` | How often the waiting process re-checks the lock. |
 | `server.operationLockStaleMs` | advanced | `OPERATION_LOCK_STALE_MS` | `1200000` | A lock older than this is treated as left behind by a crashed process and broken. |
+| `server.slowCallLogMs` | advanced | `SLOW_CALL_LOG_MS` | `10000` | Writes one line per tool call that exceeds this, with the tool name and a short argument digest. Aggregate metrics cannot say which specific call cost five minutes; this can. Set LOG_FILE to keep the lines. |
 | `server.apiKey` | secret | `API_KEY` | — | When set, every HTTP request must present this key. Leave empty for a localhost-only server; set it whenever the port is reachable from another machine. |
 
 ### C# bridge
@@ -209,7 +210,8 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "readPoolSize": 3,
     "operationLockTimeoutMs": 900000,
     "operationLockPollMs": 250,
-    "operationLockStaleMs": 1200000
+    "operationLockStaleMs": 1200000,
+    "slowCallLogMs": 10000
   },
   "bridge": {
     "readyTimeoutMs": 30000,

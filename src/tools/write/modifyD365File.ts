@@ -56,6 +56,7 @@ import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
+import { validateWrittenXpp } from './inlineXppValidation.js';
 import {
   getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
   findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
@@ -281,6 +282,143 @@ function serializedOnFile<A extends unknown[], R>(
   fn: (filePath: string, ...args: A) => Promise<R>,
 ): (filePath: string, ...args: A) => Promise<R> {
   return (filePath, ...args) => withFileLock(filePath, () => fn(filePath, ...args));
+}
+
+/** File content, CRLF- and BOM-normalised, for matching caller-supplied X++ against. */
+async function readForMatching(filePath: string): Promise<string | null> {
+  try {
+    return (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  } catch {
+    return null;
+  }
+}
+
+/** 1-based line numbers at which `needle` occurs in `content`. */
+function occurrenceLines(content: string, needle: string): number[] {
+  const lines: number[] = [];
+  let from = 0;
+  for (;;) {
+    const at = content.indexOf(needle, from);
+    if (at === -1) return lines;
+    lines.push(content.slice(0, at).split('\n').length);
+    from = at + Math.max(needle.length, 1);
+  }
+}
+
+/**
+ * Refuse a replace-code that cannot mean what the caller thinks it means.
+ *
+ * The bridge applies the edit with .NET `String.Replace` (MetadataWriteService.cs
+ * ReplaceInMethods), which is replace-ALL, reports no count, and echoes nothing of
+ * what changed. Run a5677c99 shows what that costs: the caller sent
+ * oldCode="checkFailed", newCode="this.checkFailed" against a method whose source
+ * already read `this.checkFailed(...)`. One match, dutifully replaced, and the file
+ * now said `this.this.checkFailed`. Three more calls and two file reads went into
+ * discovering that, and the last of them failed with "oldCode must match the exact
+ * source" at a moment when the file was in fact already correct.
+ *
+ * Both failure modes are decidable from the file before touching the bridge:
+ *   - oldCode occurs more than once → which one did you mean?
+ *   - the file already contains newCode and oldCode is a substring of it → the edit
+ *     is already applied, and re-applying it nests the text instead of fixing it.
+ *
+ * Returns null to proceed, or a verdict to stop on: `noop` when the file is
+ * already in the requested state (a success — nothing is wrong and nothing is
+ * left to do) and `refuse` when the call is ambiguous or destructive.
+ */
+export interface ReplaceCodeVerdict {
+  kind: 'noop' | 'refuse';
+  message: string;
+}
+
+export function preflightReplaceCode(
+  content: string,
+  oldCode: string,
+  newCode: string,
+): ReplaceCodeVerdict | null {
+  const normOld = oldCode.replace(/\r\n/g, '\n');
+  const normNew = newCode.replace(/\r\n/g, '\n');
+  if (normOld.length === 0) return null;
+
+  const hits = occurrenceLines(content, normOld);
+
+  if (hits.length === 0) {
+    // Not an error here — the bridge may still reach source this file-level view
+    // cannot (form control overrides). But if the intended result is already
+    // present, say THAT instead of letting "oldCode not found" imply the opposite.
+    if (normNew.length > 0 && content.includes(normNew)) {
+      return {
+        kind: 'noop',
+        message:
+          `Nothing to do — the file already contains newCode ` +
+          `(line ${occurrenceLines(content, normNew)[0]}), and oldCode is not present. ` +
+          `This edit has already been applied; do not retry it.`,
+      };
+    }
+    return null;
+  }
+
+  if (normNew.includes(normOld) && content.includes(normNew)) {
+    return {
+      kind: 'noop',
+      message:
+        `Nothing to do — this edit is already applied, and repeating it would nest the text.\n` +
+        `   oldCode  : ${JSON.stringify(normOld)}\n` +
+        `   newCode  : ${JSON.stringify(normNew)}\n` +
+        `newCode is already in the file at line ${occurrenceLines(content, normNew)[0]}, and oldCode is a ` +
+        `substring of it — so the ${hits.length} "match(es)" found ARE the newCode occurrence(s). ` +
+        `Applying it would produce ${JSON.stringify(normNew.replace(normOld, normNew))}.\n` +
+        `If you meant a different edit, pass a full-line oldCode with enough surrounding text to be unambiguous.`,
+    };
+  }
+
+  if (hits.length > 1) {
+    return {
+      kind: 'refuse',
+      message:
+        `⛔ replace-code refused — oldCode matches ${hits.length} times (lines ${hits.join(', ')}).\n` +
+        `The bridge replaces EVERY occurrence, so this would edit all ${hits.length} of them. ` +
+        `Extend oldCode with surrounding lines until it identifies exactly one site, or scope the call ` +
+        `with methodName="<method>".`,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * The lines a write actually changed, with context — so the caller can see the
+ * result without spending a round trip on read_file.
+ *
+ * In run a5677c99 every replace-code was followed by exactly that read, three
+ * times, because the reply said "✅ Code replaced" and nothing about what the code
+ * now was.
+ */
+export function renderChangedLines(before: string, after: string, context = 3): string {
+  if (before === after) return '';
+  const b = before.split('\n');
+  const a = after.split('\n');
+
+  let head = 0;
+  while (head < b.length && head < a.length && b[head] === a[head]) head++;
+  let tail = 0;
+  while (
+    tail < b.length - head &&
+    tail < a.length - head &&
+    b[b.length - 1 - tail] === a[a.length - 1 - tail]
+  ) tail++;
+
+  const from = Math.max(0, head - context);
+  const to = Math.min(a.length, a.length - tail + context);
+  const shown = a.slice(from, to)
+    .map((line, i) => {
+      const no = from + i + 1;
+      const changed = no > head && no <= a.length - tail;
+      return `${changed ? '›' : ' '} ${String(no).padStart(4)} | ${line}`;
+    })
+    .join('\n');
+
+  return `\n\n**Result on disk** (› = changed):\n\`\`\`\n${shown}\n\`\`\``;
 }
 
 /**
@@ -1972,6 +2110,8 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     await debouncedRefresh.flush();
 
     let bridgeResult: { success: boolean; message: string } | null = null;
+    /** File content captured before a replace-code, to diff the reply against. */
+    let replaceCodeBefore: string | null = null;
     let _bridgeRetried = false;
     // Retry loop: on the first null result with all required params present,
     // refresh the bridge provider (picks up objects created this session) and
@@ -2688,6 +2828,29 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         }
         
         if (hasOldNew) {
+          // Decide the ambiguous and the already-applied cases from the file before
+          // the bridge's replace-ALL semantics get to act on them.
+          const beforeContent = await readForMatching(actualFilePath);
+          if (beforeContent !== null) {
+            replaceCodeBefore = beforeContent;
+            const verdict = preflightReplaceCode(beforeContent, args.oldCode!, args.newCode!);
+            if (verdict?.kind === 'refuse') throw new Error(verdict.message);
+            if (verdict?.kind === 'noop') {
+              // An already-correct file is a success, not a failure. Reporting it as
+              // an error is what sent run a5677c99 back round the loop: the repair had
+              // landed on the previous call and the retry was told "oldCode must match
+              // the exact source", which reads as "the file is still wrong".
+              return {
+                content: [{
+                  type: 'text',
+                  text:
+                    `✅ ${operation} on ${objectType} "${objectName}" — no change needed.\n\n` +
+                    `**File:** ${actualFilePath}\n${verdict.message}`,
+                }],
+              };
+            }
+          }
+
           // Try bridge first
           bridgeResult = await bridgeReplaceCode(
             context.bridge,
@@ -3001,8 +3164,25 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // Advisory X++ select-statement lint on the source just written (add-method /
     // replace-code etc.). Non-blocking: surfaces a likely "WHERE after join" mistake
     // up front instead of letting it become a build error the agent hunts by hand.
-    const xppLintWarnings = lintXppSelect(args.sourceCode ?? (args as any).methodCode ?? args.newCode);
+    const writtenXpp = args.sourceCode ?? (args as any).methodCode ?? args.newCode;
+    const xppLintWarnings = lintXppSelect(writtenXpp);
     const xppLintNote = xppLintWarnings.length > 0 ? `\n\n${xppLintWarnings.join('\n\n')}` : '';
+
+    // One read back of what is now on disk, used for both of the notes below.
+    const afterContent = writtenXpp || replaceCodeBefore !== null
+      ? await readForMatching(actualFilePath)
+      : null;
+
+    // The full offline rule set (COC001-005, BP001-005, TTS001) on the same text.
+    // A method snippet carries no class header, so the object's own <Declaration>
+    // is read back to supply one — that is what lets COC004/COC005 see they are
+    // looking at a table CoC wrapper. Failure to read it just means fewer rules.
+    const xppRuleNote = writtenXpp ? validateWrittenXpp(writtenXpp, afterContent) : '';
+
+    // Show the edit instead of asserting it. See renderChangedLines.
+    const changedLinesNote = replaceCodeBefore !== null && afterContent !== null
+      ? renderChangedLines(replaceCodeBefore, afterContent)
+      : '';
 
     // Two BP rules fire on a field that compiles perfectly, so they are invisible
     // until a BP run several steps later — and one of them (the label copy) then
@@ -3073,7 +3253,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           text:
             `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${xppLintNote}${addFieldBpNote}${backupNote}${verifyNote}${indexNote}${bpNote}` +
+            `🔧 API: ${bridgeResult.message}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${backupNote}${verifyNote}${indexNote}${bpNote}` +
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
         },

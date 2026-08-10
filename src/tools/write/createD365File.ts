@@ -21,6 +21,7 @@ import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
+import { validateWrittenXpp } from './inlineXppValidation.js';
 import { registerCustomModel } from '../../utils/modelClassifier.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
@@ -4519,6 +4520,12 @@ export async function handleCreateD365File(
       ),
     );
     const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
+    // Offline X++ rules on the caller's own source. A create hands over the whole
+    // class, so the class-scoped rules (COC004 next placement, COC005 Global
+    // functions on a table buffer) have everything they need right here — which is
+    // the only cheap moment to catch them: xppbp does not, and the build costs
+    // minutes.
+    const xppRuleNote = validateWrittenXpp(args.sourceCode);
 
     // Return success message with file path
     return {
@@ -4539,6 +4546,7 @@ export async function handleCreateD365File(
             verifyNote +
             indexNote +
             bpNote +
+            xppRuleNote +
             `\n${nextSteps}\n` +
             `⛔ TASK COMPLETE — do NOT call \`generate\`, \`generate\`, or \`d365fo_file(action="create")\` again for this object.`,
         },

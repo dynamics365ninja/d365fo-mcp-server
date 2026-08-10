@@ -259,6 +259,41 @@ ttscommit;`,
     related: [],
   },
   {
+    patterns: [
+      'classdoesnotcontainmethod',
+      'does not contain a definition for method',
+      'no extension method',
+      'accepting a first argument of type',
+    ],
+    title: 'Method Does Not Exist on That Type',
+    explanation:
+      'The compiler resolved the receiver (a table buffer, a class instance) but found no such method on it. ' +
+      'On a TABLE buffer this is almost always a Global function called as if it were a member: checkFailed(), ' +
+      'error(), warning(), info(), strFmt() and setPrefix() live on Global and are called unqualified — the ' +
+      'buffer is a Common descendant and has none of them. Writing "this.checkFailed(…)" inside a validateWrite ' +
+      'CoC wrapper reads perfectly and does not compile.',
+    fix: [
+      'Drop the qualifier: "ret = checkFailed(\'@MyModel:LabelId\');" — not "this.checkFailed(...)"',
+      'For a genuine member, confirm it exists: get_object_info(objectType="table", name="TableName", options={method:"<name>", include:"signature"})',
+      'On a class, check you are not calling a method of the WRAPPED type from an [ExtensionOf] class — extension classes cannot see private members',
+      'validate_code(mode="syntax") flags the table-buffer case as COC005 without needing a build',
+    ],
+    example: `[ExtensionOf(tableStr(MyTable))]
+final class MyTable_MyModel_Extension
+{
+    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+        if (ret && /* rule violated */ true)
+        {
+            ret = checkFailed("@MyModel:RuleBroken"); // ✅ Global function, unqualified
+        }
+        return ret;
+    }
+}`,
+    related: ['coc', 'coc-authoring'],
+  },
+  {
     patterns: ['label does not exist', 'label not found', '@sys', 'undefined label', 'label reference'],
     title: 'Label Does Not Exist',
     explanation:
@@ -337,6 +372,31 @@ function isSignificantWord(word: string): boolean {
   return word.length >= 3 && !STOPWORDS.has(word) && !/^\d+$/.test(word);
 }
 
+/**
+ * Score at or above which a match is treated as an answer rather than a guess.
+ *
+ * 10 is one whole pattern appearing verbatim (see scoreError). Everything below
+ * that comes purely from the loose word fallback, which is fine for "did you
+ * also mean…" and much too weak to print as the diagnosis.
+ *
+ * Run a5677c99 is why the line exists. `ClassDoesNotContainMethod: Table 'X'
+ * does not contain a definition for method 'checkFailed'` scored 4 on the entry
+ * "Field Does Not Exist on Table" — the pattern `field not found on table`
+ * matched the words "found" and "table", neither of which is about a field —
+ * and that was the highest score, so it was returned as the answer. Worse,
+ * `lookupErrorFix` puts the winner straight into build_d365fo_project's output,
+ * so the agent read "Field Does Not Exist on Table: Call get_object_info(…)"
+ * printed directly under a real compiler error about a method, and went looking
+ * at fields.
+ */
+const MIN_CONFIDENT_SCORE = 10;
+
+/** Whole-word containment — 'table' must not match inside 'MyTableExtension'. */
+function containsWord(haystack: string, word: string): boolean {
+  if (!haystack) return false;
+  return new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(haystack);
+}
+
 function scoreError(entry: ErrorEntry, errorText: string, errorCode?: string): number {
   const lowerText = errorText.toLowerCase();
   const lowerCode = (errorCode ?? '').toLowerCase();
@@ -348,7 +408,7 @@ function scoreError(entry: ErrorEntry, errorText: string, errorCode?: string): n
     // Partial match fallback on significant words only; multi-word patterns need
     // at least 2 matched words so one shared generic term can't cause a false match.
     const words = pattern.split(/\s+/).filter(isSignificantWord);
-    const matchedWords = words.filter(w => lowerText.includes(w) || lowerCode.includes(w));
+    const matchedWords = words.filter(w => containsWord(lowerText, w) || containsWord(lowerCode, w));
     const meetsThreshold = words.length <= 1 ? matchedWords.length === 1 : matchedWords.length >= 2;
     if (meetsThreshold) {
       score += matchedWords.length * 2;
@@ -391,7 +451,7 @@ function formatEntry(entry: ErrorEntry, context?: string): string {
 export function lookupErrorFix(errorText: string): { title: string; fix: string[] } | undefined {
   const scored = ERROR_DB
     .map(entry => ({ entry, score: scoreError(entry, errorText, undefined) }))
-    .filter(s => s.score > 0)
+    .filter(s => s.score >= MIN_CONFIDENT_SCORE)
     .sort((a, b) => b.score - a.score);
   if (scored.length === 0) return undefined;
   return { title: scored[0].entry.title, fix: scored[0].entry.fix };
@@ -408,12 +468,21 @@ export function d365foErrorHelpTool(request: CallToolRequest) {
       .filter(s => s.score > 0)
       .sort((a, b) => b.score - a.score);
 
-    if (scored.length === 0) {
+    // Below MIN_CONFIDENT_SCORE nothing matched on more than a stray shared word.
+    // Saying so — and listing the near-misses AS near-misses — is worth more than
+    // dressing the top guess up as the diagnosis; a confidently wrong answer sends
+    // the caller off to fix something that was never broken.
+    if (scored.length === 0 || scored[0].score < MIN_CONFIDENT_SCORE) {
+      const guesses = scored
+        .slice(0, 3)
+        .map(s => `- **${s.entry.title}** (weak match — shared wording only)`)
+        .join('\n');
       return {
         content: [{
           type: 'text' as const,
           text:
             `❌ No matching error pattern found for:\n\n> ${errorText}\n\n` +
+            (guesses ? `_Nothing scored as a real match. Closest entries, none confirmed:_\n${guesses}\n\n` : '') +
             `**Suggestions:**\n` +
             `- Try searching the error code in Microsoft docs: https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/\n` +
             `- Use get_knowledge(kind="knowledge") with the relevant topic (e.g. "transactions", "coc", "query-patterns")\n` +

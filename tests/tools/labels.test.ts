@@ -236,7 +236,15 @@ describe('labels(action="search") with query[]', () => {
     }
   });
 
-  it('reports a reusable hit instead of telling the caller to create one', async () => {
+  // The verdict used to read "at least one reusable label was found", and run
+  // a5677c99 believed it: the best hit behind that sentence was @SYS321832 "The
+  // decreased margin cannot be greater than the current margin amount of letter of
+  // guarantee", and the agent spent two more searches looking for the label the
+  // verdict had promised. A hit means the model can RESOLVE the label, never that
+  // it says what the caller needs — so the verdict now reports a candidate, tells
+  // the caller to read the text, and carries the create call so that rejecting all
+  // of them costs no further round trip.
+  it('reports a hit as a candidate, and still hands over the create call', async () => {
     (ctx.symbolIndex.searchLabels as any).mockReturnValue([
       makeLabelResult({ labelId: 'CustomerName', text: 'Customer name', labelFileId: 'MyModel', model: 'MyModel' }),
     ]);
@@ -246,8 +254,12 @@ describe('labels(action="search") with query[]', () => {
       ctx,
     )).content[0].text as string;
 
-    expect(text).toMatch(/at least one reusable label was found/i);
-    expect(text).not.toContain('Stop searching and create your own.');
+    expect(text).toMatch(/at least one label this model can resolve came back/i);
+    expect(text).toMatch(/a hit is a candidate, not a verdict/i);
+    // Never the flat "nothing was found" verdict — something WAS found.
+    expect(text).not.toMatch(/none of these \d+ phrasings/i);
+    // …but the fallback is right there, so "none of these fit" needs no new call.
+    expect(text).toContain('labels(action="create"');
   });
 
   it('caps the batch and says what it did not run', async () => {

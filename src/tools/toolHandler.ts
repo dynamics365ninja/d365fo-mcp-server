@@ -37,7 +37,7 @@ import { undoLastModificationTool } from './sdlc/undoLastModification.js';
 import { validateCodeTool } from './analysis/validateCode.js';
 import { prepareTool } from './prepare/prepare.js';
 import { getWorkspaceInfoTool } from './readers/getWorkspaceInfo.js';
-import { recordToolStart, startMetricsLogging, recordCallSequence } from '../utils/toolMetrics.js';
+import { recordToolStart, startMetricsLogging, recordCallSequence, reportSlowCall } from '../utils/toolMetrics.js';
 import {
   DEDUP_EXCLUDED_TOOLS, DEDUP_TTL_MS,
   dedupKey, getDedupedResult, storeDedupResult, appendNote,
@@ -274,6 +274,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       : null;
 
     const finishMetrics = recordToolStart(toolName);
+    const callStartedAt = Date.now();
     let result: any;
     // Anything the C# bridge throws during this call lands here (see
     // bridge/bridgeFailure.ts). Without it a bridge outage is invisible: the read
@@ -399,6 +400,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       const firstText = capped?.content?.[0]?.text;
       const isEmpty = !firstText || firstText.trim().length === 0 || firstText === 'No results returned';
       finishMetrics(isEmpty);
+      reportSlowCall(toolName, Date.now() - callStartedAt, request.params.arguments);
 
       if (!DEDUP_EXCLUDED_TOOLS.has(toolName)) {
         storeDedupResult(callKey, capped);

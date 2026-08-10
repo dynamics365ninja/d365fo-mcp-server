@@ -15,6 +15,7 @@
  *   COC002  [ExtensionOf] class not declared final
  *   COC003  [ExtensionOf] class name not ending _Extension
  *   COC004  next not reached exactly once and unconditionally (SYS10028)
+ *   COC005  Global function (checkFailed/error/…) called as this.<fn>() on a table buffer
  *   BP001   Hardcoded string literal in info/warning/error/checkFailed
  *   BP002   doInsert/doUpdate/doDelete outside explicit migration comment
  *   BP003   Generic doc-comment (/// Foo class. / /// methodName.)
@@ -388,6 +389,67 @@ function checkExtensionOfNaming(code: string): ValidationViolation[] {
       }
     }
   }
+  return violations;
+}
+
+/**
+ * The X++ Global functions that read like buffer methods and are therefore the
+ * ones people qualify with `this.` inside a table CoC wrapper. They live on
+ * `Global`, are called unqualified, and are NOT members of `Common` — so on a
+ * table buffer every one of them is a hard xppc error, not a BP finding:
+ * "Table 'X' does not contain a definition for method 'checkFailed'".
+ */
+const GLOBAL_FUNCTIONS_NOT_ON_TABLE = [
+  'checkFailed', 'error', 'warning', 'info', 'strFmt', 'setPrefix', 'funcName',
+];
+
+/**
+ * COC005 — a Global function called as `this.<fn>()` on a table buffer.
+ *
+ * `checkFailed()` is the natural way to fail a `validateWrite` wrapper, and writing
+ * it as `this.checkFailed(...)` looks right: every other statement in the method
+ * (`this.orig()`, `this.validateWrite()`, `this.MyField`) is a member of the buffer,
+ * so the qualifier reads as consistent. It is not — the buffer is a `Common`
+ * descendant and these functions live on `Global`, so the compiler rejects it with
+ * ClassDoesNotContainMethod. Nothing short of a build caught it: xppbp does not
+ * diagnose it, the symbol index resolves `checkFailed` (it exists, just elsewhere),
+ * and the method is otherwise correct X++.
+ *
+ * Scoped to `[ExtensionOf(tableStr(...))]` on purpose. On a class deriving from
+ * RunBase the same `this.checkFailed()` is legal, so a blanket rule would be wrong
+ * far more often than right.
+ */
+function checkGlobalFunctionOnTableBuffer(code: string): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
+  if (!/\[ExtensionOf\s*\(\s*tableStr\s*\(/i.test(code)) return violations;
+
+  const lines = code.split('\n');
+  const masked = maskStringsAndComments(code).split('\n');
+  const pattern = new RegExp(
+    `\\bthis\\s*\\.\\s*(${GLOBAL_FUNCTIONS_NOT_ON_TABLE.join('|')})\\s*\\(`,
+    'gi',
+  );
+
+  masked.forEach((clean, i) => {
+    pattern.lastIndex = 0;
+    const m = pattern.exec(clean);
+    if (!m) return;
+    const fn = m[1];
+    violations.push({
+      rule: 'COC005',
+      severity: 'error',
+      line: i + 1,
+      excerpt: lines[i].trim(),
+      fix:
+        `"${fn}" is a Global function, not a method of the table buffer. The compiler rejects ` +
+        `"this.${fn}(…)" with "Table '<name>' does not contain a definition for method '${fn}'". ` +
+        `Call it unqualified: "${fn}(…)"` +
+        (fn === 'checkFailed'
+          ? ' — the idiom in a validateWrite wrapper is "ret = checkFailed(\'@Model:LabelId\');".'
+          : '.'),
+    });
+  });
+
   return violations;
 }
 
@@ -843,6 +905,7 @@ const XPP_RULES = [
   checkExtensionOfNotFinal,
   checkExtensionOfNaming,
   checkCocNextUnconditional,
+  checkGlobalFunctionOnTableBuffer,
   checkEnum2StrInMessage,
   checkHardcodedStrings,
   checkDoMethods,

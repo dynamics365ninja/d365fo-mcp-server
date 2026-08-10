@@ -27,6 +27,44 @@ function getStats(toolName: string): ToolStats {
   return s;
 }
 
+/**
+ * Wall-clock past which a single tool call is logged individually, in ms.
+ *
+ * Aggregate stats answer "which tool is slow on average"; they cannot answer
+ * "what did the 306 seconds at 05:16 go on", which is the question an audit of a
+ * benchmark run actually asks. In run a5677c99 a `get_workspace_info` returning
+ * 855 characters took 306 s and a `d365fo_file(create)` took 180 s — a third of
+ * the run's wall clock — and the server kept no record of either, so the cause
+ * could not be attributed from the transcript afterwards. One line per slow call
+ * makes the next run diagnosable.
+ *
+ * The ⚠️ is load-bearing: console.error in src/index.ts suppresses messages that
+ * start with a "[module]" prefix unless they carry an error/warning marker.
+ */
+const SLOW_CALL_MS = Number(process.env.SLOW_CALL_LOG_MS ?? 10_000);
+
+/** Argument digest for a slow-call line — enough to identify the call, never the payload. */
+function digestArgs(args: unknown): string {
+  if (!args || typeof args !== 'object') return '';
+  const entries = Object.entries(args as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .slice(0, 6)
+    .map(([k, v]) => {
+      const s = typeof v === 'string' ? v : JSON.stringify(v);
+      const short = (s ?? '').length > 40 ? `${(s ?? '').slice(0, 40)}…` : s;
+      return `${k}=${short}`;
+    });
+  return entries.length > 0 ? ` {${entries.join(', ')}}` : '';
+}
+
+/** Log a single tool call that ran long enough to be worth attributing. */
+export function reportSlowCall(toolName: string, elapsedMs: number, args?: unknown): void {
+  if (elapsedMs < SLOW_CALL_MS) return;
+  console.error(
+    `[toolMetrics] ⚠️ slow call: ${toolName} took ${(elapsedMs / 1000).toFixed(1)}s${digestArgs(args)}`,
+  );
+}
+
 /** Call before dispatching a tool. Returns a finish() callback. */
 export function recordToolStart(toolName: string): (isEmpty: boolean) => void {
   const t0 = Date.now();
