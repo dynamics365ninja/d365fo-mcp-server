@@ -47,14 +47,30 @@ describe('workspace detection status', () => {
   it('does not warn when a detection pass finds nothing', async () => {
     // The pass is one route among several; the packagePath and solutions-path
     // scans run after it and .mcp.json may settle the model outright.
+    // Priority 4 (well-known VS project directories) reads the real
+    // %USERPROFILE%\Documents\Visual Studio 2022\Projects on the dev's own
+    // machine — override it, and unset the env-var routes, so a real D365FO
+    // solution sitting there doesn't leak a false positive into the test.
     const empty = await makeTempWorkspace();
+    const savedUserProfile = process.env.USERPROFILE;
+    const savedWorkspacePath = process.env.WORKSPACE_PATH;
+    const savedSolutionsPath = process.env.D365FO_SOLUTIONS_PATH;
+    process.env.USERPROFILE = empty;
+    delete process.env.WORKSPACE_PATH;
+    delete process.env.D365FO_SOLUTIONS_PATH;
 
-    const result = await autoDetectD365Project(empty);
+    try {
+      const result = await autoDetectD365Project(empty);
 
-    expect(result).toBeNull();
-    expect(logged()).not.toMatch(/[Cc]ould not auto-detect/);
-    expect(getWorkspaceDetectionStatus().resolved).toBe(false);
-    expect(getWorkspaceDetectionStatus().tried).toContain('workspace path');
+      expect(result).toBeNull();
+      expect(logged()).not.toMatch(/[Cc]ould not auto-detect/);
+      expect(getWorkspaceDetectionStatus().resolved).toBe(false);
+      expect(getWorkspaceDetectionStatus().tried).toContain('workspace path');
+    } finally {
+      if (savedUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedUserProfile;
+      if (savedWorkspacePath === undefined) delete process.env.WORKSPACE_PATH; else process.env.WORKSPACE_PATH = savedWorkspacePath;
+      if (savedSolutionsPath === undefined) delete process.env.D365FO_SOLUTIONS_PATH; else process.env.D365FO_SOLUTIONS_PATH = savedSolutionsPath;
+    }
   });
 
   it('names the source that won', async () => {
