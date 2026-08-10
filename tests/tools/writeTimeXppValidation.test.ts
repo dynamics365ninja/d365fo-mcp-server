@@ -234,3 +234,43 @@ describe('error help does not answer questions it cannot answer', () => {
     expect(hit?.title).not.toBe('Field Does Not Exist on Table');
   });
 });
+
+describe('the shipped CoC still carries an untranslated message', () => {
+  // next is unconditional, checkFailed is unqualified, the label takes %1/%2 —
+  // every hard rule satisfied. enum2str is what remains: the two values render
+  // as "Gold"/"Silver" in every locale, whatever the enum's labels say.
+  const SHIPPED = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
+final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
+{
+    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+
+        if (ret && this.RecId)
+        {
+            AslFinSK_QualityTier orig = this.orig().AslFinSK_QualityTier;
+
+            if (enum2int(this.AslFinSK_QualityTier) < enum2int(orig))
+            {
+                ret = checkFailed(strFmt("@AslFinSK:QualityTierDowngradeError", enum2str(orig), enum2str(this.AslFinSK_QualityTier)));
+            }
+        }
+
+        return ret;
+    }
+}`;
+
+  it('reports BP005 and nothing more severe', () => {
+    const note = validateWrittenXpp(SHIPPED);
+    expect(note).toContain('BP005');
+    expect(note).toContain('DictEnum');
+    expect(note).not.toContain('error(s)');
+  });
+
+  it('is clean once the enum labels are resolved properly', () => {
+    expect(validateWrittenXpp(SHIPPED.replace(
+      'enum2str(orig), enum2str(this.AslFinSK_QualityTier)',
+      'dictEnum.value2Label(enum2int(orig)), dictEnum.value2Label(enum2int(this.AslFinSK_QualityTier))',
+    ))).toBe('');
+  });
+});

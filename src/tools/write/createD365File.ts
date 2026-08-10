@@ -4047,7 +4047,8 @@ export async function handleCreateD365File(
                     type: 'text',
                     text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)\n` +
                       `📁 ${smartResult.filePath}${projectMsg}\n` +
-                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}`,
+                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}` +
+                      validateWrittenXpp(args.sourceCode),
                   },
                 ],
               };
@@ -4141,6 +4142,7 @@ export async function handleCreateD365File(
             ),
           );
           const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
+          const xppRuleNote = validateWrittenXpp(args.sourceCode);
 
           return {
             content: [
@@ -4148,7 +4150,7 @@ export async function handleCreateD365File(
                 type: 'text',
                 text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
-                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}`,
+                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}${xppRuleNote}`,
               },
             ],
           };
