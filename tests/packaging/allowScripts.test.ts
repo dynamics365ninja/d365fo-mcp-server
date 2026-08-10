@@ -63,7 +63,7 @@ describe('install scripts', () => {
   // would mean the lockfile shape changed and these gates went vacuous rather
   // than green.
   it('finds the install-script packages in the lockfile at all', () => {
-    expect(scriptPackages.map(p => p.id)).toContain('esbuild@0.28.1');
+    expect(scriptPackages.map(p => p.id)).toContain('esbuild@0.28.2');
   });
 
   it('keeps the published runtime closure free of install scripts', () => {

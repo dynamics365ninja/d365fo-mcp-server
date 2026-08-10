@@ -294,7 +294,7 @@ function extractDesigns(axReport: any, includeRdl: boolean): ReportDesign[] {
  * Never throws — falls back to char count only.
  */
 function summarizeRdl(rdl: string): string {
-  const lines: string[] = [`Length: ${rdl.length.toLocaleString()} chars`];
+  const lines: string[] = [`Length: ${rdl.length.toLocaleString('en-US')} chars`];
   try {
     // Regex-based extraction avoids a full parse of potentially huge XML
     const topElements = [
@@ -402,7 +402,7 @@ function formatOutput(info: ReportInfo, includeFields: boolean, includeRdl: bool
         lines.push('  ```');
       }
       lines.push('');
-      lines.push(`<details><summary>${oversize ? `RDL (first ${body.length.toLocaleString()} of ${d.rdlContent.length.toLocaleString()} chars)` : 'Full RDL'}</summary>`);
+      lines.push(`<details><summary>${oversize ? `RDL (first ${body.length.toLocaleString('en-US')} of ${d.rdlContent.length.toLocaleString('en-US')} chars)` : 'Full RDL'}</summary>`);
       lines.push('');
       lines.push('```xml');
       lines.push(body);
@@ -411,8 +411,8 @@ function formatOutput(info: ReportInfo, includeFields: boolean, includeRdl: bool
       if (oversize) {
         lines.push('');
         lines.push(
-          `> ✂️ RDL truncated at ${RDL_MAX_CHARS.toLocaleString()} chars (element boundary) — ` +
-          `${(d.rdlContent.length - body.length).toLocaleString()} chars omitted. The tail is not reachable ` +
+          `> ✂️ RDL truncated at ${RDL_MAX_CHARS.toLocaleString('en-US')} chars (element boundary) — ` +
+          `${(d.rdlContent.length - body.length).toLocaleString('en-US')} chars omitted. The tail is not reachable ` +
           `through this reader; work from the summary above, and edit the layout in the report designer ` +
           `rather than round-tripping megabytes of RDL through the model.`,
         );
