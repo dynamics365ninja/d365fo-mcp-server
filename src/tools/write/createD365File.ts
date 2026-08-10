@@ -22,6 +22,7 @@ import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
+import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { registerCustomModel } from '../../utils/modelClassifier.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
@@ -3160,6 +3161,7 @@ export async function handleCreateD365File(
     symbolIndex?: import('../../metadata/symbolIndex.js').XppSymbolIndex;
   },
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+  const timer = createPhaseTimer();
   const args = CreateD365FileArgsSchema.parse(request.params.arguments);
   normalizeEnumValuesAlias(args.objectType, args.properties);
 
@@ -3734,7 +3736,7 @@ export async function handleCreateD365File(
         // extension, the EDTs a table's fields extend — so a scaffold that creates
         // an EDT and then a table using it must not see the pre-EDT model. Free
         // when no write is outstanding.
-        await debouncedRefresh.flush();
+        await timer.time('provider refresh (pending writes)', () => debouncedRefresh.flush());
 
         // The bridge's `properties` is a flat string map (C# Dictionary<string,string>).
         // Keep only SCALAR values and stringify them. Structured collections
@@ -4061,7 +4063,10 @@ export async function handleCreateD365File(
           }
         }
 
-        const createAttempt = await bridgeCreateObject(context.bridge, bridgeParams);
+        const createAttempt = await timer.time(
+          'C# bridge Create()',
+          () => bridgeCreateObject(context.bridge, bridgeParams),
+        );
         if (isBridgeFailure(createAttempt)) bridgeFailure = createAttempt;
         const bridgeResult = isBridgeFailure(createAttempt) ? null : createAttempt;
         if (bridgeResult?.success && bridgeResult.filePath) {
@@ -4132,16 +4137,18 @@ export async function handleCreateD365File(
           }
 
           // Index the new object in-process — see the smart-table path above.
-          const indexNote = await upsertWrittenFileIntoIndex(bridgeResult.filePath, context);
+          const indexNote = await timer.time('symbol index upsert',
+            () => upsertWrittenFileIntoIndex(bridgeResult.filePath, context));
           // Verify the write — see the smart-table path above.
           const verifyNote = renderWriteVerification(
-            await verifyWrittenFile(
+            await timer.time('write verification', () => verifyWrittenFile(
               bridgeResult.filePath,
               projectPathToUse,
               membershipOf(args.objectType, finalObjectName, actualModelName),
-            ),
+            )),
           );
-          const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
+          const bpNote = await timer.time('inline BP check',
+            () => runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context));
           const xppRuleNote = validateWrittenXpp(args.sourceCode);
 
           return {
@@ -4150,7 +4157,7 @@ export async function handleCreateD365File(
                 type: 'text',
                 text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
-                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}${xppRuleNote}`,
+                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
               },
             ],
           };
@@ -4547,6 +4554,7 @@ export async function handleCreateD365File(
             indexNote +
             bpNote +
             xppRuleNote +
+            timer.render() +
             `\n${nextSteps}\n` +
             `⛔ TASK COMPLETE — do NOT call \`generate\`, \`generate\`, or \`d365fo_file(action="create")\` again for this object.`,
         },

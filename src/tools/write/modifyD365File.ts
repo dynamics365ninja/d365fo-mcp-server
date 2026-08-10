@@ -57,6 +57,7 @@ import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
+import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import {
   getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
   findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
@@ -1681,6 +1682,7 @@ const ModifyD365FileArgsSchema = z.object({
 });
 
 export async function modifyD365FileTool(request: CallToolRequest, context: XppServerContext) {
+  const timer = createPhaseTimer();
   try {
     const args = ModifyD365FileArgsSchema.parse(request.params.arguments);
 
@@ -2095,7 +2097,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // an object written moments ago resolves on the FIRST attempt. Without this the
     // retry loop below would still recover — at the cost of a wasted bridge round
     // trip plus a full rebuild. Free when no write is outstanding.
-    await debouncedRefresh.flush();
+    await timer.time('provider refresh (pending writes)', () => debouncedRefresh.flush());
 
     let bridgeResult: { success: boolean; message: string } | null = null;
     /** File content captured before a replace-code, to diff the reply against. */
@@ -2104,6 +2106,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // Retry loop: on the first null result with all required params present,
     // refresh the bridge provider (picks up objects created this session) and
     // re-run the operation once. Max 1 auto-refresh retry (_bridgeRetried guard).
+    const bridgeStartedAt = Date.now();
     _bridgeRetry: do {
       bridgeResult = null;
 
@@ -3066,6 +3069,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // condition is deliberately unconditional.
     // biome-ignore lint/correctness/noConstantCondition: labelled retry loop, exits via break
     } while (true); // end of retry loop
+    timer.add(`C# bridge ${operation}`, Date.now() - bridgeStartedAt);
 
     if (!bridgeResult!.success) {
       // Surface the real bridge error. For an object-resolution failure keep the
@@ -3210,7 +3214,8 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // making the agent spend a round trip on update_symbol_index for a file this
     // process just wrote, and another on the lookup that failed for want of it,
     // was pure waste.
-    const indexNote = await upsertWrittenFileIntoIndex(actualFilePath, context);
+    const indexNote = await timer.time('symbol index upsert',
+      () => upsertWrittenFileIntoIndex(actualFilePath, context));
 
     // Verify the write here rather than leaving the caller to spend a
     // verify_d365fo_project round trip asking what this call already knows.
@@ -3220,13 +3225,14 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     const verifyProjectPath =
       args.projectPath || (await getConfigManager().getProjectPath()) || undefined;
     const verifyNote = renderWriteVerification(
-      await verifyWrittenFile(
+      await timer.time('write verification', () => verifyWrittenFile(
         actualFilePath,
         verifyProjectPath,
         membershipOf(objectType, objectName, modelName || getConfigManager().getModelName()),
-      ),
+      )),
     );
-    const bpNote = await runInlineBpCheck((args as any).bpCheck, objectType, objectName, context);
+    const bpNote = await timer.time('inline BP check',
+      () => runInlineBpCheck((args as any).bpCheck, objectType, objectName, context));
 
     return {
       content: [
@@ -3235,7 +3241,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
           text:
             `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${backupNote}${verifyNote}${indexNote}${bpNote}` +
+            `🔧 API: ${bridgeResult.message}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${backupNote}${verifyNote}${indexNote}${bpNote}${timer.render()}` +
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
         },
