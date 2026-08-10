@@ -182,12 +182,9 @@ describe('d365fo_file(action="modify") with operations[]', () => {
     expect(forwarded()[0].peerOperations).toEqual(['add-field']);
   });
 
-  // get_knowledge(kind="op-spec") tells the caller, in bold, to "pass these
-  // NESTED inside `params`". The single-operation form unwraps that wrapper; the
-  // batch form used to forward it verbatim, so the operation ran with none of its
-  // parameters and answered "called with no parameter that changes anything".
-  // Run 9180a464 followed the spec, was refused, and got through only by
-  // ignoring it and passing the keys flat.
+  // op-spec tells callers to pass parameters NESTED inside `params`. The
+  // single-operation form unwraps that; the batch form forwarded it verbatim, so
+  // an entry that followed the spec ran with no parameters at all.
   it('unwraps a per-entry `params` the way the single-operation form does', async () => {
     await d365foFileTool(call({
       objectType: 'table-extension',

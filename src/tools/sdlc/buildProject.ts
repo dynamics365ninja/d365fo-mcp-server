@@ -63,22 +63,10 @@ export interface XppcDiagnostic {
 }
 
 /**
- * The severity prefix every xppc diagnostic line opens with.
- *
- * Written as a family rather than a list of five literals, because the list was
- * wrong and silently so. xppc emits at least `Compile`, `Generation`,
- * `Metadata`, `FormPatternValidation`, `Best Practice` and `BestPractices`
- * variants of both Error and Warning, and the hardcoded five knew three of them.
- *
- * Run 9180a464 is what that costs. A full build returned exit-failure, the
- * parser matched no line it recognised, and the tool reported "❌ Build FAILED"
- * over "📋 Structured diagnostics: 0 error(s), 1 warning(s)" — the one warning
- * being an unrelated deprecation on another object. With a failure and no
- * reason, the agent invented one ("duplicate control name"), spent four minutes
- * scanning PackagesLocalDirectory from PowerShell, then DELETED the form
- * extension it had just been asked to create and hand-edited the .rnrproj to
- * match. The next build passed, so the deletion looked like the fix. The
- * deliverable was gone.
+ * The severity prefix every xppc diagnostic line opens with, as a family rather
+ * than a list of literals: xppc also emits `Metadata` and
+ * `FormPatternValidation` errors, which a five-literal list reported as zero —
+ * a FAILED build with no stated cause.
  */
 const DIAG_PREFIX = String.raw`(?:([A-Za-z][A-Za-z ]{0,30}?)\s)?(Fatal Error|Error|Warning)`;
 
@@ -98,11 +86,7 @@ const XPPC_DIAG_PATH_RE = new RegExp(
 /** `<Kind> <Severity>: message` */
 const XPPC_DIAG_PLAIN_RE = new RegExp(String.raw`^${DIAG_PREFIX}:\s*(.+)$`);
 
-/**
- * xppc's own tally, printed once at the end of the log: `Errors: 3`.
- * Used to notice when the parser understood fewer errors than the compiler
- * counted, instead of presenting its own shortfall as the truth.
- */
+/** xppc's own tally at the end of the log, to catch a parser shortfall. */
 const XPPC_ERROR_TOTAL_RE = /^Errors:\s*(\d+)\s*$/m;
 
 /** Errors xppc counted in this log, or null when it printed no tally. */
@@ -163,14 +147,9 @@ export function parseXppcDiagnostics(logContent: string): XppcDiagnostic[] {
 /**
  * What to say when the compiler failed and this parser cannot show why.
  *
- * The dangerous state is not "no error" — it is a confident-looking report that
- * happens to list only warnings under a FAILED headline. Run 9180a464 read one
- * of those, concluded the failure had to be something it could see, and deleted
- * a working file to make the red go away. So: name the gap, quote xppc's own
- * error tally when it disagrees, point at the raw log below, and say in as many
- * words that deleting work is not the way to find out.
- *
- * Returns '' when the parsed diagnostics already explain the failure.
+ * A FAILED headline over a list of warnings reads as though the warnings are
+ * the cause, and invites deleting whatever is nearest to clear the red. Name
+ * the gap instead. Returns '' when the parsed errors do explain the failure.
  */
 export function renderUnexplainedFailure(
   parsed: XppcDiagnostic[],

@@ -258,14 +258,10 @@ async function batchSearch(
       `This says nothing about whether a reusable label exists; fix the error and search again ` +
       `rather than creating a label on the strength of this answer.\n`
     : foundReusable
-      // "Reusable" here means only "this model can resolve it" — the index matches
-      // words, not meaning, so a hit is a candidate and not an answer. Run a5677c99
-      // read the old wording ("at least one reusable label was found") on a batch
-      // whose best hit was @SYS321832 "The decreased margin cannot be greater than
-      // the current margin amount of letter of guarantee", concluded the right label
-      // was in there somewhere, and spent two more searches and ~7 AIU looking for
-      // it. The verdict now says what was actually established, and carries the
-      // create call so that deciding "none of these fit" costs no further round trip.
+      // "Reusable" only ever meant "this model can resolve it" — the index
+      // matches words, not meaning. Overstating that sent callers back to
+      // rephrase and search again, so the verdict states what was established
+      // and carries the create call.
       ? `**Verdict:** ${searched} search(es) ran and at least one label this model can resolve came back — ` +
         `see the section(s) marked "${REUSABLE_MARKER}". Read the TEXT of those hits before adopting one: ` +
         `the index matches wording, not meaning, so a hit is a candidate, not a verdict. ` +

@@ -30,16 +30,10 @@ function getStats(toolName: string): ToolStats {
 /**
  * Wall-clock past which a single tool call is logged individually, in ms.
  *
- * Aggregate stats answer "which tool is slow on average"; they cannot answer
- * "what did the 306 seconds at 05:16 go on", which is the question an audit of a
- * benchmark run actually asks. In run a5677c99 a `get_workspace_info` returning
- * 855 characters took 306 s and a `d365fo_file(create)` took 180 s — a third of
- * the run's wall clock — and the server kept no record of either, so the cause
- * could not be attributed from the transcript afterwards. One line per slow call
- * makes the next run diagnosable.
+ * The aggregate stats below cannot attribute one slow call after the fact.
  *
- * The ⚠️ is load-bearing: console.error in src/index.ts suppresses messages that
- * start with a "[module]" prefix unless they carry an error/warning marker.
+ * The ⚠️ is load-bearing: console.error in src/index.ts drops "[module]"-
+ * prefixed messages without an error/warning marker.
  */
 const SLOW_CALL_MS = Number(process.env.SLOW_CALL_LOG_MS ?? 10_000);
 

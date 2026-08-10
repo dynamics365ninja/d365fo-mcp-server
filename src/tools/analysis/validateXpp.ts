@@ -392,13 +392,7 @@ function checkExtensionOfNaming(code: string): ValidationViolation[] {
   return violations;
 }
 
-/**
- * The X++ Global functions that read like buffer methods and are therefore the
- * ones people qualify with `this.` inside a table CoC wrapper. They live on
- * `Global`, are called unqualified, and are NOT members of `Common` — so on a
- * table buffer every one of them is a hard xppc error, not a BP finding:
- * "Table 'X' does not contain a definition for method 'checkFailed'".
- */
+/** Global functions, not members of `Common` — unqualified on a table buffer. */
 const GLOBAL_FUNCTIONS_NOT_ON_TABLE = [
   'checkFailed', 'error', 'warning', 'info', 'strFmt', 'setPrefix', 'funcName',
 ];
@@ -406,18 +400,12 @@ const GLOBAL_FUNCTIONS_NOT_ON_TABLE = [
 /**
  * COC005 — a Global function called as `this.<fn>()` on a table buffer.
  *
- * `checkFailed()` is the natural way to fail a `validateWrite` wrapper, and writing
- * it as `this.checkFailed(...)` looks right: every other statement in the method
- * (`this.orig()`, `this.validateWrite()`, `this.MyField`) is a member of the buffer,
- * so the qualifier reads as consistent. It is not — the buffer is a `Common`
- * descendant and these functions live on `Global`, so the compiler rejects it with
- * ClassDoesNotContainMethod. Nothing short of a build caught it: xppbp does not
- * diagnose it, the symbol index resolves `checkFailed` (it exists, just elsewhere),
- * and the method is otherwise correct X++.
+ * `this.checkFailed(...)` reads as consistent next to `this.orig()`, and xppc
+ * rejects it with ClassDoesNotContainMethod. Nothing but a build caught it:
+ * xppbp does not diagnose it and the symbol index resolves the name.
  *
- * Scoped to `[ExtensionOf(tableStr(...))]` on purpose. On a class deriving from
- * RunBase the same `this.checkFailed()` is legal, so a blanket rule would be wrong
- * far more often than right.
+ * Scoped to `[ExtensionOf(tableStr(...))]` — on a RunBase descendant the same
+ * call is legal.
  */
 function checkGlobalFunctionOnTableBuffer(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
@@ -464,16 +452,9 @@ function checkGlobalFunctionOnTableBuffer(code: string): ValidationViolation[] {
  * Scoped to the message builders (info/warning/error/checkFailed/strFmt) because
  * enum2str is perfectly correct for a log line, a filename or a comparison key.
  *
- * Matched over the call's whole argument span, not per line. The line-scoped
- * version missed the shape a caller actually writes once the call has three
- * arguments:
- *
- *     ret = checkFailed(strFmt("@Model:Downgrade",
- *         enum2str(this.orig().Tier),
- *         enum2str(this.Tier)));
- *
- * — `checkFailed` and `enum2str` never share a line, so run 9180a464 asked
- * validate_code about exactly this and was told "✅ no violations found".
+ * Matched over the call's whole argument span: in a wrapped
+ * `checkFailed(strFmt("@M:Id",\n enum2str(a),\n enum2str(b)))` the message
+ * builder and enum2str never share a line, which a per-line scan misses.
  */
 function checkEnum2StrInMessage(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];

@@ -4520,11 +4520,9 @@ export async function handleCreateD365File(
       ),
     );
     const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
-    // Offline X++ rules on the caller's own source. A create hands over the whole
-    // class, so the class-scoped rules (COC004 next placement, COC005 Global
-    // functions on a table buffer) have everything they need right here — which is
-    // the only cheap moment to catch them: xppbp does not, and the build costs
-    // minutes.
+    // Offline X++ rules on the caller's own source. A create hands over the
+    // whole class, so the class-scoped rules (COC004, COC005) apply here — the
+    // cheap moment to catch what xppbp does not and only a build would.
     const xppRuleNote = validateWrittenXpp(args.sourceCode);
 
     // Return success message with file path

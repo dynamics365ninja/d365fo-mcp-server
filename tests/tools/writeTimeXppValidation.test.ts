@@ -1,19 +1,10 @@
 /**
- * The four server-side defects benchmark run a5677c99 (10.8., 125.0 AIU, 24 min)
- * exposed, each pinned to the artefact from the run that revealed it.
+ * Four defects from one benchmark run: `this.checkFailed(...)` written into a
+ * table CoC with nothing objecting until the build; replace-code turning
+ * `this.checkFailed` into `this.this.checkFailed` and reporting only "✅ Code
+ * replaced"; and a compiler error about a METHOD diagnosed as a missing FIELD.
  *
- * The run itself succeeded — the label-FTS fix from PR #885 had already cut it
- * from 221 minutes to 24. What it cost anyway:
- *
- *   turns 29-41 (~36 AIU, 29 % of the run)  the agent wrote `this.checkFailed(...)`
- *       in a table CoC wrapper, nothing objected, and a 211-second build was the
- *       first thing to say so.
- *   3 read_file turns (~8 AIU)              replace-code reported "✅ Code replaced"
- *       and nothing about what the code now said.
- *   one corrupted file                      that same replace-code turned
- *       `this.checkFailed` into `this.this.checkFailed`, unasked.
- *   one wrong diagnosis                     the build printed "💡 Field Does Not
- *       Exist on Table" underneath a compiler error about a METHOD.
+ * Inputs below are verbatim from that run.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -22,7 +13,7 @@ import { validateWrittenXpp, extractDeclaration } from '../../src/tools/write/in
 import { preflightReplaceCode, renderChangedLines } from '../../src/tools/write/modifyD365File';
 import { lookupErrorFix, d365foErrorHelpTool } from '../../src/tools/knowledge/d365foErrorHelp';
 
-/** Verbatim from the run: the sourceCode argument of tool call #48. */
+/** A CoC wrapper as an agent actually wrote it. */
 const SHIPPED_COC = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
 final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
 {
@@ -43,7 +34,7 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
     }
 }`;
 
-/** Verbatim from the run: the compiler error build_d365fo_project returned at #54. */
+/** The compiler error it produced. */
 const BUILD_ERROR =
   "ClassDoesNotContainMethod: Table 'AslFinCore_TaxTransReportChangeLog' does not contain a " +
   "definition for method 'checkFailed' and no extension method 'checkFailed' accepting a first " +
@@ -52,7 +43,7 @@ const BUILD_ERROR =
 describe('COC005 — Global functions are not members of a table buffer', () => {
   const coc005 = (code: string) => runRules(code, 'xpp').filter(v => v.rule === 'COC005');
 
-  it('flags the call the run shipped', () => {
+  it('flags the call that shipped', () => {
     const found = coc005(SHIPPED_COC);
     expect(found).toHaveLength(1);
     expect(found[0].severity).toBe('error');
@@ -150,7 +141,7 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
 });
 
 describe('replace-code preflight', () => {
-  /** The method source as it stood when the run issued call #60. */
+  /** The method source the edits below were issued against. */
   const FILE = `        boolean ret = next validateWrite();
 
         if (ret && this.AslFinSK_QualityTier < this.orig().AslFinSK_QualityTier)
@@ -175,8 +166,8 @@ describe('replace-code preflight', () => {
   });
 
   it('reports an already-applied edit as done, not as "oldCode not found"', () => {
-    // Call #64 of the run: the repair had landed at #62, and the retry was told the
-    // exact source did not match — which reads as "the file is still wrong".
+    // Once the repair has landed, a retry told "oldCode must match the exact
+    // source" reads as "the file is still wrong".
     const fixed = FILE.replace('this.checkFailed', 'checkFailed');
     expect(preflightReplaceCode(fixed, 'this.this.checkFailed(x);', 'checkFailed(x);')).toBeNull();
 

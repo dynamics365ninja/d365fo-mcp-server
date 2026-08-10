@@ -236,14 +236,9 @@ describe('labels(action="search") with query[]', () => {
     }
   });
 
-  // The verdict used to read "at least one reusable label was found", and run
-  // a5677c99 believed it: the best hit behind that sentence was @SYS321832 "The
-  // decreased margin cannot be greater than the current margin amount of letter of
-  // guarantee", and the agent spent two more searches looking for the label the
-  // verdict had promised. A hit means the model can RESOLVE the label, never that
-  // it says what the caller needs — so the verdict now reports a candidate, tells
-  // the caller to read the text, and carries the create call so that rejecting all
-  // of them costs no further round trip.
+  // "At least one reusable label was found" promised more than a hit means: the
+  // model can RESOLVE the label, not that it says what the caller needs. Callers
+  // kept rephrasing to find the label the verdict implied was there.
   it('reports a hit as a candidate, and still hands over the create call', async () => {
     (ctx.symbolIndex.searchLabels as any).mockReturnValue([
       makeLabelResult({ labelId: 'CustomerName', text: 'Customer name', labelFileId: 'MyModel', model: 'MyModel' }),

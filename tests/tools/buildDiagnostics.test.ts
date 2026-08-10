@@ -1,15 +1,9 @@
 /**
- * Benchmark run 9180a464 (10.8. 06:19) — the run that deleted its own deliverable.
- *
- * What happened, in order: a full build returned exit-failure; the log parser
- * recognised none of the lines in it, so the tool printed "❌ Build FAILED" over
- * "📋 Structured diagnostics: 0 error(s), 1 warning(s)", the warning being an
- * unrelated `Server`-keyword deprecation on another model's class. Given a
- * failure with no cause, the agent guessed one ("duplicate control name"), spent
- * 178 s + 54 s + 12 s scanning PackagesLocalDirectory from PowerShell, then
- * called undo_last_modification on the form extension it had just created and
- * hand-edited the .rnrproj to drop the entry. The next build passed, which made
- * the deletion look like a fix.
+ * A build failed, the parser recognised none of its diagnostics, and the tool
+ * printed "❌ Build FAILED" over "0 error(s), 1 warning(s)" — the warning
+ * unrelated. With no stated cause the caller guessed one, then deleted the form
+ * extension it had been asked to create; the next build passed, which made the
+ * deletion look like a fix.
  *
  * Two smaller defects from the same run are pinned here as well.
  */
@@ -23,10 +17,7 @@ import {
 } from '../../src/tools/sdlc/buildProject';
 import { runRules } from '../../src/tools/analysis/validateXpp';
 
-/**
- * Verbatim shapes from K:\…\Temp\d365build_log_6f131599b2.log. Only the first
- * of these five was recognised by the old parser.
- */
+/** Real xppc log shapes. Only the first of these five used to be recognised. */
 const LOG = `AslFinanceSK compilation completed.
 Elapsed time: 00:00:21
 
@@ -95,7 +86,7 @@ describe('a failure this parser cannot explain must say so', () => {
   });
 
   it('warns that listed warnings are not the failure', () => {
-    // The exact trap of run 9180a464: FAILED, plus one unrelated warning.
+    // The trap: FAILED, plus one unrelated warning.
     const onlyWarning = parseXppcDiagnostics(
       "Compile Warning: Class Method dynamics://Class/X/Method/y: [(7,5)]: The 'Server' keyword has been deprecated.\n",
     );
@@ -117,8 +108,7 @@ describe('a failure this parser cannot explain must say so', () => {
 describe('BP005 spans the whole call, not one line', () => {
   const bp005 = (code: string) => runRules(code, 'xpp').filter(v => v.rule === 'BP005');
 
-  it('flags the wrapped strFmt the run was told was clean', () => {
-    // Verbatim from validate_code call #56, which answered "no violations found".
+  it('flags a wrapped strFmt that a per-line scan reported clean', () => {
     const code = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
 final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
 {

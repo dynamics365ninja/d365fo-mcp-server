@@ -373,21 +373,10 @@ function isSignificantWord(word: string): boolean {
 }
 
 /**
- * Score at or above which a match is treated as an answer rather than a guess.
- *
- * 10 is one whole pattern appearing verbatim (see scoreError). Everything below
- * that comes purely from the loose word fallback, which is fine for "did you
- * also mean…" and much too weak to print as the diagnosis.
- *
- * Run a5677c99 is why the line exists. `ClassDoesNotContainMethod: Table 'X'
- * does not contain a definition for method 'checkFailed'` scored 4 on the entry
- * "Field Does Not Exist on Table" — the pattern `field not found on table`
- * matched the words "found" and "table", neither of which is about a field —
- * and that was the highest score, so it was returned as the answer. Worse,
- * `lookupErrorFix` puts the winner straight into build_d365fo_project's output,
- * so the agent read "Field Does Not Exist on Table: Call get_object_info(…)"
- * printed directly under a real compiler error about a method, and went looking
- * at fields.
+ * Score at or above which a match is an answer rather than a guess: one whole
+ * pattern appearing verbatim. Below it, only the loose word fallback fired —
+ * enough for "did you also mean", too weak to print as the diagnosis, and
+ * `lookupErrorFix` puts the winner straight into build output.
  */
 const MIN_CONFIDENT_SCORE = 10;
 
@@ -468,10 +457,9 @@ export function d365foErrorHelpTool(request: CallToolRequest) {
       .filter(s => s.score > 0)
       .sort((a, b) => b.score - a.score);
 
-    // Below MIN_CONFIDENT_SCORE nothing matched on more than a stray shared word.
-    // Saying so — and listing the near-misses AS near-misses — is worth more than
-    // dressing the top guess up as the diagnosis; a confidently wrong answer sends
-    // the caller off to fix something that was never broken.
+    // Below the threshold nothing matched on more than a stray shared word;
+    // list the near-misses as near-misses rather than dressing one up as the
+    // diagnosis.
     if (scored.length === 0 || scored[0].score < MIN_CONFIDENT_SCORE) {
       const guesses = scored
         .slice(0, 3)

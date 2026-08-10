@@ -306,25 +306,17 @@ function occurrenceLines(content: string, needle: string): number[] {
 }
 
 /**
- * Refuse a replace-code that cannot mean what the caller thinks it means.
+ * Refuse a replace-code that cannot mean what the caller intends.
  *
- * The bridge applies the edit with .NET `String.Replace` (MetadataWriteService.cs
- * ReplaceInMethods), which is replace-ALL, reports no count, and echoes nothing of
- * what changed. Run a5677c99 shows what that costs: the caller sent
- * oldCode="checkFailed", newCode="this.checkFailed" against a method whose source
- * already read `this.checkFailed(...)`. One match, dutifully replaced, and the file
- * now said `this.this.checkFailed`. Three more calls and two file reads went into
- * discovering that, and the last of them failed with "oldCode must match the exact
- * source" at a moment when the file was in fact already correct.
+ * The bridge edits with .NET `String.Replace` (MetadataWriteService.ReplaceIn
+ * Methods) — replace-ALL, no count, no echo. Two failure modes are decidable
+ * from the file first: oldCode matching more than once, and an edit whose
+ * newCode is already present and contains oldCode (oldCode="checkFailed",
+ * newCode="this.checkFailed" over `this.checkFailed` yields
+ * `this.this.checkFailed`).
  *
- * Both failure modes are decidable from the file before touching the bridge:
- *   - oldCode occurs more than once → which one did you mean?
- *   - the file already contains newCode and oldCode is a substring of it → the edit
- *     is already applied, and re-applying it nests the text instead of fixing it.
- *
- * Returns null to proceed, or a verdict to stop on: `noop` when the file is
- * already in the requested state (a success — nothing is wrong and nothing is
- * left to do) and `refuse` when the call is ambiguous or destructive.
+ * Returns null to proceed, `noop` when the file is already in the requested
+ * state, `refuse` when the call is ambiguous.
  */
 export interface ReplaceCodeVerdict {
   kind: 'noop' | 'refuse';
@@ -387,12 +379,8 @@ export function preflightReplaceCode(
 }
 
 /**
- * The lines a write actually changed, with context — so the caller can see the
- * result without spending a round trip on read_file.
- *
- * In run a5677c99 every replace-code was followed by exactly that read, three
- * times, because the reply said "✅ Code replaced" and nothing about what the code
- * now was.
+ * The lines a write changed, with context, so seeing the result costs no
+ * read_file round trip.
  */
 export function renderChangedLines(before: string, after: string, context = 3): string {
   if (before === after) return '';
@@ -2828,18 +2816,15 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         }
         
         if (hasOldNew) {
-          // Decide the ambiguous and the already-applied cases from the file before
-          // the bridge's replace-ALL semantics get to act on them.
+          // Decided before the bridge's replace-ALL semantics act on it.
           const beforeContent = await readForMatching(actualFilePath);
           if (beforeContent !== null) {
             replaceCodeBefore = beforeContent;
             const verdict = preflightReplaceCode(beforeContent, args.oldCode!, args.newCode!);
             if (verdict?.kind === 'refuse') throw new Error(verdict.message);
             if (verdict?.kind === 'noop') {
-              // An already-correct file is a success, not a failure. Reporting it as
-              // an error is what sent run a5677c99 back round the loop: the repair had
-              // landed on the previous call and the retry was told "oldCode must match
-              // the exact source", which reads as "the file is still wrong".
+              // An already-correct file is a success; "oldCode not found" would
+              // read as "the file is still wrong" and invite a retry.
               return {
                 content: [{
                   type: 'text',
@@ -3173,13 +3158,10 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       ? await readForMatching(actualFilePath)
       : null;
 
-    // The full offline rule set (COC001-005, BP001-005, TTS001) on the same text.
-    // A method snippet carries no class header, so the object's own <Declaration>
-    // is read back to supply one — that is what lets COC004/COC005 see they are
-    // looking at a table CoC wrapper. Failure to read it just means fewer rules.
+    // The offline rule set on the same text. The object's <Declaration> supplies
+    // the class header a method snippet lacks; without it, fewer rules apply.
     const xppRuleNote = writtenXpp ? validateWrittenXpp(writtenXpp, afterContent) : '';
 
-    // Show the edit instead of asserting it. See renderChangedLines.
     const changedLinesNote = replaceCodeBefore !== null && afterContent !== null
       ? renderChangedLines(replaceCodeBefore, afterContent)
       : '';

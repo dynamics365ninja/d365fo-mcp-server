@@ -1,23 +1,10 @@
 /**
- * Run the offline X++ rule set on the source a write is carrying, inside the
- * write itself.
+ * Run the offline X++ rules (COC*, BP*, SEL*, TTS001) on the source a write is
+ * carrying, so they no longer depend on the caller thinking to call
+ * validate_code. Pure string analysis over text we already hold.
  *
- * The rules (COC001-005, BP001-005, SEL*, TTS001) already existed — but only
- * behind the `validate_code` tool, i.e. only when the agent thought to ask. In
- * run a5677c99 it never did: `d365fo_file(action="create")` happily wrote a CoC
- * wrapper calling `this.checkFailed(...)`, run_bp_check reported it clean (xppbp
- * does not diagnose ClassDoesNotContainMethod), and the mistake only surfaced
- * 211 seconds later as a failed build — then cost thirteen turns to walk back.
- *
- * Every one of those rules is pure string analysis over source we are holding
- * anyway, so there is no reason to charge a round trip for them. This module
- * runs them on the caller's own text and folds the result into the write's
- * reply.
- *
- * Advisory, not blocking. A rule that refuses a write has to be right every
- * time; a rule that annotates one only has to be useful, and the agent fixes it
- * in the same turn either way. `buildMarker` made the same call for the same
- * reason.
+ * Advisory, not blocking: a rule that refuses a write has to be right every
+ * time, one that annotates it only has to be useful.
  */
 
 import { runRules, type ValidationViolation } from '../analysis/validateXpp.js';
@@ -27,13 +14,8 @@ import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
 const SYNTHETIC_HEADER_LINES = 3;
 
 /**
- * Pull the `<Declaration>` block out of an AOT class/table XML.
- *
- * Only the declaration — not the methods. The point is to learn what the
- * enclosing class IS (`[ExtensionOf(tableStr(...))]`, `final`, its name), never
- * to validate code the caller did not write in this call. Flagging a
- * pre-existing violation in some other method would train the agent to ignore
- * the whole block.
+ * Pull the `<Declaration>` out of an AOT class/table XML — never the methods:
+ * only code the caller sent in this call is validated.
  */
 export function extractDeclaration(xml: string): string | null {
   const m = /<Declaration>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/Declaration>/.exec(xml);
@@ -43,14 +25,9 @@ export function extractDeclaration(xml: string): string | null {
 }
 
 /**
- * Wrap a bare method/snippet in the class header it will actually live under, so
- * the class-scoped rules can see their context.
- *
- * COC004 walks brace depth to find method boundaries and COC005 gates on
- * `[ExtensionOf(tableStr(...))]` — hand either of them a naked method body and
- * they correctly find nothing. The on-disk declaration carries an empty `{}`
- * body (AOT XML keeps methods in their own elements), so it cannot be prepended
- * verbatim; a header of the same shape is synthesised instead.
+ * Wrap a bare snippet in its class header so COC004/COC005 can see the context
+ * they gate on. The on-disk declaration has an empty `{}` body, so an
+ * equivalent header is synthesised rather than prepended verbatim.
  */
 function withClassContext(snippet: string, declaration: string | null): { code: string; offset: number } {
   if (!declaration) return { code: snippet, offset: 0 };
@@ -122,13 +99,10 @@ export function validateWrittenXpp(
   declarationXml?: string | null,
 ): string {
   if (!suppliedSource || suppliedSource.trim().length === 0) return '';
-  // XML markup handed in as "X++" is somebody else's bug (assertCleanXppSource
-  // catches it upstream); do not add a second, more confusing report of it.
+  // XML as "X++" is reported upstream by assertCleanXppSource.
   if (/^\s*</.test(suppliedSource)) return '';
-  // A table create carries its field definitions as JSON in the same argument.
-  // Sniffed by parsing, not by the first character: every CoC class begins with
-  // `[ExtensionOf(...)]`, so a bare bracket test would silently exempt exactly the
-  // source these rules exist for.
+  // A table create passes field definitions as JSON here. Sniffed by parsing:
+  // a bare `[` test would exempt every `[ExtensionOf(...)]` class.
   if (isJson(suppliedSource)) return '';
 
   const declaration = declarationXml ? extractDeclaration(declarationXml) : null;
