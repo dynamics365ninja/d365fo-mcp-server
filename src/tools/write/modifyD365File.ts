@@ -50,6 +50,7 @@ import { enforceGrounding } from '../../utils/provenanceStore.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import {
   checkAddControlAgainstParentPattern,
+  checkAddControlAgainstDataGroup,
   isFormPatternEnforceEnabled,
 } from '../analysis/validateFormPattern.js';
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
@@ -1862,6 +1863,69 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       // null → form not found or no match; proceed with original value (compiler will catch it)
     }
 
+    // ── DataGroup pre-flight for add-control ──────────────────────────────────
+    // A parent carrying <DataGroup> is filled by the compiler from that table
+    // field group. A hand-added bound control there duplicates the generated
+    // one — an error that exists only after compilation, so it cannot be found
+    // by inspecting the XML on disk.
+    if (
+      operation === 'add-control' &&
+      (objectType === 'form' || objectType === 'form-extension') &&
+      args.parentControl &&
+      (args as any).controlDataField
+    ) {
+      const baseFormName =
+        objectType === 'form'
+          ? objectName
+          : ((args as any).baseFormName || objectName.split('.')[0]);
+      const baseXml = await findBaseFormXml(baseFormName, symbolIndex);
+      if (baseXml) {
+        const dgVerdict = await checkAddControlAgainstDataGroup(
+          baseXml,
+          args.parentControl,
+          (args as any).controlDataField,
+          (args as any).controlName,
+        );
+        if (dgVerdict) {
+          const field = (args as any).controlDataField;
+          const onTable = dgVerdict.dataSource ? ` on \`${dgVerdict.dataSource}\`` : '';
+          if (isFormPatternEnforceEnabled()) {
+            return {
+              content: [{
+                type: 'text',
+                text:
+                  `⛔ add-control blocked — parent control "${args.parentControl}" renders field group ` +
+                  `**${dgVerdict.dataGroup}**${onTable} via \`<DataGroup>\`.\n\n` +
+                  `The compiler generates one control per member of that field group, named ` +
+                  `\`${dgVerdict.generatedName}\`. Adding \`${field}\` to the field group AND an explicit ` +
+                  `control for it fails the build with "The duplicate name '${dgVerdict.generatedName}' ` +
+                  `was detected"` +
+                  (dgVerdict.exactNameCollision
+                    ? ` — and your \`controlName\` is exactly that generated name, so this is certain.\n\n`
+                    : `.\n\n`) +
+                  `That duplicate is NOT visible in the XML on disk — only one of the two controls is ` +
+                  `ever written to a file.\n\n` +
+                  `Do this instead:\n` +
+                  `  1. Add the field to the field group only — d365fo_file(action="modify", ` +
+                  `objectType="table-extension", operations=[{operation:"add-field-to-field-group", ` +
+                  `fieldGroupName:"${dgVerdict.dataGroup}", fieldName:"${field}", extendBaseFieldGroup:true}]). ` +
+                  `The control appears on the form by itself; no form extension is needed.\n` +
+                  `  2. Only if you need a different position, type or properties: keep this add-control, ` +
+                  `but remove ${field} from field group ${dgVerdict.dataGroup} first.\n` +
+                  `  3. Set FORM_PATTERN_ENFORCE=false to bypass this check.`,
+              }],
+              isError: true,
+            };
+          }
+          addControlNote +=
+            `\n\n> ⚠️ DataGroup warning: parent "${args.parentControl}" renders field group ` +
+            `${dgVerdict.dataGroup} via <DataGroup>, which generates \`${dgVerdict.generatedName}\`. ` +
+            `If ${field} is also in that field group the build fails with a duplicate-name error. ` +
+            `FORM_PATTERN_ENFORCE is disabled — proceeding anyway.`;
+        }
+      }
+    }
+
     // ── Form-pattern pre-flight for add-control ───────────────────────────────
     // When the parent container declares a sub-pattern (e.g. FieldsFieldGroups),
     // verify the new control's type is allowed there. Blocking when
@@ -2921,21 +2985,27 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
                  symbolIndex?.getReadDb?.(),
                )
             ?? 'String';
-          bridgeResult = await bridgeAddControl(
-            context.bridge,
-            objectName,
-            (args as any).controlName,
-            (args as any).parentControl,
-            resolvedControlType,
-            (args as any).controlDataSource,
-            (args as any).controlDataField,
-            (args as any).controlLabel,
-          );
-          // Fallback: the bridge's AddControl resolves its target via _provider.Forms,
-          // which can never find a form EXTENSION (named "Base.Suffix") — it always
-          // reports 'Form "<ext>" not found', regardless of metadata-root freshness.
-          // For form extensions, write the control element straight into the XML.
-          if (objectType === 'form-extension' && (!bridgeResult || !bridgeResult.success)) {
+          // The bridge's AddControl resolves its target via _provider.Forms, which
+          // never contains a form EXTENSION (keyed "Base.Suffix" in FormExtensions).
+          // Calling it would always fail with 'Form "<ext>" not found' and log a
+          // bridge error for a call that cannot succeed, so extensions go straight
+          // to the XML writer. Metadata-root freshness is not a factor either way.
+          const isFormExtension = objectType === 'form-extension';
+
+          if (!isFormExtension) {
+            bridgeResult = await bridgeAddControl(
+              context.bridge,
+              objectName,
+              (args as any).controlName,
+              (args as any).parentControl,
+              resolvedControlType,
+              (args as any).controlDataSource,
+              (args as any).controlDataField,
+              (args as any).controlLabel,
+            );
+          }
+
+          if (isFormExtension && (!bridgeResult || !bridgeResult.success)) {
             const xmlFallbackResult = await directXmlAddControl(
               actualFilePath,
               (args as any).controlName,

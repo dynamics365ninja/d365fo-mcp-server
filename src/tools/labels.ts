@@ -14,7 +14,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { searchLabelsTool, REUSABLE_MARKER, NO_REUSE_ADVICE } from './analysis/searchLabels.js';
+import { searchLabelsTool, REUSABLE_MARKER, NO_REUSE_ADVICE, SOME_REUSE_ADVICE } from './analysis/searchLabels.js';
 import { getLabelInfoTool } from './readers/getLabelInfo.js';
 import { createLabelTool } from './write/createLabel.js';
 import { renameLabelTool } from './write/renameLabel.js';
@@ -266,7 +266,7 @@ async function batchSearch(
         `see the section(s) marked "${REUSABLE_MARKER}". Read the TEXT of those hits before adopting one: ` +
         `the index matches wording, not meaning, so a hit is a candidate, not a verdict. ` +
         `If none of them says what you need, do NOT rephrase and search again — nothing new will surface.\n` +
-        `\n${NO_REUSE_ADVICE}`
+        `\n${SOME_REUSE_ADVICE}`
       : `**Verdict:** none of these ${searched} phrasings found a label this model can resolve. ` +
         `Stop searching and create your own.\n` +
         (failed.length > 0

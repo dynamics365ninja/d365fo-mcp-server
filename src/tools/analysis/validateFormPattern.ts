@@ -209,6 +209,73 @@ export async function checkAddControlAgainstParentPattern(
   return { parentPattern: sp.xmlName, allowed, allowedTypes: [...allowedTypes] };
 }
 
+/** Result of the add-control DataGroup pre-flight */
+export interface AddControlDataGroupVerdict {
+  /** Field group the parent container renders (its <DataGroup> value) */
+  dataGroup: string;
+  /** Datasource the field group resolves against, when the parent declares one */
+  dataSource?: string;
+  /** Control name the compiler generates for this field: <DataGroup>_<DataField> */
+  generatedName: string;
+  /** True when the requested controlName is exactly the generated one — a certain build error */
+  exactNameCollision: boolean;
+}
+
+/**
+ * Pre-flight for add-control: refuse to hand-add a BOUND control under a
+ * container that carries <DataGroup>.
+ *
+ * Such a container is populated by the compiler from that table field group —
+ * one control per member, named `<DataGroup>_<FieldName>`. Adding the field to
+ * the field group (add-field-to-field-group on the table extension) AND an
+ * explicit control for it produces "The duplicate name '…' was detected". The
+ * duplicate is invisible on disk: only the explicit control is written to a
+ * file, so inspecting the XML never reveals it.
+ *
+ * Returns null when the parent cannot be found, declares no DataGroup, or the
+ * new control is unbound (a button or static text in such a group is fine).
+ */
+export async function checkAddControlAgainstDataGroup(
+  baseFormXml: string,
+  parentControlName: string,
+  controlDataField: string | undefined,
+  controlName: string | undefined,
+): Promise<AddControlDataGroupVerdict | null> {
+  if (!controlDataField) return null;
+
+  let parsed: any;
+  try {
+    const parser = new Parser({ explicitArray: false, mergeAttrs: true, trim: true });
+    parsed = await parser.parseStringPromise(baseFormXml);
+  } catch {
+    return null;
+  }
+  if (!parsed?.AxForm?.Design) return null;
+
+  const design = walkFormDesign(parsed.AxForm.Design);
+  const needle = parentControlName.toLowerCase();
+  let parent: FormControlNode | undefined;
+  const visit = (nodes: FormControlNode[]): void => {
+    for (const n of nodes) {
+      if (n.name.toLowerCase() === needle) { parent = n; return; }
+      visit(n.children);
+      if (parent) return;
+    }
+  };
+  visit(design.controls);
+
+  const dataGroup = parent?.properties?.DataGroup;
+  if (!dataGroup) return null;
+
+  const generatedName = `${dataGroup}_${controlDataField}`;
+  return {
+    dataGroup,
+    dataSource: parent?.properties?.DataSource,
+    generatedName,
+    exactNameCollision: (controlName ?? '').toLowerCase() === generatedName.toLowerCase(),
+  };
+}
+
 /**
  * Gate a form write on pattern errors. Returns an MCP error result when the
  * XML has error-severity pattern violations and enforcement is enabled;

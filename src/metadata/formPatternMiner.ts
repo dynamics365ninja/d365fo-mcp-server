@@ -72,6 +72,9 @@ const PROPERTY_KEYS = [
   'DataSource',
   'DataField',
   'DataMethod',
+  // A container carrying DataGroup is populated by the compiler from that table
+  // field group — one generated control per member, named <DataGroup>_<Field>.
+  'DataGroup',
   'HelpText',
   'Label',
   'Width',

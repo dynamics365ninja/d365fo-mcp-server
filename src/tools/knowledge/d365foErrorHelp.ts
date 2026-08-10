@@ -294,6 +294,45 @@ final class MyTable_MyModel_Extension
     related: ['coc', 'coc-authoring'],
   },
   {
+    patterns: [
+      'duplicate name',
+      'was detected. the duplication',
+      'duplication is either in the base element',
+      'duplicate control',
+    ],
+    title: 'Duplicate Control Name in a Form Extension',
+    explanation:
+      'A form extension declares a control whose name already exists on the base form. The usual cause is ' +
+      'invisible: the field was added to a table field group that the base form renders through ' +
+      '<DataGroup>, and the compiler generates a control named "<FieldGroupName>_<FieldName>" for it. ' +
+      'Adding an explicit control for the same field collides with that generated one. ' +
+      'The duplicate exists only after compilation — grepping the XML on disk will never find it, ' +
+      'because only one of the two controls is written to a file.',
+    fix: [
+      'Pick one mechanism, never both: EITHER the field group entry OR an explicit control',
+      'Preferred: keep add-field-to-field-group on the table extension and delete the control from the form extension — the field renders on its own',
+      'Check which field groups the base form renders: get_object_info(objectType="form", name="BaseForm", options={include:"xml"}) and look for <DataGroup> on the Grid/Group',
+      'If you genuinely need an explicit control (different position, type or properties), remove the field from the field group instead',
+      'Do NOT search other models or packages for the name — a sibling extension is the rare cause, the field group is the common one',
+    ],
+    example: `<!-- Base form: the Grid renders field group "Administration" -->
+<AxFormGridControl>
+  <DataGroup>Administration</DataGroup>   <!-- generates Administration_<Field> per member -->
+  <DataSource>MyTable</DataSource>
+</AxFormGridControl>
+
+<!-- ✅ Table extension only — the control appears by itself -->
+d365fo_file(action="modify", objectType="table-extension", operations=[
+  {operation:"add-field", fieldName:"MyPrefix_Tier", ...},
+  {operation:"add-field-to-field-group", fieldGroupName:"Administration",
+   fieldName:"MyPrefix_Tier", extendBaseFieldGroup:true}])
+
+<!-- ❌ Adding this on top of the field group entry is the duplicate -->
+d365fo_file(action="modify", objectType="form-extension", operation="add-control",
+            params={controlName:"Administration_MyPrefix_Tier", parentControl:"Administration", ...})`,
+    related: ['form-extension', 'add-control', 'add-field-to-field-group'],
+  },
+  {
     patterns: ['label does not exist', 'label not found', '@sys', 'undefined label', 'label reference'],
     title: 'Label Does Not Exist',
     explanation:
