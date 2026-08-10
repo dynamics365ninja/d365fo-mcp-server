@@ -19,6 +19,7 @@ import {
   isLabelLikelyResolvable,
   labelProvenanceWarning,
 } from '../../utils/labelReference.js';
+import { recordLabelSearch, repeatSearchNotice } from './labelSearchHistory.js';
 
 /**
  * Emitted only when a label the current model can actually resolve was found.
@@ -26,6 +27,13 @@ import {
  * reusable, so keep the two in step.
  */
 export const REUSABLE_MARKER = '💡 Use the label reference syntax in X++:';
+
+/**
+ * Opens the answer for a query that matched nothing. `labels` reads it back to
+ * collapse those sections in a batch — a paragraph of identical advice repeated
+ * once per phrasing was most of a 5 KB result — so keep the two in step.
+ */
+export const NO_HITS_MARKER = 'No labels found matching';
 
 /**
  * What to do when nothing reusable came back.
@@ -74,7 +82,11 @@ const SearchLabelsArgsSchema = z.object({
   labelFileId: z
     .string()
     .optional()
-    .describe('Restrict results to a specific label file ID (e.g. ContosoExt, SYS)'),
+    .describe(
+      'Restrict results to ONE label file ID (e.g. ContosoExt, SYS). Omitting it searches every label ' +
+      'file at once — the default, and almost always what you want. Running the same query once per ' +
+      'label file buys nothing but round trips.',
+    ),
   maxResults: z
     .number()
     .optional()
@@ -121,21 +133,28 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
     const results = symbolIndex.searchLabels(query, { language, model, labelFileId, limit: probeLimit });
 
     if (results.length === 0) {
+      // Named before the advice: a caller that has already tried five wordings
+      // needs to hear that it has, not the same paragraph a sixth time.
+      const repeatNotice = repeatSearchNotice([query]);
+      recordLabelSearch(query, true);
       return {
         content: [
           {
             type: 'text',
             text:
-              `No labels found matching "${query}"` +
+              `${NO_HITS_MARKER} "${query}"` +
               (language !== 'en-US' ? ` in language "${language}"` : '') +
               (model ? ` in model "${model}"` : '') +
               '.\n\n' +
+              (repeatNotice ? `${repeatNotice}\n` : '') +
               NO_REUSE_ADVICE +
               `💡 To search a different language use the language parameter (e.g. "cs", "de", "sk").`,
           },
         ],
       };
     }
+
+    recordLabelSearch(query, false);
 
     // Normalise column names (DB returns snake_case)
     const normalise = (r: any) => ({

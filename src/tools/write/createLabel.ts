@@ -21,7 +21,8 @@ import * as path from 'path';
 import { getConfigManager } from '../../utils/configManager.js';
 import { defaultPackagesRoot } from '../../utils/packagesRoot.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
-import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
+import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
+import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { detectEol } from '../../utils/eolUtils.js';
 import { isExtensionLabelFile } from '../../metadata/labelParser.js';
 import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
@@ -547,21 +548,29 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     // model's objects — and labels are usually the first thing an agent adds when
     // it drifts into the wrong model. `model` is the model directory the write
     // resolves to, so this compares the real target, not the caller's intent.
-    const crossModelLabelRefusal = crossModelWriteRefusal({
+    //
+    // The anchor is resolved through resolveWriteAnchorModel(), not the sync
+    // getter: in a workspace whose model comes only from the background .rnrproj
+    // scan, the sync read can still be null here and a null anchor makes the
+    // guard stand down.
+    const crossModelCheck = {
       objectName: `@${args.labelFileId}:${args.labelId}`,
       objectType: 'label',
       owningModel: model,
       owningPackage: resolvedPackageName,
-      activeModel: configManager.getWriteAnchorModel() ?? '',
+      activeModel: await resolveAnchorModel(configManager),
       toolSwitchedModel: configManager.getToolProjectSwitch()?.forcedModel ?? null,
-      action: 'create',
-    });
+      action: 'create' as const,
+    };
+    const crossModelLabelRefusal = crossModelWriteRefusal(crossModelCheck);
     if (crossModelLabelRefusal) {
       return {
         content: [{ type: 'text', text: crossModelLabelRefusal }],
         isError: true,
       };
     }
+    // Not a refusal, but not necessarily this model either — see standDownNotice.
+    const crossModelNotice = standDownNotice(crossModelCheck);
 
     const modelDir = path.join(resolvedPackagePath, resolvedPackageName, model);
     const axLabelDir = path.join(modelDir, 'AxLabelFile');
@@ -857,6 +866,9 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
         skipLines.push('\n✅ Label file entries already in VS project.');
       }
       if (projectWarning) skipLines.push(projectWarning);
+      // Near the top would be better, but this branch's first line is the whole
+      // verdict; keeping the notice adjacent to the location it names reads fine.
+      if (crossModelNotice) skipLines.push(crossModelNotice.trim());
       if (args.createIfMissing) {
         // The reuse path has to hand back what a create hands back, or the caller
         // still needs a second call to learn how to reference the label.
@@ -872,6 +884,10 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     const lines: string[] = [
       ...(collisionWarning ? [collisionWarning] : []),
       `✅ Label "${ref}" ${args.overwriteExisting ? 'updated' : 'created'} successfully!`,
+      // Immediately under the verdict, not at the end: a write into another model
+      // is the first thing the reader needs to know, and the tail of this reply is
+      // reference syntax nobody scrolls to.
+      ...(crossModelNotice ? [crossModelNotice.trim()] : []),
       '',
       `Label ID   : ${labelId}`,
       `Label File : ${labelFileId}  (model: ${model})`,

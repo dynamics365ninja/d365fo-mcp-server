@@ -26,7 +26,8 @@ import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { registerCustomModel } from '../../utils/modelClassifier.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
-import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
+import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
+import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../../utils/xppDocGen.js';
 import { xppMethodSourceForXml, reindentXppSource } from '../../utils/xppFormat.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
@@ -3123,6 +3124,47 @@ function rawLabelBpWarning(properties: unknown, objectName: string): string {
 }
 
 /**
+ * The caller's X++ as this server actually wrote it.
+ *
+ * Every create path renames a class/interface whose declared name differs from
+ * the resolved object name, and that rename is usually what makes the name
+ * legal. Linting the caller's own text instead reports the pre-rename name —
+ * a naming violation against a name already fixed on disk.
+ *
+ * Delegates to the helper the writers use, so the two cannot drift. Source with
+ * no class/interface header is returned untouched.
+ */
+export function sourceAsWritten(sourceCode: string | undefined, finalObjectName: string): string | undefined {
+  if (!sourceCode) return sourceCode;
+  try {
+    return XmlTemplateGenerator.normalizeSelfReferenceName(finalObjectName, sourceCode, []).declaration;
+  } catch {
+    return sourceCode;
+  }
+}
+
+/**
+ * Warn, on an extensible enum create, that xppc allows only equality on it.
+ *
+ * IsExtensible=Yes makes the numbering an implementation detail the compiler
+ * refuses to expose: `<`, `>`, `<=`, `>=` is the hard error "Cannot use
+ * extensible enumerated type '…' in non-equality comparison". Extensibility is
+ * the right default, but ranking needs ordering, and only the build says so.
+ *
+ * Advisory: an extensible enum compared only with == is perfectly correct.
+ */
+function extensibleEnumOrderingWarning(objectType: string, properties: unknown, enumName: string): string {
+  if (objectType !== 'enum') return '';
+  if (!(properties as Record<string, unknown> | undefined)?.isExtensible) return '';
+  return `\n\n⚠️ **IsExtensible=true → equality comparisons only.** xppc rejects ` +
+    `\`<\`, \`>\`, \`<=\`, \`>=\` between values of ${enumName} ("Cannot use extensible enumerated ` +
+    `type in non-equality comparison"); only \`==\`, \`!=\` and \`switch\` are legal.\n` +
+    `If any X++ has to RANK these values (a tier, a severity, a "cannot be downgraded" check), ` +
+    `re-create this enum with isExtensible=false NOW — after code references it, the change costs ` +
+    `a failed build first.`;
+}
+
+/**
  * Post-write parameter honesty for a table create (cluster #35).
  *
  * The metadata writer — bridge or template — accepts `properties` it does not know
@@ -3382,20 +3424,26 @@ export async function handleCreateD365File(
     // outside this project's version control and inside code other models inherit.
     // `actualModelName` is what the write will actually use (caller's modelName, or
     // the workspace's), so the check sits after every fallback has been applied.
-    const crossModelCreateRefusal = crossModelWriteRefusal({
+    // Resolved, not read synchronously: where the model comes only from the
+    // background .rnrproj scan, the sync getter can still be null here — and a
+    // null anchor makes the guard stand down.
+    const crossModelCheck = {
       objectName: args.objectName,
       objectType: args.objectType,
       owningModel: actualModelName,
-      activeModel: getConfigManager().getWriteAnchorModel() ?? '',
+      activeModel: await resolveAnchorModel(getConfigManager()),
       toolSwitchedModel: getConfigManager().getToolProjectSwitch()?.forcedModel ?? null,
-      action: 'create',
-    });
+      action: 'create' as const,
+    };
+    const crossModelCreateRefusal = crossModelWriteRefusal(crossModelCheck);
     if (crossModelCreateRefusal) {
       return {
         content: [{ type: 'text', text: crossModelCreateRefusal }],
         isError: true,
       };
     }
+    // Allowed, but possibly not into this model — see standDownNotice.
+    const crossModelNotice = standDownNotice(crossModelCheck);
 
     // Name normalisation lives in utils/objectNaming so that modify resolves the
     // very same name from the very same arguments — the ninety lines that used to
@@ -3686,42 +3734,31 @@ export async function handleCreateD365File(
     // entirely (see bridgeAdapter.ts) because the bridge silently drops their
     // structured collections (EntryPoints, DataEntityPermissions, Privileges, Duties).
     //
-    // EXCEPTION — any enum whose RESOLVED MODE forbids explicit <Value> elements. The
-    // bridge takes UseEnumValue from the scalar property but still serializes a <Value>
-    // for every numbered entry, minus the ones equal to 0, which .NET omits as the type
-    // default. An enum created with useEnumValue:false and values None=0..Platinum=3 came
-    // out as <UseEnumValue>No</UseEnumValue> with <Value>1/2/3</Value> and no <Value>0</Value>
-    // — the combination this server's own knowledge base tells callers xppc rejects the
-    // moment IsExtensible is set, and with the caller's number for entry 0 silently gone.
-    // resolveEnumValueMode is the single place that decides this; when it says the values
-    // must be suppressed and the payload carries some, hand the write to the TypeScript
-    // generator, which is the writer that honours suppressExplicitValues.
+    // EXCEPTION — any enum carrying values at all.
     //
-    // Read the rule literally, because it is BROADER than the two headline cases:
-    // suppressExplicitValues is true whenever the resolved mode is UseEnumValue=No, and
-    // that includes the plain positional payload — values [None=0, A=1, B=2] with
-    // `useEnumValue` unset. So in practice ANY enum create carrying explicit numbers
-    // goes to the TypeScript generator, extensible or not, useEnumValue or not. That is
-    // the intended behaviour (the bridge cannot write this shape correctly); it is named
-    // and commented this way so the next reader does not conclude the bridge still
-    // handles positional enums.
-    const enumModeForbidsExplicitValues = (): boolean => {
+    // The bridge writes <UseEnumValue> only when the caller passes the scalar, and
+    // it serialises a <Value> per numbered entry except the zeros .NET omits as a
+    // type default. Both shapes are wrong:
+    //   • numbered   → <Value>1/2/3</Value> with the caller's 0 silently gone;
+    //   • unnumbered → no <UseEnumValue> and no <Value>, which xppc reads as
+    //                  UseEnumValue=Yes, making every member 0 ("Duplicate value
+    //                  '0' detected"). Only a FULL build reports it; the
+    //                  incremental build and validate_code pass clean.
+    //
+    // Numbering is not what the bridge gets wrong — <UseEnumValue> is, and every
+    // values payload depends on it. generateAxEnumXml emits it unconditionally and
+    // honours suppressExplicitValues, so it writes all of them. The bridge keeps
+    // the one shape it cannot get wrong: an enum with no values.
+    const enumMustSkipBridge = (): boolean => {
       if (args.objectType !== 'enum') return false;
       const props = args.properties as Record<string, unknown> | undefined;
       if (props?.isExtensible) return true;
       // `enumValues` only: the `values` alias was folded into it by
       // normalizeEnumValuesAlias, so routing and the writers read one list.
       const vals = props?.enumValues as Array<{ name?: string; value?: number }> | undefined;
-      if (!Array.isArray(vals) || !vals.some(v => typeof v?.value === 'number')) return false;
-      try {
-        return resolveEnumValueMode(finalObjectName, props, vals).suppressExplicitValues;
-      } catch {
-        // A genuine contradiction (isExtensible + off-positional values, …). Let the
-        // generator path re-run it and surface the one authored error message.
-        return true;
-      }
+      return Array.isArray(vals) && vals.length > 0;
     };
-    const skipBridgeForEnum = enumModeForbidsExplicitValues();
+    const skipBridgeForEnum = enumMustSkipBridge();
 
     // Set only when a bridge create THREW (not when it was unavailable or declined).
     // The XML fallback below is a different writer with a narrower feature set, so a
@@ -4047,10 +4084,10 @@ export async function handleCreateD365File(
                 content: [
                   {
                     type: 'text',
-                    text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)\n` +
+                    text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)${crossModelNotice}\n` +
                       `📁 ${smartResult.filePath}${projectMsg}\n` +
                       `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}` +
-                      validateWrittenXpp(args.sourceCode),
+                      validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName)),
                   },
                 ],
               };
@@ -4149,13 +4186,13 @@ export async function handleCreateD365File(
           );
           const bpNote = await timer.time('inline BP check',
             () => runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context));
-          const xppRuleNote = validateWrittenXpp(args.sourceCode);
+          const xppRuleNote = validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName));
 
           return {
             content: [
               {
                 type: 'text',
-                text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()\n` +
+                text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()${crossModelNotice}\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
                   `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
               },
@@ -4529,17 +4566,17 @@ export async function handleCreateD365File(
       ),
     );
     const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
-    // Offline X++ rules on the caller's own source. A create hands over the
-    // whole class, so the class-scoped rules (COC004, COC005) apply here — the
-    // cheap moment to catch what xppbp does not and only a build would.
-    const xppRuleNote = validateWrittenXpp(args.sourceCode);
+    // Offline X++ rules on the source as written. A create hands over the whole
+    // class, so the class-scoped rules (COC004, COC005) apply here — the cheap
+    // moment to catch what xppbp does not and only a build would.
+    const xppRuleNote = validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName));
 
     // Return success message with file path
     return {
       content: [
         {
           type: 'text',
-          text: `✅ Successfully created D365FO ${args.objectType} file:\n\n` +
+          text: `✅ Successfully created D365FO ${args.objectType} file:${crossModelNotice}\n\n` +
             `📁 Path: ${normalizedFullPath}\n` +
             `📄 Object: ${finalObjectName}${finalObjectName !== args.objectName ? ` (prefixed from "${args.objectName}")` : ''}\n` +
             `📦 Model: ${actualModelName}\n` +
@@ -4549,6 +4586,7 @@ export async function handleCreateD365File(
             bridgeFallbackNote +
             tableHonestyReport +
             rawLabelBpWarning(args.properties, finalObjectName) +
+            extensibleEnumOrderingWarning(args.objectType, args.properties, finalObjectName) +
             projectMessage +
             verifyNote +
             indexNote +

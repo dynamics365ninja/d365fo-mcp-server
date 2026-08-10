@@ -657,7 +657,7 @@ export async function handleGenerateSmartForm(
 
   // See generateSmartTable: the resolved model follows the ACTIVE project, the
   // write anchor does not. Checked before the first byte is written.
-  const anchorRefusal = scaffoldWriteRefusalResult({
+  const anchorRefusal = await scaffoldWriteRefusalResult({
     objectName: finalName,
     objectType: 'form',
     targetModel: resolvedModel,

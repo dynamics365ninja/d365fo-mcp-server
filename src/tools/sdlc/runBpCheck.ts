@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 import { getConfigManager } from '../../utils/configManager.js';
 import { defaultPackagesRoot, findPackagesRoot } from '../../utils/packagesRoot.js';
 import { withOperationLock } from '../../utils/operationLocks.js';
-import { lookupSymbolsNocase, type DbLike } from '../../utils/symbolLookup.js';
+import { lookupSymbolsNocase, lookupSymbolNocase, type DbLike } from '../../utils/symbolLookup.js';
 import { compileModelLabels } from '../write/compileLabels.js';
 import { describeBuildFreshness } from '../../utils/buildMarker.js';
 
@@ -340,6 +340,22 @@ export const runBpCheckTool = async (params: any, context: any) => {
       };
     }
 
+    // Paths for the build-freshness line below. Without them describeBuildFreshness
+    // cannot compare "last built" against "last written", so it reports the newest
+    // recorded success unqualified — a green verdict for objects written after it.
+    // One indexed probe per target (a handful, sub-ms each) restores the ⚠️ Stale.
+    const targetFiles: string[] = [];
+    if (db) {
+      for (const t of targets) {
+        try {
+          const hit = lookupSymbolNocase(db, t.name);
+          if (hit?.file_path) targetFiles.push(hit.file_path);
+        } catch {
+          /* a missing path only costs the staleness comparison, not the run */
+        }
+      }
+    }
+
     // metadataPath: X++ source XML (custom model metadata). compilerMetadataPath: compiled
     // binaries + framework metadata (UDE: Microsoft packages root; CHE: same as metadataPath).
     const metadataPath = customPackagesPath || packagesRoot;
@@ -481,6 +497,15 @@ export const runBpCheckTool = async (params: any, context: any) => {
 
     const header = `Model: ${modelName}` + (resolvedProjectPath ? `\nProject: ${resolvedProjectPath}` : '');
 
+    // A clean xppbp run is routinely read as "the task is done". It is not a compile:
+    // run f2e7b71a shipped a CoC method that violates SYS10028 with this line reading
+    // "0 with findings". Say what has actually compiled the model — for a batch and
+    // for a single object alike; a one-object check is no more of a compile than a
+    // three-object one, and it used to carry no caveat at all.
+    const buildNote = context?.symbolIndex?.dataDir
+      ? `\n\n${describeBuildFreshness(context.symbolIndex.dataDir, modelName, targetFiles)}`
+      : '';
+
     // Single target (and the whole-model run) keep the original layout — there
     // is no preamble to share and existing callers read this shape.
     if (runTargets.length === 1) {
@@ -504,7 +529,9 @@ export const runBpCheckTool = async (params: any, context: any) => {
       return {
         content: [{
           type: 'text',
-          text: `${hasIssues(combined) ? '⚠️ BP Check completed with issues' : '✅ BP Check passed'}\n\n${header}` +
+          text: `${hasIssues(combined) ? '⚠️ BP Check completed with issues' : '✅ BP Check passed'}` +
+            buildNote +
+            `\n\n${header}` +
             (target ? `\nFilter: ${selector(target)}` : '') +
             scopeNote +
             labelNote +
@@ -539,13 +566,6 @@ export const runBpCheckTool = async (params: any, context: any) => {
       notRunCount > 0 ? `❌ BP Check incomplete — ${notRunCount} object(s) were NOT checked`
       : issueCount > 0 ? '⚠️ BP Check completed with issues'
       : '✅ BP Check passed';
-
-    // A clean xppbp run is routinely read as "the task is done". It is not a compile:
-    // run f2e7b71a shipped a CoC method that violates SYS10028 with this line reading
-    // "0 with findings". Say what has actually compiled the model.
-    const buildNote = context?.symbolIndex?.dataDir
-      ? `\n\n${describeBuildFreshness(context.symbolIndex.dataDir, modelName)}`
-      : '';
 
     return {
       content: [{

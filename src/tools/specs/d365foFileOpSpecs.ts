@@ -78,7 +78,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'Auto-resolved from the symbol index when omitted — pass explicitly when the EDT is not indexed yet.',
   },
   fieldMandatory: { type: 'boolean', description: 'Mark the field Mandatory=Yes.' },
-  fieldLabel: { type: 'string', description: 'Field label.' },
+  fieldLabel: {
+    type: 'string',
+    description:
+      'Field label. On an ENUM field it must be a different label ID than the enum\'s own label — ' +
+      'BPErrorFieldLabelIsCopyOfEnumLabel rejects the copy. Same visible text is fine, so create both ' +
+      'IDs in the one labels(action="create", labels=[…]) batch that creates the enum labels.',
+  },
   fieldHelpText: { type: 'string', description: 'Field help text.' },
   fieldEnumType: {
     type: 'string',
@@ -465,8 +471,13 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     '(+ optionally fieldType:"AxTableFieldEnum")',
   enum:
     'label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}] — ' +
-    'an explicit value: sets UseEnumValue=Yes for you; it cannot be combined with isExtensible ' +
-    '(xppc requires UseEnumValue=No and no <Value> there), which is refused rather than dropped',
+    'an explicit value: sets UseEnumValue=Yes for you; an OFF-POSITIONAL one (a number differing from the ' +
+    "entry's index) is refused when combined with isExtensible rather than dropped, since xppc requires " +
+    'UseEnumValue=No and no <Value> on an extensible enum. Plain 0,1,2 numbering states nothing the order ' +
+    'does not, so it is accepted and the numbers are dropped. ' +
+    'CHOOSE isExtensible DELIBERATELY: it also bars `<`/`>`/`<=`/`>=` on the enum ("Cannot use extensible ' +
+    'enumerated type in non-equality comparison"), so any enum whose values get RANKED in X++ — a tier, a ' +
+    'severity, a no-downgrade check — must be isExtensible:false',
   'enum-extension': 'enumValues[{name,label?,value?,countryRegionCodes?}]',
   'table-extension':
     'fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need ' +

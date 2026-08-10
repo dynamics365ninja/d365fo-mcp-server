@@ -51,6 +51,7 @@ import { gateOnReferenceErrors } from './resolveReferences.js';
 import {
   checkAddControlAgainstParentPattern,
   checkAddControlAgainstDataGroup,
+  findDataGroupRenderers,
   isFormPatternEnforceEnabled,
 } from '../analysis/validateFormPattern.js';
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
@@ -67,8 +68,9 @@ import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
 import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
 import {
-  crossModelWriteRefusal, baseObjectOf, type ExistingExtension,
+  crossModelWriteRefusal, standDownNotice, baseObjectOf, type ExistingExtension,
 } from '../../utils/crossModelWriteGuard.js';
+import { resolveAnchorModel } from './writeAnchorGuard.js';
 
 
 /**
@@ -2031,24 +2033,30 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     const owningModel = containment.modelSegment ?? null;
     // The write ANCHOR, not the active model: a get_workspace_info project switch
     // moves reads, and must not move what this guard measures writes against.
-    const activeModel = getConfigManager().getWriteAnchorModel() ?? '';
-    const crossModelRefusal = crossModelWriteRefusal({
+    // Resolved, not read synchronously: where the model comes only from the
+    // background .rnrproj scan, the sync getter can still be null here — and a
+    // null anchor makes the guard stand down.
+    const activeModel = await resolveAnchorModel(getConfigManager());
+    const crossModelCheck = {
       objectName,
       objectType,
       owningModel,
       owningPackage: containment.packageSegment ?? resolvedModelFromPath,
       activeModel,
       toolSwitchedModel: getConfigManager().getToolProjectSwitch()?.forcedModel ?? null,
-      action: 'modify',
+      action: 'modify' as const,
       existingExtensions: findExtensionsInModel(
         symbolIndex,
         baseObjectOf(objectName, objectType),
         activeModel,
       ),
-    });
+    };
+    const crossModelRefusal = crossModelWriteRefusal(crossModelCheck);
     if (crossModelRefusal) {
       throw new Error(crossModelRefusal);
     }
+    // Allowed, but possibly not into this model — see standDownNotice.
+    const crossModelNotice = standDownNotice(crossModelCheck);
 
     // 2. Resolve actual XML file path (DB may store JSON metadata with sourcePath)
     let actualFilePath = filePath;
@@ -3272,6 +3280,23 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       addFieldBpNote = notes.length > 0 ? `\n\n${notes.join('\n')}` : '';
     }
 
+    // A field group already rendered on a form via <DataGroup> puts the field on
+    // that form by itself — said now, before a form extension gets created for it.
+    let fieldGroupRenderNote = '';
+    if (
+      operation === 'add-field-to-field-group' &&
+      (objectType === 'table' || objectType === 'table-extension') &&
+      (args as any).fieldGroupName && args.fieldName
+    ) {
+      fieldGroupRenderNote = await timer.time('field-group render probe', () =>
+        describeFieldGroupRendering(
+          objectType === 'table' ? objectName : objectName.split('.')[0],
+          (args as any).fieldGroupName,
+          args.fieldName!,
+          symbolIndex,
+        ));
+    }
+
     // Corrections the server applied on its own. Kept in the payload so the agent
     // learns the correct form for next time and the write stays auditable.
     const autoCorrectNote = autoCorrectNotes.length > 0
@@ -3309,9 +3334,9 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         {
           type: 'text',
           text:
-            `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${autoCorrectNote}\n\n` +
+            `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${crossModelNotice}${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${backupNote}${verifyNote}${indexNote}${bpNote}${timer.render()}` +
+            `🔧 API: ${bridgeResult.message}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${backupNote}${verifyNote}${indexNote}${bpNote}${timer.render()}` +
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
             `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
         },
@@ -3947,6 +3972,70 @@ function isBaseFieldGroupMissError(message: string | undefined): boolean {
   if (!message) return false;
   return /field group .* not found on table-extension/i.test(message)
     && /extendBaseFieldGroup=true/i.test(message);
+}
+
+/** How many forms on the base table are opened looking for a <DataGroup> renderer. */
+const DATA_GROUP_FORM_PROBE_LIMIT = 3;
+
+/**
+ * Note for a successful add-field-to-field-group: is this field group already
+ * rendered on a form through a container's <DataGroup>?
+ *
+ * If it is, the compiler puts the new field on that form by itself and any
+ * hand-added control for it collides with the generated one. The add-control
+ * guard says the same thing, but only once a form extension exists and a control
+ * is being added to it — a create that then has to be undone. Said here it costs
+ * one indexed lookup.
+ *
+ * Returns '' on any miss — no form on the table, no container with that
+ * DataGroup, an unreadable form, a database that cannot answer — which leaves
+ * the reactive guard exactly as it was.
+ */
+export async function describeFieldGroupRendering(
+  baseTableName: string,
+  groupName: string,
+  fieldName: string,
+  symbolIndex: any,
+): Promise<string> {
+  try {
+    const rdb = symbolIndex?.getReadDb?.();
+    if (!rdb) return '';
+
+    // BINARY probe on idx_form_datasources_table first; table_name casing comes
+    // from the form XML, so fall back to NOCASE only when that misses
+    // (form_datasources is small — the scan is cheap).
+    const sql = (collate: string) =>
+      `SELECT DISTINCT form_name, datasource_name FROM form_datasources ` +
+      `WHERE table_name = ?${collate} LIMIT ${DATA_GROUP_FORM_PROBE_LIMIT}`;
+    let rows = rdb.prepare(sql('')).all(baseTableName) as
+      Array<{ form_name: string; datasource_name: string }>;
+    if (rows.length === 0) {
+      rows = rdb.prepare(sql(' COLLATE NOCASE')).all(baseTableName) as typeof rows;
+    }
+
+    for (const row of rows) {
+      const xml = await findBaseFormXml(row.form_name, symbolIndex);
+      if (!xml) continue;
+      const renderers = await findDataGroupRenderers(xml, groupName);
+      // A container bound to a different datasource renders a different table's
+      // group of the same name — not this field's.
+      const hit = renderers.find(
+        r => !r.dataSource || r.dataSource.toLowerCase() === row.datasource_name.toLowerCase(),
+      );
+      if (!hit) continue;
+
+      return (
+        `\n\n🖼️ Form \`${row.form_name}\` renders field group **${groupName}** via ` +
+        `\`<DataGroup>\` on control "${hit.controlName}" — the compiler generates ` +
+        `\`${hit.generatedNameFor(fieldName)}\` for this field, so **it is already on the form**. ` +
+        `Do not create a form extension or an add-control for it: that control and the ` +
+        `generated one collide as a duplicate name, which only the build reports.`
+      );
+    }
+  } catch {
+    // A hint must never be the reason a successful write reports failure.
+  }
+  return '';
 }
 
 /** True when the base table's own <FieldGroups> defines `groupName`. */

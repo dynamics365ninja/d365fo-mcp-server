@@ -276,6 +276,63 @@ export async function checkAddControlAgainstDataGroup(
   };
 }
 
+/** A control that renders a table field group through its <DataGroup> property */
+export interface DataGroupRenderer {
+  /** Name of the container control carrying <DataGroup> */
+  controlName: string;
+  /** Its <DataSource>, when it declares one */
+  dataSource?: string;
+  /** Control the compiler generates for a member field: <DataGroup>_<FieldName> */
+  generatedNameFor: (fieldName: string) => string;
+}
+
+/**
+ * The reverse of {@link checkAddControlAgainstDataGroup}: given a field group,
+ * find the controls that already render it via <DataGroup>.
+ *
+ * Same fact, asked one step earlier. The add-control guard can only fire once a
+ * form extension exists and a control is being added to it — by then the agent
+ * has spent a create it will have to undo. Asked at add-field-to-field-group
+ * time, the answer ("this group is already on the form; the control appears by
+ * itself") arrives before any of that is written.
+ *
+ * Returns [] when the XML is unparseable or no container renders the group.
+ */
+export async function findDataGroupRenderers(
+  baseFormXml: string,
+  fieldGroupName: string,
+): Promise<DataGroupRenderer[]> {
+  let parsed: any;
+  try {
+    const parser = new Parser({ explicitArray: false, mergeAttrs: true, trim: true });
+    parsed = await parser.parseStringPromise(baseFormXml);
+  } catch {
+    return [];
+  }
+  if (!parsed?.AxForm?.Design) return [];
+
+  const design = walkFormDesign(parsed.AxForm.Design);
+  const needle = fieldGroupName.toLowerCase();
+  const found: DataGroupRenderer[] = [];
+
+  const visit = (nodes: FormControlNode[]): void => {
+    for (const n of nodes) {
+      const dataGroup = n.properties?.DataGroup;
+      if (dataGroup && dataGroup.toLowerCase() === needle) {
+        found.push({
+          controlName: n.name,
+          dataSource: n.properties?.DataSource,
+          generatedNameFor: (fieldName: string) => `${dataGroup}_${fieldName}`,
+        });
+      }
+      visit(n.children);
+    }
+  };
+  visit(design.controls);
+
+  return found;
+}
+
 /**
  * Gate a form write on pattern errors. Returns an MCP error result when the
  * XML has error-severity pattern violations and enforcement is enabled;

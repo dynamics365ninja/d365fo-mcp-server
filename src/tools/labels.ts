@@ -14,7 +14,10 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
-import { searchLabelsTool, REUSABLE_MARKER, NO_REUSE_ADVICE, SOME_REUSE_ADVICE } from './analysis/searchLabels.js';
+import {
+  searchLabelsTool, REUSABLE_MARKER, NO_HITS_MARKER, NO_REUSE_ADVICE, SOME_REUSE_ADVICE,
+} from './analysis/searchLabels.js';
+import { repeatSearchNotice } from './analysis/labelSearchHistory.js';
 import { getLabelInfoTool } from './readers/getLabelInfo.js';
 import { createLabelTool } from './write/createLabel.js';
 import { renameLabelTool } from './write/renameLabel.js';
@@ -235,7 +238,24 @@ async function batchSearch(
   const failed = runs.filter(r => r.failed);
   const searched = runs.length - failed.length;
   const foundReusable = runs.some(r => !r.failed && r.text.includes(REUSABLE_MARKER));
-  const sections = runs.map(r => `## "${r.query}"${r.failed ? ' — ❌ SEARCH FAILED' : ''}\n\n${r.text}`);
+
+  // A miss carries one bit of information wrapped in the same "create your own
+  // label" paragraph as every other miss, so a batch of them buries both the
+  // verdict and any section that DID hit. Name the misses in a line; keep the
+  // full section for the runs that carry something — hits and failures.
+  const missed = runs.filter(r => !r.failed && r.text.includes(NO_HITS_MARKER));
+  const missedSet = new Set(missed.map(r => r.query));
+  const sections = runs
+    .filter(r => !missedSet.has(r.query))
+    .map(r => `## "${r.query}"${r.failed ? ' — ❌ SEARCH FAILED' : ''}\n\n${r.text}`);
+  if (missed.length > 0) {
+    sections.push(
+      `## No match — ${missed.length} phrasing(s)\n\n` +
+      `${missed.map(r => `"${r.query}"`).join(' · ')}\n\n` +
+      `Nothing in the index matches any of them. The advice below is the same for all of them, ` +
+      `so it is stated once.`,
+    );
+  }
 
   const notes = [
     duplicates > 0 ? `${duplicates} duplicate phrasing(s) folded` : '',
@@ -273,6 +293,9 @@ async function batchSearch(
           ? `\n⚠️ ${failed.length} of ${runs.length} searches FAILED and were not part of that verdict: ` +
             `${failed.map(f => `"${f.query}"`).join(', ')}.\n`
           : '') +
+        // Excludes this batch's own phrasings — they are the current answer, not
+        // evidence of repetition. What is left is what earlier calls already asked.
+        (repeatSearchNotice(queries) ? `\n${repeatSearchNotice(queries)}` : '') +
         `\n${NO_REUSE_ADVICE}`;
 
   return {

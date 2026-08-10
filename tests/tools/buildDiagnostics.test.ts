@@ -119,8 +119,8 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
         if (ret && this.AslFinSK_QualityTier < this.orig().AslFinSK_QualityTier)
         {
             ret = checkFailed(strFmt("@AslFinSK:QualityTierDowngradeNotAllowed",
-                enum2str(this.orig().AslFinSK_QualityTier),
-                enum2str(this.AslFinSK_QualityTier)));
+                enum2Symbol(enumNum(AslFinSK_QualityTier), enum2int(this.orig().AslFinSK_QualityTier)),
+                enum2Symbol(enumNum(AslFinSK_QualityTier), enum2int(this.AslFinSK_QualityTier))));
         }
 
         return ret;
@@ -131,16 +131,25 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
     expect(found.map(v => v.line)).toEqual([11, 12]);
   });
 
-  it('still flags the single-line form', () => {
-    expect(bp005('info(strFmt("@X:Y", enum2str(tier)));')).toHaveLength(1);
+  it('still flags the single-line form, and the DictEnum method too', () => {
+    expect(bp005('info(strFmt("@X:Y", enum2Symbol(enumNum(Tier), i)));')).toHaveLength(1);
+    expect(bp005('info(strFmt("@X:Y", dictEnum.value2Symbol(i)));')).toHaveLength(1);
   });
 
-  it('leaves enum2str outside a message alone', () => {
-    expect(bp005('str key = enum2str(this.Tier);')).toHaveLength(0);
-    expect(bp005('fileName = enum2str(tier) + ".txt";')).toHaveLength(0);
+  it('leaves a symbol outside a message alone', () => {
+    // The symbol is the ONLY safe thing to persist for an extensible enum.
+    expect(bp005('str key = enum2Symbol(enumNum(Tier), i);')).toHaveLength(0);
+    expect(bp005('fileName = dictEnum.value2Symbol(i) + ".txt";')).toHaveLength(0);
+  });
+
+  it('leaves enum2str in a message alone — it resolves the label', () => {
+    // The rule used to flag exactly this and send callers to DictEnum instead.
+    // Microsoft ships enum2str inside checkFailed, throw error and control captions.
+    expect(bp005('info(strFmt("@X:Y", enum2str(tier)));')).toHaveLength(0);
+    expect(bp005('ret = checkFailed(strFmt("@X:Y", enum2str(a), enum2str(b)));')).toHaveLength(0);
   });
 
   it('ignores it inside a comment', () => {
-    expect(bp005('// info(strFmt("@X:Y", enum2str(tier)));')).toHaveLength(0);
+    expect(bp005('// info(strFmt("@X:Y", enum2Symbol(enumNum(Tier), i)));')).toHaveLength(0);
   });
 });

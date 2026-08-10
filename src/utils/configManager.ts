@@ -1283,6 +1283,33 @@ class ConfigManager {
     return this.toolForcedProject?.anchorModel ?? this.getModelName();
   }
 
+  /**
+   * The same anchor, with project detection awaited first — what every write
+   * guard must use.
+   *
+   * getWriteAnchorModel() is synchronous, and in a workspace that configures no
+   * `modelName` and sits outside PackagesLocalDirectory its ONLY source is
+   * `autoDetectedProject`, a field a background .rnrproj scan fills in. Read
+   * before that scan lands it returns null — and a null anchor makes the
+   * cross-model guard stand down by design ("never block on a guess"). That
+   * leaves a guard which is present, correct, and occasionally simply absent,
+   * decided by a race nobody can see. get_workspace_info never had the problem
+   * because it awaits the scan; the guards did not.
+   *
+   * The common path costs nothing: an anchor already known short-circuits before
+   * the await.
+   */
+  async resolveWriteAnchorModel(): Promise<string | null> {
+    const known = this.getWriteAnchorModel();
+    if (known) return known;
+    try {
+      await this.awaitPendingDetection();
+    } catch {
+      /* detection is best-effort — the guard's own null-anchor path still applies */
+    }
+    return this.getWriteAnchorModel();
+  }
+
   /** The in-effect tool project switch, or null when writes and reads agree. */
   getToolProjectSwitch(): { anchorModel: string; forcedModel: string } | null {
     return this.toolForcedProject;

@@ -20,7 +20,7 @@
  *   BP002   doInsert/doUpdate/doDelete outside explicit migration comment
  *   BP003   Generic doc-comment (/// Foo class. / /// methodName.)
  *   BP004   Developer-only statements left in code (pause / print)
- *   BP005   enum2str() in user-facing text (emits the symbol, never the translation)
+ *   BP005   an enum SYMBOL (enum2Symbol / value2Symbol) in user-facing text — never translated
  *   TTS001  Unbalanced ttsbegin / ttscommit
  *   XML001  AxTable XML missing an index with <AlternateKey>Yes</AlternateKey>
  *   XML006  AxTable elements out of canonical order (silently dropped by the AOT)
@@ -442,21 +442,27 @@ function checkGlobalFunctionOnTableBuffer(code: string): ValidationViolation[] {
 }
 
 /**
- * BP005 — enum2str() feeding user-facing text.
+ * BP005 — an enum's SYMBOL feeding user-facing text.
  *
- * enum2str returns the enum's symbolic NAME ('Gold'), never its <Label>, so a message
- * built with it stays English on a Czech or Slovak client no matter how carefully the
- * enum was labelled. The runtime API that resolves the translation is
- * `new DictEnum(enumNum(MyEnum)).value2Label(enum2int(value))`.
+ * `enum2Symbol()` / `DictEnum.value2Symbol()` return the AOT name ('Gold'), which is
+ * not a label and is never translated, so a message built from one stays English on a
+ * Czech or Slovak client no matter how carefully the enum was labelled.
  *
- * Scoped to the message builders (info/warning/error/checkFailed/strFmt) because
- * enum2str is perfectly correct for a log line, a filename or a comparison key.
+ * NOT enum2str, which this rule used to flag: enum2str resolves the value's <Label> in
+ * the session language, and the platform ships it inside checkFailed, throw error and
+ * control captions. `Global::enum2Symbol` is itself `new DictEnum(_id).value2Symbol()`
+ * — a separate function for the symbol only makes sense because enum2str is not it.
+ * DictEnum.value2Label remains the answer when the enum type is known only at runtime.
+ *
+ * Scoped to the message builders (info/warning/error/checkFailed/strFmt): a symbol is
+ * correct for a log line, a filename or a comparison key, and it is the only safe thing
+ * to persist for an extensible enum, whose integers are assigned at deployment time.
  *
  * Matched over the call's whole argument span: in a wrapped
- * `checkFailed(strFmt("@M:Id",\n enum2str(a),\n enum2str(b)))` the message
- * builder and enum2str never share a line, which a per-line scan misses.
+ * `checkFailed(strFmt("@M:Id",\n enum2Symbol(a),\n enum2Symbol(b)))` the message
+ * builder and the symbol call never share a line, which a per-line scan misses.
  */
-function checkEnum2StrInMessage(code: string): ValidationViolation[] {
+function checkEnumSymbolInMessage(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
   const masked = maskStringsAndComments(code);
   const lines = code.split('\n');
@@ -479,7 +485,8 @@ function checkEnum2StrInMessage(code: string): ValidationViolation[] {
     }
     const span = masked.slice(m.index, Math.min(end + 1, masked.length));
 
-    const inner = /\benum2str\s*\(/g;
+    // Both spellings: the Global wrapper and the DictEnum method it delegates to.
+    const inner = /(?:\benum2Symbol|\.\s*value2Symbol)\s*\(/gi;
     let hit: RegExpExecArray | null;
     while ((hit = inner.exec(span)) !== null) {
       const lineNo = lineNumber(masked, m.index + hit.index);
@@ -491,8 +498,10 @@ function checkEnum2StrInMessage(code: string): ValidationViolation[] {
         line: lineNo,
         excerpt: lines[lineNo - 1].trim(),
         fix:
-          'enum2str() returns the symbolic name, not the label — this message stays English in every locale. ' +
-          'Use "new DictEnum(enumNum(MyEnum)).value2Label(enum2int(value))" to get the translated text.',
+          'This prints the enum\'s AOT name, which is never translated — the message stays English in ' +
+          'every locale. Use enum2str(value) when the enum type is known at compile time; when it is ' +
+          'only known at runtime, new DictEnum(enumId).value2Label(value). Keep the symbol for logs, ' +
+          'filenames and anything persisted.',
       });
     }
   }
@@ -920,7 +929,7 @@ const XPP_RULES = [
   checkExtensionOfNaming,
   checkCocNextUnconditional,
   checkGlobalFunctionOnTableBuffer,
-  checkEnum2StrInMessage,
+  checkEnumSymbolInMessage,
   checkHardcodedStrings,
   checkDoMethods,
   checkGenericDocComment,

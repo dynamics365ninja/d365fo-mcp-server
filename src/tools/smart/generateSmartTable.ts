@@ -661,7 +661,7 @@ export async function handleGenerateSmartTable(
   // Where this scaffold would land, checked before anything is written. The
   // model above comes from the ACTIVE project, which a get_workspace_info switch
   // moves; writes stay anchored to the model the workspace resolved on its own.
-  const anchorRefusal = scaffoldWriteRefusalResult({
+  const anchorRefusal = await scaffoldWriteRefusalResult({
     objectName: finalName,
     objectType: 'table',
     targetModel: resolvedModel,

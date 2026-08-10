@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { runRules } from '../../src/tools/analysis/validateXpp';
 import { validateWrittenXpp, extractDeclaration } from '../../src/tools/write/inlineXppValidation';
+import { sourceAsWritten } from '../../src/tools/write/createD365File';
 import { preflightReplaceCode, renderChangedLines } from '../../src/tools/write/modifyD365File';
 import { lookupErrorFix, d365foErrorHelpTool } from '../../src/tools/knowledge/d365foErrorHelp';
 
@@ -127,6 +128,48 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
     expect(note).toContain('line 4 of the code you sent');
   });
 
+  /**
+   * The create renames the class to the legal name and writes THAT to disk, so
+   * linting the caller's original text reports COC003 against a name that no
+   * longer exists anywhere — and the fix for it is a no-op.
+   */
+  it('lints the source as renamed by the create, not as the caller typed it', () => {
+    const asSent = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
+final class AslFinCore_TaxTransReportChangeLog_AslFinSKExtension
+{
+    public boolean validateWrite()
+    {
+        return next validateWrite();
+    }
+}`;
+    const finalName = 'AslFinCore_TaxTransReportChangeLogAslFinSK_Extension';
+
+    // The name the caller typed genuinely violates COC003 …
+    expect(validateWrittenXpp(asSent)).toContain('COC003');
+    // … and the create fixes it while writing, so the note must be silent.
+    const written = sourceAsWritten(asSent, finalName)!;
+    expect(written).toContain(`final class ${finalName}`);
+    expect(written).not.toContain('_AslFinSKExtension\n');
+    expect(validateWrittenXpp(written)).toBe('');
+  });
+
+  it('still reports a violation the rename does not fix', () => {
+    // Renaming must not become a way to launder real findings.
+    const withBadCall = SHIPPED_COC.replace(
+      'AslFinCore_TaxTransReportChangeLogAslFinSK_Extension',
+      'AslFinCore_TaxTransReportChangeLog_AslFinSKExtension',
+    );
+    const written = sourceAsWritten(withBadCall, 'AslFinCore_TaxTransReportChangeLogAslFinSK_Extension')!;
+    expect(validateWrittenXpp(written)).toContain('COC005');
+  });
+
+  it('passes through source with no class header, and an absent source', () => {
+    // A table create sends its field list as JSON here.
+    const json = '[{"name":"Foo","type":"str"}]';
+    expect(sourceAsWritten(json, 'Whatever')).toBe(json);
+    expect(sourceAsWritten(undefined, 'Whatever')).toBeUndefined();
+  });
+
   it('reads the declaration out of AOT XML', () => {
     expect(extractDeclaration('<Declaration><![CDATA[\nfinal class X\n{\n}\n]]></Declaration>'))
       .toContain('final class X');
@@ -235,10 +278,10 @@ describe('error help does not answer questions it cannot answer', () => {
   });
 });
 
-describe('the shipped CoC still carries an untranslated message', () => {
-  // next is unconditional, checkFailed is unqualified, the label takes %1/%2 —
-  // every hard rule satisfied. enum2str is what remains: the two values render
-  // as "Gold"/"Silver" in every locale, whatever the enum's labels say.
+describe('the shipped CoC message', () => {
+  // next is unconditional, checkFailed is unqualified, the label takes %1/%2, and
+  // enum2str resolves each value's <Label> in the session language. Nothing left
+  // to say — BP005 used to flag this very message and send the agent to DictEnum.
   const SHIPPED = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
 final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
 {
@@ -260,17 +303,26 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
     }
 }`;
 
-  it('reports BP005 and nothing more severe', () => {
-    const note = validateWrittenXpp(SHIPPED);
-    expect(note).toContain('BP005');
-    expect(note).toContain('DictEnum');
-    expect(note).not.toContain('error(s)');
+  it('passes clean — enum2str is the translated form', () => {
+    expect(validateWrittenXpp(SHIPPED)).toBe('');
   });
 
-  it('is clean once the enum labels are resolved properly', () => {
+  it('is also clean with the runtime-typed DictEnum form', () => {
+    // Correct too, and the only option when the enum type is not known until
+    // runtime — just not something to rewrite working code into.
     expect(validateWrittenXpp(SHIPPED.replace(
       'enum2str(orig), enum2str(this.AslFinSK_QualityTier)',
       'dictEnum.value2Label(enum2int(orig)), dictEnum.value2Label(enum2int(this.AslFinSK_QualityTier))',
     ))).toBe('');
+  });
+
+  it('reports BP005 when the SYMBOL is what reaches the message', () => {
+    const note = validateWrittenXpp(SHIPPED.replace(
+      'enum2str(orig), enum2str(this.AslFinSK_QualityTier)',
+      'dictEnum.value2Symbol(enum2int(orig)), dictEnum.value2Symbol(enum2int(this.AslFinSK_QualityTier))',
+    ));
+    expect(note).toContain('BP005');
+    expect(note).toContain('never translated');
+    expect(note).not.toContain('error(s)');
   });
 });

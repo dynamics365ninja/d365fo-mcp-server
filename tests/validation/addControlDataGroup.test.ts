@@ -9,7 +9,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { checkAddControlAgainstDataGroup } from '../../src/tools/analysis/validateFormPattern';
+import {
+  checkAddControlAgainstDataGroup,
+  findDataGroupRenderers,
+} from '../../src/tools/analysis/validateFormPattern';
 
 /** The AslFinCore_TaxTransReportChangeLog shape: Grid > Group[DataGroup=Administration]. */
 const BASE_FORM_XML = `<?xml version="1.0" encoding="utf-8"?>
@@ -127,5 +130,47 @@ describe('checkAddControlAgainstDataGroup', () => {
       'X',
     );
     expect(verdict).toBeNull();
+  });
+});
+
+/**
+ * The same fact asked one step earlier, at add-field-to-field-group time —
+ * before a form extension exists to be created and undone.
+ */
+describe('findDataGroupRenderers', () => {
+  it('finds the container that renders a field group and names the generated control', async () => {
+    const hits = await findDataGroupRenderers(BASE_FORM_XML, 'Administration');
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0].controlName).toBe('Administration');
+    expect(hits[0].dataSource).toBe('DemoChangeLog');
+    expect(hits[0].generatedNameFor('DEMO_QualityTier')).toBe('Administration_DEMO_QualityTier');
+  });
+
+  it('matches the field group case-insensitively', async () => {
+    const hits = await findDataGroupRenderers(BASE_FORM_XML, 'IDENTIFICATION');
+    expect(hits.map(h => h.controlName)).toEqual(['Identification']);
+  });
+
+  it('returns [] for a field group no container renders', async () => {
+    expect(await findDataGroupRenderers(BASE_FORM_XML, 'NoSuchGroup')).toEqual([]);
+  });
+
+  it('returns [] rather than throwing on unparseable XML', async () => {
+    expect(await findDataGroupRenderers('<AxForm><Design>', 'Administration')).toEqual([]);
+  });
+
+  it('finds a renderer nested below the top level', async () => {
+    // The group in the fixture sits under Grid, not directly under Design —
+    // the walk has to descend, which is the whole point of the reverse lookup.
+    const nested = BASE_FORM_XML.replace('<Name>Freeform</Name>', '<Name>Deep</Name>')
+      .replace('<Controls />\n          </AxFormControl>\n        </Controls>',
+        '<Controls><AxFormControl xmlns="" i:type="AxFormGroupControl"><Name>Inner</Name>' +
+        '<Type>Group</Type><Controls /><DataGroup>Buried</DataGroup></AxFormControl></Controls>' +
+        '\n          </AxFormControl>\n        </Controls>');
+    const hits = await findDataGroupRenderers(nested, 'Buried');
+    expect(hits.map(h => h.controlName)).toEqual(['Inner']);
+    // No DataSource on the inner group — the caller must not require one.
+    expect(hits[0].dataSource).toBeUndefined();
   });
 });
