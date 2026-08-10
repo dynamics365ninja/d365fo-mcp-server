@@ -360,6 +360,9 @@ export async function indexOneFile(
         const content = fs.readFileSync(filePath, 'utf-8');
         const labels = parseLabelFile(content, labelFileId, model, language, filePath);
         if (labels.length > 0) {
+          // keepTriggers: one label file is not a reason to re-tokenise every label in
+          // the database (~105 s on the production DB, event loop blocked throughout).
+          // removeLabelsByFile above already pruned the old FTS rows via labels_ad.
           symbolIndex.bulkAddLabels(labels.map(lbl => ({
             labelId: lbl.labelId,
             labelFileId: lbl.labelFileId,
@@ -368,7 +371,7 @@ export async function indexOneFile(
             text: lbl.text,
             comment: lbl.comment,
             filePath: lbl.filePath,
-          })));
+          })), { skipFtsRebuild: true, keepTriggers: true });
           insertedCount = labels.length;
         }
       } catch (e: any) {

@@ -761,10 +761,13 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       }
     }
 
-    // 5. Update SQLite index (skip immediate FTS rebuild — schedule debounced)
+    // 5. Update SQLite index. The FTS rows come from the labels_ai/labels_ad triggers,
+    // one per inserted row. The debounced full rebuild this replaced re-tokenised EVERY
+    // label in the database for the handful written here — on the production DB that is
+    // ~105 s of a blocked event loop (better-sqlite3 is synchronous, so no other tool
+    // call is answered meanwhile) per create_label call.
     if (updateIndex && indexEntries.length > 0) {
-      symbolIndex.bulkAddLabels(indexEntries, { skipFtsRebuild: true });
-      symbolIndex.scheduleLabelsFtsRebuild();
+      symbolIndex.bulkAddLabels(indexEntries, { skipFtsRebuild: true, keepTriggers: true });
     }
 
     // 5b. Add label file descriptors to VS project (.rnrproj) so builds detect them
