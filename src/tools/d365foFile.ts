@@ -114,7 +114,25 @@ async function runModifyBatch(
     }
     // Per-entry keys win over the shared ones, so objectType/objectName/modelName
     // are stated once at the top level and an entry can still override them.
-    const entryArgs = { ...shared, ...(entry as Record<string, unknown>), peerOperations };
+    //
+    // Each entry gets the same `params` unwrap the single-operation form gets
+    // above. It did not, and the two disagreed in the worst possible direction:
+    // get_knowledge(kind="op-spec") tells the caller in bold to "pass these
+    // NESTED inside `params`", and doing exactly that inside operations[] left
+    // the wrapper object sitting in the args untouched, so the operation ran
+    // with none of its parameters and answered "called with no parameter that
+    // changes anything — nothing would be written". Run 9180a464 obeyed the
+    // spec, was refused, and only got through by ignoring it and passing the
+    // keys flat.
+    const { params: entryParams, ...entryFlat } = entry as Record<string, unknown>;
+    const entryArgs = {
+      ...shared,
+      ...entryFlat,
+      ...(entryParams && typeof entryParams === 'object' && !Array.isArray(entryParams)
+        ? (entryParams as Record<string, unknown>)
+        : {}),
+      peerOperations,
+    };
     const opName = String((entry as any).operation ?? '(missing operation)');
 
     if (!(entry as any).operation) {

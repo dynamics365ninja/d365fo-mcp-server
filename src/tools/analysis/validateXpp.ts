@@ -463,25 +463,58 @@ function checkGlobalFunctionOnTableBuffer(code: string): ValidationViolation[] {
  *
  * Scoped to the message builders (info/warning/error/checkFailed/strFmt) because
  * enum2str is perfectly correct for a log line, a filename or a comparison key.
+ *
+ * Matched over the call's whole argument span, not per line. The line-scoped
+ * version missed the shape a caller actually writes once the call has three
+ * arguments:
+ *
+ *     ret = checkFailed(strFmt("@Model:Downgrade",
+ *         enum2str(this.orig().Tier),
+ *         enum2str(this.Tier)));
+ *
+ * — `checkFailed` and `enum2str` never share a line, so run 9180a464 asked
+ * validate_code about exactly this and was told "✅ no violations found".
  */
 function checkEnum2StrInMessage(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
-  const masked = maskStringsAndComments(code).split('\n');
+  const masked = maskStringsAndComments(code);
   const lines = code.split('\n');
+  const reported = new Set<number>();
 
-  masked.forEach((clean, i) => {
-    if (!/\benum2str\s*\(/.test(clean)) return;
-    if (!/\b(?:info|warning|error|checkFailed|strFmt)\s*\(/.test(clean)) return;
-    violations.push({
-      rule: 'BP005',
-      severity: 'warning',
-      line: i + 1,
-      excerpt: lines[i].trim(),
-      fix:
-        'enum2str() returns the symbolic name, not the label — this message stays English in every locale. ' +
-        'Use "new DictEnum(enumNum(MyEnum)).value2Label(enum2int(value))" to get the translated text.',
-    });
-  });
+  const callRe = /\b(?:info|warning|error|checkFailed|strFmt)\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = callRe.exec(masked)) !== null) {
+    // Walk from the opening paren to its match so nested calls and multi-line
+    // argument lists are one span.
+    let depth = 0;
+    let end = m.index + m[0].length - 1;
+    for (; end < masked.length; end++) {
+      const ch = masked[end];
+      if (ch === '(') depth++;
+      else if (ch === ')') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    const span = masked.slice(m.index, Math.min(end + 1, masked.length));
+
+    const inner = /\benum2str\s*\(/g;
+    let hit: RegExpExecArray | null;
+    while ((hit = inner.exec(span)) !== null) {
+      const lineNo = lineNumber(masked, m.index + hit.index);
+      if (reported.has(lineNo)) continue;
+      reported.add(lineNo);
+      violations.push({
+        rule: 'BP005',
+        severity: 'warning',
+        line: lineNo,
+        excerpt: lines[lineNo - 1].trim(),
+        fix:
+          'enum2str() returns the symbolic name, not the label — this message stays English in every locale. ' +
+          'Use "new DictEnum(enumNum(MyEnum)).value2Label(enum2int(value))" to get the translated text.',
+      });
+    }
+  }
 
   return violations;
 }

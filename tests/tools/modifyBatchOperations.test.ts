@@ -181,4 +181,37 @@ describe('d365fo_file(action="modify") with operations[]', () => {
 
     expect(forwarded()[0].peerOperations).toEqual(['add-field']);
   });
+
+  // get_knowledge(kind="op-spec") tells the caller, in bold, to "pass these
+  // NESTED inside `params`". The single-operation form unwraps that wrapper; the
+  // batch form used to forward it verbatim, so the operation ran with none of its
+  // parameters and answered "called with no parameter that changes anything".
+  // Run 9180a464 followed the spec, was refused, and got through only by
+  // ignoring it and passing the keys flat.
+  it('unwraps a per-entry `params` the way the single-operation form does', async () => {
+    await d365foFileTool(call({
+      objectType: 'table-extension',
+      objectName: 'AslFinCore_TaxTransReportChangeLog.AslFinSKExtension',
+      operations: [
+        { operation: 'modify-field', params: { fieldName: 'AslFinSK_QualityTier', fieldLabel: '@AslFinSK:QualityTierField' } },
+        { operation: 'add-field-to-field-group', params: { fieldName: 'AslFinSK_QualityTier', fieldGroupName: 'Identification', extendBaseFieldGroup: true } },
+      ],
+    }), ctx);
+
+    const [first, second] = forwarded();
+    expect(first.fieldName).toBe('AslFinSK_QualityTier');
+    expect(first.fieldLabel).toBe('@AslFinSK:QualityTierField');
+    expect(first.params).toBeUndefined();
+    expect(second.fieldGroupName).toBe('Identification');
+    expect(second.extendBaseFieldGroup).toBe(true);
+  });
+
+  it('keeps flat entry keys working, and lets params win on a collision', async () => {
+    await d365foFileTool(call({
+      objectType: 'table', objectName: 'T',
+      operations: [{ operation: 'add-field', fieldName: 'Flat', params: { fieldName: 'Nested' } }],
+    }), ctx);
+
+    expect(forwarded()[0].fieldName).toBe('Nested');
+  });
 });

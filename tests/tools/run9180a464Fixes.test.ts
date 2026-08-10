@@ -1,0 +1,156 @@
+/**
+ * Benchmark run 9180a464 (10.8. 06:19) — the run that deleted its own deliverable.
+ *
+ * What happened, in order: a full build returned exit-failure; the log parser
+ * recognised none of the lines in it, so the tool printed "❌ Build FAILED" over
+ * "📋 Structured diagnostics: 0 error(s), 1 warning(s)", the warning being an
+ * unrelated `Server`-keyword deprecation on another model's class. Given a
+ * failure with no cause, the agent guessed one ("duplicate control name"), spent
+ * 178 s + 54 s + 12 s scanning PackagesLocalDirectory from PowerShell, then
+ * called undo_last_modification on the form extension it had just created and
+ * hand-edited the .rnrproj to drop the entry. The next build passed, which made
+ * the deletion look like a fix.
+ *
+ * Two smaller defects from the same run are pinned here as well.
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  parseXppcDiagnostics,
+  formatStructuredDiagnostics,
+  renderUnexplainedFailure,
+  xppcReportedErrorCount,
+} from '../../src/tools/sdlc/buildProject';
+import { runRules } from '../../src/tools/analysis/validateXpp';
+
+/**
+ * Verbatim shapes from K:\…\Temp\d365build_log_6f131599b2.log. Only the first
+ * of these five was recognised by the old parser.
+ */
+const LOG = `AslFinanceSK compilation completed.
+Elapsed time: 00:00:21
+
+--- xppc compiler diagnostics ---
+==================================
+Compile Warning: Class Method dynamics://Class/LogisticsPostalAddressAslFinSK_Extension/Method/aslFinSK_makeStreet: [(7,5),(50,6)]: The 'Server'  keyword has been deprecated, please remove it from the method definition.
+Metadata Warning: AxTableExtension/SalesOrderHeaderV2Staging.AslFinSKExtension: Referenced object 'SalesOrderHeaderV2Staging' is marked as obsolete.
+FormPatternValidation Warning: AxFormExtension/ProjInvoiceJournalV2.AslFinSKExtension/Design/Controls/TabHeading/Overview: 'AxFormExtension/…/Overview' has not specified a pattern. Please apply one of the available patterns.
+Metadata Error: AxFormExtension/AslFinCore_TaxTransReportChangeLog.AslFinSKExtension/Design/Controls/Identification/Identification_AslFinSK_QualityTier: Duplicate control name.
+FormPatternValidation Error: AxFormExtension/AslFinCore_TaxTransReportChangeLog.AslFinSKExtension/Design/Controls/Identification: does not conform to pattern SimpleList.
+==================================
+Errors: 2
+Warnings: 3
+`;
+
+describe('xppc diagnostics — the whole severity family, not five literals', () => {
+  const diags = parseXppcDiagnostics(LOG);
+
+  it('finds the errors the old parser reported as zero', () => {
+    const errors = diags.filter(d => d.severity === 'error');
+    expect(errors).toHaveLength(2);
+    expect(errors.map(e => e.kind).sort()).toEqual(['FormPatternValidation', 'Metadata']);
+  });
+
+  it('locates the object and the member from the path form', () => {
+    const dup = diags.find(d => d.message === 'Duplicate control name.');
+    expect(dup?.model).toBe('AxFormExtension');
+    expect(dup?.object).toBe('AslFinCore_TaxTransReportChangeLog.AslFinSKExtension');
+    expect(dup?.member).toContain('Identification_AslFinSK_QualityTier');
+  });
+
+  it('still parses the dynamics:// form with line and column', () => {
+    const dep = diags.find(d => d.message.includes('Server'));
+    expect(dep?.severity).toBe('warning');
+    expect(dep?.object).toBe('LogisticsPostalAddressAslFinSK_Extension');
+    expect(dep?.line).toBe(7);
+    expect(dep?.column).toBe(5);
+  });
+
+  it('picks up the Metadata and FormPatternValidation warnings too', () => {
+    expect(diags.filter(d => d.severity === 'warning')).toHaveLength(3);
+  });
+
+  it('reads xppc own error tally', () => {
+    expect(xppcReportedErrorCount(LOG)).toBe(2);
+    expect(xppcReportedErrorCount('no tally here')).toBeNull();
+  });
+
+  it('does not mistake the tally lines for diagnostics', () => {
+    expect(parseXppcDiagnostics('Errors: 2\nWarnings: 3\n')).toHaveLength(0);
+  });
+
+  it('lists the errors before the warnings, with locations', () => {
+    const block = formatStructuredDiagnostics(diags);
+    expect(block).toContain('2 error(s), 3 warning(s)');
+    expect(block.indexOf('Duplicate control name')).toBeLessThan(block.indexOf('Server'));
+  });
+});
+
+describe('a failure this parser cannot explain must say so', () => {
+  it('names the gap and forbids deleting work to clear it', () => {
+    const note = renderUnexplainedFailure([], 'Errors: 1\nWarnings: 0\n');
+    expect(note).toContain('no error diagnostic');
+    expect(note).toContain('Errors: 1');
+    expect(note).toContain('Do NOT delete, undo or unregister');
+  });
+
+  it('warns that listed warnings are not the failure', () => {
+    // The exact trap of run 9180a464: FAILED, plus one unrelated warning.
+    const onlyWarning = parseXppcDiagnostics(
+      "Compile Warning: Class Method dynamics://Class/X/Method/y: [(7,5)]: The 'Server' keyword has been deprecated.\n",
+    );
+    const note = renderUnexplainedFailure(onlyWarning, 'Errors: 1\nWarnings: 1\n');
+    expect(note).toContain('are NOT the failure');
+  });
+
+  it('reports a shortfall when xppc counted more errors than were parsed', () => {
+    const one = parseXppcDiagnostics('Compile Error: something went wrong\n');
+    expect(renderUnexplainedFailure(one, 'Errors: 4\nWarnings: 0\n')).toContain('only 1 could be parsed');
+  });
+
+  it('stays silent when the parsed errors do explain the failure', () => {
+    const diags = parseXppcDiagnostics(LOG);
+    expect(renderUnexplainedFailure(diags, LOG)).toBe('');
+  });
+});
+
+describe('BP005 spans the whole call, not one line', () => {
+  const bp005 = (code: string) => runRules(code, 'xpp').filter(v => v.rule === 'BP005');
+
+  it('flags the wrapped strFmt the run was told was clean', () => {
+    // Verbatim from validate_code call #56, which answered "no violations found".
+    const code = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
+final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
+{
+    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+
+        if (ret && this.AslFinSK_QualityTier < this.orig().AslFinSK_QualityTier)
+        {
+            ret = checkFailed(strFmt("@AslFinSK:QualityTierDowngradeNotAllowed",
+                enum2str(this.orig().AslFinSK_QualityTier),
+                enum2str(this.AslFinSK_QualityTier)));
+        }
+
+        return ret;
+    }
+}`;
+    const found = bp005(code);
+    expect(found).toHaveLength(2);
+    expect(found.map(v => v.line)).toEqual([11, 12]);
+  });
+
+  it('still flags the single-line form', () => {
+    expect(bp005('info(strFmt("@X:Y", enum2str(tier)));')).toHaveLength(1);
+  });
+
+  it('leaves enum2str outside a message alone', () => {
+    expect(bp005('str key = enum2str(this.Tier);')).toHaveLength(0);
+    expect(bp005('fileName = enum2str(tier) + ".txt";')).toHaveLength(0);
+  });
+
+  it('ignores it inside a comment', () => {
+    expect(bp005('// info(strFmt("@X:Y", enum2str(tier)));')).toHaveLength(0);
+  });
+});
