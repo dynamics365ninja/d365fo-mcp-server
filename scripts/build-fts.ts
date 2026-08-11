@@ -104,14 +104,41 @@ async function buildFts(): Promise<void> {
       }
       // else: no filter — index all models
 
-      const { totalLabels, modelsIndexed } = await indexAllLabels(
-        symbolIndex,
-        PACKAGES_PATH,
-        labelModelFilter,
-      );
+      // Bulk load with only the UNIQUE index live; the read accelerators are rebuilt
+      // below. Cheaper as one CREATE INDEX per index over the finished table than as
+      // eight B-tree updates on every one of ~500 K inserts.
+      const droppedIndexes = symbolIndex.dropLabelSecondaryIndexes();
+
+      let totalLabels = 0;
+      let modelsIndexed = 0;
+      let ftsPending = false;
+      let indexMs = 0;
+      try {
+        ({ totalLabels, modelsIndexed, ftsRebuildPending: ftsPending } = await indexAllLabels(
+          symbolIndex,
+          PACKAGES_PATH,
+          labelModelFilter,
+          { skipFtsRebuild: true },
+        ));
+      } finally {
+        // finally, not the happy path only: leaving the database without its label
+        // indexes turns every later label lookup into a full-table scan, and nothing
+        // would recreate them until the next successful build.
+        indexMs = symbolIndex.createLabelSecondaryIndexes(droppedIndexes);
+      }
+
+      const insertDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
+      console.log(`   ✅ ${totalLabels} label entries indexed across ${modelsIndexed} models in ${insertDuration}s`);
+      console.log(`   🔑 Label indexes rebuilt in ${(indexMs / 1000).toFixed(2)}s`);
+
+      if (ftsPending) {
+        const ftsStart = Date.now();
+        symbolIndex.rebuildLabelsFts();
+        console.log(`   🔍 Labels FTS rebuilt in ${((Date.now() - ftsStart) / 1000).toFixed(2)}s`);
+      }
 
       const labelDuration = ((Date.now() - labelStart) / 1000).toFixed(2);
-      console.log(`   ✅ ${totalLabels} label entries indexed across ${modelsIndexed} models in ${labelDuration}s`);
+      console.log(`   ⏱️  Label phase total: ${labelDuration}s`);
 
       const labelCount = symbolIndex.getLabelCount();
       console.log(`   📊 Total labels in database: ${labelCount}`);

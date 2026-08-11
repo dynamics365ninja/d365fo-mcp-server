@@ -42,12 +42,18 @@ describe('file_path indexes', () => {
     const symbolIdx = idx.db
       .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_symbols_file_path'`)
       .get();
+    // Labels reach their path through label_files now, so the indexed column is the
+    // foreign key, and the path text itself is indexed once on the lookup table.
     const labelIdx = idx.labelsDb
-      .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_labels_file_path'`)
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_labels_file_path_id'`)
+      .get();
+    const labelFilesIdx = idx.labelsDb
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_label_files_path'`)
       .get();
 
     expect(symbolIdx).toBeTruthy();
     expect(labelIdx).toBeTruthy();
+    expect(labelFilesIdx).toBeTruthy();
   });
 
   it('makes removeSymbolsByFile look up by index instead of scanning', () => {

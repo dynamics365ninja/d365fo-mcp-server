@@ -16,6 +16,7 @@ import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 import { settingByEnv } from '../config/settings.js';
+import { defaultFileConcurrency, mapWithConcurrency } from '../utils/concurrency.js';
 import type { XppSymbolIndex } from './symbolIndex.js';
 
 /**
@@ -200,15 +201,27 @@ async function indexModelLabels(
 
   const allEntries: Parameters<XppSymbolIndex['bulkAddLabels']>[0] = [];
 
-  for (const { labelFileId, language, filePath } of labelFiles) {
-    let content: string;
-    try {
-      content = await fs.readFile(filePath, 'utf-8');
-    } catch {
-      continue;
-    }
+  // Read the model's label files with a bounded number in flight rather than one at
+  // a time. Barely matters on a default en-US build (813 files / ~38 MB across the
+  // whole PackagesLocalDirectory), but LABEL_LANGUAGES=all multiplies that by the ~74
+  // shipped locales — ~60 K files and a few GB — and a serial await per file makes
+  // that phase cost the sum of every read's latency. mapWithConcurrency preserves
+  // input order, so the rows still go in deterministically.
+  const perFile = await mapWithConcurrency(
+    labelFiles,
+    defaultFileConcurrency(),
+    async ({ labelFileId, language, filePath }) => {
+      let content: string;
+      try {
+        content = await fs.readFile(filePath, 'utf-8');
+      } catch {
+        return [];
+      }
+      return parseLabelFile(content, labelFileId, model, language, filePath);
+    },
+  );
 
-    const labels = parseLabelFile(content, labelFileId, model, language, filePath);
+  for (const labels of perFile) {
     for (const lbl of labels) {
       allEntries.push({
         labelId: lbl.labelId,
@@ -237,8 +250,8 @@ export async function indexAllLabels(
   symbolIndex: XppSymbolIndex,
   packagesPath: string,
   modelFilter?: (modelName: string) => boolean,
-  opts?: { ftsStrategy?: 'rebuild' | 'incremental' },
-): Promise<{ totalLabels: number; modelsIndexed: number }> {
+  opts?: { ftsStrategy?: 'rebuild' | 'incremental'; skipFtsRebuild?: boolean },
+): Promise<{ totalLabels: number; modelsIndexed: number; ftsRebuildPending: boolean }> {
   // 'incremental' keeps the labels_fts triggers live so only the scanned models' labels are
   // tokenised, instead of re-inserting every label in the database afterwards. Only
   // worth it when modelFilter narrows the scan to a small set (a custom-model build).
@@ -253,7 +266,7 @@ export async function indexAllLabels(
     models = entries.filter(e => e.isDirectory() || e.isSymbolicLink()).map(e => e.name);
   } catch {
     console.error(`[LabelParser] Cannot read packages path: ${packagesPath}`);
-    return { totalLabels, modelsIndexed };
+    return { totalLabels, modelsIndexed, ftsRebuildPending: false };
   }
 
   let skippedByFilter = 0;
@@ -321,9 +334,13 @@ export async function indexAllLabels(
     }
   }
 
-  // Rebuild FTS once for all models rather than per-model (avoids O(n^2) rebuild cost).
-  // Skipped under 'incremental': the triggers already kept labels_fts in sync per row.
-  if (totalLabels > 0 && !incrementalFts) {
+  // The rebuild is O(every label in the database) no matter how narrow this scan was,
+  // so a caller looping over several package roots must not pay it once per root —
+  // `skipFtsRebuild` lets it hoist the single rebuild out of its own loop and run it
+  // when `ftsRebuildPending` comes back true. Skipped under 'incremental' regardless:
+  // the triggers already kept labels_fts in sync per row.
+  const ftsRebuildPending = totalLabels > 0 && !incrementalFts;
+  if (ftsRebuildPending && !opts?.skipFtsRebuild) {
     symbolIndex.rebuildLabelsFts();
   }
 
@@ -335,5 +352,9 @@ export async function indexAllLabels(
     console.log(`      - Total models found: ${models.length}`);
   }
 
-  return { totalLabels, modelsIndexed };
+  return {
+    totalLabels,
+    modelsIndexed,
+    ftsRebuildPending: ftsRebuildPending && !!opts?.skipFtsRebuild,
+  };
 }

@@ -17,6 +17,7 @@ import type { XppServerContext } from '../types/context.js';
 import {
   searchLabelsTool, REUSABLE_MARKER, NO_HITS_MARKER, NO_REUSE_ADVICE, SOME_REUSE_ADVICE,
 } from './analysis/searchLabels.js';
+import { mapWithConcurrency } from '../utils/concurrency.js';
 import { repeatSearchNotice } from './analysis/labelSearchHistory.js';
 import { getLabelInfoTool } from './readers/getLabelInfo.js';
 import { createLabelTool } from './write/createLabel.js';
@@ -162,23 +163,11 @@ const MAX_BATCH_QUERIES = 12;
  */
 const BATCH_CONCURRENCY = 4;
 
-/** Run `fn` over `items` with at most `limit` in flight, preserving input order. Exported for tests. */
-export async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i], i);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
-}
+/**
+ * Re-exported from utils/concurrency so the label indexer can share the same helper
+ * without importing from the tools layer. Kept exported here for existing callers/tests.
+ */
+export { mapWithConcurrency };
 
 /**
  * Run several label searches in one call.

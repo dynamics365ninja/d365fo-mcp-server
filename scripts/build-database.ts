@@ -333,14 +333,37 @@ async function buildDatabase() {
         }
         // else: no filter — index all models
 
-        for (const rootPath of validRoots) {
-          const { totalLabels, modelsIndexed } = await indexAllLabels(
-            symbolIndex,
-            rootPath,
-            labelModelFilter,
-          );
-          grandTotalLabels += totalLabels;
-          grandTotalModels += modelsIndexed;
+        // Bulk load with only the UNIQUE index live — see dropLabelSecondaryIndexes().
+        // Deferred across ALL roots, not per root, so the CREATE INDEX pass runs once.
+        const droppedIndexes = symbolIndex.dropLabelSecondaryIndexes();
+        let ftsPending = false;
+        let indexMs = 0;
+        try {
+          for (const rootPath of validRoots) {
+            // skipFtsRebuild: the rebuild reads every label row in the database, so
+            // running it inside this loop would repeat that whole pass per root.
+            const { totalLabels, modelsIndexed, ftsRebuildPending } = await indexAllLabels(
+              symbolIndex,
+              rootPath,
+              labelModelFilter,
+              { skipFtsRebuild: true },
+            );
+            grandTotalLabels += totalLabels;
+            grandTotalModels += modelsIndexed;
+            ftsPending ||= ftsRebuildPending;
+          }
+        } finally {
+          // finally, not the happy path only: a database left without its label
+          // indexes answers every later lookup with a full-table scan, and nothing
+          // recreates them until the next successful build.
+          indexMs = symbolIndex.createLabelSecondaryIndexes(droppedIndexes);
+        }
+        log.detail(`Label indexes rebuilt in ${(indexMs / 1000).toFixed(2)}s`);
+
+        if (ftsPending) {
+          const ftsStart = Date.now();
+          symbolIndex.rebuildLabelsFts();
+          log.detail(`Labels FTS rebuilt in ${((Date.now() - ftsStart) / 1000).toFixed(2)}s`);
         }
       }
 

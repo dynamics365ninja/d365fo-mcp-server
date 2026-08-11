@@ -160,7 +160,9 @@ describe('labels_fts language-coverage migration', () => {
     opened.push(reopened);
 
     expect(reopened.searchLabels('kvality', { language: 'cs' }).map(h => h.text)).toEqual(['Úroveň kvality']);
-    expect(Number(reopened.labelsDb.pragma('user_version', { simple: true }))).toBe(1);
+    // 2, not 1: the label_files normalisation shares this counter and stamps its own
+    // step on the way past. See the migration ordering in initializeDatabase().
+    expect(Number(reopened.labelsDb.pragma('user_version', { simple: true }))).toBe(2);
   });
 
   it('does not rebuild a database that is already migrated', () => {
@@ -186,6 +188,6 @@ describe('labels_fts language-coverage migration', () => {
     opened.push(third);
 
     expect(rebuilt).toBe(false);
-    expect(Number(third.labelsDb.pragma('user_version', { simple: true }))).toBe(1);
+    expect(Number(third.labelsDb.pragma('user_version', { simple: true }))).toBe(2);
   });
 });

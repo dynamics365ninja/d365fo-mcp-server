@@ -125,8 +125,10 @@ describe('NOCASE file_path index', () => {
     expect(
       idx.db.prepare(`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_symbols_file_path_nocase'`).get(),
     ).toBeTruthy();
+    // The labels NOCASE index moved to label_files: removeLabelsByFile matches the
+    // path spellings there (one row per .label.txt) and deletes labels by the id.
     expect(
-      idx.labelsDb.prepare(`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_labels_file_path_nocase'`).get(),
+      idx.labelsDb.prepare(`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_label_files_path_nocase'`).get(),
     ).toBeTruthy();
 
     // Enough rows that the planner has a real choice — on a handful it picks a
