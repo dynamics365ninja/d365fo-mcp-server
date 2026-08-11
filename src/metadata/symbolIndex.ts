@@ -10,6 +10,7 @@ import * as path from 'path';
 import type { XppSymbol } from './types.js';
 import { renderMethodSignature } from './xppDeclaration.js';
 import { isStandardModel } from '../utils/modelClassifier.js';
+import { labelIdSpellings, parseLabelReference } from '../utils/labelReference.js';
 import { c, log } from '../utils/terminalUi.js';
 
 /**
@@ -4131,7 +4132,22 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Get a single label by exact ID (returns all languages)
+   * Get a single label by ID (returns all languages).
+   *
+   * The ID may be spelled any way the rest of the server emits it: a reference
+   * (`@ContosoExt:EquipmentName`, `@GLS4170035`, even the doubled
+   * `@SYS:@SYS67433`) or the bare key. #888: matching the caller's string
+   * against the stored one verbatim made the natural spelling fail for the 27
+   * legacy label files, whose keys are stored WITH the sigil — 61% of the
+   * indexed rows — and `search` output, which is always a reference, was never
+   * valid input here. Both branches of the IN-list still use `idx_labels_id`
+   * (and `idx_labels_unique` once the file/model filters are added), so the
+   * widening costs nothing; see labelIdSpellings for why the sigil is not
+   * normalised away at storage time instead.
+   *
+   * Rows come back with the id EXACTLY as stored, which is the spelling
+   * callers must keep using for anything that reads the .label.txt (see
+   * labelMissingOnDisk) or writes a reference.
    */
   getLabelById(
     labelId: string,
@@ -4146,14 +4162,22 @@ export class XppSymbolIndex {
     comment: string | null;
     filePath: string;
   }> {
-    const params: any[] = [labelId];
+    const parsed = parseLabelReference(labelId);
+    const spellings = labelIdSpellings(parsed.labelId);
+    if (spellings.length === 0) return [];
+
+    // A `@File:Id` input names its own file; an explicit argument still wins,
+    // and when the two disagree the empty result is the right answer.
+    const fileFilter = labelFileId ?? parsed.labelFileId;
+
+    const params: any[] = [...spellings];
     let sql = `
       SELECT label_id AS labelId, label_file_id AS labelFileId, model, language, text, comment, file_path AS filePath
       FROM labels
-      WHERE label_id = ?
+      WHERE label_id IN (${spellings.map(() => '?').join(', ')})
     `;
-    if (labelFileId) { sql += ` AND label_file_id = ?`; params.push(labelFileId); }
-    if (model)       { sql += ` AND model = ?`;         params.push(model); }
+    if (fileFilter) { sql += ` AND label_file_id = ?`; params.push(fileFilter); }
+    if (model)      { sql += ` AND model = ?`;         params.push(model); }
     sql += ` ORDER BY language`;
     return this.labelsDb.prepare(sql).all(...params) as any[];
   }

@@ -143,19 +143,27 @@ function resolveXmlReferences(
     }
   }
 
-  // <Label> — check @File:Id labels exist (skip raw text labels — those are caught by syntax/BP)
+  // <Label> — check label references exist (skip raw text labels — those are
+  // caught by syntax/BP). Both reference forms: `@File:Id` and the legacy
+  // `@SYSnnnnn`, which used to match neither branch and fell through unverified
+  // (#888) — on the form most likely to appear in metadata that reuses standard
+  // product labels.
   for (const lbl of extractTagValues(xml, 'Label')) {
     if (!lbl.startsWith('@')) continue; // raw text handled by rawLabelBpWarning in create path
     const modern = /^@([A-Za-z0-9_]+):([A-Za-z0-9_]+)$/.exec(lbl);
-    if (modern) {
-      const [, fileId, labelId] = modern;
+    const legacy = /^@([A-Za-z]{2,4}\d+)$/.exec(lbl);
+    if (modern || legacy) {
+      const fileId = modern ? modern[1] : undefined;
       try {
-        const rows = ctx.symbolIndex.getLabelById(labelId, fileId);
+        // getLabelById takes either spelling, so the reference goes in whole.
+        const rows = ctx.symbolIndex.getLabelById(lbl);
         if (rows.length > 0) { verified++; } else {
           violations.push({
             element: 'Label',
             value: lbl,
-            detail: `Label ${lbl} not found in label index (file "${fileId}", id "${labelId}").`,
+            detail: modern
+              ? `Label ${lbl} not found in label index (file "${fileId}", id "${modern[2]}").`
+              : `Legacy label ${lbl} not found in label index.`,
             severity: 'warning',
           });
         }

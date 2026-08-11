@@ -59,7 +59,9 @@ export const labelsTool = {
         // action=info
         labelId: {
           type: 'string',
-          description: '[info] Exact label ID. Omit for action=info to list available label files for the model.',
+          description:
+            '[info] Label ID, any spelling: SYS67433, @SYS67433, @ContosoExt:MyLabel ' +
+            '(paste search output). labelFileId/model optional. Omit to list label files.',
         },
         // action=create
         labels: {

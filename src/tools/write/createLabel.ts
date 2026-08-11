@@ -24,6 +24,7 @@ import { PackageResolver } from '../../utils/packageResolver.js';
 import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { detectEol } from '../../utils/eolUtils.js';
+import { formatLabelReference, labelIdSpellings } from '../../utils/labelReference.js';
 import { isExtensionLabelFile } from '../../metadata/labelParser.js';
 import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
 
@@ -480,13 +481,18 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     ]);
     let collisionWarning = '';
     try {
+      // Both spellings (#888): the 27 legacy files store their keys with the
+      // sigil, so a verbatim `label_id = ?` could never collide with SYS/GLS/
+      // RET/… — the very files this Microsoft-collision guard is about.
+      const spellings = labelIdSpellings(labelId);
       const existing = symbolIndex.labelsDb
         .prepare(
           `SELECT label_id, label_file_id, model, text FROM labels
-           WHERE label_id = ? AND language = 'en-US' AND label_file_id != ?
+           WHERE label_id IN (${spellings.map(() => '?').join(', ')})
+             AND language = 'en-US' AND label_file_id != ?
            LIMIT 10`,
         )
-        .all(labelId, labelFileId) as Array<{ label_id: string; label_file_id: string; model: string; text: string }>;
+        .all(...spellings, labelFileId) as Array<{ label_id: string; label_file_id: string; model: string; text: string }>;
 
       if (existing.length > 0) {
         const msCollisions = existing.filter(r => MICROSOFT_LABEL_FILES.has(r.label_file_id.toUpperCase()));
@@ -495,7 +501,11 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
         ];
         for (const r of existing) {
           const flag = MICROSOFT_LABEL_FILES.has(r.label_file_id.toUpperCase()) ? ' ← Microsoft standard' : '';
-          lines.push(`  @${r.label_file_id}:${labelId}  [${r.model}]  "${r.text}"${flag}`);
+          // formatLabelReference, not `@file:id` — a legacy row's id already
+          // carries its file id and the doubled form is what xppbp rejects.
+          lines.push(
+            `  ${formatLabelReference(r.label_file_id, r.label_id)}  [${r.model}]  "${r.text}"${flag}`,
+          );
         }
         if (msCollisions.length > 0) {
           lines.push('');
