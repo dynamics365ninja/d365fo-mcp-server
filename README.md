@@ -1,5 +1,7 @@
 # D365 F&O MCP Server
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Fdynamics365ninja%2Fd365fo-mcp-server.svg)](https://mcptoplist.com/server/glama%2Fdynamics365ninja%2Fd365fo-mcp-server)
+
 <div align="center">
 
 **23 AI tools that know every X++ class, table, form, and EDT in your D365FO codebase**
