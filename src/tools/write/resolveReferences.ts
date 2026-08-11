@@ -671,7 +671,13 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
         });
       }
     } else if (legacy) {
-      if (deps.getLabelById(legacy[1]).length > 0) {
+      // The whole literal, not the capture group (#888). The regex strips the
+      // '@' that the 27 legacy label files store as part of the key, so looking
+      // up `SYS12345` against an index holding `@SYS12345` could never hit and
+      // EVERY legacy label in X++ drew an unknown-label warning during write
+      // validation. getLabelById accepts either spelling; passing the literal
+      // keeps this branch honest even if that ever narrows again.
+      if (deps.getLabelById(s.value).length > 0) {
         verifiedCount++;
       } else {
         violations.push({

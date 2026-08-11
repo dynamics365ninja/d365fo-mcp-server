@@ -95,16 +95,25 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
     const rows = symbolIndex.getLabelById(labelId, labelFileId, model);
 
     if (rows.length === 0) {
+      // #888: this used to read "Label … not found", a claim about the label —
+      // and a session believed it and concluded a shipped label was absent from
+      // the build. The lookup only ever proves that no KEY matched; say that,
+      // and point at the one call that resolves an id without knowing its text.
       return {
         content: [
           {
             type: 'text',
             text:
-              `Label "${labelId}" not found` +
+              `No label matched the ID "${labelId}"` +
               (labelFileId ? ` in label file "${labelFileId}"` : '') +
               (model ? ` in model "${model}"` : '') +
-              '.\n\n' +
-              `💡 Try labels(action="search") to find labels by text, or omit labelId to list available label files.`,
+              `. This says the key did not match — not that the label is absent from the build.\n\n` +
+              `💡 labels(action="search", query="${labelId}") resolves a known ID in one call ` +
+              `(no model/labelFileId needed) and shows the exact stored key.\n` +
+              (labelFileId || model
+                ? `   The labelFileId/model filters are optional here — drop them and retry.\n`
+                : '') +
+              `   IDs match case-sensitively except for the legacy @XXXnnnnn form.`,
           },
         ],
         isError: true,
@@ -114,7 +123,11 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
     const first = rows[0];
     // #33/#41: never emit `@SYS:@SYS67433` — an id that already carries its label
     // file id is a complete reference, and xppbp rejects the doubled form.
-    const ref = formatLabelReference(first.labelFileId, labelId);
+    //
+    // Formatted from the STORED id, not the caller's spelling (#888): the lookup
+    // now accepts `GLS4170035`, `@GLS4170035` and `@GLS:GLS4170035` alike, and
+    // only the stored one tells us whether the sigil belongs to the key.
+    const ref = formatLabelReference(first.labelFileId, first.labelId);
 
     // An index row is not proof the label exists. Confirm against the .label.txt
     // before handing back a reference the caller will paste into XML — a stale row
@@ -130,7 +143,12 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
     const indexedPaths = symbolIndex
       .getLabelFilePaths(first.labelFileId, first.model)
       .map(p => p.filePath);
-    if (await labelMissingOnDisk(labelId, indexedPaths)) {
+    //
+    // The STORED id goes to the disk check, never the caller's (#888). The file
+    // holds `@GLS4170035=Accountants`, so probing it with the bare `GLS4170035`
+    // the lookup now accepts would report every label in the 27 legacy files as
+    // "in the index but NOT on disk" — a false verdict on 61% of the rows.
+    if (await labelMissingOnDisk(first.labelId, indexedPaths)) {
       return {
         content: [{
           type: 'text',
@@ -141,7 +159,7 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
             `The index is ahead of the file system (a rolled-back run, a rebuild outside this ` +
             `server, or a checkout). Using this reference compiles to a best-practice error ` +
             `"Unknown label '${ref}'".\n\n` +
-            `Create it: labels(action="create", labelId="${labelId}", labelFileId="${first.labelFileId}", ` +
+            `Create it: labels(action="create", labelId="${first.labelId}", labelFileId="${first.labelFileId}", ` +
             `model="${first.model}", translations=[{language:"en-US", text:"…"}])`,
         }],
         isError: true,

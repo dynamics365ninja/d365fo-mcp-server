@@ -14,6 +14,7 @@ import {
   type ResolverDeps,
 } from '../../src/tools/write/resolveReferences';
 import { validateCodeTool } from '../../src/tools/analysis/validateCode';
+import { labelIdSpellings, parseLabelReference } from '../../src/utils/labelReference';
 
 const ORIGINAL_ENFORCE = process.env.GROUNDING_ENFORCE;
 
@@ -22,18 +23,30 @@ let db: ResolverDeps['db'];
 let deps: ResolverDeps;
 
 const LABELS: Record<string, string[]> = {
-  // labelFileId → known label ids
-  SYS: ['SYS12345'],
+  // labelFileId → known label ids, stored the way labelParser writes them: the
+  // `Key=` token verbatim. The 27 legacy AX-era files keep their sigil
+  // (`@SYS12345=…`), modern ones do not. This mock used to hold a bare
+  // 'SYS12345' — the opposite of the real index — and that is the only reason
+  // the legacy-label test passed while every `@SYSnnnnn` in real X++ drew an
+  // unknown-label warning (#888).
+  SYS: ['@SYS12345'],
   Contoso: ['MyLabel'],
 };
 
 function makeDeps(database: ResolverDeps['db']): ResolverDeps {
   return {
     db: database,
+    // Mirrors symbolIndex.getLabelById: the caller's spelling is normalised, the
+    // STORED id comes back.
     getLabelById: (labelId: string, labelFileId?: string) => {
+      const parsed = parseLabelReference(labelId);
+      const spellings = labelIdSpellings(parsed.labelId);
+      const file = labelFileId ?? parsed.labelFileId;
       const hit = (fileId: string) =>
-        (LABELS[fileId] ?? []).includes(labelId) ? [{ labelId, labelFileId: fileId }] : [];
-      if (labelFileId) return hit(labelFileId);
+        (LABELS[fileId] ?? [])
+          .filter(stored => spellings.includes(stored))
+          .map(stored => ({ labelId: stored, labelFileId: fileId }));
+      if (file) return hit(file);
       return Object.keys(LABELS).flatMap(hit);
     },
     getLabelFileIds: () => Object.keys(LABELS).map(labelFileId => ({ labelFileId })),

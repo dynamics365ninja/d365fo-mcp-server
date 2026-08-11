@@ -21,6 +21,7 @@ import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { renderPrepareOpSpec } from '../specs/opSpecs.js';
 import { rankContext, renderRankedContext } from '../../workspace/contextRanker.js';
 import { lookupSymbolsNocase, type SymbolHit } from '../../utils/symbolLookup.js';
+import { formatLabelReference } from '../../utils/labelReference.js';
 import { RESERVED_SYSTEM_FIELD_NAMES } from '../smart/generateSmartTable.js';
 
 export const prepareCreateArgsSchema = z.object({
@@ -188,7 +189,12 @@ function findReusableLabels(baseName: string, context: XppServerContext): string
     const rows = context.symbolIndex.searchLabels(words, { language: 'en-US', limit: 5 });
     if (rows.length > 0) {
       return rows
-        .map(r => `  @${r.labelFileId}:${r.labelId} = "${r.text}" (${r.model})`)
+        // Not `@${labelFileId}:${labelId}` (#888): a legacy row's id already
+        // carries its file id, so hand-building the reference re-created the
+        // doubled `@GLS:@GLS4170035` that #33/#41 removed everywhere else —
+        // xppbp answers BPErrorLabelIsText — and prepare offers these for reuse
+        // immediately before a write.
+        .map(r => `  ${formatLabelReference(r.labelFileId, r.labelId)} = "${r.text}" (${r.model})`)
         .join('\n') + '\n_Reuse instead of creating duplicates (rule: labels before labels)._';
     }
   } catch {

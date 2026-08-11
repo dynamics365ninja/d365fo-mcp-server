@@ -47,6 +47,61 @@ export function formatLabelReference(labelFileId: string | undefined, labelId: s
 }
 
 /**
+ * Inverse of {@link formatLabelReference}: a reference (or a bare id) → the
+ * parts a lookup needs.
+ *
+ *   '@ContosoExt:EquipmentName' → { labelFileId: 'ContosoExt', labelId: 'EquipmentName' }
+ *   '@GLS4170035'               → { labelId: 'GLS4170035' }
+ *   'GLS4170035'                → { labelId: 'GLS4170035' }
+ *   '@SYS:@SYS67433'            → { labelFileId: 'SYS', labelId: '@SYS67433' }
+ *
+ * The `@` is dropped from the legacy form on purpose: which spelling the index
+ * holds depends on the file, so callers pair this with
+ * {@link labelIdSpellings} rather than assuming either one.
+ */
+export function parseLabelReference(ref: string): { labelFileId?: string; labelId: string } {
+  const s = (ref ?? '').trim();
+  if (!s) return { labelId: '' };
+
+  // `@File:Id`, including the doubled `@SYS:@SYS67433` the formatter repairs —
+  // there the id half keeps its own '@' because that IS the stored id.
+  const modern = /^@([A-Za-z][A-Za-z0-9_]*):(.+)$/.exec(s);
+  if (modern) return { labelFileId: modern[1], labelId: modern[2] };
+
+  return { labelId: s.startsWith('@') ? s.slice(1) : s };
+}
+
+/** A legacy AX-era id: 2-4 letters naming the label file, then digits. */
+const LEGACY_LABEL_ID = /^[A-Za-z]{2,4}\d+$/;
+
+/**
+ * Every spelling of a label id the index may hold, for one lookup.
+ *
+ * #888: `labelParser` stores the `Key=` token verbatim, and the 27 legacy AX-era
+ * label files (SYS SYP GLS … WAX — 865k of the 1.42M indexed rows on the
+ * reference environment) write theirs WITH the sigil: `@GLS4170035=Accountants`.
+ * Modern files write `EquipmentName=`. A lookup that matches one spelling
+ * therefore misses whichever set it did not guess, which is why
+ * `labels(action="info", labelId="GLS4170035")` reported "not found" for a label
+ * it had just listed the file of.
+ *
+ * Uppercasing is applied to the legacy shape only. Every key in the 27 files is
+ * all-uppercase (verified across them), so `@sys67433` is recoverable for free;
+ * a modern id's casing is the author's and is left alone.
+ */
+export function labelIdSpellings(labelId: string): string[] {
+  const id = (labelId ?? '').trim();
+  if (!id) return [];
+
+  const out = [id, `@${id}`];
+  if (LEGACY_LABEL_ID.test(id)) {
+    const upper = id.toUpperCase();
+    if (upper !== id) out.push(upper, `@${upper}`);
+  }
+  return [...new Set(out)];
+}
+
+/**
  * Label files that every model can resolve without adding a package reference.
  * Deliberately small and conservative — anything else gets flagged rather than
  * silently recommended.
