@@ -418,19 +418,16 @@ export class XppSymbolIndex {
       );
     `);
 
+    // idx_labels_unique is created separately from the rest, and deliberately so:
+    // it is the only one a bulk load cannot run without. INSERT OR REPLACE dedupes
+    // through it, so dropping it for the load would let duplicate rows in and the
+    // CREATE UNIQUE INDEX afterwards would fail the whole build. The others are pure
+    // read accelerators — see dropLabelSecondaryIndexes().
     this.labelsDb.exec(`
-      CREATE INDEX IF NOT EXISTS idx_labels_id ON labels(label_id);
-      CREATE INDEX IF NOT EXISTS idx_labels_file_id ON labels(label_file_id);
-      CREATE INDEX IF NOT EXISTS idx_labels_model ON labels(model);
-      CREATE INDEX IF NOT EXISTS idx_labels_language ON labels(language);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_labels_unique
         ON labels(label_id, label_file_id, model, language);
-      -- Every language comparison in this file is LOWER(language) = LOWER(?), because
-      -- Microsoft packages unzipped on Linux store 'en-us' while custom packages write
-      -- 'en-US'. A plain index on language cannot serve that predicate, so the LIKE
-      -- fallback degraded to a scan of all four locales instead of one.
-      CREATE INDEX IF NOT EXISTS idx_labels_language_lower ON labels(LOWER(language));
     `);
+    this.labelsDb.exec(XppSymbolIndex.LABEL_SECONDARY_INDEX_SQL);
 
     // FTS5 full-text search for labels — every indexed language, not just en-US.
     // See rebuildLabelsFts() for why the en-US-only index had to go.
@@ -732,6 +729,89 @@ export class XppSymbolIndex {
     `);
 
     this.ensureFilePathIndexes();
+  }
+
+  /**
+   * The `labels` indexes that exist purely to accelerate reads, keyed by name so
+   * they can be dropped for a bulk load and rebuilt afterwards.
+   *
+   * `idx_labels_unique` is NOT in here — it enforces the dedupe that
+   * INSERT OR REPLACE relies on and has to stay live through the load.
+   *
+   * The two file_path entries are also created on demand by ensureFilePathIndexes()
+   * (which adds the large-DB worker dispatch that startup needs); this list is the
+   * single definition of their SQL so the two paths cannot drift apart.
+   */
+  private static readonly LABEL_SECONDARY_INDEXES: ReadonlyArray<{ name: string; sql: string }> = [
+    { name: 'idx_labels_id', sql: 'CREATE INDEX IF NOT EXISTS idx_labels_id ON labels(label_id);' },
+    { name: 'idx_labels_file_id', sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_id ON labels(label_file_id);' },
+    { name: 'idx_labels_model', sql: 'CREATE INDEX IF NOT EXISTS idx_labels_model ON labels(model);' },
+    { name: 'idx_labels_language', sql: 'CREATE INDEX IF NOT EXISTS idx_labels_language ON labels(language);' },
+    // Every language comparison in this file is LOWER(language) = LOWER(?), because
+    // Microsoft packages unzipped on Linux store 'en-us' while custom packages write
+    // 'en-US'. A plain index on language cannot serve that predicate, so the LIKE
+    // fallback degraded to a scan of all four locales instead of one.
+    {
+      name: 'idx_labels_language_lower',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_labels_language_lower ON labels(LOWER(language));',
+    },
+    {
+      name: 'idx_labels_file_path',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path ON labels(file_path);',
+    },
+    {
+      name: 'idx_labels_file_path_nocase',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path_nocase ON labels(file_path COLLATE NOCASE);',
+    },
+  ];
+
+  /** The subset created at schema-init time; the file_path pair is left to ensureFilePathIndexes(). */
+  private static readonly LABEL_SECONDARY_INDEX_SQL = XppSymbolIndex.LABEL_SECONDARY_INDEXES
+    .filter(i => !i.name.startsWith('idx_labels_file_path'))
+    .map(i => i.sql)
+    .join('\n');
+
+  /**
+   * Drop the read-only `labels` indexes ahead of a bulk load, and report which ones
+   * were actually there so the caller can put back exactly that set.
+   *
+   * Every row of a bulk load otherwise maintains eight B-trees, two of them keyed on
+   * a ~130-character absolute path. Measured on a 400 K-row / 150-model reproduction
+   * of this exact write path: 17.2 s with the indexes live versus 10.6 s dropping
+   * these seven and rebuilding them at the end (the insert itself, 14.9 s → 4.4 s).
+   * This is the same trade the symbols side already makes in ensureFilePathIndexes().
+   *
+   * Build-time only. Do NOT call this on a server that is answering queries — label
+   * search degrades to a full scan until createLabelSecondaryIndexes() finishes.
+   */
+  dropLabelSecondaryIndexes(): string[] {
+    const dropped: string[] = [];
+    for (const { name } of XppSymbolIndex.LABEL_SECONDARY_INDEXES) {
+      const exists = this.labelsDb
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?`)
+        .get(name);
+      if (!exists) continue;
+      this.labelsDb.exec(`DROP INDEX IF EXISTS ${name}`);
+      dropped.push(name);
+    }
+    return dropped;
+  }
+
+  /**
+   * Rebuild the indexes dropped by dropLabelSecondaryIndexes().
+   *
+   * Pass the array that call returned to restore exactly the set that was there;
+   * omit it to create all of them. Returns the elapsed milliseconds so build scripts
+   * can report the cost they moved out of the insert loop.
+   */
+  createLabelSecondaryIndexes(only?: string[]): number {
+    const wanted = only ? new Set(only) : null;
+    const started = Date.now();
+    for (const { name, sql } of XppSymbolIndex.LABEL_SECONDARY_INDEXES) {
+      if (wanted && !wanted.has(name)) continue;
+      this.labelsDb.exec(sql);
+    }
+    return Date.now() - started;
   }
 
   /**
@@ -4261,8 +4341,15 @@ export class XppSymbolIndex {
 
   /**
    * Rename a label ID in the index (used by rename_label tool).
-   * Updates all rows for the given labelId + labelFileId + model combination
-   * and rebuilds the FTS index.
+   * Updates all rows for the given labelId + labelFileId + model combination.
+   *
+   * No FTS rebuild: the `labels_au` trigger deletes the old term and inserts the new
+   * one for each updated row, which is the whole of the work a rebuild would redo.
+   * This used to call rebuildLabelsFts() afterwards — re-tokenising every label in
+   * the database (~105 s on the production DB) to reflect a handful of renamed rows,
+   * and because node:sqlite is synchronous the server answered nothing for its whole
+   * duration. create_label and update_symbol_index were moved off that pattern
+   * earlier; this was the last caller still on it.
    */
   renameLabelInIndex(
     oldLabelId: string,
@@ -4277,6 +4364,5 @@ export class XppSymbolIndex {
         AND label_file_id = ?
         AND model = ?
     `).run(newLabelId, oldLabelId, labelFileId, model);
-    this.rebuildLabelsFts();
   }
 }
