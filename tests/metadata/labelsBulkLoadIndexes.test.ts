@@ -14,7 +14,6 @@ const LABEL_INDEXES = [
   'idx_labels_id',
   'idx_labels_file_id',
   'idx_labels_model',
-  'idx_labels_language',
   'idx_labels_language_lower',
 ];
 

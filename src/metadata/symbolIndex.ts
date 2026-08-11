@@ -405,6 +405,25 @@ export class XppSymbolIndex {
     `);
 
     // Labels live in the separate labelsDb (keeps the main symbol DB fast for search).
+    //
+    // file_path is a foreign key, not a string. Every label in a .label.txt shares
+    // one ~130-character absolute path, so storing it inline repeated it per row and
+    // then indexed it twice (BINARY + NOCASE) — 813 distinct paths carried across
+    // 374 K rows on a default en-US build. Measured: 310 MB inline versus 130 MB
+    // through label_files, and the CREATE INDEX pass over the loaded table drops
+    // from 4.0 s to 1.4 s. See migrateLabelPathsToLabelFiles().
+    this.labelsDb.exec(`
+      CREATE TABLE IF NOT EXISTS label_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_label_files_path ON label_files(file_path);
+      -- removeLabelsByFile compares COLLATE NOCASE (Windows paths differ only in case
+      -- between the indexer and a tool argument), and SQLite only uses an index whose
+      -- collation matches the comparison.
+      CREATE INDEX IF NOT EXISTS idx_label_files_path_nocase
+        ON label_files(file_path COLLATE NOCASE);
+    `);
     this.labelsDb.exec(`
       CREATE TABLE IF NOT EXISTS labels (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -414,7 +433,7 @@ export class XppSymbolIndex {
         language TEXT NOT NULL,
         text TEXT NOT NULL,
         comment TEXT,
-        file_path TEXT NOT NULL
+        file_path_id INTEGER NOT NULL
       );
     `);
 
@@ -442,7 +461,11 @@ export class XppSymbolIndex {
     `);
 
     this.createLabelsFtsTriggers();
-    this.migrateLabelsFtsLanguageCoverage();
+    // Ascending order, and it matters: both migrations advance the same
+    // PRAGMA user_version counter, so a later one running first would stamp its own
+    // number over a step that had not happened yet and skip it forever.
+    this.migrateLabelsFtsLanguageCoverage();  // user_version 0 -> 1
+    this.migrateLabelPathsToLabelFiles();     // user_version 1 -> 2
 
     // Extended metadata tables for smart generation
 
@@ -746,28 +769,28 @@ export class XppSymbolIndex {
     { name: 'idx_labels_id', sql: 'CREATE INDEX IF NOT EXISTS idx_labels_id ON labels(label_id);' },
     { name: 'idx_labels_file_id', sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_id ON labels(label_file_id);' },
     { name: 'idx_labels_model', sql: 'CREATE INDEX IF NOT EXISTS idx_labels_model ON labels(model);' },
-    { name: 'idx_labels_language', sql: 'CREATE INDEX IF NOT EXISTS idx_labels_language ON labels(language);' },
     // Every language comparison in this file is LOWER(language) = LOWER(?), because
     // Microsoft packages unzipped on Linux store 'en-us' while custom packages write
     // 'en-US'. A plain index on language cannot serve that predicate, so the LIKE
     // fallback degraded to a scan of all four locales instead of one.
+    //
+    // There is deliberately no plain idx_labels_language beside it: no query in this
+    // file compares language for equality — the three that mention it at all only
+    // ORDER BY / GROUP_CONCAT it, after filtering on label_id or label_file_id — so
+    // it was a B-tree maintained on every insert and read by nothing.
     {
       name: 'idx_labels_language_lower',
       sql: 'CREATE INDEX IF NOT EXISTS idx_labels_language_lower ON labels(LOWER(language));',
     },
     {
-      name: 'idx_labels_file_path',
-      sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path ON labels(file_path);',
-    },
-    {
-      name: 'idx_labels_file_path_nocase',
-      sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path_nocase ON labels(file_path COLLATE NOCASE);',
+      name: 'idx_labels_file_path_id',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path_id ON labels(file_path_id);',
     },
   ];
 
-  /** The subset created at schema-init time; the file_path pair is left to ensureFilePathIndexes(). */
+  /** The subset created at schema-init time; the file_path_id index is left to ensureFilePathIndexes(). */
   private static readonly LABEL_SECONDARY_INDEX_SQL = XppSymbolIndex.LABEL_SECONDARY_INDEXES
-    .filter(i => !i.name.startsWith('idx_labels_file_path'))
+    .filter(i => i.name !== 'idx_labels_file_path_id')
     .map(i => i.sql)
     .join('\n');
 
@@ -858,12 +881,12 @@ export class XppSymbolIndex {
         sql: 'CREATE INDEX IF NOT EXISTS idx_symbols_file_path ON symbols(file_path);',
       });
     }
-    if (missing(this.labelsDb, 'idx_labels_file_path')) {
+    if (missing(this.labelsDb, 'idx_labels_file_path_id')) {
       work.push({
         db: this.labelsDb,
         dbFile: labelsPath,
-        name: 'idx_labels_file_path',
-        sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path ON labels(file_path);',
+        name: 'idx_labels_file_path_id',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path_id ON labels(file_path_id);',
       });
     }
     // NOCASE twins. removeSymbolsByFile/removeLabelsByFile compare COLLATE NOCASE
@@ -879,14 +902,10 @@ export class XppSymbolIndex {
         sql: 'CREATE INDEX IF NOT EXISTS idx_symbols_file_path_nocase ON symbols(file_path COLLATE NOCASE);',
       });
     }
-    if (missing(this.labelsDb, 'idx_labels_file_path_nocase')) {
-      work.push({
-        db: this.labelsDb,
-        dbFile: labelsPath,
-        name: 'idx_labels_file_path_nocase',
-        sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path_nocase ON labels(file_path COLLATE NOCASE);',
-      });
-    }
+    // No labels NOCASE twin any more: the case-insensitive path comparison moved to
+    // label_files, whose two indexes are created with the table — it holds one row per
+    // .label.txt (813 on a default build), so building them is instant and needs
+    // neither the deferral nor the worker dispatch the per-label table needed.
 
     for (const item of work) {
       if (isLarge(item.dbFile)) {
@@ -1018,11 +1037,126 @@ export class XppSymbolIndex {
    * on every database that predates this, so the one-time rebuild is self-triggering
    * and costs nothing on an already-migrated file.
    */
+  /**
+   * Move an existing database from the inline `labels.file_path` column to the
+   * `label_files` lookup table.
+   *
+   * Runs once, gated on `PRAGMA user_version` like the FTS coverage migration below.
+   * A database built before this carries the path spelled out on every row; the
+   * column cannot simply be dropped, because the rows have to be rewritten to point
+   * at the extracted paths instead.
+   *
+   * This is a full table rewrite, so it is minutes on a multi-GB labels database
+   * rather than the ~23 s the FTS migration costs — announced up front for the same
+   * reason: a silent stall of that length reads as a hung server. It is worth paying
+   * once. The rewritten table is less than half the size, and every full-table
+   * operation on it afterwards (FTS rebuild, ANALYZE, VACUUM, any cold-cache scan)
+   * moves proportionally less disk.
+   *
+   * Row ids are carried over deliberately: `labels_fts` is an external-content index
+   * keyed on `labels.id`, so preserving them keeps it valid. It is rebuilt at the end
+   * anyway, because the content table it points at is a different table object by then.
+   */
+  private migrateLabelPathsToLabelFiles(): void {
+    const LABEL_FILES_NORMALISED = 2;
+    try {
+      const version = Number(this.labelsDb.pragma('user_version', { simple: true }) ?? 0);
+      if (version >= LABEL_FILES_NORMALISED) return;
+
+      // A database that never had the old column (a fresh build, :memory:, the test
+      // suite) only needs the version stamp.
+      const columns = this.labelsDb.pragma('table_info(labels)') as Array<{ name: string }>;
+      if (!columns.some(c => c.name === 'file_path')) {
+        this.labelsDb.pragma(`user_version = ${LABEL_FILES_NORMALISED}`);
+        return;
+      }
+
+      const { n } = this.labelsDb.prepare('SELECT COUNT(*) AS n FROM labels').get() as { n: number };
+      if (n > 0) {
+        log.detail(
+          `Normalising ${n.toLocaleString('en-US')} label file paths into label_files ` +
+            `(one-off; several minutes on a multi-GB labels database)…`,
+        );
+      }
+
+      // Triggers first: they reference the table about to be dropped, and the rewrite
+      // must not fire per-row FTS maintenance for rows that are only moving house.
+      this.labelsDb.exec(`
+        DROP TRIGGER IF EXISTS labels_ai;
+        DROP TRIGGER IF EXISTS labels_ad;
+        DROP TRIGGER IF EXISTS labels_au;
+      `);
+
+      this.labelsDb.exec('BEGIN');
+      try {
+        this.labelsDb.exec(`
+          INSERT OR IGNORE INTO label_files (file_path) SELECT DISTINCT file_path FROM labels;
+
+          CREATE TABLE labels_migrated (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label_id TEXT NOT NULL,
+            label_file_id TEXT NOT NULL,
+            model TEXT NOT NULL,
+            language TEXT NOT NULL,
+            text TEXT NOT NULL,
+            comment TEXT,
+            file_path_id INTEGER NOT NULL
+          );
+
+          INSERT INTO labels_migrated (id, label_id, label_file_id, model, language, text, comment, file_path_id)
+            SELECT l.id, l.label_id, l.label_file_id, l.model, l.language, l.text, l.comment, lf.id
+            FROM labels l
+            JOIN label_files lf ON lf.file_path = l.file_path;
+
+          DROP TABLE labels;
+          ALTER TABLE labels_migrated RENAME TO labels;
+        `);
+        this.labelsDb.exec('COMMIT');
+      } catch (e) {
+        this.labelsDb.exec('ROLLBACK');
+        throw e;
+      }
+
+      // The rename dropped every index that lived on the old table.
+      this.labelsDb.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_labels_unique
+          ON labels(label_id, label_file_id, model, language);
+      `);
+      this.labelsDb.exec(XppSymbolIndex.LABEL_SECONDARY_INDEX_SQL);
+      this.createLabelsFtsTriggers();
+      this.rebuildLabelsFts();
+
+      this.labelsDb.pragma(`user_version = ${LABEL_FILES_NORMALISED}`);
+      if (n > 0) log.detail(`Label file paths normalised (${n.toLocaleString('en-US')} rows).`);
+    } catch (e) {
+      // Same posture as the FTS migration: a read-only file or a writer holding the
+      // lock must not take the server down. Leaving user_version unstamped means the
+      // next open retries. Unlike that one there is no degraded-but-correct fallback,
+      // so make the failure loud rather than a detail line.
+      console.error(`[SymbolIndex] label_files migration failed, will retry on next open: ${e}`);
+      // Whatever went wrong, the triggers must not stay dropped.
+      try {
+        this.createLabelsFtsTriggers();
+      } catch { /* the connection is beyond help; the error above is the signal */ }
+    }
+  }
+
   private migrateLabelsFtsLanguageCoverage(): void {
     const LABELS_FTS_ALL_LANGUAGES = 1;
     try {
       const version = Number(this.labelsDb.pragma('user_version', { simple: true }) ?? 0);
       if (version >= LABELS_FTS_ALL_LANGUAGES) return;
+
+      // A database still on the inline file_path column is about to be rewritten by
+      // migrateLabelPathsToLabelFiles, which rebuilds labels_fts from scratch over
+      // every language — the whole of what this step does. Stamp and let it, rather
+      // than re-tokenising a 1.4 M-row table twice in one startup.
+      const legacyPathColumn = (this.labelsDb.pragma('table_info(labels)') as Array<{ name: string }>)
+        .some(c => c.name === 'file_path');
+      if (legacyPathColumn) {
+        this.labelsDb.pragma(`user_version = ${LABELS_FTS_ALL_LANGUAGES}`);
+        return;
+      }
 
       // An empty labels table needs no rebuild — a fresh DB is already correct, and
       // stamping it here keeps the first real build off the slow path.
@@ -1232,9 +1366,15 @@ export class XppSymbolIndex {
   removeLabelsByFile(filePath: string): number {
     const forms = this.filePathForms(filePath);
     const placeholders = forms.map(() => '?').join(', ');
-    // The labels_ad trigger handles FTS cleanup, for every language
+    // The path spellings are matched against label_files — one row per .label.txt —
+    // and the labels themselves are deleted by the resulting id. The NOCASE
+    // comparison this replaced ran over every label row; it now runs over ~800.
+    // The labels_ad trigger handles FTS cleanup, for every language.
     const result = this.labelsDb.prepare(
-      `DELETE FROM labels WHERE file_path COLLATE NOCASE IN (${placeholders})`
+      `DELETE FROM labels
+       WHERE file_path_id IN (
+         SELECT id FROM label_files WHERE file_path COLLATE NOCASE IN (${placeholders})
+       )`
     ).run(...forms);
     return result.changes;
   }
@@ -3964,7 +4104,7 @@ export class XppSymbolIndex {
     let stmt = this.stmtCache.get('labels::addLabel');
     if (!stmt) {
       stmt = this.labelsDb.prepare(`
-        INSERT OR REPLACE INTO labels (label_id, label_file_id, model, language, text, comment, file_path)
+        INSERT OR REPLACE INTO labels (label_id, label_file_id, model, language, text, comment, file_path_id)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
       this.stmtCache.set('labels::addLabel', stmt);
@@ -3976,9 +4116,50 @@ export class XppSymbolIndex {
       entry.language,
       entry.text,
       entry.comment ?? null,
-      entry.filePath,
+      this.labelFilePathId(entry.filePath),
     );
   }
+
+  /**
+   * Row id of `filePath` in `label_files`, inserting it if it is new.
+   *
+   * Memoised for the process: a bulk load calls this once per label but there is
+   * one distinct path per .label.txt (813 across a default en-US build of 374 K
+   * rows), so without the cache it would be ~374 K index probes to learn 813 answers.
+   * The cache is only ever added to — rows in label_files are never deleted, since a
+   * path that had labels once may have them again after the next scan and the table
+   * is trivially small either way.
+   */
+  private labelFilePathId(filePath: string): number {
+    const cached = this.labelFilePathIds.get(filePath);
+    if (cached !== undefined) return cached;
+
+    let select = this.stmtCache.get('labels::selectFilePathId');
+    if (!select) {
+      select = this.labelsDb.prepare('SELECT id FROM label_files WHERE file_path = ?');
+      this.stmtCache.set('labels::selectFilePathId', select);
+    }
+    let insert = this.stmtCache.get('labels::insertFilePath');
+    if (!insert) {
+      insert = this.labelsDb.prepare('INSERT OR IGNORE INTO label_files (file_path) VALUES (?)');
+      this.stmtCache.set('labels::insertFilePath', insert);
+    }
+
+    let row = select.get(filePath) as { id: number } | undefined;
+    if (!row) {
+      insert.run(filePath);
+      row = select.get(filePath) as { id: number } | undefined;
+    }
+    // A missing row here would mean the INSERT was rejected by something other than
+    // the uniqueness it is told to ignore; there is no sane id to invent.
+    if (!row) throw new Error(`Could not resolve label file path to an id: ${filePath}`);
+
+    this.labelFilePathIds.set(filePath, row.id);
+    return row.id;
+  }
+
+  /** filePath -> label_files.id, populated lazily by labelFilePathId(). */
+  private readonly labelFilePathIds = new Map<string, number>();
 
   /**
    * Bulk-insert labels (drops FTS triggers for speed).
@@ -4017,13 +4198,21 @@ export class XppSymbolIndex {
     // connection was missing from labels_fts with nothing to signal it.
     try {
       const insert = this.labelsDb.prepare(`
-        INSERT OR REPLACE INTO labels (label_id, label_file_id, model, language, text, comment, file_path)
+        INSERT OR REPLACE INTO labels (label_id, label_file_id, model, language, text, comment, file_path_id)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
 
       const insertMany = this.labelsDb.transaction((rows: typeof entries) => {
         for (const e of rows) {
-          insert.run(e.labelId, e.labelFileId, e.model, e.language, e.text, e.comment ?? null, e.filePath);
+          insert.run(
+            e.labelId,
+            e.labelFileId,
+            e.model,
+            e.language,
+            e.text,
+            e.comment ?? null,
+            this.labelFilePathId(e.filePath),
+          );
         }
       });
 
@@ -4140,10 +4329,11 @@ export class XppSymbolIndex {
       // a token — the index no longer does the filtering the caller assumed.
       let sql = `
         SELECT l.label_id AS labelId, l.label_file_id AS labelFileId, l.model, l.language,
-               l.text, l.comment, l.file_path AS filePath,
+               l.text, l.comment, lf.file_path AS filePath,
                f.rank
         FROM labels_fts f
         JOIN labels l ON l.id = f.rowid
+        JOIN label_files lf ON lf.id = l.file_path_id
         WHERE labels_fts MATCH ?
           AND LOWER(l.language) = ?`;
       if (model)       sql += `\n          AND l.model = ?`;
@@ -4190,13 +4380,14 @@ export class XppSymbolIndex {
     let stmt = this.labelsStmtCache.get(stmtKey);
     if (!stmt) {
       let sql = `
-        SELECT label_id AS labelId, label_file_id AS labelFileId, model, language,
-               text, comment, file_path AS filePath, 0 as rank
-        FROM labels
-        WHERE (text LIKE ? ESCAPE '\\' OR label_id LIKE ? ESCAPE '\\')
-          AND LOWER(language) = ?`;
-      if (model)       sql += `\n          AND model = ?`;
-      if (labelFileId) sql += `\n          AND label_file_id = ?`;
+        SELECT l.label_id AS labelId, l.label_file_id AS labelFileId, l.model, l.language,
+               l.text, l.comment, lf.file_path AS filePath, 0 as rank
+        FROM labels l
+        JOIN label_files lf ON lf.id = l.file_path_id
+        WHERE (l.text LIKE ? ESCAPE '\\' OR l.label_id LIKE ? ESCAPE '\\')
+          AND LOWER(l.language) = ?`;
+      if (model)       sql += `\n          AND l.model = ?`;
+      if (labelFileId) sql += `\n          AND l.label_file_id = ?`;
       sql += `\n        LIMIT ?`;
       stmt = this.labelsDb.prepare(sql);
       this.labelsStmtCache.set(stmtKey, stmt);
@@ -4252,13 +4443,15 @@ export class XppSymbolIndex {
 
     const params: any[] = [...spellings];
     let sql = `
-      SELECT label_id AS labelId, label_file_id AS labelFileId, model, language, text, comment, file_path AS filePath
-      FROM labels
-      WHERE label_id IN (${spellings.map(() => '?').join(', ')})
+      SELECT l.label_id AS labelId, l.label_file_id AS labelFileId, l.model, l.language,
+             l.text, l.comment, lf.file_path AS filePath
+      FROM labels l
+      JOIN label_files lf ON lf.id = l.file_path_id
+      WHERE l.label_id IN (${spellings.map(() => '?').join(', ')})
     `;
-    if (fileFilter) { sql += ` AND label_file_id = ?`; params.push(fileFilter); }
-    if (model)      { sql += ` AND model = ?`;         params.push(model); }
-    sql += ` ORDER BY language`;
+    if (fileFilter) { sql += ` AND l.label_file_id = ?`; params.push(fileFilter); }
+    if (model)      { sql += ` AND l.model = ?`;         params.push(model); }
+    sql += ` ORDER BY l.language`;
     return this.labelsDb.prepare(sql).all(...params) as any[];
   }
 
@@ -4310,12 +4503,13 @@ export class XppSymbolIndex {
   ): Array<{ language: string; filePath: string; model: string }> {
     const params: any[] = [labelFileId];
     let sql = `
-      SELECT DISTINCT language, file_path AS filePath, model
-      FROM labels
-      WHERE label_file_id = ? AND file_path IS NOT NULL AND file_path != ''
+      SELECT DISTINCT l.language, lf.file_path AS filePath, l.model
+      FROM labels l
+      JOIN label_files lf ON lf.id = l.file_path_id
+      WHERE l.label_file_id = ? AND lf.file_path IS NOT NULL AND lf.file_path != ''
     `;
-    if (model) { sql += ` AND model = ?`; params.push(model); }
-    sql += ` ORDER BY language`;
+    if (model) { sql += ` AND l.model = ?`; params.push(model); }
+    sql += ` ORDER BY l.language`;
     return this.labelsDb.prepare(sql).all(...params) as any[];
   }
 
