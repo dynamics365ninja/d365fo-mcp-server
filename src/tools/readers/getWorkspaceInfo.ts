@@ -18,6 +18,7 @@ import { checkIndexStaleness } from '../../utils/indexStaleness.js';
 import {
   isCustomModel, getObjectSuffix, getExtensionNamingStyle, deriveExtensionInfix,
 } from '../../utils/modelClassifier.js';
+import { normalizeModelToken } from '../../utils/modelToken.js';
 import { buildPrefixDiagnostics, modelWritesLandIn } from '../analysis/prefixDiagnostics.js';
 import {
   buildContextSnapshot, renderContextSnapshotSection, renderContextSnapshotCompact,
@@ -164,11 +165,15 @@ export async function getWorkspaceInfoTool(
   // extensions that model already has ("…DEMOExtension") instead of being
   // derived from the prefix ("…DemoExtension").
   const extInfix = deriveExtensionInfix(effectivePrefix, writeModel ?? undefined);
-  const sampleClassExt = extNamingStyle === 'model-name' && writeModel
-    ? `CustTable_${writeModel}_Extension`
+  // The samples are names a write would PRODUCE, so they carry the same token the write
+  // path embeds — the model name with non-identifier characters removed (#892). The model
+  // name itself stays raw everywhere else here: the write path on disk is joined with it.
+  const writeModelToken = writeModel ? normalizeModelToken(writeModel) : '';
+  const sampleClassExt = extNamingStyle === 'model-name' && writeModelToken
+    ? `CustTable_${writeModelToken}_Extension`
     : `CustTable${extInfix}_Extension`;
-  const sampleElemExt = extNamingStyle === 'model-name' && writeModel
-    ? `CustTable.${writeModel}`
+  const sampleElemExt = extNamingStyle === 'model-name' && writeModelToken
+    ? `CustTable.${writeModelToken}`
     : `CustTable.${extInfix}Extension`;
   if (diagnostics) {
     lines.push(
