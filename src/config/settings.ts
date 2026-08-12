@@ -43,13 +43,21 @@ export interface Setting {
   /**
    * Dotted path inside the JSON config, e.g. "environment.packagePath".
    *
-   * Absent for `env-only` settings: consent-style switches whose whole point is
-   * that they are re-read from the environment (or the .env file) between tool
-   * calls, so writing them into the wizard-managed JSON would misrepresent when
-   * a change takes effect. They are still registered here — without an entry
-   * the docs generator silently drops them, which is how three cross-model
-   * variables disappeared from docs/CONFIGURATION.md the last time it was
-   * regenerated.
+   * Absent for `env-only` settings: values whose reader is somewhere the
+   * wizard-managed JSON cannot honestly describe — the cross-model consent
+   * switches, re-read from the .env before every guard decision so a grant
+   * applies without a restart (loadEnv.reloadWritePolicy), and the lock
+   * heartbeat, read at acquire time in a process the wizard never configures.
+   * A JSON key would misrepresent when a change takes effect.
+   *
+   * "The runtime reads it straight from process.env" is NOT that reason — every
+   * setting here does, via toEnvRecord. EXTENSION_PREFIX_SOURCE sat in this
+   * group on that basis alone until #893, which cost a multi-instance install a
+   * whole second configuration file for one static naming preference.
+   *
+   * env-only settings are still registered — without an entry the docs
+   * generator silently drops them, which is how three cross-model variables
+   * disappeared from docs/CONFIGURATION.md the last time it was regenerated.
    */
   path?: string;
   /** Environment variable the server/scripts read at runtime. */
@@ -289,14 +297,22 @@ export const SETTINGS: Setting[] = [
     required: true,
   },
   {
+    path: 'naming.prefixSource',
     env: 'EXTENSION_PREFIX_SOURCE',
     section: 'naming',
-    tier: 'env-only',
-    type: 'string',
-    label: 'Pin the configured prefix',
+    tier: 'advanced',
+    type: 'enum',
+    label: 'Where the prefix comes from',
     description:
-      'Set to `config` to make `EXTENSION_PREFIX` authoritative again instead of learning each model\'s prefix from ' +
-      'its own objects.',
+      'Whether the effective prefix is learned from the active model\'s own objects or pinned to the configured ' +
+      '`naming.prefix`. Pin it when one model carries several feature prefixes that share a stem — inference learns ' +
+      'the shared stem, while the objects you write need the full one. See ' +
+      '[Where the prefix comes from](CUSTOM_EXTENSIONS.md#where-the-prefix-comes-from).',
+    default: 'model',
+    choices: [
+      { value: 'model', hint: 'the model\'s own objects decide, falling back to naming.prefix' },
+      { value: 'config', hint: 'always naming.prefix, inference off (pre-1.8.2 behaviour)' },
+    ],
   },
   {
     path: 'naming.suffix',

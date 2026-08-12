@@ -57,7 +57,7 @@ export function buildPrefixDiagnostics(
     `merely the active project and its own prefix may differ — see the project-switch note below.`;
 
   const disagreeNote =
-    `⚠️  The model's own objects use "${learned?.regular}", which overrides EXTENSION_PREFIX="${extensionPrefixEnv}" — new objects will be named "${effectivePrefix}…". If that is wrong, the model's existing objects are the thing to check; set EXTENSION_PREFIX_SOURCE=config to pin the configured value instead.`;
+    `⚠️  The model's own objects use "${learned?.regular}", which overrides EXTENSION_PREFIX="${extensionPrefixEnv}" — new objects will be named "${effectivePrefix}…". If that is wrong, the model's existing objects are the thing to check; set naming.prefixSource=config (env: EXTENSION_PREFIX_SOURCE=config) to pin the configured value instead.`;
 
   const notConfiguredNote =
     `⚠️  EXTENSION_PREFIX is not set in the server environment. The model name "${writeModel}" will be used as prefix. Add EXTENSION_PREFIX=MY (or your ISV prefix) to the .env file and restart the server.`;

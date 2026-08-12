@@ -94,9 +94,13 @@ Inference is conservative: a model whose objects show no consistent prefix (fewe
 
 Compound prefixes are read in full, up to three PascalCase segments: a model whose objects are `ContosoFinSKVendPaymentTable`, `ContosoFinSKCustInvoiceJour`… yields `ContosoFinSK`, not `ContosoFin`. Where the model's extensions state the infix outright (`VendTable.ContosoFinSKExtension`), that spelling wins over anything derived.
 
-```env
-EXTENSION_PREFIX_SOURCE=config   # pin step 2 above step 1 (pre-1.8.2 behaviour)
+To pin step 2 above step 1 (pre-1.8.2 behaviour) — worth doing when one model carries several feature prefixes sharing a stem, so inference learns the shared stem while your objects need the full one:
+
+```json
+{ "naming": { "prefix": "CRXCore", "prefixSource": "config" } }
 ```
+
+`npx d365fo-mcp config naming` asks for it in the advanced pass. The equivalent environment variable, `EXTENSION_PREFIX_SOURCE=config`, still works and still outranks the config file.
 
 ## Objects owned by another model
 

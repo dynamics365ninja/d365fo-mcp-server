@@ -74,7 +74,7 @@ How generated objects, extensions and fields are named.
 | Key | Asked | Env var | Default | Description |
 | --- | --- | --- | --- | --- |
 | `naming.prefix` | setup | `EXTENSION_PREFIX` | — | Your ISV/customer prefix. Prepended to every generated object, field and method name and enforced by the naming validator, so BP checks pass on the first build. Used as the **fallback**: when the active model's existing objects already show a prefix, that one wins — see [Where the prefix comes from](CUSTOM_EXTENSIONS.md#where-the-prefix-comes-from). |
-| — | — | `EXTENSION_PREFIX_SOURCE` | — | Set to `config` to make `EXTENSION_PREFIX` authoritative again instead of learning each model's prefix from its own objects. |
+| `naming.prefixSource` | advanced | `EXTENSION_PREFIX_SOURCE` | `model` | Whether the effective prefix is learned from the active model's own objects or pinned to the configured `naming.prefix`. Pin it when one model carries several feature prefixes that share a stem — inference learns the shared stem, while the objects you write need the full one. See [Where the prefix comes from](CUSTOM_EXTENSIONS.md#where-the-prefix-comes-from). Values: `model` — the model's own objects decide, falling back to naming.prefix; `config` — always naming.prefix, inference off (pre-1.8.2 behaviour). |
 | `naming.suffix` | advanced | `EXTENSION_SUFFIX` | — | Optional suffix appended to new object names (MyTableZZ with suffix "ZZ"). Most projects use only a prefix — leave empty unless your convention requires one. |
 | `naming.extensionStyle` | advanced | `EXTENSION_NAMING_STYLE` | `prefix` | Whether extension classes/elements embed the prefix (per the Microsoft prefix guideline) or the model name (the Visual Studio default). Use model-name when your model name is long but your prefix is a short abbreviation. Values: `prefix` — CustTable.CrExtension — embeds the extension prefix; `model-name` — CustTable.ContosoRobotics — embeds the model name (VS default). |
 
@@ -179,6 +179,7 @@ Downloading a pre-built index from blob storage instead of building it locally.
   },
   "naming": {
     "prefix": "ISV_",
+    "prefixSource": "model",
     "suffix": "",
     "extensionStyle": "prefix"
   },

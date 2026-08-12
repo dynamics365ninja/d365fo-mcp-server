@@ -176,15 +176,43 @@ async function checkWorkspaceDetection(
  * for every model — but the server resolves the model's own naming ABOVE the
  * configuration, so a user reading only their config has the wrong answer. State
  * both, and how to pin the configured one.
+ *
+ * `pinned` is naming.prefixSource=config. This check used to call the inference
+ * directly and so never saw it — modelPrefixInference reads it in
+ * getInferredModelPrefix, one level above inferPrefixFromObjectNames — which
+ * meant a user who had already pinned the prefix was still told their model's
+ * naming wins (it does not) and offered the fix they had already applied (#893).
  */
 export function checkPrefixResolution(
   configuredPrefix: string,
   modelName: string | null,
   modelObjectNames: string[],
   label: string,
+  pinned = false,
 ): CheckResult[] {
   const inferred = modelName ? inferPrefixFromObjectNames(modelObjectNames, modelName) : null;
   const bare = (s: string) => s.replace(/_+$/, '').toLowerCase();
+
+  if (pinned) {
+    // Inference is off, so naming.prefix is the whole answer — and an empty one
+    // is worse here than anywhere else: pinning it leaves nothing to fall back
+    // to but the model name.
+    if (!configuredPrefix) {
+      return [{
+        severity: 'warn',
+        message: `${label}: naming.prefixSource=config pins the configured prefix, but naming.prefix is empty ` +
+          `— new objects will be prefixed with the model name`,
+        fix: `set naming.prefix to your ISV prefix (${SETUP_COMMAND})`,
+      }];
+    }
+    const ignored = inferred?.regular && bare(inferred.regular) !== bare(configuredPrefix)
+      ? ` — model "${modelName}"'s objects use "${inferred.regular}", ignored while the prefix is pinned`
+      : '';
+    return [{
+      severity: 'ok',
+      message: `${label}: prefix "${configuredPrefix}" (naming.prefix, pinned by naming.prefixSource=config)${ignored}`,
+    }];
+  }
 
   if (!inferred?.regular) {
     if (!configuredPrefix) {
@@ -207,7 +235,8 @@ export function checkPrefixResolution(
     message: `${label}: prefix conflict — model "${modelName}"'s objects use "${inferred.regular}" ` +
       `(${inferred.coverage}/${inferred.sampleSize}), naming.prefix says "${configuredPrefix}". ` +
       `The model's own naming wins, so new objects are named "${inferred.regular}…".`,
-    fix: 'EXTENSION_PREFIX_SOURCE=config pins the configured value instead',
+    fix: `set naming.prefixSource=config to pin the configured value instead (${SETUP_COMMAND}, or ` +
+      `EXTENSION_PREFIX_SOURCE=config in the environment)`,
   }];
 }
 
@@ -385,7 +414,15 @@ export async function doctorCommand(): Promise<void> {
   const names = detection.modelName
     ? await modelObjectNames(readPath(root.store, settingByPath('index.dbPath')!, paths.defaultDb), detection.modelName)
     : [];
-  for (const r of checkPrefixResolution(configuredPrefix, detection.modelName, names, 'Naming')) emit(r);
+  // Same precedence the server applies: the real environment outranks the
+  // config file (loadEnv), and the CLI never projects one onto the other.
+  const prefixSource = (
+    process.env.EXTENSION_PREFIX_SOURCE
+    ?? String(readSetting(root.store, settingByPath('naming.prefixSource')!) ?? '')
+  ).trim().toLowerCase();
+  for (const r of checkPrefixResolution(
+    configuredPrefix, detection.modelName, names, 'Naming', prefixSource === 'config',
+  )) emit(r);
 
   // C# bridge: the only write path; Windows-only.
   if (isWindows) {

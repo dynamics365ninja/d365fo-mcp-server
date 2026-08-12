@@ -107,6 +107,30 @@ describe('config file', () => {
     expect(env.PORT).toBe('3001');
   });
 
+  it('pins the prefix from the config file alone (#893)', () => {
+    // The whole point of giving EXTENSION_PREFIX_SOURCE a key: an instance can
+    // pin its prefix in the one file that already holds everything else about
+    // it, instead of gaining an instances/<name>/.env for a single line. The
+    // stored value has to be the exact token inferenceDisabled() compares
+    // against in modelPrefixInference.
+    writeConfigFile(join(tmp, 'config', 'd365fo-mcp.json'), {
+      naming: { prefix: 'CRXCore', prefixSource: 'config' },
+    });
+
+    const env = toEnvRecord(resolveConfigFiles(tmp, { allowEnvOverride: false }));
+    expect(env.EXTENSION_PREFIX).toBe('CRXCore');
+    expect(env.EXTENSION_PREFIX_SOURCE).toBe('config');
+  });
+
+  it('leaves the prefix source out of the environment when it is not configured', () => {
+    // Absent must stay absent: the registry default is documentation, and
+    // emitting it would override an ambient .env that sets the variable.
+    writeConfigFile(join(tmp, 'config', 'd365fo-mcp.json'), { naming: { prefix: 'CRXCore' } });
+
+    expect(toEnvRecord(resolveConfigFiles(tmp, { allowEnvOverride: false })).EXTENSION_PREFIX_SOURCE)
+      .toBeUndefined();
+  });
+
   it('resolves relative path settings from the project directory, not config/', () => {
     writeConfigFile(join(tmp, 'config', 'd365fo-mcp.json'), { index: { dbPath: './data/xpp-metadata.db' } });
     const env = toEnvRecord(resolveConfigFiles(tmp, { allowEnvOverride: false }));
@@ -211,6 +235,17 @@ describe('settings store', () => {
     // Empty values carry nothing over, and secrets are never auto-migrated.
     expect(migrated).not.toContain('CUSTOM_MODELS');
     expect(migrated).not.toContain('AZURE_STORAGE_CONNECTION_STRING');
+  });
+
+  it('carries a pinned prefix source out of a legacy .env', () => {
+    // It had no config path, so migration skipped it silently and the .env had
+    // to stay behind for that one line (#893).
+    const envFile = writeEnv('EXTENSION_PREFIX=ISV_\nEXTENSION_PREFIX_SOURCE=config\n');
+    const store = openStore(tmp, envFile);
+    const migrated = migrateLegacyEnv(store).map(s => s.env);
+
+    expect(migrated).toContain('EXTENSION_PREFIX_SOURCE');
+    expect(getAtPath(store.config, 'naming.prefixSource')).toBe('config');
   });
 
   it('leaves behind an enum value the registry no longer offers', () => {
