@@ -38,8 +38,9 @@ import {
 } from '../../bridge/index.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
 import { ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
-import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName } from '../smart/generateSmartTable.js';
+import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName, resolveEdtEnumType } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
+import { insertFormExtensionControl } from '../../utils/formExtensionControlXml.js';
 import {
   upsertAxTableProperty,
   AX_TABLE_NON_EXISTENT_PROPERTIES,
@@ -704,6 +705,21 @@ const CONTROL_TYPE_TO_FORM_CONTROL: Record<string, { iType: string; typeValue: s
 };
 const DEFAULT_FORM_CONTROL = { iType: 'AxFormStringControl', typeValue: 'String' };
 
+/**
+ * Mark a write result as having come from this server's XML writer rather than
+ * the bridge, so the success banner can name the path that actually did the work.
+ *
+ * The headline used to read "applied via IMetadataProvider.Update()"
+ * unconditionally, while the line below it said "via direct XML fallback" — the
+ * reply named an API that never ran. That matters beyond tidiness: a reader who
+ * believes the metadata API performed the write also believes the write was
+ * validated by it, which is exactly the assumption that let a silently-discarded
+ * control read as a success.
+ */
+function viaXmlFallback<T extends { success: boolean; message: string } | null>(result: T): T {
+  return (result ? { ...result, viaXmlFallback: true } : result) as T;
+}
+
 /** Random 9-char lowercase-alphanumeric suffix, matching the SDK's
  *  `FormExtensionControl<rand>` wrapper-name convention (e.g. "fh5riowy1"). */
 function formExtensionControlName(): string {
@@ -719,11 +735,14 @@ function formExtensionControlName(): string {
  * which can NEVER find a form EXTENSION (named "BaseForm.Suffix") — it always
  * reports 'Form "<ext>" not found'. add-control on a form-extension therefore has
  * no working bridge path at all (independent of metadata-root freshness). This
- * writes an <AxFormExtensionControl> element straight into the extension's
- * <Controls> collection, in the exact shape the D365FO SDK serializes (verified
- * against shipped standard extensions): an empty-namespace <FormControl i:type="…">
- * wrapped by <AxFormExtensionControl xmlns=""> with a <Parent> reference. It edits
- * the file on disk, so it is unaffected by what the bridge has loaded.
+ * edits the file on disk, so it is unaffected by what the bridge has loaded.
+ *
+ * The shape and the insertion point both come from where `parentControl` lives:
+ * an <AxFormExtensionControl> envelope in the extension's ROOT <Controls> for a
+ * base-form parent, a bare <AxFormControl> in the parent's NESTED <Controls>
+ * when the extension defines that parent itself. See formExtensionControlXml.ts
+ * — the placement logic lives there, pure and unit-tested, because getting it
+ * wrong writes structurally invalid metadata under a ✅.
  */
 const directXmlAddControl = serializedOnFile(async (
   filePath: string,
@@ -733,59 +752,47 @@ const directXmlAddControl = serializedOnFile(async (
   dataSource?: string,
   dataField?: string,
   label?: string,
+  previousSibling?: string,
 ): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
 
-    // Idempotency: a control with this Name already present → skip.
-    // (controlName is a D365 identifier, so a literal substring match is safe.)
-    if (content.includes(`<Name>${controlName}</Name>`)) {
-      return {
-        success: true,
-        message: `✅ Control '${controlName}' already present in ${filePath} — skipped (idempotent).`,
-      };
-    }
-
     const { iType, typeValue } = CONTROL_TYPE_TO_FORM_CONTROL[(controlType || 'String').toLowerCase()] ?? DEFAULT_FORM_CONTROL;
 
-    // Inner <FormControl> children, in the order shipped extensions serialize them:
-    // Name → Type → FormControlExtension(nil) → DataField → DataSource → Label → [Items].
-    const inner = [
-      `\t\t\t\t<Name>${controlName}</Name>`,
-      `\t\t\t\t<Type>${typeValue}</Type>`,
-      `\t\t\t\t<FormControlExtension i:nil="true" />`,
-    ];
-    if (dataField) inner.push(`\t\t\t\t<DataField>${dataField}</DataField>`);
-    if (dataSource) inner.push(`\t\t\t\t<DataSource>${dataSource}</DataSource>`);
-    if (label) inner.push(`\t\t\t\t<Label>${label}</Label>`);
-    if (typeValue === 'ComboBox') inner.push(`\t\t\t\t<Items />`);
+    const outcome = insertFormExtensionControl(content, {
+      controlName, parentControl, iType, typeValue,
+      dataSource, dataField, label,
+      wrapperName: formExtensionControlName(),
+      previousSibling,
+    });
 
-    const newElement =
-      `\t\t<AxFormExtensionControl xmlns="">\n` +
-      `\t\t\t<Name>${formExtensionControlName()}</Name>\n` +
-      `\t\t\t<FormControl xmlns="" i:type="${iType}">\n` +
-      inner.join('\n') + '\n' +
-      `\t\t\t</FormControl>\n` +
-      `\t\t\t<Parent>${parentControl}</Parent>\n` +
-      `\t\t</AxFormExtensionControl>`;
-
-    let updated: string;
-    if (content.includes('<Controls />')) {
-      updated = content.replace('<Controls />', `<Controls>\n${newElement}\n\t</Controls>`);
-    } else if (content.includes('</Controls>')) {
-      updated = content.replace('</Controls>', `${newElement}\n\t</Controls>`);
-    } else {
-      return null; // no <Controls> collection — not a form-extension shape we recognise
+    switch (outcome.kind) {
+      case 'unsupported':
+        return null; // not a form-extension shape we recognise — caller falls through
+      case 'exists':
+        return {
+          success: true,
+          message: `✅ Control '${controlName}' already present in ${filePath} — skipped (idempotent).`,
+        };
+      case 'refused':
+        return { success: false, message: outcome.message };
     }
 
-    if (updated === content) return null;
-
-    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
     console.error(`[modify_d365fo_file] ✅ directXmlAddControl: added '${controlName}' (${iType}) to ${filePath}`);
+
+    const shape = outcome.representation === 'nested'
+      ? `nested <AxFormControl> under extension-owned parent`
+      : `<AxFormExtensionControl> in the extension's root <Controls>`;
+    const notes = outcome.notes.length
+      ? '\n' + outcome.notes.map(n => `⚠️ ${n}`).join('\n')
+      : '';
     return {
       success: true,
-      message: `✅ Control '${controlName}' (${iType}) added to '${parentControl}' via direct XML fallback. File: ${filePath}`,
+      message:
+        `✅ Control '${controlName}' (${iType}) added to '${parentControl}' via direct XML fallback ` +
+        `as a ${shape}. File: ${filePath}${notes}`,
     };
   } catch (err) {
     console.error(`[modify_d365fo_file] directXmlAddControl failed: ${err}`);
@@ -2172,7 +2179,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // trip plus a full rebuild. Free when no write is outstanding.
     await timer.time('provider refresh (pending writes)', () => debouncedRefresh.flush());
 
-    let bridgeResult: { success: boolean; message: string } | null = null;
+    let bridgeResult: { success: boolean; message: string; viaXmlFallback?: boolean } | null = null;
     /** File content captured before a replace-code, to diff the reply against. */
     let replaceCodeBefore: string | null = null;
     let _bridgeRetried = false;
@@ -2355,7 +2362,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
               args.fieldLabel,
               (args as any).fieldGroupName,
             );
-            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+            if (xmlFallbackResult) bridgeResult = viaXmlFallback(xmlFallbackResult);
           }
           break;
         }
@@ -2609,7 +2616,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
               allowDuplicates,
               alternateKey,
             );
-            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+            if (xmlFallbackResult) bridgeResult = viaXmlFallback(xmlFallbackResult);
           }
         }
         break;
@@ -2741,13 +2748,13 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         // No bridge op exists for DeleteActions (#36) — this is the only path.
         const daName = (args as any).deleteActionName ?? (args as any).deleteActionTable;
         if (daName) {
-          bridgeResult = await directXmlDeleteAction(
+          bridgeResult = viaXmlFallback(await directXmlDeleteAction(
             actualFilePath,
             operation === 'add-delete-action' ? 'add' : 'remove',
             daName,
             (args as any).deleteActionTable,
             (args as any).deleteActionType,
-          );
+          ));
         }
         break;
       }
@@ -2864,7 +2871,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
               describeBridgeFallbackReason(context.bridge, objectType, 'modify-property', bridgeResult),
             );
             if (xmlFallbackResult) {
-              bridgeResult = xmlFallbackResult;
+              bridgeResult = viaXmlFallback(xmlFallbackResult);
             }
           }
         }
@@ -2932,7 +2939,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
               describeBridgeFallbackReason(context.bridge, objectType, 'replace-code', bridgeResult),
             );
             if (xmlFallbackResult) {
-              bridgeResult = xmlFallbackResult;
+              bridgeResult = viaXmlFallback(xmlFallbackResult);
             }
           }
         } else {
@@ -3023,8 +3030,9 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
               (args as any).controlDataSource,
               (args as any).controlDataField,
               (args as any).controlLabel,
+              (args as any).previousSibling,
             );
-            if (xmlFallbackResult) bridgeResult = xmlFallbackResult;
+            if (xmlFallbackResult) bridgeResult = viaXmlFallback(xmlFallbackResult);
           }
         }
         break;
@@ -3072,7 +3080,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
               (args as any).menuItemToAddType ?? 'display',
             );
             if (xmlFallbackResult) {
-              bridgeResult = xmlFallbackResult;
+              bridgeResult = viaXmlFallback(xmlFallbackResult);
             }
           }
         }
@@ -3341,7 +3349,9 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         {
           type: 'text',
           text:
-            `✅ ${operation} on ${objectType} "${objectName}" — applied via IMetadataProvider.Update()${crossModelNotice}${autoCorrectNote}\n\n` +
+            `✅ ${operation} on ${objectType} "${objectName}" — applied via ${bridgeResult.viaXmlFallback
+              ? "this server's XML writer (no bridge path for this operation)"
+              : 'IMetadataProvider.Update()'}${crossModelNotice}${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
             `🔧 API: ${bridgeResult.message}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${backupNote}${verifyNote}${indexNote}${bpNote}${timer.render()}` +
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
@@ -4266,7 +4276,13 @@ export function resolveControlTypeForField(
     baseType === 'Enum' ? 'ComboBox' : baseType;
 
   if (declared && db) {
-    if (isEnumName(declared, db)) return 'ComboBox';
+    if (isEnumName(declared, db)) return enumControlType(declared);
+    // Which enum, not just "an enum": a NoYes-backed EDT (the overwhelmingly
+    // common flag field) is a CheckBox everywhere in the product, and a ComboBox
+    // over it compiles fine but reads as a two-item dropdown the designer would
+    // never have produced.
+    const enumType = resolveEdtEnumType(declared, db);
+    if (enumType) return enumControlType(enumType);
     const base = asControlType(resolveEdtBaseType(declared, db));
     if (base) return base;
   }
@@ -4275,11 +4291,25 @@ export function resolveControlTypeForField(
   // conventionally the EDT or enum name in X++, so try it directly before
   // falling back to the pure name heuristic.
   if (db) {
-    if (isEnumName(dataField, db)) return 'ComboBox';
+    if (isEnumName(dataField, db)) return enumControlType(dataField);
+    const enumType = resolveEdtEnumType(dataField, db);
+    if (enumType) return enumControlType(enumType);
     const base = asControlType(resolveEdtBaseType(dataField, db));
     if (base) return base;
   }
   return asControlType(heuristicEdtBaseType(dataField));
+}
+
+/**
+ * The form control an enum binds to. Every enum is a ComboBox EXCEPT the boolean
+ * ones: D365FO renders NoYes / NoYesId as a CheckBox, and the VS designer emits
+ * AxFormCheckBoxControl for such a field. NoYesCombo is deliberately absent — it
+ * is the enum you pick precisely when you DO want the dropdown.
+ */
+const BOOLEAN_ENUMS = new Set(['noyes', 'noyesid']);
+
+function enumControlType(enumName: string): string {
+  return BOOLEAN_ENUMS.has(enumName.toLowerCase()) ? 'CheckBox' : 'ComboBox';
 }
 
 function resolveFieldEdt(tableName: string, fieldName: string, db: any): string | null {

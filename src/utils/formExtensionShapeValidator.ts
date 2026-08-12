@@ -22,6 +22,8 @@
  *   </AxFormExtensionControl>
  */
 
+import { findFormExtensionPlacementProblems } from './formExtensionControlXml.js';
+
 export interface FormExtShapeProblem {
   found: string;
   expected: string;
@@ -94,6 +96,21 @@ export function validateFormExtensionControlShape(xml: string): FormExtShapeProb
       detail:
         'The integer form control class is AxFormIntegerControl (with <Type>Integer</Type>). ' +
         'AxFormIntControl does not exist and fails deserialization.',
+    });
+  }
+
+  // Right element names, wrong collection. Every check above is a spelling check,
+  // and a control can be spelled perfectly and still sit somewhere the
+  // deserializer will not read it — most commonly an <AxFormExtensionControl>
+  // envelope dropped into a nested <Controls>. Unlike the problems above, that one
+  // does NOT fail deserialization loudly: the node is discarded, the build reports
+  // 0 errors, and the control is simply absent from the form. Nothing later in the
+  // pipeline will report it, so it has to be caught here.
+  for (const p of findFormExtensionPlacementProblems(xml)) {
+    problems.push({
+      found: `<${p.element}> at line ${p.line}`,
+      expected: 'the collection typed to hold it',
+      detail: p.detail,
     });
   }
 

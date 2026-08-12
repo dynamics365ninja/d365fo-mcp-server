@@ -125,6 +125,46 @@ describe('resolveControlTypeForField', () => {
     expect(resolveControlTypeForField('SomeDataSource', 'CtsoFin_QualityTier', db)).toBe('ComboBox');
   });
 
+  // A boolean flag is a CheckBox, not a two-item dropdown. Reported 2026-08-12:
+  // the auto-pick returned ComboBox for a NoYes-backed EDT while the VS designer
+  // emitted AxFormCheckBoxControl for the very same field, so a tool-added
+  // control silently disagreed with the one sitting next to it.
+  it('picks CheckBox for a NoYes-backed EDT', () => {
+    const db = fakeDb({
+      fields: { 'InventTestGroup.CtsoDisableProdQty': 'CtsoDisableProdQty' },
+      edts: { CtsoDisableProdQty: { extends: null, enum_type: 'NoYes', string_size: null } },
+    });
+    expect(resolveControlTypeForField('InventTestGroup', 'CtsoDisableProdQty', db)).toBe('CheckBox');
+  });
+
+  it('picks CheckBox when the field binds the NoYes enum directly', () => {
+    const db = fakeDb({
+      fields: { 'CustTable.Blocked': 'NoYes' },
+      enums: ['NoYes'],
+    });
+    expect(resolveControlTypeForField('CustTable', 'Blocked', db)).toBe('CheckBox');
+  });
+
+  it('follows an EDT chain down to NoYes', () => {
+    // A custom EDT extending the standard NoYesId is still a checkbox.
+    const db = fakeDb({
+      fields: { 'CustTable.CtsoFlag': 'CtsoFlag' },
+      edts: {
+        CtsoFlag: { extends: 'NoYesId', enum_type: null, string_size: null },
+        NoYesId: { extends: null, enum_type: 'NoYes', string_size: null },
+      },
+    });
+    expect(resolveControlTypeForField('CustTable', 'CtsoFlag', db)).toBe('CheckBox');
+  });
+
+  it('leaves a non-boolean enum as a ComboBox', () => {
+    const db = fakeDb({
+      fields: { 'SalesTable.Posted': 'CtsoPosted' },
+      edts: { CtsoPosted: { extends: null, enum_type: 'CtsoApprovalState', string_size: null } },
+    });
+    expect(resolveControlTypeForField('SalesTable', 'Posted', db)).toBe('ComboBox');
+  });
+
   it('returns undefined with no field, so the caller keeps its own default', () => {
     expect(resolveControlTypeForField('CustTable', undefined, fakeDb({}))).toBeUndefined();
   });

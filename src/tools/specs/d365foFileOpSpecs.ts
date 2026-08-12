@@ -433,7 +433,13 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     ],
     note: 'objectType="form": parentControl="Design" adds the control at the TOP LEVEL of the '
       + 'form design — use it for the first control on a form whose design is still empty. '
-      + 'Otherwise pass the exact name of an existing container (Tab, TabPage, Group, Grid).',
+      + 'Otherwise pass the exact name of an existing container (Tab, TabPage, Group, Grid). '
+      + 'objectType="form-extension": parentControl may name a base-form container OR a container '
+      + 'the extension itself defines — the writer picks the right XML shape from which it is, so '
+      + 'just pass the name. A parent bound to a table field group via <DataGroup> is REFUSED: its '
+      + 'children mirror that field group, so add the field to the field group instead '
+      + '(add-field-to-field-group) and refresh the group in the designer. previousSibling positions '
+      + 'the control only under an extension-defined parent.',
   },
   'add-enum-value': {
     required: ['enumValueName'],

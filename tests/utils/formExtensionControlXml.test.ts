@@ -1,0 +1,593 @@
+/**
+ * Regression tests — control placement in an AxFormExtension.
+ *
+ * Field report (2026-08-12): `add-control` on a form extension emitted an
+ * <AxFormExtensionControl> envelope INTO the nested <Controls> of a group the
+ * extension itself defines, and reported ✅. Root cause was not a missing
+ * branch but a blind splice:
+ *
+ *     content.replace('</Controls>', `${envelope}\n\t</Controls>`)
+ *
+ * A string pattern replaces the FIRST occurrence, and the nested </Controls>
+ * closes before the root one — so `parentControl` never influenced the
+ * insertion point at all (it only supplied the <Parent> text). Every fixture at
+ * the time was flat, where first-</Controls> happens to be the right one; this
+ * file pins the nested case in both directions.
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  insertFormExtensionControl,
+  findFormExtensionPlacementProblems,
+  type FormExtensionControlSpec,
+} from '../../src/utils/formExtensionControlXml';
+import { validateFormExtensionControlShape } from '../../src/utils/formExtensionShapeValidator';
+
+// ─── Fixtures ────────────────────────────────────────────────────────────────
+
+/** Flat extension: one control attached to a base-form parent. Matches the golden. */
+const FLAT_EXT = `<?xml version="1.0" encoding="utf-8"?>
+<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>CustGroup.ConExtension</Name>
+\t<ControlModifications />
+\t<Controls>
+\t\t<AxFormExtensionControl xmlns="">
+\t\t\t<Name>FormExtensionControlfse38xiwz</Name>
+\t\t\t<FormControl xmlns="" i:type="AxFormCheckBoxControl">
+\t\t\t\t<Name>Grid_ConHasNotes</Name>
+\t\t\t\t<Type>CheckBox</Type>
+\t\t\t\t<FormControlExtension i:nil="true" />
+\t\t\t\t<DataField>ConHasNotes</DataField>
+\t\t\t\t<DataSource>CustGroup</DataSource>
+\t\t\t</FormControl>
+\t\t\t<Parent>Grid</Parent>
+\t\t</AxFormExtensionControl>
+\t</Controls>
+\t<DataSourceModifications />
+\t<DataSources />
+</AxFormExtension>`;
+
+/**
+ * The reported shape: the extension defines its OWN group container, so the file
+ * has a nested <Controls> that closes before the root one.
+ * `dataGroup` toggles the <DataGroup> binding described in the report's §6b.
+ */
+const nestedExt = (opts: { dataGroup?: boolean } = {}) => `<?xml version="1.0" encoding="utf-8"?>
+<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>InventTestGroup.ConExtension</Name>
+\t<ControlModifications />
+\t<Controls>
+\t\t<AxFormExtensionControl xmlns="">
+\t\t\t<Name>FormExtensionControlabc123xyz</Name>
+\t\t\t<FormControl xmlns="" i:type="AxFormGroupControl">
+\t\t\t\t<Name>ConQualityOrders</Name>
+\t\t\t\t<Type>Group</Type>
+\t\t\t\t<FormControlExtension i:nil="true" />
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormControl xmlns="" i:type="AxFormCheckBoxControl">
+\t\t\t\t\t\t<Name>ConQualityOrders_ConDisableInventoryBlocking</Name>
+\t\t\t\t\t\t<Type>CheckBox</Type>
+\t\t\t\t\t\t<FormControlExtension i:nil="true" />
+\t\t\t\t\t\t<DataField>ConDisableInventoryBlocking</DataField>
+\t\t\t\t\t\t<DataSource>InventTestGroup</DataSource>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t</Controls>
+${opts.dataGroup ? '\t\t\t\t<DataGroup>ConQualityOrders</DataGroup>\n' : ''}\t\t\t\t<DataSource>InventTestGroup</DataSource>
+\t\t\t</FormControl>
+\t\t\t<Parent>TabHeaderGeneral</Parent>
+\t\t</AxFormExtensionControl>
+\t</Controls>
+\t<DataSourceModifications />
+\t<DataSources />
+</AxFormExtension>`;
+
+const spec = (over: Partial<FormExtensionControlSpec> = {}): FormExtensionControlSpec => ({
+  controlName: 'ConQualityOrders_ConDisableProdQty',
+  parentControl: 'ConQualityOrders',
+  iType: 'AxFormCheckBoxControl',
+  typeValue: 'CheckBox',
+  dataSource: 'InventTestGroup',
+  dataField: 'ConDisableProdQty',
+  wrapperName: 'FormExtensionControlnew000001',
+  ...over,
+});
+
+const count = (s: string, needle: string) => s.split(needle).length - 1;
+
+/** Text between the extension-owned group's nested <Controls> … </Controls>. */
+function nestedControlsBody(xml: string): string {
+  const open = xml.indexOf('<Controls>', xml.indexOf('<Name>ConQualityOrders</Name>'));
+  const close = xml.indexOf('</Controls>', open);
+  expect(open).toBeGreaterThan(-1);
+  expect(close).toBeGreaterThan(-1);
+  return xml.slice(open, close);
+}
+
+const inserted = (r: ReturnType<typeof insertFormExtensionControl>) => {
+  expect(r.kind).toBe('inserted');
+  return r as Extract<typeof r, { kind: 'inserted' }>;
+};
+
+// ─── The primary defect ──────────────────────────────────────────────────────
+
+describe('parent defined by the extension itself → bare nested AxFormControl', () => {
+  it('writes the control into the parent group, not the root collection', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec()));
+
+    expect(r.representation).toBe('nested');
+    expect(nestedControlsBody(r.xml)).toContain('<Name>ConQualityOrders_ConDisableProdQty</Name>');
+  });
+
+  it('emits NO envelope and NO <Parent> for the new control', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec()));
+
+    // Exactly the one envelope and the one <Parent> the fixture started with.
+    expect(count(r.xml, '<AxFormExtensionControl')).toBe(count(nestedExt(), '<AxFormExtensionControl'));
+    expect(count(r.xml, '<Parent>')).toBe(1);
+    expect(r.xml).toContain('<Parent>TabHeaderGeneral</Parent>');
+    expect(r.xml).not.toContain('<Parent>ConQualityOrders</Parent>');
+  });
+
+  it('never puts an AxFormExtensionControl inside the nested collection (the reported bug)', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec()));
+
+    expect(nestedControlsBody(r.xml)).not.toContain('AxFormExtensionControl');
+  });
+
+  it('leaves the group\'s trailing properties in place after </Controls>', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec()));
+
+    // The bad output stranded these behind a collection closed at the wrong depth.
+    expect(r.xml).toMatch(/<\/Controls>\s*\n\s*<DataSource>InventTestGroup<\/DataSource>/);
+  });
+
+  it('appends after the existing sibling, preserving field order', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec()));
+    const body = nestedControlsBody(r.xml);
+
+    expect(body.indexOf('ConDisableInventoryBlocking'))
+      .toBeLessThan(body.indexOf('ConQualityOrders_ConDisableProdQty'));
+  });
+
+  it('matches the designer shape byte-for-byte in the control body', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec()));
+
+    expect(r.xml).toContain(
+      '\t\t\t\t\t<AxFormControl xmlns="" i:type="AxFormCheckBoxControl">\n' +
+      '\t\t\t\t\t\t<Name>ConQualityOrders_ConDisableProdQty</Name>\n' +
+      '\t\t\t\t\t\t<Type>CheckBox</Type>\n' +
+      '\t\t\t\t\t\t<FormControlExtension i:nil="true" />\n' +
+      '\t\t\t\t\t\t<DataField>ConDisableProdQty</DataField>\n' +
+      '\t\t\t\t\t\t<DataSource>InventTestGroup</DataSource>\n' +
+      '\t\t\t\t\t</AxFormControl>\n'
+    );
+  });
+});
+
+// Report §11.3, reproduced in a second environment: two add-control calls against
+// one file, naming two different sibling groups. The SECOND call inserted into the
+// FIRST call's parent while writing the requested name into <Parent> — because the
+// insertion point was found positionally (first </Controls>) and `parentControl`
+// only ever supplied that text. Two sibling groups is the smallest shape that
+// exposes it; a single-group fixture cannot.
+describe('two sibling groups defined by the same extension', () => {
+  const TWO_GROUPS = `<?xml version="1.0" encoding="utf-8"?>
+<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>ProdSetupReportFinished.ConExtension</Name>
+\t<Controls>
+\t\t<AxFormExtensionControl xmlns="">
+\t\t\t<Name>FormExtensionControlgrp000001</Name>
+\t\t\t<FormControl xmlns="" i:type="AxFormGroupControl">
+\t\t\t\t<Name>ConFirstGroup</Name>
+\t\t\t\t<Type>Group</Type>
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormControl xmlns="" i:type="AxFormStringControl">
+\t\t\t\t\t\t<Name>ConFirstGroup_Existing</Name>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t</Controls>
+\t\t\t</FormControl>
+\t\t\t<Parent>ProdSetupReportFinishedFields</Parent>
+\t\t</AxFormExtensionControl>
+\t\t<AxFormExtensionControl xmlns="">
+\t\t\t<Name>FormExtensionControlgrp000002</Name>
+\t\t\t<FormControl xmlns="" i:type="AxFormGroupControl">
+\t\t\t\t<Name>ConSecondGroup</Name>
+\t\t\t\t<Type>Group</Type>
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormControl xmlns="" i:type="AxFormStringControl">
+\t\t\t\t\t\t<Name>ConSecondGroup_Existing</Name>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t</Controls>
+\t\t\t</FormControl>
+\t\t\t<Parent>ProdSetupReportFinishedFields</Parent>
+\t\t</AxFormExtensionControl>
+\t</Controls>
+</AxFormExtension>`;
+
+  /** Children of the named group's nested <Controls>, in order. */
+  const childrenOf = (xml: string, group: string): string[] => {
+    const from = xml.indexOf(`<Name>${group}</Name>`);
+    const open = xml.indexOf('<Controls>', from);
+    const close = xml.indexOf('</Controls>', open);
+    return [...xml.slice(open, close).matchAll(/<Name>([^<]+)<\/Name>/g)].map(m => m[1]);
+  };
+
+  it('inserts into the SECOND group when that is the one named', () => {
+    const r = inserted(insertFormExtensionControl(TWO_GROUPS, spec({
+      controlName: 'ConSecondGroup_Probe',
+      parentControl: 'ConSecondGroup',
+      dataField: 'AcceptError',
+      dataSource: 'ProdParmReportFinished',
+    })));
+
+    expect(childrenOf(r.xml, 'ConSecondGroup')).toEqual([
+      'ConSecondGroup_Existing', 'ConSecondGroup_Probe',
+    ]);
+    // The first group — which used to receive it — is untouched.
+    expect(childrenOf(r.xml, 'ConFirstGroup')).toEqual(['ConFirstGroup_Existing']);
+  });
+
+  it('inserts into the FIRST group when that is the one named', () => {
+    const r = inserted(insertFormExtensionControl(TWO_GROUPS, spec({
+      controlName: 'ConFirstGroup_Probe',
+      parentControl: 'ConFirstGroup',
+    })));
+
+    expect(childrenOf(r.xml, 'ConFirstGroup')).toEqual([
+      'ConFirstGroup_Existing', 'ConFirstGroup_Probe',
+    ]);
+    expect(childrenOf(r.xml, 'ConSecondGroup')).toEqual(['ConSecondGroup_Existing']);
+  });
+
+  it('survives two successive calls naming different groups', () => {
+    // The exact §11.3 sequence, which a single call cannot reproduce.
+    const first = inserted(insertFormExtensionControl(TWO_GROUPS, spec({
+      controlName: 'ConFirstGroup_Probe',
+      parentControl: 'ConFirstGroup',
+    })));
+    const second = inserted(insertFormExtensionControl(first.xml, spec({
+      controlName: 'ConSecondGroup_Probe',
+      parentControl: 'ConSecondGroup',
+    })));
+
+    expect(childrenOf(second.xml, 'ConFirstGroup')).toEqual([
+      'ConFirstGroup_Existing', 'ConFirstGroup_Probe',
+    ]);
+    expect(childrenOf(second.xml, 'ConSecondGroup')).toEqual([
+      'ConSecondGroup_Existing', 'ConSecondGroup_Probe',
+    ]);
+    expect(findFormExtensionPlacementProblems(second.xml)).toEqual([]);
+  });
+});
+
+describe('parent belonging to the base form → AxFormExtensionControl envelope', () => {
+  it('wraps the control and references the parent by name', () => {
+    const r = inserted(insertFormExtensionControl(FLAT_EXT, spec({
+      controlName: 'Grid_ConDisableProdQty',
+      parentControl: 'Grid',
+    })));
+
+    expect(r.representation).toBe('envelope');
+    expect(r.xml).toContain('<Name>FormExtensionControlnew000001</Name>');
+    expect(r.xml).toContain('<Parent>Grid</Parent>');
+    expect(count(r.xml, '<AxFormExtensionControl')).toBe(2);
+  });
+
+  it('targets the ROOT collection even when a nested one closes first', () => {
+    // The exact trap: parent is on the base form, but the file also contains an
+    // extension-owned group whose </Controls> comes earlier in document order.
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec({
+      controlName: 'TabHeaderGeneral_ConNote',
+      parentControl: 'TabHeaderGeneral',
+      dataField: 'ConNote',
+    })));
+
+    expect(r.representation).toBe('envelope');
+    expect(nestedControlsBody(r.xml)).not.toContain('ConNote');
+    expect(r.xml).toContain('<Parent>TabHeaderGeneral</Parent>');
+    expect(count(r.xml, '<AxFormExtensionControl')).toBe(2);
+  });
+});
+
+// ─── DataGroup-bound parent (report §6b) ─────────────────────────────────────
+
+describe('parent bound to a table field group via <DataGroup>', () => {
+  // Deliberately a warning, not a refusal. The base-form guard refuses because a
+  // base-form <DataGroup> container generates its members, so an explicit control
+  // duplicates one. An extension-created group generates nothing (§11.2 of the
+  // report: a field-group member with no explicit control does not render), so
+  // here the explicit control is the ONLY way to get the field onto the form —
+  // refusing would send the caller to the VS designer to do the tool's job.
+  it('writes the control and warns instead of refusing', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt({ dataGroup: true }), spec()));
+
+    expect(nestedControlsBody(r.xml)).toContain('ConQualityOrders_ConDisableProdQty');
+    expect(r.notes.join('\n')).toMatch(/DataGroup/);
+  });
+
+  it('names the control the designer Refresh would generate', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt({ dataGroup: true }), spec()));
+    const note = r.notes.join('\n');
+
+    expect(note).toContain('ConQualityOrders_ConDisableProdQty');
+    expect(note).toContain('add-field-to-field-group');
+  });
+
+  it('says the field group alone will not render the field on an extension-owned group', () => {
+    const note = inserted(insertFormExtensionControl(nestedExt({ dataGroup: true }), spec()))
+      .notes.join('\n');
+
+    expect(note).toMatch(/BASE-FORM/);
+    expect(note).toMatch(/explicit control is required/);
+  });
+
+  it('stays quiet when the parent has no DataGroup', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec()));
+    expect(r.notes.join('\n')).not.toMatch(/DataGroup/);
+  });
+});
+
+// ─── Collection variants ─────────────────────────────────────────────────────
+
+describe('empty and self-closing collections', () => {
+  const emptyGroup = nestedExt().replace(
+    /\t\t\t\t<Controls>[\s\S]*?<\/Controls>\n/,
+    '\t\t\t\t<Controls />\n',
+  );
+
+  it('expands a self-closing nested <Controls />, preserving its attributes', () => {
+    const withAttrs = emptyGroup.replace('<Controls />', '<Controls xmlns="" />');
+    const r = inserted(insertFormExtensionControl(withAttrs, spec()));
+
+    expect(r.representation).toBe('nested');
+    expect(r.xml).toContain('<Controls xmlns="">');
+    expect(r.xml).toContain('<Name>ConQualityOrders_ConDisableProdQty</Name>');
+    expect(r.xml).not.toContain('<Controls xmlns="" />');
+  });
+
+  it('expands a self-closing ROOT <Controls /> for a base-form parent', () => {
+    const bare = FLAT_EXT.replace(/\t<Controls>[\s\S]*?\t<\/Controls>/, '\t<Controls />');
+    const r = inserted(insertFormExtensionControl(bare, spec({ parentControl: 'Grid' })));
+
+    expect(r.representation).toBe('envelope');
+    expect(r.xml).toContain('<AxFormExtensionControl xmlns="">');
+    expect(r.xml).not.toContain('<Controls />');
+  });
+
+  it('refuses an extension-owned parent that has no <Controls> at all', () => {
+    const noControls = nestedExt().replace(/\t\t\t\t<Controls>[\s\S]*?<\/Controls>\n/, '');
+    const r = insertFormExtensionControl(noControls, spec());
+
+    expect(r.kind).toBe('refused');
+    expect((r as { message: string }).message).toMatch(/no <Controls> collection/);
+  });
+});
+
+// ─── Idempotency ─────────────────────────────────────────────────────────────
+
+describe('idempotency', () => {
+  it('skips when the control already exists', () => {
+    const r = insertFormExtensionControl(nestedExt(), spec({
+      controlName: 'ConQualityOrders_ConDisableInventoryBlocking',
+    }));
+    expect(r.kind).toBe('exists');
+  });
+
+  it('is not fooled by a data source or field of the same name', () => {
+    // The old check was `content.includes('<Name>' + controlName + '</Name>')`,
+    // which also matched the extension's own <Name> and any element carrying one.
+    const r = insertFormExtensionControl(nestedExt(), spec({
+      controlName: 'InventTestGroup',
+      parentControl: 'ConQualityOrders',
+    }));
+    expect(r.kind).toBe('inserted');
+  });
+
+  it('does not treat the auto-generated wrapper id as a control name', () => {
+    const r = insertFormExtensionControl(nestedExt(), spec({
+      parentControl: 'FormExtensionControlabc123xyz',
+    }));
+    // Resolves as a base-form parent (it is not a control), never as a nested one.
+    expect(inserted(r).representation).toBe('envelope');
+  });
+});
+
+// ─── previousSibling ─────────────────────────────────────────────────────────
+
+describe('previousSibling', () => {
+  const twoChildren = nestedExt().replace(
+    '\t\t\t\t</Controls>',
+    '\t\t\t\t\t<AxFormControl xmlns="" i:type="AxFormStringControl">\n' +
+    '\t\t\t\t\t\t<Name>ConQualityOrders_ConComment</Name>\n' +
+    '\t\t\t\t\t\t<Type>String</Type>\n' +
+    '\t\t\t\t\t\t<FormControlExtension i:nil="true" />\n' +
+    '\t\t\t\t\t</AxFormControl>\n' +
+    '\t\t\t\t</Controls>',
+  );
+
+  it('inserts directly after the named sibling', () => {
+    const r = inserted(insertFormExtensionControl(twoChildren, spec({
+      previousSibling: 'ConQualityOrders_ConDisableInventoryBlocking',
+    })));
+    const body = nestedControlsBody(r.xml);
+
+    expect(body.indexOf('ConDisableInventoryBlocking'))
+      .toBeLessThan(body.indexOf('ConQualityOrders_ConDisableProdQty'));
+    expect(body.indexOf('ConQualityOrders_ConDisableProdQty'))
+      .toBeLessThan(body.indexOf('ConQualityOrders_ConComment'));
+  });
+
+  it('appends last and says so when the sibling is not found', () => {
+    const r = inserted(insertFormExtensionControl(twoChildren, spec({
+      previousSibling: 'NotAControl',
+    })));
+
+    expect(r.notes.join('\n')).toMatch(/NotAControl.*not found/);
+  });
+
+  it('reports that it cannot apply to the envelope shape', () => {
+    const r = inserted(insertFormExtensionControl(FLAT_EXT, spec({
+      parentControl: 'Grid',
+      previousSibling: 'Grid_ConHasNotes',
+    })));
+
+    expect(r.representation).toBe('envelope');
+    expect(r.notes.join('\n')).toMatch(/ignored/);
+  });
+});
+
+// ─── Refusing shapes we don't understand ─────────────────────────────────────
+
+describe('safety', () => {
+  it('declines anything that is not an AxFormExtension', () => {
+    const table = `<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>ConTable</Name>
+\t<Controls>
+\t</Controls>
+</AxTable>`;
+    expect(insertFormExtensionControl(table, spec()).kind).toBe('unsupported');
+  });
+
+  it('declines unbalanced XML instead of splicing into it', () => {
+    const broken = nestedExt().replace('</AxFormExtension>', '');
+    expect(insertFormExtensionControl(broken, spec()).kind).toBe('unsupported');
+  });
+
+  it('declines an extension with no <Controls> collection', () => {
+    const noControls = FLAT_EXT.replace(/\t<Controls>[\s\S]*?\t<\/Controls>\n/, '');
+    expect(insertFormExtensionControl(noControls, spec({ parentControl: 'Grid' })).kind)
+      .toBe('unsupported');
+  });
+
+  it('is not confused by CDATA containing angle brackets', () => {
+    const withSource = nestedExt().replace(
+      '\t<ControlModifications />',
+      '\t<SourceCode>\n' +
+      '\t\t<Methods>\n' +
+      '\t\t\t<Method>\n' +
+      '\t\t\t\t<Name>init</Name>\n' +
+      '\t\t\t\t<Source><![CDATA[\npublic void init()\n{\n    if (a < b) { }\n    // </Controls>\n}\n]]></Source>\n' +
+      '\t\t\t</Method>\n' +
+      '\t\t</Methods>\n' +
+      '\t</SourceCode>',
+    );
+    const r = inserted(insertFormExtensionControl(withSource, spec()));
+
+    expect(r.representation).toBe('nested');
+    expect(nestedControlsBody(r.xml)).toContain('ConQualityOrders_ConDisableProdQty');
+  });
+
+  it('preserves every byte outside the insertion point (control)', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec()));
+    // Anchor on the NEW control so the pre-existing sibling isn't what gets cut.
+    const stripped = r.xml.replace(
+      /\n\t{5}<AxFormControl [^>]*>\n\t{6}<Name>ConQualityOrders_ConDisableProdQty<\/Name>[\s\S]*?<\/AxFormControl>/,
+      '',
+    );
+
+    expect(stripped).toBe(nestedExt());
+  });
+});
+
+// ─── Placement validation ────────────────────────────────────────────────────
+//
+// Build test, 2026-08-12 (xppc framework 10.0.2645.99): the malformed
+// file compiles at exit 0 / 0 errors. The deserializer DISCARDS the misplaced
+// node — the control never reaches the form. The only trace was a single extra
+// metadata warning ("The form control has different fields from the field group
+// … Use restore on the form control"), which names neither the control nor the
+// malformed node, arrived among 52 pre-existing warnings, and only exists
+// because this parent is DataGroup-bound and so had two field sets to compare.
+//
+// That makes validation the last line of defence rather than a nicety: nothing
+// downstream reports it, so anything that slips past here ships silently.
+
+/** The exact bad output from the report: an envelope inside the nested <Controls>. */
+const SHAPE_C = `<?xml version="1.0" encoding="utf-8"?>
+<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>InventTestGroup.ConExtension</Name>
+\t<Controls>
+\t\t<AxFormExtensionControl xmlns="">
+\t\t\t<Name>FormExtensionControlabc123xyz</Name>
+\t\t\t<FormControl xmlns="" i:type="AxFormGroupControl">
+\t\t\t\t<Name>ConQualityOrders</Name>
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormControl xmlns="" i:type="AxFormCheckBoxControl">
+\t\t\t\t\t\t<Name>ConQualityOrders_ConDisableInventoryBlocking</Name>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t\t<AxFormExtensionControl xmlns="">
+\t\t\t\t\t\t<Name>FormExtensionControllhc7hmswk</Name>
+\t\t\t\t\t\t<FormControl xmlns="" i:type="AxFormComboBoxControl">
+\t\t\t\t\t\t\t<Name>ConQualityOrders_ConDisableProdQty</Name>
+\t\t\t\t\t\t\t<Type>ComboBox</Type>
+\t\t\t\t\t\t\t<Items />
+\t\t\t\t\t\t</FormControl>
+\t\t\t\t\t\t<Parent>ConQualityOrders</Parent>
+\t\t\t\t\t</AxFormExtensionControl>
+\t\t\t\t</Controls>
+\t\t\t\t<DataGroup>ConQualityOrders</DataGroup>
+\t\t\t</FormControl>
+\t\t\t<Parent>TabHeaderGeneral</Parent>
+\t\t</AxFormExtensionControl>
+\t</Controls>
+</AxFormExtension>`;
+
+describe('placement validation', () => {
+  it('flags an AxFormExtensionControl nested inside a control\'s <Controls>', () => {
+    const problems = findFormExtensionPlacementProblems(SHAPE_C);
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0].element).toBe('AxFormExtensionControl');
+    expect(problems[0].line).toBe(13);
+    // The consequence has to be stated: a reader who sees "0 errors" otherwise
+    // concludes the file is fine.
+    expect(problems[0].detail).toMatch(/DISCARDS/);
+  });
+
+  it('flags a bare AxFormControl left in the extension\'s root <Controls>', () => {
+    // The inverse mistake: nested shape used where the envelope belongs.
+    const inverted = `<?xml version="1.0" encoding="utf-8"?>
+<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>CustGroup.ConExtension</Name>
+\t<Controls>
+\t\t<AxFormControl xmlns="" i:type="AxFormCheckBoxControl">
+\t\t\t<Name>Grid_ConHasNotes</Name>
+\t\t</AxFormControl>
+\t</Controls>
+</AxFormExtension>`;
+    const problems = findFormExtensionPlacementProblems(inverted);
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0].element).toBe('AxFormControl');
+  });
+
+  it('passes both correct shapes', () => {
+    expect(findFormExtensionPlacementProblems(FLAT_EXT)).toEqual([]);
+    expect(findFormExtensionPlacementProblems(nestedExt())).toEqual([]);
+    expect(findFormExtensionPlacementProblems(nestedExt({ dataGroup: true }))).toEqual([]);
+  });
+
+  it('passes everything this writer produces', () => {
+    for (const [xml, s] of [
+      [nestedExt(), spec()],
+      [FLAT_EXT, spec({ parentControl: 'Grid' })],
+      [nestedExt(), spec({ parentControl: 'TabHeaderGeneral' })],
+    ] as const) {
+      const r = inserted(insertFormExtensionControl(xml, s));
+      expect(findFormExtensionPlacementProblems(r.xml)).toEqual([]);
+    }
+  });
+
+  it('is reachable from the hand-written xmlContent gate', () => {
+    // Every element in SHAPE_C is spelled correctly, so the name-based checks
+    // alone returned 0 problems and let it through.
+    expect(validateFormExtensionControlShape(SHAPE_C).length).toBeGreaterThan(0);
+    expect(validateFormExtensionControlShape(FLAT_EXT)).toEqual([]);
+  });
+
+  it('stays quiet on files it does not understand', () => {
+    expect(findFormExtensionPlacementProblems('<AxTable><Controls><Foo /></Controls></AxTable>')).toEqual([]);
+    expect(findFormExtensionPlacementProblems('not xml at all')).toEqual([]);
+  });
+});
