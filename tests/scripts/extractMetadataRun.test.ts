@@ -93,6 +93,21 @@ describe('extract-metadata (spawned)', () => {
     expect(await exists(p('out', 'MyModel', 'classes', 'MyClass.json'))).toBe(true);
   }, 60_000);
 
+  it('records the AOT source path on an enum, not just its raw XML', async () => {
+    // extractEnums was the one extractor writing a bare `{ raw }` object. symbolIndex
+    // stores `enumData.sourcePath || filePath`, so the omission put the JSON cache's
+    // own path into the index for every enum in the database — a path that exists,
+    // which is what made it survive every downstream existence check. Measured on a
+    // full index: 8,262 of 8,262 enum rows, and no other type.
+    await runExtract();
+
+    const enumJson = JSON.parse(await fs.readFile(p('out', 'MyModel', 'enums', 'MyEnum.json'), 'utf-8'));
+    expect(typeof enumJson.raw).toBe('string');
+    expect(enumJson.sourcePath.replace(/\\/g, '/')).toMatch(/AxEnum\/MyEnum\.xml$/);
+    // The point of the field: what lands in the index must not be the cache itself.
+    expect(enumJson.sourcePath).not.toMatch(/\.json$/i);
+  }, 60_000);
+
   it('sweeps an orphan and keeps the live files beside it', async () => {
     await write(p('out', 'MyModel', 'enums', 'GhostEnum.json'), '{"raw":"<AxEnum/>"}');
 

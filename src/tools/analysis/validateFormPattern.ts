@@ -19,7 +19,8 @@ import {
 } from '../../validation/formPatternValidator.js';
 import { resolveSubPattern } from '../../knowledge/formPatterns/index.js';
 import { canonicalSymbolName } from '../../utils/symbolLookup.js';
-import { isAotSourcePath, resolveIndexedFilePath } from '../../utils/packagesRoot.js';
+import { resolveIndexedFilePath } from '../../utils/packagesRoot.js';
+import { readXmlFile } from '../../utils/indexedXmlLookup.js';
 import {
   walkFormDesign,
   type FormControlNode,
@@ -108,12 +109,8 @@ export async function validateFormPatternTool(
       const row = db
         ?.prepare(`SELECT file_path FROM symbols WHERE type = 'form' AND name = ? LIMIT 1`)
         ?.get(canonicalForm) as { file_path?: string } | undefined;
-      // A row whose file_path points at the JSON metadata cache rather than the
-      // AOT source is no more usable than a missing row — reading it would hand
-      // JSON to the XML parser and fail somewhere far less legible than here.
-      // See isAotSourcePath.
       const indexedPath = row?.file_path;
-      if (!isAotSourcePath(indexedPath)) {
+      if (!indexedPath) {
         return {
           isError: true,
           content: [{
@@ -125,7 +122,24 @@ export async function validateFormPatternTool(
       // The index stores some file_path values package-relative; read them
       // against the packages root, not the process cwd. See resolveIndexedFilePath.
       const resolved = resolveIndexedFilePath(indexedPath);
-      formXml = await fs.readFile(resolved, 'utf-8');
+      // That path is not always the AOT source: a row whose cached object carried
+      // no sourcePath points at the extracted-metadata JSON instead (see
+      // isAotSourcePath). Handing that to the XML parser fails in a place with no
+      // useful message — but the JSON holds the original XML in `raw`, so the
+      // right move is to unwrap it, not to refuse. readXmlFile reads both shapes
+      // and returns null only when neither yields XML.
+      const indexedXml = await readXmlFile(resolved);
+      if (indexedXml === null) {
+        return {
+          isError: true,
+          content: [{
+            type: 'text',
+            text: `❌ Form "${formName}" is indexed at ${resolved}, but no form XML could be read there. ` +
+              `Pass filePath or xml directly.`,
+          }],
+        };
+      }
+      formXml = indexedXml;
       source = `${formName} (${resolved})`;
     }
   } catch (error) {

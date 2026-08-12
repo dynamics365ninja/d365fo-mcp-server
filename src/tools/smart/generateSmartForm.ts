@@ -1004,13 +1004,17 @@ export async function handleGenerateSmartForm(
       // Package-relative file_path rows would always miss here and mark a
       // perfectly good table "stale" — see resolveIndexedFilePath.
       //
-      // A row pointing at the JSON metadata cache instead of the AOT source is
-      // stale too, and the existence check alone will not say so: that cache
-      // file exists, so the row would read as fresh. See isAotSourcePath.
+      // A file_path pointing at the extracted-metadata JSON cache rather than the
+      // AOT source (see isAotSourcePath) is evidence of neither: that cache file
+      // exists whether or not the table still does. Calling it "stale — its file
+      // no longer exists on disk" would be a claim about a file that is right
+      // there, and the advice that follows it (run update_symbol_index) cannot
+      // help, since re-indexing rebuilds the same cache path. Judge only the paths
+      // that can be judged — the same rule isStaleIndexedPath applies in
+      // utils/indexedXmlLookup.ts, so the two do not drift apart.
       const indexedPath = row?.file_path;
-      const stale = !!indexedPath && (
-        !isAotSourcePath(indexedPath) || !fs.existsSync(resolveIndexedFilePath(indexedPath))
-      );
+      const stale = isAotSourcePath(indexedPath)
+        && !fs.existsSync(resolveIndexedFilePath(indexedPath));
       if (row && !stale) continue;
       const stem = table.replace(/s$/i, '');
       const alt = db.prepare(

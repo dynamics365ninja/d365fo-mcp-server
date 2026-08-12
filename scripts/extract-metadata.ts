@@ -1248,12 +1248,21 @@ async function extractEnums(
     stats.totalFiles++;
 
     try {
-      // Basic enum parsing (simplified)
+      // Basic enum parsing (simplified) — the whole XML is kept as `raw` rather
+      // than modelled into fields.
+      //
+      // sourcePath is what every other extractor records, and enums were the one
+      // type that omitted it. symbolIndex stores `enumData.sourcePath || filePath`,
+      // so without it all 8,262 indexed enums pointed at this JSON cache instead
+      // of the AOT XML — a path that exists, so every downstream existsSync guard
+      // passed and the caller read (or wrote) the wrong file. See isAotSourcePath
+      // in ../src/utils/packagesRoot.ts for the consumer-side guard that still has
+      // to cover databases built before this line.
       const content = await fs.readFile(filePath, 'utf-8');
       const outputDir = path.join(OUTPUT_PATH, modelName, 'enums');
       await fs.mkdir(outputDir, { recursive: true });
       const outputFile = path.join(outputDir, file.replace('.xml', '.json'));
-      await writeMetadataJson(outputFile, { raw: content }, isCustom, modelName);
+      await writeMetadataJson(outputFile, { raw: content, sourcePath: filePath }, isCustom, modelName);
 
       stats.enums++;
     } catch (error) {
