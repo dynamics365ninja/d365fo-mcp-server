@@ -52,6 +52,7 @@ import {
   checkAddControlAgainstParentPattern,
   checkAddControlAgainstDataGroup,
   findDataGroupRenderers,
+  listDataGroupRenderers,
   isFormPatternEnforceEnabled,
 } from '../analysis/validateFormPattern.js';
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
@@ -3282,19 +3283,25 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
 
     // A field group already rendered on a form via <DataGroup> puts the field on
     // that form by itself — said now, before a form extension gets created for it.
+    // And when the group is rendered by nothing, say THAT, naming the groups that
+    // are: a new group on a table extension reaches no form on its own, and an
+    // agent that does not know it goes and builds the form extension anyway.
     let fieldGroupRenderNote = '';
     if (
-      operation === 'add-field-to-field-group' &&
+      (operation === 'add-field-to-field-group' || operation === 'add-field-group') &&
       (objectType === 'table' || objectType === 'table-extension') &&
-      (args as any).fieldGroupName && args.fieldName
+      (args as any).fieldGroupName
     ) {
-      fieldGroupRenderNote = await timer.time('field-group render probe', () =>
-        describeFieldGroupRendering(
-          objectType === 'table' ? objectName : objectName.split('.')[0],
-          (args as any).fieldGroupName,
-          args.fieldName!,
-          symbolIndex,
-        ));
+      const baseTableName = objectType === 'table' ? objectName : objectName.split('.')[0];
+      const groupName = (args as any).fieldGroupName as string;
+      if (operation === 'add-field-to-field-group' && args.fieldName) {
+        fieldGroupRenderNote = await timer.time('field-group render probe', () =>
+          describeFieldGroupRendering(baseTableName, groupName, args.fieldName!, symbolIndex));
+      }
+      if (!fieldGroupRenderNote) {
+        fieldGroupRenderNote = await timer.time('field-group reach probe', () =>
+          describeUnrenderedFieldGroup(baseTableName, groupName, symbolIndex));
+      }
     }
 
     // Corrections the server applied on its own. Kept in the payload so the agent
@@ -4044,6 +4051,70 @@ export async function describeFieldGroupRendering(
         `generated one collide as a duplicate name, which only the build reports.`
       );
     }
+  } catch {
+    // A hint must never be the reason a successful write reports failure.
+  }
+  return '';
+}
+
+/**
+ * The other half of {@link describeFieldGroupRendering}: the field group reaches
+ * no form, and these are the groups on this table that do.
+ *
+ * A field group a form does not name in `<DataGroup>` generates no controls, so a
+ * field parked in a brand-new group on a table extension is on no form at all.
+ * Nothing said so, and the two paths look identical from the outside: put the
+ * field in a rendered base group and it appears for free, or invent a group and
+ * then need a form extension, an add-control, the duplicate-name guard and an
+ * undo. Run 81803f01 spent ~24 AIU discovering the difference.
+ *
+ * Returns '' whenever the answer would be a guess — no form on the table, no
+ * `<DataGroup>` anywhere, an unreadable form, an index that cannot answer — and
+ * also when the group IS rendered, which is the sibling's sentence to say.
+ */
+export async function describeUnrenderedFieldGroup(
+  baseTableName: string,
+  groupName: string,
+  symbolIndex: any,
+): Promise<string> {
+  try {
+    const rdb = symbolIndex?.getReadDb?.();
+    if (!rdb) return '';
+
+    const sql = (collate: string) =>
+      `SELECT DISTINCT form_name, datasource_name FROM form_datasources ` +
+      `WHERE table_name = ?${collate} LIMIT ${DATA_GROUP_FORM_PROBE_LIMIT}`;
+    let rows = rdb.prepare(sql('')).all(baseTableName) as
+      Array<{ form_name: string; datasource_name: string }>;
+    if (rows.length === 0) {
+      rows = rdb.prepare(sql(' COLLATE NOCASE')).all(baseTableName) as typeof rows;
+    }
+
+    const needle = groupName.trim().toLowerCase();
+    const rendered = new Map<string, string>();
+    for (const row of rows) {
+      const xml = await findBaseFormXml(row.form_name, symbolIndex);
+      if (!xml) continue;
+      for (const r of await listDataGroupRenderers(xml)) {
+        // A container bound to another datasource renders another table's group.
+        if (r.dataSource && r.dataSource.toLowerCase() !== row.datasource_name.toLowerCase()) continue;
+        // Rendered after all — describeFieldGroupRendering owns this case.
+        if (r.dataGroup.toLowerCase() === needle) return '';
+        if (!rendered.has(r.dataGroup.toLowerCase())) {
+          rendered.set(r.dataGroup.toLowerCase(), `\`${r.dataGroup}\` (form \`${row.form_name}\`, control "${r.controlName}")`);
+        }
+      }
+    }
+    if (rendered.size === 0) return '';
+
+    return (
+      `\n\n🖼️ No form checked on \`${baseTableName}\` renders field group **${groupName}** — a group ` +
+      `no container names in \`<DataGroup>\` generates no controls, so a field in it is on no form.\n` +
+      `Rendered instead: ${[...rendered.values()].join(', ')}.\n` +
+      `Add the field to one of those (\`add-field-to-field-group\` with \`extendBaseFieldGroup=true\`) and it ` +
+      `appears with no form extension. Keeping **${groupName}** means a form extension plus an explicit ` +
+      `control — and that control must not collide with a generated one.`
+    );
   } catch {
     // A hint must never be the reason a successful write reports failure.
   }

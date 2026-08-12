@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -39,6 +40,19 @@ afterEach(() => {
   _clearCreatedArtifactLedger();
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
+
+/**
+ * `git init` in `dir`, returning the path git itself will report as the repo
+ * root. On Windows os.tmpdir() comes back as an 8.3 short path (ADMIN7~1) while
+ * `git rev-parse --show-toplevel` answers with the long one, and the tool's
+ * containment check — correctly — refuses a target that appears to sit outside
+ * its repo. Resolving here keeps that a real check rather than a test artefact.
+ */
+function gitRepoIn(dir: string): string {
+  const root = fs.realpathSync.native(dir);
+  execFileSync('git', ['init'], { cwd: root, windowsHide: true });
+  return root;
+}
 
 describe('undo_last_modification — non-git ledger fallback', () => {
   it('deletes a file the create tool recorded creating (main: returns git-repo error, file survives)', async () => {
@@ -104,6 +118,57 @@ describe('undo_last_modification — non-git ledger fallback', () => {
     // Corpus 2026-07-30T11__L3-dualwrite-entity-mapping — pruning it on the
     // "no Content of this type remains" test alone deleted three pre-existing orphans.
     expect(proj).toContain('Services\\"');
+  });
+
+  it('cleans the .rnrproj on the GIT path too — PackagesLocalDirectory usually is a repo', async () => {
+    // The two undo paths did not agree: the ledger one removed the project entry,
+    // the git-untracked one deleted the file and stopped there. A model directory
+    // under source control takes the git path, so the run that undid a class
+    // extension and a form extension left both <Content Include> entries behind,
+    // pointing at files that no longer exist (run 81803f01).
+    const repoDir = gitRepoIn(tmpDir);
+
+    const filePath = path.join(repoDir, 'ConDemoNoteService.xml');
+    fs.writeFileSync(filePath, '<AxService><Name>ConDemoNoteService</Name></AxService>', 'utf-8');
+
+    const projectPath = path.join(repoDir, 'Contoso.rnrproj');
+    fs.writeFileSync(projectPath, [
+      '<?xml version="1.0" encoding="utf-8"?>',
+      '<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">',
+      '  <ItemGroup>',
+      '    <Content Include="AxService\\ConDemoNoteService">',
+      '      <SubType>Content</SubType>',
+      '      <Name>ConDemoNoteService</Name>',
+      '    </Content>',
+      '  </ItemGroup>',
+      '</Project>',
+    ].join('\n'), 'utf-8');
+
+    recordCreatedArtifact({ filePath, objectType: 'service', objectName: 'ConDemoNoteService', projectPath });
+
+    const result = await undoLastModificationTool({ filePath }, {} as any);
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toMatch(/deleted untracked file/i);   // the git path, not the ledger one
+    expect(result.content[0].text).toMatch(/Removed its project entry from Contoso\.rnrproj/);
+    expect(fs.existsSync(filePath)).toBe(false);
+    expect(fs.readFileSync(projectPath, 'utf-8')).not.toContain('AxService\\ConDemoNoteService');
+    expect(lookupCreatedArtifact(filePath)).toBeUndefined();
+  });
+
+  it('leaves the project alone on the git path when the ledger never saw the file', async () => {
+    // Safety: an untracked file this session did not create carries no project
+    // entry to reverse, and undo must not go looking for one to delete.
+    const repoDir = gitRepoIn(tmpDir);
+
+    const filePath = path.join(repoDir, 'Unrecorded.xml');
+    fs.writeFileSync(filePath, '<AxClass/>', 'utf-8');
+
+    const result = await undoLastModificationTool({ filePath }, {} as any);
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).not.toMatch(/project entry/i);
+    expect(fs.existsSync(filePath)).toBe(false);
   });
 
   it('drops the <Folder Include> when addToProject added it in this session', async () => {

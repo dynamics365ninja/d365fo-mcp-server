@@ -48,6 +48,34 @@ describe('normalizeObjectName', () => {
       .toBe('SalesFormLetterCtso_Extension');
   });
 
+  it('rewrites an element-style class-extension name instead of suffixing it twice', () => {
+    // `Base.CtsoExtension` is how the dot-notation types spell it, so callers
+    // write a CoC class the same way. Only `_Extension` was recognised, so this
+    // name read as a brand-new base class and came back with a SECOND suffix:
+    // SalesFormLetter_CtsoExtensionCtso_Extension (run 81803f01, created silently
+    // and undone one call later).
+    expect(normalizeObjectName('SalesFormLetter_CtsoExtension', 'class-extension', 'ContosoExt'))
+      .toBe('SalesFormLetterCtso_Extension');
+    expect(normalizeObjectName('SalesFormLetterCtsoExtension', 'class-extension', 'ContosoExt'))
+      .toBe('SalesFormLetterCtso_Extension');
+  });
+
+  it('keeps the base class when the Extension word carries no token', () => {
+    expect(normalizeObjectName('SalesFormLetterExtension', 'class-extension', 'ContosoExt'))
+      .toBe('SalesFormLetterCtso_Extension');
+  });
+
+  it('is idempotent over the rewritten class-extension name', () => {
+    const once = normalizeObjectName('SalesFormLetter_CtsoExtension', 'class-extension', 'ContosoExt');
+    expect(normalizeObjectName(once, 'class-extension', 'ContosoExt')).toBe(once);
+  });
+
+  it('says so when it rewrites an element-style name', () => {
+    const notes: string[] = [];
+    normalizeObjectName('SalesFormLetter_CtsoExtension', 'class-extension', 'ContosoExt', n => notes.push(n));
+    expect(notes.join('\n')).toMatch(/element-style/i);
+  });
+
   it('is idempotent — an already-normalised name comes back unchanged', () => {
     const once = normalizeObjectName('PurchTable', 'table-extension', 'ContosoExt');
     expect(normalizeObjectName(once, 'table-extension', 'ContosoExt')).toBe(once);

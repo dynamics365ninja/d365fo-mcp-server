@@ -3457,6 +3457,14 @@ export async function handleCreateD365File(
     if (finalObjectName !== args.objectName) {
       console.error(`[create_d365fo_file] Applied naming: ${args.objectName} → ${finalObjectName}`);
     }
+    // Disclose a rename in the RESPONSE, not only on stderr. The XML template
+    // path says "prefixed from …"; the bridge path — every extension, class and
+    // table — said nothing, so the object came back under a name the caller never
+    // chose and could only infer from the file path.
+    const renameNote = finalObjectName !== args.objectName
+      ? `\n🔖 Named \`${finalObjectName}\`, not \`${args.objectName}\` as passed — the model's naming ` +
+        `style decides this. The declaration inside the file matches; use this name in later calls.`
+      : '';
 
     // Determine object folder based on type
     const objectFolderMap: Record<string, string> = {
@@ -4084,7 +4092,7 @@ export async function handleCreateD365File(
                 content: [
                   {
                     type: 'text',
-                    text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)${crossModelNotice}\n` +
+                    text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)${crossModelNotice}${renameNote}\n` +
                       `📁 ${smartResult.filePath}${projectMsg}\n` +
                       `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}` +
                       validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName)),
@@ -4192,7 +4200,7 @@ export async function handleCreateD365File(
             content: [
               {
                 type: 'text',
-                text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()${crossModelNotice}\n` +
+                text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()${crossModelNotice}${renameNote}\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
                   `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
               },
