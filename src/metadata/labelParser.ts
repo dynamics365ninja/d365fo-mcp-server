@@ -25,7 +25,7 @@ import type { XppSymbolIndex } from './symbolIndex.js';
  * docs/CONFIGURATION.md documented 'en-US', so an unconfigured build quietly
  * indexed four language tables (~125 MB each) instead of one. Every deployment
  * that actually wants the extra languages sets LABEL_LANGUAGES explicitly —
- * infrastructure/azuredeploy.json and .github/workflows/infrastructure.yml both do.
+ * infrastructure/azuredeploy.json does.
  */
 const DEFAULT_LABEL_LANGUAGES = (settingByEnv('LABEL_LANGUAGES')!.default as string[]).join(',');
 
