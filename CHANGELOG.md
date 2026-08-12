@@ -56,7 +56,30 @@ those are called out explicitly below.
   form extension), `repairFormControls`, and `fsExtensionScanner` (the fallback
   that exists to stop the agent shelling out to PowerShell).
 
+### Changed
+- `EXTENSION_PREFIX_SOURCE` is now the config key **`naming.prefixSource`**
+  (`model` | `config`), asked in the advanced pass of the `naming` section
+  (#893). It was `env-only` — a tier meant for values whose reader the
+  wizard-managed JSON cannot honestly describe: the cross-model consent
+  switches, re-read from the `.env` before every guard decision, and the lock
+  heartbeat, read in a process the wizard never configures. This one is a static
+  naming preference with no hot-reload path; it landed in that group only
+  because registering it was how the docs generator stopped deleting it. The
+  cost fell on multi-instance installs, where pinning a prefix meant adding an
+  `instances/<name>/.env` holding one line next to the
+  `instances/<name>/d365fo-mcp.json` holding everything else. Precedence is
+  unchanged — the environment variable still works and still outranks the config
+  file — and a legacy `.env` that sets it now migrates into the JSON instead of
+  being skipped.
+
 ### Fixed
+- `d365fo-mcp doctor` reported a prefix conflict that the server does not have
+  to anyone who had already pinned their prefix, and offered as the fix the
+  setting they had already applied. The check called `inferPrefixFromObjectNames`
+  directly, one level below `getInferredModelPrefix`, which is where the pin is
+  honoured. It now states the pinned value and names the model's own prefix as
+  ignored rather than winning — and warns when the pin has nothing to pin
+  because `naming.prefix` is empty.
 - `get_method`'s Chain-of-Command template copied the base method's **default
   parameter values** into the wrapper signature — the exact defect `validate_code`
   reports as `COC001` and the `coc-authoring` topic forbids. It was also

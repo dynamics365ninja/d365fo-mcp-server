@@ -154,6 +154,6 @@ export function prefixConflictWarning(resolution: EffectivePrefix): string | nul
   return (
     `The model's own objects use "${resolution.inferred!.regular}", overriding ` +
     `EXTENSION_PREFIX="${resolution.configured}". ` +
-    `To pin the configured value instead: EXTENSION_PREFIX_SOURCE=config.`
+    `To pin the configured value instead: naming.prefixSource=config (env: EXTENSION_PREFIX_SOURCE=config).`
   );
 }

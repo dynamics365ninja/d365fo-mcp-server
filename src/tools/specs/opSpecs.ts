@@ -73,7 +73,7 @@ const REDIRECT_ANSWERS: Record<string, string> = {
     '  • Pass the BASE name to d365fo_file(action="create") — the prefix is applied for you.',
     '    Do NOT pre-apply it and do NOT add a leading separator; both double up.',
     '  • The prefix is inferred from the model\'s own objects and beats EXTENSION_PREFIX.',
-    '    Pin the configured value instead with EXTENSION_PREFIX_SOURCE=config.',
+    '    Pin the configured value instead with naming.prefixSource=config.',
     '  • Regular objects keep the model\'s separator (ConSK_MyEnum); extension elements',
     '    use the PascalCase infix without one (MyTable.ConSkExtension,',
     '    MyTableConSk_Extension).',
