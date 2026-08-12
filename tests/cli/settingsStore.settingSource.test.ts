@@ -12,7 +12,7 @@ import * as os from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { settingByPath } from '../../src/config/settings.js';
-import { openStore, settingSource, writeSetting, saveStore } from '../../src/cli/settingsStore.js';
+import { openStore, readSetting, settingSource, writeSetting, saveStore } from '../../src/cli/settingsStore.js';
 
 const packagePath = settingByPath('environment.packagePath')!;
 
@@ -39,6 +39,20 @@ describe('settingSource', () => {
     fs.writeFileSync(envFile, `${packagePath.env}=K:\\AosService\\PackagesLocalDirectory\n`);
     const store = openStore(dir, envFile);
     expect(settingSource(store, packagePath)).toBe('env');
+  });
+
+  it('reports "none" for a key whose value is only an inline comment', () => {
+    // readSetting strips the comment and is left holding an empty value, which
+    // every caller reads as "not configured" (doctor: `String(…).trim()`).
+    // Calling that 'env' would name a source for a setting nothing sets, and
+    // would have doctor blame a .env line that pins nothing.
+    const dir = tempDir();
+    const envFile = join(dir, '.env');
+    fs.writeFileSync(envFile, `${packagePath.env}=   # set this later\n`);
+    const store = openStore(dir, envFile);
+
+    expect(readSetting(store, packagePath)).toBe('');
+    expect(settingSource(store, packagePath)).toBe('none');
   });
 
   it('prefers "config" over a .env that also sets the same key', () => {

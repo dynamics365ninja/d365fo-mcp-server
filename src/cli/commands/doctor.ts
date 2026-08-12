@@ -98,10 +98,8 @@ function checkConfig(target: Target, label: string): CheckResult {
 function checkPackagesRoot(store: SettingsStore, label: string): CheckResult[] {
   if (!isWindows) return [];
 
-  const setting = settingByPath('environment.packagePath')!;
-  const configured = String(readSetting(store, setting) ?? '').trim();
   const detected = packagesRoots();
-
+  const configured = String(readSetting(store, settingByPath('environment.packagePath')!) ?? '').trim();
   if (!configured) {
     // UDE resolves its roots from the XPP config, so silence here is normal.
     if (detected.length === 0) return [];
@@ -110,66 +108,172 @@ function checkPackagesRoot(store: SettingsStore, label: string): CheckResult[] {
       message: `${label}: packages root not configured — the server will use ${detected[0]}`,
     }];
   }
-  if (fs.existsSync(configured)) {
-    return [{ severity: 'ok', message: `${label}: packages root OK (${configured})` }];
-  }
-  return [{ severity: 'fail', ...missingPathFix(store, setting, label, 'packages root', configured, detected) }];
+  return checkPathSetting(store, label, 'environment.packagePath');
 }
 
 /**
- * customPackagesPath (UDE ModelStoreFolder) / microsoftPackagesPath (UDE
- * FrameworkDirectory) against what the machine actually has.
+ * One configured path setting against what the machine actually has.
  *
- * Both are normally left unset and resolved live from the active XPP config —
- * that's how the server notices a UDE platform update. But the setup wizard
- * still writes them into an instance's legacy .env at setup time, and once a
- * platform update deletes the old framework/model-store folder, that hardcoded
- * .env value keeps outranking the (now-correct) XPP-config auto-detection —
- * see settingSource in ../settingsStore.js. The bridge then dies silently with
- * "C# bridge unavailable (ude)" and no indication that a stale .env is why.
+ * Unset is silent: for the two UDE roots that is the normal and recommended
+ * state (they resolve live from the active XPP config, which is how the server
+ * notices a platform update), and packagePath has its own not-configured
+ * branch above.
  */
-function checkUdeOverridePath(store: SettingsStore, label: string, path: string, humanName: string): CheckResult[] {
+function checkPathSetting(store: SettingsStore, label: string, settingPath: string): CheckResult[] {
   if (!isWindows) return [];
 
-  const setting = settingByPath(path)!;
+  const setting = settingByPath(settingPath)!;
+  const facts = PATH_FACTS[settingPath];
   const configured = String(readSetting(store, setting) ?? '').trim();
-  // Unset is the normal, healthy state for these two — nothing to report.
   if (!configured) return [];
   if (fs.existsSync(configured)) {
-    return [{ severity: 'ok', message: `${label}: ${humanName} OK (${configured})` }];
+    return [{ severity: 'ok', message: `${label}: ${facts.humanName} OK (${configured})` }];
   }
-  return [{ severity: 'fail', ...missingPathFix(store, setting, label, humanName, configured, packagesRoots()) }];
+  return [{
+    severity: 'fail',
+    ...missingPathFix(
+      setting,
+      facts,
+      label,
+      configured,
+      environmentKind(store),
+      settingSource(store, setting) === 'env',
+    ),
+  }];
+}
+
+/** Classic AOSService VM, or Unified Developer Experience. */
+export type EnvKind = 'traditional' | 'ude';
+
+/**
+ * Which of the two this install is. The configured value wins; with nothing
+ * configured this falls back to the same XPP-config detection the server itself
+ * uses (see environment.type in config/settings.ts), so doctor's diagnosis
+ * matches the runtime's behaviour rather than a second guess at it.
+ */
+function environmentKind(store: SettingsStore): EnvKind {
+  const configured = String(readSetting(store, settingByPath('environment.type')!) ?? '').trim().toLowerCase();
+  if (configured === 'ude' || configured === 'traditional') return configured;
+  return listXppConfigs().length > 0 ? 'ude' : 'traditional';
 }
 
 /**
- * Shared "path setting points at a folder that isn't there" message. When the
- * value is pinned by the legacy .env rather than the JSON config, that is very
- * likely the actual bug (a stale override silently beating live auto-detection)
- * rather than a config typo, so the fix steers there instead of just re-pinning
- * the same kind of static value that caused the problem.
+ * What a path setting IS, so that "this folder is missing" can name the right
+ * cause and the right cure for it.
+ *
+ * Without this the three settings shared one message, and it fitted only one of
+ * them: `packagePath` on UDE. It told a traditional VM that its packages root
+ * is "normally auto-detected from the active XPP config" (it is not — the drive
+ * scan finds it), and it offered `<drive>:\AosService\PackagesLocalDirectory`,
+ * a traditional-VM artifact, as the value to give the UDE ModelStoreFolder and
+ * FrameworkDirectory.
+ *
+ * `autoSource` is the load-bearing one: a stale pin is only a *stale pin* where
+ * something would otherwise resolve the value live. Where nothing would, the
+ * pin is the configuration, and telling the user to delete it is telling them
+ * to break their install — `customPackagesPath` on a traditional VM is exactly
+ * that case, the documented fix for junction layouts (docs/MCP_CONFIG.md).
  */
-function missingPathFix(
-  store: SettingsStore,
+interface PathFacts {
+  humanName: string;
+  /** How the value resolves when nothing pins it, or null when nothing does. */
+  autoSource(kind: EnvKind): string | null;
+  /** Values doctor can actually propose — empty when it has no way to know one. */
+  candidates(kind: EnvKind): string[];
+  /** What the setting ought to point at, in words. */
+  target(kind: EnvKind): string;
+  /** Extra context line when there is no candidate to name, or null. */
+  note(kind: EnvKind): string | null;
+}
+
+export const PATH_FACTS: Record<string, PathFacts> = {
+  'environment.packagePath': {
+    humanName: 'packages root',
+    autoSource: kind => kind === 'ude'
+      ? 'the active XPP config'
+      : (packagesRoots().length > 0 ? 'the drive scan for AosService\\PackagesLocalDirectory' : null),
+    // On UDE the XPP config is the authority; a stray empty C:\AosService stub
+    // is exactly the wrong thing to propose there.
+    candidates: kind => kind === 'ude' ? [] : packagesRoots(),
+    target: () => "this machine's PackagesLocalDirectory",
+    note: kind => kind === 'ude' ? null : describePackagesRootScan(),
+  },
+  'environment.customPackagesPath': {
+    humanName: 'custom X++ root',
+    // Traditional: not auto-detected at all. It is a deliberate pin naming the
+    // repo that holds custom metadata outside PackagesLocalDirectory.
+    autoSource: kind => kind === 'ude' ? 'the active XPP config (ModelStoreFolder)' : null,
+    candidates: () => [],
+    target: kind => kind === 'ude'
+      ? 'the ModelStoreFolder of the active XPP config'
+      : 'the folder your custom model metadata actually lives in',
+    note: () => null,
+  },
+  'environment.microsoftPackagesPath': {
+    humanName: 'Microsoft X++ root',
+    autoSource: kind => kind === 'ude' ? 'the active XPP config (FrameworkDirectory)' : null,
+    candidates: () => [],
+    target: () => 'the read-only Microsoft packages folder (FrameworkDirectory)',
+    note: kind => kind === 'ude' ? null : 'this setting applies to UDE installs only',
+  },
+};
+
+/**
+ * "Path setting points at a folder that isn't there" — with the cause named.
+ *
+ * A value pinned by the legacy .env instead of the JSON config is the likely bug
+ * whenever something else would have resolved it live: the .env copy goes stale
+ * the moment a platform update moves the folder, and it keeps outranking the
+ * now-correct detection at every startup (see configManager's envContext, which
+ * reads these env vars before consulting the XPP config). The server then dies
+ * with "C# bridge unavailable (ude)" and nothing points at the .env.
+ *
+ * Pure — every input is passed in — so the messages can be tested without a
+ * Windows box, an XPP config or a real .env.
+ */
+export function missingPathFix(
   setting: import('../../config/settings.js').Setting,
+  facts: PathFacts,
   label: string,
-  humanName: string,
   configured: string,
-  detected: string[],
+  kind: EnvKind,
+  pinnedByEnv: boolean,
 ): Omit<CheckResult, 'severity'> {
-  const source = settingSource(store, setting);
-  if (source === 'env') {
+  const auto = facts.autoSource(kind);
+  const candidates = facts.candidates(kind);
+  const note = candidates.length > 0 ? `found instead: ${candidates.join(', ')}` : facts.note(kind);
+
+  const message = `${label}: ${facts.humanName} does not exist (${configured})` +
+    (pinnedByEnv ? `\n   pinned by legacy .env (${setting.env}), not the JSON config` : '') +
+    (note ? `\n   ${note}` : '');
+
+  // Deleting the key IS the whole fix here: the value it hides is already right.
+  if (pinnedByEnv && auto) {
     return {
-      message: `${label}: ${humanName} does not exist (${configured}) — pinned by legacy .env (${setting.env}), not the JSON config`,
-      fix: `remove ${setting.env} from .env; this UDE value is normally auto-detected from the active XPP config, ` +
-        `and a hardcoded copy silently overrides that detection once a platform update moves or deletes this folder`,
+      message,
+      fix: `remove ${setting.env} from .env — ${facts.humanName} is resolved from ${auto}, and a hardcoded ` +
+        `copy silently overrides that once a platform update moves or deletes the folder`,
     };
   }
+  const dropEnvFirst = pinnedByEnv ? `remove ${setting.env} from .env, then set` : `set`;
+  if (candidates.length > 0) {
+    return { message, fix: `${dropEnvFirst} ${setting.path} to ${candidates[0]} (${SETUP_COMMAND})` };
+  }
+  if (auto) {
+    // Naming `target` again here would only repeat `auto` in other words — on
+    // UDE the folder to point at IS the one the XPP config would have supplied.
+    return {
+      message,
+      fix: `clear ${setting.path} so it resolves from ${auto}, or repoint it if this install genuinely ` +
+        `keeps ${facts.humanName} elsewhere (${SETUP_COMMAND})`,
+    };
+  }
+  // Nothing would resolve this value on its own, so the pin is the configuration
+  // — it needs correcting, not deleting.
   return {
-    message: `${label}: ${humanName} does not exist (${configured})` +
-      (detected.length > 0 ? `\n   found instead: ${detected.join(', ')}` : `\n   ${describePackagesRootScan()}`),
-    fix: detected.length > 0
-      ? `set ${setting.path} to ${detected[0]} (${SETUP_COMMAND})`
-      : `point ${setting.path} at this machine's PackagesLocalDirectory (${SETUP_COMMAND})`,
+    message,
+    fix: `point ${setting.path} at ${facts.target(kind)} (${SETUP_COMMAND})` +
+      (pinnedByEnv ? `, and note that ${setting.env} in .env currently outranks the JSON config` : ''),
   };
 }
 
@@ -453,8 +557,8 @@ export async function doctorCommand(): Promise<void> {
   emit(checkConfig(root, 'Root'));
   for (const r of legacyEnvChecks(root, 'Root')) emit(r);
   for (const r of checkPackagesRoot(root.store, 'Root')) emit(r);
-  for (const r of checkUdeOverridePath(root.store, 'Root', 'environment.customPackagesPath', 'custom X++ root')) emit(r);
-  for (const r of checkUdeOverridePath(root.store, 'Root', 'environment.microsoftPackagesPath', 'Microsoft X++ root')) emit(r);
+  for (const r of checkPathSetting(root.store, 'Root', 'environment.customPackagesPath')) emit(r);
+  for (const r of checkPathSetting(root.store, 'Root', 'environment.microsoftPackagesPath')) emit(r);
 
   // Database (root)
   emit(checkDb(root.store, paths.defaultDb, 'Root'));
@@ -512,8 +616,8 @@ export async function doctorCommand(): Promise<void> {
       for (const r of layoutChecks(inst)) emit(r);
       for (const r of legacyEnvChecks(target, `Instance '${inst.name}'`)) emit(r);
       for (const r of checkPackagesRoot(target.store, `Instance '${inst.name}'`)) emit(r);
-      for (const r of checkUdeOverridePath(target.store, `Instance '${inst.name}'`, 'environment.customPackagesPath', 'custom X++ root')) emit(r);
-      for (const r of checkUdeOverridePath(target.store, `Instance '${inst.name}'`, 'environment.microsoftPackagesPath', 'Microsoft X++ root')) emit(r);
+      for (const r of checkPathSetting(target.store, `Instance '${inst.name}'`, 'environment.customPackagesPath')) emit(r);
+      for (const r of checkPathSetting(target.store, `Instance '${inst.name}'`, 'environment.microsoftPackagesPath')) emit(r);
       emit(checkDb(target.store, resolve(inst.dir, 'data', 'xpp-metadata.db'), `Instance '${inst.name}'`));
       if (isWindows && isXppConfigStale(target.store)) {
         emit({

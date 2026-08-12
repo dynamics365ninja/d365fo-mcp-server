@@ -68,8 +68,11 @@ export function settingSource(store: SettingsStore, setting: Setting): 'config' 
   const fromJson = getAtPath(setting.tier === 'secret' ? store.secrets : store.config, setting.path);
   if (fromJson !== undefined && fromJson !== null && fromJson !== '') return 'config';
   if (store.legacyEnvFile) {
+    // stripInlineComment, exactly as readSetting applies it: `KEY=  # note` has
+    // no value, and reporting 'env' for one would have this function disagree
+    // with the value the caller reads a line later.
     const raw = readEnvValue(store.legacyEnvFile, setting.env);
-    if (raw !== null && raw !== '') return 'env';
+    if (raw !== null && stripInlineComment(raw) !== '') return 'env';
   }
   return 'none';
 }
