@@ -1245,6 +1245,7 @@
   ],
   "orphans": {
     "knowledge": [
+      "enum-conversions",
       "extensible-enums"
     ],
     "cases": [
