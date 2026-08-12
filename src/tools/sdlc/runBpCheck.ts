@@ -8,6 +8,7 @@ import { withOperationLock } from '../../utils/operationLocks.js';
 import { lookupSymbolsNocase, lookupSymbolNocase, type DbLike } from '../../utils/symbolLookup.js';
 import { compileModelLabels } from '../write/compileLabels.js';
 import { buildFreshness, type BuildFreshnessStatus } from '../../utils/buildMarker.js';
+import { validateMoniker, BP_MONIKER_CATALOG } from '../../knowledge/bpMonikers/index.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -144,6 +145,72 @@ export function extractReportedElements(output: string): string[] {
     names.add(m[1]);
   }
   return [...names];
+}
+
+export interface ParsedBpFinding {
+  moniker: string;
+  /** Whatever xppbp printed after the moniker — usually a file path, sometimes free text. */
+  target: string;
+  /** From the extracted catalog (src/knowledge/bpMonikers/), when the moniker is known there. */
+  description: string | null;
+  /** False for a moniker xppbp printed that the catalog does not recognise at all — worth a second look, not necessarily wrong. */
+  knownMoniker: boolean;
+}
+
+// xppbp's plain-text mode (the shape every real sample in tests/tools/runBpCheck.test.ts
+// uses) prints one finding per line as `<Moniker>: <target>` — the moniker alone, no
+// message text. It does NOT reliably print the message/description xppbp otherwise has
+// available (that only shows up in the XML <Diagnostic> mode this tool does not request) —
+// which is exactly the gap the catalog cross-reference below fills in.
+//
+// A comment elsewhere in this file (`hasIssues`) also names a "BestPractices Warning: …"
+// shape from a different xppbp verbosity/version; there is no real captured sample of it
+// anywhere in this repo, so it is deliberately NOT matched here rather than guessed at —
+// an unmatched real finding is a silent gap, but a wrong regex would misreport lines that
+// are not findings at all.
+const FINDING_LINE = /^\s*(BP[A-Za-z0-9]+)\s*:\s*(.+?)\s*$/;
+
+/**
+ * Pull `{moniker, target}` out of every plain-text finding line in a BP check's
+ * raw output, and cross-reference each moniker against the extracted catalog
+ * (src/knowledge/bpMonikers/) so its real description travels with the finding
+ * instead of being left as a name to look up by hand — the direct fix for a
+ * moniker only ever being identifiable by eye from the raw log.
+ *
+ * Pure and independent of any live BP-check run — takes the same `output` text
+ * this tool already produces, so it is unit-testable with no xppbp.exe needed.
+ */
+export function parseBpFindings(output: string): ParsedBpFinding[] {
+  const findings: ParsedBpFinding[] = [];
+  for (const rawLine of output.split('\n')) {
+    const match = rawLine.match(FINDING_LINE);
+    if (!match) continue;
+    const [, moniker, target] = match;
+    const validation = validateMoniker(moniker);
+    findings.push({
+      moniker,
+      target,
+      description: validation.entry?.description ?? null,
+      knownMoniker: validation.found,
+    });
+  }
+  return findings;
+}
+
+/**
+ * Findings section appended to a BP check's text output — the moniker and its
+ * real description (when the catalog has one) laid out so the model never has
+ * to re-derive the moniker by eyeballing the raw log below it.
+ */
+export function renderFindingsSection(output: string): string {
+  const findings = parseBpFindings(output);
+  if (findings.length === 0) return '';
+  const lines = findings.map(f => {
+    const flag = f.knownMoniker ? '' : ' ⚠️ not in the extracted moniker catalog — verify the spelling';
+    const desc = f.description ? ` — ${f.description}` : '';
+    return `  • ${f.moniker}${desc} (${f.target})${flag}`;
+  });
+  return `\n\nFindings (moniker-checked against ${BP_MONIKER_CATALOG.length} known monikers):\n${lines.join('\n')}`;
 }
 
 /**
@@ -563,7 +630,8 @@ export const runBpCheckTool = async (params: any, context: any) => {
             (target ? `\nFilter: ${selector(target)}` : '') +
             scopeNote +
             labelNote +
-            `\n\n${combined || '(no output)'}`
+            `\n\n${combined || '(no output)'}` +
+            renderFindingsSection(combined)
         }]
       };
     }
@@ -586,7 +654,8 @@ export const runBpCheckTool = async (params: any, context: any) => {
       return (
         `── ${selector(target)} ── ${hasIssues(combined) ? '⚠️ issues' : '✅ clean'}` +
         (target ? describeScope(target.name, combined) : '') +
-        `\n${body || '(no findings)'}`
+        `\n${body || '(no findings)'}` +
+        renderFindingsSection(combined)
       );
     });
 
