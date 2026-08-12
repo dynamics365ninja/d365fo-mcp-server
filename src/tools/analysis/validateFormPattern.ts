@@ -19,7 +19,7 @@ import {
 } from '../../validation/formPatternValidator.js';
 import { resolveSubPattern } from '../../knowledge/formPatterns/index.js';
 import { canonicalSymbolName } from '../../utils/symbolLookup.js';
-import { resolveIndexedFilePath } from '../../utils/packagesRoot.js';
+import { isAotSourcePath, resolveIndexedFilePath } from '../../utils/packagesRoot.js';
 import {
   walkFormDesign,
   type FormControlNode,
@@ -108,7 +108,12 @@ export async function validateFormPatternTool(
       const row = db
         ?.prepare(`SELECT file_path FROM symbols WHERE type = 'form' AND name = ? LIMIT 1`)
         ?.get(canonicalForm) as { file_path?: string } | undefined;
-      if (!row?.file_path) {
+      // A row whose file_path points at the JSON metadata cache rather than the
+      // AOT source is no more usable than a missing row — reading it would hand
+      // JSON to the XML parser and fail somewhere far less legible than here.
+      // See isAotSourcePath.
+      const indexedPath = row?.file_path;
+      if (!isAotSourcePath(indexedPath)) {
         return {
           isError: true,
           content: [{
@@ -119,7 +124,7 @@ export async function validateFormPatternTool(
       }
       // The index stores some file_path values package-relative; read them
       // against the packages root, not the process cwd. See resolveIndexedFilePath.
-      const resolved = resolveIndexedFilePath(row.file_path);
+      const resolved = resolveIndexedFilePath(indexedPath);
       formXml = await fs.readFile(resolved, 'utf-8');
       source = `${formName} (${resolved})`;
     }

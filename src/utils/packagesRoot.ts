@@ -201,6 +201,31 @@ export function resolveIndexedFilePath(
   return joinXPlat(roots[0] ?? FALLBACK_PACKAGES_ROOT, filePath);
 }
 
+/**
+ * Is this indexed `file_path` actually an AOT source file, rather than one of
+ * the pre-extracted JSON caches the indexer builds from?
+ *
+ * Twenty sites in symbolIndex.ts store `<object>.sourcePath || filePath`, where
+ * `filePath` is the `.json` cache the object was read from (see indexEnums:
+ * `path.join(enumsPath, file)` over a `.json` listing). Objects whose cache
+ * entry carries no `sourcePath` — the legacy `{ raw: "<xml>…" }` shape —
+ * therefore land in the index with a path to the cache rather than to the AOT
+ * source.
+ *
+ * That is worse than a missing path, because the cache file genuinely exists:
+ * every `fs.existsSync` / `fs.access` guard downstream passes, and the caller
+ * proceeds to read — or write — the wrong file. Existence is not the question;
+ * identity is. Hence an extension test rather than a stat.
+ *
+ * Fixing the twenty write sites would not retire this check: `file_path` is
+ * `TEXT NOT NULL`, and the shipped SQLite database is downloaded prebuilt from
+ * blob storage, so already-poisoned rows outlive any indexer change. Callers
+ * that resolve a `file_path` to read or write have to ask.
+ */
+export function isAotSourcePath(filePath: string | null | undefined): filePath is string {
+  return !!filePath && /\.(xml|xpp)$/i.test(filePath.trim());
+}
+
 /** Test seam — drops the cached scan. */
 export function resetPackagesRootCache(): void {
   cached = null;

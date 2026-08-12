@@ -11,7 +11,7 @@ import { handleGetFormPatterns } from '../knowledge/getFormPatterns.js';
 import path from 'path';
 import fs from 'fs';
 import { getConfigManager } from '../../utils/configManager.js';
-import { defaultPackagesRoot, resolveIndexedFilePath } from '../../utils/packagesRoot.js';
+import { defaultPackagesRoot, isAotSourcePath, resolveIndexedFilePath } from '../../utils/packagesRoot.js';
 import { resolveObjectPrefix, applyObjectPrefix, getObjectSuffix, applyObjectSuffix } from '../../utils/modelClassifier.js';
 import { ProjectFileManager } from '../../workspace/projectFile.js';
 import { extractModelFromProject, findProjectInSolution } from '../../utils/projectUtils.js';
@@ -1003,7 +1003,14 @@ export async function handleGenerateSmartForm(
       const row = lookupSymbolNocase(db, table, ['table']);
       // Package-relative file_path rows would always miss here and mark a
       // perfectly good table "stale" — see resolveIndexedFilePath.
-      const stale = row?.file_path && !fs.existsSync(resolveIndexedFilePath(row.file_path));
+      //
+      // A row pointing at the JSON metadata cache instead of the AOT source is
+      // stale too, and the existence check alone will not say so: that cache
+      // file exists, so the row would read as fresh. See isAotSourcePath.
+      const indexedPath = row?.file_path;
+      const stale = !!indexedPath && (
+        !isAotSourcePath(indexedPath) || !fs.existsSync(resolveIndexedFilePath(indexedPath))
+      );
       if (row && !stale) continue;
       const stem = table.replace(/s$/i, '');
       const alt = db.prepare(
