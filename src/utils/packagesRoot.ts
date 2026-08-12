@@ -201,6 +201,40 @@ export function resolveIndexedFilePath(
   return joinXPlat(roots[0] ?? FALLBACK_PACKAGES_ROOT, filePath);
 }
 
+/**
+ * Is this indexed `file_path` actually an AOT source file, rather than one of
+ * the pre-extracted JSON caches the indexer builds from?
+ *
+ * Twenty sites in symbolIndex.ts store `<object>.sourcePath || filePath`, where
+ * `filePath` is the `.json` cache the object was read from (see indexEnums:
+ * `path.join(enumsPath, file)` over a `.json` listing). An object whose cache
+ * entry carries no `sourcePath` therefore lands in the index with a path to the
+ * cache rather than to the AOT source.
+ *
+ * That is worse than a missing path, because the cache file genuinely exists:
+ * every `fs.existsSync` / `fs.access` guard downstream passes, and the caller
+ * proceeds to read — or write — the wrong file. Existence is not the question;
+ * identity is. Hence an extension test rather than a stat.
+ *
+ * Measured on a full index (1,188,687 rows): 8,262 rows carried a `.json` path,
+ * and all of them were enums — extractEnums was the one extractor writing a bare
+ * `{ raw }` object with no `sourcePath`. That is fixed at the source in
+ * scripts/extract-metadata.ts, so freshly extracted metadata no longer produces
+ * such rows. This check stays because the shipped SQLite database is downloaded
+ * prebuilt from blob storage: every database built before that fix still carries
+ * the poisoned rows, and `file_path` is `TEXT NOT NULL`, so there was never an
+ * honest empty value to store in their place.
+ *
+ * What a caller should do with a `false` here depends on what it wants. To READ,
+ * prefer readXmlFile in utils/indexedXmlLookup.ts — the cache holds the original
+ * XML in `raw`, so it can be unwrapped rather than refused. To WRITE, or to judge
+ * whether the object is still on disk, the path is unusable and no verdict can be
+ * drawn from it.
+ */
+export function isAotSourcePath(filePath: string | null | undefined): filePath is string {
+  return !!filePath && /\.(xml|xpp)$/i.test(filePath.trim());
+}
+
 /** Test seam — drops the cached scan. */
 export function resetPackagesRootCache(): void {
   cached = null;
