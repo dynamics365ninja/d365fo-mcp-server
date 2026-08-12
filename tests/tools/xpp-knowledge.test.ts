@@ -304,3 +304,57 @@ describe('get_xpp_knowledge', () => {
     expect(text).toContain('init');
   });
 });
+
+/**
+ * Run 7b8de4ba asked for "enum2str global function convert enum value to label
+ * text" and was answered — without a caveat — by the extensible-enum topic,
+ * because the token `enum2str` CONTAINS the keyword `enum` and scoreEntry credits
+ * that direction. The only conversion example in the answer takes two arguments,
+ * so the caller wrote enum2Str with two, and paid a 76 s failed build.
+ *
+ * The base now documents enum2Str, so that exact query is answered properly. What
+ * is pinned here is the general guard: a name the base does not carry must come
+ * back saying so, instead of quietly serving its nearest neighbour.
+ */
+describe('unknown distinctive tokens', () => {
+  it('says so when an identifier-shaped word is not documented by name', async () => {
+    const text = getText(await xppKnowledgeTool(req({ topic: 'SysFooBar2Baz conversion helper' })));
+    expect(text).toContain('`SysFooBar2Baz` is not documented by name');
+    // The results still come — this annotates them, it does not withhold them.
+    expect(text).toContain('##');
+    // The lesson from the run that motivated it.
+    expect(text).toContain('do NOT infer a signature, an argument count');
+  });
+
+  it('names several unknowns and counts the rest', async () => {
+    const text = getText(await xppKnowledgeTool(
+      req({ topic: 'aslFooOne aslFooTwo aslFooThree aslFooFour enum' }),
+    ));
+    expect(text).toContain('are not documented by name');
+    expect(text).toContain('(and 1 more)');
+  });
+
+  it('stays quiet for a name the base does document', async () => {
+    // enum2Str earns its silence the only way that counts: it is in the base.
+    const text = getText(await xppKnowledgeTool(
+      req({ topic: 'enum2str global function convert enum value to label text' }),
+    ));
+    expect(text).not.toContain('is not documented by name');
+    expect(text).toContain('ONE argument');
+  });
+
+  it('stays quiet for ordinary prose, however unmatched', async () => {
+    // Only identifier-shaped words qualify: a digit against letters, internal
+    // camelCase or an underscore. Plain words are the score guard's business.
+    const text = getText(await xppKnowledgeTool(req({ topic: 'batch job' })));
+    expect(text).not.toContain('not documented by name');
+  });
+
+  it('leaves every shipped entry id unflagged', async () => {
+    // An id that tripped its own guard would be a scoring bug, not a warning.
+    for (const topic of ['set-based', 'coc-authoring', 'enum-conversions', 'formrun-lifecycle']) {
+      const text = getText(await xppKnowledgeTool(req({ topic })));
+      expect(text, topic).not.toContain('not documented by name');
+    }
+  });
+});

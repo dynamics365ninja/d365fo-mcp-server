@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-07-30T05:28:34.893Z",
-  "indexedAt": "2026-07-29T18:58:39.113Z",
+  "capturedAt": "2026-08-12T12:45:19.851Z",
+  "indexedAt": "2026-08-12T11:53:47.533Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
     "alerts-business-events|attribute|DataContractAttribute",
@@ -59,7 +59,6 @@
     "datetime-timezones|declaration|Timezone",
     "datetime-timezones|static-call|Timezone::GMTCOORDINATEDUNIVERSALTIME",
     "deprecated|attribute|SysObsolete",
-    "deprecated|static-call|CompanyInfo::findDataArea",
     "deprecated|static-call|DateTimeUtil::getToday",
     "deprecated|static-call|DateTimeUtil::getUserPreferredTimeZone",
     "deprecated|static-call|Ledger::primaryForLegalEntity",
@@ -85,6 +84,9 @@
     "electronic-reporting|new|ERModelDefinitionInputParametersAction",
     "electronic-reporting|static-call|ERModelDefinitionInputParametersAction::addParameter",
     "electronic-reporting|static-call|ERObjectsFactory::createFormatMappingRunByFormatMappingId",
+    "enum-conversions|attribute|ExtensionOf",
+    "enum-conversions|declaration|DictEnum",
+    "enum-conversions|new|DictEnum",
     "error-handling|static-call|CLRInterop::getLastException",
     "error-handling|static-call|Exception::CLRError",
     "error-handling|static-call|Global::error",
