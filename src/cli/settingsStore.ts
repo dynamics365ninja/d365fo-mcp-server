@@ -58,6 +58,25 @@ export function openInstanceStore(instanceDir: string): SettingsStore {
   return openStore(instanceDir, join(instanceDir, '.env'), join(instanceDir, 'd365fo-mcp.json'));
 }
 
+/**
+ * Where a setting's effective value actually comes from — the JSON config,
+ * the legacy .env fallback, or nowhere. Mirrors readSetting's own precedence
+ * so callers can tell "explicitly configured" apart from "inherited from a
+ * .env that may have gone stale" without re-deriving the value themselves.
+ */
+export function settingSource(store: SettingsStore, setting: Setting): 'config' | 'env' | 'none' {
+  const fromJson = getAtPath(setting.tier === 'secret' ? store.secrets : store.config, setting.path);
+  if (fromJson !== undefined && fromJson !== null && fromJson !== '') return 'config';
+  if (store.legacyEnvFile) {
+    // stripInlineComment, exactly as readSetting applies it: `KEY=  # note` has
+    // no value, and reporting 'env' for one would have this function disagree
+    // with the value the caller reads a line later.
+    const raw = readEnvValue(store.legacyEnvFile, setting.env);
+    if (raw !== null && stripInlineComment(raw) !== '') return 'env';
+  }
+  return 'none';
+}
+
 /** Effective value of a setting, or undefined when nothing configures it. */
 export function readSetting(store: SettingsStore, setting: Setting): unknown {
   const fromJson = getAtPath(setting.tier === 'secret' ? store.secrets : store.config, setting.path);
