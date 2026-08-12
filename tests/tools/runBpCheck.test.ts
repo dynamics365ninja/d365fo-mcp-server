@@ -845,6 +845,106 @@ describe('run_bp_check — build freshness reflects THESE objects', () => {
 
     expect(result.content[0].text as string).toContain('✅ Compiled');
   });
+
+  // Run 7b8de4ba read "✅ BP Check passed — 3 objects checked, 0 with findings"
+  // sitting directly above "⚠️ Not compiled", 54 s before its first build, and
+  // met two build failures after it. The caveat was already on the next line; the
+  // tick above it is what got believed. So the tick has to go.
+  it('withholds the tick when nothing has ever compiled the model', async () => {
+    realFs.writeFileSync(objectPath, '<AxTable/>');
+    // No recordBuild at all — the state run 7b8de4ba was in.
+
+    const result = await runBpCheckTool(
+      { modelName: 'MyModel', objects: [{ objectType: 'table', objectName: 'ConDemoTicket' }] },
+      contextWithPath(),
+    );
+
+    const text = result.content[0].text as string;
+    expect(text).toContain('⚠️ BP clean, NOT compiled');
+    expect(text).not.toContain('✅ BP Check passed');
+    // The check still ran and still reports — this changes the claim, not the
+    // check. Scope and xppbp's own output survive untouched.
+    expect(text).toContain('Filter: table:ConDemoTicket');
+    expect(text).toContain('Not compiled');
+    expect(result.isError).toBeFalsy();
+  });
+
+  it('withholds it for a stale build too — same thing to the caller', async () => {
+    recordBuild(dataDir, 'MyModel', {
+      builtAt: new Date(Date.now() - 60_000).toISOString(),
+      fullBuild: true,
+      succeeded: true,
+    });
+    realFs.writeFileSync(objectPath, '<AxTable/>');
+
+    const text = (await runBpCheckTool(
+      { modelName: 'MyModel', objects: [{ objectType: 'table', objectName: 'ConDemoTicket' }] },
+      contextWithPath(),
+    )).content[0].text as string;
+
+    expect(text).toContain('⚠️ BP clean, build is STALE');
+    expect(text).not.toContain('✅ BP Check passed');
+  });
+
+  it('gives the tick back once a full build covers the write', async () => {
+    realFs.writeFileSync(objectPath, '<AxTable/>');
+    recordBuild(dataDir, 'MyModel', {
+      builtAt: new Date(Date.now() + 60_000).toISOString(),
+      fullBuild: true,
+      succeeded: true,
+    });
+
+    const text = (await runBpCheckTool(
+      { modelName: 'MyModel', objects: [{ objectType: 'table', objectName: 'ConDemoTicket' }] },
+      contextWithPath(),
+    )).content[0].text as string;
+
+    expect(text).toContain('✅ BP Check passed');
+  });
+
+  it('leaves a findings verdict alone — it was never the misleading one', async () => {
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, { stdout: 'BPError: LocalVariableNotUsed\nErrors: 1', stderr: '' });
+    });
+    realFs.writeFileSync(objectPath, '<AxTable/>');
+
+    const text = (await runBpCheckTool(
+      { modelName: 'MyModel', objects: [{ objectType: 'table', objectName: 'ConDemoTicket' }] },
+      contextWithPath(),
+    )).content[0].text as string;
+
+    expect(text).toContain('⚠️ BP Check completed with issues');
+    expect(text).not.toContain('BP clean');
+  });
+});
+
+// Unknown freshness must not manufacture a warning: with no dataDir there is no
+// marker to read, so the tool has learned nothing that would justify one. A
+// caveat printed on no evidence is the kind that gets tuned out.
+describe('run_bp_check — no build marker to read', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    detectedRoots.splice(0, detectedRoots.length, CHE_PKG);
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('MyModel');
+    cfgGetProjectPath.mockResolvedValue(null);
+    cfgGetPackagePath.mockReturnValue(null);
+    cfgGetCustomPackagesPath.mockResolvedValue(null);
+    cfgGetMicrosoftPackagesPath.mockResolvedValue(null);
+    cfgGetActiveXppConfig.mockResolvedValue(null);
+    allowPaths([CHE_PKG, CHE_XPPBP]);
+  });
+
+  it('keeps the plain pass when freshness is unknown', async () => {
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, { stdout: 'Errors: 0\nWarnings: 0', stderr: '' });
+    });
+
+    const text = (await runBpCheckTool({ modelName: 'MyModel' }, {})).content[0].text as string;
+
+    expect(text).toContain('✅ BP Check passed');
+    expect(text).not.toContain('BP clean');
+  });
 });
 
 describe('run_bp_check — omitted element type never defaults to class (#828)', () => {

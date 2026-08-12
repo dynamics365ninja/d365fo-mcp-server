@@ -73,8 +73,23 @@ export function readBuildRecord(dataDir: string, modelName: string): ModelBuildR
 }
 
 /**
- * One line describing whether this model has been compiled since the objects were
- * last written — the caveat a non-compiling verdict carries.
+ * What a build record says about the state these objects are in.
+ *
+ * `never` and `stale` are the two that mean the same thing to a caller — nothing
+ * has compiled what is on disk right now — and they are why this is a status and
+ * not just a sentence. A verdict that wants to stay honest has to branch on it,
+ * and matching on the emoji in the message would be a worse way to ask.
+ */
+export type BuildFreshnessStatus = 'never' | 'stale' | 'incremental' | 'full';
+
+export interface BuildFreshness {
+  status: BuildFreshnessStatus;
+  /** The one-line caveat, ready to print. */
+  message: string;
+}
+
+/**
+ * Whether this model has been compiled since the objects were last written.
  *
  * `files` is optional because the callers differ: verify_d365fo_project already
  * resolves each object's path and can prove staleness, while run_bp_check only knows
@@ -84,7 +99,7 @@ export function readBuildRecord(dataDir: string, modelName: string): ModelBuildR
  * Phrased as a statement of fact rather than an instruction: the caller is reporting
  * its own result, and this is what that result does not cover.
  */
-export function describeBuildFreshness(dataDir: string, modelName: string, files: string[] = []): string {
+export function buildFreshness(dataDir: string, modelName: string, files: string[] = []): BuildFreshness {
   let newestWrite = 0;
   for (const f of files) {
     try {
@@ -97,24 +112,40 @@ export function describeBuildFreshness(dataDir: string, modelName: string, files
 
   const rec = readBuildRecord(dataDir, modelName);
   if (!rec || !rec.succeeded) {
-    return (
-      `⚠️ Not compiled — no successful build of ${modelName} is recorded on this machine. ` +
-      'This is not a compile check: xppbp does not diagnose SYS-class compiler errors ' +
-      '(SYS10028 "next must be called once and unconditionally" is the common one). ' +
-      'Run build_d365fo_project(fullBuild: true) before scoring the task done.'
-    );
+    return {
+      status: 'never',
+      message:
+        `⚠️ Not compiled — no successful build of ${modelName} is recorded on this machine. ` +
+        'This is not a compile check: xppbp does not diagnose SYS-class compiler errors ' +
+        '(SYS10028 "next must be called once and unconditionally" is the common one). ' +
+        'Run build_d365fo_project(fullBuild: true) before scoring the task done.',
+    };
   }
 
   const builtAt = Date.parse(rec.builtAt);
   if (newestWrite > 0 && (Number.isNaN(builtAt) || builtAt < newestWrite)) {
-    return (
-      `⚠️ Stale — ${modelName} last built ${rec.builtAt}, but these objects were written after that. ` +
-      'Nothing has compiled the current state; run build_d365fo_project(fullBuild: true).'
-    );
+    return {
+      status: 'stale',
+      message:
+        `⚠️ Stale — ${modelName} last built ${rec.builtAt}, but these objects were written after that. ` +
+        'Nothing has compiled the current state; run build_d365fo_project(fullBuild: true).',
+    };
   }
 
   return rec.fullBuild
-    ? `✅ Compiled — full build of ${modelName} succeeded at ${rec.builtAt}.`
-    : `ℹ️ Last build of ${modelName} (${rec.builtAt}) was INCREMENTAL — only changed elements were compiled. ` +
-        'Use build_d365fo_project(fullBuild: true) before trusting a green result.';
+    ? {
+        status: 'full',
+        message: `✅ Compiled — full build of ${modelName} succeeded at ${rec.builtAt}.`,
+      }
+    : {
+        status: 'incremental',
+        message:
+          `ℹ️ Last build of ${modelName} (${rec.builtAt}) was INCREMENTAL — only changed elements were compiled. ` +
+          'Use build_d365fo_project(fullBuild: true) before trusting a green result.',
+      };
+}
+
+/** The caveat line alone, for callers that only print it. */
+export function describeBuildFreshness(dataDir: string, modelName: string, files: string[] = []): string {
+  return buildFreshness(dataDir, modelName, files).message;
 }

@@ -7,7 +7,7 @@ import { defaultPackagesRoot, findPackagesRoot } from '../../utils/packagesRoot.
 import { withOperationLock } from '../../utils/operationLocks.js';
 import { lookupSymbolsNocase, lookupSymbolNocase, type DbLike } from '../../utils/symbolLookup.js';
 import { compileModelLabels } from '../write/compileLabels.js';
-import { describeBuildFreshness } from '../../utils/buildMarker.js';
+import { buildFreshness, type BuildFreshnessStatus } from '../../utils/buildMarker.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -48,6 +48,32 @@ const INDEX_TYPE_TO_ELEMENT_TYPE: Record<string, string> = {
 };
 
 const RESOLVABLE_INDEX_TYPES = Object.keys(INDEX_TYPE_TO_ELEMENT_TYPE);
+
+/**
+ * The verdict line for a run that found nothing, given what has compiled the model.
+ *
+ * "✅ BP Check passed" is the line a caller reads and acts on, and it said that
+ * even when nothing had ever compiled the model — the caveat went on the line
+ * below, where it contradicted a green tick that had already been believed.
+ * Benchmark run 7b8de4ba spent 54 s on a check that answered "✅ BP Check passed
+ * — 3 objects checked, 0 with findings" directly above "⚠️ Not compiled", and
+ * then met two build failures. A verdict that depends on the next line being
+ * read is not a verdict; when the state is known to be uncompiled, the tick does
+ * not belong on it.
+ *
+ * The check itself still runs and still reports — xppbp findings are real
+ * without a build, and refusing would throw away the half that works. What
+ * changes is only the claim made about them.
+ *
+ * Unknown freshness (no dataDir, so no marker to read) stays green: nothing has
+ * been learned that would justify a warning, and inventing one would train the
+ * caller to ignore it.
+ */
+function passVerdict(status?: BuildFreshnessStatus): string {
+  if (status === 'never') return '⚠️ BP clean, NOT compiled';
+  if (status === 'stale') return '⚠️ BP clean, build is STALE';
+  return '✅ BP Check passed';
+}
 
 /**
  * Translate a caller-supplied objectType into the token xppbp accepts.
@@ -502,9 +528,11 @@ export const runBpCheckTool = async (params: any, context: any) => {
     // "0 with findings". Say what has actually compiled the model — for a batch and
     // for a single object alike; a one-object check is no more of a compile than a
     // three-object one, and it used to carry no caveat at all.
-    const buildNote = context?.symbolIndex?.dataDir
-      ? `\n\n${describeBuildFreshness(context.symbolIndex.dataDir, modelName, targetFiles)}`
-      : '';
+    const freshness = context?.symbolIndex?.dataDir
+      ? buildFreshness(context.symbolIndex.dataDir, modelName, targetFiles)
+      : undefined;
+    const buildNote = freshness ? `\n\n${freshness.message}` : '';
+    const cleanVerdict = passVerdict(freshness?.status);
 
     // Single target (and the whole-model run) keep the original layout — there
     // is no preamble to share and existing callers read this shape.
@@ -529,7 +557,7 @@ export const runBpCheckTool = async (params: any, context: any) => {
       return {
         content: [{
           type: 'text',
-          text: `${hasIssues(combined) ? '⚠️ BP Check completed with issues' : '✅ BP Check passed'}` +
+          text: `${hasIssues(combined) ? '⚠️ BP Check completed with issues' : cleanVerdict}` +
             buildNote +
             `\n\n${header}` +
             (target ? `\nFilter: ${selector(target)}` : '') +
@@ -565,7 +593,7 @@ export const runBpCheckTool = async (params: any, context: any) => {
     const verdict =
       notRunCount > 0 ? `❌ BP Check incomplete — ${notRunCount} object(s) were NOT checked`
       : issueCount > 0 ? '⚠️ BP Check completed with issues'
-      : '✅ BP Check passed';
+      : cleanVerdict;
 
     return {
       content: [{

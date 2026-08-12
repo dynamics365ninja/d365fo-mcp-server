@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { recordBuild, readBuildRecord, describeBuildFreshness } from '../../src/utils/buildMarker';
+import { recordBuild, readBuildRecord, describeBuildFreshness, buildFreshness } from '../../src/utils/buildMarker';
 
 let dir: string;
 
@@ -26,6 +26,51 @@ const touch = (name: string): string => {
   fs.writeFileSync(p, 'x');
   return p;
 };
+
+// The status exists so a caller can branch on "nothing compiled this" without
+// matching on the emoji in the sentence. run_bp_check withholds its green tick on
+// never/stale; the message is unchanged either way.
+describe('buildFreshness status', () => {
+  it('reports never, stale, incremental and full', () => {
+    expect(buildFreshness(dir, 'AslFinanceSK').status).toBe('never');
+
+    recordBuild(dir, 'AslFinanceSK', {
+      builtAt: new Date(Date.now() - 60_000).toISOString(),
+      fullBuild: true,
+      succeeded: true,
+    });
+    const written = touch('AslFinSK_QualityTier.xml');
+    expect(buildFreshness(dir, 'AslFinanceSK', [written]).status).toBe('stale');
+
+    recordBuild(dir, 'AslFinanceSK', {
+      builtAt: new Date(Date.now() + 60_000).toISOString(),
+      fullBuild: false,
+      succeeded: true,
+    });
+    expect(buildFreshness(dir, 'AslFinanceSK', [written]).status).toBe('incremental');
+
+    recordBuild(dir, 'AslFinanceSK', {
+      builtAt: new Date(Date.now() + 60_000).toISOString(),
+      fullBuild: true,
+      succeeded: true,
+    });
+    expect(buildFreshness(dir, 'AslFinanceSK', [written]).status).toBe('full');
+  });
+
+  it('calls a FAILED build never, not full — succeeded is the flag that counts', () => {
+    recordBuild(dir, 'AslFinanceSK', {
+      builtAt: new Date().toISOString(),
+      fullBuild: true,
+      succeeded: false,
+    });
+
+    expect(buildFreshness(dir, 'AslFinanceSK').status).toBe('never');
+  });
+
+  it('carries the same message describeBuildFreshness prints', () => {
+    expect(buildFreshness(dir, 'AslFinanceSK').message).toBe(describeBuildFreshness(dir, 'AslFinanceSK'));
+  });
+});
 
 describe('describeBuildFreshness', () => {
   it('says nothing has compiled the model when no build was ever recorded', () => {
