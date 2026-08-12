@@ -518,8 +518,10 @@ export const SETTINGS: Setting[] = [
     type: 'string',
     label: 'HTTP bind address',
     description:
-      'Interface the HTTP transport binds to. The default accepts connections from anywhere, which is what a ' +
-      'container or App Service needs; set 127.0.0.1 to make a local server unreachable from the network.',
+      'Interface the HTTP transport binds to. Left unset it follows the API key: 0.0.0.0 once a key (or ' +
+      'ALLOW_UNAUTHENTICATED) is configured, which is what a container or App Service needs, and 127.0.0.1 when ' +
+      'neither is, so an unauthenticated server stays off the network. Setting it to a public interface without a ' +
+      'key is refused at startup.',
     default: '0.0.0.0',
   },
   {
@@ -829,9 +831,10 @@ export const SETTINGS: Setting[] = [
     type: 'string',
     label: 'API key required from HTTP clients',
     description:
-      'Every HTTP request must present this key as X-Api-Key (or Authorization: Bearer). Required in production — ' +
-      'the server refuses to start without it, because an unauthenticated listener serves your indexed X++ source to ' +
-      'anyone who can reach the port. May be left empty only for a localhost-only development server. Generate with ' +
+      'Every HTTP request must present this key as X-Api-Key (or Authorization: Bearer). Required for any server ' +
+      'reachable from the network — without it the listener serves your indexed X++ source to anyone who can reach ' +
+      'the port, so with no key set the server binds 127.0.0.1 instead, and refuses to start if HOST asks for a ' +
+      'public interface anyway. May be left empty only for a localhost-only development server. Generate with ' +
       '`openssl rand -hex 32`.',
   },
   {

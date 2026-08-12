@@ -96,7 +96,7 @@ In the Azure Portal, go to the App Service → **Settings** → **Environment va
 
 An App Service is reachable from the public internet the moment it is created, and its hostname is predictable: it is derived from the resource group name (`d365fo-mcp-server-<customer>.azurewebsites.net`) and published in Certificate Transparency logs. Without a key, **anyone who reaches that URL can read your entire indexed model** — X++ source snippets, extension and event-handler wiring, security roles and privileges, and label text.
 
-The server therefore refuses to start in HTTP mode when `NODE_ENV=production` and no key is configured.
+The server therefore refuses to start in HTTP mode when it would bind a network-reachable address with no key configured. With no key and no explicit `HOST`, it binds `127.0.0.1` instead — which on App Service means the health probe never goes green, so a keyless deployment fails visibly rather than quietly serving your model to the internet.
 
 | Setting | Value | Notes |
 |---------|-------|-------|
