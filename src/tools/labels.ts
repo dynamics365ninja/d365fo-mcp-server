@@ -18,7 +18,9 @@ import {
   searchLabelsTool, REUSABLE_MARKER, NO_HITS_MARKER, NO_REUSE_ADVICE, SOME_REUSE_ADVICE,
 } from './analysis/searchLabels.js';
 import { mapWithConcurrency } from '../utils/concurrency.js';
-import { repeatSearchNotice } from './analysis/labelSearchHistory.js';
+import {
+  recordLabelSearchCall, repeatSearchNotice, searchBudgetNotice,
+} from './analysis/labelSearchHistory.js';
 import { getLabelInfoTool } from './readers/getLabelInfo.js';
 import { createLabelTool } from './write/createLabel.js';
 import { renameLabelTool } from './write/renameLabel.js';
@@ -137,6 +139,12 @@ export async function labelsTool(request: CallToolRequest, context: XppServerCon
         delete r.searchText; delete r.text; delete r.q;
       }
     }
+    // Counted here rather than in either handler: this is the one point both the
+    // batched and the single-string path pass through, so a caller cannot escape
+    // the budget by switching shapes. (The legacy `search_labels` handler,
+    // reached directly, is not counted — nothing in the tool surface routes there.)
+    recordLabelSearchCall();
+
     if (Array.isArray(r.query)) {
       return batchSearch(r, dispatch.tool, context);
     }
@@ -262,7 +270,24 @@ async function batchSearch(
   // returned a clean report whose verdict said "no label exists — create your own".
   // That is the one thing this line exists to state unambiguously, so failures
   // either replace the verdict or are named alongside it.
+  // What earlier calls already established, stated on WHICHEVER verdict follows.
+  //
+  // Both of these used to hang off the no-hit branch alone, which made the
+  // expensive path the quiet one: a batch where every phrasing missed got a hard
+  // "stop searching and create your own", while a batch where one phrasing landed
+  // on an unrelated SYS label got "at least one label this model can resolve came
+  // back" and no count at all. Run 7b8de4ba drew that encouraging verdict five
+  // times in a row and kept rephrasing — then escalated to reading the .label.txt
+  // files and asking the user. ~49 AIU, for an answer settled by call one.
+  //
+  // Excludes this batch's own phrasings — they are the current answer, not
+  // evidence of repetition. What is left is what earlier calls already asked.
+  const budgetStop = searchBudgetNotice();
+  const repeated = repeatSearchNotice(queries);
+  const priorWork = (budgetStop ? `\n${budgetStop}` : '') + (repeated ? `\n${repeated}` : '');
+
   const verdict = searched === 0
+    // A batch that never ran establishes nothing, so it inherits nothing either.
     ? `**Verdict:** NONE of these ${runs.length} searches ran — every one failed (see the sections below). ` +
       `This says nothing about whether a reusable label exists; fix the error and search again ` +
       `rather than creating a label on the strength of this answer.\n`
@@ -275,6 +300,7 @@ async function batchSearch(
         `see the section(s) marked "${REUSABLE_MARKER}". Read the TEXT of those hits before adopting one: ` +
         `the index matches wording, not meaning, so a hit is a candidate, not a verdict. ` +
         `If none of them says what you need, do NOT rephrase and search again — nothing new will surface.\n` +
+        priorWork +
         `\n${SOME_REUSE_ADVICE}`
       : `**Verdict:** none of these ${searched} phrasings found a label this model can resolve. ` +
         `Stop searching and create your own.\n` +
@@ -282,9 +308,7 @@ async function batchSearch(
           ? `\n⚠️ ${failed.length} of ${runs.length} searches FAILED and were not part of that verdict: ` +
             `${failed.map(f => `"${f.query}"`).join(', ')}.\n`
           : '') +
-        // Excludes this batch's own phrasings — they are the current answer, not
-        // evidence of repetition. What is left is what earlier calls already asked.
-        (repeatSearchNotice(queries) ? `\n${repeatSearchNotice(queries)}` : '') +
+        priorWork +
         `\n${NO_REUSE_ADVICE}`;
 
   return {

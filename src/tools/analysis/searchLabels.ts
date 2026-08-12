@@ -19,7 +19,7 @@ import {
   isLabelLikelyResolvable,
   labelProvenanceWarning,
 } from '../../utils/labelReference.js';
-import { recordLabelSearch, repeatSearchNotice } from './labelSearchHistory.js';
+import { recordLabelSearch, repeatSearchNotice, searchBudgetNotice } from './labelSearchHistory.js';
 
 /**
  * Emitted only when a label the current model can actually resolve was found.
@@ -135,7 +135,7 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
     if (results.length === 0) {
       // Named before the advice: a caller that has already tried five wordings
       // needs to hear that it has, not the same paragraph a sixth time.
-      const repeatNotice = repeatSearchNotice([query]);
+      const repeatNotice = `${searchBudgetNotice()}${repeatSearchNotice([query])}`;
       recordLabelSearch(query, true);
       return {
         content: [
@@ -174,7 +174,14 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
     const total = `${results.length}${atProbeCap ? '+' : ''}`;
     const scope = `[language: ${language}${model ? `, model: ${model}` : ''}]`;
 
+    // The stop rides on the branch that FOUND something too. A hit means the
+    // model can resolve that label, not that it says what the caller needs, so
+    // this branch is the one a rephrasing loop actually lives on — it used to be
+    // the only one carrying no count at all.
+    const budgetStop = searchBudgetNotice();
+
     const lines: string[] = [
+      ...(budgetStop ? [budgetStop] : []),
       hidden > 0
         ? `Found ${total} label(s) matching "${query}" ${scope} — showing first ${maxResults}:`
         : `Found ${results.length} label(s) matching "${query}" ${scope}:`,

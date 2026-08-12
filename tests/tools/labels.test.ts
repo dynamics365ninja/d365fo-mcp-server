@@ -345,6 +345,58 @@ describe('labels(action="search") with query[]', () => {
     expect(text).not.toContain('This is not new information');
   });
 
+  // Run 7b8de4ba: five batches in a row drew "at least one label this model can
+  // resolve came back" — each because ONE phrasing had landed on an unrelated SYS
+  // label — so the repeat notice (fruitless phrasings only) stayed nearly silent
+  // and nothing ever said stop. ~49 AIU, then the caller went off to read the
+  // .label.txt files by hand and ask the user. The count is what ends that, so it
+  // counts calls and rides on whichever verdict follows.
+  it('stops the caller by call count even when every batch keeps hitting', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([
+      makeLabelResult({ labelId: 'OrderType', text: 'Order type cannot be changed', labelFileId: 'SYS', model: 'ApplicationSuite' }),
+    ]);
+
+    const search = (q: string[]) => labelsTool(req('labels', { action: 'search', query: q }), ctx);
+
+    const first = (await search(['cannot be decreased'])).content[0].text as string;
+    const second = (await search(['downgrade not allowed'])).content[0].text as string;
+    expect(first).not.toContain('STOP');
+    expect(second).not.toContain('STOP');
+
+    const third = (await search(['value cannot be lower'])).content[0].text as string;
+    expect(third).toContain('that was label search call 3 this session');
+    // The hits verdict is still the hits verdict — the stop rides on it.
+    expect(third).toMatch(/at least one label this model can resolve came back/i);
+    // Names the escalations that follow the loop, which cost more than it did.
+    expect(third).toContain('read the .label.txt files by hand');
+    expect(third).toContain('do not ask the user');
+    // And the way out is right there.
+    expect(third).toContain('labels(action="create"');
+  });
+
+  it('counts phrasings that missed and phrasings that hit as the same call', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([]);
+    await labelsTool(req('labels', { action: 'search', query: ['a', 'b', 'c'] }), ctx);
+    await labelsTool(req('labels', { action: 'search', query: ['d'] }), ctx);
+
+    const text = (await labelsTool(req('labels', { action: 'search', query: ['e'] }), ctx))
+      .content[0].text as string;
+
+    expect(text).toContain('that was label search call 3 this session');
+    expect(text).toContain('(5 phrasing(s) in total)');
+  });
+
+  it('stops a single-string caller on the same count', async () => {
+    (ctx.symbolIndex.searchLabels as any).mockReturnValue([]);
+    await labelsTool(req('labels', { action: 'search', query: 'first' }), ctx);
+    await labelsTool(req('labels', { action: 'search', query: 'second' }), ctx);
+
+    const text = (await labelsTool(req('labels', { action: 'search', query: 'third' }), ctx))
+      .content[0].text as string;
+
+    expect(text).toContain('that was label search call 3 this session');
+  });
+
   it('does not report a failed batch as "no reusable label exists"', async () => {
     // isError used to be dropped: a batch in which every query blew up returned a
     // clean report whose verdict was "none of these phrasings found a label" —
