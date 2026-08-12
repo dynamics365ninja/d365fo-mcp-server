@@ -13,7 +13,7 @@ import { bridgeBuildCommand, dataRoot, installMode, isWindows, paths, repoRoot }
 import { commandExists } from '../exec.js';
 import { isLegacyInstanceLayout, listInstances, type Instance } from '../instances.js';
 import { checkRelease } from '../npmRegistry.js';
-import { conflictingLegacyValues, readPath, readSetting, type SettingsStore } from '../settingsStore.js';
+import { conflictingLegacyValues, readPath, readSetting, settingSource, type SettingsStore } from '../settingsStore.js';
 import { instanceTarget, rootTarget, type Target } from '../target.js';
 import { isXppConfigStale, listXppConfigs, xppConfigDir } from '../xppConfig.js';
 import { describePackagesRootScan, packagesRoots } from '../../utils/packagesRoot.js';
@@ -98,7 +98,8 @@ function checkConfig(target: Target, label: string): CheckResult {
 function checkPackagesRoot(store: SettingsStore, label: string): CheckResult[] {
   if (!isWindows) return [];
 
-  const configured = String(readSetting(store, settingByPath('environment.packagePath')!) ?? '').trim();
+  const setting = settingByPath('environment.packagePath')!;
+  const configured = String(readSetting(store, setting) ?? '').trim();
   const detected = packagesRoots();
 
   if (!configured) {
@@ -112,14 +113,64 @@ function checkPackagesRoot(store: SettingsStore, label: string): CheckResult[] {
   if (fs.existsSync(configured)) {
     return [{ severity: 'ok', message: `${label}: packages root OK (${configured})` }];
   }
-  return [{
-    severity: 'fail',
-    message: `${label}: packages root does not exist (${configured})` +
+  return [{ severity: 'fail', ...missingPathFix(store, setting, label, 'packages root', configured, detected) }];
+}
+
+/**
+ * customPackagesPath (UDE ModelStoreFolder) / microsoftPackagesPath (UDE
+ * FrameworkDirectory) against what the machine actually has.
+ *
+ * Both are normally left unset and resolved live from the active XPP config —
+ * that's how the server notices a UDE platform update. But the setup wizard
+ * still writes them into an instance's legacy .env at setup time, and once a
+ * platform update deletes the old framework/model-store folder, that hardcoded
+ * .env value keeps outranking the (now-correct) XPP-config auto-detection —
+ * see settingSource in ../settingsStore.js. The bridge then dies silently with
+ * "C# bridge unavailable (ude)" and no indication that a stale .env is why.
+ */
+function checkUdeOverridePath(store: SettingsStore, label: string, path: string, humanName: string): CheckResult[] {
+  if (!isWindows) return [];
+
+  const setting = settingByPath(path)!;
+  const configured = String(readSetting(store, setting) ?? '').trim();
+  // Unset is the normal, healthy state for these two — nothing to report.
+  if (!configured) return [];
+  if (fs.existsSync(configured)) {
+    return [{ severity: 'ok', message: `${label}: ${humanName} OK (${configured})` }];
+  }
+  return [{ severity: 'fail', ...missingPathFix(store, setting, label, humanName, configured, packagesRoots()) }];
+}
+
+/**
+ * Shared "path setting points at a folder that isn't there" message. When the
+ * value is pinned by the legacy .env rather than the JSON config, that is very
+ * likely the actual bug (a stale override silently beating live auto-detection)
+ * rather than a config typo, so the fix steers there instead of just re-pinning
+ * the same kind of static value that caused the problem.
+ */
+function missingPathFix(
+  store: SettingsStore,
+  setting: import('../../config/settings.js').Setting,
+  label: string,
+  humanName: string,
+  configured: string,
+  detected: string[],
+): Omit<CheckResult, 'severity'> {
+  const source = settingSource(store, setting);
+  if (source === 'env') {
+    return {
+      message: `${label}: ${humanName} does not exist (${configured}) — pinned by legacy .env (${setting.env}), not the JSON config`,
+      fix: `remove ${setting.env} from .env; this UDE value is normally auto-detected from the active XPP config, ` +
+        `and a hardcoded copy silently overrides that detection once a platform update moves or deletes this folder`,
+    };
+  }
+  return {
+    message: `${label}: ${humanName} does not exist (${configured})` +
       (detected.length > 0 ? `\n   found instead: ${detected.join(', ')}` : `\n   ${describePackagesRootScan()}`),
     fix: detected.length > 0
-      ? `set environment.packagePath to ${detected[0]} (${SETUP_COMMAND})`
-      : `point environment.packagePath at this machine's PackagesLocalDirectory (${SETUP_COMMAND})`,
-  }];
+      ? `set ${setting.path} to ${detected[0]} (${SETUP_COMMAND})`
+      : `point ${setting.path} at this machine's PackagesLocalDirectory (${SETUP_COMMAND})`,
+  };
 }
 
 /**
@@ -402,6 +453,8 @@ export async function doctorCommand(): Promise<void> {
   emit(checkConfig(root, 'Root'));
   for (const r of legacyEnvChecks(root, 'Root')) emit(r);
   for (const r of checkPackagesRoot(root.store, 'Root')) emit(r);
+  for (const r of checkUdeOverridePath(root.store, 'Root', 'environment.customPackagesPath', 'custom X++ root')) emit(r);
+  for (const r of checkUdeOverridePath(root.store, 'Root', 'environment.microsoftPackagesPath', 'Microsoft X++ root')) emit(r);
 
   // Database (root)
   emit(checkDb(root.store, paths.defaultDb, 'Root'));
@@ -459,6 +512,8 @@ export async function doctorCommand(): Promise<void> {
       for (const r of layoutChecks(inst)) emit(r);
       for (const r of legacyEnvChecks(target, `Instance '${inst.name}'`)) emit(r);
       for (const r of checkPackagesRoot(target.store, `Instance '${inst.name}'`)) emit(r);
+      for (const r of checkUdeOverridePath(target.store, `Instance '${inst.name}'`, 'environment.customPackagesPath', 'custom X++ root')) emit(r);
+      for (const r of checkUdeOverridePath(target.store, `Instance '${inst.name}'`, 'environment.microsoftPackagesPath', 'Microsoft X++ root')) emit(r);
       emit(checkDb(target.store, resolve(inst.dir, 'data', 'xpp-metadata.db'), `Instance '${inst.name}'`));
       if (isWindows && isXppConfigStale(target.store)) {
         emit({
