@@ -1245,14 +1245,12 @@
   ],
   "orphans": {
     "knowledge": [
-      "enum-conversions",
       "extensible-enums"
     ],
     "cases": [
       "L0-create-readback-no-reindex",
       "L2-batched-object-reads",
       "L2-oracle-discriminator-random-wrapper-name",
-      "L3-enum-field-form-downgrade-guard",
       "L4-headerlines-document-slice"
     ]
   }
