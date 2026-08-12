@@ -20,6 +20,7 @@ import {
   getObjectSuffix,
   getExtensionNamingStyle,
 } from './modelClassifier.js';
+import { normalizeModelToken } from './modelToken.js';
 
 /**
  * Extension types whose AOT name is `Base.{Token}Extension`. A bare base name
@@ -55,8 +56,13 @@ export function normalizeObjectName(
   const namingStyle = getExtensionNamingStyle();
   let effective = objectName;
 
+  // Cases A and B below strip a model-name token off a name that already carries
+  // one, so they have to compare against the spelling a NAME can hold — the token,
+  // not the raw model name. They are the same string for any model whose name is
+  // already an identifier; for "Contoso Robotics" the raw form matches nothing (#892).
+  const modelToken = modelName ? normalizeModelToken(modelName) : '';
   const modelDiffersFromPrefix =
-    !!modelName && objectPrefix.toLowerCase() !== modelName.toLowerCase();
+    !!modelToken && objectPrefix.toLowerCase() !== modelToken.toLowerCase();
 
   // Case A: dot-notation extension carrying the model name as its token —
   // "CustTable.MyModelExtension" → "CustTable.Extension", so applyObjectPrefix
@@ -70,8 +76,8 @@ export function normalizeObjectName(
     const dotIdx = effective.lastIndexOf('.');
     const basePart = effective.slice(0, dotIdx);
     const suffixPart = effective.slice(dotIdx + 1);
-    if (suffixPart.toLowerCase().startsWith(modelName!.toLowerCase())) {
-      effective = `${basePart}.${suffixPart.slice(modelName!.length)}`;
+    if (suffixPart.toLowerCase().startsWith(modelToken.toLowerCase())) {
+      effective = `${basePart}.${suffixPart.slice(modelToken.length)}`;
       onNote?.(`Stripped model name from dot-notation extension: ${objectName} → ${effective}`);
     }
   }
@@ -83,9 +89,9 @@ export function normalizeObjectName(
     modelDiffersFromPrefix
   ) {
     const baseName = effective.slice(0, -'_Extension'.length);
-    if (baseName.toLowerCase().endsWith(modelName!.toLowerCase())) {
-      effective = baseName.slice(0, -modelName!.length) + '_Extension';
-      onNote?.(`Stripped model name infix "${modelName}" from extension class: ${objectName} → ${effective}`);
+    if (baseName.toLowerCase().endsWith(modelToken.toLowerCase())) {
+      effective = baseName.slice(0, -modelToken.length) + '_Extension';
+      onNote?.(`Stripped model name infix "${modelToken}" from extension class: ${objectName} → ${effective}`);
     }
   }
 
