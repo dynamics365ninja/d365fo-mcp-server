@@ -303,6 +303,48 @@ export interface DataGroupRenderer {
   dataSource?: string;
   /** Control the compiler generates for a member field: <DataGroup>_<FieldName> */
   generatedNameFor: (fieldName: string) => string;
+  /** The field group it renders, as spelled in the form XML */
+  dataGroup: string;
+}
+
+/**
+ * Every container in a form that renders a table field group via <DataGroup>.
+ *
+ * {@link findDataGroupRenderers} answers "is THIS group on the form"; this one
+ * answers "which groups are", which is what a caller needs when the answer to
+ * the first is no — a field group nothing renders puts the field on no form, and
+ * naming the groups that ARE rendered turns that dead end into one call.
+ *
+ * Returns [] when the XML is unparseable or no container carries a <DataGroup>.
+ */
+export async function listDataGroupRenderers(baseFormXml: string): Promise<DataGroupRenderer[]> {
+  let parsed: any;
+  try {
+    const parser = new Parser({ explicitArray: false, mergeAttrs: true, trim: true });
+    parsed = await parser.parseStringPromise(baseFormXml);
+  } catch {
+    return [];
+  }
+  if (!parsed?.AxForm?.Design) return [];
+
+  const found: DataGroupRenderer[] = [];
+  const visit = (nodes: FormControlNode[]): void => {
+    for (const n of nodes) {
+      const dataGroup = n.properties?.DataGroup;
+      if (dataGroup) {
+        found.push({
+          controlName: n.name,
+          dataSource: n.properties?.DataSource,
+          generatedNameFor: (fieldName: string) => `${dataGroup}_${fieldName}`,
+          dataGroup,
+        });
+      }
+      visit(n.children);
+    }
+  };
+  visit(walkFormDesign(parsed.AxForm.Design).controls);
+
+  return found;
 }
 
 /**
@@ -321,35 +363,9 @@ export async function findDataGroupRenderers(
   baseFormXml: string,
   fieldGroupName: string,
 ): Promise<DataGroupRenderer[]> {
-  let parsed: any;
-  try {
-    const parser = new Parser({ explicitArray: false, mergeAttrs: true, trim: true });
-    parsed = await parser.parseStringPromise(baseFormXml);
-  } catch {
-    return [];
-  }
-  if (!parsed?.AxForm?.Design) return [];
-
-  const design = walkFormDesign(parsed.AxForm.Design);
   const needle = fieldGroupName.toLowerCase();
-  const found: DataGroupRenderer[] = [];
-
-  const visit = (nodes: FormControlNode[]): void => {
-    for (const n of nodes) {
-      const dataGroup = n.properties?.DataGroup;
-      if (dataGroup && dataGroup.toLowerCase() === needle) {
-        found.push({
-          controlName: n.name,
-          dataSource: n.properties?.DataSource,
-          generatedNameFor: (fieldName: string) => `${dataGroup}_${fieldName}`,
-        });
-      }
-      visit(n.children);
-    }
-  };
-  visit(design.controls);
-
-  return found;
+  return (await listDataGroupRenderers(baseFormXml))
+    .filter(r => r.dataGroup.toLowerCase() === needle);
 }
 
 /**
