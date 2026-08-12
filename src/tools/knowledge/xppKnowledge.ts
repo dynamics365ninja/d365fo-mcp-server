@@ -707,6 +707,9 @@ switch (category)
 }
 
 // ✅ Persist/transport the symbol, never the ordinal
+// NB: two arguments because the symbol functions need the enum id. The
+//     LABEL function does not — enum2Str(category), one argument. The two
+//     are not interchangeable in either respect; see enum-conversions.
 str symbol = enum2Symbol(enumNum(MyVehicleCategory), any2Int(category));
 
 // ❌ WRONG — the ordinal of an extension value is assigned at deployment
@@ -714,7 +717,86 @@ str symbol = enum2Symbol(enumNum(MyVehicleCategory), any2Int(category));
 // if (any2Int(category) == 3) { … }`,
       },
     ],
-    related: ['sysextension', 'labels', 'feature-management'],
+    related: ['sysextension', 'labels', 'feature-management', 'enum-conversions'],
+  },
+
+  // ── Enum ↔ text conversions ─────────────────────────────────────────────
+  // Documented because the base used to teach these ONLY as a by-product of the
+  // extensible-enum topic above, whose single conversion example is the
+  // 2-argument enum2Symbol. Asked point-blank for "enum2str … convert enum value
+  // to label text", the base answered with that topic and no mention of enum2Str
+  // at all; the caller generalised the shape it had been shown and shipped
+  // `enum2Str(enumNum(X), value)`, which cost a 76 s failed build and two more.
+  // These functions disagree about their arity, so the arity IS the topic.
+  {
+    id: 'enum-conversions',
+    title: 'Enum ↔ text: enum2Str, enum2Symbol, symbol2Enum, DictEnum (and their argument counts)',
+    keywords: ['enum2str', 'enum2symbol', 'symbol2enum', 'enumnum', 'enum2int', 'value2label', 'value2symbol',
+      'dictenum', 'sysdictenum', 'convert enum', 'enum conversion', 'enum to string', 'enum to text',
+      'enum label', 'enum symbol', 'enum name', 'global function', 'session language', 'arity'],
+    summary:
+      'Converting an enum to text has two answers and they are not interchangeable: enum2Str returns the value\'s translated LABEL, enum2Symbol returns its untranslated AOT NAME. ' +
+      'They also disagree about how many arguments they take — enum2Str takes the value alone, the symbol functions take an enum id AND a value — which is the mistake xppc reports as ' +
+      '"\'enum2Str\' expects 1 argument(s), but 2 specified".',
+    rules: [
+      'enum2Str(value) — ONE argument. Returns the <Label> of that value in the session language. It needs no enum id because the type is known at compile time from the value itself. This is the one for user-facing text',
+      'enum2Symbol(enumNum(MyEnum), value) — TWO arguments. Returns the AOT element name ("Gold"), which is never translated. Correct for logs, filenames, keys and anything persisted; wrong in a message (see BP005)',
+      'symbol2Enum(enumNum(MyEnum), symbolString) — TWO arguments, the inverse of enum2Symbol',
+      'enumNum(MyEnum) — ONE argument, and it is the enum TYPE name, not a value. It yields the compile-time enum id the two-argument functions ask for, which is exactly why those take two and enum2Str does not',
+      'enum2int(value) — ONE argument, returns the underlying ordinal. Safe for a base enum; for an EXTENSIBLE enum the ordinal is assigned at deployment time and differs per environment — see extensible-enums',
+      'When the enum type is known only at RUNTIME, none of the above applies: new DictEnum(enumId).value2Label(value) for the label, .value2Symbol(value) for the symbol',
+      'Getting the count wrong is a compile error, not a warning, and it is caught offline: the FN001 rule reports it in the reply to the d365fo_file call that writes the code, before any build',
+      'In a validateWrite/CoC message the idiom is checkFailed(strFmt("@MyModel:MyLabel", enum2Str(a), enum2Str(b))) — the label carries the %1/%2 placeholders and enum2Str fills them with translated text',
+    ],
+    examples: [
+      {
+        label: 'The two conversions side by side',
+        code: `MyQualityTier tier = this.MyQualityTier;
+
+// ✅ Translated label — ONE argument. For anything a user reads.
+str shown = enum2Str(tier);
+
+// ✅ Untranslated AOT name — TWO arguments. For logs, keys, persistence.
+str symbol = enum2Symbol(enumNum(MyQualityTier), enum2int(tier));
+
+// ✅ Back again
+MyQualityTier restored = symbol2Enum(enumNum(MyQualityTier), symbol);
+
+// ❌ WRONG — enum2Str does not take an enum id. xppc:
+//    "'enum2Str' expects 1 argument(s), but 2 specified."
+// str shown = enum2Str(enumNum(MyQualityTier), tier);`,
+      },
+      {
+        label: 'Blocking a downgrade with a translated message',
+        code: `[ExtensionOf(tableStr(MyTable))]
+final class MyTable_Extension
+{
+    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+
+        if (ret && this.MyQualityTier < this.orig().MyQualityTier)
+        {
+            // ✅ enum2Str on each value — one argument each, both translated
+            ret = checkFailed(strFmt("@MyModel:QualityTierDowngradeError",
+                enum2Str(this.orig().MyQualityTier),
+                enum2Str(this.MyQualityTier)));
+        }
+
+        return ret;
+    }
+}`,
+      },
+      {
+        label: 'Enum type known only at runtime',
+        code: `// No compile-time type, so the global functions cannot help.
+DictEnum dictEnum = new DictEnum(enumId);
+
+str shown  = dictEnum.value2Label(value);   // translated
+str symbol = dictEnum.value2Symbol(value);  // AOT name`,
+      },
+    ],
+    related: ['extensible-enums', 'labels', 'coc-authoring'],
   },
 
   // ── Number Sequences ────────────────────────────────────────────────────
@@ -3611,6 +3693,84 @@ function tokenize(topic: string): string[] {
  */
 const CONFIDENT_SCORE = 3;
 
+/**
+ * Query words that read as an API name rather than prose: a digit wedged against
+ * letters (enum2str, any2Int, SYS10028), internal camelCase (validateWrite,
+ * DictEnum) or an underscore. These carry the intent of a lookup — everything
+ * else in "enum2str global function convert enum value to label text" is filler.
+ *
+ * Case matters here and is lost by tokenize(), so this reads the raw topic.
+ */
+function distinctiveTokens(topic: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of topic.split(/[\s,;/()[\]]+/)) {
+    const tok = raw.replace(/[^A-Za-z0-9_]/g, '');
+    if (tok.length < 4) continue;
+    const identifierLike =
+      /[A-Za-z][0-9]|[0-9][A-Za-z]/.test(tok) || /[a-z][A-Z]/.test(tok) || tok.includes('_');
+    if (!identifierLike) continue;
+    const key = tok.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(tok);
+  }
+
+  return out;
+}
+
+/**
+ * Whether the base documents this token by NAME — as an id, a keyword, or a word
+ * in a title or summary. A keyword may be longer than the token ("enum value"
+ * covers "value"); the reverse is deliberately not accepted.
+ *
+ * That asymmetry is the whole point. scoreEntry's partial rule also credits
+ * `token.includes(k)`, so `enum2str` scores against the keyword `enum` and the
+ * extensible-enum topic comes back looking authoritative — which is how a query
+ * about a 1-argument function was answered with a topic whose only conversion
+ * example takes 2, and the caller shipped `enum2Str(enumNum(X), v)`. A token
+ * that is MORE specific than anything the base knows has not been matched; it
+ * has been approximated, and saying so is the difference between a related read
+ * and a wrong answer.
+ */
+function isDocumentedByName(token: string): boolean {
+  const t = token.toLowerCase();
+  return KNOWLEDGE_BASE.some(entry =>
+    entry.id === t ||
+    entry.keywords.some(k => k === t || k.includes(t)) ||
+    entry.title.toLowerCase().includes(t) ||
+    entry.summary.toLowerCase().includes(t));
+}
+
+/** Identifier-shaped words in the query that the base does not document by name. */
+export function unknownDistinctiveTokens(topic: string): string[] {
+  return distinctiveTokens(topic).filter(t => !isDocumentedByName(t));
+}
+
+/** Named in the warning before it stops listing and starts counting. */
+const MAX_NAMED_UNKNOWN = 3;
+
+/**
+ * The "I do not have this" line. Empty when every identifier-shaped word in the
+ * query is documented, which is the normal case.
+ */
+function unknownTokenNotice(topic: string): string {
+  const unknown = unknownDistinctiveTokens(topic);
+  if (unknown.length === 0) return '';
+
+  const named = unknown.slice(0, MAX_NAMED_UNKNOWN).map(t => `\`${t}\``).join(', ');
+  const rest = unknown.length > MAX_NAMED_UNKNOWN ? ` (and ${unknown.length - MAX_NAMED_UNKNOWN} more)` : '';
+  const isPlural = unknown.length > 1;
+
+  return (
+    `⚠️ ${named}${rest} ${isPlural ? 'are' : 'is'} not documented by name in this knowledge base. ` +
+    `The entries below are the closest match to the REST of your query — related reading, not an ` +
+    `answer about ${isPlural ? 'those names' : `\`${unknown[0]}\``}. In particular, do NOT infer a ` +
+    `signature, an argument count or a property shape from a neighbouring example.`
+  );
+}
+
 function searchKnowledge(topic: string): { entries: KnowledgeEntry[]; topScore: number } {
   const tokens = tokenize(topic);
 
@@ -3744,15 +3904,28 @@ export async function xppKnowledgeTool(request: CallToolRequest) {
         ? formatDetailed(entries)
         : formatConcise(entries);
 
+      // Two guards, and they answer different questions. The score one asks
+      // whether ANYTHING matched well; the token one asks whether the specific
+      // name the caller came for is in here at all — a query can score highly on
+      // its filler words while the one word that carried the intent matched
+      // nothing. They stack when both apply.
+      const notices: string[] = [];
+
+      const unknownNotice = unknownTokenNotice(args.topic);
+      if (entries.length > 0 && unknownNotice) notices.push(unknownNotice);
+
       // Low-confidence guard: when something matched but only weakly (incidental
       // substring overlap, no title/keyword/ID hit), warn so the caller doesn't
       // treat unrelated content as authoritative.
       if (entries.length > 0 && topScore < CONFIDENT_SCORE) {
-        formatted =
+        notices.push(
           `⚠️ No strong match for "${args.topic}" — showing the closest entries below, which may be ` +
           `unrelated. Browse the full list with \`get_knowledge(kind="knowledge")\` and an empty topic, ` +
-          `or refine your query.\n\n${formatted}`;
+          `or refine your query.`,
+        );
       }
+
+      if (notices.length > 0) formatted = `${notices.join('\n\n')}\n\n${formatted}`;
     }
 
     return {

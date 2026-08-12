@@ -136,6 +136,6 @@ Nothing uncovered.
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): extensible-enums
-- Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-oracle-discriminator-random-wrapper-name, L3-enum-field-form-downgrade-guard, L4-headerlines-document-slice
+- Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-08-08._
+_Generated 2026-08-12._

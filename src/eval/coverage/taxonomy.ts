@@ -79,8 +79,21 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'Eval case authored (EDT + EDT extension via PropertyModifications); golden pending VM capture.',
   },
   {
+    // Creating a base enum is half of this leaf; consuming one is the other half,
+    // and that half is where the money went — a benchmark run wrote enum2Str with
+    // enum2Symbol's two arguments and paid a 76 s failed build for it, because the
+    // base documented the conversions nowhere. enum-conversions covers it now.
+    //
+    // The L3 case builds a four-value ladder enum, types a table field on it and
+    // compares it in a validateWrite guard. Note what it does NOT do: it compares
+    // through enum2int and messages through a bare label, so it exercises the
+    // creation and the ordinal comparison, not the label/symbol split that
+    // motivated the knowledge entry. It is the right case for this leaf and it is
+    // not proof of that part; a case that renders an enum into a message would be.
+    // It is golden_pending in any event, so it claims the case without flipping E.
     id: 'enum', label: 'Base enum', domain: 'Data model', source: 'aot', tier: 'core', weight: 5,
-    aotTypes: ['enum'], knowledgeIds: ['xpp-class-rules'], caseIds: ['L0-enum-basic'],
+    aotTypes: ['enum'], knowledgeIds: ['xpp-class-rules', 'enum-conversions'],
+    caseIds: ['L0-enum-basic', 'L3-enum-field-form-downgrade-guard'],
   },
   {
     id: 'enum-extension', label: 'Enum extension', domain: 'Data model', source: 'aot', tier: 'core', weight: 4,

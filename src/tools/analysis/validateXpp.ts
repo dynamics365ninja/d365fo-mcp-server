@@ -21,6 +21,7 @@
  *   BP003   Generic doc-comment (/// Foo class. / /// methodName.)
  *   BP004   Developer-only statements left in code (pause / print)
  *   BP005   an enum SYMBOL (enum2Symbol / value2Symbol) in user-facing text — never translated
+ *   FN001   fixed-arity built-in called with the wrong number of arguments
  *   TTS001  Unbalanced ttsbegin / ttscommit
  *   XML001  AxTable XML missing an index with <AlternateKey>Yes</AlternateKey>
  *   XML006  AxTable elements out of canonical order (silently dropped by the AOT)
@@ -510,6 +511,101 @@ function checkEnumSymbolInMessage(code: string): ValidationViolation[] {
 }
 
 /**
+ * The built-ins FN001 knows the arity of.
+ *
+ * Deliberately tiny, and all one family: these convert between an enum, its
+ * label and its symbol, they are the ones a caller reaches for in the same
+ * breath, and they do NOT agree on how many arguments they take. That is the
+ * whole trap — enum2Str takes the value alone, its neighbours take an enum id
+ * AND a value, so the wrong one of the pair compiles in the head and not in
+ * xppc. Adding a built-in here is only safe when its arity is genuinely fixed:
+ * one with an optional parameter belongs nowhere near this rule.
+ */
+const FIXED_ARITY_BUILTINS: Record<string, { name: string; arity: number; note: string }> = {
+  enum2str:    { name: 'enum2Str',    arity: 1, note: 'enum2Str(value) — the value alone. It resolves that value\'s <Label> in the session language, which is why it needs no enum id' },
+  enum2symbol: { name: 'enum2Symbol', arity: 2, note: 'enum2Symbol(enumNum(MyEnum), value) — enum id AND value' },
+  symbol2enum: { name: 'symbol2Enum', arity: 2, note: 'symbol2Enum(enumNum(MyEnum), symbolString) — enum id AND symbol' },
+  enumnum:     { name: 'enumNum',     arity: 1, note: 'enumNum(MyEnum) — the enum TYPE name alone, not a value' },
+};
+
+/**
+ * Arguments in the call whose '(' sits at `open`, or null when the parentheses
+ * never close — a snippet cut mid-call is not something to have an opinion about.
+ *
+ * Counts top-level commas only, so a nested call or an indexer contributes none.
+ * Runs on masked source, where a comma inside a string literal is already a space.
+ */
+function countCallArguments(masked: string, open: number): number | null {
+  let parens = 0;
+  let brackets = 0;
+  let commas = 0;
+  let hasContent = false;
+
+  for (let i = open; i < masked.length; i++) {
+    const ch = masked[i];
+    if (ch === '(') { parens++; continue; }
+    if (ch === ')') {
+      parens--;
+      if (parens === 0) return hasContent ? commas + 1 : 0;
+      continue;
+    }
+    if (ch === '[') { brackets++; continue; }
+    if (ch === ']') { brackets--; continue; }
+    if (parens === 1 && brackets === 0 && ch === ',') { commas++; continue; }
+    if (!/\s/.test(ch)) hasContent = true;
+  }
+
+  return null;
+}
+
+/**
+ * FN001 — a fixed-arity built-in called with the wrong number of arguments.
+ *
+ * xppc catches every one of these, but only after a build, and that is the cost:
+ * run 7b8de4ba shipped `enum2Str(this.orig().X), enum2Str(this.X)` as a 2-argument
+ * call, which bought a 76 s failed compile, a repair round trip and two more
+ * builds — ~9 AIU and 130 s for a mistake visible in the source as written. The
+ * knowledge base offers `enum2Symbol(enumNum(…), any2Int(…))` as its only
+ * conversion example, so reaching for the 2-argument shape is the documented
+ * confusion, not a careless one.
+ *
+ * Runs on every write through inlineXppValidation, which is the point: the reply
+ * to the d365fo_file call that creates the CoC class already carries the finding.
+ *
+ * severity 'error' — this is a compile failure, not a preference.
+ */
+function checkBuiltinArity(code: string): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
+  const masked = maskStringsAndComments(code);
+  const lines = code.split('\n');
+
+  const callRe = /\b([A-Za-z_]\w*)\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = callRe.exec(masked)) !== null) {
+    const spec = FIXED_ARITY_BUILTINS[m[1].toLowerCase()];
+    if (!spec) continue;
+    // `something.enum2Str(…)` is a method on another type, not the global.
+    if (masked.slice(0, m.index).trimEnd().endsWith('.')) continue;
+
+    const actual = countCallArguments(masked, m.index + m[0].length - 1);
+    if (actual === null || actual === spec.arity) continue;
+
+    const lineNo = lineNumber(masked, m.index);
+    violations.push({
+      rule: 'FN001',
+      severity: 'error',
+      line: lineNo,
+      excerpt: lines[lineNo - 1].trim(),
+      fix:
+        `${spec.name} takes ${spec.arity} argument(s); ${actual} given. xppc rejects this with ` +
+        `"'${spec.name}' expects ${spec.arity} argument(s), but ${actual} specified". ${spec.note}.`,
+    });
+  }
+
+  return violations;
+}
+
+/**
  * COC004 — `next` not reached exactly once and unconditionally (compiler SYS10028).
  *
  * The X++ compiler rejects a CoC method whose `next` sits inside an `if`, is called
@@ -930,6 +1026,7 @@ const XPP_RULES = [
   checkCocNextUnconditional,
   checkGlobalFunctionOnTableBuffer,
   checkEnumSymbolInMessage,
+  checkBuiltinArity,
   checkHardcodedStrings,
   checkDoMethods,
   checkGenericDocComment,

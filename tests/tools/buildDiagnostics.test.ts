@@ -153,3 +153,53 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
     expect(bp005('// info(strFmt("@X:Y", enum2Symbol(enumNum(Tier), i)));')).toHaveLength(0);
   });
 });
+
+/**
+ * Run 7b8de4ba wrote enum2Str with enum2Symbol's two arguments. xppc caught it,
+ * but only after a 76 s compile — then a repair call and two more builds, ~9 AIU
+ * and 130 s for a mistake that is visible in the source as written.
+ */
+describe('FN001 — fixed-arity built-ins', () => {
+  const fn001 = (code: string) => runRules(code, 'xpp').filter(v => v.rule === 'FN001');
+
+  it('flags the 2-argument enum2Str that failed the build', () => {
+    const code = `ret = checkFailed(strFmt("@AslFinSK:QualityTierDowngradeError",
+                enum2Str(enumNum(AslFinSK_QualityTier), this.orig().AslFinSK_QualityTier),
+                enum2Str(enumNum(AslFinSK_QualityTier), this.AslFinSK_QualityTier)));`;
+    const found = fn001(code);
+    expect(found).toHaveLength(2);
+    expect(found.map(v => v.line)).toEqual([2, 3]);
+    expect(found[0].severity).toBe('error');
+    // The compiler's own wording, so the finding and the build log read alike.
+    expect(found[0].fix).toContain("'enum2Str' expects 1 argument(s), but 2 specified");
+  });
+
+  it('says nothing about the correct arities', () => {
+    expect(fn001('ret = checkFailed(strFmt("@X:Y", enum2Str(a), enum2Str(b)));')).toHaveLength(0);
+    expect(fn001('str key = enum2Symbol(enumNum(Tier), i);')).toHaveLength(0);
+    expect(fn001('Tier t = symbol2Enum(enumNum(Tier), s);')).toHaveLength(0);
+  });
+
+  it('flags the mirrored mistake — a neighbour called with one argument', () => {
+    const found = fn001('str key = enum2Symbol(this.Tier);');
+    expect(found).toHaveLength(1);
+    expect(found[0].fix).toContain('enum2Symbol(enumNum(MyEnum), value)');
+  });
+
+  it('counts nested calls and string commas as one argument each', () => {
+    // enum2Str's single argument is itself a call; the comma inside the literal
+    // is masked. Neither is a top-level separator.
+    expect(fn001('info(enum2Str(this.orig().Tier));')).toHaveLength(0);
+    expect(fn001('info(strFmt("a, b, c", enum2Str(t)));')).toHaveLength(0);
+  });
+
+  it('leaves a same-named method on another object alone', () => {
+    expect(fn001('s = converter.enum2Str(id, value);')).toHaveLength(0);
+  });
+
+  it('ignores comments, strings and a call cut off mid-snippet', () => {
+    expect(fn001('// enum2Str(enumNum(Tier), v)')).toHaveLength(0);
+    expect(fn001('str doc = "call enum2Str(enumNum(Tier), v) here";')).toHaveLength(0);
+    expect(fn001('ret = enum2Str(enumNum(Tier), v')).toHaveLength(0);
+  });
+});
