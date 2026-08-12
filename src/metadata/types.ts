@@ -2,9 +2,9 @@
  * X++ Metadata Type Definitions
  */
 
-import type { XppExtensionOf } from './xppDeclaration.js';
+import type { XppExtensionOf, XppVisibility } from './xppDeclaration.js';
 
-export type { XppExtensionOf };
+export type { XppExtensionOf, XppVisibility };
 
 export interface XppParseResult<T> {
   success: boolean;
@@ -20,6 +20,13 @@ export interface XppClassInfo {
   implements: string[];
   isAbstract: boolean;
   isFinal: boolean;
+  /**
+   * Access modifier as declared; undefined when the class states none, which in
+   * X++ means public. `internal` is package-scoped — a caller outside the owning
+   * package cannot subclass it, extend it with [ExtensionOf] or name the type at
+   * all — so it is reported as a fact for the reader to weigh against **Model:**.
+   */
+  visibility?: XppVisibility;
   declaration: string;
   /**
    * Set when the class carries [ExtensionOf(...)] — i.e. it is a class
@@ -36,7 +43,12 @@ export interface XppClassInfo {
 
 export interface XppMethodInfo {
   name: string;
-  visibility: 'public' | 'private' | 'protected';
+  /**
+   * As declared in the X++ source. `internal` is a legal method modifier too, so
+   * the union carries it — a value the old three-way type could not express even
+   * once the parse was right.
+   */
+  visibility: XppVisibility;
   returnType: string;
   parameters: XppParameterInfo[];
   /**
@@ -175,6 +187,12 @@ export interface XppSymbol {
   extendsClass?: string;
   /** Comma-separated interfaces implemented (classes only). */
   implementsInterfaces?: string;
+  /**
+   * Access modifier as declared (classes only). Undefined both for a class that
+   * declares none and for a row written before the column existed — the readers
+   * therefore print it only when set, and never infer public from its absence.
+   */
+  visibility?: XppVisibility;
   usageExample?: string;
   patternType?: string;
   /** JSON array of typical usage examples. */

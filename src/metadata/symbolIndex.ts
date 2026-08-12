@@ -261,6 +261,7 @@ export class XppSymbolIndex {
       inlineComments: row.inline_comments || undefined,
       extendsClass: row.extends_class || undefined,
       implementsInterfaces: row.implements_interfaces || undefined,
+      visibility: row.visibility || undefined,
       usageExample: row.usage_example || undefined,
       usageFrequency: row.usage_frequency || undefined,
       patternType: row.pattern_type || undefined,
@@ -293,6 +294,7 @@ export class XppSymbolIndex {
         inline_comments TEXT,
         extends_class TEXT,
         implements_interfaces TEXT,
+        visibility TEXT,
         usage_example TEXT,
         usage_frequency INTEGER DEFAULT 0,
         pattern_type TEXT,
@@ -321,6 +323,10 @@ export class XppSymbolIndex {
         ['inline_comments', 'TEXT'],
         ['extends_class', 'TEXT'],
         ['implements_interfaces', 'TEXT'],
+        // Additive, like every column above it: a database built before this
+        // gets it as NULL and the readers omit the line until a re-index fills
+        // it, rather than being forced into a rebuild (#902).
+        ['visibility', 'TEXT'],
         ['usage_example', 'TEXT'],
         ['usage_frequency', 'INTEGER DEFAULT 0'],
         ['pattern_type', 'TEXT'],
@@ -1192,10 +1198,10 @@ export class XppSymbolIndex {
         INSERT OR REPLACE INTO symbols (
           name, type, parent_name, signature, file_path, model, package_name,
           description, tags, source_snippet, source, complexity, used_types, method_calls,
-          inline_comments, extends_class, implements_interfaces, usage_example,
+          inline_comments, extends_class, implements_interfaces, visibility, usage_example,
           usage_frequency, pattern_type, typical_usages, called_by_count, related_methods, api_patterns
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       this.stmtCache.set('addSymbol', stmt);
     }
@@ -1218,6 +1224,7 @@ export class XppSymbolIndex {
       symbol.inlineComments || null,
       symbol.extendsClass || null,
       symbol.implementsInterfaces || null,
+      symbol.visibility || null,
       symbol.usageExample || null,
       symbol.usageFrequency || 0,
       symbol.patternType || null,
@@ -2212,6 +2219,7 @@ export class XppSymbolIndex {
           tags: classData.tags?.join(', '),
           extendsClass: classData.extends,
           implementsInterfaces: classData.implements?.join(', '),
+          visibility: classData.visibility,
           usedTypes: classData.usedTypes?.join(', '),
           // Pattern analysis fields
           patternType: classData.patternType,

@@ -28,7 +28,7 @@ import * as debouncedRefresh from './debouncedRefresh.js';
 import { debugLog } from '../utils/logger.js';
 import { xppMethodSourceForXml } from '../utils/xppFormat.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
-import { parseXppDeclaration } from '../metadata/xppDeclaration.js';
+import { parseXppDeclaration, parseXppClassHeader } from '../metadata/xppDeclaration.js';
 import { rankCustomFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
 import {
   pageFields, fieldsHeading, fieldsFooter,
@@ -226,9 +226,21 @@ function formatClass(cls: BridgeClassInfo, compact: boolean, methodOffset: numbe
   if (cls.isAbstract) modifiers.push('abstract');
   const modStr = modifiers.length > 0 ? ` (${modifiers.join(', ')})` : '';
 
+  // The bridge sends no access modifier of its own, but it does send the
+  // declaration verbatim — and that is where the modifier lives, since AxClass
+  // XML has no element for it either. Parsed rather than regexed so a modifier
+  // named in an attribute or a doc comment cannot be mistaken for the real one.
+  const visibility = cls.declaration
+    ? parseXppClassHeader(cls.declaration)?.visibility
+    : undefined;
+
   let out = `# Class: ${cls.name}${modStr}\n\n`;
   if (cls.extends) out += `**Extends:** ${cls.extends}\n`;
   if (cls.model) out += `**Model:** ${cls.model}\n`;
+  // Printed on every path, so a reader comparing two classes is not left to infer
+  // package scope from a line's absence. Silent only when there was no
+  // declaration to read at all (#902).
+  if (cls.declaration) out += `**Access:** ${visibility ?? 'public'}\n`;
   out += `**Abstract:** ${cls.isAbstract ? 'Yes' : 'No'}\n`;
   out += `**Final:** ${cls.isFinal ? 'Yes' : 'No'}\n`;
   out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
