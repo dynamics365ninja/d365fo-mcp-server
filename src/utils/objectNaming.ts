@@ -17,6 +17,7 @@ import {
   resolveObjectPrefix,
   applyObjectPrefix,
   applyObjectSuffix,
+  deriveExtensionInfix,
   getObjectSuffix,
   getExtensionNamingStyle,
 } from './modelClassifier.js';
@@ -36,6 +37,31 @@ export const DOT_NOTATION_EXTENSION_TYPES: ReadonlySet<string> = new Set([
 
 export function isExtensionObjectType(objectType: string): boolean {
   return objectType === 'class-extension' || DOT_NOTATION_EXTENSION_TYPES.has(objectType);
+}
+
+/**
+ * Strip an element-style "Extension" word — and the infix or model token in front
+ * of it — off a class-extension name, leaving the base class.
+ *
+ * `Base.CtsoExtension` is how the dot-notation types spell it, so a caller writes
+ * a CoC class the same way: `Base_CtsoExtension`. Only the `_Extension` form was
+ * recognised, so that name read as a brand-new base class and grew a SECOND
+ * suffix — `Base_CtsoExtensionCtso_Extension`. Returns `name` unchanged when
+ * there is no "Extension" word, or when stripping would leave nothing.
+ */
+function stripElementStyleExtensionWord(name: string, tokens: readonly string[]): string {
+  if (!/extension$/i.test(name)) return name;
+  let base = name.slice(0, -'Extension'.length);
+  // Infix first: the token that would be re-applied is the one to take off, and
+  // for most models these are all the same string anyway.
+  for (const token of tokens) {
+    if (token && base.toLowerCase().endsWith(token.toLowerCase())) {
+      base = base.slice(0, -token.length);
+      break;
+    }
+  }
+  base = base.replace(/_+$/, '');
+  return base || name;
 }
 
 /**
@@ -101,10 +127,18 @@ export function normalizeObjectName(
     onNote?.(`Bare extension name auto-converted to dot-notation: ${objectName} → ${effective}`);
   }
 
-  // Case D: a class extension given a bare base class name.
+  // Case D: a class extension given a base class name — bare, or already carrying
+  // an element-style "Extension" word.
   if (objectType === 'class-extension' && !effective.endsWith('_Extension')) {
-    effective = `${effective}_Extension`;
-    onNote?.(`Bare class-extension name auto-converted to _Extension form: ${objectName} → ${effective}`);
+    const base = stripElementStyleExtensionWord(
+      effective,
+      [deriveExtensionInfix(objectPrefix, modelName), objectPrefix, modelToken],
+    );
+    const hadExtensionWord = base !== effective;
+    effective = `${base}_Extension`;
+    onNote?.(hadExtensionWord
+      ? `Element-style extension name rewritten to the class form: ${objectName} → ${effective}`
+      : `Bare class-extension name auto-converted to _Extension form: ${objectName} → ${effective}`);
   }
 
   let finalName = applyObjectPrefix(effective, objectPrefix, modelName);
