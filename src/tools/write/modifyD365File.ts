@@ -3398,10 +3398,11 @@ async function resolveD365FileByName(
       }
     }
 
-    // Only trust the DB path when it is an absolute path that actually exists on disk.
-    // The DB file_path column stores paths from the CI build agent (e.g. C:\home\vsts\work\...)
-    // which are never accessible at runtime.  Relative paths (e.g. "ContosoExt/ContosoExt/AxClass/Foo.xml")
-    // also come from this source and cannot be used directly.
+    // Only trust the DB path when it is an absolute .xml/.xpp path that actually
+    // exists on disk. The DB file_path column stores paths from the CI build agent
+    // (e.g. C:\home\vsts\work\...) which are never accessible at runtime. Relative
+    // paths (e.g. "ContosoExt/ContosoExt/AxClass/Foo.xml") also come from this source
+    // and cannot be used directly.
     // Fall through to findD365FileOnDisk which builds the correct absolute path from config.
     //
     // Use cross-platform absolute detection so that Windows-style drive paths (C:\...)
@@ -3409,7 +3410,16 @@ async function resolveD365FileByName(
     // returns false for Windows paths on POSIX hosts, causing spurious fallback loops).
     const isAbsoluteXPlat = (p: string) =>
       path.isAbsolute(p) || /^[a-zA-Z]:[\\/]/.test(p) || /^\\\\/.test(p);
-    if (dbResult && isAbsoluteXPlat(dbResult)) {
+    // Guard against a poisoned file_path: index* functions (e.g. indexEnums,
+    // indexEdts) fall back to the pre-extracted JSON cache file's own path when the
+    // cached object has no `sourcePath` (this is the documented, legacy shape for
+    // enums/EDTs — `{ raw: "<xml>..." }`, no sourcePath at all). That cache file is
+    // itself a real, accessible file on disk, so the plain existence check below
+    // would wrongly trust it as the write target. Reject anything that isn't the
+    // real AOT source file so we fall through to findD365FileOnDisk instead.
+    const looksLikeAotSourceFile = (p: string) =>
+      /\.(xml|xpp)$/i.test(p);
+    if (dbResult && isAbsoluteXPlat(dbResult) && looksLikeAotSourceFile(dbResult)) {
       try {
         await import('fs').then(m => m.promises.access(dbResult!));
         return dbResult;
@@ -3417,6 +3427,8 @@ async function resolveD365FileByName(
         // Absolute path from DB but not accessible — fall through to filesystem lookup
         console.error(`[modifyD365File] DB path not accessible: ${dbResult} — falling back to filesystem lookup`);
       }
+    } else if (dbResult && isAbsoluteXPlat(dbResult)) {
+      console.error(`[modifyD365File] DB returned a non-AOT-source path (likely a stale metadata cache entry): ${dbResult} — falling back to filesystem lookup`);
     } else if (dbResult) {
       console.error(`[modifyD365File] DB returned relative path: ${dbResult} — falling back to filesystem lookup`);
     }
