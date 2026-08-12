@@ -97,6 +97,16 @@ function validateNaming(baseName: string, finalName: string, modelName: string |
   if (!/^[A-Z]/.test(baseName)) {
     issues.push('❌ Name must start with an uppercase letter (PascalCase).');
   }
+  // The charset check above sees the name the CALLER typed. The name that actually
+  // gets written is finalName, which the prefix/model-name step composed — and that
+  // step is where an unrepresentable character can enter a name the caller never
+  // typed (#892). Extension forms legitimately carry one dot.
+  if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)?$/.test(finalName)) {
+    issues.push(
+      `❌ Final name "${finalName}" is not a valid AOT name — letters, digits and underscores only ` +
+        '(plus one dot for extension elements). Check the model name and prefix configuration.'
+    );
+  }
   const lines = [
     `Base name   : ${baseName}`,
     `Final name  : ${finalName}${finalName !== baseName ? ' _(prefix auto-applied by d365fo_file(action="create"))_' : ''}`,

@@ -11,6 +11,7 @@
  */
 
 import { getInferredModelPrefix, toExtensionInfixCase } from './modelPrefixInference.js';
+import { normalizeModelToken } from './modelToken.js';
 
 // Runtime registry for auto-detected custom models
 const autoDetectedCustomModels = new Set<string>();
@@ -269,6 +270,10 @@ export function applyObjectPrefix(objectName: string, prefix: string, modelName?
   // elements/classes only (VS default); regular new objects are unaffected.
   const useModelName = !!modelName && getExtensionNamingStyle() === 'model-name';
 
+  // The model name as it may appear inside an object name — identical to modelName
+  // unless the name carries characters an AOT identifier cannot (see #892).
+  const modelToken = modelName ? normalizeModelToken(modelName) : '';
+
   // Extension infix form — PascalCase without underscore (e.g. "XY" → "Xy" when env had "XY_"),
   // or the model's own infix when its existing extensions state one.
   const extensionInfix = deriveExtensionInfix(prefix, modelName);
@@ -293,7 +298,7 @@ export function applyObjectPrefix(objectName: string, prefix: string, modelName?
 
     // Replaces whatever follows the dot, so re-running is idempotent.
     if (useModelName) {
-      return `${basePart}.${modelName}`;
+      return `${basePart}.${modelToken}`;
     }
 
     if (suffixPart.toLowerCase().endsWith('extension')) {
@@ -315,14 +320,17 @@ export function applyObjectPrefix(objectName: string, prefix: string, modelName?
     // (avoids Base_ModelName_ModelName_Extension).
     if (useModelName) {
       let cleanBase = baseName.replace(/_+$/, '');
-      const lowerModel = modelName!.toLowerCase();
+      // Match on the TOKEN, not the raw model name: the token is what an existing
+      // name can contain, so comparing against "contoso robotics" never fired and
+      // CustTable_ContosoRobotics_Extension grew a second token on every pass.
+      const lowerModel = modelToken.toLowerCase();
       if (cleanBase.toLowerCase().endsWith('_' + lowerModel)) {
         cleanBase = cleanBase.slice(0, cleanBase.length - lowerModel.length - 1);
       } else if (cleanBase.toLowerCase().endsWith(lowerModel)) {
         cleanBase = cleanBase.slice(0, cleanBase.length - lowerModel.length);
       }
       cleanBase = cleanBase.replace(/_+$/, '');
-      return `${cleanBase}_${modelName}_Extension`;
+      return `${cleanBase}_${modelToken}_Extension`;
     }
 
     // Check if the extension infix is already present at the end (case-insensitive)
