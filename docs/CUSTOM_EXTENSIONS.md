@@ -158,7 +158,7 @@ EXTENSION_NAMING_STYLE=prefix        # default — or "model-name"
 | `model-name` | `CustTable.ContosoRobotics` | `CustTable_ContosoRobotics_Extension` |
 
 - **`prefix`** embeds the `EXTENSION_PREFIX` infix (Microsoft's prefix-based naming guideline).
-- **`model-name`** embeds the **model name**, matching the Visual Studio developer-tools default (which uses the model name because it is already guaranteed unique). Use this when your model name is long/customer-specific (e.g. `ContosoRobotics`) but your prefix is a short abbreviation (e.g. `CR`) — the prefix still applies to **new** objects (`CRMyTable`) and to fields/methods added inside extensions (`CRApprovingWorker`); only the extension element/class token switches to the model name.
+- **`model-name`** embeds the **model name** — with any character an AOT identifier cannot hold removed, so a model called `Contoso Robotics` yields `CustTable.ContosoRobotics` (the same spelling the platform itself derives: `<Name>Monitoring and Telemetry</Name>` → `<ModelModule>MonitoringandTelemetry</ModelModule>`) — matching the Visual Studio developer-tools default (which uses the model name because it is already guaranteed unique). Use this when your model name is long/customer-specific (e.g. `ContosoRobotics`) but your prefix is a short abbreviation (e.g. `CR`) — the prefix still applies to **new** objects (`CRMyTable`) and to fields/methods added inside extensions (`CRApprovingWorker`); only the extension element/class token switches to the model name.
 
 Run `get_workspace_info` to see the active style and worked examples of exactly what the tools will emit.
 
