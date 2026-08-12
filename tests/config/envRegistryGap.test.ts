@@ -36,7 +36,7 @@ const NOT_CONFIGURATION = new Set([
   'TERM_PROGRAM', 'TF_BUILD', 'WSLENV', 'WT_SESSION',
   // how the process was launched / where it reads its own config from
   'D365FO_CONFIG', 'D365FO_MCP_HOME', 'ENV_FILE', 'MCP_CONFIG_PATH',
-  'MCP_STDIO_MODE', 'NODE_ENV', 'WEBSITES_PORT',
+  'ALLOW_UNAUTHENTICATED', 'MCP_STDIO_MODE', 'NODE_ENV', 'WEBSITES_PORT',
   // npm / IDE ambient
   'VSCODE_WORKSPACE_FOLDER_PATHS', 'npm_config_registry',
 ]);

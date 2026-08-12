@@ -22,7 +22,7 @@ import { initializeDatabase } from './database/download.js';
 import { initializeConfig, getConfigManager } from './utils/configManager.js';
 import { SERVER_MODE, LOCAL_TOOLS, TOOL_PROFILE, EXTRA_TOOLS, isToolEnabled } from './server/serverMode.js';
 import { TOOL_ANNOTATIONS } from './server/toolAnnotations.js';
-import { apiKeyAuth } from './middleware/apiKeyAuth.js';
+import { apiKeyAuth, authStartupError, resolveBindHost } from './middleware/apiKeyAuth.js';
 import { VERSION } from './version.js';
 import { setInitializeParams } from './utils/stdioSessionInfo.js';
 import { setModelObjectNameSource } from './utils/modelPrefixInference.js';
@@ -693,7 +693,19 @@ async function main() {
     // Branded banner first — connection details are known immediately, before
     // the (potentially long) database load. Symbol counts are intentionally NOT
     // shown here; they appear once during the load (`✓ Loaded … symbols`).
-    const host = process.env.HOST || '0.0.0.0';
+    // Fail closed before anything binds: a network-reachable listener with no
+    // API_KEY would serve the whole read surface to anonymous callers.
+    const authError = authStartupError();
+    if (authError) {
+      console.error('');
+      console.error(authError);
+      console.error('');
+      process.exit(1);
+    }
+
+    // Not `process.env.HOST || '0.0.0.0'` — with no key configured the default
+    // is loopback, so forgetting the key costs reachability, not secrecy.
+    const host = resolveBindHost();
     const W = 50;
     console.log('');
     for (const line of box([
@@ -704,6 +716,13 @@ async function main() {
     }
     console.log('');
     console.log(kv('Mode', `HTTP ${c.dim(glyph.dot)} ${SERVER_MODE}`));
+    // Three states, and the guard above has already ruled out the fourth
+    // (no key on a public interface), so "none" here always means loopback.
+    console.log(kv('Auth', process.env.API_KEY?.trim()
+      ? `API key ${c.dim(glyph.dot)} X-Api-Key`
+      : process.env.ALLOW_UNAUTHENTICATED === 'true'
+        ? c.yellow(`delegated upstream ${c.dim(glyph.dot)} nothing is checked here`)
+        : `none ${c.dim(glyph.dot)} ${c.dim('loopback only, not reachable from the network')}`));
     console.log(kv('Endpoint', c.cyan(`http://${host}:${PORT}/mcp`)));
     console.log(kv('Health', c.cyan(`http://localhost:${PORT}/health`)));
     console.log(kv('Runtime', `Node ${process.version} ${c.dim(glyph.dot)} pid ${process.pid}`));

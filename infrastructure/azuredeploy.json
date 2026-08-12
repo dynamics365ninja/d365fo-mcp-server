@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.40.2.10011",
-      "templateHash": "13972538043223312628"
+      "version": "0.45.15.27210",
+      "templateHash": "18129419826353599281"
     }
   },
   "parameters": {
@@ -13,7 +13,7 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Azure region for resources. Leave empty to use the resource group's location."
+        "description": "Azure region for resources. Leave empty to inherit the resource group location."
       }
     },
     "appServiceSku": {
@@ -58,9 +58,9 @@
     },
     "apiKey": {
       "type": "securestring",
-      "defaultValue": "",
+      "minLength": 32,
       "metadata": {
-        "description": "API key for authenticating MCP requests. When set, clients must send X-Api-Key header. Leave empty to disable auth."
+        "description": "API key for authenticating MCP requests. Clients must send it as X-Api-Key (or Authorization: Bearer). Generate a strong random value, e.g. `openssl rand -hex 32`."
       }
     }
   },

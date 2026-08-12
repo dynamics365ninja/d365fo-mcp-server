@@ -129,7 +129,12 @@ Startup logs confirm the filtering:
 [MCP Server] Tool list filtered for write-only mode
 ```
 
-> When deploying via the Bicep template or the DevOps pipeline, `MCP_SERVER_MODE=read-only` is set automatically on the App Service — write tools are never advertised on the public URL.
+> When deploying via the Bicep template or the DevOps pipeline, `MCP_SERVER_MODE=read-only` is set automatically on the App Service, so the `LOCAL_TOOLS` set (build, DB sync, BP checks, undo, workspace inspection) is not advertised there.
+>
+> Two caveats, so this is not mistaken for a security boundary:
+>
+> - `ALWAYS_TOOLS` — `get_object_info`, `labels`, `d365fo_file` — are advertised in **every** mode. `labels` and `d365fo_file` carry write actions; on Azure those fail because there is no `K:\`, not because the mode blocks them.
+> - `read-only` limits *which tools* are reachable, not *who* may reach them. The full read surface returns `source_snippet` fields containing your X++. Authentication is what protects it — see [`API_KEY`](SETUP_AZURE.md#step-2--configure-app-settings), which is required in production.
 
 ---
 
