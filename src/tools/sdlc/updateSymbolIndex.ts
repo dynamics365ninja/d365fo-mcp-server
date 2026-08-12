@@ -427,6 +427,7 @@ export async function indexOneFile(
             tags: classData.tags?.join(', '),
             extendsClass: classData.extends,
             implementsInterfaces: classData.implements?.join(', '),
+            visibility: classData.visibility,
             usedTypes: classData.usedTypes?.join(', '),
           });
           insertedCount++;

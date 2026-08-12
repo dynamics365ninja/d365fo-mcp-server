@@ -26,8 +26,10 @@ import {
   parseXppClassHeader,
   parseExtensionOfAttribute,
   callsNext,
+  visibilityFromModifiers,
   type XppDeclaration,
   type XppClassHeader,
+  type XppVisibility,
 } from './xppDeclaration.js';
 
 export interface XppExtensionMembers {
@@ -177,6 +179,7 @@ export class XppMetadataParser {
         implements: parsedImplements,
         isAbstract,
         isFinal,
+        visibility: header?.visibility,
         declaration: parsedDeclaration,
         extensionOf,
         methods: parsedMethods,
@@ -302,6 +305,13 @@ export class XppMetadataParser {
   private extractClassDeclaration(axClass: any, header?: XppClassHeader | null): string {
     const modifiers: string[] = [];
     if (header) {
+      // The access modifier leads, as it does in the source: `internal final
+      // class Foo`. Rebuilding from isAbstract/isFinal alone did not merely omit
+      // it — under a heading that reads `## Declaration` it printed `final class
+      // Foo` for a source line saying `internal final class Foo`, with nothing to
+      // tell the reader the block was a reconstruction (#902). Absent from the
+      // source means absent here: no synthesised `public`.
+      if (header.visibility) modifiers.push(header.visibility);
       if (header.isAbstract) modifiers.push('abstract');
       if (header.isFinal) modifiers.push('final');
       let decl = modifiers.length > 0 ? `${modifiers.join(' ')} ` : '';
@@ -333,7 +343,7 @@ export class XppMetadataParser {
 
       const baseMethod: XppMethodInfo = {
         name: methodName,
-        visibility: this.parseVisibility(method.Visibility),
+        visibility: this.parseVisibility(decl?.modifiers, method.Visibility),
         returnType: decl?.returnType || method.ReturnType || 'void',
         parameters: this.toParameterInfo(decl),
         parametersUnknown: decl === null,
@@ -346,11 +356,27 @@ export class XppMetadataParser {
     });
   }
 
-  private parseVisibility(vis?: string): 'public' | 'private' | 'protected' {
+  /**
+   * The method's access modifier, read from the declaration that was just parsed.
+   *
+   * It used to be read from a `<Method><Visibility>` element, which real AxClass
+   * XML does not have — so every method in the AOT fell through to 'public',
+   * including the protected ones, and `get_object_info` printed
+   * `- **Visibility:** public` under each of them (#902). The modifiers were in
+   * hand two lines above the call all along.
+   *
+   * The element is still honoured as a fallback for hand-written/synthetic XML
+   * and for a declaration too malformed to parse; only then does the X++ default
+   * of public apply.
+   */
+  private parseVisibility(modifiers?: string[], vis?: string): XppVisibility {
+    const declared = modifiers ? visibilityFromModifiers(modifiers) : undefined;
+    if (declared) return declared;
+    if (modifiers) return 'public';
+
     if (!vis) return 'public';
     const lower = vis.toLowerCase();
-    if (lower === 'private') return 'private';
-    if (lower === 'protected') return 'protected';
+    if (lower === 'private' || lower === 'protected' || lower === 'internal') return lower;
     return 'public';
   }
 

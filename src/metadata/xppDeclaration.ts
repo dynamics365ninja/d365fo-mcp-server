@@ -56,6 +56,9 @@ export function renderMethodSignature(method: RenderableMethod): string {
   return `${method.returnType ?? 'void'} ${method.name}(${params})`;
 }
 
+/** X++ access modifiers, as they may appear on a class or method line. */
+export type XppVisibility = 'public' | 'private' | 'protected' | 'internal';
+
 export interface XppClassHeader {
   kind: 'class' | 'interface';
   name: string;
@@ -63,6 +66,16 @@ export interface XppClassHeader {
   implements: string[];
   isAbstract: boolean;
   isFinal: boolean;
+  /**
+   * The access modifier as WRITTEN on the class line; undefined when the source
+   * states none. Deliberately not defaulted to 'public' (which is what an X++
+   * class without a modifier is): callers rebuild the declaration line from this
+   * header, and an effective value would make `class Foo` come back out as
+   * `public class Foo` — a line the source does not contain. Roughly one AOT
+   * class in three is `internal`, and the modifier used to be read here and
+   * dropped, so no reader could see it at all (#902).
+   */
+  visibility?: XppVisibility;
 }
 
 export interface XppDeclarationParameter {
@@ -326,6 +339,10 @@ export function parseXppClassHeader(declaration: string): XppClassHeader | null 
     ? implementsMatch[1].split(',').map(s => s.trim()).filter(Boolean)
     : [];
 
+  // Same slice the abstract/final tests read, so an access modifier hidden in an
+  // attribute or a comment cannot reach it either.
+  const visibilityMatch = /\b(public|private|protected|internal)\b/i.exec(modifiers);
+
   return {
     kind: kw[1] as 'class' | 'interface',
     name: kw[2],
@@ -333,7 +350,21 @@ export function parseXppClassHeader(declaration: string): XppClassHeader | null 
     implements: implementsList,
     isAbstract: /\babstract\b/i.test(modifiers),
     isFinal: /\bfinal\b/i.test(modifiers),
+    visibility: visibilityMatch
+      ? (visibilityMatch[1].toLowerCase() as XppVisibility)
+      : undefined,
   };
+}
+
+/**
+ * The access modifier among a declaration's modifiers, or undefined when none is
+ * stated. X++ defaults to public, and this deliberately does not say so — see
+ * XppClassHeader.visibility.
+ */
+export function visibilityFromModifiers(modifiers: readonly string[]): XppVisibility | undefined {
+  return modifiers.find(m =>
+    m === 'public' || m === 'private' || m === 'protected' || m === 'internal',
+  ) as XppVisibility | undefined;
 }
 
 /**

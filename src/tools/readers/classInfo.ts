@@ -107,6 +107,11 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
     }
     
     output += `**Model:** ${cls.model}\n`;
+    // Beside the model, because the two are only useful together: `internal` is
+    // package-scoped, so whether it blocks the reader depends on which model the
+    // reader is writing in. Stated as a fact, with no verdict attached (#902).
+    // The declaration was read here, so an absent modifier really is public.
+    output += `**Access:** ${cls.visibility ?? 'public'}\n`;
     output += `**Abstract:** ${cls.isAbstract ? 'Yes' : 'No'}\n`;
     output += `**Final:** ${cls.isFinal ? 'Yes' : 'No'}\n\n`;
 
@@ -184,6 +189,10 @@ async function buildDbOnlyResponse(
   let output = `# Class: ${className}`;
   if (classSymbol.extendsClass) output += ` extends ${classSymbol.extendsClass}`;
   output += `\n**Model:** ${classSymbol.model}`;
+  // Only when the column holds something. Unlike the XML path this one has not
+  // read the source, and a database built before the column existed answers NULL
+  // for every class — which is "not indexed yet", not "public" (#902).
+  if (classSymbol.visibility) output += `  **Access:** ${classSymbol.visibility}`;
   if (classSymbol.implementsInterfaces) output += `  **Implements:** ${classSymbol.implementsInterfaces}`;
   output += '\n\n';
 
