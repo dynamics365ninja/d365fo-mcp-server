@@ -11,7 +11,7 @@
  * is a cheap read-and-compare with no subprocess spawned.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { settingByPath } from '../../config/settings.js';
 import { findPackagesRoot } from '../../utils/packagesRoot.js';
 import { commandExists, runExe } from '../exec.js';
@@ -45,7 +45,10 @@ function resolveSource(target: Target): ResolvedSource | null {
     || findPackagesRoot()
     || undefined;
   if (!packagesPath) return null;
-  const binDir = `${packagesPath.replace(/[\\/]+$/, '')}\\bin`;
+  // join(), not a hardcoded '\bin' — this path is only ever real on Windows in
+  // production, but the test suite (and CI) exercises it on Linux too, where a
+  // literal backslash is just another filename character, not a separator.
+  const binDir = join(packagesPath, 'bin');
   try {
     return { versionKey: `mtime:${statSync(binDir).mtimeMs}`, packagesPath };
   } catch {
