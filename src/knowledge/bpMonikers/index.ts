@@ -15,9 +15,45 @@
  * strings, a source that also contains non-BP messages; and the suppression
  * shape below follows what real AxIgnoreDiagnosticList files contain, measured
  * across all 299 of them, not what one sampled entry happened to look like.
+ *
+ * The compiled-in catalog above is one snapshot from one D365FO box, shared by
+ * the whole npm install. An instance that has regenerated its OWN catalog
+ * (`d365fo-mcp instance rebuild/upgrade` — see ensureBpCatalogFresh in
+ * src/cli/commands/indexCmd.ts) points BP_CATALOG_PATH at that JSON file
+ * instead, so validate/search reflects its actual pinned version rather than
+ * whichever box the shipped snapshot happened to come from. Same fallback
+ * shape as METADATA_PATH (src/utils/metadataResolver.ts): env var unset, or
+ * the file missing/unparsable, silently keeps the compiled default — no
+ * instance is worse off for never having regenerated one.
  */
 
-import { BP_MONIKER_CATALOG, type BpMonikerEntry } from './catalog.generated.js';
+import { readFileSync } from 'node:fs';
+import { BP_MONIKER_CATALOG as COMPILED_CATALOG, type BpMonikerEntry } from './catalog.generated.js';
+
+interface BpCatalogFile {
+  entries?: unknown;
+}
+
+function loadCatalog(): BpMonikerEntry[] {
+  const overridePath = process.env.BP_CATALOG_PATH;
+  if (!overridePath) return COMPILED_CATALOG;
+  try {
+    const parsed = JSON.parse(readFileSync(overridePath, 'utf-8')) as BpCatalogFile;
+    if (!Array.isArray(parsed.entries)) {
+      console.warn(`BP_CATALOG_PATH (${overridePath}) has no 'entries' array — using the compiled-in catalog instead.`);
+      return COMPILED_CATALOG;
+    }
+    return parsed.entries as BpMonikerEntry[];
+  } catch (err) {
+    // Missing file (never regenerated for this instance yet) or malformed JSON
+    // are both routine, not errors — the compiled default is always a valid
+    // fallback, so a bad override must never make bp_moniker unusable.
+    console.warn(`BP_CATALOG_PATH (${overridePath}) could not be read (${(err as Error).message}) — using the compiled-in catalog instead.`);
+    return COMPILED_CATALOG;
+  }
+}
+
+const BP_MONIKER_CATALOG: BpMonikerEntry[] = loadCatalog();
 
 const BY_MONIKER: ReadonlyMap<string, BpMonikerEntry> = new Map(
   BP_MONIKER_CATALOG.map(e => [e.moniker.toLowerCase(), e]),

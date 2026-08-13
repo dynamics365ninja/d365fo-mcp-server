@@ -42,13 +42,30 @@
 .PARAMETER PackagesPath
     Root PackagesLocalDirectory to scan. Defaults to the newest
     %LOCALAPPDATA%\Microsoft\Dynamics365\<version>\PackagesLocalDirectory found.
+.PARAMETER OutFile
+    When given, write a JSON file at this path instead of the default
+    src\knowledge\bpMonikers\catalog.generated.ts TypeScript module. Used by
+    the instance CLI (`d365fo-mcp instance rebuild/upgrade`) to give each
+    instance its own catalog, matching that instance's actual D365FO version,
+    instead of everyone sharing the one committed snapshot.
+.PARAMETER Version
+    Stamped into the JSON output's `version` field alongside PackagesPath, so
+    the caller's staleness check has something to compare against on the next
+    run. Only meaningful with -OutFile; ignored otherwise. Purely a passthrough
+    — this script does not attempt to discover the version itself, since a UDE
+    config filename and a traditional-environment mtime hash are discovered
+    differently and that logic belongs with the caller.
 .EXAMPLE
     .\scripts\extract-bp-catalog.ps1
 .EXAMPLE
     .\scripts\extract-bp-catalog.ps1 -PackagesPath "K:\AosService\PackagesLocalDirectory"
+.EXAMPLE
+    .\scripts\extract-bp-catalog.ps1 -PackagesPath "K:\AosService\PackagesLocalDirectory" -OutFile "instances\clientA\data\bp-moniker-catalog.json" -Version "10.0.2527.174"
 #>
 param(
-    [string]$PackagesPath
+    [string]$PackagesPath,
+    [string]$OutFile,
+    [string]$Version
 )
 
 $ErrorActionPreference = 'Stop'
@@ -152,6 +169,32 @@ Write-Host "Monikers with real message/description text: $($messages.Count)"
 $allMonikers = [System.Collections.Generic.SortedSet[string]]::new()
 foreach ($m in $canonical) { [void]$allMonikers.Add($m) }
 foreach ($m in $messages.Keys) { [void]$allMonikers.Add($m) }
+
+if ($OutFile) {
+    # ── JSON mode: one instance's own catalog, matching its own version ────
+    $entries = foreach ($m in $allMonikers) {
+        $hasResource = $messages.ContainsKey($m)
+        [PSCustomObject]@{
+            moniker     = $m
+            message     = if ($hasResource) { $messages[$m].message } else { $null }
+            description = if ($hasResource) { $messages[$m].description } else { $null }
+            canonical   = $canonical.Contains($m)
+        }
+    }
+    $payload = [PSCustomObject]@{
+        generatedAt  = (Get-Date).ToString('o')
+        packagesPath = $PackagesPath
+        version      = $Version
+        entries      = @($entries)
+    }
+    $outDir = Split-Path $OutFile -Parent
+    if ($outDir) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
+    $payload | ConvertTo-Json -Depth 5 | Set-Content -Path $OutFile -Encoding utf8
+    Write-Host "Wrote $($allMonikers.Count) entries to $OutFile"
+    Write-Host "  canonical (in an AxRuleSet):        $($canonical.Count)"
+    Write-Host "  with real message/description text: $($messages.Count)"
+    return
+}
 
 function ToJsStringLiteral($s) {
     # No [string] type constraint on the parameter — PowerShell coerces a

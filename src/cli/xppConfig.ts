@@ -68,6 +68,21 @@ function pinnedConfigName(store: SettingsStore): string | null {
 }
 
 /**
+ * The full {@link XppConfig} a UDE target resolves to: the pinned one if it
+ * names a file that still exists, otherwise the newest available (mirrors
+ * XppConfigProvider.getActiveConfig's default). Null for a traditional
+ * target, or when no config exists at all.
+ */
+export function resolvePinnedXppConfig(store: SettingsStore): XppConfig | null {
+  if (readSetting(store, envTypeSetting) === 'traditional') return null;
+  const configs = listXppConfigs();
+  if (configs.length === 0) return null;
+  const configName = pinnedConfigName(store);
+  if (!configName) return configs[0];
+  return configs.find(c => c.fullName === configName) ?? configs[0];
+}
+
+/**
  * Expand a short config name (e.g. "myenv-dev") to the newest full versioned
  * name ("myenv-dev___10.0.2345.153") so a later staleness check is a plain
  * file-exists test, and persist the expansion. No-op for traditional

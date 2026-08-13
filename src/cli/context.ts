@@ -182,6 +182,14 @@ export const paths = {
   /** esbuild bundles of the two scripts above — what an npm install ships instead of the sources. */
   extractScriptDist: resolve(repoRoot, 'dist', 'scripts', 'extract-metadata.js'),
   buildDbScriptDist: resolve(repoRoot, 'dist', 'scripts', 'build-database.js'),
+  /**
+   * Not compiled, not bundled — a raw PowerShell script that reflects over the
+   * .NET-authored BP-rule DLLs to pull real message/description text, which
+   * Node cannot do on its own. Same path for a git checkout and an npm
+   * install; ships as a listed file in package.json rather than through the
+   * dist/ pipeline the .ts scripts above use.
+   */
+  extractBpCatalogScript: resolve(repoRoot, 'scripts', 'extract-bp-catalog.ps1'),
 };
 
 /**

@@ -14,7 +14,8 @@
     ".github/copilot-instructions.md",
     "bridge/D365MetadataBridge",
     "!bridge/D365MetadataBridge/bin/**",
-    "!bridge/D365MetadataBridge/obj/**"
+    "!bridge/D365MetadataBridge/obj/**",
+    "scripts/extract-bp-catalog.ps1"
   ],
   "repository": {
     "type": "git",

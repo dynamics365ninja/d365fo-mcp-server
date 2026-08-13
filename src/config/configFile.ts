@@ -149,7 +149,7 @@ export function toEnvRecord(files: Pick<ResolvedConfigFiles, 'baseDir' | 'config
 /**
  * The path settings the wizard never writes, resolved against `baseDir`.
  *
- * DB_PATH, LABELS_DB_PATH and METADATA_PATH are advanced settings with
+ * DB_PATH, LABELS_DB_PATH, METADATA_PATH and BP_CATALOG_PATH are advanced settings with
  * relative defaults, so a normal setup leaves them out of the config file
  * entirely and every consumer falls back to its own `'./data/…'` literal —
  * which resolves from process.cwd(). For a git checkout that is the repo, and

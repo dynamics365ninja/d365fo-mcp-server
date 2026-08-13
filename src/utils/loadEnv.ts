@@ -19,9 +19,10 @@
  *   D365FO_CONFIG=instances/alpha/d365fo-mcp.json node dist/index.js
  *   ENV_FILE=.env.alpha  npm run build-database
  *
- * Relative paths in DB_PATH, LABELS_DB_PATH, and METADATA_PATH are resolved
- * relative to the config (or .env) file's directory, so instance files can use
- * portable paths like ./data/xpp-metadata.db that survive folder renames.
+ * Relative paths in DB_PATH, LABELS_DB_PATH, METADATA_PATH, and BP_CATALOG_PATH
+ * are resolved relative to the config (or .env) file's directory, so instance
+ * files can use portable paths like ./data/xpp-metadata.db that survive folder
+ * renames.
  */
 
 import dotenv from 'dotenv';
@@ -31,7 +32,7 @@ import { fileURLToPath } from 'url';
 import { defaultPathEnv, resolveConfigFiles, toEnvRecord } from '../config/configFile.js';
 
 /** Env vars whose relative paths should resolve from the .env file directory. */
-const PATH_VARS = ['DB_PATH', 'LABELS_DB_PATH', 'METADATA_PATH'] as const;
+const PATH_VARS = ['DB_PATH', 'LABELS_DB_PATH', 'METADATA_PATH', 'BP_CATALOG_PATH'] as const;
 
 /**
  * The settings that decide whether a write may cross into another model. They
