@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { XppMetadataParser } from '../../metadata/xmlParser.js';
+import { XppMetadataParser, buildClassExtensionRecord } from '../../metadata/xmlParser.js';
 import { parseLabelFile } from '../../metadata/labelParser.js';
 import type { XppServerContext } from '../../types/context.js';
 import type { XppSymbol } from '../../metadata/types.js';
@@ -64,6 +64,18 @@ const AOT_FOLDER_TYPE_MAP: Record<string, XppSymbol['type']> = {
  */
 /** Any AOT element folder, mapped or not (AxMenu, AxWorkflowType, …). */
 const AOT_FOLDER_PATTERN = /^ax[a-z]/i;
+
+/**
+ * The types that own an extension_metadata row, taken from the map above so a
+ * new Ax*Extension folder cannot be added without one.
+ *
+ * class-extension is deliberately absent: the AOT has no AxClassExtension
+ * artifact, so a class extension arrives as an AxClass file and is recognised by
+ * its [ExtensionOf] attribute in the class branch instead.
+ */
+const EXTENSION_OBJECT_TYPES = new Set<string>(
+  Object.values(AOT_FOLDER_TYPE_MAP).filter(t => t.endsWith('-extension')),
+);
 
 /** True for an AOT element folder segment — mapped types plus everything else Ax*. */
 export function isAotFolder(segment: string): boolean {
@@ -303,6 +315,37 @@ async function refreshOnly(context: XppServerContext) {
  * update_symbol_index — which was the last legitimate mid-task reason to call
  * that tool at all.
  */
+/**
+ * Refresh the extension_metadata row for one Ax*Extension file.
+ *
+ * Returns the identity the caller needs for the symbol row, or null when the
+ * file does not parse as an extension — in which case the caller falls back to
+ * the bare object row, which is what every extension used to get.
+ */
+async function reindexExtensionMetadata(
+  filePath: string,
+  objectType: string,
+  model: string,
+  symbolIndex: XppServerContext['symbolIndex'],
+  parser: XppMetadataParser,
+): Promise<{ name: string; baseObjectName: string } | null> {
+  const parsed = await parser.parseExtensionFile(filePath, objectType);
+  if (!parsed.success || !parsed.data?.name) return null;
+  const data = parsed.data;
+  symbolIndex.upsertExtensionMetadata?.({
+    extensionName: data.name,
+    extensionType: objectType,
+    baseObjectName: data.baseObjectName,
+    addedFields: data.addedFields,
+    addedMethods: data.addedMethods,
+    addedIndexes: data.addedIndexes,
+    cocMethods: data.cocMethods,
+    eventSubscriptions: data.eventSubscriptions,
+    model,
+  });
+  return { name: data.name, baseObjectName: data.baseObjectName };
+}
+
 export async function indexOneFile(
   filePath: string,
   context: XppServerContext,
@@ -328,6 +371,17 @@ export async function indexOneFile(
       // 2. Remove labels from labels DB (label files live alongside XML)
       const labelCount = symbolIndex.removeLabelsByFile(filePath);
 
+      // 2b. extension_metadata is keyed by name + type + model, not by path, so
+      // removeSymbolsByFile above cannot reach it. Both spellings are tried
+      // because a class extension is an AxClass file; each is a no-op when the
+      // row is not there.
+      const deletedModel = extractModelFromPath(filePath) ?? 'Unknown';
+      const metaCount =
+        (symbolIndex.removeExtensionMetadata?.(objectName, objectType, deletedModel) ?? 0) +
+        (objectType === 'class'
+          ? (symbolIndex.removeExtensionMetadata?.(objectName, 'class-extension', deletedModel) ?? 0)
+          : 0);
+
       // The bridge refresh that stops it seeing the deleted file is the caller's
       // per-batch one.
       symbolIndex.touchLastIndexed?.();
@@ -335,6 +389,7 @@ export async function indexOneFile(
       const parts_cleaned: string[] = [];
       if (deletedCount > 0) parts_cleaned.push(`${deletedCount} symbol(s)`);
       if (labelCount > 0) parts_cleaned.push(`${labelCount} label(s)`);
+      if (metaCount > 0) parts_cleaned.push(`${metaCount} extension record(s)`);
       const summary = parts_cleaned.length > 0 ? parts_cleaned.join(' + ') : 'no stale entries found';
 
       return ok(`🗑️ File deleted — cleaned up ${summary} for **${objectName}** (${objectType}).`);
@@ -452,6 +507,23 @@ export async function indexOneFile(
           }
         });
         insert();
+        // A class carrying [ExtensionOf(...)] is also an extension — the AOT has
+        // no separate artifact for one — and resolveReferences resolves an
+        // extension-added or CoC-wrapped method through extension_metadata.
+        const extension = buildClassExtensionRecord(classData, model);
+        if (extension) {
+          symbolIndex.upsertExtensionMetadata?.({
+            extensionName: extension.name,
+            extensionType: 'class-extension',
+            baseObjectName: extension.baseObjectName,
+            addedFields: extension.addedFields,
+            addedMethods: extension.addedMethods,
+            addedIndexes: extension.addedIndexes,
+            cocMethods: extension.cocMethods,
+            eventSubscriptions: extension.eventSubscriptions,
+            model,
+          });
+        }
       } else {
         // Fallback: just index the object name
         tx();
@@ -605,7 +677,27 @@ export async function indexOneFile(
       } else {
         tx();
       }
-    } else if (objectType === 'form' || objectType === 'form-extension') {
+    } else if (EXTENSION_OBJECT_TYPES.has(objectType)) {
+      // One branch for every Ax*Extension kind, form extensions included: they
+      // differ only in which tag holds the added members, which
+      // parseExtensionFile already knows. The symbol row carries the base object
+      // the way the full build writes it, so the two paths agree.
+      const extension = await reindexExtensionMetadata(filePath, objectType, model, symbolIndex, parser);
+      if (extension) {
+        symbolIndex.addSymbol({
+          name: extension.name,
+          type: objectType,
+          parentName: extension.baseObjectName || undefined,
+          extendsClass: extension.baseObjectName || undefined,
+          signature: extension.baseObjectName || undefined,
+          filePath,
+          model,
+        });
+        insertedCount++;
+      } else {
+        tx();
+      }
+    } else if (objectType === 'form') {
       const result = await parser.parseFormFile(filePath, model);
       if (result.success && result.data) {
         const formData = result.data as any;
