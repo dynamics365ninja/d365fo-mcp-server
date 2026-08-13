@@ -1,13 +1,15 @@
 /**
  * get_knowledge Tool — unified knowledge-lookup entry point.
  *
- * Three kinds behind one tool (KNOWLEDGE_KINDS below is the authority); the
+ * Four kinds behind one tool (KNOWLEDGE_KINDS below is the authority); the
  * first two absorbed the retired standalone knowledge tools:
- *   • knowledge → queryable X++ rulebook (patterns, BP rules, migration)
- *   • error     → diagnose a D365FO/X++ compiler or runtime error
- *   • op-spec   → parameter contract for one d365fo_file operation/objectType
- *                 or one generate_object mode (issue #825: these no longer ship
- *                 inline in those tools' wire schemas)
+ *   • knowledge  → queryable X++ rulebook (patterns, BP rules, migration)
+ *   • error      → diagnose a D365FO/X++ compiler or runtime error
+ *   • op-spec    → parameter contract for one d365fo_file operation/objectType
+ *                  or one generate_object mode (issue #825: these no longer ship
+ *                  inline in those tools' wire schemas)
+ *   • bp-moniker → validate/search a BP-check diagnostic moniker, or render a
+ *                  _BPSuppressions.xml block (src/knowledge/bpMonikers/)
  *
  * The knowledge/error handlers take the request only (no context). Handler files
  * stay where they are — only the MCP surface is consolidated.
@@ -17,16 +19,18 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { xppKnowledgeTool } from './xppKnowledge.js';
 import { d365foErrorHelpTool } from './d365foErrorHelp.js';
+import { bpMonikerHelpTool } from './bpMonikerHelp.js';
 import { lookupOpSpec } from '../specs/opSpecs.js';
 
-export const KNOWLEDGE_KINDS = ['knowledge', 'error', 'op-spec'] as const;
+export const KNOWLEDGE_KINDS = ['knowledge', 'error', 'op-spec', 'bp-moniker'] as const;
 export type KnowledgeKind = (typeof KNOWLEDGE_KINDS)[number];
 
 const GetKnowledgeArgsSchema = z
   .object({
     kind: z.enum(KNOWLEDGE_KINDS).optional().describe(
       'knowledge → look up an X++ topic/rule; error → diagnose a compiler/runtime error message; ' +
-      'op-spec → parameter contract for a d365fo_file operation/objectType or a generate_object mode. ' +
+      'op-spec → parameter contract for a d365fo_file operation/objectType or a generate_object mode; ' +
+      'bp-moniker → validate/search a BP-check diagnostic moniker or render a _BPSuppressions.xml block. ' +
       'Optional — inferred from errorText (→ error) or topic (→ knowledge) when omitted.',
     ),
   })
@@ -50,6 +54,15 @@ export async function getKnowledgeTool(request: CallToolRequest) {
     explicitKind ?? ((rest as any).errorText || (rest as any).errorCode ? 'error' : 'knowledge');
   if (kind === 'error') {
     return d365foErrorHelpTool(subRequest('get_d365fo_error_help', rest));
+  }
+
+  if (kind === 'bp-moniker') {
+    // The wire schema doesn't publish a separate `query` field for the search
+    // action (budget) — it reuses `topic`, same alias trick as the knowledge
+    // kind below.
+    const bpArgs = rest as Record<string, unknown>;
+    if (bpArgs.query == null && bpArgs.topic != null) bpArgs.query = bpArgs.topic;
+    return bpMonikerHelpTool(subRequest('bp_moniker', bpArgs));
   }
 
   // op-spec: the topic is an operation / objectType / mode name. Models reach

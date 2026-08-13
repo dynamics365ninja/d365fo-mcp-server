@@ -8,6 +8,7 @@ import { withOperationLock } from '../../utils/operationLocks.js';
 import { lookupSymbolsNocase, lookupSymbolNocase, type DbLike } from '../../utils/symbolLookup.js';
 import { compileModelLabels } from '../write/compileLabels.js';
 import { buildFreshness, type BuildFreshnessStatus } from '../../utils/buildMarker.js';
+import { validateMoniker, BP_MONIKER_CATALOG } from '../../knowledge/bpMonikers/index.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -144,6 +145,92 @@ export function extractReportedElements(output: string): string[] {
     names.add(m[1]);
   }
   return [...names];
+}
+
+export interface ParsedBpFinding {
+  /**
+   * The rule name, or null when the line only carried a severity prefix
+   * ('BPError: …') and never named the rule — see BARE_PREFIXES below.
+   */
+  moniker: string | null;
+  /** Whatever xppbp printed after the moniker — usually a file path, sometimes free text. */
+  target: string;
+  /** From the extracted catalog (src/knowledge/bpMonikers/), when the moniker is known there. */
+  description: string | null;
+  /** False for a moniker xppbp printed that the catalog does not recognise at all — worth a second look, not necessarily wrong. */
+  knownMoniker: boolean;
+}
+
+// xppbp's plain-text mode prints one finding per line as `<Moniker>: <target>`.
+//
+// Two shapes appear in the real samples captured in tests/tools/runBpCheck.test.ts,
+// and they are NOT the same:
+//   BPErrorTableMissingFormRef: K:\Pkg\…\ConDemoTicket.xml   ← names the rule
+//   BPError: LocalVariableNotUsed                            ← names only the severity
+// The second is a bare severity prefix; treating its 'BPError' as a moniker
+// produced a "not in the catalog — verify the spelling" flag on output the
+// compiler itself had just emitted, which is the most expensive kind of false
+// alarm: it invites a round trip to re-verify something already authoritative.
+//
+// A comment elsewhere in this file (`hasIssues`) also names a "BestPractices Warning: …"
+// shape from a different xppbp verbosity/version; there is no real captured sample of it
+// anywhere in this repo, so it is deliberately NOT matched here rather than guessed at —
+// an unmatched real finding is a silent gap, but a wrong regex would misreport lines that
+// are not findings at all.
+const FINDING_LINE = /^\s*(BP[A-Za-z0-9]+)\s*:\s*(.+?)\s*$/;
+
+// Severity/family prefixes that are not themselves monikers. Verified against
+// the extracted catalog: none of these appears as a moniker in its own right.
+const BARE_PREFIXES = new Set(['bperror', 'bpwarning', 'bpinfo', 'bpcheck']);
+
+/**
+ * Pull `{moniker, target}` out of every plain-text finding line in a BP check's
+ * raw output, and cross-reference each moniker against the extracted catalog
+ * (src/knowledge/bpMonikers/) so its real description travels with the finding
+ * instead of being left as a name to look up by hand — the direct fix for a
+ * moniker only ever being identifiable by eye from the raw log.
+ *
+ * Pure and independent of any live BP-check run — takes the same `output` text
+ * this tool already produces, so it is unit-testable with no xppbp.exe needed.
+ */
+export function parseBpFindings(output: string): ParsedBpFinding[] {
+  const findings: ParsedBpFinding[] = [];
+  for (const rawLine of output.split('\n')) {
+    const match = rawLine.match(FINDING_LINE);
+    if (!match) continue;
+    const [, name, target] = match;
+    if (BARE_PREFIXES.has(name.toLowerCase())) {
+      // Severity prefix only — the rule is not named on this line, so there is
+      // nothing to cross-reference and nothing to flag as unrecognised.
+      findings.push({ moniker: null, target, description: null, knownMoniker: false });
+      continue;
+    }
+    const validation = validateMoniker(name);
+    findings.push({
+      moniker: name,
+      target,
+      description: validation.entry?.description ?? null,
+      knownMoniker: validation.found,
+    });
+  }
+  return findings;
+}
+
+/**
+ * Findings section appended to a BP check's text output — the moniker and its
+ * real description (when the catalog has one) laid out so the model never has
+ * to re-derive the moniker by eyeballing the raw log below it.
+ */
+export function renderFindingsSection(output: string): string {
+  const findings = parseBpFindings(output);
+  if (findings.length === 0) return '';
+  const lines = findings.map(f => {
+    if (f.moniker === null) return `  • ${f.target} (rule not named on this line)`;
+    const flag = f.knownMoniker ? '' : ' ⚠️ not in the extracted moniker catalog — verify the spelling';
+    const desc = f.description ? ` — ${f.description}` : '';
+    return `  • ${f.moniker}${desc} (${f.target})${flag}`;
+  });
+  return `\n\nFindings (moniker-checked against ${BP_MONIKER_CATALOG.length} known monikers):\n${lines.join('\n')}`;
 }
 
 /**
@@ -563,7 +650,8 @@ export const runBpCheckTool = async (params: any, context: any) => {
             (target ? `\nFilter: ${selector(target)}` : '') +
             scopeNote +
             labelNote +
-            `\n\n${combined || '(no output)'}`
+            `\n\n${combined || '(no output)'}` +
+            renderFindingsSection(combined)
         }]
       };
     }
@@ -586,7 +674,8 @@ export const runBpCheckTool = async (params: any, context: any) => {
       return (
         `── ${selector(target)} ── ${hasIssues(combined) ? '⚠️ issues' : '✅ clean'}` +
         (target ? describeScope(target.name, combined) : '') +
-        `\n${body || '(no findings)'}`
+        `\n${body || '(no findings)'}` +
+        renderFindingsSection(combined)
       );
     });
 

@@ -76,7 +76,18 @@ const CHARS_PER_TOKEN = 4;
 // does not shrink anything, so those chars buy back thousands per call. Against
 // main alone it needed the ceiling at 53_700; combined with the Phase 1.5 trim
 // it fits far below, so the ceiling is set from the real measured payload.
-const TOTAL_BUDGET = 50_700;
+//
+// Raised by ~1,000 chars for get_knowledge's new kind="bp-moniker": validate an
+// exact BP-check moniker, search by scenario when there is no moniker yet, or
+// render a _BPSuppressions.xml <Diagnostic> block — all backed by names/text
+// extracted from a real D365FO install (src/knowledge/bpMonikers/), not typed
+// from memory. A moniker guessed wrong and only caught by reading the xppc log
+// by hand is the failure this buys back. Only the four fields a caller cannot
+// work without are published (action, moniker, path, justification); the rest —
+// limit, message, severity, itemSpecific, and the elementType/elementName
+// fallback for deriving a path — stay in the zod handler schema, the same trade
+// already made for `labels`.
+const TOTAL_BUDGET = 51_700;
 const LARGEST_TOOL_BUDGET = 5_300;
 
 async function getTools(): Promise<Array<{ name: string }>> {
