@@ -318,7 +318,20 @@ describe('parent bound to a table field group via <DataGroup>', () => {
       .notes.join('\n');
 
     expect(note).toMatch(/BASE-FORM/);
-    expect(note).toMatch(/explicit control is required/);
+    expect(note).toMatch(/field group alone is NOT enough/);
+  });
+
+  // The advisory used to say "add the field to the field group INSTEAD" one
+  // bullet before saying that doing so "will NOT put it on the form here", and
+  // the op spec repeated the first half — so the model was told to take the
+  // action the runtime documents as ineffective.
+  it('asks for both halves rather than offering the field group as a substitute', () => {
+    const note = inserted(insertFormExtensionControl(nestedExt({ dataGroup: true }), spec()))
+      .notes.join('\n');
+
+    expect(note).toMatch(/AS WELL/);
+    expect(note).toMatch(/Both halves are required/);
+    expect(note).not.toMatch(/field group instead/);
   });
 
   it('stays quiet when the parent has no DataGroup', () => {
@@ -354,12 +367,44 @@ describe('empty and self-closing collections', () => {
     expect(r.xml).not.toContain('<Controls />');
   });
 
-  it('refuses an extension-owned parent that has no <Controls> at all', () => {
+  // Refusing here broke the tool's own two-step workflow: add-control can create
+  // a group, and the group it writes has no <Controls> (innerControlLines emits
+  // Name/Type/FormControlExtension only), so every "create a group, then fill
+  // it" sequence failed on step two and sent the caller to Visual Studio.
+  it('creates the <Controls> collection for a childless extension-owned parent', () => {
     const noControls = nestedExt().replace(/\t\t\t\t<Controls>[\s\S]*?<\/Controls>\n/, '');
-    const r = insertFormExtensionControl(noControls, spec());
+    const r = inserted(insertFormExtensionControl(noControls, spec()));
+
+    expect(r.representation).toBe('nested');
+    expect(nestedControlsBody(r.xml)).toContain('ConQualityOrders_ConDisableProdQty');
+    expect(findFormExtensionPlacementProblems(r.xml)).toEqual([]);
+  });
+
+  // Position is not a guess: across the 1088 shipped AxFormExtension files an
+  // opening <Controls> follows <FormControlExtension> 2176 times and
+  // <ControlModifications> 996 times, and nothing else — so inside a control it
+  // goes straight after FormControlExtension, ahead of DataGroup/DataSource.
+  it('puts the new collection after <FormControlExtension>, before the other properties', () => {
+    const noControls = nestedExt({ dataGroup: true })
+      .replace(/\t\t\t\t<Controls>[\s\S]*?<\/Controls>\n/, '');
+    const r = inserted(insertFormExtensionControl(noControls, spec()));
+
+    const ext = r.xml.indexOf('<FormControlExtension i:nil="true" />', r.xml.indexOf('ConQualityOrders'));
+    const controls = r.xml.indexOf('<Controls>', ext);
+    const dataGroup = r.xml.indexOf('<DataGroup>', ext);
+
+    expect(ext).toBeLessThan(controls);
+    expect(controls).toBeLessThan(dataGroup);
+  });
+
+  it('still refuses when there is no <FormControlExtension> to position against', () => {
+    const noAnchor = nestedExt()
+      .replace(/\t\t\t\t<Controls>[\s\S]*?<\/Controls>\n/, '')
+      .replace('\t\t\t\t<FormControlExtension i:nil="true" />\n', '');
+    const r = insertFormExtensionControl(noAnchor, spec());
 
     expect(r.kind).toBe('refused');
-    expect((r as { message: string }).message).toMatch(/no <Controls> collection/);
+    expect((r as { message: string }).message).toMatch(/no <FormControlExtension>/);
   });
 });
 
@@ -425,13 +470,83 @@ describe('previousSibling', () => {
     expect(r.notes.join('\n')).toMatch(/NotAControl.*not found/);
   });
 
-  it('reports that it cannot apply to the envelope shape', () => {
+  // The envelope's position among the BASE FORM's children is carried by
+  // <PositionType>/<PreviousSibling> next to <Parent>, not by splice order in
+  // the extension's root <Controls>. Shipped evidence: 753 of the 1088
+  // AxFormExtension files use exactly `Name, FormControl, Parent, PositionType,
+  // PreviousSibling` (e.g. BusinessProcessActionLookup.Foundation.xml, which
+  // positions RetailTaskActionType after TaskActionType in base-form group View).
+  it('carries previousSibling into the envelope as PositionType/PreviousSibling', () => {
     const r = inserted(insertFormExtensionControl(FLAT_EXT, spec({
       parentControl: 'Grid',
       previousSibling: 'Grid_ConHasNotes',
     })));
 
     expect(r.representation).toBe('envelope');
+    expect(r.xml).toContain('<PositionType>AfterItem</PositionType>');
+    expect(r.xml).toContain('<PreviousSibling>Grid_ConHasNotes</PreviousSibling>');
+    expect(r.notes.join('\n')).not.toMatch(/ignored/);
+  });
+
+  it('emits the position pair in the order shipped metadata uses', () => {
+    const r = inserted(insertFormExtensionControl(FLAT_EXT, spec({
+      parentControl: 'Grid',
+      previousSibling: 'Grid_ConHasNotes',
+    })));
+    const at = (t: string) => r.xml.indexOf(t, r.xml.indexOf('FormExtensionControlnew000001'));
+
+    expect(at('</FormControl>')).toBeLessThan(at('<Parent>'));
+    expect(at('<Parent>')).toBeLessThan(at('<PositionType>'));
+    expect(at('<PositionType>')).toBeLessThan(at('<PreviousSibling>'));
+  });
+
+  it('omits the pair entirely when no position was asked for', () => {
+    const r = inserted(insertFormExtensionControl(FLAT_EXT, spec({ parentControl: 'Grid' })));
+
+    expect(r.xml).not.toContain('<PositionType>');
+    expect(r.xml).not.toContain('<PreviousSibling>');
+  });
+});
+
+// ─── positionType ────────────────────────────────────────────────────────────
+
+describe('positionType', () => {
+  const onBaseForm = (over: Partial<FormExtensionControlSpec> = {}) =>
+    insertFormExtensionControl(FLAT_EXT, spec({ parentControl: 'Grid', ...over }));
+
+  it('writes Begin without a sibling', () => {
+    const r = inserted(onBaseForm({ positionType: 'Begin' }));
+
+    expect(r.xml).toContain('<PositionType>Begin</PositionType>');
+    expect(r.xml).not.toContain('<PreviousSibling>');
+  });
+
+  it('treats End as the default and writes neither element', () => {
+    const r = inserted(onBaseForm({ positionType: 'End' }));
+
+    expect(r.xml).not.toContain('<PositionType>');
+  });
+
+  it('refuses AfterItem with no previousSibling to anchor it', () => {
+    const r = onBaseForm({ positionType: 'AfterItem' });
+
+    expect(r.kind).toBe('refused');
+    expect((r as { message: string }).message).toMatch(/needs previousSibling/);
+  });
+
+  // Only AfterItem (765×) and Begin (182×) occur in the shipped corpus. An
+  // unknown enum value is the failure mode this module exists to prevent —
+  // it deserializes to a discarded node with the build reporting 0 errors.
+  it('refuses a value that shipped metadata never uses', () => {
+    const r = onBaseForm({ positionType: 'BeforeItem', previousSibling: 'Grid_ConHasNotes' });
+
+    expect(r.kind).toBe('refused');
+    expect((r as { message: string }).message).toMatch(/not a value D365FO/);
+  });
+
+  it('ignores previousSibling for Begin and says so', () => {
+    const r = inserted(onBaseForm({ positionType: 'Begin', previousSibling: 'Grid_ConHasNotes' }));
+
     expect(r.notes.join('\n')).toMatch(/ignored/);
   });
 });
@@ -589,5 +704,62 @@ describe('placement validation', () => {
   it('stays quiet on files it does not understand', () => {
     expect(findFormExtensionPlacementProblems('<AxTable><Controls><Foo /></Controls></AxTable>')).toEqual([]);
     expect(findFormExtensionPlacementProblems('not xml at all')).toEqual([]);
+  });
+});
+
+// ─── Repairing a file an earlier release damaged ─────────────────────────────
+//
+// SHAPE_C is not a hypothetical: it is the output the shipped writer produced.
+// Whoever hits this bug has files in this state, and the release that fixes the
+// writer is the one they will run against them — so every guard added here has
+// to leave the repair path open. The post-write check gates on problems this
+// write INTRODUCED, never on the file's existing ones.
+
+describe('a file already damaged by the old writer', () => {
+  it('accepts a correct write instead of refusing over the pre-existing damage', () => {
+    const r = inserted(insertFormExtensionControl(SHAPE_C, spec({
+      controlName: 'ConQualityOrders_ConComment',
+    })));
+
+    expect(nestedControlsBody(r.xml)).toContain('ConQualityOrders_ConComment');
+    // Untouched: the write neither caused nor silently cleaned up the old node.
+    expect(findFormExtensionPlacementProblems(r.xml)).toHaveLength(1);
+  });
+
+  it('reports the pre-existing damage rather than blaming the caller for it', () => {
+    const r = inserted(insertFormExtensionControl(SHAPE_C, spec({
+      controlName: 'ConQualityOrders_ConComment',
+    })));
+
+    expect(r.notes.join('\n')).toMatch(/already contained 1 misplaced control/);
+    expect(r.notes.join('\n')).toMatch(/neither caused nor fixed/);
+  });
+
+  // The natural repair — re-run the identical add-control — used to answer
+  // "already present, skipped (idempotent)" and write nothing, because the
+  // discarded control's <Name> is perfectly readable where it lies.
+  it('does not count a discarded control as already present', () => {
+    const r = insertFormExtensionControl(SHAPE_C, spec());
+
+    expect(r.kind).toBe('inserted');
+    expect(inserted(r).notes.join('\n')).toMatch(/dead copy/);
+  });
+
+  it('leaves the file repaired, so a second identical call is idempotent again', () => {
+    const first = inserted(insertFormExtensionControl(SHAPE_C, spec()));
+    const second = insertFormExtensionControl(first.xml, spec());
+
+    expect(second.kind).toBe('exists');
+  });
+
+  // Nesting into a dead parent buys a second discarded control and another ✅.
+  it('refuses to use a discarded control as the parent', () => {
+    const r = insertFormExtensionControl(SHAPE_C, spec({
+      controlName: 'ConSomethingNew',
+      parentControl: 'ConQualityOrders_ConDisableProdQty',
+    }));
+
+    expect(r.kind).toBe('refused');
+    expect((r as { message: string }).message).toMatch(/discards/);
   });
 });

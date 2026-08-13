@@ -143,27 +143,48 @@ const textOf = (xml: string, n: XmlNode): string =>
   n.selfClosing ? '' : xml.slice(n.openEnd, n.closeStart).trim();
 
 /**
- * Every control the EXTENSION itself defines, keyed by lowercased name.
+ * Every control the EXTENSION itself defines, keyed by lowercased name and
+ * split by whether the deserializer will actually read it.
  *
  * Only <FormControl> (inside an envelope) and <AxFormControl> (nested) are
  * controls. <AxFormExtensionControl>'s own <Name> is the auto-generated wrapper
  * id, NOT a control name, so reading names off the wrapper would make
  * `parentControl: "FormExtensionControlfse38xiwz"` resolve to something real.
+ *
+ * The split matters because a control inside a misplaced element is discarded
+ * whole (see findFormExtensionPlacementProblems) — it is in the file and it is
+ * not on the form. Treating it as present made the two things a caller does
+ * with a damaged file both wrong: re-adding the control reported "already
+ * present, skipped", and naming it as a parent nested the new control inside
+ * the dead subtree, so that one was discarded too.
  */
-function collectExtensionControls(xml: string, root: XmlNode): Map<string, XmlNode> {
-  const byName = new Map<string, XmlNode>();
+interface ExtensionControls {
+  /** Controls the deserializer reads. */
+  live: Map<string, XmlNode>;
+  /** Controls present in the file but inside a discarded subtree. */
+  discarded: Map<string, XmlNode>;
+}
+
+function collectExtensionControls(
+  xml: string,
+  root: XmlNode,
+  discardedRoots: XmlNode[] = [],
+): ExtensionControls {
+  const live = new Map<string, XmlNode>();
+  const discarded = new Map<string, XmlNode>();
   const visit = (n: XmlNode): void => {
     if (n.name === 'FormControl' || n.name === 'AxFormControl') {
       const nameNode = firstChild(n, 'Name');
       if (nameNode) {
-        const name = textOf(xml, nameNode);
-        if (name && !byName.has(name.toLowerCase())) byName.set(name.toLowerCase(), n);
+        const name = textOf(xml, nameNode).toLowerCase();
+        const target = discardedRoots.some(d => isWithin(n, d)) ? discarded : live;
+        if (name && !target.has(name)) target.set(name, n);
       }
     }
     for (const c of n.children) visit(c);
   };
   visit(root);
-  return byName;
+  return { live, discarded };
 }
 
 /** Leading whitespace of the line `offset` sits on, for matching the file's indentation. */
@@ -212,8 +233,24 @@ export interface FormExtPlacementProblem {
 export function findFormExtensionPlacementProblems(xml: string): FormExtPlacementProblem[] {
   const root = parseNodes(xml);
   if (!root || root.name !== 'AxFormExtension') return [];
+  return findPlacementIssues(xml, root).map(i => i.problem);
+}
 
-  const problems: FormExtPlacementProblem[] = [];
+/**
+ * A misplaced element paired with its node.
+ *
+ * The node is what makes the difference between "this file has a problem" and
+ * "THIS control is the problem": everything inside a misplaced element is
+ * discarded along with it, so the writer has to be able to ask whether a
+ * particular control it just resolved happens to live in the dead subtree.
+ */
+interface FormExtPlacementIssue {
+  node: XmlNode;
+  problem: FormExtPlacementProblem;
+}
+
+function findPlacementIssues(xml: string, root: XmlNode): FormExtPlacementIssue[] {
+  const issues: FormExtPlacementIssue[] = [];
   const lineAt = (offset: number): number => {
     let line = 1;
     for (let i = 0; i < offset && i < xml.length; i++) if (xml[i] === '\n') line++;
@@ -225,7 +262,9 @@ export function findFormExtensionPlacementProblems(xml: string): FormExtPlacemen
   if (rootControls && !rootControls.selfClosing) {
     for (const child of rootControls.children) {
       if (child.name !== 'AxFormExtensionControl') {
-        problems.push({
+        issues.push({
+          node: child,
+          problem: {
           element: child.name,
           line: lineAt(child.start),
           detail:
@@ -233,6 +272,7 @@ export function findFormExtensionPlacementProblems(xml: string): FormExtPlacemen
             `<AxFormExtensionControl> envelopes. A control attached to a base-form parent needs the ` +
             `envelope (wrapper <Name>, <FormControl i:type="…">, <Parent>); a control nested under a ` +
             `container this extension defines belongs in THAT container's <Controls> instead.`,
+          },
         });
       }
     }
@@ -247,7 +287,9 @@ export function findFormExtensionPlacementProblems(xml: string): FormExtPlacemen
         const owner = ownerName ? textOf(xml, ownerName) : '(unnamed)';
         for (const child of nested.children) {
           if (child.name !== 'AxFormControl') {
-            problems.push({
+            issues.push({
+              node: child,
+              problem: {
               element: child.name,
               line: lineAt(child.start),
               detail:
@@ -255,6 +297,7 @@ export function findFormExtensionPlacementProblems(xml: string): FormExtPlacemen
                 `<AxFormControl>. The D365FO deserializer DISCARDS it — the build reports no error and ` +
                 `the control simply never appears on the form. Nesting already encodes parentage, so a ` +
                 `child control here is a bare <AxFormControl i:type="…"> with no wrapper and no <Parent>.`,
+              },
             });
           }
         }
@@ -264,8 +307,27 @@ export function findFormExtensionPlacementProblems(xml: string): FormExtPlacemen
   };
   visit(root);
 
-  return problems;
+  return issues;
 }
+
+/**
+ * Stable identity for a placement problem, deliberately excluding the line
+ * number: inserting a control shifts every line below it, so line-bearing keys
+ * would make untouched pre-existing problems look brand new. Element + detail
+ * still distinguishes the cases that matter, and equal keys are compared by
+ * COUNT, so a genuinely new duplicate of an existing problem is still caught.
+ */
+const problemKey = (p: FormExtPlacementProblem): string => `${p.element} ${p.detail}`;
+
+const tallyProblems = (problems: FormExtPlacementProblem[]): Map<string, number> => {
+  const counts = new Map<string, number>();
+  for (const p of problems) counts.set(problemKey(p), (counts.get(problemKey(p)) ?? 0) + 1);
+  return counts;
+};
+
+/** True when `n` is the misplaced node itself or lives inside its discarded subtree. */
+const isWithin = (n: XmlNode, container: XmlNode): boolean =>
+  n.start >= container.start && n.end <= container.end;
 
 /** Render placement problems as a blocking, self-explaining error. */
 export function buildFormExtensionPlacementError(
@@ -301,8 +363,17 @@ export interface FormExtensionControlSpec {
    * wrapper.
    */
   wrapperName: string;
-  /** Insert directly after this existing sibling instead of at the end (nested shape only). */
+  /**
+   * Name of the existing sibling to place the control after.
+   *
+   * Nested shape: the control is spliced directly after that sibling in the
+   * parent's <Controls>. Envelope shape: position among the BASE FORM's children
+   * is not expressible by splice order, so it is written as
+   * <PositionType>AfterItem</PositionType><PreviousSibling>…</PreviousSibling>.
+   */
   previousSibling?: string;
+  /** "AfterItem" (needs previousSibling), "Begin", or "End" (default). Envelope shape only. */
+  positionType?: string;
 }
 
 export type InsertFormExtensionControlResult =
@@ -328,15 +399,57 @@ export function insertFormExtensionControl(
   // objectType can never splice control XML into an unrelated metadata file.
   if (!root || root.name !== 'AxFormExtension') return { kind: 'unsupported' };
 
-  const owned = collectExtensionControls(xml, root);
+  // Problems the file arrived with. The post-write check compares against these
+  // rather than against zero: a file damaged by an earlier writer must still
+  // accept a correct write, or the release that fixes the bug is also the
+  // release that locks every already-damaged file out of the repair.
+  const preExisting = findPlacementIssues(xml, root);
+  const baseline = tallyProblems(preExisting.map(i => i.problem));
+  const discardedRoots = preExisting.map(i => i.node);
+
+  const owned = collectExtensionControls(xml, root, discardedRoots);
+  const notes: string[] = [];
+
+  if (preExisting.length > 0) {
+    notes.push(
+      `this file already contained ${preExisting.length} misplaced control ` +
+      `element(s) (line(s) ${preExisting.map(i => i.problem.line).join(', ')}), which the D365FO ` +
+      `deserializer discards. They were left exactly as they are — this write neither caused nor ` +
+      `fixed them. Delete them once the replacement control is confirmed on the form.`,
+    );
+  }
 
   // Idempotency, by resolved control name rather than a bare `<Name>X</Name>`
   // substring search — the latter also matches data sources, fields and the
   // extension's own <Name>, turning a real add into a silent no-op "success".
-  if (owned.has(spec.controlName.toLowerCase())) return { kind: 'exists' };
+  // Only a LIVE control counts: a discarded one is not on the form, and the
+  // caller re-running the identical add is precisely how it gets repaired.
+  if (owned.live.has(spec.controlName.toLowerCase())) return { kind: 'exists' };
 
-  const parentNode = owned.get(spec.parentControl.toLowerCase());
-  const notes: string[] = [];
+  const discardedTwin = owned.discarded.get(spec.controlName.toLowerCase());
+  if (discardedTwin) {
+    notes.push(
+      `a control named "${spec.controlName}" already exists in this file but sits in a collection the ` +
+      `deserializer discards, so it never reached the form. A correctly-placed one was written; the ` +
+      `dead copy is still there and should be deleted.`,
+    );
+  }
+
+  const parentNode = owned.live.get(spec.parentControl.toLowerCase());
+
+  // A parent that is itself discarded cannot host anything: nesting into it
+  // buys a second discarded control and another silent ✅.
+  if (!parentNode && owned.discarded.has(spec.parentControl.toLowerCase())) {
+    return {
+      kind: 'refused',
+      message:
+        `Parent control "${spec.parentControl}" exists in this extension but sits inside a misplaced ` +
+        `element that the D365FO deserializer discards, so it is not on the form and cannot hold a ` +
+        `child — anything nested under it would be discarded with it.\n\n` +
+        `Fix the misplaced element first (see the placement problems reported for this file), then ` +
+        `re-run add-control.`,
+    };
+  }
 
   if (parentNode) {
     // ── Shape 2: parent is extension-owned → bare AxFormControl, nested ──────
@@ -350,39 +463,123 @@ export function insertFormExtensionControl(
       ));
     }
 
+    const block = nestedControlLines(spec);
     const controls = firstChild(parentNode, 'Controls');
+
+    // No <Controls> yet — the parent is childless. This is the normal state of a
+    // group this very tool just created (innerControlLines emits Name, Type and
+    // FormControlExtension, never Controls), so refusing here broke the tool's
+    // own create-group-then-fill-it workflow and sent the caller to Visual Studio
+    // for the one job add-control exists to do.
     if (!controls) {
-      return {
-        kind: 'refused',
-        message:
-          `Parent control "${spec.parentControl}" is defined by this extension but has no <Controls> ` +
-          `collection, and the position of a new one is property-order sensitive — writing it blind ` +
-          `risks a file the deserializer rejects.\n\n` +
-          `Add the first child in the form designer (it emits <Controls>), then re-run add-control for ` +
-          `any further children.`,
-      };
+      const created = createControlsCollection(xml, parentNode, block);
+      if (!created) {
+        return {
+          kind: 'refused',
+          message:
+            `Parent control "${spec.parentControl}" is defined by this extension, has no <Controls> ` +
+            `collection, and carries no <FormControlExtension> element to position one after — the ` +
+            `serializer's property order cannot be reproduced from this file, and guessing risks XML ` +
+            `the deserializer rejects.\n\n` +
+            `Add the first child in the form designer (it emits <Controls>), then re-run add-control ` +
+            `for any further children.`,
+        };
+      }
+      if (spec.previousSibling) {
+        notes.push(
+          `previousSibling "${spec.previousSibling}" was ignored: "${spec.parentControl}" had no ` +
+          `children yet, so the new control is the first one.`,
+        );
+      }
+      return finish(created, spec, 'nested', notes, baseline);
     }
 
-    const block = nestedControlLines(spec);
     const updated = insertIntoControls(xml, controls, block, spec.previousSibling, notes);
-    return finish(updated, spec, 'nested', notes);
+    return finish(updated, spec, 'nested', notes, baseline);
   }
 
   // ── Shape 1: parent is a base-form control → envelope in the ROOT Controls ─
   const rootControls = firstChild(root, 'Controls');
   if (!rootControls) return { kind: 'unsupported' };
 
-  if (spec.previousSibling) {
-    notes.push(
-      `previousSibling "${spec.previousSibling}" was ignored: "${spec.parentControl}" is a base-form ` +
-      `control, so the new control is an <AxFormExtensionControl> whose siblings are other extension ` +
-      `entries, not form controls. Order within the extension's root <Controls> does not affect layout.`,
-    );
+  // Position among the BASE FORM's children is carried by the envelope itself,
+  // via <PositionType>/<PreviousSibling> next to <Parent> — not by where the
+  // envelope sits in the extension's root <Controls>. Order in that collection
+  // really is irrelevant to layout; the earlier note was right about that and
+  // wrong to conclude the request could not be honoured.
+  const position = resolvePosition(spec);
+  if (position.kind === 'invalid') return { kind: 'refused', message: position.message };
+  if (position.note) notes.push(position.note);
+
+  const block = envelopeControlLines(spec, position);
+  const updated = insertIntoControls(xml, rootControls, block, undefined, notes);
+  return finish(updated, spec, 'envelope', notes, baseline);
+}
+
+/**
+ * Where the control sits among its parent's existing children, as the two
+ * elements the envelope carries for it.
+ *
+ * Only `AfterItem` and `Begin` appear in shipped metadata (765 and 182
+ * occurrences across the 1088 AxFormExtension files in PackagesLocalDirectory;
+ * no other value occurs), so those are the two that get written. `End` is
+ * spelled by omitting both elements — 1594 shipped envelopes carry no
+ * <PositionType> at all — and anything else is refused rather than guessed at,
+ * because an unknown enum value is exactly the kind of thing that deserializes
+ * to a discarded node under a silent build.
+ */
+type ResolvedPosition =
+  | { kind: 'none'; note?: string }
+  | { kind: 'placed'; positionType: 'AfterItem' | 'Begin'; previousSibling?: string; note?: string }
+  | { kind: 'invalid'; message: string };
+
+function resolvePosition(spec: FormExtensionControlSpec): ResolvedPosition {
+  const requested = spec.positionType?.trim();
+  const sibling = spec.previousSibling?.trim() || undefined;
+
+  if (!requested) {
+    // previousSibling alone means "after this one" — the only reading that has one.
+    return sibling
+      ? { kind: 'placed', positionType: 'AfterItem', previousSibling: sibling }
+      : { kind: 'none' };
   }
 
-  const block = envelopeControlLines(spec);
-  const updated = insertIntoControls(xml, rootControls, block, undefined, notes);
-  return finish(updated, spec, 'envelope', notes);
+  const normalized = requested.toLowerCase();
+  if (normalized === 'afteritem') {
+    if (!sibling) {
+      return {
+        kind: 'invalid',
+        message:
+          `positionType="AfterItem" needs previousSibling — the name of the existing control in ` +
+          `"${spec.parentControl}" to place this one after. Pass previousSibling, or use ` +
+          `positionType="Begin" for first / "End" (the default) for last.`,
+      };
+    }
+    return { kind: 'placed', positionType: 'AfterItem', previousSibling: sibling };
+  }
+  if (normalized === 'begin') {
+    return {
+      kind: 'placed',
+      positionType: 'Begin',
+      note: sibling
+        ? `previousSibling "${sibling}" was ignored: positionType="Begin" places the control first.`
+        : undefined,
+    };
+  }
+  if (normalized === 'end') {
+    return {
+      kind: 'none',
+      note: sibling
+        ? `previousSibling "${sibling}" was ignored: positionType="End" places the control last.`
+        : undefined,
+    };
+  }
+  return {
+    kind: 'invalid',
+    message:
+      `positionType="${requested}" is not a value D365FO form-extension metadata uses. Supported: ` +
+      `"AfterItem" (with previousSibling), "Begin", "End" (default).`,
+  };
 }
 
 /**
@@ -403,6 +600,7 @@ function finish(
   spec: FormExtensionControlSpec,
   representation: 'envelope' | 'nested',
   notes: string[],
+  baseline: Map<string, number>,
 ): InsertFormExtensionControlResult {
   const reparsed = parseNodes(updated);
   if (!reparsed || reparsed.name !== 'AxFormExtension') {
@@ -413,25 +611,68 @@ function finish(
         `an AxFormExtension. The file was left unchanged. Please report this with the extension XML.`,
     };
   }
-  if (!collectExtensionControls(updated, reparsed).has(spec.controlName.toLowerCase())) {
+  const issues = findPlacementIssues(updated, reparsed);
+  const after = collectExtensionControls(updated, reparsed, issues.map(i => i.node));
+  if (!after.live.has(spec.controlName.toLowerCase())) {
     return {
       kind: 'refused',
       message:
-        `Internal check failed: "${spec.controlName}" is not readable as a control after insertion. ` +
-        `The file was left unchanged. Please report this with the extension XML.`,
+        `Internal check failed: "${spec.controlName}" is not readable as a live control after ` +
+        `insertion. The file was left unchanged. Please report this with the extension XML.`,
     };
   }
-  const misplaced = findFormExtensionPlacementProblems(updated);
-  if (misplaced.length > 0) {
+
+  // Only problems this write INTRODUCED are the writer's fault. Comparing
+  // against the file's own baseline by count (never by line, which insertion
+  // shifts) keeps a pre-existing misplacement from vetoing a correct write,
+  // while still catching a new duplicate of a problem that already existed.
+  const introduced: FormExtPlacementProblem[] = [];
+  const remaining = new Map(baseline);
+  for (const { problem } of issues) {
+    const key = problemKey(problem);
+    const left = remaining.get(key) ?? 0;
+    if (left > 0) remaining.set(key, left - 1);
+    else introduced.push(problem);
+  }
+
+  if (introduced.length > 0) {
     return {
       kind: 'refused',
       message:
         `Internal check failed — the write was ABANDONED and the file left unchanged.\n\n` +
-        buildFormExtensionPlacementError(spec.controlName, misplaced) +
+        buildFormExtensionPlacementError(spec.controlName, introduced) +
         `\n\nThis is a bug in the writer, not in your call. Please report it with the extension XML.`,
     };
   }
   return { kind: 'inserted', xml: updated, representation, notes };
+}
+
+/**
+ * Give a childless parent a <Controls> collection holding `blockLines`.
+ *
+ * Position is not a guess: across the 1088 shipped AxFormExtension files an
+ * opening <Controls> is preceded by <FormControlExtension> 2176 times and by
+ * <ControlModifications> 996 times (the extension's own root collection) — and
+ * by nothing else, ever. So inside a control, <Controls> goes immediately after
+ * <FormControlExtension>, ahead of every other derived property regardless of
+ * alphabetical order (shipped groups read Controls, ArrangeMethod, FrameType…).
+ * Without that anchor element there is no evidence to place it from, and the
+ * caller is told so rather than handed a plausible guess.
+ */
+function createControlsCollection(
+  xml: string,
+  parentNode: XmlNode,
+  blockLines: string[],
+): string | null {
+  const anchor = firstChild(parentNode, 'FormControlExtension');
+  if (!anchor) return null;
+
+  const controlsIndent = lineIndentOf(xml, anchor.start);
+  const block = indentBlock(blockLines, controlsIndent + '\t');
+  const collection =
+    '\n' + controlsIndent + '<Controls>\n' + block + '\n' + controlsIndent + '</Controls>';
+
+  return xml.slice(0, anchor.end) + collection + xml.slice(anchor.end);
 }
 
 /**
@@ -471,12 +712,13 @@ function dataGroupWarning(
     `has nothing to rewrite.\n` +
     `  • If \`${field}\` is NOT a member, the build warns ("different fields from the field group … use ` +
     `restore on the form control") and the next Refresh discards this control. Add the field to the ` +
-    `field group instead — d365fo_file(action="modify", objectType="table-extension", ` +
+    `field group AS WELL — d365fo_file(action="modify", objectType="table-extension", ` +
     `operations=[{operation:"add-field-to-field-group", fieldGroupName:"${dataGroup}", ` +
-    `fieldName:"${field}", extendBaseFieldGroup:true}]).\n` +
-    `  • Note this parent belongs to the form EXTENSION, not the base form. Only a BASE-FORM ` +
-    `<DataGroup> group auto-generates its missing members, so adding the field to the field group ` +
-    `alone will NOT put it on the form here — an explicit control is required.`
+    `fieldName:"${field}", extendBaseFieldGroup:true}]) — and keep this control, named ` +
+    `\`${generated}\`, so the two agree.\n` +
+    `  • The field group alone is NOT enough here: this parent belongs to the form EXTENSION, and only ` +
+    `a BASE-FORM <DataGroup> group auto-generates its missing members. Both halves are required — the ` +
+    `field group entry so a Refresh keeps the control, and the explicit control so the field renders.`
   );
 }
 
@@ -489,17 +731,32 @@ function nestedControlLines(spec: FormExtensionControlSpec): string[] {
   ];
 }
 
-/** The envelope shape — wrapper <Name>, the control under <FormControl>, then <Parent>. */
-function envelopeControlLines(spec: FormExtensionControlSpec): string[] {
-  return [
+/**
+ * The envelope shape — wrapper <Name>, the control under <FormControl>, then
+ * <Parent>, then the optional position pair, in exactly the order shipped
+ * metadata uses (`Name, FormControl, Parent, PositionType, PreviousSibling` —
+ * 753 files, with the shorter prefixes accounting for the rest).
+ */
+function envelopeControlLines(
+  spec: FormExtensionControlSpec,
+  position: ResolvedPosition,
+): string[] {
+  const lines = [
     `<AxFormExtensionControl xmlns="">`,
     `\t<Name>${spec.wrapperName}</Name>`,
     `\t<FormControl xmlns="" i:type="${spec.iType}">`,
     ...innerControlLines(spec).map(l => `\t\t${l}`),
     `\t</FormControl>`,
     `\t<Parent>${spec.parentControl}</Parent>`,
-    `</AxFormExtensionControl>`,
   ];
+  if (position.kind === 'placed') {
+    lines.push(`\t<PositionType>${position.positionType}</PositionType>`);
+    if (position.previousSibling) {
+      lines.push(`\t<PreviousSibling>${position.previousSibling}</PreviousSibling>`);
+    }
+  }
+  lines.push(`</AxFormExtensionControl>`);
+  return lines;
 }
 
 /**

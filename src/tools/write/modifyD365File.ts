@@ -753,6 +753,7 @@ const directXmlAddControl = serializedOnFile(async (
   dataField?: string,
   label?: string,
   previousSibling?: string,
+  positionType?: string,
 ): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
@@ -764,7 +765,7 @@ const directXmlAddControl = serializedOnFile(async (
       controlName, parentControl, iType, typeValue,
       dataSource, dataField, label,
       wrapperName: formExtensionControlName(),
-      previousSibling,
+      previousSibling, positionType,
     });
 
     switch (outcome.kind) {
@@ -1459,10 +1460,11 @@ const ModifyD365FileArgsSchema = z.object({
     'Optional label for the new control (add-control). Becomes the control <Label>.'
   ),
   positionType: z.string().optional().describe(
-    'Optional positioning: AfterItem | BeforeItem. Omit to append at the end of the parent.'
+    'Optional positioning: AfterItem (needs previousSibling) | Begin | End. Omit to append at the ' +
+    'end of the parent. Other values are refused — these are the ones D365FO metadata carries.'
   ),
   previousSibling: z.string().optional().describe(
-    'Name of the sibling control to position after (used with positionType=AfterItem).'
+    'Name of the sibling control to position after. Implies positionType=AfterItem when that is omitted.'
   ),
   baseFormName: z.string().optional().describe(
     'Base form name used for auto-resolving parentControl when the extension name does not contain it. ' +
@@ -3031,6 +3033,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
               (args as any).controlDataField,
               (args as any).controlLabel,
               (args as any).previousSibling,
+              (args as any).positionType,
             );
             if (xmlFallbackResult) bridgeResult = viaXmlFallback(xmlFallbackResult);
           }

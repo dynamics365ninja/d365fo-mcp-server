@@ -165,11 +165,14 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   controlLabel: { type: 'string', description: 'Optional label for the new control.' },
   positionType: {
     type: 'string',
-    description: 'AfterItem | BeforeItem. Omit to append at the end of the parent.',
+    description:
+      'AfterItem (needs previousSibling) | Begin | End. Omit to append at the end of the parent. ' +
+      'These are the values D365FO form-extension metadata actually carries; anything else is refused.',
   },
   previousSibling: {
     type: 'string',
-    description: 'Name of the sibling control to position after (used with positionType=AfterItem).',
+    description:
+      'Name of the sibling control to position after. Implies positionType=AfterItem when that is omitted.',
   },
   baseFormName: {
     type: 'string',
@@ -436,10 +439,15 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       + 'Otherwise pass the exact name of an existing container (Tab, TabPage, Group, Grid). '
       + 'objectType="form-extension": parentControl may name a base-form container OR a container '
       + 'the extension itself defines — the writer picks the right XML shape from which it is, so '
-      + 'just pass the name. A parent bound to a table field group via <DataGroup> is REFUSED: its '
-      + 'children mirror that field group, so add the field to the field group instead '
-      + '(add-field-to-field-group) and refresh the group in the designer. previousSibling positions '
-      + 'the control only under an extension-defined parent.',
+      + 'just pass the name. A BASE-FORM parent bound to a table field group via <DataGroup> is '
+      + 'REFUSED: the compiler generates that group\'s members, so an explicit control collides — add '
+      + 'the field to the field group instead (add-field-to-field-group) and refresh the group in the '
+      + 'designer. On an EXTENSION-OWNED <DataGroup> parent the control IS written, with a warning: '
+      + 'nothing tops that group up, so the explicit control is what puts the field on the form, and '
+      + 'the field group entry is needed as well so a later designer Refresh does not discard it. '
+      + 'previousSibling works under either parent — under an extension-defined parent it orders the '
+      + 'control in the XML, under a base-form parent it is written as '
+      + '<PositionType>AfterItem</PositionType> + <PreviousSibling>.',
   },
   'add-enum-value': {
     required: ['enumValueName'],
