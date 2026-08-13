@@ -30,6 +30,19 @@ export interface SymbolCounts {
   byType: Record<string, number>;
 }
 
+/** One extension_metadata row, as both the full build and a reindex write it. */
+export interface ExtensionMetadataRecord {
+  extensionName: string;
+  extensionType: string;
+  baseObjectName: string;
+  addedFields?: string[];
+  addedMethods?: string[];
+  addedIndexes?: string[];
+  cocMethods?: string[];
+  eventSubscriptions?: string[];
+  model: string;
+}
+
 export class XppSymbolIndex {
   public db: Database; // Public for direct pragma access in build scripts
   public labelsDb: Database; // Separate DB for labels (performance optimization)
@@ -3054,6 +3067,57 @@ export class XppSymbolIndex {
       } catch (error) {
         log.warn(`Skipped ${extensionType} ${file}: ${error instanceof Error ? error.message : error}`);
       }
+    }
+  }
+
+  /**
+   * Replace the extension_metadata row for a single extension.
+   *
+   * indexExtensions above is the full build's path and reads the extracted JSON;
+   * an incremental reindex has only the AOT file, and until it could write here
+   * an extension changed in-session was invisible to every reader keyed on
+   * base_object_name — resolve_references' field and method checks above all,
+   * which report an unknown identifier as an ERROR and, under
+   * GROUNDING_ENFORCE, refuse the write carrying it.
+   *
+   * Delete-then-insert: the table has no unique constraint, so the INSERT OR
+   * REPLACE the full build uses only ever appends. Keyed by name + type + model,
+   * which is what identifies one extension across a rebuild.
+   */
+  upsertExtensionMetadata(record: ExtensionMetadataRecord): void {
+    const json = (values: string[] | undefined): string | null =>
+      values && values.length > 0 ? JSON.stringify(values) : null;
+
+    this.db.transaction(() => {
+      this.removeExtensionMetadata(record.extensionName, record.extensionType, record.model);
+      this.db.prepare(`
+        INSERT INTO extension_metadata
+          (extension_name, extension_type, base_object_name, added_fields, added_methods,
+           added_indexes, coc_methods, event_subscriptions, model)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        record.extensionName,
+        record.extensionType,
+        record.baseObjectName,
+        json(record.addedFields),
+        json(record.addedMethods),
+        json(record.addedIndexes),
+        json(record.cocMethods),
+        json(record.eventSubscriptions),
+        record.model,
+      );
+    })();
+  }
+
+  /** Drop the extension_metadata row(s) for one extension. Returns rows removed. */
+  removeExtensionMetadata(extensionName: string, extensionType: string, model: string): number {
+    try {
+      return this.db.prepare(
+        `DELETE FROM extension_metadata
+         WHERE extension_name = ? AND extension_type = ? AND model = ?`,
+      ).run(extensionName, extensionType, model).changes;
+    } catch {
+      return 0;
     }
   }
 
