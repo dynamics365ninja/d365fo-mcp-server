@@ -27,10 +27,13 @@ import {
 } from '../../knowledge/bpMonikers/index.js';
 
 const ELEMENT_TYPES = [
-  'AxClass', 'AxTable', 'AxForm', 'AxEnum', 'AxEdt', 'AxQuery', 'AxView',
+  'AxClass', 'AxTable', 'AxForm', 'AxView', 'AxMap', 'AxEnum', 'AxQuerySimple',
+  'AxDataEntityView', 'AxAggregateMeasurement', 'AxAggregateDimension',
   'AxSecurityPrivilege', 'AxSecurityDuty', 'AxSecurityRole',
-  'AxTableExtension', 'AxFormExtension', 'AxEnumExtension', 'AxEdtExtension',
-  'AxDataEntityView', 'AxReport', 'AxMenuItemDisplay', 'AxMenuItemAction', 'AxMenuItemOutput',
+  'AxTableExtension', 'AxFormExtension', 'AxMenuExtension',
+  'AxMenu', 'AxMenuItemDisplay', 'AxMenuItemAction', 'AxMenuItemOutput',
+  'AxEdtString', 'AxEdtInt', 'AxEdtInt64', 'AxEdtEnum', 'AxEdtReal', 'AxEdtDate', 'AxEdtGuid',
+  'AxConfigurationKey', 'AxLicenseCode',
 ] as const satisfies readonly SuppressionElementType[];
 
 const BpMonikerArgsSchema = z.object({
@@ -41,10 +44,13 @@ const BpMonikerArgsSchema = z.object({
   moniker: z.string().optional().describe('[validate, suppress] The exact moniker, e.g. "BPErrorPrivilegeNotCoveredByDuty".'),
   query: z.string().optional().describe('[search] Free-text description of the scenario, e.g. "privilege not linked to any duty".'),
   limit: z.number().int().positive().max(50).optional().default(10).describe('[search] Max results (default 10).'),
-  elementType: z.enum(ELEMENT_TYPES).optional().describe('[suppress] AOT element type the warning was raised against.'),
+  path: z.string().optional().describe('[suppress] The dynamics:// path copied verbatim from the finding — preferred, and the only way to target a control/field/method/enum value.'),
+  elementType: z.enum(ELEMENT_TYPES).optional().describe('[suppress] Top-level AOT element type; used with elementName to derive the path when `path` is not given.'),
   elementName: z.string().optional().describe('[suppress] Name of the object the warning was raised against, e.g. the privilege or table name.'),
-  message: z.string().optional().describe('[suppress] The real message text from a run_bp_check finding, if you have it — preferred over the catalog template.'),
+  justification: z.string().optional().describe('[suppress] Why the warning is being ignored. 95% of real entries carry one — omitting it emits a TODO and a warning.'),
+  message: z.string().optional().describe('[suppress] The real message text from a run_bp_check finding, if you have it.'),
   severity: z.enum(['Error', 'Warning']).optional().describe('[suppress] Defaults to "Warning".'),
+  itemSpecific: z.boolean().optional().describe('[suppress] Add the <ItemSpecific> block (only 9% of real entries carry it). Requires elementName.'),
 });
 
 export async function bpMonikerHelpTool(request: CallToolRequest) {
@@ -63,25 +69,34 @@ export async function bpMonikerHelpTool(request: CallToolRequest) {
     }
     const result = validateMoniker(args.moniker);
     if (!result.found) {
-      const nearMissText = result.nearMisses.length
-        ? `\n\nFound with different casing only: ${result.nearMisses.join(', ')}`
+      const suggestionText = result.suggestions.length
+        ? `\n\nCatalog names sharing words with it — candidates to check, not corrections: ${result.suggestions.join(', ')}`
         : '';
       return {
         content: [{
           type: 'text',
-          text: `❌ '${args.moniker}' is not in the extracted catalog (${BP_MONIKER_CATALOG.length} known monikers).${nearMissText}\n\n` +
+          text: `❌ '${args.moniker}' is not in the extracted catalog (${BP_MONIKER_CATALOG.length} known monikers).${suggestionText}\n\n` +
             `This does not prove it is fake — the extraction is not exhaustive — but it is not confirmed. ` +
             `If you have a real run_bp_check finding using it, that is stronger evidence than this lookup.`,
         }],
       };
     }
     const e = result.entry!;
-    const lines = [
-      `✅ '${e.moniker}' is a real BP moniker.`,
-      `Canonical (found in a model's AxRuleSet/BPRules.xml): ${e.canonical ? 'yes' : 'no — found only in rule-DLL resource text'}`,
+    // Only the AxRuleSet union proves "this is a BP rule". The rule-DLL
+    // resource text also contains strings that are not BP rules at all
+    // (upgrade-tool and form-conversion messages), so a resource-only hit gets
+    // a qualified answer, not a ✅.
+    const lines = e.canonical
+      ? [`✅ '${e.moniker}' is a real BP moniker — it appears in a model's AxRuleSet/BPRules.xml.`]
+      : [
+          `⚠️ '${e.moniker}' is a known string from the rule DLLs, but it is NOT in any model's AxRuleSet/BPRules.xml.`,
+          `That source also carries non-BP messages (upgrade and form-conversion tooling), so this is not confirmed as a BP rule.`,
+          `Treat it as unverified unless a real BP finding uses it.`,
+        ];
+    lines.push(
       e.message ? `Message template: ${e.message}` : 'Message template: (not found in a resource class)',
       e.description ? `Description: ${e.description}` : 'Description: (not found in a resource class)',
-    ];
+    );
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
 
@@ -94,8 +109,9 @@ export async function bpMonikerHelpTool(request: CallToolRequest) {
       return {
         content: [{
           type: 'text',
-          text: `No catalog matches for "${args.query}". Coverage is uneven — most X++-authored rules have no ` +
-            `message/description text in the catalog, only a name — so a miss here does not mean no rule fits.`,
+          text: `No catalog matches for "${args.query}". 545 of the ${BP_MONIKER_CATALOG.length} entries carry real rule text, ` +
+            `so a miss is meaningful: most likely no BP rule covers this, or the wording shares no words with the rule's own. ` +
+            `Try the rule's vocabulary (e.g. "duty", "privilege", "label", "extensible") before concluding there is none.`,
         }],
       };
     }
@@ -111,24 +127,41 @@ export async function bpMonikerHelpTool(request: CallToolRequest) {
   }
 
   // suppress
-  if (!args.moniker || !args.elementType || !args.elementName) {
+  if (!args.moniker) {
+    return { content: [{ type: 'text', text: '❌ suppress requires `moniker`.' }], isError: true };
+  }
+  if (!args.path && !(args.elementType && args.elementName)) {
     return {
-      content: [{ type: 'text', text: '❌ suppress requires `moniker`, `elementType`, and `elementName`.' }],
+      content: [{
+        type: 'text',
+        text: '❌ suppress requires either `path` (copied verbatim from the finding — preferred) ' +
+          'or both `elementType` and `elementName`.',
+      }],
       isError: true,
     };
   }
   const built = buildSuppressionXml({
     moniker: args.moniker,
+    path: args.path,
     elementType: args.elementType,
     elementName: args.elementName,
+    justification: args.justification,
     message: args.message,
     severity: args.severity,
+    itemSpecific: args.itemSpecific,
   });
-  const warningText = built.warning ? `⚠️ ${built.warning}\n\n` : '';
+  if (built.errors.length) {
+    return {
+      content: [{ type: 'text', text: `❌ ${built.errors.join('\n❌ ')}` }],
+      isError: true,
+    };
+  }
+  const warningText = built.warnings.length ? `${built.warnings.map(w => `⚠️ ${w}`).join('\n\n')}\n\n` : '';
   return {
     content: [{
       type: 'text',
-      text: `${warningText}Add this to src/Metadata/{Model}/{Model}/AxIgnoreDiagnosticList/{Model}_BPSuppressions.xml:\n\n${built.xml}`,
+      text: `${warningText}Add this inside <Items> of ` +
+        `{Model}/{Model}/AxIgnoreDiagnosticList/{Model}_BPSuppressions.xml:\n\n${built.xml}`,
     }],
   };
 }

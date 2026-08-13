@@ -118,6 +118,19 @@ describe('validateMoniker', () => {
     expect(result.canonical).toBe(false);
   });
 
+  it('offers word-overlap suggestions on a miss instead of dead-ending', () => {
+    // The failure this catalog exists for: a name close to the real one, typed
+    // from memory. `found` must stay false — the suggestion is a candidate to
+    // confirm, never a correction applied on the caller's behalf.
+    const result = validateMoniker('BPErrorPrivilegeNotCoveredByDuties');
+    expect(result.found).toBe(false);
+    expect(result.suggestions).toContain(REAL_MONIKER);
+  });
+
+  it('returns no suggestions when the input shares no words with any rule', () => {
+    expect(validateMoniker('PurpleGiraffeAstronaut').suggestions).toEqual([]);
+  });
+
   it('handles a canonical moniker with no resource text without throwing, and says so honestly', () => {
     // Not every canonical moniker has message/description — assert the shape
     // holds for one that genuinely does not, if the current extraction has one.
@@ -176,56 +189,150 @@ describe('searchMonikers', () => {
 // ─── 4. Suppression XML generation ──────────────────────────────────────────
 
 describe('buildSuppressionXml', () => {
-  it('renders a well-formed <Diagnostic> block for a real moniker, with no warning', () => {
-    const { xml, warning } = buildSuppressionXml({
-      moniker: REAL_MONIKER,
-      elementType: 'AxSecurityPrivilege',
-      elementName: 'ConDemoFooMaintain',
-    });
-    expect(warning).toBeNull();
-    expect(xml).toContain('<DiagnosticType>BestPractices</DiagnosticType>');
-    expect(xml).toContain(`<Moniker>${REAL_MONIKER}</Moniker>`);
-    expect(xml).toContain('<ElementType>AxSecurityPrivilege</ElementType>');
-    expect(xml).toContain('<ElementName>ConDemoFooMaintain</ElementName>');
-    expect(xml).toContain('dynamics://SecurityPrivilege/ConDemoFooMaintain');
+  // Measured, not assumed. Every <Diagnostic> in all 299 AxIgnoreDiagnosticList
+  // files of a 10.0 PackagesLocalDirectory was parsed; among the 1,447
+  // BestPractices entries carrying both <ElementType> and <Path>, the path
+  // segment was the type name minus its 'Ax' prefix in 1,447 of 1,447 cases.
+  // The pairs below are a sample of that observed set. Plural forms such as
+  // 'Classes' or 'ExtendedDataTypes' occur in zero real entries.
+  const REAL_TYPE_TO_SEGMENT = [
+    ['AxClass', 'Class'],
+    ['AxTable', 'Table'],
+    ['AxForm', 'Form'],
+    ['AxView', 'View'],
+    ['AxEnum', 'Enum'],
+    ['AxDataEntityView', 'DataEntityView'],
+    ['AxSecurityPrivilege', 'SecurityPrivilege'],
+    ['AxSecurityDuty', 'SecurityDuty'],
+    ['AxTableExtension', 'TableExtension'],
+    ['AxFormExtension', 'FormExtension'],
+    ['AxEdtString', 'EdtString'],
+    ['AxMenuItemDisplay', 'MenuItemDisplay'],
+    ['AxAggregateMeasurement', 'AggregateMeasurement'],
+    ['AxConfigurationKey', 'ConfigurationKey'],
+  ] as const;
+
+  it.each(REAL_TYPE_TO_SEGMENT)('derives the real dynamics:// segment for %s', (elementType, segment) => {
+    const { xml } = buildSuppressionXml({ moniker: REAL_MONIKER, elementType, elementName: 'ConDemoFoo' });
+    expect(xml).toContain(`<Path>dynamics://${segment}/ConDemoFoo</Path>`);
   });
 
-  it('fills the message placeholder from the catalog template when no explicit message is given', () => {
-    const { xml } = buildSuppressionXml({
+  it('never emits a pluralised segment — the shape that silently suppresses nothing', () => {
+    const plurals = ['Classes', 'Tables', 'Forms', 'Views', 'Enums', 'ExtendedDataTypes', 'DataEntityViews', 'Queries', 'Reports'];
+    for (const [elementType] of REAL_TYPE_TO_SEGMENT) {
+      const { xml } = buildSuppressionXml({ moniker: REAL_MONIKER, elementType, elementName: 'ConDemoFoo' });
+      const path = xml.split('\n').find(l => l.includes('<Path>'))!;
+      for (const wrong of plurals) expect(path).not.toContain(`dynamics://${wrong}/`);
+    }
+  });
+
+  it("renders the elements Microsoft's own template lists, in real-file order", () => {
+    const { xml, errors } = buildSuppressionXml({
       moniker: REAL_MONIKER,
       elementType: 'AxSecurityPrivilege',
       elementName: 'ConDemoFooMaintain',
+      justification: 'Covered by the SystemUser role in a downstream model.',
     });
-    // The catalog message template has a `{0}` placeholder for the element name.
+    expect(errors).toEqual([]);
+    // The template comment at the top of every real *_BPSuppressions.xml lists
+    // exactly these five, in this order.
+    const order = ['<DiagnosticType>', '<Severity>', '<Path>', '<Moniker>', '<Justification>'];
+    const positions = order.map(t => xml.indexOf(t));
+    expect(positions.every(p => p >= 0)).toBe(true);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+  });
+
+  it('takes a verbatim path — the only way to address a sub-element', () => {
+    // Real shape, copied from ApplicationFoundation_BPSuppressions.xml.
+    const path = 'dynamics://Enum/SRSReportPrintOrientation/EnumValue/Potrait?Value';
+    const { xml, errors } = buildSuppressionXml({ moniker: REAL_MONIKER, path, justification: 'x' });
+    expect(errors).toEqual([]);
+    expect(xml).toContain(`<Path>${path}</Path>`);
+  });
+
+  it('rejects a path that is not a dynamics:// URI rather than emitting it', () => {
+    const { errors } = buildSuppressionXml({ moniker: REAL_MONIKER, path: 'Classes/Foo', justification: 'x' });
+    expect(errors.join(' ')).toContain("must start with 'dynamics://'");
+  });
+
+  it('errors when neither a path nor an elementType+elementName is given', () => {
+    const { errors } = buildSuppressionXml({ moniker: REAL_MONIKER });
+    expect(errors.join(' ')).toContain('Need either');
+  });
+
+  it('always emits a <Justification>, and warns when the caller did not supply one', () => {
+    // 10,384 of 10,915 real BestPractices entries carry one; a blank reason is
+    // what a reviewer rejects, so it is never silently omitted.
+    const { xml, warnings } = buildSuppressionXml({
+      moniker: REAL_MONIKER, elementType: 'AxSecurityPrivilege', elementName: 'ConDemoFooMaintain',
+    });
+    expect(xml).toContain('<Justification>');
+    expect(xml).toContain('TODO');
+    expect(warnings.join(' ')).toContain('No justification given');
+  });
+
+  it("uses the caller's justification verbatim and drops the warning", () => {
+    const { xml, warnings } = buildSuppressionXml({
+      moniker: REAL_MONIKER, elementType: 'AxSecurityPrivilege', elementName: 'ConDemoFooMaintain',
+      justification: 'Privilege is granted through the SystemUser role.',
+    });
+    expect(xml).toContain('<Justification>Privilege is granted through the SystemUser role.</Justification>');
+    expect(warnings.join(' ')).not.toContain('No justification');
+  });
+
+  it('omits <ItemSpecific> by default and adds it only on request', () => {
+    // Only 999 of 10,915 real entries carry it — it is the exception.
+    const base = { moniker: REAL_MONIKER, elementType: 'AxSecurityPrivilege' as const, elementName: 'ConDemoFooMaintain', justification: 'x' };
+    expect(buildSuppressionXml(base).xml).not.toContain('<ItemSpecific>');
+    const opted = buildSuppressionXml({ ...base, itemSpecific: true });
+    expect(opted.xml).toContain('<ItemSpecific>');
+    expect(opted.xml).toContain('<ElementName>ConDemoFooMaintain</ElementName>');
+  });
+
+  it('fills a single-placeholder catalog template with the element name', () => {
+    const { xml } = buildSuppressionXml({
+      moniker: REAL_MONIKER, elementType: 'AxSecurityPrivilege', elementName: 'ConDemoFooMaintain', justification: 'x',
+    });
     expect(xml).toContain('ConDemoFooMaintain');
     expect(xml).not.toContain('{0}');
   });
 
+  it('emits no <Message> when the template needs more than one distinct value', () => {
+    // 'BPCheckCodeRefactoring' reads "Number of Lines found in class method {0}
+    // is greater than {2} within class {1}". Substituting the element name into
+    // all three produced "greater than MyClass within class MyClass" — an
+    // invented sentence. <Message> is absent from 57% of real entries anyway.
+    const multi = BP_MONIKER_CATALOG.find(e => new Set(e.message?.match(/\{\d+\}/g) ?? []).size > 1);
+    expect(multi).toBeDefined();
+    const { xml } = buildSuppressionXml({
+      moniker: multi!.moniker, elementType: 'AxClass', elementName: 'ConDemoFooClass', justification: 'x',
+    });
+    expect(xml).not.toContain('<Message>');
+  });
+
   it('prefers an explicitly supplied real message over the catalog template', () => {
     const { xml } = buildSuppressionXml({
-      moniker: REAL_MONIKER,
-      elementType: 'AxSecurityPrivilege',
-      elementName: 'ConDemoFooMaintain',
-      message: 'The exact text from a real run_bp_check finding.',
+      moniker: REAL_MONIKER, elementType: 'AxSecurityPrivilege', elementName: 'ConDemoFooMaintain',
+      message: 'The exact text from a real run_bp_check finding.', justification: 'x',
     });
     expect(xml).toContain('<Message>The exact text from a real run_bp_check finding.</Message>');
   });
 
   it('warns, but still renders, for a moniker not in the catalog — never silently fabricates confidence', () => {
-    const { xml, warning } = buildSuppressionXml({
+    const { xml, warnings } = buildSuppressionXml({
       moniker: 'BPErrorThisMonikerDoesNotExistAtAll12345',
       elementType: 'AxTable',
       elementName: 'ConDemoFooTable',
+      justification: 'x',
     });
-    expect(warning).toContain('not in the extracted catalog');
+    expect(warnings.join(' ')).toContain('not in the extracted catalog');
     expect(xml).toContain('<Moniker>BPErrorThisMonikerDoesNotExistAtAll12345</Moniker>');
   });
 
   it('escapes XML-special characters in the element name and message', () => {
     const { xml } = buildSuppressionXml({
-      moniker: REAL_MONIKER,
-      elementType: 'AxSecurityPrivilege',
-      elementName: 'A&B<C>',
+      moniker: REAL_MONIKER, elementType: 'AxSecurityPrivilege', elementName: 'A&B<C>',
+      justification: 'x', itemSpecific: true,
     });
     expect(xml).toContain('A&amp;B&lt;C&gt;');
     expect(xml).not.toContain('<ElementName>A&B<C>');
@@ -233,9 +340,7 @@ describe('buildSuppressionXml', () => {
 
   it('defaults severity to Warning', () => {
     const { xml } = buildSuppressionXml({
-      moniker: REAL_MONIKER,
-      elementType: 'AxSecurityPrivilege',
-      elementName: 'ConDemoFooMaintain',
+      moniker: REAL_MONIKER, elementType: 'AxSecurityPrivilege', elementName: 'ConDemoFooMaintain', justification: 'x',
     });
     expect(xml).toContain('<Severity>Warning</Severity>');
   });
@@ -247,6 +352,18 @@ describe('bpMonikerHelpTool', () => {
   it('validate: reports a real moniker as confirmed', async () => {
     const result = await bpMonikerHelpTool(req({ action: 'validate', moniker: REAL_MONIKER }));
     expect(textOf(result)).toContain('is a real BP moniker');
+  });
+
+  it('validate: does NOT call a resource-only string a real BP moniker', async () => {
+    // The rule DLLs also carry upgrade- and form-conversion-tool messages.
+    // Checked against this VM's ApplicationPlatform/AxRuleSet/BPRules.xml:
+    // 'DECReplaceCode' and friends appear in no rule set, so a ✅ there would
+    // be exactly the false confirmation this catalog exists to prevent.
+    const resourceOnly = BP_MONIKER_CATALOG.find(e => !e.canonical);
+    expect(resourceOnly).toBeDefined();
+    const text = textOf(await bpMonikerHelpTool(req({ action: 'validate', moniker: resourceOnly!.moniker })));
+    expect(text).not.toContain('✅');
+    expect(text).toContain('not confirmed as a BP rule');
   });
 
   it('validate: reports a fabricated moniker as unconfirmed, not as an error', async () => {
@@ -281,9 +398,21 @@ describe('bpMonikerHelpTool', () => {
     expect(text).toContain('<Diagnostic>');
   });
 
-  it('suppress: requires moniker, elementType, and elementName', async () => {
+  it('suppress: requires either a path or elementType+elementName', async () => {
     const result = await bpMonikerHelpTool(req({ action: 'suppress', moniker: REAL_MONIKER }));
     expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('`path`');
+  });
+
+  it('suppress: accepts a verbatim path with no elementType', async () => {
+    const result = await bpMonikerHelpTool(req({
+      action: 'suppress',
+      moniker: REAL_MONIKER,
+      path: 'dynamics://SecurityPrivilege/ConDemoFooMaintain',
+      justification: 'Granted via SystemUser.',
+    }));
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result)).toContain('<Path>dynamics://SecurityPrivilege/ConDemoFooMaintain</Path>');
   });
 
   it('rejects an invalid action', async () => {

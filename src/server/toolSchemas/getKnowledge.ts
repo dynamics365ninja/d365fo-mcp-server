@@ -54,13 +54,16 @@ export const getKnowledgeTool = {
           type: 'string',
           description: '[bp-moniker validate/suppress] REQUIRED. Exact moniker, e.g. "BPErrorPrivilegeNotCoveredByDuty".',
         },
-        elementType: {
+        // elementType/elementName are accepted too (see bpMonikerHelp.ts) but
+        // are not republished here: the finding already hands you `path`, and
+        // that is the only form that can address a control/field/method.
+        path: {
           type: 'string',
-          description: '[bp-moniker suppress] REQUIRED. AOT element type, e.g. "AxSecurityPrivilege", "AxTable", "AxClass".',
+          description: '[bp-moniker suppress] REQUIRED. dynamics:// path, verbatim from the finding.',
         },
-        elementName: {
+        justification: {
           type: 'string',
-          description: '[bp-moniker suppress] REQUIRED. Name of the object the warning was raised against.',
+          description: '[bp-moniker suppress] REQUIRED. Why the warning is ignored; 95% of real entries carry one.',
         },
       },
       // kind is optional: inferred from topic (→ knowledge) or errorText (→ error).

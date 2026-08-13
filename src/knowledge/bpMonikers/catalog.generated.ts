@@ -7,10 +7,12 @@
  *     <Model>/<Model>/AxRuleSet/BPRules.xml — the authoritative name list.
  *   - `message`/`description` come from the .NET-authored rule DLLs'
  *     resx-backed resource classes (bin/BPExtensions/*.dll and a couple of
- *     core bin/*.dll) where the rule author provided one. Most X++-authored
- *     rules do NOT have this — `message`/`description` are `null` for them,
- *     which means "not found in a resource class", NOT "not a real rule".
- *     `canonical` is the field that answers "is this a real moniker".
+ *     core bin/*.dll) where the rule author provided one. A `null` there
+ *     means "not found in a resource class", NOT "not a real rule".
+ *   - Presence in this file does NOT by itself mean "BP rule". The resource
+ *     dump also yields upgrade- and form-conversion-tool messages, which come
+ *     out with `canonical: false`. `canonical` is the field that answers
+ *     "is this a BP rule".
  *
  * Extracted from: C:\Users\laeliand\AppData\Local\Microsoft\Dynamics365\10.0.2527.174\PackagesLocalDirectory
  * Generated at:   (stamp with the actual date when regenerating — omitted

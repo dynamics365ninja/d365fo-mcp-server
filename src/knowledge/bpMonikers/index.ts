@@ -6,8 +6,15 @@
  * hand-typed list. That distinction matters: a moniker typed from memory has
  * been wrong before (issue: proposed a moniker that turned out not to exist,
  * caught only by reading the xppc log by hand). Every lookup here either
- * confirms a real moniker or says plainly that it does not recognise one —
- * it never guesses a corrected spelling.
+ * confirms a real moniker or says plainly that it does not recognise one. It
+ * may offer candidates alongside a miss, but never silently resolves a typo
+ * into one of them — `found` stays false and the caller must confirm.
+ *
+ * Two things the catalog does NOT prove, both of which callers used to get
+ * wrong: an entry with `canonical: false` came only from a rule DLL's resource
+ * strings, a source that also contains non-BP messages; and the suppression
+ * shape below follows what real AxIgnoreDiagnosticList files contain, measured
+ * across all 299 of them, not what one sampled entry happened to look like.
  */
 
 import { BP_MONIKER_CATALOG, type BpMonikerEntry } from './catalog.generated.js';
@@ -23,28 +30,35 @@ export interface MonikerValidation {
   /** True if it also appears in at least one model's AxRuleSet/BPRules.xml — the strongest confirmation. */
   canonical: boolean;
   entry: BpMonikerEntry | null;
-  /** Names in the catalog that differ only by case, when the exact-case lookup missed — a common typo shape. */
-  nearMisses: string[];
+  /**
+   * Catalog names sharing words with the input, when the exact lookup missed.
+   * Suggestions only: `found` stays false and the caller must present these as
+   * candidates to confirm, never as a correction. Populated by splitting the
+   * input's PascalCase into words and reusing the same token search the
+   * `search` action uses — so a near-miss typo lands on the real name instead
+   * of dead-ending into another round trip.
+   */
+  suggestions: string[];
 }
 
 /**
  * Look up an exact moniker (case-insensitive). Does not fuzzy-match — a typo
- * should come back as "not found", not silently resolve to something else.
+ * comes back as "not found" with suggestions attached, never silently resolved
+ * to something else.
  */
 export function validateMoniker(moniker: string): MonikerValidation {
   const trimmed = moniker.trim();
   const entry = BY_MONIKER.get(trimmed.toLowerCase()) ?? null;
-  const nearMisses = entry
-    ? []
-    : BP_MONIKER_CATALOG
-        .filter(e => e.moniker.toLowerCase() === trimmed.toLowerCase() && e.moniker !== trimmed)
-        .map(e => e.moniker);
+  // A case-only difference cannot reach here — BY_MONIKER is keyed lowercase,
+  // so it would already have hit above. Suggestions are word-overlap instead,
+  // which is the miss that actually happens.
+  const suggestions = entry ? [] : searchMonikers(splitPascalCase(trimmed), 5).map(r => r.entry.moniker);
   return {
     moniker: trimmed,
     found: entry !== null,
     canonical: entry?.canonical ?? false,
     entry,
-    nearMisses,
+    suggestions,
   };
 }
 
@@ -60,11 +74,13 @@ export interface MonikerSearchResult {
  * (PascalCase words split apart), message template, and description.
  *
  * This is keyword/token overlap, not embeddings — it is only as good as the
- * words shared between the query and the real rule text. Coverage is uneven:
- * only entries with a non-null message/description (545 of 577 at last
- * extraction) can match on that text at all; the rest match on the moniker
- * name alone. Callers should show `matchedIn` and the real description text
- * so a human/agent can judge the fit — never present the top hit as certain.
+ * words shared between the query and the real rule text. Text coverage is
+ * high, not sparse: 545 of 577 entries carry a real message (94%), and 221
+ * also carry a description. Only 32 entries are name-only, and a miss is
+ * therefore reasonably informative — do not tell callers to discount it.
+ * What the search cannot do is match a paraphrase sharing no words with the
+ * rule text. Callers should show `matchedIn` and the real description so a
+ * human/agent can judge the fit — never present the top hit as certain.
  */
 export function searchMonikers(query: string, limit = 10): MonikerSearchResult[] {
   const tokens = tokenize(query);
@@ -113,95 +129,186 @@ function splitPascalCase(name: string): string {
 
 // ─── Suppression XML ────────────────────────────────────────────────────────
 
-/** AOT element-type token used in the <Path>/<ElementType> of a real suppression entry (see ApplicationPlatform_BPSuppressions.xml). */
+/**
+ * Top-level AOT element types observed in real AxIgnoreDiagnosticList files.
+ *
+ * Measured, not assumed: every <Diagnostic> in all 299 *_BPSuppressions.xml /
+ * AxIgnoreDiagnosticList files of a 10.0 PackagesLocalDirectory was parsed
+ * (19,619 blocks carrying both <Path> and <ElementType>; 10,915 of them
+ * DiagnosticType=BestPractices). This list is the set of types whose element
+ * name alone determines the whole path — see PATH_SEGMENT below for the rule
+ * and for why sub-element types are deliberately absent.
+ */
 export type SuppressionElementType =
-  | 'AxClass' | 'AxTable' | 'AxForm' | 'AxEnum' | 'AxEdt' | 'AxQuery' | 'AxView'
+  | 'AxClass' | 'AxTable' | 'AxForm' | 'AxView' | 'AxMap' | 'AxEnum' | 'AxQuerySimple'
+  | 'AxDataEntityView' | 'AxAggregateMeasurement' | 'AxAggregateDimension'
   | 'AxSecurityPrivilege' | 'AxSecurityDuty' | 'AxSecurityRole'
-  | 'AxTableExtension' | 'AxFormExtension' | 'AxEnumExtension' | 'AxEdtExtension'
-  | 'AxDataEntityView' | 'AxReport' | 'AxMenuItemDisplay' | 'AxMenuItemAction' | 'AxMenuItemOutput';
+  | 'AxTableExtension' | 'AxFormExtension' | 'AxMenuExtension'
+  | 'AxMenu' | 'AxMenuItemDisplay' | 'AxMenuItemAction' | 'AxMenuItemOutput'
+  | 'AxEdtString' | 'AxEdtInt' | 'AxEdtInt64' | 'AxEdtEnum' | 'AxEdtReal'
+  | 'AxEdtDate' | 'AxEdtGuid'
+  | 'AxConfigurationKey' | 'AxLicenseCode';
 
-/** dynamics:// path prefix per element type, taken from real suppression files — e.g. SecurityPrivilege, Tables, Forms. */
-const PATH_SEGMENT: Record<SuppressionElementType, string> = {
-  AxClass: 'Classes',
-  AxTable: 'Tables',
-  AxForm: 'Forms',
-  AxEnum: 'Enums',
-  AxEdt: 'ExtendedDataTypes',
-  AxQuery: 'Queries',
-  AxView: 'Views',
-  AxSecurityPrivilege: 'SecurityPrivilege',
-  AxSecurityDuty: 'SecurityDuty',
-  AxSecurityRole: 'SecurityRole',
-  AxTableExtension: 'Tables',
-  AxFormExtension: 'Forms',
-  AxEnumExtension: 'Enums',
-  AxEdtExtension: 'ExtendedDataTypes',
-  AxDataEntityView: 'DataEntityViews',
-  AxReport: 'Reports',
-  AxMenuItemDisplay: 'MenuItemsDisplay',
-  AxMenuItemAction: 'MenuItemsAction',
-  AxMenuItemOutput: 'MenuItemsOutput',
-};
+/**
+ * dynamics:// path segment for a top-level element type: the type name with
+ * its 'Ax' prefix removed, singular.
+ *
+ * Verified against every real entry that carries both fields — 1,447 of them
+ * under DiagnosticType=BestPractices, with zero exceptions ('AxClass' →
+ * 'Class', 'AxTableExtension' → 'TableExtension', 'AxEdtString' →
+ * 'EdtString'). The plural forms an earlier version of this file used
+ * ('Classes', 'Tables', 'ExtendedDataTypes') appear nowhere in any real file:
+ * a suppression carrying one silently matches no element and suppresses
+ * nothing, which is worse than emitting no suppression at all.
+ *
+ * The rule holds only for TOP-LEVEL types. Sub-element types — 'AxEnumValue',
+ * 'AxFormStringControl', 'AxTableFieldString', 'Class Method' and friends —
+ * take their CONTAINING element's segment and then drill in ('Enum' for
+ * AxEnumValue: dynamics://Enum/{Enum}/EnumValue/{Value}?Property), with real
+ * paths running to 22 segments. There is no way to derive those from a type
+ * and a name, so they are not in the union above; for them the caller passes
+ * `path` verbatim from the finding, which is what Microsoft's own template
+ * comment tells a human to do ("path given in warning message").
+ */
+function pathSegmentFor(elementType: SuppressionElementType): string {
+  return elementType.replace(/^Ax/, '');
+}
 
 export interface BuildSuppressionInput {
   moniker: string;
-  elementType: SuppressionElementType;
+  /**
+   * The exact dynamics:// path from the BP finding. Preferred over
+   * elementType+elementName: it is the only way to address a sub-element
+   * (a control, a field, a method, an enum value) and it is what the finding
+   * hands you anyway. Given this, elementType/elementName are not needed.
+   */
+  path?: string;
+  /** Top-level element type, used only to derive `path` when `path` is absent. */
+  elementType?: SuppressionElementType;
   /** The object the warning was raised against, e.g. a privilege or table name. */
-  elementName: string;
-  /** Shown in the generated <Message> in place of the real xppbp text — pass the real message if you have it (from a run_bp_check finding) for an accurate suppression record. */
+  elementName?: string;
+  /** Why this warning is being ignored. Real files carry one on 95% of entries; without it the block is incomplete. */
+  justification?: string;
+  /** The real message text from the finding. Omitted from the output when absent rather than invented. */
   message?: string;
   severity?: 'Error' | 'Warning';
+  /**
+   * Emit the <ItemSpecific> block. Off by default — only 999 of 10,915 real
+   * BestPractices entries carry it, and always for element-specific rules
+   * (BPErrorUnknownLabel, BPXmlDoc*, BPErrorPrivilegeNotCoveredByDuty …).
+   * Requires elementName.
+   */
+  itemSpecific?: boolean;
 }
 
 export interface BuildSuppressionResult {
   xml: string;
-  /** Set when the moniker is not in the catalog at all — the caller should surface this instead of silently emitting XML for a name that may not exist. */
-  warning: string | null;
+  /** Blocking problems — the XML is still returned, but it should not be pasted as-is. */
+  errors: string[];
+  /** Non-blocking notes the caller must surface (unknown moniker, missing justification, …). */
+  warnings: string[];
 }
 
 /**
- * Render one <Diagnostic> block in the real Microsoft AxIgnoreDiagnosticList
- * shape (matched against ApplicationPlatform_BPSuppressions.xml, not the
- * shorter template comment those files also carry) — ready to paste into
- * src/Metadata/{Model}/{Model}/AxIgnoreDiagnosticList/{Model}_BPSuppressions.xml.
+ * Render one <Diagnostic> block for
+ * {Model}/{Model}/AxIgnoreDiagnosticList/{Model}_BPSuppressions.xml.
  *
- * Does not fabricate a message: if the caller has the real one from a
- * run_bp_check finding, pass it; otherwise this falls back to the catalog's
- * message template (still real text) or, lacking that, a plain
- * "<Moniker>: <ElementName>" placeholder — never an invented sentence.
+ * Element order and optionality follow what real files actually contain, not
+ * what one sampled entry happened to show. Across 10,915 real BestPractices
+ * blocks: <Justification> 95%, <Message> 43%, <ElementType> 13%,
+ * <ItemSpecific> 9%. Microsoft's own template comment at the top of those
+ * files lists exactly DiagnosticType, Severity, Path, Moniker, Justification
+ * — so that is what is always emitted, and the three rarer elements only when
+ * the caller supplies the data for them.
+ *
+ * Nothing here is invented: no message is fabricated when none is known, and
+ * no justification is written on the caller's behalf — a missing one is
+ * reported as a warning and marked with an obvious TODO, because a
+ * suppression whose reason is blank is what a reviewer rejects.
  */
 export function buildSuppressionXml(input: BuildSuppressionInput): BuildSuppressionResult {
   const validation = validateMoniker(input.moniker);
-  const warning = validation.found
-    ? (validation.canonical ? null : `'${input.moniker}' was found only in rule-DLL resource text, not in any model's AxRuleSet/BPRules.xml — double-check the spelling before relying on it.`)
-    : `'${input.moniker}' is not in the extracted catalog (${BP_MONIKER_CATALOG.length} known monikers). It may be real but uncovered by the extraction, or a typo — verify against an actual BP check finding before suppressing.`;
+  const errors: string[] = [];
+  const warnings: string[] = [];
 
-  const message = input.message
-    ?? validation.entry?.message?.replace(/\{\d+\}/g, input.elementName)
-    ?? `${input.moniker}: ${input.elementName}`;
+  if (!validation.found) {
+    warnings.push(
+      `'${input.moniker}' is not in the extracted catalog (${BP_MONIKER_CATALOG.length} known monikers). ` +
+      `It may be real but uncovered by the extraction, or a typo — verify against an actual BP check finding before suppressing.` +
+      (validation.suggestions.length ? ` Closest catalog names: ${validation.suggestions.join(', ')}.` : ''),
+    );
+  } else if (!validation.canonical) {
+    warnings.push(
+      `'${validation.entry!.moniker}' appears only in rule-DLL resource text, not in any model's AxRuleSet/BPRules.xml. ` +
+      `Some strings in that source are not BP rules at all (upgrade-tool messages, for example) — confirm it against a real BP finding.`,
+    );
+  }
 
-  const severity = input.severity ?? 'Warning';
-  const pathSegment = PATH_SEGMENT[input.elementType];
-  const escapeXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Path: prefer the caller's verbatim one. Deriving it from a type and a name
+  // only ever addresses a top-level element.
+  let path: string;
+  if (input.path) {
+    path = input.path.trim();
+    if (!path.startsWith('dynamics://')) {
+      errors.push(`path must start with 'dynamics://' — got '${path}'. Copy it verbatim from the finding.`);
+    }
+  } else if (input.elementType && input.elementName) {
+    path = `dynamics://${pathSegmentFor(input.elementType)}/${input.elementName.trim()}`;
+  } else {
+    errors.push('Need either `path` (preferred, verbatim from the finding) or both `elementType` and `elementName`.');
+    path = 'dynamics://UNKNOWN/UNKNOWN';
+  }
 
-  const xml = [
+  if (input.itemSpecific && !input.elementName) {
+    errors.push('itemSpecific requires `elementName` — the <Fields><ElementName> it wraps has nothing to hold otherwise.');
+  }
+
+  let justification = input.justification?.trim();
+  if (!justification) {
+    justification = 'TODO: state why this warning is being ignored before committing this file.';
+    warnings.push(
+      'No justification given. 95% of real suppression entries carry one and a blank reason is what a reviewer rejects — ' +
+      'replace the TODO before committing.',
+    );
+  }
+
+  // The catalog template is real text but is written for ONE placeholder set;
+  // filling {0},{1},{2} all with the same name produces a sentence that reads
+  // as nonsense ("greater than MyClass within class MyClass"). Use it only
+  // when it takes exactly one placeholder, otherwise emit no <Message> at all
+  // — <Message> is absent from 57% of real entries, so omitting is normal.
+  const template = validation.entry?.message ?? null;
+  const placeholders = template ? new Set(template.match(/\{\d+\}/g) ?? []) : new Set<string>();
+  const message =
+    input.message?.trim() ||
+    (template && input.elementName && placeholders.size <= 1
+      ? template.replace(/\{\d+\}/g, input.elementName.trim())
+      : null);
+
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const lines = [
     '<Diagnostic>',
     '  <DiagnosticType>BestPractices</DiagnosticType>',
-    `  <Severity>${severity}</Severity>`,
-    `  <Path>dynamics://${pathSegment}/${escapeXml(input.elementName)}</Path>`,
-    `  <ElementType>${input.elementType}</ElementType>`,
-    `  <Moniker>${escapeXml(validation.moniker)}</Moniker>`,
-    `  <Message>${escapeXml(message)}</Message>`,
-    '  <ItemSpecific>',
-    `    <OriginatorType alias="0">${escapeXml(validation.moniker)}</OriginatorType>`,
-    '    <Fields>',
-    `      <ElementName>${escapeXml(input.elementName)}</ElementName>`,
-    '    </Fields>',
-    '  </ItemSpecific>',
-    '</Diagnostic>',
-  ].join('\n');
+    `  <Severity>${input.severity ?? 'Warning'}</Severity>`,
+    `  <Path>${esc(path)}</Path>`,
+  ];
+  if (input.elementType) lines.push(`  <ElementType>${input.elementType}</ElementType>`);
+  lines.push(`  <Moniker>${esc(validation.entry?.moniker ?? validation.moniker)}</Moniker>`);
+  if (message) lines.push(`  <Message>${esc(message)}</Message>`);
+  if (input.itemSpecific && input.elementName) {
+    lines.push(
+      '  <ItemSpecific>',
+      `    <OriginatorType alias="0">${esc(validation.entry?.moniker ?? validation.moniker)}</OriginatorType>`,
+      '    <Fields>',
+      `      <ElementName>${esc(input.elementName.trim())}</ElementName>`,
+      '    </Fields>',
+      '  </ItemSpecific>',
+    );
+  }
+  lines.push(`  <Justification>${esc(justification)}</Justification>`, '</Diagnostic>');
 
-  return { xml, warning };
+  return { xml: lines.join('\n'), errors, warnings };
 }
 
 export { BP_MONIKER_CATALOG, type BpMonikerEntry };

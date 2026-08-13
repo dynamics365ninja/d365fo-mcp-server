@@ -42,6 +42,17 @@ describe('parseBpFindings', () => {
     expect(findings[0].description).toBeNull();
   });
 
+  it('treats a bare severity prefix as unnamed, not as an unknown moniker', () => {
+    // Real captured sample from tests/tools/runBpCheck.test.ts. 'BPError' is a
+    // severity prefix, not a rule name — reading it as a moniker put a "verify
+    // the spelling" flag on output the compiler itself had just emitted.
+    const findings = parseBpFindings('BPError: LocalVariableNotUsed\nErrors: 1');
+    expect(findings).toHaveLength(1);
+    expect(findings[0].moniker).toBeNull();
+    expect(findings[0].target).toBe('LocalVariableNotUsed');
+    expect(renderFindingsSection('BPError: LocalVariableNotUsed')).not.toContain('verify the spelling');
+  });
+
   it('ignores non-finding lines (banners, summary counts, blank lines)', () => {
     const output =
       'X++ Best Practice Check\n' +

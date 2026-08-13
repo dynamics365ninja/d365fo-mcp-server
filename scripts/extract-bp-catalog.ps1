@@ -23,12 +23,18 @@
        This is what a *search* lookup matches against — real rule text, not a
        guess from the PascalCase name.
 
-    Coverage is NOT total: rules authored directly in X++ (the bulk of the
-    canonical set) are not known to carry these particular resource classes,
-    so most entries will have a name but no message/description. The catalog
-    marks that explicitly (`message`/`description` are null) rather than
-    leaving it ambiguous — a consumer must not treat "no description" as "not
-    a real moniker".
+    Coverage of source 2 is high but not total — at the last extraction 545 of
+    577 entries carried a real message and 221 also carried a description, so
+    only 32 are name-only. The catalog marks a gap explicitly (`message` and
+    `description` are null) rather than leaving it ambiguous, and a consumer
+    must not treat "no description" as "not a real moniker".
+
+    The reverse matters more: source 2 is a resource dump, so it also yields
+    strings that are NOT BP rules — messages belonging to the upgrade and
+    form-conversion tooling (DEC*, ActionPane*, ...). Those come out with
+    `canonical: false` because no AxRuleSet lists them. `canonical` is the only
+    field that answers "is this a BP rule"; presence in the catalog is not
+    enough on its own.
 
     Output is a generated TypeScript module, not JSON — this project embeds
     knowledge data directly (see src/tools/knowledge/xppKnowledge.ts) so it
@@ -186,10 +192,12 @@ $header = @'
  *     <Model>/<Model>/AxRuleSet/BPRules.xml — the authoritative name list.
  *   - `message`/`description` come from the .NET-authored rule DLLs'
  *     resx-backed resource classes (bin/BPExtensions/*.dll and a couple of
- *     core bin/*.dll) where the rule author provided one. Most X++-authored
- *     rules do NOT have this — `message`/`description` are `null` for them,
- *     which means "not found in a resource class", NOT "not a real rule".
- *     `canonical` is the field that answers "is this a real moniker".
+ *     core bin/*.dll) where the rule author provided one. A `null` there
+ *     means "not found in a resource class", NOT "not a real rule".
+ *   - Presence in this file does NOT by itself mean "BP rule". The resource
+ *     dump also yields upgrade- and form-conversion-tool messages, which come
+ *     out with `canonical: false`. `canonical` is the field that answers
+ *     "is this a BP rule".
  *
  * Extracted from: __PACKAGES_PATH__
  * Generated at:   (stamp with the actual date when regenerating — omitted

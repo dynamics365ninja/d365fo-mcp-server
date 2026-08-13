@@ -82,9 +82,11 @@ const CHARS_PER_TOKEN = 4;
 // render a _BPSuppressions.xml <Diagnostic> block — all backed by names/text
 // extracted from a real D365FO install (src/knowledge/bpMonikers/), not typed
 // from memory. A moniker guessed wrong and only caught by reading the xppc log
-// by hand is the failure this buys back; `search`/`suppress`'s secondary knobs
-// (limit, message, severity) stay in the zod handler schema but are not
-// republished in the wire schema, the same trade already made for `labels`.
+// by hand is the failure this buys back. Only the four fields a caller cannot
+// work without are published (action, moniker, path, justification); the rest —
+// limit, message, severity, itemSpecific, and the elementType/elementName
+// fallback for deriving a path — stay in the zod handler schema, the same trade
+// already made for `labels`.
 const TOTAL_BUDGET = 51_700;
 const LARGEST_TOOL_BUDGET = 5_300;
 
