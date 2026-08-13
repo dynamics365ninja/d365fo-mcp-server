@@ -2282,7 +2282,8 @@ select salesTable where salesTable.ShippingDateRequested == cutoffDate;`,
   {
     id: 'coc-authoring',
     title: 'CoC Authoring Non-negotiables',
-    keywords: ['coc', 'chain of command', 'next', 'default parameter', 'wrappable', 'hookable', 'final', 'extensionof', 'wrapper', 'form coc', 'formdatasourcestr', 'static coc', 'replaceable', 'pre', 'post', 'wrap'],
+    keywords: ['coc', 'chain of command', 'next', 'default parameter', 'wrappable', 'hookable', 'final', 'extensionof', 'wrapper', 'form coc', 'formdatasourcestr', 'static coc', 'replaceable', 'pre', 'post', 'wrap',
+      'validatewrite', 'validatefield', 'validatedelete', 'modifiedfield', 'table coc', 'orig', 'pre-image', 'old value', 'xrecord'],
     summary:
       'Strict rules for authoring CoC wrappers. The most common mistake is copying default parameter values. ' +
       'next must always be called at first-level scope. Always use get_method(include="signature") before writing any wrapper.',
@@ -2299,6 +2300,8 @@ select salesTable where salesTable.ShippingDateRequested == cutoffDate;`,
       'Wrappers can read/call protected members of the augmented class (PU9+); cannot reach private',
       'Pre-processing: call business logic before next. Post-processing: call next first, then business logic. Wrap: call next inside the logic',
       'Use get_method(include="signature") tool to get exact parameter types before writing the wrapper',
+      'On a TABLE wrapper (validateWrite/validateField/update/delete/modifiedField) the record is already in hand: `this` carries the new values and `this.orig()` the values it was fetched with. NEVER re-read the row — no `select … where x.RecId == this.RecId`, no `MyTable::findRecId(this.RecId)`. That is a database round trip on every write and it returns the current stored state, not this buffer\'s pre-image. On an insert `this.orig()` is empty, so `this.orig().RecId == 0` is the "new record" test. Rule COC006 flags the re-read',
+      'The table data methods are declared by kernel types (xRecord/Common), so the symbol index has no row for them and "not found" there is not evidence they do not exist — prepare(mode="change") and get_method answer for them from a built-in contract instead',
       'REUSE BEFORE CREATING: if a CoC extension class for the target already exists in the custom model (prepare(mode="change") / extension_info(mode="coc") lists them), add the wrapper there — never create a parallel feature-named class (<Target>_<Feature>_Extension) unless the user explicitly requests separation',
       'The class suffix comes from EXTENSION_NAMING_STYLE and existing related artifacts — never from feature names, tickets, or customer names; if it cannot be derived, ask the user',
     ],
@@ -2339,7 +2342,10 @@ public void post()
 }`,
       },
     ],
-    related: ['coc', 'event-handlers', 'class-inheritance'],
+    // enum-conversions carries the worked validateWrite example (orig() + enum2Str
+    // + a label with placeholders). The link was one-directional, so a query about
+    // validateWrite reached these rules and never the example.
+    related: ['coc', 'event-handlers', 'class-inheritance', 'enum-conversions'],
   },
 
   // ── X++ Class & Method Rules ─────────────────────────────────────────────
