@@ -3144,6 +3144,10 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       !bridgeResult.success &&
       !_bridgeRetried &&
       context.bridge &&
+      // A refusal from this server's own XML writer never touched the bridge, so
+      // there is no provider state a refresh could change — replaying it costs a
+      // provider reload and a full retry to reach the identical answer.
+      !bridgeResult.viaXmlFallback &&
       isUnresolvedObjectError(bridgeResult.message)
     ) {
       console.error(
@@ -3162,6 +3166,13 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     timer.add(`C# bridge ${operation}`, Date.now() - bridgeStartedAt);
 
     if (!bridgeResult!.success) {
+      // A refusal from this server's own XML writer is not a bridge failure and
+      // must not be rendered as one. Naming an API that never ran is the problem
+      // viaXmlFallback was added to fix on the success branch; on this branch it
+      // also sends the reader after provider and metadata-root causes that cannot
+      // apply, past a message that already says exactly what to do.
+      if (bridgeResult!.viaXmlFallback) throw new Error(bridgeResult!.message);
+
       // Surface the real bridge error. For an object-resolution failure keep the
       // actionable same-session fallback guidance, now including exactly what the
       // bridge reported instead of a generic "could not resolve" guess.

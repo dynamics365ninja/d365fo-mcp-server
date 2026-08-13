@@ -143,6 +143,17 @@ const textOf = (xml: string, n: XmlNode): string =>
   n.selfClosing ? '' : xml.slice(n.openEnd, n.closeStart).trim();
 
 /**
+ * The extension's own <Name> — the object the caller and the file are named
+ * after, which is what an error banner has to identify. The control name is not
+ * a substitute: in the report-a-bug path the reader needs to know WHICH FILE to
+ * attach, and every extension has controls.
+ */
+const extensionNameOf = (xml: string, root: XmlNode): string => {
+  const nameNode = firstChild(root, 'Name');
+  return (nameNode ? textOf(xml, nameNode) : '') || '(unnamed form extension)';
+};
+
+/**
  * Every control the EXTENSION itself defines, keyed by lowercased name and
  * split by whether the deserializer will actually read it.
  *
@@ -639,8 +650,9 @@ function finish(
     return {
       kind: 'refused',
       message:
-        `Internal check failed — the write was ABANDONED and the file left unchanged.\n\n` +
-        buildFormExtensionPlacementError(spec.controlName, introduced) +
+        `Internal check failed while adding "${spec.controlName}" — the write was ABANDONED and the ` +
+        `file left unchanged.\n\n` +
+        buildFormExtensionPlacementError(extensionNameOf(updated, reparsed), introduced) +
         `\n\nThis is a bug in the writer, not in your call. Please report it with the extension XML.`,
     };
   }

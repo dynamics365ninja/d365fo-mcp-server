@@ -1,0 +1,26 @@
+# Line endings are decided here rather than by each contributor's core.autocrlf.
+#
+# Without this file the answer came from whatever the local Git setting happened
+# to be, and an editor that rewrote a file's endings turned a 50-line change into
+# an 800-line diff — the content edit becomes unreviewable, and `git diff` needs
+# --ignore-cr-at-eol to say anything useful. Everything here is text and normal
+# to read as a diff, so everything is LF, in the repository and in the working
+# tree, on every platform.
+
+* text=auto eol=lf
+
+# Shell scripts break outright with CRLF; stated explicitly so the rule survives
+# any future narrowing of the wildcard above.
+*.sh text eol=lf
+
+# Binary: never normalise, never diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.dll binary
+*.exe binary
+*.snk binary
