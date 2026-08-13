@@ -297,6 +297,24 @@ describe('add-index on a same-session table (bridge cannot resolve it)', () => {
     expect(xml).not.toContain('<AlternateKey>');
   });
 
+  // The direct-XML writer's refusals are deterministic and file-based: no bridge
+  // call was made. Rendering them through the shared bridge-error path named an
+  // API that never ran — the same "name a path that did not do the work" defect
+  // viaXmlFallback was introduced to fix on the SUCCESS branch — and pointed the
+  // reader at provider/metadata-root causes that cannot apply.
+  it('does not dress an XML-writer refusal up as a bridge failure', async () => {
+    mockBridgeAddIndex.mockResolvedValue(RESOLUTION_FAILURE);
+
+    const result = await modifyD365FileTool(addIndexReq({ indexFields: [] }), ctx);
+    const text = result.content[0].text as string;
+
+    expect(result.isError).toBeTruthy();
+    expect(text).toMatch(/has no fields/);
+    expect(text).not.toMatch(/Bridge operation/i);
+    // Nothing about the provider's model could change this answer.
+    expect(mockBridgeRefreshProvider).not.toHaveBeenCalled();
+  });
+
   it('does not run the fallback when the bridge itself succeeded', async () => {
     mockBridgeAddIndex.mockResolvedValue({
       success: true,
