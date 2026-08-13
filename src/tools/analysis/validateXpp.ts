@@ -16,6 +16,7 @@
  *   COC003  [ExtensionOf] class name not ending _Extension
  *   COC004  next not reached exactly once and unconditionally (SYS10028)
  *   COC005  Global function (checkFailed/error/…) called as this.<fn>() on a table buffer
+ *   COC006  Re-reading the record the buffer already holds, instead of this.orig()
  *   BP001   Hardcoded string literal in info/warning/error/checkFailed
  *   BP002   doInsert/doUpdate/doDelete outside explicit migration comment
  *   BP003   Generic doc-comment (/// Foo class. / /// methodName.)
@@ -438,6 +439,82 @@ function checkGlobalFunctionOnTableBuffer(code: string): ValidationViolation[] {
           : '.'),
     });
   });
+
+  return violations;
+}
+
+/**
+ * COC006 — re-reading the record the buffer already holds, instead of `this.orig()`.
+ *
+ * Inside `[ExtensionOf(tableStr(X))]`, `this` IS the record: the current values are
+ * its fields and the values it was fetched with are `this.orig()`, a buffer already
+ * in memory. Fetching the row again by its own RecId buys nothing and costs a
+ * database round trip on every write of the table — and it is not even the same
+ * answer, because it reads the CURRENT stored state rather than this buffer's
+ * pre-image.
+ *
+ * It compiles, xppbp has nothing to say about it and the build is green, so
+ * nothing else in the toolchain reports it: SEL004 only sees a nested
+ * `while select`, and the rest of the set is about compile failures.
+ *
+ * `RecId == this.RecId` is the whole signal and it is self-identifying: RecIds are
+ * unique per table, so comparing another buffer's to this one's is only meaningful
+ * when the other buffer is this same record. The static-find spelling
+ * (`MyTable::findRecId(this.RecId)`) is the same defect and is matched too.
+ *
+ * severity 'warning' — the code runs and returns the right answer in the common
+ * case. It is a round trip and a semantic drift, not a broken build.
+ */
+function checkRecordReReadInTableCoc(code: string): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
+  if (!/\[ExtensionOf\s*\(\s*tableStr\s*\(/i.test(code)) return violations;
+
+  const masked = maskStringsAndComments(code);
+  const lines = code.split('\n');
+  const reported = new Set<number>();
+
+  const report = (offset: number, excerptSuffix: string, spelling: string) => {
+    const lineNo = lineNumber(masked, offset);
+    if (reported.has(lineNo)) return;
+    reported.add(lineNo);
+    violations.push({
+      rule: 'COC006',
+      severity: 'warning',
+      line: lineNo,
+      excerpt: lines[lineNo - 1]?.trim() ?? excerptSuffix,
+      fix:
+        `This re-reads the record the buffer already holds. Inside a table CoC, ${spelling} ` +
+        'the pre-image is `this.orig()` — already in memory, filled when the record was fetched — ' +
+        'and the new values are `this` itself. Compare `this.MyField` against `this.orig().MyField` ' +
+        'and delete the lookup: it costs a database round trip on every write of the table, and it ' +
+        'returns the CURRENT stored state, not the values this buffer was fetched with. ' +
+        'On an insert `this.orig()` is empty, so `this.orig().RecId == 0` is the "new record" test.',
+    });
+  };
+
+  // A select whose where clause ties another buffer's RecId to this one's. The
+  // where clause is usually on its own line, so the statement — up to its ';' or
+  // the '{' of a while select — is the unit to scan, not the line.
+  const selectRe = /\bselect\b/gi;
+  const sameRecId =
+    /(?:\w+\s*\.\s*RecId\s*==\s*this\s*\.\s*RecId)|(?:this\s*\.\s*RecId\s*==\s*\w+\s*\.\s*RecId)/i;
+  let m: RegExpExecArray | null;
+  while ((m = selectRe.exec(masked)) !== null) {
+    const semi = masked.indexOf(';', m.index);
+    const brace = masked.indexOf('{', m.index);
+    const ends = [semi, brace].filter(i => i !== -1);
+    const end = ends.length > 0 ? Math.min(...ends) : masked.length;
+    const span = masked.slice(m.index, end);
+    const hit = sameRecId.exec(span);
+    if (hit) report(m.index + hit.index, hit[0], 'a select on the same table is never the way to it —');
+  }
+
+  // The same fetch spelled as a static find.
+  const findRe = /\b\w+\s*::\s*find\w*\s*\(([^)]*)\)/gi;
+  while ((m = findRe.exec(masked)) !== null) {
+    if (!/\bthis\s*\.\s*RecId\b/i.test(m[1])) continue;
+    report(m.index, m[0], 'a find() on your own RecId is never the way to it —');
+  }
 
   return violations;
 }
@@ -1025,6 +1102,7 @@ const XPP_RULES = [
   checkExtensionOfNaming,
   checkCocNextUnconditional,
   checkGlobalFunctionOnTableBuffer,
+  checkRecordReReadInTableCoc,
   checkEnumSymbolInMessage,
   checkBuiltinArity,
   checkHardcodedStrings,

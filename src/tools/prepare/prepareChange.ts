@@ -25,6 +25,12 @@ import { tryBridgeCocExtensions } from '../../bridge/bridgeAdapter.js';
 import { getConfigManager } from '../../utils/configManager.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { findDeclaringAncestor } from '../../utils/inheritanceChain.js';
+import {
+  hasTableDataMethods,
+  lookupTableDataMethod,
+  renderTableDataMethodEligibility,
+  renderTableDataMethodSignature,
+} from '../../knowledge/tableDataMethods.js';
 import { renderPrepareOpSpec } from '../specs/opSpecs.js';
 import { rankContext, renderRankedContext } from '../../workspace/contextRanker.js';
 
@@ -131,6 +137,7 @@ function readMethodRow(
 async function fetchMethodSignature(
   objectName: string,
   methodName: string,
+  objectType: string | undefined,
   context: XppServerContext,
 ): Promise<string> {
   const found = readMethodRow(context, objectName, methodName);
@@ -151,6 +158,11 @@ async function fetchMethodSignature(
     }
     return lines.join('\n');
   }
+  // A table's data methods are declared by a kernel type, so "not in the index"
+  // is the normal answer for them rather than evidence that they do not exist.
+  const inherited = hasTableDataMethods(objectType) ? lookupTableDataMethod(methodName) : undefined;
+  if (inherited) return renderTableDataMethodSignature(inherited, objectName);
+
   return '(not found in symbol index)';
 }
 
@@ -198,6 +210,7 @@ async function fetchCocExtensions(
 async function fetchEligibility(
   objectName: string,
   methodName: string | undefined,
+  objectType: string | undefined,
   context: XppServerContext,
 ): Promise<string> {
   if (!methodName) return 'No specific method targeted — check base class documentation.';
@@ -222,6 +235,12 @@ async function fetchEligibility(
       `Either way the signature must match \`${owner}\`'s declaration exactly — the compiler validates against it and names \`${owner}\` in any mismatch error.`,
     ].join('\n');
   }
+  // Same fallback as the signature above, and the contract it carries is the
+  // point: this section is the last thing prepare says before the model writes
+  // the wrapper, so the pre-image rule belongs here rather than a topic away.
+  const inherited = hasTableDataMethods(objectType) ? lookupTableDataMethod(methodName) : undefined;
+  if (inherited) return renderTableDataMethodEligibility(inherited, objectName);
+
   return '(could not determine — method not found in symbol index)';
 }
 
@@ -331,10 +350,10 @@ export async function prepareChangeTool(request: any, context: XppServerContext)
   // Run all fact-gathering queries in parallel
   const [sigText, cocText, eligText, patternText, namingText] = await Promise.all([
     methodName
-      ? fetchMethodSignature(objectName, methodName, context)
+      ? fetchMethodSignature(objectName, methodName, resolvedType, context)
       : Promise.resolve(null as string | null),
     fetchCocExtensions(objectName, methodName, context),
-    fetchEligibility(objectName, methodName, context),
+    fetchEligibility(objectName, methodName, resolvedType, context),
     fetchPatterns(objectName, resolvedType, context),
     proposedName
       ? fetchNamingValidation(proposedName, context)
