@@ -143,6 +143,25 @@ const textOf = (xml: string, n: XmlNode): string =>
   n.selfClosing ? '' : xml.slice(n.openEnd, n.closeStart).trim();
 
 /**
+ * Element text as the caller spelled it, undoing the escaping the emitters apply
+ * (see escapeXmlText). Without this the round trip breaks: a name written as
+ * `A &amp; B` would never match the `A & B` the caller passes back, so the
+ * idempotency check would miss it and add the control a second time.
+ *
+ * `&amp;` last, mirroring the escape order.
+ */
+const decodeXmlText = (value: string): string =>
+  value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+
+/** Element text, decoded — the form to compare against caller input or display. */
+const textValueOf = (xml: string, n: XmlNode): string => decodeXmlText(textOf(xml, n));
+
+/**
  * The extension's own <Name> — the object the caller and the file are named
  * after, which is what an error banner has to identify. The control name is not
  * a substitute: in the report-a-bug path the reader needs to know WHICH FILE to
@@ -150,7 +169,7 @@ const textOf = (xml: string, n: XmlNode): string =>
  */
 const extensionNameOf = (xml: string, root: XmlNode): string => {
   const nameNode = firstChild(root, 'Name');
-  return (nameNode ? textOf(xml, nameNode) : '') || '(unnamed form extension)';
+  return (nameNode ? textValueOf(xml, nameNode) : '') || '(unnamed form extension)';
 };
 
 /**
@@ -187,7 +206,7 @@ function collectExtensionControls(
     if (n.name === 'FormControl' || n.name === 'AxFormControl') {
       const nameNode = firstChild(n, 'Name');
       if (nameNode) {
-        const name = textOf(xml, nameNode).toLowerCase();
+        const name = textValueOf(xml, nameNode).toLowerCase();
         const target = discardedRoots.some(d => isWithin(n, d)) ? discarded : live;
         if (name && !target.has(name)) target.set(name, n);
       }
@@ -295,7 +314,7 @@ function findPlacementIssues(xml: string, root: XmlNode): FormExtPlacementIssue[
       const nested = firstChild(n, 'Controls');
       if (nested && !nested.selfClosing) {
         const ownerName = firstChild(n, 'Name');
-        const owner = ownerName ? textOf(xml, ownerName) : '(unnamed)';
+        const owner = ownerName ? textValueOf(xml, ownerName) : '(unnamed)';
         for (const child of nested.children) {
           if (child.name !== 'AxFormControl') {
             issues.push({
@@ -469,8 +488,8 @@ export function insertFormExtensionControl(
       const dsNode = firstChild(parentNode, 'DataSource');
       notes.push(dataGroupWarning(
         spec,
-        textOf(xml, dataGroup),
-        dsNode ? textOf(xml, dsNode) : undefined,
+        textValueOf(xml, dataGroup),
+        dsNode ? textValueOf(xml, dsNode) : undefined,
       ));
     }
 
@@ -647,16 +666,38 @@ function finish(
   }
 
   if (introduced.length > 0) {
-    return {
-      kind: 'refused',
-      message:
-        `Internal check failed while adding "${spec.controlName}" — the write was ABANDONED and the ` +
-        `file left unchanged.\n\n` +
-        buildFormExtensionPlacementError(extensionNameOf(updated, reparsed), introduced) +
-        `\n\nThis is a bug in the writer, not in your call. Please report it with the extension XML.`,
-    };
+    return { kind: 'refused', message: buildAbandonedWriteMessage(updated, spec.controlName, introduced) };
   }
   return { kind: 'inserted', xml: updated, representation, notes };
+}
+
+/**
+ * The message for output this writer refuses to persist.
+ *
+ * It takes the DOCUMENT and derives the object name itself rather than accepting
+ * a pre-picked string, because picking it at the call site is what went wrong:
+ * the control name was passed into a parameter named `objectName`, so the banner
+ * read `form-extension "NewCtl"` and never named the file the very next sentence
+ * asks the reader to attach. Two names are in play and only one identifies the
+ * object; deriving it here leaves the call site nothing to get wrong.
+ *
+ * Exported for tests. Ordinary input cannot reach it — the writer's output is
+ * clean on all 1088 shipped extensions, and escaping closed the one route that
+ * made it reachable — so a caller-level test cannot cover it.
+ */
+export function buildAbandonedWriteMessage(
+  xml: string,
+  controlName: string,
+  introduced: FormExtPlacementProblem[],
+): string {
+  const root = parseNodes(xml);
+  const objectName = root ? extensionNameOf(xml, root) : '(unparseable form extension)';
+  return (
+    `Internal check failed while adding "${controlName}" — the write was ABANDONED and the ` +
+    `file left unchanged.\n\n` +
+    buildFormExtensionPlacementError(objectName, introduced) +
+    `\n\nThis is a bug in the writer, not in your call. Please report it with the extension XML.`
+  );
 }
 
 /**
@@ -734,10 +775,29 @@ function dataGroupWarning(
   );
 }
 
+/**
+ * Escape a value on its way into element text.
+ *
+ * Every value below is interpolated into markup, and none of them were escaped:
+ * a label reading "Cost & freight" produced XML with a bare & in it, which is
+ * not well-formed and which the D365FO deserializer rejects. Object names cannot
+ * carry markup, so the exposure was narrow, but "the input cannot be hostile" is
+ * not a property this module can check — and the post-write guard catching the
+ * damage afterwards is a worse answer than not causing it.
+ *
+ * `&` first: escaping it after the others would double-escape their output.
+ */
+const escapeXmlText = (value: string): string =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** As above, plus the quote that would otherwise close the attribute early. */
+const escapeXmlAttr = (value: string): string =>
+  escapeXmlText(value).replace(/"/g, '&quot;');
+
 /** The bare nested shape — no wrapper, no <Parent>; nesting encodes parentage. */
 function nestedControlLines(spec: FormExtensionControlSpec): string[] {
   return [
-    `<AxFormControl xmlns="" i:type="${spec.iType}">`,
+    `<AxFormControl xmlns="" i:type="${escapeXmlAttr(spec.iType)}">`,
     ...innerControlLines(spec).map(l => `\t${l}`),
     `</AxFormControl>`,
   ];
@@ -755,16 +815,17 @@ function envelopeControlLines(
 ): string[] {
   const lines = [
     `<AxFormExtensionControl xmlns="">`,
-    `\t<Name>${spec.wrapperName}</Name>`,
-    `\t<FormControl xmlns="" i:type="${spec.iType}">`,
+    `\t<Name>${escapeXmlText(spec.wrapperName)}</Name>`,
+    `\t<FormControl xmlns="" i:type="${escapeXmlAttr(spec.iType)}">`,
     ...innerControlLines(spec).map(l => `\t\t${l}`),
     `\t</FormControl>`,
-    `\t<Parent>${spec.parentControl}</Parent>`,
+    `\t<Parent>${escapeXmlText(spec.parentControl)}</Parent>`,
   ];
   if (position.kind === 'placed') {
+    // positionType is one of two literals this module chose, never caller text.
     lines.push(`\t<PositionType>${position.positionType}</PositionType>`);
     if (position.previousSibling) {
-      lines.push(`\t<PreviousSibling>${position.previousSibling}</PreviousSibling>`);
+      lines.push(`\t<PreviousSibling>${escapeXmlText(position.previousSibling)}</PreviousSibling>`);
     }
   }
   lines.push(`</AxFormExtensionControl>`);
@@ -777,13 +838,13 @@ function envelopeControlLines(
  */
 function innerControlLines(spec: FormExtensionControlSpec): string[] {
   const lines = [
-    `<Name>${spec.controlName}</Name>`,
-    `<Type>${spec.typeValue}</Type>`,
+    `<Name>${escapeXmlText(spec.controlName)}</Name>`,
+    `<Type>${escapeXmlText(spec.typeValue)}</Type>`,
     `<FormControlExtension i:nil="true" />`,
   ];
-  if (spec.dataField) lines.push(`<DataField>${spec.dataField}</DataField>`);
-  if (spec.dataSource) lines.push(`<DataSource>${spec.dataSource}</DataSource>`);
-  if (spec.label) lines.push(`<Label>${spec.label}</Label>`);
+  if (spec.dataField) lines.push(`<DataField>${escapeXmlText(spec.dataField)}</DataField>`);
+  if (spec.dataSource) lines.push(`<DataSource>${escapeXmlText(spec.dataSource)}</DataSource>`);
+  if (spec.label) lines.push(`<Label>${escapeXmlText(spec.label)}</Label>`);
   if (spec.typeValue === 'ComboBox') lines.push(`<Items />`);
   return lines;
 }
@@ -824,7 +885,7 @@ function insertIntoControls(
   if (previousSibling) {
     const sibling = controls.children.find(c => {
       const nameNode = firstChild(c, 'Name');
-      return nameNode && textOf(xml, nameNode).toLowerCase() === previousSibling.toLowerCase();
+      return nameNode && textValueOf(xml, nameNode).toLowerCase() === previousSibling.toLowerCase();
     });
     if (sibling) {
       at = sibling.end;

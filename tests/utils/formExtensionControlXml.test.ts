@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest';
 import {
   insertFormExtensionControl,
   findFormExtensionPlacementProblems,
+  buildAbandonedWriteMessage,
   type FormExtensionControlSpec,
 } from '../../src/utils/formExtensionControlXml';
 import { validateFormExtensionControlShape } from '../../src/utils/formExtensionShapeValidator';
@@ -548,6 +549,122 @@ describe('positionType', () => {
     const r = inserted(onBaseForm({ positionType: 'Begin', previousSibling: 'Grid_ConHasNotes' }));
 
     expect(r.notes.join('\n')).toMatch(/ignored/);
+  });
+});
+
+// ─── Escaping ────────────────────────────────────────────────────────────────
+//
+// Every value here is interpolated into markup. None were escaped, so a label
+// carrying an ampersand emitted XML that is not well-formed, and a value
+// carrying markup could close its own element and smuggle a whole envelope into
+// the nested <Controls> — the exact shape the deserializer silently discards.
+// Real object names cannot contain either, which is why this never surfaced;
+// labels are free text and can.
+
+describe('escaping values on the way into XML', () => {
+  it('escapes an ampersand in a label instead of emitting malformed XML', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec({
+      label: 'Cost & freight',
+    })));
+
+    expect(r.xml).toContain('<Label>Cost &amp; freight</Label>');
+    expect(r.xml).not.toContain('<Label>Cost & freight</Label>');
+  });
+
+  it('escapes markup in a field value rather than letting it become structure', () => {
+    const payload =
+      'ConDisableProdQty</DataField></AxFormControl>' +
+      '<AxFormExtensionControl xmlns=""><Name>FormExtensionControlbad00001</Name>' +
+      '<FormControl xmlns="" i:type="AxFormStringControl"><Name>Smuggled</Name></FormControl>' +
+      '<Parent>ConQualityOrders</Parent></AxFormExtensionControl>' +
+      '<AxFormControl xmlns="" i:type="AxFormStringControl"><DataField>Filler';
+
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec({ dataField: payload })));
+
+    // Before escaping this produced a real <AxFormExtensionControl> inside the
+    // parent's nested <Controls> and the write was abandoned by the post-write
+    // guard. Now it is text, so there is nothing to abandon.
+    expect(findFormExtensionPlacementProblems(r.xml)).toEqual([]);
+    expect(r.xml).not.toContain('<Name>Smuggled</Name>');
+    expect(r.xml).toContain('&lt;AxFormExtensionControl');
+  });
+
+  it('escapes the quote that would close an i:type attribute early', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec({
+      iType: 'AxFormStringControl" evil="1',
+    })));
+
+    expect(r.xml).toContain('i:type="AxFormStringControl&quot; evil=&quot;1"');
+    expect(r.xml).not.toContain('evil="1"');
+  });
+
+  it('does not double-escape an ampersand', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), spec({ label: 'A &lt; B' })));
+
+    expect(r.xml).toContain('<Label>A &amp;lt; B</Label>');
+    expect(r.xml).not.toContain('&amp;amp;');
+  });
+
+  // Escaping on write only holds up if reading undoes it: the idempotency check
+  // compares the caller's spelling against the name in the file, so an escaped
+  // name that decodes to something else would let the control be added twice.
+  it('round-trips an escaped name through the idempotency check', () => {
+    const first = inserted(insertFormExtensionControl(nestedExt(), spec({
+      controlName: 'Weird & Name',
+    })));
+    const second = insertFormExtensionControl(first.xml, spec({ controlName: 'Weird & Name' }));
+
+    expect(first.xml).toContain('<Name>Weird &amp; Name</Name>');
+    expect(second.kind).toBe('exists');
+  });
+
+  it('resolves an escaped parent name and an escaped previousSibling', () => {
+    const withOddParent = nestedExt().replace(
+      '<Name>ConQualityOrders</Name>',
+      '<Name>Quality &amp; Orders</Name>',
+    );
+    const r = inserted(insertFormExtensionControl(withOddParent, spec({
+      parentControl: 'Quality & Orders',
+      previousSibling: 'ConQualityOrders_ConDisableInventoryBlocking',
+    })));
+
+    expect(r.representation).toBe('nested');
+  });
+});
+
+// ─── The abandoned-write message ─────────────────────────────────────────────
+//
+// Not reachable from ordinary input: the writer's output is clean on all 1088
+// shipped extensions, and escaping closed the one route that reached it (a
+// dataField payload that smuggled an envelope into the nested <Controls>). The
+// message builder is exported so the naming it does is still pinned.
+
+describe('buildAbandonedWriteMessage', () => {
+  // Lazy: SHAPE_C is declared further down the file, so reading it while the
+  // describe body runs would hit the temporal dead zone.
+  const problems = () => findFormExtensionPlacementProblems(SHAPE_C);
+
+  it('names the form extension in the banner, not the control', () => {
+    const message = buildAbandonedWriteMessage(SHAPE_C, 'ConQualityOrders_ConDisableProdQty', problems());
+
+    // The banner slot identifies the object whose XML is wrong — the control
+    // name used to be passed straight into it.
+    expect(message).toContain('form-extension "InventTestGroup.ConExtension"');
+    expect(message).not.toContain('form-extension "ConQualityOrders_ConDisableProdQty"');
+  });
+
+  it('still names the control, in the sentence that describes the action', () => {
+    const message = buildAbandonedWriteMessage(SHAPE_C, 'ConQualityOrders_ConDisableProdQty', problems());
+
+    expect(message).toMatch(/while adding "ConQualityOrders_ConDisableProdQty"/);
+    expect(message).toMatch(/ABANDONED/);
+    expect(message).toMatch(/report it with the extension XML/);
+  });
+
+  it('says so rather than inventing a name when the document will not parse', () => {
+    const message = buildAbandonedWriteMessage('not xml at all', 'SomeControl', problems());
+
+    expect(message).toContain('(unparseable form extension)');
   });
 });
 
