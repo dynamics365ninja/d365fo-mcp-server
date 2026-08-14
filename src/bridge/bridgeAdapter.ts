@@ -275,6 +275,16 @@ function formatClass(cls: BridgeClassInfo, compact: boolean, methodOffset: numbe
     out += `> ⚠️ **${total - methodOffset - CLASS_METHOD_PAGE_SIZE} more methods.** Call again with \`methodOffset: ${methodOffset + CLASS_METHOD_PAGE_SIZE}\`.\n\n`;
   }
 
+  // compact=true is the default, and this list is the only place a caller who
+  // didn't read the tool schema learns that bodies exist but were withheld —
+  // the DB-only fallback (classInfo.ts buildDbOnlyResponse) already says this;
+  // the bridge path (the primary, "always available on VM" path) silently gave
+  // signatures with no pointer to the escape hatch, which read as "no source
+  // available for this class" when it was really "not requested".
+  if (compact && total > 0) {
+    out += `> 💡 Signatures only. Pass \`options:{"compact":false}\` for method bodies, or \`options:{"method":"<name>","include":"source"}\` for one method.\n\n`;
+  }
+
   return out;
 }
 
