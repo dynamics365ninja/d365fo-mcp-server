@@ -91,6 +91,29 @@ export function resolvePinnedXppConfig(store: SettingsStore): XppConfig | null {
 }
 
 /**
+ * Is this target a UDE target at all — i.e. does a null from
+ * {@link resolvePinnedXppConfig} mean "its pin does not resolve" rather than
+ * "this is a traditional install"?
+ *
+ * That function returns null for three different reasons and a caller cannot
+ * tell them apart, which matters because the two answers call for opposite
+ * behaviour: a traditional target legitimately falls back to detecting the
+ * packages root on this box, while for a UDE target that fallback throws away
+ * the very guarantee the null was there to provide (see resolveSource in
+ * commands/bpCatalog.ts, and the docblock above).
+ *
+ * Mirrors the detection settings.ts documents for an unset environment.type:
+ * UDE when XPP config files exist in %LOCALAPPDATA%\Microsoft\Dynamics365\
+ * XPPConfig. So a box with no configs at all is traditional — the one case
+ * where falling through is correct — and anything else with an explicit
+ * `traditional` type is taken at its word.
+ */
+export function isUdeTarget(store: SettingsStore): boolean {
+  if (readSetting(store, envTypeSetting) === 'traditional') return false;
+  return listXppConfigs().length > 0;
+}
+
+/**
  * Expand a short config name (e.g. "myenv-dev") to the newest full versioned
  * name ("myenv-dev___10.0.2345.153") so a later staleness check is a plain
  * file-exists test, and persist the expansion. No-op for traditional
