@@ -1486,32 +1486,47 @@ export class XppSymbolIndex {
     const db = this.getReadDb();
     try {
       const stmt = this.getReadStmt(db, cacheKey, () => sql);
-      return (stmt.all(...params) as any[]).map(row => this.rowToSymbol(row));
+      const rows = (stmt.all(...params) as any[]).map(row => this.rowToSymbol(row));
+      // FTS5's default tokenizer treats each name as one indivisible token and only
+      // matches token PREFIXES, so a mid-token substring query (e.g. "CategoryPropert"
+      // against "ProcurementProductCategoryPropertyEntity") is a syntactically valid
+      // query that legitimately returns zero rows. Fall back to LIKE in that case too,
+      // not only when FTS5 throws a syntax error.
+      if (rows.length > 0) return rows;
+      return this.likeFallbackSearch(db, query, limit, types);
     } catch {
       // FTS5 syntax error (e.g. user typed *, ", (, ), -) — fall back to LIKE contains search
-      // PERFORMANCE: Also select only essential columns in fallback
-      const fallbackCacheKey = types?.length ? `fallback_typed_${types.join('_')}` : 'fallback_all';
-      // ESCAPE '\' is required — without it the backslashes produced by
-      // escapeLikePattern are literal characters and any query containing
-      // '_' or '%' (e.g. "SalesLine_MyExt") silently matches nothing.
-      let fallbackSql = `SELECT s.id, s.name, s.type, s.parent_name, s.signature, s.file_path, s.model, s.description FROM symbols s WHERE s.name LIKE ? ESCAPE '\\'`;
-      const escapeLikePattern = (value: string): string => {
-        // First escape backslashes, then escape SQL LIKE wildcards % and _
-        return value
-          .replace(/\\/g, '\\\\')
-          .replace(/[%_]/g, '\\$&');
-      };
-      const fallbackParams: any[] = [`%${escapeLikePattern(query)}%`];
-      if (types && types.length > 0) {
-        fallbackSql += ` AND s.type IN (${types.map(() => '?').join(',')})`;  
-        fallbackParams.push(...types);
-      }
-      fallbackSql += ` ORDER BY s.name LIMIT ?`;
-      fallbackParams.push(limit);
-      
-      const fallbackStmt = this.getReadStmt(db, fallbackCacheKey, () => fallbackSql);
-      return (fallbackStmt.all(...fallbackParams) as any[]).map(r => this.rowToSymbol(r));
+      return this.likeFallbackSearch(db, query, limit, types);
     }
+  }
+
+  /**
+   * LIKE-based contains search used as a fallback when FTS5 either throws
+   * (syntax error) or returns no rows (valid query, prefix-only tokenizer miss).
+   * PERFORMANCE: Only select essential columns, not s.* (avoids loading large text fields)
+   */
+  private likeFallbackSearch(db: Database, query: string, limit: number, types?: string[]): XppSymbol[] {
+    const fallbackCacheKey = types?.length ? `fallback_typed_${types.join('_')}` : 'fallback_all';
+    // ESCAPE '\' is required — without it the backslashes produced by
+    // escapeLikePattern are literal characters and any query containing
+    // '_' or '%' (e.g. "SalesLine_MyExt") silently matches nothing.
+    let fallbackSql = `SELECT s.id, s.name, s.type, s.parent_name, s.signature, s.file_path, s.model, s.description FROM symbols s WHERE s.name LIKE ? ESCAPE '\\'`;
+    const escapeLikePattern = (value: string): string => {
+      // First escape backslashes, then escape SQL LIKE wildcards % and _
+      return value
+        .replace(/\\/g, '\\\\')
+        .replace(/[%_]/g, '\\$&');
+    };
+    const fallbackParams: any[] = [`%${escapeLikePattern(query)}%`];
+    if (types && types.length > 0) {
+      fallbackSql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
+      fallbackParams.push(...types);
+    }
+    fallbackSql += ` ORDER BY s.name LIMIT ?`;
+    fallbackParams.push(limit);
+
+    const fallbackStmt = this.getReadStmt(db, fallbackCacheKey, () => fallbackSql);
+    return (fallbackStmt.all(...fallbackParams) as any[]).map(r => this.rowToSymbol(r));
   }
 
   /**
