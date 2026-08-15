@@ -31,11 +31,24 @@ interface ResolvedSource {
   packagesPath: string;
 }
 
+/**
+ * Relative on purpose — instance path settings stay portable so an instance
+ * folder can be renamed or moved (see configBaseDir in config/configFile.ts).
+ */
+const DEFAULT_CATALOG_RELATIVE = './data/bp-moniker-catalog.json';
+
 /** Where this target's real D365FO version + packages root come from. */
 function resolveSource(target: Target): ResolvedSource | null {
   const xppConfig = resolvePinnedXppConfig(target.store);
   if (xppConfig) {
-    return { versionKey: xppConfig.version, packagesPath: xppConfig.frameworkDirectory ?? '' };
+    // No frameworkDirectory means the config JSON could not be read —
+    // listXppConfigs() keeps those entries deliberately. Passing '' would not
+    // be "use the default", it would hand the script an empty -PackagesPath,
+    // whose own fallback auto-detects the NEWEST PackagesLocalDirectory on the
+    // box; the result then gets stamped with THIS target's version and treated
+    // as current. A catalog from the wrong install is worse than no catalog.
+    if (!xppConfig.frameworkDirectory) return null;
+    return { versionKey: xppConfig.version, packagesPath: xppConfig.frameworkDirectory };
   }
   // Traditional environment: no version string on disk anywhere, so the bin\
   // folder's mtime stands in for "has this install changed since we last
@@ -65,7 +78,11 @@ interface StampedCatalog {
 function existingVersionKey(catalogPath: string): string | null {
   if (!existsSync(catalogPath)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(catalogPath, 'utf-8')) as StampedCatalog;
+    // Strip a leading BOM before parsing: the script writes BOM-less UTF-8, but
+    // a catalog left behind by an older copy of it (or hand-edited in a Windows
+    // editor) still carries one, and JSON.parse throws on it. Throwing here is
+    // not visible — it just reads as "no catalog yet" and re-runs the whole scan.
+    const parsed = JSON.parse(readFileSync(catalogPath, 'utf-8').replace(/^\uFEFF/, '')) as StampedCatalog;
     return typeof parsed.version === 'string' ? parsed.version : null;
   } catch {
     return null;
@@ -94,10 +111,10 @@ export async function ensureBpCatalogFresh(target: Target, deps: BpCatalogDeps =
     return;
   }
 
-  // The fallback below is only reached if bpCatalogPathSetting.default were
-  // ever removed — readPath already resolves the documented default
-  // ('./data/bp-moniker-catalog.json') against store.baseDir on its own.
-  const catalogPath = readPath(target.store, bpCatalogPathSetting, resolve(target.store.baseDir, 'data', 'bp-moniker-catalog.json'));
+  // The setting carries no registry default (see settings.ts for why), so this
+  // fallback is the normal path until the first successful extraction writes
+  // the value below.
+  const catalogPath = readPath(target.store, bpCatalogPathSetting, resolve(target.store.baseDir, DEFAULT_CATALOG_RELATIVE));
   if (existingVersionKey(catalogPath) === source.versionKey) {
     p.log.info(`BP catalog up to date (${target.label}).`);
     return;
@@ -124,8 +141,13 @@ export async function ensureBpCatalogFresh(target: Target, deps: BpCatalogDeps =
     return;
   }
 
+  // Write the RELATIVE literal, not the resolved catalogPath: an absolute path
+  // baked into the instance config survives neither a folder rename nor a move,
+  // and toEnvRecord() resolves a relative one against store.baseDir on its way
+  // into BP_CATALOG_PATH anyway. This write is also what turns the override on
+  // at all — the setting has no registry default.
   if (readSetting(target.store, bpCatalogPathSetting) === undefined) {
-    writeSetting(target.store, bpCatalogPathSetting, catalogPath);
+    writeSetting(target.store, bpCatalogPathSetting, DEFAULT_CATALOG_RELATIVE);
     saveStore(target.store);
   }
   p.log.success(`BP catalog refreshed (${target.label}).`);

@@ -3,40 +3,40 @@
     Regenerate the Best-Practice-rule moniker catalog from a local D365FO install.
 .DESCRIPTION
     Ground truth for bp_moniker (src/knowledge/bpMonikers/) instead of a
-    hand-typed list — every moniker has been guessed wrong at least once
+    hand-typed list - every moniker has been guessed wrong at least once
     (issue: assistant proposed a moniker it could not verify, corrected only
     by reading the xppc log by hand).
 
     Two real sources on any D365FO dev box, both under PackagesLocalDirectory:
 
-    1. Canonical names — every model ships
+    1. Canonical names - every model ships
        <Model>/<Model>/AxRuleSet/BPRules.xml, a flat list of the monikers that
        model's BP rules can raise. The union across all models is the full
        canonical name set. This is what a *validate* lookup checks against.
 
-    2. Real message/description text — the .NET-authored rule assemblies under
+    2. Real message/description text - the .NET-authored rule assemblies under
        bin/BPExtensions/*.dll (and a couple of core bin/*.dll) each carry a
        generated resx-backed `...Messages` (or `...DiagnosticItems` /
        `...Properties.Resources`) class: one string keyed by the moniker itself
        (the message template, with `{0}`-style placeholders) and, where the
        rule author wrote one, a second string keyed `<Moniker>Description`.
-       This is what a *search* lookup matches against — real rule text, not a
+       This is what a *search* lookup matches against - real rule text, not a
        guess from the PascalCase name.
 
-    Coverage of source 2 is high but not total — at the last extraction 545 of
+    Coverage of source 2 is high but not total - at the last extraction 545 of
     577 entries carried a real message and 221 also carried a description, so
     only 32 are name-only. The catalog marks a gap explicitly (`message` and
     `description` are null) rather than leaving it ambiguous, and a consumer
     must not treat "no description" as "not a real moniker".
 
     The reverse matters more: source 2 is a resource dump, so it also yields
-    strings that are NOT BP rules — messages belonging to the upgrade and
+    strings that are NOT BP rules - messages belonging to the upgrade and
     form-conversion tooling (DEC*, ActionPane*, ...). Those come out with
     `canonical: false` because no AxRuleSet lists them. `canonical` is the only
     field that answers "is this a BP rule"; presence in the catalog is not
     enough on its own.
 
-    Output is a generated TypeScript module, not JSON — this project embeds
+    Output is a generated TypeScript module, not JSON - this project embeds
     knowledge data directly (see src/tools/knowledge/xppKnowledge.ts) so it
     ships in dist/ via the normal tsc build with no separate copy step.
 .PARAMETER PackagesPath
@@ -52,7 +52,7 @@
     Stamped into the JSON output's `version` field alongside PackagesPath, so
     the caller's staleness check has something to compare against on the next
     run. Only meaningful with -OutFile; ignored otherwise. Purely a passthrough
-    — this script does not attempt to discover the version itself, since a UDE
+    - this script does not attempt to discover the version itself, since a UDE
     config filename and a traditional-environment mtime hash are discovered
     differently and that logic belongs with the caller.
 .EXAMPLE
@@ -77,7 +77,7 @@ if (-not $PackagesPath) {
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
     if (-not $candidate) {
-        throw "No PackagesLocalDirectory found under $dynamicsDir — pass -PackagesPath explicitly."
+        throw "No PackagesLocalDirectory found under $dynamicsDir - pass -PackagesPath explicitly."
     }
     $PackagesPath = Join-Path $candidate.FullName 'PackagesLocalDirectory'
 }
@@ -87,7 +87,7 @@ if (-not (Test-Path $PackagesPath)) {
 $binDir = Join-Path $PackagesPath 'bin'
 Write-Host "Scanning: $PackagesPath"
 
-# ── 1. Canonical names: union of every AxRuleSet/BPRules.xml ────────────────
+# -- 1. Canonical names: union of every AxRuleSet/BPRules.xml ----------------
 $canonical = [System.Collections.Generic.SortedSet[string]]::new()
 $ruleSetFiles = Get-ChildItem $PackagesPath -Recurse -Filter 'BPRules.xml' -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -match '\\AxRuleSet\\' }
@@ -105,7 +105,7 @@ foreach ($f in $ruleSetFiles) {
 }
 Write-Host "Canonical monikers: $($canonical.Count)"
 
-# ── 2. Real message/description text from the .NET-authored rule DLLs ──────
+# -- 2. Real message/description text from the .NET-authored rule DLLs ------
 # AssemblyResolve against bin/ and bin/BPExtensions/ so cross-referenced
 # assemblies (the framework, MEF contracts, etc.) load without a manual list.
 $searchDirs = @($binDir, (Join-Path $binDir 'BPExtensions'))
@@ -131,7 +131,7 @@ foreach ($dll in $dllTargets) {
     try {
         $asm = [System.Reflection.Assembly]::LoadFrom($dll.FullName)
     } catch {
-        Write-Warning "Load failed, skipped: $($dll.Name) — $($_.Exception.Message)"
+        Write-Warning "Load failed, skipped: $($dll.Name) - $($_.Exception.Message)"
         continue
     }
     $types = $null
@@ -155,7 +155,7 @@ foreach ($dll in $dllTargets) {
             $moniker = $key
             $descKey = "${key}Description"
             $entryData = @{ message = $raw[$key]; description = $(if ($raw.ContainsKey($descKey)) { $raw[$descKey] } else { $null }) }
-            # First writer wins — DLLs are processed in a stable order and a
+            # First writer wins - DLLs are processed in a stable order and a
             # duplicate key across assemblies has always meant the same rule.
             if (-not $messages.ContainsKey($moniker)) { $messages[$moniker] = $entryData }
         }
@@ -163,15 +163,15 @@ foreach ($dll in $dllTargets) {
 }
 Write-Host "Monikers with real message/description text: $($messages.Count)"
 
-# ── 3. Merge ──────────────────────────────────────────────────────────────
-# Union of both sources — a resource-only key not in any AxRuleSet.xml (e.g. a
+# -- 3. Merge --------------------------------------------------------------
+# Union of both sources - a resource-only key not in any AxRuleSet.xml (e.g. a
 # retired or reassigned rule) is still a real moniker worth keeping resolvable.
 $allMonikers = [System.Collections.Generic.SortedSet[string]]::new()
 foreach ($m in $canonical) { [void]$allMonikers.Add($m) }
 foreach ($m in $messages.Keys) { [void]$allMonikers.Add($m) }
 
 if ($OutFile) {
-    # ── JSON mode: one instance's own catalog, matching its own version ────
+    # -- JSON mode: one instance's own catalog, matching its own version ----
     $entries = foreach ($m in $allMonikers) {
         $hasResource = $messages.ContainsKey($m)
         [PSCustomObject]@{
@@ -189,15 +189,24 @@ if ($OutFile) {
     }
     $outDir = Split-Path $OutFile -Parent
     if ($outDir) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
-    $payload | ConvertTo-Json -Depth 5 | Set-Content -Path $OutFile -Encoding utf8
-    Write-Host "Wrote $($allMonikers.Count) entries to $OutFile"
+    # WriteAllText with an explicit BOM-less encoding, NOT `Set-Content -Encoding
+    # utf8`: under Windows PowerShell 5.1 - the only PowerShell on a stock D365FO
+    # dev box, and what the caller falls back to when pwsh is absent - that switch
+    # prepends a UTF-8 BOM (EF BB BF), and JSON.parse() throws on it. Both
+    # readers would then fail silently: loadCatalog() falls back to the compiled
+    # snapshot (the whole per-instance feature becomes a no-op) and
+    # existingVersionKey() returns null, so the version never matches and this
+    # multi-minute recursive scan re-runs on every rebuild instead of never.
+    $fullOut = if ([System.IO.Path]::IsPathRooted($OutFile)) { $OutFile } else { Join-Path (Get-Location).ProviderPath $OutFile }
+    [System.IO.File]::WriteAllText($fullOut, ($payload | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host "Wrote $($allMonikers.Count) entries to $fullOut"
     Write-Host "  canonical (in an AxRuleSet):        $($canonical.Count)"
     Write-Host "  with real message/description text: $($messages.Count)"
     return
 }
 
 function ToJsStringLiteral($s) {
-    # No [string] type constraint on the parameter — PowerShell coerces a
+    # No [string] type constraint on the parameter - PowerShell coerces a
     # bound $null argument to '' before the body ever runs, which silently
     # turned "no resource entry at all" into the same '' as "resource entry
     # present but blank". Checking $null here, before any cast, is the point.
@@ -222,17 +231,17 @@ $outFile = Join-Path $outDir 'catalog.generated.ts'
 
 # A literal (single-quoted) here-string: no PowerShell escape processing, so
 # the backticks in the prose below (Markdown code-spans) stay literal instead
-# of being read as `n / `d / `m escape sequences — which is what corrupted an
+# of being read as `n / `d / `m escape sequences - which is what corrupted an
 # earlier version of this file (backtick-n silently became a real newline
 # and ate the following character).
 $header = @'
 /**
- * GENERATED FILE — do not hand-edit. Regenerate with:
+ * GENERATED FILE - do not hand-edit. Regenerate with:
  *   pwsh scripts/extract-bp-catalog.ps1
  *
  * BP-rule moniker catalog, extracted from a local D365FO install:
  *   - `canonical: true` monikers come from the union of every model's
- *     <Model>/<Model>/AxRuleSet/BPRules.xml — the authoritative name list.
+ *     <Model>/<Model>/AxRuleSet/BPRules.xml - the authoritative name list.
  *   - `message`/`description` come from the .NET-authored rule DLLs'
  *     resx-backed resource classes (bin/BPExtensions/*.dll and a couple of
  *     core bin/*.dll) where the rule author provided one. A `null` there
@@ -243,7 +252,7 @@ $header = @'
  *     "is this a BP rule".
  *
  * Extracted from: __PACKAGES_PATH__
- * Generated at:   (stamp with the actual date when regenerating — omitted
+ * Generated at:   (stamp with the actual date when regenerating - omitted
  *                  here so re-running with no real change produces no diff)
  */
 
@@ -259,7 +268,7 @@ export interface BpMonikerEntry {
 
 export const BP_MONIKER_CATALOG: BpMonikerEntry[] = [
 '@
-# Literal here-strings can't interpolate — splice the real path in afterward.
+# Literal here-strings can't interpolate - splice the real path in afterward.
 $header = $header.Replace('__PACKAGES_PATH__', $PackagesPath)
 
 $footer = "];`n"

@@ -68,10 +68,18 @@ function pinnedConfigName(store: SettingsStore): string | null {
 }
 
 /**
- * The full {@link XppConfig} a UDE target resolves to: the pinned one if it
- * names a file that still exists, otherwise the newest available (mirrors
- * XppConfigProvider.getActiveConfig's default). Null for a traditional
- * target, or when no config exists at all.
+ * The full {@link XppConfig} a UDE target resolves to: the pinned one, or the
+ * newest available when nothing is pinned. Null for a traditional target, when
+ * no config exists at all, and — deliberately — when the pin names a config
+ * that is gone.
+ *
+ * Mirrors XppConfigProvider.getActiveConfig exactly, including that last case:
+ * it matches either form of the name and returns null rather than substituting
+ * a different environment. A pin that no longer resolves is the
+ * stale-after-UDE-upgrade state isXppConfigStale() flags and `instance upgrade`
+ * exists to fix; answering it with the newest config would have a caller
+ * extract from 10.0.2500 and stamp the result as this target's, while its index
+ * and server still reference the old pin.
  */
 export function resolvePinnedXppConfig(store: SettingsStore): XppConfig | null {
   if (readSetting(store, envTypeSetting) === 'traditional') return null;
@@ -79,7 +87,7 @@ export function resolvePinnedXppConfig(store: SettingsStore): XppConfig | null {
   if (configs.length === 0) return null;
   const configName = pinnedConfigName(store);
   if (!configName) return configs[0];
-  return configs.find(c => c.fullName === configName) ?? configs[0];
+  return configs.find(c => c.fullName === configName || c.name === configName) ?? null;
 }
 
 /**

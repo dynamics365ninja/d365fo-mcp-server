@@ -149,7 +149,7 @@ export function toEnvRecord(files: Pick<ResolvedConfigFiles, 'baseDir' | 'config
 /**
  * The path settings the wizard never writes, resolved against `baseDir`.
  *
- * DB_PATH, LABELS_DB_PATH, METADATA_PATH and BP_CATALOG_PATH are advanced settings with
+ * DB_PATH, LABELS_DB_PATH and METADATA_PATH are advanced settings with
  * relative defaults, so a normal setup leaves them out of the config file
  * entirely and every consumer falls back to its own `'./data/…'` literal —
  * which resolves from process.cwd(). For a git checkout that is the repo, and
@@ -161,6 +161,12 @@ export function toEnvRecord(files: Pick<ResolvedConfigFiles, 'baseDir' | 'config
  *
  * Emitting the defaults here pins them to the installation directory instead.
  * A checkout is its own data directory, so its paths do not move.
+ *
+ * BP_CATALOG_PATH is deliberately NOT one of them: index.bpCatalogPath carries
+ * no registry default precisely so that "unset" keeps meaning "use the
+ * compiled-in catalog". Giving it one here would make the variable permanently
+ * set and every install that has never regenerated a catalog warn about a
+ * missing file on each start.
  */
 export function defaultPathEnv(baseDir: string): Record<string, string> {
   const out: Record<string, string> = {};
