@@ -22,6 +22,7 @@ import { READER_DISPATCH, OBJECT_INFO_TYPES, withNotFoundGuidance } from './obje
 import { completionTool } from './completion.js';
 import { getMethodTool } from './getMethod.js';
 import { readObjectXml } from './objectXml.js';
+import { COMPACT_METHODS_HINT } from '../../utils/methodBodyHint.js';
 
 /** Ceiling on one plural call — inherited from the retired batch_get_info. */
 const MAX_OBJECTS = 10;
@@ -254,9 +255,21 @@ async function readObjects(refs: ObjectRef[], context: XppServerContext) {
   }));
 
   const okCount = results.filter(r => r.success).length;
-  const sections = results.map((r, i) =>
-    `## ${i + 1}. ${r.name} [${r.objectType.toUpperCase()}] ${r.success ? '' : '❌'}\n\n${r.text}`,
-  );
+  // The compact-methods hint is advice about how to call this tool, not a fact
+  // about one object, but it is emitted per class because that is the only
+  // place that knows whether bodies were withheld. Ten classes in one call
+  // would otherwise repeat the same two lines of call syntax ten times, in a
+  // response format that exists to save round trips. Keep the first, drop the
+  // rest.
+  let hintShown = false;
+  const sections = results.map((r, i) => {
+    let text = r.text;
+    if (text.includes(COMPACT_METHODS_HINT)) {
+      if (hintShown) text = text.split(`${COMPACT_METHODS_HINT}\n\n`).join('').split(COMPACT_METHODS_HINT).join('');
+      hintShown = true;
+    }
+    return `## ${i + 1}. ${r.name} [${r.objectType.toUpperCase()}] ${r.success ? '' : '❌'}\n\n${text}`;
+  });
 
   const header =
     `# Object Info\n\n` +
