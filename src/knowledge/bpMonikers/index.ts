@@ -16,15 +16,19 @@
  * shape below follows what real AxIgnoreDiagnosticList files contain, measured
  * across all 299 of them, not what one sampled entry happened to look like.
  *
- * The compiled-in catalog above is one snapshot from one D365FO box, shared by
- * the whole npm install. An instance that has regenerated its OWN catalog
+ * catalog.generated.ts is one snapshot from one D365FO box, shared by the whole
+ * npm install. An instance that has regenerated its OWN catalog
  * (`d365fo-mcp instance rebuild/upgrade` — see ensureBpCatalogFresh in
- * src/cli/commands/indexCmd.ts) points BP_CATALOG_PATH at that JSON file
+ * src/cli/commands/bpCatalog.ts) points BP_CATALOG_PATH at that JSON file
  * instead, so validate/search reflects its actual pinned version rather than
  * whichever box the shipped snapshot happened to come from. Same fallback
- * shape as METADATA_PATH (src/utils/metadataResolver.ts): env var unset, or
- * the file missing/unparsable, silently keeps the compiled default — no
- * instance is worse off for never having regenerated one.
+ * shape as METADATA_PATH (src/utils/metadataResolver.ts), and it covers every
+ * way the override can disappoint: the variable unset, the file missing,
+ * unparsable, carrying no `entries` array, carrying entries that are not
+ * monikers, or carrying none at all. Each silently keeps the compiled default,
+ * so no instance is worse off for never having regenerated one — and, more to
+ * the point, none is left with a catalog that answers "not a real moniker" to
+ * every question.
  */
 
 import { readFileSync } from 'node:fs';

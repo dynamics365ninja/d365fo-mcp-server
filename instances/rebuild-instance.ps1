@@ -8,7 +8,7 @@
     does NOT update the server binaries: dist\ is repo-global, so after a
     git pull run `npm install; npm run build` once and restart the instances.
     Reindex only when the pull changed the parser, the extraction or the DB
-    schema — most changes are runtime-only.
+    schema - most changes are runtime-only.
 .EXAMPLE
     .\instances\rebuild-instance.ps1 clientA
 .EXAMPLE

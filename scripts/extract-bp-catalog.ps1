@@ -23,11 +23,15 @@
        This is what a *search* lookup matches against - real rule text, not a
        guess from the PascalCase name.
 
-    Coverage of source 2 is high but not total - at the last extraction 545 of
-    577 entries carried a real message and 221 also carried a description, so
-    only 32 are name-only. The catalog marks a gap explicitly (`message` and
-    `description` are null) rather than leaving it ambiguous, and a consumer
-    must not treat "no description" as "not a real moniker".
+    Coverage of source 2 is high but not total. On the 10.0 install this was
+    last measured against, 545 of 577 entries carried a real message and 221
+    also carried a description, leaving 32 name-only - but those counts belong
+    to one D365FO version, not to the catalog format, and every instance now
+    extracts its own (see -OutFile), so do not quote them as current. The run
+    prints its own figures at the end. What holds across versions is that the
+    catalog marks a gap explicitly (`message` and `description` are null)
+    rather than leaving it ambiguous, and a consumer must not treat
+    "no description" as "not a real moniker".
 
     The reverse matters more: source 2 is a resource dump, so it also yields
     strings that are NOT BP rules - messages belonging to the upgrade and
@@ -36,9 +40,14 @@
     field that answers "is this a BP rule"; presence in the catalog is not
     enough on its own.
 
-    Output is a generated TypeScript module, not JSON - this project embeds
-    knowledge data directly (see src/tools/knowledge/xppKnowledge.ts) so it
-    ships in dist/ via the normal tsc build with no separate copy step.
+    Two output modes. By default the script writes a generated TypeScript
+    module rather than JSON: this project embeds knowledge data directly (see
+    src/tools/knowledge/xppKnowledge.ts) so the committed snapshot ships in
+    dist/ via the normal tsc build with no separate copy step. Given -OutFile
+    it writes JSON instead, which is how one instance gets a catalog matching
+    its own D365FO version rather than the shipped snapshot's - that file is
+    read at runtime through BP_CATALOG_PATH, so it is data, not something to
+    compile in.
 .PARAMETER PackagesPath
     Root PackagesLocalDirectory to scan. Defaults to the newest
     %LOCALAPPDATA%\Microsoft\Dynamics365\<version>\PackagesLocalDirectory found.
