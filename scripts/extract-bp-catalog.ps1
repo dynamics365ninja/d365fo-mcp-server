@@ -57,6 +57,12 @@
     the instance CLI (`d365fo-mcp instance rebuild/upgrade`) to give each
     instance its own catalog, matching that instance's actual D365FO version,
     instead of everyone sharing the one committed snapshot.
+
+    The JSON carries a `sources` block (how many BPRules.xml files and rule
+    DLLs were seen, and how many of each had to be skipped) next to `entries`.
+    Both scans are best-effort, so a run that could read only part of the
+    install still exits 0 - `sources` is what lets the caller notice that
+    before it treats the result as this instance's current catalog.
 .PARAMETER Version
     Stamped into the JSON output's `version` field alongside PackagesPath, so
     the caller's staleness check has something to compare against on the next
@@ -98,6 +104,15 @@ Write-Host "Scanning: $PackagesPath"
 
 # -- 1. Canonical names: union of every AxRuleSet/BPRules.xml ----------------
 $canonical = [System.Collections.Generic.SortedSet[string]]::new()
+# Every skip is counted, not just warned about. Both scans below are best-effort
+# by design (-ErrorAction SilentlyContinue, per-item catch), so a run that could
+# read only part of the install still reaches the end and exits 0 - and the
+# caller, seeing exit 0, would stamp that truncated catalog with the current
+# version and never regenerate it. The counts go into the JSON payload so the
+# caller can tell a complete extraction from a partial one; the decision about
+# what to do with them lives there (verifyExtraction in commands/bpCatalog.ts),
+# in one testable place rather than split across two languages.
+$ruleSetFailures = 0
 $ruleSetFiles = Get-ChildItem $PackagesPath -Recurse -Filter 'BPRules.xml' -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -match '\\AxRuleSet\\' }
 Write-Host "AxRuleSet/BPRules.xml files found: $($ruleSetFiles.Count)"
@@ -109,6 +124,7 @@ foreach ($f in $ruleSetFiles) {
             if ($m) { [void]$canonical.Add($m.Trim()) }
         }
     } catch {
+        $ruleSetFailures++
         Write-Warning "Skipped $($f.FullName): $_"
     }
 }
@@ -132,6 +148,7 @@ $searchDirs = @($binDir, (Join-Path $binDir 'BPExtensions'))
 
 # messages[moniker] = @{ message = ...; description = ... }
 $messages = @{}
+$dllFailures = 0
 $dllTargets = @(Get-ChildItem $binDir -Filter '*.dll' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'BestPractice' })
 $dllTargets += Get-ChildItem (Join-Path $binDir 'BPExtensions') -Filter '*.dll' -ErrorAction SilentlyContinue
 Write-Host "Rule DLLs to reflect over: $($dllTargets.Count)"
@@ -140,6 +157,7 @@ foreach ($dll in $dllTargets) {
     try {
         $asm = [System.Reflection.Assembly]::LoadFrom($dll.FullName)
     } catch {
+        $dllFailures++
         Write-Warning "Load failed, skipped: $($dll.Name) - $($_.Exception.Message)"
         continue
     }
@@ -190,10 +208,21 @@ if ($OutFile) {
             canonical   = $canonical.Contains($m)
         }
     }
+    # `sources` is how the caller tells a complete extraction from a partial
+    # one. Measured against a real 214-model PackagesLocalDirectory: 144
+    # BPRules.xml files, 25 rule DLLs, and zero skips of either kind - a
+    # healthy box loses nothing, so a non-zero failure count here is a genuine
+    # signal rather than routine noise the caller would have to threshold.
     $payload = [PSCustomObject]@{
         generatedAt  = (Get-Date).ToString('o')
         packagesPath = $PackagesPath
         version      = $Version
+        sources      = [PSCustomObject]@{
+            ruleSetFiles    = @($ruleSetFiles).Count
+            ruleSetFailures = $ruleSetFailures
+            ruleDlls        = @($dllTargets).Count
+            dllFailures     = $dllFailures
+        }
         entries      = @($entries)
     }
     $outDir = Split-Path $OutFile -Parent
@@ -211,6 +240,7 @@ if ($OutFile) {
     Write-Host "Wrote $($allMonikers.Count) entries to $fullOut"
     Write-Host "  canonical (in an AxRuleSet):        $($canonical.Count)"
     Write-Host "  with real message/description text: $($messages.Count)"
+    Write-Host "  skipped BPRules.xml / rule DLLs:    $ruleSetFailures / $dllFailures"
     return
 }
 
