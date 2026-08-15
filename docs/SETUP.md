@@ -226,6 +226,10 @@ Point a per-solution `.mcp.json` at the right port:
 
 > `npx d365fo-mcp doctor` checks every instance after an upgrade: index size, a pinned XPP config that no longer resolves, and any legacy `.env` that contradicts the instance config.
 
+### BP moniker catalog
+
+Each instance also gets its own `data\bp-moniker-catalog.json`, extracted from *that instance's* pinned D365FO version rather than the one shared snapshot compiled into the server (`src/knowledge/bpMonikers/catalog.generated.ts`) — clientA on 10.0.35 and clientB on 10.0.40 each see their own real moniker set instead of whichever box's snapshot happens to be checked in. It regenerates automatically as part of `instance rebuild`/`upgrade` (and the first-time `setup` wizard), only when the instance's resolved version has actually moved since the catalog was last stamped — every other rebuild is a no-op. Requires `pwsh` or `powershell.exe` on PATH; if neither is found, or extraction fails, the previous catalog (or the compiled-in default, if none exists yet) stays in use and a warning is logged — a stale BP catalog never blocks the metadata reindex.
+
 ---
 
 ## Building the C# bridge

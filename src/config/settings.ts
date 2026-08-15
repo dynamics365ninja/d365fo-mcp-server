@@ -423,6 +423,26 @@ export const SETTINGS: Setting[] = [
     default: './extracted-metadata',
   },
   {
+    path: 'index.bpCatalogPath',
+    env: 'BP_CATALOG_PATH',
+    section: 'index',
+    tier: 'advanced',
+    type: 'path',
+    label: 'BP moniker catalog file',
+    description:
+      'Per-instance JSON catalog of real BP-check monikers, extracted from this instance\'s own D365FO version ' +
+      '(scripts/extract-bp-catalog.ps1). Falls back to the compiled-in snapshot when absent — this setting is only ' +
+      'written once an instance has regenerated its own catalog.',
+    // Deliberately no `default`. defaultPathEnv() projects every path setting
+    // that has a string default onto process.env, which would make
+    // BP_CATALOG_PATH permanently set — the "unset → compiled-in catalog"
+    // branch in bpMonikers/loadCatalog() would be unreachable and every
+    // install that has never regenerated a catalog (all existing ones, every
+    // Linux deployment, every checkout) would warn about a missing file on
+    // each start. ensureBpCatalogFresh writes the value after a successful
+    // extraction instead, which is what the description above promises.
+  },
+  {
     path: 'index.labelSortOrder',
     env: 'LABEL_SORT_ORDER',
     section: 'index',

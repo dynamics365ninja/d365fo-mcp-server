@@ -23,6 +23,7 @@ import {
   searchMonikers,
   buildSuppressionXml,
   BP_MONIKER_CATALOG,
+  MONIKERS_WITH_RULE_TEXT,
   type SuppressionElementType,
 } from '../../knowledge/bpMonikers/index.js';
 
@@ -109,7 +110,7 @@ export async function bpMonikerHelpTool(request: CallToolRequest) {
       return {
         content: [{
           type: 'text',
-          text: `No catalog matches for "${args.query}". 545 of the ${BP_MONIKER_CATALOG.length} entries carry real rule text, ` +
+          text: `No catalog matches for "${args.query}". ${MONIKERS_WITH_RULE_TEXT} of the ${BP_MONIKER_CATALOG.length} entries carry real rule text, ` +
             `so a miss is meaningful: most likely no BP rule covers this, or the wording shares no words with the rule's own. ` +
             `Try the rule's vocabulary (e.g. "duty", "privilege", "label", "extensible") before concluding there is none.`,
         }],

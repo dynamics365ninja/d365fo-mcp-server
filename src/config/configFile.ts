@@ -161,6 +161,12 @@ export function toEnvRecord(files: Pick<ResolvedConfigFiles, 'baseDir' | 'config
  *
  * Emitting the defaults here pins them to the installation directory instead.
  * A checkout is its own data directory, so its paths do not move.
+ *
+ * BP_CATALOG_PATH is deliberately NOT one of them: index.bpCatalogPath carries
+ * no registry default precisely so that "unset" keeps meaning "use the
+ * compiled-in catalog". Giving it one here would make the variable permanently
+ * set and every install that has never regenerated a catalog warn about a
+ * missing file on each start.
  */
 export function defaultPathEnv(baseDir: string): Record<string, string> {
   const out: Record<string, string> = {};

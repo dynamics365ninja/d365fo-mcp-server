@@ -4,6 +4,7 @@
  * instances/rebuild-instance.ps1 minus the git-pull step (that lives in
  * `d365fo-mcp update`).
  */
+import { ensureBpCatalogFresh } from './bpCatalog.js';
 import { dataRoot, installMode, isWindows, paths } from '../context.js';
 import { runNode } from '../exec.js';
 import { listInstances } from '../instances.js';
@@ -52,6 +53,10 @@ export async function rebuildIndex(target: Target): Promise<boolean> {
   }
 
   p.log.success(`Index rebuilt: ${target.label}`);
+
+  // Best-effort: a stale/missing BP catalog degrades one knowledge tool, not
+  // the metadata index rebuild that just succeeded above.
+  await ensureBpCatalogFresh(target);
   return true;
 }
 
