@@ -30,6 +30,7 @@ import { xppMethodSourceForXml } from '../utils/xppFormat.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { parseXppDeclaration, parseXppClassHeader } from '../metadata/xppDeclaration.js';
 import { rankCustomFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
+import { COMPACT_METHODS_HINT, fullBodyHint } from '../utils/methodBodyHint.js';
 import {
   pageFields, fieldsHeading, fieldsFooter,
   createControlBudget, chargeControl, chargeSkippedSubtree, controlsFooter,
@@ -266,7 +267,10 @@ function formatClass(cls: BridgeClassInfo, compact: boolean, methodOffset: numbe
       out += `### ${m.name}\n\n`;
       if (m.source) {
         const preview = m.source.substring(0, 500);
-        out += `\`\`\`xpp\n${preview}${m.source.length > 500 ? '\n// ... (use get_method(include="source") for full body)' : ''}\n\`\`\`\n\n`;
+        // Same call syntax as COMPACT_METHODS_HINT below — two different ways to
+        // ask for one method body, fifteen lines apart, is the inconsistency
+        // this hint exists to remove.
+        out += `\`\`\`xpp\n${preview}${m.source.length > 500 ? `\n// ... (${fullBodyHint(m.name)})` : ''}\n\`\`\`\n\n`;
       }
     }
   }
@@ -281,8 +285,18 @@ function formatClass(cls: BridgeClassInfo, compact: boolean, methodOffset: numbe
   // the bridge path (the primary, "always available on VM" path) silently gave
   // signatures with no pointer to the escape hatch, which read as "no source
   // available for this class" when it was really "not requested".
-  if (compact && total > 0) {
-    out += `> 💡 Signatures only. Pass \`options:{"compact":false}\` for method bodies, or \`options:{"method":"<name>","include":"source"}\` for one method.\n\n`;
+  //
+  // Gated on the RENDERED page carrying source, not on `total`. Bridge method
+  // source is Safe(() => method.Source) and BridgeMethodInfo.source is
+  // optional, so a class can come back with none: the compact:false branch
+  // above then prints `### name` and no code block at all (`if (m.source)`),
+  // which is strictly LESS than the signature line compact just gave — a round
+  // trip spent to lose information, on exactly the classes where the caller was
+  // already unsure whether source existed. The same guard covers an out-of-range
+  // methodOffset, where `visible` is empty and there is no signature on the page
+  // for "signatures only" to be describing.
+  if (compact && visible.some(m => m.source)) {
+    out += `${COMPACT_METHODS_HINT}\n\n`;
   }
 
   return out;
