@@ -16,7 +16,8 @@
  * not this target's (resolveSource), and accept an extraction that only
  * partially read the one that is (verifyExtraction).
  */
-import { existsSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { settingByPath } from '../../config/settings.js';
 import { findPackagesRoot } from '../../utils/packagesRoot.js';
@@ -67,23 +68,69 @@ function resolveSource(target: Target): ResolvedSource | null {
   // would then be stamped with this target's key and treated as current —
   // the same "catalog from the wrong install" the branch above refuses.
   if (isUdeTarget(target.store)) return null;
-  // Traditional environment: no version string on disk anywhere, so the bin\
-  // folder's mtime stands in for "has this install changed since we last
-  // extracted" — good enough to catch a platform update, which is the only
-  // thing that would actually change the moniker set.
+  // Traditional environment: no version string on disk anywhere, so the state
+  // of the files the catalog is extracted FROM stands in for "has this install
+  // changed since we last extracted".
   const packagesPath = readSetting(target.store, packagePathSetting) as string | undefined
     || findPackagesRoot()
     || undefined;
   if (!packagesPath) return null;
+  const versionKey = ruleSourceKey(packagesPath);
+  return versionKey ? { versionKey, packagesPath } : null;
+}
+
+/**
+ * A key that moves when the rule DLLs move — the actual input to half the
+ * catalog, and the half that cannot be reconstructed from names alone.
+ *
+ * The obvious cheap key, `statSync(packagesPath/bin).mtimeMs`, does not track
+ * that: a directory's mtime changes when its *direct* children are added,
+ * removed or renamed, so a platform hotfix that rewrites DLLs inside
+ * bin\BPExtensions\ in place leaves bin\ untouched, the key matches, and the
+ * catalog is never regenerated — the exact staleness the per-instance catalog
+ * exists to fix. Size and mtime of each rule DLL move whenever its content
+ * does.
+ *
+ * The file set mirrors what extract-bp-catalog.ps1 itself reflects over:
+ * bin\*.dll whose name contains 'BestPractice', plus every DLL in
+ * bin\BPExtensions. Measured on a real install that is 25 files, reached by
+ * two readdirs and 25 stats in ~5 ms — this runs on every rebuild, so it has
+ * to stay far cheaper than the multi-minute scan it decides against.
+ *
+ * What it deliberately does NOT cover: each model's AxRuleSet\BPRules.xml, the
+ * source of the canonical names. Finding those means recursing the whole
+ * packages root, which is most of the cost of the extraction itself. Neither
+ * did the bin\ mtime it replaces, and in practice a platform update that
+ * changes the rule set ships new rule DLLs with it.
+ */
+function ruleSourceKey(packagesPath: string): string | null {
   // join(), not a hardcoded '\bin' — this path is only ever real on Windows in
   // production, but the test suite (and CI) exercises it on Linux too, where a
   // literal backslash is just another filename character, not a separator.
   const binDir = join(packagesPath, 'bin');
-  try {
-    return { versionKey: `mtime:${statSync(binDir).mtimeMs}`, packagesPath };
-  } catch {
-    return null;
+  const extensionsDir = join(binDir, 'BPExtensions');
+  const parts: string[] = [];
+  for (const dir of [binDir, extensionsDir]) {
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names.sort()) {
+      if (!/\.dll$/i.test(name)) continue;
+      if (dir === binDir && !/BestPractice/i.test(name)) continue;
+      try {
+        const stat = statSync(join(dir, name));
+        parts.push(`${name}:${stat.size}:${stat.mtimeMs}`);
+      } catch { /* vanished between readdir and stat — just leave it out */ }
+    }
   }
+  // No rule DLL anywhere means this is not a usable packages root, so there is
+  // nothing to extract and nothing to key on. Returning a key for the empty set
+  // would make every such path agree with every other one.
+  if (parts.length === 0) return null;
+  return `rules:${createHash('sha1').update(parts.join('|')).digest('hex').slice(0, 16)}`;
 }
 
 interface StampedCatalog {
@@ -177,8 +224,25 @@ const defaultDeps: BpCatalogDeps = { commandExists, runExe };
  * "never generated" — covers first-time instance creation). A no-op on
  * every other rebuild. Never throws and never fails the caller's reindex —
  * a missing/stale BP catalog degrades one knowledge tool, not the server.
+ *
+ * "Never throws" is enforced here rather than left to the callee getting every
+ * path right. rebuildIndex() awaits this as its last step, unwrapped, *after*
+ * the multi-minute extract and database build have already succeeded and
+ * logged "Index rebuilt" — so anything escaping would turn a finished rebuild
+ * into a crashed command. And plenty can escape: runExe rejects on the child
+ * process's own 'error' event (commandExists only rules out ENOENT, not an
+ * EACCES on the interpreter), and saveStore writes two files that a locked or
+ * read-only instance config will refuse.
  */
 export async function ensureBpCatalogFresh(target: Target, deps: BpCatalogDeps = defaultDeps): Promise<void> {
+  try {
+    await refreshCatalog(target, deps);
+  } catch (err) {
+    p.log.warn(`BP catalog: skipped for ${target.label} (${(err as Error).message}) — the index rebuild itself is unaffected.`);
+  }
+}
+
+async function refreshCatalog(target: Target, deps: BpCatalogDeps): Promise<void> {
   const source = resolveSource(target);
   if (!source) {
     p.log.warn(isUdeTarget(target.store)

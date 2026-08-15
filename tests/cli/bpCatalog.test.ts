@@ -5,10 +5,10 @@
  * (first-time instance creation). Every other call must be a cheap no-op:
  * no subprocess, no write.
  *
- * Exercised against a traditional environment, where the version key is the
- * packages root's bin\ folder mtime — no XPP config fixture needed.
- * commandExists/runExe are injected directly (see BpCatalogDeps) rather than
- * mocked, so these tests never spawn a real process.
+ * Exercised against a traditional environment, where the version key is
+ * derived from the rule DLLs under the packages root's bin\ — no XPP config
+ * fixture needed. commandExists/runExe are injected directly (see
+ * BpCatalogDeps) rather than mocked, so these tests never spawn a real process.
  */
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -22,15 +22,28 @@ import type { Target } from '../../src/cli/target.js';
 let root: string;
 let packagesPath: string;
 let binDir: string;
+let extensionsDir: string;
+let ruleDll: string;
 let originalLocalAppData: string | undefined;
 
 beforeEach(() => {
   root = fs.mkdtempSync(join(os.tmpdir(), 'bp-catalog-target-'));
   packagesPath = join(root, 'packages');
   binDir = join(packagesPath, 'bin');
-  fs.mkdirSync(binDir, { recursive: true });
+  // A packages root with no rule DLL has nothing to extract from, so the
+  // fixture ships one: this is the file set the version key is built from and
+  // the same set extract-bp-catalog.ps1 reflects over.
+  extensionsDir = join(binDir, 'BPExtensions');
+  fs.mkdirSync(extensionsDir, { recursive: true });
+  ruleDll = join(extensionsDir, 'Dynamics.AX.BestPractices.dll');
+  fs.writeFileSync(ruleDll, 'rules v1');
   originalLocalAppData = process.env.LOCALAPPDATA;
 });
+
+/** A platform update: the rule DLL's content changes, so the key must move. */
+function replaceRuleDll(): void {
+  fs.writeFileSync(ruleDll, 'rules v2 — a different size');
+}
 
 afterEach(() => {
   // The UDE case repoints LOCALAPPDATA at a fixture; the real one must not stay
@@ -172,13 +185,11 @@ describe('ensureBpCatalogFresh', () => {
     expect(calls).toBe(0);
   });
 
-  it('regenerates again once the packages root changes (bin\\ mtime moves)', async () => {
+  it('regenerates again once the rule DLLs change', async () => {
     const target = makeTarget();
     await ensureBpCatalogFresh(target, fakeDeps());
 
-    // Simulate a platform update: something inside bin\ changes, moving its mtime.
-    fs.writeFileSync(join(binDir, 'xppc.exe'), 'x');
-    fs.utimesSync(binDir, new Date(Date.now() + 60_000), new Date(Date.now() + 60_000));
+    replaceRuleDll();
 
     let calls = 0;
     await ensureBpCatalogFresh(target, fakeDeps({ runExe: async (...runArgs) => { calls++; return fakeDeps().runExe(...runArgs); } }));
@@ -313,9 +324,8 @@ describe('ensureBpCatalogFresh — partial extractions', () => {
     await ensureBpCatalogFresh(target, fakeDeps());
     const good = fs.readFileSync(catalogFile(), 'utf-8');
 
-    // A platform update moves bin\'s mtime, so the next call really does run.
-    fs.writeFileSync(join(binDir, 'xppc.exe'), 'x');
-    fs.utimesSync(binDir, new Date(Date.now() + 60_000), new Date(Date.now() + 60_000));
+    // A platform update moves the version key, so the next call really does run.
+    replaceRuleDll();
     await ensureBpCatalogFresh(target, depsWriting(version => JSON.stringify({
       version,
       sources: { ruleSetFiles: 144, ruleSetFailures: 3, ruleDlls: 25, dllFailures: 1 },
@@ -331,5 +341,68 @@ describe('ensureBpCatalogFresh — partial extractions', () => {
     await ensureBpCatalogFresh(target, fakeDeps({ runExe: async (...runArgs) => { calls++; return fakeDeps().runExe(...runArgs); } }));
     expect(calls).toBe(1);
     expect(fs.readFileSync(catalogFile(), 'utf-8')).not.toBe(good);
+  });
+});
+
+describe('ensureBpCatalogFresh — version key', () => {
+  it('regenerates when a rule DLL is replaced in place, which leaves bin\\ untouched', async () => {
+    // The staleness the per-instance catalog exists to fix. A directory's mtime
+    // moves only when its DIRECT children are added, removed or renamed, so
+    // keying on bin\ missed a platform hotfix that rewrites the DLLs inside
+    // bin\BPExtensions\ — the key matched, and the catalog was never rebuilt.
+    const target = makeTarget();
+    await ensureBpCatalogFresh(target, fakeDeps());
+    const binMtimeBefore = fs.statSync(binDir).mtimeMs;
+
+    replaceRuleDll();
+
+    // Precondition, not decoration: if writing the DLL moved bin\'s mtime, this
+    // test would pass against the very key it is here to reject.
+    expect(fs.statSync(binDir).mtimeMs).toBe(binMtimeBefore);
+
+    let calls = 0;
+    await ensureBpCatalogFresh(target, fakeDeps({ runExe: async (...runArgs) => { calls++; return fakeDeps().runExe(...runArgs); } }));
+    expect(calls).toBe(1);
+  });
+
+  it('skips a packages root with no rule DLL rather than keying on the empty set', async () => {
+    fs.rmSync(ruleDll);
+    const target = makeTarget();
+    let calls = 0;
+    await ensureBpCatalogFresh(target, fakeDeps({ runExe: async (...runArgs) => { calls++; return fakeDeps().runExe(...runArgs); } }));
+
+    expect(calls).toBe(0);
+    expect(fs.existsSync(catalogFile())).toBe(false);
+  });
+});
+
+/**
+ * rebuildIndex() awaits ensureBpCatalogFresh as its last step, unwrapped, after
+ * the multi-minute extract and database build have already succeeded and logged
+ * "Index rebuilt". Anything escaping turns a finished rebuild into a crashed
+ * command, so "never throws" has to be enforced rather than merely documented.
+ */
+describe('ensureBpCatalogFresh — never fails the caller', () => {
+  it('survives the extraction subprocess failing to start', async () => {
+    // runExe rejects on the child's own 'error' event, and commandExists only
+    // rules out ENOENT — an EACCES on the interpreter still lands here.
+    const target = makeTarget();
+    await expect(ensureBpCatalogFresh(target, fakeDeps({
+      runExe: async () => { throw Object.assign(new Error('spawn powershell EACCES'), { code: 'EACCES' }); },
+    }))).resolves.toBeUndefined();
+
+    expect(fs.existsSync(catalogFile())).toBe(false);
+    expect(readWrittenSetting()).toBeUndefined();
+  });
+
+  it('survives a filesystem error while putting the verified catalog in place', async () => {
+    // A directory where the catalog belongs makes the move fail on every
+    // platform — standing in for the locked/read-only instance folder that
+    // would otherwise take rebuildIndex down with it.
+    const target = makeTarget();
+    fs.mkdirSync(catalogFile(), { recursive: true });
+
+    await expect(ensureBpCatalogFresh(target, fakeDeps())).resolves.toBeUndefined();
+    expect(readWrittenSetting()).toBeUndefined();
   });
 });
