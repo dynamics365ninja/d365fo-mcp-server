@@ -1463,8 +1463,17 @@ export class XppSymbolIndex {
    * Search symbols by query with full-text search
    * PERFORMANCE: Only select essential columns (name, type, parent_name, signature, model, file_path)
    * Uses prepared statement caching for common queries
+   *
+   * `opts.substringFallback: false` keeps the search strictly on the FTS index —
+   * see substringScanIsWorthIt() for what the fallback costs and why hot,
+   * non-user-facing callers opt out of it.
    */
-  searchSymbols(query: string, limit: number = 20, types?: string[]): XppSymbol[] {
+  searchSymbols(
+    query: string,
+    limit: number = 20,
+    types?: string[],
+    opts?: { substringFallback?: boolean }
+  ): XppSymbol[] {
     const ftsQuery = this.sanitizeFtsQuery(query);
     const cacheKey = types?.length ? `search_typed_${types.join('_')}` : 'search_all';
     
@@ -1491,8 +1500,11 @@ export class XppSymbolIndex {
       // matches token PREFIXES, so a mid-token substring query (e.g. "CategoryPropert"
       // against "ProcurementProductCategoryPropertyEntity") is a syntactically valid
       // query that legitimately returns zero rows. Fall back to LIKE in that case too,
-      // not only when FTS5 throws a syntax error.
+      // not only when FTS5 throws a syntax error — but only where that scan can pay
+      // for itself, since unlike the syntax-error path this one is reachable on every
+      // ordinary miss.
       if (rows.length > 0) return rows;
+      if (opts?.substringFallback === false || !this.substringScanIsWorthIt(query)) return rows;
       return this.likeFallbackSearch(db, query, limit, types);
     } catch {
       // FTS5 syntax error (e.g. user typed *, ", (, ), -) — fall back to LIKE contains search
@@ -1501,8 +1513,35 @@ export class XppSymbolIndex {
   }
 
   /**
+   * Is a leading-wildcard LIKE scan justified for this query?
+   *
+   * `name LIKE '%q%'` cannot use idx_symbols_name — SQLite scans the whole index
+   * (measured: 1.19M rows, ~300 ms warm and far worse cold, versus ~1 ms for the
+   * FTS miss it follows), synchronously, on exactly the path an agent hits when it
+   * guesses a name wrong. The syntax-error fallback could afford that because it
+   * was rare; the zero-row fallback happens on every ordinary miss, so it is only
+   * taken where it can actually return something:
+   *   - an empty query would match the entire corpus (LIKE '%%') and answer a
+   *     no-hit search with an arbitrary alphabetical slice of the index,
+   *   - a query containing whitespace can never match a symbol name, so the scan
+   *     is guaranteed to come back empty (contextRanker joins intent tokens with
+   *     spaces and would pay it on every miss),
+   *   - one or two characters are too unselective to be a useful substring probe.
+   *
+   * Known limitation: the fallback only fires when FTS returns *nothing*, so one
+   * incidental hit (e.g. query "Propert" matching PropertyType by prefix) still
+   * hides the mid-token matches. Widening it to "fewer rows than limit" would put
+   * the scan back on the common path, which is the cost this guard exists to avoid.
+   */
+  private substringScanIsWorthIt(query: string): boolean {
+    const trimmed = query.trim();
+    return trimmed.length >= 3 && !/\s/.test(trimmed);
+  }
+
+  /**
    * LIKE-based contains search used as a fallback when FTS5 either throws
-   * (syntax error) or returns no rows (valid query, prefix-only tokenizer miss).
+   * (syntax error) or returns no rows (valid query, prefix-only tokenizer miss —
+   * gated by substringScanIsWorthIt, which documents what this scan costs).
    * PERFORMANCE: Only select essential columns, not s.* (avoids loading large text fields)
    */
   private likeFallbackSearch(db: Database, query: string, limit: number, types?: string[]): XppSymbol[] {
@@ -1517,7 +1556,9 @@ export class XppSymbolIndex {
         .replace(/\\/g, '\\\\')
         .replace(/[%_]/g, '\\$&');
     };
-    const fallbackParams: any[] = [`%${escapeLikePattern(query)}%`];
+    // Trimmed: no symbol name starts or ends with whitespace, so padding in the
+    // raw query would only ever turn a real match into a miss.
+    const fallbackParams: any[] = [`%${escapeLikePattern(query.trim())}%`];
     if (types && types.length > 0) {
       fallbackSql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
       fallbackParams.push(...types);
@@ -3486,8 +3527,9 @@ export class XppSymbolIndex {
    * custom hits back in, ranked directly after exact-name matches.
    *
    * Index-safe: the FTS5 MATCH drives the query and the `model IN (...)` filter
-   * (idx_symbols_model) narrows to the small custom set. The LIKE fallback (only
-   * reached on an FTS5 syntax error) is also model-scoped, so the selective
+   * (idx_symbols_model) narrows to the small custom set. The LIKE fallback here is
+   * still reached only on an FTS5 syntax error — unlike searchSymbols, this method
+   * has no zero-row fallback — and it is model-scoped either way, so the selective
    * `model IN` predicate keeps it off a full `%query%` scan of the whole corpus.
    */
   searchCustomModelSymbols(query: string, types?: string[], limit: number = 15): XppSymbol[] {
