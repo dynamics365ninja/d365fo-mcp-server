@@ -118,12 +118,17 @@ export function rankContext(
     });
   };
 
+  // substringFallback: false — this runs on every proactive-context call, and a miss
+  // here (an object not in the index yet, which is the normal state for something the
+  // user just created) would otherwise pay a full ~1.2M-row LIKE scan for candidates
+  // that ranking treats as optional anyway.
+  const ftsOnly = { substringFallback: false };
   try {
     if (tokens.length > 0) {
-      addList(context.symbolIndex.searchSymbols(tokens.join(' '), CANDIDATE_POOL, input.types));
+      addList(context.symbolIndex.searchSymbols(tokens.join(' '), CANDIDATE_POOL, input.types, ftsOnly));
     }
     if (input.activeObject?.name) {
-      addList(context.symbolIndex.searchSymbols(input.activeObject.name, 20, input.types));
+      addList(context.symbolIndex.searchSymbols(input.activeObject.name, 20, input.types, ftsOnly));
     }
   } catch {
     // Index unavailable — return an empty, well-formed result.
