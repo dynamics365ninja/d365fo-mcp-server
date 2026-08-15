@@ -6,6 +6,7 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { READ_METHOD_OPTIONS } from '../../utils/methodBodyHint.js';
 
 // Schema
 
@@ -136,7 +137,7 @@ while (!done && retryCount < 5)
       'Add "next methodName(_params);" inside the CoC method — before, after, or replacing surrounding logic',
       'Store the return value: "ReturnType ret = next methodName(_params);"',
       'Only omit next in extremely rare cases where you intentionally replace (not extend) the method — document this explicitly',
-      'Verify the exact method signature with get_method(include="signature") first',
+      `Verify the exact method signature with ${READ_METHOD_OPTIONS} first`,
     ],
     example: `[ExtensionOf(tableStr(CustTable))]
 final class CustTable_MyModel_Extension

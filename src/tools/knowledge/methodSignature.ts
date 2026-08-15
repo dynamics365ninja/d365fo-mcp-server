@@ -9,6 +9,7 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { readMethodCall } from '../../utils/methodBodyHint.js';
 import type { XppServerContext } from '../../types/context.js';
 import { buildObjectTypeMismatchMessage } from '../../utils/metadataResolver.js';
 import type { BridgeClient } from '../../bridge/bridgeClient.js';
@@ -156,7 +157,7 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
         content: [{
           type: 'text',
           text: `ℹ️ \`${className}.classDeclaration\` is the class header, not a method — it has no signature.\n\n` +
-            `Use \`get_method(className="${className}", methodName="classDeclaration", include="source")\` to read the declaration source, ` +
+            `Use \`${readMethodCall('class', className, 'classDeclaration', 'source')}\` to read the declaration source, ` +
             `or \`get_object_info(objectType="class", name="${className}")\` for the class overview.`,
         }],
         isError: true,

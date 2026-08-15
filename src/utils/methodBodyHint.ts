@@ -32,3 +32,33 @@ export const SOURCE_UNAVAILABLE_HINT =
 export function fullBodyHint(methodName: string): string {
   return `options:{"method":"${methodName}","include":"source"} for the full body`;
 }
+
+/**
+ * The published call that reads one method, written out in full.
+ *
+ * Every instruction the server hands an agent goes through here so they cannot
+ * drift apart, and so none of them names `get_method` again. That tool is not
+ * in ListTools (toolHandler.ts keeps the route for agents holding the old name,
+ * nothing more), and the even older `get_method_signature` is not routable at
+ * all — it only ever existed as an internal sub-request inside getMethod.ts, so
+ * an agent told to call it gets "unknown tool" with no way to recover.
+ *
+ * `include` is the part worth being exact about: "signature" returns the
+ * signature, "source" the body. Asking for the wrong one is a wasted round trip
+ * at best, and telling an agent to use "signature" to read a body — which the
+ * class readers used to do — sends it away believing no body exists.
+ */
+export function readMethodCall(
+  objectType: 'class' | 'table' | 'view' | 'data-entity',
+  objectName: string,
+  methodName: string,
+  include: 'signature' | 'source' | 'both' = 'signature',
+): string {
+  return `get_object_info(objectType="${objectType}", name="${objectName}", options:{"method":"${methodName}","include":"${include}"})`;
+}
+
+/**
+ * The same call as guidance rather than a concrete invocation, for prose that
+ * has no particular object in hand.
+ */
+export const READ_METHOD_OPTIONS = 'get_object_info options:{"method":"<name>","include":"signature"}';

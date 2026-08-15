@@ -793,7 +793,7 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
         severity: 'error',
         line,
         identifier: `${typeName}::${member}`,
-        detail: `Static method "${member}" not found on ${typeName} (checked inheritance chain and extensions). Use get_object_info(objectType="class", name="${typeName}") or get_method(include="signature").`,
+        detail: `Static method "${member}" not found on ${typeName} (checked inheritance chain and extensions). Use get_object_info(objectType="class", name="${typeName}") — add options:{"method":"${member}","include":"signature"} for that one method.`,
       });
       continue;
     }

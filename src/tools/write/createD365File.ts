@@ -5,6 +5,7 @@
 
 import * as fs from 'fs/promises';
 import { escapeXml } from '../../utils/xmlEscape.js';
+import { readMethodCall } from '../../utils/methodBodyHint.js';
 import { buildAxTableXml } from '../xml/tableXml.js';
 import { buildAxFormXml } from '../xml/formXml.js';
 import {
@@ -656,7 +657,7 @@ ${methodsXml}\t</SourceCode>
     const baseClass = properties?.baseClass || extensionName.replace(/_[^_]+_Extension$/, '');
 
     const defaultSource = sourceCode ||
-      `[ExtensionOf(classStr(${baseClass}))]\nfinal class ${extensionName}\n{\n    // ⚠️  ALWAYS call next <methodName>() — verify exact signature with:\n    //     get_method(include="signature", "${baseClass}", "methodName")\n    //\n    // Template for wrapping a method:\n    //   public ReturnType methodName(ParamType _param)\n    //   {\n    //       ReturnType result = next methodName(_param);\n    //       return result;\n    //   }\n}`;
+      `[ExtensionOf(classStr(${baseClass}))]\nfinal class ${extensionName}\n{\n    // ⚠️  ALWAYS call next <methodName>() — verify exact signature with:\n    //     ${readMethodCall('class', baseClass, '<methodName>')}\n    //\n    // Template for wrapping a method:\n    //   public ReturnType methodName(ParamType _param)\n    //   {\n    //       ReturnType result = next methodName(_param);\n    //       return result;\n    //   }\n}`;
 
     return XmlTemplateGenerator.generateAxClassXml(extensionName, defaultSource, { ...properties });
   }
@@ -3690,7 +3691,7 @@ export async function handleCreateD365File(
           const INLINE_LIMIT = 8000;
           inlineContent = existingContent.length <= INLINE_LIMIT
             ? `\n\n----- BEGIN ${path.basename(normalizedFullPath)} -----\n${existingContent}\n----- END -----`
-            : `\n\n(File is ${sizeKb} KB — too large to inline. Use get_method / get_object_info to read specific members.)`;
+            : `\n\n(File is ${sizeKb} KB — too large to inline. Use get_object_info to read specific members.)`;
         }
 
         // When the requested objectName was normalized to a different on-disk name,

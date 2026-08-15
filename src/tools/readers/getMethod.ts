@@ -15,6 +15,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
+import { readMethodCall } from '../../utils/methodBodyHint.js';
 import { getMethodSignatureTool } from '../knowledge/methodSignature.js';
 import { getMethodSourceTool } from './getMethodSource.js';
 
@@ -35,7 +36,11 @@ export async function getMethodTool(request: CallToolRequest, context: XppServer
   const parsed = GetMethodArgsSchema.safeParse(request.params.arguments ?? {});
   if (!parsed.success) {
     return {
-      content: [{ type: 'text', text: `❌ get_method: invalid arguments — ${parsed.error.message}` }],
+      // Named for the PUBLISHED route, not this function. Most callers reach
+      // here through get_object_info's folded options.method — get_method is no
+      // longer in ListTools — so an error headed "get_method:" describes a call
+      // they never made and cannot look up.
+      content: [{ type: 'text', text: `❌ get_object_info (options.method): invalid arguments — ${parsed.error.message}` }],
       isError: true,
     };
   }
@@ -47,8 +52,8 @@ export async function getMethodTool(request: CallToolRequest, context: XppServer
       content: [{
         type: 'text',
         text:
-          `❌ get_method: missing required parameter "className".\n\n` +
-          `Usage: get_method(className="MyClass", methodName="myMethod")\n\n` +
+          `❌ Reading one method needs the object that owns it.\n\n` +
+          `Usage: ${readMethodCall('class', 'MyClass', 'myMethod')}\n\n` +
           `If you only know the method name, use search(query="myMethod", type="method") first ` +
           `to find which class it belongs to.`,
       }],

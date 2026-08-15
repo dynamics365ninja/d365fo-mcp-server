@@ -5,6 +5,7 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { readMethodCall } from '../../utils/methodBodyHint.js';
 import { resolveObjectPrefix, applyObjectPrefix, deriveExtensionInfix, getObjectSuffix, applyObjectSuffix } from '../../utils/modelClassifier.js';
 import { getConfigManager } from '../../utils/configManager.js';
 import { enforceGrounding } from '../../utils/provenanceStore.js';
@@ -303,7 +304,7 @@ function classExtensionTemplate(baseName: string, prefix: string): string {
 final class ${className}
 {
     // ⚠️  DO NOT add CoC methods before checking the original signature:
-    //     get_method_signature("${baseName}", "methodName")
+    //     ${readMethodCall('class', baseName, '<methodName>')}
     //
     // X++ does NOT support method overloading — two methods with the same name
     // will always cause a compile error, even with different signatures.
@@ -448,7 +449,7 @@ function mapExtensionTemplate(baseName: string, prefix: string): string {
 [ExtensionOf(mapStr(${baseName}))]
 final class ${className}
 {
-    // ⚠️  Always call get_method_signature("${baseName}", "methodName") before adding a CoC method.
+    // ⚠️  Always check the original signature with get_object_info(objectType="map", name="${baseName}") before adding a CoC method.
     //     X++ does NOT support method overloading — duplicate method names always cause compile errors.
     //
     // Instance CoC example:
@@ -1926,7 +1927,7 @@ export async function codeGenTool(request: CallToolRequest) {
             : `⚠️ **No prefix resolved** — set \`EXTENSION_PREFIX\` env var or pass \`modelName\` argument.\n  Generated bare name without prefix infix (e.g. \`${baseName}_Extension\`) which is **not MS-compliant**.`;
           namingNote = namingLine + '\n\n' +
             `🚨 **REQUIRED before adding CoC methods:**\n` +
-            `   Call \`get_method(include="signature", "${baseName}", "methodName")\` for EACH method you want to wrap.\n` +
+            `   Call \`${readMethodCall('class', baseName, '<methodName>')}\` for EACH method you want to wrap.\n` +
             `   X++ does NOT support method overloading — adding both \`public boolean foo()\` and \`public static boolean foo()\`\n` +
             `   in the same class will always cause a compile error.\n` +
             `   The signature tool tells you whether the original is \`static\` or instance, so you generate exactly ONE CoC method.`;
@@ -1988,7 +1989,7 @@ export async function codeGenTool(request: CallToolRequest) {
             // (positional, not `className`/`methodName`), so following it cost a
             // failed call before the agent could get anything useful.
             (args.pattern === 'class-extension'
-              ? `\n\n⚠️ Before writing any CoC method call \`get_method(include="signature", className="${displayName}", methodName="<methodName>")\` — ` +
+              ? `\n\n⚠️ Before writing any CoC method call \`${readMethodCall('class', displayName, '<methodName>')}\` — ` +
                 `never guess static vs instance, the return type or the parameter list. ` +
                 `Existing wrappers: \`extension_info(mode="coc", target="${displayName}")\`.`
               : ``),
