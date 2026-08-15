@@ -236,7 +236,7 @@ ${classSource}
 Use CoC when you need to wrap or augment an existing method's logic.
 
 ### Prerequisites
-1. Call \`get_method(include="signature")\` to get exact parameter types and return type
+1. Call \`get_object_info(objectType="class", name, options:{"method":"<name>","include":"signature"})\` to get exact parameter types and return type
 2. Call \`extension_info(mode="coc")\` to check if the method is already wrapped
 3. Call \`extension_info(mode="points")\` to verify the method is CoC-eligible (not \`final\` / \`[Hookable(false)]\`)
 

@@ -15,6 +15,7 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { READ_METHOD_OPTIONS } from '../../utils/methodBodyHint.js';
 
 // ─── Schema ─────────────────────────────────────────────────────────────────
 
@@ -346,7 +347,7 @@ while (qr.next())
     rules: [
       'Extension class MUST be [ExtensionOf(classStr/tableStr/formStr(Target))]',
       'Extension class MUST be final',
-      'Method signature MUST match the original exactly (use get_method(include="signature") tool)',
+      `Method signature MUST match the original exactly (use ${READ_METHOD_OPTIONS})`,
       'The target may INHERIT the method rather than declare it — that compiles, and the signature is then validated against the declaring base class. See class-inheritance',
       'ALWAYS call next <methodName>() — skipping it breaks the chain for other extensions',
       'Cannot access private members of the original class',
@@ -616,7 +617,7 @@ class MyReportDP extends SrsReportDataProviderBase
       'systemDateGet() → see the datetime-timezones topic — BPUpgradeCodeSystemDate',
       'SysEntryPointAttribute on CUSTOM SERVICE operations → obsolete in AX7 ("This attribute is deprecated in AX7"); still REQUIRED on SysOperation service entry points — see the custom-services topic',
       '[SysObsolete] attribute: ALWAYS read the message — it names the replacement',
-      'When get_method(include="source") returns a method with [SysObsolete], do NOT call it — use the stated replacement',
+      'When a method read with include:"source" carries [SysObsolete], do NOT call it — use the stated replacement',
       // Everything below is a deprecation an agent is likely to "remember" but that
       // is not real. Listing them here — rather than silently omitting them — is the
       // only way a keyword search for "curext"/"infolog" lands on the correction
@@ -2286,7 +2287,7 @@ select salesTable where salesTable.ShippingDateRequested == cutoffDate;`,
       'validatewrite', 'validatefield', 'validatedelete', 'modifiedfield', 'table coc', 'orig', 'pre-image', 'old value', 'xrecord'],
     summary:
       'Strict rules for authoring CoC wrappers. The most common mistake is copying default parameter values. ' +
-      'next must always be called at first-level scope. Always use get_method(include="signature") before writing any wrapper.',
+      `next must always be called at first-level scope. Always use ${READ_METHOD_OPTIONS} before writing any wrapper.`,
     rules: [
       'NEVER copy default parameter values into the wrapper signature — wrapper uses bare parameter types only',
       'next must be at first-level statement scope: NOT inside if/while/for, NOT after return, NOT inside a logical expression. PU21+: permitted inside try/catch/finally',
@@ -2299,9 +2300,9 @@ select salesTable where salesTable.ShippingDateRequested == cutoffDate;`,
       'Form-nested wrapping uses formdatasourcestr, formdatafieldstr, formControlStr. Cannot ADD new methods via CoC — only wrap existing ones (init, validateWrite, clicked, …)',
       'Wrappers can read/call protected members of the augmented class (PU9+); cannot reach private',
       'Pre-processing: call business logic before next. Post-processing: call next first, then business logic. Wrap: call next inside the logic',
-      'Use get_method(include="signature") tool to get exact parameter types before writing the wrapper',
+      `Use ${READ_METHOD_OPTIONS} to get exact parameter types before writing the wrapper`,
       'On a TABLE wrapper (validateWrite/validateField/update/delete/modifiedField) the record is already in hand: `this` carries the new values and `this.orig()` the values it was fetched with. NEVER re-read the row — no `select … where x.RecId == this.RecId`, no `MyTable::findRecId(this.RecId)`. That is a database round trip on every write and it returns the current stored state, not this buffer\'s pre-image. On an insert `this.orig()` is empty, so `this.orig().RecId == 0` is the "new record" test. Rule COC006 flags the re-read',
-      'The table data methods are declared by kernel types (xRecord/Common), so the symbol index has no row for them and "not found" there is not evidence they do not exist — prepare(mode="change") and get_method answer for them from a built-in contract instead',
+      'The table data methods are declared by kernel types (xRecord/Common), so the symbol index has no row for them and "not found" there is not evidence they do not exist — prepare(mode="change") and get_object_info options:{"method":...} answer for them from a built-in contract instead',
       'REUSE BEFORE CREATING: if a CoC extension class for the target already exists in the custom model (prepare(mode="change") / extension_info(mode="coc") lists them), add the wrapper there — never create a parallel feature-named class (<Target>_<Feature>_Extension) unless the user explicitly requests separation',
       'The class suffix comes from EXTENSION_NAMING_STYLE and existing related artifacts — never from feature names, tickets, or customer names; if it cannot be derived, ask the user',
     ],

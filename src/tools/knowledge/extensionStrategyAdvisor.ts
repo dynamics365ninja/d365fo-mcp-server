@@ -6,6 +6,7 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { readMethodCall } from '../../utils/methodBodyHint.js';
 import type { XppServerContext } from '../../types/context.js';
 
 // Schema
@@ -124,7 +125,7 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
     ],
     nextSteps: [
       'extension_info(mode="points", target="TableName") — check initValue availability',
-      'get_method(include="signature", className="TableName", methodName="initValue") — exact signature for the CoC wrapper',
+      `${readMethodCall('table', 'TableName', 'initValue')} — exact signature for the CoC wrapper`,
     ],
     antiPatterns: [
       { wrong: 'Overriding insert()', why: 'insert() is for persistence — defaults belong in initValue()' },
@@ -163,7 +164,7 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
     ],
     nextSteps: [
       'extension_info(mode="points", target="TableName") — confirm modifiedField is CoC-eligible and see existing extensions',
-      'get_method(include="signature", className="TableName", methodName="modifiedField") — exact signature for the CoC wrapper',
+      `${readMethodCall('table', 'TableName', 'modifiedField')} — exact signature for the CoC wrapper`,
       'extension_info(mode="coc", target="TableName", method="modifiedField") — check for existing wrappers',
     ],
     antiPatterns: [
@@ -196,7 +197,7 @@ const STRATEGY_RULES: readonly StrategyRule[] = [
     ],
     nextSteps: [
       'extension_info(mode="points", target="ClassName") — see CoC-eligible methods and delegates',
-      'get_method(include="signature", className="ClassName", methodName="methodName") — exact signature for the CoC wrapper',
+      `${readMethodCall('class', 'ClassName', 'methodName')} — exact signature for the CoC wrapper`,
       'extension_info(mode="coc", target="ClassName", method="methodName") — check for existing CoC wrappers',
     ],
     antiPatterns: [
