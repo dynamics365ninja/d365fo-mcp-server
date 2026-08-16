@@ -563,6 +563,27 @@ interface XppcBuildContext {
   xppcExe: string;
   customPackagesPath: string;
   microsoftPackagesPath: string;
+  /**
+   * The `-compilermetadata` root — where xppc READS the compiler metadata of
+   * referenced modules and, in its "Metadata Write-Back" phase, WRITES its own
+   * back. The write-back half is easy to miss, and it is why this is not simply
+   * `microsoftPackagesPath`: pointing it at the framework directory made every
+   * build deposit `<FrameworkDirectory>\<CustomModel>\XppMetadata`, leaving
+   * customer model names in a directory shared by every environment on the box.
+   *
+   * Pointing it at the model store instead is what VS does. Microsoft's own
+   * compiler metadata still resolves, because the framework directory is passed
+   * as a `-referenceFolder` (verified against 10.0.2645.90: a full compile of a
+   * customer model succeeded with `Errors: 0` and no unresolved-metadata
+   * diagnostic, and the write-back landed in the model store rather than the
+   * framework directory).
+   *
+   * It also removes an asymmetry that could only hurt `-incremental`, which is
+   * the DEFAULT here: VS wrote its baseline to the model store and nothing
+   * copied it back, so an MCP build following a VS build compared against
+   * metadata predating it. Both tools now share one baseline.
+   */
+  compilerMetadataPath: string;
   extraReferenceFolders: string[];
 }
 
@@ -573,7 +594,7 @@ interface XppcBuildContext {
  * Returns the PID of the spawned process.
  */
 async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): Promise<number> {
-  const { xppcExe, customPackagesPath, microsoftPackagesPath, extraReferenceFolders } = ctx;
+  const { xppcExe, customPackagesPath, microsoftPackagesPath, compilerMetadataPath, extraReferenceFolders } = ctx;
   const { modelName, fullBuild, targetModel } = state;
 
   // fullBuild only applies to the TARGET model — dependencies always run
@@ -586,6 +607,7 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
   assertSafePath(modelName, 'Model name');
   assertSafePath(customPackagesPath, 'Custom packages path');
   assertSafePath(microsoftPackagesPath, 'Microsoft packages path');
+  assertSafePath(compilerMetadataPath, 'Compiler metadata path');
 
   const outputPath = path.join(customPackagesPath, modelName, 'bin');
   const xppcErrLog = state.logFile.replace('.log', '.xppc.err');
@@ -605,7 +627,8 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
 
   const xppcArgs = [
     `-metadata=${customPackagesPath}`,
-    `-compilermetadata=${microsoftPackagesPath}`,
+    // Not microsoftPackagesPath — see XppcBuildContext.compilerMetadataPath.
+    `-compilermetadata=${compilerMetadataPath}`,
     `-modelmodule=${modelName}`,
     ...referenceFolderArgs,
     `-output=${outputPath}`,
@@ -634,9 +657,25 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
     await buildLog('WARN', `labelc did not compile ${modelName} labels: ${labelResult.message}`);
   }
 
-  // Truncate the log with the label outcome, then append xppc's output to it,
-  // so a single tail read shows the whole build in the order it happened.
-  await writeFile(state.logFile, labelHeader, 'utf-8');
+  // The invocation, verbatim, at the top of the log. buildLog() already reports
+  // it, but only to stderr and to bridgeLogFile — and bridgeLogFile only exists
+  // when D365FO_BRIDGE_LOG_FILE is configured. Neither is the file anyone opens
+  // when auditing a build afterwards, so a question as basic as "which root did
+  // -compilermetadata point at" could not be answered from the build log at all.
+  // Recording it here makes a regression in these arguments directly greppable.
+  const invocationHeader = [
+    '=== xppc invocation ===',
+    xppcExe,
+    ...xppcArgs.map(arg => `  ${arg}`),
+    '=======================',
+    '',
+    '',
+  ].join('\n');
+
+  // Truncate the log with the invocation and label outcome, then append xppc's
+  // output to it, so a single tail read shows the whole build in the order it
+  // happened.
+  await writeFile(state.logFile, invocationHeader + labelHeader, 'utf-8');
   const logFd = openSyncFs(state.logFile, 'a');
 
   const child = spawn(xppcExe, xppcArgs, {
@@ -771,6 +810,7 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
       microsoftPackagesPath,
       customPackagesPath,
       liveState.targetModel,
+      compilerMetadataPath,
     );
     if (metaResult.skipped) {
       await buildLog('WARN', `Runtime metadata regeneration skipped: ${metaResult.message}`);
@@ -1330,6 +1370,7 @@ export const buildProjectTool = async (params: any, context: any, onProgress?: P
     await buildLog('INFO', `  xppc.exe:              ${xppcExe}`);
     await buildLog('INFO', `  customPackagesPath:    ${customPackagesPath}`);
     await buildLog('INFO', `  microsoftPackagesPath: ${microsoftPackagesPath}`);
+    await buildLog('INFO', `  compilerMetadataPath:  ${customPackagesPath} (xppc write-back target)`);
     if (extraReferenceFolders.length > 0) {
       await buildLog('INFO', `  extraReferenceFolders: ${extraReferenceFolders.join(', ')}`);
     }
@@ -1341,6 +1382,9 @@ export const buildProjectTool = async (params: any, context: any, onProgress?: P
       xppcExe,
       customPackagesPath,
       microsoftPackagesPath,
+      // The model store, so the write-back stays with the source it describes.
+      // In CHE the two roots are the same path anyway, so this is a no-op there.
+      compilerMetadataPath: customPackagesPath,
       extraReferenceFolders,
     };
 

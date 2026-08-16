@@ -341,8 +341,61 @@ describe('build_d365fo_project', () => {
     expect(spawnMock).toHaveBeenCalledTimes(1);
     const [, args] = spawnMock.mock.calls[0];
     expect(args).toContain(`-metadata=${CUSTOM}`);
-    expect(args).toContain(`-compilermetadata=${MSFT}`);
     expect(args).toContain(`-modelmodule=${MODEL_NAME}`);
+    // The framework directory stays reachable as a reference folder, so Microsoft's
+    // compiler metadata still resolves.
+    expect(args).toContain(`-referenceFolder=${MSFT}`);
+  });
+
+  it('points -compilermetadata at the model store, never the framework directory', async () => {
+    // xppc writes its compiler metadata BACK to the -compilermetadata root. Aimed at
+    // the framework directory it deposits <FrameworkDirectory>\<CustomModel>\XppMetadata,
+    // putting customer model names in a directory shared by every environment on the box
+    // and splitting the -incremental baseline from the one VS maintains.
+    const CUSTOM = 'C:\\Repos\\MyCode\\Metadata';
+    const MSFT = 'C:\\AOSService\\PackagesLocalDirectory';
+    const xppc = path.join(MSFT, 'bin', 'xppc.exe');
+
+    cfgGetCustomPackagesPath.mockResolvedValue(CUSTOM);
+    cfgGetMicrosoftPackagesPath.mockResolvedValue(MSFT);
+
+    const child = makeFakeChild(56);
+    spawnMock.mockReturnValue(child);
+    allowPaths([PROJECT_PATH, xppc]);
+
+    await buildProjectTool({ projectPath: PROJECT_PATH, wait: false }, {});
+
+    const [, args] = spawnMock.mock.calls[0];
+    expect(args).toContain(`-compilermetadata=${CUSTOM}`);
+    expect(args).not.toContain(`-compilermetadata=${MSFT}`);
+  });
+
+  it('records the xppc invocation in the build log', async () => {
+    // Validating this patch on a real instance could only confirm it by its
+    // effects, because the build log recorded no command line — buildLog() sends
+    // that to stderr and to bridgeLogFile, and bridgeLogFile is optional. The
+    // arguments belong in the log that is actually read after the fact.
+    const CUSTOM = 'C:\\Repos\\MyCode\\Metadata';
+    const MSFT = 'C:\\AOSService\\PackagesLocalDirectory';
+    const xppc = path.join(MSFT, 'bin', 'xppc.exe');
+
+    cfgGetCustomPackagesPath.mockResolvedValue(CUSTOM);
+    cfgGetMicrosoftPackagesPath.mockResolvedValue(MSFT);
+
+    const child = makeFakeChild(57);
+    spawnMock.mockReturnValue(child);
+    allowPaths([PROJECT_PATH, xppc]);
+
+    await buildProjectTool({ projectPath: PROJECT_PATH, wait: false }, {});
+
+    const logWrite = writeFileMock.mock.calls.find(
+      (c: any[]) => typeof c[0] === 'string' && c[0].includes('d365build_log'),
+    );
+    expect(logWrite).toBeDefined();
+    const written = String(logWrite![1]);
+    expect(written).toContain('=== xppc invocation ===');
+    expect(written).toContain(`-compilermetadata=${CUSTOM}`);
+    expect(written).toContain(`-metadata=${CUSTOM}`);
   });
 
   it('force=true kills orphaned build and restarts', async () => {
