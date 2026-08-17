@@ -78,6 +78,12 @@ function buildLimiter(): RequestHandler {
     validate: {
       // We safely use ipKeyGenerator in our custom generateRateLimitKey function
       keyGeneratorIpFallback: false,
+      // buildLimiter() is intentionally called on first request (see comment above)
+      // so RATE_LIMIT_* env vars are read after they're fully loaded, but the
+      // `limiter ??=` cache above ensures it only runs once and the store is shared
+      // across all requests — not recreated per request, which is what this check
+      // guards against.
+      creationStack: false,
     },
     message: {
       error: 'Too many requests for this user or IP, please try again later.',
