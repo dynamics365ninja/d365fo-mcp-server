@@ -203,16 +203,34 @@ describe('run_bp_check — path resolution', () => {
       expect(metaArg).toContain(UDE_CUSTOM);
     });
 
-    it('passes -compilerMetadata= / -packagesRoot= pointing to microsoftPackagesPath', async () => {
+    // The build writes `<modelStore>\<Model>\XppMetadata` (build_d365fo_project passes
+    // -compilermetadata=<model store>), so that is the only root on a UDE box where the
+    // module's compiler metadata exists. Aiming -compilerMetadata at the framework
+    // directory instead makes xppbp report the checked element as never compiled and skip
+    // every rule that reads compiled X++.
+    it('passes -compilerMetadata= pointing to customPackagesPath (where the build writes it)', async () => {
       allowPaths([UDE_CUSTOM, UDE_MS, UDE_XPPBP]);
 
       await runBpCheckTool({ modelName: 'MyModel' }, {});
 
       const args    = capturedArgs(0);
-      const compArg = args.find(a => a.includes('compilerMetadata') || a.includes('packagesRoot'));
-      expect(compArg).toContain(UDE_MS);
-      // Must NOT point to the custom metadata dir
-      expect(compArg).not.toContain(UDE_CUSTOM);
+      const compArg = args.find(a => a.includes('compilerMetadata'));
+      expect(compArg).toContain(UDE_CUSTOM);
+      expect(compArg).not.toContain(UDE_MS);
+    });
+
+    // Separate flag, separate root: referenced Microsoft modules resolve from their
+    // binaries in the framework directory, which is what lets -compilerMetadata stay on
+    // the model store.
+    it('passes -packagesRoot= pointing to microsoftPackagesPath alongside it', async () => {
+      allowPaths([UDE_CUSTOM, UDE_MS, UDE_XPPBP]);
+
+      await runBpCheckTool({ modelName: 'MyModel' }, {});
+
+      const args    = capturedArgs(0);
+      const pkgArg  = args.find(a => a.includes('packagesRoot'));
+      expect(pkgArg).toContain(UDE_MS);
+      expect(pkgArg).not.toContain(UDE_CUSTOM);
     });
 
     it('does NOT consult configManager.getCustomPackagesPath when xppConfig is present', async () => {
@@ -1107,6 +1125,50 @@ describe('describeNonRun', () => {
   it('stays quiet on a real run', async () => {
     const { describeNonRun } = await import('../../src/tools/sdlc/runBpCheck');
     expect(describeNonRun('1 elements processed\nWarnings: 0\nErrors: 0')).toBe('');
+  });
+
+  // Verbatim shape of the xppbp 7.0.7996.33 warning, emitted when -compilerMetadata points
+  // at a root that has no XppMetadata for the module. The rules that read compiled X++ then
+  // never run, and their silence used to be reported as findings-free.
+  const UNCOMPILED = (name: string) =>
+    `BestPractices Warning: Class dynamics://Class/${name}: The element '${name}' in module ` +
+    `'MyModel' appears not to have been compiled. Ensure the element has been compiled before ` +
+    `invoking xppbp.exe, and provide the -compilerMetadata argument if necessary.`;
+
+  it('recognises the requested element being reported as never compiled', async () => {
+    const { describeNonRun } = await import('../../src/tools/sdlc/runBpCheck');
+    const out = `1 elements processed.\n${UNCOMPILED('MyClass')}\nCompilerMetadataMissing: 1`;
+    expect(describeNonRun(out, 'MyClass')).toMatch(/no compiled metadata for "MyClass"/);
+  });
+
+  it('ignores the warning when it names a different element', async () => {
+    const { describeNonRun } = await import('../../src/tools/sdlc/runBpCheck');
+    // A module-wide run routinely carries this for extensions of classes the environment
+    // does not have installed — that says nothing about the object under check.
+    const out = `1 elements processed.\n${UNCOMPILED('SomeOther_Extension')}\nCompilerMetadataMissing: 1`;
+    expect(describeNonRun(out, 'MyClass')).toBe('');
+  });
+
+  it('does not judge an unfiltered whole-model run by it', async () => {
+    const { describeNonRun } = await import('../../src/tools/sdlc/runBpCheck');
+    const out = `283 elements processed.\n${UNCOMPILED('SomeOther_Extension')}\nCompilerMetadataMissing: 1`;
+    expect(describeNonRun(out)).toBe('');
+  });
+});
+
+describe('uncompiledElements', () => {
+  it('collects every element xppbp reported as uncompiled, once each', async () => {
+    const { uncompiledElements } = await import('../../src/tools/sdlc/runBpCheck');
+    const line = (n: string) =>
+      `BestPractices Warning: Class dynamics://Class/${n}: The element '${n}' in module 'MyModel' ` +
+      `appears not to have been compiled.`;
+    const out = [line('A'), line('B'), line('A')].join('\n');
+    expect(uncompiledElements(out)).toEqual(['A', 'B']);
+  });
+
+  it('returns nothing for a clean run', async () => {
+    const { uncompiledElements } = await import('../../src/tools/sdlc/runBpCheck');
+    expect(uncompiledElements('1 elements processed\nWarnings: 0\nErrors: 0')).toEqual([]);
   });
 });
 
