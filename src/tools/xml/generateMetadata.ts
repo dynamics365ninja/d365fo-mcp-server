@@ -129,11 +129,16 @@ async function compileHelper(
 }
 
 // Compiler-metadata sync: xppc writes compiled X++ compiler metadata (XppMetadata tree) to the
-// -compilermetadata root, which can differ from the -metadata source root in an MCP-only build.
+// -compilermetadata root, which CAN differ from the -metadata source root.
 // RuntimeMetadataWriter needs both source and compiler metadata under one root, so we overlay the
 // freshly written XppMetadata onto the source root before generating runtime manifests. Overlay
 // (not mirror) is safe — orphan compiler metadata with no matching source is harmless since the
 // provider enumerates classes from the source XML.
+//
+// Since the build points -compilermetadata at the model store, the two roots normally coincide and
+// this is a no-op returning "already co-located". It stays because the roots are separate arguments
+// and a caller may still pass them apart — and because a silent no-op is cheaper than the failure
+// it prevents: without the overlay, newly added classes are missing from the runtime manifests.
 
 async function syncCompilerMetadata(
   compilerMetadataRoot: string,
@@ -170,14 +175,19 @@ export interface GenerateMetadataResult {
  * Regenerate the .md runtime metadata manifests for `modelName` from its XML
  * source. Called after a successful xppc build.
  *
- * @param microsoftPackagesPath  Framework directory (FrameworkDirectory / PackagesLocalDirectory for CHE)
+ * @param microsoftPackagesPath  Framework directory (FrameworkDirectory / PackagesLocalDirectory for CHE).
+ *                               Used ONLY to locate the Dynamics DLLs and the cached helper exe.
  * @param customPackagesPath     Model store root — the directory that contains the model folder
  * @param modelName              Model to regenerate manifests for
+ * @param compilerMetadataPath   Root xppc was given as `-compilermetadata`, i.e. where it wrote its
+ *                               compiler metadata back. Defaults to `microsoftPackagesPath` for
+ *                               callers predating the split; the build passes the model store.
  */
 export async function generateRuntimeMetadata(
   microsoftPackagesPath: string,
   customPackagesPath: string,
   modelName: string,
+  compilerMetadataPath: string = microsoftPackagesPath,
 ): Promise<GenerateMetadataResult> {
   const frameworkBinDir = path.join(microsoftPackagesPath, 'bin');
   const outputDir       = path.join(customPackagesPath, modelName, 'bin');
@@ -225,7 +235,7 @@ export async function generateRuntimeMetadata(
   // for newly added classes in an MCP-only build).
   let syncMessage: string;
   try {
-    syncMessage = await syncCompilerMetadata(microsoftPackagesPath, customPackagesPath, modelName);
+    syncMessage = await syncCompilerMetadata(compilerMetadataPath, customPackagesPath, modelName);
   } catch (syncErr: any) {
     return {
       skipped: false,

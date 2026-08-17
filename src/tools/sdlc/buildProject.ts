@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'child_process';
 import util from 'util';
 import path from 'path';
-import { access, writeFile, readFile, unlink, appendFile, readdir, stat } from 'fs/promises';
+import { access, writeFile, readFile, unlink, appendFile, readdir, rm, stat } from 'fs/promises';
 import { openSync as openSyncFs, closeSync as closeSyncFs } from 'fs';
 import os from 'os';
 import crypto from 'crypto';
@@ -404,14 +404,36 @@ async function readWholeLog(logFile: string): Promise<string> {
   }
 }
 
+/** First and last line of the verbatim xppc invocation written at the top of every build log. */
+const INVOCATION_HEADER_START = '=== xppc invocation ===';
+const INVOCATION_HEADER_END   = '=======================';
+
+/**
+ * Line indices of that invocation header, or [] if the log does not start with one.
+ *
+ * The header exists so a failed build can be traced back to the arguments that produced it —
+ * which root `-compilermetadata` pointed at, above all. A failed build is also the only time
+ * readFullLog takes its diagnostic-window path, and that path returns windows plus a tail, so
+ * without this the header reached the response only for logs short enough to be returned whole.
+ */
+function invocationHeaderRange(all: string[]): number[] {
+  if (all[0]?.trim() !== INVOCATION_HEADER_START) return [];
+  const end = all.findIndex((line, i) => i > 0 && line.trim() === INVOCATION_HEADER_END);
+  if (end === -1) return [];
+  // Bounded: a long extraReferenceFolders list must not crowd out the diagnostics.
+  const last = Math.min(end, 60);
+  return Array.from({ length: last + 1 }, (_, i) => i);
+}
+
 /**
  * Log excerpt for a failed build that always includes diagnostic lines. A
  * naive head+tail can miss errors when long phase-timing tables precede them,
  * so instead: find every diagnostic line, include a context window around
- * each, always include the trailing summary lines, and cap the number of
- * diagnostic windows shown (MAX_DIAGS) to bound the response size.
+ * each, always include the invocation header and the trailing summary lines,
+ * and cap the number of diagnostic windows shown (MAX_DIAGS) to bound the
+ * response size.
  */
-async function readFullLog(logFile: string, maxLines = 300): Promise<string> {
+export async function readFullLog(logFile: string, maxLines = 300): Promise<string> {
   const CONTEXT = 3;     // lines before/after each diagnostic
   const TAIL_LINES = 30; // always-included trailing lines
   const MAX_DIAGS = 30;  // cap on diagnostic windows to bound response size
@@ -431,6 +453,7 @@ async function readFullLog(logFile: string, maxLines = 300): Promise<string> {
       const shownDiags = diagIndices.slice(0, MAX_DIAGS);
 
       const included = new Set<number>();
+      for (const i of invocationHeaderRange(all)) included.add(i);
       for (const idx of shownDiags) {
         for (let i = Math.max(0, idx - CONTEXT); i <= Math.min(all.length - 1, idx + CONTEXT); i++) {
           included.add(i);
@@ -563,7 +586,87 @@ interface XppcBuildContext {
   xppcExe: string;
   customPackagesPath: string;
   microsoftPackagesPath: string;
+  /**
+   * The `-compilermetadata` root — where xppc READS the compiler metadata of
+   * referenced modules and, in its "Metadata Write-Back" phase, WRITES its own
+   * back. The write-back half is easy to miss, and it is why this is not simply
+   * `microsoftPackagesPath`: pointing it at the framework directory made every
+   * build deposit `<FrameworkDirectory>\<CustomModel>\XppMetadata`, leaving
+   * customer model names in a directory shared by every environment on the box.
+   *
+   * Pointing it at the model store instead is what VS does. Microsoft's own
+   * compiler metadata still resolves, because the framework directory is passed
+   * as a `-referenceFolder` (verified against 10.0.2645.90: a full compile of a
+   * customer model succeeded with `Errors: 0` and no unresolved-metadata
+   * diagnostic, and the write-back landed in the model store rather than the
+   * framework directory).
+   *
+   * It also removes an asymmetry that could only hurt `-incremental`, which is
+   * the DEFAULT here: VS wrote its baseline to the model store and nothing
+   * copied it back, so an MCP build following a VS build compared against
+   * metadata predating it. Both tools now share one baseline.
+   */
+  compilerMetadataPath: string;
   extraReferenceFolders: string[];
+}
+
+/** Windows path comparison: case-insensitive, trailing separator and `.`/`..` normalised away. */
+function samePath(a: string, b: string): boolean {
+  const norm = (p: string) => path.resolve(p).replace(/[\\/]+$/, '').toLowerCase();
+  return norm(a) === norm(b);
+}
+
+/**
+ * Delete the compiler-metadata stub an earlier build left in the framework directory.
+ *
+ * While `-compilermetadata` pointed at the framework directory, every build of a customer
+ * model deposited `<FrameworkDirectory>\<Model>\XppMetadata` there. Now that the write-back
+ * goes to the model store, those trees are never refreshed again — and the framework
+ * directory is still passed as a `-referenceFolder`, so xppc keeps finding a `<Model>` folder
+ * that looks like a package and holds metadata frozen at the last build before the switch.
+ * That is how "has not been successfully compiled since it was last changed" gets reported
+ * for source that was just compiled cleanly. Anything else enumerating the framework
+ * directory keeps seeing phantom customer models for the same reason.
+ *
+ * Deliberately narrow, because the framework directory is shared by every environment on the
+ * box: only when the two roots actually differ (UDE), only for a model that really lives in
+ * the model store, and only when the folder holds nothing but XppMetadata — i.e. it is a
+ * write-back stub and not a package deployed there on purpose. Anything unexpected is left
+ * alone and reported; a build is never failed over it.
+ */
+async function removeStaleFrameworkCompilerMetadata(
+  ctx: XppcBuildContext,
+  modelName: string,
+): Promise<void> {
+  const { microsoftPackagesPath, customPackagesPath, compilerMetadataPath } = ctx;
+
+  // CHE: one root, so the stub IS the live metadata.
+  if (samePath(microsoftPackagesPath, compilerMetadataPath)) return;
+  if (samePath(microsoftPackagesPath, customPackagesPath)) return;
+
+  const stubDir = path.join(microsoftPackagesPath, modelName);
+  try {
+    // Only a model whose authoritative copy is in the model store — never one that is
+    // genuinely installed in the framework directory and merely also named here.
+    await access(path.join(customPackagesPath, modelName));
+    const entries = await readdir(stubDir);
+    if (entries.length === 0) return;
+    if (entries.some(e => e.toLowerCase() !== 'xppmetadata')) {
+      await buildLog(
+        'INFO',
+        `Left ${stubDir} alone — it holds more than XppMetadata (${entries.join(', ')}), so it is not a stale write-back stub`,
+      );
+      return;
+    }
+    await rm(stubDir, { recursive: true, force: true });
+    await buildLog('INFO', `Removed stale compiler-metadata stub left by an earlier build: ${stubDir}`);
+  } catch (err: any) {
+    // ENOENT on either probe is the normal case: no stub, or the model is not in the
+    // model store. Anything else (a lock, a permission) is worth saying out loud once.
+    if (err?.code !== 'ENOENT') {
+      await buildLog('WARN', `Could not clean up ${stubDir}: ${err?.message ?? err}`);
+    }
+  }
 }
 
 /**
@@ -573,7 +676,7 @@ interface XppcBuildContext {
  * Returns the PID of the spawned process.
  */
 async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): Promise<number> {
-  const { xppcExe, customPackagesPath, microsoftPackagesPath, extraReferenceFolders } = ctx;
+  const { xppcExe, customPackagesPath, microsoftPackagesPath, compilerMetadataPath, extraReferenceFolders } = ctx;
   const { modelName, fullBuild, targetModel } = state;
 
   // fullBuild only applies to the TARGET model — dependencies always run
@@ -586,6 +689,9 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
   assertSafePath(modelName, 'Model name');
   assertSafePath(customPackagesPath, 'Custom packages path');
   assertSafePath(microsoftPackagesPath, 'Microsoft packages path');
+  assertSafePath(compilerMetadataPath, 'Compiler metadata path');
+
+  await removeStaleFrameworkCompilerMetadata(ctx, modelName);
 
   const outputPath = path.join(customPackagesPath, modelName, 'bin');
   const xppcErrLog = state.logFile.replace('.log', '.xppc.err');
@@ -605,7 +711,8 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
 
   const xppcArgs = [
     `-metadata=${customPackagesPath}`,
-    `-compilermetadata=${microsoftPackagesPath}`,
+    // Not microsoftPackagesPath — see XppcBuildContext.compilerMetadataPath.
+    `-compilermetadata=${compilerMetadataPath}`,
     `-modelmodule=${modelName}`,
     ...referenceFolderArgs,
     `-output=${outputPath}`,
@@ -634,9 +741,27 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
     await buildLog('WARN', `labelc did not compile ${modelName} labels: ${labelResult.message}`);
   }
 
-  // Truncate the log with the label outcome, then append xppc's output to it,
-  // so a single tail read shows the whole build in the order it happened.
-  await writeFile(state.logFile, labelHeader, 'utf-8');
+  // The invocation, verbatim, at the top of the log. buildLog() already reports
+  // it, but only to stderr and to bridgeLogFile — and bridgeLogFile only exists
+  // when D365FO_BRIDGE_LOG_FILE is configured. Neither is the file anyone opens
+  // when auditing a build afterwards, so a question as basic as "which root did
+  // -compilermetadata point at" could not be answered from the build log at all.
+  // Recording it here makes a regression in these arguments directly greppable.
+  // The markers are shared with invocationHeaderRange(), which keeps these lines in the
+  // excerpt readFullLog returns for a failed build — the case the header is written for.
+  const invocationHeader = [
+    INVOCATION_HEADER_START,
+    xppcExe,
+    ...xppcArgs.map(arg => `  ${arg}`),
+    INVOCATION_HEADER_END,
+    '',
+    '',
+  ].join('\n');
+
+  // Truncate the log with the invocation and label outcome, then append xppc's
+  // output to it, so a single tail read shows the whole build in the order it
+  // happened.
+  await writeFile(state.logFile, invocationHeader + labelHeader, 'utf-8');
   const logFd = openSyncFs(state.logFile, 'a');
 
   const child = spawn(xppcExe, xppcArgs, {
@@ -771,6 +896,7 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
       microsoftPackagesPath,
       customPackagesPath,
       liveState.targetModel,
+      compilerMetadataPath,
     );
     if (metaResult.skipped) {
       await buildLog('WARN', `Runtime metadata regeneration skipped: ${metaResult.message}`);
@@ -1324,25 +1450,32 @@ export const buildProjectTool = async (params: any, context: any, onProgress?: P
     const firstLogFile = logFilePath(targetModel, 0, customPackagesPath);
 
     // ------------------------------------------------------------------
-    // Log build parameters
-    // ------------------------------------------------------------------
-    await buildLog('INFO', `Starting build — model: ${targetModel} | fullBuild: ${fullBuild} | queue: ${buildQueue.length}`);
-    await buildLog('INFO', `  xppc.exe:              ${xppcExe}`);
-    await buildLog('INFO', `  customPackagesPath:    ${customPackagesPath}`);
-    await buildLog('INFO', `  microsoftPackagesPath: ${microsoftPackagesPath}`);
-    if (extraReferenceFolders.length > 0) {
-      await buildLog('INFO', `  extraReferenceFolders: ${extraReferenceFolders.join(', ')}`);
-    }
-
-    // ------------------------------------------------------------------
     // Build context (shared across the entire queue)
     // ------------------------------------------------------------------
     const ctx: XppcBuildContext = {
       xppcExe,
       customPackagesPath,
       microsoftPackagesPath,
+      // The model store, so the write-back stays with the source it describes.
+      // In CHE the two roots are the same path anyway, so this is a no-op there.
+      compilerMetadataPath: customPackagesPath,
       extraReferenceFolders,
     };
+
+    // ------------------------------------------------------------------
+    // Log build parameters
+    // ------------------------------------------------------------------
+    // Read from ctx, not from the variables it was built out of: this line exists to answer
+    // "which root did -compilermetadata point at", and a copy of the expression would keep
+    // reporting the old answer the moment the field is derived any other way.
+    await buildLog('INFO', `Starting build — model: ${targetModel} | fullBuild: ${fullBuild} | queue: ${buildQueue.length}`);
+    await buildLog('INFO', `  xppc.exe:              ${ctx.xppcExe}`);
+    await buildLog('INFO', `  customPackagesPath:    ${ctx.customPackagesPath}`);
+    await buildLog('INFO', `  microsoftPackagesPath: ${ctx.microsoftPackagesPath}`);
+    await buildLog('INFO', `  compilerMetadataPath:  ${ctx.compilerMetadataPath} (xppc write-back target)`);
+    if (ctx.extraReferenceFolders.length > 0) {
+      await buildLog('INFO', `  extraReferenceFolders: ${ctx.extraReferenceFolders.join(', ')}`);
+    }
 
     // ------------------------------------------------------------------
     // Initial state

@@ -105,7 +105,7 @@ export function normalizeElementType(raw: string): string {
  * `✅ clean`, which is the one BP outcome worse than a failure: it is a pass the
  * caller will act on.
  */
-export function describeNonRun(output: string): string {
+export function describeNonRun(output: string, targetName?: string): string {
   const invalidType = output.match(/The element type '([^']*)' is invalid/i);
   if (invalidType) {
     return `xppbp rejected the element type "${invalidType[1]}", so no rules were evaluated for this object. ` +
@@ -114,7 +114,26 @@ export function describeNonRun(output: string): string {
   if (/\b0 elements processed\b/i.test(output)) {
     return `xppbp processed 0 elements — the filter matched nothing, so this result is not evidence of a clean object.`;
   }
+  // When xppbp cannot find an element's compiler metadata it still runs the metadata-only
+  // rules and reports nothing for the rest — so a checked object can come back with no
+  // findings from rules that never looked at its X++ at all. Only the requested object is
+  // judged here: a module-wide run routinely carries this warning for unrelated elements
+  // (e.g. extensions of a class the environment does not have installed).
+  if (targetName && uncompiledElements(output).some(n => n.toLowerCase() === targetName.toLowerCase())) {
+    return `xppbp found no compiled metadata for "${targetName}" (CompilerMetadataMissing), so every rule that reads compiled X++ was skipped — ` +
+      `only the metadata-only rules ran. Build the model and check again. If it was just built successfully, then the -compilerMetadata root ` +
+      `xppbp was given is not the root the build wrote its XppMetadata to.`;
+  }
   return '';
+}
+
+/** Elements xppbp reported as not compiled (its CompilerMetadataMissing warning). */
+export function uncompiledElements(output: string): string[] {
+  const names = new Set<string>();
+  for (const m of output.matchAll(/The element '([A-Za-z0-9_]+)'[^\n]*appears not to have been compiled/gi)) {
+    names.add(m[1]);
+  }
+  return [...names];
 }
 
 // Tool registration (name, description, inputSchema) lives in
@@ -469,10 +488,27 @@ export const runBpCheckTool = async (params: any, context: any) => {
       }
     }
 
-    // metadataPath: X++ source XML (custom model metadata). compilerMetadataPath: compiled
-    // binaries + framework metadata (UDE: Microsoft packages root; CHE: same as metadataPath).
+    // metadataPath:         X++ source XML — the model store (UDE) or PLD (CHE).
+    // frameworkPath:        Microsoft packages root — labelc.exe lives there, and it holds the
+    //                       compiled binaries of the referenced Microsoft modules (-packagesRoot).
+    // compilerMetadataPath: the root xppc wrote its compiler metadata back to, i.e. where
+    //                       `<root>\<Module>\XppMetadata` actually is. That is the MODEL STORE,
+    //                       not the framework directory — build_d365fo_project passes
+    //                       `-compilermetadata=<model store>` (see XppcBuildContext.compilerMetadataPath).
+    //
+    // These are two different flags on xppbp, not two spellings of one:
+    //   -compilerMetadata = "the path to the compiler metadata"
+    //   -packagesRoot     = "the packages root containing binaries for modules"
+    // Pointing -compilerMetadata at the framework directory on UDE makes xppbp report EVERY
+    // element of the module as "appears not to have been compiled" (CompilerMetadataMissing)
+    // and skip the rules that need compiled X++. Verified against xppbp 7.0.7996.33: with a
+    // compiler-metadata root that held the module's XppMetadata the run was `Errors: 0` with the
+    // rules evaluated; with a root that lacked it, the checked class itself was reported
+    // uncompiled, every other element of the module followed, and xppbp exited non-zero.
+    // On CHE the two roots are the same path, so the split is a no-op there.
     const metadataPath = customPackagesPath || packagesRoot;
-    const compilerMetadataPath = microsoftPackagesPath || packagesRoot;
+    const frameworkPath = microsoftPackagesPath || packagesRoot;
+    const compilerMetadataPath = customPackagesPath || packagesRoot;
 
     // xppbp resolves @Model:Id against the compiled label assembly, so labels
     // that exist only as text in AxLabelFile are reported as BPErrorUnknownLabel
@@ -480,7 +516,7 @@ export const runBpCheckTool = async (params: any, context: any) => {
     // without a build in between — recompile stale labels here too, otherwise
     // creating a label and checking it immediately still produces the bogus
     // errors this costs about a second to prevent. Batch runs pay it once.
-    const labelResult = await compileModelLabels(compilerMetadataPath, metadataPath, modelName);
+    const labelResult = await compileModelLabels(frameworkPath, metadataPath, modelName);
     if (!labelResult.success) {
       console.error(`[run_bp_check] label compilation failed: ${labelResult.message}`);
     }
@@ -516,6 +552,10 @@ export const runBpCheckTool = async (params: any, context: any) => {
       `-module:${modelName}`,
       `-model:${modelName}`,
       `${compilerMetadataFlag}${compilerMetadataPath}`,
+      // Referenced Microsoft modules resolve from their binaries here, so that
+      // -compilerMetadata can stay on the model store where the module's own
+      // XppMetadata lives. Same path as -compilerMetadata on CHE.
+      `-packagesRoot:${frameworkPath}`,
       selector(target),
     ];
 
@@ -527,8 +567,14 @@ export const runBpCheckTool = async (params: any, context: any) => {
       `-metadata=${metadataPath}`,
       `-module=${modelName}`,
       `-model=${modelName}`,
-      // -compilerMetadata= is the newer flag; fall back to -packagesRoot= for older xppbp
-      compilerMetadata ? `-compilerMetadata=${compilerMetadataPath}` : `-packagesRoot=${compilerMetadataPath}`,
+      // -compilerMetadata= is the newer flag. When it is supported the two roots are passed
+      // separately — compiler metadata from the model store, referenced binaries from the
+      // framework directory. Older xppbp has only -packagesRoot, which then has to serve both;
+      // the framework directory is the historical choice and stays, since no version old enough
+      // to need it has been observed on a UDE split-root box.
+      ...(compilerMetadata
+        ? [`-compilerMetadata=${compilerMetadataPath}`, `-packagesRoot=${frameworkPath}`]
+        : [`-packagesRoot=${frameworkPath}`]),
       // `-all` is mutually exclusive with the positional filter: passing both
       // checks the whole model (#25).
       selector(target),
@@ -537,7 +583,7 @@ export const runBpCheckTool = async (params: any, context: any) => {
     // Style C — fallback when -compilerMetadata is not recognized
     const buildArgsFallbackStyle = (target: { name: string; elementType: string } | null): string[] => [
       `-metadata:${metadataPath}`,
-      `-packagesRoot:${compilerMetadataPath}`,
+      `-packagesRoot:${frameworkPath}`,
       `-module:${modelName}`,
       `-model:${modelName}`,
       selector(target),
@@ -626,7 +672,7 @@ export const runBpCheckTool = async (params: any, context: any) => {
     if (runTargets.length === 1) {
       const combined = combinedByTarget[0];
       const target = runTargets[0];
-      const notRun = describeNonRun(combined);
+      const notRun = describeNonRun(combined, target?.name);
       if (notRun) {
         return {
           content: [{
@@ -658,7 +704,8 @@ export const runBpCheckTool = async (params: any, context: any) => {
 
     // Batch: one preamble, findings grouped per object (#828).
     const { preamble, bodies } = splitSharedPreamble(combinedByTarget);
-    const nonRunByTarget = combinedByTarget.map(describeNonRun);
+    // Not `.map(describeNonRun)` — that would pass the array index as the target name.
+    const nonRunByTarget = combinedByTarget.map((output, i) => describeNonRun(output, runTargets[i]?.name));
     const notRunCount = nonRunByTarget.filter(Boolean).length;
     const issueCount = combinedByTarget.filter((o, i) => !nonRunByTarget[i] && hasIssues(o)).length;
 
