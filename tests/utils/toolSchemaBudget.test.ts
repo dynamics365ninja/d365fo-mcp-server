@@ -87,8 +87,17 @@ const CHARS_PER_TOKEN = 4;
 // limit, message, severity, itemSpecific, and the elementType/elementName
 // fallback for deriving a path — stay in the zod handler schema, the same trade
 // already made for `labels`.
-const TOTAL_BUDGET = 51_700;
-const LARGEST_TOOL_BUDGET = 5_300;
+//
+// Raised DELIBERATELY by ~350 chars for the three removal capabilities d365fo_file
+// was missing: the `delete` action (an object's XML plus its .rnrproj entry) and
+// the remove-control / remove-entry-point operations. All three are enum values
+// plus one line of prose for the action — the parameters stay behind
+// get_knowledge(kind="op-spec"), as #825 requires. An operation the model cannot
+// see is an operation it works around by rewriting the whole object with
+// action="create", overwrite=true, which costs orders of magnitude more than the
+// enum value does and loses metadata as well.
+const TOTAL_BUDGET = 52_100;
+const LARGEST_TOOL_BUDGET = 5_700;
 
 async function getTools(): Promise<Array<{ name: string }>> {
   const ctx: any = { symbolIndex: {}, parser: {} };
@@ -135,7 +144,7 @@ describe('tool schema token budget', () => {
     const tools = await getTools();
     const byName = new Map(tools.map(t => [t.name, t]));
 
-    for (const [name, cap] of [['d365fo_file', 5_300], ['generate_object', 3_400]] as const) {
+    for (const [name, cap] of [['d365fo_file', 5_700], ['generate_object', 3_400]] as const) {
       const tool: any = byName.get(name);
       expect(tool, `${name} is not published`).toBeDefined();
       const chars = JSON.stringify(tool).length;

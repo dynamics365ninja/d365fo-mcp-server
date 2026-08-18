@@ -22,7 +22,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildAxSecurityPrivilegeXml } from '../../src/tools/xml/securityPrivilegeXml';
+import {
+  buildAxSecurityPrivilegeXml,
+  removeSecurityEntryPoint,
+} from '../../src/tools/xml/securityPrivilegeXml';
 
 /** Index of a tag's first occurrence in either open or self-closed form; -1 when absent. */
 function at(xml: string, tag: string): number {
@@ -211,5 +214,148 @@ describe('buildAxSecurityPrivilegeXml', () => {
     const props = { targetObject: 'MyMenuItem', dataEntity: 'MyEntity', accessLevel: 'maintain' };
     const direct = buildAxSecurityPrivilegeXml('MyPrivilege', props);
     expect(fromCreate.generateAxSecurityPrivilegeXml('MyPrivilege', props)).toBe(direct);
+  });
+});
+
+/**
+ * removeSecurityEntryPoint — the inverse of what the builder writes for
+ * `targetObject`, and the pure half of the remove-entry-point operation.
+ *
+ * Same stakes as the builder above, from the other direction: security objects
+ * have no bridge write path, the AOT reads these positionally, and a privilege
+ * that grants the WRONG thing builds clean and reports nothing. Removing the
+ * wrong entry point revokes a user's access to a different form and only surfaces
+ * as a support call, so ambiguity is refused rather than resolved.
+ */
+
+/** Privilege with two entry points — a display and an action menu item. */
+const TWO_ENTRY_POINTS = `<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>ConDemoTicketMaintain</Name>
+\t<Label>@ConDemo:TicketMaintain</Label>
+\t<DataEntityPermissions />
+\t<DirectAccessPermissions />
+\t<EntryPoints>
+\t\t<AxSecurityEntryPointReference>
+\t\t\t<Name>ConDemoTicketTable</Name>
+\t\t\t<Grant>
+\t\t\t\t<Read>Allow</Read>
+\t\t\t\t<Update>Allow</Update>
+\t\t\t</Grant>
+\t\t\t<ObjectName>ConDemoTicketTable</ObjectName>
+\t\t\t<ObjectType>MenuItemDisplay</ObjectType>
+\t\t\t<Forms />
+\t\t</AxSecurityEntryPointReference>
+\t\t<AxSecurityEntryPointReference>
+\t\t\t<Name>ConDemoPostAction</Name>
+\t\t\t<Grant>
+\t\t\t\t<Read>Allow</Read>
+\t\t\t</Grant>
+\t\t\t<ObjectName>ConDemoTicketTable</ObjectName>
+\t\t\t<ObjectType>MenuItemAction</ObjectType>
+\t\t\t<Forms />
+\t\t</AxSecurityEntryPointReference>
+\t</EntryPoints>
+\t<FormControlOverrides />
+</AxSecurityPrivilege>`;
+
+describe('removeSecurityEntryPoint', () => {
+  it('removes the entry point named by entryPointName', () => {
+    const result = removeSecurityEntryPoint(TWO_ENTRY_POINTS, { name: 'ConDemoPostAction' });
+    expect(result.kind).toBe('removed');
+    if (result.kind !== 'removed') return;
+
+    expect(result.removed).toEqual({
+      name: 'ConDemoPostAction',
+      objectName: 'ConDemoTicketTable',
+      objectType: 'MenuItemAction',
+    });
+    expect(result.xml).not.toContain('ConDemoPostAction');
+    expect(result.xml).not.toContain('MenuItemAction');
+    // The other entry point survives whole — Grant block included.
+    expect(result.xml).toContain('<Name>ConDemoTicketTable</Name>');
+    expect(result.xml).toContain('<Update>Allow</Update>');
+    expect(result.xml).toContain('<ObjectType>MenuItemDisplay</ObjectType>');
+  });
+
+  it('never mistakes the privilege\'s own <Name> for an entry point', () => {
+    // A `<Name>` search finds the privilege first. Removing on that match would
+    // cut the privilege's identity out of the file.
+    const result = removeSecurityEntryPoint(TWO_ENTRY_POINTS, { name: 'ConDemoTicketMaintain' });
+    expect(result.kind).toBe('not-found');
+    if (result.kind !== 'not-found') return;
+    expect(result.present.map(e => e.name)).toEqual(['ConDemoTicketTable', 'ConDemoPostAction']);
+  });
+
+  it('resolves by objectName + objectType when the names differ', () => {
+    const result = removeSecurityEntryPoint(TWO_ENTRY_POINTS, {
+      objectName: 'ConDemoTicketTable',
+      objectType: 'MenuItemAction',
+    });
+    expect(result.kind).toBe('removed');
+    if (result.kind !== 'removed') return;
+    expect(result.removed.name).toBe('ConDemoPostAction');
+  });
+
+  it('refuses an objectName that matches two entry-point types', () => {
+    // Both entry points point at ConDemoTicketTable, through different types.
+    const result = removeSecurityEntryPoint(TWO_ENTRY_POINTS, { objectName: 'ConDemoTicketTable' });
+    expect(result.kind).toBe('ambiguous');
+    if (result.kind !== 'ambiguous') return;
+    expect(result.matches).toHaveLength(2);
+    expect(result.matches.map(m => m.objectType)).toEqual(['MenuItemDisplay', 'MenuItemAction']);
+  });
+
+  it('matches case-insensitively', () => {
+    expect(removeSecurityEntryPoint(TWO_ENTRY_POINTS, { name: 'condemopostaction' }).kind).toBe('removed');
+  });
+
+  it('collapses <EntryPoints> when the last entry point goes', () => {
+    const one = buildAxSecurityPrivilegeXml('ConDemoTicketView', {
+      label: '@ConDemo:TicketView',
+      targetObject: 'ConDemoTicketTable',
+    });
+    const result = removeSecurityEntryPoint(one, { name: 'ConDemoTicketTable' });
+    expect(result.kind).toBe('removed');
+    if (result.kind !== 'removed') return;
+    // The SAME empty spelling the builder emits (see the round-trip test) — not
+    // `<EntryPoints />`, which would make a stripped privilege differ from a
+    // never-populated one over something the deserializer cannot see.
+    expect(result.xml).toContain('<EntryPoints></EntryPoints>');
+    expect(result.xml).not.toMatch(/<EntryPoints>\s+<\/EntryPoints>/);
+  });
+
+  it('reports not-found with the entry points that ARE there', () => {
+    const result = removeSecurityEntryPoint(TWO_ENTRY_POINTS, { name: 'ConDemoNoSuchItem' });
+    expect(result.kind).toBe('not-found');
+    if (result.kind !== 'not-found') return;
+    expect(result.present).toHaveLength(2);
+  });
+
+  it('reports not-found on a privilege with no entry points at all', () => {
+    const bare = buildAxSecurityPrivilegeXml('ConDemoBare', { label: '@ConDemo:Bare' });
+    const result = removeSecurityEntryPoint(bare, { name: 'Anything' });
+    expect(result.kind).toBe('not-found');
+    if (result.kind !== 'not-found') return;
+    expect(result.present).toEqual([]);
+  });
+
+  it('declines a file that is not a privilege', () => {
+    const duty = `<?xml version="1.0" encoding="utf-8"?>\n<AxSecurityDuty><Name>ConDemoDuty</Name></AxSecurityDuty>`;
+    expect(removeSecurityEntryPoint(duty, { name: 'x' }).kind).toBe('unsupported');
+  });
+
+  it('round-trips the builder: what it writes, this removes', () => {
+    const built = buildAxSecurityPrivilegeXml('ConDemoTicketMaintain', {
+      label: '@ConDemo:TicketMaintain',
+      targetObject: 'ConDemoTicketTable',
+      objectType: 'MenuItemDisplay',
+      accessLevel: 'maintain',
+    });
+    const stripped = removeSecurityEntryPoint(built, { name: 'ConDemoTicketTable' });
+    if (stripped.kind !== 'removed') throw new Error('expected removal');
+    expect(stripped.xml).toBe(buildAxSecurityPrivilegeXml('ConDemoTicketMaintain', {
+      label: '@ConDemo:TicketMaintain',
+    }));
   });
 });

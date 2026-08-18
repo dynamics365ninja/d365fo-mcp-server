@@ -41,6 +41,8 @@ import { ProjectFileFinder, registerFileInActiveProject } from '../../workspace/
 import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName, resolveEdtEnumType } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { insertFormExtensionControl } from '../../utils/formExtensionControlXml.js';
+import { removeFormControl } from '../../utils/formControlRemoval.js';
+import { removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
 import {
   upsertAxTableProperty,
   AX_TABLE_NON_EXISTENT_PROPERTIES,
@@ -1188,6 +1190,149 @@ const directXmlDeleteAction = serializedOnFile(async (
   }
 });
 
+/**
+ * remove-control on a FORM or FORM-EXTENSION, written straight to the XML.
+ *
+ * add-control has a bridge path for a plain form (AddControl) and a direct-XML
+ * path for an extension; removal has neither — MetadataWriteService exposes no
+ * RemoveControl at all — so this is the only grounded route, exactly as with
+ * directXmlDeleteAction. Without it, taking a button off a form meant
+ * d365fo_file(action="create", overwrite=true), the whole-file escape hatch the
+ * eval loop forbids.
+ *
+ * The tree walk, the two form-extension shapes and the separator rule all live
+ * in formControlRemoval.ts — pure and unit-tested, because a `<Name>` substring
+ * replace here would cut the wrong element and report a ✅ for it.
+ */
+const directXmlRemoveControl = serializedOnFile(async (
+  filePath: string,
+  controlName: string,
+  removeSeparator: boolean | undefined,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    const outcome = removeFormControl(content, { controlName, removeSeparator });
+
+    switch (outcome.kind) {
+      case 'unsupported':
+        // Returned as a REFUSAL rather than null. A null here means "the bridge
+        // never ran", which routes into the provider-refresh retry and then into
+        // an unresolved-object error about metadata roots — none of which applies:
+        // there is no bridge path for this op, and no refresh turns a non-form
+        // file into a form.
+        return {
+          success: false,
+          message:
+            `${filePath} is not an AxForm or AxFormExtension (or its XML is unbalanced), so no ` +
+            `control could be removed from it. Check objectType and the resolved file — ` +
+            `remove-control only applies to objectType="form" and "form-extension".`,
+        };
+      case 'not-found':
+        // NOT reported as success. An absent control is the case where a caller
+        // most needs to know it named the wrong thing: the button is still on the
+        // form, and a ✅ would send it to build_d365fo_project instead.
+        return {
+          success: false,
+          message:
+            `Control '${controlName}' is not defined in ${filePath} — nothing was removed.\n` +
+            (outcome.present.length > 0
+              ? `Controls in this file: ${outcome.present.join(', ')}.`
+              : `This file defines no controls at all.`) +
+            `\nA control shown on the form but absent here belongs to the BASE form — remove it there, ` +
+            `or hide it with modify-property on a form extension.`,
+        };
+    }
+
+    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+    console.error(`[modify_d365fo_file] ✅ directXmlRemoveControl: removed '${controlName}' from ${filePath}`);
+
+    const notes = outcome.notes.length ? '\n' + outcome.notes.map(n => `ℹ️ ${n}`).join('\n') : '';
+    return {
+      success: true,
+      message:
+        `✅ Removed ${outcome.removed.length} control element(s) — ${outcome.removed.join(', ')}. ` +
+        `File: ${filePath}${notes}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlRemoveControl failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * remove-entry-point on an AxSecurityPrivilege, written straight to the XML.
+ *
+ * Security objects have no bridge write path at all: the generic
+ * `properties: Dictionary<string,string>` channel cannot carry <EntryPoints>,
+ * which is why security-privilege is excluded from BRIDGE_CREATE_TYPES. So this
+ * mirrors remove-relation / remove-field-group in shape while being, like the
+ * delete-action pair, XML-only by necessity.
+ *
+ * The matching and the collapse of an emptied <EntryPoints> live in
+ * securityPrivilegeXml.ts, next to the builder that writes the element — the two
+ * halves of one shape drifting apart is how an entry point becomes unremovable.
+ */
+const directXmlRemoveEntryPoint = serializedOnFile(async (
+  filePath: string,
+  criteria: { name?: string; objectName?: string; objectType?: string },
+): Promise<{ success: boolean; message: string } | null> => {
+  const asked = criteria.name ?? criteria.objectName ?? '(unnamed)';
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    const outcome = removeSecurityEntryPoint(content, criteria);
+
+    switch (outcome.kind) {
+      case 'unsupported':
+        // A refusal, not null — see directXmlRemoveControl for why null would be
+        // read as a bridge-resolution failure and sent after the wrong cause.
+        return {
+          success: false,
+          message:
+            `${filePath} is not an AxSecurityPrivilege, so it has no entry points to remove. ` +
+            `remove-entry-point applies to objectType="security-privilege" only — a DUTY references ` +
+            `privileges, not entry points, and a ROLE references duties.`,
+        };
+      case 'not-found':
+        return {
+          success: false,
+          message:
+            `Entry point '${asked}' is not on the privilege in ${filePath} — nothing was removed.\n` +
+            (outcome.present.length > 0
+              ? `Entry points on this privilege: ` +
+                outcome.present.map(e => `${e.name} (${e.objectName}, ${e.objectType})`).join('; ') + '.'
+              : `This privilege has no entry points.`),
+        };
+      case 'ambiguous':
+        return {
+          success: false,
+          message:
+            `'${asked}' matches ${outcome.matches.length} entry points — refusing to guess which to ` +
+            `remove, since removing the wrong one revokes access to a different object and still builds ` +
+            `clean.\nMatches: ` +
+            outcome.matches.map(e => `${e.name} (${e.objectName}, ${e.objectType})`).join('; ') +
+            `.\nNarrow it with entryPointName, or entryPointObjectName + entryPointObjectType.`,
+        };
+    }
+
+    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+    const { name, objectName, objectType } = outcome.removed;
+    console.error(`[modify_d365fo_file] ✅ directXmlRemoveEntryPoint: removed '${name}' from ${filePath}`);
+    return {
+      success: true,
+      message:
+        `✅ Entry point '${name}' (${objectName}, ${objectType}) removed from the privilege. ` +
+        `File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlRemoveEntryPoint failed: ${err}`);
+    return null;
+  }
+});
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -1362,7 +1507,8 @@ const ModifyD365FileArgsSchema = z.object({
     'add-field-modification',
     'add-data-source',
     'modify-property',
-    'add-control',
+    'add-control', 'remove-control',
+    'remove-entry-point',
     'add-enum-value', 'modify-enum-value', 'remove-enum-value',
     'add-display-method', 'add-table-method', 'add-menu-item-to-menu',
   ]).describe(
@@ -1588,6 +1734,31 @@ const ModifyD365FileArgsSchema = z.object({
   extendBaseFieldGroup: z.boolean().optional().describe(
     'Only for table-extension add-field-to-field-group: when true, adds the field to <FieldGroupExtensions> ' +
     '(extending an existing base-table field group). When false/omitted, adds to <FieldGroups> (a new group defined in the extension).'
+  ),
+
+  // For remove-control (form, form-extension). controlName is shared with
+  // add-control; removeSeparator is removal-only.
+  removeSeparator: z.boolean().optional().describe(
+    'remove-control: also delete the adjacent AxFormButtonSeparatorControl sibling (the one after the ' +
+    'control, else the one before it). Removing a toolbar button usually orphans its separator.'
+  ),
+
+  // For remove-entry-point (security-privilege). Deliberately NOT named
+  // objectName/objectType: those two identify the PRIVILEGE being modified, and
+  // reusing them for the entry point's target would make the call unreadable and
+  // the args unroutable.
+  entryPointName: z.string().optional().describe(
+    'remove-entry-point: <Name> of the AxSecurityEntryPointReference to remove (conventionally equal to ' +
+    'the menu item name).'
+  ),
+  entryPointObjectName: z.string().optional().describe(
+    'remove-entry-point: <ObjectName> of the entry point — the menu item / service operation it grants. ' +
+    'Use instead of entryPointName when the entry point was named differently from its target.'
+  ),
+  entryPointObjectType: z.string().optional().describe(
+    'remove-entry-point: <ObjectType> (EntryPointType) — MenuItemDisplay | MenuItemAction | ' +
+    'MenuItemOutput | ServiceOperation | None. Only needed to disambiguate the same ObjectName ' +
+    'referenced through two entry-point types.'
   ),
 
   // For add-field-modification (table-extension only)
@@ -3037,6 +3208,32 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             );
             if (xmlFallbackResult) bridgeResult = viaXmlFallback(xmlFallbackResult);
           }
+        }
+        break;
+      }
+      case 'remove-control': {
+        // No bridge op exists for control removal (neither form nor extension) —
+        // this is the only path, so the XML writer is called directly rather than
+        // as a fallback behind a bridge attempt that cannot exist.
+        if ((args as any).controlName) {
+          bridgeResult = viaXmlFallback(await directXmlRemoveControl(
+            actualFilePath,
+            (args as any).controlName,
+            (args as any).removeSeparator,
+          ));
+        }
+        break;
+      }
+      case 'remove-entry-point': {
+        // Security objects have no bridge write path at all (see the writer).
+        const epName = (args as any).entryPointName;
+        const epObject = (args as any).entryPointObjectName;
+        if (epName || epObject) {
+          bridgeResult = viaXmlFallback(await directXmlRemoveEntryPoint(actualFilePath, {
+            name: epName,
+            objectName: epObject,
+            objectType: (args as any).entryPointObjectType,
+          }));
         }
         break;
       }

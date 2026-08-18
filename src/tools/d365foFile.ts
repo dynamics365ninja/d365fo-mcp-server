@@ -1,10 +1,11 @@
 /**
  * d365fo_file Tool — unified file/metadata-operation entry point.
  *
- * Replaces three tools with one discriminated by `action`:
+ * One tool discriminated by `action`:
  *   • generate → produce AOT XML as TEXT only (Azure/Linux fallback, no write)
  *   • create   → write a NEW AOT object file into PackagesLocalDirectory (write)
  *   • modify   → edit an EXISTING object via IMetadataProvider (write)
+ *   • delete   → remove an object's XML and its .rnrproj registration (write)
  *
  * Like `labels`, this mixes a read-capable action (generate works on Azure
  * read-only) with write actions that need local Windows-VM filesystem access;
@@ -18,17 +19,19 @@ import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { handleGenerateD365Xml } from './xml/generateD365Xml.js';
 import { handleCreateD365File } from './write/createD365File.js';
+import { handleDeleteD365File } from './write/deleteD365File.js';
 import { modifyD365FileTool } from './write/modifyD365File.js';
 import { resetRecentPrepares } from './prepare/prepare.js';
 
-export const D365_FILE_ACTIONS = ['generate', 'create', 'modify'] as const;
+export const D365_FILE_ACTIONS = ['generate', 'create', 'modify', 'delete'] as const;
 export type D365FileAction = (typeof D365_FILE_ACTIONS)[number];
 
 const D365FileArgsSchema = z
   .object({
     action: z.enum(D365_FILE_ACTIONS).describe(
       'generate → XML text only (no file written, Azure/Linux fallback); ' +
-      'create → write a NEW object file (Windows); modify → edit an EXISTING object (Windows).',
+      'create → write a NEW object file (Windows); modify → edit an EXISTING object (Windows); ' +
+      'delete → remove an object file and its project registration (Windows).',
     ),
     // Operation-specific parameters may arrive nested in `params` (the published
     // schema advertises only this object) — they are flattened before dispatch.
@@ -193,7 +196,7 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
   // A write changes the AOT out from under anything prepare aggregated earlier, so
   // the remembered answers stop being answers. Cleared before the write rather than
   // after: a handler that throws half-way has still touched disk.
-  if (action === 'create' || action === 'modify') {
+  if (action === 'create' || action === 'modify' || action === 'delete') {
     resetRecentPrepares();
   }
 
@@ -205,6 +208,9 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
       return runModifyBatch(rest, context);
     }
     return modifyD365FileTool(subRequest('modify_d365fo_file', rest), context);
+  }
+  if (action === 'delete') {
+    return handleDeleteD365File(subRequest('delete_d365fo_file', rest), context);
   }
   // generate: handler takes the request only (no context).
   return handleGenerateD365Xml(subRequest('generate_d365fo_xml', rest));
