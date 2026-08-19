@@ -20,7 +20,7 @@ import { Parser, Builder } from '../utils/xml.js';
 import { withFileLock } from '../utils/atomicFileWrite.js';
 import { recordCreatedProjectFolder, takeCreatedProjectFolder } from './createdArtifactLedger.js';
 import {
-  axFolderForObjectType, resolveMembership, projectDisplayName, type Membership,
+  axFolderForObjectType, resolveMembership, projectDisplayName, includeKey, type Membership,
 } from './projectMembership.js';
 import { getConfigManager } from '../utils/configManager.js';
 
@@ -116,6 +116,18 @@ export async function registerFileInActiveProject(
     return `\n\n⚠️ Could not add \`${axFolder}\\${objectName}\` to ` +
       `${projectDisplayName(projectPath)}: ${e?.message ?? e}`;
   }
+}
+
+/**
+ * A parsed `<Content>` node's Include in the one comparable form.
+ *
+ * The same normalisation readProjectIncludes applies, so this side and the
+ * membership side can never disagree about whether a project lists an object.
+ * Returns '' for a node without an Include, which matches no key.
+ */
+function normalizedInclude(content: any): string {
+  const inc = content?.$?.Include;
+  return typeof inc === 'string' ? inc.replace(/\.xml$/i, '').toLowerCase() : '';
 }
 
 /**
@@ -466,13 +478,22 @@ export class ProjectFileManager {
 
     const displayFolderName = this.getFolderName(objectType);
     const axFolderPrefix = this.getAxFolderPrefix(objectType);
-    const contentInclude = `${axFolderPrefix}\\${objectName}`;
+    // Compared through includeKey, NOT as a literal string. resolveMembership
+    // decides which projects own the object with exactly that normalisation
+    // (lowercased, `.xml` tolerated), so an exact-match removal here answers a
+    // different question than the caller asked: the object reads as registered,
+    // the removal silently matches nothing, and `delete` then reports "no
+    // project referenced it" while unlinking the file — the dangling include it
+    // exists to prevent. Case really does drift ("…CtsoFinExtension" on disk
+    // against "…CtsoFINExtension" in the project XML); VS does not care, and
+    // neither may we.
+    const wantedKey = includeKey(axFolderPrefix, objectName);
 
     let removed = false;
     for (const group of itemGroups) {
       if (group.Content === undefined) continue;
       const contents = Array.isArray(group.Content) ? group.Content : [group.Content];
-      const kept = contents.filter((c: any) => c?.$?.Include !== contentInclude);
+      const kept = contents.filter((c: any) => normalizedInclude(c) !== wantedKey);
       if (kept.length !== contents.length) {
         removed = true;
         group.Content = kept;
@@ -489,7 +510,10 @@ export class ProjectFileManager {
     const stillUsesFolder = itemGroups.some((group: any) => {
       if (group.Content === undefined) return false;
       const contents = Array.isArray(group.Content) ? group.Content : [group.Content];
-      return contents.some((c: any) => typeof c?.$?.Include === 'string' && c.$.Include.startsWith(`${axFolderPrefix}\\`));
+      // Same normalisation as the removal above: a sibling spelled `axform\Other`
+      // still occupies the folder, and pruning the folder entry out from under it
+      // is the same silent breakage one level up.
+      return contents.some((c: any) => normalizedInclude(c).startsWith(`${axFolderPrefix.toLowerCase()}\\`));
     });
     if (weAddedFolder && !stillUsesFolder) {
       for (const group of itemGroups) {

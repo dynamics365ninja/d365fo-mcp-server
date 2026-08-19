@@ -230,3 +230,115 @@ describe('removeFormControl on an AxFormExtension', () => {
     expect(result.kind).toBe('not-found');
   });
 });
+
+/**
+ * Shipped AxForm metadata declares xmlns="Microsoft.Dynamics.AX.Metadata.V6" on
+ * the root and resets it on every element under <Design> — a real form spells the
+ * collection `<Controls xmlns="">`. A collapse that writes a bare `<Controls />`
+ * puts the element back in the V6 namespace, which is a different element to the
+ * deserializer, in a file the writer promises to leave byte-exact but for the cut.
+ */
+describe('removeFormControl and the empty-collection spelling', () => {
+  const NAMESPACED_FORM = `<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+\t<Name>ConDemoTicketTable</Name>
+\t<Design>
+\t\t<Controls xmlns="">
+\t\t\t<AxFormControl xmlns="" i:type="AxFormButtonGroupControl">
+\t\t\t\t<Name>MaintainGroup</Name>
+\t\t\t\t<Controls xmlns="">
+\t\t\t\t\t<AxFormControl xmlns="" i:type="AxFormCommandButtonControl">
+\t\t\t\t\t\t<Name>OnlyButton</Name>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t</Controls>
+\t\t\t</AxFormControl>
+\t\t</Controls>
+\t</Design>
+</AxForm>`;
+
+  it('keeps the collection\'s attributes when it collapses it', () => {
+    const result = removeFormControl(NAMESPACED_FORM, { controlName: 'OnlyButton' });
+    if (result.kind !== 'removed') throw new Error('expected removal');
+
+    expect(result.xml).toContain('<Controls xmlns="" />');
+    // The outer collection, which still holds MaintainGroup, is untouched.
+    expect(result.xml).toContain('<Controls xmlns="">');
+    // …and the reset is never silently dropped.
+    expect(result.xml).not.toMatch(/<Controls \/>/);
+  });
+
+  it('still writes the bare spelling where the source had no attributes', () => {
+    // A form extension's root <Controls> is a direct child of the root element and
+    // genuinely carries no xmlns — copying the open tag must not invent one.
+    const result = removeFormControl(EXTENSION_XML, { controlName: 'ConDemoTicketId' });
+    if (result.kind !== 'removed') throw new Error('expected removal');
+    expect(result.xml).toContain('<Controls />');
+  });
+});
+
+/**
+ * A file an earlier writer damaged holds the same control name twice: once where
+ * the deserializer reads it, once inside an element it discards. Cutting the dead
+ * copy and reporting "removed" tells the caller their button is gone while it is
+ * still on the form — the mirror of the silent no-op this operation exists to
+ * avoid. insertFormExtensionControl draws the same live/discarded distinction on
+ * the way in.
+ */
+describe('removeFormControl and discarded control elements', () => {
+  const DAMAGED_EXTENSION = `<?xml version="1.0" encoding="utf-8"?>
+<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>SalesTable.ConDemoExtension</Name>
+\t<Controls>
+\t\t<AxFormExtensionControl xmlns="">
+\t\t\t<Name>FormExtensionControlLIVE00001</Name>
+\t\t\t<FormControl xmlns="" i:type="AxFormGroupControl">
+\t\t\t\t<Name>ConDemoGroup</Name>
+\t\t\t\t<Controls>
+\t\t\t\t\t<AxFormExtensionControl xmlns="">
+\t\t\t\t\t\t<Name>FormExtensionControlDEAD00001</Name>
+\t\t\t\t\t\t<FormControl xmlns="" i:type="AxFormButtonControl">
+\t\t\t\t\t\t\t<Name>ConDemoPostButton</Name>
+\t\t\t\t\t\t\t<Text>dead copy</Text>
+\t\t\t\t\t\t</FormControl>
+\t\t\t\t\t\t<Parent>ConDemoGroup</Parent>
+\t\t\t\t\t</AxFormExtensionControl>
+\t\t\t\t</Controls>
+\t\t\t</FormControl>
+\t\t\t<Parent>TabGeneral</Parent>
+\t\t</AxFormExtensionControl>
+\t\t<AxFormExtensionControl xmlns="">
+\t\t\t<Name>FormExtensionControlLIVE00002</Name>
+\t\t\t<FormControl xmlns="" i:type="AxFormButtonControl">
+\t\t\t\t<Name>ConDemoPostButton</Name>
+\t\t\t\t<Text>the real one</Text>
+\t\t\t</FormControl>
+\t\t\t<Parent>ButtonGroup</Parent>
+\t\t</AxFormExtensionControl>
+\t</Controls>
+</AxFormExtension>`;
+
+  it('removes the LIVE control, not the discarded twin that comes first in the file', () => {
+    const result = removeFormControl(DAMAGED_EXTENSION, { controlName: 'ConDemoPostButton' });
+    if (result.kind !== 'removed') throw new Error('expected removal');
+
+    expect(result.xml).not.toContain('FormExtensionControlLIVE00002');
+    expect(result.xml).not.toContain('the real one');
+    // The dead copy is left exactly where it was — this write neither caused nor
+    // fixed it, and removing it is a separate, explicit call.
+    expect(result.xml).toContain('FormExtensionControlDEAD00001');
+    expect(result.xml).toContain('dead copy');
+  });
+
+  it('says the form did not change when only a discarded copy matched', () => {
+    const onlyDead = DAMAGED_EXTENSION.replace(
+      /\t\t<AxFormExtensionControl xmlns="">\n\t\t\t<Name>FormExtensionControlLIVE00002<\/Name>[\s\S]*?<\/AxFormExtensionControl>\n/,
+      '',
+    );
+    const result = removeFormControl(onlyDead, { controlName: 'ConDemoPostButton' });
+    if (result.kind !== 'removed') throw new Error('expected removal');
+
+    expect(result.xml).not.toContain('FormExtensionControlDEAD00001');
+    expect(result.notes.join(' ')).toMatch(/never on the form/i);
+    expect(result.notes.join(' ')).toMatch(/discards/i);
+  });
+});

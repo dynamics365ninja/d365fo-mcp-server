@@ -35,8 +35,9 @@
  */
 
 import {
-  type XmlNode, parseNodes, firstChild, textValueOf,
+  type XmlNode, parseNodes, firstChild, textValueOf, isWithin,
 } from './xmlNodeTree.js';
+import { discardedControlRoots } from './formExtensionControlXml.js';
 
 /** Element name of the separator control, as it appears in `i:type`. */
 const SEPARATOR_ITYPE = 'AxFormButtonSeparatorControl';
@@ -72,10 +73,15 @@ interface ControlEntry {
   /** The <Controls> collection `target` is a direct child of, when there is one. */
   collection: XmlNode | undefined;
   name: string;
+  /**
+   * True when this control sits inside an element the deserializer discards, so
+   * it is in the FILE but not on the FORM (see discardedControlRoots).
+   */
+  discarded: boolean;
 }
 
 /** Every control element in the file, with the node that removes it. */
-function collectControls(xml: string, root: XmlNode): ControlEntry[] {
+function collectControls(xml: string, root: XmlNode, discardedRoots: readonly XmlNode[]): ControlEntry[] {
   const entries: ControlEntry[] = [];
 
   const visit = (node: XmlNode, envelope: XmlNode | undefined, collection: XmlNode | undefined): void => {
@@ -88,7 +94,13 @@ function collectControls(xml: string, root: XmlNode): ControlEntry[] {
           // <AxFormExtensionControl> without its <FormControl> carries a
           // <Parent> pointing at a control it no longer defines.
           const target = child.name === 'FormControl' && envelope ? envelope : child;
-          entries.push({ control: child, target, collection, name });
+          entries.push({
+            control: child,
+            target,
+            collection,
+            name,
+            discarded: discardedRoots.some(d => isWithin(child, d)),
+          });
         }
       }
       const nextEnvelope = child.name === 'AxFormExtensionControl' ? child : envelope;
@@ -152,15 +164,32 @@ export function removeFormControl(
   // elements out of an unrelated metadata file.
   if (!root || !SUPPORTED_ROOTS.has(root.name)) return { kind: 'unsupported' };
 
-  const entries = collectControls(xml, root);
+  const entries = collectControls(xml, root, discardedControlRoots(xml, root));
   const wanted = spec.controlName.trim().toLowerCase();
-  const entry = entries.find(e => e.name.toLowerCase() === wanted);
+  const matches = entries.filter(e => e.name.toLowerCase() === wanted);
+  // A LIVE match wins over a discarded twin. A file damaged by an earlier writer
+  // can hold the same control name twice — once where the deserializer reads it,
+  // once inside an element it throws away — and cutting the dead copy while
+  // reporting "removed" tells the caller their button is gone when it is still on
+  // the form. (insertFormExtensionControl draws the same distinction on the way
+  // in; the two halves of the round trip have to agree on which copy is real.)
+  const entry = matches.find(e => !e.discarded) ?? matches[0];
   if (!entry) {
     return { kind: 'not-found', present: entries.map(e => e.name) };
   }
 
   const notes: string[] = [];
   const doomed: Array<{ node: XmlNode; name: string }> = [{ node: entry.target, name: entry.name }];
+
+  if (entry.discarded) {
+    // Removed anyway — it IS in the file and deleting dead XML is the repair —
+    // but never under a bare "removed from the form".
+    notes.push(
+      `"${entry.name}" sat inside a misplaced element that the D365FO deserializer discards, so it ` +
+      `was never on the form. The dead XML is gone, but nothing about the running form changes. ` +
+      `If a control by this name still shows there, it belongs to the BASE form.`,
+    );
+  }
 
   if (spec.removeSeparator) {
     const separator = findAdjacentSeparator(xml, entry, entries);
@@ -180,7 +209,8 @@ export function removeFormControl(
 
   // The collection is emptied when every control element it holds directly is on
   // the list. An empty <Controls></Controls> is not what the serializer writes —
-  // shipped metadata spells an empty collection `<Controls />` — so collapse it.
+  // shipped metadata spells an empty collection `<Controls />` (with whatever
+  // attributes the open tag carried) — so collapse it.
   const collection = entry.collection;
   const emptied =
     collection !== undefined &&
@@ -188,8 +218,18 @@ export function removeFormControl(
 
   let updated: string;
   if (emptied && collection) {
+    // Built from the collection's OWN open tag, not from a literal `<Controls />`.
+    // An AxForm declares xmlns="Microsoft.Dynamics.AX.Metadata.V6" on its root and
+    // every element under <Design> resets it — shipped metadata spells the
+    // collection `<Controls xmlns="">`. Writing a bare `<Controls />` drops that
+    // reset and puts the element in the V6 namespace, which is a different element
+    // to the deserializer. (insertFormExtensionControl preserves the same
+    // attributes when it re-opens a self-closed collection; the two halves of the
+    // round trip have to agree.)
     // Replaced from '<Controls' onward, so the line's existing indentation stands.
-    updated = xml.slice(0, collection.start) + '<Controls />' + xml.slice(collection.end);
+    const openTag = xml.slice(collection.start, collection.openEnd);
+    const collapsed = collection.selfClosing ? openTag : openTag.replace(/\s*>$/, ' />');
+    updated = xml.slice(0, collection.start) + collapsed + xml.slice(collection.end);
   } else {
     // Descending by offset so an earlier cut never shifts a later one.
     const spans = doomed

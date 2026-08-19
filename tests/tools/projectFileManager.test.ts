@@ -324,6 +324,73 @@ describe('ProjectFileManager', () => {
     });
   });
 
+  /**
+   * The remover has to answer the same question resolveMembership answers, or
+   * `delete` unlinks a file whose include it then fails to find — and reports
+   * "no project referenced it", which is the dangling include the step exists to
+   * prevent, dressed as success.
+   *
+   * Case really does drift between disk and project XML (see the comment on
+   * AX_FOLDER_BY_OBJECT_TYPE), and a hand-edited project may carry `.xml`.
+   * readProjectIncludes tolerates both; this must too.
+   */
+  describe('removeFromProject — include matching agrees with resolveMembership', () => {
+    const projectWithInclude = (include: string) => '\uFEFF' +
+`<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Content Include="${include}">
+      <SubType>Content</SubType>
+      <Name>ConDemoTicketTable</Name>
+    </Content>
+  </ItemGroup>
+</Project>`;
+
+    it.each([
+      ['exact spelling', 'AxForm\\ConDemoTicketTable'],
+      ['different case', 'AxForm\\condemoticketTABLE'],
+      ['lowercased folder', 'axform\\ConDemoTicketTable'],
+      ['a hand-added .xml extension', 'AxForm\\ConDemoTicketTable.xml'],
+    ])('removes an include written with %s', async (_label, include) => {
+      const projectPath = 'K:\\Test\\Test.rnrproj';
+      fileStore.set(projectPath, projectWithInclude(include));
+
+      const removed = await new ProjectFileManager()
+        .removeFromProject(projectPath, 'form', 'ConDemoTicketTable');
+
+      expect(removed).toBe(true);
+      expect(fileStore.get(projectPath)!).not.toContain('Content Include');
+    });
+
+    it('still leaves a DIFFERENT object of the same type alone', async () => {
+      const projectPath = 'K:\\Test\\Test.rnrproj';
+      fileStore.set(projectPath, projectWithInclude('AxForm\\ConDemoTicketTableListPage'));
+
+      const removed = await new ProjectFileManager()
+        .removeFromProject(projectPath, 'form', 'ConDemoTicketTable');
+
+      expect(removed).toBe(false);
+      expect(fileStore.get(projectPath)!).toContain('AxForm\\ConDemoTicketTableListPage');
+    });
+
+    it('keeps a folder entry whose remaining sibling is spelled in another case', async () => {
+      const projectPath = 'K:\\Test\\Test.rnrproj';
+      fileStore.set(projectPath, REALISTIC_RNRPROJ_WITH_BOM);
+
+      const manager = new ProjectFileManager();
+      await manager.addToProject(projectPath, 'table', 'TableOne', 'K:\\Pkg\\AxTable\\TableOne.xml');
+      await manager.addToProject(projectPath, 'table', 'TableTwo', 'K:\\Pkg\\AxTable\\TableTwo.xml');
+      // As a hand-edit or another generator would leave it.
+      fileStore.set(projectPath, fileStore.get(projectPath)!.replace('AxTable\\TableTwo', 'axtable\\TableTwo'));
+
+      await manager.removeFromProject(projectPath, 'table', 'TableOne');
+
+      const xml = fileStore.get(projectPath)!;
+      expect(xml).toContain('axtable\\TableTwo');
+      expect(xml).toContain('Folder Include="Tables\\"');
+    });
+  });
+
   describe('addLabelToProject', () => {
     it('adds both descriptor and resource entries per language', async () => {
       const projectPath = 'K:\\Test\\Test.rnrproj';
