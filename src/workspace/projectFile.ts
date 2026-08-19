@@ -269,6 +269,7 @@ export class ProjectFileManager {
       'security-policy': 'Security Policies',
       'aggregate-measurement': 'Aggregate Measurements',
       'license-code': 'License Codes',
+      'ignore-diagnostic-list': 'Ignore Diagnostic Lists',
     };
     return folderMap[objectType] || 'Classes';
   }

@@ -78,14 +78,46 @@ const PRIVILEGE_XML = `<?xml version="1.0" encoding="utf-8"?>
 \t<FormControlOverrides />
 </AxSecurityPrivilege>`;
 
+/**
+ * BP-check suppression list carrying two <Diagnostic> entries. Root/child
+ * shape (root <IgnoreDiagnostics>, <Name>/<Items> as direct children,
+ * <Diagnostic> as a direct child of <Items>) matches a real production
+ * suppression file — see ignoreDiagnosticListXml.ts's docblock.
+ */
+const SUPPRESSIONS_XML = `<?xml version="1.0" encoding="utf-8"?>
+<IgnoreDiagnostics>
+\t<Name>MyModel_BPSuppressions</Name>
+\t<Items>
+\t\t<Diagnostic>
+\t\t\t<DiagnosticType>BestPractices</DiagnosticType>
+\t\t\t<Severity>Warning</Severity>
+\t\t\t<Path>dynamics://Form/ConDemoTicketTable</Path>
+\t\t\t<Moniker>BPErrorGridCaption</Moniker>
+\t\t\t<Justification>TODO</Justification>
+\t\t</Diagnostic>
+\t\t<Diagnostic>
+\t\t\t<DiagnosticType>BestPractices</DiagnosticType>
+\t\t\t<Severity>Warning</Severity>
+\t\t\t<Path>dynamics://SecurityPrivilege/ConDemoTicketMaintain</Path>
+\t\t\t<Moniker>BPErrorPrivilegeNotCoveredByDuty</Moniker>
+\t\t\t<Justification>TODO</Justification>
+\t\t</Diagnostic>
+\t</Items>
+</IgnoreDiagnostics>`;
+
 const { mockWriteFile, currentXml } = vi.hoisted(() => ({
   mockWriteFile: vi.fn(async () => {}),
-  currentXml: { value: '' },
+  // null simulates the target .xml not existing yet (ENOENT) — used by
+  // add-diagnostic-suppression's "create a fresh suppression file" path.
+  currentXml: { value: '' as string | null },
 }));
 
 vi.mock('fs/promises', () => ({
   readFile: vi.fn(async (p: string) => {
-    if (typeof p === 'string' && p.endsWith('.xml')) return currentXml.value;
+    if (typeof p === 'string' && p.endsWith('.xml')) {
+      if (currentXml.value === null) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      return currentXml.value;
+    }
     if (typeof p === 'string' && p.endsWith('.rnrproj')) return `<Project><ItemGroup></ItemGroup></Project>`;
     throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
   }),
@@ -137,6 +169,7 @@ vi.mock('../../src/utils/modelClassifier', () => ({
 
 const FORM_PATH = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxForm\\ConDemoTicketTable.xml';
 const PRIV_PATH = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxSecurityPrivilege\\ConDemoTicketMaintain.xml';
+const SUPP_PATH = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxIgnoreDiagnosticList\\MyModel_BPSuppressions.xml';
 
 const req = (
   objectType: string,
@@ -368,5 +401,232 @@ describe('remove-entry-point through the modify surface', () => {
     // And says what a duty/role reference instead, since that is the mistake.
     expect(text).toContain('duties');
     expect(written('AxSecurityDuty')).toBeUndefined();
+  });
+});
+
+describe('remove-diagnostic-suppression through the modify surface', () => {
+  let ctx: XppServerContext;
+
+  beforeEach(() => {
+    ctx = buildContext();
+    currentXml.value = SUPPRESSIONS_XML;
+    mockWriteFile.mockClear();
+  });
+
+  it('removes the diagnostic identified by diagnosticPath', async () => {
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'remove-diagnostic-suppression',
+        diagnosticPath: 'dynamics://Form/ConDemoTicketTable',
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    const xml = written('IgnoreDiagnostics');
+    expect(xml).toBeTruthy();
+    expect(xml).not.toContain('BPErrorGridCaption');
+    expect(xml).not.toContain('ConDemoTicketTable');
+    // The other suppression survives whole.
+    expect(xml).toContain('dynamics://SecurityPrivilege/ConDemoTicketMaintain');
+    expect(xml).toContain('BPErrorPrivilegeNotCoveredByDuty');
+  });
+
+  it('fails — and writes nothing — for a path that is not suppressed', async () => {
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'remove-diagnostic-suppression',
+        diagnosticPath: 'dynamics://Table/NoSuchTable',
+      }),
+      ctx,
+    );
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toContain('dynamics://Table/NoSuchTable');
+    // Names what IS there, so the retry does not need another read.
+    expect(text).toContain('dynamics://Form/ConDemoTicketTable');
+    expect(written('IgnoreDiagnostics')).toBeUndefined();
+  });
+
+  it('reports the missing parameter with the op spec when diagnosticPath is omitted', async () => {
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, { operation: 'remove-diagnostic-suppression' }),
+      ctx,
+    );
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toContain('diagnosticPath');
+    expect(text).toContain('kind="op-spec"');
+    expect(written('IgnoreDiagnostics')).toBeUndefined();
+  });
+
+  it('refuses two diagnostics on the same path without diagnosticMoniker to narrow it', async () => {
+    currentXml.value = `<?xml version="1.0" encoding="utf-8"?>
+<IgnoreDiagnostics>
+\t<Name>MyModel_BPSuppressions</Name>
+\t<Items>
+\t\t<Diagnostic>
+\t\t\t<Path>dynamics://Form/ConDemoTicketTable</Path>
+\t\t\t<Moniker>BPErrorGridCaption</Moniker>
+\t\t\t<Justification>TODO</Justification>
+\t\t</Diagnostic>
+\t\t<Diagnostic>
+\t\t\t<Path>dynamics://Form/ConDemoTicketTable</Path>
+\t\t\t<Moniker>BPXmlDocMissingSummary</Moniker>
+\t\t\t<Justification>TODO</Justification>
+\t\t</Diagnostic>
+\t</Items>
+</IgnoreDiagnostics>`;
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'remove-diagnostic-suppression',
+        diagnosticPath: 'dynamics://Form/ConDemoTicketTable',
+      }),
+      ctx,
+    );
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toContain('BPErrorGridCaption');
+    expect(text).toContain('BPXmlDocMissingSummary');
+    expect(text).toContain('diagnosticMoniker');
+    expect(written('IgnoreDiagnostics')).toBeUndefined();
+  });
+
+  it('refuses a file that is not a suppression list', async () => {
+    currentXml.value = PRIVILEGE_XML;
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'ConDemoTicketMaintain', SUPP_PATH, {
+        operation: 'remove-diagnostic-suppression',
+        diagnosticPath: 'dynamics://Form/ConDemoTicketTable',
+      }),
+      ctx,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text as string).toContain('not a suppression list');
+    expect(written('AxSecurityPrivilege')).toBeUndefined();
+  });
+});
+
+describe('add-diagnostic-suppression through the modify surface', () => {
+  let ctx: XppServerContext;
+
+  beforeEach(() => {
+    ctx = buildContext();
+    currentXml.value = SUPPRESSIONS_XML;
+    mockWriteFile.mockClear();
+  });
+
+  it('adds a suppression identified by diagnosticPath', async () => {
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'add-diagnostic-suppression',
+        diagnosticMoniker: 'BPErrorMissingPKConstraint',
+        diagnosticPath: 'dynamics://Table/ConDemoNewTable',
+        diagnosticJustification: 'Staging table, no natural key yet.',
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    const xml = written('IgnoreDiagnostics');
+    expect(xml).toBeTruthy();
+    expect(xml).toContain('dynamics://Table/ConDemoNewTable');
+    expect(xml).toContain('BPErrorMissingPKConstraint');
+    expect(xml).toContain('Staging table, no natural key yet.');
+    // The two that were already there survive whole.
+    expect(xml).toContain('dynamics://Form/ConDemoTicketTable');
+    expect(xml).toContain('dynamics://SecurityPrivilege/ConDemoTicketMaintain');
+  });
+
+  it('derives diagnosticPath from diagnosticElementType + diagnosticElementName', async () => {
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'add-diagnostic-suppression',
+        diagnosticMoniker: 'BPErrorMissingPKConstraint',
+        diagnosticElementType: 'AxTable',
+        diagnosticElementName: 'ConDemoNewTable',
+      }),
+      ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    expect(written('IgnoreDiagnostics')).toContain('dynamics://Table/ConDemoNewTable');
+  });
+
+  it('refuses a duplicate — same path AND moniker already suppressed', async () => {
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'add-diagnostic-suppression',
+        diagnosticMoniker: 'BPErrorGridCaption',
+        diagnosticPath: 'dynamics://Form/ConDemoTicketTable',
+      }),
+      ctx,
+    );
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toContain('already');
+    expect(text).toContain('BPErrorGridCaption');
+    expect(written('IgnoreDiagnostics')).toBeUndefined();
+  });
+
+  it('reports the missing parameter with the op spec when diagnosticMoniker is omitted', async () => {
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'add-diagnostic-suppression',
+        diagnosticPath: 'dynamics://Table/ConDemoNewTable',
+      }),
+      ctx,
+    );
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toContain('diagnosticMoniker');
+    expect(text).toContain('kind="op-spec"');
+    expect(written('IgnoreDiagnostics')).toBeUndefined();
+  });
+
+  it('fails when neither diagnosticPath nor an elementType+elementName pair is given', async () => {
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'add-diagnostic-suppression',
+        diagnosticMoniker: 'BPErrorMissingPKConstraint',
+      }),
+      ctx,
+    );
+    expect(result.isError).toBe(true);
+    expect(written('IgnoreDiagnostics')).toBeUndefined();
+  });
+
+  it('creates a fresh suppression file when the model has never suppressed anything before, and says so', async () => {
+    currentXml.value = null;
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'add-diagnostic-suppression',
+        diagnosticMoniker: 'BPErrorMissingPKConstraint',
+        diagnosticPath: 'dynamics://Table/ConDemoNewTable',
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    const xml = written('IgnoreDiagnostics');
+    expect(xml).toBeTruthy();
+    expect(xml).toContain('dynamics://Table/ConDemoNewTable');
+    const text = result.content[0].text as string;
+    expect(text).toContain('did not exist');
+    expect(text).toContain('UNVERIFIED');
+  });
+
+  it('refuses a file that is not a suppression list', async () => {
+    currentXml.value = PRIVILEGE_XML;
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'ConDemoTicketMaintain', SUPP_PATH, {
+        operation: 'add-diagnostic-suppression',
+        diagnosticMoniker: 'BPErrorMissingPKConstraint',
+        diagnosticPath: 'dynamics://Table/ConDemoNewTable',
+      }),
+      ctx,
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text as string).toContain('not a suppression list');
+    expect(written('AxSecurityPrivilege')).toBeUndefined();
   });
 });

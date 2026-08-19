@@ -55,6 +55,25 @@ those are called out explicitly below.
   zero coverage, and the tool the agent reads control names from before every
   form extension), `repairFormControls`, and `fsExtensionScanner` (the fallback
   that exists to stop the agent shelling out to PowerShell).
+- `d365fo_file`: `remove-control` (form / form-extension) and `remove-entry-point`
+  (security-privilege) — the missing inverse of `add-control` and of the entry
+  point `create` writes for `targetObject`, neither backed by a bridge op (no
+  `RemoveControl`, and security objects have no bridge write path at all), so
+  both are XML-only writers admitted through a new `XML_ONLY_MODIFY_PAIRS` gate
+  in `bridgeAdapter.ts`. Plus `action="delete"` — removes an object's XML and
+  un-registers it from every `.rnrproj` of the model that lists it.
+- `d365fo_file`: `remove-diagnostic-suppression` and `add-diagnostic-suppression`
+  (`ignore-diagnostic-list`) — add/remove a `<Diagnostic>` in a model's
+  `{Model}_BPSuppressions.xml` by its `<Path>` (+ `<Moniker>` when the same path
+  carries more than one). `add-diagnostic-suppression` builds the block with the
+  same `buildSuppressionXml` the `get_knowledge(kind="bp-moniker",
+  action="suppress")` render-only helper already used, refuses a duplicate
+  (same path + moniker) instead of writing a second copy, and creates the file
+  fresh — flagged as unverified against a real Microsoft sample — for a model
+  that has never suppressed anything before. `delete` now also strips any
+  suppression whose `<Path>` targets the object being deleted automatically,
+  closing the gap where deleting an object by hand left its BP-check
+  suppression behind, silencing a rule against nothing.
 
 ### Changed
 - `EXTENSION_PREFIX_SOURCE` is now the config key **`naming.prefixSource`**

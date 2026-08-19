@@ -1292,6 +1292,10 @@ const BRIDGE_MODIFY_OPS = new Set([
   // bridge write path at all) — both are served by a direct-XML writer and still
   // pass through this gate.
   'remove-control', 'remove-entry-point',
+  // AxIgnoreDiagnosticList is not an AOT object at all — MetadataWriteService has
+  // no concept of it — so this is XML-only for the same structural reason as the
+  // two above.
+  'remove-diagnostic-suppression', 'add-diagnostic-suppression',
   'add-display-method', 'add-table-method',
   'add-field-modification', 'add-menu-item-to-menu',
 ]);
@@ -1326,6 +1330,8 @@ const BRIDGE_MODIFY_TYPES = new Set([
  */
 const XML_ONLY_MODIFY_PAIRS: Record<string, ReadonlySet<string>> = {
   'remove-entry-point': new Set(['security-privilege']),
+  'remove-diagnostic-suppression': new Set(['ignore-diagnostic-list']),
+  'add-diagnostic-suppression': new Set(['ignore-diagnostic-list']),
 };
 
 /**

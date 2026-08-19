@@ -57,6 +57,9 @@ import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
 import { enforceGrounding } from '../../utils/provenanceStore.js';
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { bridgeRefreshProvider } from '../../bridge/index.js';
+import { removeDiagnosticSuppressionsByPathPrefix } from '../../utils/ignoreDiagnosticListXml.js';
+import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
+import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 
 const DeleteD365FileArgsSchema = z.object({
   objectType: z.string().describe('AOT object type — the same enum action="create" takes.'),
@@ -305,6 +308,43 @@ export async function handleDeleteD365File(
     await bridgeRefreshProvider(context?.bridge);
   } catch { /* bridge not available — nothing loaded it anyway */ }
 
+  // ── 6b. Suppression cleanup ──────────────────────────────────────────────────
+  // A deleted object's own <Diagnostic> entries in {Model}_BPSuppressions.xml
+  // outlive it otherwise: each one's <Path> addresses a dynamics:// target that
+  // now resolves to nothing, and nobody notices until BP-check is re-run long
+  // after the deletion (exactly what forced a manual XML edit before this
+  // existed — see ignoreDiagnosticListXml.ts). Best-effort and non-fatal: the
+  // object is already gone from disk either way, so a cleanup failure here must
+  // not turn a successful delete into a reported failure.
+  let suppressionNote = '';
+  if (objectType !== 'ignore-diagnostic-list') {
+    try {
+      const suppressionModel = owningModel ?? modelForProjects;
+      if (suppressionModel) {
+        const suppressionFile = await findD365FileOnDisk(
+          'ignore-diagnostic-list', `${suppressionModel}_BPSuppressions`, suppressionModel, args.packagePath,
+        );
+        if (suppressionFile) {
+          const raw = await fs.readFile(suppressionFile, 'utf-8');
+          const content = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+          const prefix = `dynamics://${axFolderForObjectType(objectType).replace(/^Ax/, '')}/${resolvedName}`;
+          const { xml, removed } = removeDiagnosticSuppressionsByPathPrefix(content, prefix);
+          if (removed.length > 0) {
+            await writeFileAtomic(suppressionFile, normalizeD365Xml(xml));
+            suppressionNote =
+              `\n🧹 BP suppressions: removed ${removed.length} stale <Diagnostic> entr${removed.length === 1 ? 'y' : 'ies'} ` +
+              `(${removed.map(r => r.moniker).join(', ')}) from ${suppressionFile}.`;
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`[delete_d365fo_file] Suppression cleanup failed (non-fatal): ${e}`);
+      suppressionNote =
+        `\n⚠️ BP suppression cleanup failed — check "${resolvedName}"'s entries in ` +
+        `{Model}_BPSuppressions.xml by hand: ${e instanceof Error ? e.message : e}`;
+    }
+  }
+
   // ── 7. Report ───────────────────────────────────────────────────────────────
   // "Nothing to un-register" is a claim about the PROJECTS, and it is only true
   // when none of them listed the object. Deriving it from `unregistered` being
@@ -339,6 +379,7 @@ export async function handleDeleteD365File(
         projectNote +
         failureNote +
         indexNote +
+        suppressionNote +
         `\n\nNext: build_d365fo_project to compile the model without it. References to "${resolvedName}" ` +
         `elsewhere are now compile errors — find_references before deleting is the cheap way to know.\n` +
         `If this delete was a mistake: when the model directory is under git, ` +
