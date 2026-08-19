@@ -20,7 +20,8 @@ import { Parser, Builder } from '../utils/xml.js';
 import { withFileLock } from '../utils/atomicFileWrite.js';
 import { recordCreatedProjectFolder, takeCreatedProjectFolder } from './createdArtifactLedger.js';
 import {
-  axFolderForObjectType, resolveMembership, projectDisplayName, includeKey, type Membership,
+  axFolderForObjectType, resolveMembership, projectDisplayName, includeKey, normalizeInclude,
+  type Membership,
 } from './projectMembership.js';
 import { getConfigManager } from '../utils/configManager.js';
 
@@ -119,15 +120,21 @@ export async function registerFileInActiveProject(
 }
 
 /**
- * A parsed `<Content>` node's Include in the one comparable form.
+ * A parsed `<Content>` / `<Folder>` node's Include in the one comparable form.
  *
- * The same normalisation readProjectIncludes applies, so this side and the
- * membership side can never disagree about whether a project lists an object.
- * Returns '' for a node without an Include, which matches no key.
+ * normalizeInclude is the shared definition (see projectMembership.ts), so this
+ * side and the membership side can never disagree about whether a project lists
+ * an item. Returns '' for a node without an Include, which matches no key.
+ *
+ * Every duplicate check and every removal in this file goes through it. Comparing
+ * the raw attribute with `===` is what let a differently-cased include read as
+ * absent: `addToProject` then wrote a SECOND item for the same element (MSBuild
+ * fails the build on duplicate items, and VS shows the object twice), while
+ * `removeFromProject` reported it as not there.
  */
-function normalizedInclude(content: any): string {
-  const inc = content?.$?.Include;
-  return typeof inc === 'string' ? inc.replace(/\.xml$/i, '').toLowerCase() : '';
+function normalizedInclude(node: any): string {
+  const inc = node?.$?.Include;
+  return typeof inc === 'string' ? normalizeInclude(inc) : '';
 }
 
 /**
@@ -366,9 +373,12 @@ export class ProjectFileManager {
     const axFolderPrefix = this.getAxFolderPrefix(objectType);
 
     // Add folder if not exists (uses friendly display name, e.g. "Classes\")
+    // A folder already there under another spelling must not be added again —
+    // and must not be recorded as ours, or the ledger would let a later remove
+    // prune an entry this session did not create.
+    const folderKey = normalizeInclude(`${displayFolderName}\\`);
     const folderExists = folderGroup.Folder.some(
-      (folder: any) =>
-        folder.$ && folder.$.Include === `${displayFolderName}\\`
+      (folder: any) => normalizedInclude(folder) === folderKey
     );
     if (!folderExists) {
       folderGroup.Folder.push({
@@ -384,10 +394,13 @@ export class ProjectFileManager {
     const contentInclude = `${axFolderPrefix}\\${objectName}`;
     const linkPath = `${displayFolderName}\\${objectName}`;
 
-    // Check if file already in project
+    // Check if file already in project. Case-insensitively and `.xml`-tolerantly:
+    // VS resolves `AxForm\Foo`, `axform\foo` and `AxForm\Foo.xml` to one item, so
+    // an exact comparison here reads an existing entry as absent and writes a
+    // second one for the same element — a duplicate MSBuild fails the build over.
+    const contentKey = normalizeInclude(contentInclude);
     const fileExists = contentGroup.Content.some(
-      (content: any) =>
-        content.$ && content.$.Include === contentInclude
+      (content: any) => normalizedInclude(content) === contentKey
     );
 
     if (fileExists) {
@@ -519,7 +532,8 @@ export class ProjectFileManager {
       for (const group of itemGroups) {
         if (group.Folder === undefined) continue;
         const folders = Array.isArray(group.Folder) ? group.Folder : [group.Folder];
-        group.Folder = folders.filter((f: any) => f?.$?.Include !== `${displayFolderName}\\`);
+        const folderKey = normalizeInclude(`${displayFolderName}\\`);
+        group.Folder = folders.filter((f: any) => normalizedInclude(f) !== folderKey);
       }
     }
 
@@ -605,8 +619,9 @@ export class ProjectFileManager {
     if (!Array.isArray(contentGroup.Content)) contentGroup.Content = contentGroup.Content ? [contentGroup.Content] : [];
 
     // Ensure "Label Files\" folder entry
+    const labelFolderKey = normalizeInclude('Label Files\\');
     const folderExists = folderGroup.Folder.some(
-      (f: any) => f.$ && f.$.Include === 'Label Files\\'
+      (f: any) => normalizedInclude(f) === labelFolderKey
     );
     if (!folderExists) {
       folderGroup.Folder.push({ $: { Include: 'Label Files\\' } });
@@ -614,8 +629,11 @@ export class ProjectFileManager {
 
     const added: string[] = [];
     let newEntries = 0;
-    const existingIncludes = new Set(
-      contentGroup.Content.map((c: any) => c.$?.Include).filter(Boolean)
+    // Keyed like every other include comparison: a label file whose descriptor is
+    // already listed as `AxLabelFile\Foo_EN-US` must not get a second entry under
+    // `AxLabelFile\Foo_en-US`. Language tags are exactly where casing drifts.
+    const existingIncludes = new Set<string>(
+      contentGroup.Content.map((c: any) => normalizedInclude(c)).filter(Boolean)
     );
 
     for (const lang of languages) {
@@ -624,27 +642,27 @@ export class ProjectFileManager {
       const resourceFileName = `${labelFileId}.${lang}.label.txt`;
 
       // 1. AxLabelFile descriptor entry
-      if (!existingIncludes.has(descriptorInclude)) {
+      if (!existingIncludes.has(normalizeInclude(descriptorInclude))) {
         contentGroup.Content.push({
           $: { Include: descriptorInclude },
           SubType: 'Content',
           Name: descriptorName,
           Link: `Label Files\\${descriptorName}`,
         });
-        existingIncludes.add(descriptorInclude);
+        existingIncludes.add(normalizeInclude(descriptorInclude));
         added.push(descriptorName);
         newEntries++;
       }
 
       // 2. LabelResources .label.txt entry with DependentUpon
-      if (!existingIncludes.has(resourceFileName)) {
+      if (!existingIncludes.has(normalizeInclude(resourceFileName))) {
         contentGroup.Content.push({
           $: { Include: resourceFileName },
           SubType: 'Content',
           Name: resourceFileName,
           DependentUpon: descriptorInclude,
         });
-        existingIncludes.add(resourceFileName);
+        existingIncludes.add(normalizeInclude(resourceFileName));
         newEntries++;
       }
     }

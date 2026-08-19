@@ -115,13 +115,30 @@ export function objectTypeForAxFolder(axFolder: string): string | undefined {
 }
 
 /**
+ * An `Include` attribute reduced to the identity Visual Studio actually gives it.
+ *
+ * Two spellings, one item. VS matches includes case-insensitively and the
+ * generators are not consistent ("…CtsoFinExtension" on disk against
+ * "…CtsoFINExtension" in the XML), and the writer emits `AxEnum\Name` while a
+ * hand-edited project may carry `AxEnum\Name.xml`. Every question this module and
+ * ProjectFileManager ask about an include — does the project list it, is it
+ * already there, remove it — has to be asked in this form, or two of them answer
+ * differently about the same entry: one reports the object registered while the
+ * other adds a duplicate or fails to remove it.
+ *
+ * THE definition. Anything comparing an Include goes through this or through a
+ * key built by includeKey, never through `===` on the raw attribute.
+ */
+export function normalizeInclude(include: string): string {
+  return include.replace(/\.xml$/i, '').toLowerCase();
+}
+
+/**
  * The `Content Include` a given object has in a .rnrproj: AOT folder, backslash,
- * object name, no extension. Lowercased — VS is case-insensitive here and the
- * generators are not consistent about it ("…CtsoFinExtension" on disk against
- * "…CtsoFINExtension" in the XML, say), which is not a reason to report a miss.
+ * object name, no extension — in normalizeInclude form, ready to compare.
  */
 export function includeKey(axFolder: string, objectName: string): string {
-  return `${axFolder}\\${objectName}`.toLowerCase();
+  return normalizeInclude(`${axFolder}\\${objectName}`);
 }
 
 /**
@@ -157,9 +174,7 @@ export async function readProjectIncludes(projectPath: string): Promise<Set<stri
     const contents: any[] = Array.isArray(group?.Content) ? group.Content : [];
     for (const c of contents) {
       const inc: string | undefined = c?.$?.Include;
-      // Includes are written without .xml, but tolerate one: a hand-edited
-      // project should not read as a miss.
-      if (inc) includes.add(inc.replace(/\.xml$/i, '').toLowerCase());
+      if (inc) includes.add(normalizeInclude(inc));
     }
   }
 

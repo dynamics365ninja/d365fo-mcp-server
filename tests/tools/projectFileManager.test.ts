@@ -373,6 +373,53 @@ describe('ProjectFileManager', () => {
       expect(fileStore.get(projectPath)!).toContain('AxForm\\ConDemoTicketTableListPage');
     });
 
+    it('does not add a SECOND item for an object already listed in another case', async () => {
+      // The other half of the same rule. VS resolves both spellings to one item;
+      // a duplicate <Content Include> is what MSBuild fails the build over, and
+      // it is written by the tool that was asked to register the object once.
+      const projectPath = 'K:\\Test\\Test.rnrproj';
+      fileStore.set(projectPath, projectWithInclude('axform\\condemoticketTABLE'));
+
+      const added = await new ProjectFileManager()
+        .addToProject(projectPath, 'form', 'ConDemoTicketTable', 'K:\\Pkg\\AxForm\\ConDemoTicketTable.xml');
+
+      expect(added).toBe(false);
+      const xml = fileStore.get(projectPath)!;
+      expect(xml.match(/<Content Include=/g) ?? []).toHaveLength(1);
+      // The spelling that was already there is left alone, not rewritten.
+      expect(xml).toContain('axform\\condemoticketTABLE');
+    });
+
+    it('does not add a second item for an include carrying .xml', async () => {
+      const projectPath = 'K:\\Test\\Test.rnrproj';
+      fileStore.set(projectPath, projectWithInclude('AxForm\\ConDemoTicketTable.xml'));
+
+      const added = await new ProjectFileManager()
+        .addToProject(projectPath, 'form', 'ConDemoTicketTable', 'K:\\Pkg\\AxForm\\ConDemoTicketTable.xml');
+
+      expect(added).toBe(false);
+      expect((fileStore.get(projectPath)!.match(/<Content Include=/g) ?? [])).toHaveLength(1);
+    });
+
+    it('does not add a second Folder entry for a differently-cased one', async () => {
+      const projectPath = 'K:\\Test\\Test.rnrproj';
+      fileStore.set(projectPath, '\uFEFF' +
+`<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Folder Include="tables\\" />
+  </ItemGroup>
+  <ItemGroup />
+</Project>`);
+
+      await new ProjectFileManager()
+        .addToProject(projectPath, 'table', 'NewTable', 'K:\\Pkg\\AxTable\\NewTable.xml');
+
+      const xml = fileStore.get(projectPath)!;
+      expect(xml.match(/<Folder Include=/g) ?? []).toHaveLength(1);
+      expect(xml).toContain('tables\\');
+    });
+
     it('keeps a folder entry whose remaining sibling is spelled in another case', async () => {
       const projectPath = 'K:\\Test\\Test.rnrproj';
       fileStore.set(projectPath, REALISTIC_RNRPROJ_WITH_BOM);
@@ -428,6 +475,25 @@ describe('ProjectFileManager', () => {
       // Second call should detect duplicates
       const added2 = await manager.addLabelToProject(projectPath, 'TestLabels', ['en-US']);
       expect(added2).toEqual([]);
+    });
+
+    it('does not duplicate entries whose language tag is cased differently', async () => {
+      // "en-US" against "en-us" is the same label file to VS and to the label
+      // compiler, and a language tag is exactly where the casing drifts between a
+      // hand-edit, another generator and this one.
+      const projectPath = 'K:\\Test\\Test.rnrproj';
+      fileStore.set(projectPath, REALISTIC_RNRPROJ_WITH_BOM);
+
+      const manager = new ProjectFileManager();
+      await manager.addLabelToProject(projectPath, 'TestLabels', ['en-US']);
+      fileStore.set(projectPath, fileStore.get(projectPath)!.replace(/en-US/g, 'en-us'));
+
+      const added2 = await manager.addLabelToProject(projectPath, 'TestLabels', ['en-US']);
+
+      expect(added2).toEqual([]);
+      const xml = fileStore.get(projectPath)!;
+      expect(xml.match(/AxLabelFile\\TestLabels_en-us/gi) ?? []).toHaveLength(2); // Include + DependentUpon
+      expect(xml).not.toContain('TestLabels_en-US');
     });
 
     it('writes resource entry even when descriptor already exists', async () => {
