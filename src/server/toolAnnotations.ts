@@ -74,7 +74,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // File & label writes. Marked destructive/write so clients prompt for
   // confirmation even though some actions (generate, search/info) are read-only —
   // annotations are hints, not gates.
-  d365fo_file:                      write('D365FO file (create/modify/generate)', { destructive: true }),
+  d365fo_file:                      write('D365FO file (create/modify/delete/generate)', { destructive: true }),
   labels:                           write('Label operations', { destructive: true }),
   undo_last_modification:           write('Undo last modification', { destructive: true }),
   generate_object:                         write('Generate code (pattern/scaffold)'),

@@ -48,8 +48,8 @@ export const LOCAL_TOOLS = new Set([
  *    SQLite-backed types (Azure read-only).
  *  - labels: read actions (search/info) work on Azure; write actions
  *    (create/rename) need K:\ and error clearly when unreachable.
- *  - d365fo_file: generate works on Azure; create/modify need K:\ and error
- *    clearly when unreachable.
+ *  - d365fo_file: generate works on Azure; create/modify/delete need K:\ and
+ *    error clearly when unreachable.
  */
 export const ALWAYS_TOOLS = new Set([
   'get_object_info',

@@ -158,6 +158,20 @@ interface FormExtPlacementIssue {
   problem: FormExtPlacementProblem;
 }
 
+/**
+ * The subtrees the D365FO deserializer discards, for a writer that only needs to
+ * know WHICH controls are dead rather than why.
+ *
+ * The removal writer asks this: a name that resolves to a control inside a
+ * discarded element is not the control on the form, and cutting it out while
+ * reporting "removed" would tell the caller their button is gone when it never
+ * arrived. Safe to call on an AxForm as well — nothing there is misplaced in
+ * these two ways, so it answers with an empty list.
+ */
+export function discardedControlRoots(xml: string, root: XmlNode): XmlNode[] {
+  return findPlacementIssues(xml, root).map(i => i.node);
+}
+
 function findPlacementIssues(xml: string, root: XmlNode): FormExtPlacementIssue[] {
   const issues: FormExtPlacementIssue[] = [];
   const lineAt = (offset: number): number => {

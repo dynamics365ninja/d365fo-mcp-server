@@ -17,7 +17,7 @@
  * outside the allowed metadata roots.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 const PLD = 'K:\\PackagesLocalDirectory';
@@ -35,6 +35,7 @@ const {
     onDisk: null as string | null,
     isStandardModel: false,
     modelFromPath: 'MyModel' as string | null,
+    modelSegment: 'MyModel' as string | null,
   };
   return {
     state,
@@ -84,7 +85,7 @@ vi.mock('../../src/utils/objectNaming', () => ({
 vi.mock('../../src/utils/pathContainment', () => ({
   assertWritePathAllowed: vi.fn(async (filePath: string) => (
     filePath.startsWith(PLD)
-      ? { ok: true, canonicalPath: filePath, packageSegment: 'MyPackage', modelSegment: 'MyModel' }
+      ? { ok: true, canonicalPath: filePath, packageSegment: 'MyPackage', modelSegment: state.modelSegment }
       : { ok: false, reason: `outside the allowed metadata roots: "${filePath}"` }
   )),
 }));
@@ -138,6 +139,7 @@ beforeEach(() => {
   state.onDisk = FORM_PATH;
   state.isStandardModel = false;
   state.modelFromPath = 'MyModel';
+  state.modelSegment = 'MyModel';
   // clearAllMocks() clears CALLS, not implementations — a rejection installed by
   // one test would otherwise leak into every test after it.
   mockUnlink.mockResolvedValue(undefined as never);
@@ -328,6 +330,89 @@ describe('d365fo_file(action="delete")', () => {
     const result = await handleDeleteD365File(req({ objectType: 'form' }), ctx);
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('objectName');
+  });
+
+  it('reports an owning project whose include did not match, instead of staying silent', async () => {
+    // resolveMembership named this project as an owner, so the include IS there.
+    // A remover that then matches nothing is a disagreement between the two —
+    // and the file is already unlinked. Swallowing it produces exactly the
+    // dangling include this step exists to prevent, under a ✅.
+    state.owners = [PROJECT_A];
+    mockRemoveFromProject.mockResolvedValue(false as never);
+
+    const result = await handleDeleteD365File(
+      req({ objectType: 'form', objectName: 'ConDemoTicketTable' }), ctx,
+    );
+
+    const text = textOf(result);
+    expect(text).toContain('Could not update');
+    expect(text).toContain('Feature');
+    expect(text).toContain('did not match on removal');
+    // …and it must NOT claim nothing referenced the object.
+    expect(text).not.toContain('nothing to un-register');
+  });
+
+  it('refuses when objectType does not match the AOT folder the file sits in', async () => {
+    // Everything downstream trusts objectType: the un-register step builds its
+    // Content Include from it, and an unrecognised type resolves to AxClass. So a
+    // mismatch would delete this file and un-register a DIFFERENT object.
+    const result = await handleDeleteD365File(
+      req({ objectType: 'table', filePath: FORM_PATH }), ctx,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(mockUnlink).not.toHaveBeenCalled();
+    expect(mockRemoveFromProject).not.toHaveBeenCalled();
+    const text = textOf(result);
+    expect(text).toContain('AxTable');
+    expect(text).toContain('AxForm');
+  });
+
+  it('refuses a cross-model delete, and does not offer an extension as the remedy', async () => {
+    // An extension cannot un-define its base, so the "extend it from your model
+    // instead" advice every other cross-model refusal gives cannot be followed here.
+    state.modelSegment = 'SomeoneElsesModel';
+    state.modelFromPath = 'SomeoneElsesModel';
+
+    const result = await handleDeleteD365File(
+      req({ objectType: 'form', objectName: 'ConDemoTicketTable' }), ctx,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(mockUnlink).not.toHaveBeenCalled();
+    const text = textOf(result);
+    expect(text).toContain('Refusing to delete');
+    expect(text).toContain('SomeoneElsesModel');
+    expect(text).not.toContain('Extend it from');
+    expect(text).toContain('find_references');
+  });
+
+  describe('grounding', () => {
+    const previous = process.env.GROUNDING_ENFORCE;
+    beforeEach(() => { process.env.GROUNDING_ENFORCE = 'true'; });
+    afterEach(() => {
+      if (previous === undefined) delete process.env.GROUNDING_ENFORCE;
+      else process.env.GROUNDING_ENFORCE = previous;
+    });
+
+    it('requires a grounding token for an extension, exactly as create and modify do', async () => {
+      // Deleting is the one action that cannot be undone. An agent barred from
+      // CREATING a table extension without prepare must not be free to delete one.
+      const result = await handleDeleteD365File(
+        req({ objectType: 'table-extension', objectName: 'CustTable.ConDemoExtension' }), ctx,
+      );
+
+      expect(result.isError).toBe(true);
+      expect(mockUnlink).not.toHaveBeenCalled();
+      expect(textOf(result)).toContain('Grounding required');
+    });
+
+    it('leaves a non-extension object alone — the same scope create and modify use', async () => {
+      const result = await handleDeleteD365File(
+        req({ objectType: 'form', objectName: 'ConDemoTicketTable' }), ctx,
+      );
+      expect(result.isError).toBeFalsy();
+    });
   });
 
   it('points at find_references and source control, the only recovery there is', async () => {

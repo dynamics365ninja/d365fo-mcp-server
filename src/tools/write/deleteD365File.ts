@@ -15,12 +15,20 @@
  * include behind.
  *
  * Guards, in order, and none of them optional:
+ *   • grounding — the gate create and modify apply to *-extension objects, under
+ *     GROUNDING_ENFORCE=true. Exempting the one action that cannot be undone
+ *     would mean an agent barred from CREATING an extension without a prepare
+ *     token is free to DELETE one;
  *   • the object must resolve to a real file — a name that matches nothing is
  *     reported as ❌, never as "done" (a silent no-op reads as a successful
  *     delete and the object is still in the build);
  *   • path containment — the target must sit under a configured
  *     <PackagesLocalDirectory>/<Package>/<Model>/Ax<Type>/<File>.xml layout, so
  *     an explicit filePath cannot traverse out of the metadata tree;
+ *   • objectType against the file's own Ax<Type> folder — everything downstream
+ *     trusts objectType, and axFolderForObjectType answers 'AxClass' for anything
+ *     it does not recognise, so a mismatch would delete this file and un-register
+ *     a different object;
  *   • model ownership — a file in a standard Microsoft model is refused
  *     outright, and one owned by a different CUSTOM model than the write anchor
  *     goes through the same cross-model refusal every write does.
@@ -46,6 +54,7 @@ import {
 } from '../../workspace/projectMembership.js';
 import { forgetCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
 import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
+import { enforceGrounding } from '../../utils/provenanceStore.js';
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { bridgeRefreshProvider } from '../../bridge/index.js';
 
@@ -61,6 +70,10 @@ const DeleteD365FileArgsSchema = z.object({
   projectPath: z.string().optional().describe('Path to a .rnrproj — added to the set searched for includes to remove.'),
   workspacePath: z.string().optional(),
   solutionPath: z.string().optional(),
+  groundingToken: z.string().optional().describe(
+    'prepare(mode="change") token — required for *-extension objects when GROUNDING_ENFORCE=true, ' +
+    'the same gate create and modify apply.'
+  ),
   // Accepted and ignored: `delete` never adds anything to a project. Declared so
   // a caller reusing a create/modify argument object is not rejected over it.
   addToProject: z.boolean().optional(),
@@ -75,6 +88,10 @@ function fail(text: string) {
  * Locate the object's XML. Explicit filePath wins; otherwise the AOT path is
  * rebuilt from config, retried under the name create would have written (the
  * caller usually still holds the UNPREFIXED name it passed to create).
+ *
+ * Only the path comes back: the object's real name is the file's basename in
+ * every branch, and the caller derives it there. Returning a second, separately
+ * computed name invites the two to disagree.
  */
 async function resolveDeletionTarget(
   objectType: string,
@@ -82,19 +99,17 @@ async function resolveDeletionTarget(
   modelName: string | undefined,
   explicitFilePath: string | undefined,
   packagePath: string | undefined,
-): Promise<{ filePath: string; resolvedName: string } | null> {
-  if (explicitFilePath) {
-    return { filePath: explicitFilePath, resolvedName: path.win32.basename(explicitFilePath, '.xml') };
-  }
+): Promise<string | null> {
+  if (explicitFilePath) return explicitFilePath;
 
   const direct = await findD365FileOnDisk(objectType, objectName, modelName, packagePath);
-  if (direct) return { filePath: direct, resolvedName: objectName };
+  if (direct) return direct;
 
   const effectiveModel = modelName || getConfigManager().getModelName() || undefined;
   const normalized = normalizeObjectName(objectName, objectType, effectiveModel);
   if (normalized && normalized.toLowerCase() !== objectName.toLowerCase()) {
     const viaNormalized = await findD365FileOnDisk(objectType, normalized, modelName, packagePath);
-    if (viaNormalized) return { filePath: viaNormalized, resolvedName: normalized };
+    if (viaNormalized) return viaNormalized;
   }
   return null;
 }
@@ -118,11 +133,25 @@ export async function handleDeleteD365File(
     objectName = path.win32.basename(args.filePath, '.xml');
   }
 
+  // ── 0. Grounding ────────────────────────────────────────────────────────────
+  // The same gate create and modify apply to extension objects, and there is no
+  // argument for exempting the one action that cannot be undone: an agent barred
+  // from CREATING a table extension without a prepare token must not be free to
+  // DELETE one. Enforced only when GROUNDING_ENFORCE=true (see enforceGrounding).
+  if (objectType.endsWith('-extension')) {
+    const groundingError = enforceGrounding(
+      args.groundingToken,
+      `d365fo_file(action="delete", objectType="${objectType}", objectName="${objectName}")`,
+      objectName,
+    );
+    if (groundingError) return groundingError;
+  }
+
   // ── 1. Resolve ──────────────────────────────────────────────────────────────
-  const target = await resolveDeletionTarget(
+  const filePath = await resolveDeletionTarget(
     objectType, objectName, args.modelName, args.filePath, args.packagePath,
   );
-  if (!target) {
+  if (!filePath) {
     return fail(
       `❌ Nothing deleted — no ${objectType} named "${objectName}" was found on disk.\n\n` +
       `This is NOT a "already gone, nothing to do" answer: the name may simply be wrong, in which ` +
@@ -134,7 +163,6 @@ export async function handleDeleteD365File(
     );
   }
 
-  const { filePath } = target;
   const resolvedName = path.win32.basename(filePath, '.xml');
 
   // Confirm the file is really there. findD365FileOnDisk checks existence, but an
@@ -160,6 +188,26 @@ export async function handleDeleteD365File(
     return fail(`❌ Refusing to delete ${filePath}: ${containment.reason ?? 'path containment check failed'}`);
   }
 
+  // ── 2b. objectType must match the folder the file actually sits in ──────────
+  // Everything downstream trusts objectType: the un-register step builds its
+  // `<Content Include>` from it, and axFolderForObjectType answers 'AxClass' for
+  // anything it does not recognise. So `objectType="form"` with a filePath under
+  // AxTable deletes the table and then hunts for `AxForm\<Name>` in the projects —
+  // and an objectType outside the enum deletes the file while un-registering a
+  // same-named CLASS. Both are caller mistakes; neither should be survivable.
+  const expectedFolder = axFolderForObjectType(objectType);
+  const actualFolder = path.win32.basename(path.win32.dirname(filePath));
+  if (actualFolder && actualFolder.toLowerCase() !== expectedFolder.toLowerCase()) {
+    return fail(
+      `❌ Refusing to delete ${filePath}: objectType="${objectType}" maps to the AOT folder ` +
+      `"${expectedFolder}", but the file sits in "${actualFolder}".\n\n` +
+      `Deleting it under the wrong type would un-register \`${expectedFolder}\\${resolvedName}\` — a ` +
+      `different object — and leave this one's project entry behind.\n` +
+      `  • Pass the objectType that matches the folder ("${actualFolder}"), or\n` +
+      `  • drop filePath and let the name resolve, if the type is the one you meant.`,
+    );
+  }
+
   // ── 3. Model ownership ──────────────────────────────────────────────────────
   const modelFromPath = extractModelFromFilePath(filePath);
   if (modelFromPath && isStandardModel(modelFromPath)) {
@@ -179,7 +227,7 @@ export async function handleDeleteD365File(
     owningPackage: containment.packageSegment ?? modelFromPath,
     activeModel,
     toolSwitchedModel: configManager.getToolProjectSwitch()?.forcedModel ?? null,
-    action: 'modify',
+    action: 'delete',
     existingExtensions: [],
   });
   if (crossModelRefusal) return fail(crossModelRefusal);
@@ -207,6 +255,15 @@ export async function handleDeleteD365File(
     try {
       const removed = await projectManager.removeFromProject(projectPath, objectType, resolvedName);
       if (removed) unregistered.push(projectDisplayName(projectPath));
+      // `owners` came from resolveMembership, which read this very project and
+      // found the include. A remover that then matches nothing is a disagreement
+      // between the two, not an absent entry — and swallowing it produces exactly
+      // the state this step exists to prevent: the file unlinked, the include
+      // still there, and a report saying no project referenced the object.
+      else unregisterFailures.push(
+        `${projectDisplayName(projectPath)}: lists \`${axFolder}\\${resolvedName}\` but the entry did ` +
+        `not match on removal`,
+      );
     } catch (e: any) {
       unregisterFailures.push(`${projectDisplayName(projectPath)}: ${e?.message ?? e}`);
     }
@@ -249,15 +306,22 @@ export async function handleDeleteD365File(
   } catch { /* bridge not available — nothing loaded it anyway */ }
 
   // ── 7. Report ───────────────────────────────────────────────────────────────
+  // "Nothing to un-register" is a claim about the PROJECTS, and it is only true
+  // when none of them listed the object. Deriving it from `unregistered` being
+  // empty spoke for the failures too: a project that was an owner and could not
+  // be updated came back as "no project referenced it", which is the dangling
+  // include the failure note two lines below is warning about.
   const projectNote =
     unregistered.length > 0
       ? `\n✅ Un-registered from ${unregistered.length} project(s): ${unregistered.join(', ')}.` +
         `\nℹ️  Right-click → Reload Project if Visual Studio is open.`
-      : membership.status === 'unknown'
-        ? `\nℹ️ No .rnrproj could be read, so no project entry was touched. If some project lists ` +
-          `\`${axFolder}\\${resolvedName}\`, remove that entry too or the project will fail to load.`
-        : `\nℹ️ No project of model "${modelForProjects ?? '(unknown)'}" referenced ` +
-          `\`${axFolder}\\${resolvedName}\` — nothing to un-register.`;
+      : unregisterFailures.length > 0
+        ? '' // the failure note below is the whole story
+        : membership.status === 'unknown'
+          ? `\nℹ️ No .rnrproj could be read, so no project entry was touched. If some project lists ` +
+            `\`${axFolder}\\${resolvedName}\`, remove that entry too or the project will fail to load.`
+          : `\nℹ️ No project of model "${modelForProjects ?? '(unknown)'}" referenced ` +
+            `\`${axFolder}\\${resolvedName}\` — nothing to un-register.`;
 
   const failureNote = unregisterFailures.length > 0
     ? `\n⚠️ Could not update ${unregisterFailures.length} project file(s): ${unregisterFailures.join('; ')}\n` +
@@ -276,8 +340,12 @@ export async function handleDeleteD365File(
         failureNote +
         indexNote +
         `\n\nNext: build_d365fo_project to compile the model without it. References to "${resolvedName}" ` +
-        `elsewhere are now compile errors — find_references before deleting is the cheap way to know; ` +
-        `if this delete was a mistake, restore the file from source control (there is no undo for it).`,
+        `elsewhere are now compile errors — find_references before deleting is the cheap way to know.\n` +
+        `If this delete was a mistake: when the model directory is under git, ` +
+        `undo_last_modification(filePath="${filePath}") restores the XML. It does NOT restore the project ` +
+        `entr${unregistered.length === 1 ? 'y' : 'ies'} removed above — re-add ` +
+        `${unregistered.length > 0 ? `\`${axFolder}\\${resolvedName}\` in ${unregistered.join(', ')}` : 'any project entry'} ` +
+        `by hand, or from source control. Outside git there is no undo at all.`,
     }],
   };
 }

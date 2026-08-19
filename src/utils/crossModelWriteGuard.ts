@@ -94,8 +94,14 @@ export interface CrossModelWriteCheck {
   toolSwitchedModel?: string | null;
   /** Extensions of the base object that already exist in the active model. */
   existingExtensions?: ExistingExtension[];
-  /** Wording only — what the caller was about to do. */
-  action?: 'modify' | 'create';
+  /**
+   * Wording only — what the caller was about to do. 'delete' also suppresses the
+   * "extend it from your model instead" remedy: that is the answer for a write
+   * that wanted to CHANGE a foreign object, and an extension cannot un-define
+   * one, so offering it to a caller who asked to remove something is advice that
+   * cannot be followed.
+   */
+  action?: 'modify' | 'create' | 'delete';
 }
 
 /**
@@ -134,6 +140,13 @@ export function activeCrossModelAllowance(): string | null {
  * Returns '' for a write that stayed inside the active model, which is almost
  * every write — callers can concatenate it unconditionally.
  */
+/** Past tense of each `action`, for the notices that report a write already made. */
+const PAST_TENSE: Record<NonNullable<CrossModelWriteCheck['action']>, string> = {
+  create: 'created',
+  modify: 'modified',
+  delete: 'deleted',
+};
+
 export function standDownNotice(check: CrossModelWriteCheck): string {
   const { objectName, owningModel, activeModel } = check;
   const verb = check.action ?? 'modify';
@@ -151,7 +164,7 @@ export function standDownNotice(check: CrossModelWriteCheck): string {
 
   if (crossModelWriteAllowedByConfig(owningModel)) {
     return (
-      `\n\n⚠️ **Cross-model write permitted by configuration.** "${objectName}" was ${verb === 'create' ? 'created' : 'modified'} ` +
+      `\n\n⚠️ **Cross-model write permitted by configuration.** "${objectName}" was ${PAST_TENSE[verb]} ` +
       `in model "${owningModel}", not in "${activeModel}" which this workspace targets. ` +
       `D365FO_ALLOW_CROSS_MODEL_WRITE / D365FO_CROSS_MODEL_WRITE_MODELS is what allowed it. ` +
       `The change will not appear in this workspace's project or version control, and every model ` +
@@ -279,7 +292,19 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
     '',
   );
 
-  if (extType) {
+  if (verb === 'delete') {
+    // The extension remedy below answers "I need this object to behave
+    // differently". It is not an answer to "I need this object gone" — an
+    // extension cannot un-define its base — so offering it here would send the
+    // caller to build something that does not do what they asked.
+    lines.push(
+      `An extension cannot remove a foreign object, so there is no in-model equivalent of this ` +
+      `delete. If "${objectName}" really has to go, it is deleted from "${owningModel}" by whoever ` +
+      `owns that model. If the goal is only that "${activeModel}" stops using it, remove the ` +
+      `references in "${activeModel}" — find_references(name="${objectName}") lists them.`,
+      '',
+    );
+  } else if (extType) {
     const existing = (check.existingExtensions ?? []).filter(e => !eq(e.name, objectName));
     lines.push(`Extend it from "${activeModel}" instead:`);
     if (existing.length > 0) {
