@@ -74,7 +74,7 @@ import {
 } from '../specs/d365foFileOpSpecs.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
-import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
+import { findD365FileOnDisk, expectedD365FilePath } from '../../utils/objectFileLookup.js';
 import {
   crossModelWriteRefusal, standDownNotice, baseObjectOf, type ExistingExtension,
 } from '../../utils/crossModelWriteGuard.js';
@@ -1396,8 +1396,14 @@ const directXmlRemoveDiagnosticSuppression = serializedOnFile(async (
       message: `✅ Suppression '${removedPath}' (${moniker}) removed. File: ${filePath}`,
     };
   } catch (err) {
+    // Real error, not null — see directXmlAddDiagnosticSuppression's catch for
+    // why a null here reads as a bridge-resolution failure it cannot be.
     console.error(`[modify_d365fo_file] directXmlRemoveDiagnosticSuppression failed: ${err}`);
-    return null;
+    return {
+      success: false,
+      message:
+        `❌ Could not remove the suppression from ${filePath}: ${err instanceof Error ? err.message : err}`,
+    };
   }
 });
 
@@ -1411,10 +1417,14 @@ const directXmlRemoveDiagnosticSuppression = serializedOnFile(async (
  * two paths cannot describe two different shapes of suppression. This is only
  * the "place it in the file" half.
  *
- * When the model's suppression file does not exist yet, a fresh one is
- * created — see emptySuppressionListXml's docblock for why that skeleton is
- * unverified, and why the success message must disclose it rather than read
- * as an ordinary edit.
+ * When the model's suppression file does not exist yet, a fresh one is created
+ * — skeleton and all, measured against a shipped PackagesLocalDirectory (see
+ * emptySuppressionListXml). Creating it means creating its FOLDER too:
+ * AxIgnoreDiagnosticList exists only in models that have suppressed something,
+ * which is by definition not the model this branch runs for, and writeFileAtomic
+ * does no mkdir — so without this the one path that advertises "creates the file
+ * for you" failed with ENOENT on the directory, and the caller was told the C#
+ * bridge could not resolve the object.
  */
 const directXmlAddDiagnosticSuppression = serializedOnFile(async (
   filePath: string,
@@ -1463,24 +1473,46 @@ const directXmlAddDiagnosticSuppression = serializedOnFile(async (
             `already in ${filePath} — nothing was added. Nothing needs re-suppressing; if the finding is ` +
             `still firing, the existing entry's <Path> may not match what BP-check now reports.`,
         };
+      case 'no-items':
+        return {
+          success: false,
+          message:
+            `${filePath} has an <IgnoreDiagnostics> root but no <Items> collection, so there is nowhere ` +
+            `to put the <Diagnostic> — nothing was written. Every real suppression list carries <Items> ` +
+            `(empty ones as <Items /> or <Items></Items>); add it by hand and retry, or delete the file ` +
+            `and let this operation write a fresh one.`,
+        };
     }
 
+    // The folder exists for every model that has ever suppressed anything — and
+    // for no other, which is exactly the model this branch serves.
+    if (createdFresh) {
+      await fs.mkdir(path.win32.dirname(filePath), { recursive: true });
+    }
     await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
     console.error(`[modify_d365fo_file] ✅ directXmlAddDiagnosticSuppression: added '${built.xml.match(/<Path>([\s\S]*?)<\/Path>/)?.[1] ?? '?'}' to ${filePath}`);
 
     const warningText = built.warnings.length ? built.warnings.map(w => `⚠️ ${w}`).join('\n') + '\n' : '';
     const freshFileNote = createdFresh
-      ? `\nℹ️ ${filePath} did not exist — created it fresh. This exact skeleton is UNVERIFIED against a real ` +
-        `Microsoft-authored empty file; open it in Visual Studio once to confirm it loads before relying on it, ` +
-        `and add it to the model's .rnrproj if it is not picked up automatically.`
+      ? `\nℹ️ ${filePath} did not exist — created it, and its AxIgnoreDiagnosticList folder. ` +
+        `Add it to the model's .rnrproj if Visual Studio does not pick it up automatically.`
       : '';
     return {
       success: true,
       message: `${warningText}✅ Suppression added. File: ${filePath}${freshFileNote}`,
     };
   } catch (err) {
+    // Returning null here would send an I/O failure — ENOENT on the folder,
+    // EACCES, a file Visual Studio holds open — through the "bridge returned
+    // null" path, which retries a provider refresh and then blames the C#
+    // bridge's metadata roots for an operation that never touched the bridge.
+    // The real error is the only actionable thing there is.
     console.error(`[modify_d365fo_file] directXmlAddDiagnosticSuppression failed: ${err}`);
-    return null;
+    return {
+      success: false,
+      message:
+        `❌ Could not write the suppression to ${filePath}: ${err instanceof Error ? err.message : err}`,
+    };
   }
 });
 
@@ -2343,8 +2375,30 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
     }
 
+    // add-diagnostic-suppression is the one operation allowed to target a file
+    // that does not exist yet: a model that has never suppressed anything before
+    // has no {Model}_BPSuppressions.xml on disk at all, and this operation is
+    // what writes the first one. Every other operation edits an object `create`
+    // already wrote, so a missing file there is a real resolution failure.
+    const targetMayNotExistYet =
+      objectType === 'ignore-diagnostic-list' && operation === 'add-diagnostic-suppression';
+
     // 1. Find the file
-    const filePath = await findD365File(symbolIndex, objectType, objectName, modelName, workspacePath, explicitFilePath, args.packagePath);
+    let filePath = await findD365File(symbolIndex, objectType, objectName, modelName, workspacePath, explicitFilePath, args.packagePath);
+
+    // Lookup gates every candidate on existence, so for that one operation a miss
+    // is the ordinary first-suppression case rather than a failure. Fall back to
+    // where the file WOULD be — the same layout the lookup searched — instead of
+    // answering with "not found, re-run action=create", which cannot create this
+    // type at all (it is absent from create's own objectType enum).
+    if (!filePath && targetMayNotExistYet) {
+      filePath = await expectedD365FilePath(objectType, objectName, modelName, args.packagePath);
+      if (filePath) {
+        console.error(
+          `[modify_d365fo_file] '${objectName}' does not exist yet — add-diagnostic-suppression will create it at ${filePath}`,
+        );
+      }
+    }
 
     if (!filePath) {
       throw new Error(
@@ -2428,13 +2482,6 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
 
     // 2. Resolve actual XML file path (DB may store JSON metadata with sourcePath)
     let actualFilePath = filePath;
-    // add-diagnostic-suppression is the one operation allowed to target a file
-    // that does not exist yet: a model that has never suppressed anything before
-    // has no {Model}_BPSuppressions.xml on disk at all (see
-    // emptySuppressionListXml's docblock) — its own writer creates one fresh.
-    // Every other operation edits an object that create already wrote, so a
-    // missing file there is a real resolution failure, not this case.
-    const targetMayNotExistYet = objectType === 'ignore-diagnostic-list' && operation === 'add-diagnostic-suppression';
     let targetFileExists = true;
     try {
       const fileContent = await fs.readFile(filePath, 'utf-8');

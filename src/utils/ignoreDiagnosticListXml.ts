@@ -123,11 +123,34 @@ export type AddDiagnosticSuppressionResult =
    *  second copy of a suppression that already silences this exact finding. */
   | { kind: 'duplicate'; existing: DiagnosticSuppressionEntry }
   /** Not a suppression list (no <IgnoreDiagnostics> root); the caller declines. */
-  | { kind: 'unsupported' };
+  | { kind: 'unsupported' }
+  /** A suppression list, but with no <Items> collection to insert into — there is
+   *  nowhere to put the entry, and reporting success would write the file back
+   *  byte-identical under a ✅. */
+  | { kind: 'no-items' };
 
-/** Prefix every non-empty line of `block` with `indent`. */
-function indentBlock(block: string, indent: string): string {
-  return block.split('\n').map(line => (line.length ? `${indent}${line}` : line)).join('\n');
+/**
+ * Re-indent a <Diagnostic> block to the file's own indentation style.
+ *
+ * buildSuppressionXml renders two spaces per level; a real suppression file is
+ * indented with tabs (or with two spaces — both occur in a shipped
+ * PackagesLocalDirectory). Prefixing the rendered block with the file's indent
+ * without touching its own leading whitespace produced "\t\t  <Path>" — tabs and
+ * spaces on one line, in a file that uses neither mix anywhere else. So each
+ * line's own depth is measured in the block's units and re-emitted in the
+ * file's: purely cosmetic, but it is the difference between a diff a reviewer
+ * skims and one they stop at.
+ */
+function indentBlock(block: string, baseIndent: string): string {
+  const unit = baseIndent.includes('\t') ? '\t' : '  ';
+  return block
+    .split('\n')
+    .map(line => {
+      if (!line.trim()) return '';
+      const depth = Math.floor((/^ */.exec(line)?.[0].length ?? 0) / 2);
+      return `${baseIndent}${unit.repeat(depth)}${line.trimStart()}`;
+    })
+    .join('\n');
 }
 
 /**
@@ -149,6 +172,16 @@ function indentBlock(block: string, indent: string): string {
  * against a real production file) for the first entry in a file — it does not
  * have to byte-match Microsoft's serializer the way an element order would,
  * because whitespace between elements does not change what deserializes.
+ *
+ * An empty <Items> is spelled BOTH ways in a shipped PackagesLocalDirectory —
+ * `<Items />` (EntAssetManufacturingExecutionBackoffice_BPSuppressions.xml) and
+ * `<Items></Items>` (BusinessIntelligence_BPSuppressions.xml) — so both are
+ * expanded here. The second used to fall through to the generic "insert before
+ * </Items>" branch, which placed the block on the same line as the opening tag.
+ *
+ * A document with NO <Items> at all comes back as 'no-items' rather than as a
+ * successful insert: both replaces below are no-ops there, and returning
+ * 'added' with an unchanged document is a ✅ over a file that gained nothing.
  */
 export function addDiagnosticSuppression(
   xml: string,
@@ -166,14 +199,19 @@ export function addDiagnosticSuppression(
   const existingIndent = /\n([\t ]*)<Diagnostic>/.exec(xml)?.[1] ?? '\t\t';
   const block = indentBlock(diagnosticXml.trim(), existingIndent);
 
+  // `<Items />` and `<Items></Items>` are the same empty collection; both get
+  // expanded around the new block rather than appended to.
+  const emptyItems = /<Items\s*\/>|<Items>\s*<\/Items>/;
   let updated: string;
-  if (/<Items\s*\/>/.test(xml)) {
+  if (emptyItems.test(xml)) {
     const closingIndent = existingIndent.slice(0, -1) || '\t';
-    updated = xml.replace(/<Items\s*\/>/, `<Items>\n${block}\n${closingIndent}</Items>`);
+    updated = xml.replace(emptyItems, `<Items>\n${block}\n${closingIndent}</Items>`);
   } else {
     // Last child, right before </Items> — preserves that tag's own indentation.
     updated = xml.replace(/([\t ]*)<\/Items>/, `${block}\n$1</Items>`);
   }
+
+  if (updated === xml) return { kind: 'no-items' };
 
   return { kind: 'added', xml: updated };
 }
@@ -183,21 +221,28 @@ export function addDiagnosticSuppression(
  * add-diagnostic-suppression targets a model that has never suppressed
  * anything before, so {Model}_BPSuppressions.xml does not exist yet.
  *
- * Root/child shape confirmed against a real production suppression file:
- * root is <IgnoreDiagnostics> directly (no xmlns:i, no wrapping
- * AxIgnoreDiagnosticList element — that name is only the metadata FOLDER),
- * with <Name> and <Items> as its direct children. What
- * remains unverified is only that Visual Studio accepts an <Items /> with zero
- * children — every real file measured already had at least one <Diagnostic>,
- * because VS's own "Suppress in file" action is what normally creates this
- * file, so nothing has actually seen what VS itself writes for a brand new,
- * otherwise-empty one. The caller must disclose when this path is taken, so a
- * human can open the file in Visual Studio once and confirm it loads.
+ * Every part of this is measured against the 339 AxIgnoreDiagnosticList files
+ * of a shipped 10.0 PackagesLocalDirectory — including, contrary to what an
+ * earlier version of this docblock claimed was unknowable, the empty case:
+ *
+ *   • Root is <IgnoreDiagnostics> directly. There is no wrapping
+ *     <AxIgnoreDiagnosticList> element — that name is only the metadata FOLDER.
+ *   • The root carries xmlns:i in 264 of those 339 files, so it is what
+ *     Microsoft's current serializer emits (the bare root in the remaining 75
+ *     also loads — both spellings ship — but matching the majority keeps a
+ *     tool-written file indistinguishable from a VS-written one).
+ *   • <Name> is the file's own base name, not the model's:
+ *     ER_App_Suite_Int_BPSuppressions.xml in model "Electronic Reporting
+ *     Application Suite Integration" carries <Name>ER_App_Suite_Int_BPSuppressions</Name>.
+ *   • An EMPTY list is a real, shipped shape — no disclosure needed, and none
+ *     is made any more:
+ *       EntAssetManufacturingExecutionBackoffice_BPSuppressions.xml → <Items />
+ *       BusinessIntelligence_BPSuppressions.xml                    → <Items></Items>
  */
 export function emptySuppressionListXml(name: string): string {
   return (
     `<?xml version="1.0" encoding="utf-8"?>\n` +
-    `<IgnoreDiagnostics>\n` +
+    `<IgnoreDiagnostics xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n` +
     `\t<Name>${name}</Name>\n` +
     `\t<Items />\n` +
     `</IgnoreDiagnostics>`
@@ -205,9 +250,42 @@ export function emptySuppressionListXml(name: string): string {
 }
 
 /**
- * Bulk-remove every <Diagnostic> whose <Path> is exactly `prefix` or addresses a
- * sub-element of it (`{prefix}/…` or `{prefix}?…`). Used to clean up suppressions
- * left behind when the object they targeted is deleted outright — see
+ * dynamics:// path segments an object of `objectType` can be addressed by.
+ *
+ * The segment is the AOT element type without its 'Ax' prefix — the rule
+ * pathSegmentFor (bpMonikers/index.ts) applies on the ADD side, verified there
+ * against every real entry carrying both <Path> and <ElementType>. Deriving it
+ * from the metadata FOLDER instead, as this cleanup first did, agrees for most
+ * types but is measurably wrong for two, and a wrong segment matches nothing:
+ *
+ *   • edt   → folder AxEdt gives 'Edt', which appears in ZERO real paths. Real
+ *     ones name the concrete EDT type: EdtString (62 entries), EdtInt (7),
+ *     EdtEnum (4), EdtInt64 (3), EdtDate (2), EdtReal (1), EdtGuid (1).
+ *   • query → folder AxQuery gives 'Query'; real paths say QuerySimple (9).
+ *
+ * Deleting an EDT or a query therefore left every one of its suppressions
+ * behind while reporting a clean delete — the exact stale-suppression state
+ * this cleanup exists to prevent. Returning SEVERAL candidate segments is what
+ * covers the EDT family; a prefix is anchored on the object's own name, so an
+ * extra candidate that never occurs simply matches nothing.
+ */
+export function suppressionPathSegmentsForObjectType(
+  objectType: string,
+  axFolder: string,
+): string[] {
+  const overrides: Record<string, string[]> = {
+    edt: ['EdtString', 'EdtInt', 'EdtInt64', 'EdtEnum', 'EdtReal', 'EdtDate', 'EdtGuid', 'Edt'],
+    query: ['QuerySimple', 'Query'],
+  };
+  return overrides[objectType] ?? [axFolder.replace(/^Ax/, '')];
+}
+
+/**
+ * Bulk-remove every <Diagnostic> whose <Path> is exactly one of `prefixes` or
+ * addresses a sub-element of one (`{prefix}/…` or `{prefix}?…` — both separators
+ * occur in real files: `dynamics://Form/X/FormDesign/…` and
+ * `dynamics://EdtString/X?StringSize`). Used to clean up suppressions left
+ * behind when the object they targeted is deleted outright — see
  * deleteD365File.ts. Unlike removeDiagnosticSuppression this never refuses: a
  * deleted object can legitimately have accumulated several suppressions (a
  * control, a field, the object itself), and all of them are equally stale once
@@ -219,15 +297,15 @@ export function emptySuppressionListXml(name: string): string {
  */
 export function removeDiagnosticSuppressionsByPathPrefix(
   xml: string,
-  prefix: string,
+  prefix: string | string[],
 ): { xml: string; removed: DiagnosticSuppressionEntry[] } {
   if (!/<IgnoreDiagnostics\b/.test(xml)) return { xml, removed: [] };
 
   const entries = scanDiagnostics(xml);
-  const needle = prefix.trim().toLowerCase();
+  const needles = (Array.isArray(prefix) ? prefix : [prefix]).map(p => p.trim().toLowerCase());
   const matches = entries.filter(e => {
     const p = e.path.trim().toLowerCase();
-    return p === needle || p.startsWith(`${needle}/`) || p.startsWith(`${needle}?`);
+    return needles.some(n => p === n || p.startsWith(`${n}/`) || p.startsWith(`${n}?`));
   });
   if (matches.length === 0) return { xml, removed: [] };
 

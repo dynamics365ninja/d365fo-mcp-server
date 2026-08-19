@@ -161,7 +161,13 @@ export async function bpMonikerHelpTool(request: CallToolRequest) {
   return {
     content: [{
       type: 'text',
-      text: `${warningText}Add this inside <Items> of ` +
+      text: `${warningText}This is the <Diagnostic> block. You do not have to place it by hand — ` +
+        `d365fo_file(action="modify", objectType="ignore-diagnostic-list", objectName="{Model}_BPSuppressions", ` +
+        `operation="add-diagnostic-suppression") builds it from these same arguments and writes it into ` +
+        `<Items> for you, creating the suppression file if the model has none yet. Pass the moniker as ` +
+        `diagnosticMoniker, the path as diagnosticPath, and so on — get_knowledge(kind="op-spec", ` +
+        `topic="add-diagnostic-suppression") has the full contract.\n\n` +
+        `To place it manually instead, add it inside <Items> of ` +
         `{Model}/{Model}/AxIgnoreDiagnosticList/{Model}_BPSuppressions.xml:\n\n${built.xml}`,
     }],
   };

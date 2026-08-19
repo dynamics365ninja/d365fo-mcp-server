@@ -57,7 +57,9 @@ import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
 import { enforceGrounding } from '../../utils/provenanceStore.js';
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { bridgeRefreshProvider } from '../../bridge/index.js';
-import { removeDiagnosticSuppressionsByPathPrefix } from '../../utils/ignoreDiagnosticListXml.js';
+import {
+  removeDiagnosticSuppressionsByPathPrefix, suppressionPathSegmentsForObjectType,
+} from '../../utils/ignoreDiagnosticListXml.js';
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 
@@ -319,29 +321,53 @@ export async function handleDeleteD365File(
   let suppressionNote = '';
   if (objectType !== 'ignore-diagnostic-list') {
     try {
-      const suppressionModel = owningModel ?? modelForProjects;
-      if (suppressionModel) {
-        const suppressionFile = await findD365FileOnDisk(
-          'ignore-diagnostic-list', `${suppressionModel}_BPSuppressions`, suppressionModel, args.packagePath,
-        );
-        if (suppressionFile) {
-          const raw = await fs.readFile(suppressionFile, 'utf-8');
-          const content = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-          const prefix = `dynamics://${axFolderForObjectType(objectType).replace(/^Ax/, '')}/${resolvedName}`;
-          const { xml, removed } = removeDiagnosticSuppressionsByPathPrefix(content, prefix);
-          if (removed.length > 0) {
-            await writeFileAtomic(suppressionFile, normalizeD365Xml(xml));
-            suppressionNote =
-              `\n🧹 BP suppressions: removed ${removed.length} stale <Diagnostic> entr${removed.length === 1 ? 'y' : 'ies'} ` +
-              `(${removed.map(r => r.moniker).join(', ')}) from ${suppressionFile}.`;
-          }
-        }
+      // EVERY list in the model's AxIgnoreDiagnosticList folder, not just
+      // {Model}_BPSuppressions.xml. Measured on a shipped PackagesLocalDirectory:
+      // one model routinely carries several lists, and their names are tied to
+      // neither the model nor a convention — ApplicationFoundation alone ships
+      // ApplicationFoundation_BPSuppressions.xml, ApplicationIntegration_BPSuppressions.xml,
+      // ApplicationFoundation_CompatibilityChecker.xml, CompatErrors.xml and
+      // CompileError.xml, while model "Electronic Reporting Application Suite
+      // Integration" names its list ER_App_Suite_Int_BPSuppressions.xml. xppbp
+      // reads all of them, so cleaning one by its assumed name leaves the rest
+      // silencing rules against an object that no longer exists.
+      //
+      // The folder is derived from the deleted object's own path — it is the
+      // sibling of its Ax<Type> folder — which also gets the <Package> segment
+      // right for a package != model layout without re-resolving anything.
+      const listsFolder = path.win32.join(
+        path.win32.dirname(path.win32.dirname(filePath)), 'AxIgnoreDiagnosticList',
+      );
+      const prefixes = suppressionPathSegmentsForObjectType(objectType, axFolder)
+        .map(segment => `dynamics://${segment}/${resolvedName}`);
+
+      const listFiles = (await fs.readdir(listsFolder).catch(() => [] as string[]))
+        .filter(entry => entry.toLowerCase().endsWith('.xml'));
+
+      const removedMonikers: string[] = [];
+      const cleanedFiles: string[] = [];
+      for (const entry of listFiles) {
+        const listPath = path.win32.join(listsFolder, entry);
+        const raw = await fs.readFile(listPath, 'utf-8');
+        const content = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+        const { xml, removed } = removeDiagnosticSuppressionsByPathPrefix(content, prefixes);
+        if (removed.length === 0) continue;
+        await writeFileAtomic(listPath, normalizeD365Xml(xml));
+        removedMonikers.push(...removed.map(r => r.moniker));
+        cleanedFiles.push(entry);
+      }
+
+      if (removedMonikers.length > 0) {
+        suppressionNote =
+          `\n🧹 BP suppressions: removed ${removedMonikers.length} stale <Diagnostic> ` +
+          `entr${removedMonikers.length === 1 ? 'y' : 'ies'} (${removedMonikers.join(', ')}) from ` +
+          `${cleanedFiles.join(', ')} in ${listsFolder}.`;
       }
     } catch (e) {
       console.error(`[delete_d365fo_file] Suppression cleanup failed (non-fatal): ${e}`);
       suppressionNote =
-        `\n⚠️ BP suppression cleanup failed — check "${resolvedName}"'s entries in ` +
-        `{Model}_BPSuppressions.xml by hand: ${e instanceof Error ? e.message : e}`;
+        `\n⚠️ BP suppression cleanup failed — check "${resolvedName}"'s entries in the model's ` +
+        `AxIgnoreDiagnosticList\\*.xml by hand: ${e instanceof Error ? e.message : e}`;
     }
   }
 
