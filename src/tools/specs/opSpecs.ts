@@ -50,6 +50,13 @@ const LABELS_TOPICS = ['labels', 'label', 'labels.create', 'labels.rename', 'cre
  * spent on a dead end at the exact moment the caller was already unsure about a name.
  */
 const TOPIC_REDIRECTS: Record<string, string> = {
+  // `delete` is an ACTION, not an operation, so it has no entry in
+  // D365FO_FILE_OP_SPECS to resolve against — and it is the one action whose
+  // contract a caller most wants before calling it. Without this it fell through
+  // to the catalogue of 33 modify operations, none of which is what was asked.
+  delete: 'delete',
+  'delete-object': 'delete',
+  'remove-object': 'delete',
   naming: 'naming',
   prefix: 'naming',
   'object-naming': 'naming',
@@ -59,6 +66,30 @@ const TOPIC_REDIRECTS: Record<string, string> = {
 };
 
 const REDIRECT_ANSWERS: Record<string, string> = {
+  delete: [
+    'd365fo_file(action="delete") — remove an AOT object from the model.',
+    '',
+    'Removes the object XML from disk AND the <Content Include> entry from every .rnrproj of the',
+    'model that lists it. IRREVERSIBLE: there is no undo_last_modification path for it, so confirm',
+    'with the user first, and run find_references first — every remaining reference becomes a',
+    'compile error.',
+    '',
+    '  REQUIRED objectType (string): the same enum action="create" takes.',
+    '  REQUIRED objectName (string): base name; the model prefix is applied on a miss, so the name',
+    '      passed to create resolves too. Optional when filePath is given (derived from the basename).',
+    '  optional modelName (string): owning model — auto-detected when omitted.',
+    '  optional filePath (string): absolute path to the .xml, bypassing lookup.',
+    '  optional packagePath (string): packages root, for metadata outside PackagesLocalDirectory.',
+    '  optional projectPath (string): a .rnrproj to include in the set searched for includes to remove.',
+    '',
+    'Refused, never silently skipped: an object that resolves to nothing (❌, so a wrong name is not',
+    'read as a completed delete), a file in a standard Microsoft model, one owned by a different',
+    'custom model than the write anchor, and any path outside the allowed metadata roots.',
+    '',
+    'Deleting a form control or a privilege entry point instead of a whole object:',
+    '  get_knowledge(kind="op-spec", topic="remove-control")',
+    '  get_knowledge(kind="op-spec", topic="remove-entry-point")',
+  ].join('\n'),
   naming: [
     'Naming is not an op-spec — it is resolved per model, so ask the tools that know your model:',
     '',
@@ -140,6 +171,8 @@ export function renderOpSpecIndex(unknownTopic?: string): string {
     '',
     'generate_object modes:',
     `  ${topics.generateModes.join(', ')}`,
+    '',
+    'd365fo_file(action="delete") — the contract for removing an object (topic="delete").',
     '',
     'd365fo_file resolution overrides (any action, nested in `params`):',
     ...Object.entries(D365FO_FILE_OVERRIDE_PARAMS).map(([k, v]) => `  ${k}: ${v}`),

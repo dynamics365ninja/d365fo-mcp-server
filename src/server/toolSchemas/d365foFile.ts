@@ -15,10 +15,11 @@
 
 export const d365foFileTool = {
     name: 'd365fo_file',
-    description: `Create, modify, or generate a D365FO AOT object. Choose an \`action\`:
+    description: `Create, modify, delete, or generate a D365FO AOT object. Choose an \`action\`:
 • create → write a NEW object file into PackagesLocalDirectory (UTF-8 BOM, auto-added to .rnrproj). THE WRITE STEP — incomplete until isError=false; ⚠️/❌ = failure. Extensions: objectName="Base.PrefixExtension".
 • modify → edit an EXISTING object. APPLIES IMMEDIATELY, no dry-run — confirm with the user first; revert with undo_last_modification. Needs \`operation\`.
-• generate → XML as TEXT only, no write (Azure/Linux fallback). Try create first. create/modify need Windows.
+• delete → remove an object's XML from disk AND un-register it from every .rnrproj of the model that lists it. IRREVERSIBLE — confirm with the user first. Reports ❌ when the object is not found, never a silent no-op.
+• generate → XML as TEXT only, no write (Azure/Linux fallback). Try create first. create/modify/delete need Windows.
 📖 Parameters are NOT inlined here: get_knowledge(kind="op-spec", topic="<operation>"|"<objectType>") returns the contract for the one you picked — pass its values nested in \`params\` (modify) / \`properties\` (create), along with any packageName/packagePath/solutionPath/workspacePath override.
 Model + prefix auto-applied. Classes: member vars inside the class { }, methods after the closing }.`,
     inputSchema: {
@@ -26,8 +27,8 @@ Model + prefix auto-applied. Classes: member vars inside the class { }, methods 
       properties: {
         action: {
           type: 'string',
-          enum: ['create', 'modify', 'generate'],
-          description: 'One of the three modes described above.',
+          enum: ['create', 'modify', 'delete', 'generate'],
+          description: 'One of the four modes described above.',
         },
         objectType: {
           type: 'string',
@@ -45,7 +46,7 @@ Model + prefix auto-applied. Classes: member vars inside the class { }, methods 
           ],
           description:
             'Each security/menu-item type is its own AOT folder — NEVER use security-privilege for duty or role. ' +
-            '[modify]/[generate] cover the core families + their *-extension variants.'
+            '[modify]/[generate] cover the core families + their *-extension variants; [delete] takes the same enum as [create].'
         },
         objectName: {
           type: 'string',
@@ -88,7 +89,8 @@ Model + prefix auto-applied. Classes: member vars inside the class { }, methods 
             'add-delete-action', 'remove-delete-action',
             'add-field-group', 'remove-field-group', 'add-field-to-field-group',
             'add-field-modification',
-            'add-data-source', 'add-control',
+            'add-data-source', 'add-control', 'remove-control',
+            'remove-entry-point',
             'add-enum-value', 'modify-enum-value', 'remove-enum-value',
             'add-menu-item-to-menu',
             'modify-property',
@@ -115,7 +117,7 @@ Model + prefix auto-applied. Classes: member vars inside the class { }, methods 
             'topic="<operation>"). A missing/wrong one returns that COMPLETE spec — follow it, do not guess.',
         },
         createBackup: { type: 'boolean', description: '[modify] Back up before modifying.', default: false },
-        filePath: { type: 'string', description: '[modify] Absolute XML path — bypasses symbol-DB lookup. Use for objects just created.' },
+        filePath: { type: 'string', description: '[modify|delete] Absolute XML path — bypasses symbol-DB lookup. Use for objects just created.' },
       },
       required: ['action'],
     },

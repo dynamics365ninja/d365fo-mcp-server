@@ -139,7 +139,9 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   controlName: {
     type: 'string',
     description:
-      'Name of the new form control — MUST match the field name in the table extension so the binding works.',
+      'add-control: name of the new form control — MUST match the field name in the table extension so ' +
+      'the binding works. remove-control: <Name> of the existing control to delete, at any depth in the ' +
+      'design.',
   },
   parentControl: {
     type: 'string',
@@ -278,6 +280,32 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   enumValueCountryRegionCodes: {
     type: 'string',
     description: 'ISO country/region codes, comma-separated (e.g. "CZ,SK").',
+  },
+  removeSeparator: {
+    type: 'boolean (default false)',
+    description:
+      'remove-control: also delete the adjacent AxFormButtonSeparatorControl — the sibling after the ' +
+      'control, else the one before it. Removing a toolbar button usually orphans its separator, which ' +
+      'then shows as a stray divider. Opt-in: a separator between two REMAINING buttons is load-bearing.',
+  },
+  // security privileges
+  entryPointName: {
+    type: 'string',
+    description:
+      '<Name> of the AxSecurityEntryPointReference to remove — conventionally the menu item name. ' +
+      'This is the entry point ON the privilege, not the privilege itself (that is objectName).',
+  },
+  entryPointObjectName: {
+    type: 'string',
+    description:
+      '<ObjectName> of the entry point — the menu item or service operation it grants access to. Use ' +
+      'instead of entryPointName when the entry point carries a different <Name> than its target.',
+  },
+  entryPointObjectType: {
+    type: 'string (MenuItemDisplay | MenuItemAction | MenuItemOutput | ServiceOperation | None)',
+    description:
+      '<ObjectType> (EntryPointType) of the entry point. Only needed to disambiguate one ObjectName ' +
+      'referenced through two entry-point types — two matches are refused, never guessed.',
   },
   // menus
   menuItemToAdd: { type: 'string', description: 'Name of the menu item to add (e.g. "MyCustomForm").' },
@@ -448,6 +476,33 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       + 'previousSibling works under either parent — under an extension-defined parent it orders the '
       + 'control in the XML, under a base-form parent it is written as '
       + '<PositionType>AfterItem</PositionType> + <PreviousSibling>.',
+  },
+  'remove-control': {
+    required: ['controlName'],
+    optional: ['removeSeparator'],
+    note:
+      'objectType="form" or "form-extension". Removes the control WHEREVER it sits in the design — '
+      + 'controls nest (ActionPane → ButtonGroup → Button), so no parentControl is needed. '
+      + 'On a form-extension the whole <AxFormExtensionControl> envelope goes, not just its '
+      + '<FormControl>: an envelope without its control is a <Parent> reference to nothing. '
+      + 'A control the form SHOWS but does not DEFINE belongs to the base form and is reported as '
+      + 'not found — a form extension cannot delete a base control, only hide it '
+      + '(modify-property Visible=No on a control extension). Emptying a <Controls> collection '
+      + 'collapses it to <Controls />, the spelling the serializer uses.',
+  },
+  'remove-entry-point': {
+    required: [],
+    optional: ['entryPointName', 'entryPointObjectName', 'entryPointObjectType'],
+    mutationOneOf: ['entryPointName', 'entryPointObjectName'],
+    note:
+      'objectType="security-privilege". Removes one <AxSecurityEntryPointReference> — the block that '
+      + 'grants a menu item through this privilege. Identify it by entryPointName, or by '
+      + 'entryPointObjectName (+ entryPointObjectType when the same object is referenced through two '
+      + 'entry-point types). Two matches are REFUSED rather than resolved: removing the wrong entry '
+      + 'point revokes access to a different object, builds clean, and only surfaces as a user losing '
+      + 'a form. Removing the last one collapses <EntryPoints> to <EntryPoints />. '
+      + 'A privilege left with no entry points and no data-entity permissions grants nothing — delete '
+      + 'it with d365fo_file(action="delete") and drop its BP suppression entry.',
   },
   'add-enum-value': {
     required: ['enumValueName'],

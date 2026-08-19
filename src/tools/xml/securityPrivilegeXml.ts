@@ -93,3 +93,121 @@ export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<st
 \t<FormControlOverrides />
 </AxSecurityPrivilege>`;
 }
+
+// ─── Entry-point removal ─────────────────────────────────────────────────────
+
+/** One entry point as it is written into an AxSecurityPrivilege's <EntryPoints>. */
+export interface SecurityEntryPointRef {
+  /** <Name> — the entry point's own name, conventionally equal to ObjectName. */
+  name: string;
+  /** <ObjectName> — the menu item / service operation the entry point grants. */
+  objectName: string;
+  /** <ObjectType> — the EntryPointType enum value. */
+  objectType: string;
+}
+
+export type RemoveEntryPointResult =
+  /** Removed. `removed` is the entry that went, `xml` the updated document. */
+  | { kind: 'removed'; xml: string; removed: SecurityEntryPointRef }
+  /** No entry point matched. `present` lists the ones there are, for the error. */
+  | { kind: 'not-found'; present: SecurityEntryPointRef[] }
+  /** More than one entry point matched — refuse rather than pick. */
+  | { kind: 'ambiguous'; matches: SecurityEntryPointRef[] }
+  /** Not an AxSecurityPrivilege; the caller declines. */
+  | { kind: 'unsupported' };
+
+/** Text of the first `<tag>…</tag>` inside `block`, or '' when absent. */
+function childText(block: string, tag: string): string {
+  const m = new RegExp(String.raw`<${tag}>([\s\S]*?)</${tag}>`).exec(block);
+  return m ? m[1].trim() : '';
+}
+
+/**
+ * Every <AxSecurityEntryPointReference> in the privilege, with its byte range.
+ *
+ * Matched non-greedily on the element, not on `<Name>`: a privilege's own <Name>
+ * and its <DataEntityPermissions> entries carry <Name> too, and an entry point's
+ * <Grant> holds a whole CRUD block of its own.
+ */
+function scanEntryPoints(xml: string): Array<SecurityEntryPointRef & { from: number; to: number }> {
+  const found: Array<SecurityEntryPointRef & { from: number; to: number }> = [];
+  const re = /[\t ]*<AxSecurityEntryPointReference>[\s\S]*?<\/AxSecurityEntryPointReference>\n?/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    const block = m[0];
+    found.push({
+      name: childText(block, 'Name'),
+      objectName: childText(block, 'ObjectName'),
+      objectType: childText(block, 'ObjectType'),
+      from: m.index,
+      to: m.index + block.length,
+    });
+  }
+  return found;
+}
+
+/**
+ * Remove one <AxSecurityEntryPointReference> from an AxSecurityPrivilege.
+ *
+ * The inverse of what buildAxSecurityPrivilegeXml writes for `targetObject`, and
+ * the only grounded way to take a menu item's security exposure back off a
+ * privilege: there is no bridge operation for security objects at all (they are
+ * deliberately excluded from BRIDGE_CREATE_TYPES for the same reason — the
+ * generic property channel cannot carry <EntryPoints>), so the alternative was a
+ * whole-file overwrite.
+ *
+ * Identified by `name`, or by `objectName` (+ `objectType` when the same object
+ * is referenced through more than one entry-point type). Two matches are refused
+ * rather than resolved: removing the wrong entry point silently revokes access
+ * to a different menu item, which builds clean and only surfaces as a user
+ * losing a form.
+ *
+ * When the last entry point goes, <EntryPoints> is collapsed to the self-closing
+ * spelling the serializer uses for an empty collection.
+ */
+export function removeSecurityEntryPoint(
+  xml: string,
+  criteria: { name?: string; objectName?: string; objectType?: string },
+): RemoveEntryPointResult {
+  if (!/<AxSecurityPrivilege\b/.test(xml)) return { kind: 'unsupported' };
+
+  const entries = scanEntryPoints(xml);
+  const present = entries.map(({ name, objectName, objectType }) => ({ name, objectName, objectType }));
+
+  const eq = (a: string, b: string | undefined) =>
+    b !== undefined && a.toLowerCase() === b.trim().toLowerCase();
+
+  const matches = entries.filter(e => {
+    if (criteria.name !== undefined) return eq(e.name, criteria.name);
+    if (!eq(e.objectName, criteria.objectName)) return false;
+    return criteria.objectType === undefined || eq(e.objectType, criteria.objectType);
+  });
+
+  if (matches.length === 0) return { kind: 'not-found', present };
+  if (matches.length > 1) {
+    return {
+      kind: 'ambiguous',
+      matches: matches.map(({ name, objectName, objectType }) => ({ name, objectName, objectType })),
+    };
+  }
+
+  const hit = matches[0];
+  let updated = xml.slice(0, hit.from) + xml.slice(hit.to);
+
+  // Last one out — collapse the collection to the SAME empty spelling
+  // buildAxSecurityPrivilegeXml above emits for a privilege created without a
+  // targetObject, so a privilege stripped back to nothing is byte-identical to one
+  // that never had an entry point (see the round-trip test). Deliberately the
+  // paired form rather than `<EntryPoints />`: that is what this builder writes and
+  // what the create path's golden records, and the two must not disagree over a
+  // difference the deserializer cannot see.
+  if (entries.length === 1) {
+    updated = updated.replace(/<EntryPoints>\s*<\/EntryPoints>/, '<EntryPoints></EntryPoints>');
+  }
+
+  return {
+    kind: 'removed',
+    xml: updated,
+    removed: { name: hit.name, objectName: hit.objectName, objectType: hit.objectType },
+  };
+}

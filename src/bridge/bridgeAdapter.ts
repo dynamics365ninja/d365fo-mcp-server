@@ -1287,6 +1287,11 @@ const BRIDGE_MODIFY_OPS = new Set([
   'modify-property',
   'add-enum-value', 'modify-enum-value', 'remove-enum-value',
   'add-control', 'add-data-source',
+  // Removal of a control, and of a privilege's entry point, have no C# op either
+  // (MetadataWriteService exposes no RemoveControl, and security objects have no
+  // bridge write path at all) — both are served by a direct-XML writer and still
+  // pass through this gate.
+  'remove-control', 'remove-entry-point',
   'add-display-method', 'add-table-method',
   'add-field-modification', 'add-menu-item-to-menu',
 ]);
@@ -1304,6 +1309,24 @@ const BRIDGE_MODIFY_TYPES = new Set([
   'menu-item-action', 'menu-item-display', 'menu-item-output',
   'menu',
 ]);
+
+/**
+ * Operation → the object types it may target that BRIDGE_MODIFY_TYPES does not
+ * cover, because a direct-XML writer serves the pair and the bridge never will.
+ *
+ * This gate is what EVERY modify operation clears before dispatch, whether or not
+ * a C# op backs it, so an XML-only writer for an XML-only type has nowhere else to
+ * be admitted. The pairing is per-operation rather than per-type on purpose:
+ * dropping 'security-privilege' into BRIDGE_MODIFY_TYPES would also claim
+ * add-method, replace-code and modify-property work on a privilege, which they do
+ * not — the bridge has no write path for security objects at all (the same reason
+ * they are absent from BRIDGE_CREATE_TYPES: a generic
+ * Dictionary<string,string> cannot carry <EntryPoints>). The caller would then get
+ * a bridge resolution failure instead of "not supported for this object type".
+ */
+const XML_ONLY_MODIFY_PAIRS: Record<string, ReadonlySet<string>> = {
+  'remove-entry-point': new Set(['security-privilege']),
+};
 
 /**
  * Names the properties the bridge could not write, for appending to a success message.
@@ -1330,7 +1353,10 @@ export function canBridgeCreate(objectType: string): boolean {
  * Checks if bridge can handle this modify operation.
  */
 export function canBridgeModify(objectType: string, operation: string): boolean {
-  return BRIDGE_MODIFY_TYPES.has(objectType.toLowerCase()) && BRIDGE_MODIFY_OPS.has(operation.toLowerCase());
+  const type = objectType.toLowerCase();
+  const op = operation.toLowerCase();
+  if (!BRIDGE_MODIFY_OPS.has(op)) return false;
+  return BRIDGE_MODIFY_TYPES.has(type) || (XML_ONLY_MODIFY_PAIRS[op]?.has(type) ?? false);
 }
 
 /**
