@@ -19,6 +19,7 @@ import {
   removeDiagnosticSuppressionsByPathPrefix,
   addDiagnosticSuppression,
   emptySuppressionListXml,
+  suppressionPathSegmentsForObjectType,
 } from '../../src/utils/ignoreDiagnosticListXml';
 
 function diagnostic(path: string, moniker: string, extra = ''): string {
@@ -243,9 +244,97 @@ describe('addDiagnosticSuppression', () => {
 describe('emptySuppressionListXml', () => {
   it('produces a file addDiagnosticSuppression accepts', () => {
     const skeleton = emptySuppressionListXml('ConDemo_BPSuppressions');
-    expect(skeleton).toContain('<IgnoreDiagnostics>');
+    // The root every shipped list has — 264 of the 339 in a 10.0
+    // PackagesLocalDirectory carry this xmlns:i, so it is what Microsoft's
+    // serializer emits and what a tool-written file should be indistinguishable
+    // from. <Items /> with no children is a real shipped shape too
+    // (EntAssetManufacturingExecutionBackoffice_BPSuppressions.xml).
+    expect(skeleton).toContain('<IgnoreDiagnostics xmlns:i="http://www.w3.org/2001/XMLSchema-instance">');
     expect(skeleton).toContain('<Name>ConDemo_BPSuppressions</Name>');
     const result = addDiagnosticSuppression(skeleton, built('dynamics://Form/X', 'BPErrorGridCaption'));
     expect(result.kind).toBe('added');
+  });
+});
+
+describe('addDiagnosticSuppression — insertion points and no-op detection', () => {
+  it('expands an empty <Items></Items>, not just <Items />', () => {
+    // Both spellings ship: BusinessIntelligence_BPSuppressions.xml writes the
+    // first, EntAssetManufacturingExecutionBackoffice_BPSuppressions.xml the
+    // second. The first used to fall through to the "insert before </Items>"
+    // branch, which put the block on the same line as the opening tag.
+    const xml =
+      `<?xml version="1.0" encoding="utf-8"?>\n<IgnoreDiagnostics>\n\t<Name>X_BPSuppressions</Name>\n` +
+      `\t<Items></Items>\n</IgnoreDiagnostics>`;
+    const result = addDiagnosticSuppression(xml, built('dynamics://Form/X', 'BPErrorGridCaption'));
+
+    expect(result.kind).toBe('added');
+    const out = (result as { xml: string }).xml;
+    // On its own line, not appended to the opening tag.
+    expect(out).not.toMatch(/<Items>[\t ]*<Diagnostic>/);
+    expect(out).toContain('<Items>\n');
+    expect(out).toContain('dynamics://Form/X');
+  });
+
+  it('re-indents the block in the file\'s own unit instead of mixing tabs and spaces', () => {
+    const xml =
+      `<?xml version="1.0" encoding="utf-8"?>\n<IgnoreDiagnostics>\n\t<Name>X_BPSuppressions</Name>\n` +
+      `\t<Items>\n\t\t<Diagnostic>\n\t\t\t<Path>dynamics://Form/Other</Path>\n\t\t\t<Moniker>BPX</Moniker>\n` +
+      `\t\t</Diagnostic>\n\t</Items>\n</IgnoreDiagnostics>`;
+    const result = addDiagnosticSuppression(xml, built('dynamics://Form/X', 'BPErrorGridCaption'));
+
+    expect(result.kind).toBe('added');
+    const out = (result as { xml: string }).xml;
+    // A tab-indented file must not gain a space-indented child.
+    expect(out).not.toMatch(/\t +</);
+    expect(out).toContain('\t\t\t<Path>dynamics://Form/X</Path>');
+  });
+
+  it('reports no-items rather than a successful insert that changed nothing', () => {
+    // A suppression list with no <Items> has nowhere to hold the entry. Both
+    // replaces are no-ops there, and 'added' with an unchanged document is a ✅
+    // over a file that gained nothing.
+    const xml =
+      `<?xml version="1.0" encoding="utf-8"?>\n<IgnoreDiagnostics>\n\t<Name>X_BPSuppressions</Name>\n</IgnoreDiagnostics>`;
+    const result = addDiagnosticSuppression(xml, built('dynamics://Form/X', 'BPErrorGridCaption'));
+
+    expect(result.kind).toBe('no-items');
+  });
+});
+
+describe('suppressionPathSegmentsForObjectType', () => {
+  it('names the concrete EDT types, which is what real paths use', () => {
+    // The AxEdt FOLDER gives 'Edt', which appears in ZERO real suppression
+    // paths — every one names the concrete type (EdtString, EdtInt, …), so a
+    // folder-derived prefix matched nothing and every EDT delete left its
+    // suppressions behind.
+    const segments = suppressionPathSegmentsForObjectType('edt', 'AxEdt');
+    expect(segments).toContain('EdtString');
+    expect(segments).toContain('EdtInt');
+    expect(segments).toContain('EdtEnum');
+  });
+
+  it('names QuerySimple for a query', () => {
+    expect(suppressionPathSegmentsForObjectType('query', 'AxQuery')).toContain('QuerySimple');
+  });
+
+  it('falls back to the folder name for every type where the two agree', () => {
+    expect(suppressionPathSegmentsForObjectType('form', 'AxForm')).toEqual(['Form']);
+    expect(suppressionPathSegmentsForObjectType('table-extension', 'AxTableExtension')).toEqual(['TableExtension']);
+    expect(suppressionPathSegmentsForObjectType('data-entity', 'AxDataEntityView')).toEqual(['DataEntityView']);
+  });
+
+  it('removes by any of several prefixes at once', () => {
+    const xml =
+      `<IgnoreDiagnostics><Items>` +
+      `<Diagnostic><Path>dynamics://EdtString/MyId?StringSize</Path><Moniker>BPA</Moniker></Diagnostic>` +
+      `<Diagnostic><Path>dynamics://EdtInt/MyId</Path><Moniker>BPB</Moniker></Diagnostic>` +
+      `<Diagnostic><Path>dynamics://EdtString/OtherId</Path><Moniker>BPC</Moniker></Diagnostic>` +
+      `</Items></IgnoreDiagnostics>`;
+    const { xml: out, removed } = removeDiagnosticSuppressionsByPathPrefix(
+      xml, suppressionPathSegmentsForObjectType('edt', 'AxEdt').map(s => `dynamics://${s}/MyId`),
+    );
+
+    expect(removed.map(r => r.moniker).sort()).toEqual(['BPA', 'BPB']);
+    expect(out).toContain('OtherId');
   });
 });

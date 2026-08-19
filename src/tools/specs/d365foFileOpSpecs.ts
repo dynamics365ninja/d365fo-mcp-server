@@ -593,9 +593,9 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'shapes — that helper is now redundant for anyone with write access to the metadata; call this ' +
       'directly instead of rendering text to paste by hand. Refuses a duplicate (same diagnosticPath AND ' +
       'diagnosticMoniker already present) rather than writing a second copy. When the model has never ' +
-      'suppressed anything before, {Model}_BPSuppressions.xml does not exist yet — this creates one fresh ' +
-      'and says so in the reply; that empty-file skeleton is unverified against a real Microsoft-authored ' +
-      'sample, so open it in Visual Studio once to confirm it loads.',
+      'suppressed anything before, {Model}_BPSuppressions.xml does not exist yet — this creates it and its ' +
+      'AxIgnoreDiagnosticList folder, in the shape real shipped suppression lists have, and says so in the ' +
+      'reply so you can add it to the model\'s .rnrproj if Visual Studio does not pick it up.',
   },
   'add-enum-value': {
     required: ['enumValueName'],

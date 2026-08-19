@@ -105,8 +105,14 @@ const SUPPRESSIONS_XML = `<?xml version="1.0" encoding="utf-8"?>
 \t</Items>
 </IgnoreDiagnostics>`;
 
-const { mockWriteFile, currentXml } = vi.hoisted(() => ({
+const { mockWriteFile, mockMkdir, mockAccess, currentXml } = vi.hoisted(() => ({
   mockWriteFile: vi.fn(async () => {}),
+  // add-diagnostic-suppression creates the AxIgnoreDiagnosticList folder when it
+  // writes a model's first suppression file — asserted, not just tolerated.
+  mockMkdir: vi.fn(async () => {}),
+  // Existence probe behind findD365FileOnDisk. Rejecting it is how a test says
+  // "this file is not on disk", which is the first-suppression case.
+  mockAccess: vi.fn(async () => {}),
   // null simulates the target .xml not existing yet (ENOENT) — used by
   // add-diagnostic-suppression's "create a fresh suppression file" path.
   currentXml: { value: '' as string | null },
@@ -122,8 +128,8 @@ vi.mock('fs/promises', () => ({
     throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
   }),
   writeFile: mockWriteFile,
-  mkdir: vi.fn(async () => {}),
-  access: vi.fn(async () => {}),
+  mkdir: mockMkdir,
+  access: mockAccess,
   stat: vi.fn(async () => ({ isFile: () => true, isDirectory: () => false })),
   readdir: vi.fn(async () => []),
   copyFile: vi.fn(async () => {}),
@@ -165,6 +171,7 @@ vi.mock('../../src/utils/modelClassifier', () => ({
   applyObjectSuffix: vi.fn((name: string) => name),
   isCustomModel: vi.fn(() => true),
   isStandardModel: vi.fn(() => false),
+  getExtensionNamingStyle: vi.fn(() => 'prefix'),
 }));
 
 const FORM_PATH = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxForm\\ConDemoTicketTable.xml';
@@ -514,6 +521,12 @@ describe('add-diagnostic-suppression through the modify surface', () => {
     ctx = buildContext();
     currentXml.value = SUPPRESSIONS_XML;
     mockWriteFile.mockClear();
+    mockMkdir.mockClear();
+    // clearAllMocks() is not in play here — a rejection installed by one test
+    // would otherwise leak into every test after it.
+    mockAccess.mockReset();
+    mockAccess.mockResolvedValue(undefined as never);
+    mockWriteFile.mockResolvedValue(undefined as never);
   });
 
   it('adds a suppression identified by diagnosticPath', async () => {
@@ -612,7 +625,90 @@ describe('add-diagnostic-suppression through the modify surface', () => {
     expect(xml).toContain('dynamics://Table/ConDemoNewTable');
     const text = result.content[0].text as string;
     expect(text).toContain('did not exist');
-    expect(text).toContain('UNVERIFIED');
+    // The AxIgnoreDiagnosticList folder exists only in models that have already
+    // suppressed something — which is not the model this branch runs for — and
+    // writeFileAtomic does no mkdir, so without this the one path that
+    // advertises "creates the file for you" died on ENOENT for the directory.
+    expect(mockMkdir).toHaveBeenCalledWith(
+      'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxIgnoreDiagnosticList',
+      { recursive: true },
+    );
+  });
+
+  it('writes the first suppression WITHOUT filePath, where lookup found nothing', async () => {
+    // The op spec says objectName is the file's own base name. Lookup gates
+    // every candidate on existence, so for a model that has never suppressed
+    // anything it finds nothing — and the answer used to be "File not found,
+    // re-run action=create", which cannot create this type at all. The whole
+    // create-it-fresh path was reachable only by passing filePath by hand.
+    currentXml.value = null;
+    mockAccess.mockRejectedValue(
+      Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) as never,
+    );
+
+    const result = await modifyD365FileTool(
+      {
+        method: 'tools/call',
+        params: {
+          name: 'modify_d365fo_file',
+          arguments: {
+            objectType: 'ignore-diagnostic-list',
+            objectName: 'MyModel_BPSuppressions',
+            operation: 'add-diagnostic-suppression',
+            diagnosticMoniker: 'BPErrorMissingPKConstraint',
+            diagnosticPath: 'dynamics://Table/ConDemoNewTable',
+          },
+        },
+      } as CallToolRequest,
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    const target = mockWriteFile.mock.calls.find(
+      (c: any[]) => typeof c[0] === 'string' && c[0].includes('AxIgnoreDiagnosticList'),
+    );
+    expect(target).toBeTruthy();
+    expect(target![0]).toContain('MyModel_BPSuppressions.xml');
+    expect(target![1]).toContain('dynamics://Table/ConDemoNewTable');
+  });
+
+  it('reports the real I/O error instead of a bridge-resolution story', async () => {
+    // A writer that returns null on failure goes through the "bridge returned
+    // null" path, which retries a provider refresh and then blames the C#
+    // bridge's metadata roots — for an operation that never touches the bridge.
+    mockWriteFile.mockRejectedValueOnce(
+      Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }) as never,
+    );
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'add-diagnostic-suppression',
+        diagnosticMoniker: 'BPErrorMissingPKConstraint',
+        diagnosticPath: 'dynamics://Table/ConDemoNewTable',
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toContain('EACCES');
+    expect(text).not.toContain('metadata roots');
+  });
+
+  it('refuses a suppression list with no <Items> instead of reporting a write that changed nothing', async () => {
+    currentXml.value =
+      `<?xml version="1.0" encoding="utf-8"?>\n<IgnoreDiagnostics>\n\t<Name>MyModel_BPSuppressions</Name>\n</IgnoreDiagnostics>`;
+    const result = await modifyD365FileTool(
+      req('ignore-diagnostic-list', 'MyModel_BPSuppressions', SUPP_PATH, {
+        operation: 'add-diagnostic-suppression',
+        diagnosticMoniker: 'BPErrorMissingPKConstraint',
+        diagnosticPath: 'dynamics://Table/ConDemoNewTable',
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text as string).toContain('<Items>');
+    expect(written('IgnoreDiagnostics')).toBeUndefined();
   });
 
   it('refuses a file that is not a suppression list', async () => {

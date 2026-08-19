@@ -67,13 +67,17 @@ those are called out explicitly below.
   `{Model}_BPSuppressions.xml` by its `<Path>` (+ `<Moniker>` when the same path
   carries more than one). `add-diagnostic-suppression` builds the block with the
   same `buildSuppressionXml` the `get_knowledge(kind="bp-moniker",
-  action="suppress")` render-only helper already used, refuses a duplicate
-  (same path + moniker) instead of writing a second copy, and creates the file
-  fresh — flagged as unverified against a real Microsoft sample — for a model
-  that has never suppressed anything before. `delete` now also strips any
-  suppression whose `<Path>` targets the object being deleted automatically,
-  closing the gap where deleting an object by hand left its BP-check
-  suppression behind, silencing a rule against nothing.
+  action="suppress")` render-only helper already used (that helper now points at
+  this operation instead of telling you to paste the block by hand), refuses a
+  duplicate (same path + moniker) instead of writing a second copy, and creates
+  the file — and its `AxIgnoreDiagnosticList` folder — for a model that has
+  never suppressed anything before, in the shape measured from the 339
+  suppression lists of a shipped PackagesLocalDirectory. `delete` now also
+  strips any suppression whose `<Path>` targets the object being deleted
+  automatically, across **every** list in that folder (a model routinely carries
+  several, under names tied to neither the model nor a convention), closing the
+  gap where deleting an object by hand left its BP-check suppression behind,
+  silencing a rule against nothing.
 
 ### Changed
 - `EXTENSION_PREFIX_SOURCE` is now the config key **`naming.prefixSource`**
