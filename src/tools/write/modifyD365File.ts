@@ -44,6 +44,10 @@ import { insertFormExtensionControl } from '../../utils/formExtensionControlXml.
 import { removeFormControl } from '../../utils/formControlRemoval.js';
 import { removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
 import {
+  removeDiagnosticSuppression, addDiagnosticSuppression, emptySuppressionListXml,
+} from '../../utils/ignoreDiagnosticListXml.js';
+import { buildSuppressionXml } from '../../knowledge/bpMonikers/index.js';
+import {
   upsertAxTableProperty,
   AX_TABLE_NON_EXISTENT_PROPERTIES,
 } from '../../utils/axTablePropertyOrder.js';
@@ -1333,6 +1337,153 @@ const directXmlRemoveEntryPoint = serializedOnFile(async (
   }
 });
 
+/**
+ * remove-diagnostic-suppression on an AxIgnoreDiagnosticList, written straight
+ * to the XML.
+ *
+ * Not an AOT object at all — MetadataWriteService has no notion of a
+ * suppression list — so this is XML-only for the same structural reason as
+ * remove-entry-point. The matching and the collapse of an emptied <Items> live
+ * in ignoreDiagnosticListXml.ts, next to the bulk-removal helper delete uses
+ * to strip suppressions for an object it just deleted.
+ */
+const directXmlRemoveDiagnosticSuppression = serializedOnFile(async (
+  filePath: string,
+  criteria: { path: string; moniker?: string },
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    const outcome = removeDiagnosticSuppression(content, criteria);
+
+    switch (outcome.kind) {
+      case 'unsupported':
+        return {
+          success: false,
+          message:
+            `${filePath} is not a suppression list (no <IgnoreDiagnostics> root), so it has no <Diagnostic> ` +
+            `entries to remove. remove-diagnostic-suppression applies to objectType="ignore-diagnostic-list" only.`,
+        };
+      case 'not-found':
+        return {
+          success: false,
+          message:
+            `No <Diagnostic> with <Path> '${criteria.path}'` +
+            (criteria.moniker ? ` and <Moniker> '${criteria.moniker}'` : '') +
+            ` was found in ${filePath} — nothing was removed.\n` +
+            (outcome.present.length > 0
+              ? `Suppressions in this file: ` +
+                outcome.present.map(e => `${e.path} (${e.moniker})`).join('; ') + '.'
+              : `This file defines no suppressions at all.`),
+        };
+      case 'ambiguous':
+        return {
+          success: false,
+          message:
+            `'${criteria.path}' matches ${outcome.matches.length} suppressions — refusing to guess which ` +
+            `to remove, since removing the wrong one leaves a live BP finding silenced.\nMatches: ` +
+            outcome.matches.map(e => `${e.path} (${e.moniker})`).join('; ') +
+            `.\nNarrow it with diagnosticMoniker.`,
+        };
+    }
+
+    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+    const { path: removedPath, moniker } = outcome.removed;
+    console.error(`[modify_d365fo_file] ✅ directXmlRemoveDiagnosticSuppression: removed '${removedPath}' (${moniker}) from ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Suppression '${removedPath}' (${moniker}) removed. File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlRemoveDiagnosticSuppression failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * add-diagnostic-suppression on an AxIgnoreDiagnosticList, written straight to
+ * the XML.
+ *
+ * The <Diagnostic> block itself is built by buildSuppressionXml
+ * (bpMonikers/index.ts) — the SAME function get_knowledge(kind="bp-moniker",
+ * action="suppress") uses to render one for a human to paste by hand, so the
+ * two paths cannot describe two different shapes of suppression. This is only
+ * the "place it in the file" half.
+ *
+ * When the model's suppression file does not exist yet, a fresh one is
+ * created — see emptySuppressionListXml's docblock for why that skeleton is
+ * unverified, and why the success message must disclose it rather than read
+ * as an ordinary edit.
+ */
+const directXmlAddDiagnosticSuppression = serializedOnFile(async (
+  filePath: string,
+  input: {
+    moniker: string;
+    path?: string;
+    elementType?: string;
+    elementName?: string;
+    justification?: string;
+    message?: string;
+    severity?: 'Error' | 'Warning';
+    itemSpecific?: boolean;
+  },
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    let content: string;
+    let createdFresh = false;
+    try {
+      const rawContent = await fs.readFile(filePath, 'utf-8');
+      content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    } catch (readErr: any) {
+      if (readErr?.code !== 'ENOENT') throw readErr;
+      content = emptySuppressionListXml(path.win32.basename(filePath, '.xml'));
+      createdFresh = true;
+    }
+
+    const built = buildSuppressionXml(input as any);
+    if (built.errors.length > 0) {
+      return { success: false, message: `❌ ${built.errors.join('\n❌ ')}` };
+    }
+
+    const outcome = addDiagnosticSuppression(content, built.xml);
+    switch (outcome.kind) {
+      case 'unsupported':
+        return {
+          success: false,
+          message:
+            `${filePath} is not a suppression list (no <IgnoreDiagnostics> root). ` +
+            `add-diagnostic-suppression applies to objectType="ignore-diagnostic-list" only.`,
+        };
+      case 'duplicate':
+        return {
+          success: false,
+          message:
+            `A <Diagnostic> suppressing '${outcome.existing.moniker}' on '${outcome.existing.path}' is ` +
+            `already in ${filePath} — nothing was added. Nothing needs re-suppressing; if the finding is ` +
+            `still firing, the existing entry's <Path> may not match what BP-check now reports.`,
+        };
+    }
+
+    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+    console.error(`[modify_d365fo_file] ✅ directXmlAddDiagnosticSuppression: added '${built.xml.match(/<Path>([\s\S]*?)<\/Path>/)?.[1] ?? '?'}' to ${filePath}`);
+
+    const warningText = built.warnings.length ? built.warnings.map(w => `⚠️ ${w}`).join('\n') + '\n' : '';
+    const freshFileNote = createdFresh
+      ? `\nℹ️ ${filePath} did not exist — created it fresh. This exact skeleton is UNVERIFIED against a real ` +
+        `Microsoft-authored empty file; open it in Visual Studio once to confirm it loads before relying on it, ` +
+        `and add it to the model's .rnrproj if it is not picked up automatically.`
+      : '';
+    return {
+      success: true,
+      message: `${warningText}✅ Suppression added. File: ${filePath}${freshFileNote}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddDiagnosticSuppression failed: ${err}`);
+    return null;
+  }
+});
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -1489,6 +1640,7 @@ const ModifyD365FileArgsSchema = z.object({
     'menu-item-display-extension', 'menu-item-action-extension', 'menu-item-output-extension',
     'menu', 'menu-extension',
     'security-privilege', 'security-duty', 'security-role',
+    'ignore-diagnostic-list',
   ]).describe('Type of D365FO object'),
   objectName: z.string().optional().describe(
     'Name of the object to modify. Optional when filePath is provided — it is then ' +
@@ -1508,7 +1660,7 @@ const ModifyD365FileArgsSchema = z.object({
     'add-data-source',
     'modify-property',
     'add-control', 'remove-control',
-    'remove-entry-point',
+    'remove-entry-point', 'remove-diagnostic-suppression', 'add-diagnostic-suppression',
     'add-enum-value', 'modify-enum-value', 'remove-enum-value',
     'add-display-method', 'add-table-method', 'add-menu-item-to-menu',
   ]).describe(
@@ -1759,6 +1911,41 @@ const ModifyD365FileArgsSchema = z.object({
     'remove-entry-point: <ObjectType> (EntryPointType) — MenuItemDisplay | MenuItemAction | ' +
     'MenuItemOutput | ServiceOperation | None. Only needed to disambiguate the same ObjectName ' +
     'referenced through two entry-point types.'
+  ),
+
+  // For remove-diagnostic-suppression (ignore-diagnostic-list).
+  diagnosticPath: z.string().optional().describe(
+    'remove-diagnostic-suppression: exact <Path> of the <Diagnostic> to remove (e.g. "dynamics://Form/MyForm").'
+  ),
+  diagnosticMoniker: z.string().optional().describe(
+    'remove-diagnostic-suppression: <Moniker> of the suppression to remove. Only needed when the same ' +
+    'diagnosticPath carries more than one <Diagnostic>. add-diagnostic-suppression: REQUIRED — the BP ' +
+    'moniker being suppressed (e.g. "BPErrorPrivilegeNotCoveredByDuty"), validated against the known catalog.'
+  ),
+  diagnosticElementType: z.string().optional().describe(
+    'add-diagnostic-suppression: top-level AOT element type of the object the finding was raised against ' +
+    '(e.g. "AxForm", "AxSecurityPrivilege") — used with diagnosticElementName to DERIVE diagnosticPath when ' +
+    'it is not given. Ignored for sub-elements (a control, a field, a method, an enum value): those need ' +
+    'diagnosticPath verbatim from the finding, since there is no way to derive a path that drills in.'
+  ),
+  diagnosticElementName: z.string().optional().describe(
+    'add-diagnostic-suppression: name of the object the finding was raised against, paired with ' +
+    'diagnosticElementType to derive diagnosticPath.'
+  ),
+  diagnosticJustification: z.string().optional().describe(
+    'add-diagnostic-suppression: why this warning is being ignored. Omitting it writes an obvious TODO ' +
+    'and a warning — a suppression with no reason is what a reviewer rejects.'
+  ),
+  diagnosticMessage: z.string().optional().describe(
+    'add-diagnostic-suppression: the real message text from the BP-check finding, if known. Never invented ' +
+    'when omitted — <Message> is simply left off, which is normal (57% of real entries have none).'
+  ),
+  diagnosticSeverity: z.enum(['Error', 'Warning']).optional().describe(
+    'add-diagnostic-suppression: <Severity> of the diagnostic being suppressed. Default: Warning.'
+  ),
+  diagnosticItemSpecific: z.boolean().optional().describe(
+    'add-diagnostic-suppression: emit the <ItemSpecific> block (rare — ~9% of real entries). Requires ' +
+    'diagnosticElementName.'
   ),
 
   // For add-field-modification (table-extension only)
@@ -2241,6 +2428,14 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
 
     // 2. Resolve actual XML file path (DB may store JSON metadata with sourcePath)
     let actualFilePath = filePath;
+    // add-diagnostic-suppression is the one operation allowed to target a file
+    // that does not exist yet: a model that has never suppressed anything before
+    // has no {Model}_BPSuppressions.xml on disk at all (see
+    // emptySuppressionListXml's docblock) — its own writer creates one fresh.
+    // Every other operation edits an object that create already wrote, so a
+    // missing file there is a real resolution failure, not this case.
+    const targetMayNotExistYet = objectType === 'ignore-diagnostic-list' && operation === 'add-diagnostic-suppression';
+    let targetFileExists = true;
     try {
       const fileContent = await fs.readFile(filePath, 'utf-8');
       const trimmed = fileContent.trimStart();
@@ -2261,19 +2456,24 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       if (readError instanceof SyntaxError || (readError instanceof Error && readError.message.includes('sourcePath'))) {
         throw readError;
       }
-      const isRelative = !path.isAbsolute(filePath);
-      const hint = isRelative
-        ? ' The path is relative — the symbol DB returned a build-agent path. ' +
-          'Pass filePath="<absolute path>" or modelName="<YourModel>" so the tool can locate the file on disk.'
-        : '';
-      throw new Error(`Cannot read file: ${filePath}${hint}`);
+      if (targetMayNotExistYet && (readError as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        targetFileExists = false;
+      } else {
+        const isRelative = !path.isAbsolute(filePath);
+        const hint = isRelative
+          ? ' The path is relative — the symbol DB returned a build-agent path. ' +
+            'Pass filePath="<absolute path>" or modelName="<YourModel>" so the tool can locate the file on disk.'
+          : '';
+        throw new Error(`Cannot read file: ${filePath}${hint}`);
+      }
     }
 
     // 3. Create backup of the actual XML file. When the target is NOT inside a
     //    git work tree, the documented undo path (undo_last_modification →
     //    git checkout) cannot revert the change — force a backup even with
-    //    createBackup=false so a bad modify is never unrecoverable.
-    const backupNote = await ensureRecoverableModification(actualFilePath, createBackup);
+    //    createBackup=false so a bad modify is never unrecoverable. Skipped
+    //    outright when the file does not exist yet: there is nothing to back up.
+    const backupNote = targetFileExists ? await ensureRecoverableModification(actualFilePath, createBackup) : '';
 
     // 3b. Derive the authoritative object name from the resolved file path.
     //     The caller may pass objectName="RentEquipment" while the file on disk
@@ -3233,6 +3433,33 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             name: epName,
             objectName: epObject,
             objectType: (args as any).entryPointObjectType,
+          }));
+        }
+        break;
+      }
+      case 'remove-diagnostic-suppression': {
+        // Not an AOT object at all — no bridge write path exists (see the writer).
+        const diagnosticPath = (args as any).diagnosticPath;
+        if (diagnosticPath) {
+          bridgeResult = viaXmlFallback(await directXmlRemoveDiagnosticSuppression(actualFilePath, {
+            path: diagnosticPath,
+            moniker: (args as any).diagnosticMoniker,
+          }));
+        }
+        break;
+      }
+      case 'add-diagnostic-suppression': {
+        // Not an AOT object at all — no bridge write path exists (see the writer).
+        if ((args as any).diagnosticMoniker) {
+          bridgeResult = viaXmlFallback(await directXmlAddDiagnosticSuppression(actualFilePath, {
+            moniker: (args as any).diagnosticMoniker,
+            path: (args as any).diagnosticPath,
+            elementType: (args as any).diagnosticElementType,
+            elementName: (args as any).diagnosticElementName,
+            justification: (args as any).diagnosticJustification,
+            message: (args as any).diagnosticMessage,
+            severity: (args as any).diagnosticSeverity,
+            itemSpecific: (args as any).diagnosticItemSpecific,
           }));
         }
         break;

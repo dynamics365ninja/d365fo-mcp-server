@@ -30,11 +30,18 @@ function enumOf(prop: string): string[] {
   return values;
 }
 
+// objectType values that action=create does not support — the shared enum also
+// serves modify/delete, which can target things create never writes (e.g. a
+// BP-suppression list is a per-model singleton create has no reason to author).
+// Excluded here so "N AOT object types" keeps meaning "types create can make",
+// not the size of the shared enum.
+const NOT_CREATABLE_OBJECT_TYPES = new Set(['ignore-diagnostic-list']);
+
 describe('docs/MCP_TOOLS.md counts match the published schema', () => {
   const doc = readDoc('MCP_TOOLS.md');
 
   it('states the real number of AOT object types', () => {
-    const actual = enumOf('objectType').length;
+    const actual = enumOf('objectType').filter(t => !NOT_CREATABLE_OBJECT_TYPES.has(t)).length;
     expect(
       doc,
       `d365fo_file publishes ${actual} objectType values; update the "N AOT object types" ` +

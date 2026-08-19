@@ -98,6 +98,7 @@ const AX_FOLDER_BY_OBJECT_TYPE: Record<string, string> = {
   'security-policy': 'AxSecurityPolicy',
   'aggregate-measurement': 'AxAggregateMeasurement',
   'license-code': 'AxLicenseCode',
+  'ignore-diagnostic-list': 'AxIgnoreDiagnosticList',
 };
 
 export function axFolderForObjectType(objectType: string): string {

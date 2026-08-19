@@ -27,12 +27,17 @@ const PROJECT_B = 'K:\\VSProjects\\MyModel\\Maintenance\\Maintenance.rnrproj';
 
 const {
   mockUnlink, mockStat, mockRemoveFromProject, mockResolveMembership,
-  mockFindOnDisk, mockRemoveSymbols, mockRemoveLabels, mockForget, state,
+  mockFindOnDisk, mockRemoveSymbols, mockRemoveLabels, mockForget, mockWriteFile, state,
 } = vi.hoisted(() => {
   const state = {
     owners: [] as string[],
     membershipStatus: 'active' as string,
     onDisk: null as string | null,
+    // Separate from `onDisk`: the deletion-target lookup and the post-delete
+    // BP-suppression-file lookup share the same findD365FileOnDisk mock, and
+    // most tests care only about the former.
+    suppressionFileOnDisk: null as string | null,
+    suppressionsXml: undefined as string | undefined,
     isStandardModel: false,
     modelFromPath: 'MyModel' as string | null,
     modelSegment: 'MyModel' as string | null,
@@ -43,19 +48,30 @@ const {
     mockStat: vi.fn(async () => ({ isFile: () => true, isDirectory: () => false })),
     mockRemoveFromProject: vi.fn(async () => true),
     mockResolveMembership: vi.fn(async () => ({ status: state.membershipStatus, owners: state.owners })),
-    mockFindOnDisk: vi.fn(async () => state.onDisk),
+    mockFindOnDisk: vi.fn(async (objectType: string) => (
+      objectType === 'ignore-diagnostic-list' ? state.suppressionFileOnDisk : state.onDisk
+    )),
     mockRemoveSymbols: vi.fn(() => ({ deletedCount: 3, objectNames: ['ConDemoTicketTable'] })),
     mockRemoveLabels: vi.fn(() => 0),
     mockForget: vi.fn(),
+    mockWriteFile: vi.fn(async () => {}),
   };
 });
 
 vi.mock('fs/promises', () => ({
   unlink: mockUnlink,
   stat: mockStat,
-  readFile: vi.fn(async () => '<Project><ItemGroup></ItemGroup></Project>'),
-  writeFile: vi.fn(async () => {}),
+  readFile: vi.fn(async (p: string) => (
+    typeof p === 'string' && p.includes('BPSuppressions')
+      ? (state.suppressionsXml ?? '<IgnoreDiagnostics><Items /></IgnoreDiagnostics>')
+      : '<Project><ItemGroup></ItemGroup></Project>'
+  )),
+  writeFile: mockWriteFile,
   access: vi.fn(async () => {}),
+  // writeFileAtomic (used by the post-delete BP-suppression cleanup) writes a
+  // temp sibling and renames it over the target.
+  rename: vi.fn(async () => {}),
+  rm: vi.fn(async () => {}),
 }));
 
 vi.mock('../../src/utils/objectFileLookup', () => ({
@@ -137,6 +153,8 @@ beforeEach(() => {
   state.owners = [PROJECT_A];
   state.membershipStatus = 'active';
   state.onDisk = FORM_PATH;
+  state.suppressionFileOnDisk = null;
+  state.suppressionsXml = undefined;
   state.isStandardModel = false;
   state.modelFromPath = 'MyModel';
   state.modelSegment = 'MyModel';
@@ -148,7 +166,9 @@ beforeEach(() => {
   mockResolveMembership.mockImplementation(async () => ({
     status: state.membershipStatus, owners: state.owners,
   }) as never);
-  mockFindOnDisk.mockImplementation(async () => state.onDisk as never);
+  mockFindOnDisk.mockImplementation(async (objectType: string) => (
+    objectType === 'ignore-diagnostic-list' ? state.suppressionFileOnDisk : state.onDisk
+  ) as never);
 });
 
 describe('d365fo_file(action="delete")', () => {
@@ -218,9 +238,13 @@ describe('d365fo_file(action="delete")', () => {
     );
 
     expect(result.isError).toBeFalsy();
-    expect(mockFindOnDisk).toHaveBeenCalledTimes(2);
+    // 2 calls to resolve the deletion target (miss, then retry under the
+    // normalized name), + 1 for the post-delete BP-suppression-file lookup.
+    expect(mockFindOnDisk).toHaveBeenCalledTimes(3);
     // Second attempt used the normalized (prefixed) name.
     expect(mockFindOnDisk.mock.calls[1][1]).toBe('ConDemoTicketTable');
+    // Third call looks up the model's suppression file, not the deleted object.
+    expect(mockFindOnDisk.mock.calls[2][0]).toBe('ignore-diagnostic-list');
     expect(mockUnlink).toHaveBeenCalledWith(FORM_PATH);
   });
 
@@ -330,6 +354,70 @@ describe('d365fo_file(action="delete")', () => {
     const result = await handleDeleteD365File(req({ objectType: 'form' }), ctx);
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('objectName');
+  });
+
+  it('strips stale BP suppressions for the deleted object from the model suppression file', async () => {
+    const suppFile = `${PLD}\\MyPackage\\MyModel\\AxIgnoreDiagnosticList\\MyModel_BPSuppressions.xml`;
+    state.suppressionFileOnDisk = suppFile;
+    state.suppressionsXml =
+      `<IgnoreDiagnostics><Items>` +
+      `<Diagnostic><Path>dynamics://Form/ConDemoTicketTable</Path><Moniker>BPErrorGridCaption</Moniker></Diagnostic>` +
+      `<Diagnostic><Path>dynamics://Form/SomeOtherForm</Path><Moniker>BPErrorGridCaption</Moniker></Diagnostic>` +
+      `</Items></IgnoreDiagnostics>`;
+
+    const result = await handleDeleteD365File(
+      req({ objectType: 'form', objectName: 'ConDemoTicketTable' }), ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining(`${suppFile}.tmp-`),
+      expect.stringContaining('SomeOtherForm'),
+      'utf-8',
+    );
+    const [, writtenXml] = mockWriteFile.mock.calls.find(
+      (c: any[]) => typeof c[0] === 'string' && c[0].startsWith(`${suppFile}.tmp-`),
+    )!;
+    expect(writtenXml).not.toContain('ConDemoTicketTable');
+    expect(textOf(result)).toContain('🧹 BP suppressions: removed 1 stale');
+  });
+
+  it('leaves the suppression file untouched when nothing there targets the deleted object', async () => {
+    state.suppressionFileOnDisk = `${PLD}\\MyPackage\\MyModel\\AxIgnoreDiagnosticList\\MyModel_BPSuppressions.xml`;
+    state.suppressionsXml =
+      `<IgnoreDiagnostics><Items>` +
+      `<Diagnostic><Path>dynamics://Form/SomeOtherForm</Path><Moniker>BPErrorGridCaption</Moniker></Diagnostic>` +
+      `</Items></IgnoreDiagnostics>`;
+
+    const result = await handleDeleteD365File(
+      req({ objectType: 'form', objectName: 'ConDemoTicketTable' }), ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(mockWriteFile).not.toHaveBeenCalledWith(
+      expect.stringContaining('BPSuppressions'), expect.anything(), expect.anything(),
+    );
+    expect(textOf(result)).not.toContain('BP suppressions');
+  });
+
+  it('does not attempt suppression cleanup when no suppression file exists for the model', async () => {
+    state.suppressionFileOnDisk = null;
+    const result = await handleDeleteD365File(
+      req({ objectType: 'form', objectName: 'ConDemoTicketTable' }), ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).not.toContain('BP suppressions');
+  });
+
+  it('does not attempt suppression cleanup when the deleted object IS the suppression list itself', async () => {
+    state.suppressionFileOnDisk = `${PLD}\\MyPackage\\MyModel\\AxIgnoreDiagnosticList\\MyModel_BPSuppressions.xml`;
+    const result = await handleDeleteD365File(
+      req({ objectType: 'ignore-diagnostic-list', objectName: 'MyModel_BPSuppressions' }), ctx,
+    );
+    expect(result.isError).toBeFalsy();
+    // Only the deletion-target lookup runs — no second call for the file it IS.
+    expect(mockFindOnDisk).toHaveBeenCalledTimes(1);
+    expect(textOf(result)).not.toContain('BP suppressions');
   });
 
   it('reports an owning project whose include did not match, instead of staying silent', async () => {

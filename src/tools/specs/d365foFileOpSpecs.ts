@@ -307,6 +307,65 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       '<ObjectType> (EntryPointType) of the entry point. Only needed to disambiguate one ObjectName ' +
       'referenced through two entry-point types — two matches are refused, never guessed.',
   },
+  // BP-check suppressions
+  diagnosticPath: {
+    type: 'string',
+    description:
+      'remove-diagnostic-suppression: REQUIRED — exact <Path> of the <Diagnostic> to remove (e.g. ' +
+      '"dynamics://Form/MyForm"), copied verbatim from the suppression entry. ' +
+      'add-diagnostic-suppression: the dynamics:// path a BP-check finding was raised against — copy it ' +
+      'verbatim from the finding when you have it (the only way to address a sub-element: a control, a ' +
+      'field, a method, an enum value). Preferred over diagnosticElementType + diagnosticElementName, which ' +
+      'can only derive a path to a whole top-level object. This is the same value ' +
+      'get_knowledge(kind="bp-moniker", action="suppress") renders it from.',
+  },
+  diagnosticMoniker: {
+    type: 'string',
+    description:
+      'remove-diagnostic-suppression: <Moniker> of the suppression to remove. Only needed when the same ' +
+      'diagnosticPath carries more than one <Diagnostic> (two different rules ignored on the same target) ' +
+      '— two matches on path alone are refused, never guessed. ' +
+      'add-diagnostic-suppression: REQUIRED — the BP moniker being suppressed, validated against the known ' +
+      'catalog (e.g. "BPErrorPrivilegeNotCoveredByDuty").',
+  },
+  diagnosticElementType: {
+    type: 'string (AxClass | AxTable | AxForm | AxView | AxMap | AxEnum | AxQuerySimple | ' +
+      'AxDataEntityView | AxSecurityPrivilege | AxSecurityDuty | AxSecurityRole | AxTableExtension | ' +
+      'AxFormExtension | AxMenuExtension | AxMenu | AxMenuItemDisplay | AxMenuItemAction | ' +
+      'AxMenuItemOutput | AxEdtString | AxEdtInt | … | AxConfigurationKey | AxLicenseCode)',
+    description:
+      'add-diagnostic-suppression: top-level AOT element type of the object the finding was raised against ' +
+      '— used with diagnosticElementName to DERIVE diagnosticPath when it is not given directly. Only ' +
+      'addresses a whole object; a sub-element needs diagnosticPath verbatim from the finding instead.',
+  },
+  diagnosticElementName: {
+    type: 'string',
+    description:
+      'add-diagnostic-suppression: name of the object the finding was raised against, paired with ' +
+      'diagnosticElementType to derive diagnosticPath.',
+  },
+  diagnosticJustification: {
+    type: 'string',
+    description:
+      'add-diagnostic-suppression: why this warning is being ignored. Omitting it writes an obvious TODO ' +
+      'placeholder plus a warning — a suppression with no stated reason is what a reviewer rejects.',
+  },
+  diagnosticMessage: {
+    type: 'string',
+    description:
+      'add-diagnostic-suppression: the real message text from the BP-check finding, if known. Never ' +
+      'invented when omitted — <Message> is simply left off, which is normal (absent from most real entries).',
+  },
+  diagnosticSeverity: {
+    type: 'string (Error | Warning)',
+    description: 'add-diagnostic-suppression: <Severity> of the diagnostic being suppressed. Default: Warning.',
+  },
+  diagnosticItemSpecific: {
+    type: 'boolean (default false)',
+    description:
+      'add-diagnostic-suppression: emit the <ItemSpecific> block — rare, only for element-specific rules ' +
+      '(BPErrorUnknownLabel, BPXmlDoc*, BPErrorPrivilegeNotCoveredByDuty, …). Requires diagnosticElementName.',
+  },
   // menus
   menuItemToAdd: { type: 'string', description: 'Name of the menu item to add (e.g. "MyCustomForm").' },
   menuItemToAddType: {
@@ -503,6 +562,40 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       + 'a form. Removing the last one collapses <EntryPoints> to <EntryPoints />. '
       + 'A privilege left with no entry points and no data-entity permissions grants nothing — delete '
       + 'it with d365fo_file(action="delete") and drop its BP suppression entry.',
+  },
+  'remove-diagnostic-suppression': {
+    required: ['diagnosticPath'],
+    optional: ['diagnosticMoniker'],
+    note:
+      'objectType="ignore-diagnostic-list". Removes one <Diagnostic> from a {Model}_BPSuppressions.xml ' +
+      '— objectName is the file\'s own base name, "{Model}_BPSuppressions" (or pass filePath). Identify ' +
+      'the entry by diagnosticPath, the exact <Path> a BP-check finding was suppressed against; add ' +
+      'diagnosticMoniker when the same path carries more than one suppressed rule. Two matches on path ' +
+      'alone are REFUSED rather than resolved: removing the wrong one leaves a live finding silenced. ' +
+      'Removing the last entry collapses <Items> to <Items />. ' +
+      'd365fo_file(action="delete") already strips suppressions whose <Path> targets the deleted object ' +
+      '— use this operation for suppressions left stale by other means (a moniker fixed in code, a ' +
+      'renamed sub-element).',
+  },
+  'add-diagnostic-suppression': {
+    required: ['diagnosticMoniker'],
+    optional: [
+      'diagnosticPath', 'diagnosticElementType', 'diagnosticElementName',
+      'diagnosticJustification', 'diagnosticMessage', 'diagnosticSeverity', 'diagnosticItemSpecific',
+    ],
+    note:
+      'objectType="ignore-diagnostic-list". Adds one <Diagnostic> to a {Model}_BPSuppressions.xml — ' +
+      'objectName is the file\'s own base name, "{Model}_BPSuppressions" (or pass filePath). Needs ' +
+      'diagnosticMoniker PLUS either diagnosticPath (verbatim from the finding — the only way to address ' +
+      'a control/field/method/enum value) or diagnosticElementType + diagnosticElementName (derives a path ' +
+      'to a whole top-level object only). Builds the <Diagnostic> the same way ' +
+      'get_knowledge(kind="bp-moniker", action="suppress") does, so the two cannot describe two different ' +
+      'shapes — that helper is now redundant for anyone with write access to the metadata; call this ' +
+      'directly instead of rendering text to paste by hand. Refuses a duplicate (same diagnosticPath AND ' +
+      'diagnosticMoniker already present) rather than writing a second copy. When the model has never ' +
+      'suppressed anything before, {Model}_BPSuppressions.xml does not exist yet — this creates one fresh ' +
+      'and says so in the reply; that empty-file skeleton is unverified against a real Microsoft-authored ' +
+      'sample, so open it in Visual Studio once to confirm it loads.',
   },
   'add-enum-value': {
     required: ['enumValueName'],

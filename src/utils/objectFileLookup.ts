@@ -50,6 +50,7 @@ export async function findD365FileOnDisk(
     'security-privilege': 'AxSecurityPrivilege',
     'security-duty': 'AxSecurityDuty',
     'security-role': 'AxSecurityRole',
+    'ignore-diagnostic-list': 'AxIgnoreDiagnosticList',
   };
 
   const objectFolder = folderMap[objectType];
