@@ -203,25 +203,25 @@ describe('run_bp_check — path resolution', () => {
       expect(metaArg).toContain(UDE_CUSTOM);
     });
 
-    // The build writes `<modelStore>\<Model>\XppMetadata` (build_d365fo_project passes
-    // -compilermetadata=<model store>), so that is the only root on a UDE box where the
-    // module's compiler metadata exists. Aiming -compilerMetadata at the framework
-    // directory instead makes xppbp report the checked element as never compiled and skip
-    // every rule that reads compiled X++.
-    it('passes -compilerMetadata= pointing to customPackagesPath (where the build writes it)', async () => {
+    // -compilerMetadata must point to the framework directory (microsoftPackagesPath) so
+    // xppbp's StaticRuntimeProvider can find {frameworkDir}\StaticMetadata\AxView.md.
+    // Those compiled .md files live in the deployed packages tree, never in the source
+    // model store — pointing there causes a BPFrameworkFatalException crash on every run.
+    // Trade-off: CompilerMetadataMissing for compiled-X++ rules (xppc now writes XppMetadata
+    // to the model store after PR #919), but a warning is far better than a fatal crash.
+    it('passes -compilerMetadata= pointing to microsoftPackagesPath (framework dir for static metadata)', async () => {
       allowPaths([UDE_CUSTOM, UDE_MS, UDE_XPPBP]);
 
       await runBpCheckTool({ modelName: 'MyModel' }, {});
 
       const args    = capturedArgs(0);
       const compArg = args.find(a => a.includes('compilerMetadata'));
-      expect(compArg).toContain(UDE_CUSTOM);
-      expect(compArg).not.toContain(UDE_MS);
+      expect(compArg).toContain(UDE_MS);
+      expect(compArg).not.toContain(UDE_CUSTOM);
     });
 
-    // Separate flag, separate root: referenced Microsoft modules resolve from their
-    // binaries in the framework directory, which is what lets -compilerMetadata stay on
-    // the model store.
+    // -packagesRoot also points to the framework directory (same path as -compilerMetadata
+    // on UDE) so Microsoft module binaries resolve correctly.
     it('passes -packagesRoot= pointing to microsoftPackagesPath alongside it', async () => {
       allowPaths([UDE_CUSTOM, UDE_MS, UDE_XPPBP]);
 

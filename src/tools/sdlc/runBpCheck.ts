@@ -491,24 +491,26 @@ export const runBpCheckTool = async (params: any, context: any) => {
     // metadataPath:         X++ source XML — the model store (UDE) or PLD (CHE).
     // frameworkPath:        Microsoft packages root — labelc.exe lives there, and it holds the
     //                       compiled binaries of the referenced Microsoft modules (-packagesRoot).
-    // compilerMetadataPath: the root xppc wrote its compiler metadata back to, i.e. where
-    //                       `<root>\<Module>\XppMetadata` actually is. That is the MODEL STORE,
-    //                       not the framework directory — build_d365fo_project passes
-    //                       `-compilermetadata=<model store>` (see XppcBuildContext.compilerMetadataPath).
+    // compilerMetadataPath: path xppbp passes to StaticRuntimeProvider and to XppMetadata lookup.
     //
-    // These are two different flags on xppbp, not two spellings of one:
-    //   -compilerMetadata = "the path to the compiler metadata"
-    //   -packagesRoot     = "the packages root containing binaries for modules"
-    // Pointing -compilerMetadata at the framework directory on UDE makes xppbp report EVERY
-    // element of the module as "appears not to have been compiled" (CompilerMetadataMissing)
-    // and skip the rules that need compiled X++. Verified against xppbp 7.0.7996.33: with a
-    // compiler-metadata root that held the module's XppMetadata the run was `Errors: 0` with the
-    // rules evaluated; with a root that lacked it, the checked class itself was reported
-    // uncompiled, every other element of the module followed, and xppbp exited non-zero.
-    // On CHE the two roots are the same path, so the split is a no-op there.
+    // WHY this points to the framework directory (not the model store):
+    //
+    // xppbp's StaticRuntimeProvider constructs static metadata paths as
+    // {compilerMetadataPath}\StaticMetadata\AxView.md (used by DataEntityDuplicateLabelChecker
+    // and others). Those compiled .md files are deployment artifacts that live in the framework
+    // packages directory — they are never written to the source model store. Pointing
+    // -compilerMetadata at the model store causes a BPFrameworkFatalException crash on every run.
+    //
+    // The trade-off: on UDE, PR #919 moved xppc's XppMetadata write-back to the model store, so
+    // keeping -compilerMetadata on the framework directory means xppbp will report the model's
+    // elements as CompilerMetadataMissing and skip rules that read compiled X++. That is a
+    // warning, not a crash — the check still runs, metadata-only rules still fire, and
+    // describeNonRun() below tells the caller exactly what happened and what to do.
+    //
+    // On CHE the two roots are the same path, so there is no trade-off there.
     const metadataPath = customPackagesPath || packagesRoot;
     const frameworkPath = microsoftPackagesPath || packagesRoot;
-    const compilerMetadataPath = customPackagesPath || packagesRoot;
+    const compilerMetadataPath = frameworkPath;
 
     // xppbp resolves @Model:Id against the compiled label assembly, so labels
     // that exist only as text in AxLabelFile are reported as BPErrorUnknownLabel
