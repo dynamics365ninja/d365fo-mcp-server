@@ -1298,6 +1298,9 @@ const BRIDGE_MODIFY_OPS = new Set([
   'remove-diagnostic-suppression', 'add-diagnostic-suppression',
   'add-display-method', 'add-table-method',
   'add-field-modification', 'add-menu-item-to-menu',
+  // No C# op exists for query ranges on entities — served entirely by a
+  // direct-XML writer (data-entity is already in BRIDGE_MODIFY_TYPES).
+  'add-query-range', 'remove-query-range',
 ]);
 
 /**
