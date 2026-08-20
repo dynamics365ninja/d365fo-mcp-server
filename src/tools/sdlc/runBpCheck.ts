@@ -512,6 +512,33 @@ export const runBpCheckTool = async (params: any, context: any) => {
     const frameworkPath = microsoftPackagesPath || packagesRoot;
     const compilerMetadataPath = frameworkPath;
 
+    // On UDE, xppbp's DataEntityDuplicateLabelChecker constructs a RuntimeMetadataProvider
+    // using the -metadata path as runtimeRoot and then looks for
+    // {runtimeRoot}\StaticMetadata\AxView.md. That file is a deployment artifact that only
+    // exists in the FrameworkDirectory, never in the source ModelStoreFolder.
+    // Fix: create an NTFS junction {metadataPath}\StaticMetadata → {frameworkPath}\StaticMetadata
+    // once, so the path xppbp builds resolves to the real file. On CHE the paths are the same
+    // directory and no junction is needed.
+    if (metadataPath !== frameworkPath) {
+      const junctionTarget = path.join(frameworkPath, 'StaticMetadata');
+      const junctionLink   = path.join(metadataPath,  'StaticMetadata');
+      try {
+        await fs.access(junctionLink);
+        // already exists — junction or real directory, either way xppbp can find the files
+      } catch {
+        try {
+          await fs.access(junctionTarget);
+          await fs.symlink(junctionTarget, junctionLink, 'junction');
+          console.error(`[run_bp_check] created StaticMetadata junction: ${junctionLink} → ${junctionTarget}`);
+        } catch (e: any) {
+          // Non-fatal: log and continue. If the target doesn't exist the crash
+          // will surface naturally; if the junction creation fails (e.g. permissions)
+          // the same crash will occur with a clearer message from xppbp itself.
+          console.error(`[run_bp_check] could not create StaticMetadata junction at ${junctionLink}: ${e.message}`);
+        }
+      }
+    }
+
     // xppbp resolves @Model:Id against the compiled label assembly, so labels
     // that exist only as text in AxLabelFile are reported as BPErrorUnknownLabel
     // (with BPUnusedStrFmtArgument cascading from them). A BP check can be run
