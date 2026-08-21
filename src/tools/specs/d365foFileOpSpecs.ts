@@ -269,11 +269,16 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   },
   rangeName: {
     type: 'string',
-    description: 'Name for the range object (<Name>). Defaults to rangeField when omitted.',
+    description:
+      'Name for the range object (<Name>). Defaults to rangeField when omitted. ' +
+      'Only ever matched against other ranges of the SAME data source.',
   },
   rangeValue: {
     type: 'string',
-    description: 'Filter value (e.g. "1"). Omit or pass "" for an open (unfiltered) range.',
+    description:
+      'Filter value the range applies (e.g. "1" for a NoYes field, "Sales" for an enum, ' +
+      '"1..99" for an interval). Required: a range with no value filters nothing. ' +
+      'For the empty-string filter pass the two characters "" — that is how D365FO stores it.',
   },
   // enum values
   enumValueName: { type: 'string', description: 'Enum value name (e.g. "Approved").' },
@@ -529,21 +534,25 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     note: 'form-extension only.',
   },
   'add-query-range': {
-    required: ['dataSourceName', 'rangeField'],
-    optional: ['rangeName', 'rangeValue'],
+    required: ['dataSourceName', 'rangeField', 'rangeValue'],
+    optional: ['rangeName'],
     note:
-      'objectType="data-entity" only. Adds an <AxQuerySimpleDataSourceRange> to the <Ranges> ' +
-      'of the named <AxQuerySimpleRootDataSource> inside <ViewMetadata>. ' +
-      'dataSourceName must match the <Name> of the root data source (usually the primary table name). ' +
+      'objectType="data-entity" only. Adds an <AxQuerySimpleDataSourceRange> to the <Ranges> that the ' +
+      'named data source OWNS inside <ViewMetadata>. dataSourceName is the <Name> of either the root ' +
+      'data source (<AxQuerySimpleRootDataSource>, usually the primary table) or a joined one ' +
+      '(<AxQuerySimpleEmbeddedDataSource>) — a joined data source keeps its own <Ranges>, and filtering ' +
+      'the joined table is not the same query as filtering the root. ' +
       'rangeName defaults to rangeField when omitted. ' +
-      'rangeValue is the filter value (e.g. "Yes" to restrict to active rows); omit or pass "" for an open range.',
+      'rangeValue is required (e.g. "1" to restrict to active rows); pass "" (two characters) for the ' +
+      'empty-string filter. Idempotent per data source.',
   },
   'remove-query-range': {
     required: ['dataSourceName', 'rangeName'],
     optional: [],
     note:
       'objectType="data-entity" only. Removes the <AxQuerySimpleDataSourceRange> whose <Name> equals ' +
-      'rangeName from the named datasource. Collapses <Ranges> to <Ranges /> when empty. Idempotent.',
+      'rangeName from the <Ranges> the named data source OWNS — a same-named range on a joined data ' +
+      'source is left alone. Collapses <Ranges> to <Ranges /> when empty. Idempotent.',
   },
   'add-control': {
     required: ['controlName', 'parentControl'],

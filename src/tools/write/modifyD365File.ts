@@ -934,68 +934,236 @@ const directXmlAddIndex = serializedOnFile(async (
 });
 
 /**
- * Returns the [start, end] character offsets of the <AxQuerySimpleRootDataSource>
- * block whose FIRST direct <Name> child equals `dataSourceName`.
- *
- * Handles nested data sources by counting open/close tags for
- * AxQuerySimpleRootDataSource, so a child datasource with the same name never
- * matches in place of its parent.
+ * The two element names a data source can carry inside a query's <DataSources>:
+ * the root of the query, and a joined child. A child is NOT a nested
+ * <AxQuerySimpleRootDataSource> — that element never nests — so both names have
+ * to be scanned, or every joined data source is unreachable.
  */
-function findQueryDataSourceBlock(
-  content: string,
-  dataSourceName: string,
-): [number, number] | null {
-  const tagRe = /<(\/?)([A-Za-z_][\w.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
+const QUERY_DATASOURCE_TAGS: readonly string[] = [
+  'AxQuerySimpleRootDataSource',
+  'AxQuerySimpleEmbeddedDataSource',
+];
+
+/** One data source inside <ViewMetadata>: its own block bounds, element and <Name>. */
+interface QueryDataSourceBlock {
+  start: number;
+  end: number;
+  tag: string;
+  name: string;
+}
+
+/** A direct child element located inside a parent block, with its content bounds. */
+type DirectChild =
+  | { selfClosing: true; start: number; end: number }
+  | { selfClosing: false; start: number; end: number; innerStart: number; innerEnd: number };
+
+/** The tag grammar every scan below shares. Cloned per use — /g carries lastIndex. */
+const XML_TAG_SOURCE = /<(\/?)([A-Za-z_][\w.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/.source;
+
+/**
+ * Blanks CDATA sections and comments while preserving every offset, so a tag scan
+ * cannot be derailed by markup-looking text inside them: a <ViewMetadata> always
+ * carries a <SourceCode> CDATA block ahead of its <DataSources>. Offsets from a
+ * masked scan index the original string unchanged.
+ */
+function maskXmlNonMarkup(content: string): string {
+  return content.replace(/<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->/g, m => ' '.repeat(m.length));
+}
+
+/**
+ * Offsets of the FIRST DIRECT child element named `childName` inside `block`,
+ * where `block` starts with its parent's opening tag and ends with the matching
+ * close.
+ *
+ * Depth-counted, so a same-named element inside a NESTED child never matches.
+ * <Ranges> needs this more than any other collection: a joined data source has a
+ * <Ranges> of its own and it comes FIRST in document order, so
+ * `block.replace('<Ranges />', …)` writes the range onto the joined table instead
+ * of the one that was asked for — valid XML, different query.
+ */
+function findDirectChild(block: string, childName: string): DirectChild | null {
+  const openTag = new RegExp(`^<[A-Za-z_][\\w.-]*(?:"[^"]*"|'[^']*'|[^>"'])*?>`).exec(block);
+  if (!openTag) return null;
+
+  const tagRe = new RegExp(XML_TAG_SOURCE, 'g');
+  tagRe.lastIndex = openTag[0].length;
+  let depth = 0;
   let m: RegExpExecArray | null;
 
-  while ((m = tagRe.exec(content)) !== null) {
+  while ((m = tagRe.exec(block)) !== null) {
     const [full, closing, name, , selfClosing] = m;
-    if (closing || selfClosing || name !== 'AxQuerySimpleRootDataSource') continue;
-
-    const blockStart = m.index;
-    let depth = 1;
-    let blockEnd = -1;
-
-    const innerRe = new RegExp(tagRe.source, 'g');
-    innerRe.lastIndex = m.index + full.length;
-    let im: RegExpExecArray | null;
-
-    while ((im = innerRe.exec(content)) !== null) {
-      const [ifull, iclosing, iname, , iselfClosing] = im;
-      if (iselfClosing) continue;
-      if (iname !== 'AxQuerySimpleRootDataSource') continue;
-      if (iclosing) {
-        depth--;
-        if (depth === 0) { blockEnd = im.index + ifull.length; break; }
-      } else {
-        depth++;
+    if (selfClosing) {
+      if (depth === 0 && name === childName) {
+        return { selfClosing: true, start: m.index, end: m.index + full.length };
       }
+      continue;
     }
-
-    if (blockEnd === -1) continue;
-
-    const block = content.slice(blockStart, blockEnd);
-    // Match only the DIRECT <Name> — it appears before any nested <DataSources>,
-    // so the first <Name>...</Name> in the block is unambiguously the root name.
-    const nameMatch = /<Name>([\s\S]*?)<\/Name>/.exec(block);
-    if (nameMatch && nameMatch[1] === dataSourceName) {
-      return [blockStart, blockEnd];
+    if (closing) {
+      if (depth === 0) return null;   // the parent's own closing tag — child absent
+      depth--;
+      continue;
     }
-    tagRe.lastIndex = blockEnd;
+    if (depth === 0 && name === childName) {
+      const innerStart = m.index + full.length;
+      let inner = 1;
+      const innerRe = new RegExp(XML_TAG_SOURCE, 'g');
+      innerRe.lastIndex = innerStart;
+      let im: RegExpExecArray | null;
+      while ((im = innerRe.exec(block)) !== null) {
+        if (im[4]) continue;          // self-closing: no depth change
+        if (im[1]) {
+          inner--;
+          if (inner === 0) {
+            return { selfClosing: false, start: m.index, end: im.index + im[0].length, innerStart, innerEnd: im.index };
+          }
+        } else {
+          inner++;
+        }
+      }
+      return null;
+    }
+    depth++;
   }
   return null;
 }
 
 /**
+ * Every data source in `maskedContent`, root and joined alike, with the block
+ * bounds and the <Name> each one carries.
+ */
+function findQueryDataSourceBlocks(content: string, maskedContent: string): QueryDataSourceBlock[] {
+  const tagRe = new RegExp(XML_TAG_SOURCE, 'g');
+  const open: Array<{ tag: string; start: number }> = [];
+  const found: QueryDataSourceBlock[] = [];
+  let m: RegExpExecArray | null;
+
+  while ((m = tagRe.exec(maskedContent)) !== null) {
+    const [full, closing, tag, , selfClosing] = m;
+    if (selfClosing || !QUERY_DATASOURCE_TAGS.includes(tag)) continue;
+    if (!closing) {
+      open.push({ tag, start: m.index });
+      continue;
+    }
+    const started = open.pop();
+    // Unbalanced markup — stop rather than pair the wrong tags up.
+    if (!started || started.tag !== tag) return found;
+    const end = m.index + full.length;
+    const block = maskedContent.slice(started.start, end);
+    const nameChild = findDirectChild(block, 'Name');
+    found.push({
+      start: started.start,
+      end,
+      tag: started.tag,
+      name: nameChild && !nameChild.selfClosing
+        ? content.slice(started.start + nameChild.innerStart, started.start + nameChild.innerEnd)
+        : '',
+    });
+  }
+  return found;
+}
+
+/** The leading tabs/spaces of the line `offset` sits on ('' when it is not indented). */
+function lineIndentAt(content: string, offset: number): string {
+  const lineStart = content.lastIndexOf('\n', offset - 1) + 1;
+  const lead = content.slice(lineStart, offset);
+  return /^[\t ]*$/.test(lead) ? lead : '';
+}
+
+/** Resolution of `dataSourceName` to exactly one data source and its OWN <Ranges>. */
+type QueryRangesTarget =
+  | { ok: true; ds: QueryDataSourceBlock; ranges: DirectChild; indent: string }
+  | { ok: false; reason: 'not-found'; known: string[] }
+  | { ok: false; reason: 'ambiguous' }
+  | { ok: false; reason: 'no-ranges' };
+
+/**
+ * Resolves the named data source and locates the <Ranges> collection that data
+ * source OWNS — never a joined child's, and never a parent's.
+ *
+ * Refuses to guess when two data sources share the name, per the rule every XML
+ * writer here follows: an ambiguous target is an error, not a coin flip.
+ */
+function resolveQueryRanges(
+  content: string,
+  maskedContent: string,
+  dataSourceName: string,
+): QueryRangesTarget {
+  const blocks = findQueryDataSourceBlocks(content, maskedContent);
+  const matches = blocks.filter(b => b.name === dataSourceName);
+  if (matches.length === 0) {
+    return { ok: false, reason: 'not-found', known: blocks.map(b => b.name).filter(Boolean) };
+  }
+  if (matches.length > 1) return { ok: false, reason: 'ambiguous' };
+
+  const ds = matches[0];
+  const ranges = findDirectChild(maskedContent.slice(ds.start, ds.end), 'Ranges');
+  if (!ranges) return { ok: false, reason: 'no-ranges' };
+
+  return { ok: true, ds, ranges, indent: lineIndentAt(content, ds.start + ranges.start) };
+}
+
+/** Every <AxQuerySimpleDataSourceRange> element inside a <Ranges> body, with its own <Name>. */
+function queryRangeElements(rangesInner: string): Array<{ start: number; end: number; name: string }> {
+  const re = /[\t ]*<AxQuerySimpleDataSourceRange>[\s\S]*?<\/AxQuerySimpleDataSourceRange>\n?/g;
+  const out: Array<{ start: number; end: number; name: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(rangesInner)) !== null) {
+    // <Name> is FIRST in every one of the 1192 ranges Microsoft ships, but the
+    // deserializer does not care about order, so neither does this.
+    const name = /<Name>([\s\S]*?)<\/Name>/.exec(m[0]);
+    out.push({ start: m.index, end: m.index + m[0].length, name: name ? name[1] : '' });
+  }
+  return out;
+}
+
+/** AOT names are identifiers — 9275 shipped query data sources and every range agree. */
+function nonIdentifierName(value: string): boolean {
+  return !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+}
+
+/** Renders the resolution failure the same way for both query-range writers. */
+function queryRangeTargetError(
+  op: string,
+  target: Exclude<QueryRangesTarget, { ok: true }>,
+  dataSourceName: string,
+  filePath: string,
+): { success: false; message: string } {
+  if (target.reason === 'ambiguous') {
+    return {
+      success: false,
+      message:
+        `❌ ${op}: '${dataSourceName}' names more than one data source in the ViewMetadata of '${filePath}' — ` +
+        `refusing to guess which one to write. Rename one of them, or edit this entity in Visual Studio.`,
+    };
+  }
+  if (target.reason === 'no-ranges') {
+    return {
+      success: false,
+      message:
+        `❌ ${op}: data source '${dataSourceName}' in '${filePath}' has no <Ranges> collection of its own. ` +
+        `The ViewMetadata structure may not follow the expected layout.`,
+    };
+  }
+  const known = target.known.length > 0 ? target.known.join(', ') : '(none)';
+  return {
+    success: false,
+    message:
+      `❌ ${op}: data source '${dataSourceName}' not found in ViewMetadata of '${filePath}'. ` +
+      `Data sources in this entity: ${known}. ` +
+      `Pass the <Name> of the root data source (usually the primary table) or of a joined data source.`,
+  };
+}
+
+/**
  * Direct XML writer for add-query-range on an AxDataEntityView.
  *
- * Inserts an <AxQuerySimpleRangeDataObject> into the <Ranges> child of the named
- * <AxQuerySimpleRootDataSource> inside <ViewMetadata>. There is no bridge API for
- * this operation — the C# bridge does not expose AddQueryRange on entities — so
- * this direct writer is the only path.
+ * Inserts an <AxQuerySimpleDataSourceRange> into the <Ranges> the named data
+ * source OWNS, inside <ViewMetadata>. There is no bridge API for this operation —
+ * the C# bridge does not expose AddQueryRange on entities — so this direct writer
+ * is the only path.
  *
- * Idempotent: a range with the same Name already present in that datasource block
- * is left unchanged and success is returned.
+ * Idempotent: a RANGE (not merely some element) with the same Name already in that
+ * collection is left unchanged and success is returned.
  */
 const directXmlAddQueryRange = serializedOnFile(async (
   filePath: string,
@@ -1017,21 +1185,45 @@ const directXmlAddQueryRange = serializedOnFile(async (
       };
     }
 
-    const dsRange = findQueryDataSourceBlock(content, dataSourceName);
-    if (!dsRange) {
+    const badName = [
+      ['dataSourceName', dataSourceName], ['rangeField', rangeField], ['rangeName', rangeName],
+    ].find(([, v]) => nonIdentifierName(v));
+    if (badName) {
       return {
         success: false,
         message:
-          `❌ add-query-range: data source '${dataSourceName}' not found in ViewMetadata of '${filePath}'. ` +
-          `The <Name> inside <AxQuerySimpleRootDataSource> must equal '${dataSourceName}'. ` +
-          `Confirm the primary table name with get_object_info or inspect the entity's ViewMetadata.`,
+          `❌ add-query-range: ${badName[0]} '${badName[1]}' is not a valid AOT name — ` +
+          `letters, digits and underscore only, not starting with a digit.`,
       };
     }
-    const [dsStart, dsEnd] = dsRange;
-    const dsBlock = content.slice(dsStart, dsEnd);
 
-    // Idempotent: a range object with this name already exists in the datasource block.
-    if (new RegExp(`<Name>${escapeRegExp(rangeName)}</Name>`).test(dsBlock)) {
+    // A range with no value filters nothing, and NONE of the 1192 ranges Microsoft
+    // ships omits <Value> — so an omitted value is a mistake worth naming, not a
+    // shape to invent. The empty-string filter is the two-character value "".
+    if (rangeValue === '') {
+      return {
+        success: false,
+        message:
+          `❌ add-query-range: rangeValue is required — a range with no value filters nothing. ` +
+          `Pass the value to filter on (e.g. "1" for a NoYes field, "Sales" for an enum), ` +
+          `or the two characters "" for the empty-string filter, which is how D365FO stores it.`,
+      };
+    }
+
+    const masked = maskXmlNonMarkup(content);
+    const target = resolveQueryRanges(content, masked, dataSourceName);
+    if (!target.ok) return queryRangeTargetError('add-query-range', target, dataSourceName, filePath);
+
+    const { ds, ranges, indent } = target;
+    const rangesInner = ranges.selfClosing
+      ? ''
+      : content.slice(ds.start + ranges.innerStart, ds.start + ranges.innerEnd);
+
+    // Idempotent — scoped to THIS collection and anchored on the range element, so
+    // a mapped field, a relation or the data source's own <Name> never reads as a
+    // range that is already there (which silently skipped the write it was meant
+    // to guard).
+    if (queryRangeElements(rangesInner).some(r => r.name === rangeName)) {
       return {
         success: true,
         message:
@@ -1039,44 +1231,28 @@ const directXmlAddQueryRange = serializedOnFile(async (
       };
     }
 
-    // Indent matches the 5-tab depth of an element inside
-    // <ViewMetadata><DataSources><AxQuerySimpleRootDataSource><Ranges>.
+    // Canonical shape and order — <Name>, <Field>, <Value> — indented off the
+    // <Ranges> that was actually found, so a joined data source nests correctly.
     const rangeElement =
-      `\t\t\t\t\t<AxQuerySimpleDataSourceRange>\n` +
-      `\t\t\t\t\t\t<Name>${escapeXml(rangeName)}</Name>\n` +
-      `\t\t\t\t\t\t<Field>${escapeXml(rangeField)}</Field>\n` +
-      (rangeValue !== ''
-        ? `\t\t\t\t\t\t<Value>${escapeXml(rangeValue)}</Value>\n`
-        : '') +
-      `\t\t\t\t\t</AxQuerySimpleDataSourceRange>`;
+      `${indent}\t<AxQuerySimpleDataSourceRange>\n` +
+      `${indent}\t\t<Name>${escapeXml(rangeName)}</Name>\n` +
+      `${indent}\t\t<Field>${escapeXml(rangeField)}</Field>\n` +
+      `${indent}\t\t<Value>${escapeXml(rangeValue)}</Value>\n` +
+      `${indent}\t</AxQuerySimpleDataSourceRange>`;
 
-    let newDsBlock: string;
-    if (dsBlock.includes('<Ranges />')) {
-      newDsBlock = dsBlock.replace(
-        '<Ranges />',
-        `<Ranges>\n${rangeElement}\n\t\t\t\t</Ranges>`,
-      );
-    } else if (dsBlock.includes('</Ranges>')) {
-      newDsBlock = dsBlock.replace(
-        '</Ranges>',
-        `${rangeElement}\n\t\t\t\t</Ranges>`,
-      );
-    } else {
-      return {
-        success: false,
-        message:
-          `❌ add-query-range: no <Ranges> element found in datasource '${dataSourceName}' in '${filePath}'. ` +
-          `The ViewMetadata structure may not follow the expected layout.`,
-      };
-    }
+    // Existing entries stay verbatim; only the newline + indent that sat in front
+    // of </Ranges> is rebuilt around the new element.
+    const existing = rangesInner.replace(/\s*$/, '');
+    const newRanges = `<Ranges>${existing}\n${rangeElement}\n${indent}</Ranges>`;
 
-    if (newDsBlock === dsBlock) return null;
+    const updated =
+      content.slice(0, ds.start + ranges.start) + newRanges + content.slice(ds.start + ranges.end);
+    if (updated === content) return null;
 
-    const updated = content.slice(0, dsStart) + newDsBlock + content.slice(dsEnd);
     await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(
       `[modify_d365fo_file] ✅ directXmlAddQueryRange: added range '${rangeName}' ` +
-      `(${rangeField}=${rangeValue !== '' ? rangeValue : '*'}) to '${dataSourceName}' in ${filePath}`,
+      `(${rangeField}=${rangeValue}) to '${dataSourceName}' in ${filePath}`,
     );
     return {
       success: true,
@@ -1093,9 +1269,10 @@ const directXmlAddQueryRange = serializedOnFile(async (
 /**
  * Direct XML writer for remove-query-range on an AxDataEntityView.
  *
- * Removes the <AxQuerySimpleDataSourceRange> whose <Name> equals `rangeName`
- * from the named datasource. Collapses <Ranges>…</Ranges> to <Ranges /> when
- * the collection becomes empty. Idempotent: not-found is reported as success.
+ * Removes the <AxQuerySimpleDataSourceRange> whose <Name> equals `rangeName` from
+ * the <Ranges> the named data source OWNS — a same-named range on a joined data
+ * source is left alone. Collapses <Ranges>…</Ranges> to <Ranges /> when the
+ * collection becomes empty. Idempotent: not-found is reported as success.
  */
 const directXmlRemoveQueryRange = serializedOnFile(async (
   filePath: string,
@@ -1115,22 +1292,23 @@ const directXmlRemoveQueryRange = serializedOnFile(async (
       };
     }
 
-    const dsRange = findQueryDataSourceBlock(content, dataSourceName);
-    if (!dsRange) {
+    const badName = [['dataSourceName', dataSourceName], ['rangeName', rangeName]]
+      .find(([, v]) => nonIdentifierName(v));
+    if (badName) {
       return {
         success: false,
         message:
-          `❌ remove-query-range: data source '${dataSourceName}' not found in ViewMetadata of '${filePath}'.`,
+          `❌ remove-query-range: ${badName[0]} '${badName[1]}' is not a valid AOT name — ` +
+          `letters, digits and underscore only, not starting with a digit.`,
       };
     }
-    const [dsStart, dsEnd] = dsRange;
-    const dsBlock = content.slice(dsStart, dsEnd);
 
-    // Match the range element including its leading whitespace and trailing newline.
-    const rangeBlockRe = new RegExp(
-      `[\\t ]*<AxQuerySimpleDataSourceRange>\\s*<Name>${escapeRegExp(rangeName)}</Name>[\\s\\S]*?</AxQuerySimpleDataSourceRange>\\n?`,
-    );
-    if (!rangeBlockRe.test(dsBlock)) {
+    const masked = maskXmlNonMarkup(content);
+    const target = resolveQueryRanges(content, masked, dataSourceName);
+    if (!target.ok) return queryRangeTargetError('remove-query-range', target, dataSourceName, filePath);
+
+    const { ds, ranges } = target;
+    if (ranges.selfClosing) {
       return {
         success: true,
         message:
@@ -1138,14 +1316,26 @@ const directXmlRemoveQueryRange = serializedOnFile(async (
       };
     }
 
-    let newDsBlock = dsBlock.replace(rangeBlockRe, '');
+    const rangesInner = content.slice(ds.start + ranges.innerStart, ds.start + ranges.innerEnd);
+    const elements = queryRangeElements(rangesInner);
+    const doomed = elements.find(r => r.name === rangeName);
+    if (!doomed) {
+      return {
+        success: true,
+        message:
+          `✅ Range '${rangeName}' not present in datasource '${dataSourceName}' — nothing to remove.`,
+      };
+    }
 
-    // Collapse <Ranges>\n</Ranges> → <Ranges /> when the collection is now empty.
-    newDsBlock = newDsBlock.replace(/<Ranges>\s*<\/Ranges>/, '<Ranges />');
+    const remainingInner = rangesInner.slice(0, doomed.start) + rangesInner.slice(doomed.end);
+    const newRanges = elements.length === 1
+      ? '<Ranges />'
+      : `<Ranges>${remainingInner}</Ranges>`;
 
-    if (newDsBlock === dsBlock) return null;
+    const updated =
+      content.slice(0, ds.start + ranges.start) + newRanges + content.slice(ds.start + ranges.end);
+    if (updated === content) return null;
 
-    const updated = content.slice(0, dsStart) + newDsBlock + content.slice(dsEnd);
     await writeFileAtomic(filePath, normalizeD365Xml(updated));
     console.error(
       `[modify_d365fo_file] ✅ directXmlRemoveQueryRange: removed range '${rangeName}' ` +
@@ -2213,21 +2403,25 @@ const ModifyD365FileArgsSchema = z.object({
   // For add-field-modification (table-extension only)
   // uses fieldName, fieldLabel, fieldMandatory (already defined above)
 
-  // For add-data-source (form-extension) and add-query-range (data-entity)
+  // For add-data-source (form-extension) and add/remove-query-range (data-entity)
   dataSourceName: z.string().optional().describe(
     'Data source name. ' +
     'add-data-source: reference name for the new form-extension data source (e.g. "MyTable_1"). ' +
-    'add-query-range: <Name> of the <AxQuerySimpleRootDataSource> inside ViewMetadata (usually the primary table name).'
+    'add/remove-query-range: <Name> of the data source inside ViewMetadata — the root one ' +
+    '(usually the primary table) or a joined one; each keeps its own <Ranges>.'
   ),
   dataSourceTable: z.string().optional().describe('Base table name for add-data-source (e.g. "MyTable").'),
   rangeField: z.string().optional().describe(
     'add-query-range: field name to filter on (e.g. "IsActive"). Becomes <Field> in the range object.'
   ),
   rangeName: z.string().optional().describe(
-    'add-query-range: name for the range object (<Name>). Defaults to rangeField when omitted.'
+    'add/remove-query-range: name of the range object (<Name>). add-query-range defaults it to ' +
+    'rangeField; matched only against ranges of the SAME data source.'
   ),
   rangeValue: z.string().optional().describe(
-    'add-query-range: filter value (e.g. "1"). Omit or pass "" for an open (unfiltered) range.'
+    'add-query-range: filter value, REQUIRED (e.g. "1" for NoYes, "Sales" for an enum, "1..99" for an ' +
+    'interval). Pass the two characters "" for the empty-string filter — a range with no value at all ' +
+    'filters nothing and is not a shape D365FO ships.'
   ),
   joinSource: z.string().optional().describe(
     'Optional name of an existing data source on the form to join the new data source to (add-data-source).'
