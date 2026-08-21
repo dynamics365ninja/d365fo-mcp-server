@@ -123,7 +123,7 @@ A .NET Framework 4.8 process (`D365MetadataBridge.exe`) spawned by the server, s
 It is not the *only* write path. Two cases fall through to purpose-built XML writers, and both are deliberate:
 
 - **Object types outside `BRIDGE_CREATE_TYPES`** (13 of the 39 create types route to the bridge). `security-privilege`/`duty`/`role` and `query`/`view` are excluded on purpose — the bridge's generic `properties: Dictionary<string,string>` channel cannot carry the structured collections they need (EntryPoints, Privileges, Duties, query data sources), so a bridge create would "succeed" and produce a functionally broken object. `securityPrivilegeXml.ts`, `queryViewXml.ts` and friends build these correctly instead.
-- **Modify operations with no backing C# op** — `add-delete-action`, `remove-delete-action`, `modify-property` on some types, `add-menu-item-to-menu`, `add-control`, `add-index` and the data-entity-extension field writer fall back to the `directXml*` helpers in `modifyD365File.ts` (see also `dataEntityViewExtensionXml.ts`).
+- **Modify operations with no backing C# op** — `add-delete-action`, `remove-delete-action`, `modify-property` on some types, `add-menu-item-to-menu`, `add-control`, `add-index`, `add-query-range`/`remove-query-range` and the data-entity-extension field writer fall back to the `directXml*` helpers in `modifyD365File.ts` (see also `dataEntityViewExtensionXml.ts`).
 
 The distinction matters for correctness, not for safety: **every write goes through the same grounding gates and the same path-containment check**, whichever writer commits it. The XML writers are structured builders with ambiguity guards (they refuse to guess when a target tag matches more than once), not blind string replacement.
 
