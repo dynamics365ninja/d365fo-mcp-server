@@ -96,7 +96,10 @@ const CHARS_PER_TOKEN = 4;
 // see is an operation it works around by rewriting the whole object with
 // action="create", overwrite=true, which costs orders of magnitude more than the
 // enum value does and loses metadata as well.
-const TOTAL_BUDGET = 52_100;
+//
+// Raised by ~50 chars for add-query-range / remove-query-range — two XML-only
+// operations for inserting/removing ViewMetadata filter ranges on data entities.
+const TOTAL_BUDGET = 52_150;
 const LARGEST_TOOL_BUDGET = 5_700;
 
 async function getTools(): Promise<Array<{ name: string }>> {

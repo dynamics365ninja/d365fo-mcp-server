@@ -95,6 +95,7 @@ Model + prefix auto-applied. Classes: member vars inside the class { }, methods 
             'add-enum-value', 'modify-enum-value', 'remove-enum-value',
             'add-menu-item-to-menu',
             'modify-property',
+            'add-query-range', 'remove-query-range',
           ],
           description:
             '[modify] REQUIRED unless using operations[]. add-method also UPDATES in place; replace-code is the surgical oldCode→newCode path. ' +

@@ -262,6 +262,19 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'Optional join/link type when joinSource is set: InnerJoin | OuterJoin | ExistJoin | NotExistJoin | ' +
       'Delayed | Active | Passive.',
   },
+  // add-query-range
+  rangeField: {
+    type: 'string',
+    description: 'Field name to filter on (e.g. "IsActive"). Becomes <Field> in the range object.',
+  },
+  rangeName: {
+    type: 'string',
+    description: 'Name for the range object (<Name>). Defaults to rangeField when omitted.',
+  },
+  rangeValue: {
+    type: 'string',
+    description: 'Filter value (e.g. "1"). Omit or pass "" for an open (unfiltered) range.',
+  },
   // enum values
   enumValueName: { type: 'string', description: 'Enum value name (e.g. "Approved").' },
   enumValueNewName: {
@@ -514,6 +527,23 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     required: ['dataSourceName', 'dataSourceTable'],
     optional: ['joinSource', 'linkType'],
     note: 'form-extension only.',
+  },
+  'add-query-range': {
+    required: ['dataSourceName', 'rangeField'],
+    optional: ['rangeName', 'rangeValue'],
+    note:
+      'objectType="data-entity" only. Adds an <AxQuerySimpleDataSourceRange> to the <Ranges> ' +
+      'of the named <AxQuerySimpleRootDataSource> inside <ViewMetadata>. ' +
+      'dataSourceName must match the <Name> of the root data source (usually the primary table name). ' +
+      'rangeName defaults to rangeField when omitted. ' +
+      'rangeValue is the filter value (e.g. "Yes" to restrict to active rows); omit or pass "" for an open range.',
+  },
+  'remove-query-range': {
+    required: ['dataSourceName', 'rangeName'],
+    optional: [],
+    note:
+      'objectType="data-entity" only. Removes the <AxQuerySimpleDataSourceRange> whose <Name> equals ' +
+      'rangeName from the named datasource. Collapses <Ranges> to <Ranges /> when empty. Idempotent.',
   },
   'add-control': {
     required: ['controlName', 'parentControl'],

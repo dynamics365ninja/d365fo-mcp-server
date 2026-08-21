@@ -73,7 +73,7 @@ import {
   findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
 } from '../specs/d365foFileOpSpecs.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
-import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
+import { decodeXmlEntitiesFromXppSource, escapeXml } from '../../utils/xmlEscape.js';
 import { findD365FileOnDisk, expectedD365FilePath } from '../../utils/objectFileLookup.js';
 import {
   crossModelWriteRefusal, standDownNotice, baseObjectOf, type ExistingExtension,
@@ -934,6 +934,235 @@ const directXmlAddIndex = serializedOnFile(async (
 });
 
 /**
+ * Returns the [start, end] character offsets of the <AxQuerySimpleRootDataSource>
+ * block whose FIRST direct <Name> child equals `dataSourceName`.
+ *
+ * Handles nested data sources by counting open/close tags for
+ * AxQuerySimpleRootDataSource, so a child datasource with the same name never
+ * matches in place of its parent.
+ */
+function findQueryDataSourceBlock(
+  content: string,
+  dataSourceName: string,
+): [number, number] | null {
+  const tagRe = /<(\/?)([A-Za-z_][\w.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = tagRe.exec(content)) !== null) {
+    const [full, closing, name, , selfClosing] = m;
+    if (closing || selfClosing || name !== 'AxQuerySimpleRootDataSource') continue;
+
+    const blockStart = m.index;
+    let depth = 1;
+    let blockEnd = -1;
+
+    const innerRe = new RegExp(tagRe.source, 'g');
+    innerRe.lastIndex = m.index + full.length;
+    let im: RegExpExecArray | null;
+
+    while ((im = innerRe.exec(content)) !== null) {
+      const [ifull, iclosing, iname, , iselfClosing] = im;
+      if (iselfClosing) continue;
+      if (iname !== 'AxQuerySimpleRootDataSource') continue;
+      if (iclosing) {
+        depth--;
+        if (depth === 0) { blockEnd = im.index + ifull.length; break; }
+      } else {
+        depth++;
+      }
+    }
+
+    if (blockEnd === -1) continue;
+
+    const block = content.slice(blockStart, blockEnd);
+    // Match only the DIRECT <Name> — it appears before any nested <DataSources>,
+    // so the first <Name>...</Name> in the block is unambiguously the root name.
+    const nameMatch = /<Name>([\s\S]*?)<\/Name>/.exec(block);
+    if (nameMatch && nameMatch[1] === dataSourceName) {
+      return [blockStart, blockEnd];
+    }
+    tagRe.lastIndex = blockEnd;
+  }
+  return null;
+}
+
+/**
+ * Direct XML writer for add-query-range on an AxDataEntityView.
+ *
+ * Inserts an <AxQuerySimpleRangeDataObject> into the <Ranges> child of the named
+ * <AxQuerySimpleRootDataSource> inside <ViewMetadata>. There is no bridge API for
+ * this operation — the C# bridge does not expose AddQueryRange on entities — so
+ * this direct writer is the only path.
+ *
+ * Idempotent: a range with the same Name already present in that datasource block
+ * is left unchanged and success is returned.
+ */
+const directXmlAddQueryRange = serializedOnFile(async (
+  filePath: string,
+  dataSourceName: string,
+  rangeField: string,
+  rangeName: string,
+  rangeValue: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    if (!/<AxDataEntityView\b/.test(content)) {
+      return {
+        success: false,
+        message:
+          `❌ add-query-range: '${filePath}' is not an AxDataEntityView — nothing was written. ` +
+          `Use objectType="data-entity".`,
+      };
+    }
+
+    const dsRange = findQueryDataSourceBlock(content, dataSourceName);
+    if (!dsRange) {
+      return {
+        success: false,
+        message:
+          `❌ add-query-range: data source '${dataSourceName}' not found in ViewMetadata of '${filePath}'. ` +
+          `The <Name> inside <AxQuerySimpleRootDataSource> must equal '${dataSourceName}'. ` +
+          `Confirm the primary table name with get_object_info or inspect the entity's ViewMetadata.`,
+      };
+    }
+    const [dsStart, dsEnd] = dsRange;
+    const dsBlock = content.slice(dsStart, dsEnd);
+
+    // Idempotent: a range object with this name already exists in the datasource block.
+    if (new RegExp(`<Name>${escapeRegExp(rangeName)}</Name>`).test(dsBlock)) {
+      return {
+        success: true,
+        message:
+          `✅ Range '${rangeName}' already present in datasource '${dataSourceName}' — skipped (idempotent).`,
+      };
+    }
+
+    // Indent matches the 5-tab depth of an element inside
+    // <ViewMetadata><DataSources><AxQuerySimpleRootDataSource><Ranges>.
+    const rangeElement =
+      `\t\t\t\t\t<AxQuerySimpleDataSourceRange>\n` +
+      `\t\t\t\t\t\t<Name>${escapeXml(rangeName)}</Name>\n` +
+      `\t\t\t\t\t\t<Field>${escapeXml(rangeField)}</Field>\n` +
+      (rangeValue !== ''
+        ? `\t\t\t\t\t\t<Value>${escapeXml(rangeValue)}</Value>\n`
+        : '') +
+      `\t\t\t\t\t</AxQuerySimpleDataSourceRange>`;
+
+    let newDsBlock: string;
+    if (dsBlock.includes('<Ranges />')) {
+      newDsBlock = dsBlock.replace(
+        '<Ranges />',
+        `<Ranges>\n${rangeElement}\n\t\t\t\t</Ranges>`,
+      );
+    } else if (dsBlock.includes('</Ranges>')) {
+      newDsBlock = dsBlock.replace(
+        '</Ranges>',
+        `${rangeElement}\n\t\t\t\t</Ranges>`,
+      );
+    } else {
+      return {
+        success: false,
+        message:
+          `❌ add-query-range: no <Ranges> element found in datasource '${dataSourceName}' in '${filePath}'. ` +
+          `The ViewMetadata structure may not follow the expected layout.`,
+      };
+    }
+
+    if (newDsBlock === dsBlock) return null;
+
+    const updated = content.slice(0, dsStart) + newDsBlock + content.slice(dsEnd);
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(
+      `[modify_d365fo_file] ✅ directXmlAddQueryRange: added range '${rangeName}' ` +
+      `(${rangeField}=${rangeValue !== '' ? rangeValue : '*'}) to '${dataSourceName}' in ${filePath}`,
+    );
+    return {
+      success: true,
+      message:
+        `✅ Query range '${rangeName}' (${rangeField} = '${rangeValue}') added to datasource '${dataSourceName}'. ` +
+        `File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddQueryRange failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * Direct XML writer for remove-query-range on an AxDataEntityView.
+ *
+ * Removes the <AxQuerySimpleDataSourceRange> whose <Name> equals `rangeName`
+ * from the named datasource. Collapses <Ranges>…</Ranges> to <Ranges /> when
+ * the collection becomes empty. Idempotent: not-found is reported as success.
+ */
+const directXmlRemoveQueryRange = serializedOnFile(async (
+  filePath: string,
+  dataSourceName: string,
+  rangeName: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    if (!/<AxDataEntityView\b/.test(content)) {
+      return {
+        success: false,
+        message:
+          `❌ remove-query-range: '${filePath}' is not an AxDataEntityView — nothing was written. ` +
+          `Use objectType="data-entity".`,
+      };
+    }
+
+    const dsRange = findQueryDataSourceBlock(content, dataSourceName);
+    if (!dsRange) {
+      return {
+        success: false,
+        message:
+          `❌ remove-query-range: data source '${dataSourceName}' not found in ViewMetadata of '${filePath}'.`,
+      };
+    }
+    const [dsStart, dsEnd] = dsRange;
+    const dsBlock = content.slice(dsStart, dsEnd);
+
+    // Match the range element including its leading whitespace and trailing newline.
+    const rangeBlockRe = new RegExp(
+      `[\\t ]*<AxQuerySimpleDataSourceRange>\\s*<Name>${escapeRegExp(rangeName)}</Name>[\\s\\S]*?</AxQuerySimpleDataSourceRange>\\n?`,
+    );
+    if (!rangeBlockRe.test(dsBlock)) {
+      return {
+        success: true,
+        message:
+          `✅ Range '${rangeName}' not present in datasource '${dataSourceName}' — nothing to remove.`,
+      };
+    }
+
+    let newDsBlock = dsBlock.replace(rangeBlockRe, '');
+
+    // Collapse <Ranges>\n</Ranges> → <Ranges /> when the collection is now empty.
+    newDsBlock = newDsBlock.replace(/<Ranges>\s*<\/Ranges>/, '<Ranges />');
+
+    if (newDsBlock === dsBlock) return null;
+
+    const updated = content.slice(0, dsStart) + newDsBlock + content.slice(dsEnd);
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(
+      `[modify_d365fo_file] ✅ directXmlRemoveQueryRange: removed range '${rangeName}' ` +
+      `from '${dataSourceName}' in ${filePath}`,
+    );
+    return {
+      success: true,
+      message:
+        `✅ Query range '${rangeName}' removed from datasource '${dataSourceName}'. File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlRemoveQueryRange failed: ${err}`);
+    return null;
+  }
+});
+
+/**
  * Locates ONE top-level collection element inside a root element's body, e.g.
  * `<Fields>` directly under `<AxDataEntityViewExtension>`.
  *
@@ -1695,6 +1924,7 @@ const ModifyD365FileArgsSchema = z.object({
     'remove-entry-point', 'remove-diagnostic-suppression', 'add-diagnostic-suppression',
     'add-enum-value', 'modify-enum-value', 'remove-enum-value',
     'add-display-method', 'add-table-method', 'add-menu-item-to-menu',
+    'add-query-range', 'remove-query-range',
   ]).describe(
     'Operation to perform. ' +
     'replace-code REQUIRES parameters: oldCode (exact code to find) + newCode (replacement). ' +
@@ -1983,9 +2213,22 @@ const ModifyD365FileArgsSchema = z.object({
   // For add-field-modification (table-extension only)
   // uses fieldName, fieldLabel, fieldMandatory (already defined above)
 
-  // For add-data-source (form-extension)
-  dataSourceName: z.string().optional().describe('Data source reference name for add-data-source (e.g. "MyTable_1").'),
+  // For add-data-source (form-extension) and add-query-range (data-entity)
+  dataSourceName: z.string().optional().describe(
+    'Data source name. ' +
+    'add-data-source: reference name for the new form-extension data source (e.g. "MyTable_1"). ' +
+    'add-query-range: <Name> of the <AxQuerySimpleRootDataSource> inside ViewMetadata (usually the primary table name).'
+  ),
   dataSourceTable: z.string().optional().describe('Base table name for add-data-source (e.g. "MyTable").'),
+  rangeField: z.string().optional().describe(
+    'add-query-range: field name to filter on (e.g. "IsActive"). Becomes <Field> in the range object.'
+  ),
+  rangeName: z.string().optional().describe(
+    'add-query-range: name for the range object (<Name>). Defaults to rangeField when omitted.'
+  ),
+  rangeValue: z.string().optional().describe(
+    'add-query-range: filter value (e.g. "1"). Omit or pass "" for an open (unfiltered) range.'
+  ),
   joinSource: z.string().optional().describe(
     'Optional name of an existing data source on the form to join the new data source to (add-data-source).'
   ),
@@ -3522,6 +3765,33 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             (args as any).joinSource,
             (args as any).linkType,
           );
+        }
+        break;
+      }
+      case 'add-query-range': {
+        // No bridge API exists for this — direct XML is the only path.
+        if ((args as any).dataSourceName && (args as any).rangeField) {
+          const rangeField: string = (args as any).rangeField;
+          const rangeName: string = (args as any).rangeName || rangeField;
+          const rangeValue: string = (args as any).rangeValue ?? '';
+          bridgeResult = viaXmlFallback(await directXmlAddQueryRange(
+            actualFilePath,
+            (args as any).dataSourceName,
+            rangeField,
+            rangeName,
+            rangeValue,
+          ));
+        }
+        break;
+      }
+      case 'remove-query-range': {
+        // No bridge API exists for this — direct XML is the only path.
+        if ((args as any).dataSourceName && (args as any).rangeName) {
+          bridgeResult = viaXmlFallback(await directXmlRemoveQueryRange(
+            actualFilePath,
+            (args as any).dataSourceName,
+            (args as any).rangeName,
+          ));
         }
         break;
       }
