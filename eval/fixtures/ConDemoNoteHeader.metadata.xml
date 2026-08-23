@@ -31,6 +31,12 @@
   group explicitly - re-capture its table golden on the VM and this fixture and
   that golden agree again.
 
+  VERIFIED on the VM the same day (model fm-mcp, xppc 7.0.7996.33): this fixture
+  builds with 0 errors and the group reads back byte for byte; L1-form-basic's
+  golden form builds clean on top of it; and removing the group reproduces
+  "Field group 'Overview' does not exist" exactly. Measured in both directions,
+  not assumed.
+
   Name reflects EXTENSION_PREFIX=Con applied to the authored name "DemoNoteHeader"
   — the provisioned AOT object is ConDemoNoteHeader.
 -->

@@ -153,6 +153,23 @@ VM `eval-run`, and until that lands the case will diff against a golden that no
 longer matches its own instruction. That is the intended state: the instruction is
 now right and the golden is visibly stale, rather than both being quietly wrong.
 
+**The `Overview` half is no longer a hypothesis — it is measured** (VM, model
+`fm-mcp`, xppc 7.0.7996.33, 2026-08-23). Provisioning the fixture and building it
+gives 0 errors, and the group survives a read-back byte for byte. Adding
+`L1-form-basic`'s golden FORM on top of that fixture also builds 0 errors. Taking
+the group back out of the fixture and rebuilding reproduces the recorded failure
+exactly:
+
+```
+Metadata Error: AxForm/ConDemoNoteHeaderList/Design/Controls/Grid/DataGroup:
+  Field group 'Overview' does not exist.
+```
+
+So the fixture is the artifact that was wrong, the three form cases were right,
+and what remains for them is only the table-golden re-capture — not a question.
+The one warning in every build above is the environment's pre-existing
+`AttributeBasedPricing` external reference, which an empty sandbox carries too.
+
 | Case | What was settled | Still to do |
 |---|---|---|
 | `L1-map-basic` | The instruction demanded a map field `CreatedDateTime` mapped 1:1 to `ConDemoNoteHeader` — a name reserved for system fields (which `L1-table-basic` already forbids in its own wording) *and* a column that table never declares, so the mapping pointed at nothing. The map is now two fields, `NoteId` + `Subject`. | Re-capture the golden. |
