@@ -34,19 +34,38 @@ export type AccessLevel = (typeof ACCESS_LEVELS)[number];
  * Read/Update/Create/Delete, so `maintain` on an entry point silently granted
  * read+update — the Microsoft deserializer is sequence-ordered and dropped the
  * rest. Both build clean and pass xppbp, which is why nothing caught it until a
- * live round trip did (eval case L2-object-delete-and-entry-point-cleanup,
- * 2026-08-23). Measured: 370 shipped AxSecurityPrivilege files hold 731
- * multi-element entry-point grants, NONE out of alphabetical order.
+ * live round trip did (eval case L2-object-delete-and-entry-point-cleanup).
  *
- * `Correct` is the one real difference between the two — it is a data-entity
- * permission, and adding it to an entry point would grant more than was asked.
+ * That same round trip then caught the second half, in THIS function's own
+ * reasoning. It used to withhold `Correct` from entry points, on the stated
+ * grounds that it is a data-entity permission and granting it "would grant more
+ * than was asked". That was wrong. Measured over every AxSecurityPrivilege in
+ * PackagesLocalDirectory — 20,164 files, 30,169 entry-point <Grant> blocks:
+ *
+ *   14034  Correct,Create,Delete,Read,Update
+ *   12765  Read
+ *    2050  Correct,Create,Delete,Invoke,Read,Update
+ *     660  Create,Read,Update
+ *     586  Read,Update
+ *      65  Correct,Create,Read,Update
+ *       3  Delete
+ *
+ * The shape emitted for `maintain` — Create,Delete,Read,Update — occurs ZERO
+ * times. Withholding `Correct` granted LESS than the AOT designer's own Delete
+ * level: the same silent-underspecification as the ordering bug, and just as
+ * invisible to the compiler and to xppbp.
+ *
+ * `Invoke` splits by entry-point type rather than by access level, so it is the
+ * one thing this still keys on: 1066 of ServiceOperation's 1074 grants carry it
+ * (99.3%), against 659 of MenuItemDisplay's 21769 (3.0%) and comparable rates on
+ * the other two menu-item types. Majority behaviour on both sides of that split.
  */
-function buildGrantXml(al: AccessLevel, kind: 'entry-point' | 'data-entity'): string {
+function buildGrantXml(al: AccessLevel, entryPointType?: string): string {
   const i = '\t\t\t\t';
   if (al !== 'maintain') return `${i}<Read>Allow</Read>`;
-  const ops = kind === 'data-entity'
-    ? ['Correct', 'Create', 'Delete', 'Read', 'Update']
-    : ['Create', 'Delete', 'Read', 'Update'];
+  const ops = entryPointType === 'ServiceOperation'
+    ? ['Correct', 'Create', 'Delete', 'Invoke', 'Read', 'Update']
+    : ['Correct', 'Create', 'Delete', 'Read', 'Update'];
   return ops.map(op => `${i}<${op}>Allow</${op}>`).join('\n');
 }
 
@@ -85,7 +104,7 @@ export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<st
 
   let entryPointsXml: string;
   if (targetObject) {
-    const grantXml = buildGrantXml(al, 'entry-point');
+    const grantXml = buildGrantXml(al, objType);
     entryPointsXml = `\n\t\t<AxSecurityEntryPointReference>\n\t\t\t<Name>${targetObject}</Name>\n\t\t\t<Grant>\n${grantXml}\n\t\t\t</Grant>\n\t\t\t<ObjectName>${targetObject}</ObjectName>\n\t\t\t<ObjectType>${objType}</ObjectType>\n\t\t\t<Forms />\n\t\t</AxSecurityEntryPointReference>\n\t`;
   } else {
     entryPointsXml = '';
@@ -94,7 +113,7 @@ export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<st
   const dataEntity: string | undefined = properties?.dataEntity;
   let dataEntityPermissionsXml: string;
   if (dataEntity) {
-    const grantXml = buildGrantXml(al, 'data-entity');
+    const grantXml = buildGrantXml(al);
     // Grant comes before Name for data-entity permissions.
     dataEntityPermissionsXml = `\n\t\t<AxSecurityDataEntityPermission>\n\t\t\t<Grant>\n${grantXml}\n\t\t\t</Grant>\n\t\t\t<Name>${dataEntity}</Name>\n\t\t\t<Fields />\n\t\t\t<Methods />\n\t\t</AxSecurityDataEntityPermission>\n\t`;
   } else {
@@ -297,7 +316,7 @@ export function addSecurityEntryPoint(
   const block =
     `\t\t<AxSecurityEntryPointReference>\n` +
     `\t\t\t<Name>${name}</Name>\n` +
-    `\t\t\t<Grant>\n${buildGrantXml(al, 'entry-point')}\n\t\t\t</Grant>\n` +
+    `\t\t\t<Grant>\n${buildGrantXml(al, matchedType)}\n\t\t\t</Grant>\n` +
     `\t\t\t<ObjectName>${objectName}</ObjectName>\n` +
     `\t\t\t<ObjectType>${matchedType}</ObjectType>\n` +
     `\t\t\t<Forms />\n` +

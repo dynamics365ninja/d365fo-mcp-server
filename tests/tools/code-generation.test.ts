@@ -623,8 +623,11 @@ describe('XmlTemplateGenerator.generateAxSecurityPrivilegeXml', () => {
     for (const g of grants) {
       expect(g, `grant out of alphabetical order: ${g.join(',')}`).toEqual([...g].sort());
     }
-    // The Maintain half must really carry all four, not just be ordered.
-    expect(grants.some(g => g.join(',') === 'Create,Delete,Read,Update')).toBe(true);
+    // The Maintain half must really carry the whole shape, not just be ordered.
+    // `Correct` belongs here: measured over PackagesLocalDirectory, 14034 of the
+    // full-CRUD entry-point grants Microsoft ships carry it, and ZERO match the
+    // Correct-less shape this line used to assert.
+    expect(grants.some(g => g.join(',') === 'Correct,Create,Delete,Read,Update')).toBe(true);
   });
 });
 

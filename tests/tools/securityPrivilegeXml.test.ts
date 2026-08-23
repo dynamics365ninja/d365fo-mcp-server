@@ -51,6 +51,19 @@ function expectOrder(xml: string, tags: string[]): void {
   }
 }
 
+/**
+ * Every granted permission in a block, in document order.
+ *
+ * `expectOrder` checks only RELATIVE order, so it cannot see a MISSING element.
+ * That is precisely how a `<Grant>` with no `<Correct>` passed a suite that
+ * already asserted this grant's ordering — the four elements it named were in
+ * order, and the absent fifth was invisible to the assertion. Comparing the whole
+ * list makes both failure modes visible at once.
+ */
+function grantOps(xmlBlock: string): string[] {
+  return [...xmlBlock.matchAll(/<([A-Za-z]+)>Allow<\/\1>/g)].map(m => m[1]);
+}
+
 describe('buildAxSecurityPrivilegeXml', () => {
   it('emits a well-formed skeleton with no properties', () => {
     const xml = buildAxSecurityPrivilegeXml('MyPrivilege');
@@ -153,7 +166,38 @@ describe('buildAxSecurityPrivilegeXml', () => {
         xml.indexOf('<AxSecurityEntryPointReference>'),
         xml.indexOf('</AxSecurityEntryPointReference>'),
       );
-      expectOrder(grant, ['Create', 'Delete', 'Read', 'Update']);
+      // The WHOLE shape, not just its ordering. `Correct` was missing here and no
+      // assertion could see it: measured over every AxSecurityPrivilege in
+      // PackagesLocalDirectory (20,164 files, 30,169 entry-point grants), 14,034
+      // full-CRUD entry points carry `Correct` and ZERO match the Correct-less
+      // shape this used to emit. Withholding it granted LESS than the AOT
+      // designer's own Delete level — silent underspecification, invisible to
+      // both the compiler and xppbp.
+      expect(grantOps(grant)).toEqual(['Correct', 'Create', 'Delete', 'Read', 'Update']);
+    });
+
+    /**
+     * `Invoke` is the one thing the grant still keys on entry-point TYPE for, and
+     * it splits cleanly: 1066 of ServiceOperation's 1074 shipped grants carry it
+     * (99.3%), against 659 of MenuItemDisplay's 21769 (3.0%). So it belongs on a
+     * ServiceOperation entry point and not on a menu-item one.
+     */
+    it('adds Invoke to a maintain grant on a ServiceOperation entry point only', () => {
+      const svc = buildAxSecurityPrivilegeXml('MyPrivilege', {
+        targetObject: 'MyService',
+        objectType: 'ServiceOperation',
+        accessLevel: 'maintain',
+      });
+      expect(grantOps(svc.slice(svc.indexOf('<AxSecurityEntryPointReference>')))).toEqual([
+        'Correct', 'Create', 'Delete', 'Invoke', 'Read', 'Update',
+      ]);
+
+      const mi = buildAxSecurityPrivilegeXml('MyPrivilege', {
+        targetObject: 'MyMenuItem',
+        objectType: 'MenuItemDisplay',
+        accessLevel: 'maintain',
+      });
+      expect(grantOps(mi.slice(mi.indexOf('<AxSecurityEntryPointReference>')))).not.toContain('Invoke');
     });
 
     it('matches accessLevel case-insensitively', () => {
@@ -215,7 +259,8 @@ describe('buildAxSecurityPrivilegeXml', () => {
       // entry-point grant above follows the same rule — an earlier comment here
       // claimed the two were deliberately asymmetric, which was an assumption the
       // shipped metadata and a live round trip both refute (see that test).
-      // `Correct` is the one real difference: it is a data-entity permission only.
+      // `Correct` is NOT a data-entity-only permission — the entry-point test above
+      // records the measurement that refutes that claim. Both places carry it.
       expectOrder(grant, ['Correct', 'Create', 'Delete', 'Read', 'Update']);
     });
 
@@ -447,7 +492,9 @@ describe('addSecurityEntryPoint', () => {
       objectName: 'MyMenuItem', objectType: 'MenuItemAction', accessLevel: 'maintain',
     }));
     const grant = r.xml.slice(r.xml.indexOf('<Grant>'), r.xml.indexOf('</Grant>'));
-    expectOrder(grant, ['Create', 'Delete', 'Read', 'Update']);
+    // Full shape — this writer feeds add-entry-point, so an element missing here
+    // is a permission the caller asked for and did not get.
+    expect(grantOps(grant)).toEqual(['Correct', 'Create', 'Delete', 'Read', 'Update']);
   });
 
   it('honours an explicit entry-point name distinct from the object', () => {
