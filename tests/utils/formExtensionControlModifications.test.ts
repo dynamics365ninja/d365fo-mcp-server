@@ -211,3 +211,40 @@ describe('resolveControlPropertyTarget — both spellings the tool receives', ()
     expect(resolveControlPropertyTarget('A.B.C')).toBeNull();
   });
 });
+
+/**
+ * Line endings, the thing a clean build cannot tell you about.
+ *
+ * Every block this module splices in is built with '\n', while AOT metadata on
+ * disk is CRLF with a BOM. So a real insert left the file MIXED: CRLF on every
+ * pre-existing line and LF on the new ones. xppc accepts that — the eval run
+ * exercising this writer built 0 errors — but Visual Studio, VCS diffs and any
+ * byte-comparison against a golden do not, and nothing here asserted it.
+ */
+describe('line endings follow the host document', () => {
+  const crlf = [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">',
+    '\t<Name>MyForm.Ext</Name>',
+    '\t<ControlModifications />',
+    '\t<Controls />',
+    '</AxFormExtension>',
+  ].join('\r\n');
+
+  it('writes CRLF into a CRLF document, with none left LF-only', () => {
+    const out = upsertFormExtensionControlProperty(crlf, 'HeaderNoteId', 'Visible', 'No');
+    if (!out.ok) throw new Error(out.reason);
+    expect(out.changed).toBe(true);
+    // The inserted block is really there...
+    expect(out.xml).toContain('<Name>HeaderNoteId</Name>');
+    // ...and every newline in the whole document is a CRLF.
+    expect(out.xml.replace(/\r\n/g, '')).not.toContain('\n');
+  });
+
+  it('leaves an LF document entirely LF', () => {
+    const lf = crlf.replace(/\r\n/g, '\n');
+    const out = upsertFormExtensionControlProperty(lf, 'HeaderNoteId', 'Visible', 'No');
+    if (!out.ok) throw new Error(out.reason);
+    expect(out.xml).not.toContain('\r');
+  });
+});
