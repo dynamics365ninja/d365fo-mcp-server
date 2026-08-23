@@ -630,10 +630,10 @@ function securityPrivilegeXmlTemplate(name: string, targetMenuItemName: string):
 \t\t<AxSecurityEntryPointReference>
 \t\t\t<Name>${targetMenuItemName}</Name>
 \t\t\t<Grant>
-\t\t\t\t<Read>Allow</Read>
-\t\t\t\t<Update>Allow</Update>
 \t\t\t\t<Create>Allow</Create>
 \t\t\t\t<Delete>Allow</Delete>
+\t\t\t\t<Read>Allow</Read>
+\t\t\t\t<Update>Allow</Update>
 \t\t\t</Grant>
 \t\t\t<ObjectName>${targetMenuItemName}</ObjectName>
 \t\t\t<ObjectType>MenuItemDisplay</ObjectType>

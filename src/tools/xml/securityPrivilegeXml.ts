@@ -58,8 +58,16 @@ export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<st
 
   let entryPointsXml: string;
   if (targetObject) {
+    // ALPHABETICAL, like the data-entity grant below — the Microsoft deserializer
+    // is sequence-ordered, so out-of-order elements are dropped in silence. This
+    // branch used to emit Read/Update/Create/Delete, which round-tripped as
+    // R:[Allow] U:[Allow] C:[Unset] D:[Unset]: `maintain` granted read+update,
+    // built clean and passed xppbp. Measured, not assumed — 370 shipped
+    // AxSecurityPrivilege files hold 731 multi-element entry-point grants and
+    // NONE is out of alphabetical order. (Eval case
+    // L2-object-delete-and-entry-point-cleanup, 2026-08-23.)
     const grantXml = al === 'maintain'
-      ? '\t\t\t\t<Read>Allow</Read>\n\t\t\t\t<Update>Allow</Update>\n\t\t\t\t<Create>Allow</Create>\n\t\t\t\t<Delete>Allow</Delete>'
+      ? '\t\t\t\t<Create>Allow</Create>\n\t\t\t\t<Delete>Allow</Delete>\n\t\t\t\t<Read>Allow</Read>\n\t\t\t\t<Update>Allow</Update>'
       : '\t\t\t\t<Read>Allow</Read>';
     entryPointsXml = `\n\t\t<AxSecurityEntryPointReference>\n\t\t\t<Name>${targetObject}</Name>\n\t\t\t<Grant>\n${grantXml}\n\t\t\t</Grant>\n\t\t\t<ObjectName>${targetObject}</ObjectName>\n\t\t\t<ObjectType>${objType}</ObjectType>\n\t\t\t<Forms />\n\t\t</AxSecurityEntryPointReference>\n\t`;
   } else {

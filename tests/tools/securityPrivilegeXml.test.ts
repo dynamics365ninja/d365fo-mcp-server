@@ -123,6 +123,38 @@ describe('buildAxSecurityPrivilegeXml', () => {
       }
     });
 
+    /**
+     * The entry-point grant is alphabetical too. An earlier revision emitted
+     * Read/Update/Create/Delete here and this suite asserted only PRESENCE, with a
+     * comment calling the asymmetry deliberate ("do not normalise it") — so the
+     * order was never checked and the claim was never tested. It was wrong:
+     *
+     *  - The Microsoft deserializer is sequence-ordered. A live round trip in eval
+     *    case L2-object-delete-and-entry-point-cleanup (2026-08-23) read the
+     *    tool's own output back as R:[Allow] U:[Allow] C:[Unset] D:[Unset] — the
+     *    same content in alphabetical order read back as all four Allow.
+     *  - 370 shipped AxSecurityPrivilege files (ApplicationSuite +
+     *    ApplicationFoundation) carry 731 multi-element entry-point grants. NONE
+     *    is out of alphabetical order.
+     *  - This module's own header already stated the rule without qualifying it
+     *    to data entities.
+     *
+     * So `accessLevel:"maintain"` silently granted read+update, on a privilege
+     * that built clean and passed xppbp — the one failure class a security object
+     * must not have.
+     */
+    it('writes the entry-point CRUD grant in ALPHABETICAL order at maintain level', () => {
+      const xml = buildAxSecurityPrivilegeXml('MyPrivilege', {
+        targetObject: 'MyMenuItem',
+        accessLevel: 'maintain',
+      });
+      const grant = xml.slice(
+        xml.indexOf('<AxSecurityEntryPointReference>'),
+        xml.indexOf('</AxSecurityEntryPointReference>'),
+      );
+      expectOrder(grant, ['Create', 'Delete', 'Read', 'Update']);
+    });
+
     it('matches accessLevel case-insensitively', () => {
       // `al` is lowercased before comparison; a caller passing "Maintain" from a
       // UI or a JSON payload must not silently degrade to view-only.
@@ -178,9 +210,11 @@ describe('buildAxSecurityPrivilegeXml', () => {
         xml.indexOf('<AxSecurityDataEntityPermission>'),
         xml.indexOf('</AxSecurityDataEntityPermission>'),
       );
-      // The serializer emits these alphabetically, NOT in CRUD order — note that
-      // this differs from the entry-point grant above, which is Read/Update/
-      // Create/Delete. The asymmetry is real; do not "normalise" it.
+      // The serializer emits these alphabetically, NOT in CRUD order. The
+      // entry-point grant above follows the same rule — an earlier comment here
+      // claimed the two were deliberately asymmetric, which was an assumption the
+      // shipped metadata and a live round trip both refute (see that test).
+      // `Correct` is the one real difference: it is a data-entity permission only.
       expectOrder(grant, ['Correct', 'Create', 'Delete', 'Read', 'Update']);
     });
 
