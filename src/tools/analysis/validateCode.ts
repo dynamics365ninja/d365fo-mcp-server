@@ -24,6 +24,7 @@ import type { XppServerContext } from '../../types/context.js';
 import { validateXppTool } from './validateXpp.js';
 import { resolveReferencesTool } from '../write/resolveReferences.js';
 import { lookupSymbolNocase, type DbLike } from '../../utils/symbolLookup.js';
+import { type XmlNode, parseNodes, firstChild, textValueOf } from '../../utils/xmlNodeTree.js';
 
 function err(text: string) {
   return { content: [{ type: 'text' as const, text }], isError: true };
@@ -63,6 +64,157 @@ function symbolExistsInIndex(
   }
 }
 
+/**
+ * The two element names a query data source can carry. An embedded (joined) one
+ * is NOT a nested root — both spellings have to be walked or every joined table
+ * is invisible.
+ */
+const QUERY_DATASOURCE_TAGS = ['AxQuerySimpleRootDataSource', 'AxQuerySimpleEmbeddedDataSource'];
+
+/** Is `field` a column of `table` according to the index? */
+function fieldExistsOnTable(db: DbLike, table: string, field: string): boolean {
+  try {
+    // COLLATE NOCASE is safe here only because parent_name + type already narrow
+    // this to one table's columns — see the note in symbolLookup.ts.
+    const row = db
+      .prepare("SELECT 1 FROM symbols WHERE parent_name = ? AND type = 'field' AND name = ? COLLATE NOCASE LIMIT 1")
+      .get(table, field);
+    return row !== undefined;
+  } catch {
+    return true; // index unavailable — never false-block
+  }
+}
+
+/** How many columns the index knows for `table` — 0 means "cannot judge its fields". */
+function indexedFieldCount(db: DbLike, table: string): number {
+  try {
+    const row = db
+      .prepare("SELECT COUNT(*) AS c FROM symbols WHERE parent_name = ? AND type = 'field'")
+      .get(table) as { c?: number } | undefined;
+    return row?.c ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Every query data source under `node`, at any depth, as name → table. */
+function collectQueryDataSources(xml: string, node: XmlNode, into: Map<string, string>): void {
+  for (const child of node.children) {
+    if (QUERY_DATASOURCE_TAGS.includes(child.name)) {
+      const nameNode = firstChild(child, 'Name');
+      const tableNode = firstChild(child, 'Table');
+      if (nameNode && tableNode) {
+        const name = textValueOf(xml, nameNode);
+        const table = textValueOf(xml, tableNode);
+        if (name && table) into.set(name.toLowerCase(), table);
+      }
+    }
+    collectQueryDataSources(xml, child, into);
+  }
+}
+
+/**
+ * References inside an AxDataEntityView — the ones the flat tag scan below cannot see.
+ *
+ * A data entity keeps its query in <ViewMetadata>, and NONE of its reference
+ * elements are named like the ones the generic pass checks: the source table is
+ * <Table>, a mapped column is <DataField> paired with a <DataSource>, and a query
+ * field is <Field>. So `validate_code(mode="references")` on an entity reported
+ * "all 0 reference(s) verified" — it had checked nothing, and a hallucinated
+ * field name passed the static gate in silence (eval case
+ * L2-entity-query-range-roundtrip, 2026-08-23).
+ *
+ * Walked with the node tree rather than a tag regex because embedded (joined)
+ * data sources NEST: a flat scan pairs a <DataField> with whatever <DataSource>
+ * happens to be nearest in document order, which is how a check like this
+ * reports the wrong table with full confidence.
+ *
+ * Field violations are warnings, never errors, and are skipped entirely when the
+ * index knows no columns for the table at all — a table created in this session
+ * whose fields have not been indexed yet must not be reported as having none.
+ */
+function resolveDataEntityReferences(
+  xml: string,
+  db: DbLike,
+): { violations: XmlRefViolation[]; verified: number } {
+  const violations: XmlRefViolation[] = [];
+  let verified = 0;
+
+  const root = parseNodes(xml);
+  if (!root || root.name !== 'AxDataEntityView') return { violations, verified };
+
+  const dataSources = new Map<string, string>();
+  collectQueryDataSources(xml, root, dataSources);
+
+  const judgeable = new Map<string, boolean>();
+  for (const table of new Set(dataSources.values())) {
+    // A data entity is built over a table or a view; accept either.
+    if (lookupSymbolNocase(db, table, ['table', 'view']) !== undefined) {
+      verified++;
+      judgeable.set(table.toLowerCase(), indexedFieldCount(db, table) > 0);
+    } else {
+      violations.push({
+        element: 'Table',
+        value: table,
+        detail: `Table "${table}" not found in the symbol index (data-entity data source).`,
+        severity: 'error',
+      });
+      judgeable.set(table.toLowerCase(), false);
+    }
+  }
+
+  /** Check one column reference against the table its data source resolves to. */
+  const checkField = (dataSourceName: string, field: string, element: string): void => {
+    const table = dataSources.get(dataSourceName.toLowerCase());
+    if (!table || !judgeable.get(table.toLowerCase())) return; // cannot judge — stay silent
+    if (fieldExistsOnTable(db, table, field)) {
+      verified++;
+    } else {
+      violations.push({
+        element,
+        value: field,
+        detail:
+          `Field "${field}" not found on table "${table}" (via data source "${dataSourceName}"). ` +
+          `A field a table extension adds in this same session may not be indexed yet.`,
+        severity: 'warning',
+      });
+    }
+  };
+
+  // Query fields: <Field> inside the data source that owns them.
+  const walkQueryFields = (node: XmlNode): void => {
+    for (const child of node.children) {
+      if (QUERY_DATASOURCE_TAGS.includes(child.name)) {
+        const nameNode = firstChild(child, 'Name');
+        const dsName = nameNode ? textValueOf(xml, nameNode) : '';
+        const fields = firstChild(child, 'Fields');
+        if (dsName && fields) {
+          for (const f of fields.children) {
+            const fieldNode = firstChild(f, 'Field');
+            if (fieldNode) checkField(dsName, textValueOf(xml, fieldNode), 'Field');
+          }
+        }
+      }
+      walkQueryFields(child);
+    }
+  };
+  walkQueryFields(root);
+
+  // Mapped entity fields: <DataField> paired with its own <DataSource>.
+  const entityFields = firstChild(root, 'Fields');
+  if (entityFields) {
+    for (const f of entityFields.children) {
+      const dataField = firstChild(f, 'DataField');
+      const dsNode = firstChild(f, 'DataSource');
+      if (dataField && dsNode) {
+        checkField(textValueOf(xml, dsNode), textValueOf(xml, dataField), 'DataField');
+      }
+    }
+  }
+
+  return { violations, verified };
+}
+
 function resolveXmlReferences(
   xml: string,
   _contextName: string | undefined,
@@ -85,6 +237,13 @@ function resolveXmlReferences(
     };
   }
 
+  // A data entity keeps its references under names none of the scans below use
+  // (<Table>, <DataField> + <DataSource>, <Field>), so it needs its own pass or
+  // it verifies literally nothing.
+  const entity = resolveDataEntityReferences(xml, db);
+  violations.push(...entity.violations);
+  verified += entity.verified;
+
   // <ExtendedDataType> — EDT must exist
   for (const edt of extractTagValues(xml, 'ExtendedDataType')) {
     if (symbolExistsInIndex(db, edt, 'edt')) {
@@ -93,7 +252,7 @@ function resolveXmlReferences(
       violations.push({
         element: 'ExtendedDataType',
         value: edt,
-        detail: `EDT "${edt}" not found in the symbol index. Wrong EDT name — check suggest_edt or search for the correct name.`,
+        detail: `EDT "${edt}" not found in the symbol index. Wrong EDT name — search the index or run prepare(mode="create") for a suggestion.`,
         severity: 'error',
       });
     }
