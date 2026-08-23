@@ -6,6 +6,7 @@
   "target_artifact_types": [
     "AxTable",
     "AxView",
+    "AxQuery",
     "AxForm"
   ],
   "golden_path": "eval/goldens/L2-form-over-view/",
