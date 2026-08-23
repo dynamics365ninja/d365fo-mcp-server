@@ -2163,7 +2163,7 @@ function unresolvedObjectError(
   );
 }
 
-const ModifyD365FileArgsSchema = z.object({
+export const ModifyD365FileArgsSchema = z.object({
   objectType: z.enum([
     'class', 'table', 'form', 'enum', 'query', 'view', 'edt', 'data-entity', 'report',
     'table-extension', 'class-extension', 'form-extension', 'enum-extension', 'edt-extension',
@@ -2446,6 +2446,16 @@ const ModifyD365FileArgsSchema = z.object({
     'add-entry-point (REQUIRED) / remove-entry-point: <ObjectType> (EntryPointType) — MenuItemDisplay | ' +
     'MenuItemAction | MenuItemOutput | ServiceOperation | None. On remove, only needed to disambiguate ' +
     'the same ObjectName referenced through two entry-point types.'
+  ),
+  // Declared here because Zod STRIPS what it does not declare. This parameter was
+  // in the op-spec, read by the dispatcher and honoured by the writer — and absent
+  // from this schema, so `args.accessLevel` was always undefined and every entry
+  // point add-entry-point ever wrote fell back to `?? 'view'`: Read only, under a
+  // ✅, for a caller who asked for maintain. Caught live by eval case
+  // L2-object-delete-and-entry-point-cleanup, 2026-08-23.
+  accessLevel: z.string().optional().describe(
+    'add-entry-point: permissions the <Grant> carries. "view"/"read" grant Read; "maintain" grants ' +
+    'Correct+Create+Delete+Read+Update (plus Invoke on a ServiceOperation). Defaults to "view".'
   ),
 
   // For remove-diagnostic-suppression (ignore-diagnostic-list).
