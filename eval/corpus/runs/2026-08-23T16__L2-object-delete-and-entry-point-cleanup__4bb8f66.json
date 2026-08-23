@@ -1,0 +1,72 @@
+{
+  "run_id": "2026-08-23T16__L2-object-delete-and-entry-point-cleanup__4bb8f66",
+  "case_id": "L2-object-delete-and-entry-point-cleanup",
+  "tier": 2,
+  "timestamp": "2026-08-23T16:51:18.085Z",
+  "server_git_sha": "4bb8f66",
+  "generated_artifacts": [
+    "ConDemoScrapNote.metadata.xml",
+    "ConDemoScrapNoteForm.metadata.xml",
+    "ConDemoScrapNoteMI.metadata.xml",
+    "ConDemoScrapNoteMaintain.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "moniker": "BPErrorPrivilegeNotCoveredByDuty",
+        "object": "ConDemoScrapNoteMaintain",
+        "severity": "warning",
+        "path": "dynamics://SecurityPrivilege/ConDemoScrapNoteMaintain",
+        "note": "Expected and documented in the golden README: the case admits no AxSecurityDuty, so any privilege it builds is uncovered. Not an implementation defect. Same warning as the 4203716 run."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [
+      "DemoScrapNoteMaintain.metadata.xml::AxSecurityPrivilege/EntryPoints/AxSecurityEntryPointReference[PFXDemoScrapNoteMI]/Grant/Correct"
+    ],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "7.0.7996.33 (xppc), full build of target model fm-mcp, 0 errors, 1 pre-existing unrelated ExternalReference warning (AttributeBasedPricing) present on an empty sandbox too",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": [],
+      "note": "validate_code(references, xml-table) on ConDemoScrapNote: 4/4 refs resolved (Num, Name, NoteId, Subject)."
+    },
+    "syntax": {
+      "passed": true,
+      "violations": [],
+      "note": "validate_code(syntax, xml-any) on ConDemoScrapNoteMaintain: 0 violations across 23 rule groups."
+    }
+  },
+  "root_cause_hypothesis": "VALIDATION RUN of the six post-4203716 fixes, on the case that is the primary witness for two of them. RESULT: fix 1 (Grant element ORDER) HOLDS; fix 2 (add-entry-point) IS UNREACHABLE - the operation cannot be invoked at all.\n\n(1) GRANT ORDER - FIXED, verified on disk, not merely by a clean build. d365fo_file(create, security-privilege, accessLevel=maintain) now writes Create, Delete, Read, Update in ALPHABETICAL order; the old Read, Update, Create, Delete shape that made the sequence-ordered Microsoft deserializer silently drop Create and Delete is gone. remove-entry-point preserved that order in the surviving block. The on-disk block was read back verbatim after a clean full build.\n\n(2) add-entry-point - BLOCKED, TOOL_DEFECT, and the reason this run had to fall back to the very workaround the fix was written to remove. d365fo_file(action=modify, objectType=security-privilege, operation=add-entry-point, params={entryPointObjectName, entryPointObjectType, accessLevel}) returns: \"Operation 'add-entry-point' on object type 'security-privilege' is not supported by the bridge.\" Root cause: commit 695876f added the operation to the tool schema (src/server/toolSchemas/d365foFile.ts), the op-spec catalogue (src/tools/specs/d365foFileOpSpecs.ts), the dispatcher case (src/tools/write/modifyD365File.ts:4044 -> directXmlAddEntryPoint) and the writer (src/tools/xml/securityPrivilegeXml.ts), but did NOT touch src/bridge/bridgeAdapter.ts. canBridgeModify() (bridgeAdapter.ts:1364) gates EVERY modify before dispatch, and add-entry-point is absent from BOTH gates it must clear: BRIDGE_MODIFY_OPS (line 1276, which lists its sibling remove-entry-point at line 1294) and XML_ONLY_MODIFY_PAIRS (line 1334, which maps only remove-entry-point -> security-privilege). The first check short-circuits, so the handler is dead code from the tool surface. Confirmed in the RUNNING build: dist/bridge/bridgeAdapter.js contains no add-entry-point string. The commit's 135 new unit-test lines exercise securityPrivilegeXml.ts (the writer) directly and never the dispatch path, which is exactly why a VM-free suite could not see this; grep -rln add-entry-point tests/ matches nothing. Consequence: the ambiguity refusal that 695876f claims to have made reachable is STILL unreachable through supported parameters, and a privilege with two entry points still requires create(overwrite=true, xmlContent=...) hand-authored XML - this run had to use it (documented deviation; the AltMI block was authored byte-identical in shape to the tool's own emitter, so the SURVIVING scored artifact is still the emitter's own output).\n\n(3) NEW, SECOND-ORDER DEFECT in the same fix - golden_match=0, and the ARTIFACT is the stale side, not the golden. buildGrantXml (securityPrivilegeXml.ts:44-51) emits [Create, Delete, Read, Update] for an entry point and adds Correct only for a data-entity permission, justified by the comment \"Correct is ... a data-entity permission, and adding it to an entry point would grant more than was asked\". That claim is empirically false. Measured on this VM across ALL 13,326 AxSecurityPrivilege files in ApplicationSuite/Foundation: 20,368 entry-point Grant blocks in exactly 7 distinct shapes - 9,536 (Correct, Create, Delete, Read, Update), 9,094 (Read), 941 (Correct, Create, Delete, Invoke, Read, Update), 386 (Read, Update), 382 (Create, Read, Update), 26 (Correct, Create, Read, Update), 3 (Delete). The shape the tool now emits, (Create, Delete, Read, Update), occurs ZERO times. Every full-CRUD entry-point grant Microsoft ships carries Correct. A maintain entry point therefore grants strictly less than the AOT designer's own Delete access level, and the golden (which carries Correct) is right. Same silent-underspecification failure mode as the order bug: builds clean, xppbp clean, only a live read-back shows it.\n\n(4) DELETE HALF - ALL THREE assertions PASS. action=delete on menu-item-display removed AxMenuItemDisplay/ConDemoScrapNoteAltMI.xml from disk and 1 symbol from the index; the privilege was left with exactly one entry point (no dangling reference); and the delete stripped EXACTLY the one Diagnostic whose Path was dynamics://MenuItemDisplay/ConDemoScrapNoteAltMI while leaving the ConDemoScrapNoteMI control entry untouched - targeted, not a wipe. Full build after the delete: 0 errors. No shell or fs deletion was used anywhere.\n\n(5) .rnrproj membership: NOT OBSERVED, per the case text and the golden README. The fm-mcp sandbox carries no project file at all (find -L over the whole package returned zero .rnrproj); build_d365fo_project builds by modelName. Both create and delete reported that absence honestly rather than claiming a project edit.",
+  "suggested_fix_area": "PRIMARY (blocker): src/bridge/bridgeAdapter.ts - add add-entry-point to BRIDGE_MODIFY_OPS (next to remove-entry-point, line ~1294) AND to XML_ONLY_MODIFY_PAIRS (line ~1335: 'add-entry-point': new Set(['security-privilege'])). Both are required; either alone leaves canBridgeModify false. Then add a DISPATCH-level regression test that calls d365fo_file(modify, security-privilege, add-entry-point) end to end rather than the XML writer in isolation - the existing tests/tools/securityPrivilegeXml.test.ts coverage is precisely what let this ship. Consider a generic ratchet test asserting that every operation in the d365foFile tool-schema enum satisfies canBridgeModify() for at least one objectType; it would catch this whole class mechanically (remove-control and add-query-range/remove-query-range are the pattern it protects).\nSECONDARY: src/tools/xml/securityPrivilegeXml.ts buildGrantXml - include Correct in the entry-point maintain set and correct the comment at line 41; the 20,368-grant survey above is the evidence. The golden eval/goldens/L2-object-delete-and-entry-point-cleanup/ConDemoScrapNoteMaintain.metadata.xml already holds the right shape and must NOT be re-captured from the current tool output.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxSecurityPrivilege/ConDemoScrapNoteMaintain.xml (post remove-entry-point: alphabetical Grant, no Correct)",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxIgnoreDiagnosticList/fm-mcp_BPSuppressions.xml (AltMI suppression stripped, MI entry retained)",
+    "src/bridge/bridgeAdapter.ts:1276 BRIDGE_MODIFY_OPS / :1334 XML_ONLY_MODIFY_PAIRS / :1364 canBridgeModify",
+    "src/tools/write/modifyD365File.ts:4044 case add-entry-point (unreachable)",
+    "src/tools/xml/securityPrivilegeXml.ts:44 buildGrantXml",
+    "dist/bridge/bridgeAdapter.js (running build; zero occurrences of add-entry-point)",
+    "git show --stat 695876f (bridgeAdapter.ts is not among the 7 changed files)"
+  ]
+}
