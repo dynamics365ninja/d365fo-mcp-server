@@ -83,12 +83,35 @@ const ROOT_ELEMENT_TO_AOT_TYPE: Record<string, string> = {
   IgnoreDiagnostics: 'AxIgnoreDiagnosticList',
 };
 
-/** Declared AOT type of a golden artifact, with the provenance comment header masked out. */
+/**
+ * Declared AOT type of a golden artifact, reading past the provenance comment
+ * header rather than stripping it. A one-pass `replace(/<!--...-->/g, '')` is the
+ * incomplete-sanitisation shape CodeQL flags (a `<!--` inside a comment survives
+ * it), and walking forward is the more direct way to say "first real element".
+ */
 function goldenRootElement(dir: string, file: string): string {
-  const xml = fs.readFileSync(path.join(dir, file), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
-  const root = xml.match(/<([A-Za-z][\w.]*)[\s>]/)?.[1];
-  if (!root) return '(none)';
-  return ROOT_ELEMENT_TO_AOT_TYPE[root] ?? root;
+  const xml = fs.readFileSync(path.join(dir, file), 'utf8');
+  let i = 0;
+  while (i < xml.length) {
+    const lt = xml.indexOf('<', i);
+    if (lt < 0) break;
+    if (xml.startsWith('<!--', lt)) {
+      const end = xml.indexOf('-->', lt + 4);
+      if (end < 0) break;
+      i = end + 3;
+      continue;
+    }
+    if (xml.startsWith('<?', lt)) {
+      const end = xml.indexOf('?>', lt + 2);
+      if (end < 0) break;
+      i = end + 2;
+      continue;
+    }
+    const root = /^<([A-Za-z][\w.]*)[\s>/]/.exec(xml.slice(lt, lt + 256))?.[1];
+    if (root) return ROOT_ELEMENT_TO_AOT_TYPE[root] ?? root;
+    i = lt + 1;
+  }
+  return '(none)';
 }
 
 describe('eval case catalog — schema conformance', () => {
