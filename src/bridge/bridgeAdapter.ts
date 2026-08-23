@@ -1291,7 +1291,12 @@ const BRIDGE_MODIFY_OPS = new Set([
   // (MetadataWriteService exposes no RemoveControl, and security objects have no
   // bridge write path at all) — both are served by a direct-XML writer and still
   // pass through this gate.
-  'remove-control', 'remove-entry-point',
+  // add-entry-point shipped its schema entry, op-spec, dispatcher case and writer
+  // without ever being listed here, so canBridgeModify() short-circuited and the
+  // whole feature was unreachable from the tool surface — dead code behind a ✅
+  // schema. Both this set AND XML_ONLY_MODIFY_PAIRS have to name it; either alone
+  // still returns false. (eval case L2-object-delete-and-entry-point-cleanup)
+  'remove-control', 'add-entry-point', 'remove-entry-point',
   // AxIgnoreDiagnosticList is not an AOT object at all — MetadataWriteService has
   // no concept of it — so this is XML-only for the same structural reason as the
   // two above.
@@ -1332,6 +1337,7 @@ const BRIDGE_MODIFY_TYPES = new Set([
  * a bridge resolution failure instead of "not supported for this object type".
  */
 const XML_ONLY_MODIFY_PAIRS: Record<string, ReadonlySet<string>> = {
+  'add-entry-point': new Set(['security-privilege']),
   'remove-entry-point': new Set(['security-privilege']),
   'remove-diagnostic-suppression': new Set(['ignore-diagnostic-list']),
   'add-diagnostic-suppression': new Set(['ignore-diagnostic-list']),
