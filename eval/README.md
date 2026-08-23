@@ -24,7 +24,7 @@ eval/
 │   └── <case-id>.xml             ← SysTest class for code-heavy cases (runtime oracle)
 └── corpus/
     ├── schema.json               ← JSON Schema for a run record
-    └── runs/                     ← one .json run record per run (gitignored — VM-side evidence)
+    └── runs/                     ← one .json run record per run (committed — what the improver clusters)
 ```
 
 ## Sandbox prerequisites (VM)
@@ -147,6 +147,54 @@ the tool path (`eval-run`); re-capturing straight from output that may itself be
 defective is how a golden stops being able to fail on the thing its case exists
 to catch.
 
+**2026-08-23 catalog audit — four of the eight now have their question settled**,
+in the spec and the fixture only. None of them is re-captured; each still needs a
+VM `eval-run`, and until that lands the case will diff against a golden that no
+longer matches its own instruction. That is the intended state: the instruction is
+now right and the golden is visibly stale, rather than both being quietly wrong.
+
+**The `Overview` half is no longer a hypothesis — it is measured** (VM, model
+`fm-mcp`, xppc 7.0.7996.33, 2026-08-23). Provisioning the fixture and building it
+gives 0 errors, and the group survives a read-back byte for byte. Adding
+`L1-form-basic`'s golden FORM on top of that fixture also builds 0 errors. Taking
+the group back out of the fixture and rebuilding reproduces the recorded failure
+exactly:
+
+```
+Metadata Error: AxForm/ConDemoNoteHeaderList/Design/Controls/Grid/DataGroup:
+  Field group 'Overview' does not exist.
+```
+
+So the fixture is the artifact that was wrong, the three form cases were right,
+and what remains for them is only the table-golden re-capture — not a question.
+The one warning in every build above is the environment's pre-existing
+`AttributeBasedPricing` external reference, which an empty sandbox carries too.
+
+| Case | What was settled | Still to do |
+|---|---|---|
+| `L1-map-basic` | The instruction demanded a map field `CreatedDateTime` mapped 1:1 to `ConDemoNoteHeader` — a name reserved for system fields (which `L1-table-basic` already forbids in its own wording) *and* a column that table never declares, so the mapping pointed at nothing. The map is now two fields, `NoteId` + `Subject`. | Re-capture the golden. |
+| `L1-form-basic`, `L1-form-detailsmaster`, `L1-form-simplelistdetails` | The `Overview` field group the three grids bind to via `<DataGroup>` existed in no fixture and no golden. The form goldens are the evidence it existed when they were captured, so the **table** golden is what drifted: `eval/fixtures/ConDemoNoteHeader.metadata.xml` now declares the group, and `L1-form-basic`'s instruction requires the case to create it. | Re-capture `L1-form-basic`'s table golden so it and the fixture agree again. |
+
+The remaining four (`L1-form-workspace`, `L3-form-detailstransaction`,
+`L4-entity-security`, `L2-oracle-discriminator-random-wrapper-name`) are
+unchanged and still need their question settled first.
+
+**A fifth golden is now known-wrong, for a different reason —
+`L4-entity-security/ConDemoNoteHeaderMaintain.metadata.xml`.** Its entry-point
+`<Grant>` reads `Read, Update, Create, Delete`. The Microsoft deserializer is
+sequence-ordered, so `Create` and `Delete` were dropped: the privilege granted
+read+update, built clean and passed xppbp. The generator was fixed on 2026-08-23
+(both emitters — `securityPrivilegeXml.ts` and the `security-privilege` scaffold
+in `codeGen.ts`), so the golden no longer matches what the tool produces.
+
+Do **not** hand-edit it. It is the textbook instance of the warning at the top of
+this section: the golden was captured from the real `create` path, its header
+records a live chain walk (`role -> duty -> privilege -> entry point`) — and that
+walk verified the chain's *shape* while the permissions on it were silently
+wrong, so the golden could never fail on it. Re-capture through `eval-run` once
+the case's own cross-case dependency is settled. Until then the case is expected
+to diff here, and that diff is the fix working.
+
 The sweep exists because the `build_d365fo_project` stale-result defect
 (`tests/tools/buildStaleResult.test.ts`) had made every non-`force` `pass@build`
 weaker evidence than it looked.
@@ -157,6 +205,38 @@ weaker evidence than it looked.
 rewrites [COVERAGE.md](COVERAGE.md) + `coverage.json` from the live catalog,
 knowledge base and tool schema; `-- --check` is the CI gate. Read the numbers
 and the weight-ordered closure queue there, not from prose.
+
+**What that 100% does and does not measure.** The taxonomy in
+`src/eval/coverage/taxonomy.ts` is indexed by the **artifact** a case produces
+(table, form, SSRS report, …) and by cross-cutting X++ topics. It is not indexed
+by the **write operation** that produced the artifact, so `d365fo_file`'s
+`operation` enum is invisible to the number: as of the 2026-08-23 audit, 16 of
+its 37 operations appeared in no case instruction and coverage still read
+core 44/44. The three newest families are the ones that matter — `remove-control`
+/ `remove-entry-point` / `action="delete"` (PR #922), the BP-suppression ops
+(PR #924) and the query-range ops (PR #927) each shipped, then needed a follow-up
+audit PR to close real defects, and the catalog had nothing to say about any of
+them. Four cases now cover the first three families end-to-end
+(`L2-form-control-removal-lifecycle`, `L2-object-delete-and-entry-point-cleanup`,
+`L2-bp-suppression-lifecycle`, `L2-entity-query-range-roundtrip`, all
+`golden_pending` and tagged `write-op-coverage`). They land in COVERAGE.md's
+**Orphans** list, because no leaf claims them — which is the honest reading:
+until the taxonomy grows a write-operation axis, a missing op cannot make the
+percentage fall. Still uncovered by any case: `replace-all-fields`,
+`add-full-text-index` / `remove-full-text-index`, `add-table-mapping` /
+`remove-table-mapping`, `remove-relation`, `add-delete-action` /
+`remove-delete-action`, `remove-field-group`, `add-field-modification`.
+
+**The catalog itself is gated.** `tests/eval/caseCatalog.test.ts` (VM-free)
+validates every spec against `cases/schema.json`, checks `golden_pending`
+against the actual golden folder, checks `target_artifact_types` against the
+root element of each committed golden, and refuses an instruction that names a
+tool the published tool list does not contain. It exists because the audit found
+all three drifting at once: 15 instructions still pointed the implementer at
+`get_method` / `suggest_edt` (unpublished — `toolHandler.ts` keeps the routes
+only as a recovery hint) or at `get_form_info` / `get_label_info` /
+`find_object`, which were never tool names at all, and 7 specs under-declared
+their own golden.
 
 Standing queues:
 

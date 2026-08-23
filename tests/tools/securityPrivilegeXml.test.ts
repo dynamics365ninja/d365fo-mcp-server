@@ -23,6 +23,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  addSecurityEntryPoint,
   buildAxSecurityPrivilegeXml,
   removeSecurityEntryPoint,
 } from '../../src/tools/xml/securityPrivilegeXml';
@@ -123,6 +124,38 @@ describe('buildAxSecurityPrivilegeXml', () => {
       }
     });
 
+    /**
+     * The entry-point grant is alphabetical too. An earlier revision emitted
+     * Read/Update/Create/Delete here and this suite asserted only PRESENCE, with a
+     * comment calling the asymmetry deliberate ("do not normalise it") — so the
+     * order was never checked and the claim was never tested. It was wrong:
+     *
+     *  - The Microsoft deserializer is sequence-ordered. A live round trip in eval
+     *    case L2-object-delete-and-entry-point-cleanup (2026-08-23) read the
+     *    tool's own output back as R:[Allow] U:[Allow] C:[Unset] D:[Unset] — the
+     *    same content in alphabetical order read back as all four Allow.
+     *  - 370 shipped AxSecurityPrivilege files (ApplicationSuite +
+     *    ApplicationFoundation) carry 731 multi-element entry-point grants. NONE
+     *    is out of alphabetical order.
+     *  - This module's own header already stated the rule without qualifying it
+     *    to data entities.
+     *
+     * So `accessLevel:"maintain"` silently granted read+update, on a privilege
+     * that built clean and passed xppbp — the one failure class a security object
+     * must not have.
+     */
+    it('writes the entry-point CRUD grant in ALPHABETICAL order at maintain level', () => {
+      const xml = buildAxSecurityPrivilegeXml('MyPrivilege', {
+        targetObject: 'MyMenuItem',
+        accessLevel: 'maintain',
+      });
+      const grant = xml.slice(
+        xml.indexOf('<AxSecurityEntryPointReference>'),
+        xml.indexOf('</AxSecurityEntryPointReference>'),
+      );
+      expectOrder(grant, ['Create', 'Delete', 'Read', 'Update']);
+    });
+
     it('matches accessLevel case-insensitively', () => {
       // `al` is lowercased before comparison; a caller passing "Maintain" from a
       // UI or a JSON payload must not silently degrade to view-only.
@@ -178,9 +211,11 @@ describe('buildAxSecurityPrivilegeXml', () => {
         xml.indexOf('<AxSecurityDataEntityPermission>'),
         xml.indexOf('</AxSecurityDataEntityPermission>'),
       );
-      // The serializer emits these alphabetically, NOT in CRUD order — note that
-      // this differs from the entry-point grant above, which is Read/Update/
-      // Create/Delete. The asymmetry is real; do not "normalise" it.
+      // The serializer emits these alphabetically, NOT in CRUD order. The
+      // entry-point grant above follows the same rule — an earlier comment here
+      // claimed the two were deliberately asymmetric, which was an assumption the
+      // shipped metadata and a live round trip both refute (see that test).
+      // `Correct` is the one real difference: it is a data-entity permission only.
       expectOrder(grant, ['Correct', 'Create', 'Delete', 'Read', 'Update']);
     });
 
@@ -357,5 +392,139 @@ describe('removeSecurityEntryPoint', () => {
     expect(stripped.xml).toBe(buildAxSecurityPrivilegeXml('ConDemoTicketMaintain', {
       label: '@ConDemo:TicketMaintain',
     }));
+  });
+});
+
+/**
+ * addSecurityEntryPoint — the missing half of the pair.
+ *
+ * remove-entry-point shipped without an add. `create` takes exactly ONE entry
+ * point (the scalar properties.targetObject), so a privilege granting two menu
+ * items could only be produced by create(overwrite=true, xmlContent=...) —
+ * hand-authored XML off the generator. That also left removeSecurityEntryPoint's
+ * AMBIGUITY refusal unreachable through supported parameters, so the branch that
+ * exists to stop the wrong entry point being revoked had never been exercised
+ * against a privilege the tools actually built. Found by eval case
+ * L2-object-delete-and-entry-point-cleanup, 2026-08-23.
+ *
+ * Shape measured against the shipped AOT (ApplicationSuite + ApplicationFoundation:
+ * 370 privileges, 1036 entry points): order Name, Grant, ObjectName, ObjectType,
+ * Forms in 915 of them; <Forms /> present in 1035; Name === ObjectName in 910.
+ */
+describe('addSecurityEntryPoint', () => {
+  const empty = () => buildAxSecurityPrivilegeXml('MyPrivilege', { label: '@X:Y' });
+  const withOne = () =>
+    buildAxSecurityPrivilegeXml('MyPrivilege', { targetObject: 'FirstMI', accessLevel: 'maintain' });
+
+  function added(r: ReturnType<typeof addSecurityEntryPoint>) {
+    if (r.kind !== 'added') throw new Error(`expected 'added', got '${r.kind}'`);
+    return r;
+  }
+
+  it('adds the first entry point in the shipped element order', () => {
+    const r = added(addSecurityEntryPoint(empty(), {
+      objectName: 'MyMenuItem', objectType: 'MenuItemDisplay',
+    }));
+    const block = r.xml.slice(
+      r.xml.indexOf('<AxSecurityEntryPointReference>'),
+      r.xml.indexOf('</AxSecurityEntryPointReference>'),
+    );
+    expectOrder(block, ['Name', 'Grant', 'ObjectName', 'ObjectType', 'Forms']);
+    expect(block).toContain('<ObjectType>MenuItemDisplay</ObjectType>');
+  });
+
+  it('defaults <Name> to the object name, and defaults the grant to Read only', () => {
+    const r = added(addSecurityEntryPoint(empty(), {
+      objectName: 'MyMenuItem', objectType: 'MenuItemDisplay',
+    }));
+    expect(r.added).toEqual({ name: 'MyMenuItem', objectName: 'MyMenuItem', objectType: 'MenuItemDisplay' });
+    expect(r.xml).toContain('<Read>Allow</Read>');
+    expect(r.xml).not.toContain('<Create>Allow</Create>');
+  });
+
+  it('writes a maintain grant ALPHABETICALLY, like every other grant', () => {
+    const r = added(addSecurityEntryPoint(empty(), {
+      objectName: 'MyMenuItem', objectType: 'MenuItemAction', accessLevel: 'maintain',
+    }));
+    const grant = r.xml.slice(r.xml.indexOf('<Grant>'), r.xml.indexOf('</Grant>'));
+    expectOrder(grant, ['Create', 'Delete', 'Read', 'Update']);
+  });
+
+  it('honours an explicit entry-point name distinct from the object', () => {
+    const r = added(addSecurityEntryPoint(empty(), {
+      objectName: 'MyMenuItem', objectType: 'MenuItemDisplay', name: 'MyEntryPoint',
+    }));
+    expect(r.xml).toContain('<Name>MyEntryPoint</Name>');
+    expect(r.xml).toContain('<ObjectName>MyMenuItem</ObjectName>');
+  });
+
+  it('appends a SECOND entry point beside the first', () => {
+    const r = added(addSecurityEntryPoint(withOne(), {
+      objectName: 'SecondMI', objectType: 'MenuItemDisplay', accessLevel: 'maintain',
+    }));
+    expect(r.xml.match(/<AxSecurityEntryPointReference>/g)).toHaveLength(2);
+    expect(r.xml).toContain('<ObjectName>FirstMI</ObjectName>');
+    expect(r.xml).toContain('<ObjectName>SecondMI</ObjectName>');
+    // Indent derived from the collection, not assumed: both blocks sit at one depth.
+    const depths = [...r.xml.matchAll(/^(\t+)<AxSecurityEntryPointReference>$/gm)].map(m => m[1].length);
+    expect(depths).toHaveLength(2);
+    expect(depths[0]).toBe(depths[1]);
+  });
+
+  it('is idempotent on the entry-point name', () => {
+    const once = added(addSecurityEntryPoint(empty(), {
+      objectName: 'MyMenuItem', objectType: 'MenuItemDisplay',
+    }));
+    const twice = addSecurityEntryPoint(once.xml, {
+      objectName: 'MyMenuItem', objectType: 'MenuItemDisplay',
+    });
+    expect(twice.kind).toBe('already-present');
+  });
+
+  it('refuses an ObjectType outside the EntryPointType enum', () => {
+    // An unknown value deserializes to nothing: the privilege builds clean,
+    // passes BP and grants access to no object at all.
+    const r = addSecurityEntryPoint(empty(), { objectName: 'MyMenuItem', objectType: 'MenuItem' });
+    expect(r.kind).toBe('bad-object-type');
+  });
+
+  it('declines a document that is not a privilege', () => {
+    const r = addSecurityEntryPoint('<AxSecurityDuty><Name>D</Name></AxSecurityDuty>', {
+      objectName: 'MyMenuItem', objectType: 'MenuItemDisplay',
+    });
+    expect(r.kind).toBe('unsupported');
+  });
+
+  it('round-trips: add then remove returns the original bytes', () => {
+    const start = empty();
+    const r = added(addSecurityEntryPoint(start, {
+      objectName: 'MyMenuItem', objectType: 'MenuItemDisplay',
+    }));
+    const back = removeSecurityEntryPoint(r.xml, { name: 'MyMenuItem' });
+    expect(back.kind).toBe('removed');
+    if (back.kind === 'removed') expect(back.xml).toBe(start);
+  });
+
+  it('makes the AMBIGUITY refusal in remove-entry-point reachable at last', () => {
+    // The whole point of the gap: two entry points naming the same object
+    // through two types could not be built through supported parameters, so the
+    // branch that refuses to guess between them was never exercised.
+    let xml = added(addSecurityEntryPoint(empty(), {
+      objectName: 'SharedMI', objectType: 'MenuItemDisplay', name: 'SharedDisplay',
+    })).xml;
+    xml = added(addSecurityEntryPoint(xml, {
+      objectName: 'SharedMI', objectType: 'MenuItemAction', name: 'SharedAction',
+    })).xml;
+
+    const ambiguous = removeSecurityEntryPoint(xml, { objectName: 'SharedMI' });
+    expect(ambiguous.kind).toBe('ambiguous');
+    if (ambiguous.kind === 'ambiguous') expect(ambiguous.matches).toHaveLength(2);
+
+    // ...and narrowing by type resolves it.
+    const narrowed = removeSecurityEntryPoint(xml, {
+      objectName: 'SharedMI', objectType: 'MenuItemAction',
+    });
+    expect(narrowed.kind).toBe('removed');
+    if (narrowed.kind === 'removed') expect(narrowed.removed.name).toBe('SharedAction');
   });
 });

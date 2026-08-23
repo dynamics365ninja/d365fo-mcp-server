@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<IgnoreDiagnostics xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>fm-mcp_BPSuppressions</Name>
+	<Items>
+		<Diagnostic>
+			<DiagnosticType>BestPractices</DiagnosticType>
+			<Severity>Warning</Severity>
+			<Path>dynamics://Class/ConDemoSuppressProbe/Method/run</Path>
+			<Moniker>BPXmlDocNoDocumentationComments</Moniker>
+			<Message>No XML documentation headers are provided for 'ConDemoSuppressProbe.run'.</Message>
+			<Justification>Probe method for the BP-suppression round-trip eval; documentation is intentionally absent.</Justification>
+		</Diagnostic>
+	</Items>
+</IgnoreDiagnostics>

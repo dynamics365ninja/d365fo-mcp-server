@@ -1,0 +1,61 @@
+{
+  "run_id": "2026-08-23T09__L2-bp-suppression-lifecycle__4203716",
+  "case_id": "L2-bp-suppression-lifecycle",
+  "tier": 2,
+  "timestamp": "2026-08-23T09:50:00Z",
+  "server_git_sha": "4203716ee13679856bdf4a96660ac425c4c96c84",
+  "platform_build": "X++ compiler 7.0.7996.33",
+  "generated_artifacts": [
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxClass/ConDemoSuppressProbe.xml",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxIgnoreDiagnosticList/fm-mcp_BPSuppressions.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "bp_checked": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "moniker": "BPXmlDocNoDocumentationComments",
+        "severity": "Warning",
+        "elementType": "AxClass",
+        "path": "dynamics://Class/ConDemoSuppressProbe/Method/run",
+        "message": "No XML documentation headers are provided for 'ConDemoSuppressProbe.run'.",
+        "intentional": true,
+        "note": "The probe finding the case exists to suppress. Present at step 2 and again at step 6; ABSENT at step 4 (suppressed). bp_clean=0 is the case's designed terminal state, not a failure."
+      }
+    ]
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "root_cause_hypothesis": "Full BP-suppression lifecycle passed against the real xppbp.exe. (a) The pre-flight suspicion that xppbp emits no dynamics:// path is REFUTED. The detail line is verbatim: \"BestPractices Warning: AxClass dynamics://Class/ConDemoSuppressProbe/Method/run: [(6,5),(8,6)]: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for ConDemoSuppressProbe.run.\" So the verbatim path IS obtainable; add-diagnostic-suppression stored it character-for-character, the suppressed re-run went silent with NO rebuild, and remove-diagnostic-suppression collapsed <Items> to <Items /> and brought the finding back identically. (b) CASE DEFECT: step 1 as written is unsatisfiable through d365fo_file(action=create) alone. ensureXppDocComment (bridgeAdapter.ts documentAndFormat ~L1386-1396 and bridgeAddMethod ~L1514; createD365File.ts L628/L637; generateD365Xml.ts L308/L317; smartXmlBuilder.ts L123) injects a /// <summary> block onto every created or added method PRECISELY so writes never trip BPXmlDocNoDocumentationComments. The first create+build+run_bp_check therefore returned 0 warnings even though the source passed in had no doc comment. A second grounded op (modify/replace-code, the one X++ write path not wired to the doc helper) was needed to strip the injected comment and raise the finding. (c) TOOL ERGONOMICS GAP in run_bp_check: the detail line carrying the dynamics:// path is echoed only as raw preamble text. src/tools/sdlc/runBpCheck.ts parses findings with /^s*(BP[A-Za-z0-9]+)s*:s*(.+?)s*$/, which cannot match a line beginning \"BestPractices Warning: ...\"; it matches only the trailing tally line \"BPXmlDocNoDocumentationComments: 1\". The structured Findings block consequently reports moniker+count and drops path, severity, message and element type. The path had to be lifted by eye from raw stdout. Obtainable but not surfaced, which is exactly the friction the op spec diagnosticElementType/diagnosticElementName fallback exists to work around.",
+  "suggested_fix_area": "1) eval/cases/L2-bp-suppression-lifecycle.json step 1: state that the create path auto-documents, and that the probe must be de-documented with a second grounded op (modify/replace-code) -- or switch the probe to a rule the writers do not auto-repair (e.g. BPErrorTableNoConfigurationKey / BPErrorTableMissingFormRef on a fresh table). 2) src/tools/sdlc/runBpCheck.ts: add a DETAIL-line parser (e.g. /^BestPractices (Warning|Error): (w+) (dynamics://S+?): ([[^]]*]: )?(BP[A-Za-z0-9]+): (.+)$/) and surface path/severity/message/elementType per finding, so the value add-diagnostic-suppression needs verbatim is a structured field rather than raw text the agent must eyeball. 3) Golden portability: both the suppression artifact filename and its <Name> embed the model name (fm-mcp_BPSuppressions), so this golden will not resolve under a differently-named sandbox without model-name canonicalisation in artifactKey/normalize.",
+  "evidence_refs": [
+    "eval/goldens/L2-bp-suppression-lifecycle/ConDemoSuppressProbe.metadata.xml",
+    "eval/goldens/L2-bp-suppression-lifecycle/fm-mcp_BPSuppressions.metadata.xml",
+    "eval/goldens/L2-bp-suppression-lifecycle/fm-mcp_BPSuppressionsAfterRemove.metadata.xml",
+    "src/bridge/bridgeAdapter.ts#L1370-L1396",
+    "src/bridge/bridgeAdapter.ts#L1508-L1515",
+    "src/tools/write/createD365File.ts#L628",
+    "src/tools/sdlc/runBpCheck.ts"
+  ]
+}

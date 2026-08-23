@@ -20,6 +20,23 @@
   their goldens were captured against. Keep this in sync with that golden: if the
   L1-form-basic table golden changes, this fixture changes with it.
 
+  2026-08-23 (catalog audit): the <Overview> field group was ADDED here. It is
+  not in the 2026-06-30 L1-form-basic table golden, and that omission is the
+  root cause of the three "fixture <-> golden mismatch" failures recorded in
+  eval/README.md (L1-form-basic, L1-form-detailsmaster, L1-form-simplelistdetails):
+  all three bind their grid to <DataGroup>Overview</DataGroup>, which no fixture
+  and no golden declared, so the form could never compile. The form goldens are
+  the evidence that the group existed when they were captured; the TABLE golden
+  is the artifact that drifted. L1-form-basic's instruction now requires the
+  group explicitly - re-capture its table golden on the VM and this fixture and
+  that golden agree again.
+
+  VERIFIED on the VM the same day (model fm-mcp, xppc 7.0.7996.33): this fixture
+  builds with 0 errors and the group reads back byte for byte; L1-form-basic's
+  golden form builds clean on top of it; and removing the group reproduces
+  "Field group 'Overview' does not exist" exactly. Measured in both directions,
+  not assumed.
+
   Name reflects EXTENSION_PREFIX=Con applied to the authored name "DemoNoteHeader"
   — the provisioned AOT object is ConDemoNoteHeader.
 -->
@@ -32,7 +49,19 @@
 	<TableGroup>Main</TableGroup>
 	<TitleField1>Subject</TitleField1>
 	<DeleteActions />
-	<FieldGroups />
+	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>Overview</Name>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>NoteId</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Subject</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+	</FieldGroups>
 	<Fields>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">

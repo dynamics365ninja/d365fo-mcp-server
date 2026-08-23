@@ -24,6 +24,31 @@ import { assertKnownEnumValue, SECURITY_ENTRY_POINT_TYPES } from '../../utils/ax
 
 /** The only two grant shapes this builder can emit. Anything else is a wrong privilege. */
 const ACCESS_LEVELS = ['view', 'read', 'maintain'] as const;
+export type AccessLevel = (typeof ACCESS_LEVELS)[number];
+
+/**
+ * The CRUD block of a <Grant>, for either place a privilege carries one.
+ *
+ * ONE function on purpose. The two call sites drifted before: the data-entity
+ * branch emitted alphabetically and the entry-point branch emitted
+ * Read/Update/Create/Delete, so `maintain` on an entry point silently granted
+ * read+update — the Microsoft deserializer is sequence-ordered and dropped the
+ * rest. Both build clean and pass xppbp, which is why nothing caught it until a
+ * live round trip did (eval case L2-object-delete-and-entry-point-cleanup,
+ * 2026-08-23). Measured: 370 shipped AxSecurityPrivilege files hold 731
+ * multi-element entry-point grants, NONE out of alphabetical order.
+ *
+ * `Correct` is the one real difference between the two — it is a data-entity
+ * permission, and adding it to an entry point would grant more than was asked.
+ */
+function buildGrantXml(al: AccessLevel, kind: 'entry-point' | 'data-entity'): string {
+  const i = '\t\t\t\t';
+  if (al !== 'maintain') return `${i}<Read>Allow</Read>`;
+  const ops = kind === 'data-entity'
+    ? ['Correct', 'Create', 'Delete', 'Read', 'Update']
+    : ['Create', 'Delete', 'Read', 'Update'];
+  return ops.map(op => `${i}<${op}>Allow</${op}>`).join('\n');
+}
 
 export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<string, any>): string {
   const label = properties?.label || '@TODO:LabelId';
@@ -54,13 +79,13 @@ export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<st
       `be accepted and silently degraded to Read-only.`,
     );
   }
-  const al = rawAccess;
+  // Narrowed, not asserted: the guard above already rejected anything outside
+  // the closed enum, so this is the type catching up with the check.
+  const al = rawAccess as AccessLevel;
 
   let entryPointsXml: string;
   if (targetObject) {
-    const grantXml = al === 'maintain'
-      ? '\t\t\t\t<Read>Allow</Read>\n\t\t\t\t<Update>Allow</Update>\n\t\t\t\t<Create>Allow</Create>\n\t\t\t\t<Delete>Allow</Delete>'
-      : '\t\t\t\t<Read>Allow</Read>';
+    const grantXml = buildGrantXml(al, 'entry-point');
     entryPointsXml = `\n\t\t<AxSecurityEntryPointReference>\n\t\t\t<Name>${targetObject}</Name>\n\t\t\t<Grant>\n${grantXml}\n\t\t\t</Grant>\n\t\t\t<ObjectName>${targetObject}</ObjectName>\n\t\t\t<ObjectType>${objType}</ObjectType>\n\t\t\t<Forms />\n\t\t</AxSecurityEntryPointReference>\n\t`;
   } else {
     entryPointsXml = '';
@@ -69,10 +94,7 @@ export function buildAxSecurityPrivilegeXml(name: string, properties?: Record<st
   const dataEntity: string | undefined = properties?.dataEntity;
   let dataEntityPermissionsXml: string;
   if (dataEntity) {
-    // CRUD elements alphabetical, matching the Microsoft serializer.
-    const grantXml = al === 'maintain'
-      ? '\t\t\t\t<Correct>Allow</Correct>\n\t\t\t\t<Create>Allow</Create>\n\t\t\t\t<Delete>Allow</Delete>\n\t\t\t\t<Read>Allow</Read>\n\t\t\t\t<Update>Allow</Update>'
-      : '\t\t\t\t<Read>Allow</Read>';
+    const grantXml = buildGrantXml(al, 'data-entity');
     // Grant comes before Name for data-entity permissions.
     dataEntityPermissionsXml = `\n\t\t<AxSecurityDataEntityPermission>\n\t\t\t<Grant>\n${grantXml}\n\t\t\t</Grant>\n\t\t\t<Name>${dataEntity}</Name>\n\t\t\t<Fields />\n\t\t\t<Methods />\n\t\t</AxSecurityDataEntityPermission>\n\t`;
   } else {
@@ -209,5 +231,101 @@ export function removeSecurityEntryPoint(
     kind: 'removed',
     xml: updated,
     removed: { name: hit.name, objectName: hit.objectName, objectType: hit.objectType },
+  };
+}
+
+export type AddEntryPointResult =
+  | { kind: 'added'; xml: string; added: SecurityEntryPointRef }
+  /** An entry point with that <Name> is already there — idempotent no-op. */
+  | { kind: 'already-present'; existing: SecurityEntryPointRef }
+  /** objectType outside the closed EntryPointType enum. */
+  | { kind: 'bad-object-type'; given: string }
+  /** No <EntryPoints> collection to insert into. */
+  | { kind: 'no-collection' }
+  /** Not an AxSecurityPrivilege; the caller declines. */
+  | { kind: 'unsupported' };
+
+/**
+ * Add one <AxSecurityEntryPointReference> to an AxSecurityPrivilege.
+ *
+ * The missing half of the pair. `remove-entry-point` shipped without it, so a
+ * privilege could only ever be given the ONE entry point `create` takes as the
+ * scalar `properties.targetObject` — a second one required
+ * `create(overwrite=true, xmlContent=…)`, i.e. hand-authored XML on the
+ * grounded path. That also left remove-entry-point's ambiguity refusal
+ * unreachable through supported parameters, and therefore untested against a
+ * real privilege (eval case L2-object-delete-and-entry-point-cleanup, 2026-08-23).
+ *
+ * Shape measured against the shipped AOT (ApplicationSuite +
+ * ApplicationFoundation: 370 privileges, 1036 entry points):
+ *   - element order Name, Grant, ObjectName, ObjectType, Forms — 915 of 1036,
+ *     the remainder differing only by optional elements this does not write;
+ *   - <Forms /> present in 1035 of 1036;
+ *   - <Name> equals <ObjectName> in 910 of 1036, so it defaults to it and stays
+ *     overridable.
+ *
+ * objectType is a CLOSED enum for the same reason accessLevel is: a value
+ * outside EntryPointType deserializes to nothing, so the privilege builds clean,
+ * passes xppbp and grants access to no object at all.
+ */
+export function addSecurityEntryPoint(
+  xml: string,
+  spec: { objectName: string; objectType: string; name?: string; accessLevel?: string },
+): AddEntryPointResult {
+  if (!/<AxSecurityPrivilege\b/.test(xml)) return { kind: 'unsupported' };
+
+  const objectType = String(spec.objectType ?? '').trim();
+  const matchedType = SECURITY_ENTRY_POINT_TYPES.find(
+    t => t.toLowerCase() === objectType.toLowerCase(),
+  );
+  if (!matchedType) return { kind: 'bad-object-type', given: spec.objectType };
+
+  const objectName = String(spec.objectName).trim();
+  const name = (spec.name ?? objectName).trim();
+
+  const existing = scanEntryPoints(xml).find(e => e.name.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    return {
+      kind: 'already-present',
+      existing: { name: existing.name, objectName: existing.objectName, objectType: existing.objectType },
+    };
+  }
+
+  const rawAccess = String(spec.accessLevel ?? 'view').trim().toLowerCase();
+  const al: AccessLevel = rawAccess === 'maintain' ? 'maintain' : 'view';
+
+  const block =
+    `\t\t<AxSecurityEntryPointReference>\n` +
+    `\t\t\t<Name>${name}</Name>\n` +
+    `\t\t\t<Grant>\n${buildGrantXml(al, 'entry-point')}\n\t\t\t</Grant>\n` +
+    `\t\t\t<ObjectName>${objectName}</ObjectName>\n` +
+    `\t\t\t<ObjectType>${matchedType}</ObjectType>\n` +
+    `\t\t\t<Forms />\n` +
+    `\t\t</AxSecurityEntryPointReference>\n`;
+
+  // Both empty spellings, because both occur: buildAxSecurityPrivilegeXml writes
+  // the paired form for a privilege created without a targetObject, and
+  // removeSecurityEntryPoint collapses back to it, while hand-written and
+  // Microsoft files use the self-closing one.
+  const empty = /<EntryPoints>\s*<\/EntryPoints>|<EntryPoints\s*\/>/;
+  if (empty.test(xml)) {
+    return {
+      kind: 'added',
+      xml: xml.replace(empty, `<EntryPoints>\n${block}\t</EntryPoints>`),
+      added: { name, objectName, objectType: matchedType },
+    };
+  }
+
+  const close = xml.indexOf('</EntryPoints>');
+  if (close < 0) return { kind: 'no-collection' };
+
+  // Insert before the closing tag, consuming the whitespace run that is that
+  // tag's own indent so the appended block is not indented on top of it.
+  let from = close;
+  while (from > 0 && /\s/.test(xml[from - 1])) from--;
+  return {
+    kind: 'added',
+    xml: `${xml.slice(0, from)}\n${block}\t${xml.slice(close)}`,
+    added: { name, objectName, objectType: matchedType },
   };
 }

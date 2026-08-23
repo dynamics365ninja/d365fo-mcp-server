@@ -293,7 +293,10 @@
       "t": true,
       "covered": true,
       "cases": [
+        "L2-bp-suppression-lifecycle",
         "L2-class-method-ops",
+        "L2-entity-query-range-roundtrip",
+        "L2-form-control-removal-lifecycle",
         "L2-form-modify-controls",
         "L2-table-modify-lifecycle",
         "L3-form-add-datasource-lines",
@@ -1250,6 +1253,7 @@
     "cases": [
       "L0-create-readback-no-reindex",
       "L2-batched-object-reads",
+      "L2-object-delete-and-entry-point-cleanup",
       "L2-oracle-discriminator-random-wrapper-name",
       "L4-headerlines-document-slice"
     ]

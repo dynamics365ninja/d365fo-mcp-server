@@ -1,0 +1,69 @@
+{
+  "run_id": "2026-08-23T10__L2-object-delete-and-entry-point-cleanup__4203716",
+  "case_id": "L2-object-delete-and-entry-point-cleanup",
+  "tier": 2,
+  "timestamp": "2026-08-23T10:18:52.000Z",
+  "server_git_sha": "4203716",
+  "platform_build": "7.0.7996.33 (xppc)",
+  "generated_artifacts": [
+    "ConDemoScrapNote.metadata.xml",
+    "ConDemoScrapNoteForm.metadata.xml",
+    "ConDemoScrapNoteMI.metadata.xml",
+    "ConDemoScrapNoteMaintain.metadata.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "bp_checked": true,
+    "errors": [],
+    "bpWarnings": [
+      {
+        "moniker": "BPErrorPrivilegeNotCoveredByDuty",
+        "object": "ConDemoScrapNoteMaintain",
+        "severity": "warning",
+        "note": "Structurally unavoidable for this case: the instruction scopes the security surface to a privilege and target_artifact_types contains no AxSecurityDuty, so bp_clean=1 is not reachable without inventing an artifact the case does not ask for. Not an implementation failure."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "GOLDEN CAPTURE RUN (case authored 2026-08-23; golden_pending flipped to false here). golden_match=1 is self-consistent by construction and is NOT independent evidence this run; it becomes load-bearing from the next run on. ALL THREE load-bearing assertions PASSED. (1) remove-entry-point identified by entryPointObjectName removed the RIGHT block: the privilege held two AxSecurityEntryPointReference entries (ConDemoScrapNoteMI and ConDemoScrapNoteAltMI, 1083 bytes); after params entryPointObjectName=ConDemoScrapNoteAltMI the file is 700 bytes and BOTH the on-disk XML and the bridge reader (security_info) report exactly ONE surviving entry point, ConDemoScrapNoteMI, with its Grant intact. Re-issuing the same removal was REFUSED with a message naming the entry points actually present, not silently no-opped. (2) action=delete on menu-item-display removed ConDemoScrapNoteAltMI.xml from the AxMenuItemDisplay folder, dropped 1 symbol from the index, and stripped EXACTLY the one BP suppression whose Path was dynamics://MenuItemDisplay/ConDemoScrapNoteAltMI while leaving the deliberate control suppression on dynamics://MenuItemDisplay/ConDemoScrapNoteMI untouched: targeted, not a wipe. A grep of the whole model source root for ConDemoScrapNoteAltMI returns nothing. (3) fullBuild after the delete: 0 errors. The single xppc warning is the pre-existing unrelated ExternalReference to Microsoft.Dynamics.Commerce.Runtime.Entities.AttributeBasedPricing, present on an empty sandbox too and identical in the pre-delete baseline build. Project-file membership: NOT OBSERVED. The sandbox carries no .rnrproj at all; every write said so explicitly, and the delete reported that no project entry was touched because no .rnrproj could be read. DEFECT FOUND (silent-wrong-write family, HIGH severity, on an adjacent path this case forces you through). buildAxSecurityPrivilegeXml in src/tools/xml/securityPrivilegeXml.ts emits the ENTRY-POINT Grant CRUD children in the order Read, Update, Create, Delete for accessLevel=maintain. The Microsoft metadata deserializer is SEQUENCE-ordered and expects them alphabetically (Correct, Create, Delete, Read, Update) - the same rule that same file doc-comment already states for the DataEntityPermissions branch, which does emit alphabetically. Consequence: Create and Delete sit after Read/Update in the document, the reader has already advanced past their slots, and BOTH ARE SILENTLY DROPPED. Reproduced deterministically: the tool own d365fo_file action=generate output, written verbatim, read back as X:Unset CD:Unset C:Unset R:Allow U:Allow D:Unset; byte-identical content re-ordered alphabetically read back as CD:Allow C:Allow R:Allow U:Allow D:Allow. Only element order differed. So accessLevel=maintain silently grants Read+Update only. It builds clean and it is xppbp-clean, so nothing surfaces it. This is exactly the failure class the accessLevel closed-enum guard in that same file was written to prevent, arriving through a different door. TOOL GAP (blocked step 2 of the case). There is no supported way to give a privilege TWO entry points: create accepts a single scalar properties.targetObject, and the modify operation enum has remove-entry-point but NO add-entry-point. The two-entry-point privilege had to be authored via d365fo_file action=create with xmlContent - a documented tool parameter, so not a hand or shell edit, but it bypasses the generator, and it means the two-match ambiguity-refusal branch of remove-entry-point is UNREACHABLE through supported parameters and stayed untested. CASE OBSERVATIONS (minor; case is one day old; explicitly NOT model error): (a) bp_clean=0 is unreachable as authored, because BPErrorPrivilegeNotCoveredByDuty fires on any privilege with no duty and neither the instruction nor target_artifact_types admits an AxSecurityDuty; (b) step 2 assumes a two-entry-point create the write surface cannot express; (c) the .rnrproj carve-out added to the case before this run was correct and necessary - there is genuinely no project file. NOT REPRODUCED this run: the get_object_info form include=xml stale-cache defect from the prior case did not recur (state was read back through security_info and direct disk reads, fresh and mutually consistent at every step). modify-property behaved correctly here on objectType=table: it REFUSED a wrong parameter name (propertyName instead of propertyPath) with the full spec rather than writing anything, and then accepted ReplacementKey, DeveloperDocumentation and FormRef even though the op-spec table property list names none of the three.",
+  "suggested_fix_area": "1) src/tools/xml/securityPrivilegeXml.ts buildAxSecurityPrivilegeXml - HIGHEST PRIORITY. Emit the entry-point Grant children alphabetically (Correct, Create, Delete, Read, Update), matching the DataEntityPermissions branch in the same file and the shipped ApplicationCommon privileges its header cites. Add a unit test asserting element ORDER, not merely presence: a presence-only assertion passes today while the metadata provider reads back a degraded grant. Decide too whether maintain on an entry point should emit Correct=Allow (the data-entity branch does, and so does the eval L4-master-security-slice golden). 2) src/tools/write/modifyD365File.ts plus src/tools/specs/d365foFileOpSpecs.ts - add the missing inverse operation add-entry-point (entryPointName, entryPointObjectName, entryPointObjectType, accessLevel) inserting an AxSecurityEntryPointReference in the same shape removeSecurityEntryPoint scans for; or let properties.targetObject accept an array on create. Until one of those exists, the ambiguity refusal of remove-entry-point cannot be exercised through supported parameters. 3) get_knowledge op-spec for modify-property - the table property list omits ReplacementKey, DeveloperDocumentation and FormRef, all three of which the bridge accepted and wrote correctly; the list reads as closed but is not. 4) d365fo_file action=generate did NOT apply the model prefix (emitted Name=DemoScrapNoteMaintain) where action=create does (ConDemoScrapNoteMaintain). Copying generate output into create is the documented fallback flow, so the two must agree on the object name. 5) eval/cases/L2-object-delete-and-entry-point-cleanup.json - either add an AxSecurityDuty to the instruction and to target_artifact_types so bp_clean is reachable, or annotate that bp_clean=0 is expected; and soften step 2 to say the two-entry-point privilege needs xmlContent until add-entry-point exists.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxSecurityPrivilege/ConDemoScrapNoteMaintain.xml",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxIgnoreDiagnosticList/fm-mcp_BPSuppressions.xml",
+    "K:/repos/d365fo-mcp-server/eval/goldens/L2-object-delete-and-entry-point-cleanup/",
+    "K:/repos/d365fo-mcp-server/src/tools/xml/securityPrivilegeXml.ts",
+    "grant-order-probe-A (tool generate output, order Read/Update/Create/Delete): ConDemoScrapNoteMI [MenuItemDisplay] -> X:[Unset] CD:[Unset] C:[Unset] R:[Allow] U:[Allow] D:[Unset] access",
+    "grant-order-probe-B (same content, alphabetical Correct/Create/Delete/Read/Update): ConDemoScrapNoteMI [MenuItemDisplay] -> X:[Unset] CD:[Allow] C:[Allow] R:[Allow] U:[Allow] D:[Allow] access",
+    "remove-entry-point refusal on re-issue: Entry point ConDemoScrapNoteAltMI is not on the privilege ... nothing was removed. Entry points on this privilege: ConDemoScrapNoteMI (ConDemoScrapNoteMI, MenuItemDisplay).",
+    "delete reply: Index: removed 1 symbol(s). / BP suppressions: removed 1 stale Diagnostic entry (BPErrorMenuItemNotCoveredByPrivilege) from fm-mcp_BPSuppressions.xml / No .rnrproj could be read, so no project entry was touched.",
+    "pre-delete BP suppression list had 2 Diagnostic entries (AltMI + MI); post-delete it has 1 (MI only)."
+  ]
+}

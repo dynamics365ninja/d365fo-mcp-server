@@ -94,3 +94,10 @@ deployment.zip
 
 # Transient git worktrees created by Claude Code subagents
 .claude/worktrees/
+
+# Local symbol-index databases (multi-GB, rebuilt by `npm run index-metadata`)
+data/
+
+# Machine-specific eval-sandbox wiring: absolute VM paths + the throwaway model
+# name, same category as config/d365fo-mcp.json above.
+config/d365fo-mcp-eval.json

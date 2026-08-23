@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L2-entity-query-range-roundtrip (artifact 2 of 2: public data entity in POST-REMOVE state: root data source ConDemoRangeSource keeps exactly the IsActive range (Value=1); the SubjectPrefix range added in step 4 is gone; <Ranges> NOT collapsed; entity-level <Ranges /> untouched)
+  Captured: 2026-08-23 on the D365FO VM (model fm-mcp, prefix Con, xppc 7.0.7996.33, server SHA 4203716)
+  through the grounded tool path only - no hand-edited XML, no create overwrite=true.
+
+  Normalization applied (per eval/cases/L2-entity-query-range-roundtrip.json ignore[]):
+  - No @Id attributes present in generated XML (stripped if present)
+  - No ModelSaveInfo element present (stripped if present)
+-->
+<AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRangeSourceEntity</Name>
+	<Label>ConDemoRangeSourceEntity</Label>
+	<EntityCategory>Master</EntityCategory>
+	<IsPublic>Yes</IsPublic>
+	<PrimaryKey>EntityKey</PrimaryKey>
+	<PublicCollectionName>ConDemoRangeSourceEntityCollection</PublicCollectionName>
+	<PublicEntityName>ConDemoRangeSourceEntity</PublicEntityName>
+	<Fields>
+		<AxDataEntityViewField xmlns=""
+			i:type="AxDataEntityViewMappedField">
+			<Name>NoteId</Name>
+			<DataField>NoteId</DataField>
+			<DataSource>ConDemoRangeSource</DataSource>
+		</AxDataEntityViewField>
+		<AxDataEntityViewField xmlns=""
+			i:type="AxDataEntityViewMappedField">
+			<Name>Subject</Name>
+			<DataField>Subject</DataField>
+			<DataSource>ConDemoRangeSource</DataSource>
+		</AxDataEntityViewField>
+		<AxDataEntityViewField xmlns=""
+			i:type="AxDataEntityViewMappedField">
+			<Name>IsActive</Name>
+			<DataField>IsActive</DataField>
+			<DataSource>ConDemoRangeSource</DataSource>
+		</AxDataEntityViewField>
+	</Fields>
+	<Keys>
+		<AxDataEntityViewKey>
+			<Name>EntityKey</Name>
+			<Fields>
+				<AxDataEntityViewKeyField>
+					<DataField>NoteId</DataField>
+				</AxDataEntityViewKeyField>
+			</Fields>
+		</AxDataEntityViewKey>
+	</Keys>
+	<Mappings />
+	<Ranges />
+	<Relations />
+	<ViewMetadata>
+		<Name>Metadata</Name>
+		<SourceCode>
+			<Methods>
+				<Method>
+					<Name>classDeclaration</Name>
+					<Source><![CDATA[
+[Query]
+public class Metadata extends QueryRun
+{
+}
+]]></Source>
+				</Method>
+			</Methods>
+		</SourceCode>
+		<DataSources>
+			<AxQuerySimpleRootDataSource>
+				<Name>ConDemoRangeSource</Name>
+				<Table>ConDemoRangeSource</Table>
+				<DataSources />
+				<DerivedDataSources />
+				<Fields>
+					<AxQuerySimpleDataSourceField>
+						<Name>NoteId</Name>
+						<Field>NoteId</Field>
+					</AxQuerySimpleDataSourceField>
+					<AxQuerySimpleDataSourceField>
+						<Name>Subject</Name>
+						<Field>Subject</Field>
+					</AxQuerySimpleDataSourceField>
+					<AxQuerySimpleDataSourceField>
+						<Name>IsActive</Name>
+						<Field>IsActive</Field>
+					</AxQuerySimpleDataSourceField>
+				</Fields>
+				<Ranges>
+					<AxQuerySimpleDataSourceRange>
+						<Name>IsActive</Name>
+						<Field>IsActive</Field>
+						<Value>1</Value>
+					</AxQuerySimpleDataSourceRange>
+				</Ranges>
+				<GroupBy />
+				<Having />
+				<OrderBy />
+			</AxQuerySimpleRootDataSource>
+		</DataSources>
+	</ViewMetadata>
+</AxDataEntityView>

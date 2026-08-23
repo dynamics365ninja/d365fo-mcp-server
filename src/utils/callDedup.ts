@@ -12,6 +12,47 @@
 export const DEDUP_TTL_MS = 60_000;
 const DEDUP_MAX_ENTRIES = 200;
 
+/**
+ * Tools that CHANGE what a subsequent read would return.
+ *
+ * Excluding a write from the cache is not enough — the danger is the READ that
+ * follows it. `get_object_info(include:"xml")` on an entity, three
+ * `d365fo_file(action="modify")` writes, then the same read again: the second
+ * read matched the cached key and served the 2399-byte pre-write body while
+ * disk held 2738 bytes with both ranges, under a note telling the agent to trust
+ * it. An agent verifying its own write is told the write did not happen. Seen in
+ * 2 of the 4 eval runs on 2026-08-23 (L2-form-control-removal-lifecycle,
+ * L2-entity-query-range-roundtrip).
+ *
+ * This is deliberately an EPOCH, not per-object invalidation: a write to one
+ * object changes reads of others (extensions, references, search hits, the
+ * symbol index), so scoping the blast radius would be a guess. Bumping a
+ * counter costs nothing and is provably right. The loop it exists to break —
+ * the same read re-issued seconds apart with no write between — is unaffected.
+ */
+export const MUTATING_TOOLS = new Set([
+  'd365fo_file',            // create / modify / delete / generate
+  'generate_object',        // mode="scaffold" writes to disk
+  'undo_last_modification', // reverts a write
+  'update_symbol_index',    // changes what every index-backed read resolves
+  'trigger_db_sync',
+  'labels',                 // action create / update / rename
+]);
+
+/**
+ * Monotonic counter bumped by every mutating tool. A cache entry stored under an
+ * older epoch is dead — see MUTATING_TOOLS.
+ */
+let writeEpoch = 0;
+
+export function currentWriteEpoch(): number {
+  return writeEpoch;
+}
+
+export function bumpWriteEpoch(): number {
+  return ++writeEpoch;
+}
+
 /** Tools whose repeated identical calls are legitimate — never dedup, never loop-hint. */
 export const DEDUP_EXCLUDED_TOOLS = new Set([
   'd365fo_file', // create/modify/generate — never dedup writes
@@ -30,6 +71,8 @@ export const DEDUP_EXCLUDED_TOOLS = new Set([
 interface DedupEntry {
   result: unknown;
   at: number;
+  /** The write epoch the answer was COMPUTED under, not the one it was stored under. */
+  epoch: number;
 }
 
 const dedupCache = new Map<string, DedupEntry>();
@@ -49,22 +92,38 @@ export function getDedupedResult(key: string): any | undefined {
     dedupCache.delete(key);
     return undefined;
   }
+  // Something has been written since this answer was computed, so it may no
+  // longer describe the disk. Drop it and let the read re-execute.
+  if (entry.epoch !== writeEpoch) {
+    dedupCache.delete(key);
+    return undefined;
+  }
   return entry.result;
 }
 
-export function storeDedupResult(key: string, result: any): void {
+/**
+ * `epoch` is the write epoch captured when the call STARTED. A read that began
+ * before a write and finished after it computed a pre-write answer, so storing
+ * it under the current (bumped) epoch would re-introduce the very staleness this
+ * guards against — which is why the caller passes it rather than letting it
+ * default. The default (the epoch as of now) only holds when the caller knows no
+ * write can have raced, i.e. tests and synchronous callers.
+ */
+export function storeDedupResult(key: string, result: any, epoch: number = writeEpoch): void {
   if (result?.isError) return; // never cache failures — retries must re-execute
+  if (epoch !== writeEpoch) return; // raced a write — the answer is already stale
   if (dedupCache.size >= DEDUP_MAX_ENTRIES) {
     // Drop the oldest entry (Map preserves insertion order)
     const oldest = dedupCache.keys().next().value;
     if (oldest !== undefined) dedupCache.delete(oldest);
   }
-  dedupCache.set(key, { result, at: Date.now() });
+  dedupCache.set(key, { result, at: Date.now(), epoch });
 }
 
-/** Test/maintenance helper. */
+/** Test/maintenance helper. Resets the epoch too, so a cleared cache is a clean slate. */
 export function clearDedupCache(): void {
   dedupCache.clear();
+  writeEpoch = 0;
 }
 
 // ── In-flight dedup ──────────────────────────────────────────────────────────

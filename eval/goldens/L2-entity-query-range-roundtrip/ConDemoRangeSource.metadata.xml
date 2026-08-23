@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L2-entity-query-range-roundtrip (artifact 1 of 2: source table: NoteId mandatory/Num, Subject/Name, IsActive/NoYes, unique alternate-key index NoteIdx)
+  Captured: 2026-08-23 on the D365FO VM (model fm-mcp, prefix Con, xppc 7.0.7996.33, server SHA 4203716)
+  through the grounded tool path only - no hand-edited XML, no create overwrite=true.
+
+  Normalization applied (per eval/cases/L2-entity-query-range-roundtrip.json ignore[]):
+  - No @Id attributes present in generated XML (stripped if present)
+  - No ModelSaveInfo element present (stripped if present)
+-->
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRangeSource</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>ConDemoRangeSource</c> table.
+/// </summary>
+public class ConDemoRangeSource extends common
+{
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+	<Label>@SYS13887</Label>
+	<TableGroup>Main</TableGroup>
+	<TitleField1>NoteId</TitleField1>
+	<TitleField2>Subject</TitleField2>
+	<CacheLookup>Found</CacheLookup>
+	<DeleteActions />
+	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>AutoReport</Name>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>NoteId</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Subject</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>IsActive</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoLookup</Name>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>NoteId</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Subject</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>IsActive</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoIdentification</Name>
+			<AutoPopulate>Yes</AutoPopulate>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoSummary</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoBrowse</Name>
+			<Fields />
+		</AxTableFieldGroup>
+	</FieldGroups>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>NoteId</Name>
+			<ExtendedDataType>Num</ExtendedDataType>
+			<Label>@SYS71455</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Subject</Name>
+			<ExtendedDataType>Name</ExtendedDataType>
+			<Label>@SYS321591</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IsActive</Name>
+			<Label>@SYS95227</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>NoteIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>NoteId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

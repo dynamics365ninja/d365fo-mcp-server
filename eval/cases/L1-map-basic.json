@@ -2,7 +2,7 @@
   "id": "L1-map-basic",
   "title": "AxMap over an existing table",
   "tier": 1,
-  "instruction": "In the sandbox model, create an AxMap named DemoNoteMap (label + developer documentation @TaxTransactionInquiry:HeaderNote) with three fields: NoteId (String, EDT Num), Subject (String, EDT Description), CreatedDateTime (UtcDateTime). Map it to the existing ConDemoNoteHeader table with a 1:1 field mapping (each map field to the table field of the same name). The map must build clean.",
+  "instruction": "In the sandbox model, create an AxMap named DemoNoteMap (label + developer documentation @TaxTransactionInquiry:HeaderNote) with two fields: NoteId (String, EDT Num) and Subject (String, EDT Description). Map it to the existing ConDemoNoteHeader table with a 1:1 field mapping (each map field to the table field of the same name). Map ONLY fields the mapped table actually declares. Do NOT add a CreatedDateTime or ModifiedDateTime map field: those names are reserved for D365FO system fields (the compiler rejects them) AND ConDemoNoteHeader declares no such column, so such a field is a reserved-name violation mapping to nothing. The map must build clean.",
   "target_artifact_types": [
     "AxMap"
   ],

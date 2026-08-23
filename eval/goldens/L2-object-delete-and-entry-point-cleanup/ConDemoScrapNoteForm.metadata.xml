@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L2-object-delete-and-entry-point-cleanup (artifact 2 of 4: SimpleList form over the table)
+  Captured: 2026-08-23 on the D365FO VM (model fm-mcp, prefix Con, xppc 7.0.7996.33).
+  Full build (fullBuild) clean: 0 errors. The one xppc warning is the pre-existing
+  unrelated ExternalReference (Microsoft.Dynamics.Commerce.Runtime.Entities.AttributeBasedPricing)
+  that is present on an EMPTY sandbox too.
+
+  This golden records the POST-DELETE surviving state. Two things it asserts by ABSENCE,
+  which a scoring run must check outside the diff:
+    * ConDemoScrapNoteAltMI.xml is GONE from AxMenuItemDisplay\ (d365fo_file(action="delete")).
+    * fm-mcp_BPSuppressions.xml retains ONLY the dynamics://MenuItemDisplay/ConDemoScrapNoteMI
+      entry; the AltMI suppression was stripped by the same delete (targeted, not a wipe).
+
+  TOOL_DEFECT found while capturing (see the corpus record): the entry-point <Grant> below is
+  ALPHABETICAL (Correct, Create, Delete, Read, Update). buildAxSecurityPrivilegeXml emits
+  Read, Update, Create, Delete for accessLevel:"maintain"; the Microsoft deserializer is
+  sequence-ordered, so Create and Delete are SILENTLY DROPPED and the privilege grants only
+  Read+Update. It still builds clean and is BP-clean. The alphabetical order here is the shape
+  the metadata provider actually reads back as full CRUD.
+-->
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>ConDemoScrapNoteForm</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+[Form]
+public class ConDemoScrapNoteForm extends FormRun
+{
+}
+
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>ConDemoScrapNote</Name>
+			<Table>ConDemoScrapNote</Table>
+			<Fields>
+				<AxFormDataSourceField>
+					<DataField>NoteId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>Subject</DataField>
+				</AxFormDataSourceField>
+			</Fields>
+			<ReferencedDataSources />
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">@SYS13887</Caption>
+		<DataSource xmlns="">ConDemoScrapNote</DataSource>
+		<HideIfEmpty xmlns="">No</HideIfEmpty>
+		<Pattern xmlns="">SimpleList</Pattern>
+		<PatternVersion xmlns="">1.1</PatternVersion>
+		<Style xmlns="">SimpleList</Style>
+		<TitleDataSource xmlns="">ConDemoScrapNote</TitleDataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+					i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<ElementPosition>134217727</ElementPosition>
+				<FilterExpression>%1</FilterExpression>
+				<Type>ActionPane</Type>
+				<VerticalSpacing>-1</VerticalSpacing>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+							i:type="AxFormButtonGroupControl">
+						<Name>ButtonGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls />
+						<ArrangeMethod>Vertical</ArrangeMethod>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+					i:type="AxFormGroupControl">
+				<Name>CustomFilterGroup</Name>
+				<Pattern>CustomAndQuickFilters</Pattern>
+				<PatternVersion>1.1</PatternVersion>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl>
+						<Name>QuickFilterControl</Name>
+						<FormControlExtension>
+							<Name>QuickFilterControl</Name>
+							<ExtensionComponents />
+							<ExtensionProperties>
+								<AxFormControlExtensionProperty>
+									<Name>targetControlName</Name>
+									<Type>String</Type>
+									<Value>Grid</Value>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>defaultColumnName</Name>
+									<Type>String</Type>
+									<Value>Grid_NoteId</Value>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>placeholderText</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+							</ExtensionProperties>
+						</FormControlExtension>
+					</AxFormControl>
+				</Controls>
+				<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+				<FrameType>None</FrameType>
+				<Style>CustomFilter</Style>
+				<ViewEditMode>Edit</ViewEditMode>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+					i:type="AxFormGridControl">
+				<Name>Grid</Name>
+				<ElementPosition>1431655764</ElementPosition>
+				<FilterExpression>%1</FilterExpression>
+				<Type>Grid</Type>
+				<VerticalSpacing>-1</VerticalSpacing>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+							i:type="AxFormStringControl">
+						<Name>Grid_NoteId</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>NoteId</DataField>
+						<DataSource>ConDemoScrapNote</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+							i:type="AxFormStringControl">
+						<Name>Grid_Subject</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>Subject</DataField>
+						<DataSource>ConDemoScrapNote</DataSource>
+					</AxFormControl>
+				</Controls>
+				<AlternateRowShading>No</AlternateRowShading>
+				<DataGroup>Overview</DataGroup>
+				<DataSource>ConDemoScrapNote</DataSource>
+				<MultiSelect>No</MultiSelect>
+				<ShowRowLabels>No</ShowRowLabels>
+				<Style>Tabular</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

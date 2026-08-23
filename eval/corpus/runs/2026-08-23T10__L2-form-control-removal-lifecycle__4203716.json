@@ -1,0 +1,69 @@
+{
+  "run_id": "2026-08-23T10__L2-form-control-removal-lifecycle__4203716",
+  "case_id": "L2-form-control-removal-lifecycle",
+  "tier": 2,
+  "timestamp": "2026-08-23T10:04:43.545Z",
+  "server_git_sha": "4203716",
+  "generated_artifacts": [
+    "ConDemoRemovalNote.metadata.xml",
+    "ConDemoRemovalNoteForm.DemoExt.metadata.xml",
+    "ConDemoRemovalNoteForm.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "moniker": "BPErrorTableMissingFormRef",
+        "object": "ConDemoRemovalNote",
+        "severity": "warning",
+        "note": "FormRef needs a display menu item, an artifact outside this case target_artifact_types."
+      },
+      {
+        "moniker": "BPWarningFormDesignOrControlsWithCustomPattern",
+        "object": "ConDemoRemovalNoteForm",
+        "severity": "warning",
+        "note": "Inherent to the ad-hoc ActionPane+Group design the case mandates; no standard pattern fits, Custom is the honest value."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "7.0.7996.33 (xppc)",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "The three assertions this case exists to test all PASSED: (1) remove-control found DemoScratchButton three levels down (Design>ActionPane>ButtonGroup>Button) with only controlName passed, no parentControl; (2) the emptied ButtonGroup collapsed to the serializer spelling <Controls />; (3) remove-control on a form EXTENSION targeting the base control HeaderNoteId was REFUSED, not silently succeeded. DEFECT FOUND on the completion path the case (and the remove-control op-spec) prescribes for step 5 -- \"hide it with modify-property Visible=No on a control extension\". d365fo_file(modify, objectType=form-extension, operation=modify-property) cannot express a control-scoped property override and does not refuse when asked for one. It has no control target parameter, and it unconditionally appends the pair into the FORM-LEVEL <PropertyModifications> collection, never <ControlModifications>. Probe A: params={controlName:\"HeaderNoteId\", propertyPath:\"Visible\", propertyValue:\"No\"} returned a headline SUCCESS and wrote <AxPropertyModification><Name>Visible</Name><Value>No</Value></AxPropertyModification> at FORM level -- i.e. it hides the ENTIRE FORM, not the control. A trailing advisory did say \"controlName: IGNORED (not read by operation modify-property)\", but the wrong write was still committed to disk rather than refused. Probe B: params={propertyPath:\"HeaderNoteId.Visible\", propertyValue:\"No\"} returned SUCCESS with NO warning at all and wrote a form-level property literally named <Name>HeaderNoteId.Visible</Name>, which is not a member of AxFormExtension. The form-extension modify-property path therefore accepts an arbitrary unvalidated property NAME. Contrast: the same operation on objectType=table goes through IMetaTableProvider.Update and placed real properties (ReplacementKey, DeveloperDocumentation) correctly, so the gap is specific to the form-extension writer. Net effect: step 5 of this case cannot be completed on the current tool surface without hand-written XML, which the case forbids. The op-spec note for remove-control documents a remedy the toolset does not implement. SECONDARY (lower severity): get_object_info(objectType=form, options={include:\"xml\"}) served a STALE cached response. After six successful add-control writes grew the file from 866 to 2381 bytes, a second call returned the pre-write 866-byte XML plus a \"Duplicate call ... the result above is identical\" notice. The dedup cache is keyed on call shape and is not invalidated by intervening d365fo_file writes to the same object, so it can hand an agent a stale view of an object it just modified.",
+  "suggested_fix_area": "src/tools/modify (form-extension modify-property writer): 1) add a control target parameter (controlName) and route control-scoped properties into <ControlModifications>/AxFormControlModification instead of form-level <PropertyModifications>; 2) until that exists, REFUSE rather than write when controlName is supplied or when propertyPath contains a dot, instead of committing a form-level modification and merely warning; 3) validate the property NAME against the AxFormExtension/AxFormControl metadata surface so an invented name like \"HeaderNoteId.Visible\" is rejected. get_knowledge op-spec for modify-property: document the form-extension and form-control cases (currently only table/table-extension/edt/class/form-Caption/Pattern are listed), and keep the remove-control op-spec note in sync so it stops pointing at an unimplemented remedy. get_object_info XML dedup cache: invalidate the per-call cache when d365fo_file writes to the same object in the session, or exclude options.include=\"xml\" from dedup entirely. get_knowledge op-spec for add-control: controlType enum omits ActionPane and ButtonGroup, both of which the writer accepts and emits correctly (AxFormActionPaneControl / AxFormButtonGroupControl). Also controlLabel is silently dropped on a Button (correctly warned) -- document Text as the button caption property.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxForm/ConDemoRemovalNoteForm.xml",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxFormExtension/ConDemoRemovalNoteForm.DemoExt.xml",
+    "K:/repos/d365fo-mcp-server/eval/goldens/L2-form-control-removal-lifecycle/",
+    "step5-refusal-literal: \"Error modifying D365FO file: Control HeaderNoteId is not defined in ...ConDemoRemovalNoteForm.DemoExt.xml - nothing was removed. This file defines no controls at all. A control shown on the form but absent here belongs to the BASE form - remove it there, or hide it with modify-property on a form extension.\""
+  ]
+}

@@ -7,6 +7,7 @@ import {
   dedupKey, getDedupedResult, storeDedupResult, clearDedupCache,
   appendNote, DEDUP_EXCLUDED_TOOLS, DEDUP_TTL_MS,
   getInFlight, registerInFlight, clearInFlight, clearAllInFlight,
+  MUTATING_TOOLS, currentWriteEpoch, bumpWriteEpoch,
 } from '../../src/utils/callDedup';
 import { recordCallSequence, resetCallSequence, getMetricsSnapshot } from '../../src/utils/toolMetrics';
 
@@ -150,5 +151,75 @@ describe('recordCallSequence (loop detection)', () => {
     recordCallSequence('search', 'dup');
     const snap = getMetricsSnapshot().find(s => s.tool === 'search');
     expect(snap?.duplicateCalls).toBeGreaterThanOrEqual(1);
+  });
+});
+
+/**
+ * Write-awareness. The cache used to key purely on (tool, args), so a read
+ * repeated after a write was answered from before the write — and the note it
+ * carried told the agent to trust it ("the result above is identical. Use the
+ * data you already have instead of re-querying").
+ *
+ * Observed in 2 of the 4 eval runs on 2026-08-23: a get_object_info(include:"xml")
+ * on a data entity, three d365fo_file(action="modify") writes, then the same read
+ * again — served the 2399-byte pre-write body while disk held 2738 bytes with both
+ * ranges. An agent verifying its own write is told the write did not happen.
+ */
+describe('dedup cache — invalidation on write', () => {
+  const key = () => dedupKey('get_object_info', { objectType: 'data-entity', name: 'MyEntity' });
+
+  it('serves the cached read when nothing has been written', () => {
+    storeDedupResult(key(), { content: [{ type: 'text', text: 'before' }] }, currentWriteEpoch());
+    expect(getDedupedResult(key())?.content[0].text).toBe('before');
+  });
+
+  it('drops the cached read once a write bumps the epoch', () => {
+    storeDedupResult(key(), { content: [{ type: 'text', text: 'before' }] }, currentWriteEpoch());
+    bumpWriteEpoch(); // d365fo_file(action="modify")
+    expect(getDedupedResult(key())).toBeUndefined();
+  });
+
+  it('stays dropped after several writes, and re-caches under the new epoch', () => {
+    storeDedupResult(key(), { content: [{ type: 'text', text: 'before' }] }, currentWriteEpoch());
+    bumpWriteEpoch(); bumpWriteEpoch(); bumpWriteEpoch();
+    expect(getDedupedResult(key())).toBeUndefined();
+
+    storeDedupResult(key(), { content: [{ type: 'text', text: 'after' }] }, currentWriteEpoch());
+    expect(getDedupedResult(key())?.content[0].text).toBe('after');
+  });
+
+  it('refuses to cache a read that RACED a write', () => {
+    // The read starts, a write lands while it is in flight, the read finishes:
+    // its answer describes the pre-write disk and must not become the cached one.
+    const epochAtStart = currentWriteEpoch();
+    bumpWriteEpoch();
+    storeDedupResult(key(), { content: [{ type: 'text', text: 'raced' }] }, epochAtStart);
+    expect(getDedupedResult(key())).toBeUndefined();
+  });
+
+  it('leaves unrelated cached reads alone only until the next write', () => {
+    const other = dedupKey('search', { query: 'CustTable' });
+    storeDedupResult(other, { content: [{ type: 'text', text: 'hit' }] }, currentWriteEpoch());
+    expect(getDedupedResult(other)).toBeDefined();
+    // Epoch-wide on purpose: a write to one object changes reads of others
+    // (extensions, references, search hits, the index), so scoping the blast
+    // radius would be a guess.
+    bumpWriteEpoch();
+    expect(getDedupedResult(other)).toBeUndefined();
+  });
+
+  it('every mutating tool is also excluded from being cached itself', () => {
+    for (const tool of MUTATING_TOOLS) {
+      expect(DEDUP_EXCLUDED_TOOLS.has(tool), `${tool} must never be served from cache`).toBe(true);
+    }
+  });
+
+  it('names the write tools that can change a later read', () => {
+    // A new write surface that is not here reopens the defect, so the set is
+    // asserted rather than merely spot-checked.
+    expect([...MUTATING_TOOLS].sort()).toEqual([
+      'd365fo_file', 'generate_object', 'labels',
+      'trigger_db_sync', 'undo_last_modification', 'update_symbol_index',
+    ]);
   });
 });

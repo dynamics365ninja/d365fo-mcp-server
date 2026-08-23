@@ -594,6 +594,38 @@ describe('XmlTemplateGenerator.generateAxSecurityPrivilegeXml', () => {
     expect(xml).toContain('<Read>Allow</Read>');
     expect(xml).not.toContain('<Create>');
   });
+
+  /**
+   * The `security-privilege` scaffold is a SECOND emitter of an entry-point
+   * <Grant>, independent of buildAxSecurityPrivilegeXml, and it carried the same
+   * out-of-alphabetical-order bug — silently dropping Create and Delete on the
+   * Maintain privilege it advertises as "Update/Create/Delete". Untested until
+   * now, which is why fixing the other emitter would have left this one wrong.
+   * See tests/tools/securityPrivilegeXml.test.ts for the measurement.
+   */
+  it('scaffolds both privileges with an ALPHABETICAL entry-point grant', async () => {
+    const result = await codeGenTool(
+      req('generate_code', {
+        pattern: 'security-privilege',
+        name: 'MyAsset',
+        targetObject: 'MyAssetMenuItem',
+        modelName: 'MyModel',
+      }),
+    );
+    expect(result.isError).toBeFalsy();
+    const xml = result.content[0].text as string;
+    expect(xml).toContain('MyAssetView');
+    expect(xml).toContain('MyAssetMaintain');
+
+    const grants = [...xml.matchAll(/<Grant>([\s\S]*?)<\/Grant>/g)]
+      .map(m => [...m[1].matchAll(/<([A-Za-z]+)>/g)].map(e => e[1]));
+    expect(grants.length).toBeGreaterThanOrEqual(2);
+    for (const g of grants) {
+      expect(g, `grant out of alphabetical order: ${g.join(',')}`).toEqual([...g].sort());
+    }
+    // The Maintain half must really carry all four, not just be ordered.
+    expect(grants.some(g => g.join(',') === 'Create,Delete,Read,Update')).toBe(true);
+  });
 });
 
 // ─── XmlTemplateGenerator.splitXppClassSource ────────────────────────────────

@@ -1,0 +1,27 @@
+{
+  "id": "L2-object-delete-and-entry-point-cleanup",
+  "title": "action=\"delete\" a menu item and clean the privilege entry point that referenced it",
+  "tier": 2,
+  "instruction": "In the sandbox model, prove the DELETE side of the write surface end to end. (1) Create a table DemoScrapNote (NoteId string/Num EDT mandatory, Subject string/Name EDT, unique index NoteIdx), a SimpleList form DemoScrapNoteForm over it, and TWO display menu items pointing at that form: DemoScrapNoteMI and DemoScrapNoteAltMI. (2) Create a security privilege DemoScrapNoteMaintain granting BOTH menu items as entry points with Delete access. (3) Remove ONE entry point with d365fo_file(action=\"modify\", objectType=\"security-privilege\", operation=\"remove-entry-point\", params={entryPointObjectName:\"DemoScrapNoteAltMI\"}) — identify it by object name; had both entry points named the same object the operation must REFUSE rather than pick one, and removing the wrong entry point revokes access to a different object while building clean. (4) Delete the now-unreferenced menu item with d365fo_file(action=\"delete\", objectType=\"menu-item-display\", objectName=\"DemoScrapNoteAltMI\"): its XML file and its AOT folder entry must go, and any BP suppression whose <Path> targeted it must be stripped. The .rnrproj include must go TOO — but only score that dimension if the sandbox actually has a project file: build_d365fo_project builds by modelName and the eval sandbox may carry no .rnrproj at all, in which case record project membership as NOT OBSERVED rather than as a pass or a failure. (5) Build. The build must be clean — a dangling entry point or a stale project include surfaces here and nowhere else. A run that deletes the file by hand (Remove-Item, fs, or any shell), or that leaves the privilege pointing at a deleted object, FAILS this case. WHY THIS NEEDS THE VM: project-file membership and the compiler's reaction to a dangling reference are exactly what the repo's VM-free unit tests cannot observe.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxForm",
+    "AxMenuItemDisplay",
+    "AxSecurityPrivilege"
+  ],
+  "golden_path": "eval/goldens/L2-object-delete-and-entry-point-cleanup/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "delete",
+    "remove-entry-point",
+    "security-privilege",
+    "menu-item",
+    "project-membership",
+    "write-op-coverage"
+  ],
+  "split": "holdout"
+}

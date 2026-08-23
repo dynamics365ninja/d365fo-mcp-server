@@ -41,8 +41,11 @@ import { ProjectFileFinder, registerFileInActiveProject } from '../../workspace/
 import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName, resolveEdtEnumType } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { insertFormExtensionControl } from '../../utils/formExtensionControlXml.js';
+import {
+  upsertFormExtensionControlProperty, resolveControlPropertyTarget,
+} from '../../utils/formExtensionControlModifications.js';
 import { removeFormControl } from '../../utils/formControlRemoval.js';
-import { removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
+import { addSecurityEntryPoint, removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
 import {
   removeDiagnosticSuppression, addDiagnosticSuppression, emptySuppressionListXml,
 } from '../../utils/ignoreDiagnosticListXml.js';
@@ -1685,6 +1688,84 @@ const directXmlRemoveControl = serializedOnFile(async (
 });
 
 /**
+ * add-entry-point on an AxSecurityPrivilege, written straight to the XML.
+ *
+ * The missing half of the pair. `create` takes ONE entry point, as the scalar
+ * `properties.targetObject`, so a privilege granting two menu items could only
+ * be produced by `create(overwrite=true, xmlContent=…)` — hand-authored XML that
+ * bypasses the generator. That also left remove-entry-point's ambiguity refusal
+ * unreachable through supported parameters and therefore untested against a real
+ * privilege (eval case L2-object-delete-and-entry-point-cleanup, 2026-08-23).
+ *
+ * Same structural reason as its inverse for being XML-only: security objects
+ * have no bridge write path — the generic `properties: Dictionary<string,string>`
+ * channel cannot carry <EntryPoints>, which is why security-privilege is
+ * excluded from BRIDGE_CREATE_TYPES.
+ */
+const directXmlAddEntryPoint = serializedOnFile(async (
+  filePath: string,
+  spec: { objectName: string; objectType: string; name?: string; accessLevel?: string },
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+
+    const outcome = addSecurityEntryPoint(content, spec);
+
+    switch (outcome.kind) {
+      case 'unsupported':
+        // A refusal, not null — null would be read as a bridge-resolution
+        // failure and send the caller after the wrong cause.
+        return {
+          success: false,
+          message:
+            `${filePath} is not an AxSecurityPrivilege, so it has no entry points. ` +
+            `add-entry-point applies to objectType="security-privilege" only — a DUTY references ` +
+            `privileges, not entry points, and a ROLE references duties.`,
+        };
+      case 'bad-object-type':
+        return {
+          success: false,
+          message:
+            `entryPointObjectType "${outcome.given}" is not an EntryPointType — nothing was written. ` +
+            `Use MenuItemDisplay | MenuItemAction | MenuItemOutput | ServiceOperation | None. ` +
+            `An unknown value deserializes to nothing, so the privilege would build clean, pass BP ` +
+            `and grant access to no object at all.`,
+        };
+      case 'no-collection':
+        return {
+          success: false,
+          message:
+            `${filePath} has no <EntryPoints> collection to add to — nothing was written. ` +
+            `A privilege written by this tool always has one; a hand-edited file may not.`,
+        };
+      case 'already-present': {
+        const e = outcome.existing;
+        return {
+          success: true,
+          message:
+            `ℹ️ Entry point '${e.name}' (${e.objectName}, ${e.objectType}) is already on the privilege — ` +
+            `nothing written (idempotent). File: ${filePath}`,
+        };
+      }
+    }
+
+    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+    const { name, objectName, objectType } = outcome.added;
+    console.error(`[modify_d365fo_file] ✅ directXmlAddEntryPoint: added '${name}' to ${filePath}`);
+    return {
+      success: true,
+      message:
+        `✅ Entry point '${name}' (${objectName}, ${objectType}) added to the privilege. ` +
+        `File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddEntryPoint failed: ${err}`);
+    return null;
+  }
+});
+
+/**
  * remove-entry-point on an AxSecurityPrivilege, written straight to the XML.
  *
  * Security objects have no bridge write path at all: the generic
@@ -2111,7 +2192,8 @@ const ModifyD365FileArgsSchema = z.object({
     'add-data-source',
     'modify-property',
     'add-control', 'remove-control',
-    'remove-entry-point', 'remove-diagnostic-suppression', 'add-diagnostic-suppression',
+    'add-entry-point', 'remove-entry-point',
+    'remove-diagnostic-suppression', 'add-diagnostic-suppression',
     'add-enum-value', 'modify-enum-value', 'remove-enum-value',
     'add-display-method', 'add-table-method', 'add-menu-item-to-menu',
     'add-query-range', 'remove-query-range',
@@ -2347,22 +2429,23 @@ const ModifyD365FileArgsSchema = z.object({
     'control, else the one before it). Removing a toolbar button usually orphans its separator.'
   ),
 
-  // For remove-entry-point (security-privilege). Deliberately NOT named
+  // For add-entry-point / remove-entry-point (security-privilege). Deliberately NOT named
   // objectName/objectType: those two identify the PRIVILEGE being modified, and
   // reusing them for the entry point's target would make the call unreadable and
   // the args unroutable.
   entryPointName: z.string().optional().describe(
-    'remove-entry-point: <Name> of the AxSecurityEntryPointReference to remove (conventionally equal to ' +
-    'the menu item name).'
+    'add-entry-point / remove-entry-point: <Name> of the AxSecurityEntryPointReference (conventionally ' +
+    'equal to the menu item name; on add it DEFAULTS to entryPointObjectName).'
   ),
   entryPointObjectName: z.string().optional().describe(
-    'remove-entry-point: <ObjectName> of the entry point — the menu item / service operation it grants. ' +
-    'Use instead of entryPointName when the entry point was named differently from its target.'
+    'add-entry-point (REQUIRED) / remove-entry-point: <ObjectName> of the entry point — the menu item or ' +
+    'service operation it grants. On remove, use instead of entryPointName when the entry point was ' +
+    'named differently from its target.'
   ),
   entryPointObjectType: z.string().optional().describe(
-    'remove-entry-point: <ObjectType> (EntryPointType) — MenuItemDisplay | MenuItemAction | ' +
-    'MenuItemOutput | ServiceOperation | None. Only needed to disambiguate the same ObjectName ' +
-    'referenced through two entry-point types.'
+    'add-entry-point (REQUIRED) / remove-entry-point: <ObjectType> (EntryPointType) — MenuItemDisplay | ' +
+    'MenuItemAction | MenuItemOutput | ServiceOperation | None. On remove, only needed to disambiguate ' +
+    'the same ObjectName referenced through two entry-point types.'
   ),
 
   // For remove-diagnostic-suppression (ignore-diagnostic-list).
@@ -3690,6 +3773,56 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'modify-property': {
         if (args.propertyPath && args.propertyValue !== undefined) {
+          // ── Form extension targeting a BASE-FORM control ─────────────────────
+          // Must run BEFORE the bridge: a control-level request handed to the
+          // generic property writer lands in the extension's ROOT
+          // <PropertyModifications>, i.e. it hides/relabels the WHOLE FORM and
+          // reports success. The base form's controls live in
+          // <ControlModifications>, a different collection nothing else writes.
+          // See formExtensionControlModifications.ts (eval case
+          // L2-form-control-removal-lifecycle).
+          if (objectType === 'form-extension') {
+            const target = resolveControlPropertyTarget(
+              args.propertyPath,
+              (args as { controlName?: string }).controlName,
+            );
+            if (target) {
+              const beforeXml = await fs.readFile(actualFilePath, 'utf-8');
+              const outcome = upsertFormExtensionControlProperty(
+                beforeXml.replace(/^﻿/, ''),
+                target.controlName,
+                target.propertyName,
+                String(args.propertyValue),
+              );
+              if (!outcome.ok) {
+                return {
+                  content: [{
+                    type: 'text',
+                    text:
+                      `❌ Could not modify '${target.controlName}.${target.propertyName}' on ` +
+                      `${objectName}: ${outcome.reason}\n\n` +
+                      `A base-form control is customised through <ControlModifications>, not the ` +
+                      `extension's own properties — writing it as an extension property would change ` +
+                      `the whole form.`,
+                  }],
+                  isError: true,
+                };
+              }
+              if (outcome.changed) {
+                await writeFileAtomic(actualFilePath, normalizeD365Xml(outcome.xml));
+              }
+              bridgeResult = viaXmlFallback({
+                success: true,
+                message:
+                  `${outcome.changed ? '✅' : 'ℹ️'} ${outcome.detail} on base-form control ` +
+                  `'${target.controlName}' (written to <ControlModifications>` +
+                  `${outcome.changed ? '' : '; already in that state, nothing written'}). ` +
+                  `File: ${actualFilePath}`,
+              });
+              break;
+            }
+          }
+
           // ── Semantic guard for AxEdtExtension property changes ───────────────
           // D365FO silently accepts illegal extension edits (e.g. widening
           // StringSize on a derived EDT) but the change is ineffective at
@@ -3905,6 +4038,20 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             (args as any).controlName,
             (args as any).removeSeparator,
           ));
+        }
+        break;
+      }
+      case 'add-entry-point': {
+        // Security objects have no bridge write path at all (see the writer).
+        const epObject = (args as any).entryPointObjectName;
+        const epType = (args as any).entryPointObjectType;
+        if (epObject && epType) {
+          bridgeResult = viaXmlFallback(await directXmlAddEntryPoint(actualFilePath, {
+            objectName: epObject,
+            objectType: epType,
+            name: (args as any).entryPointName,
+            accessLevel: (args as any).accessLevel,
+          }));
         }
         break;
       }

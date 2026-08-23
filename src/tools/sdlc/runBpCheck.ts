@@ -40,6 +40,12 @@ const INDEX_TYPE_TO_ELEMENT_TYPE: Record<string, string> = {
   edt:               'edt',
   'edt-extension':   'edtextension',
   view:              'view',
+  // xppbp calls a data entity by its AOT element name, DataEntityView — the
+  // fall-through spelling `dataentity` is rejected outright. Grounded on a live
+  // run: targetElementType:"DataEntityView" checks the entity, `data-entity`
+  // (the token every other tool in this server takes) did not. Eval case
+  // L2-entity-query-range-roundtrip, 2026-08-23.
+  'data-entity':     'dataentityview',
   query:             'query',
   map:               'map',
   report:            'report',
@@ -108,8 +114,13 @@ export function normalizeElementType(raw: string): string {
 export function describeNonRun(output: string, targetName?: string): string {
   const invalidType = output.match(/The element type '([^']*)' is invalid/i);
   if (invalidType) {
+    // The old wording said "use the kebab-case objectType the other tools take"
+    // — which is what the caller had just passed when the translation table had
+    // no row for it, so the advice was circular and unactionable. Name the
+    // translatable set instead, and say what to do when the type is not in it.
     return `xppbp rejected the element type "${invalidType[1]}", so no rules were evaluated for this object. ` +
-      `Use the kebab-case objectType the other tools take (e.g. "table-extension") and it will be translated.`;
+      `Translatable objectTypes: ${RESOLVABLE_INDEX_TYPES.join(', ')}. ` +
+      `For anything else, pass xppbp's own element name in targetElementType (e.g. "DataEntityView").`;
   }
   if (/\b0 elements processed\b/i.test(output)) {
     return `xppbp processed 0 elements — the filter matched nothing, so this result is not evidence of a clean object.`;
@@ -178,6 +189,19 @@ export interface ParsedBpFinding {
   description: string | null;
   /** False for a moniker xppbp printed that the catalog does not recognise at all — worth a second look, not necessarily wrong. */
   knownMoniker: boolean;
+  /** 'Warning' | 'Error', from a detail line. Absent on the terse tally shape. */
+  severity?: string;
+  /** AOT element type the finding is on, e.g. 'AxClass'. Detail lines only. */
+  elementType?: string;
+  /**
+   * The `dynamics://…` URI the finding is against — THE value a suppression is
+   * keyed on. Detail lines only.
+   */
+  path?: string;
+  /** Source positions xppbp printed, e.g. '[(6,5),(8,6)]'. Detail lines only. */
+  position?: string;
+  /** The rule's own sentence about this occurrence. Detail lines only. */
+  message?: string;
 }
 
 // xppbp's plain-text mode prints one finding per line as `<Moniker>: <target>`.
@@ -191,12 +215,43 @@ export interface ParsedBpFinding {
 // compiler itself had just emitted, which is the most expensive kind of false
 // alarm: it invites a round trip to re-verify something already authoritative.
 //
-// A comment elsewhere in this file (`hasIssues`) also names a "BestPractices Warning: …"
-// shape from a different xppbp verbosity/version; there is no real captured sample of it
-// anywhere in this repo, so it is deliberately NOT matched here rather than guessed at —
-// an unmatched real finding is a silent gap, but a wrong regex would misreport lines that
-// are not findings at all.
 const FINDING_LINE = /^\s*(BP[A-Za-z0-9]+)\s*:\s*(.+?)\s*$/;
+
+/**
+ * The DETAIL shape, which carries everything the terse line above drops.
+ *
+ * This used to be deliberately unmatched: `hasIssues` named the shape, but no
+ * captured sample existed in the repo, and a guessed regex that misreads
+ * non-finding lines is worse than a gap. A live run finally produced one
+ * (eval case L2-bp-suppression-lifecycle, 2026-08-23), verbatim:
+ *
+ *   BestPractices Warning: AxClass dynamics://Class/ConDemoSuppressProbe/Method/run: [(6,5),(8,6)]: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoSuppressProbe.run'.
+ *
+ * FINDING_LINE cannot match it — it anchors `BP…:` at the start of the line, and
+ * this one starts `BestPractices`. So the structured Findings section reported
+ * the moniker and a COUNT (off the tally line `BPXmlDocNoDocumentationComments: 1`)
+ * and dropped the path, severity, element type and message. The path is the one
+ * value `add-diagnostic-suppression` is keyed on, so suppressing a finding meant
+ * reading it out of the raw log by eye — the exact hand-reconstruction the
+ * op-spec's diagnosticElementType/diagnosticElementName exist to route around.
+ *
+ * The locus is split off separately rather than in one regex: the path is a
+ * `dynamics://` URI, so it carries colons of its own and cannot be delimited by
+ * one. `(.*?)` before `: <moniker>: ` backtracks to the LAST such boundary,
+ * which is why the URI survives intact.
+ */
+const BP_DETAIL_LINE =
+  /^\s*BestPractices\s+(Warning|Error)\s*:\s*(.*?):\s*(BP[A-Za-z0-9]+)\s*:\s*(.*?)\s*$/;
+
+/** Split `AxClass dynamics://…/run: [(6,5),(8,6)]` into its three parts. */
+function splitLocus(locus: string): { elementType?: string; path?: string; position?: string } {
+  const posAt = locus.lastIndexOf(': [');
+  const head = (posAt >= 0 ? locus.slice(0, posAt) : locus).trim();
+  const position = posAt >= 0 ? locus.slice(posAt + 1).trim() : undefined;
+  const sp = head.indexOf(' ');
+  if (sp < 0) return { path: head || undefined, position };
+  return { elementType: head.slice(0, sp), path: head.slice(sp + 1).trim(), position };
+}
 
 // Severity/family prefixes that are not themselves monikers. Verified against
 // the extracted catalog: none of these appears as a moniker in its own right.
@@ -214,10 +269,37 @@ const BARE_PREFIXES = new Set(['bperror', 'bpwarning', 'bpinfo', 'bpcheck']);
  */
 export function parseBpFindings(output: string): ParsedBpFinding[] {
   const findings: ParsedBpFinding[] = [];
+  /** Monikers a DETAIL line already reported, so the tally line can be dropped. */
+  const detailed = new Set<string>();
+
   for (const rawLine of output.split('\n')) {
+    // Detail shape first: it is strictly richer, and its line never matches
+    // FINDING_LINE anyway (that one anchors `BP…` at the start).
+    const detail = rawLine.match(BP_DETAIL_LINE);
+    if (detail) {
+      const [, severity, locus, moniker, message] = detail;
+      const { elementType, path, position } = splitLocus(locus);
+      const validation = validateMoniker(moniker);
+      detailed.add(moniker.toLowerCase());
+      findings.push({
+        moniker,
+        // `target` stays the one-line locus so existing readers keep working.
+        target: path ?? locus,
+        description: validation.entry?.description ?? null,
+        knownMoniker: validation.found,
+        severity, elementType, path, position, message,
+      });
+      continue;
+    }
+
     const match = rawLine.match(FINDING_LINE);
     if (!match) continue;
     const [, name, target] = match;
+    // xppbp prints a per-moniker tally (`BPXmlDocNoDocumentationComments: 1`)
+    // alongside the detail lines. Once the detail is in hand the tally adds a
+    // count and loses everything else, so keeping both would report the same
+    // finding twice — once fully, once as a bare number.
+    if (detailed.has(name.toLowerCase()) && /^\d+$/.test(target.trim())) continue;
     if (BARE_PREFIXES.has(name.toLowerCase())) {
       // Severity prefix only — the rule is not named on this line, so there is
       // nothing to cross-reference and nothing to flag as unrecognised.
@@ -247,7 +329,15 @@ export function renderFindingsSection(output: string): string {
     if (f.moniker === null) return `  • ${f.target} (rule not named on this line)`;
     const flag = f.knownMoniker ? '' : ' ⚠️ not in the extracted moniker catalog — verify the spelling';
     const desc = f.description ? ` — ${f.description}` : '';
-    return `  • ${f.moniker}${desc} (${f.target})${flag}`;
+    const head = `  • ${f.moniker}${desc} (${f.target})${flag}`;
+    if (!f.path) return head;
+    // The path is printed on its own line and labelled, because it is the value
+    // add-diagnostic-suppression takes VERBATIM as diagnosticPath. Leaving it
+    // inline among the prose is what sent agents back to the raw log to copy it
+    // out by eye.
+    const where = [f.severity, f.elementType, f.position].filter(Boolean).join(' ');
+    return `${head}\n      path: ${f.path}${where ? `\n      ${where}` : ''}` +
+      (f.message ? `\n      ${f.message}` : '');
   });
   return `\n\nFindings (moniker-checked against ${BP_MONIKER_CATALOG.length} known monikers):\n${lines.join('\n')}`;
 }

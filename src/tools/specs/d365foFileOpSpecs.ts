@@ -322,8 +322,17 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   entryPointObjectType: {
     type: 'string (MenuItemDisplay | MenuItemAction | MenuItemOutput | ServiceOperation | None)',
     description:
-      '<ObjectType> (EntryPointType) of the entry point. Only needed to disambiguate one ObjectName ' +
-      'referenced through two entry-point types — two matches are refused, never guessed.',
+      '<ObjectType> (EntryPointType) of the entry point. REQUIRED on add-entry-point; on ' +
+      'remove-entry-point only needed to disambiguate one ObjectName referenced through two ' +
+      'entry-point types — two matches are refused, never guessed. A value outside the enum ' +
+      'deserializes to nothing, so it is rejected rather than written.',
+  },
+  accessLevel: {
+    type: 'string (view | read | maintain)',
+    description:
+      'add-entry-point: permissions the <Grant> carries. "view"/"read" grant Read; "maintain" grants ' +
+      'Create+Delete+Read+Update. DEFAULTS to "view", so a maintain privilege must say so explicitly. ' +
+      'Nothing else is accepted — "full"/"edit" used to be taken and silently degraded to Read-only.',
   },
   // BP-check suppressions
   diagnosticPath: {
@@ -588,6 +597,22 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       + '(modify-property Visible=No on a control extension). Emptying a <Controls> collection '
       + 'collapses it to <Controls />, the spelling the serializer uses.',
   },
+  'add-entry-point': {
+    required: ['entryPointObjectName', 'entryPointObjectType'],
+    optional: ['entryPointName', 'accessLevel'],
+    note:
+      'objectType="security-privilege". Adds one <AxSecurityEntryPointReference> — the block that ' +
+      'grants a menu item or service operation through this privilege. create takes only ONE entry ' +
+      'point (properties.targetObject), so this is how a privilege gets a second: without it the only ' +
+      'route was create(overwrite=true, xmlContent=...), i.e. hand-authored XML. ' +
+      'entryPointObjectType is a CLOSED enum (MenuItemDisplay | MenuItemAction | MenuItemOutput | ' +
+      'ServiceOperation | None) — an unknown value deserializes to nothing, so the privilege would ' +
+      'build clean, pass BP and grant access to no object at all. ' +
+      'entryPointName defaults to entryPointObjectName (they are equal in 910 of the 1036 shipped ' +
+      'entry points). accessLevel is "view"/"read" (Read) or "maintain" (Create+Delete+Read+Update); ' +
+      'it defaults to "view", so pass "maintain" explicitly for a maintain privilege. ' +
+      'Idempotent on the entry point <Name>.',
+  },
   'remove-entry-point': {
     required: [],
     optional: ['entryPointName', 'entryPointObjectName', 'entryPointObjectType'],
@@ -650,7 +675,18 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     required: ['menuItemToAdd'],
     optional: ['menuItemToAddType'],
   },
-  'modify-property': { required: ['propertyPath', 'propertyValue'], optional: [] },
+  'modify-property': {
+    required: ['propertyPath', 'propertyValue'],
+    optional: ['controlName'],
+    note:
+      'controlName is for objectType="form-extension" ONLY, and it is what customises a control of ' +
+      'the BASE form: the property goes to <ControlModifications>, the collection shipped extensions ' +
+      'use for exactly this (83 of 416, Visible/Enabled/Caption/HelpText/Label/CountryRegionCodes). ' +
+      'A dotted propertyPath ("MyGrid.Visible") is read the same way. WITHOUT a control the property ' +
+      'is the EXTENSION\'s own — on a form extension that changes the WHOLE FORM, so hiding one ' +
+      'control by omitting controlName hides the form instead. One envelope per control: a second ' +
+      'property joins the existing one. Idempotent.',
+  },
 };
 
 /**
