@@ -41,6 +41,9 @@ import { ProjectFileFinder, registerFileInActiveProject } from '../../workspace/
 import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName, resolveEdtEnumType } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { insertFormExtensionControl } from '../../utils/formExtensionControlXml.js';
+import {
+  upsertFormExtensionControlProperty, resolveControlPropertyTarget,
+} from '../../utils/formExtensionControlModifications.js';
 import { removeFormControl } from '../../utils/formControlRemoval.js';
 import { removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
 import {
@@ -3690,6 +3693,56 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       }
       case 'modify-property': {
         if (args.propertyPath && args.propertyValue !== undefined) {
+          // ── Form extension targeting a BASE-FORM control ─────────────────────
+          // Must run BEFORE the bridge: a control-level request handed to the
+          // generic property writer lands in the extension's ROOT
+          // <PropertyModifications>, i.e. it hides/relabels the WHOLE FORM and
+          // reports success. The base form's controls live in
+          // <ControlModifications>, a different collection nothing else writes.
+          // See formExtensionControlModifications.ts (eval case
+          // L2-form-control-removal-lifecycle).
+          if (objectType === 'form-extension') {
+            const target = resolveControlPropertyTarget(
+              args.propertyPath,
+              (args as { controlName?: string }).controlName,
+            );
+            if (target) {
+              const beforeXml = await fs.readFile(actualFilePath, 'utf-8');
+              const outcome = upsertFormExtensionControlProperty(
+                beforeXml.replace(/^﻿/, ''),
+                target.controlName,
+                target.propertyName,
+                String(args.propertyValue),
+              );
+              if (!outcome.ok) {
+                return {
+                  content: [{
+                    type: 'text',
+                    text:
+                      `❌ Could not modify '${target.controlName}.${target.propertyName}' on ` +
+                      `${objectName}: ${outcome.reason}\n\n` +
+                      `A base-form control is customised through <ControlModifications>, not the ` +
+                      `extension's own properties — writing it as an extension property would change ` +
+                      `the whole form.`,
+                  }],
+                  isError: true,
+                };
+              }
+              if (outcome.changed) {
+                await writeFileAtomic(actualFilePath, normalizeD365Xml(outcome.xml));
+              }
+              bridgeResult = viaXmlFallback({
+                success: true,
+                message:
+                  `${outcome.changed ? '✅' : 'ℹ️'} ${outcome.detail} on base-form control ` +
+                  `'${target.controlName}' (written to <ControlModifications>` +
+                  `${outcome.changed ? '' : '; already in that state, nothing written'}). ` +
+                  `File: ${actualFilePath}`,
+              });
+              break;
+            }
+          }
+
           // ── Semantic guard for AxEdtExtension property changes ───────────────
           // D365FO silently accepts illegal extension edits (e.g. widening
           // StringSize on a derived EDT) but the change is ineffective at

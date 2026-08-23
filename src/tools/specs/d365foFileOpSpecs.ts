@@ -650,7 +650,18 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     required: ['menuItemToAdd'],
     optional: ['menuItemToAddType'],
   },
-  'modify-property': { required: ['propertyPath', 'propertyValue'], optional: [] },
+  'modify-property': {
+    required: ['propertyPath', 'propertyValue'],
+    optional: ['controlName'],
+    note:
+      'controlName is for objectType="form-extension" ONLY, and it is what customises a control of ' +
+      'the BASE form: the property goes to <ControlModifications>, the collection shipped extensions ' +
+      'use for exactly this (83 of 416, Visible/Enabled/Caption/HelpText/Label/CountryRegionCodes). ' +
+      'A dotted propertyPath ("MyGrid.Visible") is read the same way. WITHOUT a control the property ' +
+      'is the EXTENSION\'s own — on a form extension that changes the WHOLE FORM, so hiding one ' +
+      'control by omitting controlName hides the form instead. One envelope per control: a second ' +
+      'property joins the existing one. Idempotent.',
+  },
 };
 
 /**
