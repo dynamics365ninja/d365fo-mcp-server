@@ -91,15 +91,16 @@ Model + prefix auto-applied. Classes: member vars inside the class { }, methods 
             'add-field-group', 'remove-field-group', 'add-field-to-field-group',
             'add-field-modification',
             'add-data-source', 'add-control', 'remove-control',
-            'remove-entry-point', 'remove-diagnostic-suppression', 'add-diagnostic-suppression',
+            'add-entry-point', 'remove-entry-point',
+            'remove-diagnostic-suppression', 'add-diagnostic-suppression',
             'add-enum-value', 'modify-enum-value', 'remove-enum-value',
             'add-menu-item-to-menu',
             'modify-property',
             'add-query-range', 'remove-query-range',
           ],
           description:
-            '[modify] REQUIRED unless using operations[]. add-method also UPDATES in place; replace-code is the surgical oldCode→newCode path. ' +
-            'Parameters: get_knowledge(kind="op-spec", topic="<operation>").'
+            '[modify] REQUIRED unless using operations[]. add-method also UPDATES in place; ' +
+            'replace-code is the surgical oldCode→newCode path.'
         },
         operations: {
           type: 'array',

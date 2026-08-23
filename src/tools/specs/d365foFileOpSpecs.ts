@@ -322,8 +322,17 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   entryPointObjectType: {
     type: 'string (MenuItemDisplay | MenuItemAction | MenuItemOutput | ServiceOperation | None)',
     description:
-      '<ObjectType> (EntryPointType) of the entry point. Only needed to disambiguate one ObjectName ' +
-      'referenced through two entry-point types — two matches are refused, never guessed.',
+      '<ObjectType> (EntryPointType) of the entry point. REQUIRED on add-entry-point; on ' +
+      'remove-entry-point only needed to disambiguate one ObjectName referenced through two ' +
+      'entry-point types — two matches are refused, never guessed. A value outside the enum ' +
+      'deserializes to nothing, so it is rejected rather than written.',
+  },
+  accessLevel: {
+    type: 'string (view | read | maintain)',
+    description:
+      'add-entry-point: permissions the <Grant> carries. "view"/"read" grant Read; "maintain" grants ' +
+      'Create+Delete+Read+Update. DEFAULTS to "view", so a maintain privilege must say so explicitly. ' +
+      'Nothing else is accepted — "full"/"edit" used to be taken and silently degraded to Read-only.',
   },
   // BP-check suppressions
   diagnosticPath: {
@@ -587,6 +596,22 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       + 'not found — a form extension cannot delete a base control, only hide it '
       + '(modify-property Visible=No on a control extension). Emptying a <Controls> collection '
       + 'collapses it to <Controls />, the spelling the serializer uses.',
+  },
+  'add-entry-point': {
+    required: ['entryPointObjectName', 'entryPointObjectType'],
+    optional: ['entryPointName', 'accessLevel'],
+    note:
+      'objectType="security-privilege". Adds one <AxSecurityEntryPointReference> — the block that ' +
+      'grants a menu item or service operation through this privilege. create takes only ONE entry ' +
+      'point (properties.targetObject), so this is how a privilege gets a second: without it the only ' +
+      'route was create(overwrite=true, xmlContent=...), i.e. hand-authored XML. ' +
+      'entryPointObjectType is a CLOSED enum (MenuItemDisplay | MenuItemAction | MenuItemOutput | ' +
+      'ServiceOperation | None) — an unknown value deserializes to nothing, so the privilege would ' +
+      'build clean, pass BP and grant access to no object at all. ' +
+      'entryPointName defaults to entryPointObjectName (they are equal in 910 of the 1036 shipped ' +
+      'entry points). accessLevel is "view"/"read" (Read) or "maintain" (Create+Delete+Read+Update); ' +
+      'it defaults to "view", so pass "maintain" explicitly for a maintain privilege. ' +
+      'Idempotent on the entry point <Name>.',
   },
   'remove-entry-point': {
     required: [],

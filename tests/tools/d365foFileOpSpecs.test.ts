@@ -25,7 +25,7 @@ describe('d365fo_file op-spec registry', () => {
     // Bump deliberately when an operation is added — the count is here so a new op
     // cannot slip in unnoticed, and because each one is also paid for out of the
     // ListTools token budget (tests/utils/toolSchemaBudget.test.ts).
-    expect(publishedOps).toHaveLength(37);
+    expect(publishedOps).toHaveLength(38);
   });
 
   it('every required/optional param has a param-spec entry with type and description', () => {
