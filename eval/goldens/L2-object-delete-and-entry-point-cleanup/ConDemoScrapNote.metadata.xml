@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L2-object-delete-and-entry-point-cleanup (artifact 1 of 4: table (NoteId mandatory/Num, Subject/Name, unique alternate-key index NoteIdx, Overview field group))
+  Captured: 2026-08-23 on the D365FO VM (model fm-mcp, prefix Con, xppc 7.0.7996.33).
+  Full build (fullBuild) clean: 0 errors. The one xppc warning is the pre-existing
+  unrelated ExternalReference (Microsoft.Dynamics.Commerce.Runtime.Entities.AttributeBasedPricing)
+  that is present on an EMPTY sandbox too.
+
+  This golden records the POST-DELETE surviving state. Two things it asserts by ABSENCE,
+  which a scoring run must check outside the diff:
+    * ConDemoScrapNoteAltMI.xml is GONE from AxMenuItemDisplay\ (d365fo_file(action="delete")).
+    * fm-mcp_BPSuppressions.xml retains ONLY the dynamics://MenuItemDisplay/ConDemoScrapNoteMI
+      entry; the AltMI suppression was stripped by the same delete (targeted, not a wipe).
+
+  TOOL_DEFECT found while capturing (see the corpus record): the entry-point <Grant> below is
+  ALPHABETICAL (Correct, Create, Delete, Read, Update). buildAxSecurityPrivilegeXml emits
+  Read, Update, Create, Delete for accessLevel:"maintain"; the Microsoft deserializer is
+  sequence-ordered, so Create and Delete are SILENTLY DROPPED and the privilege grants only
+  Read+Update. It still builds clean and is BP-clean. The alphabetical order here is the shape
+  the metadata provider actually reads back as full CRUD.
+-->
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoScrapNote</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>ConDemoScrapNote</c> table.
+/// </summary>
+public class ConDemoScrapNote extends common
+{
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+	<DeveloperDocumentation>@SYS13887</DeveloperDocumentation>
+	<FormRef>ConDemoScrapNoteMI</FormRef>
+	<Label>@SYS13887</Label>
+	<TableGroup>Main</TableGroup>
+	<TitleField1>NoteId</TitleField1>
+	<TitleField2>Subject</TitleField2>
+	<CacheLookup>Found</CacheLookup>
+	<ReplacementKey>NoteIdx</ReplacementKey>
+	<DeleteActions />
+	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>AutoReport</Name>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>NoteId</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Subject</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoLookup</Name>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>NoteId</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Subject</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoIdentification</Name>
+			<AutoPopulate>Yes</AutoPopulate>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoSummary</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoBrowse</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>Overview</Name>
+			<Label>@SYS9039</Label>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>NoteId</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Subject</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+	</FieldGroups>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>NoteId</Name>
+			<ExtendedDataType>Num</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Subject</Name>
+			<ExtendedDataType>Name</ExtendedDataType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>NoteIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>NoteId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

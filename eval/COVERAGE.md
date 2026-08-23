@@ -39,7 +39,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Event handler subscription | core | ✅ | ✅ | ✅ | L2-event-handler-basic |
 | Delegate | core | ✅ | ✅ | ✅ | L2-delegate-basic |
 | Macro | total | ✅ | ✅ | ✅ | L1-macro-library-flight |
-| Transactions (ttsbegin/ttscommit) | core | ✅ | ✅ | ✅ | L2-class-method-ops, L2-form-modify-controls, L2-table-modify-lifecycle +2 |
+| Transactions (ttsbegin/ttscommit) | core | ✅ | ✅ | ✅ | L2-bp-suppression-lifecycle, L2-class-method-ops, L2-entity-query-range-roundtrip +5 |
 | X++ select grammar | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-basic |
 | Set-based operations | core | ✅ | ✅ | ✅ | L4-ssrs-report-basic |
 | SysDa fluent query API | total | ✅ | ✅ | ✅ | L2-sysda-fluent-query |
@@ -136,6 +136,6 @@ Nothing uncovered.
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): extensible-enums
-- Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
+- Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-08-12._
+_Generated 2026-08-23._

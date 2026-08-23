@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>ConDemoRemovalNoteForm</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+[Form]
+public class ConDemoRemovalNoteForm extends FormRun
+{
+}
+
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>ConDemoRemovalNote</Name>
+			<Table>ConDemoRemovalNote</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">@SYS318221</Caption>
+		<Pattern xmlns="">Custom</Pattern>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>ButtonGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls />
+					</AxFormControl>
+				</Controls>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>HeaderGroup</Name>
+				<Type>Group</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HeaderNoteId</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>NoteId</DataField>
+						<DataSource>ConDemoRemovalNote</DataSource>
+					</AxFormControl>
+				</Controls>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

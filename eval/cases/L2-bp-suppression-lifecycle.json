@@ -1,0 +1,26 @@
+{
+  "id": "L2-bp-suppression-lifecycle",
+  "title": "Suppress a real BP finding through add-diagnostic-suppression, then take it back",
+  "tier": 2,
+  "instruction": "In the sandbox model, prove the BP-suppression round trip against a REAL finding — no synthetic path. (1) Create a class DemoSuppressProbe with one public method that must end up WITHOUT an XML documentation header, so it trips BPXmlDocNoDocumentationComments. Note that d365fo_file(action=\"create\") alone CANNOT produce that state: ensureXppDocComment injects a /// <summary> block on every create and add-method (deliberately — see its own comment, \"so a method added through the bridge is not the one shape of write that fails BP\"), so a first create builds 0 warnings. Reach the un-documented state with a second grounded op, modify/replace-code, which is the one X++ write path not wired to that helper. Both writes stay on the grounded path; hand-edited XML still fails the case. (2) Build it, then run run_bp_check on that class and record the finding VERBATIM: its rule moniker and its <Path>. (3) Suppress exactly that finding with d365fo_file(action=\"modify\", objectType=\"ignore-diagnostic-list\", objectName=\"<Model>_BPSuppressions\", operation=\"add-diagnostic-suppression\", params={diagnosticMoniker: <the moniker from the finding>, diagnosticPath: <the path from the finding, verbatim>, diagnosticJustification: ...}) — the sandbox model has never suppressed anything, so the operation must CREATE {Model}_BPSuppressions.xml and its AxIgnoreDiagnosticList folder and say so in its reply. (4) Re-run run_bp_check on the same class: the finding must be GONE. (5) Remove the suppression with operation=\"remove-diagnostic-suppression\" (same diagnosticPath) and re-run run_bp_check: the finding must be BACK, and <Items> must have collapsed to <Items /> rather than the file being left with a dangling entry. Do NOT hand-write {Model}_BPSuppressions.xml and do NOT reconstruct the path by hand from the object name — the whole point is that the moniker and path the writer stores match, character for character, what the real xppbp.exe emits. A run where step 4 still reports the finding fails this case; so does a step-5 file that still lists the entry. WHY THIS NEEDS THE VM: tests/tools/removalOps.test.ts exercises this writer against SYNTHETIC diagnostic paths only, so nothing in CI can prove the stored shape matches the checker's own output.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxIgnoreDiagnosticList",
+    "AxIgnoreDiagnosticList"
+  ],
+  "golden_path": "eval/goldens/L2-bp-suppression-lifecycle/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "bp-check",
+    "bp-suppression",
+    "ignore-diagnostic-list",
+    "modify",
+    "round-trip",
+    "write-op-coverage"
+  ],
+  "split": "holdout"
+}

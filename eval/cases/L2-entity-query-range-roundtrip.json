@@ -1,0 +1,23 @@
+{
+  "id": "L2-entity-query-range-roundtrip",
+  "title": "add-query-range / remove-query-range on a data entity, proved against the compiler",
+  "tier": 2,
+  "instruction": "In the sandbox model, prove the data-entity query-range ops produce metadata the platform actually accepts. (1) Create a table DemoRangeSource with fields NoteId (string, Num EDT, mandatory), Subject (string, Name EDT) and IsActive (enum, NoYes), plus a unique index NoteIdx on NoteId. (2) Create a public data entity DemoRangeSourceEntity over it (primaryTable DemoRangeSource, fields NoteId/Subject/IsActive, primaryKeyFields [NoteId]). (3) Restrict the entity to active rows: d365fo_file(action=\"modify\", objectType=\"data-entity\", objectName=\"DemoRangeSourceEntity\", operation=\"add-query-range\", params={dataSourceName: <the ROOT data source name inside <ViewMetadata> — READ IT BACK with get_object_info(objectType=\"data-entity\", options={\"include\":\"xml\"}), do not assume it equals the table name>, rangeField:\"IsActive\", rangeValue:\"1\"}). (4) Add a second range on the same data source with an explicit rangeName distinct from its rangeField, then re-issue step 3 verbatim and confirm it is idempotent — no second copy. (5) Build. The ranges must compile: an <AxQuerySimpleDataSourceRange> with no <Value>, or one written outside the <Ranges> its own data source holds, is the failure this case exists to catch. (6) Remove the step-4 range with operation=\"remove-query-range\" by rangeName, build again, and confirm the step-3 range survived and <Ranges> was NOT collapsed. Do NOT edit ViewMetadata by hand and do NOT fall back to create overwrite=true. Context: these ops shipped in PR #927 and their audit (PR #928) found add-query-range writing onto a JOINED data source and remove-query-range deleting the joined table's range, both reported as success. The joined-data-source half of that trap is NOT reachable from this case — no tool operation adds a joined data source to a data entity — so it stays covered by tests/tools/queryRangeOps.test.ts; this case covers the root-data-source half live, which those tests cannot.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxDataEntityView"
+  ],
+  "golden_path": "eval/goldens/L2-entity-query-range-roundtrip/",
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "data-entity",
+    "query-range",
+    "modify",
+    "round-trip",
+    "write-op-coverage"
+  ],
+  "split": "holdout"
+}

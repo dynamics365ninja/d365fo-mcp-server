@@ -1,0 +1,61 @@
+{
+  "run_id": "2026-08-23T10__L2-entity-query-range-roundtrip__4203716",
+  "case_id": "L2-entity-query-range-roundtrip",
+  "tier": 2,
+  "timestamp": "2026-08-23T10:32:35.363Z",
+  "server_git_sha": "4203716",
+  "generated_artifacts": [
+    "ConDemoRangeSource.metadata.xml",
+    "ConDemoRangeSourceEntity.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Case assertions all PASSED: root data source <Name> read back = ConDemoRangeSource; both ranges landed in the ROOT AxQuerySimpleRootDataSource/<Ranges> (never the sibling entity-level <Ranges />), each carrying a non-empty <Value>; xppc compiled 0 errors twice; re-issuing add-query-range verbatim was a no-op (2738 -> 2738 bytes, reported \"skipped (idempotent)\"); remove-query-range by rangeName=SubjectPrefix left the IsActive range in place and did NOT collapse <Ranges>.\n\nTOOL_DEFECT 1 (load-bearing for this case, RECURRENCE 2 of 4 runs): get_object_info(objectType=\"data-entity\", options={include:\"xml\"}) served a STALE cached response after three intervening d365fo_file(action=\"modify\") writes to the same file, and appended \"Duplicate call - this exact get_object_info call was answered moments ago; the result above is identical. Use the data you already have instead of re-querying.\" The served body was the 2399-byte pre-write XML with an empty <Ranges />; disk was 2738 bytes with two ranges. The dedup cache is keyed on call shape and is not invalidated by writes through d365fo_file, and its wording actively instructs the agent to trust the stale copy. This case makes that exact read load-bearing (step 3 requires reading the data source <Name> back), so an agent that re-reads to verify its own write is told the write did not happen.\n\nTOOL_DEFECT 2 (new): run_bp_check maps objectType \"data-entity\" to the xppbp element type \"dataentity\", which xppbp rejects - \"The element type dataentity is invalid. Supported types are ... DataEntityView ...\". The tool then advises \"Use the kebab-case objectType the other tools take\", which is circular: \"data-entity\" IS that token and is what was passed. The correct mapping is DataEntityView; passing targetElementType=\"DataEntityView\" manually works. Net effect: no data entity can be BP-checked through the objects[] path.\n\nbp_clean=0 is INHERENT to this case, not an implementation defect: 3 table warnings (BPTableWithRecIdIndexMissingReplacementKey, BPErrorDeveloperDocumentationNotDefined, BPErrorTableMissingFormRef - the case admits no AxForm, so FormRef is unreachable) plus 1 BP ERROR on the entity (DataEntitySecurityPrivilegeCheck, which fires on any public data entity with no AxSecurityPrivilege; the case admits none). Recorded as 4 for the dimension.\n\nNOT observed: the joined-data-source half of the PR #927/#928 trap. No supported d365fo_file parameter adds an AxQuerySimpleEmbeddedDataSource to a data entity (the create contract exposes only primaryTable), so that half remains covered solely by tests/tools/queryRangeOps.test.ts, exactly as the case states.\n\nMinor observations, non-blocking: (a) get_object_info(objectType=\"enum\", name=\"NoYes\") returns not-found for the base/system enum even though validate_code(references) resolves it and xppc compiles it; (b) table create reported \"BP defaults: PrimaryIndex=SurrogateKey, ClusteredIndex=SurrogateKey\" but wrote neither element to the XML - the message overstates what was applied; (c) data-entity create emits <Label>ConDemoRangeSourceEntity</Label> as raw text rather than a label id, which xppbp did not flag for AxDataEntityView but is still not a label reference.\n\nStatic gate detail: validate_code(syntax, xml-table) on ConDemoRangeSource reported 0 violations across 23 rule groups. validate_code(references, xml-any) on the entity XML reported \"all 0 reference(s) verified\" - it resolved NOTHING, because the resolver has no AxDataEntityView reader, so Table/DataField/Field refs inside <ViewMetadata> are not checked. Recorded as passed, but it is an empty pass.",
+  "suggested_fix_area": "src/tools get_object_info response dedup/cache (invalidate on any d365fo_file write to the same object/file, and never emit the \"Duplicate call ... use the data you already have\" advisory for a read whose file size/mtime changed since the cached answer); run_bp_check element-type mapping (data-entity -> DataEntityView, plus fix the circular recovery hint); validate_code(references) AxDataEntityView reader so <ViewMetadata> Table/Field refs are actually checked",
+  "evidence_refs": [
+    "eval/goldens/L2-entity-query-range-roundtrip/ConDemoRangeSource.metadata.xml",
+    "eval/goldens/L2-entity-query-range-roundtrip/ConDemoRangeSourceEntity.metadata.xml",
+    "eval/cases/L2-entity-query-range-roundtrip.json",
+    "tests/tools/queryRangeOps.test.ts",
+    "eval/corpus/runs/2026-08-23T10__L2-object-delete-and-entry-point-cleanup__4203716.json"
+  ]
+}

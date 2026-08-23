@@ -1,0 +1,25 @@
+{
+  "id": "L2-form-control-removal-lifecycle",
+  "title": "remove-control on a form, and the refusal when a form extension targets a base control",
+  "tier": 2,
+  "instruction": "In the sandbox model, prove control REMOVAL, not just addition. (1) Create a table DemoRemovalNote with fields NoteId (string, Num EDT, mandatory) and Subject (string, Name EDT) and a unique index NoteIdx on NoteId. (2) Create a form DemoRemovalNoteForm bound to it with, under the design, a Group HeaderGroup holding two StringEdit controls (HeaderNoteId, HeaderSubject) and an ActionPane holding a ButtonGroup with one Button DemoScratchButton. (3) Remove the button with d365fo_file(action=\"modify\", objectType=\"form\", operation=\"remove-control\", params={controlName:\"DemoScratchButton\"}) — pass NO parentControl: the operation must find a control nested three levels down on its own. The now-empty ButtonGroup must be left as <Controls />, the spelling the serializer uses; a hand-emptied <Controls></Controls> or a leftover envelope fails. (4) Remove HeaderSubject the same way. (5) Create a form extension DemoRemovalNoteForm.DemoExt and attempt remove-control on HeaderNoteId — a control the BASE form defines. The tool must REFUSE it as not found on the extension: a form extension cannot delete a base control, only hide it (modify-property Visible=No on a control extension), and hiding it that way is the correct completion of this step. A run that reports success for step 5, or that falls back to create overwrite=true with rewritten form XML at any step, FAILS this case. The table, the form and the extension must all build clean afterwards.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxForm",
+    "AxFormExtension"
+  ],
+  "golden_path": "eval/goldens/L2-form-control-removal-lifecycle/",
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "form",
+    "form-extension",
+    "remove-control",
+    "modify",
+    "refusal",
+    "write-op-coverage"
+  ],
+  "split": "holdout"
+}

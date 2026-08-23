@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoSuppressProbe</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Probe class used to raise a real Best Practices documentation finding.
+/// </summary>
+public class ConDemoSuppressProbe
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    public void run()
+    {
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
