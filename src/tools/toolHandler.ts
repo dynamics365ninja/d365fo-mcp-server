@@ -42,6 +42,7 @@ import {
   DEDUP_EXCLUDED_TOOLS, DEDUP_TTL_MS,
   dedupKey, getDedupedResult, storeDedupResult, appendNote,
   getInFlight, registerInFlight, clearInFlight,
+  MUTATING_TOOLS, currentWriteEpoch, bumpWriteEpoch,
 } from '../utils/callDedup.js';
 import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
@@ -275,6 +276,9 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
     const finishMetrics = recordToolStart(toolName);
     const callStartedAt = Date.now();
+    // Captured BEFORE the tool runs: a read that overlaps a concurrent write
+    // computed a pre-write answer and must not be cached as current.
+    const epochAtStart = currentWriteEpoch();
     let result: any;
     // Anything the C# bridge throws during this call lands here (see
     // bridge/bridgeFailure.ts). Without it a bridge outage is invisible: the read
@@ -403,7 +407,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       reportSlowCall(toolName, Date.now() - callStartedAt, request.params.arguments);
 
       if (!DEDUP_EXCLUDED_TOOLS.has(toolName)) {
-        storeDedupResult(callKey, capped);
+        storeDedupResult(callKey, capped, epochAtStart);
         // Loop hint: 3+ identical calls in the recent window means the model is cycling.
         if (occurrences >= 3) {
           capped = appendNote(
@@ -420,6 +424,10 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       console.error(`[toolHandler] ⚠️ ${toolName}: response post-processing failed: ${err}`);
       capped = result;
     } finally {
+      // Invalidate every cached read, whatever the outcome: a write that threw
+      // may still have changed the disk, and serving a pre-write body afterwards
+      // is the failure this guards against.
+      if (MUTATING_TOOLS.has(toolName)) bumpWriteEpoch();
       inFlightHandle?.resolve(capped);
       clearInFlight(callKey);
     }
