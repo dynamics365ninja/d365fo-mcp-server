@@ -322,3 +322,44 @@ describe('document handling', () => {
     expect(hasPatternErrors(report)).toBe(true);
   });
 });
+
+/**
+ * The `Custom` sentinels carry `versions: []` on purpose — they exist to say "no
+ * Microsoft-defined pattern applies here" and suppress FP001. FP002 read that
+ * empty list as version zero, and all three of its branches misbehaved:
+ *
+ *   - undeclared  → advised `Add <PatternVersion>undefined</PatternVersion>`
+ *                   (observed live, eval case L2-form-control-removal-lifecycle)
+ *   - unknown     → printed an empty `known: ` list
+ *   - DECLARED    → compareVersions(declared, undefined) threw TypeError on
+ *                   `b.split`, taking the whole validator down
+ *
+ * The last one is a crash, not a cosmetic defect, and neither was covered.
+ */
+describe('FP002 does not apply to a pattern the catalog gives no versions for', () => {
+  const customForm = (patternVersion?: string): string =>
+    [
+      '<?xml version="1.0" encoding="utf-8"?>',
+      '<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance">',
+      '  <Name>FpvCustomForm</Name>',
+      '  <Design>',
+      '    <Pattern xmlns="">Custom</Pattern>',
+      patternVersion ? `    <PatternVersion xmlns="">${patternVersion}</PatternVersion>` : '',
+      '    <Controls />',
+      '  </Design>',
+      '</AxForm>',
+    ].filter(Boolean).join('\n');
+
+  it('raises no FP002 when no version is declared', async () => {
+    const report = await validateFormPatternXml(customForm());
+    expect(rules(report)).not.toContain('FP002');
+    // The specific symptom that was user-visible.
+    expect(JSON.stringify(report.violations)).not.toContain('undefined</PatternVersion>');
+  });
+
+  it('does not throw when a version IS declared', async () => {
+    // Before the guard this was a TypeError out of compareVersions, not a violation.
+    const report = await validateFormPatternXml(customForm('1.0'));
+    expect(rules(report)).not.toContain('FP002');
+  });
+});

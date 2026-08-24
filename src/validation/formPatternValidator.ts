@@ -110,6 +110,21 @@ function checkVersion(
   path: string,
   violations: FormPatternViolation[],
 ): void {
+  // A pattern the catalog records NO versions for has no version to check against,
+  // and every branch below misreads that as "version zero":
+  //
+  //   - the undeclared branch advised `Add <PatternVersion>undefined</PatternVersion>`
+  //     (observed live, eval case L2-form-control-removal-lifecycle, 2026-08-23);
+  //   - the unknown-version branch printed an empty `known: ` list;
+  //   - worst, a DECLARED version reached compareVersions(declared, undefined),
+  //     which throws TypeError on `b.split` and takes the whole validator down.
+  //
+  // The only entries with an empty list are the `Custom` sentinels
+  // (catalog/subPatterns/fields.ts, catalog/topLevel/simpleDetails.ts), which exist
+  // precisely to say "no Microsoft-defined pattern applies here" and suppress FP001.
+  // Demanding a PatternVersion for one contradicts that, so FP002 does not apply.
+  if (knownVersions.length === 0) return;
+
   if (!declared) {
     violations.push({
       rule: 'FP002',
