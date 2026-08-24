@@ -331,7 +331,7 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     type: 'string (view | read | maintain)',
     description:
       'add-entry-point: permissions the <Grant> carries. "view"/"read" grant Read; "maintain" grants ' +
-      'Create+Delete+Read+Update. DEFAULTS to "view", so a maintain privilege must say so explicitly. ' +
+      'Correct+Create+Delete+Read+Update (plus Invoke on a ServiceOperation). DEFAULTS to "view", so a maintain privilege must say so explicitly. ' +
       'Nothing else is accepted — "full"/"edit" used to be taken and silently degraded to Read-only.',
   },
   // BP-check suppressions
@@ -609,7 +609,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'ServiceOperation | None) — an unknown value deserializes to nothing, so the privilege would ' +
       'build clean, pass BP and grant access to no object at all. ' +
       'entryPointName defaults to entryPointObjectName (they are equal in 910 of the 1036 shipped ' +
-      'entry points). accessLevel is "view"/"read" (Read) or "maintain" (Create+Delete+Read+Update); ' +
+      'entry points). accessLevel is "view"/"read" (Read) or "maintain" (Correct+Create+Delete+Read+Update, plus Invoke on a ServiceOperation); ' +
       'it defaults to "view", so pass "maintain" explicitly for a maintain privilege. ' +
       'Idempotent on the entry point <Name>.',
   },
@@ -725,7 +725,7 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
   form: 'caption, formTemplate, dataSource',
   'security-privilege':
     'label, targetObject, objectType (MenuItemDisplay|MenuItemAction|MenuItemOutput|ServiceOperation), ' +
-    'accessLevel (view|read = Read only, maintain = full CRUD — nothing else is accepted; "full"/"edit" ' +
+    'accessLevel (view|read = Read only, maintain = Correct+Create+Delete+Read+Update, plus Invoke on a ServiceOperation — nothing else is accepted; "full"/"edit" ' +
     'used to degrade silently to Read-only), dataEntity (grants perms)',
   'security-duty': 'label, privileges[]',
   'security-role': 'label, duties[], privileges[]',

@@ -37,7 +37,7 @@ import { undoLastModificationTool } from './sdlc/undoLastModification.js';
 import { validateCodeTool } from './analysis/validateCode.js';
 import { prepareTool } from './prepare/prepare.js';
 import { getWorkspaceInfoTool } from './readers/getWorkspaceInfo.js';
-import { recordToolStart, startMetricsLogging, recordCallSequence, reportSlowCall } from '../utils/toolMetrics.js';
+import { recordToolStart, startMetricsLogging, recordCallSequence, occurrencesInEpoch, reportSlowCall } from '../utils/toolMetrics.js';
 import {
   DEDUP_EXCLUDED_TOOLS, DEDUP_TTL_MS,
   dedupKey, getDedupedResult, storeDedupResult, appendNote,
@@ -246,7 +246,14 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
     // Loop detection + duplicate-call dedup
     const callKey = dedupKey(toolName, request.params.arguments);
-    const occurrences = recordCallSequence(toolName, callKey);
+    // Captured HERE, not after the tool runs: it tags this occurrence in the
+    // sequence buffer, so the loop advisory below can tell a genuine loop from a
+    // legitimate re-read that follows a write.
+    const epochAtStart = currentWriteEpoch();
+    // Side effect: records this occurrence (and the duplicate-call metric) in the
+    // sequence buffer, tagged with the epoch. The raw repeat count is deliberately
+    // NOT used for the loop advisory — see occurrencesInEpoch below.
+    recordCallSequence(toolName, callKey, epochAtStart);
     if (!DEDUP_EXCLUDED_TOOLS.has(toolName)) {
       const cached = getDedupedResult(callKey);
       if (cached !== undefined) {
@@ -276,9 +283,10 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
     const finishMetrics = recordToolStart(toolName);
     const callStartedAt = Date.now();
-    // Captured BEFORE the tool runs: a read that overlaps a concurrent write
-    // computed a pre-write answer and must not be cached as current.
-    const epochAtStart = currentWriteEpoch();
+    // `epochAtStart` is captured further up, before the sequence buffer records
+    // this call. It is still the pre-run epoch that storeDedupResult needs: a read
+    // overlapping a concurrent write computed a pre-write answer and must not be
+    // cached as current.
     let result: any;
     // Anything the C# bridge throws during this call lands here (see
     // bridge/bridgeFailure.ts). Without it a bridge outage is invisible: the read
@@ -408,12 +416,18 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
       if (!DEDUP_EXCLUDED_TOOLS.has(toolName)) {
         storeDedupResult(callKey, capped, epochAtStart);
-        // Loop hint: 3+ identical calls in the recent window means the model is cycling.
-        if (occurrences >= 3) {
+        // Loop hint: 3+ identical calls in the recent window means the model is
+        // cycling — but ONLY if no write landed in between. Counting raw repeats
+        // told an agent "the answer does not change between calls" while handing it
+        // content this server's own writes had just changed twice (eval case
+        // L2-entity-query-range-roundtrip, 2026-08-24). Re-reading after a write is
+        // correct behaviour, and discouraging it undoes the cache-invalidation fix.
+        const repeatsThisEpoch = occurrencesInEpoch(toolName, callKey, epochAtStart);
+        if (repeatsThisEpoch >= 3) {
           capped = appendNote(
             capped,
-            `> ⚠️ Loop detected: this is occurrence #${occurrences} of the exact same ${toolName} call. ` +
-            `The answer does not change between calls. If you are missing information, ` +
+            `> ⚠️ Loop detected: this is occurrence #${repeatsThisEpoch} of the exact same ${toolName} call ` +
+            `with no write in between, so the answer does not change. If you are missing information, ` +
             `use a DIFFERENT tool or different parameters (see suggestions above), or ask the user.`,
           );
         }

@@ -1,0 +1,70 @@
+{
+  "run_id": "2026-08-23T19__L2-object-delete-and-entry-point-cleanup__c3fbfa5",
+  "case_id": "L2-object-delete-and-entry-point-cleanup",
+  "tier": 2,
+  "timestamp": "2026-08-23T19:10:58.781Z",
+  "server_git_sha": "c3fbfa5",
+  "generated_artifacts": [
+    "ConDemoScrapNote.metadata.xml",
+    "ConDemoScrapNoteForm.metadata.xml",
+    "ConDemoScrapNoteMI.metadata.xml",
+    "ConDemoScrapNoteMaintain.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "moniker": "BPErrorPrivilegeNotCoveredByDuty",
+        "object": "ConDemoScrapNoteMaintain",
+        "severity": "warning",
+        "path": "dynamics://SecurityPrivilege/ConDemoScrapNoteMaintain",
+        "note": "Expected and documented in the golden README: the case admits no AxSecurityDuty, so any privilege it builds is uncovered. Not an implementation defect. Identical to the 4203716 and 4bb8f66 runs. run_bp_check reported the other three objects (table, form, menu item) CLEAN."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "7.0.7996.33 (xppc), full build of target model fm-mcp, 0 errors, 1 pre-existing unrelated ExternalReference warning (AttributeBasedPricing) present on an empty sandbox too. Server SHA c3fbfa5; dist emitted 18:53:12.",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": [],
+      "note": "validate_code(references, xml-table) on ConDemoScrapNote: 3/3 refs resolved (Num, Name, ConDemoScrapNoteMI)."
+    },
+    "syntax": {
+      "passed": true,
+      "violations": [],
+      "note": "validate_code(syntax, xml-any) on ConDemoScrapNoteMaintain in its two-entry-point state: 0 violations across 23 rule groups."
+    }
+  },
+  "root_cause_hypothesis": "LIVE VALIDATION of the two fixes d1cddcb (add-entry-point bridge gate) and 9208f00 (entry-point Grant missing <Correct>). BOTH HOLD. One NEW defect of the same family was found in the newly reachable operation, plus one ENVIRONMENT trap that made the first attempt of this run measure the wrong build.\n\n(0) ENVIRONMENT TRAP - the restart RACED the build, so the first attempt reproduced both \"defects\" against code that had already been fixed. The MCP server process (PID 13820) started 18:53:00; tsc emitted dist/bridge/bridgeAdapter.js at 18:53:10 and finished the whole dist at 18:53:12. Node caches ESM modules at load, so the running process held the PRE-fix build: add-entry-point returned \"not supported by the bridge\" and create(accessLevel=maintain) wrote a Grant with no Correct element, exactly as at 4bb8f66. Proof the on-disk build was already correct, obtained out-of-process without touching the server: node -e importing dist/tools/xml/securityPrivilegeXml.js printed a Grant WITH Correct, and canBridgeModify(\"security-privilege\",\"add-entry-point\") returned true. Restarting the server process (it respawned automatically) then reproduced neither symptom. Cost: a full sandbox setup + rollback cycle. The trap is invisible from inside the tool surface - the tool answers confidently with stale behaviour - so a build stamp in get_workspace_info would be cheap insurance.\n\n(1) add-entry-point IS NOW REACHABLE - fix d1cddcb CONFIRMED LIVE. d365fo_file(action=\"modify\", objectType=\"security-privilege\", operation=\"add-entry-point\", params={entryPointObjectName, entryPointObjectType}) succeeded via the direct-XML writer. NO create(overwrite=true, xmlContent=...) hand-authored-XML workaround was needed anywhere in this run - the deviation the 4bb8f66 run was forced into is gone. The ambiguity refusal the case demands, unreachable before because a privilege could not GET a second entry point through supported parameters, was exercised end to end for the first time: two entry points sharing ObjectName=ConDemoScrapNoteAltMI, then remove-entry-point with entryPointObjectName correctly REFUSED - \"matches 2 entry points - refusing to guess which to remove\" - naming both matches and both disambiguators. Narrowing by entryPointName then removed the intended one.\n\n(2) Correct IS NOW EMITTED - fix 9208f00 CONFIRMED LIVE, and the golden MATCHES. The surviving on-disk privilege Grant, read back verbatim after a clean full build, is Correct/Create/Delete/Read/Update = Allow - the 14,034-occurrence shape Microsoft ships, up from the zero-occurrence shape the tool emitted at 4bb8f66. golden_match went 0 to 1 with the golden file UNCHANGED, which is the direction that proves the previous run judged the right side to be right: the artifact moved to the golden, not the golden to the artifact.\n\n(3) NEW TOOL_DEFECT, same silent-underspecification family, in the operation fix 1 just made reachable: add-entry-point SILENTLY DROPS accessLevel. Called with params={entryPointObjectName:\"ConDemoScrapNoteAltMI\", entryPointObjectType:\"MenuItemDisplay\", accessLevel:\"maintain\"} it reported success and wrote a Grant of Read=Allow ALONE - view level - instead of the requested maintain CRUD. Root cause: accessLevel is declared in the op-spec catalogue (src/tools/specs/d365foFileOpSpecs.ts:602, optional list = entryPointName, accessLevel), is read by the dispatcher (src/tools/write/modifyD365File.ts:4053) and is honoured by the writer (src/tools/xml/securityPrivilegeXml.ts:313) - but it is ABSENT from ModifyD365FileArgsSchema (modifyD365File.ts:2166-2605; the whole file contains the string accessLevel exactly twice, neither of them in the schema). Zod STRIPS unknown keys, so args.accessLevel is always undefined and the writer falls back to its own default, view. Every entry point add-entry-point has ever written grants Read only. The existing silent-parameter-drop guard (findIgnoredParams, modifyD365File.ts:2618) cannot see it: the guard compares the RAW argument keys against the OP-SPEC, and the op-spec DOES list accessLevel, so the key is judged consumed while Zod has already discarded it. The guard protects against a caller typo but not against a schema/op-spec divergence - the exact divergence here. Same observable failure mode as the two bugs just fixed: builds clean (0 errors), xppbp clean on the privilege apart from the expected duty warning, and only a live read-back of the XML shows the under-granting. This run still scored golden_match=1 because the entry point carrying the defect is the one the case DELETES in step 3, so the scored artifact is the create-path block - luck of the case design, not evidence of correctness.\n\n(4) DELETE HALF - all three assertions PASS again, now with a genuinely tool-built two-entry-point privilege upstream. action=delete on menu-item-display removed AxMenuItemDisplay/ConDemoScrapNoteAltMI.xml from disk (find -L over the whole package: no match remains) and 1 symbol from the index; the privilege was left with exactly one entry point, no dangling reference; and the delete stripped EXACTLY the one Diagnostic whose Path was dynamics://MenuItemDisplay/ConDemoScrapNoteAltMI while leaving the ConDemoScrapNoteMI entry byte-identical - targeted, not a wipe. Full build after the delete: 0 errors. No shell, fs or Remove-Item deletion was used for any case step (shell was used only for read-only inspection and to stage copies into the scorer input dir).\n\n(5) .rnrproj membership: NOT OBSERVED, per the case text and the golden README. The fm-mcp sandbox carries no project file; build_d365fo_project builds by modelName. Every create and the delete reported that absence explicitly rather than claiming a project edit.\n\n(6) MINOR, observed not scored: prefix inference is computed at server STARTUP and can be poisoned by transient objects. After the mid-run restart, get_workspace_info reported Prefix \"ConDemo (inferred from 5/5 objects of model fm-mcp)\" instead of the configured \"Con\", because the 5 ConDemoScrapNote* objects present at that instant all shared the ConDemo stem - so the next create would have produced ConDemoDemoScrapNote. Deleting them and restarting restored \"Con (EXTENSION_PREFIX)\". Only reachable via a restart mid-session, hence low severity, but a case that creates several objects sharing a name stem in a near-empty model is exactly the shape that triggers it.",
+  "suggested_fix_area": "PRIMARY: src/tools/write/modifyD365File.ts - add accessLevel to ModifyD365FileArgsSchema (next to entryPointName / entryPointObjectName / entryPointObjectType, around line 2430-2450) as z.string().optional(), with the closed-enum description the op-spec already carries. Without it Zod strips the key and add-entry-point can only ever grant Read, whatever the caller asks for.\n\nRATCHET (this is the third bug in a row where a parameter or operation existed everywhere EXCEPT the one gate that matters): add a mechanical test that every parameter name listed in d365foFileOpSpecs.ts (required + optional, every operation) is a declared key of ModifyD365FileArgsSchema. It is a pure VM-free unit test over two in-repo tables and would have caught this one; it complements the sibling ratchet the 4bb8f66 run suggested (every operation in the tool-schema enum must satisfy canBridgeModify for at least one objectType, which would have caught d1cddcb). Consider also strengthening findIgnoredParams: it trusts the op-spec as the source of truth for \"consumed\", so a key the op-spec declares and Zod drops is invisible to it - intersecting the op-spec list with the Zod schema keys makes the guard self-checking.\n\nSECONDARY (documentation, now inaccurate in two places): the op-spec note for add-entry-point (d365foFileOpSpecs.ts:612-613) and the security-privilege create properties contract both still describe maintain as \"Create+Delete+Read+Update\" / \"full CRUD\" with no mention of Correct, while buildGrantXml now correctly emits Correct (and Correct+Invoke for ServiceOperation). Update both, or the next agent will read the emitted Correct as a bug.\n\nTOOLING/ENV (not a code defect, but it cost this run a full setup cycle): nothing in the tool surface reveals WHICH build the running server loaded. get_workspace_info could report the server build stamp (dist mtime, or a git SHA baked in at build time) so a raced restart is one call to detect instead of a process-table forensics exercise.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxSecurityPrivilege/ConDemoScrapNoteMaintain.xml (final: single entry point, Grant = Correct/Create/Delete/Read/Update)",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxIgnoreDiagnosticList/fm-mcp_BPSuppressions.xml (AltMI suppression stripped, MI entry retained verbatim)",
+    "src/tools/write/modifyD365File.ts:2166 ModifyD365FileArgsSchema (accessLevel ABSENT) / :2618 findIgnoredParams guard / :4053 dispatcher reads args.accessLevel",
+    "src/tools/specs/d365foFileOpSpecs.ts:600-615 add-entry-point spec (declares accessLevel as optional)",
+    "src/tools/xml/securityPrivilegeXml.ts:313 accessLevel default view / :62 buildGrantXml (now emits Correct)",
+    "src/bridge/bridgeAdapter.ts:1299 BRIDGE_MODIFY_OPS / :1340 XML_ONLY_MODIFY_PAIRS (both now name add-entry-point) / :1370 canBridgeModify",
+    "Process forensics: MCP server PID 13820 CreationDate 18:53:00 vs dist/bridge/bridgeAdapter.js mtime 18:53:10.05 and final dist file 18:53:12.92"
+  ]
+}

@@ -58,6 +58,7 @@
 import {
   type XmlNode, parseNodes, firstChild, textValueOf, lineIndentOf,
 } from './xmlNodeTree.js';
+import { detectEol } from './eolUtils.js';
 
 export type ControlModificationOutcome =
   | {
@@ -146,6 +147,21 @@ function envelopeBlock(indent: string, controlName: string, name: string, value:
 }
 
 /**
+ * Re-emit a whole document in one line ending.
+ *
+ * Every block this module splices in is built with '\n', but AOT metadata on disk
+ * is CRLF (with a BOM). Inserting into a real file therefore left it MIXED — CRLF
+ * on every pre-existing line, LF on the new ones. xppc does not care, which is
+ * why the eval run that exercised this writer still built clean; Visual Studio,
+ * VCS diffs and any byte-comparison against a golden do care. Detected from the
+ * input rather than assumed, via the same helper the label writers already use.
+ */
+function applyEol(text: string, eol: '\r\n' | '\n'): string {
+  const lf = text.replace(/\r\n/g, '\n');
+  return eol === '\n' ? lf : lf.replace(/\n/g, '\r\n');
+}
+
+/**
  * Set `propertyName` = `propertyValue` on the BASE-form control `controlName`,
  * creating <ControlModifications>, the control's envelope and the property entry
  * as needed. Idempotent: re-issuing the same call reports `changed: false`.
@@ -155,6 +171,16 @@ function envelopeBlock(indent: string, controlName: string, name: string, value:
  * is no <Controls> sibling to anchor it against.
  */
 export function upsertFormExtensionControlProperty(
+  xml: string,
+  controlName: string,
+  propertyName: string,
+  propertyValue: string,
+): ControlModificationOutcome {
+  const out = upsertControlProperty(xml, controlName, propertyName, propertyValue);
+  return out.ok ? { ...out, xml: applyEol(out.xml, detectEol(xml)) } : out;
+}
+
+function upsertControlProperty(
   xml: string,
   controlName: string,
   propertyName: string,

@@ -1,0 +1,80 @@
+{
+  "run_id": "2026-08-23T16__L2-form-control-removal-lifecycle__4bb8f66",
+  "case_id": "L2-form-control-removal-lifecycle",
+  "tier": 2,
+  "timestamp": "2026-08-23T16:38:14.371Z",
+  "server_git_sha": "4bb8f66",
+  "generated_artifacts": [
+    "ConDemoRemovalNote.metadata.xml",
+    "ConDemoRemovalNoteForm.DemoExt.metadata.xml",
+    "ConDemoRemovalNoteForm.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "moniker": "BPErrorTableMissingFormRef",
+        "object": "ConDemoRemovalNote",
+        "severity": "warning",
+        "path": "dynamics://Table/ConDemoRemovalNote",
+        "note": "FormRef needs a display menu item, an artifact outside this case target_artifact_types. Same warning as the 4203716 run."
+      },
+      {
+        "moniker": "BPWarningFormDesignOrControlsWithCustomPattern",
+        "object": "ConDemoRemovalNoteForm",
+        "severity": "warning",
+        "path": "dynamics://Form/ConDemoRemovalNoteForm/FormDesign/FormDesign",
+        "note": "Inherent to the ad-hoc ActionPane+Group design the case mandates; Custom is the honest pattern value. Same warning as the 4203716 run."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [
+      "DemoRemovalNoteForm.DemoExt.metadata.xml::AxFormExtension/ControlModifications/AxExtensionModification[HeaderNoteId]/Name",
+      "DemoRemovalNoteForm.DemoExt.metadata.xml::AxFormExtension/ControlModifications/AxExtensionModification[HeaderNoteId]/PropertyModifications/AxPropertyModification[Visible]/Name",
+      "DemoRemovalNoteForm.DemoExt.metadata.xml::AxFormExtension/ControlModifications/AxExtensionModification[HeaderNoteId]/PropertyModifications/AxPropertyModification[Visible]/Value"
+    ],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "platform_build": "7.0.7996.33 (xppc), full build of target model, 0 errors",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": [],
+      "note": "validate_code(references, xml-table) on ConDemoRemovalNote: 5/5 refs resolved."
+    },
+    "syntax": {
+      "passed": true,
+      "violations": [],
+      "note": "validate_code(syntax, xml-table) on the table and (xml-any) on the form extension: no violations. object_patterns(form, validate) on the form: 0 errors, 1 warning FP002 (Custom pattern declares no PatternVersion) — the golden form has none either."
+    }
+  },
+  "root_cause_hypothesis": "VALIDATION RUN of the six post-4203716 fixes. All three assertions the case exists to test PASS, and BOTH defects the previous run recorded are FIXED. (1) remove-control found DemoScratchButton three levels down (Design>ActionPane>ButtonGroup>Button) with only controlName passed, no parentControl; the emptied ButtonGroup collapsed to the serializer spelling <Controls />. (2) remove-control on the form EXTENSION targeting base control HeaderNoteId was REFUSED with the same explicit message, nothing written (file stayed 374 bytes). (3) FIXED (was the primary defect, commit 0e74934): d365fo_file(modify, objectType=form-extension, operation=modify-property, params={controlName:\"HeaderNoteId\", propertyPath:\"Visible\", propertyValue:\"No\"}) now writes a real <ControlModifications>/<AxExtensionModification xmlns=\"\"><Name>HeaderNoteId</Name><PropertyModifications><AxPropertyModification><Name>Visible</Name><Value>No</Value>, anchored before <Controls />, at correct sibling indentation, leaving the root <PropertyModifications /> empty. Previously this wrote a FORM-level Visible=No, i.e. hid the whole form, under a check mark. Probe B also fixed: the dotted spelling propertyPath=\"HeaderNoteId.Visible\" now routes to the same control envelope and is idempotent (second call reported \"already in that state, nothing written\", file unchanged at 665 bytes) instead of inventing a form-level property named \"HeaderNoteId.Visible\". (4) FIXED (commit 4cae9ae): the get_object_info(form, include=xml) dedup cache is now invalidated by an intervening d365fo_file write — the identical call shape after remove-control returned the fresh 81-line XML with no \"Duplicate call\" notice, where the 4203716 run got a stale pre-write body. (5) op-spec drift fixed: get_knowledge/prepare now document controlName on modify-property for form-extension, including what omitting it does. (6) run_bp_check now surfaces the finding path (dynamics://...) and translates form-extension (checked as formextension:ConDemoRemovalNoteForm.DemoExt, clean) — commit 84f930a. THE ONLY FAILING DIMENSION IS golden_match, AND THE GOLDEN IS STALE, NOT THE ARTIFACT. eval/goldens/L2-form-control-removal-lifecycle/ConDemoRemovalNoteForm.DemoExt.metadata.xml was captured from the 4203716 run, where step 5 could not be completed at all, so it carries an EMPTY <ControlModifications />. The three \"extra\" nodes in the diff are exactly the control modification the case instruction calls \"the correct completion of this step\". Table and form match the golden with 0 changed nodes and byte-identical file sizes (2322 / 1887). Per docs/AGENT_EVAL_LOOP.md 6.4 an intentional behaviour change updates the golden in the same PR; fix 0e74934 landed before the goldens were committed (3fd1db9) but the goldens were captured before it, so the golden never got updated. Golden left untouched here so the drift is visible to the improver.",
+  "suggested_fix_area": "eval/goldens/L2-form-control-removal-lifecycle/ConDemoRemovalNoteForm.DemoExt.metadata.xml: re-capture from this run (replace <ControlModifications /> with the HeaderNoteId/Visible=No envelope produced above); after that this case scores golden_match=1. Secondary, unrelated to the six fixes: object_patterns(domain=\"form\", action=\"validate\") FP002 renders its fix hint as the literal string \"Add <PatternVersion>undefined</PatternVersion>\" — an un-interpolated template value; it should either name a real version or drop the element from the hint. No tool fix is indicated by this run otherwise.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxTable/ConDemoRemovalNote.xml",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxForm/ConDemoRemovalNoteForm.xml",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxFormExtension/ConDemoRemovalNoteForm.DemoExt.xml",
+    "eval/corpus/runs/2026-08-23T10__L2-form-control-removal-lifecycle__4203716.json (the pre-fix run this validates)",
+    "step5-refusal-literal: \"Error modifying D365FO file: Control HeaderNoteId is not defined in ...ConDemoRemovalNoteForm.DemoExt.xml - nothing was removed. This file defines no controls at all. A control shown on the form but absent here belongs to the BASE form - remove it there, or hide it with modify-property on a form extension.\"",
+    "step5-hide-literal: \"created <ControlModifications> and set HeaderNoteId.Visible=No on base-form control HeaderNoteId (written to <ControlModifications>)\"",
+    "idempotency-literal: \"HeaderNoteId.Visible is already No on base-form control HeaderNoteId (written to <ControlModifications>; already in that state, nothing written)\""
+  ]
+}

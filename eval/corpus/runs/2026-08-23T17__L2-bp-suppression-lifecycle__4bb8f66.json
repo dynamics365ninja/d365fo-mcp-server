@@ -1,0 +1,68 @@
+{
+  "run_id": "2026-08-23T17__L2-bp-suppression-lifecycle__4bb8f66",
+  "case_id": "L2-bp-suppression-lifecycle",
+  "tier": 2,
+  "timestamp": "2026-08-23T17:00:03.448Z",
+  "server_git_sha": "4bb8f66",
+  "generated_artifacts": [
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxClass/ConDemoSuppressProbe.xml",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxIgnoreDiagnosticList/fm-mcp_BPSuppressions.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "moniker": "BPXmlDocNoDocumentationComments",
+        "severity": "Warning",
+        "elementType": "AxClass",
+        "position": "[(6,5),(8,6)]",
+        "path": "dynamics://Class/ConDemoSuppressProbe/Method/run",
+        "message": "No XML documentation headers are provided for 'ConDemoSuppressProbe.run'.",
+        "intentional": true,
+        "note": "The probe finding the case exists to suppress. Present at step 2 and again at step 6; ABSENT at step 4 (suppressed). bp_clean=0 is the case designed terminal state, not a failure -- classification supplied as PASS to stop the scorer deriving a spurious KNOWLEDGE_GAP."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "platform_build": "X++ compiler 7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "RE-RUN of the 2026-08-23T09 run (sha 4203716) to verify the fix landed in 84f930a. Full BP-suppression lifecycle passes again, and the one ergonomics defect that run reported is CONFIRMED FIXED. (a) PRIMARY WITNESS -- run_bp_check finding parser. The previous run showed the structured Findings block reporting only a moniker plus a COUNT, because FINDING_LINE anchored BP...: at line start and therefore matched the per-moniker tally, never the detail line. At sha 4bb8f66 the same real xppbp.exe output now parses in full. Verbatim from this run: \"Findings (moniker-checked against 577 known monikers): * BPXmlDocNoDocumentationComments (dynamics://Class/ConDemoSuppressProbe/Method/run) / path: dynamics://Class/ConDemoSuppressProbe/Method/run / Warning AxClass [(6,5),(8,6)] / No XML documentation headers are provided for ConDemoSuppressProbe.run.\" Severity, element type, source position, message and the dynamics:// path are all structured fields now, and the tally line is correctly dropped rather than double-reported as a second finding. The path was copied straight from that field into add-diagnostic-suppression params.diagnosticPath with no reading of raw stdout by eye and no hand reconstruction from the object name. (b) Round trip intact end to end. add-diagnostic-suppression CREATED fm-mcp_BPSuppressions.xml and its AxIgnoreDiagnosticList folder and said so; the suppressed re-run of run_bp_check went silent with NO intervening rebuild; remove-diagnostic-suppression collapsed <Items> to <Items /> (182 bytes) rather than leaving a dangling entry, and the finding came back byte-identical. A subsequent fullBuild ran \"Metadata: validate ignore diagnostic list\" with 0 errors, so the shape the writer stores is valid to the compiler as well as to xppbp. (c) The case-design note from the previous run is now IN the case text and held: create injected /// <summary> Executes the main processing logic. </summary> onto run(), so the first build was 0 warnings; modify/replace-code stripped it and raised the finding. Both writes stayed on the grounded path. (d) golden_match=1 on all three artifacts with zero structural deltas, so the golden captured at 4203716 is CURRENT, not stale -- the parser fix changed tool output only, not written metadata. (e) NEW, minor -- bridge declined replace-code (\"Bridge error [-32603]: Error in replaceCode: oldCode not found in ConDemoSuppressProbe.run\") on a multi-line oldCode carrying its leading 4-space indentation, and this server XML writer took over and applied it correctly. Self-healing and honestly reported, so not a run failure, but the bridge replaceCode matcher looks to be whitespace-sensitive in a way the XML-writer path is not. (f) NEW, minor -- eval:score has no way to carry a BP finding. --bp-warnings takes a COUNT, so the record was written with bpWarnings: [{}] and the finding detail had to be patched in by hand. Now that run_bp_check emits structured findings, the CLI could take --bp-findings <json> and keep the corpus self-describing.",
+  "suggested_fix_area": "1) NONE for the primary defect -- src/tools/sdlc/runBpCheck.ts FINDING_DETAIL_PATTERN (L244) plus the locus splitter (L246-L253) fix it; this run is the live confirmation the eval loop was waiting for. Consider adding this exact captured line as a unit-test fixture so the regex cannot regress without CI noticing. 2) src/eval/oracle/cli.ts: accept --bp-findings <file.json> (or let --bp-warnings take a path) so structured findings land in the record instead of [{}]. 3) Bridge replaceCode: normalise leading whitespace before matching oldCode, or state the normalisation in the op-spec, so the bridge path is not skipped for a correct multi-line snippet. 4) Still open from the previous run: this golden embeds the model name in both the filename and <Name> (fm-mcp_BPSuppressions), so it will not resolve under a differently named sandbox without model-name canonicalisation in artifactKey/normalize.",
+  "evidence_refs": [
+    "eval/goldens/L2-bp-suppression-lifecycle/ConDemoSuppressProbe.metadata.xml",
+    "eval/goldens/L2-bp-suppression-lifecycle/fm-mcp_BPSuppressions.metadata.xml",
+    "eval/goldens/L2-bp-suppression-lifecycle/fm-mcp_BPSuppressionsAfterRemove.metadata.xml",
+    "eval/corpus/runs/2026-08-23T09__L2-bp-suppression-lifecycle__4203716.json",
+    "src/tools/sdlc/runBpCheck.ts#L244-L253",
+    "src/eval/oracle/cli.ts#L112-L130"
+  ]
+}

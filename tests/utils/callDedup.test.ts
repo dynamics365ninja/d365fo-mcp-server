@@ -9,7 +9,7 @@ import {
   getInFlight, registerInFlight, clearInFlight, clearAllInFlight,
   MUTATING_TOOLS, currentWriteEpoch, bumpWriteEpoch,
 } from '../../src/utils/callDedup';
-import { recordCallSequence, resetCallSequence, getMetricsSnapshot } from '../../src/utils/toolMetrics';
+import { recordCallSequence, resetCallSequence, getMetricsSnapshot, occurrencesInEpoch } from '../../src/utils/toolMetrics';
 
 beforeEach(() => {
   clearDedupCache();
@@ -144,6 +144,33 @@ describe('recordCallSequence (loop detection)', () => {
     recordCallSequence('search', 'k1');
     for (let i = 0; i < 15; i++) recordCallSequence('other', `fill-${i}`);
     expect(recordCallSequence('search', 'k1')).toBe(1);
+  });
+
+  /**
+   * The loop advisory fires on repeats WITHIN one write epoch, not on raw repeats.
+   *
+   * Re-reading after a write is correct behaviour — it is how an agent sees its own
+   * edit. Counting raw repeats attached "the answer does not change between calls"
+   * to content this server's own writes had just changed twice (observed live, eval
+   * case L2-entity-query-range-roundtrip, 2026-08-24, occurrence #3). That is the
+   * same hazard the cache invalidation was for: talking an agent out of trusting a
+   * re-read it was right to make.
+   */
+  it('counts three repeats as a loop only while the epoch holds', () => {
+    for (let i = 0; i < 3; i++) recordCallSequence('get_object_info', 'ep', 7);
+    expect(occurrencesInEpoch('get_object_info', 'ep', 7)).toBe(3);
+  });
+
+  it('does not count a re-read that follows a write as a repeat', () => {
+    // Two reads, then a write bumps the epoch, then the same read twice more.
+    recordCallSequence('get_object_info', 'ep2', 1);
+    recordCallSequence('get_object_info', 'ep2', 1);
+    recordCallSequence('get_object_info', 'ep2', 2);
+    recordCallSequence('get_object_info', 'ep2', 2);
+    // Four identical calls in the window — but never three under one epoch, so no
+    // loop advisory in either.
+    expect(occurrencesInEpoch('get_object_info', 'ep2', 1)).toBe(2);
+    expect(occurrencesInEpoch('get_object_info', 'ep2', 2)).toBe(2);
   });
 
   it('tracks duplicates in the metrics snapshot', () => {
