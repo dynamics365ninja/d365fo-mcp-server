@@ -13,7 +13,7 @@
  * When mode="references" and codeType="xml-table" or "xml-any", an XML-aware
  * reference checker runs instead of the X++ resolver:
  *   - <ExtendedDataType> → EDT must exist in the symbol index
- *   - <EnumType>         → Enum must exist in the symbol index
+ *   - <EnumType>         → Enum must exist in the symbol index, OR be a kernel enum
  *   - <Label>            → label reference (@File:Id) must exist
  *   - <Extends>          → base table/class must exist (for extensions)
  *   - Relation targets   → <RelatedTable> must exist
@@ -24,6 +24,7 @@ import type { XppServerContext } from '../../types/context.js';
 import { validateXppTool } from './validateXpp.js';
 import { resolveReferencesTool } from '../write/resolveReferences.js';
 import { lookupSymbolNocase, type DbLike } from '../../utils/symbolLookup.js';
+import { isKernelEnum } from '../../knowledge/kernelEnums.js';
 import { type XmlNode, parseNodes, firstChild, textValueOf } from '../../utils/xmlNodeTree.js';
 
 function err(text: string) {
@@ -258,9 +259,14 @@ function resolveXmlReferences(
     }
   }
 
-  // <EnumType> — enum must exist
+  // <EnumType> — enum must exist in the AOT, or be one the runtime defines.
+  // A kernel enum has no AxEnum element to find, so "absent from the index" is
+  // not evidence against it: NoYes was reported as a hallucinated symbol under
+  // "these will cause compiler failures", and search offers NoYesBlank /
+  // DefaultNoYes to "correct" it to — real enums, so the edit compiles clean and
+  // means the wrong thing. See knowledge/kernelEnums.ts.
   for (const en of extractTagValues(xml, 'EnumType')) {
-    if (symbolExistsInIndex(db, en, 'enum')) {
+    if (isKernelEnum(en) || symbolExistsInIndex(db, en, 'enum')) {
       verified++;
     } else {
       violations.push({

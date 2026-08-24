@@ -14,6 +14,7 @@ import { parseStringPromise } from '../../utils/xml.js';
 import type { XppServerContext } from '../../types/context.js';
 import { tryBridgeEnum } from '../../bridge/bridgeAdapter.js';
 import { readEnumRawXml, buildObjectTypeMismatchMessage } from '../../utils/metadataResolver.js';
+import { describeKernelEnum } from '../../knowledge/kernelEnums.js';
 import {
   resolveIndexedObject,
   readXmlFile,
@@ -34,6 +35,14 @@ const GetEnumInfoArgsSchema = z.object({
 export async function getEnumInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = GetEnumInfoArgsSchema.parse(request.params.arguments);
+
+    // 0. Enums the X++ runtime defines have no AOT element, so every probe below
+    //    correctly fails and the not-found reply then advised searching other
+    //    spellings and running update_symbol_index on a file that cannot exist —
+    //    while the EDT reader hands out the name (NoYesId -> "Enum Type: NoYes")
+    //    in the first place. Answered up front instead of bottoming out.
+    const kernel = describeKernelEnum(args.enumName);
+    if (kernel) return { content: [{ type: 'text' as const, text: kernel }] };
 
     // 1. C# bridge (IMetadataProvider — live D365FO metadata)
     const bridgeResult = await tryBridgeEnum(context.bridge, args.enumName);
