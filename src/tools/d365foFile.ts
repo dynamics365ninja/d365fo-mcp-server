@@ -23,6 +23,7 @@ import { handleDeleteD365File } from './write/deleteD365File.js';
 import { modifyD365FileTool } from './write/modifyD365File.js';
 import { resetRecentPrepares } from './prepare/prepare.js';
 import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
+import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
 
 export const D365_FILE_ACTIONS = ['generate', 'create', 'modify', 'delete'] as const;
 export type D365FileAction = (typeof D365_FILE_ACTIONS)[number];
@@ -46,6 +47,23 @@ function subRequest(name: string, args: Record<string, unknown>): CallToolReques
 
 /** Ceiling on one batch — matches get_object_info's objects[] cap. */
 const MAX_BATCH_OPERATIONS = 20;
+
+/**
+ * Per-operation output budget inside a batch.
+ *
+ * Each section is bounded because the WHOLE response is not: d365fo_file is
+ * 'uncapped' in TOOL_CAP_SIZES (a truncated create loses the file path), so
+ * nothing downstream trims a batch report. Twenty operations whose per-op text
+ * runs long — replace-code echoes the changed region, an inline bpCheck report is
+ * itself uncapped — measured at 1,000,573 chars from a SINGLE call, roughly 278k
+ * tokens.
+ *
+ * Capping per SECTION rather than the whole response is deliberate: a tail cut
+ * would delete the verdicts of the last operations outright, and which operations
+ * applied is the one thing a half-finished batch has to be able to say. Generous
+ * enough that an ordinary operation is never touched.
+ */
+const MAX_OPERATION_CHARS = 4_000;
 
 /**
  * Add a line to a result without disturbing its verdict.
@@ -174,7 +192,15 @@ async function runModifyBatch(
     (skipped ? `, ${skipped} not attempted` : '');
 
   const body = results
-    .map(r => `\n\n### ${r.ok ? '✅' : '❌'} ${r.label}\n${r.text || '(no output)'}`)
+    .map(r => {
+      const text = r.text || '(no output)';
+      const kept = text.length > MAX_OPERATION_CHARS
+        ? truncateOnBlockBoundary(text, MAX_OPERATION_CHARS) +
+          `\n\n> ✂️ This operation's output was truncated at ${MAX_OPERATION_CHARS} chars ` +
+          `(${text.length - MAX_OPERATION_CHARS} omitted). The operation itself is unaffected.`
+        : text;
+      return `\n\n### ${r.ok ? '✅' : '❌'} ${r.label}\n${kept}`;
+    })
     .join('');
 
   const tail = failed

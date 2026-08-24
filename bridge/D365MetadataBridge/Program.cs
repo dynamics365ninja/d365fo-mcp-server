@@ -278,7 +278,14 @@ namespace D365MetadataBridge
                 // before the next request is even parsed.
                 if (RequestDispatcher.IsConcurrentSafeRead(request.Method))
                 {
-                    inFlight.RemoveAll(t => t.IsCompleted);
+                    // Touch Exception on a faulted task before dropping it, so the fault
+                    // is observed rather than left for the finalizer — a task pruned here
+                    // is never awaited anywhere else.
+                    inFlight.RemoveAll(t =>
+                    {
+                        if (t.IsFaulted) { var _ = t.Exception; }
+                        return t.IsCompleted;
+                    });
                     inFlight.Add(HandleConcurrently(dispatcher, request));
                 }
                 else
@@ -287,7 +294,14 @@ namespace D365MetadataBridge
                     // provider rebuild must not overlap a read of the provider it replaces.
                     if (inFlight.Count > 0)
                     {
-                        await Task.WhenAll(inFlight);
+                        // Guarded. DispatchGuarded turns any handler escape into a
+                        // response, so the only realistic thrower left is WriteResponse on
+                        // a broken stdout — and an unguarded WhenAll rethrows that HERE,
+                        // out of RunStdioLoop and out of Main, killing the bridge because
+                        // an unrelated read could not print. The final drain below was
+                        // already written this way; this one was not.
+                        try { await Task.WhenAll(inFlight); }
+                        catch { /* each read already answered, or failed on its own */ }
                         inFlight.Clear();
                     }
                     for (var i = 0; i < ReadSlots; i++) await _slots.WaitAsync();

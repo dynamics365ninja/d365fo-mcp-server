@@ -105,3 +105,38 @@ describe('get_knowledge topics[] — several lookups in one call', () => {
     expect((xppKnowledgeTool as any).mock.calls[0][0].params.arguments.topic).toBe('CoC');
   });
 });
+
+describe('topics[] with an unusable shape answers in words, not a validator dump', () => {
+  // The fallback to the single-topic path is only graceful when a `topic` was ALSO
+  // supplied. It was not: `topics: "CoC"` alone reached xppKnowledgeTool with topic
+  // undefined and came back as a raw zod dump naming a parameter the caller never
+  // passed — the same unusable shape #937 fixed for d365fo_file.
+  const textOf = (r: any) => r.content.map((c: any) => c.text).join('');
+
+  it('names the shape it got and both valid forms', async () => {
+    const r: any = await getKnowledgeTool(req({ kind: 'knowledge', topics: 'CoC' }));
+    expect(r.isError).toBe(true);
+    const t = textOf(r);
+    expect(t).toContain('must be an array of non-empty strings');
+    expect(t).toContain('got a string');
+    expect(t).toContain('topic: "select-statement"');
+    expect(t).not.toContain('invalid_type');
+    expect(xppKnowledgeTool).not.toHaveBeenCalled();
+  });
+
+  it('reports how many entries were unusable', async () => {
+    const r: any = await getKnowledgeTool(req({ kind: 'knowledge', topics: [1, null] }));
+    expect(textOf(r)).toContain('2 entries');
+  });
+
+  it('rejects an empty array rather than silently answering nothing', async () => {
+    const r: any = await getKnowledgeTool(req({ kind: 'knowledge', topics: [] }));
+    expect(r.isError).toBe(true);
+  });
+
+  it('still falls through when a usable topic came along', async () => {
+    await getKnowledgeTool(req({ kind: 'knowledge', topics: 'CoC', topic: 'CoC' }));
+    expect(xppKnowledgeTool).toHaveBeenCalledOnce();
+    expect((xppKnowledgeTool as any).mock.calls[0][0].params.arguments.topic).toBe('CoC');
+  });
+});
