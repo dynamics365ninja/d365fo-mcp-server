@@ -813,6 +813,43 @@ namespace D365MetadataBridge.Protocol
             }
         }
 
+        /// <summary>
+        /// Methods that only READ metadata, and may therefore run concurrently with
+        /// each other.
+        ///
+        /// Measured on this VM: six reads issued together took 674 ms against 689 ms
+        /// issued one at a time — a 1.02x "speedup", because the stdio loop awaited each
+        /// Dispatch before reading the next line. Every fan-out the TS side performs
+        /// (get_object_info objects[], search queries[], prepare's five probes) was
+        /// therefore pipelining into a queue of one.
+        ///
+        /// The list is explicit and the DEFAULT IS FALSE: anything not named here —
+        /// including a method added later — keeps the old exclusive behaviour. A write
+        /// misfiled as a read would corrupt metadata; a read misfiled as a write is
+        /// merely as slow as it is today.
+        /// </summary>
+        private static readonly HashSet<string> ConcurrentSafeReads =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "ping", "getcapabilities", "getinfo", "getxrefschema",
+                // Typed readers
+                "readtable", "readclass", "readenum", "readedt", "readform", "readquery",
+                "readview", "readreport", "readdataentity", "readmenuitem",
+                "readsecurityprivilege", "readsecurityduty", "readsecurityrole",
+                "readtableextensions",
+                // Short aliases of the same readers
+                "table", "class", "enum", "edt", "form", "query", "view", "menu",
+                // Lookup / search
+                "searchobjects", "listobjects", "resolveobjectinfo", "getcompletionmembers",
+                "getmethodsource", "validateobject", "discoverformpatterns",
+                // Cross-reference queries
+                "findreferences", "findeventsubscribers", "findextensionclasses",
+                "findapiusagecallers", "samplexrefrows",
+            };
+
+        /// <summary>True when <paramref name="method"/> may run alongside other reads.</summary>
+        public static bool IsConcurrentSafeRead(string? method)
+            => !string.IsNullOrEmpty(method) && ConcurrentSafeReads.Contains(method!);
         private Task<BridgeResponse> HandleMetadata(BridgeRequest request, Func<object?> handler)
         {
             if (_metadataService == null)

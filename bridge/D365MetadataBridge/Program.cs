@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using D365MetadataBridge.Protocol;
 
@@ -219,9 +221,33 @@ namespace D365MetadataBridge
             }
         }
 
+        /// <summary>
+        /// How many reads may be inside the provider at once. Bounded on purpose: the
+        /// win is in overlapping a handful of fan-out reads, not in handing an unbounded
+        /// number of threads to a metadata provider whose thread-safety is undocumented.
+        /// </summary>
+        private const int ReadSlots = 6;
+
+        /// <summary>
+        /// A read takes one slot; anything else takes ALL of them, which is what makes a
+        /// write or a provider refresh exclusive against every in-flight read. Simple
+        /// enough to reason about without an async reader/writer lock.
+        ///
+        /// A writer waits for the slots, so a continuous stream of reads could delay it.
+        /// In practice requests come from one MCP client that awaits its own calls, so
+        /// there is no such stream.
+        /// </summary>
+        private static readonly SemaphoreSlim _slots = new SemaphoreSlim(ReadSlots, ReadSlots);
+
+        /// <summary>stdout is one stream: concurrent handlers must not interleave lines on it.</summary>
+        private static readonly SemaphoreSlim _stdoutLock = new SemaphoreSlim(1, 1);
+        private static readonly StreamWriter _stdout =
+            new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+
         private static async Task<int> RunStdioLoop(RequestDispatcher dispatcher)
         {
             var reader = new StreamReader(Console.OpenStandardInput());
+            var inFlight = new List<Task>();
 
             string? line;
             while ((line = await reader.ReadLineAsync()) != null)
@@ -229,45 +255,113 @@ namespace D365MetadataBridge
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
 
-                BridgeResponse response;
+                BridgeRequest? request = null;
                 try
                 {
-                    var request = JsonSerializer.Deserialize<BridgeRequest>(line, JsonOptions.Default);
-                    if (request == null || string.IsNullOrEmpty(request.Method))
-                    {
-                        response = BridgeResponse.CreateError("?", -32600, "Invalid request");
-                    }
-                    else
-                    {
-                        Log.WriteLine($"[DEBUG] → {request.Method} (id={request.Id})");
-                        response = await dispatcher.Dispatch(request);
-                        Log.WriteLine($"[DEBUG] ← {request.Method} OK (id={request.Id})");
-                    }
+                    request = JsonSerializer.Deserialize<BridgeRequest>(line, JsonOptions.Default);
                 }
                 catch (JsonException ex)
                 {
                     Log.WriteLine($"[ERROR] JSON parse error: {ex.Message}");
-                    response = BridgeResponse.CreateError("?", -32700, $"Parse error: {ex.Message}");
-                }
-                catch (Exception ex)
-                {
-                    Log.WriteLine($"[ERROR] Unhandled: {ex.Message}\n{ex.StackTrace}");
-                    response = BridgeResponse.CreateError("?", -32603, $"Internal error: {ex.Message}");
+                    await WriteResponse(BridgeResponse.CreateError("?", -32700, $"Parse error: {ex.Message}"));
+                    continue;
                 }
 
-                await WriteResponse(response);
+                if (request == null || string.IsNullOrEmpty(request.Method))
+                {
+                    await WriteResponse(BridgeResponse.CreateError("?", -32600, "Invalid request"));
+                    continue;
+                }
+
+                // Reads go to the thread pool so the loop can read the next line at once;
+                // everything else keeps the original behaviour of running to completion
+                // before the next request is even parsed.
+                if (RequestDispatcher.IsConcurrentSafeRead(request.Method))
+                {
+                    inFlight.RemoveAll(t => t.IsCompleted);
+                    inFlight.Add(HandleConcurrently(dispatcher, request));
+                }
+                else
+                {
+                    // Drain the reads already running, then take every slot: a write or a
+                    // provider rebuild must not overlap a read of the provider it replaces.
+                    if (inFlight.Count > 0)
+                    {
+                        await Task.WhenAll(inFlight);
+                        inFlight.Clear();
+                    }
+                    for (var i = 0; i < ReadSlots; i++) await _slots.WaitAsync();
+                    try
+                    {
+                        await WriteResponse(await DispatchGuarded(dispatcher, request));
+                    }
+                    finally
+                    {
+                        _slots.Release(ReadSlots);
+                    }
+                }
             }
 
+            if (inFlight.Count > 0)
+            {
+                try { await Task.WhenAll(inFlight); } catch { /* each response was already sent */ }
+            }
             Log.WriteLine("[INFO] stdin closed, bridge exiting");
             return 0;
+        }
+
+        /// <summary>One read: take a slot, dispatch, answer. Never throws back into the loop.</summary>
+        private static async Task HandleConcurrently(RequestDispatcher dispatcher, BridgeRequest request)
+        {
+            await _slots.WaitAsync();
+            try
+            {
+                // Task.Run, not a bare await: every read handler returns
+                // Task.FromResult(...), so Dispatch runs to completion SYNCHRONOUSLY on
+                // whichever thread calls it. Awaiting it here left the work on the stdio
+                // loop thread and measured 1.06x against 1.04x for the serial build —
+                // the change did nothing until the work actually left this thread.
+                var response = await Task.Run(() => DispatchGuarded(dispatcher, request));
+                await WriteResponse(response);
+            }
+            finally
+            {
+                _slots.Release();
+            }
+        }
+
+        /// <summary>Dispatch, turning any escape into a response rather than a lost request.</summary>
+        private static async Task<BridgeResponse> DispatchGuarded(RequestDispatcher dispatcher, BridgeRequest request)
+        {
+            try
+            {
+                Log.WriteLine($"[DEBUG] → {request.Method} (id={request.Id})");
+                var response = await dispatcher.Dispatch(request);
+                Log.WriteLine($"[DEBUG] ← {request.Method} OK (id={request.Id})");
+                return response;
+            }
+            catch (Exception ex)
+            {
+                Log.WriteLine($"[ERROR] Unhandled: {ex.Message}\n{ex.StackTrace}");
+                return BridgeResponse.CreateError(request.Id, -32603, $"Internal error: {ex.Message}");
+            }
         }
 
         private static async Task WriteResponse(BridgeResponse response)
         {
             var json = JsonSerializer.Serialize(response, JsonOptions.Default);
-            var stdout = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
-            await stdout.WriteLineAsync(json);
-            await stdout.FlushAsync();
+            // Serialized, and on ONE cached writer: concurrent handlers each opening their
+            // own StreamWriter over the same handle is how a JSON-RPC stream gets interleaved.
+            await _stdoutLock.WaitAsync();
+            try
+            {
+                await _stdout.WriteLineAsync(json);
+                await _stdout.FlushAsync();
+            }
+            finally
+            {
+                _stdoutLock.Release();
+            }
         }
 
         /// <summary>
