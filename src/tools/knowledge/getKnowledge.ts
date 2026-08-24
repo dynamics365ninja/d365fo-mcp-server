@@ -53,8 +53,18 @@ export async function getKnowledgeTool(request: CallToolRequest) {
   // A run picks 4-8 different operations and fetched each contract in its own
   // call: get_knowledge was 40 of 273 tool calls in the sampled sessions, 38 of
   // them op-spec, with 8 back-to-back pairs. topics[] answers them in one.
-  const topics = normalizeTopics((rest as Record<string, unknown>).topics);
+  const rawTopics = (rest as Record<string, unknown>).topics;
+  const topics = normalizeTopics(rawTopics);
   delete (rest as Record<string, unknown>).topics;
+  // `topics` was given but is not usable, and there is no `topic` to fall back on:
+  // say so in words. Letting it through produced a raw zod dump naming a parameter
+  // the caller never passed.
+  if (rawTopics !== undefined && !topics && (rest as Record<string, unknown>).topic == null) {
+    return {
+      content: [{ type: 'text' as const, text: describeTopicsShape(rawTopics) }],
+      isError: true,
+    };
+  }
   const kind: KnowledgeKind =
     explicitKind ?? ((rest as any).errorText || (rest as any).errorCode ? 'error' : 'knowledge');
   if (kind === 'error') {
@@ -118,14 +128,38 @@ export const MAX_TOPICS = 10;
 const SPEC_SEPARATOR = '\n\n---\n\n';
 
 /**
- * topics[] accepted as an array; anything else (including a bare string, which
- * belongs in `topic`) falls through to the single-topic path rather than
- * erroring — a rejected batch just becomes the loop it was meant to replace.
+ * topics[] accepted as an array of non-empty strings; anything else returns null
+ * and the caller falls through to the single-topic path.
+ *
+ * That fallback is only a graceful one when a `topic` was ALSO supplied. It was
+ * not: `topics: "CoC"` with no `topic` reached xppKnowledgeTool with topic
+ * undefined and came back as a raw zod dump —
+ *   Error in get_knowledge(kind="knowledge"): [ { "expected": "string",
+ *     "code": "invalid_type", "path": [ "topic" ] … } ]
+ * — the same unusable shape #937 fixed for d365fo_file. The comment here used to
+ * claim the loop simply resumed; it did not. describeTopicsShape() below is what
+ * makes the claim true.
  */
 function normalizeTopics(raw: unknown): string[] | null {
   if (!Array.isArray(raw)) return null;
   const list = raw.filter(t => typeof t === 'string' && t.trim() !== '').map(t => String(t).trim());
   return list.length > 0 ? list.slice(0, MAX_TOPICS) : null;
+}
+
+/**
+ * The complaint to make when `topics` was supplied but unusable, and no `topic`
+ * can stand in for it. Names the shape and how many entries were dropped, instead
+ * of handing back a serialized validator object.
+ */
+function describeTopicsShape(raw: unknown): string {
+  const shape = Array.isArray(raw)
+    ? `an array of ${raw.length} entr${raw.length === 1 ? 'y' : 'ies'}, none of them a non-empty string`
+    : `a ${typeof raw}`;
+  return (
+    `❌ get_knowledge: \`topics\` must be an array of non-empty strings — got ${shape}.\n` +
+    `  Several topics: topics: ["select-statement", "coc-authoring"]  (max ${MAX_TOPICS})\n` +
+    `  One topic:      topic: "select-statement"`
+  );
 }
 
 function textOf(result: unknown): string {
