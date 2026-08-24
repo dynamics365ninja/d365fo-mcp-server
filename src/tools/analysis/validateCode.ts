@@ -13,7 +13,7 @@
  * When mode="references" and codeType="xml-table" or "xml-any", an XML-aware
  * reference checker runs instead of the X++ resolver:
  *   - <ExtendedDataType> → EDT must exist in the symbol index
- *   - <EnumType>         → Enum must exist in the symbol index
+ *   - <EnumType>         → Enum must exist in the symbol index, OR be a kernel enum
  *   - <Label>            → label reference (@File:Id) must exist
  *   - <Extends>          → base table/class must exist (for extensions)
  *   - Relation targets   → <RelatedTable> must exist
@@ -24,6 +24,7 @@ import type { XppServerContext } from '../../types/context.js';
 import { validateXppTool } from './validateXpp.js';
 import { resolveReferencesTool } from '../write/resolveReferences.js';
 import { lookupSymbolNocase, type DbLike } from '../../utils/symbolLookup.js';
+import { isKernelEnum } from '../../knowledge/kernelEnums.js';
 import { type XmlNode, parseNodes, firstChild, textValueOf } from '../../utils/xmlNodeTree.js';
 
 function err(text: string) {
@@ -258,16 +259,34 @@ function resolveXmlReferences(
     }
   }
 
-  // <EnumType> — enum must exist
+  // <EnumType> — enum must exist in the AOT, or be one the runtime defines.
+  // A kernel enum has no AxEnum element to find, so "absent from the index" is
+  // not evidence against it: NoYes was reported as a hallucinated symbol under
+  // "these will cause compiler failures", and search offers NoYesBlank /
+  // DefaultNoYes to "correct" it to — real enums, so the edit compiles clean and
+  // means the wrong thing. See knowledge/kernelEnums.ts.
   for (const en of extractTagValues(xml, 'EnumType')) {
-    if (symbolExistsInIndex(db, en, 'enum')) {
+    if (isKernelEnum(en) || symbolExistsInIndex(db, en, 'enum')) {
       verified++;
     } else {
       violations.push({
         element: 'EnumType',
         value: en,
-        detail: `Enum "${en}" not found in the symbol index.`,
-        severity: 'error',
+        detail:
+          `Enum "${en}" is not in the symbol index. If you invented the name, fix it — ` +
+          `but check first: enums the RUNTIME defines, and enums from a module this ` +
+          `installation does not have, are absent from the index while being perfectly ` +
+          `valid to reference. Do not swap in a similarly named enum to make this go away.`,
+        // Warning, not error, and deliberately so. This check is index-only, and on
+        // this installation 44 enum names that shipped Microsoft metadata references
+        // cannot be resolved by it — kernel enums like NoYes and TableGroup among them.
+        // A check that cannot tell "absent from the index" from "does not exist" must
+        // not assert the latter under "these will cause compiler failures": the agent
+        // obeys, picks a real-but-different enum out of search results, and the edit
+        // compiles clean meaning something else. The <Extends> check above already
+        // warns for the same reason. knowledge/kernelEnums.ts silences the kernel
+        // names that are verified, so this path is for the ones nobody has classified.
+        severity: 'warning',
       });
     }
   }

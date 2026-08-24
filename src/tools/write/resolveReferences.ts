@@ -26,6 +26,7 @@
  */
 
 import { z } from 'zod';
+import { KERNEL_ENUM_NAMES } from '../../knowledge/kernelEnums.js';
 import type { XppServerContext } from '../../types/context.js';
 import { canonicalSymbolName, distinctSymbolTypesNocase, lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import {
@@ -158,12 +159,10 @@ const KERNEL_TYPES = new Set([
   'fileiopermission', 'runaspermission', 'datetimeutil', 'timezone', 'random',
   'runbase', 'image', 'clrinterop', 'clrobject', 'thread', 'webrequest',
   'webresponse', 'gc', 'session', 'infolog', 'debug', 'global',
-  // Kernel enums (not in metadata XML). 'exception' has no AxEnum at all, and the
-  // index does not prove 'noyes' — without both, every try/catch and NoYes:: use
-  // hard-errors in the static-access path.
-  'types', 'tablescope', 'utcdatetimeorder', 'dateorder', 'dateday',
-  'datemonth', 'dateyear', 'statementtype', 'concurrencymodel', 'isolationlevel',
-  'exception', 'noyes',
+  // Kernel ENUMS come from knowledge/kernelEnums.ts. They used to be spelled out
+  // here, which is why this path accepted NoYes:: while the XML <EnumType> checker
+  // hard-errored on the same enum — the knowledge existed in one path only.
+  ...KERNEL_ENUM_NAMES,
 ]);
 
 /** Methods available on every table buffer via the kernel xRecord/Common base. */

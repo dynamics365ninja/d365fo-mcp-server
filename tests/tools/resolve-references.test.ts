@@ -649,20 +649,41 @@ describe('validateCodeTool references mode — xml-table EDT checking', () => {
       { params: { arguments: { mode: 'references', codeType: 'xml-table', code: xml } } } as any,
       context,
     );
-    expect(result.isError).toBe(true);
+    // Reported, but no longer fatal. This check is index-only, and on a real
+    // installation 44 enum names that shipped Microsoft metadata references cannot be
+    // resolved by it. A check that cannot tell "absent from the index" from "does
+    // not exist" must not fail the call: the agent obeys, swaps in a real-but-
+    // different enum out of search results, and the edit compiles clean meaning
+    // something else.
     expect(result.content[0].text).toContain('NoSuchEnum');
+    expect(result.content[0].text).toContain('warning');
+    expect(result.isError).toBeFalsy();
   });
 
-  it('accepts a known enum (NoYes) in <EnumType>', async () => {
+  // The shared fixture seeds sym('NoYes', 'enum'), so this passed for the wrong
+  // reason for the whole life of the check: the mock index was more generous than
+  // any real one, where NoYes has no AxEnum element and returns 0 rows. The X++
+  // side had already spotted the same trap and tested against emptyDeps (see
+  // "accepts NoYes:: even when the index does not prove NoYes"); the XML side had
+  // not, which is how <EnumType>NoYes</EnumType> shipped as a hard error.
+  it('accepts NoYes even when the index does NOT contain it', async () => {
     const xml = `<?xml version="1.0"?><AxTable><Name>MyTable</Name><Fields>
       <AxTableField i:type="AxTableFieldEnum"><Name>Active</Name>
         <EnumType>NoYes</EnumType></AxTableField>
     </Fields></AxTable>`;
+    // An index that proves nothing — exactly what a real one offers for NoYes.
+    const blindContext = {
+      symbolIndex: {
+        getReadDb: () => ({ prepare: () => ({ all: () => [], get: () => undefined }) }),
+        getLabelById: () => [],
+      },
+    } as any;
     const result = await validateCodeTool(
       { params: { arguments: { mode: 'references', codeType: 'xml-table', code: xml } } } as any,
-      context,
+      blindContext,
     );
     expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).not.toContain('NoYes" is not in the symbol index');
   });
 });
 
