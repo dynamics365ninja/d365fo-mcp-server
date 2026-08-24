@@ -109,7 +109,12 @@ const CHARS_PER_TOKEN = 4;
 // tableName) and de-duplicating prose the tool description already carried. Every
 // one of those keys is still accepted by its handler — only the advertisement is
 // gone. Measured payload after the trim: 49_210.
-const TOTAL_BUDGET = 49_500;
+// Lowered again after de-duplicating prose that two schemas stated twice:
+// undo_last_modification carried the story of how it got its name, and
+// find_references spelled the "Owner.method or it over-reports" rule out in full
+// both in its description and in the parameter that rule applies to. Measured
+// payload after: 48_904.
+const TOTAL_BUDGET = 49_000;
 const LARGEST_TOOL_BUDGET = 5_700;
 
 async function getTools(): Promise<Array<{ name: string }>> {
