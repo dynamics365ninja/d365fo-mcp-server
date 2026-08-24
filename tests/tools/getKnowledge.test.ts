@@ -61,3 +61,47 @@ describe('get_knowledge kind inference', () => {
     expect((xppKnowledgeTool as any).mock.calls[0][0].params.arguments.topic).toBe('CoC');
   });
 });
+
+describe('get_knowledge topics[] — several lookups in one call', () => {
+  const textOf = (r: any) => r.content.map((c: any) => c.text).join('');
+
+  it('answers every op-spec topic in one response', async () => {
+    const r = await getKnowledgeTool(req({ kind: 'op-spec', topics: ['add-field', 'add-index'] }));
+    const text = textOf(r);
+    expect(text).toContain("operation 'add-field'");
+    expect(text).toContain("operation 'add-index'");
+  });
+
+  it('fans the knowledge kind out and labels each answer', async () => {
+    const r = await getKnowledgeTool(req({ topics: ['select-statement', 'coc-authoring'] }));
+    expect(xppKnowledgeTool).toHaveBeenCalledTimes(2);
+    expect((xppKnowledgeTool as any).mock.calls[0][0].params.arguments.topic).toBe('select-statement');
+    expect((xppKnowledgeTool as any).mock.calls[1][0].params.arguments.topic).toBe('coc-authoring');
+    // Each block is headed by its topic, or a two-topic answer is unattributable.
+    expect(textOf(r)).toContain('## select-statement');
+    expect(textOf(r)).toContain('## coc-authoring');
+  });
+
+  it('never forwards topics[] to the underlying handler', async () => {
+    await getKnowledgeTool(req({ topics: ['CoC'] }));
+    expect((xppKnowledgeTool as any).mock.calls[0][0].params.arguments.topics).toBeUndefined();
+  });
+
+  it('caps the batch so one call cannot return everything', async () => {
+    await getKnowledgeTool(req({ topics: Array.from({ length: 25 }, (_, i) => 't' + i) }));
+    expect(xppKnowledgeTool).toHaveBeenCalledTimes(10);
+  });
+
+  it('falls back to the single-topic path rather than failing on a bad shape', async () => {
+    // A bare string belongs in `topic`; rejecting it would just recreate the loop.
+    await getKnowledgeTool(req({ topics: 'CoC', topic: 'CoC' }));
+    expect(xppKnowledgeTool).toHaveBeenCalledOnce();
+    expect((xppKnowledgeTool as any).mock.calls[0][0].params.arguments.topic).toBe('CoC');
+  });
+
+  it('ignores empty entries and an empty array', async () => {
+    await getKnowledgeTool(req({ topics: ['', '   '], topic: 'CoC' }));
+    expect(xppKnowledgeTool).toHaveBeenCalledOnce();
+    expect((xppKnowledgeTool as any).mock.calls[0][0].params.arguments.topic).toBe('CoC');
+  });
+});

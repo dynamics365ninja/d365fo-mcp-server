@@ -174,13 +174,22 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       // timeout doesn't silently cancel the request. If the DB is still loading
       // after 55 s, return an informative message instead of hanging forever.
       const DB_WAIT_TIMEOUT_MS = 55_000;
-      const timeoutPromise = new Promise<'timeout'>(resolve =>
-        setTimeout(() => resolve('timeout'), DB_WAIT_TIMEOUT_MS),
-      );
-      const result = await Promise.race([
-        context.dbReady.then(() => 'ready' as const),
-        timeoutPromise,
-      ]);
+      // The handle is cleared below: an uncleared 55 s timer per call kept the
+      // event loop alive for up to 55 s after the last call, and on a busy server
+      // held one pending timer per in-flight call for no reason.
+      let dbWaitTimer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<'timeout'>(resolve => {
+        dbWaitTimer = setTimeout(() => resolve('timeout'), DB_WAIT_TIMEOUT_MS);
+      });
+      let result: 'ready' | 'timeout';
+      try {
+        result = await Promise.race([
+          context.dbReady.then(() => 'ready' as const),
+          timeoutPromise,
+        ]);
+      } finally {
+        if (dbWaitTimer !== undefined) clearTimeout(dbWaitTimer);
+      }
       if (result === 'timeout') {
         return {
           content: [{
@@ -303,7 +312,12 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       // supplied a progressToken, notifications/message otherwise) live in one
       // reporter so long-running tools can keep using it after this first step.
       const reportProgress = createProgressReporter(server, extra as any);
-      await reportProgress(progressMsg, 0);
+      // Deliberately not awaited. This is a UI notification, and awaiting it put two
+      // client round trips (notifications/progress + notifications/message) in front
+      // of every tool — including the ones that answer in single-digit milliseconds.
+      // The reporter never rejects (both sends are try/caught inside), and the
+      // transport writes in call order, so the notification still precedes the result.
+      void reportProgress(progressMsg, 0);
 
       return (async () => { switch (toolName) {
       case 'search':

@@ -14,17 +14,16 @@ export const triggerDbSyncTool = {
     inputSchema: {
       type: 'object',
       properties: {
-        modelName: { type: 'string', description: 'Model to sync. Auto-detected from .mcp.json if omitted.' },
+        modelName: { type: 'string', description: 'Model to sync. Auto-detected if omitted.' },
         tables: {
           type: 'array',
           items: { type: 'string' },
           description: 'Partial sync: sync only these tables/views (faster). Example: ["CustTable", "MyNewView"]. Views and data entities go in this same list. Omit for full-model sync.',
         },
-        tableName: { type: 'string', description: 'Single-table shorthand — equivalent to tables=["tableName"]. Kept for backwards compatibility.' },
         projectPath: { type: 'string', description: 'Path to .rnrproj file. Auto-extracts table/view names for partial sync. Auto-detected from .mcp.json when no explicit tables given.' },
-        syncViews: { type: 'boolean', description: 'FULL sync only: use syncmode FullAllAndViews. Not needed for partial sync — name the view in tables[] instead. Default: false.' },
-        connectionString: { type: 'string', description: 'SQL Server connection string. Default: "Data Source=localhost;Initial Catalog=AxDB;Integrated Security=True".' },
-        packagePath: { type: 'string', description: 'PackagesLocalDirectory root. Auto-detected from .mcp.json if omitted.' },
+        syncViews: { type: 'boolean', description: 'FULL sync only: use syncmode FullAllAndViews. For partial sync, name the view in tables[] instead.' },
+        connectionString: { type: 'string', description: 'SQL Server connection string. Defaults to localhost/AxDB.' },
+        packagePath: { type: 'string', description: 'PackagesLocalDirectory root. Auto-detected if omitted.' },
       },
       required: [],
     },

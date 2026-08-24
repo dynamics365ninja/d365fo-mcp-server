@@ -19,7 +19,7 @@ export const searchTool = {
           type: 'string',
           enum: ['all', 'extensions'],
           default: 'all',
-          description: '[single] Search the whole index ("all", default) or only custom/ISV models ("extensions"). Ignored when `queries[]` is provided.',
+          description: '[single] Whole index, or only custom/ISV models. Ignored when `queries[]` is provided.',
         },
         query: { type: 'string', description: '[single|extensions] Search query (class name, method name, table name, etc.). REQUIRED unless using batch `queries[]`.' },
         type: {
@@ -38,16 +38,7 @@ export const searchTool = {
         verbose: {
           type: 'boolean',
           default: false,
-          description: '[single] Include related-searches/patterns/tips sections (off by default to keep responses compact).',
-        },
-        workspacePath: {
-          type: 'string',
-          description: '[single] Optional workspace path to search local project files in addition to external metadata',
-        },
-        includeWorkspace: {
-          type: 'boolean',
-          default: false,
-          description: '[single] Whether to include workspace files in search results (workspace-aware search)',
+          description: '[single] Include related-searches/patterns/tips sections.',
         },
         queries: {
           type: 'array',
@@ -64,49 +55,16 @@ export const searchTool = {
               type: {
                 type: 'string',
                 default: 'all',
-                description: 'Filter by object type — same values as the top-level `type`. Omit to inherit globalTypeFilter or default to "all"',
+                description: 'Filter by object type — same values as the top-level `type`.',
               },
               limit: {
                 type: 'number',
                 default: 10,
                 description: 'Maximum results to return for this query',
               },
-              workspacePath: {
-                type: 'string',
-                description: 'Optional workspace path to search local files',
-              },
-              includeWorkspace: {
-                type: 'boolean',
-                default: false,
-                description: 'Whether to include workspace files in results',
-              },
             },
             required: ['query'],
           },
-        },
-        globalTypeFilter: {
-          type: 'array',
-          maxItems: 5,
-          description:
-            '[batch] Default type filter for queries without an explicit per-query type. ' +
-            'E.g. ["class"] restricts all untyped queries to classes. ' +
-            'Multiple values fan out each untyped query into one search per type. ' +
-            'Values: same as the top-level `type`, except "all" (which means "no filter" — omit this instead).',
-          items: { type: 'string' },
-        },
-        deduplicate: {
-          type: 'boolean',
-          default: true,
-          description:
-            '[batch] When true, symbols appearing in multiple query results are collapsed. ' +
-            'Later occurrences are replaced with a reference to the query where they first appeared.',
-        },
-        crossReference: {
-          type: 'boolean',
-          default: true,
-          description:
-            '[batch] Append a cross-reference summary at the end listing symbols that appeared in multiple queries. ' +
-            'Useful for identifying the most relevant / commonly matched objects across all searches.',
         },
       },
     },

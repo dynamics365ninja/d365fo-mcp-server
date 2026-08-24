@@ -29,6 +29,12 @@ export const getKnowledgeTool = {
             '"temp tables", "today() deprecated", "query patterns", "form patterns". ' +
             '[op-spec] The operation / objectType / mode to look up.',
         },
+        topics: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: 10,
+          description: '[knowledge|op-spec] Look up SEVERAL topics in one call instead of one call each. Replaces topic.',
+        },
         format: {
           type: 'string',
           enum: ['concise', 'detailed'],

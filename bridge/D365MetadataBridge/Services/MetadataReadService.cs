@@ -1150,68 +1150,65 @@ namespace D365MetadataBridge.Services
             // seen set prevents duplicate names when the same object exists in both providers
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            void Search(string objType, IList<string> keys)
+            // Takes the getter, not a materialized list: as an ARGUMENT, Keys(...) ran to
+            // completion before this method could return, so every collection was fully
+            // enumerated even when the result budget was already full. For the default
+            // "all" filter that is 14 primary-key lists per search, on both providers.
+            void Search(string objType, Func<IEnumerable<string>> getter)
             {
-                if (keys == null) return;
-                foreach (var n in keys)
+                // Budget spent — do not touch this collection at all.
+                if (result.Results.Count >= maxResults) return;
+                try
                 {
-                    if (result.Results.Count >= maxResults) return;
-                    if (n.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 && seen.Add(n))
-                        result.Results.Add(new SearchItemModel { Name = n, Type = objType });
+                    var raw = getter();
+                    if (raw == null) return;
+                    foreach (var n in raw)
+                    {
+                        // Stops ENUMERATING, not merely adding.
+                        if (result.Results.Count >= maxResults) return;
+                        if (n.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 && seen.Add(n))
+                            result.Results.Add(new SearchItemModel { Name = n, Type = objType });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[WARN] Search: could not list '{objType}': {ex.GetType().Name}: {ex.Message}");
                 }
             }
 
-            // Materialize primary keys from a provider collection.
-            // IMPORTANT: these are accessed STRONGLY-TYPED through the public
+            // Collections are accessed STRONGLY-TYPED through the public
             // Microsoft.Dynamics.AX.Metadata.Providers.IMetadataProvider interface — NOT via
             // `dynamic`. The concrete provider (DiskMetadataProvider) is an internal type, and
             // the DLR cannot bind to public members of an internal type from this assembly:
             // `dynamic dyn = prov; dyn.MenuItemDisplays` throws RuntimeBinderException
             // ("'object' does not contain a definition for 'MenuItemDisplays'") and silently
             // yields nothing — which is exactly how menu items/security stayed invisible.
-            // Interface access binds at compile time and works. Keys are enumerated (not cast
-            // to IList<string>) so a lazy IEnumerable<string> return is handled safely too.
-            List<string> Keys(string label, Func<IEnumerable<string>> getter)
-            {
-                var list = new List<string>();
-                try
-                {
-                    var raw = getter();
-                    if (raw != null)
-                        foreach (var k in raw) list.Add(k);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"[WARN] Search: could not list '{label}': {ex.GetType().Name}: {ex.Message}");
-                }
-                return list;
-            }
-
+            // Interface access binds at compile time and works.
             void SearchProvider(IMetadataProvider prov)
             {
                 try
                 {
                     switch (type.ToLowerInvariant())
                     {
-                        case "table": Search("table", Keys("table", () => prov.Tables.GetPrimaryKeys())); break;
-                        case "class": Search("class", Keys("class", () => prov.Classes.GetPrimaryKeys())); break;
-                        case "enum": Search("enum", Keys("enum", () => prov.Enums.GetPrimaryKeys())); break;
-                        case "edt": Search("edt", Keys("edt", () => prov.Edts.GetPrimaryKeys())); break;
-                        case "form": Search("form", Keys("form", () => prov.Forms.GetPrimaryKeys())); break;
-                        case "query": Search("query", Keys("query", () => prov.Queries.GetPrimaryKeys())); break;
-                        case "view": Search("view", Keys("view", () => prov.Views.GetPrimaryKeys())); break;
+                        case "table": Search("table", () => prov.Tables.GetPrimaryKeys()); break;
+                        case "class": Search("class", () => prov.Classes.GetPrimaryKeys()); break;
+                        case "enum": Search("enum", () => prov.Enums.GetPrimaryKeys()); break;
+                        case "edt": Search("edt", () => prov.Edts.GetPrimaryKeys()); break;
+                        case "form": Search("form", () => prov.Forms.GetPrimaryKeys()); break;
+                        case "query": Search("query", () => prov.Queries.GetPrimaryKeys()); break;
+                        case "view": Search("view", () => prov.Views.GetPrimaryKeys()); break;
                         case "data-entity":
-                        case "dataentity": Search("data-entity", Keys("data-entity", () => prov.DataEntityViews.GetPrimaryKeys())); break;
+                        case "dataentity": Search("data-entity", () => prov.DataEntityViews.GetPrimaryKeys()); break;
 
-                        case "menu-item-display": Search("menu-item-display", Keys("menu-item-display", () => prov.MenuItemDisplays.GetPrimaryKeys())); break;
-                        case "menu-item-action": Search("menu-item-action", Keys("menu-item-action", () => prov.MenuItemActions.GetPrimaryKeys())); break;
-                        case "menu-item-output": Search("menu-item-output", Keys("menu-item-output", () => prov.MenuItemOutputs.GetPrimaryKeys())); break;
+                        case "menu-item-display": Search("menu-item-display", () => prov.MenuItemDisplays.GetPrimaryKeys()); break;
+                        case "menu-item-action": Search("menu-item-action", () => prov.MenuItemActions.GetPrimaryKeys()); break;
+                        case "menu-item-output": Search("menu-item-output", () => prov.MenuItemOutputs.GetPrimaryKeys()); break;
 
-                        case "security-privilege": Search("security-privilege", Keys("security-privilege", () => prov.SecurityPrivileges.GetPrimaryKeys())); break;
-                        case "security-duty": Search("security-duty", Keys("security-duty", () => prov.SecurityDuties.GetPrimaryKeys())); break;
-                        case "security-role": Search("security-role", Keys("security-role", () => prov.SecurityRoles.GetPrimaryKeys())); break;
+                        case "security-privilege": Search("security-privilege", () => prov.SecurityPrivileges.GetPrimaryKeys()); break;
+                        case "security-duty": Search("security-duty", () => prov.SecurityDuties.GetPrimaryKeys()); break;
+                        case "security-role": Search("security-role", () => prov.SecurityRoles.GetPrimaryKeys()); break;
 
-                        case "table-extension": Search("table-extension", Keys("table-extension", () => prov.TableExtensions.GetPrimaryKeys())); break;
+                        case "table-extension": Search("table-extension", () => prov.TableExtensions.GetPrimaryKeys()); break;
                         // IMetadataProvider has no ClassExtensions collection — CoC/augmentation
                         // classes live in the regular Classes collection (named *_Extension). The
                         // bridge can't filter them out here, so return nothing and let the caller
@@ -1219,28 +1216,28 @@ namespace D365MetadataBridge.Services
                         case "class-extension":
                             Console.Error.WriteLine("[DEBUG] Search: class-extension requested — no IMetadataProvider collection; falling back to SQLite index");
                             break;
-                        case "form-extension": Search("form-extension", Keys("form-extension", () => prov.FormExtensions.GetPrimaryKeys())); break;
-                        case "enum-extension": Search("enum-extension", Keys("enum-extension", () => prov.EnumExtensions.GetPrimaryKeys())); break;
-                        case "edt-extension": Search("edt-extension", Keys("edt-extension", () => prov.EdtExtensions.GetPrimaryKeys())); break;
-                        case "data-entity-extension": Search("data-entity-extension", Keys("data-entity-extension", () => prov.DataEntityViewExtensions.GetPrimaryKeys())); break;
+                        case "form-extension": Search("form-extension", () => prov.FormExtensions.GetPrimaryKeys()); break;
+                        case "enum-extension": Search("enum-extension", () => prov.EnumExtensions.GetPrimaryKeys()); break;
+                        case "edt-extension": Search("edt-extension", () => prov.EdtExtensions.GetPrimaryKeys()); break;
+                        case "data-entity-extension": Search("data-entity-extension", () => prov.DataEntityViewExtensions.GetPrimaryKeys()); break;
 
                         default:
                             // "all" (or any unrecognized filter): enumerate every object kind so
                             // nothing — menu items included — is silently invisible to search.
-                            Search("table", Keys("table", () => prov.Tables.GetPrimaryKeys()));
-                            Search("class", Keys("class", () => prov.Classes.GetPrimaryKeys()));
-                            Search("enum", Keys("enum", () => prov.Enums.GetPrimaryKeys()));
-                            Search("edt", Keys("edt", () => prov.Edts.GetPrimaryKeys()));
-                            Search("form", Keys("form", () => prov.Forms.GetPrimaryKeys()));
-                            Search("query", Keys("query", () => prov.Queries.GetPrimaryKeys()));
-                            Search("view", Keys("view", () => prov.Views.GetPrimaryKeys()));
-                            Search("data-entity", Keys("data-entity", () => prov.DataEntityViews.GetPrimaryKeys()));
-                            Search("menu-item-display", Keys("menu-item-display", () => prov.MenuItemDisplays.GetPrimaryKeys()));
-                            Search("menu-item-action", Keys("menu-item-action", () => prov.MenuItemActions.GetPrimaryKeys()));
-                            Search("menu-item-output", Keys("menu-item-output", () => prov.MenuItemOutputs.GetPrimaryKeys()));
-                            Search("security-privilege", Keys("security-privilege", () => prov.SecurityPrivileges.GetPrimaryKeys()));
-                            Search("security-duty", Keys("security-duty", () => prov.SecurityDuties.GetPrimaryKeys()));
-                            Search("security-role", Keys("security-role", () => prov.SecurityRoles.GetPrimaryKeys()));
+                            Search("table", () => prov.Tables.GetPrimaryKeys());
+                            Search("class", () => prov.Classes.GetPrimaryKeys());
+                            Search("enum", () => prov.Enums.GetPrimaryKeys());
+                            Search("edt", () => prov.Edts.GetPrimaryKeys());
+                            Search("form", () => prov.Forms.GetPrimaryKeys());
+                            Search("query", () => prov.Queries.GetPrimaryKeys());
+                            Search("view", () => prov.Views.GetPrimaryKeys());
+                            Search("data-entity", () => prov.DataEntityViews.GetPrimaryKeys());
+                            Search("menu-item-display", () => prov.MenuItemDisplays.GetPrimaryKeys());
+                            Search("menu-item-action", () => prov.MenuItemActions.GetPrimaryKeys());
+                            Search("menu-item-output", () => prov.MenuItemOutputs.GetPrimaryKeys());
+                            Search("security-privilege", () => prov.SecurityPrivileges.GetPrimaryKeys());
+                            Search("security-duty", () => prov.SecurityDuties.GetPrimaryKeys());
+                            Search("security-role", () => prov.SecurityRoles.GetPrimaryKeys());
                             break;
                     }
                 }

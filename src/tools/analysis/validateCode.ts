@@ -338,56 +338,86 @@ function resolveXmlReferences(
 export async function validateCodeTool(request: CallToolRequest, context: XppServerContext) {
   const a = (request.params.arguments ?? {}) as Record<string, any>;
   const mode = (a.mode as string | undefined) ?? 'syntax';
-  const codeType = (a.codeType as string | undefined) ?? 'xpp';
 
   if (!a.code) return err('validate_code requires `code` (the X++/XML text to check).');
 
   switch (mode) {
-    case 'syntax':
-      return validateXppTool(request, context);
-
-    case 'references': {
-      // X++ code → use the dedicated X++ reference resolver
-      if (codeType === 'xpp') return resolveReferencesTool(request, context);
-
-      // XML (xml-table or xml-any) → use the XML-aware reference checker
-      const contextName = a.context as string | undefined;
-      const { violations, verified } = resolveXmlReferences(a.code as string, contextName, context);
-
-      if (violations.length === 0) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `✅ validate_code(references): all ${verified} reference(s) verified against the index${contextName ? ` in ${contextName}` : ''}.\n` +
-              `No hallucinated symbols detected. This is a name-existence check, not a compile — ` +
-              `build_d365fo_project remains the only proof it compiles.`,
-          }],
-        };
-      }
-
-      const errors = violations.filter(v => v.severity === 'error');
-      const warns  = violations.filter(v => v.severity === 'warning');
-      const lines: string[] = [
-        `${errors.length > 0 ? '❌' : '⚠️'} validate_code(references): ${violations.length} issue(s) found (${errors.length} error(s), ${warns.length} warning(s)), ${verified} verified${contextName ? ` in ${contextName}` : ''}.`,
-        '',
-      ];
-      for (const v of violations) {
-        lines.push(`${v.severity === 'error' ? '❌' : '⚠️'} <${v.element}>${v.value}</${v.element}>`);
-        lines.push(`   ${v.detail}`);
-      }
-      if (errors.length > 0) {
-        lines.push('', 'Fix errors before writing — these will cause compiler failures or wrong object references.');
-      }
-
+    case 'both': {
+      // This tool's own description said "Call both ... BEFORE writes", and the
+      // sampled sessions obeyed it as two round trips for one decision (8 pairs
+      // of 21 validate_code calls). The two checks are independent, so they run
+      // together and come back as one answer.
+      const [syntax, references] = await Promise.all([
+        validateXppTool(request, context),
+        runReferenceCheck(request, context),
+      ]);
+      const isError = Boolean((syntax as { isError?: boolean }).isError) ||
+                      Boolean((references as { isError?: boolean }).isError);
       return {
-        content: [{ type: 'text' as const, text: lines.join('\n') }],
-        isError: errors.length > 0,
+        content: [{
+          type: 'text' as const,
+          text: `${resultText(syntax)}\n\n---\n\n${resultText(references)}`,
+        }],
+        ...(isError ? { isError: true } : {}),
       };
     }
 
+    case 'syntax':
+      return validateXppTool(request, context);
+
+    case 'references':
+      return runReferenceCheck(request, context);
+
     default:
-      return err(`validate_code: unknown mode "${mode}". Use "syntax" (BP/best-practice rules) or "references" (symbol resolution).`);
+      return err(`validate_code: unknown mode "${mode}". Use "both" (preferred), "syntax" (BP/best-practice rules) or "references" (symbol resolution).`);
   }
+}
+
+/** mode="references", as its own function so mode="both" can compose it. */
+async function runReferenceCheck(request: CallToolRequest, context: XppServerContext) {
+  const a = (request.params.arguments ?? {}) as Record<string, any>;
+  const codeType = (a.codeType as string | undefined) ?? 'xpp';
+  // X++ code → use the dedicated X++ reference resolver
+  if (codeType === 'xpp') return resolveReferencesTool(request, context);
+
+  // XML (xml-table or xml-any) → use the XML-aware reference checker
+  const contextName = a.context as string | undefined;
+  const { violations, verified } = resolveXmlReferences(a.code as string, contextName, context);
+
+  if (violations.length === 0) {
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `✅ validate_code(references): all ${verified} reference(s) verified against the index${contextName ? ` in ${contextName}` : ''}.\n` +
+          `No hallucinated symbols detected. This is a name-existence check, not a compile — ` +
+          `build_d365fo_project remains the only proof it compiles.`,
+      }],
+    };
+  }
+
+  const errors = violations.filter(v => v.severity === 'error');
+  const warns  = violations.filter(v => v.severity === 'warning');
+  const lines: string[] = [
+    `${errors.length > 0 ? '❌' : '⚠️'} validate_code(references): ${violations.length} issue(s) found (${errors.length} error(s), ${warns.length} warning(s)), ${verified} verified${contextName ? ` in ${contextName}` : ''}.`,
+    '',
+  ];
+  for (const v of violations) {
+    lines.push(`${v.severity === 'error' ? '❌' : '⚠️'} <${v.element}>${v.value}</${v.element}>`);
+    lines.push(`   ${v.detail}`);
+  }
+  if (errors.length > 0) {
+    lines.push('', 'Fix errors before writing — these will cause compiler failures or wrong object references.');
+  }
+
+  return {
+    content: [{ type: 'text' as const, text: lines.join('\n') }],
+    isError: errors.length > 0,
+  };
+}
+
+function resultText(result: unknown): string {
+  const content = (result as { content?: Array<{ text?: string }> })?.content;
+  return content?.map(c => c?.text ?? '').join('\n') ?? '';
 }
 
 // Tool registration (name, description, inputSchema) lives in

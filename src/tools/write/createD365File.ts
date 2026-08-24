@@ -21,7 +21,7 @@ import { getConfigManager, fallbackPackagePath } from '../../utils/configManager
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint } from './inlineWriteVerification.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { registerCustomModel } from '../../utils/modelClassifier.js';
@@ -87,14 +87,11 @@ function buildNoProjectPathWarning(): string {
       `Pass projectPath explicitly to target the right one:\n` +
       candidates.map(c => `   - ${c.modelName}: ${c.projectPath ?? '(no .rnrproj)'}`).join('\n') + '\n';
   }
+  // The .mcp.json shape was five lines of JSON in a warning the caller usually
+  // resolves by just passing projectPath; naming the key is enough.
   return `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
-    `The file was created on disk but was NOT added to any Visual Studio project.\n\n` +
-    `Pass projectPath as a parameter, or add it to your .mcp.json:\n` +
-    `  {\n` +
-    `    "servers": { "context": {\n` +
-    `      "projectPath": "K:\\\\VSProjects\\\\YourSolution\\\\YourModel\\\\YourModel.rnrproj"\n` +
-    `    } }\n` +
-    `  }\n`;
+    `The file was created on disk but was NOT added to any Visual Studio project.\n` +
+    `Pass projectPath explicitly, or set servers.context.projectPath in .mcp.json.\n`;
 }
 
 const CreateD365FileArgsSchema = z.object({
@@ -4445,22 +4442,25 @@ export async function handleCreateD365File(
     // Scheduling here collapses both into the one rebuild validation waits for.
     if (context?.bridge) void debouncedRefresh.refresh(context.bridge);
 
-    // Post-write validation via C# bridge (best-effort, non-fatal, fire-and-forget).
-    // Not awaited: the validation goes through the sequential bridge stdin/stdout
-    // pipe and can take 60s+, which would block all subsequent MCP calls.
-    // See: https://github.com/dynamics365ninja/d365fo-mcp-server/issues/407
     const bridgeValidation = '';
-    bridgeValidateAfterWrite(
-      context?.bridge,
-      args.objectType,
-      finalObjectName,
-    ).then(validationMsg => {
-      if (validationMsg) {
-        console.error(`[create_d365fo_file] Bridge validation: ${validationMsg}`);
-      }
-    }).catch(e => {
-      console.error(`[create_d365fo_file] Bridge validation skipped: ${e}`);
-    });
+    // The read-back validation never reached the caller — every outcome went to
+    // stderr — while its validateObject RPC sat in the sequential bridge pipe and
+    // delayed the next MCP call. The refresh scheduled just above is the half that
+    // callers depend on and runs unconditionally. Kept for debugging only.
+    // See: https://github.com/dynamics365ninja/d365fo-mcp-server/issues/407
+    if (process.env.DEBUG_LOGGING === 'true') {
+      bridgeValidateAfterWrite(
+        context?.bridge,
+        args.objectType,
+        finalObjectName,
+      ).then(validationMsg => {
+        if (validationMsg) {
+          console.error(`[create_d365fo_file] Bridge validation: ${validationMsg}`);
+        }
+      }).catch(e => {
+        console.error(`[create_d365fo_file] Bridge validation skipped: ${e}`);
+      });
+    }
 
     // Add to Visual Studio project if requested
     let projectMessage = '';
@@ -4550,9 +4550,11 @@ export async function handleCreateD365File(
     // AOT" is a human's UI chore, repeated on every object of a feature; when it
     // matters (addToProject failed, no projectPath) `projectMessage` above
     // already says so, in that specific case.
-    const nextSteps = args.addToProject
+    const nextSteps = (args.addToProject
       ? `Next: build_d365fo_project to synchronize the object.\n`
-      : `Next: add the file to your .rnrproj, then build_d365fo_project to synchronize the object.\n`;
+      : `Next: add the file to your .rnrproj, then build_d365fo_project to synchronize the object.\n`) +
+      // finalObjectName, not args.objectName — see renderBatchEditHint.
+      renderBatchEditHint(args.objectType, finalObjectName, { afterCreate: true });
 
     // Record the freshly-created file for non-git undo (see the bridge paths above).
     if (!fileExisted) {

@@ -103,13 +103,20 @@ describe('session analyzer — the audited session', () => {
 
   it('flags consecutive turns reaching for the same pluralisable tool', () => {
     // The audited session ran get_object_info across turns 16-18 and 25-26,
-    // and run_bp_check across turns 81-83 — 5 round trips an objects:[…] call
-    // would have collapsed. Nothing here counts a turn that already batched.
+    // five consecutive single-op d365fo_file writes, and run_bp_check across
+    // turns 81-83 — 9 round trips a plural call would have collapsed. Nothing
+    // here counts a turn that already batched.
+    //
+    // The d365fo_file run only shows up since operations[] was added to the
+    // watched list: the write path is the single most serial thing real sessions
+    // do (45 of 49 modifies were single-op in the sampled transcripts), and the
+    // analyzer was silent about it while flagging much smaller runs.
     const runs = analysis.roundTrips.pluralOpportunities;
 
     expect(runs.map(r => [r.tool, r.turns, r.calls, r.wastedRoundTrips])).toEqual([
       ['get_object_info', 3, 3, 2],
       ['get_object_info', 2, 3, 1],
+      ['d365fo_file', 5, 5, 4],
       ['run_bp_check', 3, 4, 2],
     ]);
   });

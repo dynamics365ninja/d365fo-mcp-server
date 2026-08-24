@@ -99,7 +99,17 @@ const CHARS_PER_TOKEN = 4;
 //
 // Raised by ~50 chars for add-query-range / remove-query-range — two XML-only
 // operations for inserting/removing ViewMetadata filter ranges on data entities.
-const TOTAL_BUDGET = 52_150;
+// Lowered to bank the removal of build_d365fo_project.buildReferencedModels, a
+// parameter whose handler hard-codes `false` and ignores it (buildProject.ts).
+// The ratchet only works in this direction: fit the change to the budget, never
+// the budget to the change.
+// Lowered again after unpublishing parameters no caller passed in 273 sampled
+// tool calls (search: workspacePath/includeWorkspace/globalTypeFilter/deduplicate/
+// crossReference; labels: the list/list-files and limit aliases; trigger_db_sync:
+// tableName) and de-duplicating prose the tool description already carried. Every
+// one of those keys is still accepted by its handler — only the advertisement is
+// gone. Measured payload after the trim: 49_210.
+const TOTAL_BUDGET = 49_500;
 const LARGEST_TOOL_BUDGET = 5_700;
 
 async function getTools(): Promise<Array<{ name: string }>> {

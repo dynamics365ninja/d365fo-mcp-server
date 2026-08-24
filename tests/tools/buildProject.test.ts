@@ -86,7 +86,46 @@ vi.mock('../../src/utils/packagesRoot.js', async () => {
 });
 
 import path from 'path';
-import { buildProjectTool, readFullLog } from '../../src/tools/sdlc/buildProject';
+import { buildProjectTool, readFullLog, trimSucceededLog } from '../../src/tools/sdlc/buildProject';
+
+describe('trimSucceededLog', () => {
+  const SUMMARY = ['Compilation completed', 'Errors: 0', 'Warnings: 2'];
+  const timing = (n: number) =>
+    Array.from({ length: n }, (_, i) => 'Phase timing row ' + i);
+
+  it('drops the phase-timing table a green build has no use for', () => {
+    const out = trimSucceededLog([...timing(45), ...SUMMARY].join('\n'));
+
+    expect(out).toContain('phase-timing line(s) omitted');
+    expect(out).not.toContain('Phase timing row 0');
+    // The trailing summary is the part a green build is actually read for.
+    expect(out).toContain('Errors: 0');
+    expect(out).toContain('Warnings: 2');
+  });
+
+  it('keeps every warning, wherever it sits in the tail', () => {
+    const warning = 'Metadata Warning: dynamics://MyModel/MyTable: [(1,1)]: label is missing.';
+    const out = trimSucceededLog([...timing(20), warning, ...timing(20), ...SUMMARY].join('\n'));
+
+    expect(out).toContain(warning);
+    expect(out).not.toContain('Phase timing row 3');
+  });
+
+  it('is a no-op on a log with nothing to strip', () => {
+    const short = ['Compilation completed', 'Errors: 0'].join('\n');
+    expect(trimSucceededLog(short)).toBe(short);
+
+    // Long, but every line is a diagnostic — none of it is timing noise.
+    const allDiags = Array.from({ length: 40 },
+      (_, i) => 'Metadata Warning: dynamics://M/T' + i + ': [(1,1)]: x.').join('\n');
+    expect(trimSucceededLog(allDiags)).toBe(allDiags);
+  });
+
+  it('shrinks a real-shaped tail by roughly the phase table', () => {
+    const raw = [...timing(57), ...SUMMARY].join('\n');
+    expect(trimSucceededLog(raw).length).toBeLessThan(raw.length / 2);
+  });
+});
 
 const PROJECT_PATH = 'C:\\MyProject\\MyProject.rnrproj';
 const MODEL_NAME = 'MyModel';

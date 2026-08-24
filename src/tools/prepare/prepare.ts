@@ -16,6 +16,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { prepareChangeTool } from './prepareChange.js';
 import { prepareCreateTool } from './prepareCreate.js';
+import { getConfigManager } from '../../utils/configManager.js';
 
 export const PREPARE_MODES = ['change', 'create'] as const;
 export type PrepareMode = (typeof PREPARE_MODES)[number];
@@ -93,6 +94,55 @@ export function resetRecentPrepares(): void {
   recentPrepares.clear();
 }
 
+/**
+ * Where the writes will land, stated once per process.
+ *
+ * get_workspace_info was the FIRST call in 10 of 10 sampled sessions, and every
+ * one of those replies was the same ~1.4 KB. What the opening call is actually
+ * for is the target model and where it writes — four lines. prepare is the tool
+ * that starts real work, so it carries them, once: repeating them on all 17
+ * prepares in those sessions would cost more than the call it removes.
+ *
+ * Deliberately NOT a substitute for get_workspace_info: that tool still answers
+ * project tables, roots, the stdio handshake and diagnostics=true. This is the
+ * subset an agent needs before its first write.
+ */
+let workspaceHeaderSent = false;
+
+/** Exported for tests — the flag is process-lifetime state. */
+export function resetWorkspaceHeader(): void {
+  workspaceHeaderSent = false;
+}
+
+function workspaceHeader(): string {
+  if (workspaceHeaderSent) return '';
+  workspaceHeaderSent = true;
+  try {
+    const { modelName, source, projectPath, workspacePath } = getConfigManager().getDetectionSummary();
+    const lines = [
+      `**Workspace** — model ${modelName ?? '(not detected)'} (via ${source})`,
+      projectPath  ? `Project: ${projectPath}`   : 'Project: (none resolved — pass projectPath to add files to a VS project)',
+    ];
+    if (workspacePath) lines.push(`Workspace: ${workspacePath}`);
+    lines.push('(get_workspace_info has the full picture: project table, roots, diagnostics.)');
+    return lines.join('\n') + '\n\n---\n\n';
+  } catch {
+    // Never let a config read failure turn a good prepare into an error.
+    return '';
+  }
+}
+
+/** Put the once-per-process header in front of a successful reply. */
+function withWorkspaceHeader(result: unknown): unknown {
+  const r = result as { content?: Array<{ type?: string; text?: string }>; isError?: boolean };
+  if (r?.isError) return result;
+  const first = r?.content?.[0];
+  if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
+  const header = workspaceHeader();
+  if (!header) return result;
+  return { ...r, content: [{ ...first, text: header + first.text }, ...r.content!.slice(1)] };
+}
+
 export async function prepareTool(request: CallToolRequest, context: XppServerContext) {
   const parsed = PrepareArgsSchema.safeParse(request.params.arguments ?? {});
   if (!parsed.success) {
@@ -151,7 +201,7 @@ export async function prepareTool(request: CallToolRequest, context: XppServerCo
       goal: typeof rest['goal'] === 'string' ? rest['goal'] : '',
     });
   }
-  return result;
+  return withWorkspaceHeader(result);
 }
 
 // Tool registration (name, description, inputSchema) lives in

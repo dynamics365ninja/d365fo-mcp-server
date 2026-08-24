@@ -29,9 +29,9 @@ export const buildD365foProjectTool = {
           type: 'boolean',
           description: 'Full recompile of the TARGET model only (deps stay incremental). Use when xppc reports stale symbol errors.',
         },
-        buildReferencedModels: {
+        bpCheck: {
           type: 'boolean',
-          description: 'DISABLED — always ignored. Rebuilding dependency models on every build slows the run down and referenced models are expected to already be compiled.',
+          description: 'On a SUCCESSFUL build, also run the best-practice checker and append its findings — saves the usual follow-up run_bp_check call.',
         },
         wait: {
           type: 'boolean',

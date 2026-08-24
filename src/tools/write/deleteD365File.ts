@@ -406,13 +406,15 @@ export async function handleDeleteD365File(
         failureNote +
         indexNote +
         suppressionNote +
-        `\n\nNext: build_d365fo_project to compile the model without it. References to "${resolvedName}" ` +
-        `elsewhere are now compile errors — find_references before deleting is the cheap way to know.\n` +
-        `If this delete was a mistake: when the model directory is under git, ` +
-        `undo_last_modification(filePath="${filePath}") restores the XML. It does NOT restore the project ` +
-        `entr${unregistered.length === 1 ? 'y' : 'ies'} removed above — re-add ` +
+        // Deliberately short: "run find_references before deleting" was advice the
+        // reader can no longer act on, and the undo paragraph restated in prose what
+        // the one call already says.
+        `\n\nNext: build_d365fo_project — every remaining reference to "${resolvedName}" is now a compile error ` +
+        `(find_references lists them).\n` +
+        `Undo (git-backed models only): undo_last_modification(filePath="${filePath}") restores the XML, but not the ` +
+        `project entr${unregistered.length === 1 ? 'y' : 'ies'} removed above — re-add ` +
         `${unregistered.length > 0 ? `\`${axFolder}\\${resolvedName}\` in ${unregistered.join(', ')}` : 'any project entry'} ` +
-        `by hand, or from source control. Outside git there is no undo at all.`,
+        `by hand or from source control.`,
     }],
   };
 }

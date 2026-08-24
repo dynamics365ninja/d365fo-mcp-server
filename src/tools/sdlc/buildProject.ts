@@ -395,6 +395,38 @@ async function readLogTail(logFile: string, lines = 60): Promise<string> {
   }
 }
 
+/**
+ * Log excerpt for a SUCCEEDED build.
+ *
+ * A green build returned the raw 60-line tail, which is almost entirely xppc's
+ * phase-timing table — measured at ~2.6 KB of a ~3.1 KB response — and nothing
+ * downstream reads a timing row. Keep the lines a green build can still say
+ * something with: the diagnostic (warning) lines, and the trailing summary counts.
+ *
+ * The input is deliberately the same 60-line tail the raw version returned, so
+ * the warnings verdict computed from that tail is unchanged by this trim; a
+ * warning that never reached the tail was already invisible before.
+ */
+export function trimSucceededLog(logTail: string, keepTail = 12): string {
+  const all = logTail.split(/\r?\n/);
+  // Nothing to win on a log that is already short.
+  if (all.length <= keepTail + 8) return logTail;
+
+  const summaryFrom = all.length - keepTail;
+  const diagnostics: string[] = [];
+  let omitted = 0;
+  for (let i = 0; i < summaryFrom; i++) {
+    if (DIAG_LINE_TEST.test(all[i].trim())) diagnostics.push(all[i]);
+    else omitted++;
+  }
+  if (omitted === 0) return logTail;
+
+  return (
+    `[${omitted} phase-timing line(s) omitted — build succeeded]\n` +
+    [...diagnostics, ...all.slice(summaryFrom)].join('\n').trim()
+  );
+}
+
 /** Read the entire log without truncation — used for diagnostics parsing only. */
 async function readWholeLog(logFile: string): Promise<string> {
   try {
@@ -946,6 +978,9 @@ async function renderFinishedBuildResult(
   targetModel: string,
   /** Where to leave the last-build note; omitted when no symbol index is attached. */
   dataDir?: string,
+  /** The tool's own arguments, for the opt-in post-build BP check. */
+  params?: any,
+  context?: any,
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
   const succeeded  = finalState.status === 'succeeded';
   const isQueued   = !!(finalState.buildQueue && finalState.buildQueue.length > 1);
@@ -963,7 +998,7 @@ async function renderFinishedBuildResult(
       : allResults.find(r => r.status === 'failed');
     const relevantLogFile = relevantResult?.logFile ?? finalState.logFile;
     const logContent = succeeded
-      ? await readLogTail(relevantLogFile)
+      ? trimSucceededLog(await readLogTail(relevantLogFile))
       : await readFullLog(relevantLogFile);
     const wholeLog = succeeded ? '' : await readWholeLog(relevantLogFile);
     const parsed = succeeded ? [] : parseXppcDiagnostics(wholeLog);
@@ -983,7 +1018,7 @@ async function renderFinishedBuildResult(
   }
 
   const logTail       = await readLogTail(finalState.logFile);
-  const logContent    = succeeded ? logTail : await readFullLog(finalState.logFile);
+  const logContent    = succeeded ? trimSucceededLog(logTail) : await readFullLog(finalState.logFile);
   const hasWarnings   = succeeded && logTail.split(/\r?\n/).some(l => /Warning:\s/.test(l) && DIAG_LINE_TEST.test(l.trim()));
   const statusIcon    = !succeeded ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
   const buildMode     = finalState.fullBuild ? 'full build (target), incremental (deps)' : 'incremental';
@@ -1005,6 +1040,12 @@ async function renderFinishedBuildResult(
     });
   }
 
+  // "compile, then check best practices" was the second most common pair in the
+  // sampled sessions (10 build -> run_bp_check hand-offs). Opt-in, and only on a
+  // green build: when the compile failed, the compiler errors ARE the answer and
+  // a BP report on half-built metadata is noise.
+  const bpSection = succeeded ? await runPostBuildBpCheck(params, targetModel, context) : '';
+
   return {
     content: [{
       type: 'text',
@@ -1012,10 +1053,39 @@ async function renderFinishedBuildResult(
         incrementalScopeCaveat(succeeded, !!finalState.fullBuild) + '\n' +
         (unexplained ? `${unexplained}\n\n` : '') +
         (structured ? `${structured}\n\n--- Raw log ---\n` : '') +
-        `${logContent || '(no output)'}`,
+        `${logContent || '(no output)'}` + bpSection,
     }],
     ...((!succeeded) ? { isError: true } : {}),
   };
+}
+
+/**
+ * Model-wide BP check appended to a successful build when bpCheck:true.
+ *
+ * Advisory by construction: any failure here is reported as a line, never as a
+ * failed build — the compile already succeeded and that verdict stands.
+ */
+async function runPostBuildBpCheck(
+  params: any,
+  targetModel: string,
+  context: any,
+): Promise<string> {
+  if (params?.bpCheck !== true && params?.bpCheck !== 'true') return '';
+  try {
+    const { runBpCheckTool } = await import('./runBpCheck.js');
+    const result: any = await runBpCheckTool(
+      { modelName: targetModel, projectPath: params?.projectPath, packagePath: params?.packagePath },
+      context,
+    );
+    const text = (result?.content ?? [])
+      .filter((c: any) => c?.type === 'text' && typeof c.text === 'string')
+      .map((c: any) => c.text)
+      .join('\n')
+      .trim();
+    return text ? `\n\n--- Best practices (bpCheck=true) ---\n${text}` : '';
+  } catch (e: any) {
+    return `\n\n⚠️ bpCheck requested but could not run: ${e?.message ?? e}`;
+  }
 }
 
 /**
@@ -1319,7 +1389,7 @@ export const buildProjectTool = async (params: any, context: any, onProgress?: P
           );
           if (wait.outcome === 'finished' && wait.state) {
             await clearBuildState(targetModel, customPackagesPath);
-            return await renderFinishedBuildResult(wait.state, targetModel, dataDir);
+            return await renderFinishedBuildResult(wait.state, targetModel, dataDir, params, context);
           }
           const tailLog = await readLogTail(existingState.logFile);
           if (wait.outcome === 'orphaned') {
@@ -1389,7 +1459,7 @@ export const buildProjectTool = async (params: any, context: any, onProgress?: P
       );
       await clearBuildState(targetModel, customPackagesPath);
       if (stillCurrent) {
-        const result = await renderFinishedBuildResult(existingState, targetModel, dataDir);
+        const result = await renderFinishedBuildResult(existingState, targetModel, dataDir, params, context);
         // Say plainly that nothing was compiled just now, so a reader can never
         // mistake a collected result for a fresh one.
         const collected =
@@ -1522,7 +1592,7 @@ export const buildProjectTool = async (params: any, context: any, onProgress?: P
       );
       if (wait.outcome === 'finished' && wait.state) {
         await clearBuildState(targetModel, customPackagesPath);
-        return await renderFinishedBuildResult(wait.state, targetModel, dataDir);
+        return await renderFinishedBuildResult(wait.state, targetModel, dataDir, params, context);
       }
       const elapsed = Math.round((Date.now() - startedAt) / 1000);
       const tailLog = await readLogTail(wait.state?.logFile ?? firstLogFile);

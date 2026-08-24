@@ -956,14 +956,14 @@ export function renderOpSpec(operation: string): string {
   const op = D365FO_FILE_OP_SPECS[operation];
   if (!op) return `Unknown operation '${operation}'. Valid operations: ${Object.keys(D365FO_FILE_OP_SPECS).join(', ')}.`;
   const lines = [
-    // The published schema no longer carries op params (issue #825), so every
-    // spec names the lookup that returns it — otherwise the only way to see the
-    // contract is to fail a call first.
-    `(Fetch this spec any time with get_knowledge(kind="op-spec", topic="${operation}").)`,
-    `Parameter spec for operation '${operation}' — pass these NESTED inside \`params\`. ` +
-    `(Flat top-level keys still work for a few legacy names, but do not rely on it: strict MCP clients ` +
-    `validate against the base wire schema and drop anything undeclared before it reaches this server, ` +
-    `which then surfaces as a "required parameters missing" error that names the wrong cause.)`,
+    // The published schema no longer carries op params (issue #825), so the spec
+    // names the lookup that returns it — otherwise the only way to see the
+    // contract is to fail a call first. Kept to one line: the rationale for why
+    // flat keys fail was ~340 chars in front of every spec and changed nothing
+    // the caller does about it.
+    `Parameter spec for operation '${operation}' — pass these NESTED inside \`params\` ` +
+    `(strict MCP clients drop undeclared top-level keys). ` +
+    `Re-fetch: get_knowledge(kind="op-spec", topic="${operation}").`,
     ...op.required.map(p => renderParamLine(p, 'REQUIRED')),
     ...op.optional.map(p => renderParamLine(p, 'optional')),
   ];

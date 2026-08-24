@@ -77,9 +77,29 @@ interface DedupEntry {
 
 const dedupCache = new Map<string, DedupEntry>();
 
+/**
+ * JSON.stringify with object keys sorted, so argument ORDER stops being part of
+ * the cache identity. Plain JSON.stringify hashed {objectType,name} and
+ * {name,objectType} to two different keys — the same call twice, where the second
+ * one missed the cache and re-ran the query. Array order is preserved on purpose:
+ * in operations[] and objects[] the order is meaningful, not incidental.
+ *
+ * Throws on a circular argument, which the caller below already catches.
+ */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, val) =>
+    val && typeof val === 'object' && !Array.isArray(val)
+      ? Object.fromEntries(
+          Object.keys(val as Record<string, unknown>).sort()
+            .map(k => [k, (val as Record<string, unknown>)[k]]),
+        )
+      : val,
+  );
+}
+
 export function dedupKey(toolName: string, args: unknown): string {
   try {
-    return `${toolName}|${JSON.stringify(args ?? {})}`;
+    return `${toolName}|${stableStringify(args ?? {})}`;
   } catch {
     return `${toolName}|<unserializable>`;
   }

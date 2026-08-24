@@ -50,6 +50,11 @@ export async function getKnowledgeTool(request: CallToolRequest) {
   }
 
   const { kind: explicitKind, ...rest } = parsed.data;
+  // A run picks 4-8 different operations and fetched each contract in its own
+  // call: get_knowledge was 40 of 273 tool calls in the sampled sessions, 38 of
+  // them op-spec, with 8 back-to-back pairs. topics[] answers them in one.
+  const topics = normalizeTopics((rest as Record<string, unknown>).topics);
+  delete (rest as Record<string, unknown>).topics;
   const kind: KnowledgeKind =
     explicitKind ?? ((rest as any).errorText || (rest as any).errorCode ? 'error' : 'knowledge');
   if (kind === 'error') {
@@ -71,6 +76,12 @@ export async function getKnowledgeTool(request: CallToolRequest) {
   // fails on the first try and teaches the agent not to use it.
   if (kind === 'op-spec') {
     const r = rest as Record<string, unknown>;
+    if (topics) {
+      // Purely a table lookup, so the batch costs no more than the loop did.
+      return {
+        content: [{ type: 'text', text: topics.map(t => lookupOpSpec(t)).join(SPEC_SEPARATOR) }],
+      };
+    }
     const topic = r.topic ?? r.operation ?? r.objectType ?? r.mode ?? r.query;
     return {
       content: [{ type: 'text', text: lookupOpSpec(topic == null ? undefined : String(topic)) }],
@@ -81,11 +92,45 @@ export async function getKnowledgeTool(request: CallToolRequest) {
   // `query`/`q`/`search` instead — remap those to `topic` so the call doesn't
   // fail with a misleading "expected string, received undefined" zod error.
   const knowledgeArgs = { ...rest } as Record<string, unknown>;
+  if (topics) {
+    const answers = await Promise.all(
+      topics.map(t => xppKnowledgeTool(subRequest('get_xpp_knowledge', { ...knowledgeArgs, topic: t }))),
+    );
+    return {
+      content: [{
+        type: 'text',
+        text: answers
+          .map((a, i) => `## ${topics[i]}\n${textOf(a)}`)
+          .join(SPEC_SEPARATOR),
+      }],
+    };
+  }
   if (knowledgeArgs.topic == null) {
     const alias = knowledgeArgs.query ?? knowledgeArgs.q ?? knowledgeArgs.search;
     if (alias != null) knowledgeArgs.topic = alias;
   }
   return xppKnowledgeTool(subRequest('get_xpp_knowledge', knowledgeArgs));
+}
+
+/** Cap: the point is to save round trips, not to let one call return everything. */
+export const MAX_TOPICS = 10;
+
+const SPEC_SEPARATOR = '\n\n---\n\n';
+
+/**
+ * topics[] accepted as an array; anything else (including a bare string, which
+ * belongs in `topic`) falls through to the single-topic path rather than
+ * erroring — a rejected batch just becomes the loop it was meant to replace.
+ */
+function normalizeTopics(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const list = raw.filter(t => typeof t === 'string' && t.trim() !== '').map(t => String(t).trim());
+  return list.length > 0 ? list.slice(0, MAX_TOPICS) : null;
+}
+
+function textOf(result: unknown): string {
+  const content = (result as { content?: Array<{ text?: string }> })?.content;
+  return content?.map(c => c?.text ?? '').join('\n') ?? '';
 }
 
 // Tool registration (name, description, inputSchema) lives in
