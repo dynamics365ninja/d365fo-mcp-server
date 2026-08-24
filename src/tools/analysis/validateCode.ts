@@ -272,8 +272,21 @@ function resolveXmlReferences(
       violations.push({
         element: 'EnumType',
         value: en,
-        detail: `Enum "${en}" not found in the symbol index.`,
-        severity: 'error',
+        detail:
+          `Enum "${en}" is not in the symbol index. If you invented the name, fix it — ` +
+          `but check first: enums the RUNTIME defines, and enums from a module this ` +
+          `installation does not have, are absent from the index while being perfectly ` +
+          `valid to reference. Do not swap in a similarly named enum to make this go away.`,
+        // Warning, not error, and deliberately so. This check is index-only, and on
+        // this installation 44 enum names that shipped Microsoft metadata references
+        // cannot be resolved by it — kernel enums like NoYes and TableGroup among them.
+        // A check that cannot tell "absent from the index" from "does not exist" must
+        // not assert the latter under "these will cause compiler failures": the agent
+        // obeys, picks a real-but-different enum out of search results, and the edit
+        // compiles clean meaning something else. The <Extends> check above already
+        // warns for the same reason. knowledge/kernelEnums.ts silences the kernel
+        // names that are verified, so this path is for the ones nobody has classified.
+        severity: 'warning',
       });
     }
   }

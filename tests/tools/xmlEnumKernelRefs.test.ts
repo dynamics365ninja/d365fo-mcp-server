@@ -62,10 +62,23 @@ describe('xml <EnumType> against kernel enums', () => {
     expect(ok.isError).toBeFalsy();
   });
 
-  it('still catches an enum that really does not exist', async () => {
-    // The check has to keep its teeth — this is the case it exists for.
+  it('still reports an enum that really does not exist', async () => {
+    // The check keeps its teeth — it just stops claiming certainty it cannot have.
     const bad: any = await call(tableXml('FmTotallyInventedEnum'));
-    expect(bad.isError).toBe(true);
     expect(text(bad)).toContain('FmTotallyInventedEnum');
+    expect(text(bad)).toContain('warning');
+  });
+
+  it('does not fail the call over an enum the index merely cannot see', async () => {
+    // On this installation 44 enum names that shipped Microsoft metadata references
+    // cannot be resolved by it — TableGroup and AccessRight among them. An index-only check
+    // cannot tell those from an invention, so it must not hard-error: the agent
+    // obeys, swaps in a real-but-different enum from search, and the result
+    // compiles clean meaning something else.
+    for (const en of ['TableGroup', 'AccessRight', 'SortOrder', 'HRMApplicantType']) {
+      const r: any = await call(tableXml(en));
+      expect(r.isError, en + ' must not fail the call').toBeFalsy();
+      expect(text(r), en + ' must still be reported').toContain(en);
+    }
   });
 });
