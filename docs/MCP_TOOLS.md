@@ -18,12 +18,12 @@ The grounding chain is what makes generated code compile on the first try:
 flowchart LR
     subgraph Extend["Extending existing code"]
         A1["prepare<br/>(mode=change)"] --> A2[generate code]
-        A2 --> A3["validate_code<br/>(references + syntax)"]
+        A2 --> A3["validate_code<br/>(mode=both)"]
         A3 --> A4["d365fo_file<br/>(action=modify)"]
     end
     subgraph Create["New objects"]
         B1["prepare<br/>(mode=create)"] --> B2[generate code]
-        B2 --> B3["validate_code<br/>(references + syntax)"]
+        B2 --> B3["validate_code<br/>(mode=both)"]
         B3 --> B4["d365fo_file<br/>(action=create)"]
     end
     subgraph Forms["New forms"]
@@ -36,8 +36,8 @@ flowchart LR
 
 | Workflow | Chain | Gate |
 |----------|-------|------|
-| CoC / event handler / extension | `prepare(mode="change")` → generate → `validate_code(mode="references")` + `validate_code(mode="syntax")` → `d365fo_file(action="modify")` | grounding token + reference proof |
-| New class / table / enum | `prepare(mode="create")` → generate → `validate_code(mode="references")` + `validate_code(mode="syntax")` → `d365fo_file(action="create")` | grounding token + collision check |
+| CoC / event handler / extension | `prepare(mode="change")` → generate → `validate_code(mode="both")` → `d365fo_file(action="modify")` | grounding token + reference proof |
+| New class / table / enum | `prepare(mode="create")` → generate → `validate_code(mode="both")` → `d365fo_file(action="create")` | grounding token + collision check |
 | New form | `object_patterns(domain="form", action="analyze", recommend)` → `object_patterns(domain="form", action="spec")` → `generate_object(mode="scaffold", objectType="form", cloneFrom)` → `object_patterns(domain="form", action="validate")` → `d365fo_file(action="create")` | structural pattern gate (FP001–FP010) |
 
 ---
@@ -73,7 +73,7 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
-| `get_knowledge` | `kind="knowledge"` — queryable X++ rulebook: select grammar, CoC, SysDa, FormRun lifecycle, form patterns, reading Excel/CSV files, parallel batch, direct SQL, AX2012→D365FO migration · `kind="error"` — compiler / runtime / BP errors explained with concrete fixes · `kind="op-spec"` — the parameter contract for one `d365fo_file` operation/objectType or one `generate_object` mode (`topic="add-index"`, `"table"`, `"scaffold:form"`, …); those two tools keep their parameters out of the wire schema, so this is where they come from | *"What are the rules for crossCompany selects?"* · *"How do I read an uploaded Excel file in X++?"* · *"Explain error 'object not initialized' in batch"* |
+| `get_knowledge` | `kind="knowledge"` — queryable X++ rulebook: select grammar, CoC, SysDa, FormRun lifecycle, form patterns, reading Excel/CSV files, parallel batch, direct SQL, AX2012→D365FO migration · `kind="error"` — compiler / runtime / BP errors explained with concrete fixes · `kind="op-spec"` — the parameter contract for one `d365fo_file` operation/objectType or one `generate_object` mode (`topic="add-index"`, `"table"`, `"scaffold:form"`, …); those two tools keep their parameters out of the wire schema, so this is where they come from. `topics: ["add-index", "add-field"]` answers SEVERAL lookups in one call (max 10) — a run typically needs 4-8 contracts and used to spend a round trip on each | *"What are the rules for crossCompany selects?"* · *"How do I read an uploaded Excel file in X++?"* · *"Explain error 'object not initialized' in batch"* |
 | `analyze_code` † | `mode="patterns"` — common patterns for a scenario · `mode="implementations"` — real implementations of a similar method · `mode="completeness"` — missing standard methods on a class · `mode="api-usage"` — how an API is initialized and called (compiler-resolved callers) | *"How are number sequences usually implemented here?"* · *"How do other classes implement validateWrite?"* · *"What standard methods is my service class missing?"* |
 
 ## 🎨 Code Generation (2)
@@ -94,7 +94,7 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
-| `d365fo_file` | `action=create` — create any of 39 AOT object types in the correct location + register in `.rnrproj` (gated by grounding token and form-pattern validation) · `action=modify` — safe metadata edits via the C# bridge, 38 operations: add-field, add-control, remove-control, add-entry-point, add-method, replace-code, modify-property, …; op-specific parameters go in a single `params` object (flat top-level keys still accepted) and come from `get_knowledge(kind="op-spec", topic="<operation>")` — the per-objectType `properties` contract for `action=create` from `topic="<objectType>"` — while a missing/wrong parameter returns that same complete per-op spec (error-driven guidance, source: `d365foFileOpSpecs.ts`) · `action=delete` — remove an object's XML and un-register it from every `.rnrproj` of the model that lists it (irreversible; guarded against standard-model and cross-model targets) · `action=generate` — XML preview without writing (cloud-friendly) | *"Create the class file in my project"* · *"Add the field to the General tab of the form extension"* · *"Show me the XML for this enum without creating it"* |
+| `d365fo_file` | `action=create` — create any of 39 AOT object types in the correct location + register in `.rnrproj` (gated by grounding token and form-pattern validation) · `action=modify` — safe metadata edits via the C# bridge, 38 operations: add-field, add-control, remove-control, add-entry-point, add-method, replace-code, modify-property, …; op-specific parameters go in a single `params` object (flat top-level keys still accepted) and come from `get_knowledge(kind="op-spec", topic="<operation>")` — the per-objectType `properties` contract for `action=create` from `topic="<objectType>"` — while a missing/wrong parameter returns that same complete per-op spec (error-driven guidance, source: `d365foFileOpSpecs.ts`) · `operations: [{operation, …}]` (max 20) applies SEVERAL edits to the same object in ONE call — on `action=modify` and on `action=create`, where they run against the object just created under the name it ACTUALLY got. Applied in order, stopped at the first failure, and each section of the report is capped so one call cannot return a context window · `action=delete` — remove an object's XML and un-register it from every `.rnrproj` of the model that lists it (irreversible; guarded against standard-model and cross-model targets) · `action=generate` — XML preview without writing (cloud-friendly) | *"Create the class file in my project"* · *"Add the field to the General tab of the form extension"* · *"Show me the XML for this enum without creating it"* |
 | `undo_last_modification` | Revert the last write: checkout HEAD or delete untracked file (also re-syncs the symbol index) | *"Undo that last change"* |
 
 ## 🔐 Security & Extensions (5)
@@ -113,7 +113,7 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
-| `build_d365fo_project` | MSBuild compilation with structured xppc diagnostics (severity, object, line, fix hints for the first errors) | *"Build the project and show the errors"* |
+| `build_d365fo_project` | MSBuild compilation with structured xppc diagnostics (severity, object, line, fix hints for the first errors). `bpCheck: true` appends the best-practice report to a GREEN build, saving the usual follow-up `run_bp_check`; advisory, never fails the build. A green build returns its diagnostics and summary rather than the raw phase-timing table | *"Build the project and show the errors"* |
 | `trigger_db_sync` | Database sync for the current model | *"Sync the database"* |
 | `run_bp_check` | Microsoft Best Practices (xppbp.exe) analysis — `objects: [{objectType, objectName}]` checks several objects in one call (shared preamble once, findings grouped per object) | *"Run a BP check on my model"* · *"BP check the table, its extension class and the enum"* |
 | `run_systest_class` | Execute SysTest unit tests via SysTestConsole.exe (requires an interactive console session) | *"Run the MyServiceTest class"* |
@@ -124,7 +124,7 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 | Tool | What it does | When it runs |
 |------|--------------|--------------|
 | `prepare` | `mode="change"` — one call before extending: signature + existing CoC wrappers + eligibility + strategy + **grounding token** · `mode="create"` — one call before creating: collision check + naming + EDT/label suggestions + property defaults + **grounding token** | automatically, before modifications / new objects |
-| `validate_code` | `mode="references"` — proves every type/field/method/label in generated code against the index (anti-hallucination gate) · `mode="syntax"` — offline BP validator, < 50 ms: deprecated APIs, CoC correctness, select anti-patterns, data-driven XML property rules mined from standard models | automatically, after generation |
+| `validate_code` | `mode="both"` — runs both checks below in ONE call and merges them; prefer it, since both are wanted before every write · `mode="references"` — proves every type/field/method/label in generated code against the index (anti-hallucination gate) · `mode="syntax"` — offline BP validator, < 50 ms: deprecated APIs, CoC correctness, select anti-patterns, data-driven XML property rules mined from standard models | automatically, after generation |
 | `review_workspace_changes` | AI code review of uncommitted X++ changes (git diff) | on request: *"Review my changes"* |
 
 > **Grounding enforcement:** `prepare` issues a SHA-256 provenance token (30-min TTL) **bound to the object it was issued for**. When `GROUNDING_ENFORCE=true` is set in `.env`:
