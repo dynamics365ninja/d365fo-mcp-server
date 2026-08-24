@@ -4482,6 +4482,34 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     };
 
   } catch (error) {
+    // A parameter of the RIGHT name but the WRONG shape used to escape to the
+    // generic message below, which renders a ZodError as its raw issue array:
+    //
+    //   ❌ Error modifying D365FO file: [ { "expected": "object", "code":
+    //     "invalid_type", "path": [ "indexFields", 0 ], … } ]
+    //
+    // observed live on add-index called with indexFields: ["ProbeId"] instead of
+    // [{fieldName:"ProbeId"}]. The published schema promises "A missing/wrong one
+    // returns that COMPLETE spec — follow it, do not guess", and the missing-param
+    // path above keeps that promise; this one did not, so the caller either guessed
+    // or spent a round trip on get_knowledge to find out what it already asked for.
+    const rawArgs = (request.params.arguments ?? {}) as Record<string, unknown>;
+    const opName = typeof rawArgs.operation === 'string' ? rawArgs.operation : undefined;
+    if (error instanceof z.ZodError && opName) {
+      const issues = error.issues
+        .map(i => `  • ${i.path.join('.') || '(root)'}: ${i.message}`)
+        .join(String.fromCharCode(10));
+      return {
+        content: [{
+          type: 'text',
+          text:
+            `❌ '${opName}': a parameter does not match the contract.\n` +
+            issues + '\n\n' +
+            renderOpSpec(opName),
+        }],
+        isError: true,
+      };
+    }
     return {
       content: [
         {
