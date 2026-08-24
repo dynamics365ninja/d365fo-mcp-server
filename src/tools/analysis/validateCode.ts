@@ -377,46 +377,42 @@ export async function validateCodeTool(request: CallToolRequest, context: XppSer
 async function runReferenceCheck(request: CallToolRequest, context: XppServerContext) {
   const a = (request.params.arguments ?? {}) as Record<string, any>;
   const codeType = (a.codeType as string | undefined) ?? 'xpp';
-  {
-    {
-      // X++ code → use the dedicated X++ reference resolver
-      if (codeType === 'xpp') return resolveReferencesTool(request, context);
+  // X++ code → use the dedicated X++ reference resolver
+  if (codeType === 'xpp') return resolveReferencesTool(request, context);
 
-      // XML (xml-table or xml-any) → use the XML-aware reference checker
-      const contextName = a.context as string | undefined;
-      const { violations, verified } = resolveXmlReferences(a.code as string, contextName, context);
+  // XML (xml-table or xml-any) → use the XML-aware reference checker
+  const contextName = a.context as string | undefined;
+  const { violations, verified } = resolveXmlReferences(a.code as string, contextName, context);
 
-      if (violations.length === 0) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `✅ validate_code(references): all ${verified} reference(s) verified against the index${contextName ? ` in ${contextName}` : ''}.\n` +
-              `No hallucinated symbols detected. This is a name-existence check, not a compile — ` +
-              `build_d365fo_project remains the only proof it compiles.`,
-          }],
-        };
-      }
-
-      const errors = violations.filter(v => v.severity === 'error');
-      const warns  = violations.filter(v => v.severity === 'warning');
-      const lines: string[] = [
-        `${errors.length > 0 ? '❌' : '⚠️'} validate_code(references): ${violations.length} issue(s) found (${errors.length} error(s), ${warns.length} warning(s)), ${verified} verified${contextName ? ` in ${contextName}` : ''}.`,
-        '',
-      ];
-      for (const v of violations) {
-        lines.push(`${v.severity === 'error' ? '❌' : '⚠️'} <${v.element}>${v.value}</${v.element}>`);
-        lines.push(`   ${v.detail}`);
-      }
-      if (errors.length > 0) {
-        lines.push('', 'Fix errors before writing — these will cause compiler failures or wrong object references.');
-      }
-
-      return {
-        content: [{ type: 'text' as const, text: lines.join('\n') }],
-        isError: errors.length > 0,
-      };
-    }
+  if (violations.length === 0) {
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `✅ validate_code(references): all ${verified} reference(s) verified against the index${contextName ? ` in ${contextName}` : ''}.\n` +
+          `No hallucinated symbols detected. This is a name-existence check, not a compile — ` +
+          `build_d365fo_project remains the only proof it compiles.`,
+      }],
+    };
   }
+
+  const errors = violations.filter(v => v.severity === 'error');
+  const warns  = violations.filter(v => v.severity === 'warning');
+  const lines: string[] = [
+    `${errors.length > 0 ? '❌' : '⚠️'} validate_code(references): ${violations.length} issue(s) found (${errors.length} error(s), ${warns.length} warning(s)), ${verified} verified${contextName ? ` in ${contextName}` : ''}.`,
+    '',
+  ];
+  for (const v of violations) {
+    lines.push(`${v.severity === 'error' ? '❌' : '⚠️'} <${v.element}>${v.value}</${v.element}>`);
+    lines.push(`   ${v.detail}`);
+  }
+  if (errors.length > 0) {
+    lines.push('', 'Fix errors before writing — these will cause compiler failures or wrong object references.');
+  }
+
+  return {
+    content: [{ type: 'text' as const, text: lines.join('\n') }],
+    isError: errors.length > 0,
+  };
 }
 
 function resultText(result: unknown): string {
