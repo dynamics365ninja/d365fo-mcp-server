@@ -99,7 +99,11 @@ const CHARS_PER_TOKEN = 4;
 //
 // Raised by ~50 chars for add-query-range / remove-query-range — two XML-only
 // operations for inserting/removing ViewMetadata filter ranges on data entities.
-const TOTAL_BUDGET = 52_150;
+// Lowered to bank the removal of build_d365fo_project.buildReferencedModels, a
+// parameter whose handler hard-codes `false` and ignores it (buildProject.ts).
+// The ratchet only works in this direction: fit the change to the budget, never
+// the budget to the change.
+const TOTAL_BUDGET = 52_000;
 const LARGEST_TOOL_BUDGET = 5_700;
 
 async function getTools(): Promise<Array<{ name: string }>> {

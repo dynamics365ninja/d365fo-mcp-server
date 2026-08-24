@@ -4445,22 +4445,25 @@ export async function handleCreateD365File(
     // Scheduling here collapses both into the one rebuild validation waits for.
     if (context?.bridge) void debouncedRefresh.refresh(context.bridge);
 
-    // Post-write validation via C# bridge (best-effort, non-fatal, fire-and-forget).
-    // Not awaited: the validation goes through the sequential bridge stdin/stdout
-    // pipe and can take 60s+, which would block all subsequent MCP calls.
-    // See: https://github.com/dynamics365ninja/d365fo-mcp-server/issues/407
     const bridgeValidation = '';
-    bridgeValidateAfterWrite(
-      context?.bridge,
-      args.objectType,
-      finalObjectName,
-    ).then(validationMsg => {
-      if (validationMsg) {
-        console.error(`[create_d365fo_file] Bridge validation: ${validationMsg}`);
-      }
-    }).catch(e => {
-      console.error(`[create_d365fo_file] Bridge validation skipped: ${e}`);
-    });
+    // The read-back validation never reached the caller — every outcome went to
+    // stderr — while its validateObject RPC sat in the sequential bridge pipe and
+    // delayed the next MCP call. The refresh scheduled just above is the half that
+    // callers depend on and runs unconditionally. Kept for debugging only.
+    // See: https://github.com/dynamics365ninja/d365fo-mcp-server/issues/407
+    if (process.env.DEBUG_LOGGING === 'true') {
+      bridgeValidateAfterWrite(
+        context?.bridge,
+        args.objectType,
+        finalObjectName,
+      ).then(validationMsg => {
+        if (validationMsg) {
+          console.error(`[create_d365fo_file] Bridge validation: ${validationMsg}`);
+        }
+      }).catch(e => {
+        console.error(`[create_d365fo_file] Bridge validation skipped: ${e}`);
+      });
+    }
 
     // Add to Visual Studio project if requested
     let projectMessage = '';

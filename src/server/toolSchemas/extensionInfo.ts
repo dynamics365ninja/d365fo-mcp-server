@@ -65,8 +65,8 @@ export const extensionInfoTool = {
         },
         showExistingExtensions: {
           type: 'boolean',
-          description: '[points] Show which extension points are already extended (default: true).',
-          default: true,
+          description: '[points] Also list who already wraps/subscribes each point — opt-in, roughly doubles the response.',
+          default: false,
         },
       },
       required: ['mode'],

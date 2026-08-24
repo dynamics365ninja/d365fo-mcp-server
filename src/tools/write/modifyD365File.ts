@@ -4295,22 +4295,29 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
 
     console.error(`[modify_d365fo_file] ✅ Bridge ${operation}: ${bridgeResult.message}`);
 
-    // Post-write validation (best-effort, fire-and-forget).
-    // Not awaited: the validation goes through the sequential bridge stdin/stdout
-    // pipe and can take 60s+, which would block all subsequent MCP calls.
-    // See: https://github.com/dynamics365ninja/d365fo-mcp-server/issues/407
     const bridgeValidation = '';
-    bridgeValidateAfterWrite(
-      context.bridge,
-      objectType,
-      objectName,
-    ).then(validationMsg => {
-      if (validationMsg) {
-        console.error(`[modify_d365fo_file] Bridge validation: ${validationMsg}`);
-      }
-    }).catch(e => {
-      console.error(`[modify_d365fo_file] Bridge validation skipped: ${e}`);
-    });
+    // Schedule the provider rebuild so the NEXT read sees this write — toolHandler's
+    // flush() settles it before the following bridge-backed call. This used to happen
+    // only as a side effect INSIDE bridgeValidateAfterWrite, so it has to be explicit
+    // now that the validation no longer runs by default.
+    if (context.bridge) void debouncedRefresh.refresh(context.bridge);
+    // The read-back validation itself never reached the caller — every outcome went
+    // to stderr — while its validateObject RPC sat in the sequential bridge pipe and
+    // delayed the next MCP call. Kept for debugging, off the default path.
+    // See: https://github.com/dynamics365ninja/d365fo-mcp-server/issues/407
+    if (process.env.DEBUG_LOGGING === 'true') {
+      bridgeValidateAfterWrite(
+        context.bridge,
+        objectType,
+        objectName,
+      ).then(validationMsg => {
+        if (validationMsg) {
+          console.error(`[modify_d365fo_file] Bridge validation: ${validationMsg}`);
+        }
+      }).catch(e => {
+        console.error(`[modify_d365fo_file] Bridge validation skipped: ${e}`);
+      });
+    }
 
     // Register the edited file in the ACTIVE project unless it is already there.
     //

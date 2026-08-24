@@ -22,6 +22,35 @@ afterEach(() => {
 });
 
 describe('dedup cache', () => {
+  it('ignores argument order — the same call spelled two ways hits one entry', () => {
+    // JSON.stringify preserved insertion order, so {objectType,name} and
+    // {name,objectType} were two cache entries for one call and the second
+    // spelling always missed and re-ran the query.
+    const a = dedupKey('get_object_info', { objectType: 'table', name: 'CustTable' });
+    const b = dedupKey('get_object_info', { name: 'CustTable', objectType: 'table' });
+    expect(a).toBe(b);
+
+    storeDedupResult(a, { content: [{ type: 'text', text: 'CustTable' }] });
+    expect(getDedupedResult(b)).toBeDefined();
+  });
+
+  it('sorts keys at every depth, not just the top level', () => {
+    expect(dedupKey('prepare', { o: { z: 1, a: 2 }, t: 'x' }))
+      .toBe(dedupKey('prepare', { t: 'x', o: { a: 2, z: 1 } }));
+  });
+
+  it('keeps ARRAY order significant — operations[] order is meaningful', () => {
+    // Two ops applied in the opposite order are a different write, not a repeat.
+    expect(dedupKey('d365fo_file', { operations: [{ op: 'a' }, { op: 'b' }] }))
+      .not.toBe(dedupKey('d365fo_file', { operations: [{ op: 'b' }, { op: 'a' }] }));
+  });
+
+  it('falls back to a stable marker for a circular argument', () => {
+    const circular: any = { name: 'X' };
+    circular.self = circular;
+    expect(dedupKey('search', circular)).toBe('search|<unserializable>');
+  });
+
   it('returns the stored result for an identical key within the TTL', () => {
     const key = dedupKey('search', { query: 'CustTable' });
     const result = { content: [{ type: 'text', text: 'hit' }] };
