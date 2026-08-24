@@ -52,6 +52,7 @@ const PLURAL_FORM_TOOLS = [
   'get_object_info', 'run_bp_check', 'verify_d365fo_project',
   'd365fo_file',    // operations[] applies many edits to one object in a call
   'get_knowledge',  // topics[] answers several lookups in a call
+  'search',         // queries[] runs several searches in one call, in parallel
 ];
 
 export interface CostRates {
