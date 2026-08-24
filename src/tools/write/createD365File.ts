@@ -3194,12 +3194,28 @@ async function reconcileCreatedTableProperties(
 /**
  * Create D365FO file handler function
  */
+/**
+ * What the caller needs to chain further work onto a create: the name the object
+ * ACTUALLY got, after prefix/casing normalization, and where it was written.
+ *
+ * An out-parameter because neither alternative is sound. Parsing it back out of
+ * the response text is brittle, and a module-level "last created" would be wrong
+ * under two concurrent creates. Both fields are set at the point create computes
+ * them, so every later return path carries them regardless of which one fires —
+ * and a caller that finds them missing must NOT guess (see d365foFile.ts).
+ */
+export interface CreateOutcome {
+  finalObjectName?: string;
+  filePath?: string;
+}
+
 export async function handleCreateD365File(
   request: CallToolRequest,
   context?: {
     bridge?: import('../../bridge/bridgeClient.js').BridgeClient;
     symbolIndex?: import('../../metadata/symbolIndex.js').XppSymbolIndex;
   },
+  outcome?: CreateOutcome,
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
   const timer = createPhaseTimer();
   const args = CreateD365FileArgsSchema.parse(request.params.arguments);
@@ -3455,6 +3471,10 @@ export async function handleCreateD365File(
     if (finalObjectName !== args.objectName) {
       console.error(`[create_d365fo_file] Applied naming: ${args.objectName} → ${finalObjectName}`);
     }
+    // Published here, before any of the return paths below, so a caller chaining
+    // work onto this create targets the name that was WRITTEN rather than the one
+    // that was asked for.
+    if (outcome) outcome.finalObjectName = finalObjectName;
     // Disclose a rename in the RESPONSE, not only on stderr. The XML template
     // path says "prefixed from …"; the bridge path — every extension, class and
     // table — said nothing, so the object came back under a name the caller never
@@ -3600,6 +3620,7 @@ export async function handleCreateD365File(
 
     // Normalize path to Windows format (backslashes) for consistency
     const normalizedFullPath = fullPath.replace(/\//g, '\\');
+    if (outcome) outcome.filePath = normalizedFullPath;
 
     // Ensure directory exists (create if needed)
     const directory = path.dirname(normalizedFullPath);

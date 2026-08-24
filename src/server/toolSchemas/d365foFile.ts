@@ -106,10 +106,10 @@ Model + prefix auto-applied. Classes: member vars inside the class { }, methods 
           type: 'array',
           maxItems: 20,
           description:
-            '[modify] PREFERRED for 2+ edits to the SAME object — ONE call, not one per edit. ' +
+            '[modify|create] PREFERRED for 2+ edits to the SAME object — ONE call, not one per edit. ' +
+            'On create they run against the just-created object, under the name it actually got. ' +
             'Entries are {operation, …op-spec params}; objectType/objectName/modelName stay top-level. ' +
-            'Applied in order, stopped at the first failure, per-operation results back. ' +
-            '3 fields + their field groups + an index: 7 calls flat, 1 here.',
+            'Applied in order, stopped at the first failure, per-operation results back.',
           items: { type: 'object', additionalProperties: true },
         },
         params: {

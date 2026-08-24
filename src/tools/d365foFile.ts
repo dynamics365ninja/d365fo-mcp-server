@@ -18,10 +18,11 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../types/context.js';
 import { handleGenerateD365Xml } from './xml/generateD365Xml.js';
-import { handleCreateD365File } from './write/createD365File.js';
+import { handleCreateD365File, type CreateOutcome } from './write/createD365File.js';
 import { handleDeleteD365File } from './write/deleteD365File.js';
 import { modifyD365FileTool } from './write/modifyD365File.js';
 import { resetRecentPrepares } from './prepare/prepare.js';
+import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 
 export const D365_FILE_ACTIONS = ['generate', 'create', 'modify', 'delete'] as const;
 export type D365FileAction = (typeof D365_FILE_ACTIONS)[number];
@@ -45,6 +46,20 @@ function subRequest(name: string, args: Record<string, unknown>): CallToolReques
 
 /** Ceiling on one batch — matches get_object_info's objects[] cap. */
 const MAX_BATCH_OPERATIONS = 20;
+
+/**
+ * Add a line to a result without disturbing its verdict.
+ *
+ * Used for the cases where operations[] on a create is deliberately NOT run:
+ * the create's own answer has to survive intact, isError included, with the
+ * reason the edits were skipped appended to it.
+ */
+function appendToResult(result: any, note: string): any {
+  const content = result?.content;
+  const first = Array.isArray(content) ? content[0] : undefined;
+  if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
+  return { ...result, content: [{ ...first, text: first.text + note }, ...content.slice(1)] };
+}
 
 /** Concatenated text of a tool result, for folding into the batch report. */
 function resultText(result: any): string {
@@ -201,7 +216,60 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
   }
 
   if (action === 'create') {
-    return handleCreateD365File(subRequest('create_d365fo_file', rest), context);
+    // 16 of the create -> modify sequences in the sampled sessions targeted the
+    // object that create had just made: a table is created, then its field group,
+    // index or extra fields arrive one MCP call at a time. operations[] on create
+    // applies them in the same call.
+    const { operations, ...createArgs } = rest as { operations?: unknown } & Record<string, unknown>;
+    const outcome: CreateOutcome = {};
+    const created = await handleCreateD365File(subRequest('create_d365fo_file', createArgs), context, outcome);
+
+    if (!Array.isArray(operations) || operations.length === 0) return created;
+    // Never run edits against an object that was not created.
+    if (created?.isError) {
+      return appendToResult(created,
+        `\n\n> ${operations.length} operation(s) were NOT attempted: the create above failed.`);
+    }
+    // The one thing this must not do is guess. create publishes the name it
+    // actually wrote (prefix normalization included); without it, a chained edit
+    // could land on a different object — or on nothing — while reporting success.
+    if (!outcome.finalObjectName) {
+      return appendToResult(created,
+        `\n\n> ${operations.length} operation(s) were NOT attempted: this create did not report the ` +
+        `final object name, so the target cannot be established without guessing. Send them as a ` +
+        `separate d365fo_file(action="modify", operations:[…]) call.`);
+    }
+
+    // Make the bridge SEE the new object before the edits run.
+    //
+    // Between two MCP calls toolHandler settles this via flush(); inside one call
+    // nothing did, so the DiskProvider had not seen the new file and the first
+    // operation failed with "could not resolve table 'Fm-mcpFmChainProbeTbl'" — on
+    // a table that was on disk, 1177 bytes, named in the create's own reply.
+    // Found only by running it live against the sandbox; no mock could show it.
+    //
+    // Scheduled AND flushed: flush() alone is a no-op when nothing is pending, and
+    // the create path that writes XML directly schedules no rebuild of its own.
+    // refresh() queues one, flush() runs it now instead of after the 400 ms settle.
+    if (context.bridge) {
+      void debouncedRefresh.refresh(context.bridge);
+      await debouncedRefresh.flush();
+    }
+
+    const batch = await runModifyBatch({
+      objectType: createArgs.objectType,
+      modelName: createArgs.modelName,
+      // The written name, not the requested one.
+      objectName: outcome.finalObjectName,
+      operations,
+    }, context);
+    return {
+      content: [{
+        type: 'text',
+        text: `${resultText(created)}\n\n---\n\n${resultText(batch)}`,
+      }],
+      ...((batch as { isError?: boolean }).isError ? { isError: true } : {}),
+    };
   }
   if (action === 'modify') {
     if (Array.isArray(rest.operations)) {
