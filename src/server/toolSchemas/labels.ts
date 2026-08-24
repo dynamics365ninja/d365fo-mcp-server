@@ -25,8 +25,8 @@ export const labelsTool = {
         },
         action: {
           type: 'string',
-          enum: ['search', 'info', 'create', 'update', 'rename', 'list', 'list-files'],
-          description: 'Label operation to perform. "list"/"list-files" are aliases of "info" (lists label files).',
+          enum: ['search', 'info', 'create', 'update', 'rename'],
+          description: 'Label operation to perform.',
         },
         // shared filters
         model: {
@@ -35,7 +35,7 @@ export const labelsTool = {
         },
         labelFileId: {
           type: 'string',
-          description: '[search|info|create|update|rename] AxLabelFile ID (e.g. ContosoExt, SYS). For action=info with no labelId, returns the physical .label.txt path per language. For create/update/rename use the model\'s ORIGINAL label file, not an extension (…_Extension…). For a NEW label file this ID is the MODEL name, never the bare EXTENSION_PREFIX.',
+          description: '[search|info|create|update|rename] AxLabelFile ID (e.g. ContosoExt, SYS). For a NEW label file this ID is the MODEL name, never the bare EXTENSION_PREFIX.',
         },
         language: {
           type: 'string',
@@ -43,9 +43,8 @@ export const labelsTool = {
         },
         maxResults: {
           type: 'number',
-          description: '[search] Max labels listed (default 10, alias `limit`); a truncated set reports how many more matched.',
+          description: '[search] Max labels listed (default 10); a truncated set reports how many more matched.',
         },
-        limit: { type: 'number', description: '[search] Alias of maxResults.' },
         verbose: {
           type: 'boolean',
           description: '[search] Default one line per label; true = full multi-line block.',
@@ -74,15 +73,8 @@ export const labelsTool = {
               labelId: { type: 'string', description: 'Label ID for this entry — alphanumeric, no model prefix.' },
               translations: {
                 type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    language: { type: 'string', description: 'Locale code, e.g. en-US, cs, de, sk' },
-                    text: { type: 'string', description: 'Label text' },
-                    comment: { type: 'string', description: 'Developer comment (optional)' },
-                  },
-                  required: ['language', 'text'],
-                },
+                description: 'Same entries as the top-level translations[].',
+                items: { type: 'object' },
               },
             },
             required: ['labelId', 'translations'],
@@ -111,7 +103,7 @@ export const labelsTool = {
         },
         dryRun: {
           type: 'boolean',
-          description: '[rename] Preview changes without writing anything (default: false). Use this first!',
+          description: '[rename] Preview changes without writing anything.',
         },
       },
       required: ['action'],

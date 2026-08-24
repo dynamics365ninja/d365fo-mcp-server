@@ -91,10 +91,15 @@ describe('search type enum is inlined once, not three times', () => {
     expect(props.type.enum).toContain('all');
   });
 
-  it('drops the two duplicate copies and points at the authoritative one', () => {
+  it('keeps the per-query copy enum-free and pointing at the authoritative one', () => {
     expect(props.queries.items.properties.type.enum).toBeUndefined();
     expect(props.queries.items.properties.type.description).toContain('top-level `type`');
-    expect(props.globalTypeFilter.items.enum).toBeUndefined();
-    expect(props.globalTypeFilter.description).toContain('top-level `type`');
+  });
+
+  it('does not publish globalTypeFilter at all', () => {
+    // It was the third place the type vocabulary was described, and no caller
+    // passed it in the sampled sessions. batchSearch.ts still accepts the key;
+    // it is simply no longer advertised.
+    expect(props.globalTypeFilter).toBeUndefined();
   });
 });

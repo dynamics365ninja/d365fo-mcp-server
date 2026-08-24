@@ -103,7 +103,13 @@ const CHARS_PER_TOKEN = 4;
 // parameter whose handler hard-codes `false` and ignores it (buildProject.ts).
 // The ratchet only works in this direction: fit the change to the budget, never
 // the budget to the change.
-const TOTAL_BUDGET = 52_000;
+// Lowered again after unpublishing parameters no caller passed in 273 sampled
+// tool calls (search: workspacePath/includeWorkspace/globalTypeFilter/deduplicate/
+// crossReference; labels: the list/list-files and limit aliases; trigger_db_sync:
+// tableName) and de-duplicating prose the tool description already carried. Every
+// one of those keys is still accepted by its handler — only the advertisement is
+// gone. Measured payload after the trim: 49_210.
+const TOTAL_BUDGET = 49_500;
 const LARGEST_TOOL_BUDGET = 5_700;
 
 async function getTools(): Promise<Array<{ name: string }>> {
