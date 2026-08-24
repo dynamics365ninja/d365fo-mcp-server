@@ -338,15 +338,47 @@ function resolveXmlReferences(
 export async function validateCodeTool(request: CallToolRequest, context: XppServerContext) {
   const a = (request.params.arguments ?? {}) as Record<string, any>;
   const mode = (a.mode as string | undefined) ?? 'syntax';
-  const codeType = (a.codeType as string | undefined) ?? 'xpp';
 
   if (!a.code) return err('validate_code requires `code` (the X++/XML text to check).');
 
   switch (mode) {
+    case 'both': {
+      // This tool's own description said "Call both ... BEFORE writes", and the
+      // sampled sessions obeyed it as two round trips for one decision (8 pairs
+      // of 21 validate_code calls). The two checks are independent, so they run
+      // together and come back as one answer.
+      const [syntax, references] = await Promise.all([
+        validateXppTool(request, context),
+        runReferenceCheck(request, context),
+      ]);
+      const isError = Boolean((syntax as { isError?: boolean }).isError) ||
+                      Boolean((references as { isError?: boolean }).isError);
+      return {
+        content: [{
+          type: 'text' as const,
+          text: `${resultText(syntax)}\n\n---\n\n${resultText(references)}`,
+        }],
+        ...(isError ? { isError: true } : {}),
+      };
+    }
+
     case 'syntax':
       return validateXppTool(request, context);
 
-    case 'references': {
+    case 'references':
+      return runReferenceCheck(request, context);
+
+    default:
+      return err(`validate_code: unknown mode "${mode}". Use "both" (preferred), "syntax" (BP/best-practice rules) or "references" (symbol resolution).`);
+  }
+}
+
+/** mode="references", as its own function so mode="both" can compose it. */
+async function runReferenceCheck(request: CallToolRequest, context: XppServerContext) {
+  const a = (request.params.arguments ?? {}) as Record<string, any>;
+  const codeType = (a.codeType as string | undefined) ?? 'xpp';
+  {
+    {
       // X++ code → use the dedicated X++ reference resolver
       if (codeType === 'xpp') return resolveReferencesTool(request, context);
 
@@ -384,10 +416,12 @@ export async function validateCodeTool(request: CallToolRequest, context: XppSer
         isError: errors.length > 0,
       };
     }
-
-    default:
-      return err(`validate_code: unknown mode "${mode}". Use "syntax" (BP/best-practice rules) or "references" (symbol resolution).`);
   }
+}
+
+function resultText(result: unknown): string {
+  const content = (result as { content?: Array<{ text?: string }> })?.content;
+  return content?.map(c => c?.text ?? '').join('\n') ?? '';
 }
 
 // Tool registration (name, description, inputSchema) lives in

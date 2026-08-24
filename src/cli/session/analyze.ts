@@ -48,7 +48,11 @@ const MAX_RELATIVE_RMSE = 0.02;
  * covers the tool's primary use — `labels` has a bulk create but its searches
  * (the common case) have no batch form, and flagging those would be noise.
  */
-const PLURAL_FORM_TOOLS = ['get_object_info', 'run_bp_check', 'verify_d365fo_project'];
+const PLURAL_FORM_TOOLS = [
+  'get_object_info', 'run_bp_check', 'verify_d365fo_project',
+  'd365fo_file',    // operations[] applies many edits to one object in a call
+  'get_knowledge',  // topics[] answers several lookups in a call
+];
 
 export interface CostRates {
   /** Cost unit per million tokens. */

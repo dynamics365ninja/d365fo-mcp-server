@@ -54,7 +54,7 @@ export const objectPatternsTool = {
             entityKind: {
               type: 'string',
               enum: ['master', 'transaction', 'setup', 'parameters', 'inquiry', 'lookup', 'workspace', 'dialogTask'],
-              description: 'Kind of entity: master (customers), transaction (orders+lines), setup (group tables), parameters, inquiry (read-only), lookup, workspace, dialogTask',
+              description: 'Kind of entity being modelled.',
             },
             hasHeaderLines: {
               type: 'boolean',
@@ -62,7 +62,7 @@ export const objectPatternsTool = {
             },
             fieldCount: {
               type: 'number',
-              description: 'Approximate fields users see/edit per record (<10 → SimpleList, ≥10 → SimpleListDetails)',
+              description: 'Approximate fields users see/edit per record.',
             },
             usageIntent: {
               type: 'string',
@@ -71,7 +71,7 @@ export const objectPatternsTool = {
             },
             tableName: {
               type: 'string',
-              description: 'Main table — pulls field count and existing-form evidence from the index',
+              description: 'Main table — pulls field count and existing-form evidence from the index.',
             },
           },
         },

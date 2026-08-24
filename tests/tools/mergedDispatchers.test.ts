@@ -146,6 +146,34 @@ describe('validate_code dispatcher', () => {
     const r: any = await validateCodeTool(req('validate_code', { mode: 'bogus', code: 'x' }), ctx);
     expect(r.isError).toBe(true);
   });
+
+  // The tool's own description told callers to run both checks before writing,
+  // and the sampled sessions did it as two round trips for one decision.
+  it('mode=both runs the two checks in ONE call', async () => {
+    const r: any = await validateCodeTool(req('validate_code', { mode: 'both', code: 'x' }), ctx);
+    expect(validateXppTool).toHaveBeenCalledOnce();
+    expect(resolveReferencesTool).toHaveBeenCalledOnce();
+    // Both verdicts have to survive into the single answer (the mocks above
+    // answer 'syntax' and 'references').
+    const text = r.content.map((c: any) => c.text).join('');
+    expect(text).toContain('syntax');
+    expect(text).toContain('references');
+  });
+
+  it('mode=both reports isError when either check fails', async () => {
+    (validateXppTool as any).mockResolvedValueOnce({
+      content: [{ type: 'text', text: 'boom' }], isError: true,
+    });
+    const r: any = await validateCodeTool(req('validate_code', { mode: 'both', code: 'x' }), ctx);
+    expect(r.isError).toBe(true);
+  });
+
+  it('mode=both still requires code', async () => {
+    const r: any = await validateCodeTool(req('validate_code', { mode: 'both' }), ctx);
+    expect(r.isError).toBe(true);
+    expect(validateXppTool).not.toHaveBeenCalled();
+    expect(resolveReferencesTool).not.toHaveBeenCalled();
+  });
 });
 
 // ── generate_object ───────────────────────────────────────────────────────────

@@ -978,6 +978,9 @@ async function renderFinishedBuildResult(
   targetModel: string,
   /** Where to leave the last-build note; omitted when no symbol index is attached. */
   dataDir?: string,
+  /** The tool's own arguments, for the opt-in post-build BP check. */
+  params?: any,
+  context?: any,
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
   const succeeded  = finalState.status === 'succeeded';
   const isQueued   = !!(finalState.buildQueue && finalState.buildQueue.length > 1);
@@ -1037,6 +1040,12 @@ async function renderFinishedBuildResult(
     });
   }
 
+  // "compile, then check best practices" was the second most common pair in the
+  // sampled sessions (10 build -> run_bp_check hand-offs). Opt-in, and only on a
+  // green build: when the compile failed, the compiler errors ARE the answer and
+  // a BP report on half-built metadata is noise.
+  const bpSection = succeeded ? await runPostBuildBpCheck(params, targetModel, context) : '';
+
   return {
     content: [{
       type: 'text',
@@ -1044,10 +1053,39 @@ async function renderFinishedBuildResult(
         incrementalScopeCaveat(succeeded, !!finalState.fullBuild) + '\n' +
         (unexplained ? `${unexplained}\n\n` : '') +
         (structured ? `${structured}\n\n--- Raw log ---\n` : '') +
-        `${logContent || '(no output)'}`,
+        `${logContent || '(no output)'}` + bpSection,
     }],
     ...((!succeeded) ? { isError: true } : {}),
   };
+}
+
+/**
+ * Model-wide BP check appended to a successful build when bpCheck:true.
+ *
+ * Advisory by construction: any failure here is reported as a line, never as a
+ * failed build — the compile already succeeded and that verdict stands.
+ */
+async function runPostBuildBpCheck(
+  params: any,
+  targetModel: string,
+  context: any,
+): Promise<string> {
+  if (params?.bpCheck !== true && params?.bpCheck !== 'true') return '';
+  try {
+    const { runBpCheckTool } = await import('./runBpCheck.js');
+    const result: any = await runBpCheckTool(
+      { modelName: targetModel, projectPath: params?.projectPath, packagePath: params?.packagePath },
+      context,
+    );
+    const text = (result?.content ?? [])
+      .filter((c: any) => c?.type === 'text' && typeof c.text === 'string')
+      .map((c: any) => c.text)
+      .join('\n')
+      .trim();
+    return text ? `\n\n--- Best practices (bpCheck=true) ---\n${text}` : '';
+  } catch (e: any) {
+    return `\n\n⚠️ bpCheck requested but could not run: ${e?.message ?? e}`;
+  }
 }
 
 /**
@@ -1351,7 +1389,7 @@ export const buildProjectTool = async (params: any, context: any, onProgress?: P
           );
           if (wait.outcome === 'finished' && wait.state) {
             await clearBuildState(targetModel, customPackagesPath);
-            return await renderFinishedBuildResult(wait.state, targetModel, dataDir);
+            return await renderFinishedBuildResult(wait.state, targetModel, dataDir, params, context);
           }
           const tailLog = await readLogTail(existingState.logFile);
           if (wait.outcome === 'orphaned') {
@@ -1421,7 +1459,7 @@ export const buildProjectTool = async (params: any, context: any, onProgress?: P
       );
       await clearBuildState(targetModel, customPackagesPath);
       if (stillCurrent) {
-        const result = await renderFinishedBuildResult(existingState, targetModel, dataDir);
+        const result = await renderFinishedBuildResult(existingState, targetModel, dataDir, params, context);
         // Say plainly that nothing was compiled just now, so a reader can never
         // mistake a collected result for a fresh one.
         const collected =
@@ -1554,7 +1592,7 @@ export const buildProjectTool = async (params: any, context: any, onProgress?: P
       );
       if (wait.outcome === 'finished' && wait.state) {
         await clearBuildState(targetModel, customPackagesPath);
-        return await renderFinishedBuildResult(wait.state, targetModel, dataDir);
+        return await renderFinishedBuildResult(wait.state, targetModel, dataDir, params, context);
       }
       const elapsed = Math.round((Date.now() - startedAt) / 1000);
       const tailLog = await readLogTail(wait.state?.logFile ?? firstLogFile);
