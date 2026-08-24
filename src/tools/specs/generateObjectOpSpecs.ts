@@ -246,11 +246,10 @@ export function renderGenerateObjectSpec(mode: string): string {
     );
   }
   const lines = [
-    `(Fetch this spec any time with get_knowledge(kind="op-spec", topic="${mode}").)`,
     `Parameter spec for generate_object(mode="${mode.split(':')[0]}") — pass anything beyond ` +
-    `mode/name/pattern/objectType/modelName NESTED inside \`params\`. (Flat top-level keys still reach the ` +
-    `handler, but strict MCP clients validate against the published wire schema and drop undeclared keys ` +
-    `before they arrive here, which then surfaces as a missing-parameter error naming the wrong cause.)`,
+    `mode/name/pattern/objectType/modelName NESTED inside \`params\` ` +
+    `(strict MCP clients drop undeclared top-level keys). ` +
+    `Re-fetch: get_knowledge(kind="op-spec", topic="${mode}").`,
     ...spec.required.map(p => renderParamLine(p, 'REQUIRED')),
     ...spec.optional.map(p => renderParamLine(p, 'optional')),
   ];

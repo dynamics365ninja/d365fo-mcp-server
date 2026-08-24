@@ -4467,8 +4467,10 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
               : 'IMetadataProvider.Update()'}${crossModelNotice}${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
             `🔧 API: ${bridgeResult.message}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${backupNote}${verifyNote}${indexNote}${bpNote}${timer.render()}` +
-            (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') + `\n\n` +
-            `**Next steps:**\n- Review changes in Visual Studio\n- Build the model to validate`,
+            // "Review changes in Visual Studio" is not something the caller can act
+            // on, and it rode along on every write.
+            (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') +
+            `\n\nNext: build_d365fo_project to compile the change.`,
         },
       ],
     };

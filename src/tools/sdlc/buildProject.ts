@@ -395,6 +395,38 @@ async function readLogTail(logFile: string, lines = 60): Promise<string> {
   }
 }
 
+/**
+ * Log excerpt for a SUCCEEDED build.
+ *
+ * A green build returned the raw 60-line tail, which is almost entirely xppc's
+ * phase-timing table — measured at ~2.6 KB of a ~3.1 KB response — and nothing
+ * downstream reads a timing row. Keep the lines a green build can still say
+ * something with: the diagnostic (warning) lines, and the trailing summary counts.
+ *
+ * The input is deliberately the same 60-line tail the raw version returned, so
+ * the warnings verdict computed from that tail is unchanged by this trim; a
+ * warning that never reached the tail was already invisible before.
+ */
+export function trimSucceededLog(logTail: string, keepTail = 12): string {
+  const all = logTail.split(/\r?\n/);
+  // Nothing to win on a log that is already short.
+  if (all.length <= keepTail + 8) return logTail;
+
+  const summaryFrom = all.length - keepTail;
+  const diagnostics: string[] = [];
+  let omitted = 0;
+  for (let i = 0; i < summaryFrom; i++) {
+    if (DIAG_LINE_TEST.test(all[i].trim())) diagnostics.push(all[i]);
+    else omitted++;
+  }
+  if (omitted === 0) return logTail;
+
+  return (
+    `[${omitted} phase-timing line(s) omitted — build succeeded]\n` +
+    [...diagnostics, ...all.slice(summaryFrom)].join('\n').trim()
+  );
+}
+
 /** Read the entire log without truncation — used for diagnostics parsing only. */
 async function readWholeLog(logFile: string): Promise<string> {
   try {
@@ -963,7 +995,7 @@ async function renderFinishedBuildResult(
       : allResults.find(r => r.status === 'failed');
     const relevantLogFile = relevantResult?.logFile ?? finalState.logFile;
     const logContent = succeeded
-      ? await readLogTail(relevantLogFile)
+      ? trimSucceededLog(await readLogTail(relevantLogFile))
       : await readFullLog(relevantLogFile);
     const wholeLog = succeeded ? '' : await readWholeLog(relevantLogFile);
     const parsed = succeeded ? [] : parseXppcDiagnostics(wholeLog);
@@ -983,7 +1015,7 @@ async function renderFinishedBuildResult(
   }
 
   const logTail       = await readLogTail(finalState.logFile);
-  const logContent    = succeeded ? logTail : await readFullLog(finalState.logFile);
+  const logContent    = succeeded ? trimSucceededLog(logTail) : await readFullLog(finalState.logFile);
   const hasWarnings   = succeeded && logTail.split(/\r?\n/).some(l => /Warning:\s/.test(l) && DIAG_LINE_TEST.test(l.trim()));
   const statusIcon    = !succeeded ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
   const buildMode     = finalState.fullBuild ? 'full build (target), incremental (deps)' : 'incremental';

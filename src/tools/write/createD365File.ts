@@ -87,14 +87,11 @@ function buildNoProjectPathWarning(): string {
       `Pass projectPath explicitly to target the right one:\n` +
       candidates.map(c => `   - ${c.modelName}: ${c.projectPath ?? '(no .rnrproj)'}`).join('\n') + '\n';
   }
+  // The .mcp.json shape was five lines of JSON in a warning the caller usually
+  // resolves by just passing projectPath; naming the key is enough.
   return `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
-    `The file was created on disk but was NOT added to any Visual Studio project.\n\n` +
-    `Pass projectPath as a parameter, or add it to your .mcp.json:\n` +
-    `  {\n` +
-    `    "servers": { "context": {\n` +
-    `      "projectPath": "K:\\\\VSProjects\\\\YourSolution\\\\YourModel\\\\YourModel.rnrproj"\n` +
-    `    } }\n` +
-    `  }\n`;
+    `The file was created on disk but was NOT added to any Visual Studio project.\n` +
+    `Pass projectPath explicitly, or set servers.context.projectPath in .mcp.json.\n`;
 }
 
 const CreateD365FileArgsSchema = z.object({
