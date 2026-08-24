@@ -165,8 +165,10 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
     // of the Microsoft-dominated bridge window are spliced back in and
     // prioritized (never "only Microsoft objects").
     const searchTypes = args.type === 'all' ? undefined : [args.type];
-    const exactMatches = await dropStaleRows(probeExactMatches(symbolIndex, args.query, searchTypes));
-    const customMatches = await dropStaleRows(probeCustomMatches(symbolIndex, args.query, searchTypes));
+    const [exactMatches, customMatches] = await Promise.all([
+      dropStaleRows(probeExactMatches(symbolIndex, args.query, searchTypes)),
+      dropStaleRows(probeCustomMatches(symbolIndex, args.query, searchTypes)),
+    ]);
     const bridgeResult = await tryBridgeSearch(
       context.bridge,
       args.query,

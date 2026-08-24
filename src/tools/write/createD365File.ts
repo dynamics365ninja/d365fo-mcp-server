@@ -21,7 +21,7 @@ import { getConfigManager, fallbackPackagePath } from '../../utils/configManager
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint } from './inlineWriteVerification.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { registerCustomModel } from '../../utils/modelClassifier.js';
@@ -4550,9 +4550,11 @@ export async function handleCreateD365File(
     // AOT" is a human's UI chore, repeated on every object of a feature; when it
     // matters (addToProject failed, no projectPath) `projectMessage` above
     // already says so, in that specific case.
-    const nextSteps = args.addToProject
+    const nextSteps = (args.addToProject
       ? `Next: build_d365fo_project to synchronize the object.\n`
-      : `Next: add the file to your .rnrproj, then build_d365fo_project to synchronize the object.\n`;
+      : `Next: add the file to your .rnrproj, then build_d365fo_project to synchronize the object.\n`) +
+      // finalObjectName, not args.objectName — see renderBatchEditHint.
+      renderBatchEditHint(args.objectType, finalObjectName, { afterCreate: true });
 
     // Record the freshly-created file for non-git undo (see the bridge paths above).
     if (!fileExisted) {

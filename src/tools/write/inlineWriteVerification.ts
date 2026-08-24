@@ -141,6 +141,26 @@ export async function runInlineBpCheck(
   }
 }
 
+/**
+ * "Send the rest of the edits together" — the line that turns the dominant waste
+ * pattern into one call.
+ *
+ * 45 of 273 sampled tool calls were consecutive single-op modifies, and 40 of 49
+ * modifies were single-op even though operations[] already existed: the gap is
+ * discovery, not capability, so the hint names the concrete call.
+ *
+ * `objectName` MUST be the name the object actually carries after prefix
+ * normalization. Passing the requested name instead hands back a follow-up call
+ * aimed at an object that does not exist.
+ */
+export function renderBatchEditHint(objectType: string, objectName: string, opts?: { afterCreate?: boolean }): string {
+  if (!objectName) return '';
+  return opts?.afterCreate
+    ? `Further edits to "${objectName}" go in ONE call: d365fo_file(action="modify", ` +
+      `objectType="${objectType}", objectName="${objectName}", operations:[…]) — not one call per edit.\n`
+    : `\nMore edits to "${objectName}"? Send them together: operations:[{operation:"…"}, …] in ONE modify call.`;
+}
+
 /** One-line summary for a write response, or '' when there is nothing worth saying. */
 export function renderWriteVerification(v: WriteVerification): string {
   if (!v.onDisk) {

@@ -67,7 +67,7 @@ import {
 } from '../analysis/validateFormPattern.js';
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
@@ -4470,7 +4470,13 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             // "Review changes in Visual Studio" is not something the caller can act
             // on, and it rode along on every write.
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') +
-            `\n\nNext: build_d365fo_project to compile the change.`,
+            `\n\nNext: build_d365fo_project to compile the change.` +
+            // Suppressed inside a batch: runModifyBatch sets peerOperations, and
+            // telling an operation that is already batched to batch itself reads as
+            // a defect. Only the SINGLE-op form is the one that loops.
+            (Array.isArray((args as any).peerOperations)
+              ? ''
+              : renderBatchEditHint(objectType, objectName)),
         },
       ],
     };
