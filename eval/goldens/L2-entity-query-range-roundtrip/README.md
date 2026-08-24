@@ -61,10 +61,18 @@ against the file before trusting a post-write read-back.
   exactly what the instruction asks for, so a faithful re-run reproduces the golden
   byte-for-byte; polishing it to BP-clean would make the golden unreproducible without
   buying a clean BP score anyway.
-* **`run_bp_check` cannot check the entity through `objects[]`.** It maps
-  `data-entity` to the xppbp element type `dataentity`, which xppbp rejects; the real
-  token is `DataEntityView`. The BP figure above came from
-  `targetElementType: "DataEntityView"` passed by hand.
+* **~~`run_bp_check` cannot check the entity through `objects[]`.~~ FIXED after this
+  golden was captured - do not re-record it as a non-goal.** At capture (server SHA
+  `4203716`) `run_bp_check` mapped `data-entity` to the xppbp element type
+  `dataentity`, which xppbp rejects, and the BP figure above had to be obtained with
+  `targetElementType: "DataEntityView"` passed by hand. Commit `84f930a` added the
+  missing `data-entity -> dataentityview` row to the element-type translation table.
+  Re-verified live on 2026-08-24 at server SHA `b9eea9b`: `run_bp_check(objects=[{objectType:
+  "data-entity", objectName: "ConDemoRangeSourceEntity"}, ...])` with **no**
+  `targetElementType` reaches xppbp, headers the section `dataentityview:ConDemoRangeSourceEntity`,
+  and returns the real finding `BestPractices Error: AxDataEntityView
+  dynamics://DataEntityView/ConDemoRangeSourceEntity: DataEntitySecurityPrivilegeCheck`.
+  The BP figures in the non-goal above are unchanged - only how they are obtained is.
 * **The joined-data-source half of the PR #927/#928 trap is not reachable here.** No
   tool operation adds an `AxQuerySimpleEmbeddedDataSource` to a data entity - the
   create contract exposes only `primaryTable`. That half stays covered by

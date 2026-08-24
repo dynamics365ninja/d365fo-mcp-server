@@ -1,0 +1,62 @@
+{
+  "run_id": "2026-08-24T04__L2-entity-query-range-roundtrip__b9eea9b",
+  "case_id": "L2-entity-query-range-roundtrip",
+  "tier": 2,
+  "timestamp": "2026-08-24T04:33:49.222Z",
+  "server_git_sha": "b9eea9b",
+  "generated_artifacts": [
+    "ConDemoRangeSource.metadata.xml",
+    "ConDemoRangeSourceEntity.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "PASS on every case assertion, and the two TOOL_DEFECTs this case was the primary witness for are CONFIRMED FIXED at server SHA b9eea9b (fix commit 84f930a).\n\nCase assertions, all met: the root data source <Name> was READ BACK (not assumed) via get_object_info(objectType=\"data-entity\", options={include:\"xml\"}) and is ConDemoRangeSource; add-query-range wrote both ranges into ViewMetadata/DataSources/AxQuerySimpleRootDataSource/Ranges, never the sibling entity-level <Ranges /> (which stayed empty); each range carries a non-empty <Value> (1 and Demo*); re-issuing step 3 verbatim reported \"Range 'IsActive' already present in datasource 'ConDemoRangeSource' - skipped (idempotent)\" and the file stayed at 2738 bytes; remove-query-range by rangeName=SubjectPrefix removed only that range, left the IsActive range in place and did NOT collapse <Ranges> to self-closing; xppc compiled 0 errors twice (incremental 202s after step 5, then fullBuild 23s after step 6).\n\nFIX CONFIRMED 1 - run_bp_check data-entity element-type translation (was TOOL_DEFECT 2 in the 4203716 run). run_bp_check(objects=[{objectType:\"data-entity\", objectName:\"ConDemoRangeSourceEntity\"}, {objectType:\"table\", objectName:\"ConDemoRangeSource\"}]) with NO targetElementType now reaches xppbp and returns findings. Section header reads \"-- dataentityview:ConDemoRangeSourceEntity -- issues\", proving the data-entity -> dataentityview row now exists in the translation table, and the entity produced a real finding: \"BestPractices Error: AxDataEntityView dynamics://DataEntityView/ConDemoRangeSourceEntity: DataEntitySecurityPrivilegeCheck: The data entity 'ConDemoRangeSourceEntity' is not assigned to a security privilege.\" No hand-passed targetElementType was needed anywhere in this run; the circular \"use the kebab-case objectType the other tools take\" hint did not appear.\n\nFIX CONFIRMED 2 - validate_code(references) now verifies data entities (was \"an empty pass\" in the 4203716 run, which resolved 0 references and still reported success). On the same ConDemoRangeSourceEntity XML it now reports \"validate_code(references): all 7 reference(s) verified against the index in ConDemoRangeSourceEntity.\" Non-zero, and the count is consistent with it walking <ViewMetadata>: the table plus the mapped-field DataField/DataSource pairs plus the AxQuerySimpleDataSourceField entries.\n\nFIX CONFIRMED 3 - get_object_info dedup cache is write-invalidated (was TOOL_DEFECT 1, recurrence 2 of 4 runs, and the hazard this case hinges on). The identical get_object_info(objectType=\"data-entity\", name=\"ConDemoRangeSourceEntity\", options={include:\"xml\"}) call shape was issued three times with d365fo_file(action=\"modify\") writes in between. Call 2 (after three writes) returned the FRESH 96-line body containing both ranges with no \"Duplicate call\" advisory; call 3 (after remove-query-range) returned the fresh 91-line post-remove body. The previously served stale pre-write body did not recur.\n\nbp_clean=0 is EXPECTED and DOCUMENTED for this case, not a regression - the classification PASS was supplied explicitly to the scorer (--classification PASS) so it did not derive KNOWLEDGE_GAP from bp_clean=0. The 4 recorded findings are 3 table warnings (BPTableWithRecIdIndexMissingReplacementKey, BPErrorDeveloperDocumentationNotDefined, BPErrorTableMissingFormRef - the case admits no AxForm so FormRef is unreachable) plus 1 BP error on the entity (DataEntitySecurityPrivilegeCheck, which fires on any public data entity with no AxSecurityPrivilege; the case admits none). Same 4 as the 4203716 run, byte-identical golden.\n\nNEW, minor, non-blocking (1): the loop/dedup ADVISORY text is now factually wrong where the payload is right. Occurrence #3 of the get_object_info call served correct fresh post-remove content but appended \"Loop detected: this is occurrence #3 of the exact same get_object_info call. The answer does not change between calls.\" The answer HAD changed - twice, through this server's own writes. The cache invalidation is correct; only the advisory wording still assumes immutability, and it is the same wording class that previously talked an agent out of trusting its own re-read.\n\nNEW, minor, non-blocking (2), RECURRENCE of observation (b) from the 4203716 run: d365fo_file(action=\"create\", objectType=\"table\") reported \"BP defaults: CacheLookup=Found, TitleField1=NoteId, TitleField2=Subject, PrimaryIndex=SurrogateKey, ClusteredIndex=SurrogateKey\" but wrote neither <PrimaryIndex> nor <ClusteredIndex> to the XML (the golden has neither either, so this is a message-accuracy issue, not a metadata one).\n\nNOT observed, exactly as the case states: the joined-data-source half of the PR #927/#928 trap. No d365fo_file parameter adds an AxQuerySimpleEmbeddedDataSource to a data entity (the create contract exposes only primaryTable), so that half stays covered by tests/tools/queryRangeOps.test.ts. .rnrproj membership also NOT observed - the sandbox carries no project file, and both create calls warned \"projectPath could not be resolved\".",
+  "suggested_fix_area": "No blocking fix required - this run is a green re-verification of 84f930a. Two cosmetic follow-ups: (1) the get_object_info loop/dedup advisory should stop asserting \"the answer does not change between calls\" once the cached answer has been invalidated by a write - either drop the sentence or say the content was refreshed, since the previous wording is what made the stale-read defect load-bearing; (2) the table-create \"BP defaults\" message should list only properties actually written (PrimaryIndex/ClusteredIndex=SurrogateKey are reported but not emitted).",
+  "evidence_refs": [
+    "eval/goldens/L2-entity-query-range-roundtrip/ConDemoRangeSourceEntity.metadata.xml",
+    "eval/goldens/L2-entity-query-range-roundtrip/ConDemoRangeSource.metadata.xml",
+    "eval/goldens/L2-entity-query-range-roundtrip/README.md",
+    "eval/cases/L2-entity-query-range-roundtrip.json",
+    "eval/corpus/runs/2026-08-23T10__L2-entity-query-range-roundtrip__4203716.json",
+    "tests/tools/queryRangeOps.test.ts"
+  ]
+}
