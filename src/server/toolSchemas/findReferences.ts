@@ -12,7 +12,7 @@ export const findReferencesTool = {
       properties: {
         targetName: {
           type: 'string',
-          description: 'Target name. Method where-used: qualify as "Owner.method" or pass an AOT path "/Tables/<Table>/Methods/<method>" for a result scoped to one declaring type (matches Visual Studio xref). A bare method name is name-only and over-reports. Label where-used: pass the label id exactly as written — old format "@WAX2194" or new format "@LabelFile:LabelId" (e.g. "@ApplicationPlatform:AbortButtonText").'
+          description: 'Target name. Methods: see the scoping rule in the description above. Labels: the id exactly as written — "@WAX2194" or "@LabelFile:LabelId".'
         },
         targetType: {
           type: 'string',
