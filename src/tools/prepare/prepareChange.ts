@@ -22,7 +22,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { createProvenanceToken } from '../../utils/provenanceStore.js';
 import { tryBridgeCocExtensions } from '../../bridge/bridgeAdapter.js';
-import { getConfigManager } from '../../utils/configManager.js';
+import { checkObjectNaming } from '../../utils/objectNamingRules.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { findDeclaringAncestor } from '../../utils/inheritanceChain.js';
 import {
@@ -273,9 +273,27 @@ function fetchStrategy(objectType: string | undefined): string {
   return strategies.join('\n');
 }
 
-/** Validate proposed object name. */
+/**
+ * Validate the proposed name for the extension the caller is about to write.
+ *
+ * This used to be four hand-rolled rules, and the last of them —
+ * `!proposedName.includes(modelName)` against the RAW model name — is the class of
+ * bug #892/#901 that was fixed in the shared rules and pinned by
+ * tests/tools/namingValidatorAgreement.test.ts. Worse, when it did not fire the
+ * whole verdict was "ℹ️ Confirm naming follows your convention": live, a malformed
+ * `CustTable_Ext` got that and nothing else, while validate_object_naming answered
+ * with a hard error and the exact expected name `CustTable.ConChainExtension`.
+ *
+ * The rules now come from utils/objectNamingRules.ts. Which EXTENSION shape is
+ * meant is read from the name itself: `…_Extension` is a CoC class, anything else
+ * is the AOT element extension of the object being changed — and when the name
+ * matches neither, the element-extension rules are the ones that name the expected
+ * form.
+ */
 async function fetchNamingValidation(
   proposedName: string,
+  objectName: string,
+  resolvedType: string | undefined,
   context: XppServerContext,
 ): Promise<string> {
   const issues: string[] = [];
@@ -293,9 +311,28 @@ async function fetchNamingValidation(
   } catch {
     // ignore
   }
-  const modelName = getConfigManager().getModelName();
-  if (modelName && !proposedName.includes(modelName) && !proposedName.endsWith('_Extension')) {
-    issues.push(`ℹ️  Confirm naming follows your convention (active model: ${modelName}).`);
+  // Which extension shape the caller means, from the name they proposed.
+  const elementExtension = resolvedType ? `${resolvedType}-extension` : undefined;
+  const namingType = proposedName.endsWith('_Extension')
+    ? 'class-extension'
+    : elementExtension;
+
+  if (namingType) {
+    try {
+      const shared = await checkObjectNaming(context.symbolIndex.getReadDb(), {
+        proposedName,
+        objectType: namingType,
+        baseObjectName: objectName,
+      });
+      for (const e of shared.errors) issues.push(`❌ ${e}`);
+      for (const w of shared.warnings) issues.push(`⚠️  ${w}`);
+      // One suggestion — prepare is already at its response cap, and the first is
+      // the corrected name.
+      const fix = shared.suggestions[0];
+      if (fix) issues.push(`→ ${fix}`);
+    } catch {
+      // Index unavailable — the structural checks above still stand.
+    }
   }
   return issues.length > 0 ? issues.join('\n') : `✅ "${proposedName}" looks valid.`;
 }
@@ -356,7 +393,7 @@ export async function prepareChangeTool(request: any, context: XppServerContext)
     fetchEligibility(objectName, methodName, resolvedType, context),
     fetchPatterns(objectName, resolvedType, context),
     proposedName
-      ? fetchNamingValidation(proposedName, context)
+      ? fetchNamingValidation(proposedName, objectName, resolvedType, context)
       : Promise.resolve(null as string | null),
   ]);
 

@@ -17,6 +17,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { createProvenanceToken } from '../../utils/provenanceStore.js';
 import { getConfigManager } from '../../utils/configManager.js';
+import { checkObjectNaming } from '../../utils/objectNamingRules.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { renderPrepareOpSpec } from '../specs/opSpecs.js';
 import { rankContext, renderRankedContext } from '../../workspace/contextRanker.js';
@@ -85,8 +86,26 @@ function checkCollisions(
   }
 }
 
-/** Naming validation incl. the prefix create_d365fo_file will apply. */
-function validateNaming(baseName: string, finalName: string, modelName: string | undefined): string {
+/**
+ * Naming validation incl. the prefix create_d365fo_file will apply.
+ *
+ * The CONVENTION rules come from utils/objectNamingRules.ts — the same ones
+ * validate_object_naming runs. They used to be reimplemented here, weaker: this
+ * function answered "✅ Naming looks valid" for a name that checker warns is
+ * missing the model prefix, because it had no prefix rule, no underscore rule and
+ * no type-specific conventions at all.
+ *
+ * The checks BELOW stay local on purpose. They guard the name the prefix step
+ * COMPOSED (finalName), where an unrepresentable character can enter a name the
+ * caller never typed (#892/#901); the shared rules see the name the caller wrote.
+ */
+async function validateNaming(
+  baseName: string,
+  finalName: string,
+  objectType: string,
+  modelName: string | undefined,
+  context: XppServerContext,
+): Promise<string> {
   const issues: string[] = [];
   if (finalName.length > 81) {
     issues.push(`❌ Final name "${finalName}" exceeds the 81-char AOT limit (${finalName.length}).`);
@@ -107,13 +126,35 @@ function validateNaming(baseName: string, finalName: string, modelName: string |
         '(plus one dot for extension elements). Check the model name and prefix configuration.'
     );
   }
+  // Convention rules, from the one place that has them. A failure here must not
+  // fail the prepare: the checks above still stand without an index.
+  let shared: Awaited<ReturnType<typeof checkObjectNaming>> | undefined;
+  try {
+    shared = await checkObjectNaming(context.symbolIndex.getReadDb(), {
+      proposedName: baseName,
+      objectType,
+      modelName,
+    });
+  } catch {
+    // index unavailable
+  }
+  for (const e of shared?.errors ?? []) issues.push(`❌ ${e}`);
+  for (const w of shared?.warnings ?? []) issues.push(`⚠️  ${w}`);
+
   const lines = [
     `Base name   : ${baseName}`,
     `Final name  : ${finalName}${finalName !== baseName ? ' _(prefix auto-applied by d365fo_file(action="create"))_' : ''}`,
     `Model       : ${modelName ?? '(not configured — set modelName or .mcp.json)'}`,
   ];
-  if (issues.length > 0) lines.push(...issues);
-  else lines.push('✅ Naming looks valid.');
+  if (issues.length > 0) {
+    lines.push(...issues);
+    // One suggestion, not the validator's full list: prepare is already at its
+    // response cap and the first is the corrected name.
+    const fix = shared?.suggestions?.[0];
+    if (fix) lines.push(`→ ${fix}`);
+  } else {
+    lines.push('✅ Naming looks valid.');
+  }
   return lines.join('\n');
 }
 
@@ -263,10 +304,14 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
   // a name that never gets written, so a real collision read as "No collision".
   const finalName = normalizeObjectName(objectName, objectType, modelName);
 
+  // Naming is the one asynchronous check (the shared rules await model detection),
+  // so it is started first and collected below — the rest still run in one tick.
+  const namingPromise = validateNaming(objectName, finalName, objectType, modelName, context);
+
   // All lookups are synchronous index queries — run them in one tick.
   const [collisions, naming, similar, edts, labels, propertyDefaults] = [
     checkCollisions(finalName, objectName, context),
-    validateNaming(objectName, finalName, modelName),
+    await namingPromise,
     findSimilarObjects(objectName, objectType, context),
     fieldsHint && fieldsHint.length > 0 ? suggestEdtsForFields(fieldsHint, context) : '',
     findReusableLabels(objectName, context),
