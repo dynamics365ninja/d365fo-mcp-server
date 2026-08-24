@@ -416,7 +416,7 @@ export function trimSucceededLog(logTail: string, keepTail = 12): string {
   const diagnostics: string[] = [];
   let omitted = 0;
   for (let i = 0; i < summaryFrom; i++) {
-    if (DIAG_LINE_TEST.test(all[i].trim())) diagnostics.push(all[i]);
+    if (isWorthKeeping(all[i])) diagnostics.push(all[i]);
     else omitted++;
   }
   if (omitted === 0) return logTail;
@@ -425,6 +425,28 @@ export function trimSucceededLog(logTail: string, keepTail = 12): string {
     `[${omitted} phase-timing line(s) omitted — build succeeded]\n` +
     [...diagnostics, ...all.slice(summaryFrom)].join('\n').trim()
   );
+}
+
+/**
+ * Which lines of a GREEN build's tail survive the trim.
+ *
+ * DIAG_LINE_TEST is anchored and case-sensitive — it wants `[Kind ]Error: ` or
+ * `[Kind ]Warning: ` at the start of the line, which is exactly xppc's shape and
+ * nothing else. Verified: it keeps `Metadata Warning:`, `Compile Error:`,
+ * `BEST PRACTICE Warning:` and a bare `Warning:`, and drops a lowercase
+ * `warning:` and the MSBuild shape `MyTable.xpp(12,3): warning CS1234:`.
+ *
+ * On the FAILURE path that is harmless — non-matching lines still arrive through
+ * the head/tail fallback. On this path they are dropped outright, so a warning in
+ * a shape xppc does not normally emit would vanish from a green build entirely;
+ * hasWarnings uses the same test, so it would not even set the ⚠️ icon.
+ *
+ * The costs are not symmetric: a handful of extra lines is nothing, a silently
+ * dropped warning is the thing this function must not do. So anything that
+ * MENTIONS an error or a warning is kept too, whatever its shape.
+ */
+function isWorthKeeping(line: string): boolean {
+  return DIAG_LINE_TEST.test(line.trim()) || /\b(error|warning)s?\b/i.test(line);
 }
 
 /** Read the entire log without truncation — used for diagnostics parsing only. */

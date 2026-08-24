@@ -125,6 +125,25 @@ describe('trimSucceededLog', () => {
     const raw = [...timing(57), ...SUMMARY].join('\n');
     expect(trimSucceededLog(raw).length).toBeLessThan(raw.length / 2);
   });
+
+  it('keeps a warning whatever shape it arrives in', () => {
+    // DIAG_LINE_TEST is anchored and case-sensitive — it wants xppc's exact shape
+    // and nothing else. On the FAILURE path a non-matching line still arrives via
+    // the head/tail fallback; here it would be dropped outright, and hasWarnings
+    // uses the same test, so such a warning would not even set the ⚠️ icon.
+    // Verified dropped before this widening: the lowercase and MSBuild shapes.
+    const shapes = [
+      'Metadata Warning: dynamics://M/T: [(1,1)]: label missing.',
+      'warning: lowercase generic',
+      'MyTable.xpp(12,3): warning CS1234: unused variable',
+    ];
+    const out = trimSucceededLog([...timing(20), ...shapes, ...timing(20), ...SUMMARY].join('\n'));
+
+    for (const line of shapes) expect(out, line).toContain(line);
+    // Still a trim, not a passthrough.
+    expect(out).toContain('phase-timing line(s) omitted');
+    expect(out).not.toContain('Phase timing row 3');
+  });
 });
 
 const PROJECT_PATH = 'C:\\MyProject\\MyProject.rnrproj';
