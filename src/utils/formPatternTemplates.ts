@@ -48,7 +48,7 @@ export interface FormTemplateOptions {
    * title control must bind to. When omitted the first grid field is used, which
    * is only ever right by accident: grid fields arrive in ALPHABETICAL order, so
    * the title ends up bound to whatever field sorts first
-   * (docs/eval-sweep-findings-2026-07-21.md #32).
+   * (the 2026-07-21 eval sweep, finding #32).
    */
   titleField?: string;
 }
@@ -58,7 +58,7 @@ export interface FormTemplateOptions {
  * `<DataSource>`; the field group is resolved on that datasource's table. Without
  * it a full build fails with `Field group 'Overview' does not exist` — and an
  * INCREMENTAL build passes it silently, which is why this survived several
- * captures (docs/eval-sweep-findings-2026-07-21.md #32, HEADLINE (b)).
+ * captures (the 2026-07-21 eval sweep, finding #32 and its headline (b)).
  */
 
 /** Supported top-level D365FO form patterns */

@@ -6,7 +6,7 @@
  * happily reports "no violations", and xppbp then complains that it is missing
  * (BPErrorTableTitleField1NotDeclared / BPErrorLabelNotDefined /
  * BPErrorDeveloperDocumentationNotDefined) with no clue why.
- * See docs/eval-sweep-findings-2026-07-21.md #13.
+ * See the 2026-07-21 eval sweep, finding #13.
  *
  * Ground truth for the order below:
  *   - eval/goldens/L1-table-basic/DemoAgentNote.metadata.xml (VM-captured, built clean):

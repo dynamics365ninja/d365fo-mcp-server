@@ -113,7 +113,7 @@ async function main(): Promise<void> {
   // `--bp-warnings` ABSENT means xppbp was not run for this capture — NOT "ran and
   // found nothing". It used to default to 0, which silently minted `bp_clean: 1`
   // for every run whose operator forgot the flag and made the dimension
-  // untrendable (docs/eval-sweep-findings-2026-07-21.md #3). Leave bpWarnings
+  // untrendable (the 2026-07-21 eval sweep, finding #3). Leave bpWarnings
   // undefined so the score records `bp_clean: null` (BP not checked), and say so.
   const bpArg = arg('--bp-warnings');
   const bpChecked = bpArg !== undefined;
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
   // currently ["Contoso","Con"]) rather than the single `GOLDEN_CAPTURE_PREFIX`: the
   // committed corpus is `Con`-prefixed, which "Contoso" can never match, so the old
   // single-token default left the golden side un-canonicalised and forced operators to
-  // hand-pass `--golden-prefix Con --actual-prefix Con` (docs/eval-sweep-findings-2026-07-21.md #2).
+  // hand-pass `--golden-prefix Con --actual-prefix Con` (the 2026-07-21 eval sweep, finding #2).
   const goldenPrefix: string | readonly string[] = arg('--golden-prefix') ?? GOLDEN_CAPTURE_PREFIXES;
   const actualPrefix: string | readonly string[] =
     arg('--actual-prefix') ?? (resolveRegularObjectPrefixToken() || GOLDEN_CAPTURE_PREFIXES);

@@ -363,7 +363,7 @@ export class XmlTemplateGenerator {
     // yields declaredName="is", and the rename then replaced every standalone "is"
     // in the declaration and in every method body with the class name
     // ("class is the workflow document" → "class Foo the workflow document").
-    // Reproduced from docs/eval-sweep-findings-2026-07-21.md #22.
+    // Reproduced from the 2026-07-21 eval sweep, finding #22.
     const codeOnly = declaration
       .split('\n')
       .filter(l => !l.trim().startsWith('///') && !l.trim().startsWith('//'))

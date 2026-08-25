@@ -19,7 +19,7 @@ export interface RunForReport {
  * `bp_clean` used to have two values where it needed three: a run whose capture
  * never ran xppbp scored 1, indistinguishable from a run that ran it and found
  * nothing. Averaging the two together is meaningless — the number mixes
- * "BP-clean" with "BP never checked" (docs/eval-sweep-findings-2026-07-21.md #3).
+ * "BP-clean" with "BP never checked" (the 2026-07-21 eval sweep, finding #3).
  *
  * Going forward the oracle CLI records `build.bp_checked` and `bp_clean: null`,
  * so the state is explicit. For the ~70 records written BEFORE that flag existed

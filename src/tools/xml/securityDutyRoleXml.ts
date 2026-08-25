@@ -36,7 +36,7 @@ export function normalizeNameList(value: any): string[] {
  * xppbp then reports BPErrorDutyHasNoPrivileges / BPErrorPrivilegeNotCoveredByDuty /
  * BPErrorDutyNotCoveredByRole for references that are physically in the file.
  * The correct names are AxSecurityPrivilegeReference / AxSecurityDutyReference.
- * Evidence: docs/eval-sweep-findings-2026-07-21.md #31 (L4-master-security-slice run).
+ * Evidence: the 2026-07-21 eval sweep, finding #31 (L4-master-security-slice run).
  */
 export function securityRefContainer(container: string, childTag: string, names: string[]): string {
   if (names.length === 0) return `\t<${container} />`;

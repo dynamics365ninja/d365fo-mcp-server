@@ -60,7 +60,7 @@ export const GOLDEN_CAPTURE_PREFIX = 'Contoso';
  *
  * Canonicalising against the whole set (longest-first, so `Contoso` is consumed
  * before `Con` can bite into it) makes prefix resolution tolerant instead of
- * requiring the goldens to be renamed — see docs/eval-sweep-findings-2026-07-21.md #2.
+ * requiring the goldens to be renamed — see the 2026-07-21 eval sweep, finding #2.
  */
 export const GOLDEN_CAPTURE_PREFIXES: readonly string[] = ['Contoso', 'Con'];
 
@@ -138,7 +138,7 @@ const XMLDOC_PLACEHOLDER = '/// <xmldoc/>';
  * `d365fo_file` auto-injects a class-level doc comment whose text is generated
  * from the object name. A faithful rerun by an agent that writes different
  * prose therefore scored `golden_match: 0` for a purely cosmetic reason —
- * corpus-wide oracle fragility, docs/eval-sweep-findings-2026-07-21.md #24.
+ * corpus-wide oracle fragility (2026-07-21 eval sweep, finding #24).
  *
  * Why COLLAPSE rather than STRIP (the direction the finding suggested):
  * deleting `///` lines outright would also make a golden that HAS a doc comment

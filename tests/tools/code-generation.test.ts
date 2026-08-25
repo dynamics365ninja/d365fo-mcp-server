@@ -754,7 +754,7 @@ describe('XmlTemplateGenerator security duty/role generators', () => {
     // AxSecurityPrivilegeReference, NOT AxSecurityRolePermissionSet: the latter
     // deserializes into an empty privilege list, so xppbp reports
     // BPErrorDutyHasNoPrivileges / BPErrorPrivilegeNotCoveredByDuty for privileges
-    // that are physically in the file (docs/eval-sweep-findings-2026-07-21.md #31).
+    // that are physically in the file (the 2026-07-21 eval sweep, finding #31).
     expect(xml).toContain('<AxSecurityPrivilegeReference>\n\t\t\t<Name>MyView</Name>');
     expect(xml).not.toContain('AxSecurityRolePermissionSet');
     expect(xml).toContain('<Name>MyMaintain</Name>');
