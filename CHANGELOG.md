@@ -71,6 +71,16 @@ those are called out explicitly below.
   model's file, and that file has no undo outside git.
 
 ### Changed
+- An event-loop lag monitor ships behind `DEBUG_LOGGING`. The audit could
+  measure the symptom — 268 real `labels` calls averaging 5.6 s server time
+  while the FTS query inside them takes 6-11 ms, a first call after the
+  handshake taking 1.3 s and the same call 18 ms eight seconds later, and the
+  tool's own phase timer reporting 0.0 s throughout — but not the cause. Measured
+  from outside on this VM with a warm OS file cache, the loop is barely blocked:
+  three ~140 ms stalls in the first 5.5 s, 415 ms in total across 25 s, on top of
+  a 1,749 ms `initialize`. The corpus averages come from cold caches, which
+  cannot be recreated on demand. So rather than invent a fix for blocking that
+  cannot currently be measured, the measurement now lives in the server.
 - A successful bridge `create` no longer rebuilds the metadata provider twice.
   The C# dispatcher runs `RefreshProvider()` itself after `createObject` /
   `createSmartTable`, and the TypeScript side then scheduled and flushed another

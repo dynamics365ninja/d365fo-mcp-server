@@ -27,6 +27,7 @@ import { VERSION } from './version.js';
 import { setInitializeParams } from './utils/stdioSessionInfo.js';
 import { setModelObjectNameSource } from './utils/modelPrefixInference.js';
 import { trackBridgeStartup } from './bridge/bridgeReadiness.js';
+import { startLoopLagMonitor } from './utils/loopLag.js';
 import { createShutdownCoordinator } from './utils/gracefulShutdown.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, sanitize, supportsUnicode, log, shortPath, startupWarnings } from './utils/terminalUi.js';
 import * as fs from 'fs/promises';
@@ -184,6 +185,10 @@ const shutdownCoordinator = createShutdownCoordinator({
 const onShutdown = shutdownCoordinator.onShutdown;
 
 async function initializeServices() {
+  // Attribution for "the first call took seconds" — off unless DEBUG_LOGGING is
+  // set. See src/utils/loopLag.ts for what was measured and what could not be.
+  startLoopLagMonitor();
+
   // -----------------------------------------------------------------------
   // write-only mode: skip all database/symbol work — the LOCAL_TOOLS set
   // (src/server/serverMode.ts; d365fo_file, build_d365fo_project,
