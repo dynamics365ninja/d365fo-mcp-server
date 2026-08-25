@@ -90,6 +90,29 @@ vi.mock('fs/promises', () => ({
   rm: vi.fn(async () => {}),
 }));
 
+// The forced-backup path asks git whether the target is inside a work tree, and
+// it asks with `cwd` set to the FILE'S DIRECTORY. FILE_PATH below is a Windows
+// path, so on Linux `path.dirname()` yields '.', git answers for the CHECKOUT,
+// and this test quietly becomes "is the repo a git work tree?" — true on CI,
+// false on a Windows dev box where K:\... does not exist. It passed locally and
+// failed on CI for that reason alone.
+//
+// So pin the answer rather than inheriting it from wherever the suite happens to
+// run. `git rev-parse` is the ONLY real I/O this file does; fs/promises is fully
+// mocked above.
+vi.mock('child_process', async (orig) => {
+  const actual = await orig<typeof import('child_process')>();
+  return {
+    ...actual,
+    execFile: (_cmd: string, _args: string[], _opts: unknown, cb?: (e: Error | null, r: { stdout: string; stderr: string }) => void) => {
+      const done = typeof _opts === 'function' ? (_opts as typeof cb) : cb;
+      // "not a work tree" — the state the advisory under test exists for.
+      done?.(null, { stdout: 'false', stderr: '' });
+      return undefined as never;
+    },
+  };
+});
+
 vi.mock('../../src/utils/configManager', () => ({
   getConfigManager: vi.fn(() => ({
     ensureLoaded: vi.fn(async () => {}),
