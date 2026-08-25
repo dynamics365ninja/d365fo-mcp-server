@@ -178,7 +178,7 @@ export class SmartXmlBuilder {
     // before TableGroup/TitleField1, ClusteredIndex after ReplacementKey) — and
     // AxTable XML DROPS a misordered property SILENTLY, so the very BP defaults this
     // builder exists to set were at risk of being discarded
-    // (docs/eval-sweep-findings-2026-07-21.md #13; canonical order proven by the
+    // (the 2026-07-21 eval sweep, finding #13; canonical order proven by the
     // VM-captured golden eval/goldens/L1-table-basic).
     xml += renderAxTableProperties({
       Label: label ? this.escapeXml(label) : undefined,

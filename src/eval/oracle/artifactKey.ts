@@ -3,7 +3,7 @@
  * artifact with the actual file that reproduces it.
  *
  * Golden dirs under `eval/goldens/` use TWO filename conventions
- * (docs/eval-sweep-findings-2026-07-21.md #2):
+ * (the 2026-07-21 eval sweep, finding #2):
  *
  *   legacy   `DemoEnumExtProbe.AxClass.metadata.xml`   — UNPREFIXED stem plus an
  *            `.Ax<Type>` infix, although the file CONTENT is `Con`-prefixed

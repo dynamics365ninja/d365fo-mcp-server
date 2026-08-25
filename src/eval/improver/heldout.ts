@@ -19,7 +19,7 @@ export interface ScoredCase {
    * record written before the flag existed). Mirrors `bpState` in report.ts:
    * only `bp_clean === 0` proves the check ran, so an unflagged 1 is NOT
    * comparable with a checked one and is left out of `pass_at_bp_clean`
-   * (docs/eval-sweep-findings-2026-07-21.md #3).
+   * (the 2026-07-21 eval sweep, finding #3).
    */
   bpChecked?: boolean;
 }

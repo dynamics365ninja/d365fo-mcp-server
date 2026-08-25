@@ -1657,7 +1657,7 @@ export async function handleCreateD365File(
     // the query. Neither `query` nor `view` is a bridge create type, so this
     // template is the only writer for them — read the query off disk (same model
     // folder) and hand its XML to the builder, which extracts the root name
-    // (docs/eval-sweep-findings-2026-07-21.md #38).
+    // (the 2026-07-21 eval sweep, finding #38).
     let effectiveProperties = args.properties;
     if (
       args.objectType === 'view' &&

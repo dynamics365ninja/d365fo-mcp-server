@@ -323,7 +323,7 @@ export async function handleGenerateSmartForm(
     // A form datasource may be a VIEW as well as a table — the AOT accepts any of
     // them in <Table>. Resolving against 'table' alone rejected a view that
     // object_patterns resolves fine, so a form over a view was unbuildable through
-    // the scaffold (docs/eval-sweep-findings-2026-07-21.md, "Open — writers").
+    // the scaffold (the 2026-07-21 eval sweep, "Open — writers").
     let dataSourceIsView = false;
     try {
       const db = symbolIndex.getReadDb();

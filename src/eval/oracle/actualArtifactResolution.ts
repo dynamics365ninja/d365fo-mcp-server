@@ -25,7 +25,7 @@ import { type PrefixSpec } from './prefix.js';
  * (`DemoEnumExtProbe.AxClass.metadata.xml` — unprefixed stem, `.Ax<Type>`
  * infix) still pairs with the actual file the VM produced
  * (`ConDemoEnumExtProbe.metadata.xml`). See artifactKey.ts and
- * docs/eval-sweep-findings-2026-07-21.md #2.
+ * the 2026-07-21 eval sweep, finding #2.
  */
 export function resolveActualFile(
   actualDir: string,

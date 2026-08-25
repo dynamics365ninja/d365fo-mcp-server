@@ -27,7 +27,7 @@ export interface Score {
    * header yet their corpus records claim `bp_clean: 1` — a faithful rerun of
    * the same artifact today scores 0 on `BPXmlDocNoDocumentationComments`. So the
    * dimension mixed "BP-clean" with "BP never checked" and could not be trended
-   * (docs/eval-sweep-findings-2026-07-21.md #3). `null` makes the unchecked state
+   * (the 2026-07-21 eval sweep, finding #3). `null` makes the unchecked state
    * explicit, and reporting excludes it from the BP pass-rate rather than
    * averaging incomparable records.
    */

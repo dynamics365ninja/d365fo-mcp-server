@@ -233,7 +233,7 @@ export function parseTableTitleField(tableXml: string): string | undefined {
  * Resolve a table's `TitleField1` through the symbol index (same file_path hop as
  * {@link getFieldControlMap}). Used by the form scaffold so a DetailsMaster title
  * control binds to the record's identifying field instead of the alphabetically
- * first one (docs/eval-sweep-findings-2026-07-21.md #32).
+ * first one (the 2026-07-21 eval sweep, finding #32).
  */
 export function getTableTitleField(db: any, table: string): string | undefined {
   try {

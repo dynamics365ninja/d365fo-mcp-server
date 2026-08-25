@@ -1,6 +1,6 @@
 /**
  * Regression gate for the create/generate WRITER defects found during the
- * 2026-07-21 golden-capture sweep (docs/eval-sweep-findings-2026-07-21.md).
+ * 2026-07-21 golden-capture sweep.
  *
  * Every test here reproduces a defect that shipped a ✅ to the caller while
  * writing metadata that does not build, does not resolve, or silently loses

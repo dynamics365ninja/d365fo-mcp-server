@@ -181,7 +181,7 @@ export const directXmlModifyProperty = serializedOnFile(async (
       // element order, so it can be INSERTED in the right place instead of failing.
       // This is what makes properties the C# bridge refuses outright reachable at
       // all — notably FormRef, whose absence is the very BPErrorTableMissingFormRef
-      // the agent is trying to fix (docs/eval-sweep-findings-2026-07-21.md #37).
+      // the agent is trying to fix (the 2026-07-21 eval sweep, finding #37).
       // Order matters: a property written in the wrong position is dropped without
       // a word (#13), which is why this goes through upsertAxTableProperty.
       const nonExistent = AX_TABLE_NON_EXISTENT_PROPERTIES[tagName];
@@ -272,7 +272,7 @@ export const directXmlAddMenuItemToMenu = serializedOnFile(async (
     // `AxMenuElementMenuItem` for a menu-item reference. `AxMenuFunctionItem` is not
     // a type in the metadata model at all (zero of the 73 shipped AxMenu files use
     // it), so the element deserializes into nothing and the menu comes out empty:
-    // docs/eval-sweep-findings-2026-07-21.md #30. `MenuItemType` is omitted for
+    // the 2026-07-21 eval sweep, finding #30. `MenuItemType` is omitted for
     // MenuItemType stays explicit (Display is the model default and the shipped
     // files omit it, but writing it costs nothing and keeps display/action/output
     // unambiguous).

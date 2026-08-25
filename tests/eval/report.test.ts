@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { buildReport, renderReport, type RunForReport } from '../../src/eval/improver/report';
 
 // `bp_checked: true` marks the run as BP-VERIFIED. Since the 2026-07-22 scoring-integrity
-// fix (docs/eval-sweep-findings-2026-07-21.md #3) the BP pass-rate is taken over verified
+// fix (the 2026-07-21 eval sweep, finding #3) the BP pass-rate is taken over verified
 // runs only; the unverified/legacy behaviour has its own coverage in
 // tests/eval/oracleScoringIntegrity.test.ts.
 const run = (tier: number, cls: string, b: number, bp: number, g: number): RunForReport =>

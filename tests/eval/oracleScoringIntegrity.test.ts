@@ -1,6 +1,6 @@
 /**
  * Oracle / scoring-integrity regressions from the 2026-07-21 golden-capture sweep
- * (docs/eval-sweep-findings-2026-07-21.md #24, #2, #3).
+ * (the 2026-07-21 eval sweep, findings #24, #2, #3).
  *
  * All three are measurement defects: the oracle either failed a faithful
  * reproduction for a cosmetic reason, or reported a number that was never
