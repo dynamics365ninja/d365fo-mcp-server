@@ -316,10 +316,16 @@ function formatControlSearchResults(
       }
     }
 
+    // The parameter names here MUST be the ones add-control actually declares
+    // (src/tools/specs/d365foFileOpSpecs.ts): this hint said parent=/after=,
+    // which the operation does not read, so an agent following the tool's own
+    // instruction wrote nothing and paid a full round trip to be told the real
+    // spelling. `parent`/`after` are registered as aliases too, so the older
+    // spelling keeps working — but the hint names the contract.
     out += `\n💡 **Form extension usage:**\n`;
-    out += `  • Add a control **inside** \`${r.control.name}\`: set \`parent="${r.control.name}"\`\n`;
+    out += `  • Add a control **inside** \`${r.control.name}\`: set \`parentControl="${r.control.name}"\`\n`;
     if (r.parentName) {
-      out += `  • Add a control **after** \`${r.control.name}\`: set \`parent="${r.parentName}", after="${r.control.name}"\`\n`;
+      out += `  • Add a control **after** \`${r.control.name}\`: set \`parentControl="${r.parentName}", previousSibling="${r.control.name}"\`\n`;
     }
     out += `\n`;
   }

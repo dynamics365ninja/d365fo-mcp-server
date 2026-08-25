@@ -86,7 +86,7 @@ vi.mock('../../src/utils/packagesRoot.js', async () => {
 });
 
 import path from 'path';
-import { buildProjectTool, readFullLog, trimSucceededLog } from '../../src/tools/sdlc/buildProject';
+import { buildProjectTool, readFullLog, renderFailureLog, trimSucceededLog } from '../../src/tools/sdlc/buildProject';
 
 describe('trimSucceededLog', () => {
   const SUMMARY = ['Compilation completed', 'Errors: 0', 'Warnings: 2'];
@@ -905,5 +905,63 @@ describe('readFullLog', () => {
 
     expect(out).toContain('=== xppc invocation ===');
     expect(out).toContain('Errors: 0');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderFailureLog — how much raw log a FAILED build is worth carrying
+// ---------------------------------------------------------------------------
+//
+// build_d365fo_project is deliberately 'uncapped' in the response capper, and a
+// failure used to return the structured diagnostics AND up to 300 raw log lines.
+// Measured over 1,400 real MCP calls, all 43 build results sat at the host's
+// logging cap, and every byte of that is re-billed on every later request in the
+// session. The raw log is evidence only when the parser produced nothing — that
+// is the case renderUnexplainedFailure points at ("read the raw log at the end
+// of this response"), and it must keep working.
+describe('renderFailureLog', () => {
+  const HEADER = [
+    '=== xppc invocation ===',
+    'C:\\AOSService\\PackagesLocalDirectory\\bin\\xppc.exe',
+    '  -modelmodule=MyModel',
+    '=======================',
+    '',
+  ];
+
+  /** A captured-shape xppc log: long phase table, one diagnostic, a tally. */
+  const CAPTURED = [
+    ...HEADER,
+    ...Array.from({ length: 400 }, (_, i) => `Phase timing row ${i}`),
+    "Compile Error: Class dynamics://MyModel/MyClass: [(1,1),(1,2)]: ';' expected.",
+    ...Array.from({ length: 400 }, (_, i) => `More phase timing ${i}`),
+    'Errors: 1',
+  ].join('\n');
+
+  beforeEach(() => { vi.resetAllMocks(); });
+
+  it('returns the whole excerpt when NO diagnostic could be parsed — the raw log is the only evidence', async () => {
+    readFileMock.mockResolvedValue(CAPTURED);
+
+    const out = await renderFailureLog('C:\\Temp\\d365build_log.log', false);
+
+    expect(out).toBe(await readFullLog('C:\\Temp\\d365build_log.log'));
+    expect(out).toContain('=== xppc invocation ===');
+    expect(out).toContain('Compile Error:');
+  });
+
+  it('returns a short tail plus the log path once diagnostics were parsed', async () => {
+    readFileMock.mockResolvedValue(CAPTURED);
+
+    const trimmed = await renderFailureLog('C:\\Temp\\d365build_log.log', true);
+    const full = await readFullLog('C:\\Temp\\d365build_log.log');
+
+    // The tail still carries xppc's own tally, which is what the diagnostics get
+    // cross-checked against (see renderUnexplainedFailure).
+    expect(trimmed).toContain('Errors: 1');
+    // …and it names where the rest is, so nothing is lost, only deferred.
+    expect(trimmed).toContain('C:\\Temp\\d365build_log.log');
+    // 41 lines of tail + one header line, whatever the log's length.
+    expect(trimmed.split('\n').length).toBeLessThanOrEqual(42);
+    expect(trimmed.length).toBeLessThan(full.length);
   });
 });

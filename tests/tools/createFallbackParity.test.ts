@@ -31,6 +31,17 @@ vi.mock('fs/promises', () => ({
   }),
   writeFile: vi.fn(async (p: string, content: string) => { files.set(p, content); }),
   copyFile: vi.fn(async () => {}),
+  // writeFileAtomic writes a temp sibling and renames it over the target, so a
+  // mock without these two makes every write throw and the tool report failure.
+  // The rename has to MOVE the entry: a no-op leaves the content parked under
+  // the temp path and the assertions below read an empty target.
+  rename: vi.fn(async (from: string, to: string) => {
+    const content = files.get(from);
+    if (content === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    files.set(to, content);
+    files.delete(from);
+  }),
+  rm: vi.fn(async (p: string) => { files.delete(p); }),
   mkdir: vi.fn(async () => {}),
   access: vi.fn(async (p: string) => {
     if (/^[A-Za-z]:[\\/]?$/.test(p) || p === '/') return;
@@ -151,7 +162,8 @@ describe('#11 XML fallback must name what it could not apply', () => {
 
     // The write itself still happened, and the template really did drop them —
     // if either stops being true this test is measuring the wrong thing.
-    expect(text).toContain('Successfully created');
+    expect(text).toMatch(/^✅ Created /);
+    expect(text).not.toContain('via IMetadataProvider');
     expect(xml).toContain('<Indexes />');
     expect(xml).not.toContain('ConSettingRel');
 

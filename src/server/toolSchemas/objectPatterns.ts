@@ -19,7 +19,7 @@ export const objectPatternsTool = {
         domain: {
           type: 'string',
           enum: ['table', 'form'],
-          description: 'table = table field/index/relation patterns; form = form-pattern toolkit (set action). Optional — inferred from the other params (action/pattern/xml/formName → form; tableGroup → table). ⚠️ This is NOT a free-form "pattern type": a concept like "number-sequence"/"SysOperation" belongs to get_knowledge, not here.',
+          description: 'Optional — inferred from the other params (action/pattern/xml/formName → form; tableGroup → table). ⚠️ NOT a free-form "pattern type": a concept like "number-sequence"/"SysOperation" belongs to get_knowledge, not here.',
         },
         // domain=table
         tableGroup: {

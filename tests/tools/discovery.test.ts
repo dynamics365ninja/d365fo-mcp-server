@@ -149,6 +149,33 @@ describe('batch_search', () => {
     expect(result.isError).toBe(true);
   });
 
+  // ~250 bytes of preamble/postamble on EVERY batch result — an Executed/Time/
+  // Success header and a "💡 Performance Note: N searches in Xms … ~Nx faster"
+  // block — reporting on the tool's own cleverness. Nothing the caller can act
+  // on, and it is re-billed on every later request in the session.
+  it('carries no performance chatter — only what the caller can act on', async () => {
+    const result = await batchSearchTool(
+      req('batch_search', {
+        queries: [
+          { query: 'CustTable', limit: 5 },
+          { query: 'VendTable', limit: 5 },
+        ],
+      }),
+      ctx,
+    );
+    const text = result.content[0].text as string;
+    expect(text).not.toContain('Performance Note');
+    expect(text).not.toContain('faster');
+    expect(text).not.toMatch(/^Time: /m);
+    expect(text).not.toMatch(/^Executed: /m);
+    expect(text).not.toMatch(/^Success: /m);
+    // A batch with nothing to report starts straight at the results.
+    expect(text.startsWith('# Batch Search Results\n\n---\n\n')).toBe(true);
+    // The results themselves are untouched.
+    expect(text).toContain('CustTable');
+    expect(text).toContain('VendTable');
+  });
+
   it('applies globalTypeFilter to queries without explicit type', async () => {
     const result = await batchSearchTool(
       req('batch_search', {

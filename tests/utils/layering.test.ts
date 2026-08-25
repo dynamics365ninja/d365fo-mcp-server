@@ -65,6 +65,64 @@ describe('layer direction', () => {
     }
   });
 
+  it('generators do not import the big write tools', () => {
+    // generateSmartForm imported findBaseFormXml from the 5,600-line modify TOOL
+    // just to read a form's XML. That is a generator reaching into a writer, and
+    // it is one of the edges that kept modifyD365File growing; the locator now
+    // lives in src/utils/baseObjectXml.ts, which anything may import.
+    //
+    // Two stay allowed on purpose, and neither is a write TOOL:
+    //   writeAnchorGuard   — a 93-line GUARD (may this scaffold write here at
+    //     all?). A generator that could not ask it would re-implement the
+    //     refusal or skip it.
+    //   inlineIndexUpsert  — the shared post-write step that tells the symbol
+    //     index about a file just written. A generator that writes an object and
+    //     skips it leaves that object invisible to the untyped `search` that now
+    //     answers from the index.
+    const ALLOWED = ['writeAnchorGuard', 'inlineIndexUpsert'];
+    const offenders: string[] = [];
+    for (const file of globSync('src/tools/smart/**/*.ts')) {
+      for (const spec of importsOf(file)) {
+        if (!spec.includes('../write/')) continue;
+        if (ALLOWED.some(a => spec.includes(a))) continue;
+        offenders.push(`${file.replace(/\\/g, '/')} → ${spec}`);
+      }
+    }
+    expect(offenders, 'a generator is importing a write tool').toEqual([]);
+  });
+
+  it('records the two upward edges that are deliberate', () => {
+    // Neither is a cycle and neither drags a tool into a lower layer, but both
+    // point up, so they are pinned rather than left to multiply silently:
+    //   utils/provenanceStore  → server/serverMode  (SERVER_MODE, a startup
+    //     constant that happens to be declared with the mode logic)
+    //   tools/specs/opSpecs    → server/toolSchemas (reads the PUBLISHED tool
+    //     definition to render its op-spec index — the schema is the contract
+    //     it documents, so this one is by design)
+    // If a third appears, decide deliberately instead of discovering it in the
+    // next audit.
+    const upward: string[] = [];
+    for (const file of [...globSync('src/utils/**/*.ts'), ...globSync('src/tools/specs/**/*.ts')]) {
+      for (const spec of importsOf(file)) {
+        if (/(\.\.\/)+server\//.test(spec)) upward.push(`${file.replace(/\\/g, '/')} → ${spec}`);
+      }
+    }
+    expect(upward.sort()).toEqual([
+      'src/tools/specs/opSpecs.ts → ../../server/toolSchemas/d365foFile.js',
+      'src/utils/provenanceStore.ts → ../server/serverMode.js',
+    ]);
+  });
+
+  it('the write tool dispatches rather than holding every writer', () => {
+    // 5,645 lines and +44% between two audits: the argument schema, a 62-arm
+    // operation switch, the disk locators AND fifteen direct-XML writers in one
+    // file. The writers moved to directXmlWriters.ts; this keeps the split from
+    // silently undoing itself. Raise it only with a reason, the way the schema
+    // budget is raised.
+    const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
+    expect(src.split('\n').length).toBeLessThan(4600);
+  });
+
   it('the dispatcher routes rather than implementing', () => {
     // get_workspace_info was ~320 lines inline in the switch, which made the
     // router the largest single tool implementation in the codebase.

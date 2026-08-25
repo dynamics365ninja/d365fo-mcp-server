@@ -2,6 +2,12 @@
  * MCP tool definition for `build_d365fo_project` (name/description/inputSchema),
  * extracted verbatim from mcpServer.ts. Serialized payload must not change
  * unintentionally — tests/utils/toolSchemaBudget.test.ts ratchets its size.
+ *
+ * `dbSync` was folded in from the retired `trigger_db_sync` tool, mirroring the
+ * `bpCheck` precedent exactly: a sync always follows a successful build, so the
+ * knob belongs on the build rather than costing a second round trip and a
+ * second published schema. A partial sync with NO rebuild (a modify-only
+ * session) stays reachable through the still-routable `trigger_db_sync` name.
  */
 
 export const buildD365foProjectTool = {
@@ -17,10 +23,9 @@ export const buildD365foProjectTool = {
           type: 'string',
           description: 'D365FO model name to build (e.g. MyCustomModel). Auto-detected from workspace if omitted.',
         },
-        projectPath: {
-          type: 'string',
-          description: '(Legacy) Absolute path to a .rnrproj file — used only to extract the model name when modelName is not provided.',
-        },
+        // projectPath is NOT published: it was self-described "(Legacy)" and its
+        // only job is deriving a model name that `modelName` states directly.
+        // The handler still accepts it.
         force: {
           type: 'boolean',
           description: 'Kill any running build processes for this model and restart.',
@@ -31,7 +36,12 @@ export const buildD365foProjectTool = {
         },
         bpCheck: {
           type: 'boolean',
-          description: 'On a SUCCESSFUL build, also run the best-practice checker and append its findings — saves the usual follow-up run_bp_check call.',
+          description: 'On a SUCCESSFUL build, also run the best-practice checker and append its findings. Prefer this to a follow-up run_bp_check call: one build call instead of two round trips.',
+        },
+        dbSync: {
+          type: ['boolean', 'array'],
+          items: { type: 'string' },
+          description: 'On a SUCCESSFUL build, also run the database sync (SyncEngine.exe) — REQUIRED after any table/view/data-entity change. true = partial sync of the syncable objects in the project, full-model when it has none; an ARRAY syncs exactly those tables/views (much faster).',
         },
         wait: {
           type: 'boolean',

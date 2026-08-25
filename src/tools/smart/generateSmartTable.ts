@@ -19,6 +19,7 @@ import { extractModelFromProject, findProjectInSolution } from '../../utils/proj
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { scaffoldWriteRefusalResult } from '../write/writeAnchorGuard.js';
+import { upsertWrittenFileIntoIndex } from '../write/inlineIndexUpsert.js';
 
 interface GenerateSmartTableArgs {
   name: string;
@@ -1054,6 +1055,11 @@ export async function handleGenerateSmartTable(
 
   // Write file
   fs.writeFileSync(normalizedPath, normalizeD365Xml(xml), 'utf-8');
+
+  // Tell the index about it, the way every create/modify path does.
+  // Without this the object is invisible to `search` — which is now answered
+  // from the index for untyped queries — in the very session that created it.
+  await upsertWrittenFileIntoIndex(normalizedPath, { symbolIndex });
   console.log(`[generateSmartTable] Created file: ${normalizedPath}`);
 
   // Add to Visual Studio project if a projectPath is known

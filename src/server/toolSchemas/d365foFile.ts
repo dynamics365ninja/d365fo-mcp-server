@@ -1,6 +1,10 @@
 /**
  * MCP tool definition for `d365fo_file` (name/description/inputSchema).
  *
+ * `undo` was folded in from the retired `undo_last_modification` tool: the
+ * subject (a file this tool wrote) and the `filePath` parameter were already
+ * here, and the tool is already annotated destructive.
+ *
  * Deliberately carries the DISCRIMINATORS only (action / objectType /
  * operation as closed enums) — never the parameters behind them. The per-
  * operation and per-objectType contracts live in src/tools/d365foFileOpSpecs.ts
@@ -15,20 +19,20 @@
 
 export const d365foFileTool = {
     name: 'd365fo_file',
-    description: `Create, modify, delete, or generate a D365FO AOT object. Choose an \`action\`:
+    description: `Create, modify, delete, undo, or generate a D365FO AOT object. Choose an \`action\`:
 • create → write a NEW object file into PackagesLocalDirectory (UTF-8 BOM, auto-added to .rnrproj). THE WRITE STEP — incomplete until isError=false; ⚠️/❌ = failure. Extensions: objectName="Base.PrefixExtension".
-• modify → edit an EXISTING object. APPLIES IMMEDIATELY, no dry-run — confirm with the user first; revert with undo_last_modification. Needs \`operation\`.
-• delete → remove an object's XML from disk AND un-register it from every .rnrproj of the model that lists it. IRREVERSIBLE — confirm with the user first. Reports ❌ when the object is not found, never a silent no-op.
-• generate → XML as TEXT only, no write (Azure/Linux fallback). Try create first. create/modify/delete need Windows.
+• modify → edit an EXISTING object. APPLIES IMMEDIATELY, no dry-run — confirm with the user first; revert with action="undo". Needs \`operation\`.
+• delete → remove an object's XML from disk AND un-register it from every .rnrproj of the model that lists it. IRREVERSIBLE — confirm with the user first.
+• undo → roll back \`filePath\`: git-tracked → git checkout HEAD, which discards ALL uncommitted changes to that file, not just the last edit; untracked → deleted.
+• generate → XML as TEXT only, no write (Azure/Linux fallback). Try create first. create/modify/delete/undo need Windows.
 📖 Parameters are NOT inlined here: get_knowledge(kind="op-spec", topic="<operation>"|"<objectType>") returns the contract for the one you picked — pass its values nested in \`params\` (modify) / \`properties\` (create), along with any packageName/packagePath/solutionPath/workspacePath override.
-Model + prefix auto-applied. Classes: member vars inside the class { }, methods after the closing }.`,
+Model + prefix auto-applied.`,
     inputSchema: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: ['create', 'modify', 'delete', 'generate'],
-          description: 'One of the four modes described above.',
+          enum: ['create', 'modify', 'delete', 'undo', 'generate'],
         },
         objectType: {
           type: 'string',
@@ -66,7 +70,7 @@ Model + prefix auto-applied. Classes: member vars inside the class { }, methods 
           additionalProperties: true,
           description:
             '[create] Per-objectType creation properties (label, fields[], extends, enumValues[], primaryTable, …) — ' +
-            'NOT in this schema. Fetch yours: get_knowledge(kind="op-spec", topic="<objectType>").'
+            'not in this schema; fetch yours with the op-spec lookup above.'
         },
         addToProject: { type: 'boolean', description: 'Add to the ACTIVE .rnrproj — keep the default.', default: true },
         projectPath: { type: 'string', description: 'Path to .rnrproj (auto-detected).' },
@@ -116,11 +120,11 @@ Model + prefix auto-applied. Classes: member vars inside the class { }, methods 
           type: 'object',
           additionalProperties: true,
           description:
-            '[modify] Operation-specific parameters as ONE nested object, per get_knowledge(kind="op-spec", ' +
-            'topic="<operation>"). A missing/wrong one returns that COMPLETE spec — follow it, do not guess.',
+            '[modify] Operation-specific parameters as ONE nested object, per the op-spec lookup above. ' +
+            'A missing/wrong one returns that COMPLETE spec — follow it, do not guess.',
         },
         createBackup: { type: 'boolean', description: '[modify] Back up before modifying.', default: false },
-        filePath: { type: 'string', description: '[modify|delete] Absolute XML path — bypasses symbol-DB lookup. Use for objects just created.' },
+        filePath: { type: 'string', description: '[modify|delete] Absolute XML path — bypasses symbol-DB lookup. Use for objects just created. [undo] REQUIRED: the file to roll back.' },
       },
       required: ['action'],
     },

@@ -50,7 +50,7 @@ describe('ensureRecoverableModification', () => {
     const backups = await listBackups(xmlFile);
     expect(backups).toHaveLength(1);
     expect(note).toContain('Target is not under git');
-    expect(note).toContain('undo_last_modification would not work here');
+    expect(note).toContain('d365fo_file(action="undo") would not work here');
     expect(note).toContain(backups[0]);
   });
 

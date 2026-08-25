@@ -11,6 +11,9 @@ import {
   BRIDGE_FAILURE_MARKER, runWithBridgeFailureScope, renderBridgeFailureNote,
 } from '../bridge/bridgeFailure.js';
 import type { BridgeFailure } from '../bridge/bridgeFailure.js';
+import {
+  runWithSideEffectScope, renderSideEffectNote, type WriteSideEffect,
+} from '../utils/writeSideEffects.js';
 import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { searchUnifiedTool } from './analysis/searchUnified.js';
 import { getObjectInfoTool } from './readers/getObjectInfo.js';
@@ -44,7 +47,14 @@ import {
   getInFlight, registerInFlight, clearInFlight,
   MUTATING_TOOLS, currentWriteEpoch, bumpWriteEpoch,
 } from '../utils/callDedup.js';
-import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
+import { capToolResponse } from './responseCaps.js';
+
+/**
+ * Tools whose call can WRITE to the model. Used only to pick the right wording
+ * when the bridge failed but the tool still returned OK — see the note in the
+ * dispatch loop.
+ */
+const WRITE_CAPABLE_TOOLS = new Set(['d365fo_file', 'labels']);
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
 import { createProgressReporter } from '../utils/progressReporter.js';
 
@@ -95,49 +105,25 @@ function extractWorkspaceFromMeta(meta: any): string | null {
  * Centralized tool handler that dispatches to individual tool implementations
  */
 
-/** Per-tool response cap sizes. 'uncapped' = no truncation. */
-const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
-  // Uncapped — XML generation, file writes, or long structured output
-  generate_object:                  'uncapped',
-  d365fo_file:                      'uncapped',
-  get_object_info:                  'uncapped', // can return reports (RDL) and full class bodies
-  get_method:                       'uncapped', // partial method source is useless
-  build_d365fo_project:             'uncapped', // compiler errors can appear late in long logs
-  security_info:                    8000,
-  extension_info:                   6000,
-  // Default output is ~1 KB. The higher cap exists for diagnostics=true, whose
-  // whole point is the full dump — truncating that at 5000 hid the stdio
-  // handshake section behind the project table.
-  get_workspace_info:               20000,
-  default:                          5000,
-};
-
-function getCapForTool(toolName: string): number | 'uncapped' {
-  return TOOL_CAP_SIZES[toolName] ?? TOOL_CAP_SIZES['default'];
-}
-
-
-export function capToolResponse(toolName: string, result: any): any {
-  const cap = getCapForTool(toolName);
-  if (cap === 'uncapped' || !result?.content) return result;
-  const content = result.content.map((item: any) => {
-    if (item.type !== 'text' || typeof item.text !== 'string') return item;
-    if (item.text.length <= (cap as number)) return item;
-    // Cut on a block boundary: a raw slice ended responses mid-XML-element
-    // (`<AxTableField Nam`), which reads as corrupt metadata, not truncated.
-    const kept = truncateOnBlockBoundary(item.text, cap as number);
-    return {
-      ...item,
-      // The advice used to say `compact=false`, which makes the response BIGGER
-      // — the caller followed it and hit the cap again with more content cut.
-      text: kept +
-        `\n\n> ✂️ Response truncated at ${cap} chars (${item.text.length - kept.length} omitted). ` +
-        `Ask for LESS, not more: page with methodOffset/fieldsOffset, narrow with fieldFilter/searchControl/prefix, ` +
-        `keep compact=true, and read one object per call instead of objects[].`,
-    };
-  });
-  return { ...result, content };
-}
+/**
+ * Published tools that answer from IN-REPO STATIC DATA and so must not queue
+ * behind dbReady. VERIFIED LIVE (2026-08-25): five parallel first calls at
+ * server start all exceeded 120 s and were pushed to the background, including
+ * `get_knowledge(kind="op-spec")` — 2 ms warm, no database in its path, waiting
+ * only because the gate is "not in LOCAL_TOOLS → await dbReady (55 s)".
+ *
+ * EXEMPTED, one tool, on the strict bar that the handler cannot reach the index
+ * even in principle:
+ *  • get_knowledge — dispatched as `getKnowledgeTool(request)`, without
+ *    `context`, so it has no symbolIndex to read; its answers come from
+ *    src/knowledge/** and the op-spec tables shipped in this repo.
+ * REJECTED (each genuinely reads the index, and would answer wrong or empty
+ * before dbReady): object_patterns (domain="table" queries symbols),
+ * validate_code + validate_object_naming (label/name lookups), and
+ * prepare / generate_object / d365fo_file (all ground writes in indexed metadata).
+ * The bridge-readiness wait below is untouched — different, much shorter gate.
+ */
+const DB_FREE_TOOLS = new Set(['get_knowledge']);
 
 export function registerToolHandler(server: Server, context: XppServerContext): void {
   startMetricsLogging();
@@ -167,8 +153,9 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
     // ctx.dbReady resolves once the real symbol database is loaded; await it so
     // tools use the real index instead of silently returning empty results.
-    // LOCAL_TOOLS need no DB (filesystem/in-memory config only) and skip the wait.
-    if (context.dbReady && !LOCAL_TOOLS.has(toolName)) {
+    // LOCAL_TOOLS need no DB (filesystem/in-memory config only) and skip the
+    // wait; so do DB_FREE_TOOLS, whose answer is in-repo static data.
+    if (context.dbReady && !LOCAL_TOOLS.has(toolName) && !DB_FREE_TOOLS.has(toolName)) {
       const t0 = Date.now();
       // Race dbReady against a 55-second timeout so VS Code's ~60 s client
       // timeout doesn't silently cancel the request. If the DB is still loading
@@ -302,8 +289,12 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     // wrappers return null, the tool serves the SQLite index instead, and the
     // answer — including "not found" — looks like it came from live metadata.
     const bridgeFailures: BridgeFailure[] = [];
+    // Anything this call commits before it fails — a label written on the way to
+    // an operation that is then refused. Same scope shape as the failure sink.
+    const sideEffects: WriteSideEffect[] = [];
     try {
-    result = await runWithBridgeFailureScope(bridgeFailures, async () => {
+    result = await runWithSideEffectScope(sideEffects, () =>
+      runWithBridgeFailureScope(bridgeFailures, async () => {
       // Build the progress description for this tool call.
       const args = request.params.arguments as Record<string, any> | undefined;
       const progressMsg = buildProgressMessage(toolName, args);
@@ -333,9 +324,13 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return findReferencesTool(request, context);
       // get_method and suggest_edt are no longer PUBLISHED (their contracts moved
       // into get_object_info options.method and prepare's fieldsHint, which both
-      // already had the object in hand). The routes stay so an agent still holding
-      // the old name from an earlier session gets its answer plus a pointer,
-      // rather than an "unknown tool" it cannot recover from.
+      // already had the object in hand). Same for undo_last_modification,
+      // review_workspace_changes and trigger_db_sync, folded into
+      // d365fo_file(action="undo"), get_workspace_info(changes=true) and
+      // build_d365fo_project(dbSync) respectively. The routes stay so an agent
+      // still holding the old name from an earlier session gets its answer,
+      // rather than an "unknown tool" it cannot recover from — and, for
+      // trigger_db_sync, so a partial sync with no rebuild stays reachable.
       case 'get_method':
         return getMethodTool(request, context);
       case 'labels':
@@ -389,7 +384,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           isError: true,
         };
     } })();
-    });
+    }));
     } catch (err) {
       // Safety net: convert any thrown error into a tool result with isError:true
       // instead of an opaque JSON-RPC protocol error.
@@ -418,8 +413,21 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           (item: any) => typeof item?.text === 'string' && item.text.includes(BRIDGE_FAILURE_MARKER),
         );
         if (!alreadyReported) {
-          capped = appendNote(capped, renderBridgeFailureNote(bridgeFailures));
+          // A write that came back OK completed through the direct-XML fallback,
+          // so it needs the "it landed, do not repeat it" wording rather than the
+          // reader's "treat this as unproven and re-run".
+          const writeSucceeded = WRITE_CAPABLE_TOOLS.has(toolName) && capped?.isError !== true;
+          capped = appendNote(capped, renderBridgeFailureNote(bridgeFailures, { writeSucceeded }));
         }
+      }
+
+      // A FAILED call that had already committed something says so, because its
+      // own "nothing was written" is about the operation, not about everything
+      // the call touched — a label resolved on the way to a refused add-field is
+      // on disk, and undo does not take it back. Only on failure: on success the
+      // tool reports the effect in its own words.
+      if (capped?.isError === true && sideEffects.length > 0) {
+        capped = appendNote(capped, renderSideEffectNote(sideEffects));
       }
 
       // Record metrics: detect empty result (no content or first text item is empty)

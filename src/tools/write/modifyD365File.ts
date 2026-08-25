@@ -17,12 +17,13 @@ import util from 'util';
 
 import path from 'path';
 import { parseStringPromise } from '../../utils/xml.js';
-import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../../utils/configManager.js';
-import { isStandardModel, resolveRegularObjectPrefixToken } from '../../utils/modelClassifier.js';
+import { sayOncePerSession, resetRepeatedNoteMemory } from '../../utils/repeatedNotes.js';
+import { getConfigManager, extractModelFromFilePath } from '../../utils/configManager.js';
+import { isStandardModel, resolveRegularObjectPrefixToken, resolveObjectPrefix, deriveExtensionInfix } from '../../utils/modelClassifier.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
-import { resolveDbPathLocally } from '../../utils/metadataResolver.js';
+import { findBaseObjectXml, findBaseFormXml } from '../../utils/baseObjectXml.js';
 import { assertWritePathAllowed } from '../../utils/pathContainment.js';
-import { withFileLock, writeFileAtomic } from '../../utils/atomicFileWrite.js';
+import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import {
   bridgeValidateAfterWrite, canBridgeModify,
   bridgeAddMethod, bridgeRemoveMethod, bridgeAddField, bridgeSetProperty, bridgeReplaceCode,
@@ -40,22 +41,9 @@ import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
 import { ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
 import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName, resolveEdtEnumType } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
-import { insertFormExtensionControl } from '../../utils/formExtensionControlXml.js';
 import {
   upsertFormExtensionControlProperty, resolveControlPropertyTarget,
 } from '../../utils/formExtensionControlModifications.js';
-import { removeFormControl } from '../../utils/formControlRemoval.js';
-import { addSecurityEntryPoint, removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
-import {
-  removeDiagnosticSuppression, addDiagnosticSuppression, emptySuppressionListXml,
-} from '../../utils/ignoreDiagnosticListXml.js';
-import { buildSuppressionXml } from '../../knowledge/bpMonikers/index.js';
-import {
-  upsertAxTableProperty,
-  AX_TABLE_NON_EXISTENT_PROPERTIES,
-} from '../../utils/axTablePropertyOrder.js';
-import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.js';
-import { buildAxDataEntityViewFieldXml } from '../xml/dataEntityViewExtensionXml.js';
 import { enforceGrounding } from '../../utils/provenanceStore.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import {
@@ -74,14 +62,38 @@ import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import {
   getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
   findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
+  paramCorrectionCandidates, canonicalParamForAlias, D365FO_FILE_OP_SPECS,
 } from '../specs/d365foFileOpSpecs.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
-import { decodeXmlEntitiesFromXppSource, escapeXml } from '../../utils/xmlEscape.js';
+import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
 import { findD365FileOnDisk, expectedD365FilePath } from '../../utils/objectFileLookup.js';
 import {
   crossModelWriteRefusal, standDownNotice, baseObjectOf, type ExistingExtension,
 } from '../../utils/crossModelWriteGuard.js';
 import { resolveAnchorModel } from './writeAnchorGuard.js';
+import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js';
+import { isRawLabelText } from '../../utils/labelReference.js';
+// The direct-XML writers moved to their own module; this file dispatches to them.
+import {
+  directXmlReplaceCode,
+  directXmlModifyProperty,
+  directXmlAddMenuItemToMenu,
+  viaXmlFallback,
+  directXmlAddControl,
+  coerceNoYesFlag,
+  directXmlAddIndex,
+  directXmlAddQueryRange,
+  directXmlRemoveQueryRange,
+  directXmlAddDataEntityExtensionField,
+  DELETE_ACTION_TYPES,
+  directXmlDeleteAction,
+  directXmlRemoveControl,
+  directXmlAddEntryPoint,
+  directXmlRemoveEntryPoint,
+  directXmlRemoveDiagnosticSuppression,
+  directXmlAddDiagnosticSuppression,
+  directXmlEnsureRelationProperties,
+} from './directXmlWriters.js';
 
 
 /**
@@ -283,22 +295,6 @@ export function describeBridgeFallbackReason(
   return 'the bridge was reachable but did not handle this call';
 }
 
-/**
- * Serializes a direct-XML editor on the file it edits.
- *
- * Each of these functions reads the whole file, patches the string and writes it
- * back. Two that overlap on one file both read the same original, so the second
- * write silently drops whatever element the first one added — and modify calls do
- * arrive concurrently, since `d365fo_file` is excluded from the in-flight call dedup
- * (writes must never be coalesced). The lock is per-path and in-process; see
- * utils/atomicFileWrite.ts for what it does and does not cover.
- */
-function serializedOnFile<A extends unknown[], R>(
-  fn: (filePath: string, ...args: A) => Promise<R>,
-): (filePath: string, ...args: A) => Promise<R> {
-  return (filePath, ...args) => withFileLock(filePath, () => fn(filePath, ...args));
-}
-
 /** File content, CRLF- and BOM-normalised, for matching caller-supplied X++ against. */
 async function readForMatching(filePath: string): Promise<string | null> {
   try {
@@ -423,1686 +419,6 @@ export function renderChangedLines(before: string, after: string, context = 3): 
 
   return `\n\n**Result on disk** (› = changed):\n\`\`\`\n${shown}\n\`\`\``;
 }
-
-/**
- * Direct XML file-level replace-code fallback, used when the C# bridge can't
- * reach a method (e.g. form/form-extension control overrides not exposed via
- * the Methods API). Last resort — the bridge is always preferred.
- *
- * `reason` comes from describeBridgeFallbackReason so the success message names the
- * cause that actually applied instead of asserting an outage that may not exist.
- */
-const directXmlReplaceCode = serializedOnFile(async (
-  filePath: string,
-  oldCode: string,
-  newCode: string,
-  reason: string,
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    // Files on disk are CRLF; oldCode from get_method_source is typically LF-only.
-    // Normalize both to LF for matching, then normalizeD365Xml restores CRLF on write.
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-    const normOld = oldCode.replace(/\r\n/g, '\n');
-    const normNew = newCode.replace(/\r\n/g, '\n');
-
-    if (!content.includes(normOld)) {
-      return null; // oldCode not found in file at all
-    }
-
-    // Without /g, String.replace() only replaces the first occurrence, so require
-    // exactly one match to avoid silently picking the wrong one.
-    const occurrences = content.split(normOld).length - 1;
-    if (occurrences > 1) {
-      return {
-        success: false,
-        message: `❌ directXmlReplaceCode: oldCode appears ${occurrences} times in ${filePath} — replacement is ambiguous. Provide a more specific oldCode snippet.`,
-      };
-    }
-
-    const updated = content.replace(normOld, normNew);
-    if (updated === content) {
-      return null; // no change made
-    }
-
-    await writeFileAtomic(filePath, normalizeD365Xml(updated));
-
-    // Read back before claiming it. The bridge declining is normal here (a class
-    // DECLARATION is not a method, so its Methods API never finds the snippet),
-    // but a message that led with that error and only then said ✅ read as a
-    // failure — the caller re-did the same edit by hand with a plain text tool,
-    // which is the AOT-XML bypass this server exists to remove. Confirming the
-    // new code is on disk lets the message lead with the fact instead.
-    const after = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '').replace(/\r\n/g, '\n');
-    if (!after.includes(normNew)) {
-      return {
-        success: false,
-        message: `❌ directXmlReplaceCode: wrote ${filePath} but newCode is not in the file afterwards — ` +
-          `the write did not take effect. Re-read the file and retry; do not assume the change landed.`,
-      };
-    }
-
-    console.error(`[modify_d365fo_file] ✅ directXmlReplaceCode fallback (${reason}): replaced in ${filePath}`);
-    return {
-      success: true,
-      message: `✅ Code replaced and verified on disk — newCode is present in ${filePath}. ` +
-        `No further edit is needed; do NOT re-apply it with a text editor.\n` +
-        `   (Written by this server's XML writer rather than the bridge — ${reason})`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlReplaceCode failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * Direct XML fallback for modify-property, used when the bridge rejects
- * modify-property for an object type (e.g. AxForm) even though the property
- * is a plain text element (e.g. <Caption>) editable by string replacement.
- * Only used when the bridge itself reports failure.
- *
- * `propertyPath` is a bare element name (no XPath/dotted-path support).
- * Refuses to act if the element is missing (returns null so the caller
- * surfaces the original bridge error), ambiguous (appears more than once),
- * or is not a leaf — string replacement can only express a text value, and
- * writing one over an element that has children produces malformed XML.
- */
-const directXmlModifyProperty = serializedOnFile(async (
-  filePath: string,
-  propertyPath: string,
-  propertyValue: string,
-  reason: string,
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '');
-    const escapedValue = String(propertyValue)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-    const tagName = propertyPath.split(/[./]/).pop()!;
-
-    // tagName is interpolated into RegExp source below. Anything that is not a
-    // plain XML element name has no meaning here anyway, and letting it through
-    // either throws on an unbalanced metacharacter (caught, surfacing a
-    // misleading "bridge error") or silently matches the wrong elements.
-    if (!/^[A-Za-z_][A-Za-z0-9_.:-]*$/.test(tagName)) {
-      return {
-        success: false,
-        message:
-          `❌ directXmlModifyProperty: '${propertyPath}' does not name a plain XML element ` +
-          `(resolved to "${tagName}") — nothing was written.`,
-      };
-    }
-    const tagRe = tagName.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
-
-    // Forms first: the bridge refuses modify-property for AxForm entirely, and the
-    // generic path below cannot serve Design properties either — Caption/Style also
-    // occur on controls, so it sees several matches and refuses (#37).
-    const formPatched = upsertAxFormDesignProperty(content, tagName, escapedValue);
-    if (formPatched) {
-      await writeFileAtomic(filePath, normalizeD365Xml(formPatched));
-      return {
-        success: true,
-        message: `✅ Form Design property '${tagName}'='${propertyValue}' set via direct XML (the bridge does not support modify-property for forms). File: ${filePath}`,
-      };
-    }
-
-    const openTagRe = new RegExp(`<${tagRe}\\b[^>]*>[\\s\\S]*?</${tagRe}>`, 'g');
-    const selfClosingRe = new RegExp(`<${tagRe}\\b([^>]*)/>`, 'g');
-    const openTagOnlyRe = new RegExp(`^<${tagRe}\\b[^>]*>`);
-
-    const openMatches = content.match(openTagRe) ?? [];
-    const selfClosingMatches = content.match(selfClosingRe) ?? [];
-    const totalMatches = openMatches.length + selfClosingMatches.length;
-
-    if (totalMatches === 0) {
-      // The element does not exist yet. For an AxTable we know the canonical
-      // element order, so it can be INSERTED in the right place instead of failing.
-      // This is what makes properties the C# bridge refuses outright reachable at
-      // all — notably FormRef, whose absence is the very BPErrorTableMissingFormRef
-      // the agent is trying to fix (docs/eval-sweep-findings-2026-07-21.md #37).
-      // Order matters: a property written in the wrong position is dropped without
-      // a word (#13), which is why this goes through upsertAxTableProperty.
-      const nonExistent = AX_TABLE_NON_EXISTENT_PROPERTIES[tagName];
-      if (nonExistent && /<AxTable[\s>]/.test(content)) {
-        return {
-          success: false,
-          message: `❌ '${tagName}' is not an AxTable property — nothing was written. ${nonExistent}`,
-        };
-      }
-      const inserted = upsertAxTableProperty(content, tagName, escapedValue);
-      if (!inserted) {
-        return null; // not a table / unknown property — surface the original bridge error
-      }
-      await writeFileAtomic(filePath, normalizeD365Xml(inserted));
-      console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: inserted <${tagName}> in ${filePath}`);
-      return {
-        success: true,
-        message:
-          `✅ Property '${propertyPath}'='${propertyValue}' added via direct XML fallback ` +
-          `(the element did not exist; inserted in canonical AxTable element order). File: ${filePath}`,
-      };
-    }
-    if (totalMatches > 1) {
-      return {
-        success: false,
-        message: `❌ directXmlModifyProperty: <${tagName}> appears ${totalMatches} times in ${filePath} — ambiguous, refusing to guess which one.`,
-      };
-    }
-
-    // Leaf guard. The replacement below can only express a text value, so an
-    // element that has children must be refused: the old `>[\s\S]*?<` rewrite
-    // stopped at the FIRST child tag and produced `<Tag>NewValue<Child>…`,
-    // i.e. structurally broken XML written to disk and reported as success.
-    // Counting matches (above) does not catch this — one match can still be a
-    // container.
-    if (openMatches.length === 1) {
-      const inner = openMatches[0]
-        .replace(openTagOnlyRe, '')
-        .replace(new RegExp(`</${tagRe}>$`), '');
-      if (inner.includes('<')) {
-        return {
-          success: false,
-          message:
-            `❌ directXmlModifyProperty: <${tagName}> in ${filePath} contains child elements — ` +
-            `it holds structure, not a text value. Refusing to overwrite it (nothing was written).`,
-        };
-      }
-    }
-
-    // Function replacers throughout: `escapedValue` escapes XML metacharacters
-    // but not `$`, which a string replacement would read as a capture reference.
-    const updated = openMatches.length === 1
-      ? content.replace(openTagRe, m => `${openTagOnlyRe.exec(m)![0]}${escapedValue}</${tagName}>`)
-      : content.replace(selfClosingRe, (_m, attrs) => `<${tagName}${attrs}>${escapedValue}</${tagName}>`);
-
-    await writeFileAtomic(filePath, normalizeD365Xml(updated));
-    console.error(`[modify_d365fo_file] ✅ directXmlModifyProperty fallback: set <${tagName}> in ${filePath}`);
-    return {
-      success: true,
-      message: `✅ Property '${propertyPath}' set via direct XML fallback (${reason}). File: ${filePath}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlModifyProperty failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * Direct XML fallback for add-menu-item-to-menu.
- * The C# bridge can only modify menus it has loaded from its startup roots;
- * newly created menus trigger a NullRef because they aren't in the bridge's
- * in-memory model yet (even after update_symbol_index). This function edits
- * the XML file directly as a last-resort fallback.
- */
-const directXmlAddMenuItemToMenu = serializedOnFile(async (
-  filePath: string,
-  menuItemToAdd: string,
-  menuItemToAddType: string,
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    const typeMap: Record<string, string> = { display: 'Display', action: 'Action', output: 'Output' };
-    const menuItemType = typeMap[menuItemToAddType?.toLowerCase()] ?? 'Display';
-
-    // An AxMenu's <Elements> holds AxMenuElement entries discriminated by i:type —
-    // `AxMenuElementMenuItem` for a menu-item reference. `AxMenuFunctionItem` is not
-    // a type in the metadata model at all (zero of the 73 shipped AxMenu files use
-    // it), so the element deserializes into nothing and the menu comes out empty:
-    // docs/eval-sweep-findings-2026-07-21.md #30. `MenuItemType` is omitted for
-    // MenuItemType stays explicit (Display is the model default and the shipped
-    // files omit it, but writing it costs nothing and keeps display/action/output
-    // unambiguous).
-    const newElement =
-      `\t\t<AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">\n` +
-      `\t\t\t<Name>${menuItemToAdd}</Name>\n` +
-      `\t\t\t<MenuItemName>${menuItemToAdd}</MenuItemName>\n` +
-      `\t\t\t<MenuItemType>${menuItemType}</MenuItemType>\n` +
-      `\t\t</AxMenuElement>`;
-
-    let updated: string;
-    if (content.includes('<Elements />')) {
-      updated = content.replace('<Elements />', `<Elements>\n${newElement}\n\t</Elements>`);
-    } else if (content.includes('</Elements>')) {
-      updated = content.replace('</Elements>', `${newElement}\n\t</Elements>`);
-    } else {
-      return null;
-    }
-
-    if (updated === content) return null;
-
-    await writeFileAtomic(filePath, normalizeD365Xml(updated));
-    console.error(`[modify_d365fo_file] ✅ directXmlAddMenuItemToMenu: added '${menuItemToAdd}' to ${filePath}`);
-    return {
-      success: true,
-      message: `✅ Menu item '${menuItemToAdd}' (${menuItemType}) added via direct XML fallback. File: ${filePath}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlAddMenuItemToMenu failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * controlType (as passed to add-control) → the form control element emitted inside
- * a form-extension's <FormControl>, together with its <Type> value. Verified against
- * shipped standard form extensions (e.g. InventItemSampling.AdvancedQualityManagement).
- * NOTE: an integer control is `AxFormIntegerControl` (Type=Integer) — NOT
- * `AxFormIntControl`. Unknown types fall back to String, which is always valid.
- */
-const CONTROL_TYPE_TO_FORM_CONTROL: Record<string, { iType: string; typeValue: string }> = {
-  string:      { iType: 'AxFormStringControl',   typeValue: 'String' },
-  integer:     { iType: 'AxFormIntegerControl',  typeValue: 'Integer' },
-  int:         { iType: 'AxFormIntegerControl',  typeValue: 'Integer' },
-  int64:       { iType: 'AxFormInt64Control',    typeValue: 'Int64' },
-  real:        { iType: 'AxFormRealControl',     typeValue: 'Real' },
-  date:        { iType: 'AxFormDateControl',     typeValue: 'Date' },
-  datetime:    { iType: 'AxFormDateTimeControl', typeValue: 'DateTime' },
-  utcdatetime: { iType: 'AxFormDateTimeControl', typeValue: 'DateTime' },
-  time:        { iType: 'AxFormTimeControl',     typeValue: 'Time' },
-  guid:        { iType: 'AxFormGuidControl',     typeValue: 'Guid' },
-  checkbox:    { iType: 'AxFormCheckBoxControl', typeValue: 'CheckBox' },
-  combobox:    { iType: 'AxFormComboBoxControl', typeValue: 'ComboBox' },
-  // An enum binds to a ComboBox. Spelled out because "Enum" is what the EDT
-  // resolver and the op-spec both call it, and an unmapped type silently
-  // becomes a String control over enum data.
-  enum:        { iType: 'AxFormComboBoxControl', typeValue: 'ComboBox' },
-  button:      { iType: 'AxFormButtonControl',   typeValue: 'Button' },
-  group:       { iType: 'AxFormGroupControl',    typeValue: 'Group' },
-};
-const DEFAULT_FORM_CONTROL = { iType: 'AxFormStringControl', typeValue: 'String' };
-
-/**
- * Mark a write result as having come from this server's XML writer rather than
- * the bridge, so the success banner can name the path that actually did the work.
- *
- * The headline used to read "applied via IMetadataProvider.Update()"
- * unconditionally, while the line below it said "via direct XML fallback" — the
- * reply named an API that never ran. That matters beyond tidiness: a reader who
- * believes the metadata API performed the write also believes the write was
- * validated by it, which is exactly the assumption that let a silently-discarded
- * control read as a success.
- */
-function viaXmlFallback<T extends { success: boolean; message: string } | null>(result: T): T {
-  return (result ? { ...result, viaXmlFallback: true } : result) as T;
-}
-
-/** Random 9-char lowercase-alphanumeric suffix, matching the SDK's
- *  `FormExtensionControl<rand>` wrapper-name convention (e.g. "fh5riowy1"). */
-function formExtensionControlName(): string {
-  let s = '';
-  while (s.length < 9) s += Math.random().toString(36).slice(2);
-  return `FormExtensionControl${s.slice(0, 9)}`;
-}
-
-/**
- * Direct XML fallback for add-control on a form-extension.
- *
- * The C# bridge's AddControl resolves its target via _provider.Forms.Read(name),
- * which can NEVER find a form EXTENSION (named "BaseForm.Suffix") — it always
- * reports 'Form "<ext>" not found'. add-control on a form-extension therefore has
- * no working bridge path at all (independent of metadata-root freshness). This
- * edits the file on disk, so it is unaffected by what the bridge has loaded.
- *
- * The shape and the insertion point both come from where `parentControl` lives:
- * an <AxFormExtensionControl> envelope in the extension's ROOT <Controls> for a
- * base-form parent, a bare <AxFormControl> in the parent's NESTED <Controls>
- * when the extension defines that parent itself. See formExtensionControlXml.ts
- * — the placement logic lives there, pure and unit-tested, because getting it
- * wrong writes structurally invalid metadata under a ✅.
- */
-const directXmlAddControl = serializedOnFile(async (
-  filePath: string,
-  controlName: string,
-  parentControl: string,
-  controlType: string,
-  dataSource?: string,
-  dataField?: string,
-  label?: string,
-  previousSibling?: string,
-  positionType?: string,
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    const { iType, typeValue } = CONTROL_TYPE_TO_FORM_CONTROL[(controlType || 'String').toLowerCase()] ?? DEFAULT_FORM_CONTROL;
-
-    const outcome = insertFormExtensionControl(content, {
-      controlName, parentControl, iType, typeValue,
-      dataSource, dataField, label,
-      wrapperName: formExtensionControlName(),
-      previousSibling, positionType,
-    });
-
-    switch (outcome.kind) {
-      case 'unsupported':
-        return null; // not a form-extension shape we recognise — caller falls through
-      case 'exists':
-        return {
-          success: true,
-          message: `✅ Control '${controlName}' already present in ${filePath} — skipped (idempotent).`,
-        };
-      case 'refused':
-        return { success: false, message: outcome.message };
-    }
-
-    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
-    console.error(`[modify_d365fo_file] ✅ directXmlAddControl: added '${controlName}' (${iType}) to ${filePath}`);
-
-    const shape = outcome.representation === 'nested'
-      ? `nested <AxFormControl> under extension-owned parent`
-      : `<AxFormExtensionControl> in the extension's root <Controls>`;
-    const notes = outcome.notes.length
-      ? '\n' + outcome.notes.map(n => `⚠️ ${n}`).join('\n')
-      : '';
-    return {
-      success: true,
-      message:
-        `✅ Control '${controlName}' (${iType}) added to '${parentControl}' via direct XML fallback ` +
-        `as a ${shape}. File: ${filePath}${notes}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlAddControl failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * Normalises a NoYes-shaped flag to a boolean.
- *
- * The wire type is boolean, but the value these params end up as in AxTable XML
- * is `No`/`Yes`, so callers legitimately pass the string spelling (corpus #27:
- * indexAllowDuplicates="No" was rejected with a bare "expected boolean").
- * Anything unrecognised returns undefined so the op's own default applies.
- */
-export function coerceNoYesFlag(value: unknown): boolean | undefined {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') {
-    const v = value.trim().toLowerCase();
-    if (v === 'yes' || v === 'true' || v === '1') return true;
-    if (v === 'no' || v === 'false' || v === '0') return false;
-  }
-  return undefined;
-}
-
-/**
- * Direct XML fallback for add-index on a TABLE.
- *
- * The C# bridge's AddIndex resolves its target via _provider.Tables.Read(name),
- * whose DiskProvider metadata roots are fixed at bridge startup. A table CREATED
- * THIS SESSION is therefore reported "Table '<name>' not found" — even after
- * update_symbol_index and even when an explicit filePath was supplied (filePath
- * only steers the TS-side file lookup, never the bridge's own name resolution).
- * Corpus evidence: 2026-07-21T19__L2-error-handling-infolog (add-index on
- * ConDemoTicket failed 3×) and 2026-07-21T20__L3-workflow-document-submit.
- * With no working grounded path the only way to land the index was
- * d365fo_file(action="create", overwrite=true) — the whole-file escape hatch the
- * eval loop forbids.
- *
- * This writes an <AxTableIndex> element straight into the table's <Indexes>
- * collection, in the shape the D365FO SDK serialises: <Name>, <AllowDuplicates>,
- * optional <AlternateKey>, then <Fields> of <AxTableIndexField><DataField>.
- * <Indexes> is a collection sibling, NOT part of the order-sensitive top-level
- * property block, so appending to it is safe. Unlike the bridge it edits the file
- * on disk, so it is unaffected by what the provider loaded at startup — and it
- * carries allowDuplicates/alternateKey, which the whole-file overwrite workaround
- * dropped (cluster #35).
- */
-const directXmlAddIndex = serializedOnFile(async (
-  filePath: string,
-  indexName: string,
-  fields: string[] | undefined,
-  allowDuplicates: boolean | undefined,
-  alternateKey: boolean | undefined,
-): Promise<{ success: boolean; message: string } | null> => {
-  // The bridge refuses an index with no fields (it writes <Fields /> — an index that
-  // compiles, warns about nothing and indexes nothing). This fallback runs precisely
-  // when the bridge call failed, so without the same gate it would catch the refusal
-  // and land the empty index anyway, under a ✅.
-  const namedFields = (fields ?? []).filter(f => typeof f === 'string' && f.trim() !== '');
-  if (namedFields.length === 0) {
-    return {
-      success: false,
-      message:
-        `Index '${indexName}' has no fields — pass indexFields as [{ fieldName: "<field>" }]. ` +
-        `An index with an empty <Fields /> collection compiles clean and indexes nothing.`,
-    };
-  }
-
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    // Only tables and table-extensions carry an <Indexes> collection — bail on any
-    // other shape so a mis-typed objectType never corrupts an unrelated file.
-    //
-    // AxTableExtension is included deliberately: the bridge gained a table-extension
-    // path for AddIndex (#799), but its provider still resolves against metadata roots
-    // fixed at startup, so an extension CREATED THIS SESSION is unresolvable there —
-    // the very hole this fallback exists to close. The extension's <Indexes> collection
-    // holds the same <AxTableIndex> element as a table's, so the patch below is
-    // shape-identical. Note `\b` does NOT match `<AxTableExtension` (E is a word char),
-    // which is why the extension needs its own alternative rather than a looser pattern.
-    if (!/<AxTable\b/.test(content) && !/<AxTableExtension\b/.test(content)) return null;
-
-    // Idempotent: if an index with this name already exists, report success
-    // rather than writing a duplicate (mirrors directXmlAddControl).
-    if (new RegExp(`<AxTableIndex>\\s*<Name>${indexName}</Name>`).test(content)) {
-      return {
-        success: true,
-        message: `✅ Index '${indexName}' already present in ${filePath} — skipped (idempotent).`,
-      };
-    }
-
-    const fieldElements = namedFields
-      .map(f =>
-        `\t\t\t\t<AxTableIndexField>\n` +
-        `\t\t\t\t\t<DataField>${f}</DataField>\n` +
-        `\t\t\t\t</AxTableIndexField>`)
-      .join('\n');
-
-    const newElement =
-      `\t\t<AxTableIndex>\n` +
-      `\t\t\t<Name>${indexName}</Name>\n` +
-      `\t\t\t<AllowDuplicates>${allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n` +
-      (alternateKey ? `\t\t\t<AlternateKey>Yes</AlternateKey>\n` : '') +
-      `\t\t\t<Fields>\n${fieldElements}\n\t\t\t</Fields>\n` +
-      `\t\t</AxTableIndex>`;
-
-    let updated: string;
-    if (content.includes('<Indexes />')) {
-      updated = content.replace('<Indexes />', `<Indexes>\n${newElement}\n\t</Indexes>`);
-    } else if (content.includes('</Indexes>')) {
-      updated = content.replace('</Indexes>', `${newElement}\n\t</Indexes>`);
-    } else {
-      // No <Indexes> collection at all — not a shape we can safely patch.
-      return null;
-    }
-
-    if (updated === content) return null;
-
-    await writeFileAtomic(filePath, normalizeD365Xml(updated));
-    console.error(`[modify_d365fo_file] ✅ directXmlAddIndex: added '${indexName}' to ${filePath}`);
-    return {
-      success: true,
-      message: `✅ Index '${indexName}' added via direct XML fallback (bridge could not resolve the same-session table). File: ${filePath}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlAddIndex failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * The two element names a data source can carry inside a query's <DataSources>:
- * the root of the query, and a joined child. A child is NOT a nested
- * <AxQuerySimpleRootDataSource> — that element never nests — so both names have
- * to be scanned, or every joined data source is unreachable.
- */
-const QUERY_DATASOURCE_TAGS: readonly string[] = [
-  'AxQuerySimpleRootDataSource',
-  'AxQuerySimpleEmbeddedDataSource',
-];
-
-/** One data source inside <ViewMetadata>: its own block bounds, element and <Name>. */
-interface QueryDataSourceBlock {
-  start: number;
-  end: number;
-  tag: string;
-  name: string;
-}
-
-/** A direct child element located inside a parent block, with its content bounds. */
-type DirectChild =
-  | { selfClosing: true; start: number; end: number }
-  | { selfClosing: false; start: number; end: number; innerStart: number; innerEnd: number };
-
-/** The tag grammar every scan below shares. Cloned per use — /g carries lastIndex. */
-const XML_TAG_SOURCE = /<(\/?)([A-Za-z_][\w.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/.source;
-
-/**
- * Blanks CDATA sections and comments while preserving every offset, so a tag scan
- * cannot be derailed by markup-looking text inside them: a <ViewMetadata> always
- * carries a <SourceCode> CDATA block ahead of its <DataSources>. Offsets from a
- * masked scan index the original string unchanged.
- */
-function maskXmlNonMarkup(content: string): string {
-  return content.replace(/<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->/g, m => ' '.repeat(m.length));
-}
-
-/**
- * Offsets of the FIRST DIRECT child element named `childName` inside `block`,
- * where `block` starts with its parent's opening tag and ends with the matching
- * close.
- *
- * Depth-counted, so a same-named element inside a NESTED child never matches.
- * <Ranges> needs this more than any other collection: a joined data source has a
- * <Ranges> of its own and it comes FIRST in document order, so
- * `block.replace('<Ranges />', …)` writes the range onto the joined table instead
- * of the one that was asked for — valid XML, different query.
- */
-function findDirectChild(block: string, childName: string): DirectChild | null {
-  const openTag = new RegExp(`^<[A-Za-z_][\\w.-]*(?:"[^"]*"|'[^']*'|[^>"'])*?>`).exec(block);
-  if (!openTag) return null;
-
-  const tagRe = new RegExp(XML_TAG_SOURCE, 'g');
-  tagRe.lastIndex = openTag[0].length;
-  let depth = 0;
-  let m: RegExpExecArray | null;
-
-  while ((m = tagRe.exec(block)) !== null) {
-    const [full, closing, name, , selfClosing] = m;
-    if (selfClosing) {
-      if (depth === 0 && name === childName) {
-        return { selfClosing: true, start: m.index, end: m.index + full.length };
-      }
-      continue;
-    }
-    if (closing) {
-      if (depth === 0) return null;   // the parent's own closing tag — child absent
-      depth--;
-      continue;
-    }
-    if (depth === 0 && name === childName) {
-      const innerStart = m.index + full.length;
-      let inner = 1;
-      const innerRe = new RegExp(XML_TAG_SOURCE, 'g');
-      innerRe.lastIndex = innerStart;
-      let im: RegExpExecArray | null;
-      while ((im = innerRe.exec(block)) !== null) {
-        if (im[4]) continue;          // self-closing: no depth change
-        if (im[1]) {
-          inner--;
-          if (inner === 0) {
-            return { selfClosing: false, start: m.index, end: im.index + im[0].length, innerStart, innerEnd: im.index };
-          }
-        } else {
-          inner++;
-        }
-      }
-      return null;
-    }
-    depth++;
-  }
-  return null;
-}
-
-/**
- * Every data source in `maskedContent`, root and joined alike, with the block
- * bounds and the <Name> each one carries.
- */
-function findQueryDataSourceBlocks(content: string, maskedContent: string): QueryDataSourceBlock[] {
-  const tagRe = new RegExp(XML_TAG_SOURCE, 'g');
-  const open: Array<{ tag: string; start: number }> = [];
-  const found: QueryDataSourceBlock[] = [];
-  let m: RegExpExecArray | null;
-
-  while ((m = tagRe.exec(maskedContent)) !== null) {
-    const [full, closing, tag, , selfClosing] = m;
-    if (selfClosing || !QUERY_DATASOURCE_TAGS.includes(tag)) continue;
-    if (!closing) {
-      open.push({ tag, start: m.index });
-      continue;
-    }
-    const started = open.pop();
-    // Unbalanced markup — stop rather than pair the wrong tags up.
-    if (!started || started.tag !== tag) return found;
-    const end = m.index + full.length;
-    const block = maskedContent.slice(started.start, end);
-    const nameChild = findDirectChild(block, 'Name');
-    found.push({
-      start: started.start,
-      end,
-      tag: started.tag,
-      name: nameChild && !nameChild.selfClosing
-        ? content.slice(started.start + nameChild.innerStart, started.start + nameChild.innerEnd)
-        : '',
-    });
-  }
-  return found;
-}
-
-/** The leading tabs/spaces of the line `offset` sits on ('' when it is not indented). */
-function lineIndentAt(content: string, offset: number): string {
-  const lineStart = content.lastIndexOf('\n', offset - 1) + 1;
-  const lead = content.slice(lineStart, offset);
-  return /^[\t ]*$/.test(lead) ? lead : '';
-}
-
-/** Resolution of `dataSourceName` to exactly one data source and its OWN <Ranges>. */
-type QueryRangesTarget =
-  | { ok: true; ds: QueryDataSourceBlock; ranges: DirectChild; indent: string }
-  | { ok: false; reason: 'not-found'; known: string[] }
-  | { ok: false; reason: 'ambiguous' }
-  | { ok: false; reason: 'no-ranges' };
-
-/**
- * Resolves the named data source and locates the <Ranges> collection that data
- * source OWNS — never a joined child's, and never a parent's.
- *
- * Refuses to guess when two data sources share the name, per the rule every XML
- * writer here follows: an ambiguous target is an error, not a coin flip.
- */
-function resolveQueryRanges(
-  content: string,
-  maskedContent: string,
-  dataSourceName: string,
-): QueryRangesTarget {
-  const blocks = findQueryDataSourceBlocks(content, maskedContent);
-  const matches = blocks.filter(b => b.name === dataSourceName);
-  if (matches.length === 0) {
-    return { ok: false, reason: 'not-found', known: blocks.map(b => b.name).filter(Boolean) };
-  }
-  if (matches.length > 1) return { ok: false, reason: 'ambiguous' };
-
-  const ds = matches[0];
-  const ranges = findDirectChild(maskedContent.slice(ds.start, ds.end), 'Ranges');
-  if (!ranges) return { ok: false, reason: 'no-ranges' };
-
-  return { ok: true, ds, ranges, indent: lineIndentAt(content, ds.start + ranges.start) };
-}
-
-/** Every <AxQuerySimpleDataSourceRange> element inside a <Ranges> body, with its own <Name>. */
-function queryRangeElements(rangesInner: string): Array<{ start: number; end: number; name: string }> {
-  const re = /[\t ]*<AxQuerySimpleDataSourceRange>[\s\S]*?<\/AxQuerySimpleDataSourceRange>\n?/g;
-  const out: Array<{ start: number; end: number; name: string }> = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(rangesInner)) !== null) {
-    // <Name> is FIRST in every one of the 1192 ranges Microsoft ships, but the
-    // deserializer does not care about order, so neither does this.
-    const name = /<Name>([\s\S]*?)<\/Name>/.exec(m[0]);
-    out.push({ start: m.index, end: m.index + m[0].length, name: name ? name[1] : '' });
-  }
-  return out;
-}
-
-/** AOT names are identifiers — 9275 shipped query data sources and every range agree. */
-function nonIdentifierName(value: string): boolean {
-  return !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
-}
-
-/** Renders the resolution failure the same way for both query-range writers. */
-function queryRangeTargetError(
-  op: string,
-  target: Exclude<QueryRangesTarget, { ok: true }>,
-  dataSourceName: string,
-  filePath: string,
-): { success: false; message: string } {
-  if (target.reason === 'ambiguous') {
-    return {
-      success: false,
-      message:
-        `❌ ${op}: '${dataSourceName}' names more than one data source in the ViewMetadata of '${filePath}' — ` +
-        `refusing to guess which one to write. Rename one of them, or edit this entity in Visual Studio.`,
-    };
-  }
-  if (target.reason === 'no-ranges') {
-    return {
-      success: false,
-      message:
-        `❌ ${op}: data source '${dataSourceName}' in '${filePath}' has no <Ranges> collection of its own. ` +
-        `The ViewMetadata structure may not follow the expected layout.`,
-    };
-  }
-  const known = target.known.length > 0 ? target.known.join(', ') : '(none)';
-  return {
-    success: false,
-    message:
-      `❌ ${op}: data source '${dataSourceName}' not found in ViewMetadata of '${filePath}'. ` +
-      `Data sources in this entity: ${known}. ` +
-      `Pass the <Name> of the root data source (usually the primary table) or of a joined data source.`,
-  };
-}
-
-/**
- * Direct XML writer for add-query-range on an AxDataEntityView.
- *
- * Inserts an <AxQuerySimpleDataSourceRange> into the <Ranges> the named data
- * source OWNS, inside <ViewMetadata>. There is no bridge API for this operation —
- * the C# bridge does not expose AddQueryRange on entities — so this direct writer
- * is the only path.
- *
- * Idempotent: a RANGE (not merely some element) with the same Name already in that
- * collection is left unchanged and success is returned.
- */
-const directXmlAddQueryRange = serializedOnFile(async (
-  filePath: string,
-  dataSourceName: string,
-  rangeField: string,
-  rangeName: string,
-  rangeValue: string,
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    if (!/<AxDataEntityView\b/.test(content)) {
-      return {
-        success: false,
-        message:
-          `❌ add-query-range: '${filePath}' is not an AxDataEntityView — nothing was written. ` +
-          `Use objectType="data-entity".`,
-      };
-    }
-
-    const badName = [
-      ['dataSourceName', dataSourceName], ['rangeField', rangeField], ['rangeName', rangeName],
-    ].find(([, v]) => nonIdentifierName(v));
-    if (badName) {
-      return {
-        success: false,
-        message:
-          `❌ add-query-range: ${badName[0]} '${badName[1]}' is not a valid AOT name — ` +
-          `letters, digits and underscore only, not starting with a digit.`,
-      };
-    }
-
-    // A range with no value filters nothing, and NONE of the 1192 ranges Microsoft
-    // ships omits <Value> — so an omitted value is a mistake worth naming, not a
-    // shape to invent. The empty-string filter is the two-character value "".
-    if (rangeValue === '') {
-      return {
-        success: false,
-        message:
-          `❌ add-query-range: rangeValue is required — a range with no value filters nothing. ` +
-          `Pass the value to filter on (e.g. "1" for a NoYes field, "Sales" for an enum), ` +
-          `or the two characters "" for the empty-string filter, which is how D365FO stores it.`,
-      };
-    }
-
-    const masked = maskXmlNonMarkup(content);
-    const target = resolveQueryRanges(content, masked, dataSourceName);
-    if (!target.ok) return queryRangeTargetError('add-query-range', target, dataSourceName, filePath);
-
-    const { ds, ranges, indent } = target;
-    const rangesInner = ranges.selfClosing
-      ? ''
-      : content.slice(ds.start + ranges.innerStart, ds.start + ranges.innerEnd);
-
-    // Idempotent — scoped to THIS collection and anchored on the range element, so
-    // a mapped field, a relation or the data source's own <Name> never reads as a
-    // range that is already there (which silently skipped the write it was meant
-    // to guard).
-    if (queryRangeElements(rangesInner).some(r => r.name === rangeName)) {
-      return {
-        success: true,
-        message:
-          `✅ Range '${rangeName}' already present in datasource '${dataSourceName}' — skipped (idempotent).`,
-      };
-    }
-
-    // Canonical shape and order — <Name>, <Field>, <Value> — indented off the
-    // <Ranges> that was actually found, so a joined data source nests correctly.
-    const rangeElement =
-      `${indent}\t<AxQuerySimpleDataSourceRange>\n` +
-      `${indent}\t\t<Name>${escapeXml(rangeName)}</Name>\n` +
-      `${indent}\t\t<Field>${escapeXml(rangeField)}</Field>\n` +
-      `${indent}\t\t<Value>${escapeXml(rangeValue)}</Value>\n` +
-      `${indent}\t</AxQuerySimpleDataSourceRange>`;
-
-    // Existing entries stay verbatim; only the newline + indent that sat in front
-    // of </Ranges> is rebuilt around the new element.
-    const existing = rangesInner.replace(/\s*$/, '');
-    const newRanges = `<Ranges>${existing}\n${rangeElement}\n${indent}</Ranges>`;
-
-    const updated =
-      content.slice(0, ds.start + ranges.start) + newRanges + content.slice(ds.start + ranges.end);
-    if (updated === content) return null;
-
-    await writeFileAtomic(filePath, normalizeD365Xml(updated));
-    console.error(
-      `[modify_d365fo_file] ✅ directXmlAddQueryRange: added range '${rangeName}' ` +
-      `(${rangeField}=${rangeValue}) to '${dataSourceName}' in ${filePath}`,
-    );
-    return {
-      success: true,
-      message:
-        `✅ Query range '${rangeName}' (${rangeField} = '${rangeValue}') added to datasource '${dataSourceName}'. ` +
-        `File: ${filePath}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlAddQueryRange failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * Direct XML writer for remove-query-range on an AxDataEntityView.
- *
- * Removes the <AxQuerySimpleDataSourceRange> whose <Name> equals `rangeName` from
- * the <Ranges> the named data source OWNS — a same-named range on a joined data
- * source is left alone. Collapses <Ranges>…</Ranges> to <Ranges /> when the
- * collection becomes empty. Idempotent: not-found is reported as success.
- */
-const directXmlRemoveQueryRange = serializedOnFile(async (
-  filePath: string,
-  dataSourceName: string,
-  rangeName: string,
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    if (!/<AxDataEntityView\b/.test(content)) {
-      return {
-        success: false,
-        message:
-          `❌ remove-query-range: '${filePath}' is not an AxDataEntityView — nothing was written. ` +
-          `Use objectType="data-entity".`,
-      };
-    }
-
-    const badName = [['dataSourceName', dataSourceName], ['rangeName', rangeName]]
-      .find(([, v]) => nonIdentifierName(v));
-    if (badName) {
-      return {
-        success: false,
-        message:
-          `❌ remove-query-range: ${badName[0]} '${badName[1]}' is not a valid AOT name — ` +
-          `letters, digits and underscore only, not starting with a digit.`,
-      };
-    }
-
-    const masked = maskXmlNonMarkup(content);
-    const target = resolveQueryRanges(content, masked, dataSourceName);
-    if (!target.ok) return queryRangeTargetError('remove-query-range', target, dataSourceName, filePath);
-
-    const { ds, ranges } = target;
-    if (ranges.selfClosing) {
-      return {
-        success: true,
-        message:
-          `✅ Range '${rangeName}' not present in datasource '${dataSourceName}' — nothing to remove.`,
-      };
-    }
-
-    const rangesInner = content.slice(ds.start + ranges.innerStart, ds.start + ranges.innerEnd);
-    const elements = queryRangeElements(rangesInner);
-    const doomed = elements.find(r => r.name === rangeName);
-    if (!doomed) {
-      return {
-        success: true,
-        message:
-          `✅ Range '${rangeName}' not present in datasource '${dataSourceName}' — nothing to remove.`,
-      };
-    }
-
-    const remainingInner = rangesInner.slice(0, doomed.start) + rangesInner.slice(doomed.end);
-    const newRanges = elements.length === 1
-      ? '<Ranges />'
-      : `<Ranges>${remainingInner}</Ranges>`;
-
-    const updated =
-      content.slice(0, ds.start + ranges.start) + newRanges + content.slice(ds.start + ranges.end);
-    if (updated === content) return null;
-
-    await writeFileAtomic(filePath, normalizeD365Xml(updated));
-    console.error(
-      `[modify_d365fo_file] ✅ directXmlRemoveQueryRange: removed range '${rangeName}' ` +
-      `from '${dataSourceName}' in ${filePath}`,
-    );
-    return {
-      success: true,
-      message:
-        `✅ Query range '${rangeName}' removed from datasource '${dataSourceName}'. File: ${filePath}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlRemoveQueryRange failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * Locates ONE top-level collection element inside a root element's body, e.g.
- * `<Fields>` directly under `<AxDataEntityViewExtension>`.
- *
- * A plain `content.replace('</Fields>', …)` is wrong here and silently so: an
- * AxDataEntityViewExtension carries `<FieldGroupExtensions>` BEFORE `<Fields>`, and
- * each `<AxTableFieldGroupExtension>` inside it has a nested `<Fields>` of its own.
- * The first `</Fields>` in the file therefore closes the field GROUP, and the new
- * element lands in a collection the deserializer will not read it from.
- *
- * Depth-counts from the root's opening tag so only a DIRECT child matches.
- * Returns the insertion offset (just before the collection's closing tag), or a
- * `selfClosingAt` range when the collection is `<Fields />` and must be expanded.
- */
-export function findTopLevelCollection(
-  content: string,
-  rootElement: string,
-  collection: string,
-): { insertAt: number } | { selfClosingAt: [number, number] } | null {
-  const rootOpen = new RegExp(`<${rootElement}\\b[^>]*>`).exec(content);
-  if (!rootOpen) return null;
-
-  const pos = rootOpen.index + rootOpen[0].length;
-  let depth = 0;
-  const tagRe = /<(\/?)([A-Za-z_][\w.-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
-  tagRe.lastIndex = pos;
-  let m: RegExpExecArray | null;
-  while ((m = tagRe.exec(content)) !== null) {
-    const [full, closing, name, , selfClosing] = m;
-    if (closing) {
-      if (name === rootElement && depth === 0) return null;
-      depth--;
-      continue;
-    }
-    if (selfClosing) {
-      if (depth === 0 && name === collection) {
-        return { selfClosingAt: [m.index, m.index + full.length] };
-      }
-      continue;
-    }
-    if (depth === 0 && name === collection) {
-      // Walk to this element's matching close tag at the same depth.
-      let inner = 1;
-      const innerRe = new RegExp(tagRe.source, 'g');
-      innerRe.lastIndex = m.index + full.length;
-      let im: RegExpExecArray | null;
-      while ((im = innerRe.exec(content)) !== null) {
-        if (im[4]) continue;            // self-closing: no depth change
-        if (im[1]) {
-          inner--;
-          if (inner === 0) return { insertAt: im.index };
-        } else {
-          inner++;
-        }
-      }
-      return null;
-    }
-    depth++;
-  }
-  return null;
-}
-
-/**
- * Appends `fieldName` to a base-entity field group inside <FieldGroupExtensions>,
- * creating the <AxTableFieldGroupExtension> entry when the group is not there yet.
- *
- * <FieldGroups> (groups the extension OWNS) and <FieldGroupExtensions> (appending to a
- * group the BASE entity owns) are not interchangeable — picking the wrong one is silent,
- * the field lands in the file and never surfaces. This only ever touches the latter.
- */
-function upsertDataEntityFieldGroupExtension(
-  content: string,
-  groupName: string,
-  fieldName: string,
-): string | null {
-  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const entry = `\t\t\t\t<AxTableFieldGroupField>\n\t\t\t\t\t<DataField>${fieldName}</DataField>\n\t\t\t\t</AxTableFieldGroupField>`;
-
-  // Scope every probe to THIS group's own block. Searching the whole file for
-  // <DataField>{fieldName}</DataField> also finds the mapped field just written into
-  // <Fields> — the group would then look "already registered" and silently stay empty.
-  const blockRe = new RegExp(
-    `<AxTableFieldGroupExtension>\\s*<Name>${escapeRe(groupName)}</Name>[\\s\\S]*?</AxTableFieldGroupExtension>`,
-  );
-  const block = blockRe.exec(content);
-  if (block) {
-    if (new RegExp(`<DataField>${escapeRe(fieldName)}</DataField>`).test(block[0])) {
-      return content; // already registered in this group
-    }
-    const updatedBlock = block[0].includes('<Fields />')
-      ? block[0].replace('<Fields />', `<Fields>\n${entry}\n\t\t\t</Fields>`)
-      : block[0].replace('</Fields>', `${entry}\n\t\t\t</Fields>`);
-    return content.slice(0, block.index) + updatedBlock + content.slice(block.index + block[0].length);
-  }
-
-  const newGroup =
-    `\t\t<AxTableFieldGroupExtension>\n` +
-    `\t\t\t<Name>${groupName}</Name>\n` +
-    `\t\t\t<Fields>\n${entry}\n\t\t\t</Fields>\n` +
-    `\t\t</AxTableFieldGroupExtension>`;
-
-  const target = findTopLevelCollection(content, 'AxDataEntityViewExtension', 'FieldGroupExtensions');
-  if (!target) return null;
-  if ('selfClosingAt' in target) {
-    const [from, to] = target.selfClosingAt;
-    return `${content.slice(0, from)}<FieldGroupExtensions>\n${newGroup}\n\t</FieldGroupExtensions>${content.slice(to)}`;
-  }
-  return `${content.slice(0, target.insertAt)}${newGroup}\n\t${content.slice(target.insertAt)}`;
-}
-
-/**
- * Direct XML fallback for add-field on a DATA-ENTITY-EXTENSION.
- *
- * The bridge handles this via IMetaDataEntityViewExtensionProvider; this is the
- * same-session escape hatch that add-index and add-control already have — the
- * provider resolves against metadata roots fixed at startup, so an extension
- * created THIS session is invisible to it.
- *
- * The element itself comes from the shared builder (dataEntityViewExtensionXml.ts)
- * so the modify path cannot drift from the create path: sub-element ORDER is not
- * cosmetic, the deserializer drops children it meets out of order, and Label must
- * precede the DataField/DataSource binding pair.
- */
-const directXmlAddDataEntityExtensionField = serializedOnFile(async (
-  filePath: string,
-  fieldName: string,
-  dataField: string,
-  dataSource: string,
-  label?: string,
-  fieldGroupName?: string,
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    // Only data-entity extensions carry a <Fields> collection of mapped fields
-    // shaped like this — bail on any other file shape.
-    if (!/<AxDataEntityViewExtension\b/.test(content)) return null;
-
-    // Idempotency: scoped to the mapped-field elements. Matching a bare
-    // <Name>…</Name> anywhere in the file also hits the extension's own name, every
-    // field-group name and every AxPropertyModification — a false hit there answers
-    // "already present" and writes nothing.
-    const escapedName = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`<AxDataEntityViewField\\b[^>]*>\\s*<Name>${escapedName}</Name>`).test(content)) {
-      return {
-        success: true,
-        message: `✅ Field '${fieldName}' already present in ${filePath} — skipped (idempotent).`,
-      };
-    }
-
-    const newElement = buildAxDataEntityViewFieldXml({ name: fieldName, dataField, dataSource, label });
-
-    const target = findTopLevelCollection(content, 'AxDataEntityViewExtension', 'Fields');
-    if (!target) return null;
-
-    let updated: string;
-    if ('selfClosingAt' in target) {
-      const [from, to] = target.selfClosingAt;
-      updated = `${content.slice(0, from)}<Fields>\n${newElement}\n\t</Fields>${content.slice(to)}`;
-    } else {
-      updated = `${content.slice(0, target.insertAt)}${newElement}\n\t${content.slice(target.insertAt)}`;
-    }
-
-    if (fieldGroupName) {
-      updated = upsertDataEntityFieldGroupExtension(updated, fieldGroupName, fieldName) ?? updated;
-    }
-
-    if (updated === content) return null;
-
-    await writeFileAtomic(filePath, normalizeD365Xml(updated));
-    console.error(`[modify_d365fo_file] ✅ directXmlAddDataEntityExtensionField: added '${fieldName}' to ${filePath}`);
-    return {
-      success: true,
-      message:
-        `✅ Mapped field '${fieldName}' (${dataSource}.${dataField}) added via direct XML fallback ` +
-        `(the bridge could not resolve the same-session extension)` +
-        (fieldGroupName ? ` and registered in field group '${fieldGroupName}'` : '') +
-        `. File: ${filePath}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlAddDataEntityExtensionField failed: ${err}`);
-    return null;
-  }
-});
-
-/** DeleteAction values accepted by the AxTable serialiser. */
-export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRestricted'] as const;
-
-/**
- * add-delete-action / remove-delete-action on a TABLE, written straight to the XML.
- *
- * There is no bridge operation for DeleteActions at all (finding #36), so a
- * cascading delete action was inexpressible through the modify surface — the only
- * route was the forbidden whole-file overwrite. <DeleteActions> is a collection
- * sibling, not part of the order-sensitive top-level property block, so patching
- * it in place is safe. Shape matches MetadataWriteService.cs: Name, Table,
- * DeleteAction.
- */
-const directXmlDeleteAction = serializedOnFile(async (
-  filePath: string,
-  mode: 'add' | 'remove',
-  name: string,
-  table: string | undefined,
-  deleteAction: string | undefined,
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    // Only tables carry <DeleteActions> — bail on any other shape so a mis-typed
-    // objectType never corrupts a non-table file.
-    if (!/<AxTable\b/.test(content)) return null;
-
-    const blockRe = new RegExp(
-      `[\\t ]*<AxTableDeleteAction>\\s*<Name>${escapeRegExp(name)}</Name>[\\s\\S]*?</AxTableDeleteAction>\\n?`,
-    );
-    const existing = blockRe.exec(content);
-
-    if (mode === 'remove') {
-      if (!existing) {
-        return { success: true, message: `✅ Delete action '${name}' not present in ${filePath} — nothing to remove.` };
-      }
-      const updated = content.replace(blockRe, '');
-      await writeFileAtomic(filePath, normalizeD365Xml(updated));
-      return { success: true, message: `✅ Delete action '${name}' removed. File: ${filePath}` };
-    }
-
-    if (existing) {
-      return { success: true, message: `✅ Delete action '${name}' already present in ${filePath} — skipped (idempotent).` };
-    }
-
-    const newElement =
-      `\t\t<AxTableDeleteAction>\n` +
-      `\t\t\t<Name>${name}</Name>\n` +
-      `\t\t\t<Table>${table ?? name}</Table>\n` +
-      `\t\t\t<DeleteAction>${deleteAction ?? 'Restricted'}</DeleteAction>\n` +
-      `\t\t</AxTableDeleteAction>`;
-
-    let updated: string;
-    if (content.includes('<DeleteActions />')) {
-      updated = content.replace('<DeleteActions />', `<DeleteActions>\n${newElement}\n\t</DeleteActions>`);
-    } else if (content.includes('</DeleteActions>')) {
-      updated = content.replace('</DeleteActions>', `${newElement}\n\t</DeleteActions>`);
-    } else {
-      // No <DeleteActions> collection at all — not a shape we can safely patch.
-      return null;
-    }
-    if (updated === content) return null;
-
-    await writeFileAtomic(filePath, normalizeD365Xml(updated));
-    return {
-      success: true,
-      message: `✅ Delete action '${name}' (${deleteAction ?? 'Restricted'} on ${table ?? name}) added. File: ${filePath}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlDeleteAction failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * remove-control on a FORM or FORM-EXTENSION, written straight to the XML.
- *
- * add-control has a bridge path for a plain form (AddControl) and a direct-XML
- * path for an extension; removal has neither — MetadataWriteService exposes no
- * RemoveControl at all — so this is the only grounded route, exactly as with
- * directXmlDeleteAction. Without it, taking a button off a form meant
- * d365fo_file(action="create", overwrite=true), the whole-file escape hatch the
- * eval loop forbids.
- *
- * The tree walk, the two form-extension shapes and the separator rule all live
- * in formControlRemoval.ts — pure and unit-tested, because a `<Name>` substring
- * replace here would cut the wrong element and report a ✅ for it.
- */
-const directXmlRemoveControl = serializedOnFile(async (
-  filePath: string,
-  controlName: string,
-  removeSeparator: boolean | undefined,
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    const outcome = removeFormControl(content, { controlName, removeSeparator });
-
-    switch (outcome.kind) {
-      case 'unsupported':
-        // Returned as a REFUSAL rather than null. A null here means "the bridge
-        // never ran", which routes into the provider-refresh retry and then into
-        // an unresolved-object error about metadata roots — none of which applies:
-        // there is no bridge path for this op, and no refresh turns a non-form
-        // file into a form.
-        return {
-          success: false,
-          message:
-            `${filePath} is not an AxForm or AxFormExtension (or its XML is unbalanced), so no ` +
-            `control could be removed from it. Check objectType and the resolved file — ` +
-            `remove-control only applies to objectType="form" and "form-extension".`,
-        };
-      case 'not-found':
-        // NOT reported as success. An absent control is the case where a caller
-        // most needs to know it named the wrong thing: the button is still on the
-        // form, and a ✅ would send it to build_d365fo_project instead.
-        return {
-          success: false,
-          message:
-            `Control '${controlName}' is not defined in ${filePath} — nothing was removed.\n` +
-            (outcome.present.length > 0
-              ? `Controls in this file: ${outcome.present.join(', ')}.`
-              : `This file defines no controls at all.`) +
-            `\nA control shown on the form but absent here belongs to the BASE form — remove it there, ` +
-            `or hide it with modify-property on a form extension.`,
-        };
-    }
-
-    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
-    console.error(`[modify_d365fo_file] ✅ directXmlRemoveControl: removed '${controlName}' from ${filePath}`);
-
-    const notes = outcome.notes.length ? '\n' + outcome.notes.map(n => `ℹ️ ${n}`).join('\n') : '';
-    return {
-      success: true,
-      message:
-        `✅ Removed ${outcome.removed.length} control element(s) — ${outcome.removed.join(', ')}. ` +
-        `File: ${filePath}${notes}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlRemoveControl failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * add-entry-point on an AxSecurityPrivilege, written straight to the XML.
- *
- * The missing half of the pair. `create` takes ONE entry point, as the scalar
- * `properties.targetObject`, so a privilege granting two menu items could only
- * be produced by `create(overwrite=true, xmlContent=…)` — hand-authored XML that
- * bypasses the generator. That also left remove-entry-point's ambiguity refusal
- * unreachable through supported parameters and therefore untested against a real
- * privilege (eval case L2-object-delete-and-entry-point-cleanup, 2026-08-23).
- *
- * Same structural reason as its inverse for being XML-only: security objects
- * have no bridge write path — the generic `properties: Dictionary<string,string>`
- * channel cannot carry <EntryPoints>, which is why security-privilege is
- * excluded from BRIDGE_CREATE_TYPES.
- */
-const directXmlAddEntryPoint = serializedOnFile(async (
-  filePath: string,
-  spec: { objectName: string; objectType: string; name?: string; accessLevel?: string },
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    const outcome = addSecurityEntryPoint(content, spec);
-
-    switch (outcome.kind) {
-      case 'unsupported':
-        // A refusal, not null — null would be read as a bridge-resolution
-        // failure and send the caller after the wrong cause.
-        return {
-          success: false,
-          message:
-            `${filePath} is not an AxSecurityPrivilege, so it has no entry points. ` +
-            `add-entry-point applies to objectType="security-privilege" only — a DUTY references ` +
-            `privileges, not entry points, and a ROLE references duties.`,
-        };
-      case 'bad-object-type':
-        return {
-          success: false,
-          message:
-            `entryPointObjectType "${outcome.given}" is not an EntryPointType — nothing was written. ` +
-            `Use MenuItemDisplay | MenuItemAction | MenuItemOutput | ServiceOperation | None. ` +
-            `An unknown value deserializes to nothing, so the privilege would build clean, pass BP ` +
-            `and grant access to no object at all.`,
-        };
-      case 'no-collection':
-        return {
-          success: false,
-          message:
-            `${filePath} has no <EntryPoints> collection to add to — nothing was written. ` +
-            `A privilege written by this tool always has one; a hand-edited file may not.`,
-        };
-      case 'already-present': {
-        const e = outcome.existing;
-        return {
-          success: true,
-          message:
-            `ℹ️ Entry point '${e.name}' (${e.objectName}, ${e.objectType}) is already on the privilege — ` +
-            `nothing written (idempotent). File: ${filePath}`,
-        };
-      }
-    }
-
-    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
-    const { name, objectName, objectType } = outcome.added;
-    console.error(`[modify_d365fo_file] ✅ directXmlAddEntryPoint: added '${name}' to ${filePath}`);
-    return {
-      success: true,
-      message:
-        `✅ Entry point '${name}' (${objectName}, ${objectType}) added to the privilege. ` +
-        `File: ${filePath}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlAddEntryPoint failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * remove-entry-point on an AxSecurityPrivilege, written straight to the XML.
- *
- * Security objects have no bridge write path at all: the generic
- * `properties: Dictionary<string,string>` channel cannot carry <EntryPoints>,
- * which is why security-privilege is excluded from BRIDGE_CREATE_TYPES. So this
- * mirrors remove-relation / remove-field-group in shape while being, like the
- * delete-action pair, XML-only by necessity.
- *
- * The matching and the collapse of an emptied <EntryPoints> live in
- * securityPrivilegeXml.ts, next to the builder that writes the element — the two
- * halves of one shape drifting apart is how an entry point becomes unremovable.
- */
-const directXmlRemoveEntryPoint = serializedOnFile(async (
-  filePath: string,
-  criteria: { name?: string; objectName?: string; objectType?: string },
-): Promise<{ success: boolean; message: string } | null> => {
-  const asked = criteria.name ?? criteria.objectName ?? '(unnamed)';
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    const outcome = removeSecurityEntryPoint(content, criteria);
-
-    switch (outcome.kind) {
-      case 'unsupported':
-        // A refusal, not null — see directXmlRemoveControl for why null would be
-        // read as a bridge-resolution failure and sent after the wrong cause.
-        return {
-          success: false,
-          message:
-            `${filePath} is not an AxSecurityPrivilege, so it has no entry points to remove. ` +
-            `remove-entry-point applies to objectType="security-privilege" only — a DUTY references ` +
-            `privileges, not entry points, and a ROLE references duties.`,
-        };
-      case 'not-found':
-        return {
-          success: false,
-          message:
-            `Entry point '${asked}' is not on the privilege in ${filePath} — nothing was removed.\n` +
-            (outcome.present.length > 0
-              ? `Entry points on this privilege: ` +
-                outcome.present.map(e => `${e.name} (${e.objectName}, ${e.objectType})`).join('; ') + '.'
-              : `This privilege has no entry points.`),
-        };
-      case 'ambiguous':
-        return {
-          success: false,
-          message:
-            `'${asked}' matches ${outcome.matches.length} entry points — refusing to guess which to ` +
-            `remove, since removing the wrong one revokes access to a different object and still builds ` +
-            `clean.\nMatches: ` +
-            outcome.matches.map(e => `${e.name} (${e.objectName}, ${e.objectType})`).join('; ') +
-            `.\nNarrow it with entryPointName, or entryPointObjectName + entryPointObjectType.`,
-        };
-    }
-
-    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
-    const { name, objectName, objectType } = outcome.removed;
-    console.error(`[modify_d365fo_file] ✅ directXmlRemoveEntryPoint: removed '${name}' from ${filePath}`);
-    return {
-      success: true,
-      message:
-        `✅ Entry point '${name}' (${objectName}, ${objectType}) removed from the privilege. ` +
-        `File: ${filePath}`,
-    };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlRemoveEntryPoint failed: ${err}`);
-    return null;
-  }
-});
-
-/**
- * remove-diagnostic-suppression on an AxIgnoreDiagnosticList, written straight
- * to the XML.
- *
- * Not an AOT object at all — MetadataWriteService has no notion of a
- * suppression list — so this is XML-only for the same structural reason as
- * remove-entry-point. The matching and the collapse of an emptied <Items> live
- * in ignoreDiagnosticListXml.ts, next to the bulk-removal helper delete uses
- * to strip suppressions for an object it just deleted.
- */
-const directXmlRemoveDiagnosticSuppression = serializedOnFile(async (
-  filePath: string,
-  criteria: { path: string; moniker?: string },
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    const outcome = removeDiagnosticSuppression(content, criteria);
-
-    switch (outcome.kind) {
-      case 'unsupported':
-        return {
-          success: false,
-          message:
-            `${filePath} is not a suppression list (no <IgnoreDiagnostics> root), so it has no <Diagnostic> ` +
-            `entries to remove. remove-diagnostic-suppression applies to objectType="ignore-diagnostic-list" only.`,
-        };
-      case 'not-found':
-        return {
-          success: false,
-          message:
-            `No <Diagnostic> with <Path> '${criteria.path}'` +
-            (criteria.moniker ? ` and <Moniker> '${criteria.moniker}'` : '') +
-            ` was found in ${filePath} — nothing was removed.\n` +
-            (outcome.present.length > 0
-              ? `Suppressions in this file: ` +
-                outcome.present.map(e => `${e.path} (${e.moniker})`).join('; ') + '.'
-              : `This file defines no suppressions at all.`),
-        };
-      case 'ambiguous':
-        return {
-          success: false,
-          message:
-            `'${criteria.path}' matches ${outcome.matches.length} suppressions — refusing to guess which ` +
-            `to remove, since removing the wrong one leaves a live BP finding silenced.\nMatches: ` +
-            outcome.matches.map(e => `${e.path} (${e.moniker})`).join('; ') +
-            `.\nNarrow it with diagnosticMoniker.`,
-        };
-    }
-
-    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
-    const { path: removedPath, moniker } = outcome.removed;
-    console.error(`[modify_d365fo_file] ✅ directXmlRemoveDiagnosticSuppression: removed '${removedPath}' (${moniker}) from ${filePath}`);
-    return {
-      success: true,
-      message: `✅ Suppression '${removedPath}' (${moniker}) removed. File: ${filePath}`,
-    };
-  } catch (err) {
-    // Real error, not null — see directXmlAddDiagnosticSuppression's catch for
-    // why a null here reads as a bridge-resolution failure it cannot be.
-    console.error(`[modify_d365fo_file] directXmlRemoveDiagnosticSuppression failed: ${err}`);
-    return {
-      success: false,
-      message:
-        `❌ Could not remove the suppression from ${filePath}: ${err instanceof Error ? err.message : err}`,
-    };
-  }
-});
-
-/**
- * add-diagnostic-suppression on an AxIgnoreDiagnosticList, written straight to
- * the XML.
- *
- * The <Diagnostic> block itself is built by buildSuppressionXml
- * (bpMonikers/index.ts) — the SAME function get_knowledge(kind="bp-moniker",
- * action="suppress") uses to render one for a human to paste by hand, so the
- * two paths cannot describe two different shapes of suppression. This is only
- * the "place it in the file" half.
- *
- * When the model's suppression file does not exist yet, a fresh one is created
- * — skeleton and all, measured against a shipped PackagesLocalDirectory (see
- * emptySuppressionListXml). Creating it means creating its FOLDER too:
- * AxIgnoreDiagnosticList exists only in models that have suppressed something,
- * which is by definition not the model this branch runs for, and writeFileAtomic
- * does no mkdir — so without this the one path that advertises "creates the file
- * for you" failed with ENOENT on the directory, and the caller was told the C#
- * bridge could not resolve the object.
- */
-const directXmlAddDiagnosticSuppression = serializedOnFile(async (
-  filePath: string,
-  input: {
-    moniker: string;
-    path?: string;
-    elementType?: string;
-    elementName?: string;
-    justification?: string;
-    message?: string;
-    severity?: 'Error' | 'Warning';
-    itemSpecific?: boolean;
-  },
-): Promise<{ success: boolean; message: string } | null> => {
-  try {
-    let content: string;
-    let createdFresh = false;
-    try {
-      const rawContent = await fs.readFile(filePath, 'utf-8');
-      content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-    } catch (readErr: any) {
-      if (readErr?.code !== 'ENOENT') throw readErr;
-      content = emptySuppressionListXml(path.win32.basename(filePath, '.xml'));
-      createdFresh = true;
-    }
-
-    const built = buildSuppressionXml(input as any);
-    if (built.errors.length > 0) {
-      return { success: false, message: `❌ ${built.errors.join('\n❌ ')}` };
-    }
-
-    const outcome = addDiagnosticSuppression(content, built.xml);
-    switch (outcome.kind) {
-      case 'unsupported':
-        return {
-          success: false,
-          message:
-            `${filePath} is not a suppression list (no <IgnoreDiagnostics> root). ` +
-            `add-diagnostic-suppression applies to objectType="ignore-diagnostic-list" only.`,
-        };
-      case 'duplicate':
-        return {
-          success: false,
-          message:
-            `A <Diagnostic> suppressing '${outcome.existing.moniker}' on '${outcome.existing.path}' is ` +
-            `already in ${filePath} — nothing was added. Nothing needs re-suppressing; if the finding is ` +
-            `still firing, the existing entry's <Path> may not match what BP-check now reports.`,
-        };
-      case 'no-items':
-        return {
-          success: false,
-          message:
-            `${filePath} has an <IgnoreDiagnostics> root but no <Items> collection, so there is nowhere ` +
-            `to put the <Diagnostic> — nothing was written. Every real suppression list carries <Items> ` +
-            `(empty ones as <Items /> or <Items></Items>); add it by hand and retry, or delete the file ` +
-            `and let this operation write a fresh one.`,
-        };
-    }
-
-    // The folder exists for every model that has ever suppressed anything — and
-    // for no other, which is exactly the model this branch serves.
-    if (createdFresh) {
-      await fs.mkdir(path.win32.dirname(filePath), { recursive: true });
-    }
-    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
-    console.error(`[modify_d365fo_file] ✅ directXmlAddDiagnosticSuppression: added '${built.xml.match(/<Path>([\s\S]*?)<\/Path>/)?.[1] ?? '?'}' to ${filePath}`);
-
-    const warningText = built.warnings.length ? built.warnings.map(w => `⚠️ ${w}`).join('\n') + '\n' : '';
-    const freshFileNote = createdFresh
-      ? `\nℹ️ ${filePath} did not exist — created it, and its AxIgnoreDiagnosticList folder. ` +
-        `Add it to the model's .rnrproj if Visual Studio does not pick it up automatically.`
-      : '';
-    return {
-      success: true,
-      message: `${warningText}✅ Suppression added. File: ${filePath}${freshFileNote}`,
-    };
-  } catch (err) {
-    // Returning null here would send an I/O failure — ENOENT on the folder,
-    // EACCES, a file Visual Studio holds open — through the "bridge returned
-    // null" path, which retries a provider refresh and then blames the C#
-    // bridge's metadata roots for an operation that never touched the bridge.
-    // The real error is the only actionable thing there is.
-    console.error(`[modify_d365fo_file] directXmlAddDiagnosticSuppression failed: ${err}`);
-    return {
-      success: false,
-      message:
-        `❌ Could not write the suppression to ${filePath}: ${err instanceof Error ? err.message : err}`,
-    };
-  }
-});
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Writes the relation properties the bridge drops into an <AxTableRelation>.
- *
- * add-relation documents relationCardinality / relatedTableCardinality /
- * relationshipType WITH defaults, but neither bridgeClient.addRelation nor the
- * C# MetadataWriteService.AddRelation carries them: AddRelation only sets Name,
- * RelatedTable and the constraints. The result was a relation that reports
- * "✅ Relation 'X' added" and then fails BP with
- * BPErrorTableRelationshipPropertiesCompleteness naming exactly those three
- * properties — with no repair path, because modify-property rejects
- * Relations/<name>/RelationshipType (corpus findings #5 / #35).
- *
- * The C# side cannot be fixed or tested without the VM's metadata assemblies, so
- * the properties are written on disk after the relation lands. Element order is
- * the one both in-repo generators emit (createD365File.ts / generateTableRelation.ts,
- * matching the SDK serialiser): Name, Cardinality, RelatedTable,
- * RelatedTableCardinality, RelationshipType, Constraints. Order matters — AxTable
- * XML silently drops misordered properties (#13) — so nothing is guessed here:
- * each element is anchored to the sibling it must follow, and the function is a
- * no-op if the anchor is absent or the property is already present.
- */
-export const directXmlEnsureRelationProperties = serializedOnFile(async (
-  filePath: string,
-  relationName: string,
-  cardinality: string,
-  relatedTableCardinality: string,
-  relationshipType: string,
-): Promise<{ applied: string[] } | null> => {
-  try {
-    const rawContent = await fs.readFile(filePath, 'utf-8');
-    const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
-
-    // Locate the <AxTableRelation> block that carries this <Name>.
-    const relRegex = /<AxTableRelation>[\s\S]*?<\/AxTableRelation>/g;
-    let block: string | undefined;
-    for (const m of content.matchAll(relRegex)) {
-      if (new RegExp(`<Name>${relationName}</Name>`).test(m[0])) { block = m[0]; break; }
-    }
-    if (!block) return null;
-
-    const indent = /\n(\s*)<Name>/.exec(block)?.[1] ?? '\t\t\t';
-    let patched = block;
-    const applied: string[] = [];
-
-    // <Cardinality> goes directly after <Name>.
-    if (!/<Cardinality>/.test(patched)) {
-      patched = patched.replace(
-        new RegExp(`(<Name>${relationName}</Name>)`),
-        `$1\n${indent}<Cardinality>${cardinality}</Cardinality>`,
-      );
-      applied.push(`Cardinality=${cardinality}`);
-    }
-    // <RelatedTableCardinality> and <RelationshipType> go after <RelatedTable>,
-    // in that order.
-    const relatedTableMatch = /<RelatedTable>[^<]*<\/RelatedTable>/.exec(patched);
-    if (relatedTableMatch) {
-      let insertion = '';
-      if (!/<RelatedTableCardinality>/.test(patched)) {
-        insertion += `\n${indent}<RelatedTableCardinality>${relatedTableCardinality}</RelatedTableCardinality>`;
-        applied.push(`RelatedTableCardinality=${relatedTableCardinality}`);
-      }
-      if (!/<RelationshipType>/.test(patched)) {
-        insertion += `\n${indent}<RelationshipType>${relationshipType}</RelationshipType>`;
-        applied.push(`RelationshipType=${relationshipType}`);
-      }
-      if (insertion) {
-        patched = patched.replace(relatedTableMatch[0], `${relatedTableMatch[0]}${insertion}`);
-      }
-    }
-
-    if (applied.length === 0 || patched === block) return { applied: [] };
-
-    const updated = content.replace(block, patched);
-    await writeFileAtomic(filePath, normalizeD365Xml(updated));
-    console.error(
-      `[modify_d365fo_file] ✅ directXmlEnsureRelationProperties: ${applied.join(', ')} on '${relationName}' in ${filePath}`,
-    );
-    return { applied };
-  } catch (err) {
-    console.error(`[modify_d365fo_file] directXmlEnsureRelationProperties failed: ${err}`);
-    return null;
-  }
-});
 
 /**
  * Heuristic: does a bridge failure message indicate the C# provider could not
@@ -2558,7 +874,7 @@ export const ModifyD365FileArgsSchema = z.object({
     'from state the server holds) instead of failing the call — reported as a "Note:" line in the result. ' +
     'Set false for strict behaviour: every such case becomes an error again (eval harness / deterministic callers).'
   ),
-  createBackup: z.boolean().optional().default(false).describe('Create a .bak backup of the file before modifying it (default: false). Changes can also be reverted with undo_last_modification (git checkout) without a backup. When the file is NOT inside a git repository, a backup is created automatically even with false, since undo_last_modification would not work there.'),
+  createBackup: z.boolean().optional().default(false).describe('Create a .bak backup of the file before modifying it (default: false). Changes can also be reverted with d365fo_file(action="undo") (git checkout) without a backup. When the file is NOT inside a git repository, a backup is created automatically even with false, since that undo would not work there.'),
   modelName: z.string().optional().describe('Model name (auto-detected if not provided). Pass this if the file was just created and is not yet indexed.'),
   packageName: z.string().optional().describe('Package name. Auto-resolved if omitted.'),
   packagePath: z.string().optional().describe(
@@ -2612,20 +928,257 @@ export const ModifyD365FileArgsSchema = z.object({
   peerOperations: z.array(z.string()).optional().describe(
     'Internal: the operation names travelling in the same operations[] batch.'
   ),
+
+  // INTERNAL — set by runModifyBatch, absent from the published wire schema.
+  //
+  // The decisions only the BATCH can make. peerOperations says WHAT else travels
+  // in the call; this says what this entry should therefore print. A batch adding
+  // three fields repeated the identical 350-char BPErrorTableFieldNotInFieldGroup
+  // paragraph three times, because an entry can only ever see itself.
+  batchAdvice: z.object({
+    suppressFieldGroupNote: z.boolean().optional(),
+    fieldGroupNoteFields: z.array(z.string()).optional(),
+  }).optional().describe('Internal: batch-level rendering decisions.'),
 });
 
-export async function modifyD365FileTool(request: CallToolRequest, context: XppServerContext) {
+// ── Argument normalisation (pre-validation) ───────────────────────────
+//
+// Everything here runs on the RAW arguments, before the schema above sees them,
+// and exists for one measured reason: a call the server can read in exactly one
+// way must not cost a round trip. Every retry re-bills the whole cached context
+// and drags the ~3,000-char parameter spec into it permanently.
+//
+// Each transformation is derived from the schema itself or from the op-spec's
+// own alias/suggestion tables — never hard-coded per operation — so a new
+// parameter is covered the day it is declared, and the key written is by
+// construction the key the writer below reads.
+
+/** Peel ZodOptional/ZodDefault/… wrappers off to the schema carrying the type. */
+function unwrapZodType(schema: any): any {
+  let inner = schema;
+  while (inner?.def?.innerType) inner = inner.def.innerType;
+  return inner;
+}
+
+/** Memoised: schema introspection is pure and the schema is a module constant. */
+const arrayElementKeyCache = new Map<string, string | null>();
+
+/**
+ * The ONE required key of an array parameter's object element, or null.
+ *
+ * `indexFields` is declared as `[{ fieldName, direction? }]`, so `["ProbeId"]`
+ * has exactly one sensible reading and the server already knows it — yet it
+ * answered `indexFields.0: Invalid input: expected object, received string`
+ * (reproduced live against the VM, as was the same failure on `fields`).
+ *
+ * TWO required keys means there is NO single reading: `relationConstraints`
+ * ({fieldName, relatedFieldName}) and `mappingConnections` ({mapField,
+ * mapFieldTo}) are deliberately left to error. Half a constraint is worse than a
+ * refused call — the C# side writes the missing half as null, and it compiles.
+ *
+ * Read off the args schema rather than a per-operation table so the key produced
+ * is the key the writer downstream reads. That is not hypothetical: a bridge
+ * contract once read {type, edt} while the tool wrote {fieldType,
+ * extendedDataType}, and the fields vanished under a ✅.
+ */
+function arrayElementSoleRequiredKey(param: string): string | null {
+  const cached = arrayElementKeyCache.get(param);
+  if (cached !== undefined) return cached;
+
+  let answer: string | null = null;
+  const field = (ModifyD365FileArgsSchema.shape as Record<string, any>)[param];
+  const arr = unwrapZodType(field);
+  if (arr?.def?.type === 'array') {
+    const element = unwrapZodType(arr.def.element);
+    if (element?.def?.type === 'object' && element.shape) {
+      const required = Object.entries(element.shape as Record<string, any>)
+        .filter(([, member]) => member?.safeParse?.(undefined).success !== true)
+        .map(([name]) => name);
+      if (required.length === 1) answer = required[0];
+    }
+  }
+  arrayElementKeyCache.set(param, answer);
+  return answer;
+}
+
+/**
+ * Array parameters where a bare NAME IS THE WHOLE ENTRY, so reading `["A"]` as
+ * `[{ key: "A" }]` loses nothing.
+ *
+ * Positive and explicit, because the generic "sole required key" test is not a
+ * safety test. `fields` passes it — `{ name, edt?, type?, mandatory?, label? }`
+ * — and must NOT be coerced: its only operation is `replace-all-fields`, which
+ * the op spec calls an atomic rewrite of every field, and a name-only entry is
+ * documented as incomplete by the schema itself ("REQUIRED when edt is an EDT
+ * name - without it defaults to AxTableFieldString!"). So
+ * `replace-all-fields {fields:["CustAccount","Amount"]}` would turn a refusal
+ * into a table that has lost every field, EDT, label and mandatory flag, and
+ * report it with a green tick. A field list sent as names has no single valid
+ * reading, so it keeps erroring with the contract.
+ */
+const NAME_IS_THE_WHOLE_ENTRY = new Set(['indexFields']);
+
+/** `["A","B"]` -> `[{ key: "A" }, { key: "B" }]`; the same array back when nothing applies. */
+function coerceArrayElements(param: string, value: unknown): unknown {
+  if (!NAME_IS_THE_WHOLE_ENTRY.has(param)) return value;
+  if (!Array.isArray(value) || !value.some(v => typeof v === 'string')) return value;
+  const key = arrayElementSoleRequiredKey(param);
+  if (!key) return value;
+  return value.map(v => (typeof v === 'string' ? { [key]: v } : v));
+}
+
+/** Would this value survive validation as `param`? Guards every rename below. */
+function fitsParamSchema(param: string, value: unknown): boolean {
+  const field = (ModifyD365FileArgsSchema.shape as Record<string, any>)[param];
+  return field ? field.safeParse(value).success === true : false;
+}
+
+/**
+ * The one parameter an unrecognised key can be corrected to, or undefined.
+ *
+ * Unambiguous means either a single candidate, or a single REQUIRED candidate
+ * among several — `name` on add-field matches both `fieldName` and
+ * `fieldGroupName`, and only one of those is the parameter the operation cannot
+ * run without. On add-field-to-field-group BOTH are required, so `name` stays
+ * ambiguous there and the call keeps returning the full spec, which is correct.
+ */
+function soleCorrectionCandidate(operation: string, key: string): string | undefined {
+  const candidates = paramCorrectionCandidates(operation, key);
+  if (candidates.length === 1) return candidates[0];
+  const required = D365FO_FILE_OP_SPECS[operation]?.required ?? [];
+  const requiredCandidates = candidates.filter(c => required.includes(c));
+  return requiredCandidates.length === 1 ? requiredCandidates[0] : undefined;
+}
+
+export interface ModifyArgNormalization {
+  /** Arguments to validate, with aliases resolved and corrections applied. */
+  args: Record<string, unknown>;
+  /** Corrections to report as "Note:" lines in the successful result. */
+  notes: string[];
+}
+
+/**
+ * Resolve aliases and apply the corrections the server has already computed.
+ *
+ * Order matters and is not arbitrary: a key is renamed to the parameter it means
+ * BEFORE its value is reshaped, because the target parameter is what decides the
+ * shape — `add-field-group {fields:["A","B"]}` becomes `fieldGroupFields`
+ * (array of string, nothing to reshape), while `add-index {indexFields:["A"]}`
+ * keeps its name and gains the objects.
+ *
+ * autoCorrect=false keeps every correction off, so the eval harness and
+ * deterministic callers see exactly the errors they see today. Alias resolution
+ * is NOT a correction — it is the published contract (OP_PARAM_ALIASES, rendered
+ * in every op spec) — so it applies either way and is not reported.
+ */
+export function normalizeModifyArgs(raw: Record<string, unknown>): ModifyArgNormalization {
+  const operation = typeof raw.operation === 'string' ? raw.operation : '';
+  const args: Record<string, unknown> = { ...raw };
+  const notes: string[] = [];
+  if (!D365FO_FILE_OP_SPECS[operation]) return { args, notes };
+
+  const schemaKeys = ModifyD365FileArgsSchema.shape as Record<string, unknown>;
+
+  // 1. Documented alias -> canonical spelling. A key the schema declares itself is
+  //    never treated as an alias (methodCode is both an alias of sourceCode and a
+  //    real parameter with its own precedence rule).
+  for (const key of Object.keys(args)) {
+    if (args[key] === undefined || key in schemaKeys) continue;
+    const canonical = canonicalParamForAlias(operation, key);
+    if (!canonical || args[canonical] !== undefined) continue;
+    args[canonical] = args[key];
+    delete args[key];
+  }
+
+  const autoCorrect = args.autoCorrect !== false;
+  if (!autoCorrect) return { args, notes };
+
+  // 2. The "did you mean" the server already computes, applied instead of
+  //    printed. Live: add-field {name:"Note2", edt:"Notes"} answered
+  //    "name: IGNORED … did you mean 'fieldName'?" and wrote nothing at all.
+  const providedKeys = () => Object.keys(args).filter(k => args[k] !== undefined);
+  for (const ignored of findIgnoredParams(operation, providedKeys())) {
+    if (ignored.reason === 'not-honoured') continue;
+    const target = soleCorrectionCandidate(operation, ignored.name);
+    // Only when the target is free: a caller who sent BOTH spellings meant
+    // something by it, and silently overwriting one with the other is a guess.
+    if (!target || args[target] !== undefined) continue;
+    const value = coerceArrayElements(target, args[ignored.name]);
+    // A key wrong in NAME and in SHAPE is not one reading — let it error with the
+    // full spec, which is the answer that call actually needs.
+    if (!fitsParamSchema(target, value)) continue;
+    args[target] = value;
+    delete args[ignored.name];
+    notes.push(
+      `'${ignored.name}' is not a parameter of '${operation}' — applied as '${target}', ` +
+      `its only candidate here.`,
+    );
+  }
+
+  // 3. Array-of-object parameters sent as a plain list of names.
+  for (const key of Object.keys(args)) {
+    const coerced = coerceArrayElements(key, args[key]);
+    if (coerced === args[key]) continue;
+    args[key] = coerced;
+    notes.push(
+      `${key} was sent as a list of names — read as ` +
+      `[{ ${arrayElementSoleRequiredKey(key)}: … }], the shape ${key} declares.`,
+    );
+  }
+
+  return { args, notes };
+}
+
+/**
+ * What the caller needs to know about a write that has already been reported.
+ *
+ * runModifyBatch uses it to do the per-FILE work once for the whole batch
+ * instead of once per operation — see the trailer suppression at the end of this
+ * function. Mirrors CreateOutcome, which exists for the same reason.
+ */
+export interface ModifyOutcome {
+  /** Absolute path of the file the operation wrote. */
+  filePath?: string;
+  /** Identity AFTER name resolution, for the shared verification. */
+  objectType?: string;
+  objectName?: string;
+  modelName?: string;
+  /**
+   * The extension this modify names does not exist yet, its BASE object does,
+   * and creating it is the one action that turns the call into a success.
+   *
+   * Reported rather than performed: createD365File must not be imported here
+   * (layer direction is pinned by tests/utils/layering.test.ts, because the two
+   * largest files in the codebase importing each other is what made four
+   * read-only tools load the write path), and the dispatcher in d365foFile.ts
+   * already composes create -> operations[]. Going through the ordinary create
+   * path is the point — path containment, prefixing, .rnrproj registration, the
+   * model guards and the direct-XML fallbacks all still apply.
+   */
+  createExtensionFirst?: { objectType: string; objectName: string };
+}
+
+export async function modifyD365FileTool(
+  request: CallToolRequest,
+  context: XppServerContext,
+  outcome?: ModifyOutcome,
+) {
   const timer = createPhaseTimer();
   try {
-    const args = ModifyD365FileArgsSchema.parse(request.params.arguments);
+    // Aliases resolved and single-reading corrections applied BEFORE validation:
+    // every one of these used to be a hard error whose only content was the
+    // 3,000-char spec of the operation the caller had already named.
+    const normalized = normalizeModifyArgs((request.params.arguments ?? {}) as Record<string, unknown>);
+    const args = ModifyD365FileArgsSchema.parse(normalized.args);
 
     // ── Silent-parameter-drop guard (corpus cluster #35, #6) ─────────────────
     // The published schema advertises a free-form `params` object and the Zod
     // schema STRIPS unknown keys, so a misspelled or misplaced parameter used to
     // disappear without a trace while the op still answered "✅ … modified".
-    // Read the RAW arguments (pre-strip) and account for every key: either the
-    // operation consumes it, or the caller is told it was dropped.
-    const rawArgs = (request.params.arguments ?? {}) as Record<string, unknown>;
+    // Account for every key: either the operation consumes it, or the caller is
+    // told it was dropped. Measured on the NORMALISED keys, so a key that has
+    // just been corrected is not also reported as ignored.
+    const rawArgs = normalized.args;
     const providedKeys = Object.keys(rawArgs).filter(k => rawArgs[k] !== undefined);
     const ignoredParams = findIgnoredParams(String(args.operation), providedKeys);
     const ignoredParamsWarning = renderIgnoredParamsWarning(String(args.operation), ignoredParams);
@@ -2754,6 +1307,9 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // behaviour stays auditable.
     const autoCorrect = args.autoCorrect !== false;
     const autoCorrectNotes: string[] = [];
+    // Corrections made before validation (aliases, wrong key names, list-of-names
+    // arrays) report through the same channel as the ones made below.
+    for (const note of normalized.notes) noteAutoCorrection(autoCorrectNotes, note);
 
     if (operation === 'add-control' && objectType === 'form-extension' && args.parentControl) {
       const resolution = await resolveParentControl(
@@ -2926,6 +1482,36 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       if (filePath) {
         console.error(
           `[modify_d365fo_file] '${objectName}' does not exist yet — add-diagnostic-suppression will create it at ${filePath}`,
+        );
+      }
+    }
+
+    // ── A not-yet-created extension is a create, not a dead end ──────────────
+    // The old answer offered four retry options and not one of them was "create
+    // it", although the extension name had already been normalised and its path
+    // computed. The logs show the consequence: the same modify re-sent against
+    // the same *_Extension object, failing identically every time.
+    //
+    // The extension is created through the ORDINARY create path, so path
+    // containment, prefixing, .rnrproj registration, the model guards and the
+    // direct-XML fallbacks all still apply — nothing here writes a file itself.
+    if (!filePath && objectType.endsWith('-extension')) {
+      const verdict = await timer.time('missing-extension check', () =>
+        missingExtensionVerdict(args as Record<string, unknown>, objectType, objectName, operation, symbolIndex));
+      if (verdict.refusal) {
+        return { content: [{ type: 'text', text: verdict.refusal }], isError: true };
+      }
+      if (verdict.createFirst && autoCorrect && outcome) {
+        // The dispatcher creates it and re-runs this call. The error below is
+        // still what a DIRECT caller of this function gets, and it now names the
+        // one call that works instead of four lookup options that cannot.
+        outcome.createExtensionFirst = verdict.createFirst;
+      }
+      if (verdict.createFirst) {
+        throw new Error(
+          `${objectType} "${objectName}" does not exist yet (its base object does).\n\n` +
+          `Create it and apply the same edit in ONE call:\n  ` +
+          renderCreateWithOperations(objectType, objectName, operation, args as Record<string, unknown>),
         );
       }
     }
@@ -3121,6 +1707,21 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         symbolIndex,
       );
       if (retargetNote) noteAutoCorrection(autoCorrectNotes, retargetNote);
+
+      // Raw label TEXT on fieldLabel / fieldGroupLabel / enumValueLabel becomes a
+      // real @LabelFile:Id here rather than a BP advisory the caller has to spend
+      // a `labels` round trip (or three) acting on. See autoResolveOperationLabels.
+      const labelNotes = await timer.time('label auto-resolve', () => autoResolveOperationLabels(
+        args as Record<string, unknown>,
+        {
+          model: containment.modelSegment || resolvedModelFromPath || modelName ||
+            getConfigManager().getModelName() || '',
+          packagePath: args.packagePath,
+          projectPath: (args as Record<string, unknown>).projectPath as string | undefined,
+        },
+        symbolIndex,
+      ));
+      for (const note of labelNotes) noteAutoCorrection(autoCorrectNotes, note);
     }
 
     // Settle a rebuild an earlier create/modify scheduled but did not wait for, so
@@ -4348,6 +2949,19 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         modelName || configManager.getModelName() || undefined,
         resolvedProjectPath,
       );
+      // The "no project references this, and none is configured" variant is a
+      // fact about the workspace and repeats verbatim on every write. Adding a
+      // file to a project is an ACTION and is never collapsed.
+      if (projectMessage.includes('No project of model')) {
+        const model = modelName || configManager.getModelName() || '(unknown)';
+        projectMessage = sayOncePerSession(
+          'no-project',
+          model,
+          projectMessage,
+          `\n\n⚠️ "${objectName}" is in no project of model "${model}" either ` +
+            `(no projectPath configured — see above).`,
+        );
+      }
     }
 
     // Advisory X++ select-statement lint on the source just written (add-method /
@@ -4384,13 +2998,26 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       // Silent when the group entry is already in this batch — the advice has
       // been taken, and repeating it teaches the agent that these warnings do
       // not track what it actually did.
+      //
+      // batchAdvice, when present, decides: only the batch can see that three
+      // add-field entries want ONE paragraph naming three fields, and that a
+      // field whose group entry sits two lines below needs no paragraph at all.
+      // peerOperations stays the fallback for a call that carries no batchAdvice.
+      const advice = args.batchAdvice;
       const groupEntryInBatch = (args.peerOperations ?? []).includes('add-field-to-field-group');
-      if (!groupEntryInBatch) {
+      const suppressGroupNote = advice
+        ? advice.suppressFieldGroupNote === true
+        : groupEntryInBatch;
+      const coveredFields = advice?.fieldGroupNoteFields?.length
+        ? advice.fieldGroupNoteFields
+        : (args.fieldName ? [args.fieldName] : []);
+      if (!suppressGroupNote) {
         notes.push(
-          `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup). ` +
+          `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup)` +
+          `${coveredFields.length > 1 ? ` — applies to ${coveredFields.join(', ')}` : ''}. ` +
           `Send the group entry in the SAME call next time — d365fo_file(action="modify", ` +
           `objectType="${objectType}", objectName="${objectName}", operations=[{operation:"add-field", …}, ` +
-          `{operation:"add-field-to-field-group", fieldName:"${args.fieldName}", fieldGroupName:"<group>"}]).`,
+          `{operation:"add-field-to-field-group", fieldName:"${coveredFields[0] ?? args.fieldName}", fieldGroupName:"<group>"}]).`,
         );
       }
       if ((args as any).fieldEnumType) {
@@ -4432,12 +3059,26 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         `(Pass autoCorrect=false to have corrections like this raise an error instead.)`
       : '';
 
+    // Inside a batch every one of the trailers below is the SAME answer about the
+    // SAME file, and each entry re-ran the work to produce it: a 20-operation
+    // batch stat()ed one file 20 times, re-parsed it into the symbol index 20
+    // times, and repeated ~250 chars of trailer 20 times. runModifyBatch does all
+    // of it once, after the loop — it is told which file to do it for through
+    // `outcome` below.
+    const inBatch = Array.isArray(args.peerOperations);
+    if (outcome) {
+      outcome.filePath = actualFilePath;
+      outcome.objectType = objectType;
+      outcome.objectName = objectName;
+      outcome.modelName = modelName || getConfigManager().getModelName() || undefined;
+    }
+
     // Re-index the modified object in-process. A modify changes the symbols the
     // index holds (a renamed field, a new method), and the parser is right here —
     // making the agent spend a round trip on update_symbol_index for a file this
     // process just wrote, and another on the lookup that failed for want of it,
     // was pure waste.
-    const indexNote = await timer.time('symbol index upsert',
+    const indexNote = inBatch ? '' : await timer.time('symbol index upsert',
       () => upsertWrittenFileIntoIndex(actualFilePath, context));
 
     // Verify the write here rather than leaving the caller to spend a
@@ -4447,7 +3088,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // .rnrproj check still happens (config reads are cached).
     const verifyProjectPath =
       args.projectPath || (await getConfigManager().getProjectPath()) || undefined;
-    const verifyNote = renderWriteVerification(
+    const verifyNote = inBatch ? '' : renderWriteVerification(
       await timer.time('write verification', () => verifyWrittenFile(
         actualFilePath,
         verifyProjectPath,
@@ -4470,13 +3111,18 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             // "Review changes in Visual Studio" is not something the caller can act
             // on, and it rode along on every write.
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') +
-            `\n\nNext: build_d365fo_project to compile the change.` +
-            // Suppressed inside a batch: runModifyBatch sets peerOperations, and
-            // telling an operation that is already batched to batch itself reads as
-            // a defect. Only the SINGLE-op form is the one that loops.
-            (Array.isArray((args as any).peerOperations)
+            // One tool that builds AND runs the best-practice check. The old line
+            // named build_d365fo_project alone, and the sampled sessions then spent
+            // 35 verify_d365fo_project and 39 run_bp_check calls, largely right
+            // after writes that had already verified themselves.
+            //
+            // Suppressed inside a batch, along with the batch-edit hint:
+            // runModifyBatch emits one of each for the whole call, and telling an
+            // operation that is already batched to batch itself reads as a defect.
+            (inBatch
               ? ''
-              : renderBatchEditHint(objectType, objectName)),
+              : `\n\nNext: build_d365fo_project(bpCheck:true) — builds and runs the best-practice check in one call.` +
+                renderBatchEditHint(objectType, objectName)),
         },
       ],
     };
@@ -4493,6 +3139,10 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // returns that COMPLETE spec — follow it, do not guess", and the missing-param
     // path above keeps that promise; this one did not, so the caller either guessed
     // or spent a round trip on get_knowledge to find out what it already asked for.
+    //
+    // normalizeModifyArgs now reshapes the single-reading cases before validation,
+    // so this branch is reached by autoCorrect=false callers and by shapes that
+    // genuinely have more than one reading — both of which want the spec.
     const rawArgs = (request.params.arguments ?? {}) as Record<string, unknown>;
     const opName = typeof rawArgs.operation === 'string' ? rawArgs.operation : undefined;
     if (error instanceof z.ZodError && opName) {
@@ -4520,6 +3170,112 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       isError: true,
     };
   }
+}
+
+// ── Auto-create for a modify that names an extension nobody has created yet ──
+
+/**
+ * Base-object names an extension name can refer to, best guess first.
+ *
+ * Dot notation (`CustTable.FmExtension`) says it outright. The element-style
+ * class form (`CustTable_Extension`, `CustTableFm_Extension`) carries the model
+ * infix in front of the word, so the plain strip is tried first and the
+ * infix-stripped form after it - both are real spellings this repo produces.
+ */
+export function baseObjectNameCandidates(objectName: string, modelName?: string): string[] {
+  const dot = objectName.indexOf('.');
+  if (dot > 0) return [objectName.slice(0, dot)];
+  if (!/extension$/i.test(objectName)) return [];
+
+  const stripped = objectName.slice(0, -'Extension'.length).replace(/_+$/, '');
+  if (!stripped) return [];
+  const out = [stripped];
+  const prefix = resolveObjectPrefix(modelName ?? '');
+  for (const token of [deriveExtensionInfix(prefix, modelName), prefix]) {
+    if (!token) continue;
+    if (stripped.toLowerCase().endsWith(token.toLowerCase())) {
+      const shorter = stripped.slice(0, -token.length).replace(/_+$/, '');
+      if (shorter && !out.includes(shorter)) out.push(shorter);
+    }
+  }
+  return out;
+}
+
+/** The call to send when the server may not create the extension on its own. */
+function renderCreateWithOperations(
+  objectType: string,
+  objectName: string,
+  operation: string,
+  args: Record<string, unknown>,
+): string {
+  const spec = D365FO_FILE_OP_SPECS[operation];
+  const params = [...(spec?.required ?? []), ...(spec?.optional ?? [])]
+    .filter(name => args[name] !== undefined)
+    .map(name => `${name}: ${JSON.stringify(args[name])}`);
+  return (
+    `d365fo_file(action="create", objectType="${objectType}", objectName="${objectName}", ` +
+    `operations:[{operation: "${operation}"${params.length ? ', ' + params.join(', ') : ''}}])`
+  );
+}
+
+interface MissingExtensionVerdict {
+  /** The extension to create before the edit can run. */
+  createFirst?: { objectType: string; objectName: string };
+  /** Complete reply to return instead: it must not be created on our behalf. */
+  refusal?: string;
+}
+
+/**
+ * Decide whether a modify that found no file is really a missing extension.
+ *
+ * Only ever for an "-extension" objectType whose BASE object exists: without a
+ * base there is nothing to extend, and the "not found" answer with its lookup
+ * options is then the right one. Never for a plain object - a modify naming a
+ * table that does not exist is a mistake, not a missing scaffold.
+ *
+ * Grounding is re-checked against the CREATE that would follow. It is the same
+ * token and the same object the modify was already gated on, so in practice it
+ * passes; the explicit check is what guarantees that turning GROUNDING_ENFORCE
+ * on cannot be side-stepped by asking for a modify instead of a create. When it
+ * refuses, the reply is the exact create call to send by hand.
+ */
+async function missingExtensionVerdict(
+  args: Record<string, unknown>,
+  objectType: string,
+  objectName: string,
+  operation: string,
+  symbolIndex: any,
+): Promise<MissingExtensionVerdict> {
+  const modelName = (args.modelName as string | undefined) || getConfigManager().getModelName() || undefined;
+  const baseType = objectType.slice(0, -'-extension'.length);
+  const packagePath = args.packagePath as string | undefined;
+
+  let baseFound: string | null = null;
+  for (const candidate of baseObjectNameCandidates(objectName, modelName)) {
+    baseFound = await resolveD365FileByName(symbolIndex, baseType, candidate, undefined, packagePath);
+    if (baseFound) break;
+  }
+  // Nothing to extend — fall through to the ordinary "file not found" answer,
+  // whose lookup options are exactly what a mistyped base name needs.
+  if (!baseFound) return {};
+
+  const groundingRefusal = enforceGrounding(
+    args.groundingToken as string | undefined,
+    `d365fo_file(action="create", objectType="${objectType}", objectName="${objectName}")`,
+    objectName,
+  );
+  if (groundingRefusal) {
+    return {
+      refusal:
+        `❌ ${objectType} "${objectName}" does not exist yet, and GROUNDING_ENFORCE=true means it ` +
+        `cannot be created on your behalf without a groundingToken for it.\n\n` +
+        `Create it and apply the same edit in ONE call:\n  ` +
+        renderCreateWithOperations(objectType, objectName, operation, args) +
+        `\n\n(prepare(mode="change", objectName="${objectName}") returns the groundingToken.)`,
+    };
+  }
+
+  return { createFirst: { objectType, objectName } };
 }
 
 /** Object types whose members belong to a Microsoft-owned host object. */
@@ -4960,9 +3716,15 @@ export async function ensureRecoverableModification(
     return '';
   }
   const backupPath = await createFileBackup(actualFilePath);
-  return (
+  // Keyed by the MODEL folder (<...>/<Package>/<Model>/Ax<Type>/<file>.xml), not
+  // the file: "this metadata tree is not under git" is a property of the tree, so
+  // once said it is said for every object in it.
+  return sayOncePerSession(
+    'git-backup',
+    path.win32.dirname(path.win32.dirname(actualFilePath)),
     `\n\nℹ️ Target is not under git — created backup ${backupPath} automatically ` +
-    `(undo_last_modification would not work here).`
+      `(d365fo_file(action="undo") would not work here — it is a git checkout).`,
+    `\n\nℹ️ Backup: ${backupPath}`,
   );
 }
 
@@ -5033,79 +3795,6 @@ function allControlsFromFormXmlObj(xmlObj: any): ResolvedControl[] {
   return results;
 }
 
-/**
- * Locate the base form XML on disk, trying DB path → remapped path → filesystem scan.
- * Returns raw XML content, or null if not accessible.
- */
-export async function findBaseFormXml(baseFormName: string, symbolIndex: any): Promise<string | null> {
-  return findBaseObjectXml('form', baseFormName, symbolIndex);
-}
-
-/**
- * Locate the XML of a base (non-extension) object on disk, trying DB path →
- * remapped path → filesystem scan. `objectType` is both the symbols-table type
- * and the findD365FileOnDisk key ('form', 'table', …).
- * Returns raw XML content, or null if not accessible.
- */
-export async function findBaseObjectXml(
-  objectType: string,
-  objectName: string,
-  symbolIndex: any,
-): Promise<string | null> {
-  // Helper: read a file, transparently following JSON metadata proxies.
-  async function tryRead(p: string): Promise<string | null> {
-    try {
-      const raw = await fs.readFile(p, 'utf-8');
-      if (raw.trimStart().startsWith('{')) {
-        const data = JSON.parse(raw);
-        if (data.sourcePath) {
-          try { return await fs.readFile(data.sourcePath, 'utf-8'); } catch { return null; }
-        }
-        return null;
-      }
-      return raw;
-    } catch { return null; }
-  }
-
-  // 1. Symbol DB lookup
-  let dbFilePath: string | null = null;
-  try {
-    const rdb = symbolIndex.getReadDb();
-    const row = rdb.prepare(
-      `SELECT file_path FROM symbols WHERE type = ? AND name = ? LIMIT 1`
-    ).get(objectType, objectName) as any;
-    if (row?.file_path) dbFilePath = row.file_path;
-  } catch { /* ignore */ }
-
-  if (dbFilePath) {
-    // Try absolute DB path as-is
-    const direct = await tryRead(dbFilePath);
-    if (direct) return direct;
-
-    // DB stored a relative path — join with configured packagePath
-    if (!path.isAbsolute(dbFilePath)) {
-      const cm = getConfigManager();
-      await cm.ensureLoaded();
-      const pkgPath = cm.getPackagePath() || fallbackPackagePath();
-      const abs = await tryRead(path.join(pkgPath, dbFilePath));
-      if (abs) return abs;
-    }
-
-    // Build-agent path remapping (e.g. /home/vsts/... → local PackagesLocalDirectory)
-    const remapped = await resolveDbPathLocally(dbFilePath);
-    if (remapped) {
-      const content = await tryRead(remapped);
-      if (content) return content;
-    }
-  }
-
-  // 2. Filesystem scan using model from config
-  const diskPath = await findD365FileOnDisk(objectType, objectName);
-  if (diskPath) return tryRead(diskPath);
-
-  return null;
-}
-
 // ── Auto-correction helpers ────────────────────────────────────────────────
 // A correction is applied ONLY where the failure has exactly one valid reading
 // that the server can derive from state it already holds. Everything else keeps
@@ -5114,6 +3803,62 @@ export async function findBaseObjectXml(
 /** Record a correction, ignoring a repeat from the bridge auto-refresh retry. */
 function noteAutoCorrection(notes: string[], note: string): void {
   if (!notes.includes(note)) notes.push(note);
+}
+
+/**
+ * The operation parameters that end up as a `<Label>` element, and what the
+ * label belongs to (for the note the caller reads back).
+ *
+ * `propertyValue` is deliberately absent: modify-property's value is generic —
+ * it is a TableGroup or a field name just as often as a label — and rewriting it
+ * on the strength of the propertyPath would be a guess, not a determined
+ * correction.
+ */
+const LABEL_OP_PARAMS: Array<{ key: string; noun: string; nameKey: string }> = [
+  { key: 'fieldLabel', noun: 'field', nameKey: 'fieldName' },
+  { key: 'fieldGroupLabel', noun: 'field group', nameKey: 'fieldGroupName' },
+  { key: 'enumValueLabel', noun: 'enum value', nameKey: 'enumValueName' },
+];
+
+/**
+ * Replace raw label TEXT on an operation with a real label reference, reusing an
+ * existing label when one already carries that exact text.
+ *
+ * Same reason as the create path (see autoResolveRawLabels there): in a
+ * 1,515-call corpus `labels` was called 268 times against 171 writes, nearly all
+ * of it search-then-create in front of a write that already carried the text.
+ * A value that is already an `@Ref` is written verbatim and produces no note.
+ */
+async function autoResolveOperationLabels(
+  args: Record<string, unknown>,
+  target: AutoLabelTarget,
+  symbolIndex?: any,
+): Promise<string[]> {
+  if (!target.model) return [];
+  const notes: string[] = [];
+
+  for (const { key, noun, nameKey } of LABEL_OP_PARAMS) {
+    if (!isRawLabelText(args[key])) continue;
+    const name = typeof args[nameKey] === 'string' ? args[nameKey] as string : undefined;
+    const outcome = await resolveOrCreateLabelRef(
+      {
+        text: args[key] as string,
+        what: `${noun}${name ? ` "${name}"` : ''}`,
+        // Only a FIELD's label can collide with an enum's own label; a field
+        // group or an enum value has no enum behind it.
+        enumType: key === 'fieldLabel' && typeof args.fieldEnumType === 'string'
+          ? args.fieldEnumType as string
+          : undefined,
+      },
+      target,
+      symbolIndex,
+    );
+    if (!outcome) continue;
+    if (outcome.ref) args[key] = outcome.ref;
+    notes.push(outcome.note);
+  }
+
+  return notes;
 }
 
 /**
@@ -5643,3 +4388,14 @@ export function generateDisplayMethodSource(methodName: string, returnEdt: strin
     `}`
   );
 }
+
+// The once-per-session advisory memory moved to src/utils/repeatedNotes.ts so
+// createD365File can share it — the layering guard forbids the two write tools
+// from importing each other. Re-exported here because the test seam was part of
+// this module's surface before the move.
+export { resetRepeatedNoteMemory };
+
+// The base-object XML locator moved to src/utils/baseObjectXml.ts so a generator
+// can read a form without importing this write tool. Re-exported because it was
+// part of this module's surface.
+export { findBaseObjectXml, findBaseFormXml };

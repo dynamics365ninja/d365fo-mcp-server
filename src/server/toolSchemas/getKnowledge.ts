@@ -15,18 +15,20 @@ export const getKnowledgeTool = {
     inputSchema: {
       type: 'object',
       properties: {
+        // No description: the four kinds are each spelled out, at length, in the
+        // tool description above — this restated the same bullet list at ~230
+        // chars per session for nothing. Inferred when omitted (see the handler).
         kind: {
           type: 'string',
           enum: ['knowledge', 'error', 'op-spec', 'bp-moniker'],
-          description: 'knowledge = look up an X++ topic/rule; error = diagnose an error message; op-spec = parameter contract for a d365fo_file operation/objectType or generate_object mode; bp-moniker = validate/search a BP-check moniker or render a suppression.',
         },
         // kind=knowledge (also carries the op-spec key for kind=op-spec)
         topic: {
           type: 'string',
+          // Two examples, not twelve: the tool description already lists the
+          // knowledge topics, so this list was a second copy of them.
           description:
-            '[knowledge] REQUIRED. Topic to query — e.g. "batch job", "ttsbegin", "RunBase vs SysOperation", ' +
-            '"set-based operations", "CoC", "data entities", "number sequences", "security", ' +
-            '"temp tables", "today() deprecated", "query patterns", "form patterns". ' +
+            '[knowledge] REQUIRED. Topic to query — e.g. "ttsbegin", "RunBase vs SysOperation". ' +
             '[op-spec] The operation / objectType / mode to look up.',
         },
         topics: {

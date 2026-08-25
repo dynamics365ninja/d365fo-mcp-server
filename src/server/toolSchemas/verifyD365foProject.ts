@@ -7,7 +7,8 @@
 export const verifyD365foProjectTool = {
     name: 'verify_d365fo_project',
     description:
-      'Verify that D365FO objects exist on disk at the correct AOT path and are referenced in the .rnrproj project file. Use instead of PowerShell to check d365fo_file(action="create") results. ' +
+      'Verify that D365FO objects exist on disk at the correct AOT path and are referenced in the .rnrproj project file. Use instead of PowerShell. ' +
+      'Runs AFTER a build, not after a write: d365fo_file already verifies its own write inline (on disk + .rnrproj reference) and says so in its response. ' +
       'Omit `objects` to verify the ENTIRE project: every object referenced in the .rnrproj is checked on disk (requires projectPath, or an auto-detected/configured project).',
     inputSchema: {
       type: 'object',
@@ -40,8 +41,10 @@ export const verifyD365foProjectTool = {
           type: 'string',
           description: 'Model name. Auto-detected if omitted.',
         },
-        packageName: { type: 'string', description: 'Package name. Auto-resolved from model name if omitted.' },
-        packagePath: { type: 'string', description: 'Base package path (default: auto-detected PackagesLocalDirectory)' },
+        // packageName / packagePath are NOT published: both are auto-resolved
+        // plumbing (from modelName and from the detected PackagesLocalDirectory),
+        // the same trade `labels` and `get_knowledge` already made for their
+        // resolution overrides. The handler still accepts both.
       },
     },
   };

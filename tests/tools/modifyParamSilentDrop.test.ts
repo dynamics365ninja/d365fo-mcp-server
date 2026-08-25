@@ -22,7 +22,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { modifyD365FileTool, coerceNoYesFlag } from '../../src/tools/write/modifyD365File';
+import { modifyD365FileTool } from '../../src/tools/write/modifyD365File';
+// coerceNoYesFlag moved with the direct-XML writers it belongs to.
+import { coerceNoYesFlag } from '../../src/tools/write/directXmlWriters';
 import {
   findIgnoredParams,
   findMissingMutationParams,
@@ -232,7 +234,13 @@ beforeEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('#6 — a mutation op with no recognised mutation param must not claim success', () => {
-  it('rejects modify-field {fieldName, mandatory:true} instead of answering ✅', async () => {
+  // The original defect was SILENCE: modify-field {fieldName, mandatory:true}
+  // answered "✅ Field 'Description' modified" while writing nothing. Refusing
+  // fixed the lie and cost a round trip; `mandatory` has exactly ONE candidate on
+  // this operation (fieldMandatory), so the server now applies the correction it
+  // was already printing and says so. autoCorrect=false keeps the refusal, for
+  // the eval harness and deterministic callers.
+  it('applies modify-field {fieldName, mandatory:true} as fieldMandatory and reports it', async () => {
     const result = await modifyD365FileTool(
       req({
         objectType: 'table',
@@ -245,11 +253,38 @@ describe('#6 — a mutation op with no recognised mutation param must not claim 
       buildContext(),
     );
 
+    expect(result.isError).toBeFalsy();
+    const text = textOf(result);
+    // The correction is stated, never applied in silence.
+    expect(text).toContain('fieldMandatory');
+    expect(text).toMatch(/Note:/);
+    // And the value actually reached the writer.
+    expect(mockBridgeModifyField).toHaveBeenCalled();
+    // The bridge's own key is `mandatory` (a string), not `fieldMandatory` —
+    // asserting the value at the BRIDGE boundary is what proves the correction
+    // reached the writer rather than just the reply text.
+    expect(mockBridgeModifyField).toHaveBeenCalledWith(
+      expect.anything(), 'ConDemoModLifecycle', 'Description', { mandatory: 'true' },
+    );
+  });
+
+  it('still refuses it under autoCorrect=false', async () => {
+    const result = await modifyD365FileTool(
+      req({
+        objectType: 'table',
+        objectName: 'ConDemoModLifecycle',
+        operation: 'modify-field',
+        fieldName: 'Description',
+        mandatory: true,
+        autoCorrect: false,
+        filePath: TABLE_FILE_PATH,
+      }),
+      buildContext(),
+    );
+
     expect(result.isError).toBe(true);
     const text = textOf(result);
-    // It must name the correct parameter, not just fail.
     expect(text).toContain('fieldMandatory');
-    // And it must not have pretended to write anything.
     expect(text).not.toContain('IMetaTableProvider.Update');
     expect(mockBridgeModifyField).not.toHaveBeenCalled();
     expect(writtenXml()).toBeUndefined();
@@ -274,7 +309,11 @@ describe('#6 — a mutation op with no recognised mutation param must not claim 
 });
 
 describe('#35 — an accepted-but-dropped parameter must be reported, never silent', () => {
-  it('warns about off-op index params (allowDuplicates / alternateKey) and suggests the real names', async () => {
+  // Each of these has exactly one candidate on add-index, so the correction the
+  // server was already printing is now applied instead — the value reaches the
+  // XML and the caller is told which parameter carried it. Under autoCorrect=false
+  // the old "did not reach the written XML" warning is what comes back.
+  it('applies off-op index params (allowDuplicates / alternateKey) under their real names', async () => {
     const result = await modifyD365FileTool(
       req({
         objectType: 'table',
@@ -282,8 +321,36 @@ describe('#35 — an accepted-but-dropped parameter must be reported, never sile
         operation: 'add-index',
         indexName: 'TicketIdx',
         indexFields: [{ fieldName: 'CustAccount' }],
-        allowDuplicates: false, // dropped: the param is indexAllowDuplicates
-        alternateKey: true,     // dropped: the param is indexAlternateKey
+        allowDuplicates: false, // the param is indexAllowDuplicates
+        alternateKey: true,     // the param is indexAlternateKey
+        filePath: TABLE_FILE_PATH,
+      }),
+      buildContext(),
+    );
+
+    expect(result.isError).toBeFalsy();
+    const text = textOf(result);
+    expect(text).toContain('indexAllowDuplicates');
+    expect(text).toContain('indexAlternateKey');
+    expect(text).toMatch(/Note:/);
+    expect(text).not.toMatch(/did not reach the written XML/);
+    // allowDuplicates=false, alternateKey=true, in the bridge's positional order.
+    expect(mockBridgeAddIndex).toHaveBeenCalledWith(
+      expect.anything(), 'ConDemoModLifecycle', 'TicketIdx', ['CustAccount'], false, true,
+    );
+  });
+
+  it('still reports them as dropped under autoCorrect=false', async () => {
+    const result = await modifyD365FileTool(
+      req({
+        objectType: 'table',
+        objectName: 'ConDemoModLifecycle',
+        operation: 'add-index',
+        indexName: 'TicketIdx',
+        indexFields: [{ fieldName: 'CustAccount' }],
+        allowDuplicates: false,
+        alternateKey: true,
+        autoCorrect: false,
         filePath: TABLE_FILE_PATH,
       }),
       buildContext(),

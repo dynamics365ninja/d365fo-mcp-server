@@ -495,15 +495,15 @@ export const SETTINGS: Setting[] = [
     type: 'enum',
     label: 'Tool profile',
     description:
-      'How many tools this server advertises. "full" publishes all 23. "core" publishes only the plan → discover → ' +
-      'write → build → verify loop (18 tools) and leaves out the specialist ones (extension_info, analyze_code, ' +
+      'How many tools this server advertises. "full" publishes all 20. "core" publishes only the plan → discover → ' +
+      'write → build → verify loop (15 tools) and leaves out the specialist ones (extension_info, analyze_code, ' +
       'validate_code, security_info, run_systest_class). Worth switching ' +
       'when the workspace runs several MCP servers at once: hosts stop sending the tool catalogue inline past a ' +
       'limit (VS Code: ~100 tools) and make the model search for tools first, which costs a round trip per tool.',
     default: 'full',
     choices: [
-      { value: 'full', hint: 'all 23 tools' },
-      { value: 'core', hint: '18-tool create-and-build loop' },
+      { value: 'full', hint: 'all 20 tools' },
+      { value: 'core', hint: '15-tool create-and-build loop' },
     ],
   },
   {

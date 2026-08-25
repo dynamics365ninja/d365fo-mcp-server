@@ -110,16 +110,28 @@ export function describeBridgeFailure(failure: BridgeFailure): string {
  * "bridge error" on its own reads as "no answer", and the agent retries instead of
  * treating the result as the possibly-stale data it is.
  */
-export function renderBridgeFailureNote(failures: BridgeFailure[]): string {
+export function renderBridgeFailureNote(
+  failures: BridgeFailure[],
+  opts?: { writeSucceeded?: boolean },
+): string {
   const shown = failures.slice(0, 3);
   const rest = failures.length - shown.length;
   const lines = shown.map(f => `>    • ${f.operation} — ${f.reason}`);
   if (rest > 0) lines.push(`>    • …and ${rest} more bridge call${rest === 1 ? '' : 's'}`);
-  return (
-    `> ⚠️ ${BRIDGE_FAILURE_MARKER} the C# metadata bridge threw during this call, so anything ` +
-    `above came from the SQLite symbol index or from disk — NOT from live D365FO metadata. ` +
-    `Treat "not found" and empty lists as unproven, and re-run once the bridge is healthy ` +
-    `before concluding an object does not exist.\n` +
-    lines.join('\n')
-  );
+
+  // A SUCCEEDED write must never be told to re-run. The direct-XML fallback
+  // exists so the write lands when the bridge throws; the caller's job then is
+  // to know the change is on disk but was not validated by live metadata — not
+  // to repeat an add-method or add-field, which would add the member twice.
+  const body = opts?.writeSucceeded
+    ? `the C# metadata bridge threw during this call and the direct-XML fallback completed the ` +
+      `write instead. The change IS on disk — do NOT re-run it, that would apply it twice. What ` +
+      `the bridge would have done and did not is validate it against live metadata, so build ` +
+      `before relying on it.`
+    : `the C# metadata bridge threw during this call, so anything above came from the SQLite ` +
+      `symbol index or from disk — NOT from live D365FO metadata. Treat "not found" and empty ` +
+      `lists as unproven, and re-run once the bridge is healthy before concluding an object ` +
+      `does not exist.`;
+
+  return `> ⚠️ ${BRIDGE_FAILURE_MARKER} ${body}\n` + lines.join('\n');
 }

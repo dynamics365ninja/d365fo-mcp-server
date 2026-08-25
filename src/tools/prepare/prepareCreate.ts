@@ -21,6 +21,7 @@ import { checkObjectNaming } from '../../utils/objectNamingRules.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { renderPrepareOpSpec } from '../specs/opSpecs.js';
 import { rankContext, renderRankedContext } from '../../workspace/contextRanker.js';
+import { budgetRankedContext } from './prepareChange.js';
 import { lookupSymbolsNocase, type SymbolHit } from '../../utils/symbolLookup.js';
 import { formatLabelReference } from '../../utils/labelReference.js';
 import { RESERVED_SYSTEM_FIELD_NAMES } from '../smart/generateSmartTable.js';
@@ -325,21 +326,44 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
     proposedName: finalName,
   });
 
+  // SECTION ORDER IS LOAD-BEARING — same measurement as prepare(change): with a
+  // p90 response of 5,011 chars against a 5,000-char cap, whatever sits last is
+  // what gets cut. The write contract and the grounding token are the deliverable,
+  // so they lead; discovery follows; the ranked-context block is last and budgeted.
   const lines: string[] = [
     `# prepare(mode="create") — ${objectType} \`${finalName}\``,
     '',
     `**Goal:** ${goal}`,
     '',
-    '### Collision check _(symbol index)_',
-    collisions,
-    '',
-    '### Naming',
-    naming,
-    '',
-    '### Similar existing objects _(copy patterns from these)_',
-    similar,
-    '',
   ];
+
+  // The write contract for this objectType, so the flow does not spend a round
+  // trip on get_knowledge(kind="op-spec") right after this call.
+  lines.push(...renderPrepareOpSpec({ mode: 'create', objectType }));
+
+  lines.push(`**Grounding token:** \`${token}\``);
+  lines.push('');
+  // Was: "generate the object, run validate_code(mode='references') +
+  // validate_code(mode='syntax') on the result, then d365fo_file(action='create')"
+  // — three round trips where one does. The write path already runs the
+  // syntax/BP lint inline (src/tools/write/inlineXppValidation.ts) and resolves
+  // references inline when GROUNDING_ENFORCE=true, so both validate_code calls
+  // re-ran checks the write was going to run anyway, and each re-bills the whole
+  // cached context.
+  lines.push(
+    `Next: call \`d365fo_file(action="create", objectType="${objectType}", objectName="${objectName}", groundingToken=...)\` ` +
+    '— pass the BASE name, the prefix is applied for you. Syntax/BP linting and (under GROUNDING_ENFORCE=true) ' +
+    'reference resolution run INSIDE that call, so no separate validate_code round trip is needed; ' +
+    'use `validate_code(mode="both")` only as an optional pre-check on hand-written X++. ' +
+    'The token is bound to this object and expires in 30 minutes.',
+  );
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+
+  lines.push('### Collision check _(symbol index)_', collisions, '');
+  lines.push('### Naming', naming, '');
+  lines.push('### Similar existing objects _(copy patterns from these)_', similar, '');
   if (edts) {
     lines.push('### EDT suggestions for planned fields _(edt index)_', edts, '');
   }
@@ -348,29 +372,17 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
     lines.push('### Property defaults _(mined from standard models)_', propertyDefaults, '');
   }
 
-  // Surface existing code relevant to the goal; best-effort, omit on failure
+  // Surface existing code relevant to the goal; best-effort, omit on failure,
+  // and deliberately last — see the section-order note above.
   try {
     const ranked = rankContext(context, {
       intent: `${goal} ${objectName} ${(fieldsHint ?? []).join(' ')}`,
       activeObject: { name: objectName, type: objectType },
     });
-    lines.push(...renderRankedContext(ranked), '');
+    lines.push(...budgetRankedContext(renderRankedContext(ranked)), '');
   } catch {
     // Additive — omit on failure.
   }
-
-  // The write contract for this objectType, so the flow does not spend a round
-  // trip on get_knowledge(kind="op-spec") right after this call.
-  lines.push(...renderPrepareOpSpec({ mode: 'create', objectType }));
-
-  lines.push('---');
-  lines.push(`**Grounding token:** \`${token}\``);
-  lines.push('');
-  lines.push(
-    'Next: generate the object, run `validate_code(mode="references")` + `validate_code(mode="syntax")` on the result, ' +
-    `then call \`d365fo_file(action="create", objectType="${objectType}", objectName="${objectName}", groundingToken=...)\`. ` +
-    'The token is bound to this object and expires in 30 minutes.',
-  );
 
   return {
     content: [{ type: 'text', text: lines.join('\n') }],

@@ -124,3 +124,46 @@ describe('get_knowledge(kind="op-spec")', () => {
     expect(res.content[0].text).not.toContain('Op-spec lookup');
   });
 });
+
+/**
+ * The build/verify/BP tools unpublished several parameters to pay for the tool
+ * folds, keeping their handlers accepting them — the same trade `labels` makes
+ * for its thirteen. But `labels` also has an op-spec topic and these did not,
+ * so the knob existed and nothing could tell a caller so.
+ *
+ * `packagePath` is the one that mattered: it points a build, a verify or a BP
+ * check at metadata outside the configured PackagesLocalDirectory, it has no
+ * published equivalent on verify or build, and it is still PUBLISHED on
+ * run_bp_check — so the same knob was discoverable on one tool of three and
+ * invisible on the other two.
+ */
+describe('the SDLC resolution overrides are reachable', () => {
+  const HANDLER_SOURCES: Array<[string, string]> = [
+    ['verify_d365fo_project', 'src/tools/sdlc/verifyD365Project.ts'],
+    ['build_d365fo_project', 'src/tools/sdlc/buildProject.ts'],
+  ];
+
+  it('answers for the tool name, the knob name, and the topic itself', () => {
+    for (const topic of ['verify_d365fo_project', 'build', 'run_bp_check', 'package-path', 'sdlc-overrides']) {
+      const spec = lookupOpSpec(topic);
+      expect(spec, `topic "${topic}" fell through to the index`).toContain('packagePath');
+      expect(spec).toContain('resolution overrides');
+    }
+  });
+
+  it('is named in the index, so it can be found without knowing the word', () => {
+    expect(renderOpSpecIndex()).toContain('sdlc-overrides');
+  });
+
+  it('only documents knobs the handlers actually still accept', async () => {
+    // A contract for a parameter nobody reads is worse than no contract.
+    const { readFileSync } = await import('fs');
+    const spec = lookupOpSpec('sdlc-overrides');
+    for (const [tool, file] of HANDLER_SOURCES) {
+      const src = readFileSync(file, 'utf8');
+      if (spec.includes('packagePath')) {
+        expect(src, `${tool} no longer reads packagePath — the op-spec is now lying`).toContain('packagePath');
+      }
+    }
+  });
+});

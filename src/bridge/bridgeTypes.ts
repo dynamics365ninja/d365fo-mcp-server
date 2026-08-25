@@ -579,6 +579,12 @@ export interface BridgeSecurityPrivilegeResult {
   model?: string;
   entryPoints: BridgeSecurityEntryPoint[];
   parentDuties: Array<{ name: string }>;
+  /**
+   * False when the duty scan could not finish. An empty `parentDuties` then
+   * means "unknown", not "none" — and "none" is the claim
+   * BPErrorPrivilegeNotCoveredByDuty is about, so the two must not render alike.
+   */
+  parentDutiesComplete?: boolean;
   _source: string;
 }
 

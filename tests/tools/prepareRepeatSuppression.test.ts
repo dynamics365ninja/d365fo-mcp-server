@@ -121,3 +121,35 @@ describe('prepare repeat suppression', () => {
     expect(prepareChangeTool).toHaveBeenCalledTimes(2);
   });
 });
+
+/**
+ * A different proposedName is a different question.
+ *
+ * prepare runs naming validation ONLY when `proposedName` is given. While the
+ * grounding token still sat in the truncated tail, `extractToken` found nothing
+ * and this suppression never armed, so the omission was invisible. Now that the
+ * token is at the top and the cap fits the response, a second prepare proposing
+ * a DIFFERENT name would have been served from cache — skipping the validation
+ * and handing back a token for a name the check would have refused.
+ */
+describe('prepare cache key covers proposedName', () => {
+  it('re-aggregates for a different proposed name instead of serving the cache', async () => {
+    prepareChangeTool.mockResolvedValue(reply('tok-name'));
+
+    await call({ ...ADD_FIELD, proposedName: 'CustTableConGood_Extension' });
+    const second = await call({ ...ADD_FIELD, proposedName: 'CustTableConOther_Extension' });
+
+    expect(prepareChangeTool, 'a new name must be validated, not assumed').toHaveBeenCalledTimes(2);
+    expect(text(second)).not.toContain('Already prepared');
+  });
+
+  it('still suppresses a genuine repeat of the same proposed name', async () => {
+    prepareChangeTool.mockResolvedValue(reply('tok-name'));
+
+    await call({ ...ADD_FIELD, proposedName: 'CustTableConGood_Extension', goal: 'first' });
+    const again = await call({ ...ADD_FIELD, proposedName: 'CustTableConGood_Extension', goal: 'reworded' });
+
+    expect(prepareChangeTool).toHaveBeenCalledTimes(1);
+    expect(text(again)).toContain('Already prepared');
+  });
+});

@@ -135,14 +135,23 @@ afterAll(async () => {
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
-describe('a table extension reindexed from its file', () => {
-  it('starts out unable to resolve the field — the state this fixes', () => {
+describe('a table extension before it is reindexed', () => {
+  it('cannot resolve the field — the state this fixes', () => {
     expect(errorsFor(USES_FIELD, 'unknown-field')).toHaveLength(1);
   });
+});
 
-  it('resolves the field once the file has been reindexed', async () => {
+// Each group below reindexes in beforeAll rather than leaning on an earlier
+// `it`. Order-dependent tests look fine until something runs a subset: `vitest
+// -t build` picks only the "as the full build does" case, skips the reindex
+// that builds the state it asserts on, and the failure reads as a flake.
+describe('a table extension reindexed from its file', () => {
+  beforeAll(async () => {
     const result = await reindex(tableExtensionFile);
     expect(result.isError).toBe(false);
+  });
+
+  it('resolves the field once the file has been reindexed', () => {
     expect(errorsFor(USES_FIELD, 'unknown-field')).toHaveLength(0);
   });
 
@@ -169,14 +178,19 @@ describe('a table extension reindexed from its file', () => {
   });
 });
 
-describe('a CoC class reindexed from its file', () => {
-  it('starts out unable to resolve the method it adds', () => {
+describe('a CoC class before it is reindexed', () => {
+  it('cannot resolve the method it adds', () => {
     expect(errorsFor(USES_METHOD, 'unknown-method')).toHaveLength(1);
   });
+});
 
-  it('resolves it once the class has been reindexed', async () => {
+describe('a CoC class reindexed from its file', () => {
+  beforeAll(async () => {
     const result = await reindex(cocClassFile);
     expect(result.isError).toBe(false);
+  });
+
+  it('resolves it once the class has been reindexed', () => {
     expect(errorsFor(USES_METHOD, 'unknown-method')).toHaveLength(0);
   });
 
@@ -199,6 +213,12 @@ describe('a CoC class reindexed from its file', () => {
 });
 
 describe('an extension whose file is gone', () => {
+  // Reindexed here too: this group asserts that removal takes the row away, so
+  // the row has to be there when it starts, whichever groups above ran.
+  beforeAll(async () => {
+    await reindex(tableExtensionFile);
+  });
+
   it('takes its extension_metadata row with it', async () => {
     await fs.rm(tableExtensionFile);
     const result = await reindex(tableExtensionFile);

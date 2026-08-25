@@ -62,10 +62,10 @@ export function toRepoRelative(repoRoot: string, absolutePath: string): string {
   return toPosix(path.relative(realpathOrSelf(repoRoot), realpathOrSelf(absolutePath)));
 }
 
-// Tool registration (name, description, inputSchema) lives in
-// src/server/toolSchemas/undoLastModification.ts — the single source of truth for tool
-// instructions. It is NOT in mcpServer.ts; that file only spreads the
-// aggregated toolSchemas array into the ListTools response.
+// This handler has no schema of its own — it is reached through
+// d365fo_file(action="undo") (src/server/toolSchemas/d365foFile.ts), and stays
+// routable under its old tool name `undo_last_modification` for agents still
+// holding it from an earlier session.
 
 export const undoLastModificationTool = async (params: any, context: XppServerContext) => {
   const { filePath } = params;

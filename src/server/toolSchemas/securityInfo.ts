@@ -15,8 +15,8 @@ export const securityInfoTool = {
       properties: {
         mode: {
           type: 'string',
+          // No description: it restated the two bullets above.
           enum: ['artifact', 'coverage'],
-          description: 'artifact = look up a named privilege/duty/role; coverage = who can access an object.',
         },
         // mode=artifact
         name: { type: 'string', description: '[artifact] REQUIRED. Name of the security privilege, duty, or role' },

@@ -68,20 +68,17 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Diagnostics
   get_workspace_info:               read('Read workspace configuration'),
   verify_d365fo_project:            read('Verify D365FO project'),
-  review_workspace_changes:         read('Review workspace changes'),
   run_bp_check:                     read('Run Best Practices check'),
 
   // File & label writes. Marked destructive/write so clients prompt for
   // confirmation even though some actions (generate, search/info) are read-only —
   // annotations are hints, not gates.
-  d365fo_file:                      write('D365FO file (create/modify/delete/generate)', { destructive: true }),
+  d365fo_file:                      write('D365FO file (create/modify/delete/undo/generate)', { destructive: true }),
   labels:                           write('Label operations', { destructive: true }),
-  undo_last_modification:           write('Undo last modification', { destructive: true }),
   generate_object:                         write('Generate code (pattern/scaffold)'),
 
   // SDLC operations
   update_symbol_index:              write('Update symbol index', { idempotent: true }),
   build_d365fo_project:             write('Build D365FO project', { idempotent: true }),
-  trigger_db_sync:                  write('Trigger database sync', { idempotent: true }),
   run_systest_class:                write('Run SysTest unit tests'),
 };

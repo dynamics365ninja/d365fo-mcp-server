@@ -16,7 +16,7 @@ graph TB
 
     subgraph "MCP Server — Node.js 24, TypeScript"
         TRANSPORT[Transport: stdio / Express HTTP\n+ rate limiting, dedup cache]
-        TOOLS[23 tool handlers]
+        TOOLS[20 tool handlers]
         GATES[Quality gates\n grounding · references · BP · form patterns]
     end
 
@@ -222,11 +222,11 @@ graph LR
 
 | Mode | `MCP_SERVER_MODE` | Tools exposed | Typical host |
 |------|-------------------|---------------|--------------|
-| Full | `full` (default) | all 23 | developer VM |
+| Full | `full` (default) | all 20 | developer VM |
 | Read-only | `read-only` | search/analysis | Azure App Service |
 | Write-only | `write-only` | file ops + bridge reads | hybrid local companion |
 
-A second, independent axis controls how many of those tools are worth advertising. `MCP_TOOL_PROFILE=core` publishes only the create-and-build loop (18 tools) instead of all 23, with `MCP_EXTRA_TOOLS` adding individual ones back; `isToolEnabled()` in `serverMode.ts` combines both axes and is the single predicate used by the ListTools filter, the runtime call gate and the startup banner. It exists because hosts stop sending the tool catalogue inline past a limit (VS Code: ~100 tools across all servers) and fall back to a search-based tool surface, which costs a discovery round trip per tool the model needs.
+A second, independent axis controls how many of those tools are worth advertising. `MCP_TOOL_PROFILE=core` publishes only the create-and-build loop (15 tools) instead of all 20, with `MCP_EXTRA_TOOLS` adding individual ones back; `isToolEnabled()` in `serverMode.ts` combines both axes and is the single predicate used by the ListTools filter, the runtime call gate and the startup banner. It exists because hosts stop sending the tool catalogue inline past a limit (VS Code: ~100 tools across all servers) and fall back to a search-based tool surface, which costs a discovery round trip per tool the model needs.
 
 Index refresh is automated via [Azure DevOps pipelines](SETUP_AZURE.md#azure-devops-pipelines); the App Service downloads updated databases from Blob Storage on restart.
 

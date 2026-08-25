@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using D365MetadataBridge.Models;
@@ -105,12 +105,55 @@ namespace D365MetadataBridge.Services
         /// </summary>
         private IMetadataProvider? PickProvider(Func<IMetadataProvider, bool> exists)
         {
-            try { if (exists(_provider)) return _provider; } catch { }
+            // The catch has to stay: the primary provider legitimately throws for
+            // an object only the reference (UDE) provider carries, and swallowing
+            // that is exactly what makes the fallback work.
+            //
+            // What must NOT stay is swallowing it when nobody could answer. Every
+            // caller maps a null from here to "Object not found" (-32001), so a
+            // provider that threw — a metamodel mismatch, a TypeLoadException, an
+            // unreadable model — was reported to the agent as "that object does
+            // not exist". An agent told an object is absent creates it, and now
+            // there are two. So: remember the failure, and surface it only when
+            // neither provider said yes.
+            Exception? firstFailure = null;
+            try { if (exists(_provider)) return _provider; }
+            catch (Exception ex) { firstFailure = ex; }
+
             if (_referenceProvider != null)
             {
-                try { if (exists(_referenceProvider)) return _referenceProvider; } catch { }
+                try { if (exists(_referenceProvider)) return _referenceProvider; }
+                catch (Exception ex) { firstFailure ??= ex; }
             }
+
+            if (firstFailure != null)
+            {
+                Console.Error.WriteLine(
+                    $"[ERROR] MetadataReadService: provider lookup failed - {firstFailure.GetType().Name}: {firstFailure.Message}");
+                throw new InvalidOperationException(
+                    $"Metadata provider could not answer the lookup ({firstFailure.GetType().Name}: {firstFailure.Message}). " +
+                    "This is a provider failure, NOT a missing object - do not treat it as 'does not exist'.",
+                    firstFailure);
+            }
+
             return null;
+        }
+
+        /// <summary>
+        /// PickProvider for a site that deliberately probes SEVERAL object kinds.
+        ///
+        /// PickProvider throws when a provider fails, so "not found" can never be
+        /// confused with "could not look" — correct for a single-kind lookup. But
+        /// GetMethodSource tries Classes then Tables, and GetCompletionMembers does
+        /// the same: there, a throw on the first kind used to abort the call before
+        /// the kind that would have answered was ever tried. So the failure is
+        /// captured and handed back to the caller, which surfaces it only if every
+        /// probe missed.
+        /// </summary>
+        private IMetadataProvider? PickProviderTolerant(Func<IMetadataProvider, bool> exists, ref Exception? firstFailure)
+        {
+            try { return PickProvider(exists); }
+            catch (Exception ex) { firstFailure ??= ex; return null; }
         }
 
         // ========================
@@ -481,8 +524,12 @@ namespace D365MetadataBridge.Services
         {
             var result = new MethodSourceModel { ClassName = className, MethodName = methodName };
 
+            // Class then table, on purpose: a provider failure on the first kind
+            // must not decide the answer for the second. See PickProviderTolerant.
+            Exception? probeFailure = null;
+
             // Try class first (checks primary then reference provider)
-            var classProv = PickProvider(p => p.Classes.Exists(className));
+            var classProv = PickProviderTolerant(p => p.Classes.Exists(className), ref probeFailure);
             if (classProv != null)
             {
                 var cls = classProv.Classes.Read(className);
@@ -516,7 +563,7 @@ namespace D365MetadataBridge.Services
             }
 
             // Try table (checks primary then reference provider)
-            var tableProv = PickProvider(p => p.Tables.Exists(className));
+            var tableProv = PickProviderTolerant(p => p.Tables.Exists(className), ref probeFailure);
             if (tableProv != null)
             {
                 var table = tableProv.Tables.Read(className);
@@ -537,6 +584,19 @@ namespace D365MetadataBridge.Services
                     }
                     catch { }
                 }
+            }
+
+            // Nothing matched. If a provider FAILED along the way, that — not
+            // "no such method" — is the honest answer: reporting a lookup that
+            // could not run as an absent method is how an agent ends up writing
+            // a method that already exists.
+            if (!result.Found && probeFailure != null)
+            {
+                throw new InvalidOperationException(
+                    $"Metadata provider could not answer the lookup for '{className}.{methodName}' " +
+                    $"({probeFailure.GetType().Name}: {probeFailure.Message}). This is a provider " +
+                    "failure, NOT a missing method.",
+                    probeFailure);
             }
 
             return result;
@@ -1295,8 +1355,17 @@ namespace D365MetadataBridge.Services
                 }
                 catch { }
 
-                // Find parent duties that contain this privilege
+                // Find parent duties that contain this privilege.
+                //
+                // `parentDutiesComplete` is the honest part: this is a scan over
+                // every duty, and a failure anywhere in it used to return an
+                // EMPTY list that reads as "this privilege is in no duty" — the
+                // exact claim BPErrorPrivilegeNotCoveredByDuty is about, and the
+                // one an agent acts on by adding it to a duty it may already be
+                // in. A per-duty read that fails only makes THAT duty unknown;
+                // a failure of the enumeration makes the whole answer unusable.
                 var parentDuties = new List<object>();
+                var parentDutiesComplete = true;
                 try
                 {
                     foreach (var dutyName in _provider.SecurityDuties.GetPrimaryKeys())
@@ -1314,10 +1383,14 @@ namespace D365MetadataBridge.Services
                                 }
                             }
                         }
-                        catch { }
+                        catch { parentDutiesComplete = false; }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    parentDutiesComplete = false;
+                    Console.Error.WriteLine($"[WARN] parent-duty scan for privilege '{name}' failed: {ex.Message}");
+                }
 
                 return new
                 {
@@ -1328,6 +1401,7 @@ namespace D365MetadataBridge.Services
                     model,
                     entryPoints,
                     parentDuties,
+                    parentDutiesComplete,
                     _source = "C# bridge (IMetadataProvider)"
                 };
             }

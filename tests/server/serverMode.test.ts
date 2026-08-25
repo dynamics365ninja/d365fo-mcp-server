@@ -28,7 +28,7 @@ const MODES: ServerMode[] = ['full', 'read-only', 'write-only'];
 describe('isToolAllowedInMode', () => {
   it('allows everything in full mode', () => {
     expect(isToolAllowedInMode('full', 'search')).toBe(true);
-    expect(isToolAllowedInMode('full', 'undo_last_modification')).toBe(true);
+    expect(isToolAllowedInMode('full', 'build_d365fo_project')).toBe(true);
     expect(isToolAllowedInMode('full', 'get_object_info')).toBe(true);
   });
 
@@ -76,7 +76,11 @@ describe('tool profile', () => {
   it('core publishes exactly the create-and-build loop', () => {
     const core = published.filter(name => isToolInProfile('core', name, NONE));
     expect(core.sort()).toEqual([...CORE_TOOLS].sort());
-    expect(core).toHaveLength(18);
+    // 15, not 18: undo_last_modification, review_workspace_changes and
+    // trigger_db_sync were folded into d365fo_file(action="undo"),
+    // get_workspace_info(changes=true) and build_d365fo_project(dbSync), all
+    // three of which are already core. The loop lost no capability.
+    expect(core).toHaveLength(15);
   });
 
   it('every CORE_TOOLS entry is a published tool (no ghosts after a rename)', () => {
