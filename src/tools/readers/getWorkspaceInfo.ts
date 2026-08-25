@@ -44,6 +44,14 @@ export async function getWorkspaceInfoTool(
     return reviewWorkspaceChangesTool({ directoryPath: args.directoryPath }, context);
   }
 
+  // A rejected projectName/projectPath is REPORTED, not returned on its own.
+  // This is the first call of every session and the argument is now something the
+  // caller is encouraged to pass from context, so a miss is expected traffic — and
+  // answering it with nothing but the refusal costs a whole round trip to re-ask
+  // the question the tool was already answering. The refusal still sets isError so
+  // a miss cannot be mistaken for a switch; the workspace facts just come with it.
+  let selectionFailure: string | null = null;
+
   // projectName: resolve to ONE project. A model name that several projects
   // build is not a selection — see projectSelector.ts for why picking the first
   // of them is the bug this replaced.
@@ -51,37 +59,27 @@ export async function getWorkspaceInfoTool(
     const allProjects = configManager.getAllDetectedProjects();
     const selection = selectProject(args.projectName as string, allProjects);
     if (selection.kind !== 'resolved') {
-      return {
-        content: [{ type: 'text', text: renderSelectionFailure(selection, allProjects) }],
-        isError: true,
-      };
+      selectionFailure = renderSelectionFailure(selection, allProjects);
+    } else if (!selection.project.projectPath) {
+      selectionFailure =
+        `❌ "${args.projectName}" resolved to model "${selection.project.modelName}", which has no .rnrproj on record — there is nothing to switch to.`;
+    } else {
+      args.projectPath = selection.project.projectPath;
     }
-    if (!selection.project.projectPath) {
-      return {
-        content: [{
-          type: 'text',
-          text: `❌ "${args.projectName}" resolved to model "${selection.project.modelName}", which has no .rnrproj on record — there is nothing to switch to.`,
-        }],
-        isError: true,
-      };
-    }
-    args.projectPath = selection.project.projectPath;
   }
 
   // projectPath: force-switch to specific .rnrproj
-  if (args.projectPath) {
+  if (args.projectPath && !selectionFailure) {
     const forced = await configManager.forceProject(args.projectPath);
     if (!forced) {
-      return {
-        content: [{ type: 'text', text: `❌ Could not read model name from: ${args.projectPath}\nMake sure the path points to a valid .rnrproj file.` }],
-        isError: true,
-      };
+      selectionFailure =
+        `❌ Could not read model name from: ${args.projectPath}\nMake sure the path points to a valid .rnrproj file.`;
     }
   }
 
   const {
     modelName, modelSource, isModelSourceAutoDetected,
-    projectPath, projectSource,
+    projectPath, projectSource, ambiguousProjects,
     packagePath, packageSource,
     customPackagesPath, customPackagesSource,
   } = await configManager.getWorkspaceInfoDiagnostics();
@@ -128,6 +126,14 @@ export async function getWorkspaceInfoTool(
   // Sources, confirmations and the per-project path table are diagnostics.
   const diagnostics = args.diagnostics === true;
 
+  // "(not detected)" reads as a broken configuration, which is the wrong thing to
+  // fix when the model resolved and only the project was left to the caller. Name
+  // that state, and name the projects it is between — without them the agent has
+  // to spend another call on diagnostics=true just to learn what to pass.
+  const projectDisplay = projectPath ?? (ambiguousProjects.length > 1
+    ? `(not selected — ${ambiguousProjects.length} projects build this model; pass projectName to pick one)`
+    : '(not detected)');
+
   const lines: string[] = diagnostics
     ? [
         `## D365FO Workspace Configuration`,
@@ -135,7 +141,7 @@ export async function getWorkspaceInfoTool(
         `Model name      : ${modelName ?? '(not configured)'}  (source: ${modelSource})`,
         `Custom write path: ${effectiveWritePath ?? '(not configured)'}  (custom metadata, source: ${effectiveWriteSource})`,
         `Framework dir   : ${msFrameworkPath ?? '(not applicable — single-root setup)'}  (Microsoft metadata, read-only)`,
-        `Project path    : ${projectPath ?? '(not detected)'}  (source: ${projectSource})`,
+        `Project path    : ${projectDisplay}  (source: ${projectSource})`,
         `Env type        : ${envType}`,
         ``,
         ...prefixVerboseLines,
@@ -146,7 +152,7 @@ export async function getWorkspaceInfoTool(
         `Model       : ${modelName ?? '(not configured)'}  (${modelSource})`,
         ...prefixLines,
         `Write path  : ${effectiveWritePath ?? '(not configured)'}`,
-        `Project     : ${projectPath ?? '(not detected)'}`,
+        `Project     : ${projectDisplay}`,
         `Env         : ${envType}`,
       ];
 
@@ -229,12 +235,26 @@ export async function getWorkspaceInfoTool(
       // agent did, landed on whichever of the fifteen came first, and wrote
       // there. The affordance itself was the bug; naming projects costs
       // fewer bytes than naming models did anyway.
-      const others = allProjects.length - 1;
+      // "besides the active one" counted an active project that may not exist:
+      // with none selected the subtraction dropped a real candidate and named a
+      // project the agent would then look for and not find.
+      const others = allProjects.length - (projectPath ? 1 : 0);
       lines.push(
         `Projects    : ${allProjects.length} in solution` +
-        (others > 0 ? ` (${others} besides the active one)` : '') +
+        (projectPath
+          ? (others > 0 ? ` (${others} besides the active one)` : '')
+          : ` (none selected)`) +
         `  — list with diagnostics=true; switch with projectName="<project file name>"`,
       );
+      // The names to pass, when the choice is what is blocking. Bounded: this
+      // line is paid for at session start, and only the ambiguous case earns it.
+      if (!projectPath && ambiguousProjects.length > 1) {
+        const shown = ambiguousProjects.slice(0, 5).map(projectDisplayName);
+        lines.push(
+          `  Build "${modelName}": ${shown.join(' · ')}` +
+          (ambiguousProjects.length > 5 ? ` · … and ${ambiguousProjects.length - 5} more` : ''),
+        );
+      }
     }
   }
 
@@ -396,6 +416,16 @@ export async function getWorkspaceInfoTool(
     );
   } else if (diagnostics) {
     lines.push(``, `✅ Configuration looks valid. Proceed with D365FO operations using model "${modelName}".`);
+  }
+
+  // The refusal goes FIRST — it is the answer to what the caller asked for, and
+  // burying it under the configuration dump is how a rejected switch gets read as
+  // a completed one. isError keeps that unambiguous for clients that surface it.
+  if (selectionFailure) {
+    return {
+      content: [{ type: 'text', text: `${selectionFailure}\n\n---\n\n${lines.join('\n')}` }],
+      isError: true,
+    };
   }
 
   return { content: [{ type: 'text', text: lines.join('\n') }] };

@@ -93,6 +93,20 @@ function buildNoProjectPathWarningFull(): string {
       `Pass projectPath explicitly to target the right one:\n` +
       candidates.map(c => `   - ${c.modelName}: ${c.projectPath ?? '(no .rnrproj)'}`).join('\n') + '\n';
   }
+  // Same refusal, other route: the SOLUTIONS-PATH scan resolved the model and
+  // stopped short of choosing between the projects that build it. Those were
+  // recorded and then never shown — the caller got the generic message below and
+  // no way to know a choice was all that was missing.
+  const ambiguous = getConfigManager().getAmbiguousProjectPaths();
+  if (ambiguous.length > 1) {
+    const model = getConfigManager().getModelName() ?? 'this model';
+    return `\n⚠️ addToProject=true but no projectPath could be resolved: ${ambiguous.length} projects ` +
+      `build model "${model}" and none was auto-selected.\n` +
+      `The file was created on disk but was NOT added to any Visual Studio project.\n\n` +
+      `Pass projectPath explicitly to target the right one:\n` +
+      ambiguous.slice(0, 10).map(pp => `   - ${pp}`).join('\n') +
+      (ambiguous.length > 10 ? `\n   … and ${ambiguous.length - 10} more` : '') + '\n';
+  }
   // The .mcp.json shape was five lines of JSON in a warning the caller usually
   // resolves by just passing projectPath; naming the key is enough.
   return `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +

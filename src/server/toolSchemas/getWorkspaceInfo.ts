@@ -12,17 +12,17 @@
 
 export const getWorkspaceInfoTool = {
     name: 'get_workspace_info',
-    description: `ALWAYS call FIRST at session start. Returns model name, package path, framework directory, project path, environment type, and EXTENSION_PREFIX. Flags placeholder model names and missing prefix. projectName/projectPath ONLY when the USER changed project. This is the authoritative source for target model — not search results.`,
+    description: `ALWAYS call FIRST at session start. Returns model name, package path, framework directory, project path, environment type, and EXTENSION_PREFIX. Flags placeholder model names and missing prefix. Pass projectName/projectPath when you have the project's name or path. Authoritative source for target model — not search results.`,
     inputSchema: {
       type: 'object',
       properties: {
         projectName: {
           type: 'string',
-          description: 'Only when the USER says "switch to <project>". The PROJECT file name, e.g. "Contoso - FeatureManagement". NOT a model name: one model is built by many projects, so naming it selects none and the call is refused. Reads span every model already.',
+          description: 'The PROJECT file name, e.g. "Contoso - FeatureManagement" — pass it whenever you have one: the USER named it, or an earlier call listed it. NOT a model name, and not a guess from a ticket: one model has many projects, so naming it selects none. Steers WRITES only; reads span every model already.',
         },
         projectPath: {
           type: 'string',
-          description: 'Absolute path to a .rnrproj file. Fallback when projectName is ambiguous or D365FO_SOLUTIONS_PATH is not configured. Example: "K:\\\\repos\\\\Contoso\\\\MyProject\\\\MyProject.rnrproj"',
+          description: 'Absolute path to a .rnrproj file. Use when projectName is ambiguous, none was auto-selected, or D365FO_SOLUTIONS_PATH is unset. Example: "K:\\\\repos\\\\Contoso\\\\MyProject\\\\MyProject.rnrproj"',
         },
         changes: {
           type: 'boolean',

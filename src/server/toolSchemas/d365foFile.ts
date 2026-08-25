@@ -73,7 +73,10 @@ Model + prefix auto-applied.`,
             'not in this schema; fetch yours with the op-spec lookup above.'
         },
         addToProject: { type: 'boolean', description: 'Add to the ACTIVE .rnrproj — keep the default.', default: true },
-        projectPath: { type: 'string', description: 'Path to .rnrproj (auto-detected).' },
+        projectPath: {
+          type: 'string',
+          description: 'Path to .rnrproj. Set if known, else auto-detected.',
+        },
         xmlContent: { type: 'string', description: 'Complete XML written verbatim (+overwrite=true rewrites an object).' },
         overwrite: { type: 'boolean', description: 'Allow overwriting — never rewrite via PowerShell.', default: false },
         groundingToken: {

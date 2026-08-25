@@ -47,6 +47,7 @@ vi.mock('../../src/utils/configManager', () => ({
       isModelSourceAutoDetected: false,
       projectPath: null,
       projectSource: 'test',
+      ambiguousProjects: [],
       packagePath: null,
       packageSource: 'test',
       customPackagesPath: null,
