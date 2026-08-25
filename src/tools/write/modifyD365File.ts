@@ -17,8 +17,9 @@ import util from 'util';
 
 import path from 'path';
 import { parseStringPromise } from '../../utils/xml.js';
+import { sayOncePerSession, resetRepeatedNoteMemory } from '../../utils/repeatedNotes.js';
 import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../../utils/configManager.js';
-import { isStandardModel, resolveRegularObjectPrefixToken } from '../../utils/modelClassifier.js';
+import { isStandardModel, resolveRegularObjectPrefixToken, resolveObjectPrefix, deriveExtensionInfix } from '../../utils/modelClassifier.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { resolveDbPathLocally } from '../../utils/metadataResolver.js';
 import { assertWritePathAllowed } from '../../utils/pathContainment.js';
@@ -74,6 +75,7 @@ import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import {
   getRequiredParams, renderOpSpec, OP_PARAM_ALIASES,
   findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
+  paramCorrectionCandidates, canonicalParamForAlias, D365FO_FILE_OP_SPECS,
 } from '../specs/d365foFileOpSpecs.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { decodeXmlEntitiesFromXppSource, escapeXml } from '../../utils/xmlEscape.js';
@@ -2612,20 +2614,239 @@ export const ModifyD365FileArgsSchema = z.object({
   peerOperations: z.array(z.string()).optional().describe(
     'Internal: the operation names travelling in the same operations[] batch.'
   ),
+
+  // INTERNAL — set by runModifyBatch, absent from the published wire schema.
+  //
+  // The decisions only the BATCH can make. peerOperations says WHAT else travels
+  // in the call; this says what this entry should therefore print. A batch adding
+  // three fields repeated the identical 350-char BPErrorTableFieldNotInFieldGroup
+  // paragraph three times, because an entry can only ever see itself.
+  batchAdvice: z.object({
+    suppressFieldGroupNote: z.boolean().optional(),
+    fieldGroupNoteFields: z.array(z.string()).optional(),
+  }).optional().describe('Internal: batch-level rendering decisions.'),
 });
 
-export async function modifyD365FileTool(request: CallToolRequest, context: XppServerContext) {
+// ── Argument normalisation (pre-validation) ───────────────────────────
+//
+// Everything here runs on the RAW arguments, before the schema above sees them,
+// and exists for one measured reason: a call the server can read in exactly one
+// way must not cost a round trip. Every retry re-bills the whole cached context
+// and drags the ~3,000-char parameter spec into it permanently.
+//
+// Each transformation is derived from the schema itself or from the op-spec's
+// own alias/suggestion tables — never hard-coded per operation — so a new
+// parameter is covered the day it is declared, and the key written is by
+// construction the key the writer below reads.
+
+/** Peel ZodOptional/ZodDefault/… wrappers off to the schema carrying the type. */
+function unwrapZodType(schema: any): any {
+  let inner = schema;
+  while (inner?.def?.innerType) inner = inner.def.innerType;
+  return inner;
+}
+
+/** Memoised: schema introspection is pure and the schema is a module constant. */
+const arrayElementKeyCache = new Map<string, string | null>();
+
+/**
+ * The ONE required key of an array parameter's object element, or null.
+ *
+ * `indexFields` is declared as `[{ fieldName, direction? }]`, so `["ProbeId"]`
+ * has exactly one sensible reading and the server already knows it — yet it
+ * answered `indexFields.0: Invalid input: expected object, received string`
+ * (reproduced live against the VM, as was the same failure on `fields`).
+ *
+ * TWO required keys means there is NO single reading: `relationConstraints`
+ * ({fieldName, relatedFieldName}) and `mappingConnections` ({mapField,
+ * mapFieldTo}) are deliberately left to error. Half a constraint is worse than a
+ * refused call — the C# side writes the missing half as null, and it compiles.
+ *
+ * Read off the args schema rather than a per-operation table so the key produced
+ * is the key the writer downstream reads. That is not hypothetical: a bridge
+ * contract once read {type, edt} while the tool wrote {fieldType,
+ * extendedDataType}, and the fields vanished under a ✅.
+ */
+function arrayElementSoleRequiredKey(param: string): string | null {
+  const cached = arrayElementKeyCache.get(param);
+  if (cached !== undefined) return cached;
+
+  let answer: string | null = null;
+  const field = (ModifyD365FileArgsSchema.shape as Record<string, any>)[param];
+  const arr = unwrapZodType(field);
+  if (arr?.def?.type === 'array') {
+    const element = unwrapZodType(arr.def.element);
+    if (element?.def?.type === 'object' && element.shape) {
+      const required = Object.entries(element.shape as Record<string, any>)
+        .filter(([, member]) => member?.safeParse?.(undefined).success !== true)
+        .map(([name]) => name);
+      if (required.length === 1) answer = required[0];
+    }
+  }
+  arrayElementKeyCache.set(param, answer);
+  return answer;
+}
+
+/** `["A","B"]` -> `[{ key: "A" }, { key: "B" }]`; the same array back when nothing applies. */
+function coerceArrayElements(param: string, value: unknown): unknown {
+  if (!Array.isArray(value) || !value.some(v => typeof v === 'string')) return value;
+  const key = arrayElementSoleRequiredKey(param);
+  if (!key) return value;
+  return value.map(v => (typeof v === 'string' ? { [key]: v } : v));
+}
+
+/** Would this value survive validation as `param`? Guards every rename below. */
+function fitsParamSchema(param: string, value: unknown): boolean {
+  const field = (ModifyD365FileArgsSchema.shape as Record<string, any>)[param];
+  return field ? field.safeParse(value).success === true : false;
+}
+
+/**
+ * The one parameter an unrecognised key can be corrected to, or undefined.
+ *
+ * Unambiguous means either a single candidate, or a single REQUIRED candidate
+ * among several — `name` on add-field matches both `fieldName` and
+ * `fieldGroupName`, and only one of those is the parameter the operation cannot
+ * run without. On add-field-to-field-group BOTH are required, so `name` stays
+ * ambiguous there and the call keeps returning the full spec, which is correct.
+ */
+function soleCorrectionCandidate(operation: string, key: string): string | undefined {
+  const candidates = paramCorrectionCandidates(operation, key);
+  if (candidates.length === 1) return candidates[0];
+  const required = D365FO_FILE_OP_SPECS[operation]?.required ?? [];
+  const requiredCandidates = candidates.filter(c => required.includes(c));
+  return requiredCandidates.length === 1 ? requiredCandidates[0] : undefined;
+}
+
+export interface ModifyArgNormalization {
+  /** Arguments to validate, with aliases resolved and corrections applied. */
+  args: Record<string, unknown>;
+  /** Corrections to report as "Note:" lines in the successful result. */
+  notes: string[];
+}
+
+/**
+ * Resolve aliases and apply the corrections the server has already computed.
+ *
+ * Order matters and is not arbitrary: a key is renamed to the parameter it means
+ * BEFORE its value is reshaped, because the target parameter is what decides the
+ * shape — `add-field-group {fields:["A","B"]}` becomes `fieldGroupFields`
+ * (array of string, nothing to reshape), while `add-index {indexFields:["A"]}`
+ * keeps its name and gains the objects.
+ *
+ * autoCorrect=false keeps every correction off, so the eval harness and
+ * deterministic callers see exactly the errors they see today. Alias resolution
+ * is NOT a correction — it is the published contract (OP_PARAM_ALIASES, rendered
+ * in every op spec) — so it applies either way and is not reported.
+ */
+export function normalizeModifyArgs(raw: Record<string, unknown>): ModifyArgNormalization {
+  const operation = typeof raw.operation === 'string' ? raw.operation : '';
+  const args: Record<string, unknown> = { ...raw };
+  const notes: string[] = [];
+  if (!D365FO_FILE_OP_SPECS[operation]) return { args, notes };
+
+  const schemaKeys = ModifyD365FileArgsSchema.shape as Record<string, unknown>;
+
+  // 1. Documented alias -> canonical spelling. A key the schema declares itself is
+  //    never treated as an alias (methodCode is both an alias of sourceCode and a
+  //    real parameter with its own precedence rule).
+  for (const key of Object.keys(args)) {
+    if (args[key] === undefined || key in schemaKeys) continue;
+    const canonical = canonicalParamForAlias(operation, key);
+    if (!canonical || args[canonical] !== undefined) continue;
+    args[canonical] = args[key];
+    delete args[key];
+  }
+
+  const autoCorrect = args.autoCorrect !== false;
+  if (!autoCorrect) return { args, notes };
+
+  // 2. The "did you mean" the server already computes, applied instead of
+  //    printed. Live: add-field {name:"Note2", edt:"Notes"} answered
+  //    "name: IGNORED … did you mean 'fieldName'?" and wrote nothing at all.
+  const providedKeys = () => Object.keys(args).filter(k => args[k] !== undefined);
+  for (const ignored of findIgnoredParams(operation, providedKeys())) {
+    if (ignored.reason === 'not-honoured') continue;
+    const target = soleCorrectionCandidate(operation, ignored.name);
+    // Only when the target is free: a caller who sent BOTH spellings meant
+    // something by it, and silently overwriting one with the other is a guess.
+    if (!target || args[target] !== undefined) continue;
+    const value = coerceArrayElements(target, args[ignored.name]);
+    // A key wrong in NAME and in SHAPE is not one reading — let it error with the
+    // full spec, which is the answer that call actually needs.
+    if (!fitsParamSchema(target, value)) continue;
+    args[target] = value;
+    delete args[ignored.name];
+    notes.push(
+      `'${ignored.name}' is not a parameter of '${operation}' — applied as '${target}', ` +
+      `its only candidate here.`,
+    );
+  }
+
+  // 3. Array-of-object parameters sent as a plain list of names.
+  for (const key of Object.keys(args)) {
+    const coerced = coerceArrayElements(key, args[key]);
+    if (coerced === args[key]) continue;
+    args[key] = coerced;
+    notes.push(
+      `${key} was sent as a list of names — read as ` +
+      `[{ ${arrayElementSoleRequiredKey(key)}: … }], the shape ${key} declares.`,
+    );
+  }
+
+  return { args, notes };
+}
+
+/**
+ * What the caller needs to know about a write that has already been reported.
+ *
+ * runModifyBatch uses it to do the per-FILE work once for the whole batch
+ * instead of once per operation — see the trailer suppression at the end of this
+ * function. Mirrors CreateOutcome, which exists for the same reason.
+ */
+export interface ModifyOutcome {
+  /** Absolute path of the file the operation wrote. */
+  filePath?: string;
+  /** Identity AFTER name resolution, for the shared verification. */
+  objectType?: string;
+  objectName?: string;
+  modelName?: string;
+  /**
+   * The extension this modify names does not exist yet, its BASE object does,
+   * and creating it is the one action that turns the call into a success.
+   *
+   * Reported rather than performed: createD365File must not be imported here
+   * (layer direction is pinned by tests/utils/layering.test.ts, because the two
+   * largest files in the codebase importing each other is what made four
+   * read-only tools load the write path), and the dispatcher in d365foFile.ts
+   * already composes create -> operations[]. Going through the ordinary create
+   * path is the point — path containment, prefixing, .rnrproj registration, the
+   * model guards and the direct-XML fallbacks all still apply.
+   */
+  createExtensionFirst?: { objectType: string; objectName: string };
+}
+
+export async function modifyD365FileTool(
+  request: CallToolRequest,
+  context: XppServerContext,
+  outcome?: ModifyOutcome,
+) {
   const timer = createPhaseTimer();
   try {
-    const args = ModifyD365FileArgsSchema.parse(request.params.arguments);
+    // Aliases resolved and single-reading corrections applied BEFORE validation:
+    // every one of these used to be a hard error whose only content was the
+    // 3,000-char spec of the operation the caller had already named.
+    const normalized = normalizeModifyArgs((request.params.arguments ?? {}) as Record<string, unknown>);
+    const args = ModifyD365FileArgsSchema.parse(normalized.args);
 
     // ── Silent-parameter-drop guard (corpus cluster #35, #6) ─────────────────
     // The published schema advertises a free-form `params` object and the Zod
     // schema STRIPS unknown keys, so a misspelled or misplaced parameter used to
     // disappear without a trace while the op still answered "✅ … modified".
-    // Read the RAW arguments (pre-strip) and account for every key: either the
-    // operation consumes it, or the caller is told it was dropped.
-    const rawArgs = (request.params.arguments ?? {}) as Record<string, unknown>;
+    // Account for every key: either the operation consumes it, or the caller is
+    // told it was dropped. Measured on the NORMALISED keys, so a key that has
+    // just been corrected is not also reported as ignored.
+    const rawArgs = normalized.args;
     const providedKeys = Object.keys(rawArgs).filter(k => rawArgs[k] !== undefined);
     const ignoredParams = findIgnoredParams(String(args.operation), providedKeys);
     const ignoredParamsWarning = renderIgnoredParamsWarning(String(args.operation), ignoredParams);
@@ -2754,6 +2975,9 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // behaviour stays auditable.
     const autoCorrect = args.autoCorrect !== false;
     const autoCorrectNotes: string[] = [];
+    // Corrections made before validation (aliases, wrong key names, list-of-names
+    // arrays) report through the same channel as the ones made below.
+    for (const note of normalized.notes) noteAutoCorrection(autoCorrectNotes, note);
 
     if (operation === 'add-control' && objectType === 'form-extension' && args.parentControl) {
       const resolution = await resolveParentControl(
@@ -2926,6 +3150,36 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       if (filePath) {
         console.error(
           `[modify_d365fo_file] '${objectName}' does not exist yet — add-diagnostic-suppression will create it at ${filePath}`,
+        );
+      }
+    }
+
+    // ── A not-yet-created extension is a create, not a dead end ──────────────
+    // The old answer offered four retry options and not one of them was "create
+    // it", although the extension name had already been normalised and its path
+    // computed. The logs show the consequence: the same modify re-sent against
+    // the same *_Extension object, failing identically every time.
+    //
+    // The extension is created through the ORDINARY create path, so path
+    // containment, prefixing, .rnrproj registration, the model guards and the
+    // direct-XML fallbacks all still apply — nothing here writes a file itself.
+    if (!filePath && objectType.endsWith('-extension')) {
+      const verdict = await timer.time('missing-extension check', () =>
+        missingExtensionVerdict(args as Record<string, unknown>, objectType, objectName, operation, symbolIndex));
+      if (verdict.refusal) {
+        return { content: [{ type: 'text', text: verdict.refusal }], isError: true };
+      }
+      if (verdict.createFirst && autoCorrect && outcome) {
+        // The dispatcher creates it and re-runs this call. The error below is
+        // still what a DIRECT caller of this function gets, and it now names the
+        // one call that works instead of four lookup options that cannot.
+        outcome.createExtensionFirst = verdict.createFirst;
+      }
+      if (verdict.createFirst) {
+        throw new Error(
+          `${objectType} "${objectName}" does not exist yet (its base object does).\n\n` +
+          `Create it and apply the same edit in ONE call:\n  ` +
+          renderCreateWithOperations(objectType, objectName, operation, args as Record<string, unknown>),
         );
       }
     }
@@ -4348,6 +4602,19 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         modelName || configManager.getModelName() || undefined,
         resolvedProjectPath,
       );
+      // The "no project references this, and none is configured" variant is a
+      // fact about the workspace and repeats verbatim on every write. Adding a
+      // file to a project is an ACTION and is never collapsed.
+      if (projectMessage.includes('No project of model')) {
+        const model = modelName || configManager.getModelName() || '(unknown)';
+        projectMessage = sayOncePerSession(
+          'no-project',
+          model,
+          projectMessage,
+          `\n\n⚠️ "${objectName}" is in no project of model "${model}" either ` +
+            `(no projectPath configured — see above).`,
+        );
+      }
     }
 
     // Advisory X++ select-statement lint on the source just written (add-method /
@@ -4384,13 +4651,26 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       // Silent when the group entry is already in this batch — the advice has
       // been taken, and repeating it teaches the agent that these warnings do
       // not track what it actually did.
+      //
+      // batchAdvice, when present, decides: only the batch can see that three
+      // add-field entries want ONE paragraph naming three fields, and that a
+      // field whose group entry sits two lines below needs no paragraph at all.
+      // peerOperations stays the fallback for a call that carries no batchAdvice.
+      const advice = args.batchAdvice;
       const groupEntryInBatch = (args.peerOperations ?? []).includes('add-field-to-field-group');
-      if (!groupEntryInBatch) {
+      const suppressGroupNote = advice
+        ? advice.suppressFieldGroupNote === true
+        : groupEntryInBatch;
+      const coveredFields = advice?.fieldGroupNoteFields?.length
+        ? advice.fieldGroupNoteFields
+        : (args.fieldName ? [args.fieldName] : []);
+      if (!suppressGroupNote) {
         notes.push(
-          `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup). ` +
+          `⚠️ BP: a table field must belong to a field group (BPErrorTableFieldNotInFieldGroup)` +
+          `${coveredFields.length > 1 ? ` — applies to ${coveredFields.join(', ')}` : ''}. ` +
           `Send the group entry in the SAME call next time — d365fo_file(action="modify", ` +
           `objectType="${objectType}", objectName="${objectName}", operations=[{operation:"add-field", …}, ` +
-          `{operation:"add-field-to-field-group", fieldName:"${args.fieldName}", fieldGroupName:"<group>"}]).`,
+          `{operation:"add-field-to-field-group", fieldName:"${coveredFields[0] ?? args.fieldName}", fieldGroupName:"<group>"}]).`,
         );
       }
       if ((args as any).fieldEnumType) {
@@ -4432,12 +4712,26 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
         `(Pass autoCorrect=false to have corrections like this raise an error instead.)`
       : '';
 
+    // Inside a batch every one of the trailers below is the SAME answer about the
+    // SAME file, and each entry re-ran the work to produce it: a 20-operation
+    // batch stat()ed one file 20 times, re-parsed it into the symbol index 20
+    // times, and repeated ~250 chars of trailer 20 times. runModifyBatch does all
+    // of it once, after the loop — it is told which file to do it for through
+    // `outcome` below.
+    const inBatch = Array.isArray(args.peerOperations);
+    if (outcome) {
+      outcome.filePath = actualFilePath;
+      outcome.objectType = objectType;
+      outcome.objectName = objectName;
+      outcome.modelName = modelName || getConfigManager().getModelName() || undefined;
+    }
+
     // Re-index the modified object in-process. A modify changes the symbols the
     // index holds (a renamed field, a new method), and the parser is right here —
     // making the agent spend a round trip on update_symbol_index for a file this
     // process just wrote, and another on the lookup that failed for want of it,
     // was pure waste.
-    const indexNote = await timer.time('symbol index upsert',
+    const indexNote = inBatch ? '' : await timer.time('symbol index upsert',
       () => upsertWrittenFileIntoIndex(actualFilePath, context));
 
     // Verify the write here rather than leaving the caller to spend a
@@ -4447,7 +4741,7 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // .rnrproj check still happens (config reads are cached).
     const verifyProjectPath =
       args.projectPath || (await getConfigManager().getProjectPath()) || undefined;
-    const verifyNote = renderWriteVerification(
+    const verifyNote = inBatch ? '' : renderWriteVerification(
       await timer.time('write verification', () => verifyWrittenFile(
         actualFilePath,
         verifyProjectPath,
@@ -4470,13 +4764,18 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
             // "Review changes in Visual Studio" is not something the caller can act
             // on, and it rode along on every write.
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') +
-            `\n\nNext: build_d365fo_project to compile the change.` +
-            // Suppressed inside a batch: runModifyBatch sets peerOperations, and
-            // telling an operation that is already batched to batch itself reads as
-            // a defect. Only the SINGLE-op form is the one that loops.
-            (Array.isArray((args as any).peerOperations)
+            // One tool that builds AND runs the best-practice check. The old line
+            // named build_d365fo_project alone, and the sampled sessions then spent
+            // 35 verify_d365fo_project and 39 run_bp_check calls, largely right
+            // after writes that had already verified themselves.
+            //
+            // Suppressed inside a batch, along with the batch-edit hint:
+            // runModifyBatch emits one of each for the whole call, and telling an
+            // operation that is already batched to batch itself reads as a defect.
+            (inBatch
               ? ''
-              : renderBatchEditHint(objectType, objectName)),
+              : `\n\nNext: build_d365fo_project(bpCheck:true) — builds and runs the best-practice check in one call.` +
+                renderBatchEditHint(objectType, objectName)),
         },
       ],
     };
@@ -4493,6 +4792,10 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
     // returns that COMPLETE spec — follow it, do not guess", and the missing-param
     // path above keeps that promise; this one did not, so the caller either guessed
     // or spent a round trip on get_knowledge to find out what it already asked for.
+    //
+    // normalizeModifyArgs now reshapes the single-reading cases before validation,
+    // so this branch is reached by autoCorrect=false callers and by shapes that
+    // genuinely have more than one reading — both of which want the spec.
     const rawArgs = (request.params.arguments ?? {}) as Record<string, unknown>;
     const opName = typeof rawArgs.operation === 'string' ? rawArgs.operation : undefined;
     if (error instanceof z.ZodError && opName) {
@@ -4520,6 +4823,112 @@ export async function modifyD365FileTool(request: CallToolRequest, context: XppS
       isError: true,
     };
   }
+}
+
+// ── Auto-create for a modify that names an extension nobody has created yet ──
+
+/**
+ * Base-object names an extension name can refer to, best guess first.
+ *
+ * Dot notation (`CustTable.FmExtension`) says it outright. The element-style
+ * class form (`CustTable_Extension`, `CustTableFm_Extension`) carries the model
+ * infix in front of the word, so the plain strip is tried first and the
+ * infix-stripped form after it - both are real spellings this repo produces.
+ */
+export function baseObjectNameCandidates(objectName: string, modelName?: string): string[] {
+  const dot = objectName.indexOf('.');
+  if (dot > 0) return [objectName.slice(0, dot)];
+  if (!/extension$/i.test(objectName)) return [];
+
+  const stripped = objectName.slice(0, -'Extension'.length).replace(/_+$/, '');
+  if (!stripped) return [];
+  const out = [stripped];
+  const prefix = resolveObjectPrefix(modelName ?? '');
+  for (const token of [deriveExtensionInfix(prefix, modelName), prefix]) {
+    if (!token) continue;
+    if (stripped.toLowerCase().endsWith(token.toLowerCase())) {
+      const shorter = stripped.slice(0, -token.length).replace(/_+$/, '');
+      if (shorter && !out.includes(shorter)) out.push(shorter);
+    }
+  }
+  return out;
+}
+
+/** The call to send when the server may not create the extension on its own. */
+function renderCreateWithOperations(
+  objectType: string,
+  objectName: string,
+  operation: string,
+  args: Record<string, unknown>,
+): string {
+  const spec = D365FO_FILE_OP_SPECS[operation];
+  const params = [...(spec?.required ?? []), ...(spec?.optional ?? [])]
+    .filter(name => args[name] !== undefined)
+    .map(name => `${name}: ${JSON.stringify(args[name])}`);
+  return (
+    `d365fo_file(action="create", objectType="${objectType}", objectName="${objectName}", ` +
+    `operations:[{operation: "${operation}"${params.length ? ', ' + params.join(', ') : ''}}])`
+  );
+}
+
+interface MissingExtensionVerdict {
+  /** The extension to create before the edit can run. */
+  createFirst?: { objectType: string; objectName: string };
+  /** Complete reply to return instead: it must not be created on our behalf. */
+  refusal?: string;
+}
+
+/**
+ * Decide whether a modify that found no file is really a missing extension.
+ *
+ * Only ever for an "-extension" objectType whose BASE object exists: without a
+ * base there is nothing to extend, and the "not found" answer with its lookup
+ * options is then the right one. Never for a plain object - a modify naming a
+ * table that does not exist is a mistake, not a missing scaffold.
+ *
+ * Grounding is re-checked against the CREATE that would follow. It is the same
+ * token and the same object the modify was already gated on, so in practice it
+ * passes; the explicit check is what guarantees that turning GROUNDING_ENFORCE
+ * on cannot be side-stepped by asking for a modify instead of a create. When it
+ * refuses, the reply is the exact create call to send by hand.
+ */
+async function missingExtensionVerdict(
+  args: Record<string, unknown>,
+  objectType: string,
+  objectName: string,
+  operation: string,
+  symbolIndex: any,
+): Promise<MissingExtensionVerdict> {
+  const modelName = (args.modelName as string | undefined) || getConfigManager().getModelName() || undefined;
+  const baseType = objectType.slice(0, -'-extension'.length);
+  const packagePath = args.packagePath as string | undefined;
+
+  let baseFound: string | null = null;
+  for (const candidate of baseObjectNameCandidates(objectName, modelName)) {
+    baseFound = await resolveD365FileByName(symbolIndex, baseType, candidate, undefined, packagePath);
+    if (baseFound) break;
+  }
+  // Nothing to extend — fall through to the ordinary "file not found" answer,
+  // whose lookup options are exactly what a mistyped base name needs.
+  if (!baseFound) return {};
+
+  const groundingRefusal = enforceGrounding(
+    args.groundingToken as string | undefined,
+    `d365fo_file(action="create", objectType="${objectType}", objectName="${objectName}")`,
+    objectName,
+  );
+  if (groundingRefusal) {
+    return {
+      refusal:
+        `❌ ${objectType} "${objectName}" does not exist yet, and GROUNDING_ENFORCE=true means it ` +
+        `cannot be created on your behalf without a groundingToken for it.\n\n` +
+        `Create it and apply the same edit in ONE call:\n  ` +
+        renderCreateWithOperations(objectType, objectName, operation, args) +
+        `\n\n(prepare(mode="change", objectName="${objectName}") returns the groundingToken.)`,
+    };
+  }
+
+  return { createFirst: { objectType, objectName } };
 }
 
 /** Object types whose members belong to a Microsoft-owned host object. */
@@ -4960,9 +5369,15 @@ export async function ensureRecoverableModification(
     return '';
   }
   const backupPath = await createFileBackup(actualFilePath);
-  return (
+  // Keyed by the MODEL folder (<...>/<Package>/<Model>/Ax<Type>/<file>.xml), not
+  // the file: "this metadata tree is not under git" is a property of the tree, so
+  // once said it is said for every object in it.
+  return sayOncePerSession(
+    'git-backup',
+    path.win32.dirname(path.win32.dirname(actualFilePath)),
     `\n\nℹ️ Target is not under git — created backup ${backupPath} automatically ` +
-    `(undo_last_modification would not work here).`
+      `(undo_last_modification would not work here).`,
+    `\n\nℹ️ Backup: ${backupPath}`,
   );
 }
 
@@ -5643,3 +6058,9 @@ export function generateDisplayMethodSource(methodName: string, returnEdt: strin
     `}`
   );
 }
+
+// The once-per-session advisory memory moved to src/utils/repeatedNotes.ts so
+// createD365File can share it — the layering guard forbids the two write tools
+// from importing each other. Re-exported here because the test seam was part of
+// this module's surface before the move.
+export { resetRepeatedNoteMemory };

@@ -19,6 +19,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { READER_DISPATCH, OBJECT_INFO_TYPES, withNotFoundGuidance } from './objectInfoRegistry.js';
+import { detectObjectTypeInDb, isNotFoundResultText } from '../../utils/metadataResolver.js';
 import { completionTool } from './completion.js';
 import { getMethodTool } from './getMethod.js';
 import { readObjectXml } from './objectXml.js';
@@ -41,7 +42,8 @@ const OPTIONS_DESCRIPTION =
   'Class: { "compact": false } for full source, { "methodOffset": 15 } for next method page, ' +
   '{ "members": "names" } for fast member-name list (add "prefix" to filter), ' +
   '{ "method": "validateWrite", "include": "signature" } for ONE method (include: signature | source | both). ' +
-  'Table: { "fieldsOffset": 50 } for the next field page, { "fieldFilter": "Invoice" } to list only matching fields. ' +
+  'Table: { "fieldsOffset": 50 } for the next field page, { "fieldFilter": "Invoice" } to list only matching fields, ' +
+  '{ "relations": true } for the relation list, { "compact": false } for method bodies + relations. ' +
   'Report: { "includeRdl": true }. Form: { "searchControl": "AccountNum" }, { "maxControls": 300 }. Macro: { "filter": "Path" }. ' +
   'Any type: { "include": "xml" } returns the raw AOT XML and its path — use it instead of shelling out to ' +
   'Get-ChildItem/Get-Content; page it with { "startLine": 1, "endLine": 200 }.';
@@ -115,6 +117,45 @@ function toObjectRefs(args: z.infer<typeof GetObjectInfoArgsSchema>): ObjectRef[
 }
 
 /**
+ * `compact` is a promise about SIZE, not about classes.
+ *
+ * VERIFIED LIVE (2026-08-25): `get_object_info(objectType="table",
+ * name="CustTable", options:{compact:true})` returned a response byte-identical
+ * to the default — 20,199 chars — because only the class reader had ever read
+ * the flag. A knob that is advertised and does nothing is worse than an absent
+ * one: the caller believes it has already asked for less.
+ *
+ * class and table read `compact` natively (see classInfo.ts / tableInfo.ts).
+ * The other verbose readers each already have a knob that trims them, so
+ * `compact` is TRANSLATED into that knob rather than duplicated into their
+ * schemas — those files are owned elsewhere, and one meaning per knob is what
+ * keeps the two paths from drifting:
+ *
+ *   • form   → `maxControls`. The control tree is the form's large block; a
+ *              compact read caps it well below the 150 default and the existing
+ *              controls footer still says how many were skipped and how to get them.
+ *   • report → `includeRdl`. The embedded RDL reaches 2 MB; it is already
+ *              opt-in, so compact:false is the one that has to mean something.
+ *
+ * Only ever applied when the CALLER passed `compact` explicitly — these readers'
+ * own defaults are not this function's to change.
+ */
+const COMPACT_FORM_CONTROLS = 60;
+
+function applyCompactTranslation(objectType: string, options: Record<string, any>): Record<string, any> {
+  if (options?.compact === undefined) return options;
+  const compact = options.compact === true;
+  const out = { ...options };
+  if (objectType === 'form' && compact && out.maxControls === undefined) {
+    out.maxControls = COMPACT_FORM_CONTROLS;
+  }
+  if (objectType === 'report' && out.includeRdl === undefined) {
+    out.includeRdl = !compact;
+  }
+  return out;
+}
+
+/**
  * Object types whose methods `options.method` can read.
  *
  * Kept in step with `OBJECT_TYPES` in tools/knowledge/methodSignature.ts — that
@@ -123,9 +164,89 @@ function toObjectRefs(args: z.infer<typeof GetObjectInfoArgsSchema>): ObjectRef[
  */
 const METHOD_OWNER_TYPES = new Set(['class', 'table', 'view', 'data-entity']);
 
+/**
+ * The get_object_info `objectType` that reads an index row of this type, or null
+ * when nothing here can read it.
+ *
+ * The index stores the three menu-item flavours separately; get_object_info has
+ * one `menu-item` reader that covers all of them.
+ */
+function readerTypeForIndexType(indexType: string): string | null {
+  if (READER_DISPATCH[indexType]) return indexType;
+  if (indexType.startsWith('menu-item-')) return 'menu-item';
+  return null;
+}
+
+/**
+ * Answer for the type the object ACTUALLY is, when exactly one is plausible.
+ *
+ * VERIFIED LIVE (2026-08-25): `get_object_info(objectType="class",
+ * name="CustTable")` answered "❌ Class not found" plus a "Type Mismatch" block
+ * listing form/query/table and telling the caller to call get_object_info again
+ * with the right type. The server had already done the lookup that proves which
+ * types exist — making the caller spend another round trip to act on it is the
+ * expensive half of the answer, and every round trip re-bills the whole cached
+ * context.
+ *
+ * So: ONE plausible type → read it and say plainly that this is what happened,
+ * the same "corrected, here is what I did" shape the write tools use (and the
+ * wording prepare uses for its own ambiguity disclosure). SEVERAL plausible types
+ * → nothing here can pick for the caller, so today's list stands unchanged.
+ *
+ * Returns null whenever the correction does not apply, so the caller falls
+ * through to the existing not-found guidance untouched.
+ */
+async function answerForActualType(
+  result: any,
+  ref: ObjectRef,
+  context: XppServerContext,
+): Promise<any | null> {
+  const text: string | undefined = result?.content?.[0]?.text;
+  if (!isNotFoundResultText(text)) return null;
+
+  let rows: Array<{ type: string; model: string }> = [];
+  try {
+    rows = detectObjectTypeInDb(context.symbolIndex.getReadDb(), ref.name);
+  } catch {
+    return null;
+  }
+
+  const candidates = [...new Set(
+    rows.map(r => readerTypeForIndexType(r.type)).filter((t): t is string => !!t),
+  )].filter(t => t !== ref.objectType);
+  if (candidates.length !== 1) return null;
+
+  const actualType = candidates[0];
+  const model = rows.find(r => readerTypeForIndexType(r.type) === actualType)?.model;
+  // No further correction from inside the correction: one hop, or a pair of
+  // types that each redirect to the other would recurse.
+  const corrected = await readObject(
+    { objectType: actualType, name: ref.name, options: ref.options }, context, false,
+  );
+  // The corrected read failed too — the caller is better served by the original
+  // error plus the type list than by a second not-found in a different type.
+  if (corrected?.isError) return null;
+
+  const disclosure =
+    `> ℹ️  \`${ref.name}\` does not exist as a **${ref.objectType}** — it exists only as a ` +
+    `**${actualType}**${model ? ` (model: ${model})` : ''}, so this is the ${actualType}. ` +
+    `Pass \`objectType="${actualType}"\` to address it directly.\n\n`;
+  const [first, ...rest] = corrected.content ?? [];
+  return {
+    ...corrected,
+    content: [
+      { type: 'text', text: disclosure + (first?.type === 'text' ? first.text : '') },
+      ...(first?.type === 'text' ? rest : corrected.content ?? []),
+    ],
+  };
+}
+
 /** Resolve one object through its registered reader, with the shared not-found guidance. */
-async function readObject(ref: ObjectRef, context: XppServerContext) {
-  const { objectType, name, options } = ref;
+async function readObject(ref: ObjectRef, context: XppServerContext, allowTypeCorrection = true) {
+  const { objectType, name } = ref;
+  // `compact` means the same thing for every type that has a verbose form —
+  // see applyCompactTranslation.
+  const options = applyCompactTranslation(objectType, ref.options);
 
   // Folded get_method: one method's signature and/or source.
   // get_object_info(objectType="class", name, options:{ method:"validateWrite", include? })
@@ -219,6 +340,10 @@ async function readObject(ref: ObjectRef, context: XppServerContext) {
     params: { name: dispatch.toolName, arguments: dispatch.buildArgs(name, options) },
   };
   const result = await dispatch.tool(subRequest, context);
+  if (result?.isError && allowTypeCorrection) {
+    const corrected = await answerForActualType(result, { ...ref, options }, context);
+    if (corrected) return corrected;
+  }
   return withNotFoundGuidance(result, name, objectType);
 }
 

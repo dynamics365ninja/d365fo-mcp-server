@@ -7,7 +7,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-  findNewestMetadataMtime, checkIndexStaleness, resetMetadataMtimeCache,
+  findNewestMetadataMtime, findNewestMetadataMtimeCached, checkIndexStaleness,
+  resetMetadataMtimeCache,
 } from '../../src/utils/indexStaleness';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 
@@ -114,6 +115,52 @@ describe('findNewestMetadataMtime scan cache', () => {
 
     resetMetadataMtimeCache();
     expect(findNewestMetadataMtime(root)!.scannedFiles).toBe(2);
+  });
+});
+
+describe('non-blocking freshness scan (audit 2026-08-25)', () => {
+  // get_workspace_info averaged 31.5 s over 31 real calls and is neither
+  // bridge-gated nor DB-gated: the cost was inside the tool, and this walk —
+  // up to 5,000 synchronous statSync calls — was part of it. It cannot be made
+  // cheap, so it stops being the thing the first call of a session waits for.
+  const root = () => path.join(tmpDir, 'MyModel');
+
+  it('answers "pending" on a cold cache instead of walking the tree', () => {
+    resetMetadataMtimeCache();
+    expect(findNewestMetadataMtimeCached(root(), { blocking: false })).toEqual({ status: 'pending' });
+  });
+
+  it('has the real answer once the background scan has run', async () => {
+    resetMetadataMtimeCache();
+    findNewestMetadataMtimeCached(root(), { blocking: false });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    const state = findNewestMetadataMtimeCached(root(), { blocking: false });
+    expect(state.status).toBe('ready');
+    expect(state.status === 'ready' && state.result!.newestFile).toContain('ContosoHelper.xml');
+  });
+
+  it('blocking:true is the old behaviour — scan now, answer now', () => {
+    resetMetadataMtimeCache();
+    const state = findNewestMetadataMtimeCached(root(), { blocking: true });
+    expect(state.status).toBe('ready');
+  });
+
+  it('checkIndexStaleness says the verdict is pending rather than hiding it', () => {
+    resetMetadataMtimeCache();
+    const report = checkIndexStaleness(new Date().toISOString(), root(), { blocking: false });
+
+    expect(report.status).toBe('pending');
+    // Named, not absent — and both ways to the real answer are on the line.
+    expect(report.compactLines.join('\n')).toContain('background');
+    expect(report.compactLines.join('\n')).toContain('diagnostics=true');
+    expect(report.compactLines).toHaveLength(1);
+  });
+
+  it('checkIndexStaleness still blocks by default, so existing callers are unchanged', () => {
+    resetMetadataMtimeCache();
+    const report = checkIndexStaleness(new Date(Date.now() - 24 * 3_600_000).toISOString(), root());
+    expect(report.status).toBe('stale');
   });
 });
 

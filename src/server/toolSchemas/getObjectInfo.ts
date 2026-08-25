@@ -37,7 +37,7 @@ export const getObjectInfoTool = {
         },
         options: {
           type: 'object',
-          description: 'Type-specific reader flags: includeRdl (report), searchControl/maxControls (form), compact/methodOffset (class), fieldsOffset/fieldFilter (table), filter (macro), mode (edt), includeFields, includeOperations, modelName. On class/table/view/data-entity, {"method":"validateWrite","include":"signature"} returns ONE method (include: signature | source | both) — required before writing a CoC extension. {"include":"xml"} returns raw AOT XML + its path (page: startLine/endLine) — never shell out to find or read a file. Applies to every objects[] entry.',
+          description: 'Type-specific reader flags: includeRdl (report), searchControl/maxControls (form), compact/methodOffset (class+table), fieldsOffset/fieldFilter/relations (table), filter (macro), mode (edt), includeFields, includeOperations, modelName. On class/table/view/data-entity, {"method":"validateWrite","include":"signature"} returns ONE method (include: signature | source | both) — required before writing a CoC extension. {"include":"xml"} returns raw AOT XML + its path (page: startLine/endLine) — never shell out to find or read a file. Applies to every objects[] entry.',
         },
       },
     },

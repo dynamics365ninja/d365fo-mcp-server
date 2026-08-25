@@ -21,6 +21,13 @@ const TableInfoArgsSchema = z.object({
   methodOffset: z.number().optional().default(0).describe('Offset for paginating methods (use multiples of 25)'),
   fieldsOffset: z.number().optional().default(0).describe(`Offset for paginating fields (use multiples of ${TABLE_FIELD_PAGE_SIZE})`),
   fieldFilter: z.string().optional().describe('Case-insensitive substring on the field name — cheaper than paging when you already know what you are looking for'),
+  // MEASURED (live harness, 2026-08-25): the default table response was 20,199
+  // chars — fields, indexes, ALL 75 relations, and 25 methods WITH bodies — and
+  // `compact:true` returned byte-identical 20,199 chars, because nothing on this
+  // path ever read it. The class reader answers the same question in 1,241 chars
+  // by being signature-only by default; that is the shape copied here.
+  compact: z.boolean().optional().default(true).describe('true (default) = method signatures only; false = full method bodies + relations'),
+  relations: z.boolean().optional().default(false).describe('true = list the table relations with their constraints (default: count only)'),
 });
 
 export async function tableInfoTool(request: CallToolRequest, context: XppServerContext) {
@@ -30,6 +37,7 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
     // 1. Bridge — live D365FO metadata, always up-to-date when available.
     const bridgeResult = await tryBridgeTable(
       context.bridge, args.tableName, args.methodOffset, args.fieldsOffset, args.fieldFilter,
+      { compact: args.compact, relations: args.relations },
     );
     if (bridgeResult) {
       return bridgeResult;

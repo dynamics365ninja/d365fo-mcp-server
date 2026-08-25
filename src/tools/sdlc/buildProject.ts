@@ -449,6 +449,36 @@ function isWorthKeeping(line: string): boolean {
   return DIAG_LINE_TEST.test(line.trim()) || /\b(error|warning)s?\b/i.test(line);
 }
 
+/**
+ * The log section of a FAILED build's response.
+ *
+ * `build_d365fo_project` is deliberately 'uncapped' in the response capper, and
+ * a failure used to return BOTH the structured diagnostics (up to 25) AND up to
+ * 300 lines of raw log — measured at the host's logging cap on all 43 build
+ * calls in a 1,400-call sample, 13 of them failures. Every byte of that lands in
+ * the context and is re-billed on every later request in the session.
+ *
+ * So the raw log is included in full only in the case it is actually evidence
+ * for: the parser produced NO structured diagnostic, so the raw text is the only
+ * statement of why the build failed (this is the case renderUnexplainedFailure
+ * points at — "read the raw log at the end of this response"). When diagnostics
+ * WERE parsed they already carry object, member, line, column and message, and
+ * the raw log restates them inside a phase table; a short tail is enough to see
+ * the summary counts, and the path is enough to read the rest on demand.
+ */
+export async function renderFailureLog(
+  logFile: string,
+  hasStructuredDiagnostics: boolean,
+): Promise<string> {
+  if (!hasStructuredDiagnostics) return await readFullLog(logFile);
+  const tail = await readLogTail(logFile, FAILURE_TAIL_LINES);
+  return `[last ${FAILURE_TAIL_LINES} lines — the diagnostics above are parsed from the same log; ` +
+    `full log: ${logFile}]\n${tail}`;
+}
+
+/** How much of a failed build's log is worth carrying once the diagnostics are parsed. */
+const FAILURE_TAIL_LINES = 40;
+
 /** Read the entire log without truncation — used for diagnostics parsing only. */
 async function readWholeLog(logFile: string): Promise<string> {
   try {
@@ -1019,13 +1049,15 @@ async function renderFinishedBuildResult(
       ? allResults[allResults.length - 1]
       : allResults.find(r => r.status === 'failed');
     const relevantLogFile = relevantResult?.logFile ?? finalState.logFile;
-    const logContent = succeeded
-      ? trimSucceededLog(await readLogTail(relevantLogFile))
-      : await readFullLog(relevantLogFile);
     const wholeLog = succeeded ? '' : await readWholeLog(relevantLogFile);
     const parsed = succeeded ? [] : parseXppcDiagnostics(wholeLog);
     const structured = succeeded ? '' : formatStructuredDiagnostics(parsed);
     const unexplained = succeeded ? '' : renderUnexplainedFailure(parsed, wholeLog);
+    // Parse FIRST: how much raw log is worth carrying depends on whether the
+    // diagnostics already explain the failure — see renderFailureLog.
+    const logContent = succeeded
+      ? trimSucceededLog(await readLogTail(relevantLogFile))
+      : await renderFailureLog(relevantLogFile, parsed.length > 0);
 
     return {
       content: [{
@@ -1040,7 +1072,6 @@ async function renderFinishedBuildResult(
   }
 
   const logTail       = await readLogTail(finalState.logFile);
-  const logContent    = succeeded ? trimSucceededLog(logTail) : await readFullLog(finalState.logFile);
   const hasWarnings   = succeeded && logTail.split(/\r?\n/).some(l => /Warning:\s/.test(l) && DIAG_LINE_TEST.test(l.trim()));
   const statusIcon    = !succeeded ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
   const buildMode     = finalState.fullBuild ? 'full build (target), incremental (deps)' : 'incremental';
@@ -1051,6 +1082,11 @@ async function renderFinishedBuildResult(
   const parsed        = succeeded ? [] : parseXppcDiagnostics(wholeLog);
   const structured    = succeeded ? '' : formatStructuredDiagnostics(parsed);
   const unexplained   = succeeded ? '' : renderUnexplainedFailure(parsed, wholeLog);
+  // Parse FIRST: how much raw log is worth carrying depends on whether the
+  // diagnostics already explain the failure — see renderFailureLog.
+  const logContent    = succeeded
+    ? trimSucceededLog(logTail)
+    : await renderFailureLog(finalState.logFile, parsed.length > 0);
 
   // The note run_bp_check and verify_d365fo_project read, so a green verdict from a
   // tool that compiles nothing can say whether anything ever did.
@@ -1074,7 +1110,7 @@ async function renderFinishedBuildResult(
       text: `${statusIcon} (${finalState.tool}, ${buildMode}, ${duration}s)\n\nModel: ${targetModel}\n` +
         incrementalScopeCaveat(succeeded, !!finalState.fullBuild) + '\n' +
         (unexplained ? `${unexplained}\n\n` : '') +
-        (structured ? `${structured}\n\n--- Raw log ---\n` : '') +
+        (structured ? `${structured}\n\n` : '') +
         `${logContent || '(no output)'}` + bpSection,
     }],
     ...((!succeeded) ? { isError: true } : {}),

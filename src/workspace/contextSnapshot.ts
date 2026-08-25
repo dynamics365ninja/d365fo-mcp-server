@@ -28,8 +28,25 @@ const execFileAsync = util.promisify(execFile);
 
 /** How many recently-modified workspace objects to surface. */
 const RECENT_OBJECTS_LIMIT = 10;
+/**
+ * How long a completed workspace scan answers for on the non-blocking path.
+ *
+ * Same 30 s as the metadata-mtime scan cache (indexStaleness.ts), and for the
+ * same reason: the walk is the expensive part, and a snapshot half a minute old
+ * is still an accurate answer to "what is being worked on".
+ */
+const RECENT_CACHE_MS = 30_000;
+const recentCache = new Map<string, { at: number; objects: RecentObject[] }>();
+const recentScanInFlight = new Set<string>();
+
 /** How many uncommitted files to surface. */
 const UNCOMMITTED_LIMIT = 25;
+
+/** Drop the cached workspace scan (test isolation, or after a known write). */
+export function resetRecentObjectsCache(): void {
+  recentCache.clear();
+  recentScanInFlight.clear();
+}
 
 export interface RecentObject {
   name: string;
@@ -57,6 +74,11 @@ export interface ContextSnapshot {
     byType: Record<string, number>;
     indexedModels: string[];
     lastIndexedAt: string | null;
+    /**
+     * True when the counts are being computed off-thread and this snapshot was
+     * rendered without them. Never means "zero" — see buildContextSnapshot.
+     */
+    countsPending: boolean;
   };
   /**
    * Most-recently modified X++ object — proxy for the active file. Null when no
@@ -65,6 +87,12 @@ export interface ContextSnapshot {
   activeObject: ActiveObject | null;
   /** Most-recently edited X++ objects in the workspace (mtime desc). */
   recentObjects: RecentObject[];
+  /**
+   * True when the workspace scan behind `recentObjects`/`activeObject` is still
+   * running and this snapshot was rendered without it. Never means "the
+   * workspace is empty" — see buildContextSnapshot.
+   */
+  recentPending: boolean;
   /** X++ files changed vs HEAD (uncommitted), relative to the repo root. */
   uncommittedFiles: string[];
   generatedAt: string;
@@ -119,7 +147,8 @@ async function getUncommittedXppFiles(workspacePath: string | null): Promise<str
  * gracefully — a failure in one source leaves the others intact.
  */
 export async function buildContextSnapshot(
-  context: XppServerContext
+  context: XppServerContext,
+  opts: { blocking?: boolean } = {},
 ): Promise<ContextSnapshot> {
   const configManager = getConfigManager();
   const { symbolIndex, workspaceScanner } = context;
@@ -156,35 +185,78 @@ export async function buildContextSnapshot(
     byType: {} as Record<string, number>,
     indexedModels: [] as string[],
     lastIndexedAt: null as string | null,
+    countsPending: false,
   };
   try {
-    // Off-thread + memoized — the synchronous count getters block the event
-    // loop for 30-60 s on a cold 2 GB DB, which would starve the MCP transport
-    // during the very first get_workspace_info call.
-    const counts = await symbolIndex.getSymbolCounts();
-    index.totalSymbols = counts.total;
-    index.byType = counts.byType;
+    // Off-thread and memoized, but NOT free: `getSymbolCounts()` is a full index
+    // scan on a cold cache — the comment on getSymbolCount in symbolIndex.ts puts
+    // it at 30–60 s on a large production DB — and awaiting it here is what made
+    // the FIRST get_workspace_info of a session pay for it (31.5 s average over
+    // 31 real calls; the tool is neither bridge-gated nor DB-gated, so the cost
+    // was inside it). `getCachedSymbolCounts()` exists precisely so a request path
+    // never blocks on the scan.
+    //
+    // So: serve the memoized value when there is one, otherwise kick the
+    // computation off and SAY that it is running. `blocking: true`
+    // (diagnostics=true) still waits, because the full picture is what
+    // diagnostics is for.
+    const counts = opts.blocking
+      ? await symbolIndex.getSymbolCounts()
+      : symbolIndex.getCachedSymbolCounts?.() ?? null;
+    if (counts) {
+      index.totalSymbols = counts.total;
+      index.byType = counts.byType;
+    } else {
+      index.countsPending = true;
+      // Not awaited: it memoizes itself, so the next snapshot has the number.
+      void symbolIndex.getSymbolCounts().catch(() => { /* counts are best-effort */ });
+    }
     index.indexedModels = Array.from(symbolIndex.getIndexedModels()).sort();
     index.lastIndexedAt = symbolIndex.getLastIndexedAt?.() ?? null;
   } catch {
     /* index may not be built yet */
   }
 
-  // Recently-edited objects (mtime desc)
+  // Recently-edited objects (mtime desc).
+  //
+  // scanWorkspace globs `**/*.xml` under the workspace root and stats every hit
+  // — unbounded, and on a packages-rooted workspace that is minutes, not
+  // milliseconds. It has its own cache, but the FIRST call of a session pays the
+  // whole walk, on the response path, in the tool a session starts with. So the
+  // default read takes the scanner's cached answer if it has one and otherwise
+  // says the scan is running; `blocking: true` (diagnostics=true) waits.
   let recentObjects: RecentObject[] = [];
+  let recentPending = false;
   if (workspacePath) {
+    const toRecent = (files: WorkspaceFile[]): RecentObject[] => files
+      .slice()
+      .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime())
+      .slice(0, RECENT_OBJECTS_LIMIT)
+      .map((f) => ({
+        name: f.name,
+        type: f.type,
+        path: f.path,
+        modifiedAt: f.lastModified.toISOString(),
+      }));
     try {
-      const files = await workspaceScanner.scanWorkspace(workspacePath);
-      recentObjects = files
-        .slice()
-        .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime())
-        .slice(0, RECENT_OBJECTS_LIMIT)
-        .map((f) => ({
-          name: f.name,
-          type: f.type,
-          path: f.path,
-          modifiedAt: f.lastModified.toISOString(),
-        }));
+      const cached = recentCache.get(workspacePath);
+      if (opts.blocking) {
+        recentObjects = toRecent(await workspaceScanner.scanWorkspace(workspacePath));
+        recentCache.set(workspacePath, { at: Date.now(), objects: recentObjects });
+      } else if (cached && Date.now() - cached.at < RECENT_CACHE_MS) {
+        recentObjects = cached.objects;
+      } else {
+        recentPending = true;
+        // Not awaited. The result lands in the cache above, so the NEXT call
+        // shows it — the information is deferred, never dropped.
+        if (!recentScanInFlight.has(workspacePath)) {
+          recentScanInFlight.add(workspacePath);
+          void workspaceScanner.scanWorkspace(workspacePath)
+            .then(files => { recentCache.set(workspacePath, { at: Date.now(), objects: toRecent(files) }); })
+            .catch(() => { /* scanning best-effort */ })
+            .finally(() => { recentScanInFlight.delete(workspacePath); });
+        }
+      }
     } catch {
       /* scanning best-effort */
     }
@@ -203,6 +275,7 @@ export async function buildContextSnapshot(
     index,
     activeObject: recentObjects[0] ?? null,
     recentObjects,
+    recentPending,
     uncommittedFiles,
     generatedAt: new Date().toISOString(),
   };
@@ -225,7 +298,11 @@ const COMPACT_RECENT_SHOWN = 3;
 export function renderContextSnapshotCompact(snapshot: ContextSnapshot): string[] {
   const lines: string[] = [];
 
-  if (snapshot.recentObjects.length > 0) {
+  if (snapshot.recentPending) {
+    // One line, first call of a session only. Silence here would read as "you
+    // have edited nothing", which is a different — and wrong — statement.
+    lines.push('Recent edits: workspace scan running in the background (call again for the list)');
+  } else if (snapshot.recentObjects.length > 0) {
     const shown = snapshot.recentObjects
       .slice(0, COMPACT_RECENT_SHOWN)
       .map(o => `${o.name} [${o.type}]`);
@@ -245,6 +322,22 @@ export function renderContextSnapshotCompact(snapshot: ContextSnapshot): string[
 export function renderContextSnapshotSection(snapshot: ContextSnapshot): string[] {
   const lines: string[] = ['## Context Snapshot', ''];
 
+  // Said rather than omitted: a snapshot rendered before the off-thread count
+  // finished used to show nothing here, which reads as "the index is empty".
+  if (snapshot.index.countsPending) {
+    lines.push(
+      'Indexed symbols: still being computed in the background — call again for the number ' +
+      '(get_workspace_info(diagnostics=true) waits for it).',
+      '',
+    );
+  } else if (snapshot.index.totalSymbols > 0) {
+    lines.push(
+      `Indexed symbols: ${snapshot.index.totalSymbols.toLocaleString('en-US')} ` +
+      `across ${snapshot.index.indexedModels.length} model(s)`,
+      '',
+    );
+  }
+
   if (snapshot.activeObject) {
     const a = snapshot.activeObject;
     lines.push(
@@ -253,7 +346,12 @@ export function renderContextSnapshotSection(snapshot: ContextSnapshot): string[
     );
   }
 
-  if (snapshot.recentObjects.length === 0) {
+  if (snapshot.recentPending) {
+    lines.push(
+      'Recently edited objects: _workspace scan still running — call again, ' +
+      'or get_workspace_info(diagnostics=true) to wait for it_',
+    );
+  } else if (snapshot.recentObjects.length === 0) {
     lines.push('Recently edited objects: _none detected in the workspace_');
   } else {
     lines.push('Recently edited objects (most recent first):');

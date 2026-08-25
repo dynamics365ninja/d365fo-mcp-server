@@ -89,7 +89,10 @@ export async function getKnowledgeTool(request: CallToolRequest) {
     if (topics) {
       // Purely a table lookup, so the batch costs no more than the loop did.
       return {
-        content: [{ type: 'text', text: topics.map(t => lookupOpSpec(t)).join(SPEC_SEPARATOR) }],
+        content: [{
+          type: 'text',
+          text: renderTopicBatch(topics.map(t => ({ topic: t, text: lookupOpSpec(t) })), 'op-spec'),
+        }],
       };
     }
     const topic = r.topic ?? r.operation ?? r.objectType ?? r.mode ?? r.query;
@@ -109,9 +112,10 @@ export async function getKnowledgeTool(request: CallToolRequest) {
     return {
       content: [{
         type: 'text',
-        text: answers
-          .map((a, i) => `## ${topics[i]}\n${textOf(a)}`)
-          .join(SPEC_SEPARATOR),
+        text: renderTopicBatch(
+          topics.map((t, i) => ({ topic: t, text: `## ${t}\n${textOf(answers[i])}` })),
+          'knowledge',
+        ),
       }],
     };
   }
@@ -126,6 +130,59 @@ export async function getKnowledgeTool(request: CallToolRequest) {
 export const MAX_TOPICS = 10;
 
 const SPEC_SEPARATOR = '\n\n---\n\n';
+
+/**
+ * Character budget this renderer spends on a multi-topic batch.
+ *
+ * Sits deliberately BELOW get_knowledge's response cap in toolHandler.ts (16,000),
+ * so on a batch that overruns it is THIS code that decides where to stop, not the
+ * generic capper. The difference matters: the capper cuts on a block boundary
+ * anywhere in the text, which on a topics[] batch means the last topic arrives
+ * half-written — an X++ rule truncated mid-sentence is worse than an absent one,
+ * because the caller cannot tell it is incomplete. Whole topics only, and a named
+ * list of what did not fit so the follow-up call is one topic, not a re-guess.
+ *
+ * Background: knowledge topics measure 8–12 KB, so under the old 5,000-char
+ * default a single one was already halved — which is why topics[] was used 0
+ * times in 1,400 sampled calls while op-spec was fetched 186 times one at a time.
+ */
+export const TOPIC_BATCH_BUDGET = 14_000;
+
+/**
+ * Join rendered topics whole, stopping at the budget and saying what was left out.
+ *
+ * The first topic is always included even when it alone exceeds the budget: an
+ * answer that is only a "did not fit" note is never the useful reply, and the
+ * response cap remains the backstop for that case.
+ */
+export function renderTopicBatch(
+  entries: Array<{ topic: string; text: string }>,
+  kind: 'knowledge' | 'op-spec',
+  budget = TOPIC_BATCH_BUDGET,
+): string {
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  let used = 0;
+  for (const entry of entries) {
+    const cost = entry.text.length + (kept.length > 0 ? SPEC_SEPARATOR.length : 0);
+    if (kept.length > 0 && used + cost > budget) {
+      dropped.push(entry.topic);
+      continue;
+    }
+    kept.push(entry.text);
+    used += cost;
+  }
+  if (dropped.length === 0) return kept.join(SPEC_SEPARATOR);
+  return (
+    kept.join(SPEC_SEPARATOR) +
+    SPEC_SEPARATOR +
+    `⚠️ ${dropped.length} topic${dropped.length === 1 ? '' : 's'} NOT included — the ` +
+    `${budget}-char budget for one call was spent on the ${kept.length} above (whole topics only, ` +
+    'never a topic cut in half).\n' +
+    `Not included: ${dropped.join(', ')}\n` +
+    `Fetch them with: get_knowledge(kind="${kind}", topics: [${dropped.map(t => `"${t}"`).join(', ')}])`
+  );
+}
 
 /**
  * topics[] accepted as an array of non-empty strings; anything else returns null

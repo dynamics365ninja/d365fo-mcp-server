@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { tryBridgeTable, tryBridgeForm } from '../../src/bridge/bridgeAdapter';
-import { capToolResponse } from '../../src/tools/toolHandler';
+import { capToolResponse } from '../../src/tools/responseCaps';
 import { truncateOnBlockBoundary, TABLE_FIELD_PAGE_SIZE, DEFAULT_MAX_CONTROLS } from '../../src/utils/payloadBudget';
 
 // A bridge that is ready and answers readTable/readForm with the fixture.

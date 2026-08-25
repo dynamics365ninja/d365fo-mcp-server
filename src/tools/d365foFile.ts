@@ -20,7 +20,12 @@ import type { XppServerContext } from '../types/context.js';
 import { handleGenerateD365Xml } from './xml/generateD365Xml.js';
 import { handleCreateD365File, type CreateOutcome } from './write/createD365File.js';
 import { handleDeleteD365File } from './write/deleteD365File.js';
-import { modifyD365FileTool } from './write/modifyD365File.js';
+import { modifyD365FileTool, type ModifyOutcome } from './write/modifyD365File.js';
+import { upsertWrittenFileIntoIndex } from './write/inlineIndexUpsert.js';
+import {
+  verifyWrittenFile, renderWriteVerification, membershipOf,
+} from './write/inlineWriteVerification.js';
+import { getConfigManager } from '../utils/configManager.js';
 import { resetRecentPrepares } from './prepare/prepare.js';
 import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
@@ -89,6 +94,85 @@ function resultText(result: any): string {
 }
 
 /**
+ * One modify, creating the extension it names when that is the only thing in the
+ * way.
+ *
+ * The old answer to "File not found for table-extension X" was four retry
+ * options, none of which was "create it" — even though the name had already been
+ * normalised and the path computed. The logs show the result: the same modify
+ * re-sent against the same *_Extension object, failing identically every time.
+ *
+ * modifyD365FileTool decides WHETHER (base object present, grounding satisfied,
+ * autoCorrect on) and reports it through `outcome`; the create is composed here
+ * because this is the module that already composes create -> operations[], and
+ * because the two write tools are not allowed to import each other
+ * (tests/utils/layering.test.ts). Going through handleCreateD365File is the
+ * point: path containment, prefixing, .rnrproj registration, the model guards
+ * and the direct-XML fallbacks all still apply.
+ */
+async function modifyWithExtensionAutoCreate(
+  args: Record<string, unknown>,
+  context: XppServerContext,
+  outcome: ModifyOutcome,
+): Promise<any> {
+  const first = await modifyD365FileTool(subRequest('modify_d365fo_file', args), context, outcome);
+  const pending = outcome.createExtensionFirst;
+  if (!pending) return first;
+  outcome.createExtensionFirst = undefined;
+
+  const createOutcome: CreateOutcome = {};
+  const created = await handleCreateD365File(
+    subRequest('create_d365fo_file', {
+      objectType: pending.objectType,
+      objectName: pending.objectName,
+      modelName: args.modelName,
+      packageName: args.packageName,
+      packagePath: args.packagePath,
+      addToProject: args.addToProject,
+      projectPath: args.projectPath,
+      solutionPath: args.solutionPath,
+      groundingToken: args.groundingToken,
+    }),
+    context,
+    createOutcome,
+  );
+  if (created?.isError || !createOutcome.filePath) {
+    return appendToResult(created, `\n\n> The ${args.operation} was NOT attempted: creating the extension failed.`);
+  }
+
+  // Make the bridge SEE the new file before the edit runs — the same flush the
+  // create -> operations[] path needs, for the same reason: without it the
+  // provider has not rescanned and the edit fails with "could not resolve", on
+  // an object this very call just wrote.
+  if (context.bridge) {
+    void debouncedRefresh.refresh(context.bridge);
+    await debouncedRefresh.flush();
+  }
+
+  const finalName = createOutcome.finalObjectName ?? pending.objectName;
+  const retry = await modifyD365FileTool(
+    subRequest('modify_d365fo_file', {
+      ...args,
+      objectName: finalName,
+      // The path create just wrote, so the retry cannot miss it the same way.
+      filePath: createOutcome.filePath,
+    }),
+    context,
+    outcome,
+  );
+  return {
+    content: [{
+      type: 'text',
+      text:
+        `ℹ️ ${pending.objectType} "${finalName}" did not exist — created it (empty, via the ` +
+        `ordinary create path) and then applied the ${args.operation}. Use "${finalName}" in later calls.\n` +
+        `📁 ${createOutcome.filePath}\n\n---\n\n${resultText(retry)}`,
+    }],
+    ...((retry as { isError?: boolean }).isError ? { isError: true } : {}),
+  };
+}
+
+/**
  * Run several modify operations against one object in a SINGLE tool call.
  *
  * This is the largest round-trip saving available: a table change is never one
@@ -141,6 +225,43 @@ async function runModifyBatch(
     .map(e => (e && typeof e === 'object' ? String((e as any).operation ?? '') : ''))
     .filter(Boolean);
 
+  // A parameter of an entry, wherever the caller put it (flat, or nested in the
+  // `params` wrapper the published schema advertises).
+  const entryParam = (entry: unknown, name: string): string | undefined => {
+    if (!entry || typeof entry !== 'object') return undefined;
+    const e = entry as Record<string, any>;
+    const value = e[name] ?? (e.params && typeof e.params === 'object' ? e.params[name] : undefined);
+    return typeof value === 'string' ? value : undefined;
+  };
+
+  // ── Who prints the shared best-practice advisory ─────────────────────────
+    // Measured: a batch adding three fields printed the identical 350-char
+    // "BPErrorTableFieldNotInFieldGroup … send the group entry in the SAME call"
+    // paragraph three times. It is one piece of advice about the whole call, so
+    // exactly one entry prints it, naming every field it applies to — and a field
+    // whose group entry is already elsewhere in this batch is not one of them.
+  const groupedFields = new Set(
+    operations
+      .filter(e => entryParam(e, 'operation') === 'add-field-to-field-group')
+      .map(e => entryParam(e, 'fieldName'))
+      .filter(Boolean) as string[],
+  );
+  const fieldsNeedingGroup = operations
+    .filter(e => entryParam(e, 'operation') === 'add-field')
+    .map(e => entryParam(e, 'fieldName'))
+    .filter((f): f is string => !!f && !groupedFields.has(f));
+  const adviceIndex = operations.findIndex(
+    e => entryParam(e, 'operation') === 'add-field' &&
+      !!entryParam(e, 'fieldName') &&
+      fieldsNeedingGroup.includes(entryParam(e, 'fieldName')!),
+  );
+
+  // Files this batch wrote, one entry per distinct path. The inline verification
+  // and the symbol-index upsert answer a question about the FILE, not about the
+  // operation, so running them per operation stat()ed and re-parsed the same file
+  // once per entry and repeated its answer in the reply just as often.
+  const written = new Map<string, ModifyOutcome>();
+
   for (let i = 0; i < operations.length; i++) {
     const entry = operations[i];
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
@@ -162,6 +283,10 @@ async function runModifyBatch(
         ? (entryParams as Record<string, unknown>)
         : {}),
       peerOperations,
+      batchAdvice: {
+        suppressFieldGroupNote: i !== adviceIndex,
+        ...(i === adviceIndex ? { fieldGroupNoteFields: fieldsNeedingGroup } : {}),
+      },
     };
     const opName = String((entry as any).operation ?? '(missing operation)');
 
@@ -171,9 +296,11 @@ async function runModifyBatch(
       break;
     }
 
-    const result = await modifyD365FileTool(subRequest('modify_d365fo_file', entryArgs), context);
+    const outcome: ModifyOutcome = {};
+    const result = await modifyWithExtensionAutoCreate(entryArgs, context, outcome);
     const ok = !result?.isError;
     results.push({ label: `#${i + 1} ${opName}`, ok, text: resultText(result) });
+    if (ok && outcome.filePath) written.set(outcome.filePath, outcome);
 
     // Stop on the first failure. These operations are ordered on purpose — a
     // field group references a field added two operations earlier — so carrying
@@ -209,8 +336,42 @@ async function runModifyBatch(
       `entry and re-send only the remaining ones.`
     : '';
 
+  // The per-file work, once, for the whole call — the per-operation copies are
+  // suppressed inside modifyD365FileTool (see the `inBatch` block there).
+  const trailerLines: string[] = [];
+  const configManager = getConfigManager();
+  // Resolved only when there is something to verify — a batch that wrote nothing
+  // must not pay for a project lookup to say so.
+  const batchProjectPath = written.size
+    ? (shared.projectPath as string | undefined) || (await configManager.getProjectPath()) || undefined
+    : undefined;
+  for (const target of written.values()) {
+    const indexNote = await upsertWrittenFileIntoIndex(target.filePath, context);
+    const verifyNote = renderWriteVerification(
+      await verifyWrittenFile(
+        target.filePath,
+        batchProjectPath,
+        membershipOf(
+          target.objectType ?? '',
+          target.objectName ?? '',
+          target.modelName ?? configManager.getModelName(),
+        ),
+      ),
+    );
+    trailerLines.push(
+      (written.size > 1 ? `\n${target.objectName ?? target.filePath}:` : '') + verifyNote + indexNote,
+    );
+  }
+  // No batch-edit hint here: this call already IS the batch, and telling a caller
+  // that just sent operations[] to send operations[] is the same defect the
+  // per-operation suppression exists to avoid.
+  const trailer = trailerLines.length
+    ? `\n${trailerLines.join('')}` +
+      `\n\nNext: build_d365fo_project(bpCheck:true) — builds and runs the best-practice check in one call.`
+    : '';
+
   return {
-    content: [{ type: 'text', text: head + body + tail }],
+    content: [{ type: 'text', text: head + body + tail + trailer }],
     isError: failed > 0,
   };
 }
@@ -301,7 +462,7 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
     if (Array.isArray(rest.operations)) {
       return runModifyBatch(rest, context);
     }
-    return modifyD365FileTool(subRequest('modify_d365fo_file', rest), context);
+    return modifyWithExtensionAutoCreate(rest, context, {});
   }
   if (action === 'delete') {
     return handleDeleteD365File(subRequest('delete_d365fo_file', rest), context);

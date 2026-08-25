@@ -75,7 +75,7 @@ export function probeCustomMatches(
   query: string,
   types?: string[],
   limit = 15,
-): Array<{ name: string; type: string; model?: string; filePath?: string }> {
+): Array<{ name: string; type: string; model?: string; parentName?: string; filePath?: string }> {
   if (!query) return [];
   try {
     const hits = symbolIndex?.searchCustomModelSymbols?.(query, types, limit) ?? [];
@@ -83,6 +83,11 @@ export function probeCustomMatches(
       name: hit.name,
       type: hit.type,
       model: hit.model ?? undefined,
+      // Not restricted to parent_name IS NULL, so a method/field row can be
+      // spliced into a bridge answer. Carry the owner: a bare
+      // `- **initValue** (method)` costs the caller a second call to learn
+      // WHICH object the method sits on.
+      parentName: hit.parentName ?? hit.parent_name ?? undefined,
       filePath: hit.filePath ?? hit.file_path ?? undefined,
     }));
   } catch {
@@ -144,11 +149,106 @@ const SearchArgsSchema = z.object({
     'enum-extension', 'edt-extension', 'data-entity-extension',
     'all',
   ]).optional().default('all').describe('Filter by object type (all=no filter, use specific type to narrow results)'),
-  limit: z.number().max(100).optional().default(50).describe('Maximum results to return'),
+  // 20, not 50: the PUBLISHED schema has always said `default: 20`, so a caller
+  // that omits `limit` budgets its context for 20 rows and was handed 50. The
+  // contract the caller can see is the one that has to be true.
+  limit: z.number().max(100).optional().default(20).describe('Maximum results to return'),
   workspacePath: z.string().optional().describe('Optional workspace path to search local project files in addition to external metadata'),
   includeWorkspace: z.boolean().optional().default(false).describe('Whether to include workspace files in search results (workspace-aware search)'),
   verbose: z.boolean().optional().default(false).describe('Include related-searches/patterns/tips sections in the output'),
 });
+
+/**
+ * Which backing search answered this call.
+ *
+ * MEASURED (1,400 real MCP calls captured from Copilot sessions on this VM, plus
+ * a live stdio harness against the real D365FO metadata, 2026-08-25):
+ *   • `search(query="CustTable", type="table")`  →   0.33 s via the bridge
+ *   • `search(query="SalesLine")`  (untyped)     →  17.9 s via the bridge
+ *   • `search(query="ConChain")`   (untyped)     →  35.4 s via the bridge
+ *   • the same untyped queries answered off the SQLite FTS index → 0.1–0.2 s
+ *
+ * The asymmetry is structural, not incidental: MetadataReadService.SearchObjects
+ * answers an untyped query by walking `GetPrimaryKeys()` of EVERY collection on
+ * BOTH providers with no cache, and can only stop early once the result budget is
+ * full — so the NARROWER the query, the longer it runs. The index holds the same
+ * object names and answers in milliseconds.
+ *
+ * Logged to stderr on every call so the next audit can READ the route taken
+ * instead of inferring it from a wall time.
+ */
+type SearchRoute =
+  /** Type-scoped: the bridge is both fast and live here. */
+  | 'bridge-typed'
+  /** Untyped/broad: served from the SQLite FTS index. */
+  | 'index'
+  /** Untyped, nothing live indexed under that name — ask live metadata before saying "no". */
+  | 'bridge-untyped-confirm'
+  /** …and live metadata had nothing either, so the index rows (all stale) are the answer. */
+  | 'index-after-confirm'
+  /** Type-scoped but the bridge is not in play (offline / build agent / cold start). */
+  | 'index-bridge-unavailable';
+
+function logSearchRoute(
+  route: SearchRoute, query: string, type: string, hits: number | null, startedAt: number,
+): void {
+  // hits=? on the bridge routes: the bridge renders its own window, so this side
+  // never counts the rows — pretending to would be a made-up number in a log
+  // written to be trusted.
+  console.error(
+    `[search] route=${route} query="${query}" type=${type} hits=${hits ?? '?'} ${Date.now() - startedAt} ms`,
+  );
+}
+
+/** Cap on the names one bridge-row enrichment looks up. */
+const BRIDGE_META_NAME_LIMIT = 100;
+
+/**
+ * Model for the rows the BRIDGE returns.
+ *
+ * `search`'s published schema promises "returns name, type, model", but the C#
+ * side only ever populates Name and Type (SearchItemModel in Models.cs) — so
+ * every bridge-sourced row rendered as `- **Name** (type)` and the caller had to
+ * spend a second call to learn which model a hit lives in. The index already
+ * knows, so one bounded lookup fills it in on this side of the pipe.
+ *
+ * Index-safe by construction: equality on `name` (idx_symbols_name /
+ * idx_name_type), a bounded IN-list, `parent_name IS NULL` so a name that is
+ * also a field on 900 tables cannot explode the row count, and a hard LIMIT.
+ * Never LIKE and never COLLATE NOCASE — see symbolLookup.ts for what those two
+ * shapes cost on the 1.17M-row production DB.
+ */
+export function buildBridgeMetaResolver(
+  symbolIndex: any,
+): (rows: Array<{ name: string; type: string }>) => Map<string, { model?: string }> {
+  return (rows) => {
+    const map = new Map<string, { model?: string }>();
+    try {
+      const db = symbolIndex?.getReadDb?.();
+      if (!db) return map;
+      const names = [...new Set(rows.map(r => r.name))].slice(0, BRIDGE_META_NAME_LIMIT);
+      if (names.length === 0) return map;
+      const sql =
+        `SELECT name, type, model FROM symbols
+         WHERE name IN (${names.map(() => '?').join(',')}) AND parent_name IS NULL
+         LIMIT ${BRIDGE_META_NAME_LIMIT * 4}`;
+      const found = db.prepare(sql).all(...names) as
+        Array<{ name: string; type: string; model: string | null }>;
+      for (const row of found) {
+        const key = metaKey(row.name, row.type);
+        if (row.model && !map.has(key)) map.set(key, { model: row.model });
+      }
+    } catch {
+      /* enrichment is additive — a failure here must never break search */
+    }
+    return map;
+  };
+}
+
+/** Shared key for the enrichment map — case-folded, since bridge and index casing can differ. */
+export function metaKey(name: string, type: string): string {
+  return `${String(name).toLowerCase()}::${type}`;
+}
 
 export async function searchTool(request: CallToolRequest, context: XppServerContext) {
   try {
@@ -158,7 +258,9 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
       return await performHybridSearch(args, context);
     }
 
-    // Try C# bridge first (IMetadataProvider — live D365FO metadata).
+    const startedAt = Date.now();
+    // Both probes feed the bridge splice AND the index answer, so they run once
+    // per call whichever route is taken.
     // The exact-name probe is passed along so an exact match that fell outside
     // the bridge's truncated result window is still ranked first (#15).
     // The custom-model probe is passed along so custom/ISV matches truncated out
@@ -169,17 +271,56 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
       dropStaleRows(probeExactMatches(symbolIndex, args.query, searchTypes)),
       dropStaleRows(probeCustomMatches(symbolIndex, args.query, searchTypes)),
     ]);
-    const bridgeResult = await tryBridgeSearch(
-      context.bridge,
-      args.query,
-      args.type === 'all' ? undefined : args.type,
-      args.limit,
-      { exactMatches, customMatches },
-    );
-    if (bridgeResult) return bridgeResult;
+    const bridgeOpts = {
+      exactMatches,
+      customMatches,
+      resolveMeta: buildBridgeMetaResolver(symbolIndex),
+    };
 
-    // Standard external metadata search
-    return await performExternalSearch(args, symbolIndex);
+    // TYPE-SCOPED → bridge first. Measured 0.33 s, and it is live metadata, so an
+    // object written seconds ago is in the answer. Unchanged behaviour, splice included.
+    if (searchTypes) {
+      const bridgeResult = await tryBridgeSearch(
+        context.bridge, args.query, args.type, args.limit, bridgeOpts,
+      );
+      if (bridgeResult) {
+        logSearchRoute('bridge-typed', args.query, args.type, null, startedAt);
+        return bridgeResult;
+      }
+      const answer = await collectIndexAnswer(args, symbolIndex);
+      logSearchRoute('index-bridge-unavailable', args.query, args.type, answer.results.length, startedAt);
+      return renderIndexAnswer(args, symbolIndex, answer);
+    }
+
+    // UNTYPED/BROAD → index. This is the 18-second case, and the index holds the
+    // same object names. Freshly written objects stay findable here: every
+    // create/modify indexes the file it just wrote in-process
+    // (tools/write/inlineIndexUpsert.ts), so the index is already current for
+    // this session's own writes without an update_symbol_index round trip.
+    const answer = await collectIndexAnswer(args, symbolIndex);
+    // "Live" excludes rows whose file is gone from disk. An answer made ONLY of
+    // those is an answer about objects that are not here any more — exactly the
+    // case where the provider may hold a recreated object the index still has
+    // under its old row, so it is treated the same as no answer at all.
+    const liveHits = answer.results.length - answer.staleCount;
+    if (liveHits > 0) {
+      logSearchRoute('index', args.query, args.type, answer.results.length, startedAt);
+      return renderIndexAnswer(args, symbolIndex, answer);
+    }
+
+    // Nothing live under that name. THIS is where live metadata earns its
+    // seconds: an object the index has never seen (a package indexed elsewhere,
+    // a write whose in-process upsert failed) exists only in the provider, and
+    // "no such object" is the most expensive wrong answer this tool can give.
+    const bridgeResult = await tryBridgeSearch(
+      context.bridge, args.query, undefined, args.limit, bridgeOpts,
+    );
+    if (bridgeResult) {
+      logSearchRoute('bridge-untyped-confirm', args.query, args.type, null, startedAt);
+      return bridgeResult;
+    }
+    logSearchRoute('index-after-confirm', args.query, args.type, answer.results.length, startedAt);
+    return renderIndexAnswer(args, symbolIndex, answer);
   } catch (error) {
     return {
       content: [
@@ -346,12 +487,22 @@ async function performHybridSearch(
 }
 
 /**
- * Perform standard external metadata search
+ * The index answer for a search: the ranked rows plus how many of them are cache
+ * rows with no file on this machine.
+ *
+ * Split out of the former `performExternalSearch` so the untyped route can look
+ * at the ROW COUNT before deciding whether the bridge is worth its 18 seconds.
+ * The rendering is unchanged and lives in renderIndexAnswer below.
  */
-async function performExternalSearch(
+interface IndexAnswer {
+  results: any[];
+  staleCount: number;
+}
+
+async function collectIndexAnswer(
   args: z.infer<typeof SearchArgsSchema>,
   symbolIndex: any,
-) {
+): Promise<IndexAnswer> {
   try {
     const types = args.type === 'all' ? undefined : [args.type];
     const raw: any[] = symbolIndex.searchSymbols(args.query, args.limit, types) || [];
@@ -390,7 +541,26 @@ async function performExternalSearch(
       ...ranked.filter(r => !r.staleIndexRow),
       ...ranked.filter(r => r.staleIndexRow),
     ];
-    const staleCount = results.filter(r => r.staleIndexRow).length;
+    return { results, staleCount: results.filter(r => r.staleIndexRow).length };
+  } catch {
+    // An index read that throws is "no rows", not an error result: the untyped
+    // route decides on the row count, and the bridge confirmation below it is
+    // exactly the right next step when the index could not answer.
+    return { results: [], staleCount: 0 };
+  }
+}
+
+/**
+ * Render an index answer — including the no-match case, where the suggestions
+ * ARE the value.
+ */
+function renderIndexAnswer(
+  args: z.infer<typeof SearchArgsSchema>,
+  symbolIndex: any,
+  answer: IndexAnswer,
+) {
+  try {
+    const { results, staleCount } = answer;
 
     if (!results || results.length === 0) {
       const allSymbolNames = symbolIndex.getAllSymbolNames(args.query);
@@ -444,8 +614,22 @@ async function performExternalSearch(
     // without reading further.
     const exactHits = results.filter(r => isExactNameMatch(args.query, String(r.name)));
     if (exactHits.length > 0) {
-      output += `\n⭐ **Exact name match:** ` +
-        exactHits.map(r => `${r.name} (${r.type})${r.staleIndexRow ? ' — ⚠️ STALE index row, no file on this machine' : ''}`).join(', ') + '\n';
+      // Owner + model on each hit, and deduplicated on all three: without the
+      // owner, three fields called SalesLine on three different tables render as
+      // the same row printed three times, which reads as a rendering bug rather
+      // than as three distinct objects.
+      const seen = new Set<string>();
+      const rendered: string[] = [];
+      for (const r of exactHits) {
+        const owner = r.parentName ? `${r.parentName}.` : '';
+        const line =
+          `${owner}${r.name} (${r.type})${r.model ? ` in ${r.model}` : ''}` +
+          `${r.staleIndexRow ? ' — ⚠️ STALE index row, no file on this machine' : ''}`;
+        if (seen.has(line)) continue;
+        seen.add(line);
+        rendered.push(line);
+      }
+      output += `\n⭐ **Exact name match:** ${rendered.join(', ')}\n`;
     }
 
     output += formatRichContext(args.query, results, {

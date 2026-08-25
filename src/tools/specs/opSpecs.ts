@@ -201,11 +201,34 @@ export function renderOpSpecIndex(unknownTopic?: string): string {
  * `operation` is used when the caller names one. Otherwise a change targeting a
  * method is going to write one, so add-method's contract is the right guess; a
  * change with no method has no confident guess and only gets the pointer.
+ *
+ * SEVERAL operations, not one. An ordinary table change is add-field AND
+ * add-index AND add-field-to-field-group; rendering only the first still left
+ * the agent to spend a get_knowledge(kind="op-spec") round trip on the rest,
+ * which is the hop this section exists to remove (get_knowledge was called 186
+ * times against 81 prepares in the sampled sessions). `operation` therefore
+ * accepts a comma-separated string or an array — a clause in the wire schema
+ * rather than a second parameter block, because ListTools bytes are billed
+ * every session.
  */
+function splitOperations(operation: unknown): string[] {
+  const raw = Array.isArray(operation) ? operation : [operation];
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    for (const part of entry.split(',')) {
+      const t = part.trim();
+      // De-duplicate: "add-field,add-field" must not print the contract twice.
+      if (t && !out.includes(t)) out.push(t);
+    }
+  }
+  return out;
+}
+
 export function renderPrepareOpSpec(args: {
   mode: 'change' | 'create';
   objectType?: string;
-  operation?: string;
+  operation?: string | string[];
   methodName?: string;
 }): string[] {
   const { mode, objectType, operation, methodName } = args;
@@ -215,20 +238,50 @@ export function renderPrepareOpSpec(args: {
     if (!objectType) return lines;
     lines.push(`### Write contract — d365fo_file(action="create", objectType="${objectType}")`);
     lines.push(renderCreatePropertySpec(objectType));
-  } else {
-    const op = operation && findKey(D365FO_FILE_OP_SPECS, normalize(operation))
-      ? findKey(D365FO_FILE_OP_SPECS, normalize(operation))!
-      : (methodName ? 'add-method' : undefined);
-    if (!op) {
-      lines.push(
-        '### Write contract',
-        'Pick the operation, then get_knowledge(kind="op-spec", topic="<operation>") for its parameters — ' +
-        'or pass `operation` to prepare and the contract comes back here.',
-      );
-      return lines;
+    lines.push('');
+    return lines;
+  }
+
+  const requested = splitOperations(operation);
+  const resolved: string[] = [];
+  const unknown: string[] = [];
+  for (const name of requested) {
+    const key = findKey(D365FO_FILE_OP_SPECS, normalize(name));
+    if (key) {
+      if (!resolved.includes(key)) resolved.push(key);
+    } else {
+      unknown.push(name);
     }
+  }
+  // A method-targeting change is going to write a method, so add-method is the
+  // right guess when nothing resolved.
+  if (resolved.length === 0 && methodName) resolved.push('add-method');
+
+  if (resolved.length === 0) {
+    lines.push(
+      '### Write contract',
+      'Pick the operation, then get_knowledge(kind="op-spec", topic="<operation>") for its parameters — ' +
+      'or pass `operation` to prepare (comma-separated for several) and the contracts come back here.',
+    );
+    if (unknown.length > 0) {
+      lines.push(`_No operation matched ${unknown.map(u => `"${u}"`).join(', ')}._`);
+    }
+    return lines;
+  }
+
+  for (const op of resolved) {
     lines.push(`### Write contract — d365fo_file(action="modify", operation="${op}")`);
     lines.push(renderOpSpec(op));
+  }
+  if (unknown.length > 0) {
+    lines.push(
+      `_No operation matched ${unknown.map(u => `"${u}"`).join(', ')} — ` +
+      'get_knowledge(kind="op-spec") lists every operation name._',
+    );
+  }
+  if (resolved.length > 1) {
+    // The point of asking for several at once: they can also be WRITTEN at once.
+    lines.push('_All of the above can go in ONE d365fo_file(action="modify") call via `operations[]`._');
   }
 
   lines.push('');

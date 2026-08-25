@@ -137,8 +137,6 @@ function makeSearchRequest(
  * Batch Search Tool Handler
  */
 export async function batchSearchTool(request: CallToolRequest, context: XppServerContext) {
-  const startTime = Date.now();
-
   try {
     const args = BatchSearchArgsSchema.parse(request.params.arguments);
 
@@ -249,12 +247,9 @@ export async function batchSearchTool(request: CallToolRequest, context: XppServ
       ? [...crossRefMap.entries()].filter(([, qs]) => qs.size > 1)
       : [];
 
-    const executionTime = Date.now() - startTime;
     const output = formatBatchResults(
       mergedResults,
-      executionTime,
       args.queries.length,
-      validGlobalTypes,
       args.deduplicate ? dedupStats.total : -1,
       crossRefEntries
     );
@@ -278,24 +273,28 @@ export async function batchSearchTool(request: CallToolRequest, context: XppServ
  */
 function formatBatchResults(
   results: QueryResult[],
-  executionTime: number,
   totalQueries: number,
-  globalTypeFilter: string[],
   dedupCount: number,  // -1 = dedup disabled
   crossRefEntries: Array<[string, Set<number>]> = []
 ): string {
+  // Header, and nothing else. The old preamble spent ~250 bytes on Executed /
+  // Time / Success / Deduplication lines plus (at the end) a "💡 Performance
+  // Note: N searches in Xms … ~Nx faster" block — the tool reporting on its own
+  // cleverness. None of it is something the caller can act on, and every byte of
+  // it is re-billed on every later request in the session. What survives is the
+  // part that IS actionable: a query that FAILED (below), the dedup count when
+  // it is non-zero (it explains the "already shown in Query N" lines), and the
+  // per-query results themselves.
   let output = `# Batch Search Results\n\n`;
-  output += `Executed: ${totalQueries} parallel ${totalQueries === 1 ? 'query' : 'queries'}`;
-  if (globalTypeFilter.length > 0) {
-    output += ` (global type filter: ${globalTypeFilter.join(', ')})`;
+  const failed = totalQueries - results.filter(r => r.success).length;
+  if (failed > 0) {
+    output += `⚠️ ${failed} of ${totalQueries} queries failed — see the Error line(s) below.\n`;
   }
-  output += `\n`;
-  output += `Time: ${executionTime}ms (parallel execution)\n`;
-  output += `Success: ${results.filter(r => r.success).length}/${totalQueries}\n`;
-  if (dedupCount >= 0) {
+  if (dedupCount > 0) {
     output += `Deduplication: ${dedupCount} duplicate symbol(s) collapsed\n`;
   }
-  output += `\n---\n\n`;
+  if (failed > 0 || dedupCount > 0) output += `\n`;
+  output += `---\n\n`;
 
   results.forEach((result, index) => {
     const typeNote = result.typeLabel ? ` [${result.typeLabel}]` : '';
@@ -324,17 +323,6 @@ function formatBatchResults(
       output += `- **${name}** [${type}] → queries: ${queryList}\n`;
     }
     output += `\n---\n\n`;
-  }
-
-  // Performance note
-  output += `\n💡 Performance Note: ${totalQueries} searches in ${executionTime}ms (parallel execution). `;
-  const sequentialEstimate = totalQueries * 50;
-  if (executionTime > 0) {
-    const speedup = Math.round(sequentialEstimate / executionTime * 10) / 10;
-    output += `Estimated sequential: ~${sequentialEstimate}ms → ${speedup}x faster.\n`;
-  } else {
-    const estimatedTime = Math.max(1, totalQueries * 10);
-    output += `~${Math.round(sequentialEstimate / estimatedTime)}x faster (execution too fast to measure precisely).\n`;
   }
 
   return output;

@@ -3,7 +3,7 @@
  *
  * 561 lines with no test, on a path the agent depends on before every form
  * extension: it is how the model learns the EXACT control name to pass as
- * `parent=` / `after=` when adding a control. A wrong name there produces a
+ * `parentControl=` / `previousSibling=` when adding a control. A wrong name there produces a
  * form extension that writes successfully and does nothing visible, which is
  * the most expensive failure shape this server has.
  *
@@ -209,9 +209,13 @@ describe('getFormInfoTool — searchControl', () => {
     const out = await search('GeneralGroup');
     expect(out).toContain('MainTab › TabPageGeneral › GeneralGroup');
     expect(out).toContain('Parent: `TabPageGeneral`');
-    // Both add-control placements, spelled as the parameters d365fo_file takes.
-    expect(out).toContain('parent="GeneralGroup"');
-    expect(out).toContain('parent="TabPageGeneral", after="GeneralGroup"');
+    // Both add-control placements, spelled as the parameters d365fo_file's
+    // add-control actually declares. The hint used to say parent=/after=, which
+    // the operation does not read — following the tool's own instruction cost a
+    // guaranteed retry.
+    expect(out).toContain('parentControl="GeneralGroup"');
+    expect(out).toContain('parentControl="TabPageGeneral", previousSibling="GeneralGroup"');
+    expect(out).not.toMatch(/set `parent="/);
   });
 
   it('keeps recursing past a match, so a matching ancestor does not hide descendants', async () => {

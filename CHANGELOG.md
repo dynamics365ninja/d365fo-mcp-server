@@ -28,6 +28,170 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+_Nothing released yet._
+
+---
+
+## [1.14.0] — 2026-08-24
+
+_Reconstructed from `git log` and the release tag: this version shipped without
+notes, so the entries below name what changed and why it mattered, not every commit._
+
+### Added
+- `d365fo_file`: `operations[]` on **`action="create"`** as well as modify, applied
+  against the name the create actually wrote (which is not always the name passed —
+  the model's naming style decides it).
+
+### Changed
+- **Round trips became the unit of optimisation.** A session audit fitted the real
+  billing of a 19-minute agent session and established that cached context is
+  re-billed on *every* request, so the number of calls a task needs dominates cost.
+  The four dominant serial patterns gained plural forms, framing the caller cannot
+  act on was removed from responses, four fixed costs came off every tool call, and
+  schemas stopped advertising knobs nobody turns and stopped stating the same rule
+  twice. `ListTools` fell to 25 tools / ~53 KB, and `MCP_TOOL_PROFILE=core` (18
+  tools) arrived for setups that want less.
+- Bridge metadata **reads now overlap**; writes stay exclusive. `SearchObjects` no
+  longer materialises every collection's primary-key list per search.
+- `d365fo_file`: a wrong parameter **shape** now answers with the operation's full
+  contract instead of a bare validation message.
+- Naming rules are one shared implementation, used by `prepare` as well as by
+  `validate_object_naming`. The duplication that made unpublishing the latter look
+  attractive is gone; the tool stays published because `prepare` never covered
+  extensions.
+
+### Fixed
+- **Kernel enums were reported as hallucinated symbols.** 44 enum names that shipped
+  metadata uses (`NoYes`, `TableGroup`, `AccessRight`, ...) have no AOT artifact, so
+  an index-only existence check could not find them and failed a call it was in no
+  position to judge. Such a check now warns instead of erroring.
+- `add-entry-point` silently dropped `accessLevel`, granting Read only.
+- FP002 crashed on a `Custom` form pattern and advised "undefined".
+- The duplicate-call advisory called a legitimate re-read-after-write a loop.
+- A bridge read that cannot print no longer takes the request loop down with it.
+
+---
+
+## [1.13.0] — 2026-08-21
+
+### Added
+- `d365fo_file`: `remove-control` (form / form-extension) and `remove-entry-point`
+  (security-privilege) — the missing inverse of `add-control` and of the entry
+  point `create` writes for `targetObject`, neither backed by a bridge op (no
+  `RemoveControl`, and security objects have no bridge write path at all), so
+  both are XML-only writers admitted through a new `XML_ONLY_MODIFY_PAIRS` gate
+  in `bridgeAdapter.ts`. Plus `action="delete"` — removes an object's XML and
+  un-registers it from every `.rnrproj` of the model that lists it.
+- `d365fo_file`: `remove-diagnostic-suppression` and `add-diagnostic-suppression`
+  (`ignore-diagnostic-list`) — add/remove a `<Diagnostic>` in a model's
+  `{Model}_BPSuppressions.xml` by its `<Path>` (+ `<Moniker>` when the same path
+  carries more than one). `add-diagnostic-suppression` builds the block with the
+  same `buildSuppressionXml` the `get_knowledge(kind="bp-moniker",
+  action="suppress")` render-only helper already used (that helper now points at
+  this operation instead of telling you to paste the block by hand), refuses a
+  duplicate (same path + moniker) instead of writing a second copy, and creates
+  the file — and its `AxIgnoreDiagnosticList` folder — for a model that has
+  never suppressed anything before, in the shape measured from the 339
+  suppression lists of a shipped PackagesLocalDirectory. `delete` now also
+  strips any suppression whose `<Path>` targets the object being deleted
+  automatically, across **every** list in that folder (a model routinely carries
+  several, under names tied to neither the model nor a convention), closing the
+  gap where deleting an object by hand left its BP-check suppression behind,
+  silencing a rule against nothing.
+
+### Fixed
+- One definition of `.rnrproj` include identity, on the add side too.
+- An XML writer whose first-match replace ranged over a block whose collection also
+  nests could land a write on the wrong object and still report success.
+
+---
+
+## [1.12.0] — 2026-08-17
+
+_Reconstructed from `git log` and the release tag: this version shipped without
+notes, so the entries below name what changed and why it mattered, not every commit._
+
+### Added
+- `get_knowledge(kind="bp-moniker")` — validate an exact best-practice moniker,
+  search by scenario when there is no moniker yet, or render a `_BPSuppressions.xml`
+  `<Diagnostic>` block. Backed by names extracted from the **local** D365FO install
+  and regenerated per instance from that instance's own version, so it never invents
+  a moniker or claims one from a different install.
+
+### Fixed
+- `add-control` on a **form extension**: values interpolated into the control XML are
+  escaped, placement and refusal errors name the right source, a control is placed by
+  resolving its parent, and files damaged by the old writer stay usable.
+- `run_bp_check` / `build`: `-compilermetadata` points at the model store rather than
+  the framework directory, and cleans up after itself.
+- `search` falls back to LIKE when FTS5 returns **zero rows**, not only on a syntax
+  error — bounded to the queries that fallback can actually answer.
+- Guidance stopped telling agents to call method readers that are not published, and
+  the class reader stopped promising method bodies a follow-up call cannot deliver.
+
+---
+
+## [1.11.0] — 2026-08-13
+
+### Changed
+- `EXTENSION_PREFIX_SOURCE` is now the config key **`naming.prefixSource`**
+  (`model` | `config`), asked in the advanced pass of the `naming` section
+  (#893). It was `env-only` — a tier meant for values whose reader the
+  wizard-managed JSON cannot honestly describe: the cross-model consent
+  switches, re-read from the `.env` before every guard decision, and the lock
+  heartbeat, read in a process the wizard never configures. This one is a static
+  naming preference with no hot-reload path; it landed in that group only
+  because registering it was how the docs generator stopped deleting it. The
+  cost fell on multi-instance installs, where pinning a prefix meant adding an
+  `instances/<name>/.env` holding one line next to the
+  `instances/<name>/d365fo-mcp.json` holding everything else. Precedence is
+  unchanged — the environment variable still works and still outranks the config
+  file — and a legacy `.env` that sets it now migrates into the JSON instead of
+  being skipped.
+
+- `d365fo-mcp doctor` reported a prefix conflict that the server does not have
+  to anyone who had already pinned their prefix, and offered as the fix the
+  setting they had already applied. The check called `inferPrefixFromObjectNames`
+  directly, one level below `getInferredModelPrefix`, which is where the pin is
+  honoured. It now states the pinned value and names the model's own prefix as
+  ignored rather than winning — and warns when the pin has nothing to pin
+  because `naming.prefix` is empty.
+
+### Added
+- `validate_code`: **COC006** (a table CoC re-reading the record it already holds) and
+  **FN001** (a fixed-arity built-in called with the wrong argument count).
+- `prepare` answers for the table methods a **kernel type** declares.
+- Knowledge: enum conversions documented, and an absent name admitted rather than
+  guessed.
+
+### Fixed
+- **`extension_metadata` is written on a reindex, not only on a full build.** Until
+  this, a field added to a table extension — or a method added to a CoC class — was
+  invisible to every reader keyed on the base object until the next rebuild, and
+  `resolve_references` reported it as an error that refuses the write carrying it.
+- `create` discloses in the response the name the write actually used.
+- A class-extension name in element style is rewritten rather than suffixed twice.
+- `undo` removes the `.rnrproj` entry on the git path too.
+- `run_bp_check` withholds the green tick when nothing has compiled the model.
+- `labels` budgets searches by call count, on both verdicts.
+- The index stopped trusting a `file_path` that points at the JSON cache.
+
+---
+
+## [1.10.1] — 2026-08-11
+
+_Reconstructed from `git log` and the release tag: this version shipped without
+notes, so the entries below name what changed and why it mattered, not every commit._
+
+### Fixed
+- Follow-ups to the 1.10.0 audit landing (PRs #889, #890). No tool-surface change.
+
+---
+
+## [1.10.0] — 2026-08-10
+
+_The 2026-08-08 full-repo audit, executed as 23 PRs (#847-#869) plus follow-ups._
+
 ### Added
 - `CHANGELOG.md` (this file).
 - `biome.jsonc` + `npm run lint` — first linter in the project's history.
@@ -55,54 +219,8 @@ those are called out explicitly below.
   zero coverage, and the tool the agent reads control names from before every
   form extension), `repairFormControls`, and `fsExtensionScanner` (the fallback
   that exists to stop the agent shelling out to PowerShell).
-- `d365fo_file`: `remove-control` (form / form-extension) and `remove-entry-point`
-  (security-privilege) — the missing inverse of `add-control` and of the entry
-  point `create` writes for `targetObject`, neither backed by a bridge op (no
-  `RemoveControl`, and security objects have no bridge write path at all), so
-  both are XML-only writers admitted through a new `XML_ONLY_MODIFY_PAIRS` gate
-  in `bridgeAdapter.ts`. Plus `action="delete"` — removes an object's XML and
-  un-registers it from every `.rnrproj` of the model that lists it.
-- `d365fo_file`: `remove-diagnostic-suppression` and `add-diagnostic-suppression`
-  (`ignore-diagnostic-list`) — add/remove a `<Diagnostic>` in a model's
-  `{Model}_BPSuppressions.xml` by its `<Path>` (+ `<Moniker>` when the same path
-  carries more than one). `add-diagnostic-suppression` builds the block with the
-  same `buildSuppressionXml` the `get_knowledge(kind="bp-moniker",
-  action="suppress")` render-only helper already used (that helper now points at
-  this operation instead of telling you to paste the block by hand), refuses a
-  duplicate (same path + moniker) instead of writing a second copy, and creates
-  the file — and its `AxIgnoreDiagnosticList` folder — for a model that has
-  never suppressed anything before, in the shape measured from the 339
-  suppression lists of a shipped PackagesLocalDirectory. `delete` now also
-  strips any suppression whose `<Path>` targets the object being deleted
-  automatically, across **every** list in that folder (a model routinely carries
-  several, under names tied to neither the model nor a convention), closing the
-  gap where deleting an object by hand left its BP-check suppression behind,
-  silencing a rule against nothing.
-
-### Changed
-- `EXTENSION_PREFIX_SOURCE` is now the config key **`naming.prefixSource`**
-  (`model` | `config`), asked in the advanced pass of the `naming` section
-  (#893). It was `env-only` — a tier meant for values whose reader the
-  wizard-managed JSON cannot honestly describe: the cross-model consent
-  switches, re-read from the `.env` before every guard decision, and the lock
-  heartbeat, read in a process the wizard never configures. This one is a static
-  naming preference with no hot-reload path; it landed in that group only
-  because registering it was how the docs generator stopped deleting it. The
-  cost fell on multi-instance installs, where pinning a prefix meant adding an
-  `instances/<name>/.env` holding one line next to the
-  `instances/<name>/d365fo-mcp.json` holding everything else. Precedence is
-  unchanged — the environment variable still works and still outranks the config
-  file — and a legacy `.env` that sets it now migrates into the JSON instead of
-  being skipped.
 
 ### Fixed
-- `d365fo-mcp doctor` reported a prefix conflict that the server does not have
-  to anyone who had already pinned their prefix, and offered as the fix the
-  setting they had already applied. The check called `inferPrefixFromObjectNames`
-  directly, one level below `getInferredModelPrefix`, which is where the pin is
-  honoured. It now states the pinned value and names the model's own prefix as
-  ignored rather than winning — and warns when the pin has nothing to pin
-  because `naming.prefix` is empty.
 - `get_method`'s Chain-of-Command template copied the base method's **default
   parameter values** into the wrapper signature — the exact defect `validate_code`
   reports as `COC001` and the `coc-authoring` topic forbids. It was also
@@ -155,6 +273,8 @@ those are called out explicitly below.
   (turn off unused tool sets; `MCP_TOOL_PROFILE=core`) is documented where it is
   configured — [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) and
   [`docs/MCP_CONFIG.md`](docs/MCP_CONFIG.md).
+
+---
 
 ---
 

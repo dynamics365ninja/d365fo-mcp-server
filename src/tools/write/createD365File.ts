@@ -59,6 +59,7 @@ import { buildAxDataEntityViewExtensionXml } from '../xml/dataEntityViewExtensio
 import { buildAxMenuItemExtensionXml, type AxMenuItemExtensionRootElement } from '../xml/menuItemExtensionXml.js';
 import { buildAxServiceXml, buildAxServiceGroupXml } from '../xml/serviceXml.js';
 import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
+import { sayOncePerSession } from '../../utils/repeatedNotes.js';
 import {
   reconcileTableCreateProperties,
   renderTableCreateHonestyReport,
@@ -74,7 +75,31 @@ import {
  * knows to pass projectPath explicitly instead of silently landing on the
  * wrong project.
  */
+/**
+ * Once-per-session wrapper around the full warning.
+ *
+ * Measured: the block below rode on EVERY create in a project-less workspace
+ * (~230 chars each time). It states a fact about the WORKSPACE, not about the
+ * object just written, so repeating it verbatim on the twentieth create tells
+ * the caller nothing it did not already have - and every one of those bytes is
+ * re-read by every later request in the session. First occurrence stays whole;
+ * later ones shrink to a pointer. See src/utils/repeatedNotes.ts.
+ *
+ * Scoped by the candidate situation rather than the model: the two branches
+ * below say different things, and a workspace can move from one to the other
+ * when a project is configured mid-session.
+ */
 function buildNoProjectPathWarning(): string {
+  const candidateCount = getConfigManager().getWorkspaceProjectCandidates().length;
+  return sayOncePerSession(
+    'no-project-path',
+    candidateCount > 1 ? `ambiguous:${candidateCount}` : 'none',
+    buildNoProjectPathWarningFull(),
+    `\n⚠️ Not added to a project (no projectPath resolved \u2014 see the first create in this session).\n`,
+  );
+}
+
+function buildNoProjectPathWarningFull(): string {
   // The WORKSPACE candidates, not getAllDetectedProjects(): under
   // D365FO_SOLUTIONS_PATH the latter lists every project across every solution,
   // which would put a wrong count behind "in this workspace" and can run to
@@ -92,6 +117,122 @@ function buildNoProjectPathWarning(): string {
   return `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
     `The file was created on disk but was NOT added to any Visual Studio project.\n` +
     `Pass projectPath explicitly, or set servers.context.projectPath in .mcp.json.\n`;
+}
+
+/**
+ * The `d365fo_file(action="modify", …, operations:[…])` call that carries the
+ * SAME entries the refused create was carrying.
+ *
+ * A create that lands on an existing object used to answer with three generic
+ * retry options ("pass overwrite=true", "use modify", "pick another name"), and
+ * the one the caller actually wants — apply these exact fields/indexes/values to
+ * the object that is already there — was none of them. Naming `modify` without
+ * its operations buys a discovery round trip: the caller must go and look the
+ * per-operation parameter names up (they are NOT the create spelling: an EDT is
+ * `fieldType` here, an index's fields are objects, …) before it can retry. So
+ * the translation is done here, where both spellings are already known, and the
+ * answer is one copy-paste rather than one more call.
+ *
+ * Method sources are named but not re-emitted: the caller is holding the X++ it
+ * just passed, and inlining it again would put the whole class into a response
+ * that is then re-billed on every later request in the session.
+ */
+export function renderEquivalentModifyCall(
+  objectType: string,
+  objectName: string,
+  args: { properties?: Record<string, any>; sourceCode?: string },
+): string {
+  const ops: Record<string, unknown>[] = [];
+  const props = args.properties ?? {};
+
+  const put = (o: Record<string, unknown>, k: string, v: unknown) => {
+    if (v !== undefined && v !== null && v !== '') o[k] = v;
+  };
+
+  for (const f of Array.isArray(props.fields) ? props.fields : []) {
+    const op: Record<string, unknown> = { operation: 'add-field', fieldName: f?.name ?? f?.fieldName };
+    if (f?.enumType) {
+      // An enum-typed field is an AxTableFieldEnum: fieldEnumType and NO fieldType.
+      put(op, 'fieldEnumType', f.enumType);
+    } else {
+      // `fieldType` on modify is the EDT name; the base-type keyword create takes
+      // as `type` is `fieldBaseType` there.
+      const edt = f?.edt ?? f?.extendedDataType;
+      put(op, 'fieldType', edt);
+      if (!edt) put(op, 'fieldBaseType', f?.type ?? f?.fieldType);
+    }
+    put(op, 'fieldMandatory', f?.mandatory);
+    put(op, 'fieldLabel', f?.label);
+    ops.push(op);
+  }
+
+  for (const g of Array.isArray(props.fieldGroups) ? props.fieldGroups : []) {
+    const op: Record<string, unknown> = { operation: 'add-field-group', fieldGroupName: g?.name ?? g?.fieldGroupName };
+    put(op, 'fieldGroupFields', g?.fields ?? g?.fieldGroupFields);
+    put(op, 'fieldGroupLabel', g?.label);
+    ops.push(op);
+  }
+
+  for (const idx of Array.isArray(props.indexes) ? props.indexes : []) {
+    const raw = idx?.fields ?? idx?.indexFields;
+    const op: Record<string, unknown> = { operation: 'add-index', indexName: idx?.name ?? idx?.indexName };
+    if (Array.isArray(raw)) {
+      op.indexFields = raw.map((f: any) => (typeof f === 'string' ? { fieldName: f } : f));
+    }
+    put(op, 'indexAllowDuplicates', idx?.allowDuplicates);
+    put(op, 'indexAlternateKey', idx?.alternateKey);
+    ops.push(op);
+  }
+
+  for (const r of Array.isArray(props.relations) ? props.relations : []) {
+    const op: Record<string, unknown> = { operation: 'add-relation', relationName: r?.name ?? r?.relationName };
+    put(op, 'relatedTable', r?.relatedTable);
+    put(op, 'relationConstraints', r?.constraints ?? r?.relationConstraints);
+    ops.push(op);
+  }
+
+  for (const v of Array.isArray(props.enumValues) ? props.enumValues : []) {
+    const op: Record<string, unknown> = { operation: 'add-enum-value', enumValueName: v?.name ?? v?.enumValueName };
+    put(op, 'enumValueLabel', v?.label);
+    put(op, 'enumValueHelpText', v?.helpText);
+    put(op, 'enumValueInt', v?.value);
+    ops.push(op);
+  }
+
+  if (args.sourceCode?.trim()) {
+    const { methods } = XmlTemplateGenerator.splitXppClassSource(args.sourceCode);
+    for (const m of methods) {
+      ops.push({ operation: 'add-method', methodName: m.name, sourceCode: `<the X++ you passed for ${m.name}>` });
+    }
+  }
+
+  // Scalar properties, but ONLY the ones that are genuinely an XML element on
+  // the object. `modify-property`'s propertyPath is the element NAME (`Label`,
+  // `TableGroup`, …) — not the camelCase create key, and not every create key
+  // has an element at all: `dataSource` on a query builds a whole
+  // <DataSources> collection, `pattern`/`formTemplate` on a form pick a
+  // template. Rendering those as modify-property would hand back a call that
+  // fails, which is worse than not offering one, so an allowlist it is; the
+  // collections above are where the real re-spelling cost lives anyway.
+  const PROPERTY_ELEMENTS: Record<string, string> = {
+    label: 'Label', helpText: 'HelpText', configurationKey: 'ConfigurationKey',
+    extends: 'Extends', tableGroup: 'TableGroup', tableType: 'TableType',
+    titleField1: 'TitleField1', titleField2: 'TitleField2',
+    cacheLookup: 'CacheLookup', clusteredIndex: 'ClusteredIndex', primaryIndex: 'PrimaryIndex',
+    formRef: 'FormRef', countryRegionCodes: 'CountryRegionCodes',
+    developerDocumentation: 'DeveloperDocumentation', createdBy: 'CreatedBy',
+    modifiedDateTime: 'ModifiedDateTime', createdDateTime: 'CreatedDateTime',
+  };
+  for (const [k, v] of Object.entries(props)) {
+    if (v === undefined || v === null || typeof v === 'object') continue;
+    const element = PROPERTY_ELEMENTS[k] ?? (PROPERTY_ELEMENTS[k[0].toLowerCase() + k.slice(1)] ? k : undefined);
+    if (!element) continue;
+    ops.push({ operation: 'modify-property', propertyPath: element, propertyValue: v });
+  }
+
+  if (ops.length === 0) return '';
+  return `\n\nApply what you passed to the object that is already there — ONE call:\n` +
+    `d365fo_file(action="modify", objectType="${objectType}", objectName="${objectName}", operations=${JSON.stringify(ops)})\n`;
 }
 
 const CreateD365FileArgsSchema = z.object({
@@ -3735,10 +3876,13 @@ export async function handleCreateD365File(
           content: [
             {
               type: 'text',
-              text: `⚠️ File already exists: ${normalizedFullPath}${nameNote}${existingSummary}${projectNote}\n\nOptions:\n` +
-                `  1. Pass overwrite=true together with xmlContent to replace the file.\n` +
-                `  2. Use d365fo_file(action="modify") to make targeted changes (rename-field, replace-all-fields, modify-property, …).\n` +
-                `  3. Choose a different objectName.${inlineContent}`,
+              // Lead with the call the caller actually wants — the SAME entries,
+              // aimed at the object that already exists — instead of three
+              // generic retry options that all cost another round trip first.
+              text: `⚠️ File already exists: ${normalizedFullPath}${nameNote}${existingSummary}${projectNote}` +
+                renderEquivalentModifyCall(args.objectType, finalObjectName, args) +
+                `\nOtherwise: overwrite=true together with xmlContent replaces the file, ` +
+                `or choose a different objectName.${inlineContent}`,
             },
           ],
           isError: true,
@@ -4541,11 +4685,13 @@ export async function handleCreateD365File(
 
           if (wasAdded) {
             console.error(`[create_d365fo_file] Successfully added to project`);
-            projectMessage = `\n✅ Successfully added to Visual Studio project:\n📋 Project: ${projectPath}\n` +
-              `ℹ️  If the file does not appear in VS Solution Explorer, right-click the project → Reload Project.`;
+            // No "right-click → Reload Project" line: ~110 chars of a human's VS
+            // UI chore, repeated on EVERY create and re-billed on every later
+            // request in the session, that the agent reading this cannot act on.
+            projectMessage = `\n✅ Added to project: ${projectPath}\n`;
           } else {
             console.error(`[create_d365fo_file] File already exists in project`);
-            projectMessage = `\n✅ File already exists in Visual Studio project:\n📋 Project: ${projectPath}\n`;
+            projectMessage = `\n✅ Already referenced by project: ${projectPath}\n`;
           }
         } catch (projectError) {
           const errMsg = projectError instanceof Error ? projectError.message : 'Unknown error';
@@ -4567,15 +4713,24 @@ export async function handleCreateD365File(
       }
     }
 
-    // Only the step the AGENT can take. "Reload the project in VS / refresh the
-    // AOT" is a human's UI chore, repeated on every object of a feature; when it
-    // matters (addToProject failed, no projectPath) `projectMessage` above
-    // already says so, in that specific case.
+    // Only the step the AGENT can take, and only ONE of them.
+    //
+    // `bpCheck:true` makes the build run the best-practice checker too, so this
+    // is one follow-up call rather than the build → run_bp_check →
+    // verify_d365fo_project chain the logs actually show (39 run_bp_check and 35
+    // verify_d365fo_project calls in 1,400, largely right after writes that had
+    // already verified themselves inline — see verifyNote/indexNote above).
+    //
+    // The old tail also carried a `⛔ TASK COMPLETE — do NOT call generate,
+    // generate, or d365fo_file(action="create") again` banner: 133 chars that
+    // named the same tool twice (a copy/paste defect) to say what the one clause
+    // appended to the batch-edit hint below says in 47.
     const nextSteps = (args.addToProject
-      ? `Next: build_d365fo_project to synchronize the object.\n`
-      : `Next: add the file to your .rnrproj, then build_d365fo_project to synchronize the object.\n`) +
+      ? `Next: build_d365fo_project(bpCheck:true) — builds AND best-practice-checks in one call.\n`
+      : `Next: add the file to your .rnrproj, then build_d365fo_project(bpCheck:true) — builds AND best-practice-checks in one call.\n`) +
       // finalObjectName, not args.objectName — see renderBatchEditHint.
-      renderBatchEditHint(args.objectType, finalObjectName, { afterCreate: true });
+      renderBatchEditHint(args.objectType, finalObjectName, { afterCreate: true }) +
+      `It exists now — do not create it again.\n`;
 
     // Record the freshly-created file for non-git undo (see the bridge paths above).
     if (!fileExisted) {
@@ -4608,11 +4763,14 @@ export async function handleCreateD365File(
       content: [
         {
           type: 'text',
-          text: `✅ Successfully created D365FO ${args.objectType} file:${crossModelNotice}\n\n` +
-            `📁 Path: ${normalizedFullPath}\n` +
-            `📄 Object: ${finalObjectName}${finalObjectName !== args.objectName ? ` (prefixed from "${args.objectName}")` : ''}\n` +
-            `📦 Model: ${actualModelName}\n` +
-            `🔧 Type: ${objectFolder}\n` +
+          // One headline plus the path. `📄 Object:`, `📦 Model:` and `🔧 Type:`
+          // were three more lines re-stating what the path already spells out
+          // (…\<model>\<model>\<objectFolder>\<finalObjectName>.xml); only the
+          // rename disclosure is information the path does not carry, so that is
+          // the part kept — see createRenameDisclosure.test.ts for why it must be.
+          text: `✅ Created ${args.objectType} ${finalObjectName}` +
+            `${finalObjectName !== args.objectName ? ` (prefixed from "${args.objectName}")` : ''}` +
+            `${crossModelNotice}\n📁 ${normalizedFullPath}\n` +
             bridgeValidation +
             formPatternWarnings +
             bridgeFallbackNote +
@@ -4625,8 +4783,7 @@ export async function handleCreateD365File(
             bpNote +
             xppRuleNote +
             timer.render() +
-            `\n${nextSteps}\n` +
-            `⛔ TASK COMPLETE — do NOT call \`generate\`, \`generate\`, or \`d365fo_file(action="create")\` again for this object.`,
+            `\n${nextSteps}`,
         },
       ],
     };

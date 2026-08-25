@@ -114,7 +114,31 @@ const CHARS_PER_TOKEN = 4;
 // find_references spelled the "Owner.method or it over-reports" rule out in full
 // both in its description and in the parameter that rule applies to. Measured
 // payload after: 48_904.
-const TOTAL_BUDGET = 49_000;
+// Lowered again by the 2026-08-25 round-trip audit. prepare's `operation` now
+// takes SEVERAL operations comma-separated, so ONE prepare returns every write
+// contract an ordinary table change needs (add-field + add-index +
+// add-field-to-field-group) instead of one — measured over 1,400 real MCP calls,
+// get_knowledge was called 186 times against only 81 prepares, nearly all of them
+// op-spec lookups a prepare could have answered. That clause was paid for inside
+// the two schemas it belongs to, and then some: `prepare.mode` and
+// `get_knowledge.kind` restated the enum bullet lists their own tool descriptions
+// already carry, and `get_knowledge.topic` listed twelve example topics the
+// description had already named. Measured payload after: 48_436.
+// Lowered again by the same audit's post-build tools. verify_d365fo_project and
+// run_bp_check now say WHEN they are worth calling — after a BUILD, not after a
+// write, because d365fo_file already verifies its own write inline and
+// build_d365fo_project(bpCheck:true) already folds the BP check into the build.
+// That is what the 1,400-call sample shows being got wrong: 39 run_bp_check and
+// 35 verify_d365fo_project calls, largely right after writes. Paid for inside
+// those three schemas and then some, by unpublishing parameters that were never
+// worth their bytes: run_bp_check's targetFilter/targetElementType (the
+// single-object spelling of the objects[] the schema itself calls "preferred",
+// passed 0 times in 273 sampled calls), verify's auto-resolved packageName/
+// packagePath, and build's self-described "(Legacy)" projectPath. All five are
+// still accepted by their handlers — only the advertisement is gone. Net across
+// the three schemas, measured in isolation against HEAD: 48,904 -> 48,502.
+// Measured payload for the whole tree after: 48_034.
+const TOTAL_BUDGET = 48_100;
 const LARGEST_TOOL_BUDGET = 5_700;
 
 async function getTools(): Promise<Array<{ name: string }>> {

@@ -70,25 +70,87 @@ export interface ToolResult {
 
 const TABLE_METHOD_PAGE_SIZE = 25;
 
+/**
+ * ── SEAM for the C#-side method paging (deliberately left for a later phase) ──
+ *
+ * MEASURED: `readTable("CustTable")` ships all ~120 methods WITH full source
+ * across the pipe, and this adapter then renders one page of 25 (15 for a class).
+ * Everything else was parsed out of JSON and dropped on the floor. The same is
+ * true of `readClass`.
+ *
+ * The C# side cannot be changed in this phase (another agent owns bridge/), so
+ * the paging is made EXPLICIT here instead of implicit in a `.slice()`: this is
+ * the single place that decides which methods a table response needs and whether
+ * it needs their bodies. When `readTable` grows `includeSource` / `methodLimit` /
+ * `methodOffset` request parameters, they are populated from exactly this object
+ * — `bridge.readTable(tableName, methodPageRequest(methodOffset, wantBodies))` —
+ * and nothing below has to change, because the renderer already asks for no more
+ * than it prints.
+ *
+ * Same shape is intended for classes (CLASS_METHOD_PAGE_SIZE, formatClass).
+ */
+export interface BridgeMethodPageRequest {
+  /** First method to render (the caller's methodOffset). */
+  offset: number;
+  /** How many methods this response renders — never more than one page. */
+  limit: number;
+  /** Whether the BODIES are actually rendered; false = signature lines only. */
+  includeSource: boolean;
+}
+
+export function methodPageRequest(
+  offset: number, includeSource: boolean, limit = TABLE_METHOD_PAGE_SIZE,
+): BridgeMethodPageRequest {
+  return { offset: Math.max(0, offset), limit, includeSource };
+}
+
+/**
+ * What a table response renders beyond the always-present fields/indexes.
+ *
+ * MEASURED (live harness, 2026-08-25): `get_object_info(objectType="table",
+ * name="CustTable")` returned 20,199 chars — 50 fields, 20 indexes, ALL 75
+ * relations in full, and 25 methods WITH their bodies — and `options:{compact:true}`
+ * returned byte-identical 20,199 chars, i.e. compact did nothing for tables. The
+ * class reader answers the same question in 1,241 chars because it is
+ * signature-only by default. This is the most-called tool in the corpus (286 of
+ * 1,400 calls) and its result is re-read by every later request in the session,
+ * so those bytes are paid many times over.
+ */
+export interface TableRenderOptions {
+  /** false → method BODIES (the old default). Default true: signatures only. */
+  compact?: boolean;
+  /** true → the full relation list with its constraints. Default false. */
+  relations?: boolean;
+}
+
 export async function tryBridgeTable(
   bridge: BridgeClient | undefined,
   tableName: string,
   methodOffset = 0,
   fieldsOffset = 0,
   fieldFilter?: string,
+  render: TableRenderOptions = {},
 ): Promise<ToolResult | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     const t = await bridge.readTable(tableName);
     if (!t) return null;
-    return { content: [{ type: 'text', text: formatTable(t, methodOffset, fieldsOffset, fieldFilter) }] };
+    return { content: [{ type: 'text', text: formatTable(t, methodOffset, fieldsOffset, fieldFilter, render) }] };
   } catch (e) {
     recordBridgeFailure(`readTable(${tableName})`, e);
     return null;
   }
 }
 
-function formatTable(t: BridgeTableInfo, methodOffset: number, fieldsOffset = 0, fieldFilter?: string): string {
+function formatTable(
+  t: BridgeTableInfo,
+  methodOffset: number,
+  fieldsOffset = 0,
+  fieldFilter?: string,
+  render: TableRenderOptions = {},
+): string {
+  const compact = render.compact !== false;
+  const showRelations = render.relations === true || !compact;
   let out = `# Table: ${t.name}\n\n`;
   if (t.label) out += `**Label:** ${t.label}\n`;
   if (t.tableGroup) out += `**Table Group:** ${t.tableGroup}\n`;
@@ -125,42 +187,63 @@ function formatTable(t: BridgeTableInfo, methodOffset: number, fieldsOffset = 0,
     out += `- **${idx.name}**: [${fieldNames}]${unique}\n`;
   }
 
-  // Relations
-  out += `\n## Relations (${t.relations.length})\n\n`;
-  for (const rel of t.relations) {
-    out += `- **${rel.name}** → ${rel.relatedTable}\n`;
-    for (const c of rel.constraints) {
-      if (c.field && c.relatedField) {
-        out += `  - ${c.field} = ${c.relatedField}\n`;
-      } else if (c.field && c.value) {
-        out += `  - ${c.field} = (fixed: ${c.value})\n`;
+  // Relations — the single largest block on a Microsoft table (CustTable: 75 of
+  // them, ~7 KB with their constraints) and the one least often the reason the
+  // table was read. Withheld by default, never silently: the count and the exact
+  // option that returns them are printed, so nothing disappears without saying so.
+  if (showRelations) {
+    out += `\n## Relations (${t.relations.length})\n\n`;
+    for (const rel of t.relations) {
+      out += `- **${rel.name}** → ${rel.relatedTable}\n`;
+      for (const c of rel.constraints) {
+        if (c.field && c.relatedField) {
+          out += `  - ${c.field} = ${c.relatedField}\n`;
+        } else if (c.field && c.value) {
+          out += `  - ${c.field} = (fixed: ${c.value})\n`;
+        }
       }
     }
+  } else if (t.relations.length > 0) {
+    out += `\n## Relations (${t.relations.length}) — not listed\n\n` +
+      `> 💡 ${t.relations.length} relation(s) exist. \`options:{"relations":true}\` lists them with their constraints.\n`;
   }
 
-  // Methods (paginated)
+  // Methods — signature lines by default, the same shape the class reader has
+  // always used. `compact:false` restores the bodies.
   if (t.methods.length > 0) {
-    const visible = t.methods.slice(methodOffset, methodOffset + TABLE_METHOD_PAGE_SIZE);
+    const page = methodPageRequest(methodOffset, !compact);
+    const visible = t.methods.slice(page.offset, page.offset + page.limit);
     const total = t.methods.length;
-    const hasMore = methodOffset + TABLE_METHOD_PAGE_SIZE < total;
+    const hasMore = page.offset + page.limit < total;
 
     out += `\n## Methods (${total} total`;
-    if (total > TABLE_METHOD_PAGE_SIZE) {
-      out += `, showing ${methodOffset + 1}–${Math.min(methodOffset + TABLE_METHOD_PAGE_SIZE, total)}`;
+    if (total > page.limit) {
+      out += `, showing ${page.offset + 1}–${Math.min(page.offset + page.limit, total)}`;
     }
     out += `)\n\n`;
 
     for (const m of visible) {
-      out += `### ${m.name}\n\n`;
-      if (m.source) {
-        const preview = m.source.substring(0, 500);
-        out += `\`\`\`xpp\n${preview}${m.source.length > 500 ? '\n// ...' : ''}\n\`\`\`\n\n`;
+      if (page.includeSource) {
+        out += `### ${m.name}\n\n`;
+        if (m.source) {
+          const preview = m.source.substring(0, 500);
+          out += `\`\`\`xpp\n${preview}${m.source.length > 500 ? `\n// ... (${fullBodyHint(m.name)})` : ''}\n\`\`\`\n\n`;
+        }
+      } else {
+        out += `- \`${methodSignatureLine(m.name, m.source)}\`\n`;
       }
     }
 
     if (hasMore) {
-      out += `> ⚠️ **${total - methodOffset - TABLE_METHOD_PAGE_SIZE} more methods.** Call again with \`methodOffset: ${methodOffset + TABLE_METHOD_PAGE_SIZE}\`.\n\n`;
+      out += `\n> ⚠️ **${total - page.offset - page.limit} more methods.** Call again with \`methodOffset: ${page.offset + page.limit}\`.\n`;
     }
+    // Same escape hatch the class view prints, for the same reason: this list is
+    // the only place a caller who did not read the tool schema learns that bodies
+    // exist and were withheld rather than absent.
+    if (!page.includeSource && visible.some(m => m.source)) {
+      out += `\n${COMPACT_METHODS_HINT}\n`;
+    }
+    out += `\n`;
   }
 
   return out;
@@ -787,7 +870,7 @@ export interface BridgeSearchOptions {
    * exact match can be missing entirely. Any candidate absent from the bridge
    * window is spliced in and ranked first.
    */
-  exactMatches?: Array<{ name: string; type: string }>;
+  exactMatches?: Array<{ name: string; type: string; model?: string }>;
   /**
    * Keyword hits from CUSTOM/ISV models the caller resolved from the SQLite
    * index (model-scoped, FTS-driven). The bridge enumerates a single merged
@@ -796,7 +879,28 @@ export interface BridgeSearchOptions {
    * These are spliced in and ranked directly after the exact matches (ahead of
    * Microsoft standard hits) so custom code is always visible.
    */
-  customMatches?: Array<{ name: string; type: string }>;
+  customMatches?: Array<{ name: string; type: string; model?: string; parentName?: string }>;
+  /**
+   * Fills in the MODEL for rows the bridge itself returns.
+   *
+   * The C# `SearchItemModel` carries a `model` property but SearchObjects never
+   * populates it (Models.cs / MetadataReadService.cs), so a bridge row is name +
+   * type and nothing else — while `search`'s published schema promises "returns
+   * name, type, model". Rather than a second round trip per hit, the caller
+   * passes a resolver backed by the SQLite index (see
+   * tools/analysis/search.ts#buildBridgeMetaResolver), keyed by
+   * `name.toLowerCase()::type`.
+   *
+   * Optional on purpose: with no resolver the rows render exactly as before.
+   */
+  resolveMeta?: (
+    rows: Array<{ name: string; type: string }>,
+  ) => Map<string, { model?: string }>;
+}
+
+/** Key of the resolveMeta map — must match tools/analysis/search.ts#metaKey. */
+function searchMetaKey(name: string, type: string): string {
+  return `${String(name).toLowerCase()}::${type}`;
 }
 
 export async function tryBridgeSearch(
@@ -814,7 +918,7 @@ export async function tryBridgeSearch(
     // Splice in exact matches the bridge's truncated window missed (#15).
     const bridgeHits = sr.results ?? [];
     const known = new Set(bridgeHits.map(r => `${r.name.toLowerCase()}\0${r.type}`));
-    const spliced: Array<{ name: string; type: string; fromIndex?: boolean }> = [];
+    const spliced: Array<{ name: string; type: string; model?: string; fromIndex?: boolean }> = [];
     for (const cand of opts?.exactMatches ?? []) {
       if (!isExactNameMatch(query, cand.name)) continue;
       if (known.has(`${cand.name.toLowerCase()}\0${cand.type}`)) continue;
@@ -832,13 +936,26 @@ export async function tryBridgeSearch(
     const customKeys = new Set((opts?.customMatches ?? []).map(c => key(c.name, c.type)));
     const customSpliced = (opts?.customMatches ?? [])
       .filter(c => !exactKeys.has(key(c.name, c.type)) && !bridgeKeys.has(key(c.name, c.type)))
-      .map(c => ({ name: c.name, type: c.type, fromIndex: true as const, custom: true as const }));
+      .map(c => ({
+        name: c.name, type: c.type, model: c.model, parentName: c.parentName,
+        fromIndex: true as const, custom: true as const,
+      }));
     const splicedCustom = customSpliced.length;
 
-    const merged: Array<{ name: string; type: string; fromIndex?: boolean; custom?: boolean }> = [
+    const merged: Array<{
+      name: string; type: string; fromIndex?: boolean; custom?: boolean;
+      model?: string; parentName?: string;
+    }> = [
       ...spliced.map(s => ({ ...s })),
       ...customSpliced,
-      ...bridgeHits.map(r => ({ name: r.name, type: r.type, custom: customKeys.has(key(r.name, r.type)) })),
+      ...bridgeHits.map(r => ({
+        name: r.name,
+        type: r.type,
+        // The bridge leaves this undefined in practice (see BridgeSearchOptions
+        // .resolveMeta); read it anyway so a later C#-side fix needs no change here.
+        model: r.model ?? undefined,
+        custom: customKeys.has(key(r.name, r.type)),
+      })),
     ];
     if (merged.length === 0) return null;
 
@@ -850,9 +967,18 @@ export async function tryBridgeSearch(
     out += `**Results:** ${ranked.length}\n`;
     out += `_Source: C# bridge (IMetadataProvider)_\n\n`;
 
+    // Model on every row, and the owning object on a method/field row.
+    //
+    // These rows used to render as `- **Name** (type)` while the tool's own
+    // schema promised "returns name, type, model" — so the caller either guessed
+    // the model or spent a get_object_info call to find out where the hit lives,
+    // which is the expensive half of an answer the server already had.
+    const meta = opts?.resolveMeta?.(ranked) ?? new Map<string, { model?: string }>();
     for (const r of ranked) {
       const exact = isExactNameMatch(query, r.name) ? ' ⭐ exact match' : '';
-      out += `- **${r.name}** (${r.type})${exact}\n`;
+      const model = r.model ?? meta.get(searchMetaKey(r.name, r.type))?.model;
+      const owner = r.parentName ? `${r.parentName}.` : '';
+      out += `- **${owner}${r.name}** (${r.type})${model ? ` — ${model}` : ''}${exact}\n`;
     }
 
     if (spliced.length > 0) {

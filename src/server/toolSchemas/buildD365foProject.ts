@@ -17,10 +17,9 @@ export const buildD365foProjectTool = {
           type: 'string',
           description: 'D365FO model name to build (e.g. MyCustomModel). Auto-detected from workspace if omitted.',
         },
-        projectPath: {
-          type: 'string',
-          description: '(Legacy) Absolute path to a .rnrproj file — used only to extract the model name when modelName is not provided.',
-        },
+        // projectPath is NOT published: it was self-described "(Legacy)" and its
+        // only job is deriving a model name that `modelName` states directly.
+        // The handler still accepts it.
         force: {
           type: 'boolean',
           description: 'Kill any running build processes for this model and restart.',
@@ -31,7 +30,7 @@ export const buildD365foProjectTool = {
         },
         bpCheck: {
           type: 'boolean',
-          description: 'On a SUCCESSFUL build, also run the best-practice checker and append its findings — saves the usual follow-up run_bp_check call.',
+          description: 'On a SUCCESSFUL build, also run the best-practice checker and append its findings. Prefer this to a follow-up run_bp_check call: one build call instead of two round trips.',
         },
         wait: {
           type: 'boolean',

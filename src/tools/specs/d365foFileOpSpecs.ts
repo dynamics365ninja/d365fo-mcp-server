@@ -393,6 +393,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'add-diagnostic-suppression: emit the <ItemSpecific> block — rare, only for element-specific rules ' +
       '(BPErrorUnknownLabel, BPXmlDoc*, BPErrorPrivilegeNotCoveredByDuty, …). Requires diagnosticElementName.',
   },
+  // Alias spellings (see OP_PARAM_ALIASES). They never appear as their own line
+  // in a rendered spec - renderOpSpec walks required/optional only - but every
+  // alias must be describable, so the registry guard can prove none is a typo.
+  parent: { type: 'string', description: 'Alias of parentControl (as printed by get_object_info form control search).' },
+  after: { type: 'string', description: 'Alias of previousSibling (as printed by get_object_info form control search).' },
+  edt: { type: 'string', description: 'Alias of fieldType - the element-level spelling used by fields[{ name, edt, type }].' },
+  type: { type: 'string', description: 'Alias of fieldBaseType - the element-level spelling used by fields[{ name, edt, type }].' },
   // menus
   menuItemToAdd: { type: 'string', description: 'Name of the menu item to add (e.g. "MyCustomForm").' },
   menuItemToAddType: {
@@ -421,10 +428,52 @@ export interface D365FileOpSpec {
 /**
  * A required param may be satisfied by an alias instead
  * (e.g. add-method accepts methodCode in place of sourceCode).
+ *
+ * The alias is also RENAMED to its canonical spelling before the modify args are
+ * validated (see normalizeModifyArgs in write/modifyD365File.ts), so an alias is
+ * a working parameter and not merely a name that suppresses a warning. That
+ * rename fires only when the canonical param is declared by the operation and
+ * was not supplied itself, which is why an alias may safely stand for an
+ * OPTIONAL param too — `opParamNames` below only expands aliases of REQUIRED
+ * ones, since that is all the required-satisfaction check needs.
+ *
+ * Why these four, all measured:
+ *   • parent / after — get_object_info(form, options.searchControl) renders a
+ *     usage hint saying `parent="…"` / `after="…"`, which add-control did not
+ *     accept (it wants parentControl / previousSibling). Following the tool's
+ *     own hint cost a guaranteed retry, so the hint was fixed AND the older
+ *     spelling kept working.
+ *   • edt / type — the element-level spelling of a field's parts, as used by
+ *     `fields:[{ name, edt, type }]` here and by create's `properties.fields`.
+ *     A caller that flattens one such element into `params` sends {name, edt,
+ *     type}: live probe, add-field {name:"Note2", edt:"Notes"} wrote nothing and
+ *     returned the full 3,000-char spec. (`name` is not listed here — the
+ *     did-you-mean the server already computes resolves it to fieldName.)
  */
 export const OP_PARAM_ALIASES: Record<string, string[]> = {
   sourceCode: ['methodCode'],
+  parentControl: ['parent'],
+  previousSibling: ['after'],
+  fieldType: ['edt'],
+  fieldBaseType: ['type'],
 };
+
+/**
+ * The canonical param an alias key stands for on THIS operation, or undefined.
+ *
+ * Deliberately checks the operation's own declared params (required AND
+ * optional) rather than opParamNames(): an alias is only meaningful where the
+ * canonical parameter is something the operation actually reads.
+ */
+export function canonicalParamForAlias(operation: string, key: string): string | undefined {
+  const spec = D365FO_FILE_OP_SPECS[operation];
+  if (!spec) return undefined;
+  for (const [canonical, aliases] of Object.entries(OP_PARAM_ALIASES)) {
+    if (!aliases.includes(key)) continue;
+    if (spec.required.includes(canonical) || spec.optional.includes(canonical)) return canonical;
+  }
+  return undefined;
+}
 
 /** Per-operation parameter specs for ALL d365fo_file [modify] operations. */
 export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
@@ -795,6 +844,11 @@ export const D365FO_FILE_CORE_PARAMS: ReadonlySet<string> = new Set([
   // "peerOperations: IGNORED (not a recognised d365fo_file parameter)" — the
   // exact false warning the batch flow exists to stop producing.
   'peerOperations',
+  // Internal, injected by runModifyBatch — decisions only the BATCH can make:
+  // which single entry prints the shared best-practice advisory and which fields
+  // it covers. A 3-field batch printed the identical 350-char field-group
+  // paragraph three times because each entry could only see itself.
+  'batchAdvice',
 ]);
 
 /**
@@ -854,18 +908,40 @@ function opParamNames(operation: string): string[] {
 }
 
 /**
+ * Every param of this operation that `key` could plausibly be a misspelling of,
+ * best tier first: exact (case-insensitive), then `param` ends with `key`
+ * (`mandatory` → `fieldMandatory`), then `key` ends with `param`. Only
+ * suffix/prefix containment is used — no fuzzy distance guessing.
+ *
+ * Returns only the BEST non-empty tier: a weaker match is not a rival candidate,
+ * it is a worse one. Within that tier the order is required-params first, then
+ * shortest name — which is what makes `name` on add-field resolve to `fieldName`
+ * (required) rather than to `fieldGroupName`, so the correction the server prints
+ * is also one it can safely apply.
+ */
+export function paramCorrectionCandidates(operation: string, key: string): string[] {
+  const k = key.toLowerCase();
+  const spec = D365FO_FILE_OP_SPECS[operation];
+  const candidates = [...new Set(opParamNames(operation))];
+  const tiers = [
+    candidates.filter(p => p.toLowerCase() === k),
+    candidates.filter(p => p.toLowerCase().endsWith(k)),
+    candidates.filter(p => k.endsWith(p.toLowerCase())),
+  ];
+  const best = tiers.find(t => t.length > 0) ?? [];
+  return [...best].sort((a, b) => {
+    const ra = spec?.required.includes(a) ? 0 : 1;
+    const rb = spec?.required.includes(b) ? 0 : 1;
+    return ra !== rb ? ra - rb : a.length - b.length;
+  });
+}
+
+/**
  * Near-miss suggestion for an unrecognised key: `mandatory` → `fieldMandatory`,
  * `allowDuplicates` → `indexAllowDuplicates`, `alternateKey` → `indexAlternateKey`.
- * Only suffix/prefix containment is used — no fuzzy distance guessing.
  */
 function suggestParam(operation: string, key: string): string | undefined {
-  const k = key.toLowerCase();
-  const candidates = opParamNames(operation);
-  return (
-    candidates.find(p => p.toLowerCase() === k) ??
-    candidates.find(p => p.toLowerCase().endsWith(k)) ??
-    candidates.find(p => k.endsWith(p.toLowerCase()))
-  );
+  return paramCorrectionCandidates(operation, key)[0];
 }
 
 /**

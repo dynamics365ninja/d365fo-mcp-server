@@ -44,7 +44,7 @@ import {
   getInFlight, registerInFlight, clearInFlight,
   MUTATING_TOOLS, currentWriteEpoch, bumpWriteEpoch,
 } from '../utils/callDedup.js';
-import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
+import { capToolResponse } from './responseCaps.js';
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
 import { createProgressReporter } from '../utils/progressReporter.js';
 
@@ -95,49 +95,25 @@ function extractWorkspaceFromMeta(meta: any): string | null {
  * Centralized tool handler that dispatches to individual tool implementations
  */
 
-/** Per-tool response cap sizes. 'uncapped' = no truncation. */
-const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
-  // Uncapped — XML generation, file writes, or long structured output
-  generate_object:                  'uncapped',
-  d365fo_file:                      'uncapped',
-  get_object_info:                  'uncapped', // can return reports (RDL) and full class bodies
-  get_method:                       'uncapped', // partial method source is useless
-  build_d365fo_project:             'uncapped', // compiler errors can appear late in long logs
-  security_info:                    8000,
-  extension_info:                   6000,
-  // Default output is ~1 KB. The higher cap exists for diagnostics=true, whose
-  // whole point is the full dump — truncating that at 5000 hid the stdio
-  // handshake section behind the project table.
-  get_workspace_info:               20000,
-  default:                          5000,
-};
-
-function getCapForTool(toolName: string): number | 'uncapped' {
-  return TOOL_CAP_SIZES[toolName] ?? TOOL_CAP_SIZES['default'];
-}
-
-
-export function capToolResponse(toolName: string, result: any): any {
-  const cap = getCapForTool(toolName);
-  if (cap === 'uncapped' || !result?.content) return result;
-  const content = result.content.map((item: any) => {
-    if (item.type !== 'text' || typeof item.text !== 'string') return item;
-    if (item.text.length <= (cap as number)) return item;
-    // Cut on a block boundary: a raw slice ended responses mid-XML-element
-    // (`<AxTableField Nam`), which reads as corrupt metadata, not truncated.
-    const kept = truncateOnBlockBoundary(item.text, cap as number);
-    return {
-      ...item,
-      // The advice used to say `compact=false`, which makes the response BIGGER
-      // — the caller followed it and hit the cap again with more content cut.
-      text: kept +
-        `\n\n> ✂️ Response truncated at ${cap} chars (${item.text.length - kept.length} omitted). ` +
-        `Ask for LESS, not more: page with methodOffset/fieldsOffset, narrow with fieldFilter/searchControl/prefix, ` +
-        `keep compact=true, and read one object per call instead of objects[].`,
-    };
-  });
-  return { ...result, content };
-}
+/**
+ * Published tools that answer from IN-REPO STATIC DATA and so must not queue
+ * behind dbReady. VERIFIED LIVE (2026-08-25): five parallel first calls at
+ * server start all exceeded 120 s and were pushed to the background, including
+ * `get_knowledge(kind="op-spec")` — 2 ms warm, no database in its path, waiting
+ * only because the gate is "not in LOCAL_TOOLS → await dbReady (55 s)".
+ *
+ * EXEMPTED, one tool, on the strict bar that the handler cannot reach the index
+ * even in principle:
+ *  • get_knowledge — dispatched as `getKnowledgeTool(request)`, without
+ *    `context`, so it has no symbolIndex to read; its answers come from
+ *    src/knowledge/** and the op-spec tables shipped in this repo.
+ * REJECTED (each genuinely reads the index, and would answer wrong or empty
+ * before dbReady): object_patterns (domain="table" queries symbols),
+ * validate_code + validate_object_naming (label/name lookups), and
+ * prepare / generate_object / d365fo_file (all ground writes in indexed metadata).
+ * The bridge-readiness wait below is untouched — different, much shorter gate.
+ */
+const DB_FREE_TOOLS = new Set(['get_knowledge']);
 
 export function registerToolHandler(server: Server, context: XppServerContext): void {
   startMetricsLogging();
@@ -167,8 +143,9 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
 
     // ctx.dbReady resolves once the real symbol database is loaded; await it so
     // tools use the real index instead of silently returning empty results.
-    // LOCAL_TOOLS need no DB (filesystem/in-memory config only) and skip the wait.
-    if (context.dbReady && !LOCAL_TOOLS.has(toolName)) {
+    // LOCAL_TOOLS need no DB (filesystem/in-memory config only) and skip the
+    // wait; so do DB_FREE_TOOLS, whose answer is in-repo static data.
+    if (context.dbReady && !LOCAL_TOOLS.has(toolName) && !DB_FREE_TOOLS.has(toolName)) {
       const t0 = Date.now();
       // Race dbReady against a 55-second timeout so VS Code's ~60 s client
       // timeout doesn't silently cancel the request. If the DB is still loading

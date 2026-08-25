@@ -151,7 +151,8 @@ describe('#11 XML fallback must name what it could not apply', () => {
 
     // The write itself still happened, and the template really did drop them —
     // if either stops being true this test is measuring the wrong thing.
-    expect(text).toContain('Successfully created');
+    expect(text).toMatch(/^✅ Created /);
+    expect(text).not.toContain('via IMetadataProvider');
     expect(xml).toContain('<Indexes />');
     expect(xml).not.toContain('ConSettingRel');
 
