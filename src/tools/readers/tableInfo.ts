@@ -30,6 +30,34 @@ const TableInfoArgsSchema = z.object({
   relations: z.boolean().optional().default(false).describe('true = list the table relations with their constraints (default: count only)'),
 });
 
+/**
+ * What the non-bridge paths cannot honour, said out loud.
+ *
+ * `compact` and `relations` are read only by the bridge renderer. The DB and
+ * disk fallbacks parse them, default them and drop them — so `relations:true`
+ * came back with no relations and nothing explaining it, which reads as "this
+ * table has none". Naming the gap costs one line and stops the wrong conclusion.
+ */
+function unhonouredOptionsNote(args: { compact: boolean; relations: boolean }, source: string): string {
+  const dropped: string[] = [];
+  if (args.relations) dropped.push('`relations:true`');
+  if (args.compact === false) dropped.push('`compact:false` (full method bodies)');
+  if (dropped.length === 0) return '';
+  return (
+    `\n> ℹ️ ${dropped.join(' and ')} ${dropped.length === 1 ? 'was' : 'were'} NOT applied: this ` +
+    `answer came from the ${source}, and only live bridge metadata carries them. ` +
+    `They are available once the C# bridge is connected.\n`
+  );
+}
+/** Append a line to a tool result's first text block. */
+function appendTextNote(result: any, note: string): any {
+  const content = Array.isArray(result?.content) ? [...result.content] : [];
+  const i = content.findIndex((c: any) => c?.type === 'text' && typeof c.text === 'string');
+  if (i === -1) return result;
+  content[i] = { ...content[i], text: content[i].text + note };
+  return { ...result, content };
+}
+
 export async function tableInfoTool(request: CallToolRequest, context: XppServerContext) {
   try {
     const args = TableInfoArgsSchema.parse(request.params.arguments);
@@ -49,7 +77,8 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
       symbolIndex, args.tableName, args.methodOffset, args.fieldsOffset, args.fieldFilter,
     );
     if (dbResponse) {
-      return dbResponse;
+      const note = unhonouredOptionsNote(args, 'symbol index');
+      return note ? appendTextNote(dbResponse, note) : dbResponse;
     }
 
     // 3. Disk fallback — slowest, only when bridge AND DB have no record
