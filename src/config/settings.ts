@@ -236,7 +236,11 @@ export const SETTINGS: Setting[] = [
     label: 'Folder scanned for .rnrproj projects',
     description:
       'Scanned once at startup so the server can switch model automatically when you open another solution or ' +
-      'git branch. Optional, but it is what makes multi-project workspaces work without reconfiguring.',
+      'git branch. Optional, but it is what makes multi-project workspaces work without reconfiguring. ' +
+      'The scan resolves the MODEL; it does not pick a project when several .rnrproj under it build that model — ' +
+      'get_workspace_info then reports `Project : (not selected)` and names them, and anything that registers a ' +
+      'file needs an explicit projectName/projectPath. Picking one meant every write landed in whichever project ' +
+      'the scan saw first.',
     placeholder: 'K:\\repos\\MySolution\\projects',
   },
   {
