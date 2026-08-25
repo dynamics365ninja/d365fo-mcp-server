@@ -57,6 +57,17 @@ const TOPIC_REDIRECTS: Record<string, string> = {
   delete: 'delete',
   'delete-object': 'delete',
   'remove-object': 'delete',
+  // build / verify / BP resolution overrides: accepted by the handlers, kept out
+  // of the wire schema to pay for the folds. Without a topic they were
+  // capabilities nobody could find.
+  build: 'sdlc-overrides',
+  'build_d365fo_project': 'sdlc-overrides',
+  verify: 'sdlc-overrides',
+  'verify_d365fo_project': 'sdlc-overrides',
+  'run_bp_check': 'sdlc-overrides',
+  'bp-check': 'sdlc-overrides',
+  'sdlc-overrides': 'sdlc-overrides',
+  'package-path': 'sdlc-overrides',
   naming: 'naming',
   prefix: 'naming',
   'object-naming': 'naming',
@@ -66,6 +77,28 @@ const TOPIC_REDIRECTS: Record<string, string> = {
 };
 
 const REDIRECT_ANSWERS: Record<string, string> = {
+  'sdlc-overrides': [
+    'build_d365fo_project / verify_d365fo_project / run_bp_check — resolution overrides.',
+    '',
+    'These are ACCEPTED by the handlers but deliberately not in the published schema: they are',
+    'auto-resolved on every ordinary call, and publishing them cost more than serving the rare',
+    'call that overrides one. Pass them flat, alongside the documented parameters.',
+    '',
+    '  packagePath (string): packages root. The one worth knowing about — it is how you point a',
+    '      build, a verify or a BP check at metadata that does NOT live under the configured',
+    '      PackagesLocalDirectory. Published on run_bp_check, accepted-but-unpublished on the',
+    '      other two; the behaviour is the same in all three.',
+    '  packageName (string) [verify]: package name. Auto-resolved from the model name.',
+    '  projectPath (string) [build]: legacy. Used ONLY to derive a model name when modelName is',
+    '      absent — prefer modelName, which is published.',
+    '  targetFilter (string), targetElementType (string) [run_bp_check]: the original',
+    '      single-target form. `objects: [{objectName}]` is published and does the same job for',
+    '      one object or many; reach for these only when you need xppbp\'s own element name',
+    '      (e.g. targetElementType="DataEntityView").',
+    '',
+    'Everything else on these three tools is published — see the tool schema.',
+  ].join('\n'),
+
   delete: [
     'd365fo_file(action="delete") — remove an AOT object from the model.',
     '',
@@ -182,6 +215,9 @@ export function renderOpSpecIndex(unknownTopic?: string): string {
     '',
     'd365fo_file resolution overrides (any action, nested in `params`):',
     ...Object.entries(D365FO_FILE_OVERRIDE_PARAMS).map(([k, v]) => `  ${k}: ${v}`),
+    '',
+    'build / verify / run_bp_check resolution overrides (topic="sdlc-overrides", passed flat):',
+    '  packagePath, packageName, projectPath, targetFilter, targetElementType',
     '',
     'labels write plumbing (topic="labels", nested in `params`):',
     `  ${Object.keys(LABELS_OVERRIDE_PARAMS).join(', ')}`,
