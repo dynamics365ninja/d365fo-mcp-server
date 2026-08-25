@@ -163,15 +163,26 @@ async function modifyWithExtensionAutoCreate(
     context,
     outcome,
   );
+  // The create and the retried operation succeed or fail independently, so the
+  // headline has to say which happened. It used to read "created it … and then
+  // applied the <operation>" even when the operation had FAILED, describing a
+  // write that did not happen and saying nothing about the empty object now on
+  // disk and registered in the project.
+  const retryFailed = (retry as { isError?: boolean }).isError === true;
+  const headline = retryFailed
+    ? `⚠️ ${pending.objectType} "${finalName}" did not exist, so it was created (empty, via ` +
+      `the ordinary create path) — but the ${args.operation} below then FAILED. The empty ` +
+      `${pending.objectType} IS on disk and registered in the project: fix the operation and ` +
+      `re-send it against "${finalName}", or remove it with ` +
+      `d365fo_file(action="delete", objectType="${pending.objectType}", objectName="${finalName}").`
+    : `ℹ️ ${pending.objectType} "${finalName}" did not exist — created it (empty, via the ` +
+      `ordinary create path) and then applied the ${args.operation}. Use "${finalName}" in later calls.`;
   return {
     content: [{
       type: 'text',
-      text:
-        `ℹ️ ${pending.objectType} "${finalName}" did not exist — created it (empty, via the ` +
-        `ordinary create path) and then applied the ${args.operation}. Use "${finalName}" in later calls.\n` +
-        `📁 ${createOutcome.filePath}\n\n---\n\n${resultText(retry)}`,
+      text: `${headline}\n📁 ${createOutcome.filePath}\n\n---\n\n${resultText(retry)}`,
     }],
-    ...((retry as { isError?: boolean }).isError ? { isError: true } : {}),
+    ...(retryFailed ? { isError: true } : {}),
   };
 }
 

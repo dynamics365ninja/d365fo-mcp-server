@@ -1,7 +1,7 @@
 {
   "_comment": "Written by `npm run bridge:build` after a SUCCESSFUL compile. Proves these bridge sources compiled against the D365FO metadata assemblies, which no CI runner has. Do not hand-edit — regenerate by building.",
-  "sourceHash": "934111b2813c98421c9cd9c47f15c539de7bdc18275a171989933ef83a388237",
+  "sourceHash": "6d309c78a6551740f47d85876a135e1dc4da2dd54913fca4d9c80d6896a57b04",
   "sourceFileCount": 9,
   "metamodelFileVersion": "7.0.7996.33",
-  "builtAt": "2026-08-25T12:16:48.889Z"
+  "builtAt": "2026-08-25T14:30:46.283Z"
 }

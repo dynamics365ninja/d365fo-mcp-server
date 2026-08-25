@@ -139,6 +139,23 @@ namespace D365MetadataBridge.Services
             return null;
         }
 
+        /// <summary>
+        /// PickProvider for a site that deliberately probes SEVERAL object kinds.
+        ///
+        /// PickProvider throws when a provider fails, so "not found" can never be
+        /// confused with "could not look" — correct for a single-kind lookup. But
+        /// GetMethodSource tries Classes then Tables, and GetCompletionMembers does
+        /// the same: there, a throw on the first kind used to abort the call before
+        /// the kind that would have answered was ever tried. So the failure is
+        /// captured and handed back to the caller, which surfaces it only if every
+        /// probe missed.
+        /// </summary>
+        private IMetadataProvider? PickProviderTolerant(Func<IMetadataProvider, bool> exists, ref Exception? firstFailure)
+        {
+            try { return PickProvider(exists); }
+            catch (Exception ex) { firstFailure ??= ex; return null; }
+        }
+
         // ========================
         // WRITE-SUPPORT: Validate / Resolve / Refresh
         // ========================
@@ -507,8 +524,12 @@ namespace D365MetadataBridge.Services
         {
             var result = new MethodSourceModel { ClassName = className, MethodName = methodName };
 
+            // Class then table, on purpose: a provider failure on the first kind
+            // must not decide the answer for the second. See PickProviderTolerant.
+            Exception? probeFailure = null;
+
             // Try class first (checks primary then reference provider)
-            var classProv = PickProvider(p => p.Classes.Exists(className));
+            var classProv = PickProviderTolerant(p => p.Classes.Exists(className), ref probeFailure);
             if (classProv != null)
             {
                 var cls = classProv.Classes.Read(className);
@@ -542,7 +563,7 @@ namespace D365MetadataBridge.Services
             }
 
             // Try table (checks primary then reference provider)
-            var tableProv = PickProvider(p => p.Tables.Exists(className));
+            var tableProv = PickProviderTolerant(p => p.Tables.Exists(className), ref probeFailure);
             if (tableProv != null)
             {
                 var table = tableProv.Tables.Read(className);
@@ -563,6 +584,19 @@ namespace D365MetadataBridge.Services
                     }
                     catch { }
                 }
+            }
+
+            // Nothing matched. If a provider FAILED along the way, that — not
+            // "no such method" — is the honest answer: reporting a lookup that
+            // could not run as an absent method is how an agent ends up writing
+            // a method that already exists.
+            if (!result.Found && probeFailure != null)
+            {
+                throw new InvalidOperationException(
+                    $"Metadata provider could not answer the lookup for '{className}.{methodName}' " +
+                    $"({probeFailure.GetType().Name}: {probeFailure.Message}). This is a provider " +
+                    "failure, NOT a missing method.",
+                    probeFailure);
             }
 
             return result;

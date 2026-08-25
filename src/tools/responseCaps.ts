@@ -74,6 +74,13 @@ const TRUNCATION_ADVICE: Record<string, string> = {
     'The write contract and the grounding token are at the TOP of this response — they were not cut.',
   get_knowledge:
     'Ask for fewer topics per call (`topics[]`, max 10) or one `topic` at a time, and keep format="concise" (the default).',
+  // search has no paging knobs either, and it hits this cap far more often now
+  // that untyped queries are answered from the index — index rows carry more per
+  // hit than bridge rows do.
+  search:
+    'search has no paging parameters. Narrow it instead: pass `type` to scope to one object kind ' +
+    '(also far faster), lower `limit`, or make the query more specific. `queries[]` runs several ' +
+    'narrow searches in one call rather than one broad one.',
   security_info:
     'Narrow it: one artifact per call (mode="artifact", name, artifactType), ' +
     'includeChain=false to skip the hierarchy walk, or mode="coverage" with a single objectName.',

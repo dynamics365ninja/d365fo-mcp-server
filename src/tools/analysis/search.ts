@@ -500,6 +500,13 @@ async function performHybridSearch(
 interface IndexAnswer {
   results: any[];
   staleCount: number;
+  /**
+   * The index read THREW, as opposed to answering with nothing. Kept apart from
+   * `results.length` because the two mean different things to the caller: an
+   * empty answer is "no such object", an empty answer after a failure is "I
+   * could not look".
+   */
+  indexFailed: boolean;
 }
 
 async function collectIndexAnswer(
@@ -544,12 +551,16 @@ async function collectIndexAnswer(
       ...ranked.filter(r => !r.staleIndexRow),
       ...ranked.filter(r => r.staleIndexRow),
     ];
-    return { results, staleCount: results.filter(r => r.staleIndexRow).length };
-  } catch {
-    // An index read that throws is "no rows", not an error result: the untyped
-    // route decides on the row count, and the bridge confirmation below it is
-    // exactly the right next step when the index could not answer.
-    return { results: [], staleCount: 0 };
+    return { results, staleCount: results.filter(r => r.staleIndexRow).length, indexFailed: false };
+  } catch (e) {
+    // An index read that throws is treated as "no rows" for ROUTING — the untyped
+    // route decides on the row count, and going to the bridge is exactly the right
+    // next step when the index could not answer. But it is NOT "no matches" for
+    // the CALLER: if the bridge cannot confirm either, an empty answer that came
+    // from a read pool closed mid-rebuild would otherwise read as "that object
+    // does not exist", which is the most expensive wrong answer this tool gives.
+    console.error(`[search] index read failed: ${e instanceof Error ? e.message : e}`);
+    return { results: [], staleCount: 0, indexFailed: true };
   }
 }
 
@@ -564,6 +575,26 @@ function renderIndexAnswer(
 ) {
   try {
     const { results, staleCount } = answer;
+
+    // The index could not be read and nothing else answered either. Saying "no
+    // matches" here would report a closed read pool, a rebuild in progress or a
+    // corrupt page as "that object does not exist".
+    if (answer.indexFailed && (!results || results.length === 0)) {
+      return {
+        content: [{
+          type: 'text',
+          text:
+            `❌ Could not search: the symbol index read failed for "${args.query}", and live ` +
+            `metadata could not answer either. This is NOT "no such object" — nothing was ` +
+            `searched.
+
+` +
+            `The index may be rebuilding (update_symbol_index) or the database may be missing; ` +
+            `get_workspace_info(diagnostics: true) reports its state. Retry once it is ready.`,
+        }],
+        isError: true,
+      };
+    }
 
     if (!results || results.length === 0) {
       const allSymbolNames = symbolIndex.getAllSymbolNames(args.query);

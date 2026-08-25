@@ -149,8 +149,12 @@ function applyCompactTranslation(objectType: string, options: Record<string, any
   if (objectType === 'form' && compact && out.maxControls === undefined) {
     out.maxControls = COMPACT_FORM_CONTROLS;
   }
-  if (objectType === 'report' && out.includeRdl === undefined) {
-    out.includeRdl = !compact;
+  // Only the SUPPRESSING direction. `compact:false` used to set includeRdl=true
+  // and pull in the whole report definition — get_object_info is uncapped, so
+  // that is up to 60,000 chars a caller did not ask for. Wanting the RDL is what
+  // `includeRdl:true` is for.
+  if (objectType === 'report' && compact && out.includeRdl === undefined) {
+    out.includeRdl = false;
   }
   return out;
 }
