@@ -301,10 +301,31 @@ class ConfigManager {
             `This usually means the VS project wizard default model was not changed.`,
           );
         }
-        this.autoDetectedProject = primary;
+        // Several .rnrproj files can share one model (a multi-project D365FO solution).
+        // Silently pinning projectPath to whichever one happened to scan first meant
+        // writes landed in an arbitrary project the caller never asked for. Mirror the
+        // ambiguousProjects pattern above (line ~242): the model is still known, but
+        // projectPath is left unset so a project-registering call must name one explicitly.
+        const sameModelProjects = all.filter(p => p.modelName === primary.modelName);
+        if (sameModelProjects.length > 1) {
+          this.autoDetectedProject = {
+            modelName: primary.modelName,
+            packagePath: primary.packagePath,
+            packageName: primary.packageName,
+            ambiguousProjects: sameModelProjects
+              .map(p => p.projectPath)
+              .filter((p): p is string => !!p),
+          };
+          console.error(
+            `[ConfigManager] ⚠️ ${sameModelProjects.length} projects share model "${primary.modelName}" under D365FO_SOLUTIONS_PATH — ` +
+            `model resolved, but no project auto-selected. Pass projectName/projectPath explicitly to target one.`
+          );
+        } else {
+          this.autoDetectedProject = primary;
+          console.error(`[ConfigManager] ✅ Using first found project as primary: ${primary.modelName}`);
+        }
         registerCustomModel(primary.modelName);
         recordDetectionSuccess('the D365FO_SOLUTIONS_PATH scan', primary.modelName, primary.projectPath ?? null);
-        console.error(`[ConfigManager] ✅ Using first found project as primary: ${primary.modelName}`);
       }
     }
   }
