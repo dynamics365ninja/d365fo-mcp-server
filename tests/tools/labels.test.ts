@@ -19,20 +19,50 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 beforeEach(() => { resetLabelSearchHistory(); });
 
 // Mock filesystem access — label tools write to disk
+// ONE set of stubs, installed under both 'fs' and 'fs/promises'.
+//
+// The label writers import `{ promises as fs } from 'fs'`, but writeFileAtomic
+// — which they now go through, so a torn write cannot corrupt every label in a
+// model's .label.txt — imports 'fs/promises'. Mocking only 'fs' let the real
+// writeFile run against a test path that does not exist. Sharing the vi.fn
+// instances keeps every existing `fsMock.promises.*` assertion pointed at the
+// calls it was written for, whichever specifier the code under test used.
+const fsStubs = vi.hoisted(() => ({
+  readFile: vi.fn(async () => '; Label file\nMyExistingLabel=Existing label text\n'),
+  writeFile: vi.fn(async () => {}),
+  mkdir: vi.fn(async () => {}),
+  access: vi.fn(async () => {}),
+  readdir: vi.fn(async () => []),
+  // writeFileAtomic: write a temp sibling, rename it over the target, rm the
+  // temp if the rename failed. Stubbed as no-ops — nothing here touches a real
+  // filesystem, and the assertions are about writeFile being reached at all.
+  rename: vi.fn(async () => {}),
+  rm: vi.fn(async () => {}),
+}));
+
 vi.mock('fs', async (orig) => {
   const actual = await orig<typeof import('fs')>();
-  return {
-    ...actual,
-    promises: {
-      ...actual.promises,
-      readFile: vi.fn(async () => '; Label file\nMyExistingLabel=Existing label text\n'),
-      writeFile: vi.fn(async () => {}),
-      mkdir: vi.fn(async () => {}),
-      access: vi.fn(async () => {}),
-      readdir: vi.fn(async () => []),
-    },
-  };
+  return { ...actual, promises: { ...actual.promises, ...fsStubs } };
 });
+
+vi.mock('fs/promises', async (orig) => {
+  const actual = await orig<typeof import('fs/promises')>();
+  return { ...actual, ...fsStubs, default: { ...actual, ...fsStubs } };
+});
+
+/**
+ * Does this write target `name`, directly or through writeFileAtomic's temp
+ * sibling (`<name>.tmp-<pid>-<n>`, renamed over the target)?
+ *
+ * The label writers are on the atomic helper because a torn write to a
+ * .label.txt does not corrupt one label, it corrupts every label in that
+ * model's file — and .label.txt has no undo outside git. The assertions below
+ * are about the bytes reaching that file, not about which of the two syscalls
+ * carried them.
+ */
+function writeTargets(writePath: string, name: string): boolean {
+  return writePath.endsWith(name) || writePath.includes(`${name}.tmp-`);
+}
 
 const mockAddToProject = vi.fn(async () => true);
 const mockAddLabelToProject = vi.fn(async (_proj: string, _id: string, langs: string[]): Promise<string[]> =>
@@ -1050,10 +1080,10 @@ describe('create_label', () => {
       ctx,
     );
     expect(result.isError).toBeFalsy();
-    expect(writes.some(w => w.path.endsWith('MyModel.en-US.label.txt'))).toBe(true);
-    expect(writes.some(w => w.path.endsWith('MyModel.fi.label.txt'))).toBe(true);
-    expect(writes.some(w => w.path.endsWith('MyModel.lt.label.txt'))).toBe(true);
-    expect(writes.some(w => w.path.endsWith('MyModel.nb-NO.label.txt'))).toBe(true);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.en-US.label.txt'))).toBe(true);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.fi.label.txt'))).toBe(true);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.lt.label.txt'))).toBe(true);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.nb-NO.label.txt'))).toBe(true);
   });
 
   it('writes ONLY the requested locales when `languages` is provided', async () => {
@@ -1080,10 +1110,10 @@ describe('create_label', () => {
     );
     expect(result.isError).toBeFalsy();
     // en-US written; fi / lt / nb-NO must NOT be touched (no stray placeholder files)
-    expect(writes.some(w => w.path.endsWith('MyModel.en-US.label.txt'))).toBe(true);
-    expect(writes.some(w => w.path.endsWith('MyModel.fi.label.txt'))).toBe(false);
-    expect(writes.some(w => w.path.endsWith('MyModel.lt.label.txt'))).toBe(false);
-    expect(writes.some(w => w.path.endsWith('MyModel.nb-NO.label.txt'))).toBe(false);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.en-US.label.txt'))).toBe(true);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.fi.label.txt'))).toBe(false);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.lt.label.txt'))).toBe(false);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.nb-NO.label.txt'))).toBe(false);
     // and no orphaned XML descriptors for the unrequested locales
     expect(writes.some(w => w.path.endsWith('MyModel_lt.xml'))).toBe(false);
     expect(writes.some(w => w.path.endsWith('MyModel_nb-NO.xml'))).toBe(false);
@@ -1117,10 +1147,10 @@ describe('create_label', () => {
       ctx,
     );
     expect(result.isError).toBeFalsy();
-    expect(writes.some(w => w.path.endsWith('MyModel.en-US.label.txt'))).toBe(true);
-    expect(writes.some(w => w.path.endsWith('MyModel.sv.label.txt'))).toBe(true);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.en-US.label.txt'))).toBe(true);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.sv.label.txt'))).toBe(true);
     // fi / lt / nb-NO never requested and not present — must not appear
-    expect(writes.some(w => w.path.endsWith('MyModel.fi.label.txt'))).toBe(false);
+    expect(writes.some(w => writeTargets(w.path, 'MyModel.fi.label.txt'))).toBe(false);
   });
 
   it('resolves to on-disk casing when `languages` locale differs in case (Linux unzip)', async () => {
@@ -1639,7 +1669,7 @@ describe('rename_label', () => {
     );
     if (result.isError) throw new Error(`rename_label failed: ${result.content[0].text}`);
     expect(result.isError).toBeFalsy();
-    const labelWrite = writeCalls.find(c => c.path.endsWith('.label.txt'));
+    const labelWrite = writeCalls.find(c => writeTargets(c.path, '.label.txt'));
     expect(labelWrite).toBeDefined();
     // Renamed line must use CRLF, and surrounding lines must not be silently downgraded to LF
     expect(labelWrite!.content).toContain('NewFeatureName=Some text\r\n');
@@ -1676,7 +1706,7 @@ describe('rename_label', () => {
     );
     if (result.isError) throw new Error(`rename_label failed: ${result.content[0].text}`);
     expect(result.isError).toBeFalsy();
-    const labelWrite = writeCalls.find(c => c.path.endsWith('.label.txt'));
+    const labelWrite = writeCalls.find(c => writeTargets(c.path, '.label.txt'));
     expect(labelWrite).toBeDefined();
     // Renamed line must keep LF — tool must not upgrade a LF file to CRLF.
     expect(labelWrite!.content).toContain('NewFeatureName=Some text\n');

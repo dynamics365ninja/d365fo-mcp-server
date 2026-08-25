@@ -18,10 +18,10 @@ import util from 'util';
 import path from 'path';
 import { parseStringPromise } from '../../utils/xml.js';
 import { sayOncePerSession, resetRepeatedNoteMemory } from '../../utils/repeatedNotes.js';
-import { getConfigManager, fallbackPackagePath, extractModelFromFilePath } from '../../utils/configManager.js';
+import { getConfigManager, extractModelFromFilePath } from '../../utils/configManager.js';
 import { isStandardModel, resolveRegularObjectPrefixToken, resolveObjectPrefix, deriveExtensionInfix } from '../../utils/modelClassifier.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
-import { resolveDbPathLocally } from '../../utils/metadataResolver.js';
+import { findBaseObjectXml, findBaseFormXml } from '../../utils/baseObjectXml.js';
 import { assertWritePathAllowed } from '../../utils/pathContainment.js';
 import { withFileLock, writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import {
@@ -5465,79 +5465,6 @@ function allControlsFromFormXmlObj(xmlObj: any): ResolvedControl[] {
   return results;
 }
 
-/**
- * Locate the base form XML on disk, trying DB path → remapped path → filesystem scan.
- * Returns raw XML content, or null if not accessible.
- */
-export async function findBaseFormXml(baseFormName: string, symbolIndex: any): Promise<string | null> {
-  return findBaseObjectXml('form', baseFormName, symbolIndex);
-}
-
-/**
- * Locate the XML of a base (non-extension) object on disk, trying DB path →
- * remapped path → filesystem scan. `objectType` is both the symbols-table type
- * and the findD365FileOnDisk key ('form', 'table', …).
- * Returns raw XML content, or null if not accessible.
- */
-export async function findBaseObjectXml(
-  objectType: string,
-  objectName: string,
-  symbolIndex: any,
-): Promise<string | null> {
-  // Helper: read a file, transparently following JSON metadata proxies.
-  async function tryRead(p: string): Promise<string | null> {
-    try {
-      const raw = await fs.readFile(p, 'utf-8');
-      if (raw.trimStart().startsWith('{')) {
-        const data = JSON.parse(raw);
-        if (data.sourcePath) {
-          try { return await fs.readFile(data.sourcePath, 'utf-8'); } catch { return null; }
-        }
-        return null;
-      }
-      return raw;
-    } catch { return null; }
-  }
-
-  // 1. Symbol DB lookup
-  let dbFilePath: string | null = null;
-  try {
-    const rdb = symbolIndex.getReadDb();
-    const row = rdb.prepare(
-      `SELECT file_path FROM symbols WHERE type = ? AND name = ? LIMIT 1`
-    ).get(objectType, objectName) as any;
-    if (row?.file_path) dbFilePath = row.file_path;
-  } catch { /* ignore */ }
-
-  if (dbFilePath) {
-    // Try absolute DB path as-is
-    const direct = await tryRead(dbFilePath);
-    if (direct) return direct;
-
-    // DB stored a relative path — join with configured packagePath
-    if (!path.isAbsolute(dbFilePath)) {
-      const cm = getConfigManager();
-      await cm.ensureLoaded();
-      const pkgPath = cm.getPackagePath() || fallbackPackagePath();
-      const abs = await tryRead(path.join(pkgPath, dbFilePath));
-      if (abs) return abs;
-    }
-
-    // Build-agent path remapping (e.g. /home/vsts/... → local PackagesLocalDirectory)
-    const remapped = await resolveDbPathLocally(dbFilePath);
-    if (remapped) {
-      const content = await tryRead(remapped);
-      if (content) return content;
-    }
-  }
-
-  // 2. Filesystem scan using model from config
-  const diskPath = await findD365FileOnDisk(objectType, objectName);
-  if (diskPath) return tryRead(diskPath);
-
-  return null;
-}
-
 // ── Auto-correction helpers ────────────────────────────────────────────────
 // A correction is applied ONLY where the failure has exactly one valid reading
 // that the server can derive from state it already holds. Everything else keeps
@@ -6137,3 +6064,8 @@ export function generateDisplayMethodSource(methodName: string, returnEdt: strin
 // from importing each other. Re-exported here because the test seam was part of
 // this module's surface before the move.
 export { resetRepeatedNoteMemory };
+
+// The base-object XML locator moved to src/utils/baseObjectXml.ts so a generator
+// can read a form without importing this write tool. Re-exported because it was
+// part of this module's surface.
+export { findBaseObjectXml, findBaseFormXml };

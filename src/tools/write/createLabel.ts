@@ -13,6 +13,7 @@
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
+import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import type { XppSymbolIndex } from '../../metadata/symbolIndex.js';
@@ -236,7 +237,7 @@ function serializeLabelMap(
 async function writeFileWithBom(filePath: string, content: string): Promise<void> {
   // Ensure content starts with BOM
   const contentWithBom = content.startsWith(UTF8_BOM) ? content : UTF8_BOM + content;
-  await fs.writeFile(filePath, contentWithBom, 'utf-8');
+  await writeFileAtomic(filePath, contentWithBom);
 }
 
 /** XML descriptor content for a new AxLabelFile locale */

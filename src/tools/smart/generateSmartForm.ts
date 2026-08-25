@@ -21,7 +21,7 @@ import { resolvePattern } from '../../knowledge/formPatterns/index.js';
 import { expandPatternToXml, canExpandPattern } from '../../utils/formControlExpander.js';
 import { cloneFormXml } from '../../utils/formCloner.js';
 import { methodStubsForPattern, injectMethodStubs } from '../../knowledge/formPatterns/methodStubs.js';
-import { findBaseFormXml } from '../write/modifyD365File.js';
+import { findBaseFormXml } from '../../utils/baseObjectXml.js';
 import { getFieldControlMap, getTableTitleField, type FieldControlMap } from '../../utils/fieldControlTypes.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { scaffoldWriteRefusalResult } from '../write/writeAnchorGuard.js';

@@ -24,7 +24,7 @@
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { XppSymbolIndex } from '../../metadata/symbolIndex.js';
 import { SmartXmlBuilder, TableFieldSpec } from '../../utils/smartXmlBuilder.js';
-import { XmlTemplateGenerator } from '../write/createD365File.js';
+import { XmlTemplateGenerator } from '../xml/xmlTemplateGenerator.js';
 import {
   resolveBestEdt,
   suggestEdtFromFieldName as heuristicEdtFromFieldName,

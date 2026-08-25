@@ -28,6 +28,35 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **`d365fo_file(action="generate")` produced X++ that could not compile.**
+  `XmlTemplateGenerator` was declared twice — once in `createD365File.ts`, once
+  in `generateD365Xml.ts` — with a comment on each half asserting the two were
+  mirrors. They were not: **26 of the 27 shared methods had diverged**, every
+  divergence a fix made on the create side that never reached the generate
+  mirror. The one users could feel: the generate copy's "a member variable is a
+  line ending in `;`" rule dropped `#Library` / `#define` / `#localmacro`
+  directives out of a class declaration, so the XML it handed back referenced an
+  undefined macro. The others were quieter and no smaller — the generate copy
+  ignored `sourceCode` on tables entirely (methods and declaration never reached
+  the XML), skipped self-reference normalisation on classes and data entities,
+  and wrote `<DataField>undefined</DataField>` for the documented
+  `fields: ["AccountNum"]` shape on a table extension.
+  There is now ONE implementation, in `src/tools/xml/xmlTemplateGenerator.ts`,
+  imported by both former homes and by `generateSmartReport`. Verified live
+  against the VM: for a class carrying a `#Library` include, an enum and a
+  security privilege, `generate` output is now byte-identical to what `create`
+  writes to disk, macro directives included.
+  `tests/tools/xmlTemplateGeneratorSingleton.test.ts` fails if a second class or
+  a second `generateAx*Xml` implementation ever appears — output-comparison
+  tests cannot catch this, because a fork drifts in the methods nobody thought
+  to compare.
+- Seven rewrites of EXISTING files moved onto the atomic write helper: the two
+  post-create reconciliations in `createD365File.ts`, and the `.label.txt`
+  rewrites in `createLabel.ts` and `renameLabel.ts`. A torn write to a
+  `.label.txt` does not corrupt one label, it corrupts every label in that
+  model's file, and that file has no undo outside git.
+
 ### Changed
 - **The published tool surface is 20 tools, down from 23.** Every tool schema is
   sent on every request, so a merge only pays when the merged description is
@@ -57,6 +86,12 @@ those are called out explicitly below.
   `validate_code.mode`), and `update_symbol_index` dropped the half of its
   description that had become an essay. `ListTools` fell from 48,019 to 44,932
   characters.
+- The base-object XML locator moved out of `modifyD365File.ts` into
+  `src/utils/baseObjectXml.ts`. `generateSmartForm` had been importing a
+  5,600-line write tool to read a form's XML; `tests/utils/layering.test.ts` now
+  fails if a generator imports a write tool again (the 93-line write-anchor
+  guard stays allowed and says why), and pins the two remaining upward imports
+  so a third cannot appear unnoticed.
 
 ### Breaking
 - **`undo_last_modification`, `review_workspace_changes` and `trigger_db_sync` are
