@@ -6,7 +6,8 @@
 
 export const runBpCheckTool = {
     name: 'run_bp_check',
-    description: 'Run Microsoft Best Practices checker (xppbp.exe) on a D365FO project. Returns BP warnings and errors with rule codes (e.g. BPErrorLabelIsText, BPXmlDocNoDocumentationComments).',
+    description: 'Run Microsoft Best Practices checker (xppbp.exe) on a D365FO project. Returns BP warnings and errors with rule codes (e.g. BPErrorLabelIsText, BPXmlDocNoDocumentationComments). ' +
+      'Runs AFTER a build, not after a write — and build_d365fo_project(bpCheck:true) already folds this check into the build, so a separate call is rarely needed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -23,8 +24,11 @@ export const runBpCheckTool = {
           },
         },
         projectPath: { type: 'string', description: 'Absolute path to the .rnrproj file to analyze. Auto-detected if omitted.' },
-        targetFilter: { type: 'string', description: 'Single-object form: object name to check. Use objects[] for more than one.' },
-        targetElementType: { type: 'string', description: 'Element type for targetFilter. Looked up in the symbol index if omitted; ambiguous or unknown names error rather than being assumed to be a class.' },
+        // targetFilter / targetElementType are NOT published: they are the
+        // single-object spelling of the objects[] array this schema itself calls
+        // "preferred", and were passed 0 times in 273 sampled tool calls. The
+        // handler still accepts both, so an agent holding the old spelling gets
+        // an answer — only the ~330 chars of advertisement are gone.
         modelName: { type: 'string', description: 'Model name to check. Auto-detected if omitted.' },
         packagePath: { type: 'string', description: 'PackagesLocalDirectory root path. Auto-detected if omitted.' },
       },

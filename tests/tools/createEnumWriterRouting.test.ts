@@ -30,6 +30,17 @@ vi.mock('fs/promises', () => ({
   }),
   writeFile: vi.fn(async (p: string, content: string) => { files.set(p, content); }),
   copyFile: vi.fn(async () => {}),
+  // writeFileAtomic writes a temp sibling and renames it over the target, so a
+  // mock without these two makes every write throw and the tool report failure.
+  // The rename has to MOVE the entry: a no-op leaves the content parked under
+  // the temp path and the assertions below read an empty target.
+  rename: vi.fn(async (from: string, to: string) => {
+    const content = files.get(from);
+    if (content === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    files.set(to, content);
+    files.delete(from);
+  }),
+  rm: vi.fn(async (p: string) => { files.delete(p); }),
   mkdir: vi.fn(async () => {}),
   access: vi.fn(async (p: string) => {
     if (/^[A-Za-z]:[\\/]?$/.test(p) || p === '/') return;
@@ -147,7 +158,11 @@ describe('enum create — which writer runs', () => {
 
     expect(createObject).not.toHaveBeenCalled();
     const xml = [...files.values()].join('\n');
-    expect(result.content[0].text).toContain('Successfully created');
+    expect(result.content[0].text).toMatch(/^✅ Created /);
+    // The XML template ran, not the bridge — every bridge create path says so
+    // in its headline. (The headline used to read 'Successfully created D365FO
+    // <type> file:'; that phrase went when the create response was trimmed.)
+    expect(result.content[0].text).not.toContain('via IMetadataProvider');
     expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
     expect(xml).not.toContain('<Value>');
     for (const v of POSITIONAL) expect(xml).toContain(`<Name>${v.name}</Name>`);
@@ -164,7 +179,11 @@ describe('enum create — which writer runs', () => {
 
     expect(createObject).not.toHaveBeenCalled();
     const xml = [...files.values()].join('\n');
-    expect(result.content[0].text).toContain('Successfully created');
+    expect(result.content[0].text).toMatch(/^✅ Created /);
+    // The XML template ran, not the bridge — every bridge create path says so
+    // in its headline. (The headline used to read 'Successfully created D365FO
+    // <type> file:'; that phrase went when the create response was trimmed.)
+    expect(result.content[0].text).not.toContain('via IMetadataProvider');
     expect(xml).not.toContain('<EnumValues />');
     for (const v of POSITIONAL) expect(xml).toContain(`<Name>${v.name}</Name>`);
   });
@@ -182,7 +201,11 @@ describe('enum create — which writer runs', () => {
 
     expect(createObject).not.toHaveBeenCalled();
     const xml = [...files.values()].join('\n');
-    expect(result.content[0].text).toContain('Successfully created');
+    expect(result.content[0].text).toMatch(/^✅ Created /);
+    // The XML template ran, not the bridge — every bridge create path says so
+    // in its headline. (The headline used to read 'Successfully created D365FO
+    // <type> file:'; that phrase went when the create response was trimmed.)
+    expect(result.content[0].text).not.toContain('via IMetadataProvider');
     expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
     expect(xml).not.toContain('<Value>');
     for (const n of ['None', 'Silver', 'Gold']) expect(xml).toContain(`<Name>${n}</Name>`);
@@ -196,7 +219,11 @@ describe('enum create — which writer runs', () => {
 
     expect(createObject).not.toHaveBeenCalled();
     const xml = [...files.values()].join('\n');
-    expect(result.content[0].text).toContain('Successfully created');
+    expect(result.content[0].text).toMatch(/^✅ Created /);
+    // The XML template ran, not the bridge — every bridge create path says so
+    // in its headline. (The headline used to read 'Successfully created D365FO
+    // <type> file:'; that phrase went when the create response was trimmed.)
+    expect(result.content[0].text).not.toContain('via IMetadataProvider');
     expect(xml).not.toContain('<EnumValues />');
     expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
     for (const n of ['None', 'Silver']) expect(xml).toContain(`<Name>${n}</Name>`);
@@ -218,7 +245,8 @@ describe('enum create — extensibility vs ordering', () => {
     );
 
     const text = result.content[0].text as string;
-    expect(text).toContain('Successfully created');
+    expect(text).toMatch(/^✅ Created /);
+    expect(text).not.toContain('via IMetadataProvider');
     expect(text).toContain('IsExtensible=true');
     expect(text).toMatch(/non-equality comparison/i);
     // Names the way out while it is still cheap — before any code references it.

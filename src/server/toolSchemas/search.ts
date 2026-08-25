@@ -48,10 +48,9 @@ export const searchTool = {
           items: {
             type: 'object',
             properties: {
-              query: {
-                type: 'string',
-                description: 'Search query (class name, method name, etc.)',
-              },
+              // Deliberately terse: the top-level `query` above already spells
+              // out what a query is, and this schema is paid for once per session.
+              query: { type: 'string', description: 'Search query.' },
               type: {
                 type: 'string',
                 default: 'all',

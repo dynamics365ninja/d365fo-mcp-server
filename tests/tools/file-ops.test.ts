@@ -1801,7 +1801,7 @@ describe('modify_d365fo_file', () => {
     // An AxMenu's <Elements> holds AxMenuElement entries discriminated by i:type.
     // `AxMenuFunctionItem` (what this used to write) is not a type in the metadata
     // model — zero of the 73 shipped AxMenu files use it, so the element
-    // deserialized into nothing: docs/eval-sweep-findings-2026-07-21.md #30.
+    // deserialized into nothing: the 2026-07-21 eval sweep, finding #30.
     expect(writtenContent).toContain('<AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">');
     expect(writtenContent).not.toContain('AxMenuFunctionItem');
     expect(writtenContent).toContain('<MenuItemName>ContosoRentEquipmentTable</MenuItemName>');

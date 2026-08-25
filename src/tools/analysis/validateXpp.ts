@@ -1169,7 +1169,7 @@ function rootChildElements(xml: string): string[] {
  * BPErrorLabelNotDefined / BPErrorTableTitleField1NotDeclared /
  * BPErrorDeveloperDocumentationNotDefined for properties that are physically in
  * the file, and this validator used to answer "no violations" on exactly that
- * document (docs/eval-sweep-findings-2026-07-21.md #13).
+ * document (the 2026-07-21 eval sweep, finding #13).
  */
 function checkTableElementOrder(code: string): ValidationViolation[] {
   if (!/<AxTable[\s>]/.test(code)) return [];

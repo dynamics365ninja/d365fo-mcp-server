@@ -13,6 +13,7 @@
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
+import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { promises as fs } from 'fs';
@@ -308,7 +309,7 @@ export async function renameLabelTool(request: CallToolRequest, context: XppServ
 
       labelTxtChanges.push({ file: txtPath, replacements: 1 });
       if (!dryRun) {
-        await fs.writeFile(txtPath, newContent, 'utf-8');
+        await writeFileAtomic(txtPath, newContent);
       }
     }
 
@@ -324,7 +325,7 @@ export async function renameLabelTool(request: CallToolRequest, context: XppServ
 
       xppChanges.push({ file: xppFile, replacements: count });
       if (!dryRun) {
-        await fs.writeFile(xppFile, newContent, 'utf-8');
+        await writeFileAtomic(xppFile, newContent);
       }
     }
 
@@ -343,7 +344,7 @@ export async function renameLabelTool(request: CallToolRequest, context: XppServ
 
       xmlChanges.push({ file: xmlFile, replacements: count });
       if (!dryRun) {
-        await fs.writeFile(xmlFile, newContent, 'utf-8');
+        await writeFileAtomic(xmlFile, newContent);
       }
     }
 

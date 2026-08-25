@@ -455,6 +455,18 @@ export async function indexOneFile(
 
     // 2. Re-parse the XML and insert fresh symbols
     let insertedCount = 0;
+    /**
+     * Did the Ax*Extension branch below write the extension_metadata row, or did
+     * it fall through to the bare object row? `null` for a file that is not an
+     * extension.
+     *
+     * The two outcomes were indistinguishable in the response — both insert
+     * exactly one symbol, so both printed "Inserted: 1 symbol" — and the second
+     * is the state in which every field and method the extension contributes is
+     * invisible to resolve_references, which reports them as hallucinated. An
+     * agent that read "✅ Symbol index updated" had no way to tell.
+     */
+    let extensionMetadataWritten: boolean | null = null;
     const tx = symbolIndex.db.transaction(() => {
       // Minimal fallback for types not handled individually below
       symbolIndex.addSymbol({
@@ -683,6 +695,7 @@ export async function indexOneFile(
       // parseExtensionFile already knows. The symbol row carries the base object
       // the way the full build writes it, so the two paths agree.
       const extension = await reindexExtensionMetadata(filePath, objectType, model, symbolIndex, parser);
+      extensionMetadataWritten = extension !== null;
       if (extension) {
         symbolIndex.addSymbol({
           name: extension.name,
@@ -840,10 +853,20 @@ export async function indexOneFile(
 
     symbolIndex.touchLastIndexed?.();
 
+    const extensionNote =
+      extensionMetadataWritten === true
+        ? `\nExtension record: written — the members it adds resolve now.`
+        : extensionMetadataWritten === false
+          ? `\n⚠️ Extension record: NOT written — ${path.basename(filePath)} did not parse as a ` +
+            `${objectType}, so only a bare object row was indexed. Every field and method this ` +
+            `extension adds will still read as unknown; check the file's root element and <Name>.`
+          : '';
+
     return ok(
       `✅ Symbol index updated for **${objectName}** (${objectType}, model: ${model}).\n\n` +
       `Removed: ${deletedCount} stale entr${deletedCount === 1 ? 'y' : 'ies'}\n` +
-      `Inserted: ${insertedCount} symbol${insertedCount !== 1 ? 's' : ''}`
+      `Inserted: ${insertedCount} symbol${insertedCount !== 1 ? 's' : ''}` +
+      extensionNote
     );
   } catch (error: any) {
     console.error('Error updating symbol index:', error);

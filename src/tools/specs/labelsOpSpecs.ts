@@ -36,8 +36,9 @@ export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
   createIfMissing:
     '[create] Upsert-lite: create the label when absent, and when it already exists reuse it ' +
     '(existing text untouched) and report "@labelFileId:labelId" as a success instead of an ' +
-    '"already exists" warning. Default false. One call replaces search-then-create. It never ' +
-    'overwrites — use action="update" for that.',
+    '"already exists" warning. Default false — PASS IT. A search before a create is never ' +
+    'necessary with it: this one call IS the search-then-create pair. Combine with labels[] to ' +
+    'do a whole object\'s labels in one call. It never overwrites — use action="update" for that.',
   createLabelFileIfMissing:
     '[create] Create the AxLabelFile structure if missing (default: true). A wrong-path guard still ' +
     'fails loudly when the model directory is not found, so no phantom file is produced. ' +
@@ -67,6 +68,19 @@ export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
 export function renderLabelsOpSpec(): string {
   return [
     'labels — write plumbing (action=create / action=rename)',
+    '',
+    'FIRST, the shape that removes the round trips (measured over 1,515 real MCP',
+    'calls: 268 `labels` calls against 171 writes, and `labels`→`labels` the most',
+    'frequent consecutive pair in the corpus, 177 times — nearly all of it',
+    'search-then-info-then-create, once per label):',
+    '  • createIfMissing=true — do NOT search first. It creates when absent and',
+    '    reuses when present, so the create IS the search.',
+    '  • labels=[{labelId, translations}, …] — every label of an object in ONE',
+    '    call, shared labelFileId/model at the top level.',
+    '  • query=["…","…","…"] on search — several phrasings in ONE call.',
+    '  • best of all, no `labels` call at all: d365fo_file create/modify resolve a',
+    '    raw-text label / fieldLabel to an existing or new @Ref by themselves and',
+    '    report which one they used (autoCorrect=false opts out).',
     '',
     'These are accepted flat or nested in `params`; all are optional and',
     'auto-resolved when omitted, which is why they are not in the wire schema.',

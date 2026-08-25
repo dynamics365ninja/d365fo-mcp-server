@@ -21,10 +21,11 @@ import { resolvePattern } from '../../knowledge/formPatterns/index.js';
 import { expandPatternToXml, canExpandPattern } from '../../utils/formControlExpander.js';
 import { cloneFormXml } from '../../utils/formCloner.js';
 import { methodStubsForPattern, injectMethodStubs } from '../../knowledge/formPatterns/methodStubs.js';
-import { findBaseFormXml } from '../write/modifyD365File.js';
+import { findBaseFormXml } from '../../utils/baseObjectXml.js';
 import { getFieldControlMap, getTableTitleField, type FieldControlMap } from '../../utils/fieldControlTypes.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { scaffoldWriteRefusalResult } from '../write/writeAnchorGuard.js';
+import { upsertWrittenFileIntoIndex } from '../write/inlineIndexUpsert.js';
 
 /**
  * Symbol types a form datasource may bind to. Views are indexed as 'view'
@@ -322,7 +323,7 @@ export async function handleGenerateSmartForm(
     // A form datasource may be a VIEW as well as a table — the AOT accepts any of
     // them in <Table>. Resolving against 'table' alone rejected a view that
     // object_patterns resolves fine, so a form over a view was unbuildable through
-    // the scaffold (docs/eval-sweep-findings-2026-07-21.md, "Open — writers").
+    // the scaffold (the 2026-07-21 eval sweep, "Open — writers").
     let dataSourceIsView = false;
     try {
       const db = symbolIndex.getReadDb();
@@ -1106,6 +1107,11 @@ export async function handleGenerateSmartForm(
 
   fs.writeFileSync(normalizedPath, normalizeD365Xml(xml), 'utf-8');
   console.log(`[generateSmartForm] Created file: ${normalizedPath}`);
+
+  // Tell the index about it, the way every create/modify path does.
+  // Without this the object is invisible to `search` — which is now answered
+  // from the index for untyped queries — in the very session that created it.
+  await upsertWrittenFileIntoIndex(normalizedPath, { symbolIndex });
 
   // Add to Visual Studio project if a projectPath is known
   let projectMessage = '';

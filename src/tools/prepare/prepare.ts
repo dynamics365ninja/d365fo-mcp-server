@@ -61,10 +61,23 @@ interface PriorPrepare {
 
 const recentPrepares = new Map<string, PriorPrepare>();
 
-/** Same question = same (mode, type, operation, object, method). `goal` is deliberately excluded. */
+/**
+ * Same question = same (mode, type, operation, object, method, proposedName).
+ *
+ * `goal` is deliberately excluded — rewording the intent is not a new question.
+ * `proposedName` is deliberately INCLUDED, and it was not until the suppression
+ * started actually arming (the token moved out of the truncated tail and the cap
+ * rose): prepare runs naming validation only when `proposedName` is given, so a
+ * second call proposing a DIFFERENT name would have hit the cached answer,
+ * skipped the validation entirely, and handed back a grounding token for a name
+ * the check would have refused.
+ */
 function prepareKey(mode: string, args: Record<string, unknown>): string {
   const s = (v: unknown): string => (typeof v === 'string' ? v.toLowerCase() : '');
-  return [mode, s(args['objectType']), s(args['operation']), s(args['objectName']), s(args['methodName'])].join('|');
+  return [
+    mode, s(args['objectType']), s(args['operation']),
+    s(args['objectName']), s(args['methodName']), s(args['proposedName']),
+  ].join('|');
 }
 
 function extractToken(result: unknown): string | undefined {

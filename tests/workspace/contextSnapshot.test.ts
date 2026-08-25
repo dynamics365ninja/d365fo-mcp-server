@@ -19,9 +19,10 @@ function makeSnapshot(overrides: Partial<ContextSnapshot> = {}): ContextSnapshot
     workspacePath: 'K:\\ws',
     envType: 'ude',
     roots: [],
-    index: { totalSymbols: 0, byType: {}, indexedModels: [], lastIndexedAt: null },
+    index: { totalSymbols: 0, byType: {}, indexedModels: [], lastIndexedAt: null, countsPending: false },
     activeObject: null,
     recentObjects: [],
+    recentPending: false,
     uncommittedFiles: [],
     generatedAt: '2026-06-23T00:00:00.000Z',
     ...overrides,
@@ -70,7 +71,31 @@ describe('renderContextSnapshotSection', () => {
     expect(out).toContain('2026-06-23 10:30');
     expect(out).toContain('Uncommitted X++ changes (1)');
     expect(out).toContain('AxTable/MyTable.xml');
-    expect(out).toContain('review_workspace_changes');
+    expect(out).toContain('get_workspace_info(changes=true)');
+  });
+});
+
+describe('renderContextSnapshotSection — symbol counts (audit 2026-08-25)', () => {
+  // The counts come from a full index scan (30-60 s cold, per the comment on
+  // getSymbolCount) and the default snapshot no longer waits for it. A rendered
+  // snapshot with no count line reads as "the index is empty", so the pending
+  // state is stated rather than omitted.
+  it('says the counts are still being computed', () => {
+    const out = renderContextSnapshotSection(
+      makeSnapshot({ index: { totalSymbols: 0, byType: {}, indexedModels: [], lastIndexedAt: null, countsPending: true } })
+    ).join('\n');
+
+    expect(out).toContain('still being computed');
+    expect(out).toContain('diagnostics=true');
+  });
+
+  it('prints the number once it is known', () => {
+    const out = renderContextSnapshotSection(
+      makeSnapshot({ index: { totalSymbols: 1_170_432, byType: {}, indexedModels: ['Foundation'], lastIndexedAt: null, countsPending: false } })
+    ).join('\n');
+
+    expect(out).toContain('1,170,432');
+    expect(out).not.toContain('still being computed');
   });
 });
 
@@ -98,7 +123,7 @@ describe('renderContextSnapshotCompact', () => {
 
     expect(out).toEqual([
       'Recent edits: A [table], B [table], C [table] (+2 more)',
-      'Uncommitted : 2 X++ file(s) — review_workspace_changes',
+      'Uncommitted : 2 X++ file(s) — get_workspace_info(changes=true)',
     ]);
   });
 

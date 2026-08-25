@@ -291,11 +291,11 @@ function truncateOutput(text: string): string {
     text.slice(-half);
 }
 
-// This handler has no schema of its own — it is reached through a unified
-// tool. Tool registration (name, description, inputSchema) lives in
-// src/server/toolSchemas/, one file per published tool, aggregated by
-// toolSchemas/index.ts. It is NOT in mcpServer.ts; that file only spreads
-// the aggregated array into the ListTools response.
+// This handler has no schema of its own — it is reached through
+// build_d365fo_project(dbSync), which folds the sync into the build the way
+// bpCheck folds in the best-practice check. It also stays routable under its
+// old tool name `trigger_db_sync`, which is what keeps a PARTIAL sync with no
+// rebuild in front of it (a modify-only session) reachable.
 
 export const dbSyncTool = async (params: any, context: any) => {
   const { syncViews = false } = params;

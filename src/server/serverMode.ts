@@ -33,11 +33,8 @@ export const LOCAL_TOOLS = new Set([
   'verify_d365fo_project',
   'update_symbol_index',
   'build_d365fo_project',
-  'trigger_db_sync',
   'run_bp_check',
   'run_systest_class',
-  'review_workspace_changes',
-  'undo_last_modification',
   'get_workspace_info',
 ]);
 
@@ -84,9 +81,44 @@ export const SERVER_MODE: ServerMode = (() => {
  * (toolHandler) so the advertised tool list and call-time enforcement can
  * never drift apart. ALWAYS_TOOLS bypass the LOCAL_TOOLS partition in every mode.
  */
+/**
+ * Retired tool names that still route, mapped to the tool their handler now
+ * lives behind.
+ *
+ * Both gates below match on the NAME and run before toolHandler's switch, so a
+ * retired name that is in neither CORE_TOOLS nor LOCAL_TOOLS is refused no
+ * matter that its `case` is still there. Judge it as its replacement instead —
+ * that is the tool the call reaches, so it is the tool whose locality and
+ * profile membership actually apply.
+ *
+ * Verified live: before this, MCP_SERVER_MODE=write-only refused
+ * `undo_last_modification`, a local file operation that was in LOCAL_TOOLS
+ * until the folds. `get_method` keeps being refused there, because it resolves
+ * to `get_object_info`, which needs the symbol index — same rule, opposite and
+ * equally correct answer.
+ */
+export const RETIRED_TOOL_ROUTES: ReadonlyMap<string, string> = new Map([
+  ['undo_last_modification', 'd365fo_file'],
+  ['review_workspace_changes', 'get_workspace_info'],
+  ['trigger_db_sync', 'build_d365fo_project'],
+  // get_method, suggest_edt and batch_get_info are deliberately NOT here. They
+  // were retired before this change and their gate behaviour is long-standing —
+  // get_method is refused in write-only mode today, and mapping it onto
+  // get_object_info (an ALWAYS tool) would quietly start allowing it. Widening
+  // an older tool's availability is a separate decision from repairing the one
+  // this fold broke.
+]);
+
+/** The tool a call under this name actually reaches. */
+export function resolveRetiredToolName(toolName: string): string {
+  return RETIRED_TOOL_ROUTES.get(toolName) ?? toolName;
+}
+
 export function isToolAllowedInMode(mode: ServerMode, toolName: string): boolean {
-  if (mode === 'full' || ALWAYS_TOOLS.has(toolName)) return true;
-  return mode === 'read-only' ? !LOCAL_TOOLS.has(toolName) : LOCAL_TOOLS.has(toolName);
+  if (mode === 'full') return true;
+  const name = resolveRetiredToolName(toolName);
+  if (ALWAYS_TOOLS.has(name)) return true;
+  return mode === 'read-only' ? !LOCAL_TOOLS.has(name) : LOCAL_TOOLS.has(name);
 }
 
 /**
@@ -107,9 +139,10 @@ export function isToolAllowedInMode(mode: ServerMode, toolName: string): boolean
  *  - run_systest_class → test execution, a separate phase (and gated behind an
  *                      interactive console on most boxes).
  *
- * generate_object and trigger_db_sync are kept IN core against the raw
- * never-called list from the audit: scaffolding is load-bearing for the create
- * path, and a table change is not finished until the DB is synchronised.
+ * generate_object is kept IN core against the raw never-called list from the
+ * audit: scaffolding is load-bearing for the create path. The database sync is
+ * still in core too — it just travels as build_d365fo_project(dbSync) now,
+ * because a table change is not finished until the DB is synchronised.
  */
 export const CORE_TOOLS = new Set([
   // ground + discover
@@ -125,14 +158,11 @@ export const CORE_TOOLS = new Set([
   'generate_object',
   'd365fo_file',
   'labels',
-  'undo_last_modification',
   // build + verify
   'update_symbol_index',
   'build_d365fo_project',
-  'trigger_db_sync',
   'run_bp_check',
   'verify_d365fo_project',
-  'review_workspace_changes',
 ]);
 
 /**
@@ -167,7 +197,11 @@ export function isToolInProfile(
   extras: ReadonlySet<string> = EXTRA_TOOLS,
 ): boolean {
   if (profile === 'full') return true;
-  return CORE_TOOLS.has(toolName) || extras.has(toolName);
+  // An explicit MCP_EXTRA_TOOLS entry wins under whichever spelling it was
+  // written in; otherwise judge the retired name as the tool it reaches.
+  if (extras.has(toolName)) return true;
+  const name = resolveRetiredToolName(toolName);
+  return CORE_TOOLS.has(name) || extras.has(name);
 }
 
 /**

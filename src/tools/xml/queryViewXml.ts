@@ -67,7 +67,7 @@ ${titleXml}\t<DataSources />
   // dynamic. xppc rejects the "all fields" shape with "The field list of the data
   // source 'X' cannot be empty if the dynamic field is set to false", so every
   // fieldless query this builder produced failed the build
-  // (docs/eval-sweep-findings-2026-07-21.md #20). `properties.dynamicFields` lets a
+  // (the 2026-07-21 eval sweep, finding #20). `properties.dynamicFields` lets a
   // caller force it either way; otherwise it follows "no explicit fields ⇒ dynamic".
   //
   // Position: between <Name> and <Table>, which is where every platform query puts
@@ -169,7 +169,7 @@ export function extractQueryRootDataSourceName(queryXml: string): string | undef
  * which is essentially always wrong: buildAxQueryXml names a simple query's root
  * datasource after its TABLE, so a view generated from a `…Query` object bound its
  * fields to a datasource that does not exist
- * (docs/eval-sweep-findings-2026-07-21.md #38; ground truth in
+ * (the 2026-07-21 eval sweep, finding #38; ground truth in
  * eval/goldens/L1-query-view-basic, where the view's DataSource is
  * `ConDemoNoteHeader`, not `ConDemoNoteHeaderQuery`).
  */

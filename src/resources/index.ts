@@ -105,7 +105,12 @@ export function registerResources(server: Server, context: XppServerContext): vo
     }
 
     if (uri.startsWith('workspace://')) {
-      const snapshot = await buildContextSnapshot(context);
+      // Blocking on purpose. These resources are read at SESSION START, i.e.
+      // exactly when the caches are cold, and the non-blocking snapshot reports
+      // a pending scan as an empty result — so the first thing a client saw
+      // could be "no recent edits" for a workspace full of them. A resource read
+      // is not on the latency path a tool call is.
+      const snapshot = await buildContextSnapshot(context, { blocking: true });
 
       switch (uri) {
         case 'workspace://context':

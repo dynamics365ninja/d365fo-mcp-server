@@ -20,6 +20,7 @@ import {
   labelProvenanceWarning,
 } from '../../utils/labelReference.js';
 import { recordLabelSearch, repeatSearchNotice, searchBudgetNotice } from './labelSearchHistory.js';
+import { createPhaseTimer } from '../../utils/phaseTimer.js';
 
 /**
  * Emitted only when a label the current model can actually resolve was found.
@@ -46,8 +47,16 @@ export const NO_HITS_MARKER = 'No labels found matching';
  * that, and hand over the call that ends the loop.
  */
 const CREATE_CALL_ADVICE =
-  `      labels(action="create", labelFileId="<your model's label file>", model="<your model>",\n` +
-  `             labelId="<MeaningOfTheText>", translations=[{language:"en-US", text:"…"}])\n` +
+  `      labels(action="create", createIfMissing=true, labelFileId="<your model's label file>",\n` +
+  `             model="<your model>", labelId="<MeaningOfTheText>",\n` +
+  `             translations=[{language:"en-US", text:"…"}])\n` +
+  `   createIfMissing reuses the label when it already exists, so that call stands on its own:\n` +
+  `   a search before a create is NEVER necessary. Several labels at once — one call, not one each:\n` +
+  `      labels(action="create", createIfMissing=true, labelFileId=…, model=…,\n` +
+  `             labels=[{labelId:"…", translations:[…]}, {labelId:"…", translations:[…]}])\n` +
+  `   And for a label you only need in an object you are about to write, skip this entirely:\n` +
+  `   d365fo_file create/modify resolve a raw-text label (or fieldLabel) themselves and report\n` +
+  `   which @Ref they reused or created.\n` +
   `   Rephrasing does not help: every wording queries the same index. To try several at once,\n` +
   `   pass query as an array — labels(action="search", query=["…", "…", "…"]) — one call, not one each.\n`;
 
@@ -130,7 +139,14 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
     // Over-fetch so the truncation footer can quantify what it hid.
     const probeLimit = Math.max(maxResults + 1, OVERFETCH_CAP);
 
-    const results = symbolIndex.searchLabels(query, { language, model, labelFileId, limit: probeLimit });
+    // Phase-timed through the same helper every slow write uses, so a `labels`
+    // call that costs seconds says WHERE they went instead of only that it did.
+    // Silent below SLOW_CALL_LOG_MS (10 s by default); set SLOW_CALL_LOG_MS=0 to
+    // re-measure every call, which is what the 2026-08-25 audit needed and did
+    // not have: a 5.6 s mean over 268 real calls that no aggregate could attribute.
+    const timer = createPhaseTimer();
+    const results = await timer.time('label index query (FTS5)', async () =>
+      symbolIndex.searchLabels(query, { language, model, labelFileId, limit: probeLimit }));
 
     if (results.length === 0) {
       // Named before the advice: a caller that has already tried five wordings
@@ -148,7 +164,8 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
               '.\n\n' +
               (repeatNotice ? `${repeatNotice}\n` : '') +
               NO_REUSE_ADVICE +
-              `💡 To search a different language use the language parameter (e.g. "cs", "de", "sk").`,
+              `💡 To search a different language use the language parameter (e.g. "cs", "de", "sk").` +
+              timer.render(),
           },
         ],
       };
@@ -166,7 +183,7 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
       comment: r.comment ?? null,
     });
 
-    const currentModel = resolveCurrentModel(args.model);
+    const currentModel = await timer.time('resolve current model', async () => resolveCurrentModel(args.model));
 
     // The index was queried past the display cap; only the first maxResults are rendered.
     const hidden = Math.max(0, results.length - maxResults);
@@ -246,6 +263,8 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
       lines.push('');
       lines.push(NO_REUSE_ADVICE.trimEnd());
     }
+
+    lines.push(timer.render());
 
     return {
       content: [{ type: 'text', text: lines.join('\n') }],

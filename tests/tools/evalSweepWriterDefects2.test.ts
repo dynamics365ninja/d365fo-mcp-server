@@ -1,7 +1,7 @@
 /**
  * Regression gate for the three writer defects the 2026-07-22 corpus record
  * `2026-07-22T04__L2-form-over-view` raised alongside #37 and that were filed
- * under "Open — writers" in docs/eval-sweep-findings-2026-07-21.md.
+ * under "Open — writers" in the 2026-07-21 eval sweep.
  *
  * Covered here (all VM-free):
  *   - generate_object(scaffold, form) rejected a VIEW as `dataSource` because

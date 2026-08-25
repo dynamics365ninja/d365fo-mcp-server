@@ -449,6 +449,43 @@ function isWorthKeeping(line: string): boolean {
   return DIAG_LINE_TEST.test(line.trim()) || /\b(error|warning)s?\b/i.test(line);
 }
 
+/**
+ * The log section of a FAILED build's response.
+ *
+ * `build_d365fo_project` is deliberately 'uncapped' in the response capper, and
+ * a failure used to return BOTH the structured diagnostics (up to 25) AND up to
+ * 300 lines of raw log — measured at the host's logging cap on all 43 build
+ * calls in a 1,400-call sample, 13 of them failures. Every byte of that lands in
+ * the context and is re-billed on every later request in the session.
+ *
+ * So the raw log is included in full only in the case it is actually evidence
+ * for: the parser produced NO structured diagnostic, so the raw text is the only
+ * statement of why the build failed (this is the case renderUnexplainedFailure
+ * points at — "read the raw log at the end of this response"). When diagnostics
+ * WERE parsed they already carry object, member, line, column and message, and
+ * the raw log restates them inside a phase table; a short tail is enough to see
+ * the summary counts, and the path is enough to read the rest on demand.
+ */
+export async function renderFailureLog(
+  logFile: string,
+  /**
+   * Do the parsed diagnostics EXPLAIN the failure — i.e. is at least one of them
+   * an error? Callers used to pass `parsed.length > 0`, which counts warnings:
+   * a build that failed in a shape the regexes do not match, but whose log
+   * carries BP warnings, then got a 40-line tail instead of the log, and the
+   * error that actually stopped it is rarely in the last 40 lines.
+   */
+  hasStructuredDiagnostics: boolean,
+): Promise<string> {
+  if (!hasStructuredDiagnostics) return await readFullLog(logFile);
+  const tail = await readLogTail(logFile, FAILURE_TAIL_LINES);
+  return `[last ${FAILURE_TAIL_LINES} lines — the diagnostics above are parsed from the same log; ` +
+    `full log: ${logFile}]\n${tail}`;
+}
+
+/** How much of a failed build's log is worth carrying once the diagnostics are parsed. */
+const FAILURE_TAIL_LINES = 40;
+
 /** Read the entire log without truncation — used for diagnostics parsing only. */
 async function readWholeLog(logFile: string): Promise<string> {
   try {
@@ -1019,13 +1056,15 @@ async function renderFinishedBuildResult(
       ? allResults[allResults.length - 1]
       : allResults.find(r => r.status === 'failed');
     const relevantLogFile = relevantResult?.logFile ?? finalState.logFile;
-    const logContent = succeeded
-      ? trimSucceededLog(await readLogTail(relevantLogFile))
-      : await readFullLog(relevantLogFile);
     const wholeLog = succeeded ? '' : await readWholeLog(relevantLogFile);
     const parsed = succeeded ? [] : parseXppcDiagnostics(wholeLog);
     const structured = succeeded ? '' : formatStructuredDiagnostics(parsed);
     const unexplained = succeeded ? '' : renderUnexplainedFailure(parsed, wholeLog);
+    // Parse FIRST: how much raw log is worth carrying depends on whether the
+    // diagnostics already explain the failure — see renderFailureLog.
+    const logContent = succeeded
+      ? trimSucceededLog(await readLogTail(relevantLogFile))
+      : await renderFailureLog(relevantLogFile, parsed.some(d => d.severity === 'error'));
 
     return {
       content: [{
@@ -1040,7 +1079,6 @@ async function renderFinishedBuildResult(
   }
 
   const logTail       = await readLogTail(finalState.logFile);
-  const logContent    = succeeded ? trimSucceededLog(logTail) : await readFullLog(finalState.logFile);
   const hasWarnings   = succeeded && logTail.split(/\r?\n/).some(l => /Warning:\s/.test(l) && DIAG_LINE_TEST.test(l.trim()));
   const statusIcon    = !succeeded ? '❌ Build FAILED' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
   const buildMode     = finalState.fullBuild ? 'full build (target), incremental (deps)' : 'incremental';
@@ -1051,6 +1089,11 @@ async function renderFinishedBuildResult(
   const parsed        = succeeded ? [] : parseXppcDiagnostics(wholeLog);
   const structured    = succeeded ? '' : formatStructuredDiagnostics(parsed);
   const unexplained   = succeeded ? '' : renderUnexplainedFailure(parsed, wholeLog);
+  // Parse FIRST: how much raw log is worth carrying depends on whether the
+  // diagnostics already explain the failure — see renderFailureLog.
+  const logContent    = succeeded
+    ? trimSucceededLog(logTail)
+    : await renderFailureLog(finalState.logFile, parsed.some(d => d.severity === 'error'));
 
   // The note run_bp_check and verify_d365fo_project read, so a green verdict from a
   // tool that compiles nothing can say whether anything ever did.
@@ -1067,6 +1110,14 @@ async function renderFinishedBuildResult(
   // green build: when the compile failed, the compiler errors ARE the answer and
   // a BP report on half-built metadata is noise.
   const bpSection = succeeded ? await runPostBuildBpCheck(params, targetModel, context) : '';
+  // Same shape, same reason, for the database sync: a table change is not
+  // finished until AxDB is synchronised, and that sync always follows a
+  // successful build. Gated on `succeeded` for the same reason bpCheck is —
+  // syncing metadata the compiler just rejected is worse than not syncing.
+  const sync = succeeded
+    ? await runPostBuildDbSync(params, targetModel, context)
+    : { section: '', failed: false };
+  const syncSection = sync.section;
 
   return {
     content: [{
@@ -1074,10 +1125,12 @@ async function renderFinishedBuildResult(
       text: `${statusIcon} (${finalState.tool}, ${buildMode}, ${duration}s)\n\nModel: ${targetModel}\n` +
         incrementalScopeCaveat(succeeded, !!finalState.fullBuild) + '\n' +
         (unexplained ? `${unexplained}\n\n` : '') +
-        (structured ? `${structured}\n\n--- Raw log ---\n` : '') +
-        `${logContent || '(no output)'}` + bpSection,
+        (structured ? `${structured}\n\n` : '') +
+        `${logContent || '(no output)'}` + bpSection + syncSection,
     }],
-    ...((!succeeded) ? { isError: true } : {}),
+    // A failed sync is an error even though the compile passed: the caller asked
+    // for "build and sync", and half of that did not happen.
+    ...((!succeeded || sync.failed) ? { isError: true } : {}),
   };
 }
 
@@ -1107,6 +1160,69 @@ async function runPostBuildBpCheck(
     return text ? `\n\n--- Best practices (bpCheck=true) ---\n${text}` : '';
   } catch (e: any) {
     return `\n\n⚠️ bpCheck requested but could not run: ${e?.message ?? e}`;
+  }
+}
+
+/**
+ * Database sync appended to a successful build when `dbSync` is set.
+ *
+ * Folded in from the retired `trigger_db_sync` tool, on the `bpCheck`
+ * precedent above and with the same advisory contract: a sync failure is
+ * reported as a section, never as a failed build, because the compile verdict
+ * already stands.
+ *
+ * `dbSync: true` lets dbSyncTool derive the partial-sync list from the project
+ * (its ordinary behaviour when no `tables` are named); `dbSync: ["CustTable"]`
+ * syncs exactly those.
+ */
+async function runPostBuildDbSync(
+  params: any,
+  targetModel: string,
+  context: any,
+): Promise<{ section: string; failed: boolean }> {
+  const requested = params?.dbSync;
+  const tables = Array.isArray(requested)
+    ? requested.filter((t: unknown) => typeof t === 'string' && t.trim().length > 0)
+    : undefined;
+  if (!Array.isArray(requested) && requested !== true && requested !== 'true') return { section: '', failed: false };
+  // `dbSync: []` fell through with `tables` undefined, which dbSyncTool reads as
+  // "derive the scope from the project" — so asking to sync NOTHING synced
+  // everything. An empty list is a caller mistake; say so rather than guess.
+  if (Array.isArray(requested) && (tables?.length ?? 0) === 0) {
+    return {
+      section: '\n\n⚠️ dbSync was an empty list, so nothing was synced. Pass `dbSync: true` to sync ' +
+        'the project scope, or name the tables: `dbSync: ["CustTable"]`.',
+      failed: false,
+    };
+  }
+  try {
+    const { dbSyncTool } = await import('./dbSync.js');
+    const result: any = await dbSyncTool(
+      {
+        modelName: targetModel,
+        projectPath: params?.projectPath,
+        packagePath: params?.packagePath,
+        ...(tables && tables.length > 0 ? { tables } : {}),
+      },
+      context,
+    );
+    const text = (result?.content ?? [])
+      .filter((c: any) => c?.type === 'text' && typeof c.text === 'string')
+      .map((c: any) => c.text)
+      .join('\n')
+      .trim();
+    if (!text) return { section: '', failed: false };
+    // dbSyncTool sets isError when the sync fails. Dropping it put a ❌ at the
+    // bottom of a response headed ✅ Build succeeded, with the flag unset — and
+    // since trigger_db_sync is no longer published, this is the only sync path
+    // a caller has.
+    const failed = result?.isError === true;
+    const heading = failed
+      ? '--- Database sync (dbSync) — FAILED, the build did not ---'
+      : '--- Database sync (dbSync) ---';
+    return { section: `\n\n${heading}\n${text}`, failed };
+  } catch (e: any) {
+    return { section: `\n\n⚠️ dbSync requested but could not run: ${e?.message ?? e}`, failed: true };
   }
 }
 

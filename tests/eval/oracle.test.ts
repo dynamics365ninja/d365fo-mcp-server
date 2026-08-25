@@ -65,7 +65,7 @@ describe('normalizeAotXml', () => {
     expect(map.get('AxEnum/EnumValues/AxEnumValue[Archived]/Label')).toBe('Archived');
   });
 
-  // Regression (docs/eval-sweep-findings-2026-07-21.md #1, found by the
+  // Regression (the 2026-07-21 eval sweep, finding #1, found by the
   // L2-enum-extension-empty-values run): a genuinely missing actual artifact is fed in as
   // an EMPTY string by buildActualArtifactsMap (`actualArtifacts[name] = ''`). xml2js parses
   // '' to `null`, so the old `Object.entries(parsed)` threw
@@ -233,7 +233,7 @@ describe('normalizeMultiArtifact', () => {
     expect(diff.missing.every(p => p.startsWith('ContosoMyController.metadata.xml::'))).toBe(true);
   });
 
-  // Regression (docs/eval-sweep-findings-2026-07-21.md #1): the previous "all-missing" test
+  // Regression (the 2026-07-21 eval sweep, finding #1): the previous "all-missing" test
   // above OMITS the missing artifact from the actual map, but the real buildActualArtifactsMap
   // passes it through with EMPTY-STRING content (`actualArtifacts[name] = ''`). That empty
   // string used to crash normalizeAotXml. Feed the shape production actually produces and prove

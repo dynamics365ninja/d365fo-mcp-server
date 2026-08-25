@@ -16,10 +16,12 @@ export const prepareTool = {
     inputSchema: {
       type: 'object',
       properties: {
+        // No description: the two enum values are spelled out in the tool
+        // description above, and restating them here is paid for on every
+        // session's ListTools.
         mode: {
           type: 'string',
           enum: ['change', 'create'],
-          description: 'change = extend/modify an existing object; create = a brand-new object.',
         },
         goal: {
           type: 'string',
@@ -46,7 +48,10 @@ export const prepareTool = {
         },
         operation: {
           type: 'string',
-          description: '[change] The modify operation you intend to run; its full parameter contract comes back in THIS response, so no separate op-spec call. Defaults to add-method when methodName is given.',
+          // Comma-separated rather than a second array parameter: a table change
+          // is normally add-field AND add-index AND add-field-to-field-group, and
+          // one clause here is far cheaper per session than another schema block.
+          description: '[change] The modify operation(s) you intend to run — comma-separated for several ("add-field,add-index"). Their full parameter contracts come back in THIS response, so no separate op-spec call. Defaults to add-method when methodName is given.',
         },
         proposedName: {
           type: 'string',

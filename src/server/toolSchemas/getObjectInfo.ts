@@ -19,7 +19,10 @@ export const getObjectInfoTool = {
           items: {
             type: 'object',
             properties: {
-              objectType: { type: 'string', enum: [...OBJECT_INFO_TYPES], description: 'Kind of object to read' },
+              // Enum deliberately NOT repeated — same values as the top-level
+              // `objectType` below, and zod is what validates the call. The
+              // second copy was only documentation, at ~260 chars per session.
+              objectType: { type: 'string', description: 'Kind of object to read — same values as the top-level `objectType`.' },
               objectName: { type: 'string', description: 'Exact object name.' },
               options: { type: 'object', description: 'Optional type-specific flags for this object; overrides the top-level options.' },
             },
@@ -37,7 +40,7 @@ export const getObjectInfoTool = {
         },
         options: {
           type: 'object',
-          description: 'Type-specific reader flags: includeRdl (report), searchControl/maxControls (form), compact/methodOffset (class), fieldsOffset/fieldFilter (table), filter (macro), mode (edt), includeFields, includeOperations, modelName. On class/table/view/data-entity, {"method":"validateWrite","include":"signature"} returns ONE method (include: signature | source | both) — required before writing a CoC extension. {"include":"xml"} returns raw AOT XML + its path (page: startLine/endLine) — never shell out to find or read a file. Applies to every objects[] entry.',
+          description: 'Type-specific reader flags: includeRdl (report), searchControl/maxControls (form), compact/methodOffset (class+table), fieldsOffset/fieldFilter/relations (table), filter (macro), mode (edt), includeFields, includeOperations, modelName. On class/table/view/data-entity, {"method":"validateWrite","include":"signature"} returns ONE method (include: signature | source | both) — required before writing a CoC extension. {"include":"xml"} returns raw AOT XML + its path (page: startLine/endLine) — never shell out to find or read a file. Applies to every objects[] entry.',
         },
       },
     },

@@ -190,7 +190,10 @@ describe('local tools - review_workspace_changes', () => {
 
     expect(result.isError).toBeFalsy();
     const output = result.content[0].text;
-    expect(output).toContain('Code Review Target (Git Diff):');
+    // The header names the repository it diffed. It did not, and the tool can
+    // resolve a root the caller did not expect — that is the failure mode worth
+    // making visible, so it is pinned rather than merely allowed.
+    expect(output).toContain('Code Review Target (Git Diff) — repository: /repo');
     expect(output).toContain('/repo/src/a.ts');
 
     // /dev/null is valid inside raw git diff for deleted files.

@@ -32,7 +32,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 | Plan a new object before creating it | `prepare(mode="create", goal, objectName, objectType)` — returns collision check, naming, EDT/label hints + `groundingToken` |
 | Create a D365FO object | `d365fo_file(action="create")` (never `create_file`) |
 | Edit an existing object | `d365fo_file(action="modify")` (applies immediately — confirm in chat first) |
-| Revert the last write | `undo_last_modification` |
+| Revert the last write | `d365fo_file(action="undo", filePath)` — git-tracked → checkout HEAD (discards ALL uncommitted changes to that file); untracked → deleted |
 | Search objects | `search` — multiple via `search(queries[])`, custom-only via `search(scope="extensions")` |
 | Read any object's metadata | `get_object_info(objectType, name, options?)` — objectType ∈ class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro. 2+ known names: `get_object_info(objects=[{objectType,objectName},…])` — ONE call, never a loop |
 | Method signature for CoC | `get_object_info(objectType="class", name, options={method, include:"signature"})` (already returned by `prepare(mode="change")`) |
@@ -41,7 +41,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 | Create a NEW form | `object_patterns(domain="form", action="analyze", recommend={...})` → `object_patterns(domain="form", action="spec", pattern)` → `generate_object(mode="scaffold", objectType="form", cloneFrom=referenceForm, tableMapping={...})` → `object_patterns(domain="form", action="validate", xml)` |
 | Validate form XML against its pattern | `object_patterns(domain="form", action="validate", xml \| formName \| filePath)` — structural errors block form writes (FORM_PATTERN_ENFORCE) |
 | Resolve label / EDT / class refs | `validate_code(mode="references", code)` |
-| Build / BP / Sync | `build_d365fo_project` / `run_bp_check` / `trigger_db_sync` |
+| Build / BP / Sync | `build_d365fo_project(bpCheck: true, dbSync: true)` — ONE call compiles, runs the best-practice check and syncs AxDB |
 | Error diagnosis | `get_knowledge(kind="error", errorText)` |
 | Parameters for a `d365fo_file` operation / `generate_object` mode | `get_knowledge(kind="op-spec", topic="add-index" \| "table" \| "scaffold:form")` — those two tools keep their parameters OUT of the tool schema; look the contract up once for the operation you picked, then nest the values in `params` (`properties` for `action="create"`) |
 
@@ -53,7 +53,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 
 ### Writes & file editing
 
-2. **`d365fo_file` (action=create/modify) applies immediately** (no dry-run / preview). Describe the change in chat and wait for explicit user confirmation ("apply", "ok", "yes") before calling. Revert with `undo_last_modification` (or pass `createBackup=true` to keep a `.bak`).
+2. **`d365fo_file` (action=create/modify) applies immediately** (no dry-run / preview). Describe the change in chat and wait for explicit user confirmation ("apply", "ok", "yes") before calling. Revert with `d365fo_file(action="undo")` (or pass `createBackup=true` to keep a `.bak`).
 3. **Never** use `replace_string_in_file`, `edit_file`, `apply_patch`, or any built-in file-write tool on `.xml` or `.xpp` files — **not even as a fallback** when `d365fo_file(action="modify")` fails. These bypass `IMetadataProvider` and corrupt VS 2022's in-memory model. If `d365fo_file(action="modify")` errors, STOP and report the error verbatim.
 
 ### Build automation
@@ -78,7 +78,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 ### Reuse & diff safety
 
 10. **Reuse before creating** — `prepare(mode="change")` lists existing CoC wrappers and event handlers. If an extension or handler class in the custom model already owns the target, add the new method there. Never create a parallel feature-named class (`<Target>_<Feature>_Extension`, `<Form>_<Feature>_EH`) unless the user explicitly asks for a separate class. The suffix comes from `EXTENSION_NAMING_STYLE` / existing artifacts — never from feature, ticket, or customer names; if it cannot be derived, ask.
-11. **The post-write diff must be additive or narrowly targeted** — verify via `review_workspace_changes` (or re-read with `get_*_info`) that no unrelated XML nodes (`<DataSources>`, `<Controls>`, methods, pattern metadata) disappeared. If they did, the edit failed: `undo_last_modification`.
+11. **The post-write diff must be additive or narrowly targeted** — verify via `get_workspace_info(changes=true)` (or re-read with `get_object_info`) that no unrelated XML nodes (`<DataSources>`, `<Controls>`, methods, pattern metadata) disappeared. If they did, the edit failed: `d365fo_file(action="undo")`.
 12. **An example form named by the user is a pattern contract** — keep its pattern family and required scaffolding (datasources, ActionPane/Tab/grid/QuickFilter); missing pattern elements are a failed generation even if the XML is well-formed.
 
 ### Spending tool calls

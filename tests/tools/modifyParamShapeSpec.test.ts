@@ -24,11 +24,14 @@ const call = (args: Record<string, unknown>) => modifyD365FileTool(
 const text = (r: any) => r.content.map((c: any) => c.text).join('');
 
 describe('a wrong parameter SHAPE answers with the operation contract', () => {
-  it('names the offending parameter and returns the add-index spec', async () => {
+  it('names the offending parameter and returns the add-index spec (autoCorrect=false)', async () => {
     const r: any = await call({
       objectType: 'table', objectName: 'SomeTable', operation: 'add-index',
       // Flat, as d365foFileTool hands them over after merging `params` up.
-      indexName: 'Idx', indexFields: ['ProbeId'],
+      // Strict mode: a list of names is refused with the contract, exactly as
+      // before. The default now reads it as [{fieldName}] — see the coercion
+      // suite in modifyArgNormalization.test.ts.
+      indexName: 'Idx', indexFields: ['ProbeId'], autoCorrect: false,
     });
 
     expect(r.isError).toBe(true);

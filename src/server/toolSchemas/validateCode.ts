@@ -17,7 +17,7 @@ export const validateCodeTool = {
         mode: {
           type: 'string',
           enum: ['both', 'syntax', 'references'],
-          description: 'both = run the two checks in ONE call (preferred); syntax = BP/best-practice rules only; references = symbol resolution only.',
+          description: 'both = run the two checks in ONE call (preferred).',
         },
         code: {
           type: 'string',

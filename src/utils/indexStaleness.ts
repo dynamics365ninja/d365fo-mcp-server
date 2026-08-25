@@ -26,10 +26,13 @@ const TOLERANCE_MS = 60_000;
 const SCAN_CACHE_MS = 30_000;
 
 const scanCache = new Map<string, { at: number; result: MtimeScanResult | null }>();
+/** Roots whose background scan is already scheduled — one at a time per root. */
+const scanInFlight = new Set<string>();
 
 /** Drop cached scans (test isolation, or after a known workspace write). */
 export function resetMetadataMtimeCache(): void {
   scanCache.clear();
+  scanInFlight.clear();
 }
 
 export interface MtimeScanResult {
@@ -53,6 +56,55 @@ export function findNewestMetadataMtime(rootDir: string): MtimeScanResult | null
   const result = scanNewestMetadataMtime(rootDir);
   scanCache.set(rootDir, { at: Date.now(), result });
   return result;
+}
+
+/**
+ * A scan result, or the fact that one is being computed.
+ *
+ * The scan itself cannot be made cheap — it is up to MAX_SCANNED_FILES
+ * synchronous `statSync` calls, and on a cold Windows file cache the first one
+ * is seconds, not milliseconds. What it CAN stop being is the first thing a
+ * session waits for: `get_workspace_info` averaged 31.5 s over 31 real calls and
+ * is neither bridge-gated nor DB-gated, so the cost was inside the tool.
+ */
+export type MtimeScanState =
+  | { status: 'ready'; result: MtimeScanResult | null }
+  | { status: 'pending' };
+
+/**
+ * Cached scan, computed in the background when the caller cannot wait.
+ *
+ * `blocking: true` is the old behaviour — scan now, answer now — and is what
+ * `diagnostics: true` uses, because the whole point of diagnostics is the full
+ * picture. `blocking: false` answers from cache or says "pending" and schedules
+ * the walk on a later tick, so the request path never carries it. Either way the
+ * result lands in the same cache, so the NEXT call has the real verdict.
+ */
+export function findNewestMetadataMtimeCached(
+  rootDir: string,
+  opts: { blocking?: boolean } = {},
+): MtimeScanState {
+  const hit = scanCache.get(rootDir);
+  if (hit && Date.now() - hit.at < SCAN_CACHE_MS) return { status: 'ready', result: hit.result };
+  if (opts.blocking) return { status: 'ready', result: findNewestMetadataMtime(rootDir) };
+
+  if (!scanInFlight.has(rootDir)) {
+    scanInFlight.add(rootDir);
+    // setTimeout, not a worker: the walk is synchronous fs work either way, but
+    // off the response path it costs the caller nothing. unref() so a pending
+    // scan can never hold the process open after the last request.
+    const timer = setTimeout(() => {
+      try {
+        scanCache.set(rootDir, { at: Date.now(), result: scanNewestMetadataMtime(rootDir) });
+      } catch {
+        scanCache.set(rootDir, { at: Date.now(), result: null });
+      } finally {
+        scanInFlight.delete(rootDir);
+      }
+    }, 0);
+    timer.unref?.();
+  }
+  return { status: 'pending' };
 }
 
 function scanNewestMetadataMtime(rootDir: string): MtimeScanResult | null {
@@ -105,7 +157,7 @@ function scanNewestMetadataMtime(rootDir: string): MtimeScanResult | null {
 }
 
 export interface StalenessReport {
-  status: 'fresh' | 'stale' | 'unknown';
+  status: 'fresh' | 'stale' | 'unknown' | 'pending';
   /** Full "## Index Freshness" section — diagnostics=true only. */
   lines: string[];
   /**
@@ -119,10 +171,15 @@ export interface StalenessReport {
 /**
  * Compare workspace mtimes against the index timestamp and render a report
  * section for get_workspace_info.
+ *
+ * `blocking` defaults to TRUE so every existing caller keeps the full answer;
+ * the request path passes `{ blocking: false }` and gets a 'pending' report on a
+ * cold cache — see findNewestMetadataMtimeCached.
  */
 export function checkIndexStaleness(
   lastIndexedAt: string | null,
   modelMetadataDir: string | null,
+  opts: { blocking?: boolean } = {},
 ): StalenessReport {
   const lines: string[] = ['## Index Freshness', ''];
 
@@ -151,7 +208,24 @@ export function checkIndexStaleness(
     };
   }
 
-  const scan = findNewestMetadataMtime(modelMetadataDir);
+  const state = findNewestMetadataMtimeCached(modelMetadataDir, { blocking: opts.blocking !== false });
+  if (state.status === 'pending') {
+    // Said, not hidden: the number is being computed, not missing. The next call
+    // has it, and diagnostics=true computes it on the spot.
+    lines.push(
+      'ℹ️  Workspace scan is running in the background — freshness verdict not in yet.',
+      '   Call get_workspace_info again for it, or diagnostics=true to compute it now.',
+    );
+    return {
+      status: 'pending',
+      lines,
+      compactLines: [
+        `Index       : indexed ${ageHours} h ago — freshness scan running in the background ` +
+        `(call again for the verdict; diagnostics=true computes it now)`,
+      ],
+    };
+  }
+  const scan = state.result;
   if (!scan) {
     lines.push(`ℹ️  No metadata files found under ${modelMetadataDir} — nothing to compare.`);
     return {

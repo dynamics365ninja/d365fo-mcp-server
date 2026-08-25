@@ -30,8 +30,9 @@ export const generateObjectTool = {
       properties: {
         mode: {
           type: 'string',
+          // No description: it restated the bullet list in this tool's own
+          // description, which is sent in the same payload.
           enum: ['pattern', 'scaffold', 'find-methods', 'relation-xpp', 'fields', 'table-relation'],
-          description: 'pattern = X++ skeleton; scaffold = whole table/form/report (set objectType); find-methods/relation-xpp/fields/table-relation = X++/XML helpers for an existing table.',
         },
         name: {
           type: 'string',
