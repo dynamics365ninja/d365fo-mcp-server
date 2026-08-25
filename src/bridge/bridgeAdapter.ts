@@ -99,6 +99,30 @@ export interface BridgeMethodPageRequest {
   includeSource: boolean;
 }
 
+/**
+ * MEASURED before you build the C# half: do not.
+ *
+ * The obvious next step from this seam is to push offset/limit into readTable /
+ * readClass so the bridge stops shipping every method (and its Source) for a
+ * response that renders 25 of them. It buys nothing. First, uncached reads over
+ * stdio against the real metadata, 2026-08-25:
+ *
+ *     table SalesLine          808 methods   255 ms
+ *     table CustTable          222 methods   962 ms   <- first bridge read overall
+ *     class SalesFormLetter    179 methods   368 ms
+ *     table CustPaymModeTable   39 methods   254 ms
+ *     table CustGroup           16 methods    66 ms
+ *
+ * Method count does not predict latency — four times the methods runs four
+ * times faster — and every repeat read is 1-2 ms. CustTable's 962 ms is the
+ * provider warming up, not serialisation. The bytes that mattered were the ones
+ * reaching the MODEL, and those are already gone: this reader went from 20,199
+ * to ~7,000 chars by rendering less, not by transferring less.
+ *
+ * The seam stays because paging the RENDER is worth doing and this is where it
+ * is decided. If a future change makes the transfer itself expensive, re-measure
+ * first — this table is what to beat.
+ */
 export function methodPageRequest(
   offset: number, includeSource: boolean, limit = TABLE_METHOD_PAGE_SIZE,
 ): BridgeMethodPageRequest {
