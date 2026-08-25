@@ -25,6 +25,7 @@ import { findBaseFormXml } from '../../utils/baseObjectXml.js';
 import { getFieldControlMap, getTableTitleField, type FieldControlMap } from '../../utils/fieldControlTypes.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { scaffoldWriteRefusalResult } from '../write/writeAnchorGuard.js';
+import { upsertWrittenFileIntoIndex } from '../write/inlineIndexUpsert.js';
 
 /**
  * Symbol types a form datasource may bind to. Views are indexed as 'view'
@@ -1106,6 +1107,11 @@ export async function handleGenerateSmartForm(
 
   fs.writeFileSync(normalizedPath, normalizeD365Xml(xml), 'utf-8');
   console.log(`[generateSmartForm] Created file: ${normalizedPath}`);
+
+  // Tell the index about it, the way every create/modify path does.
+  // Without this the object is invisible to `search` — which is now answered
+  // from the index for untyped queries — in the very session that created it.
+  await upsertWrittenFileIntoIndex(normalizedPath, { symbolIndex });
 
   // Add to Visual Studio project if a projectPath is known
   let projectMessage = '';

@@ -211,9 +211,22 @@ async function answerForActualType(
     return null;
   }
 
-  const candidates = [...new Set(
+  const indexed = [...new Set(
     rows.map(r => readerTypeForIndexType(r.type)).filter((t): t is string => !!t),
-  )].filter(t => t !== ref.objectType);
+  )];
+
+  // The index says the object DOES exist as the type that was asked for, so the
+  // read failed for some other reason — a stale file_path, the bridge down, the
+  // file moved. Correcting here would answer for a different object AND assert
+  // "does not exist as a <requested>, it exists only as a <other>", both false.
+  // This is the guard buildObjectTypeMismatchMessage has always had
+  // (metadataResolver.ts: `if (expectedEntries.length > 0 …) return ''`) and it
+  // was lost when the correction was folded in here. Note the trigger for this
+  // path is usually "the live source of truth is broken" — the worst moment to
+  // treat the index as an oracle.
+  if (indexed.includes(ref.objectType)) return null;
+
+  const candidates = indexed.filter(t => t !== ref.objectType);
   if (candidates.length !== 1) return null;
 
   const actualType = candidates[0];

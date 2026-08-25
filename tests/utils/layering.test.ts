@@ -71,10 +71,15 @@ describe('layer direction', () => {
     // it is one of the edges that kept modifyD365File growing; the locator now
     // lives in src/utils/baseObjectXml.ts, which anything may import.
     //
-    // writeAnchorGuard stays allowed on purpose: it is a 93-line GUARD (may this
-    // scaffold write here at all?), not a write tool, and a generator that could
-    // not ask it would have to re-implement the refusal or skip it.
-    const ALLOWED = ['writeAnchorGuard'];
+    // Two stay allowed on purpose, and neither is a write TOOL:
+    //   writeAnchorGuard   — a 93-line GUARD (may this scaffold write here at
+    //     all?). A generator that could not ask it would re-implement the
+    //     refusal or skip it.
+    //   inlineIndexUpsert  — the shared post-write step that tells the symbol
+    //     index about a file just written. A generator that writes an object and
+    //     skips it leaves that object invisible to the untyped `search` that now
+    //     answers from the index.
+    const ALLOWED = ['writeAnchorGuard', 'inlineIndexUpsert'];
     const offenders: string[] = [];
     for (const file of globSync('src/tools/smart/**/*.ts')) {
       for (const spec of importsOf(file)) {

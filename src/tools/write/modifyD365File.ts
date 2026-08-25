@@ -2689,8 +2689,26 @@ function arrayElementSoleRequiredKey(param: string): string | null {
   return answer;
 }
 
+/**
+ * Array parameters where a bare NAME IS THE WHOLE ENTRY, so reading `["A"]` as
+ * `[{ key: "A" }]` loses nothing.
+ *
+ * Positive and explicit, because the generic "sole required key" test is not a
+ * safety test. `fields` passes it — `{ name, edt?, type?, mandatory?, label? }`
+ * — and must NOT be coerced: its only operation is `replace-all-fields`, which
+ * the op spec calls an atomic rewrite of every field, and a name-only entry is
+ * documented as incomplete by the schema itself ("REQUIRED when edt is an EDT
+ * name - without it defaults to AxTableFieldString!"). So
+ * `replace-all-fields {fields:["CustAccount","Amount"]}` would turn a refusal
+ * into a table that has lost every field, EDT, label and mandatory flag, and
+ * report it with a green tick. A field list sent as names has no single valid
+ * reading, so it keeps erroring with the contract.
+ */
+const NAME_IS_THE_WHOLE_ENTRY = new Set(['indexFields']);
+
 /** `["A","B"]` -> `[{ key: "A" }, { key: "B" }]`; the same array back when nothing applies. */
 function coerceArrayElements(param: string, value: unknown): unknown {
+  if (!NAME_IS_THE_WHOLE_ENTRY.has(param)) return value;
   if (!Array.isArray(value) || !value.some(v => typeof v === 'string')) return value;
   const key = arrayElementSoleRequiredKey(param);
   if (!key) return value;

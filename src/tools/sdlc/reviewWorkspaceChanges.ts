@@ -53,11 +53,17 @@ async function defaultCandidates(): Promise<Array<string | null | undefined>> {
   } catch {
     /* project detection best-effort */
   }
+  // process.cwd() is deliberately NOT here. It is the server's launch directory,
+  // which has nothing to do with the D365FO workspace, and the three candidates
+  // above all legitimately miss (a model under PackagesLocalDirectory is very
+  // often not under source control at all). Falling back to cwd turned that miss
+  // into a diff of the developer's own checkout, printed under a heading that
+  // did not name it, with a per-file `undo` — a git checkout that discards
+  // uncommitted work — offered against every file in it.
   return [
     configManager.getWorkspacePath(),
     projectDir,
     process.env.D365FO_WORKSPACE_PATH,
-    process.cwd(),
   ];
 }
 
@@ -125,7 +131,12 @@ export const reviewWorkspaceChangesTool = async (params: any, _context?: any) =>
     }
 
     return {
-      content: [{ type: 'text', text: 'Code Review Target (Git Diff):\n' + stdout + undoSection }]
+      content: [{
+        type: 'text',
+        // Name the repository. An answer from an unexpected root is the failure
+        // mode this tool has, and it is invisible unless the root is printed.
+        text: `Code Review Target (Git Diff) — repository: ${repoRoot}\n` + stdout + undoSection,
+      }],
     };
   } catch (error: any) {
     return {

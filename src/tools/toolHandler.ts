@@ -11,6 +11,9 @@ import {
   BRIDGE_FAILURE_MARKER, runWithBridgeFailureScope, renderBridgeFailureNote,
 } from '../bridge/bridgeFailure.js';
 import type { BridgeFailure } from '../bridge/bridgeFailure.js';
+import {
+  runWithSideEffectScope, renderSideEffectNote, type WriteSideEffect,
+} from '../utils/writeSideEffects.js';
 import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { searchUnifiedTool } from './analysis/searchUnified.js';
 import { getObjectInfoTool } from './readers/getObjectInfo.js';
@@ -45,6 +48,13 @@ import {
   MUTATING_TOOLS, currentWriteEpoch, bumpWriteEpoch,
 } from '../utils/callDedup.js';
 import { capToolResponse } from './responseCaps.js';
+
+/**
+ * Tools whose call can WRITE to the model. Used only to pick the right wording
+ * when the bridge failed but the tool still returned OK — see the note in the
+ * dispatch loop.
+ */
+const WRITE_CAPABLE_TOOLS = new Set(['d365fo_file', 'labels']);
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
 import { createProgressReporter } from '../utils/progressReporter.js';
 
@@ -279,8 +289,12 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     // wrappers return null, the tool serves the SQLite index instead, and the
     // answer — including "not found" — looks like it came from live metadata.
     const bridgeFailures: BridgeFailure[] = [];
+    // Anything this call commits before it fails — a label written on the way to
+    // an operation that is then refused. Same scope shape as the failure sink.
+    const sideEffects: WriteSideEffect[] = [];
     try {
-    result = await runWithBridgeFailureScope(bridgeFailures, async () => {
+    result = await runWithSideEffectScope(sideEffects, () =>
+      runWithBridgeFailureScope(bridgeFailures, async () => {
       // Build the progress description for this tool call.
       const args = request.params.arguments as Record<string, any> | undefined;
       const progressMsg = buildProgressMessage(toolName, args);
@@ -370,7 +384,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           isError: true,
         };
     } })();
-    });
+    }));
     } catch (err) {
       // Safety net: convert any thrown error into a tool result with isError:true
       // instead of an opaque JSON-RPC protocol error.
@@ -399,8 +413,21 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           (item: any) => typeof item?.text === 'string' && item.text.includes(BRIDGE_FAILURE_MARKER),
         );
         if (!alreadyReported) {
-          capped = appendNote(capped, renderBridgeFailureNote(bridgeFailures));
+          // A write that came back OK completed through the direct-XML fallback,
+          // so it needs the "it landed, do not repeat it" wording rather than the
+          // reader's "treat this as unproven and re-run".
+          const writeSucceeded = WRITE_CAPABLE_TOOLS.has(toolName) && capped?.isError !== true;
+          capped = appendNote(capped, renderBridgeFailureNote(bridgeFailures, { writeSucceeded }));
         }
+      }
+
+      // A FAILED call that had already committed something says so, because its
+      // own "nothing was written" is about the operation, not about everything
+      // the call touched — a label resolved on the way to a refused add-field is
+      // on disk, and undo does not take it back. Only on failure: on success the
+      // tool reports the effect in its own words.
+      if (capped?.isError === true && sideEffects.length > 0) {
+        capped = appendNote(capped, renderSideEffectNote(sideEffects));
       }
 
       // Record metrics: detect empty result (no content or first text item is empty)

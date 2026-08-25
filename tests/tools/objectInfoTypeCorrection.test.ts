@@ -121,3 +121,50 @@ describe('get_object_info — several plausible types', () => {
     expect(mockTableInfo).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The correction must not fire when the index says the requested type EXISTS.
+ *
+ * `buildObjectTypeMismatchMessage` has always bailed in that case
+ * (`if (expectedEntries.length > 0 …) return ''`), and folding the correction in
+ * here dropped that guard: the candidate list was built by filtering the
+ * requested type out, then checked only for length 1.
+ *
+ * So for a name indexed as both a table and a form, a table read that fails for
+ * an unrelated reason — a stale file_path, a moved file, the bridge down — would
+ * return the FORM, prefixed with "does not exist as a table — it exists only as
+ * a form". Both halves false, and the trigger is usually "the live source of
+ * truth is broken", which is the worst moment to treat the index as an oracle.
+ */
+describe('get_object_info — the requested type is also indexed', () => {
+  it('does not answer for another type when the requested one exists', async () => {
+    mockTableInfo.mockReset().mockResolvedValue({
+      content: [{ type: 'text', text: '❌ Table "CustTable" not found via bridge or symbol index.' }],
+      isError: true,
+    });
+
+    const result = await getObjectInfoTool(
+      req({ objectType: 'table', name: 'CustTable' }),
+      // Indexed as BOTH — the read failed for some other reason.
+      buildContext([{ type: 'table', model: 'Foundation' }, { type: 'form', model: 'Foundation' }]),
+    );
+    const text = result.content[0].text as string;
+
+    expect(mockFormInfo, 'must not silently read a different object').not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+    expect(text).not.toContain('does not exist as a **table**');
+    expect(text).toContain('not found');
+  });
+
+  it('still corrects when the requested type is genuinely absent', async () => {
+    const result = await getObjectInfoTool(
+      req({ objectType: 'class', name: 'CustTable' }),
+      buildContext([{ type: 'table', model: 'Foundation' }, { type: 'form', model: 'Foundation' }]),
+    );
+    // Two candidates, neither of them the requested one -> it cannot pick, so it
+    // must fall back to the list rather than guess.
+    expect(mockTableInfo).not.toHaveBeenCalled();
+    expect(mockFormInfo).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+  });
+});

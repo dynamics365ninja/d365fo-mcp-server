@@ -293,10 +293,13 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
     }
 
     // UNTYPED/BROAD → index. This is the 18-second case, and the index holds the
-    // same object names. Freshly written objects stay findable here: every
-    // create/modify indexes the file it just wrote in-process
-    // (tools/write/inlineIndexUpsert.ts), so the index is already current for
-    // this session's own writes without an update_symbol_index round trip.
+    // same object names. Freshly written objects stay findable here because every
+    // path that writes an object indexes it in-process on the way out
+    // (tools/write/inlineIndexUpsert.ts) — the create/modify paths always did,
+    // and the three generate_object writers were doing a bare fs.writeFileSync
+    // until this routing made that omission visible. That premise is what makes
+    // answering from the index safe; if a new writer skips the upsert, its object
+    // goes missing from search in the session that created it.
     const answer = await collectIndexAnswer(args, symbolIndex);
     // "Live" excludes rows whose file is gone from disk. An answer made ONLY of
     // those is an answer about objects that are not here any more — exactly the

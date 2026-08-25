@@ -1107,7 +1107,10 @@ async function renderFinishedBuildResult(
   // finished until AxDB is synchronised, and that sync always follows a
   // successful build. Gated on `succeeded` for the same reason bpCheck is —
   // syncing metadata the compiler just rejected is worse than not syncing.
-  const syncSection = succeeded ? await runPostBuildDbSync(params, targetModel, context) : '';
+  const sync = succeeded
+    ? await runPostBuildDbSync(params, targetModel, context)
+    : { section: '', failed: false };
+  const syncSection = sync.section;
 
   return {
     content: [{
@@ -1118,7 +1121,9 @@ async function renderFinishedBuildResult(
         (structured ? `${structured}\n\n` : '') +
         `${logContent || '(no output)'}` + bpSection + syncSection,
     }],
-    ...((!succeeded) ? { isError: true } : {}),
+    // A failed sync is an error even though the compile passed: the caller asked
+    // for "build and sync", and half of that did not happen.
+    ...((!succeeded || sync.failed) ? { isError: true } : {}),
   };
 }
 
@@ -1167,12 +1172,12 @@ async function runPostBuildDbSync(
   params: any,
   targetModel: string,
   context: any,
-): Promise<string> {
+): Promise<{ section: string; failed: boolean }> {
   const requested = params?.dbSync;
   const tables = Array.isArray(requested)
     ? requested.filter((t: unknown) => typeof t === 'string' && t.trim().length > 0)
     : undefined;
-  if (!Array.isArray(requested) && requested !== true && requested !== 'true') return '';
+  if (!Array.isArray(requested) && requested !== true && requested !== 'true') return { section: '', failed: false };
   try {
     const { dbSyncTool } = await import('./dbSync.js');
     const result: any = await dbSyncTool(
@@ -1189,9 +1194,18 @@ async function runPostBuildDbSync(
       .map((c: any) => c.text)
       .join('\n')
       .trim();
-    return text ? `\n\n--- Database sync (dbSync) ---\n${text}` : '';
+    if (!text) return { section: '', failed: false };
+    // dbSyncTool sets isError when the sync fails. Dropping it put a ❌ at the
+    // bottom of a response headed ✅ Build succeeded, with the flag unset — and
+    // since trigger_db_sync is no longer published, this is the only sync path
+    // a caller has.
+    const failed = result?.isError === true;
+    const heading = failed
+      ? '--- Database sync (dbSync) — FAILED, the build did not ---'
+      : '--- Database sync (dbSync) ---';
+    return { section: `\n\n${heading}\n${text}`, failed };
   } catch (e: any) {
-    return `\n\n⚠️ dbSync requested but could not run: ${e?.message ?? e}`;
+    return { section: `\n\n⚠️ dbSync requested but could not run: ${e?.message ?? e}`, failed: true };
   }
 }
 

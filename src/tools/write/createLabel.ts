@@ -30,6 +30,7 @@ import {
 } from '../../utils/labelReference.js';
 import { isExtensionLabelFile } from '../../metadata/labelParser.js';
 import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
+import { recordWriteSideEffect } from '../../utils/writeSideEffects.js';
 
 const UTF8_BOM = '\uFEFF';
 
@@ -646,6 +647,11 @@ export async function resolveOrCreateLabelRef(
     String(result?.content?.[0]?.text ?? '').includes('already exists — reusing it');
 
   const ref = `@${labelFileId}:${chosen}`;
+  // A CREATED label is on disk from here on, whatever the operation that asked
+  // for it does next. If that operation then fails, its "nothing was written"
+  // is about itself; toolHandler appends this so the statement is not read as
+  // covering the whole call. A REUSED label committed nothing.
+  if (!reused) recordWriteSideEffect('label created', ref);
   return {
     ref,
     note:

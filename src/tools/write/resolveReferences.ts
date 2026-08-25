@@ -57,6 +57,13 @@ export const resolveReferencesArgsSchema = z.object({
 // the aggregated array into the ListTools response.
 
 export interface ReferenceViolation {
+  /**
+   * The check could not run at all — the index held nothing to check against —
+   * as opposed to running and finding the reference acceptable. Carried
+   * separately from `severity` because the two audiences differ: a reader wants
+   * a warning, while the write gate must treat "unchecked" as unproven.
+   */
+  unverifiable?: boolean;
   kind:
     | 'unknown-type'
     | 'unknown-static-member'
@@ -584,6 +591,12 @@ function unknownFieldViolation(
     return {
       kind: 'unknown-field',
       severity: 'warning',
+      // Not an ordinary warning: nothing was checked. gateOnReferenceErrors
+      // refuses on this too, because "the index could not tell" is not the
+      // proof GROUNDING_ENFORCE exists to demand — and for maps the gap is
+      // total (377 of 377 carry no field rows), so without this the gate is
+      // simply off for every map buffer.
+      unverifiable: true,
       line,
       identifier: `${tableName}.${fieldName}`,
       detail:
@@ -1189,9 +1202,12 @@ export function gateOnReferenceErrors(
   } catch {
     return null; // never block writes on resolver failure
   }
-  const errors = result.violations.filter(v => v.severity === 'error');
-  if (errors.length === 0) return null;
-  const list = errors
+  // Unverifiable is blocking here even though it is only a warning elsewhere:
+  // this gate's promise is that every identifier was PROVEN, and a reference the
+  // index could not check has not been.
+  const blocking = result.violations.filter(v => v.severity === 'error' || v.unverifiable);
+  if (blocking.length === 0) return null;
+  const list = blocking
     .map(v => `  • [${v.kind}] line ${v.line}: \`${v.identifier}\` — ${v.detail}`)
     .join('\n');
   return {
@@ -1202,7 +1218,10 @@ export function gateOnReferenceErrors(
         `❌ Unresolved references in ${operationDescription} (GROUNDING_ENFORCE=true).\n\n` +
         `The following identifiers could NOT be proven against the indexed codebase:\n\n` +
         `${list}\n\n` +
-        `Fix the identifiers (use the suggested lookup tools), then retry. ` +
+        `Some of these may be REAL and simply unindexed — the detail line says which. ` +
+        `Fix the ones that are wrong; for one the index cannot see, run ` +
+        `update_symbol_index on the object that declares it, or set GROUNDING_ENFORCE=false ` +
+        `for this write. Then retry. ` +
         `Run \`validate_code(mode="references")\` on the corrected code to confirm it is clean.`,
     }],
   };

@@ -438,3 +438,47 @@ describe('an advisory about the workspace is spelled out once, not per write', (
     expect(second).toMatch(/Backup: .*\.backup-/);
   });
 });
+
+/**
+ * The coercion must never complete a DESTRUCTIVE call the caller under-specified.
+ *
+ * `fields` passes the generic "sole required key" test — its elements are
+ * { name, edt?, type?, mandatory?, label? } — and its only operation is
+ * `replace-all-fields`, an atomic rewrite of every field on the table. Coercing
+ * `["CustAccount","Amount"]` into `[{name},{name}]` would turn a refusal into a
+ * table stripped of every field, EDT, label and mandatory flag, reported with a
+ * green tick and a note saying the list was "read as [{ name: … }]". The
+ * schema's own text for `type` says a name-only entry is incomplete: "REQUIRED
+ * when edt is an EDT name - without it defaults to AxTableFieldString!".
+ */
+describe('the array coercion refuses to complete an under-specified field list', () => {
+  it('leaves replace-all-fields name lists alone, so validation still refuses them', () => {
+    const { args, notes } = normalizeModifyArgs(
+      { operation: 'replace-all-fields', fields: ['CustAccount', 'Amount'] },
+      'replace-all-fields',
+    );
+    expect(args.fields, 'a bare field-name list must reach validation unchanged').toEqual(['CustAccount', 'Amount']);
+    expect(notes.join(' ')).not.toMatch(/fields was sent as a list of names/);
+  });
+
+  it('still coerces indexFields, where the name IS the whole entry', () => {
+    const { args, notes } = normalizeModifyArgs(
+      { operation: 'add-index', indexName: 'Idx', indexFields: ['ProbeId'] },
+      'add-index',
+    );
+    expect(args.indexFields).toEqual([{ fieldName: 'ProbeId' }]);
+    expect(notes.join(' ')).toMatch(/indexFields was sent as a list of names/);
+  });
+
+  it('refuses the destructive call end to end, with the contract', async () => {
+    const result = await modifyD365FileTool(
+      req({
+        objectType: 'table', objectName: 'ConProbeTable', operation: 'replace-all-fields',
+        fields: ['CustAccount', 'Amount'], filePath: FILE_PATH,
+      }),
+      ctx(),
+    );
+    expect(result.isError, 'an under-specified replace-all-fields must not be applied').toBe(true);
+    expect(textOf(result)).toMatch(/fields/);
+  });
+});

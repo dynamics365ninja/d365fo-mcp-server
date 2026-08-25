@@ -22,13 +22,13 @@
  * index, mkdtemp XML, the real `indexOneFile` and the real `resolveXppReferences`.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import { indexOneFile } from '../../src/tools/sdlc/updateSymbolIndex';
-import { resolveXppReferences, type ResolverDeps } from '../../src/tools/write/resolveReferences';
+import { resolveXppReferences, gateOnReferenceErrors, type ResolverDeps } from '../../src/tools/write/resolveReferences';
 
 const MODEL = 'RefProbeExt';
 
@@ -226,5 +226,48 @@ describe('what the reindex says about the extension record', () => {
     const result = await indexOneFile(file, { symbolIndex: index } as any);
     expect(result.isError).toBe(false);
     expect(result.text).toContain('Extension record: NOT written');
+  });
+});
+
+/**
+ * GROUNDING_ENFORCE must refuse a reference the index could not check.
+ *
+ * Downgrading the unjudgeable verdict to a warning was right for the READER — a
+ * table with no indexed column list is a gap in the index, not evidence the
+ * field is missing, and erroring there produced false positives on shipped
+ * metadata. But the write gate filters on `severity === 'error'`, so the same
+ * downgrade switched grounding off wherever the gap is systematic. It is total
+ * for maps: `indexMaps` writes no field symbols, so all 377 shipped maps carry
+ * zero field rows, and every member reference on a map buffer — invented or
+ * real — became a warning the gate waved through.
+ */
+describe('the grounding gate does not mistake "unchecked" for "proven"', () => {
+  const MAP = 'RefProbeVendMap';
+  const CODE = `${MAP} buf;\nvoid run()\n{\n    buf.ZzzNotARealField = 0;\n}\n`;
+
+  beforeAll(() => {
+    // A map row with NO field rows — exactly how every shipped map is indexed.
+    index.addSymbol({ name: MAP, type: 'map', filePath: `K:\\x\\${MAP}.xml`, model: MODEL });
+  });
+  beforeEach(() => { process.env.GROUNDING_ENFORCE = 'true'; });
+  afterEach(() => { delete process.env.GROUNDING_ENFORCE; });
+
+  it('refuses a field on an object the index holds no column list for', () => {
+    const gate = gateOnReferenceErrors(CODE, index, 'add-method on RefProbe');
+    expect(gate, 'an unverifiable reference must not pass the gate').not.toBeNull();
+    expect(gate!.content[0].text).toContain('ZzzNotARealField');
+    // The refusal must not call it wrong — it may well be real and unindexed.
+    expect(gate!.content[0].text).toMatch(/may be REAL and simply unindexed/);
+  });
+
+  it('still reports it as a WARNING to a reader, so no false positive comes back', () => {
+    const violation = resolveXppReferences(CODE, deps).violations
+      .find(v => v.kind === 'unknown-field' && v.identifier.includes('ZzzNotARealField'));
+    expect(violation?.severity).toBe('warning');
+    expect(violation?.unverifiable).toBe(true);
+  });
+
+  it('lets a snippet with nothing to prove through', () => {
+    expect(gateOnReferenceErrors('void run()\n{\n    int i = 1;\n}\n', index, 'add-method')).toBeNull();
   });
 });

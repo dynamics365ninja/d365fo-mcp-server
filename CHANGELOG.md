@@ -58,17 +58,29 @@ those are called out explicitly below.
   There is now ONE implementation, in `src/tools/xml/xmlTemplateGenerator.ts`,
   imported by both former homes and by `generateSmartReport`. Verified live
   against the VM: for a class carrying a `#Library` include, an enum and a
-  security privilege, `generate` output is now byte-identical to what `create`
-  writes to disk, macro directives included.
+  security privilege, `generate` output and what `create` writes to disk are now
+  identical **after line-ending normalisation** — same elements, same values,
+  macro directives included. They are NOT byte-identical, and cannot be:
+  `create` writes through `normalizeD365Xml` (LF to CRLF, trailing newline
+  stripped) while `generate` returns the text unnormalised, so the same class
+  measures 636 B returned against 668 B on disk. `generate` also does not apply
+  the model-name prefix that `create` does, so the documented
+  generate-then-create flow must pass the final name if it wants the same
+  `<Name>`. An earlier claim of "byte-identical" here was wrong: the probe that
+  produced it normalised `\r\n` and trailing whitespace away before comparing,
+  i.e. it erased exactly the difference it was meant to detect.
   `tests/tools/xmlTemplateGeneratorSingleton.test.ts` fails if a second class or
   a second `generateAx*Xml` implementation ever appears — output-comparison
   tests cannot catch this, because a fork drifts in the methods nobody thought
   to compare.
-- Seven rewrites of EXISTING files moved onto the atomic write helper: the two
-  post-create reconciliations in `createD365File.ts`, and the `.label.txt`
-  rewrites in `createLabel.ts` and `renameLabel.ts`. A torn write to a
-  `.label.txt` does not corrupt one label, it corrupts every label in that
-  model's file, and that file has no undo outside git.
+- Seven rewrites moved onto the atomic write helper: in `createD365File.ts` the
+  two post-create reconciliations and the primary create write; in
+  `createLabel.ts` the `.label.txt` rewrite; in `renameLabel.ts` the `.label.txt`,
+  the `.xpp` sources and the XML metadata it rewrites when a label id changes.
+  A torn write to a `.label.txt` does not corrupt one label, it corrupts every
+  label in that model's file, and that file has no undo outside git. The two
+  remaining plain writes in `createLabel.ts` create a NEW file behind an
+  `fs.access` miss and are correctly left alone.
 
 ### Changed
 - An event-loop lag monitor ships behind `DEBUG_LOGGING`. The audit could
@@ -114,7 +126,7 @@ those are called out explicitly below.
   parameters stopped restating the bullet list their own tool description already
   carries (`generate_object.mode`, `security_info.mode`, `object_patterns.domain`,
   `validate_code.mode`), and `update_symbol_index` dropped the half of its
-  description that had become an essay. `ListTools` fell from 48,019 to 44,932
+  description that had become an essay. `ListTools` fell from 48,019 to 44,919
   characters.
 - The base-object XML locator moved out of `modifyD365File.ts` into
   `src/utils/baseObjectXml.ts`. `generateSmartForm` had been importing a

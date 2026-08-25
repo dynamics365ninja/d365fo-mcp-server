@@ -43,6 +43,7 @@ import { extractModelFromProject, findProjectInSolution } from '../../utils/proj
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { canonicalSymbolName, lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { scaffoldWriteRefusalResult } from '../write/writeAnchorGuard.js';
+import { upsertWrittenFileIntoIndex } from '../write/inlineIndexUpsert.js';
 
 interface ReportFieldSpec {
   /** Field name on the TmpTable (e.g. "ItemId", "Amount") */
@@ -1107,6 +1108,9 @@ export async function handleGenerateSmartReport(
     }
 
     fs.writeFileSync(normalizedPath, normalizeD365Xml(obj.content), 'utf-8');
+    // Same reason as the other generators: an object the index never hears
+    // about is missing from the untyped `search` that now answers from it.
+    await upsertWrittenFileIntoIndex(normalizedPath, { symbolIndex });
 
     let projectMsg = '';
     if (effectiveProjectPath) {
