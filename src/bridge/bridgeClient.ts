@@ -192,6 +192,12 @@ interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  /**
+   * The method this call is waiting on. Read by the health check: a ping that
+   * times out while a WRITE is outstanding means the child is busy — writes hold
+   * every read slot by design — not that it is wedged.
+   */
+  method: string;
 }
 
 export class BridgeClient extends EventEmitter {
@@ -440,6 +446,7 @@ export class BridgeClient extends EventEmitter {
         resolve: resolve as (value: unknown) => void,
         reject,
         timer,
+        method,
       });
 
       this.process!.stdin!.write(request, 'utf8', (err) => {
@@ -464,10 +471,31 @@ export class BridgeClient extends EventEmitter {
         await this.callOnce<string>('ping', {}, PING_TIMEOUT_MS);
         return;
       } catch {
+        // A ping that misses while a WRITE is outstanding is evidence the child
+        // is BUSY, not wedged: a write takes every read slot on purpose, so
+        // nothing — ping included — is answered until it finishes. Restarting
+        // here would rejectAllPending and kill the child halfway through an AOT
+        // write, which is not transactional. Leave it alone; the write's own
+        // timeout is what decides it has gone too long.
+        if (this.hasPendingWrite()) {
+          console.error(
+            '[BridgeClient] health-check ping timed out while a write is in flight — ' +
+            'treating the child as busy, not wedged, and NOT restarting it.',
+          );
+          return;
+        }
         // alive but wedged — fall through to restart
       }
     }
     await this.restart();
+  }
+
+  /** Is a non-retryable (write/refresh) call outstanding? See ensureHealthy. */
+  private hasPendingWrite(): boolean {
+    for (const p of this.pending.values()) {
+      if (p.method !== 'ping' && !RETRYABLE_METHODS.has(p.method)) return true;
+    }
+    return false;
   }
 
   private processAlive(): boolean {

@@ -1355,8 +1355,17 @@ namespace D365MetadataBridge.Services
                 }
                 catch { }
 
-                // Find parent duties that contain this privilege
+                // Find parent duties that contain this privilege.
+                //
+                // `parentDutiesComplete` is the honest part: this is a scan over
+                // every duty, and a failure anywhere in it used to return an
+                // EMPTY list that reads as "this privilege is in no duty" — the
+                // exact claim BPErrorPrivilegeNotCoveredByDuty is about, and the
+                // one an agent acts on by adding it to a duty it may already be
+                // in. A per-duty read that fails only makes THAT duty unknown;
+                // a failure of the enumeration makes the whole answer unusable.
                 var parentDuties = new List<object>();
+                var parentDutiesComplete = true;
                 try
                 {
                     foreach (var dutyName in _provider.SecurityDuties.GetPrimaryKeys())
@@ -1374,10 +1383,14 @@ namespace D365MetadataBridge.Services
                                 }
                             }
                         }
-                        catch { }
+                        catch { parentDutiesComplete = false; }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    parentDutiesComplete = false;
+                    Console.Error.WriteLine($"[WARN] parent-duty scan for privilege '{name}' failed: {ex.Message}");
+                }
 
                 return new
                 {
@@ -1388,6 +1401,7 @@ namespace D365MetadataBridge.Services
                     model,
                     entryPoints,
                     parentDuties,
+                    parentDutiesComplete,
                     _source = "C# bridge (IMetadataProvider)"
                 };
             }

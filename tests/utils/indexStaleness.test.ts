@@ -133,9 +133,18 @@ describe('non-blocking freshness scan (audit 2026-08-25)', () => {
   it('has the real answer once the background scan has run', async () => {
     resetMetadataMtimeCache();
     findNewestMetadataMtimeCached(root(), { blocking: false });
-    await new Promise(resolve => setTimeout(resolve, 20));
 
-    const state = findNewestMetadataMtimeCached(root(), { blocking: false });
+    // Poll to a deadline rather than sleeping a fixed 20 ms. The scan is a real
+    // filesystem walk on a background tick; 20 ms is comfortable on an idle dev
+    // box and not on a loaded CI runner, which is a flake that looks like a
+    // broken cache. Polling finishes as fast as the scan does.
+    let state = findNewestMetadataMtimeCached(root(), { blocking: false });
+    const deadline = Date.now() + 5000;
+    while (state.status !== 'ready' && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      state = findNewestMetadataMtimeCached(root(), { blocking: false });
+    }
+
     expect(state.status).toBe('ready');
     expect(state.status === 'ready' && state.result!.newestFile).toContain('ContosoHelper.xml');
   });

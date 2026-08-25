@@ -22,7 +22,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { modifyD365FileTool, coerceNoYesFlag } from '../../src/tools/write/modifyD365File';
+import { modifyD365FileTool } from '../../src/tools/write/modifyD365File';
+// coerceNoYesFlag moved with the direct-XML writers it belongs to.
+import { coerceNoYesFlag } from '../../src/tools/write/directXmlWriters';
 import {
   findIgnoredParams,
   findMissingMutationParams,

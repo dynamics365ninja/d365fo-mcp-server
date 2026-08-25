@@ -2642,6 +2642,16 @@ function formatSecurityPrivilege(priv: BridgeSecurityPrivilegeResult, _includeCh
   if (priv.parentDuties.length > 0) {
     out += `\nUsed in Duties (${priv.parentDuties.length}):\n`;
     out += `  ${priv.parentDuties.map(d => d.name).join(', ')}\n`;
+  } else if (priv.parentDutiesComplete === false) {
+    // Not the same as "none". The bridge scans every duty to answer this, and a
+    // scan that could not finish used to come back as an empty list — read as
+    // "this privilege is in no duty", which is exactly the claim
+    // BPErrorPrivilegeNotCoveredByDuty is about and the one an agent acts on by
+    // adding the privilege to a duty it may already be in.
+    out += `\nUsed in Duties: UNKNOWN — the duty scan could not complete, so this is NOT ` +
+      `evidence the privilege is uncovered.\n`;
+  } else {
+    out += `\nUsed in Duties: none\n`;
   }
 
   return out;

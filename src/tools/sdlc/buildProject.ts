@@ -468,6 +468,13 @@ function isWorthKeeping(line: string): boolean {
  */
 export async function renderFailureLog(
   logFile: string,
+  /**
+   * Do the parsed diagnostics EXPLAIN the failure — i.e. is at least one of them
+   * an error? Callers used to pass `parsed.length > 0`, which counts warnings:
+   * a build that failed in a shape the regexes do not match, but whose log
+   * carries BP warnings, then got a 40-line tail instead of the log, and the
+   * error that actually stopped it is rarely in the last 40 lines.
+   */
   hasStructuredDiagnostics: boolean,
 ): Promise<string> {
   if (!hasStructuredDiagnostics) return await readFullLog(logFile);
@@ -1057,7 +1064,7 @@ async function renderFinishedBuildResult(
     // diagnostics already explain the failure — see renderFailureLog.
     const logContent = succeeded
       ? trimSucceededLog(await readLogTail(relevantLogFile))
-      : await renderFailureLog(relevantLogFile, parsed.length > 0);
+      : await renderFailureLog(relevantLogFile, parsed.some(d => d.severity === 'error'));
 
     return {
       content: [{
@@ -1086,7 +1093,7 @@ async function renderFinishedBuildResult(
   // diagnostics already explain the failure — see renderFailureLog.
   const logContent    = succeeded
     ? trimSucceededLog(logTail)
-    : await renderFailureLog(finalState.logFile, parsed.length > 0);
+    : await renderFailureLog(finalState.logFile, parsed.some(d => d.severity === 'error'));
 
   // The note run_bp_check and verify_d365fo_project read, so a green verdict from a
   // tool that compiles nothing can say whether anything ever did.
@@ -1178,6 +1185,16 @@ async function runPostBuildDbSync(
     ? requested.filter((t: unknown) => typeof t === 'string' && t.trim().length > 0)
     : undefined;
   if (!Array.isArray(requested) && requested !== true && requested !== 'true') return { section: '', failed: false };
+  // `dbSync: []` fell through with `tables` undefined, which dbSyncTool reads as
+  // "derive the scope from the project" — so asking to sync NOTHING synced
+  // everything. An empty list is a caller mistake; say so rather than guess.
+  if (Array.isArray(requested) && (tables?.length ?? 0) === 0) {
+    return {
+      section: '\n\n⚠️ dbSync was an empty list, so nothing was synced. Pass `dbSync: true` to sync ' +
+        'the project scope, or name the tables: `dbSync: ["CustTable"]`.',
+      failed: false,
+    };
+  }
   try {
     const { dbSyncTool } = await import('./dbSync.js');
     const result: any = await dbSyncTool(

@@ -65,10 +65,16 @@ import {
  * when a project is configured mid-session.
  */
 function buildNoProjectPathWarning(): string {
-  const candidateCount = getConfigManager().getWorkspaceProjectCandidates().length;
+  const candidates = getConfigManager().getWorkspaceProjectCandidates();
+  // Keyed by the candidate PATHS, not their count: two different workspaces that
+  // happen to have the same number of .rnrproj files would otherwise share one
+  // key, and the second would never see its own candidate list.
+  const scope = candidates.length > 1
+    ? `ambiguous:${candidates.map(c => c.projectPath ?? c.modelName).sort().join('|')}`
+    : 'none';
   return sayOncePerSession(
     'no-project-path',
-    candidateCount > 1 ? `ambiguous:${candidateCount}` : 'none',
+    scope,
     buildNoProjectPathWarningFull(),
     `\n⚠️ Not added to a project (no projectPath resolved \u2014 see the first create in this session).\n`,
   );

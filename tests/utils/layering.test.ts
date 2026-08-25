@@ -113,6 +113,16 @@ describe('layer direction', () => {
     ]);
   });
 
+  it('the write tool dispatches rather than holding every writer', () => {
+    // 5,645 lines and +44% between two audits: the argument schema, a 62-arm
+    // operation switch, the disk locators AND fifteen direct-XML writers in one
+    // file. The writers moved to directXmlWriters.ts; this keeps the split from
+    // silently undoing itself. Raise it only with a reason, the way the schema
+    // budget is raised.
+    const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
+    expect(src.split('\n').length).toBeLessThan(4600);
+  });
+
   it('the dispatcher routes rather than implementing', () => {
     // get_workspace_info was ~320 lines inline in the switch, which made the
     // router the largest single tool implementation in the codebase.
