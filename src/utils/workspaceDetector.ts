@@ -144,7 +144,7 @@ async function readModelNames(projectFiles: string[]): Promise<Map<string, strin
  * Distinct non-demo model names across the candidates, lower-cased for comparison
  * but returned in original casing (first occurrence wins).
  */
-function distinctCustomModels(models: Iterable<string>): string[] {
+export function distinctCustomModels(models: Iterable<string>): string[] {
   const seen = new Map<string, string>();
   for (const m of models) {
     if (isMicrosoftDemoModel(m)) continue;

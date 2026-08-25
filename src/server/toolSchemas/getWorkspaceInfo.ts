@@ -12,17 +12,17 @@
 
 export const getWorkspaceInfoTool = {
     name: 'get_workspace_info',
-    description: `ALWAYS call FIRST at session start. Returns model name, package path, framework directory, project path, environment type, and EXTENSION_PREFIX. Flags placeholder model names and missing prefix. Pass projectName/projectPath whenever you already know the target project. Authoritative source for target model — not search results.`,
+    description: `ALWAYS call FIRST at session start. Returns model name, package path, framework directory, project path, environment type, and EXTENSION_PREFIX. Flags placeholder model names and missing prefix. Pass projectName/projectPath when you have the project's name or path. Authoritative source for target model — not search results.`,
     inputSchema: {
       type: 'object',
       properties: {
         projectName: {
           type: 'string',
-          description: 'Set when the USER named the project, or you already know it from context — only changes where WRITES land, not reads: reads span every model already. The PROJECT file name, e.g. "Contoso - FeatureManagement". NOT a model name: naming one selects none.',
+          description: 'The PROJECT file name, e.g. "Contoso - FeatureManagement" — pass it whenever you have one: the USER named it, or an earlier call listed it. NOT a model name, and not a guess from a ticket: one model has many projects, so naming it selects none. Steers WRITES only; reads span every model already.',
         },
         projectPath: {
           type: 'string',
-          description: 'Absolute path to a .rnrproj file. Use when projectName is ambiguous or none was selected. Example: "K:\\\\repos\\\\Contoso\\\\MyProject\\\\MyProject.rnrproj"',
+          description: 'Absolute path to a .rnrproj file. Use when projectName is ambiguous, none was auto-selected, or D365FO_SOLUTIONS_PATH is unset. Example: "K:\\\\repos\\\\Contoso\\\\MyProject\\\\MyProject.rnrproj"',
         },
         changes: {
           type: 'boolean',

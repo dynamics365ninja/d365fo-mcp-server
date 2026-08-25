@@ -8,7 +8,7 @@ import { existsSync, realpathSync } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { autoDetectD365Project, detectD365Project, scanAllD365Projects, extractModelNameFromProject, detectGitBranch, isMicrosoftDemoModel, type D365ProjectInfo } from './workspaceDetector.js';
+import { autoDetectD365Project, detectD365Project, scanAllD365Projects, extractModelNameFromProject, detectGitBranch, isMicrosoftDemoModel, distinctCustomModels, type D365ProjectInfo } from './workspaceDetector.js';
 import { registerCustomModel, getCustomModels } from './modelClassifier.js';
 import { XppConfigProvider, type XppEnvironmentConfig } from './xppConfigProvider.js';
 import { FALLBACK_PACKAGES_ROOT, findPackagesRoot } from './packagesRoot.js';
@@ -301,6 +301,22 @@ class ConfigManager {
             `This usually means the VS project wizard default model was not changed.`,
           );
         }
+        // The scan root can hold several custom models — a solution folder with
+        // dozens of .rnrproj is the ordinary shape, not the exception. Which one
+        // `primary` lands on is disk order, so say out loud that the model was a
+        // PICK and name what else was there. Deliberately not a refusal: for the
+        // many workspaces whose only model source IS this scan, withholding the
+        // model would break detection outright, and get_workspace_info already
+        // lists every project with the projectName to switch by.
+        const scannedModels = distinctCustomModels(all.map(p => p.modelName));
+        if (scannedModels.length > 1) {
+          const shown = scannedModels.slice(0, 6).join(', ');
+          console.error(
+            `[ConfigManager] ⚠️ D365FO_SOLUTIONS_PATH holds ${scannedModels.length} custom models ` +
+            `(${shown}${scannedModels.length > 6 ? ', …' : ''}) — "${primary.modelName}" was picked by scan ` +
+            `order, not by intent. Set modelName in .mcp.json, or pass projectName/projectPath, to target another.`
+          );
+        }
         // Several .rnrproj files can share one model (a multi-project D365FO solution).
         // Silently pinning projectPath to whichever one happened to scan first meant
         // writes landed in an arbitrary project the caller never asked for. Mirror the
@@ -308,10 +324,18 @@ class ConfigManager {
         // projectPath is left unset so a project-registering call must name one explicitly.
         const sameModelProjects = all.filter(p => p.modelName === primary.modelName);
         if (sameModelProjects.length > 1) {
+          // Keep every field the scan actually resolved and drop only what is now a
+          // guess. solutionPath survives when all candidates agree on one folder —
+          // it is a real fact about the model then, and getSolutionPath() consumers
+          // (createLabel, createD365File) lose nothing they were entitled to. When
+          // they disagree it is as much a guess as projectPath, so it goes too.
+          const solutionPaths = new Set(
+            sameModelProjects.map(p => p.solutionPath).filter((p): p is string => !!p)
+          );
           this.autoDetectedProject = {
-            modelName: primary.modelName,
-            packagePath: primary.packagePath,
-            packageName: primary.packageName,
+            ...primary,
+            projectPath: undefined,
+            solutionPath: solutionPaths.size === 1 ? [...solutionPaths][0] : undefined,
             ambiguousProjects: sameModelProjects
               .map(p => p.projectPath)
               .filter((p): p is string => !!p),
@@ -325,7 +349,14 @@ class ConfigManager {
           console.error(`[ConfigManager] ✅ Using first found project as primary: ${primary.modelName}`);
         }
         registerCustomModel(primary.modelName);
-        recordDetectionSuccess('the D365FO_SOLUTIONS_PATH scan', primary.modelName, primary.projectPath ?? null);
+        // The project that was deliberately NOT selected is not the one detection
+        // resolved: reporting it here made `doctor` print a projectPath alongside a
+        // get_workspace_info that says "(not selected)". Report what actually won.
+        recordDetectionSuccess(
+          'the D365FO_SOLUTIONS_PATH scan',
+          primary.modelName,
+          this.autoDetectedProject.projectPath ?? null,
+        );
       }
     }
   }
@@ -1067,6 +1098,8 @@ class ConfigManager {
     isModelSourceAutoDetected: boolean;
     projectPath: string | null;
     projectSource: string;
+    /** Projects that build the resolved model when none was selected; else empty. */
+    ambiguousProjects: string[];
     packagePath: string | null;
     packageSource: string;
     customPackagesPath: string | null;
@@ -1155,10 +1188,18 @@ class ConfigManager {
       }
     }
 
+    // No project, but not "nothing found": the scan resolved the model and stopped
+    // short of guessing which of its projects to register writes into. Naming that
+    // state (and its alternatives) is what lets the caller act without a second call.
+    const ambiguousProjects = projectPath ? [] : this.getAmbiguousProjectPaths();
+    if (!projectPath && ambiguousProjects.length > 1) {
+      projectSource = `not selected — ${ambiguousProjects.length} projects build this model`;
+    }
+
     const isModelSourceAutoDetected = modelSource.includes('auto-detected');
     return {
       modelName, modelSource, isModelSourceAutoDetected,
-      projectPath, projectSource,
+      projectPath, projectSource, ambiguousProjects,
       packagePath, packageSource,
       customPackagesPath, customPackagesSource,
     };
@@ -1200,6 +1241,21 @@ class ConfigManager {
    */
   getWorkspaceProjectCandidates(): D365ProjectInfo[] {
     return this.workspaceProjectCandidates;
+  }
+
+  /**
+   * The .rnrproj files the SOLUTIONS-PATH scan refused to choose between, because
+   * several of them build the model it resolved. Empty whenever a project WAS
+   * selected, so a non-empty list always means "the model is known and the project
+   * is the caller's to name".
+   *
+   * Separate from getWorkspaceProjectCandidates(): that list is the workspace's own
+   * ambiguity and is empty on this route (the scan only runs because the workspace
+   * held no .rnrproj at all). Without this, the alternatives were recorded and then
+   * never shown — the caller got a bare "no projectPath could be resolved".
+   */
+  getAmbiguousProjectPaths(): string[] {
+    return this.autoDetectedProject?.ambiguousProjects ?? [];
   }
 
   /**

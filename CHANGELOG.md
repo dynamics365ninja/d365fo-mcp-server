@@ -29,6 +29,26 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **Writes silently landed in whichever project scanned first.** When workspace
+  heuristics resolved nothing, the `D365FO_SOLUTIONS_PATH` fallback pinned
+  `all[0]` — so in a solution where several `.rnrproj` build one model (the
+  ordinary D365FO shape: one real solution here has 190 projects across 31
+  models, the largest model built by 20 of them), every file registered itself
+  into an arbitrary project nobody chose, on every fresh session. The model still
+  resolves — every candidate agrees on it — but the project is now left unset,
+  and the projects it is between are NAMED: by `get_workspace_info` (`Project :
+  (not selected — N projects build this model)` plus their file names) and by the
+  create warning, which listed nothing before. `d365fo-mcp doctor` no longer
+  prints the project that was deliberately not selected. When the scan root holds
+  several custom models, the log now says the model was picked by scan order
+  rather than deduced — the pick itself stands, because for many workspaces this
+  scan is the only model source.
+- **`get_workspace_info` answered a refused `projectName` with nothing else.**
+  It is the first call of every session, and the parameter is one the agent is
+  told to pass from context, so a miss is expected traffic — and it cost the whole
+  call plus a round trip to ask again without the argument. The refusal now comes
+  first, still with `isError` so it cannot read as a completed switch, followed by
+  the workspace facts the call was made for.
 - **A bridge provider that FAILED was reported as "object not found".**
   `PickProvider` swallowed the exception from both metadata providers and
   returned null, and every caller maps null to `-32001 Object not found`. So a
