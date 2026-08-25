@@ -29,6 +29,19 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **A bridge provider that FAILED was reported as "object not found".**
+  `PickProvider` swallowed the exception from both metadata providers and
+  returned null, and every caller maps null to `-32001 Object not found`. So a
+  metamodel mismatch, a `TypeLoadException` or an unreadable model reached the
+  agent as "that object does not exist" — and an agent told an object is absent
+  creates it, which is how you end up with two. The catch stays (the primary
+  provider legitimately throws for an object only the UDE reference provider
+  carries, and swallowing that is what makes the fallback work), but a failure is
+  now remembered and surfaced when NEITHER provider said yes.
+- Bridge write wrappers logged their exception to stderr and returned a plain
+  failure message, bypassing the per-call failure sink the read wrappers use — so
+  a write that threw reached the model with nothing saying the bridge was what
+  broke. 27 of them now record into it. Same stderr line, same return shape.
 - **`d365fo_file(action="generate")` produced X++ that could not compile.**
   `XmlTemplateGenerator` was declared twice — once in `createD365File.ts`, once
   in `generateD365Xml.ts` — with a comment on each half asserting the two were
@@ -58,6 +71,13 @@ those are called out explicitly below.
   model's file, and that file has no undo outside git.
 
 ### Changed
+- A successful bridge `create` no longer rebuilds the metadata provider twice.
+  The C# dispatcher runs `RefreshProvider()` itself after `createObject` /
+  `createSmartTable`, and the TypeScript side then scheduled and flushed another
+  full `DiskProvider` rebuild of the same tree. The adapter now records the
+  bridge-side refresh, and the second one runs only for the direct-XML create
+  path, which genuinely has nothing else to schedule it. Measured live, A/B over
+  the same call: create + 3 operations 5,754 → 5,452 ms and 3,455 → 3,138 ms.
 - **The published tool surface is 20 tools, down from 23.** Every tool schema is
   sent on every request, so a merge only pays when the merged description is
   shorter than the sum of the parts. Three were, and each fold went into the tool

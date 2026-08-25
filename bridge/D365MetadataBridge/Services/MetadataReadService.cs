@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using D365MetadataBridge.Models;
@@ -105,11 +105,37 @@ namespace D365MetadataBridge.Services
         /// </summary>
         private IMetadataProvider? PickProvider(Func<IMetadataProvider, bool> exists)
         {
-            try { if (exists(_provider)) return _provider; } catch { }
+            // The catch has to stay: the primary provider legitimately throws for
+            // an object only the reference (UDE) provider carries, and swallowing
+            // that is exactly what makes the fallback work.
+            //
+            // What must NOT stay is swallowing it when nobody could answer. Every
+            // caller maps a null from here to "Object not found" (-32001), so a
+            // provider that threw — a metamodel mismatch, a TypeLoadException, an
+            // unreadable model — was reported to the agent as "that object does
+            // not exist". An agent told an object is absent creates it, and now
+            // there are two. So: remember the failure, and surface it only when
+            // neither provider said yes.
+            Exception? firstFailure = null;
+            try { if (exists(_provider)) return _provider; }
+            catch (Exception ex) { firstFailure = ex; }
+
             if (_referenceProvider != null)
             {
-                try { if (exists(_referenceProvider)) return _referenceProvider; } catch { }
+                try { if (exists(_referenceProvider)) return _referenceProvider; }
+                catch (Exception ex) { firstFailure ??= ex; }
             }
+
+            if (firstFailure != null)
+            {
+                Console.Error.WriteLine(
+                    $"[ERROR] MetadataReadService: provider lookup failed - {firstFailure.GetType().Name}: {firstFailure.Message}");
+                throw new InvalidOperationException(
+                    $"Metadata provider could not answer the lookup ({firstFailure.GetType().Name}: {firstFailure.Message}). " +
+                    "This is a provider failure, NOT a missing object - do not treat it as 'does not exist'.",
+                    firstFailure);
+            }
+
             return null;
         }
 

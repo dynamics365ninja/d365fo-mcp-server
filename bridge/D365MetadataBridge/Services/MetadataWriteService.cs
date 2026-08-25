@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -44,11 +44,32 @@ namespace D365MetadataBridge.Services
         /// later refresh, so the refresh that finally made the manifest able to answer
         /// correctly changed nothing and every subsequent create into that model kept NREing.
         /// </summary>
+        /// <summary>
+        /// (collection type, object name) -> the model that owns it.
+        ///
+        /// GetModelSaveInfoForObject below is called by every write operation, and
+        /// its third strategy walks every package x 21 AOT folders on disk. The
+        /// answer is a property of the provider generation, so it is cached for
+        /// exactly as long as the other two caches: cleared in UpdateProvider when
+        /// the provider is replaced.
+        ///
+        /// MEASURED, so the comment does not overclaim: on a model the runtime
+        /// manifest already knows (an ordinary create-then-modify against fm-mcp),
+        /// this cache changes nothing — strategy 1 answers immediately and the
+        /// expensive fallbacks never run. A/B over create+3 operations and three
+        /// modifies was inside the noise. It pays only where strategy 1 and 2 miss
+        /// and the disk walk is reached: a model absent from the manifest, i.e. one
+        /// not yet built or registered — which is exactly the sandbox case, and the
+        /// case a write is most likely to be repeated in.
+        /// </summary>
+        private readonly Dictionary<string, ModelSaveInfo> _objectModelCache = new(StringComparer.OrdinalIgnoreCase);
+
         public void UpdateProvider(IMetadataProvider newProvider)
         {
             _provider = newProvider;
             _modelCache.Clear();
             _microsoftModelCache.Clear();
+            _objectModelCache.Clear();
         }
 
         // ========================
@@ -4774,6 +4795,21 @@ namespace D365MetadataBridge.Services
         /// and finally try to infer from the on-disk file path.
         /// </summary>
         private ModelSaveInfo GetModelSaveInfoForObject<T>(IReadOnlySingleKeyedMetadataProvider<T> collection, string objectName)
+            where T : class
+        {
+            // Keyed by collection type as well as name: two AOT kinds may carry the
+            // same name (a table and a form both called CustTable), and they need
+            // not live in the same model.
+            var cacheKey = typeof(T).Name + "|" + objectName;
+            if (_objectModelCache.TryGetValue(cacheKey, out var cachedForObject))
+                return cachedForObject;
+
+            var resolved = ResolveModelSaveInfoForObjectUncached(collection, objectName);
+            if (resolved != null) _objectModelCache[cacheKey] = resolved;
+            return resolved!;
+        }
+
+        private ModelSaveInfo ResolveModelSaveInfoForObjectUncached<T>(IReadOnlySingleKeyedMetadataProvider<T> collection, string objectName)
             where T : class
         {
             // Strategy 1: dynamic dispatch on the collection object (works if runtime type exposes GetModelInfo)

@@ -23,6 +23,7 @@
 
 import type { BridgeClient } from './bridgeClient.js';
 import { recordBridgeFailure } from './bridgeFailure.js';
+import { markRefreshStarted } from './debouncedRefresh.js';
 import type { BridgeAttempt } from './bridgeFailure.js';
 import * as debouncedRefresh from './debouncedRefresh.js';
 import { debugLog } from '../utils/logger.js';
@@ -1561,6 +1562,12 @@ export async function bridgeCreateObject(
   try {
     const result = await bridge.createObject(documentAndFormat(params));
     if (result.success) {
+      // The C# dispatcher runs RefreshProvider() itself after a successful
+      // createObject/createSmartTable (RequestDispatcher.cs, refreshAfterSuccess),
+      // so the provider has ALREADY been rebuilt by the time this returns.
+      // Recording it here lets the caller skip its own refresh instead of
+      // paying for a second full DiskProvider rebuild of the same tree.
+      markRefreshStarted();
       return {
         success: true,
         filePath: result.filePath,
@@ -1607,6 +1614,12 @@ export async function bridgeCreateSmartTable(
   try {
     const result = await bridge.createSmartTable(params);
     if (result.success) {
+      // The C# dispatcher runs RefreshProvider() itself after a successful
+      // createObject/createSmartTable (RequestDispatcher.cs, refreshAfterSuccess),
+      // so the provider has ALREADY been rebuilt by the time this returns.
+      // Recording it here lets the caller skip its own refresh instead of
+      // paying for a second full DiskProvider rebuild of the same tree.
+      markRefreshStarted();
       console.error(`[BridgeAdapter] ✅ Smart table created: ${result.filePath} (${result.api})`);
       return result;
     } else {
@@ -1652,7 +1665,11 @@ export async function bridgeAddMethod(
         : `Bridge addMethod returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addMethod(${objectType}, ${objectName}, ${methodName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addMethod(${objectType}, ${objectName}, ${methodName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1689,7 +1706,11 @@ export async function bridgeAddField(
         : `Bridge addField returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addField(${tableName}, ${fieldName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addField(${tableName}, ${fieldName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1716,7 +1737,11 @@ export async function bridgeSetProperty(
         : `Bridge setProperty returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] setProperty(${objectType}, ${objectName}, ${propertyPath}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`setProperty(${objectType}, ${objectName}, ${propertyPath})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1744,7 +1769,11 @@ export async function bridgeReplaceCode(
         : `Bridge replaceCode returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] replaceCode(${objectType}, ${objectName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`replaceCode(${objectType}, ${objectName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1770,7 +1799,11 @@ export async function bridgeRemoveMethod(
         : `Bridge removeMethod returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] removeMethod(${objectType}, ${objectName}, ${methodName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`removeMethod(${objectType}, ${objectName}, ${methodName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1796,7 +1829,11 @@ export async function bridgeAddIndex(
         : `Bridge addIndex returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addIndex(${tableName}, ${indexName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addIndex(${tableName}, ${indexName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1819,7 +1856,11 @@ export async function bridgeRemoveIndex(
         : `Bridge removeIndex returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] removeIndex(${tableName}, ${indexName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`removeIndex(${tableName}, ${indexName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1846,7 +1887,11 @@ export async function bridgeAddFullTextIndex(
         : `Bridge addFullTextIndex returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addFullTextIndex(${tableName}, ${indexName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addFullTextIndex(${tableName}, ${indexName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1867,7 +1912,11 @@ export async function bridgeRemoveFullTextIndex(
         : `Bridge removeFullTextIndex returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] removeFullTextIndex(${tableName}, ${indexName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`removeFullTextIndex(${tableName}, ${indexName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1890,7 +1939,11 @@ export async function bridgeAddTableMapping(
         : `Bridge addTableMapping returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addTableMapping(${tableName}, ${mapName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addTableMapping(${tableName}, ${mapName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1911,7 +1964,11 @@ export async function bridgeRemoveTableMapping(
         : `Bridge removeTableMapping returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] removeTableMapping(${tableName}, ${mapName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`removeTableMapping(${tableName}, ${mapName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1950,7 +2007,11 @@ export async function bridgeAddRelation(
         : `Bridge addRelation returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addRelation(${tableName}, ${relationName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addRelation(${tableName}, ${relationName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1973,7 +2034,11 @@ export async function bridgeRemoveRelation(
         : `Bridge removeRelation returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] removeRelation(${tableName}, ${relationName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`removeRelation(${tableName}, ${relationName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -1998,7 +2063,11 @@ export async function bridgeAddFieldGroup(
         : `Bridge addFieldGroup returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addFieldGroup(${tableName}, ${groupName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addFieldGroup(${tableName}, ${groupName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2021,7 +2090,11 @@ export async function bridgeRemoveFieldGroup(
         : `Bridge removeFieldGroup returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] removeFieldGroup(${tableName}, ${groupName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`removeFieldGroup(${tableName}, ${groupName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2053,7 +2126,11 @@ export async function bridgeAddFieldToFieldGroup(
         : `Bridge addFieldToFieldGroup returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addFieldToFieldGroup(${tableName}, ${groupName}, ${fieldName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addFieldToFieldGroup(${tableName}, ${groupName}, ${fieldName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2077,7 +2154,11 @@ export async function bridgeModifyField(
         : `Bridge modifyField returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] modifyField(${tableName}, ${fieldName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`modifyField(${tableName}, ${fieldName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2101,7 +2182,11 @@ export async function bridgeRenameField(
         : `Bridge renameField returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] renameField(${tableName}, ${oldName} → ${newName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`renameField(${tableName}, ${oldName} → ${newName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2124,7 +2209,11 @@ export async function bridgeRemoveField(
         : `Bridge removeField returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] removeField(${tableName}, ${fieldName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`removeField(${tableName}, ${fieldName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2147,7 +2236,11 @@ export async function bridgeReplaceAllFields(
         : `Bridge replaceAllFields returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] replaceAllFields(${tableName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`replaceAllFields(${tableName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2173,7 +2266,11 @@ export async function bridgeAddEnumValue(
         : `Bridge addEnumValue returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addEnumValue(${enumName}, ${valueName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addEnumValue(${enumName}, ${valueName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2197,7 +2294,11 @@ export async function bridgeModifyEnumValue(
         : `Bridge modifyEnumValue returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] modifyEnumValue(${enumName}, ${valueName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`modifyEnumValue(${enumName}, ${valueName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2220,7 +2321,11 @@ export async function bridgeRemoveEnumValue(
         : `Bridge removeEnumValue returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] removeEnumValue(${enumName}, ${valueName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`removeEnumValue(${enumName}, ${valueName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2248,7 +2353,11 @@ export async function bridgeAddControl(
         : `Bridge addControl returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addControl(${formName}, ${controlName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addControl(${formName}, ${controlName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2275,7 +2384,11 @@ export async function bridgeAddDataSource(
         : `Bridge addDataSource returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addDataSource(${objectType}, ${objectName}, ${dsName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addDataSource(${objectType}, ${objectName}, ${dsName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2304,7 +2417,11 @@ export async function bridgeAddFieldModification(
         : `Bridge addFieldModification returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addFieldModification(${extensionName}, ${fieldName}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addFieldModification(${extensionName}, ${fieldName})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2331,7 +2448,11 @@ export async function bridgeAddMenuItemToMenu(
         : `Bridge addMenuItemToMenu returned success=false`,
     };
   } catch (e) {
-    console.error(`[BridgeAdapter] addMenuItemToMenu(${menuName}, ${menuItemToAdd}) failed: ${e}`);
+    // Record into the per-call failure sink as well as returning the
+    // message: without this a bridge write that THREW reached the model
+    // as an ordinary failure string, with nothing saying the bridge was
+    // what broke. Same stderr line as before.
+    recordBridgeFailure(`addMenuItemToMenu(${menuName}, ${menuItemToAdd})`, e);
     return { success: false, message: String(e) };
   }
 }
@@ -2341,6 +2462,18 @@ export async function bridgeAddMenuItemToMenu(
 /**
  * Executes multiple write operations on a single object in one bridge call.
  * Returns a formatted ToolResult or null if bridge unavailable.
+ *
+ * NOT REACHED BY ANY PUBLISHED TOOL, and that is deliberate — do not wire
+ * `d365fo_file(operations:[…])` to it on the assumption that it is the faster
+ * path. See the comment on `runModifyBatch` in src/tools/d365foFile.ts: the
+ * round trip worth saving is the MCP one, and bridge IPC is local and costs
+ * milliseconds, while this RPC bypasses path containment, backups, prefix
+ * application, .rnrproj registration, the per-operation validation and the
+ * direct-XML fallbacks — several of which exist because a bridge write failed.
+ *
+ * Kept rather than deleted: the C# counterpart (RequestDispatcher.HandleBatchModify)
+ * is ~300 lines whose three known defects are fixed, and a future caller that
+ * accepts those trade-offs has somewhere to start. Retired, not broken.
  */
 export async function bridgeBatchModify(
   bridge: BridgeClient | undefined,

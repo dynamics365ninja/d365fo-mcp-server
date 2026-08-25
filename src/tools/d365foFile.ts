@@ -419,6 +419,10 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
     // applies them in the same call.
     const { operations, ...createArgs } = rest as { operations?: unknown } & Record<string, unknown>;
     const outcome: CreateOutcome = {};
+    // Stamped BEFORE the create so the refresh check below can tell "the bridge
+    // rebuilt the provider as part of this create" from "the last rebuild was
+    // some earlier call's".
+    const createStartedAt = Date.now();
     const created = await handleCreateD365File(subRequest('create_d365fo_file', createArgs), context, outcome);
 
     if (!Array.isArray(operations) || operations.length === 0) return created;
@@ -449,8 +453,16 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
     // the create path that writes XML directly schedules no rebuild of its own.
     // refresh() queues one, flush() runs it now instead of after the 400 ms settle.
     if (context.bridge) {
-      void debouncedRefresh.refresh(context.bridge);
-      await debouncedRefresh.flush();
+      // ...unless the create ALREADY caused one. The C# dispatcher runs
+      // RefreshProvider() itself after a successful createObject /
+      // createSmartTable, and the adapter records that via markRefreshStarted().
+      // Refreshing again here rebuilt the whole DiskProvider a second time for
+      // the same tree - the create path that writes XML directly is the one that
+      // genuinely needs this, because nothing else schedules a rebuild for it.
+      if (debouncedRefresh.getLastRefreshStartedAt() < createStartedAt) {
+        void debouncedRefresh.refresh(context.bridge);
+        await debouncedRefresh.flush();
+      }
     }
 
     const batch = await runModifyBatch({
